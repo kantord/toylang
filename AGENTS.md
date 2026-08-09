@@ -70,6 +70,23 @@ Co-Authored-By: <agent identifier>
 A commit with no agent `Co-Authored-By` trailer is entirely human-authored and human-written.
 That is the default assumption, so never add the trailer to a commit you did not contribute to.
 
+## Correcting provenance
+
+Provenance is a fact about how a file came to be, not a property recoverable from the file
+afterwards. It has to be recorded when the commit is made or it is gone. That is why it lives
+in commit messages.
+
+Two consequences.
+
+**Do not classify inherited files confidently.** If a file arrives already written and you do
+not know its authoring history, the honest entry is that the history is unknown. Nothing in a
+finished artifact distinguishes text a human wrote from text an agent wrote, and guessing
+produces a false record that looks like a true one.
+
+**If you get provenance wrong, do not rewrite history.** Add a follow-up commit that names the
+bad commit and states the correction. Both entries stay in the log. A rewritten history is a
+worse record than a corrected one, because it hides that the mistake was possible.
+
 ## Authority ordering
 
 This is the practical reason the categories exist. When two parts of the repository conflict:
