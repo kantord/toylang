@@ -124,6 +124,45 @@ Stream<T>    0..n, possibly infinite, indexing only by iteration
 make**. `Vec` guarantees indexing without iteration; `Stream` does not, and may be infinite.
 That asymmetry is load-bearing, as `fold` below shows.
 
+TODO: explore idea that Vectors are multidimensional, so their cardiniality is expressed per-dimension;
+the foo[] operator is actually just applying another vector as a projection on a vector or a stream, so that would be
+a "project" trait. (I guess we could have a convention that traits are methods with __ as prefix and suffix liek in python
+so basically, if you havea  vector "foo", that is one dimensional, then foo[3] would be just getting the third item. the projectsion itslef is actually the vector `[3]`.
+The filter `.[3]` would be getting the third item of each value in the stream. If a 2D vector is projected by a vector of length one, then you'd get not single items, but a one dimensional vector.
+there could also be some elegant way of specifying when you want to project not along the first dimension, but perhaps that would be an operator like `.{1: 3}` which woudl mean that get the subvector
+where there is one less dimension and only the items where the orignal dimension 1's coordinate is "3" are returned. but I guess that these projections coudl become lenses, rahter than hard copies in
+memory and rather than beocming streams since they have fixed cardinality, even if that si also only derived from their "parent" object. This means that even `.[]` only becomes a stream if `.` was already a stream, I guess. but when to materialize is another question: i guess that `.[] | select ...etc ...` would be allowed to materialiez teh resutl instead of making it a lens, even tho it could appear like a lens in the type system, that is if we can assume that no more references to `.` exist elsewhere.
+
+RESPONSE (agent). Four things this does, one of which breaks something above.
+
+It answers "index vs. iterate" by dissolving it. If `[]` is projection by a vector, then `foo[3]`
+and `foo[]` are one operator with different projections, `[3]` and "all indices". That is a
+better answer than treating them as two access modes, and it is what NumPy and APL do.
+
+It contradicts the two-layer section. That section says `.[]` is *the* reflect operator, the
+thing that turns a value into effect-layer multiplicity. Under projection-with-lenses, `.[]` on
+a `Vec` yields a `Vec` view with known cardinality, which never leaves the value layer. So
+either `.[]` stops being a layer shifter, or projection is a different operator that happens to
+share syntax. Worth noting the version where `.[]` stops shifting layers is arguably *better*:
+the effect layer would then arise only from genuinely unknown cardinality (I/O, `select`, `..`),
+and everything with statically known extent stays a value, which is also exactly what
+vectorizes. But the claim "exactly two layer shifters" does not survive it unchanged.
+
+Per-dimension cardinality assumes rectangularity, and JSON is ragged. `[[1,2],[3]]` is not a 2D
+vector; it is a nested list with variable inner lengths. Arrow handles that with offsets, not
+dimensions. So this probably needs two distinct types rather than one: a rectangular
+`Tensor<T, dims>` where per-dimension cardinality is meaningful, and a ragged `Vec<Vec<T>>`
+carried as offsets. The projection algebra is clean on the first and only partly applies to the
+second.
+
+The materialization condition is a uniqueness analysis. "If we can assume no more references to
+`.` exist elsewhere" is linearity or uniqueness typing, which is Rust's borrow checker or Clean
+and Idris 2. It is not free, and it is the machinery we avoided needing for ordering guarantees.
+
+One connection: adopting projection semantics pulls open question Q2 (cartesian vs. zip) toward
+broadcast, because multidimensional projection and elementwise broadcast are the same tradition.
+Q2 and this TODO may be one question.
+
 Under the hood these are all the same shape, unpacked a different number of times. Unpacking a
 sequence yields either *nothing* or *one item plus a remainder*, written `1 + T*X`, where `1`
 is the nothing case, `T` is the item, and `X` is the remainder. That template is called the
@@ -446,6 +485,29 @@ naturally means "this many children."
 
 ## Open questions
 
+Tracked here rather than scattered through the document. Status is one of OPEN (no preferred
+answer), LEANING (a preferred answer exists but is not committed), or BLOCKED (waits on another
+question). Add new ones at the bottom and keep the numbers stable, since other sections cite
+them.
+
+| # | Question | Status |
+|---|---|---|
+| Q1 | Streams: first-class values, or evaluation-level multiplicity? | LEANING |
+| Q2 | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
+| Q3 | What symbol replaces `=` for the product-forming update? | LEANING, blocked on Q2 |
+| Q4 | Can the type express ordering over heterogeneous streams? | OPEN |
+| Q5 | Stream-lowering strategy across the three backends | OPEN, blocks all backend work |
+| Q6 | Does a reconciler belong in the language or a library? | OPEN |
+| Q7 | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
+| Q8 | Is vectorizability visible in the type system, or a silent optimization? | OPEN |
+| Q9 | Are vectors multidimensional, with `[]` as projection? | OPEN, may merge with Q2 |
+| Q10 | Is uniqueness analysis in scope, for deciding when a lens materializes? | OPEN |
+
+Q5 is the one that blocks building anything. Q1 and Q9 both change the two-layer section, so
+they should be settled before that section is treated as stable.
+
+### Detail
+
 1. **Are streams first-class values, or evaluation-level multiplicity?** jq has no stream
    *value*: `Val` has no stream case, and streams exist only during evaluation. That keeps
    values finite and acyclic, and lets streams compile to loops rather than heap-allocated
@@ -467,6 +529,27 @@ naturally means "this many children."
 5. **The stream-lowering strategy**, which must be decided before any backend is written. Lua
    has true coroutines, JavaScript has generators, native has neither for free.
 6. **Does a reconciler belong in the language** as a first-class construct, or in a library?
+7. **Does `..` promise depth-first order, or only the set of nodes?** On a flat columnar layout,
+   "every node at every depth" is "every element of every buffer", which is embarrassingly
+   parallel. The dependent part is not the traversal but the *order*, since the flat layout is
+   not in depth-first order. jq promises the order. If this language only promises the set,
+   recursive descent becomes one of the cheapest operators rather than one of the most
+   expensive. This is not only a performance question: a jq-derived language that is fast
+   everywhere except recursive descent has a positioning problem, because `..` is one of the two
+   things people reach for jq to do.
+8. **Is vectorizability visible in the type system, or a silent optimization?** Reporting it
+   means a second effect alongside cardinality, and a visible fast-path/slow-path distinction in
+   signatures. Hiding it makes performance unpredictable in exactly the way this design is
+   trying to avoid. Note the two effects are orthogonal: `select` changes cardinality and
+   vectorizes fine as a mask, while `first` changes cardinality the same way and cannot
+   vectorize at all.
+9. **Are vectors multidimensional, with `[]` as projection?** See the TODO and response in the
+   cardinality section. Unifies indexing with iteration, but disturbs the claim that there are
+   exactly two layer shifters, and per-dimension cardinality only describes rectangular data
+   while JSON is ragged.
+10. **Is uniqueness analysis in scope?** Deciding when a projection lens can materialize instead
+    of staying a view requires knowing no other reference to the source survives. That is
+    linearity or uniqueness typing, the machinery deliberately avoided in Q4.
 
 ## Non-goals
 
