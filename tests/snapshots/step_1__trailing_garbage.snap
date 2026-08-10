@@ -2,4 +2,4 @@
 source: tests/step_1.rs
 expression: "err(r#\"\"a\" \"b\"\"#)"
 ---
-expected end of program (at byte 4)
+expected end of program, found a string (at byte 4)

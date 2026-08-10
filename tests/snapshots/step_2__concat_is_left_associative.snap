@@ -1,0 +1,39 @@
+---
+source: tests/step_2.rs
+expression: "toylang::parse::parse(&tokens).unwrap()"
+---
+Binary {
+    op: Add,
+    lhs: Binary {
+        op: Add,
+        lhs: Str {
+            text: "a",
+            span: Span {
+                start: 0,
+                end: 3,
+            },
+        },
+        rhs: Str {
+            text: "b",
+            span: Span {
+                start: 6,
+                end: 9,
+            },
+        },
+        span: Span {
+            start: 0,
+            end: 9,
+        },
+    },
+    rhs: Str {
+        text: "c",
+        span: Span {
+            start: 12,
+            end: 15,
+        },
+    },
+    span: Span {
+        start: 0,
+        end: 15,
+    },
+}

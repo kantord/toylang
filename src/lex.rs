@@ -4,7 +4,18 @@ use crate::error::Error;
 #[derive(Debug, PartialEq)]
 pub enum Tok {
     Str(String),
+    Plus,
     Eof,
+}
+
+impl std::fmt::Display for Tok {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Tok::Str(_) => write!(f, "a string"),
+            Tok::Plus => write!(f, "`+`"),
+            Tok::Eof => write!(f, "end of program"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -20,6 +31,11 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
 
     while i < bytes.len() {
         if bytes[i].is_ascii_whitespace() {
+            i += 1;
+            continue;
+        }
+        if bytes[i] == b'+' {
+            out.push(Token { tok: Tok::Plus, span: Span::new(i, i + 1) });
             i += 1;
             continue;
         }

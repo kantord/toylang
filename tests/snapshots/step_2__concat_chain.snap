@@ -1,0 +1,5 @@
+---
+source: tests/step_2.rs
+expression: "toylang::run(r#\"\"a\" + \"b\" + \"c\" + \"d\"\"#).unwrap()"
+---
+abcd

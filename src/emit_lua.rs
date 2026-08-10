@@ -1,8 +1,15 @@
 use crate::ir::{Ir, Program};
 
 pub fn emit(program: &Program) -> String {
-    match &program.body {
-        Ir::ConstStr(s) => format!("print({})\n", lua_string(s)),
+    format!("print({})\n", expr(&program.body))
+}
+
+fn expr(ir: &Ir) -> String {
+    match ir {
+        Ir::ConstStr(s) => lua_string(s),
+        // No parentheses: `..` is the only operator, and it is associative over strings, so
+        // nesting cannot change the result. A second operator makes them necessary.
+        Ir::Concat(l, r) => format!("{} .. {}", expr(l), expr(r)),
     }
 }
 

@@ -1,0 +1,5 @@
+---
+source: tests/step_2.rs
+expression: "err(r#\"\"a\" + \"#)"
+---
+expected an expression, found end of program (at byte 6)

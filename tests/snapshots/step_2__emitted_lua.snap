@@ -1,0 +1,5 @@
+---
+source: tests/step_2.rs
+expression: lua
+---
+print("a" .. "b" .. "c")

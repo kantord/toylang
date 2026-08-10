@@ -6,5 +6,12 @@ use crate::ty::Type;
 pub fn check(expr: &Expr) -> Result<Type, Error> {
     match expr {
         Expr::Str { .. } => Ok(Type::Str),
+        // `+` is Str concatenation. Operands are walked for their own errors, but their types
+        // cannot disagree while Str is the only type; step 4 adds Int and the real check.
+        Expr::Binary { lhs, rhs, .. } => {
+            check(lhs)?;
+            check(rhs)?;
+            Ok(Type::Str)
+        }
     }
 }
