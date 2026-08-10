@@ -574,6 +574,39 @@ invented to say which programs can run on a GPU, because the cardinality effect 
 What still has to be excluded inside an offloaded region is the ordinary list: strings, objects,
 path expressions, update assignment, `error`, and `input`.
 
+#### This contradicts an earlier claim, and the earlier claim was wrong
+
+Q8 was argued on the grounds that cardinality and vectorizability are *orthogonal*: `select`
+changes cardinality and vectorizes fine as a mask, while `first` changes cardinality the same way
+and cannot vectorize at all. If cardinality is the admissibility predicate, that counterexample
+has to go somewhere.
+
+It goes away, because it equivocates on `first`. There are two of them:
+
+```
+first over a Stream   must short-circuit over data that has not arrived.  NOT admissible.
+first over a Vec      is the minimum index where the mask is set.  A reduction.  Admissible.
+```
+
+So `first` is not one operation that defies the mapping. It is two operations in different
+layers, and only the streaming one is inadmissible, which is exactly what the `Stream` row
+already says. Admissibility is determined by the cardinality of what an expression *consumes*,
+not only by what it produces. The same resolution covers `any`, `all`, and short-circuiting
+`and` and `or`: over a `Vec` each is a reduction over a mask, and over a `Stream` each is an
+early exit.
+
+#### But the mapping needs a precision about granularity
+
+It describes the cardinality of a filter applied *per element*. It says nothing about operations
+on a whole collection, where `Vec -> Vec` is one value in and one value out, and the per-element
+reading does not apply.
+
+`sort` is the clear case. Its cardinality is one-to-one and it is not an elementwise kernel.
+Neither are `group_by` or a join. These are the blocking operators, they need the whole input
+before producing anything, and they are parallelizable by different means entirely. So the
+mapping classifies elementwise filters, and whole-collection operators are a separate question
+this document has not addressed.
+
 ### The same predicate governs CPU vectorization
 
 LLVM's loop vectorizer rewrites a scalar loop to process several elements per iteration with no
@@ -842,6 +875,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | Q17 | Is there a dense tensor type, constructed explicitly? | LEANING yes |
 | Q18 | Does `.[]` on a rank-2 tensor yield rows or scalars? | LEANING rows |
 | Q19 | How are nulls carried in a dense typed buffer? | LEANING, Arrow validity bitmask |
+| Q20 | How are blocking operators (`sort`, `group_by`, joins) classified? | OPEN |
 
 Q5 is the one that blocks building anything. Q1 and Q9 both change the two-layer section, so
 they should be settled before that section is treated as stable.
@@ -935,6 +969,10 @@ they should be settled before that section is treated as stable.
 19. **How are nulls carried in a dense typed buffer?** JSON has null and an `f32` buffer does
     not. NaN as a sentinel collides with genuine NaN. Arrow's separate validity bitmask solves
     it and brings zero-copy interop with Polars, DuckDB and pandas.
+20. **How are blocking operators classified?** `sort`, `group_by` and joins are one value in and
+    one value out, so the per-element cardinality mapping does not describe them. They need the
+    whole input before producing anything and are parallelizable by other means. The
+    kernel-admissibility result covers elementwise filters only, and this is the gap it leaves.
 
 ## Non-goals
 
