@@ -1,0 +1,5 @@
+---
+source: tests/step_1.rs
+expression: "toylang::run(r#\"\"hello world\"\"#).unwrap()"
+---
+hello world

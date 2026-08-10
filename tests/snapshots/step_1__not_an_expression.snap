@@ -1,0 +1,5 @@
+---
+source: tests/step_1.rs
+expression: "err(\"hello\")"
+---
+unexpected character `h` (at byte 0)

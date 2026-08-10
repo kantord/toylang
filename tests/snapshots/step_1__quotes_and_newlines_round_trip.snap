@@ -1,0 +1,6 @@
+---
+source: tests/step_1.rs
+expression: "toylang::run(r#\"\"say \\\"hi\\\"\\n\\tand \\\\ too\"\"#).unwrap()"
+---
+say "hi"
+	and \ too

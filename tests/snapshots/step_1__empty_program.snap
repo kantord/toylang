@@ -1,0 +1,5 @@
+---
+source: tests/step_1.rs
+expression: "err(\"   \")"
+---
+empty program (at byte 3)

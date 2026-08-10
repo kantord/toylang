@@ -1,0 +1,5 @@
+---
+source: tests/step_1.rs
+expression: "err(r#\"\"a\" \"b\"\"#)"
+---
+expected end of program (at byte 4)

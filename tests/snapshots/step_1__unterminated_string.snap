@@ -1,0 +1,5 @@
+---
+source: tests/step_1.rs
+expression: "err(r#\"\"oops\"#)"
+---
+unterminated string (at byte 0)

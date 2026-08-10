@@ -1,0 +1,6 @@
+---
+source: tests/step_1.rs
+expression: "format!(\"-- : {ty}\\n{lua}\")"
+---
+-- : Str
+print("hello world")
