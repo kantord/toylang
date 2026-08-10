@@ -9,7 +9,8 @@ fn hello_world() {
 
 #[test]
 fn emitted_lua() {
-    let (lua, ty) = toylang::compile(r#""hello world""#).unwrap();
+    let c = toylang::compile(r#""hello world""#).unwrap();
+    let (lua, ty) = (c.lua, c.ty);
     insta::assert_snapshot!(format!("-- : {ty}\n{lua}"));
 }
 

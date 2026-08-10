@@ -111,6 +111,9 @@ impl<'a> Parser<'a> {
     /// `Str`, `Int`, `Bool`, or `Vec<T>`.
     fn type_expr(&mut self) -> Result<TypeExpr, Error> {
         let t = self.advance();
+        if t.tok == Tok::LBrace {
+            return self.record_type(t.span);
+        }
         let name = match &t.tok {
             Tok::Ident(n) => n.clone(),
             other => return Err(Error::new(t.span, format!("expected a type, found {other}"))),
@@ -122,6 +125,33 @@ impl<'a> Parser<'a> {
         let elem = self.type_expr()?;
         let close = self.eat(Tok::Gt)?.span;
         Ok(TypeExpr::Vec { elem: Box::new(elem), span: t.span.to(close) })
+    }
+
+    /// `{name: Str, age: Int}`
+    fn record_type(&mut self, open: crate::ast::Span) -> Result<TypeExpr, Error> {
+        let mut fields = Vec::new();
+        if self.peek().tok != Tok::RBrace {
+            loop {
+                let ft = self.advance();
+                let fname = match &ft.tok {
+                    Tok::Ident(n) => n.clone(),
+                    other => {
+                        return Err(Error::new(
+                            ft.span,
+                            format!("expected a field name, found {other}"),
+                        ));
+                    }
+                };
+                self.eat(Tok::Colon)?;
+                fields.push((fname, self.type_expr()?));
+                if self.peek().tok != Tok::Comma {
+                    break;
+                }
+                self.advance();
+            }
+        }
+        let close = self.eat(Tok::RBrace)?.span;
+        Ok(TypeExpr::Record { fields, span: open.to(close) })
     }
 
     fn expr(&mut self, min_power: u8) -> Result<Expr, Error> {
@@ -153,16 +183,32 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    /// `[]` binds tighter than any infix operator, so `a[] | b` projects `a` and pipes that.
+    /// `[]` and `.name` bind tighter than any infix operator, so `a.b[] | c` projects `a.b`.
     fn postfix(&mut self) -> Result<Expr, Error> {
         let mut e = self.atom()?;
-        while self.peek().tok == Tok::LBracket {
-            self.advance();
-            let close = self.eat(Tok::RBracket)?.span;
-            let span = e.span().to(close);
-            e = Expr::Project { base: Box::new(e), span };
+        loop {
+            match self.peek().tok {
+                Tok::LBracket => {
+                    self.advance();
+                    let close = self.eat(Tok::RBracket)?.span;
+                    let span = e.span().to(close);
+                    e = Expr::Project { base: Box::new(e), span };
+                }
+                Tok::Dot => {
+                    self.advance();
+                    let ft = self.advance();
+                    let Tok::Ident(name) = &ft.tok else {
+                        return Err(Error::new(
+                            ft.span,
+                            format!("expected a field name, found {}", ft.tok),
+                        ));
+                    };
+                    let span = e.span().to(ft.span);
+                    e = Expr::Field { base: Box::new(e), name: name.clone(), span };
+                }
+                _ => return Ok(e),
+            }
         }
-        Ok(e)
     }
 
     fn atom(&mut self) -> Result<Expr, Error> {
@@ -170,7 +216,22 @@ impl<'a> Parser<'a> {
         match &t.tok {
             Tok::Str(text) => Ok(Expr::Str { text: text.clone(), span: t.span }),
             Tok::Int(value) => Ok(Expr::Int { value: *value, span: t.span }),
-            Tok::Dot => Ok(Expr::Subject { span: t.span }),
+            Tok::Input => Ok(Expr::Input { span: t.span }),
+
+            // `.name` is field access on the subject, so the leading dot yields `.` and the
+            // postfix loop above picks the field up.
+            Tok::Dot => {
+                if let Tok::Ident(name) = &self.peek().tok {
+                    let name = name.clone();
+                    let ft = self.advance();
+                    return Ok(Expr::Field {
+                        base: Box::new(Expr::Subject { span: t.span }),
+                        name,
+                        span: t.span.to(ft.span),
+                    });
+                }
+                Ok(Expr::Subject { span: t.span })
+            }
 
             Tok::Select => {
                 self.eat(Tok::LParen)?;

@@ -30,5 +30,10 @@ The general form: the size of a type system's test surface is bounded by the num
 program can be *wrong*, not by the number of ways it can be right. A language feature that only
 adds valid programs adds no coverage.
 
+The `expect` function this went through was still synthesise-then-compare at that point, doing
+nothing a direct comparison would not. It earned its separate existence two steps later, when
+forms turned up that can be checked but not synthesised at all:
+[checked-only forms are a class, not a lambda rule](checked-only-forms-are-a-class-not-a-lambda-rule.md).
+
 This is the same failure as [a test that cannot fail is worse than no test](a-test-that-cannot-fail-is-worse-than-no-test.md),
 arriving from the language side rather than the assertion side.

@@ -25,3 +25,9 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [A pure value layer dissolves jq's iteration operators](a-pure-value-layer-dissolves-jqs-iteration-operators.md)
   -- Building step 4 under the one-way-shift proposal left three of jq's defining operators with
   nothing to do, which is a cost of the proposal rather than a refutation of it.
+- [The lowering needs types the checker already computed](the-lowering-needs-types-the-checker-already-computed.md)
+  -- Field access distributing over a Vec is the first construct whose lowering depends on a
+  type, and the side table carrying it is a patch over a seam that wants merging.
+- [Checked-only forms are a class, not a lambda rule](checked-only-forms-are-a-class-not-a-lambda-rule.md)
+  -- Two more expressions turned up that can only be checked and never synthesised, so the
+  annotation rule is about a class rather than about lambdas.

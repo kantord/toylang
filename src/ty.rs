@@ -4,6 +4,8 @@ pub enum Type {
     Int,
     Bool,
     Vec(Box<Type>),
+    /// Field names are kept sorted, so two records written in different orders are one type.
+    Record(Vec<(String, Type)>),
 }
 
 impl Type {
@@ -22,6 +24,18 @@ impl Type {
             _ => None,
         }
     }
+
+    pub fn record(mut fields: Vec<(String, Type)>) -> Type {
+        fields.sort_by(|a, b| a.0.cmp(&b.0));
+        Type::Record(fields)
+    }
+
+    pub fn field(&self, name: &str) -> Option<&Type> {
+        match self {
+            Type::Record(fields) => fields.iter().find(|(n, _)| n == name).map(|(_, t)| t),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for Type {
@@ -31,6 +45,11 @@ impl std::fmt::Display for Type {
             Type::Int => write!(f, "Int"),
             Type::Bool => write!(f, "Bool"),
             Type::Vec(t) => write!(f, "Vec<{t}>"),
+            Type::Record(fields) => {
+                let parts: Vec<String> =
+                    fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();
+                write!(f, "{{{}}}", parts.join(", "))
+            }
         }
     }
 }

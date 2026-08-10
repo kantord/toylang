@@ -13,6 +13,9 @@ pub enum Ir {
     Bind { name: String, value: Box<Ir>, body: Box<Ir> },
     /// Keep the elements of `source` for which `pred` holds, with `param` bound to each.
     Select { source: Box<Ir>, param: String, pred: Box<Ir> },
+    /// Read `name` off `base`, descending through `depth` Vec layers first. The depth comes
+    /// from the checker, so the runtime never inspects a value to decide what to do.
+    Field { base: Box<Ir>, name: String, depth: usize },
 }
 
 #[derive(Debug)]

@@ -1,0 +1,5 @@
+---
+source: tests/step_5.rs
+expression: "run_err(ADULTS, r#\"{\"users\": [{\"name\": \"ada\"}]}\"#)"
+---
+input.users[0]: missing field `age`

@@ -8,6 +8,7 @@ pub enum Tok {
     Ident(String),
     Fn,
     Select,
+    Input,
     Plus,
     Pipe,
     Comma,
@@ -23,6 +24,8 @@ pub enum Tok {
     RParen,
     LBracket,
     RBracket,
+    LBrace,
+    RBrace,
     Colon,
     Arrow,
     Eof,
@@ -36,6 +39,7 @@ impl std::fmt::Display for Tok {
             Tok::Ident(name) => return write!(f, "`{name}`"),
             Tok::Fn => "`fn`",
             Tok::Select => "`select`",
+            Tok::Input => "`input`",
             Tok::Plus => "`+`",
             Tok::Pipe => "`|`",
             Tok::Comma => "`,`",
@@ -51,6 +55,8 @@ impl std::fmt::Display for Tok {
             Tok::RParen => "`)`",
             Tok::LBracket => "`[`",
             Tok::RBracket => "`]`",
+            Tok::LBrace => "`{`",
+            Tok::RBrace => "`}`",
             Tok::Colon => "`:`",
             Tok::Arrow => "`->`",
             Tok::Eof => "end of program",
@@ -106,6 +112,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
                 match &src[start..i] {
                     "fn" => Tok::Fn,
                     "select" => Tok::Select,
+                    "input" => Tok::Input,
                     name => Tok::Ident(name.to_string()),
                 }
             }
@@ -152,6 +159,8 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
                     b')' => Tok::RParen,
                     b'[' => Tok::LBracket,
                     b']' => Tok::RBracket,
+                    b'{' => Tok::LBrace,
+                    b'}' => Tok::RBrace,
                     b':' => Tok::Colon,
                     _ => {
                         return Err(Error::new(

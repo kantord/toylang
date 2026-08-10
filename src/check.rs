@@ -1,6 +1,7 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::ast::{BinOp, Def, Expr, File, TypeExpr};
+use crate::ast::{BinOp, Def, Expr, File, Span, TypeExpr};
 use crate::error::Error;
 use crate::ty::{Sig, Type};
 
@@ -10,10 +11,36 @@ struct Ctx<'a> {
     scope: Vec<(String, Type)>,
     /// What `.` refers to here, if anything.
     subject: Option<Type>,
+    /// The type `input` was checked against, filled in the first time it is used.
+    input: &'a RefCell<Option<Type>>,
+    /// How many Vec layers each field access distributes over. The checker knows this and the
+    /// runtime must not have to rediscover it, so it is recorded here for lowering.
+    depths: &'a RefCell<HashMap<Span, usize>>,
 }
 
-pub fn check(file: &File) -> Result<Type, Error> {
+impl Ctx<'_> {
+    fn with(&self, subject: Option<Type>) -> Ctx<'_> {
+        Ctx {
+            sigs: self.sigs,
+            scope: self.scope.clone(),
+            subject,
+            input: self.input,
+            depths: self.depths,
+        }
+    }
+}
+
+/// What a program needs and what it produces.
+pub struct Checked {
+    pub ty: Type,
+    pub input: Option<Type>,
+    pub field_depths: HashMap<Span, usize>,
+}
+
+pub fn check(file: &File) -> Result<Checked, Error> {
     let sigs = signatures(&file.defs)?;
+    let input = RefCell::new(None);
+    let depths = RefCell::new(HashMap::new());
 
     // Signatures are collected before any body is checked, so a definition may call one that
     // appears later in the file. This is also what recursion will need.
@@ -23,6 +50,8 @@ pub fn check(file: &File) -> Result<Type, Error> {
             sigs: &sigs,
             scope: vec![(def.param.name.clone(), sig.param.clone())],
             subject: None,
+            input: &input,
+            depths: &depths,
         };
         let found = synth(&ctx, &def.body)?;
         if found != sig.ret {
@@ -33,8 +62,10 @@ pub fn check(file: &File) -> Result<Type, Error> {
         }
     }
 
-    let ctx = Ctx { sigs: &sigs, scope: Vec::new(), subject: None };
-    synth(&ctx, &file.body)
+    let ctx =
+        Ctx { sigs: &sigs, scope: Vec::new(), subject: None, input: &input, depths: &depths };
+    let ty = synth(&ctx, &file.body)?;
+    Ok(Checked { ty, input: input.into_inner(), field_depths: depths.into_inner() })
 }
 
 fn signatures(defs: &[Def]) -> Result<HashMap<String, Sig>, Error> {
@@ -54,6 +85,16 @@ fn resolve(ty: &TypeExpr) -> Result<Type, Error> {
         TypeExpr::Named { name, span } => Type::from_name(name)
             .ok_or_else(|| Error::new(*span, format!("unknown type `{name}`"))),
         TypeExpr::Vec { elem, .. } => Ok(Type::Vec(Box::new(resolve(elem)?))),
+        TypeExpr::Record { fields, span } => {
+            let mut out = Vec::new();
+            for (name, ty) in fields {
+                if out.iter().any(|(n, _): &(String, Type)| n == name) {
+                    return Err(Error::new(*span, format!("field `{name}` is declared twice")));
+                }
+                out.push((name.clone(), resolve(ty)?));
+            }
+            Ok(Type::record(out))
+        }
     }
 }
 
@@ -101,9 +142,33 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Type, Error> {
         // map: the operators that distribute over a Vec do so themselves.
         Expr::Pipe { lhs, rhs, .. } => {
             let subject = synth(ctx, lhs)?;
-            let inner = Ctx { sigs: ctx.sigs, scope: ctx.scope.clone(), subject: Some(subject) };
-            synth(&inner, rhs)
+            synth(&ctx.with(Some(subject)), rhs)
         }
+
+        // Field access distributes over a Vec rather than needing a map, which is how `.name`
+        // reads an element field straight off a filtered collection.
+        Expr::Field { base, name, span } => {
+            let base_ty = synth(ctx, base)?;
+            let mut depth = 0;
+            let mut inner = &base_ty;
+            while let Some(elem) = inner.elem() {
+                depth += 1;
+                inner = elem;
+            }
+            let Some(field) = inner.field(name) else {
+                return Err(Error::new(*span, format!("no field `{name}` on {inner}")));
+            };
+            let mut out = field.clone();
+            for _ in 0..depth {
+                out = Type::Vec(Box::new(out));
+            }
+            ctx.depths.borrow_mut().insert(*span, depth);
+            Ok(out)
+        }
+
+        // `input` is only ever checked, never synthesised, for the same reason a lambda is:
+        // nothing here says what it contains, and guessing is what the annotation rule avoids.
+        Expr::Input { span } => Err(Error::new(*span, "cannot tell what `input` contains")),
 
         // A mask over the subject Vec. The predicate is checked with `.` rebound to the element
         // type rather than evaluated in the enclosing scope.
@@ -114,9 +179,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Type, Error> {
             let Some(elem) = subject.elem().cloned() else {
                 return Err(Error::new(*span, format!("`select` needs a Vec, found {subject}")));
             };
-            let inner =
-                Ctx { sigs: ctx.sigs, scope: ctx.scope.clone(), subject: Some(elem) };
-            expect(&inner, pred, &Type::Bool)?;
+            expect(&ctx.with(Some(elem)), pred, &Type::Bool)?;
             Ok(subject)
         }
 
@@ -158,6 +221,22 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr, span: crate::ast::Span) 
 /// The checking direction. With no lambdas yet it synthesises and compares, but it is where the
 /// expected type reaches the expression, and where the error names both sides.
 fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<(), Error> {
+    // The one expression whose type comes from its position rather than its contents.
+    if let Expr::Input { span } = expr {
+        let mut slot = ctx.input.borrow_mut();
+        match slot.as_ref() {
+            None => *slot = Some(want.clone()),
+            Some(prev) if prev != want => {
+                return Err(Error::new(
+                    *span,
+                    format!("`input` is used as {prev} here and as {want} elsewhere"),
+                ));
+            }
+            Some(_) => {}
+        }
+        return Ok(());
+    }
+
     let found = synth(ctx, expr)?;
     if &found != want {
         return Err(Error::new(expr.span(), format!("expected {want}, found {found}")));

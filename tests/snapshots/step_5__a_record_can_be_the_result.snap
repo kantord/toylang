@@ -1,0 +1,5 @@
+---
+source: tests/step_5.rs
+expression: "toylang::run_with_input(src,\nSome(r#\"{\"u\": {\"name\": \"ada\", \"age\": 36}}\"#)).unwrap()"
+---
+{"age":36,"name":"ada"}

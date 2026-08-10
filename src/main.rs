@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::process::ExitCode;
 
 const USAGE: &str = "usage: toylang <run|emit> FILE";
@@ -18,8 +19,8 @@ fn main() -> ExitCode {
     };
 
     let result = match cmd.as_str() {
-        "run" => toylang::run(&src),
-        "emit" => toylang::compile(&src).map(|(lua, _)| lua).map_err(Into::into),
+        "run" => run(&src),
+        "emit" => toylang::compile(&src).map(|c| c.lua).map_err(Into::into),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::FAILURE;
@@ -36,4 +37,15 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// stdin is only read when the program says it reads input, so a program that does not is not
+/// left waiting on a terminal.
+fn run(src: &str) -> Result<String, Box<dyn std::error::Error>> {
+    if toylang::compile(src)?.input.is_none() {
+        return toylang::run(src);
+    }
+    let mut stdin = String::new();
+    std::io::stdin().read_to_string(&mut stdin)?;
+    toylang::run_with_input(src, Some(&stdin))
 }

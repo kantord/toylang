@@ -1,0 +1,5 @@
+---
+source: tests/step_5.rs
+expression: "run_err(ADULTS, r#\"{\"users\": [{\"name\": \"ada\", \"age\": \"36\"}]}\"#)"
+---
+input.users[0].age: expected Int, found a string

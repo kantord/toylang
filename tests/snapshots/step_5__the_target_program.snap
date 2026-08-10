@@ -1,0 +1,5 @@
+---
+source: tests/step_5.rs
+expression: "toylang::run_with_input(ADULTS, Some(DB)).unwrap()"
+---
+["ada"]

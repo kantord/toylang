@@ -42,4 +42,6 @@ That is the inverse of [a test that cannot fail](a-test-that-cannot-fail-is-wors
 here the property was observable only in the strongest observation available.
 
 Expect more of this once streams lower to something other than a counted loop, since that is
-where the three backends diverge most.
+where the three backends diverge most. Step 5 found the mirror image, where the checker holds
+something the backend needs:
+[the lowering needs types the checker already computed](the-lowering-needs-types-the-checker-already-computed.md).

@@ -1,0 +1,5 @@
+---
+source: tests/step_5.rs
+expression: "err(\"fn f(r: {a: Str, a: Int}) -> Str = r.a\\nf(input)\")"
+---
+field `a` is declared twice (at byte 8)

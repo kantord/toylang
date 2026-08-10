@@ -1,0 +1,5 @@
+---
+source: tests/step_5.rs
+expression: "err(r#\"\nfn a(x: Int) -> Str = \"n\"\nfn b(x: Str) -> Str = x\n\na(input) + b(input)\n\"#)"
+---
+`input` is used as Int here and as Str elsewhere (at byte 65)

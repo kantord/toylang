@@ -1,0 +1,5 @@
+---
+source: tests/step_5.rs
+expression: "err(r#\"\nfn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =\n    db.users[] | select(.age >= 18) | .nmae\n\nadults(input)\n\"#)"
+---
+no field `nmae` on {age: Int, name: Str} (at byte 104)

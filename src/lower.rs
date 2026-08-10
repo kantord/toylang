@@ -1,8 +1,14 @@
-use crate::ast::{BinOp, Expr, File};
+use std::collections::HashMap;
+
+use crate::ast::{BinOp, Expr, File, Span};
 use crate::ir::{Func, Ir, Program};
 
-pub fn lower(file: &File) -> Program {
-    let mut l = Lowerer { next: 0 };
+/// The name the input value is bound to. Unspellable in source: `user` prefixes every source
+/// name with `v_`.
+pub const INPUT: &str = "t_input";
+
+pub fn lower(file: &File, field_depths: &HashMap<Span, usize>) -> Program {
+    let mut l = Lowerer { next: 0, depths: field_depths };
     let funcs = file
         .defs
         .iter()
@@ -23,11 +29,12 @@ fn user(name: &str) -> String {
     format!("v_{name}")
 }
 
-struct Lowerer {
+struct Lowerer<'a> {
     next: usize,
+    depths: &'a HashMap<Span, usize>,
 }
 
-impl Lowerer {
+impl Lowerer<'_> {
     /// A local the source cannot name. `user` prefixes every source name with `v_`, so nothing
     /// in a program can collide with `t_0`.
     fn fresh(&mut self) -> String {
@@ -51,6 +58,14 @@ impl Lowerer {
 
             // Projection by every index keeps the same extent, so there is nothing to emit.
             Expr::Project { base, .. } => self.expr(base, subject),
+
+            Expr::Input { .. } => Ir::Local(INPUT.to_string()),
+
+            Expr::Field { base, name, span } => Ir::Field {
+                base: Box::new(self.expr(base, subject)),
+                name: name.clone(),
+                depth: *self.depths.get(span).expect("recorded by the checker"),
+            },
 
             Expr::Pipe { lhs, rhs, .. } => {
                 let value = self.expr(lhs, subject);

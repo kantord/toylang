@@ -1,0 +1,5 @@
+---
+source: tests/step_5.rs
+expression: "err(\"fn f(x: Int) -> Int = x.name\\nf(1)\")"
+---
+no field `name` on Int (at byte 22)

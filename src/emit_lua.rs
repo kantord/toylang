@@ -11,6 +11,15 @@ local function tl_select(src, pred)
 end
 ";
 
+const FIELD_HELPER: &str = "\
+local function tl_field(v, k, depth)
+  if depth == 0 then return v[k] end
+  local out = {}
+  for i = 1, #v do out[i] = tl_field(v[i], k, depth - 1) end
+  return out
+end
+";
+
 const SHOW_HELPER: &str = r#"local function tl_quote(s)
   return '"' .. s:gsub('[%c"\\]', function(c)
     if c == '"' then return '\\"' end
@@ -24,9 +33,19 @@ end
 local function tl_show(v)
   local t = type(v)
   if t == "table" then
+    if v[1] ~= nil or next(v) == nil then
+      local parts = {}
+      for i = 1, #v do parts[i] = tl_show(v[i]) end
+      return "[" .. table.concat(parts, ",") .. "]"
+    end
+    local keys = {}
+    for k in pairs(v) do keys[#keys + 1] = k end
+    table.sort(keys)
     local parts = {}
-    for i = 1, #v do parts[i] = tl_show(v[i]) end
-    return "[" .. table.concat(parts, ",") .. "]"
+    for i = 1, #keys do
+      parts[i] = tl_quote(keys[i]) .. ":" .. tl_show(v[keys[i]])
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
   elseif t == "string" then
     return tl_quote(v)
   end
@@ -37,8 +56,12 @@ end
 pub fn emit(program: &Program, ty: &Type) -> String {
     let mut out = String::new();
 
-    if uses_select(program) {
+    let used = used_helpers(program);
+    if used.select {
         out.push_str(SELECT_HELPER);
+    }
+    if used.field {
+        out.push_str(FIELD_HELPER);
     }
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON. So a
     // string inside a Vec is quoted while a bare string is not.
@@ -73,18 +96,42 @@ pub fn emit(program: &Program, ty: &Type) -> String {
     out
 }
 
-fn uses_select(program: &Program) -> bool {
-    fn walk(ir: &Ir) -> bool {
+#[derive(Default)]
+struct Helpers {
+    select: bool,
+    field: bool,
+}
+
+fn used_helpers(program: &Program) -> Helpers {
+    fn walk(ir: &Ir, used: &mut Helpers) {
         match ir {
-            Ir::Select { .. } => true,
-            Ir::ConstStr(_) | Ir::ConstInt(_) | Ir::Local(_) => false,
-            Ir::VecLit(items) => items.iter().any(walk),
-            Ir::Call { arg, .. } => walk(arg),
-            Ir::Concat(l, r) | Ir::Compare { lhs: l, rhs: r, .. } => walk(l) || walk(r),
-            Ir::Bind { value, body, .. } => walk(value) || walk(body),
+            Ir::ConstStr(_) | Ir::ConstInt(_) | Ir::Local(_) => {}
+            Ir::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
+            Ir::Call { arg, .. } => walk(arg, used),
+            Ir::Concat(l, r) | Ir::Compare { lhs: l, rhs: r, .. } => {
+                walk(l, used);
+                walk(r, used);
+            }
+            Ir::Bind { value, body, .. } => {
+                walk(value, used);
+                walk(body, used);
+            }
+            Ir::Select { source, pred, .. } => {
+                used.select = true;
+                walk(source, used);
+                walk(pred, used);
+            }
+            Ir::Field { base, depth, .. } => {
+                // Depth zero is a plain index and needs no helper.
+                used.field |= *depth > 0;
+                walk(base, used);
+            }
         }
     }
-    program.funcs.iter().any(|f| walk(&f.body)) || walk(&program.body)
+    let mut used = Helpers::default();
+    program.funcs.iter().for_each(|f| walk(&f.body, &mut used));
+    walk(&program.body, &mut used);
+    used
 }
 
 fn expr(ir: &Ir) -> String {
@@ -107,6 +154,13 @@ fn expr(ir: &Ir) -> String {
         }
         Ir::Select { source, param, pred } => {
             format!("tl_select({}, function({}) return {} end)", expr(source), param, expr(pred))
+        }
+        Ir::Field { base, name, depth } => {
+            if *depth == 0 {
+                format!("{}[{}]", expr(base), lua_string(name))
+            } else {
+                format!("tl_field({}, {}, {})", expr(base), lua_string(name), depth)
+            }
         }
     }
 }

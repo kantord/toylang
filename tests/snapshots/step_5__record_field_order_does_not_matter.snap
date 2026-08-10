@@ -1,0 +1,5 @@
+---
+source: tests/step_5.rs
+expression: "toylang::run_with_input(src, Some(r#\"{\"a\": \"hi\", \"b\": 1}\"#)).unwrap()"
+---
+hi

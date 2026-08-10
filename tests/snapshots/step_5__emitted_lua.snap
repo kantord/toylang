@@ -1,12 +1,20 @@
 ---
-source: tests/step_4.rs
-expression: with
+source: tests/step_5.rs
+expression: "format!(\"-- input : {}\\n-- : {}\\n{}\", c.input.unwrap(), c.ty, c.lua)"
 ---
+-- input : {users: Vec<{age: Int, name: Str}>}
+-- : Vec<Str>
 local function tl_select(src, pred)
   local out = {}
   for i = 1, #src do
     if pred(src[i]) then out[#out + 1] = src[i] end
   end
+  return out
+end
+local function tl_field(v, k, depth)
+  if depth == 0 then return v[k] end
+  local out = {}
+  for i = 1, #v do out[i] = tl_field(v[i], k, depth - 1) end
   return out
 end
 local function tl_quote(s)
@@ -40,4 +48,8 @@ local function tl_show(v)
   end
   return tostring(v)
 end
-print(tl_show((function(t_0) return tl_select(t_0, function(t_1) return (t_1 >= 2) end) end)({1, 2, 3})))
+local v_adults
+function v_adults(v_db)
+  return (function(t_2) return tl_field(t_2, "name", 1) end)((function(t_0) return tl_select(t_0, function(t_1) return (t_1["age"] >= 18) end) end)(v_db["users"]))
+end
+print(tl_show(v_adults(t_input)))
