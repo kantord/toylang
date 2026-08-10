@@ -530,6 +530,169 @@ implementation.
 *because* `Vec` and `Stream` make different promises, which is the type system earning its keep
 rather than decorating.
 
+### `reduce` and `fold` are different operations
+
+jq's `reduce .[] as $x (0; . + $x)` is a left fold with an explicit accumulator. It is
+**order-defined**, and reassociating it changes results, so it cannot be parallelised or
+vectorised. Rather than annotate that away, keep two constructs:
+
+```
+reduce   sequential, order-defined, CPU only.  The accumulator is threaded, and you can see it.
+fold     declares its operator associative and commutative.  Order is unspecified.
+```
+
+The distinction then lives in the source text rather than in a pragma. A reader seeing `fold`
+knows the summation order is not promised; a reader seeing `reduce` knows it is. Rust draws the
+same line between `Iterator::sum` and `Iterator::fold`.
+
+This earns its keep on the CPU before any GPU exists. LLVM refuses to vectorise a floating-point
+reduction, because reassociation changes results, unless the `reassoc` flag is set on the
+instructions. Integer reductions vectorise freely, since integer addition really is associative.
+So `fold` is exactly the construct where setting `reassoc` is legitimate, and `reduce` is exactly
+where it is not. The language-level distinction and the compiler-level flag are the same
+distinction, which is principle 2 holding at the machine level.
+
+## Backends, vectorization, and the offload boundary
+
+### Cardinality is the kernel-admissibility predicate
+
+The strongest result in this section. A GPU kernel sublanguage is usually specified by listing
+what is banned. Stated in this language's own vocabulary it is not a list at all, because each
+cardinality corresponds to a known kernel pattern:
+
+```
+One<T>       exactly one output per input   ->  elementwise map kernel
+Opt<T>       zero or one                    ->  stream compaction (prefix sum)
+fold                                        ->  reduction
+Stream<T>    unbounded, unknown extent      ->  NOT admissible
+```
+
+So the offload boundary and the layer boundary are the same boundary. Everything in the value
+layer is a candidate; the effect layer is exactly what cannot be a kernel. Nothing new has to be
+invented to say which programs can run on a GPU, because the cardinality effect already says it.
+
+What still has to be excluded inside an offloaded region is the ordinary list: strings, objects,
+path expressions, update assignment, `error`, and `input`.
+
+### The same predicate governs CPU vectorization
+
+LLVM's loop vectorizer rewrites a scalar loop to process several elements per iteration with no
+annotation, and its SLP vectorizer does the same for repeated straight-line operations. It is
+automatic, with three qualifiers: it runs only at `-O2` or above, so the pass pipeline has to be
+run rather than merely emitting IR; it has to prove legality; and it has to judge the result
+profitable against a target cost model.
+
+The legality blockers, in roughly the order they bite in practice, are aliasing, loop-carried
+dependencies, floating-point reductions, calls in the loop body, unknown trip counts combined
+with early exits, and non-unit strides.
+
+Every one of those is something this design can guarantee away statically:
+
+| blocker | what removes it |
+|---|---|
+| aliasing, the most common cause | immutable inputs and a distinct output buffer, so `noalias` is emitable and the runtime overlap check disappears |
+| loop-carried dependency | a pure elementwise filter captures no mutable state |
+| float reduction | `fold` declares associativity, so `reassoc` is legitimate; `reduce` does not, so it is not |
+| calls in the body | a fused pipeline is one loop body with everything inlined |
+| unknown or non-unit stride | a dense buffer has unit stride known at compile time |
+
+So the offload check and the "will this vectorize" check are nearly the same predicate. That is
+the good outcome: a region either dispatches to a kernel or lowers to a loop that reliably hits
+NEON or AVX-512, and choosing between them is a late decision about *where to run* rather than a
+semantic fork.
+
+Worth building in from the start: verify rather than hope. `-Rpass=loop-vectorize` and
+`-Rpass-missed=loop-vectorize` report which loops vectorized and why the others did not, and a
+regression there should fail a test rather than quietly cost throughput.
+
+### Backend choice
+
+Not a question about JSON-shaped types. Both LLVM and Cranelift bottom out in integers, floats,
+vectors, pointers, and memory; neither has a string, a collector, or a number tower. Those
+semantics live in the front end and the runtime, and the backend never sees a string at all,
+only a pointer and a length. If semantics drift across targets it is because they were defined
+in the lowering rather than above it.
+
+What does differ:
+
+```
+                     LLVM (via inkwell)              Cranelift
+SIMD                 vector + scalable vector types  128-bit vector types, well tested
+auto-vectorization   loop and SLP vectorizers        NONE, explicit SIMD in and out
+GPU                  NVPTX, AMDGPU, SPIR-V, raw IR   none, and not on the roadmap
+wasm output          wasm32 target                   none; Cranelift consumes wasm
+build                pinned system LLVM, C++ chain   pure cargo
+compile speed        slower                          5 to 10 times faster
+```
+
+Two things follow. Cranelift never vectorizes for you, which matters a great deal here, because
+the whole argument above is that this design can hand a vectorizer exactly the loops it likes.
+And if the browser story ever becomes WebAssembly rather than emitted JavaScript source, LLVM
+runs the *same* IR through one pipeline for both native and web, which is the strongest available
+guarantee that semantics do not vary by platform. Cranelift produces nothing for the web, so that
+would need a second unrelated backend and the drift risk would be entirely self-policed.
+
+Cranelift's real advantages are build simplicity and compile speed, which matter for a REPL and
+for dev builds. Using both, as rustc does, is a normal answer.
+
+Its GPU story is a genuine architectural mismatch rather than missing work: it assumes an SSA
+control-flow graph lowered to a flat instruction stream with a conventional register allocator
+and CPU calling conventions, while GPUs need divergent control flow with execution masks, a
+multi-level address-space memory model, workgroup and barrier semantics, and register allocation
+whose objective is occupancy. LLVM's GPU support is real but thin: it gives you the assembler and
+nothing above it, so address spaces, kernel calling conventions, thread-index intrinsics, and
+launch are all hand-managed.
+
+### A dense tensor type
+
+The value model gains a seventh kind alongside null, bool, number, string, array and object: a
+dense typed buffer. It is constructed explicitly, never inferred:
+
+```
+.readings | @f32 | reshape(1024; 3)
+```
+
+`@f32` narrows a JSON array of numbers into an unboxed buffer and hard-fails on heterogeneous
+input, nulls, or nested strings, at the constructor rather than three stages later. It
+serializes back out as nested arrays, so JSON round-tripping survives at the value level.
+
+`@f32` is also the second number type. This language commits to `f64` to match JSON, and `@f32`
+is a deliberate lossy exit from that commitment, which is a good reason to make it a visible
+operator rather than something a type inferencer decides.
+
+Nulls are the awkward part, since JSON has one and a dense `f32` buffer does not. **Do not use
+NaN as a sentinel**, because it collides with genuine NaN. Apache Arrow already solved exactly
+this with a separate validity bitmask beside the values buffer, and adopting its layout also buys
+zero-copy interop with Polars, DuckDB, and pandas. For a language whose pitch is JSON processing,
+that is a large return on a layout decision that has to be made anyway.
+
+Arithmetic on tensors broadcasts, so `$m * 2` is elementwise. That extension is confined to the
+new type; plain JSON arrays keep erroring exactly as they do now.
+
+## Strings are where platform independence actually costs something
+
+JavaScript strings are WTF-16: UTF-16 code units, lone surrogates permitted, with `length` and
+indexing measured in code units. If the same program must mean the same thing natively and on a
+JavaScript target, there are three honest options.
+
+**WTF-16 everywhere.** Exact JavaScript semantics, trivially identical across targets. Pays
+memory and a conversion on every C FFI call natively.
+
+**UTF-8 everywhere, with the JavaScript-shaped API emulated.** Cheap and idiomatic natively, but
+on the JavaScript target the strings cannot *be* JavaScript strings, which guts interop
+ergonomics and forces conversion at every boundary.
+
+**Design the difference away.** Do not expose code-unit indexing or a code-unit `length` at all.
+Offer iteration over scalar values and opaque indices instead. Then UTF-8 natively and UTF-16 on
+the web are both conforming implementations, because no program can observe which one it got.
+This is roughly Swift's move, it is the only option that is cheap on both sides, and it is a
+language-design commitment that has to be made early because it constrains the string API
+permanently.
+
+The same reasoning applies to numbers, where committing to `f64` everywhere means keeping
+floating-point contraction off so the optimizer does not fuse operations behind your back, and to
+object key ordering if JSON round-tripping is meant to be stable.
+
 ## Mutation
 
 Immutable values plus a small number of explicit mutable cells. Cycles can only form through a
@@ -674,6 +837,11 @@ checked for completeness, and the settled entries are what stop a decision being
 | Q12 | On a type mismatch, does field access error, yield null, or something third? | SETTLED |
 | Q13 | Does the layer shift run only one way, with no value-to-effect operator? | LEANING, decides Q1 |
 | Q14 | Does `select` return a masked view, a selection vector, or a copy? | OPEN |
+| Q15 | Backend: LLVM via inkwell, Cranelift, or both? | LEANING, LLVM for release |
+| Q16 | String representation, given WTF-16 on the JS target | OPEN, decides the string API permanently |
+| Q17 | Is there a dense tensor type, constructed explicitly? | LEANING yes |
+| Q18 | Does `.[]` on a rank-2 tensor yield rows or scalars? | LEANING rows |
+| Q19 | How are nulls carried in a dense typed buffer? | LEANING, Arrow validity bitmask |
 
 Q5 is the one that blocks building anything. Q1 and Q9 both change the two-layer section, so
 they should be settled before that section is treated as stable.
@@ -744,6 +912,29 @@ they should be settled before that section is treated as stable.
     operator is needed, because degrading a `Vec` forgets its extent and buys nothing. LEANING
     toward yes. This decides Q1 with it, since the only thing that would break it is a value
     with genuinely unknown extent, which is what a first-class stream value would be.
+14. **Does `select` return a masked view, a selection vector, or a copy?** See the section on
+    whether a value-layer `select` copies. A bitmask breaks `Vec`'s constant-time indexing
+    promise, a selection vector keeps it and pays memory per survivor, and either view pins its
+    whole source buffer alive.
+15. **Backend: LLVM via inkwell, Cranelift, or both?** Cranelift never auto-vectorizes, which
+    matters because the whole vectorization argument here rests on handing a vectorizer loops it
+    likes. It also emits nothing for the web, so a WebAssembly target would need a second
+    unrelated backend. Cranelift wins decisively on build simplicity and compile speed, so using
+    both, as rustc does, is a real option. LEANING toward LLVM for release builds.
+16. **How are strings represented, given that the JavaScript target uses WTF-16?** The three
+    options are WTF-16 everywhere, UTF-8 everywhere with the JavaScript-shaped API emulated, or
+    designing the difference away by never exposing code-unit indexing or length. Only the third
+    is cheap on both sides. It has to be decided early because it constrains the string API
+    permanently.
+17. **Is there a dense tensor type, constructed explicitly?** `@f32` as a narrowing constructor
+    that hard-fails rather than an inference, with `reshape` attaching shape. It is also the
+    second number type, a deliberate lossy exit from the `f64` commitment.
+18. **Does `.[]` on a rank-2 tensor yield rows or scalars?** NumPy and APL both yield rows,
+    which makes `map` rank-polymorphic and gives row sums as `map(fold(add; 0))` with no new
+    syntax. Then rank-1 yields scalars and full linearization needs a separate flattening view.
+19. **How are nulls carried in a dense typed buffer?** JSON has null and an `f32` buffer does
+    not. NaN as a sentinel collides with genuine NaN. Arrow's separate validity bitmask solves
+    it and brings zero-copy interop with Polars, DuckDB and pandas.
 
 ## Non-goals
 
