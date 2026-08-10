@@ -1,5 +1,10 @@
-use crate::ir::{Ir, Program};
+use crate::ast::BinOp;
+use crate::tir::{self, Kind, LocalId, Program, Tir};
 use crate::ty::Type;
+
+/// The global the input value is bound to before the chunk runs. Unspellable in source, since
+/// every source name is prefixed.
+pub const INPUT: &str = "t_input";
 
 const SELECT_HELPER: &str = "\
 local function tl_select(src, pred)
@@ -53,7 +58,7 @@ local function tl_show(v)
 end
 "#;
 
-pub fn emit(program: &Program, ty: &Type) -> String {
+pub fn emit(program: &Program) -> String {
     let mut out = String::new();
 
     let used = used_helpers(program);
@@ -65,7 +70,7 @@ pub fn emit(program: &Program, ty: &Type) -> String {
     }
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON. So a
     // string inside a Vec is quoted while a bare string is not.
-    let structured = *ty != Type::Str;
+    let structured = program.body.ty != Type::Str;
     if structured {
         out.push_str(SHOW_HELPER);
     }
@@ -74,15 +79,15 @@ pub fn emit(program: &Program, ty: &Type) -> String {
     // checking bodies and so accepts a call to a function defined further down. Emitting
     // `local function` in source order would leave that call resolving to a nil global.
     if !program.funcs.is_empty() {
-        let names: Vec<&str> = program.funcs.iter().map(|f| f.name.as_str()).collect();
+        let names: Vec<String> = program.funcs.iter().map(|f| user(&f.name)).collect();
         out.push_str(&format!("local {}\n", names.join(", ")));
     }
 
     for f in &program.funcs {
         out.push_str(&format!(
             "function {}({})\n  return {}\nend\n",
-            f.name,
-            f.param,
+            user(&f.name),
+            user(&f.param),
             expr(&f.body)
         ));
     }
@@ -96,6 +101,17 @@ pub fn emit(program: &Program, ty: &Type) -> String {
     out
 }
 
+/// Which identifiers are reserved is the target's business, not toylang's. A program with a
+/// function called `print` or `end` would otherwise emit Lua that shadows the output function or
+/// does not parse.
+fn user(name: &str) -> String {
+    format!("v_{name}")
+}
+
+fn local(id: LocalId) -> String {
+    format!("t_{id}")
+}
+
 #[derive(Default)]
 struct Helpers {
     select: bool,
@@ -103,27 +119,27 @@ struct Helpers {
 }
 
 fn used_helpers(program: &Program) -> Helpers {
-    fn walk(ir: &Ir, used: &mut Helpers) {
-        match ir {
-            Ir::ConstStr(_) | Ir::ConstInt(_) | Ir::Local(_) => {}
-            Ir::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
-            Ir::Call { arg, .. } => walk(arg, used),
-            Ir::Concat(l, r) | Ir::Compare { lhs: l, rhs: r, .. } => {
+    fn walk(t: &Tir, used: &mut Helpers) {
+        match &t.kind {
+            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => {}
+            Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
+            Kind::Call { arg, .. } => walk(arg, used),
+            Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
                 walk(l, used);
                 walk(r, used);
             }
-            Ir::Bind { value, body, .. } => {
+            Kind::Bind { value, body, .. } => {
                 walk(value, used);
                 walk(body, used);
             }
-            Ir::Select { source, pred, .. } => {
+            Kind::Select { source, pred, .. } => {
                 used.select = true;
                 walk(source, used);
                 walk(pred, used);
             }
-            Ir::Field { base, depth, .. } => {
+            Kind::Field { base, .. } => {
                 // Depth zero is a plain index and needs no helper.
-                used.field |= *depth > 0;
+                used.field |= tir::vec_depth(&base.ty) > 0;
                 walk(base, used);
             }
         }
@@ -134,34 +150,56 @@ fn used_helpers(program: &Program) -> Helpers {
     used
 }
 
-fn expr(ir: &Ir) -> String {
-    match ir {
-        Ir::ConstStr(s) => lua_string(s),
-        Ir::ConstInt(n) => n.to_string(),
-        Ir::Local(n) => n.clone(),
-        Ir::VecLit(items) => {
+fn expr(t: &Tir) -> String {
+    match &t.kind {
+        Kind::Str(s) => lua_string(s),
+        Kind::Int(n) => n.to_string(),
+        Kind::Var(name) => user(name),
+        Kind::Local(id) => local(*id),
+        Kind::Input => INPUT.to_string(),
+        Kind::VecLit(items) => {
             let parts: Vec<String> = items.iter().map(expr).collect();
             format!("{{{}}}", parts.join(", "))
         }
-        Ir::Call { func, arg } => format!("{}({})", func, expr(arg)),
-        // Parenthesised because there is now more than one operator, and Lua's precedence is
-        // not toylang's to rely on.
-        Ir::Concat(l, r) => format!("({} .. {})", expr(l), expr(r)),
-        Ir::Compare { op, lhs, rhs } => format!("({} {} {})", expr(lhs), op, expr(rhs)),
+        Kind::Call { func, arg } => format!("{}({})", user(func), expr(arg)),
+        // Parenthesised because there is more than one operator, and Lua's precedence is not
+        // toylang's to rely on.
+        Kind::Concat(l, r) => format!("({} .. {})", expr(l), expr(r)),
+        Kind::Compare { op, lhs, rhs } => {
+            format!("({} {} {})", expr(lhs), lua_op(*op), expr(rhs))
+        }
         // Lua has no expression-level `let`, so the binding becomes a call.
-        Ir::Bind { name, value, body } => {
-            format!("(function({}) return {} end)({})", name, expr(body), expr(value))
+        Kind::Bind { local: id, value, body } => {
+            format!("(function({}) return {} end)({})", local(*id), expr(body), expr(value))
         }
-        Ir::Select { source, param, pred } => {
-            format!("tl_select({}, function({}) return {} end)", expr(source), param, expr(pred))
-        }
-        Ir::Field { base, name, depth } => {
-            if *depth == 0 {
+        Kind::Select { source, param, pred } => format!(
+            "tl_select({}, function({}) return {} end)",
+            expr(source),
+            local(*param),
+            expr(pred)
+        ),
+        // The depth comes from the type on the node below, so it cannot disagree with it, and
+        // the emitted helper is told the answer rather than inspecting the value for it.
+        Kind::Field { base, name } => {
+            let depth = tir::vec_depth(&base.ty);
+            if depth == 0 {
                 format!("{}[{}]", expr(base), lua_string(name))
             } else {
                 format!("tl_field({}, {}, {})", expr(base), lua_string(name), depth)
             }
         }
+    }
+}
+
+fn lua_op(op: BinOp) -> &'static str {
+    match op {
+        BinOp::Eq => "==",
+        BinOp::Ne => "~=",
+        BinOp::Lt => "<",
+        BinOp::Le => "<=",
+        BinOp::Gt => ">",
+        BinOp::Ge => ">=",
+        BinOp::Add => unreachable!("Add is emitted as Concat"),
     }
 }
 

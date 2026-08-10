@@ -1,49 +1,48 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use crate::ast::{BinOp, Def, Expr, File, Span, TypeExpr};
+use crate::ast::{BinOp, Def, Expr, File, TypeExpr};
 use crate::error::Error;
+use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{Sig, Type};
 
 struct Ctx<'a> {
     sigs: &'a HashMap<String, Sig>,
     /// Named bindings. At most one, since functions are unary and there is no `let`.
     scope: Vec<(String, Type)>,
-    /// What `.` refers to here, if anything.
-    subject: Option<Type>,
+    /// What `.` refers to here, if anything: its type and the local holding it.
+    subject: Option<(Type, LocalId)>,
     /// The type `input` was checked against, filled in the first time it is used.
     input: &'a RefCell<Option<Type>>,
-    /// How many Vec layers each field access distributes over. The checker knows this and the
-    /// runtime must not have to rediscover it, so it is recorded here for lowering.
-    depths: &'a RefCell<HashMap<Span, usize>>,
+    next_local: &'a Cell<LocalId>,
 }
 
 impl Ctx<'_> {
-    fn with(&self, subject: Option<Type>) -> Ctx<'_> {
+    fn with(&self, subject: Option<(Type, LocalId)>) -> Ctx<'_> {
         Ctx {
             sigs: self.sigs,
             scope: self.scope.clone(),
             subject,
             input: self.input,
-            depths: self.depths,
+            next_local: self.next_local,
         }
+    }
+
+    fn fresh(&self) -> LocalId {
+        let id = self.next_local.get();
+        self.next_local.set(id + 1);
+        id
     }
 }
 
-/// What a program needs and what it produces.
-pub struct Checked {
-    pub ty: Type,
-    pub input: Option<Type>,
-    pub field_depths: HashMap<Span, usize>,
-}
-
-pub fn check(file: &File) -> Result<Checked, Error> {
+pub fn check(file: &File) -> Result<tir::Program, Error> {
     let sigs = signatures(&file.defs)?;
     let input = RefCell::new(None);
-    let depths = RefCell::new(HashMap::new());
+    let next_local = Cell::new(0);
 
     // Signatures are collected before any body is checked, so a definition may call one that
     // appears later in the file. This is also what recursion will need.
+    let mut funcs = Vec::new();
     for def in &file.defs {
         let sig = &sigs[&def.name];
         let ctx = Ctx {
@@ -51,21 +50,35 @@ pub fn check(file: &File) -> Result<Checked, Error> {
             scope: vec![(def.param.name.clone(), sig.param.clone())],
             subject: None,
             input: &input,
-            depths: &depths,
+            next_local: &next_local,
         };
-        let found = synth(&ctx, &def.body)?;
-        if found != sig.ret {
+        let body = synth(&ctx, &def.body)?;
+        if body.ty != sig.ret {
             return Err(Error::new(
                 def.body.span(),
-                format!("`{}` declares it returns {}, but its body is {found}", def.name, sig.ret),
+                format!(
+                    "`{}` declares it returns {}, but its body is {}",
+                    def.name, sig.ret, body.ty
+                ),
             ));
         }
+        funcs.push(tir::Func {
+            name: def.name.clone(),
+            param: def.param.name.clone(),
+            param_ty: sig.param.clone(),
+            body,
+        });
     }
 
-    let ctx =
-        Ctx { sigs: &sigs, scope: Vec::new(), subject: None, input: &input, depths: &depths };
-    let ty = synth(&ctx, &file.body)?;
-    Ok(Checked { ty, input: input.into_inner(), field_depths: depths.into_inner() })
+    let ctx = Ctx {
+        sigs: &sigs,
+        scope: Vec::new(),
+        subject: None,
+        input: &input,
+        next_local: &next_local,
+    };
+    let body = synth(&ctx, &file.body)?;
+    Ok(tir::Program { funcs, body, input: input.into_inner() })
 }
 
 fn signatures(defs: &[Def]) -> Result<HashMap<String, Sig>, Error> {
@@ -82,8 +95,9 @@ fn signatures(defs: &[Def]) -> Result<HashMap<String, Sig>, Error> {
 
 fn resolve(ty: &TypeExpr) -> Result<Type, Error> {
     match ty {
-        TypeExpr::Named { name, span } => Type::from_name(name)
-            .ok_or_else(|| Error::new(*span, format!("unknown type `{name}`"))),
+        TypeExpr::Named { name, span } => {
+            Type::from_name(name).ok_or_else(|| Error::new(*span, format!("unknown type `{name}`")))
+        }
         TypeExpr::Vec { elem, .. } => Ok(Type::Vec(Box::new(resolve(elem)?))),
         TypeExpr::Record { fields, span } => {
             let mut out = Vec::new();
@@ -98,21 +112,21 @@ fn resolve(ty: &TypeExpr) -> Result<Type, Error> {
     }
 }
 
-fn synth(ctx: &Ctx, expr: &Expr) -> Result<Type, Error> {
+fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     match expr {
-        Expr::Str { .. } => Ok(Type::Str),
-        Expr::Int { .. } => Ok(Type::Int),
+        Expr::Str { text, .. } => Ok(Tir::new(Type::Str, Kind::Str(text.clone()))),
+        Expr::Int { value, .. } => Ok(Tir::new(Type::Int, Kind::Int(*value))),
 
-        Expr::Subject { span } => ctx
-            .subject
-            .clone()
-            .ok_or_else(|| Error::new(*span, "`.` is not bound here")),
+        Expr::Subject { span } => match &ctx.subject {
+            Some((ty, id)) => Ok(Tir::new(ty.clone(), Kind::Local(*id))),
+            None => Err(Error::new(*span, "`.` is not bound here")),
+        },
 
         Expr::Var { name, span } => ctx
             .scope
             .iter()
             .find(|(n, _)| n == name)
-            .map(|(_, t)| t.clone())
+            .map(|(_, t)| Tir::new(t.clone(), Kind::Var(name.clone())))
             .ok_or_else(|| Error::new(*span, format!("`{name}` is not defined"))),
 
         Expr::VecLit { items, span } => {
@@ -121,107 +135,121 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Type, Error> {
                 // supply it. Guessing here is what the annotation rule exists to avoid.
                 return Err(Error::new(*span, "cannot tell what `[]` contains"));
             };
-            let elem = synth(ctx, first)?;
+            let head = synth(ctx, first)?;
+            let elem = head.ty.clone();
+            let mut out = vec![head];
             for item in &items[1..] {
-                expect(ctx, item, &elem)?;
+                out.push(expect(ctx, item, &elem)?);
             }
-            Ok(Type::Vec(Box::new(elem)))
+            Ok(Tir::new(Type::Vec(Box::new(elem)), Kind::VecLit(out)))
         }
 
         // Projection by every index. On a Vec that is the same extent, so this is the identity;
         // see research-log/a-pure-value-layer-dissolves-jqs-iteration-operators.md.
         Expr::Project { base, span } => {
-            let base_ty = synth(ctx, base)?;
-            if base_ty.elem().is_none() {
-                return Err(Error::new(*span, format!("`[]` needs a Vec, found {base_ty}")));
+            let base = synth(ctx, base)?;
+            if base.ty.elem().is_none() {
+                return Err(Error::new(*span, format!("`[]` needs a Vec, found {}", base.ty)));
             }
-            Ok(base_ty)
+            Ok(base)
         }
 
         // `|` binds `.` in the right side to the value of the left. It is composition, not a
         // map: the operators that distribute over a Vec do so themselves.
         Expr::Pipe { lhs, rhs, .. } => {
-            let subject = synth(ctx, lhs)?;
-            synth(&ctx.with(Some(subject)), rhs)
+            let value = synth(ctx, lhs)?;
+            let local = ctx.fresh();
+            let body = synth(&ctx.with(Some((value.ty.clone(), local))), rhs)?;
+            Ok(Tir::new(
+                body.ty.clone(),
+                Kind::Bind { local, value: Box::new(value), body: Box::new(body) },
+            ))
+        }
+
+        // A mask over the subject Vec. The predicate is checked with `.` rebound to the element
+        // type rather than evaluated in the enclosing scope.
+        Expr::Select { pred, span } => {
+            let Some((subject, id)) = ctx.subject.clone() else {
+                return Err(Error::new(*span, "`select` needs a subject, so it must follow `|`"));
+            };
+            let Some(elem) = subject.elem().cloned() else {
+                return Err(Error::new(*span, format!("`select` needs a Vec, found {subject}")));
+            };
+            let param = ctx.fresh();
+            let pred = expect(&ctx.with(Some((elem, param))), pred, &Type::Bool)?;
+            let source = Tir::new(subject.clone(), Kind::Local(id));
+            Ok(Tir::new(
+                subject,
+                Kind::Select { source: Box::new(source), param, pred: Box::new(pred) },
+            ))
         }
 
         // Field access distributes over a Vec rather than needing a map, which is how `.name`
         // reads an element field straight off a filtered collection.
         Expr::Field { base, name, span } => {
-            let base_ty = synth(ctx, base)?;
-            let mut depth = 0;
-            let mut inner = &base_ty;
-            while let Some(elem) = inner.elem() {
-                depth += 1;
-                inner = elem;
+            let base = synth(ctx, base)?;
+            let depth = tir::vec_depth(&base.ty);
+            let mut inner = &base.ty;
+            for _ in 0..depth {
+                inner = inner.elem().expect("depth counted these");
             }
             let Some(field) = inner.field(name) else {
                 return Err(Error::new(*span, format!("no field `{name}` on {inner}")));
             };
-            let mut out = field.clone();
+            let mut ty = field.clone();
             for _ in 0..depth {
-                out = Type::Vec(Box::new(out));
+                ty = Type::Vec(Box::new(ty));
             }
-            ctx.depths.borrow_mut().insert(*span, depth);
-            Ok(out)
+            Ok(Tir::new(ty, Kind::Field { base: Box::new(base), name: name.clone() }))
         }
 
         // `input` is only ever checked, never synthesised, for the same reason a lambda is:
         // nothing here says what it contains, and guessing is what the annotation rule avoids.
         Expr::Input { span } => Err(Error::new(*span, "cannot tell what `input` contains")),
 
-        // A mask over the subject Vec. The predicate is checked with `.` rebound to the element
-        // type rather than evaluated in the enclosing scope.
-        Expr::Select { pred, span } => {
-            let Some(subject) = ctx.subject.clone() else {
-                return Err(Error::new(*span, "`select` needs a subject, so it must follow `|`"));
-            };
-            let Some(elem) = subject.elem().cloned() else {
-                return Err(Error::new(*span, format!("`select` needs a Vec, found {subject}")));
-            };
-            expect(&ctx.with(Some(elem)), pred, &Type::Bool)?;
-            Ok(subject)
-        }
-
         Expr::Call { func, func_span, arg, .. } => {
             let sig = ctx
                 .sigs
                 .get(func)
                 .ok_or_else(|| Error::new(*func_span, format!("`{func}` is not a function")))?;
-            expect(ctx, arg, &sig.param)?;
-            Ok(sig.ret.clone())
+            let arg = expect(ctx, arg, &sig.param)?;
+            Ok(Tir::new(sig.ret.clone(), Kind::Call { func: func.clone(), arg: Box::new(arg) }))
         }
 
-        Expr::Binary { op, lhs, rhs, span } => binary(ctx, *op, lhs, rhs, *span),
+        Expr::Binary { op, lhs, rhs, .. } => binary(ctx, *op, lhs, rhs),
     }
 }
 
-fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr, span: crate::ast::Span) -> Result<Type, Error> {
+fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     let left = synth(ctx, lhs)?;
 
     // Q2 is open, so an operator over a Vec is rejected rather than being silently given
     // broadcast or zip semantics. Under C1 that restriction is ordinary typing: there is no
     // separate cardinality to check, because a Vec is just a type.
-    if left.elem().is_some() {
-        return Err(Error::new(lhs.span(), format!("`{op}` does not apply to {left}")));
+    if left.ty.elem().is_some() {
+        return Err(Error::new(lhs.span(), format!("`{op}` does not apply to {}", left.ty)));
     }
 
     if op.is_comparison() {
-        expect(ctx, rhs, &left)?;
-        return Ok(Type::Bool);
+        let right = expect(ctx, rhs, &left.ty)?;
+        return Ok(Tir::new(
+            Type::Bool,
+            Kind::Compare { op, lhs: Box::new(left), rhs: Box::new(right) },
+        ));
     }
 
     // `+` is Str concatenation. Int has no arithmetic yet.
-    expect(ctx, lhs, &Type::Str)?;
-    expect(ctx, rhs, &Type::Str)?;
-    let _ = span;
-    Ok(Type::Str)
+    if left.ty != Type::Str {
+        return Err(Error::new(lhs.span(), format!("expected Str, found {}", left.ty)));
+    }
+    let right = expect(ctx, rhs, &Type::Str)?;
+    Ok(Tir::new(Type::Str, Kind::Concat(Box::new(left), Box::new(right))))
 }
 
-/// The checking direction. With no lambdas yet it synthesises and compares, but it is where the
-/// expected type reaches the expression, and where the error names both sides.
-fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<(), Error> {
-    // The one expression whose type comes from its position rather than its contents.
+/// The checking direction: an expected type goes in, and the expression is verified against it
+/// rather than asked what it is. Most forms answer both questions, but not all do.
+fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
+    // The forms whose type comes from their position rather than their contents.
     if let Expr::Input { span } = expr {
         let mut slot = ctx.input.borrow_mut();
         match slot.as_ref() {
@@ -234,12 +262,12 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<(), Error> {
             }
             Some(_) => {}
         }
-        return Ok(());
+        return Ok(Tir::new(want.clone(), Kind::Input));
     }
 
     let found = synth(ctx, expr)?;
-    if &found != want {
-        return Err(Error::new(expr.span(), format!("expected {want}, found {found}")));
+    if &found.ty != want {
+        return Err(Error::new(expr.span(), format!("expected {want}, found {}", found.ty)));
     }
-    Ok(())
+    Ok(found)
 }

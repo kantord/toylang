@@ -3,10 +3,9 @@ pub mod check;
 pub mod emit_lua;
 pub mod error;
 pub mod input;
-pub mod ir;
 pub mod lex;
-pub mod lower;
 pub mod parse;
+pub mod tir;
 pub mod ty;
 
 use std::cell::RefCell;
@@ -25,10 +24,9 @@ pub struct Compiled {
 pub fn compile(src: &str) -> Result<Compiled, Error> {
     let tokens = lex::lex(src)?;
     let file = parse::parse(&tokens)?;
-    let checked = check::check(&file)?;
-    let program = lower::lower(&file, &checked.field_depths);
-    let lua = emit_lua::emit(&program, &checked.ty);
-    Ok(Compiled { lua, ty: checked.ty, input: checked.input })
+    let program = check::check(&file)?;
+    let lua = emit_lua::emit(&program);
+    Ok(Compiled { lua, ty: program.body.ty.clone(), input: program.input })
 }
 
 pub fn run(src: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -51,7 +49,7 @@ pub fn run_with_input(
         (Some(ty), Some(text)) => {
             let value: serde_json::Value = serde_json::from_str(text)?;
             input::validate(&value, ty, "input")?;
-            lua.globals().set(lower::INPUT, input::to_lua(&lua, &value)?)?;
+            lua.globals().set(emit_lua::INPUT, input::to_lua(&lua, &value)?)?;
         }
         (Some(ty), None) => return Err(format!("this program reads input, of type {ty}").into()),
         (None, _) => {}

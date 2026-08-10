@@ -27,6 +27,11 @@ ran, and was green. What was missing is that the *observation* did not carry the
 claimed. Output is a lossy view of the program: it discards associativity, it discards which of
 two equal types was involved, and it will discard evaluation order.
 
+The reverse move is what makes a refactor safe: prototype 1.5 step 1 was given "byte-identical
+emitted output" as its acceptance rather than "the tests pass", because the bug it was most
+likely to introduce produces working programs. See
+[merging passes turns redundant traversals into bugs](merging-passes-turns-redundant-traversals-into-bugs.md).
+
 The check that catches this is to ask what change would make the test red, and to name it
 concretely. If the answer is "none", the test is documentation with a green tick next to it,
 which is worse than no test because it is counted as coverage.
