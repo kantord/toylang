@@ -656,7 +656,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | Q1 | Streams: first-class values, or evaluation-level multiplicity? | LEANING, evaluation-level; four independent arguments now agree |
 | Q2 | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
 | Q3 | What symbol replaces `=` for the product-forming update? | LEANING, blocked on Q2 |
-| Q4 | Can the type express ordering over heterogeneous streams? | OPEN |
+| Q4 | Can the type express ordering over heterogeneous streams? | OPEN, subsumes cardinality-vs-order |
 | Q5 | Stream-lowering strategy across the three backends | OPEN, blocks all backend work |
 | Q6 | Does a reconciler belong in the language or a library? | OPEN |
 | Q7 | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
@@ -682,8 +682,15 @@ they should be settled before that section is treated as stable.
 2. **Binary operators over two multi-valued expressions.** Cartesian (jq today), zip
    (vectorized, with broadcast), or neither by default with explicit `cross` and `zip`?
 3. **What symbol replaces `=`** for the product-forming assignment?
-4. **Ordering guarantees over heterogeneous streams.** If a stream is "some `A`s, then some
-   `B`s", can the type say so? One approach is *regular expressions over types*, the same
+4. **Ordering guarantees over heterogeneous streams.** Subsumes the older cardinality-versus-
+   order thread, which asked whether the type system should track *how many* values an
+   expression produces or *in what order* the kinds arrive. Those turned out to be the same
+   question asked from two sides, so they are tracked here as one. The cardinality half is the
+   cheaper and more decidable option, and it catches the failure that actually bites, which is
+   multiplicity leaking into a position wanting exactly one value. The order half is what the
+   rest of this entry is about.
+   If a stream is "some `A`s, then some `B`s", can the type say so? One approach is *regular
+   expressions over types*, the same
    algebra as string regexes but with types as the alphabet, so a pattern denotes a set of
    permitted value-sequences: `Seq<A,B>` = `A* B*`, `Alt<A,B>` = `(A|B)*`, `Star<A>` = `A*`.
    Three primitives suffice (Kleene's theorem), it is decidable, and unlike full session types
