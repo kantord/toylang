@@ -607,6 +607,65 @@ before producing anything, and they are parallelizable by different means entire
 mapping classifies elementwise filters, and whole-collection operators are a separate question
 this document has not addressed.
 
+### The admissible input set, and where batching comes from
+
+A cleaner statement of the boundary, and the one this document adopts. Admissibility is a
+property of the **type**, not of the operation:
+
+```
+admissible    scalars, and anything of known cardinality
+              i.e. one pre-allocated buffer plus a little lens metadata
+inadmissible  streams.  Compile error, not a silent fallback.
+```
+
+The lens metadata is what avoids copying. A projection does not have to be materialized before
+launch, because the kernel can recompute addresses from the lens parameters on the device. That
+is ordinary strided or affine indexing and it is what makes views free rather than merely cheap.
+
+Streams are rejected outright and must be materialized first. That is the design working rather
+than a limitation: **reification is where allocation becomes visible in the source**, so the one
+operator that costs memory is the one you have to write down.
+
+Processing a stream therefore means batching, and the important decision is who does it. Not the
+language, invisibly. **The input reader batches**, and its batching scheme appears in the type:
+
+```
+stdin           Stream<Vec<T>>      batched by the reader, the batching is in the type
+your own source Vec<T>              you choose: one big vector, or batch it yourself
+```
+
+So the two API levels fall out. Low-level vector and GPU operations take a single `Vec`.
+High-level operations take a stream of them. Nothing is magic, because the magic is located in a
+reader whose type says what it did.
+
+Four things this exposes.
+
+**Batch size must not be observable.** The whole design rests on it. If a reader picks the batch
+size and a program can tell what it picked, results vary by input source and the semantics stop
+being platform-independent. So only batch-invariant operations may run over `Stream<Vec<T>>`.
+This is the same move as the string design: UTF-8 and UTF-16 are both allowed precisely because
+no program can observe which it got, and batch sizes are allowed to vary precisely because no
+program can observe them. Worth noticing that the same technique is now load-bearing twice.
+
+**Batching requires the associativity declaration.** A fold over a batched stream is a two-level
+reduction, within each batch and then across batches, and that is only sound when the operator
+is associative. So `fold` and `reduce` are not merely a vectorization nicety; the batched reader
+cannot exist without them. `reduce` over a `Stream<Vec<T>>` has to be either rejected or forced
+back through a single sequential pass.
+
+**Known cardinality has two meanings once views exist.** A dense `Vec` knows its extent. A
+mask-filtered view knows its *capacity* but its *count* needs a popcount. Both are launchable,
+but not by the same path: the second needs a reduction before the output buffer can be sized,
+which is precisely the prefix-sum step of stream compaction. So dense and masked probably need
+to be distinguishable in the type, since they have different launch preconditions. This is Q14
+arriving from the other side.
+
+**What `gpu(...)` means on the other backends.** It cannot be a compile error on Lua and
+JavaScript without making programs platform-dependent, which the whole design is trying to
+avoid. So it has to be a placement hint that changes *where* something runs and never *what* it
+computes, and on a backend with no device it lowers to the ordinary loop. That keeps the earlier
+result intact: choosing between kernel and vector loop stays a late decision.
+
 ### The same predicate governs CPU vectorization
 
 LLVM's loop vectorizer rewrites a scalar loop to process several elements per iteration with no
@@ -876,6 +935,8 @@ checked for completeness, and the settled entries are what stop a decision being
 | Q18 | Does `.[]` on a rank-2 tensor yield rows or scalars? | LEANING rows |
 | Q19 | How are nulls carried in a dense typed buffer? | LEANING, Arrow validity bitmask |
 | Q20 | How are blocking operators (`sort`, `group_by`, joins) classified? | OPEN |
+| Q21 | What guarantees batch size is unobservable over a batched stream? | OPEN |
+| Q22 | Are dense and masked vectors distinguishable in the type? | OPEN, Q14 from the other side |
 
 Q5 is the one that blocks building anything. Q1 and Q9 both change the two-layer section, so
 they should be settled before that section is treated as stable.
