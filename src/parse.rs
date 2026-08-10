@@ -1,4 +1,4 @@
-use crate::ast::{BinOp, Expr};
+use crate::ast::{BinOp, Def, Expr, File, Param, Span, TypeExpr};
 use crate::error::Error;
 use crate::lex::{Tok, Token};
 
@@ -13,15 +13,20 @@ fn infix_power(tok: &Tok) -> Option<(BinOp, u8, u8)> {
     }
 }
 
-/// A program is one expression. Definitions and the `def* expr` file form arrive at step 3.
-pub fn parse(tokens: &[Token]) -> Result<Expr, Error> {
+pub fn parse(tokens: &[Token]) -> Result<File, Error> {
     let mut p = Parser { tokens, pos: 0 };
-    let expr = p.expr(0)?;
+
+    let mut defs = Vec::new();
+    while p.peek().tok == Tok::Fn {
+        defs.push(p.def()?);
+    }
+
+    let body = p.expr(0)?;
     let rest = p.peek();
     if rest.tok != Tok::Eof {
         return Err(Error::new(rest.span, format!("expected end of program, found {}", rest.tok)));
     }
-    Ok(expr)
+    Ok(File { defs, body })
 }
 
 struct Parser<'a> {
@@ -41,6 +46,62 @@ impl<'a> Parser<'a> {
             self.pos += 1;
         }
         t
+    }
+
+    fn eat(&mut self, want: Tok) -> Result<&'a Token, Error> {
+        let t = self.peek();
+        if t.tok != want {
+            return Err(Error::new(t.span, format!("expected {want}, found {}", t.tok)));
+        }
+        Ok(self.advance())
+    }
+
+    fn ident(&mut self) -> Result<(String, Span), Error> {
+        let t = self.advance();
+        match &t.tok {
+            Tok::Ident(name) => Ok((name.clone(), t.span)),
+            other => Err(Error::new(t.span, format!("expected a name, found {other}"))),
+        }
+    }
+
+    /// `fn name(param: Type) -> Type = body`
+    ///
+    /// Both annotations are required by the grammar rather than by the checker, which is what
+    /// makes the message point at the missing annotation instead of at an inference failure.
+    fn def(&mut self) -> Result<Def, Error> {
+        let start = self.eat(Tok::Fn)?.span;
+        let (name, _) = self.ident()?;
+        self.eat(Tok::LParen)?;
+
+        let (param_name, param_span) = self.ident()?;
+        if self.peek().tok != Tok::Colon {
+            return Err(Error::new(
+                param_span,
+                format!("parameter `{param_name}` needs a type annotation"),
+            ));
+        }
+        self.advance();
+        let param_ty = self.type_expr()?;
+        let param = Param { span: param_span.to(param_ty.span), name: param_name, ty: param_ty };
+
+        let close = self.eat(Tok::RParen)?.span;
+        if self.peek().tok != Tok::Arrow {
+            return Err(Error::new(close, format!("function `{name}` needs a return type")));
+        }
+        self.advance();
+        let ret = self.type_expr()?;
+
+        self.eat(Tok::Eq)?;
+        let body = self.expr(0)?;
+        Ok(Def { span: start.to(body.span()), name, param, ret, body })
+    }
+
+    fn type_expr(&mut self) -> Result<TypeExpr, Error> {
+        let t = self.advance();
+        match &t.tok {
+            Tok::Ident(name) => Ok(TypeExpr { name: name.clone(), span: t.span }),
+            other => Err(Error::new(t.span, format!("expected a type, found {other}"))),
+        }
     }
 
     fn expr(&mut self, min_power: u8) -> Result<Expr, Error> {
@@ -63,6 +124,26 @@ impl<'a> Parser<'a> {
         let t = self.advance();
         match &t.tok {
             Tok::Str(text) => Ok(Expr::Str { text: text.clone(), span: t.span }),
+            Tok::Int(value) => Ok(Expr::Int { value: *value, span: t.span }),
+            Tok::Ident(name) => {
+                if self.peek().tok != Tok::LParen {
+                    return Ok(Expr::Var { name: name.clone(), span: t.span });
+                }
+                self.advance();
+                let arg = self.expr(0)?;
+                let close = self.eat(Tok::RParen)?.span;
+                Ok(Expr::Call {
+                    func: name.clone(),
+                    func_span: t.span,
+                    arg: Box::new(arg),
+                    span: t.span.to(close),
+                })
+            }
+            Tok::LParen => {
+                let inner = self.expr(0)?;
+                self.eat(Tok::RParen)?;
+                Ok(inner)
+            }
             other => Err(Error::new(t.span, format!("expected an expression, found {other}"))),
         }
     }

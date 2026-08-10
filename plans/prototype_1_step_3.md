@@ -16,11 +16,16 @@ wrapper would make the shell-script case read worse than the shell scripts it re
 
 ## Adds
 
-Type syntax, so far only `Str`. Parameter binding and scope. Call checking against a declared
+Type syntax over `Str` and `Int`. Parameter binding and scope. Call checking against a declared
 signature. The annotation rule from the draft: a named function must annotate its parameter and
 its return type, and it is an error if it does not. Nothing infers a signature from a body.
 
 Functions are unary, so there is no argument list and no separator question.
+
+`Int` was planned for step 4 and moved here, because with `Str` as the only type every argument
+check passes by construction and the negative case below cannot be written. A second type is
+what makes the checker falsifiable. Int literals only: no arithmetic, so `+` stays Str
+concatenation and `"a" + 1` becomes the check that step 2 deferred.
 
 ## Negative case
 

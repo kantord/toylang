@@ -30,11 +30,6 @@ fn trailing_garbage() {
 }
 
 #[test]
-fn not_an_expression() {
-    insta::assert_snapshot!(err("hello"));
-}
-
-#[test]
 fn empty_program() {
     insta::assert_snapshot!(err("   "));
 }

@@ -18,9 +18,9 @@ use ty::Type;
 /// it compiled without running it.
 pub fn compile(src: &str) -> Result<(String, Type), Error> {
     let tokens = lex::lex(src)?;
-    let expr = parse::parse(&tokens)?;
-    let ty = check::check(&expr)?;
-    let program = lower::lower(&expr);
+    let file = parse::parse(&tokens)?;
+    let ty = check::check(&file)?;
+    let program = lower::lower(&file);
     Ok((emit_lua::emit(&program), ty))
 }
 

@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"fn greet(who: Str) -> Str = other\ngreet(\"x\")\"#)"
+---
+`other` is not defined (at byte 28)

@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"nope(\"x\")\"#)"
+---
+`nope` is not a function (at byte 0)

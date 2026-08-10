@@ -3,10 +3,21 @@
 #[derive(Debug)]
 pub enum Ir {
     ConstStr(String),
+    ConstInt(i64),
     Concat(Box<Ir>, Box<Ir>),
+    Var(String),
+    Call { func: String, arg: Box<Ir> },
+}
+
+#[derive(Debug)]
+pub struct Func {
+    pub name: String,
+    pub param: String,
+    pub body: Ir,
 }
 
 #[derive(Debug)]
 pub struct Program {
+    pub funcs: Vec<Func>,
     pub body: Ir,
 }

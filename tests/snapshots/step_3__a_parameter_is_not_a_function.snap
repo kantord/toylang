@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"fn greet(who: Str) -> Str = who(\"x\")\ngreet(\"x\")\"#)"
+---
+`who` is not a function (at byte 28)

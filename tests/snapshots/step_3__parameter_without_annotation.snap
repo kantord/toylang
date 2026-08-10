@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"fn greet(who) -> Str = who\ngreet(\"x\")\"#)"
+---
+parameter `who` needs a type annotation (at byte 9)

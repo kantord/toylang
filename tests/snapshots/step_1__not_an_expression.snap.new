@@ -1,5 +1,6 @@
 ---
 source: tests/step_1.rs
+assertion_line: 34
 expression: "err(\"hello\")"
 ---
-unexpected character `h` (at byte 0)
+`hello` is not defined (at byte 0)

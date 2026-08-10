@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"fn greet(who: Str) = who\ngreet(\"x\")\"#)"
+---
+function `greet` needs a return type (at byte 17)

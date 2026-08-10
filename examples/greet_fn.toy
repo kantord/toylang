@@ -1,0 +1,3 @@
+fn greet(who: Str) -> Str = "hello " + who
+
+greet("world")

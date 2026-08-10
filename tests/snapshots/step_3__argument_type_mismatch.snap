@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"fn greet(who: Str) -> Str = who\ngreet(42)\"#)"
+---
+expected Str, found Int (at byte 38)

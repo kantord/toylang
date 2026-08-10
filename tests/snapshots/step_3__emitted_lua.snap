@@ -1,0 +1,10 @@
+---
+source: tests/step_3.rs
+expression: "format!(\"-- : {ty}\\n{lua}\")"
+---
+-- : Str
+local v_greet
+function v_greet(v_who)
+  return "hello " .. v_who
+end
+print(v_greet("world"))

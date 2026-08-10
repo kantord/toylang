@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"fn f(x: Str) -> Str = x\nx\"#)"
+---
+`x` is not defined (at byte 24)

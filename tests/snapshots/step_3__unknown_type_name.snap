@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"fn greet(who: Text) -> Text = who\ngreet(\"x\")\"#)"
+---
+unknown type `Text` (at byte 14)

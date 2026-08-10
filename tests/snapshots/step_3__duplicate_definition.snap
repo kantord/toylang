@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"fn f(x: Str) -> Str = x\nfn f(x: Str) -> Str = x\nf(\"a\")\"#)"
+---
+`f` is defined twice (at byte 24)

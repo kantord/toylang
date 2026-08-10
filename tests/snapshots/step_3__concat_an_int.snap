@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"\"a\" + 1\"#)"
+---
+expected Str, found Int (at byte 6)

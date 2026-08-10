@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"fn f(x: Str) -> Int = x\nf(\"a\")\"#)"
+---
+`f` declares it returns Int, but its body is Str (at byte 22)
