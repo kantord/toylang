@@ -601,9 +601,12 @@ naturally means "this many children."
 ## Open questions
 
 Tracked here rather than scattered through the document. Status is one of OPEN (no preferred
-answer), LEANING (a preferred answer exists but is not committed), or BLOCKED (waits on another
-question). Add new ones at the bottom and keep the numbers stable, since other sections cite
-them.
+answer), LEANING (a preferred answer exists but is not committed), BLOCKED (waits on another
+question), or SETTLED (answered, and the answer is written into the document above). Add new
+ones at the bottom and keep the numbers stable, since other sections cite them.
+
+Settled questions stay in the table. A tracker that only lists what is unresolved cannot be
+checked for completeness, and the settled entries are what stop a decision being relitigated.
 
 | # | Question | Status |
 |---|---|---|
@@ -617,6 +620,9 @@ them.
 | Q8 | Is vectorizability visible in the type system, or a silent optimization? | OPEN |
 | Q9 | Are vectors multidimensional, with `[]` as projection? | OPEN, may merge with Q2 |
 | Q10 | Is uniqueness analysis in scope, for deciding when a lens materializes? | OPEN |
+| Q11 | How does the query/transformation split manifest in the type system? | SETTLED |
+| Q12 | On a type mismatch, does field access error, yield null, or something third? | SETTLED |
+| Q13 | Does the layer shift run only one way, with no value-to-effect operator? | LEANING, decides Q1 |
 
 Q5 is the one that blocks building anything. Q1 and Q9 both change the two-layer section, so
 they should be settled before that section is treated as stable.
@@ -665,6 +671,21 @@ they should be settled before that section is treated as stable.
 10. **Is uniqueness analysis in scope?** Deciding when a projection lens can materialize instead
     of staying a view requires knowing no other reference to the source survives. That is
     linearity or uniqueness typing, the machinery deliberately avoided in Q4.
+11. **How does the query/transformation split manifest?** SETTLED: it does not need to. The two
+    are the same operation with the multiplicity stored in different places, so `map` and
+    `select` are not different kinds of thing. `map(f)` is `[ .[] | f ]`, meaning reflect,
+    apply, reify, and `[...]` absorbs whatever cardinality the argument had. See the two-layer
+    section. This was the longest-running untracked thread and is recorded here so it is not
+    reopened by accident.
+12. **On a type mismatch, does field access error, yield null, or something third?** SETTLED:
+    something third. jq conflates missing with type error, so `null.a.b.c` yields `null` while
+    `1 | .a` raises. Field access desugars to a lens returning three distinguishable outcomes: a
+    value, a *specific* absence, and a *specific* error. See the field-access section.
+13. **Does the layer shift run only one way?** If effect multiplicity is born only from
+    streaming sources and dies only into values through `[...]`, then no value-to-effect
+    operator is needed, because degrading a `Vec` forgets its extent and buys nothing. LEANING
+    toward yes. This decides Q1 with it, since the only thing that would break it is a value
+    with genuinely unknown extent, which is what a first-class stream value would be.
 
 ## Non-goals
 
