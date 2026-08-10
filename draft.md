@@ -14,10 +14,17 @@ A compiled, statically typed language derived from the jq family.
 - Aimed at three uses that share one shape: data transformation, shell scripting, and
   result-set-oriented tooling such as an editor whose buffer is a query result.
 
-The starting point is jaq's front end, meaning its parser, its 28-node `Term` IR, its value
-model, and its test corpus. What gets replaced is the interpreter, a tree-walking evaluator
-that allocates a boxed iterator per step. That allocation is the performance ceiling a compiler
-removes.
+The front end is written from scratch. See `plans/prototype_1.md`.
+
+This reverses an earlier plan to fork jaq's front end and replace only its interpreter. That
+plan rested on two things and both failed once the design settled. The ~640-assertion test
+corpus only mattered while jq compatibility was a target, and it is now a non-goal, so it is a
+suite nobody is trying to pass. And jaq's parser and 28-node `Term` IR encode jq's *surface
+syntax*, while this language's syntax is Rust-like, so almost nothing survives the translation.
+
+What remains true from that analysis is the diagnosis rather than the remedy. jaq's interpreter
+allocates a boxed iterator per evaluation step, and that allocation is the performance ceiling a
+compiler removes. jq stays a reference for semantics, not a conformance target.
 
 ## Two guiding principles
 
