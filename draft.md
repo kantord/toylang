@@ -173,6 +173,51 @@ The two impls differing is fine and expected. `Vec[3]` is constant time and yiel
 `Stream[3]` consumes three items and cannot yield a view. Different cost, different guarantee,
 same trait. Symmetry is satisfied because the type says which one you got.
 
+### PROPOSAL: the layer shift only runs one way
+
+If `.[]` is no longer the reflect operator, the obvious next move is to find a replacement. Two
+candidates came up, and there may be a third that is better than both.
+
+**Projection yields an iterator of lenses.** Fails for the reason it was raised with: an
+iterator does not carry its length in its type, so cardinality is lost the moment you have one.
+Recovering it would need the length in the type, `Iter<T, n>`, which is dependent typing.
+
+**Keep `.[]` as the lossy layer shifter, add separate syntax for the cardinality-preserving
+lens.** This works, and it is honest: these are two different operations that jq conflates only
+because jq has neither lenses nor cardinality tracking. But it puts the *default* on the wrong
+side. The familiar, short, habit-forming spelling would be the one that throws information away,
+and the information-preserving one would need a deliberate reach. That inverts principle 1.
+
+**Third option: there is no value-to-effect shifter, because it would only destroy
+information.** Ask what converting a `Vec` into effect multiplicity actually buys. Effect-layer
+multiplicity exists to describe extent that is not yet known. A `Vec` already knows its extent.
+Degrading it forgets that and returns nothing in exchange, since laziness cannot help with data
+that is already materialized.
+
+Under this reading, effect multiplicity is *born* from streaming sources whose length has not
+arrived yet, and *dies* into values through `[...]`. It never arises from a value. There is one
+layer shifter, running one direction, and the absence of the other direction is not a gap.
+
+Check it against real pipelines. `vec | map(f) | select(p)` is value layer throughout. `first(vec
+| select(p))` is `Vec -> Vec -> Opt`, still value layer. `stdin.lines | select(p) | [...]` is
+born effect, collapsed to a value. Writing a `Vec` to stdout iterates internally and needs no
+type-level stream. Avoiding an intermediate materialization is fusion, which is a compiler
+concern and does not change the type.
+
+Two consequences if this holds.
+
+It answers Q1. If effect multiplicity is only ever born from I/O and only ever collapses into
+values, there is no need for a `Stream<T>` *type* at all. `Stream` becomes an effect annotation
+on an expression rather than a type constructor, which is the evaluation-level answer arriving
+for a fourth time.
+
+It simplifies Q7. If `..` is value-layer, producing a collection of nodes, then whether it
+promises depth-first order is an ordinary question about how a value is ordered, rather than a
+question about evaluation strategy.
+
+The case that would break it: any value with genuinely unknown extent. That is exactly what a
+first-class `Stream` value would be, so Q1 and this proposal stand or fall together.
+
 Per-dimension cardinality assumes rectangularity, and JSON is ragged. `[[1,2],[3]]` is not a 2D
 vector; it is a nested list with variable inner lengths. Arrow handles that with offsets, not
 dimensions. So this probably needs two distinct types rather than one: a rectangular
@@ -562,7 +607,7 @@ them.
 
 | # | Question | Status |
 |---|---|---|
-| Q1 | Streams: first-class values, or evaluation-level multiplicity? | LEANING |
+| Q1 | Streams: first-class values, or evaluation-level multiplicity? | LEANING, evaluation-level; four independent arguments now agree |
 | Q2 | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
 | Q3 | What symbol replaces `=` for the product-forming update? | LEANING, blocked on Q2 |
 | Q4 | Can the type express ordering over heterogeneous streams? | OPEN |
