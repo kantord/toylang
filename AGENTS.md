@@ -191,8 +191,7 @@ otherwise, you have it backwards. Change the invented part, or raise the conflic
 
 # Committing
 
-Do not run `git commit`. Write the change, stage the relevant files, and print the exact command
-for a human to run.
+Agents may commit in this repository, and must add the `Co-Authored-By` trailer when they do.
 
 The subject line says what changed. The body says why, or what was ruled out, plus the provenance
 lines that apply. Omit categories that are empty rather than writing "none". A bulleted inventory
