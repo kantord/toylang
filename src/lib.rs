@@ -21,7 +21,8 @@ pub fn compile(src: &str) -> Result<(String, Type), Error> {
     let file = parse::parse(&tokens)?;
     let ty = check::check(&file)?;
     let program = lower::lower(&file);
-    Ok((emit_lua::emit(&program), ty))
+    let lua = emit_lua::emit(&program, &ty);
+    Ok((lua, ty))
 }
 
 /// Compile and run, capturing what the program printed.

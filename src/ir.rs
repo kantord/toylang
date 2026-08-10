@@ -1,12 +1,18 @@
-/// Lowered form. Composition starts lowering to loops at step 4, and emitting Lua straight off
-/// the checked AST would have to be undone to get there.
+/// Lowered form. Every name is already a valid, collision-free Lua local by this point, so the
+/// emitter does no scoping and no mangling.
 #[derive(Debug)]
 pub enum Ir {
     ConstStr(String),
     ConstInt(i64),
-    Concat(Box<Ir>, Box<Ir>),
-    Var(String),
+    VecLit(Vec<Ir>),
+    Local(String),
     Call { func: String, arg: Box<Ir> },
+    Concat(Box<Ir>, Box<Ir>),
+    Compare { op: &'static str, lhs: Box<Ir>, rhs: Box<Ir> },
+    /// `let name = value in body`, which is what a pipe becomes once `.` has a name.
+    Bind { name: String, value: Box<Ir>, body: Box<Ir> },
+    /// Keep the elements of `source` for which `pred` holds, with `param` bound to each.
+    Select { source: Box<Ir>, param: String, pred: Box<Ir> },
 }
 
 #[derive(Debug)]

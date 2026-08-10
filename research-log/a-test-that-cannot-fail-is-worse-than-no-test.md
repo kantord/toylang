@@ -33,6 +33,10 @@ which is worse than no test because it is counted as coverage.
 
 This is worth watching for specifically in a compiler, where the same output can be produced by
 many different internal structures, and where the interesting properties live in the structure.
+The same move paid off at step 4: that `[]` is a no-op is invisible in what a program prints and
+provable by comparing emitted code, which is how
+[a pure value layer dissolves jq's iteration operators](a-pure-value-layer-dissolves-jqs-iteration-operators.md)
+got its evidence.
 [The backend language has rules the checker does not](the-backend-language-has-rules-the-checker-does-not.md)
 is the other side of the same problem: there, a property that was not observed turned out to be
 an actual bug.

@@ -17,23 +17,48 @@ impl Span {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinOp {
     Add,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+impl BinOp {
+    pub fn is_comparison(self) -> bool {
+        self != BinOp::Add
+    }
 }
 
 impl std::fmt::Display for BinOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BinOp::Add => write!(f, "+"),
-        }
+        let s = match self {
+            BinOp::Add => "+",
+            BinOp::Eq => "==",
+            BinOp::Ne => "!=",
+            BinOp::Lt => "<",
+            BinOp::Le => "<=",
+            BinOp::Gt => ">",
+            BinOp::Ge => ">=",
+        };
+        write!(f, "{s}")
     }
 }
 
-/// A type as written in source, before it is resolved to a `Type`. Only named types exist, so
-/// this is a string and a span, but keeping it distinct is what lets an unknown type name be
-/// reported at the place it was written.
+/// A type as written in source, before it is resolved to a `Type`.
 #[derive(Debug)]
-pub struct TypeExpr {
-    pub name: String,
-    pub span: Span,
+pub enum TypeExpr {
+    Named { name: String, span: Span },
+    Vec { elem: Box<TypeExpr>, span: Span },
+}
+
+impl TypeExpr {
+    pub fn span(&self) -> Span {
+        match self {
+            TypeExpr::Named { span, .. } | TypeExpr::Vec { span, .. } => *span,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -63,8 +88,18 @@ pub struct File {
 pub enum Expr {
     Str { text: String, span: Span },
     Int { value: i64, span: Span },
+    VecLit { items: Vec<Expr>, span: Span },
+    /// `.`, the value the enclosing pipeline or filter is currently working on.
+    Subject { span: Span },
     Var { name: String, span: Span },
     Call { func: String, func_span: Span, arg: Box<Expr>, span: Span },
+    /// `base[]`. Projection by every index.
+    Project { base: Box<Expr>, span: Span },
+    /// `lhs | rhs`, which binds `.` in `rhs` to the value of `lhs`.
+    Pipe { lhs: Box<Expr>, rhs: Box<Expr>, span: Span },
+    /// `select(pred)`, where `pred` is checked with `.` bound to the element type rather than
+    /// evaluated in the enclosing scope.
+    Select { pred: Box<Expr>, span: Span },
     Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr>, span: Span },
 }
 
@@ -73,8 +108,13 @@ impl Expr {
         match self {
             Expr::Str { span, .. }
             | Expr::Int { span, .. }
+            | Expr::VecLit { span, .. }
+            | Expr::Subject { span }
             | Expr::Var { span, .. }
             | Expr::Call { span, .. }
+            | Expr::Project { span, .. }
+            | Expr::Pipe { span, .. }
+            | Expr::Select { span, .. }
             | Expr::Binary { span, .. } => *span,
         }
     }

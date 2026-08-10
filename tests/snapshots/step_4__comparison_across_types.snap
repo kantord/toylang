@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(r#\"[1, 2] | select(. >= \"a\")\"#)"
+---
+expected Int, found Str (at byte 21)

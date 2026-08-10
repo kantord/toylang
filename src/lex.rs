@@ -7,30 +7,55 @@ pub enum Tok {
     Int(i64),
     Ident(String),
     Fn,
+    Select,
     Plus,
+    Pipe,
+    Comma,
+    Dot,
+    Eq,
+    EqEq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
     LParen,
     RParen,
+    LBracket,
+    RBracket,
     Colon,
     Arrow,
-    Eq,
     Eof,
 }
 
 impl std::fmt::Display for Tok {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Tok::Str(_) => write!(f, "a string"),
-            Tok::Int(n) => write!(f, "`{n}`"),
-            Tok::Ident(name) => write!(f, "`{name}`"),
-            Tok::Fn => write!(f, "`fn`"),
-            Tok::Plus => write!(f, "`+`"),
-            Tok::LParen => write!(f, "`(`"),
-            Tok::RParen => write!(f, "`)`"),
-            Tok::Colon => write!(f, "`:`"),
-            Tok::Arrow => write!(f, "`->`"),
-            Tok::Eq => write!(f, "`=`"),
-            Tok::Eof => write!(f, "end of program"),
-        }
+        let s = match self {
+            Tok::Str(_) => return write!(f, "a string"),
+            Tok::Int(n) => return write!(f, "`{n}`"),
+            Tok::Ident(name) => return write!(f, "`{name}`"),
+            Tok::Fn => "`fn`",
+            Tok::Select => "`select`",
+            Tok::Plus => "`+`",
+            Tok::Pipe => "`|`",
+            Tok::Comma => "`,`",
+            Tok::Dot => "`.`",
+            Tok::Eq => "`=`",
+            Tok::EqEq => "`==`",
+            Tok::Ne => "`!=`",
+            Tok::Lt => "`<`",
+            Tok::Le => "`<=`",
+            Tok::Gt => "`>`",
+            Tok::Ge => "`>=`",
+            Tok::LParen => "`(`",
+            Tok::RParen => "`)`",
+            Tok::LBracket => "`[`",
+            Tok::RBracket => "`]`",
+            Tok::Colon => "`:`",
+            Tok::Arrow => "`->`",
+            Tok::Eof => "end of program",
+        };
+        write!(f, "{s}")
     }
 }
 
@@ -49,6 +74,12 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
         let start = i;
         if bytes[i].is_ascii_whitespace() {
             i += 1;
+            continue;
+        }
+        if bytes[i] == b'#' {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
             continue;
         }
 
@@ -74,6 +105,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
                 }
                 match &src[start..i] {
                     "fn" => Tok::Fn,
+                    "select" => Tok::Select,
                     name => Tok::Ident(name.to_string()),
                 }
             }
@@ -85,31 +117,54 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
                 i += 2;
                 Tok::Arrow
             }
-            b'+' => {
-                i += 1;
-                Tok::Plus
+            b'!' => {
+                if bytes.get(i + 1) != Some(&b'=') {
+                    return Err(Error::new(Span::new(start, i + 1), "expected `!=`"));
+                }
+                i += 2;
+                Tok::Ne
             }
-            b'(' => {
+            b'=' | b'<' | b'>' => {
+                let c = bytes[i];
                 i += 1;
-                Tok::LParen
-            }
-            b')' => {
-                i += 1;
-                Tok::RParen
-            }
-            b':' => {
-                i += 1;
-                Tok::Colon
-            }
-            b'=' => {
-                i += 1;
-                Tok::Eq
+                if bytes.get(i) == Some(&b'=') {
+                    i += 1;
+                    match c {
+                        b'=' => Tok::EqEq,
+                        b'<' => Tok::Le,
+                        _ => Tok::Ge,
+                    }
+                } else {
+                    match c {
+                        b'=' => Tok::Eq,
+                        b'<' => Tok::Lt,
+                        _ => Tok::Gt,
+                    }
+                }
             }
             _ => {
-                return Err(Error::new(
-                    Span::new(start, start + 1),
-                    format!("unexpected character `{}`", src[start..].chars().next().unwrap()),
-                ));
+                let tok = match bytes[i] {
+                    b'+' => Tok::Plus,
+                    b'|' => Tok::Pipe,
+                    b',' => Tok::Comma,
+                    b'.' => Tok::Dot,
+                    b'(' => Tok::LParen,
+                    b')' => Tok::RParen,
+                    b'[' => Tok::LBracket,
+                    b']' => Tok::RBracket,
+                    b':' => Tok::Colon,
+                    _ => {
+                        return Err(Error::new(
+                            Span::new(start, start + 1),
+                            format!(
+                                "unexpected character `{}`",
+                                src[start..].chars().next().unwrap()
+                            ),
+                        ));
+                    }
+                };
+                i += 1;
+                tok
             }
         };
         out.push(Token { tok, span: Span::new(start, i) });

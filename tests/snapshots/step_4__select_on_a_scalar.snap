@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(\"1 | select(. >= 2)\")"
+---
+`select` needs a Vec, found Int (at byte 4)

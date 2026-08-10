@@ -1,0 +1,33 @@
+---
+source: tests/step_4.rs
+expression: with
+---
+local function tl_select(src, pred)
+  local out = {}
+  for i = 1, #src do
+    if pred(src[i]) then out[#out + 1] = src[i] end
+  end
+  return out
+end
+local function tl_quote(s)
+  return '"' .. s:gsub('[%c"\\]', function(c)
+    if c == '"' then return '\\"' end
+    if c == '\\' then return '\\\\' end
+    if c == '\n' then return '\\n' end
+    if c == '\r' then return '\\r' end
+    if c == '\t' then return '\\t' end
+    return string.format('\\u%04x', c:byte())
+  end) .. '"'
+end
+local function tl_show(v)
+  local t = type(v)
+  if t == "table" then
+    local parts = {}
+    for i = 1, #v do parts[i] = tl_show(v[i]) end
+    return "[" .. table.concat(parts, ",") .. "]"
+  elseif t == "string" then
+    return tl_quote(v)
+  end
+  return tostring(v)
+end
+print(tl_show((function(t_0) return tl_select(t_0, function(t_1) return (t_1 >= 2) end) end)({1, 2, 3})))

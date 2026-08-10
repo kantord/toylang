@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(\"select(. >= 2)\")"
+---
+`select` needs a subject, so it must follow `|` (at byte 0)

@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(\".\")"
+---
+`.` is not bound here (at byte 0)
