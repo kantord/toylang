@@ -218,6 +218,49 @@ question about evaluation strategy.
 The case that would break it: any value with genuinely unknown extent. That is exactly what a
 first-class `Stream` value would be, so Q1 and this proposal stand or fall together.
 
+### Does a value-layer `select` copy?
+
+Asked of `vec | map(f) | select(p)`, which the section above claims never leaves the value
+layer. If `select` returns a `Vec`, does it allocate a filtered one?
+
+No. It returns the original buffer plus a **mask**, so no elements move. That is what the
+columnar model means by producing a bitmask rather than branching. It also makes `select` a
+projection, projected by a boolean mask instead of an index vector, which brings it under the
+same `__project__` trait as `[]`.
+
+But it breaks the promise that defines `Vec`. `Vec` is "indexing without iteration", and
+indexing a mask-filtered view is not constant time: finding the seventh surviving element means
+finding the seventh set bit, which is a rank query, and rank is O(n) unless you build an index
+for it.
+
+The two standard representations trade off differently, and both are used:
+
+```
+bitmap            1 bit per SOURCE element.  Cheap to AND together.  Indexing needs rank.
+selection vector  32 bits per SURVIVING element.  Indexing is a gather, so constant time.
+```
+
+Vectorized databases switch between them based on selectivity, because a bitmap wins when most
+rows survive and a selection vector wins when few do. Note the asymmetry this creates with the
+projection proposal: projecting by an index vector preserves constant-time indexing, because it
+is a gather, while projecting by a bitmask does not.
+
+So there are three positions and the choice is open:
+
+1. `select` returns a weaker type that knows its length but does not promise constant-time
+   indexing. This is a real third thing between `Vec` and unknown extent, and admitting it makes
+   the promise lattice richer than two entries.
+2. `select` returns a selection vector, keeping `Vec`'s promise intact, and pays memory
+   proportional to survivors rather than to sources.
+3. `select` materializes, which is the only option that copies, and is sometimes right when
+   selectivity is very low and the result outlives the source.
+
+One cost is shared by 1 and 2 and worth stating plainly: a masked or index-projected view
+**keeps the entire source buffer alive**. Filtering a million records down to three and holding
+the result retains all million. This is the same hazard as a substring that pins its parent
+string, and it has bitten Java and Go. Whatever else is decided, materialization needs to be
+reachable on purpose.
+
 Per-dimension cardinality assumes rectangularity, and JSON is ragged. `[[1,2],[3]]` is not a 2D
 vector; it is a nested list with variable inner lengths. Arrow handles that with offsets, not
 dimensions. So this probably needs two distinct types rather than one: a rectangular
@@ -623,6 +666,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | Q11 | How does the query/transformation split manifest in the type system? | SETTLED |
 | Q12 | On a type mismatch, does field access error, yield null, or something third? | SETTLED |
 | Q13 | Does the layer shift run only one way, with no value-to-effect operator? | LEANING, decides Q1 |
+| Q14 | Does `select` return a masked view, a selection vector, or a copy? | OPEN |
 
 Q5 is the one that blocks building anything. Q1 and Q9 both change the two-layer section, so
 they should be settled before that section is treated as stable.
