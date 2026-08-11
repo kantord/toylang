@@ -634,9 +634,42 @@ stdin           Stream<Vec<T>>      batched by the reader, the batching is in th
 your own source Vec<T>              you choose: one big vector, or batch it yourself
 ```
 
-So the two API levels fall out. Low-level vector and GPU operations take a single `Vec`.
-High-level operations take a stream of them. Nothing is magic, because the magic is located in a
-reader whose type says what it did.
+The split between these does not need to reach the surface. It can exist **only at the type
+level**: one semantics stated as a trait, with a different implementation when the receiver is a
+`Vec` and when it is a `Stream<Vec<T>>`. The same move as `__project__` having one impl for
+indexable things and another for iterable ones. A user writes `map(f)` once and the compiler
+picks the implementation from the type.
+
+That is worth more than the ergonomics, because of what it does to batch invariance.
+
+**The law is that the operation commutes with reification.**
+
+```
+op(f) . reify   ==   reify . op(f)
+```
+
+Applying an operation and then collecting gives the same answer as collecting and then applying.
+An operation satisfying that cannot observe batching, because reifying at any point in the
+pipeline yields the same result. So batch invariance stops being a rule to police separately and
+becomes the trait's law, which both implementations have to satisfy in order to be
+implementations of the same thing at all. A trait without a stated law is only overloading, and
+this is the law.
+
+**Q20 then answers itself.** The blocking operators are exactly those with no lawful stream
+implementation. Sorting each batch does not sort the stream, so `sort` cannot satisfy the law
+batch-locally. Its options are to have no stream impl, which is a compile error and honest, or
+to buffer the whole stream, which silently defeats streaming. `group_by` and joins are the same
+shape. So "blocking operator" is not a separate category that needed inventing; it is the name
+for a trait with a missing instance.
+
+`first` by contrast does have both, which is consistent with the resolution above: over a `Vec`
+it is a minimum index over a mask, over a `Stream` it short-circuits, and both give the same
+answer, so the law holds.
+
+**Cost still differs where the law holds, and that is fine.** `map` over a `Vec` is one launch;
+over `Stream<Vec<T>>` it is one per batch. Same result, different performance profile. Symmetry
+survives because the *type* still says which implementation was selected, so the cost difference
+is visible in the signature rather than hidden in the dispatch.
 
 Four things this exposes.
 
@@ -934,8 +967,8 @@ checked for completeness, and the settled entries are what stop a decision being
 | Q17 | Is there a dense tensor type, constructed explicitly? | LEANING yes |
 | Q18 | Does `.[]` on a rank-2 tensor yield rows or scalars? | LEANING rows |
 | Q19 | How are nulls carried in a dense typed buffer? | LEANING, Arrow validity bitmask |
-| Q20 | How are blocking operators (`sort`, `group_by`, joins) classified? | OPEN |
-| Q21 | What guarantees batch size is unobservable over a batched stream? | OPEN |
+| Q20 | How are blocking operators (`sort`, `group_by`, joins) classified? | SETTLED, a trait with no lawful stream instance |
+| Q21 | What guarantees batch size is unobservable over a batched stream? | LEANING, the trait law that ops commute with reification |
 | Q22 | Are dense and masked vectors distinguishable in the type? | OPEN, Q14 from the other side |
 
 Q5 is the one that blocks building anything. Q1 and Q9 both change the two-layer section, so
