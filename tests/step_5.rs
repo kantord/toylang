@@ -22,12 +22,12 @@ fn the_target_program() {
 
 #[test]
 fn emitted_lua() {
-    let c = toylang::compile(ADULTS).unwrap();
+    let p = toylang::compile(ADULTS).unwrap();
     insta::assert_snapshot!(format!(
         "-- input : {}\n-- : {}\n{}",
-        c.input.unwrap(),
-        c.ty,
-        c.lua
+        p.input.clone().unwrap(),
+        p.body.ty,
+        toylang::emit_lua::emit(&p)
     ));
 }
 

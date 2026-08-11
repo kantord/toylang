@@ -12,8 +12,8 @@ fn filter_a_vec() {
 /// being a no-op, something goes red.
 #[test]
 fn projection_is_the_identity() {
-    let with = toylang::compile("[1, 2, 3][] | select(. >= 2)").unwrap().lua;
-    let without = toylang::compile("[1, 2, 3] | select(. >= 2)").unwrap().lua;
+    let with = toylang::emit_lua::emit(&toylang::compile("[1, 2, 3][] | select(. >= 2)").unwrap());
+    let without = toylang::emit_lua::emit(&toylang::compile("[1, 2, 3] | select(. >= 2)").unwrap());
     assert_eq!(with, without);
     insta::assert_snapshot!(with);
 }
@@ -40,8 +40,8 @@ big([1, 2, 3])
 
 #[test]
 fn emitted_lua() {
-    let c = toylang::compile("[1, 2, 3][] | select(. >= 2)").unwrap();
-    let (lua, ty) = (c.lua, c.ty);
+    let p = toylang::compile("[1, 2, 3][] | select(. >= 2)").unwrap();
+    let (lua, ty) = (toylang::emit_lua::emit(&p), p.body.ty.clone());
     insta::assert_snapshot!(format!("-- : {ty}\n{lua}"));
 }
 

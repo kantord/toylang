@@ -1,0 +1,25 @@
+---
+source: tests/backend_js.rs
+expression: "toylang::emit_js::emit(&p)"
+---
+function tl_select(src, pred) {
+  const out = [];
+  for (let i = 0; i < src.length; i++) if (pred(src[i])) out.push(src[i]);
+  return out;
+}
+function tl_field(v, k, depth) {
+  if (depth === 0) return v[k];
+  const out = [];
+  for (let i = 0; i < v.length; i++) out[i] = tl_field(v[i], k, depth - 1);
+  return out;
+}
+function tl_join(v, f) {
+  const parts = [];
+  for (let i = 0; i < v.length; i++) parts.push(f(v[i]));
+  return "[" + parts.join(",") + "]";
+}
+function v_adults(v_db) {
+  return ((t_2) => tl_field(t_2, "name", 1))(((t_0) => tl_select(t_0, (t_1) => (t_1["age"] >= 18)))(v_db["users"]));
+}
+const t_input = JSON.parse(require("fs").readFileSync(0, "utf8"));
+console.log(tl_join(v_adults(t_input), (e0) => JSON.stringify(e0)));

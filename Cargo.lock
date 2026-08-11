@@ -382,6 +382,7 @@ dependencies = [
  "insta",
  "mlua",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

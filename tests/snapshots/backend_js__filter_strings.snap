@@ -1,0 +1,5 @@
+---
+source: tests/backend_js.rs
+expression: "agree(r#\"[\"ada\", \"bo\"] | select(. == \"ada\")\"#, None)"
+---
+["ada"]

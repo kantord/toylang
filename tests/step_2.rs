@@ -23,7 +23,7 @@ fn concat_is_left_associative() {
 
 #[test]
 fn emitted_lua() {
-    let lua = toylang::compile(r#""a" + "b" + "c""#).unwrap().lua;
+    let lua = toylang::emit_lua::emit(&toylang::compile(r#""a" + "b" + "c""#).unwrap());
     insta::assert_snapshot!(lua);
 }
 

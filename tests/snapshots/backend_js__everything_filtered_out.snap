@@ -1,0 +1,5 @@
+---
+source: tests/backend_js.rs
+expression: "agree(\"[1, 2] | select(. >= 99)\", None)"
+---
+[]

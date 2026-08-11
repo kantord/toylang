@@ -43,8 +43,8 @@ fn greet(who: Str) -> Str = "hello " + who
 
 greet("world")
 "#;
-    let c = toylang::compile(src).unwrap();
-    let (lua, ty) = (c.lua, c.ty);
+    let p = toylang::compile(src).unwrap();
+    let (lua, ty) = (toylang::emit_lua::emit(&p), p.body.ty.clone());
     insta::assert_snapshot!(format!("-- : {ty}\n{lua}"));
 }
 

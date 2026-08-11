@@ -25,7 +25,7 @@ local function tl_field(v, k, depth)
 end
 ";
 
-const SHOW_HELPER: &str = r#"local function tl_quote(s)
+const QUOTE_HELPER: &str = r#"local function tl_quote(s)
   return '"' .. s:gsub('[%c"\\]', function(c)
     if c == '"' then return '\\"' end
     if c == '\\' then return '\\\\' end
@@ -35,28 +35,15 @@ const SHOW_HELPER: &str = r#"local function tl_quote(s)
     return string.format('\\u%04x', c:byte())
   end) .. '"'
 end
-local function tl_show(v)
-  local t = type(v)
-  if t == "table" then
-    if v[1] ~= nil or next(v) == nil then
-      local parts = {}
-      for i = 1, #v do parts[i] = tl_show(v[i]) end
-      return "[" .. table.concat(parts, ",") .. "]"
-    end
-    local keys = {}
-    for k in pairs(v) do keys[#keys + 1] = k end
-    table.sort(keys)
-    local parts = {}
-    for i = 1, #keys do
-      parts[i] = tl_quote(keys[i]) .. ":" .. tl_show(v[keys[i]])
-    end
-    return "{" .. table.concat(parts, ",") .. "}"
-  elseif t == "string" then
-    return tl_quote(v)
-  end
-  return tostring(v)
-end
 "#;
+
+const JOIN_HELPER: &str = "\
+local function tl_join(v, f)
+  local parts = {}
+  for i = 1, #v do parts[i] = f(v[i]) end
+  return \"[\" .. table.concat(parts, \",\") .. \"]\"
+end
+";
 
 pub fn emit(program: &Program) -> String {
     let mut out = String::new();
@@ -71,8 +58,11 @@ pub fn emit(program: &Program) -> String {
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON. So a
     // string inside a Vec is quoted while a bare string is not.
     let structured = program.body.ty != Type::Str;
-    if structured {
-        out.push_str(SHOW_HELPER);
+    if structured && needs_quote(&program.body.ty) {
+        out.push_str(QUOTE_HELPER);
+    }
+    if structured && contains_vec(&program.body.ty) {
+        out.push_str(JOIN_HELPER);
     }
 
     // All names are declared before any body, because the checker collects signatures before
@@ -94,11 +84,56 @@ pub fn emit(program: &Program) -> String {
 
     let body = expr(&program.body);
     if structured {
-        out.push_str(&format!("print(tl_show({body}))\n"));
+        out.push_str(&format!("print({})\n", show(&program.body.ty, &body, 0)));
     } else {
         out.push_str(&format!("print({body})\n"));
     }
     out
+}
+
+/// The printer is built from the type rather than by inspecting the value. A Lua table cannot
+/// say whether it is an array or a record -- an empty one is indistinguishable either way -- so
+/// asking it was always going to disagree with a backend that knows. See emit_js for the same
+/// function, and step 4 onwards, where a native target has nothing to ask.
+fn show(ty: &Type, value: &str, depth: usize) -> String {
+    match ty {
+        Type::Str => format!("tl_quote({value})"),
+        Type::Int | Type::Bool => format!("tostring({value})"),
+        Type::Vec(elem) => {
+            let e = format!("e{depth}");
+            format!("tl_join({value}, function({e}) return {} end)", show(elem, &e, depth + 1))
+        }
+        Type::Record(fields) => {
+            // Type::record keeps fields sorted, so this order is the type's order. Field names
+            // are identifiers, so the JSON key needs no escaping and is one literal.
+            let parts: Vec<String> = fields
+                .iter()
+                .map(|(name, fty)| {
+                    let read = format!("{value}[{}]", lua_string(name));
+                    let key = lua_string(&format!("\"{name}\":"));
+                    format!("{key} .. {}", show(fty, &read, depth + 1))
+                })
+                .collect();
+            format!("(\"{{\" .. {} .. \"}}\")", parts.join(" .. \",\" .. "))
+        }
+    }
+}
+
+fn needs_quote(ty: &Type) -> bool {
+    match ty {
+        Type::Str => true,
+        Type::Vec(elem) => needs_quote(elem),
+        Type::Record(_) => true,
+        _ => false,
+    }
+}
+
+fn contains_vec(ty: &Type) -> bool {
+    match ty {
+        Type::Vec(_) => true,
+        Type::Record(fields) => fields.iter().any(|(_, t)| contains_vec(t)),
+        _ => false,
+    }
 }
 
 /// Which identifiers are reserved is the target's business, not toylang's. A program with a
