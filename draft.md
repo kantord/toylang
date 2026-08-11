@@ -671,6 +671,59 @@ over `Stream<Vec<T>>` it is one per batch. Same result, different performance pr
 survives because the *type* still says which implementation was selected, so the cost difference
 is visible in the signature rather than hidden in the dispatch.
 
+### The primitive set cannot be fold and recursion
+
+Functional languages usually build everything on a higher-order function plus recursion, and
+conventionally that function is `fold`. Every list operation is a catamorphism, which is elegant
+and completely sequential. Anything defined that way inherits the sequentiality of its
+definition, so a standard library written over `fold` cannot be vectorized no matter what the
+backend does. General recursion has the same problem for the same reason.
+
+So the basis has to be different. The established parallel basis, from Blelloch's work on scans
+as primitive parallel operations and used since by NESL and Futhark, is small:
+
+```
+map          elementwise                         depth 1
+scan         prefix sum over an associative op   depth log n
+reduce       associative op                      depth log n
+gather       permutation by an index vector      depth 1
+scatter      inverse permutation                 depth 1
+             plus the segmented form of each
+```
+
+Five operations and their segmented variants. Everything else is built from them: compaction is
+a scan followed by a scatter, radix sort is a sequence of scans, and partitioning is compaction
+by a predicate. Notice that `fold` with an arbitrary operator is *not* in the set, while `reduce`
+with an associative one is. That is the same line the `reduce`/`fold` split already draws, now
+determining what the standard library may be defined over rather than only how one operator
+compiles.
+
+The precise characterization of which folds belong is the **third homomorphism theorem**: a
+function expressible both as a left fold and as a right fold can be computed by an associative
+divide-and-conquer. That is exactly the condition an operator has to meet to earn a place here.
+
+Recursion splits the same way. **General recursion cannot be flattened**, but *structural*
+recursion over a finite structure can, by the flattening transform this document already relies
+on: recursion over a tree becomes segmented operations over a flat buffer plus offsets. Which is
+also why the segment descriptors are load-bearing rather than an implementation detail.
+
+Two consequences worth stating plainly.
+
+**The standard library should be defined over the parallel basis, with `fold` and general
+recursion as leaves rather than as the root.** If they sit at the root, every derived operation
+inherits a sequential definition and the vectorized path can only ever be a special case that
+the compiler recovers by accident.
+
+**The primitive set and the lawful-stream-instance predicate are the same boundary again.**
+Operations definable from the basis have stream implementations that satisfy the commuting law;
+operations needing general recursion or a non-associative fold do not. This is the third time a
+single distinction has done duty for what looked like separate questions, which is either the
+design cohering or a sign that the same idea keeps being renamed.
+
+The honest cost: expressing a computation as a scan is genuinely less obvious than expressing it
+as a fold. `sum` as a fold is immediate; as a scan taking the last element it is indirect. Array
+languages pay this and it is a real ergonomic tax, not a free win.
+
 Four things this exposes.
 
 **Batch size must not be observable.** The whole design rests on it. If a reader picks the batch
@@ -970,6 +1023,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | Q20 | How are blocking operators (`sort`, `group_by`, joins) classified? | SETTLED, a trait with no lawful stream instance |
 | Q21 | What guarantees batch size is unobservable over a batched stream? | LEANING, the trait law that ops commute with reification |
 | Q22 | Are dense and masked vectors distinguishable in the type? | OPEN, Q14 from the other side |
+| Q23 | What primitive set is the standard library defined over? | LEANING, the parallel basis |
 
 Q5 is the one that blocks building anything. Q1 and Q9 both change the two-layer section, so
 they should be settled before that section is treated as stable.
