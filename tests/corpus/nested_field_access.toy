@@ -1,0 +1,6 @@
+# Field access two Vec layers deep, which is the only case that exercises a
+# projection depth greater than one.
+fn names(db: {groups: Vec<{members: Vec<{name: Str}>}>}) -> Vec<Vec<Str>> =
+    db.groups[] | .members | .name
+
+names(input)

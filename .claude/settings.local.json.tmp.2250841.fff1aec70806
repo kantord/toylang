@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo add *)",
+      "Bash(perl -0pi -e 's/toylang::compile\\\\\\(&src\\\\\\)\\\\.map\\\\\\(\\\\|c\\\\| c\\\\.lua\\\\\\)\\\\.map_err\\\\\\(Into::into\\\\\\)/toylang::compile\\(&src\\).map\\(|p| toylang::Backend::Lua.emit\\(&p\\)\\).map_err\\(Into::into\\)/' src/main.rs)",
+      "Bash(perl -0pi -e 's/if toylang::compile\\\\\\(src\\\\\\)\\\\?\\\\.input\\\\.is_none\\\\\\(\\\\\\)/if toylang::compile\\(src\\)?.input.is_none\\(\\)/' src/main.rs)",
+      "Bash(perl -0pi -e 's/let c = toylang::compile\\\\\\(\\(.*?\\)\\\\\\)\\\\.unwrap\\\\\\(\\\\\\);\\\\n    let \\\\\\(lua, ty\\\\\\) = \\\\\\(c\\\\.lua, c\\\\.ty\\\\\\);/let p = toylang::compile\\($1\\).unwrap\\(\\);\\\\n    let \\(lua, ty\\) = \\(toylang::emit_lua::emit\\(&p\\), p.body.ty.clone\\(\\)\\);/gs' tests/step_1.rs tests/step_3.rs tests/step_4.rs)",
+      "Bash(perl -0pi -e 's/let lua = toylang::compile\\\\\\(\\(.*?\\)\\\\\\)\\\\.unwrap\\\\\\(\\\\\\)\\\\.lua;/let lua = toylang::emit_lua::emit\\(&toylang::compile\\($1\\).unwrap\\(\\)\\);/gs' tests/step_2.rs)",
+      "Bash(perl -0pi -e 's/toylang::compile\\\\\\(\\(.*?\\)\\\\\\)\\\\.unwrap\\\\\\(\\\\\\)\\\\.lua/toylang::emit_lua::emit\\(&toylang::compile\\($1\\).unwrap\\(\\)\\)/gs' tests/step_4.rs)",
+      "Bash(cargo test *)",
+      "Bash(git add *)"
+    ]
+  }
+}

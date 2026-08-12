@@ -1,0 +1,4 @@
+# `print` is a legal toylang name and must not collide with the target's.
+fn print(x: Str) -> Str = "got " + x
+
+print("it")

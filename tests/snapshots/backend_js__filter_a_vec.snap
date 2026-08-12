@@ -1,5 +1,0 @@
----
-source: tests/backend_js.rs
-expression: "agree(\"[1, 2, 3][] | select(. >= 2)\", None)"
----
-[2,3]

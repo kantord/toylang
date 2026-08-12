@@ -1,5 +1,0 @@
----
-source: tests/backend_js.rs
-expression: "agree(src, Some(r#\"{\"u\": {\"name\": \"ada\", \"age\": 36}}\"#))"
----
-{"age":36,"name":"ada"}

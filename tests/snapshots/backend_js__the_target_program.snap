@@ -1,5 +1,0 @@
----
-source: tests/backend_js.rs
-expression: "agree(ADULTS, Some(DB))"
----
-["ada"]

@@ -41,3 +41,13 @@ nothing to disagree about.
 If a backend cannot run because its toolchain is missing, that is a reported failure, not a
 silently green run. A harness that quietly tests one backend on a machine without `node` is worse
 than no harness, because the report says three.
+
+A missing `.out` file is the same kind of thing: a program with no expectation fails rather than
+being passed over, so adding a `.toy` without an expectation cannot quietly enlarge the corpus
+without enlarging what it checks.
+
+## Verified by breaking it
+
+All three failure modes were confirmed to fire, which took two attempts because the first round
+of deliberate breakage did nothing and looked exactly like success. See
+[a test that cannot fail is worse than no test](../research-log/a-test-that-cannot-fail-is-worse-than-no-test.md).

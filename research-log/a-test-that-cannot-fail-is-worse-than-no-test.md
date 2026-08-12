@@ -33,7 +33,26 @@ likely to introduce produces working programs. See
 [merging passes turns redundant traversals into bugs](merging-passes-turns-redundant-traversals-into-bugs.md).
 
 The check that catches this is to ask what change would make the test red, and to name it
-concretely. If the answer is "none", the test is documentation with a green tick next to it,
+concretely. Then actually break it and watch, because **the verification is itself a test that
+can silently not fail**, and it did, twice in one sitting.
+
+Checking the step 3 agreement harness meant deliberately introducing each failure it claims to
+catch. Two of the three attempts were no-ops that looked like passes:
+
+- The patch meant to make one backend disagree edited `parts.join(",")`, which in the Rust source
+  is written `parts.join(\",\")` inside a string literal. The pattern matched nothing, the
+  backends still agreed, and the harness stayed green. Green was the correct answer to a question
+  that had not been asked.
+- The attempt to prove a missing toolchain is reported removed one `node` from `PATH`. There was
+  a second one at `/usr/bin/node`. Again green, again meaningless.
+
+Both produce the same output as a real pass, which is the entire problem. What settled it was
+checking the setup rather than the result: printing the patched line to confirm the edit landed,
+and running `command -v node` to confirm it was gone. Only then did the failures appear, and all
+three modes did fire.
+
+So "I verified the test can fail" is a claim that needs its own evidence, and the evidence is
+seeing the failure text, not seeing the suite go red-then-green. If the answer is "none", the test is documentation with a green tick next to it,
 which is worse than no test because it is counted as coverage.
 
 This is worth watching for specifically in a compiler, where the same output can be produced by
