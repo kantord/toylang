@@ -31,6 +31,9 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [Checked-only forms are a class, not a lambda rule](checked-only-forms-are-a-class-not-a-lambda-rule.md)
   -- Two more expressions turned up that can only be checked and never synthesised, so the
   annotation rule is about a class rather than about lambdas.
+- [A type you can declare but cannot build](a-type-you-can-declare-but-cannot-build.md)
+  -- Record types exist in the annotation grammar with no expression that produces one, so the
+  only record a program can hold arrives from input.
 - [Track an incomplete backend as a shrinking list](track-an-incomplete-backend-as-a-shrinking-list.md)
   -- A partial backend cannot join an agreement harness without softening it, and leaving it out
   is a silent skip, so snapshot what it cannot do and require that list to shrink.

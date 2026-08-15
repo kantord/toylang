@@ -5,12 +5,21 @@ expression: "toylang::emit_llvm::to_ir(&program).unwrap()"
 ; ModuleID = 'toylang'
 source_filename = "toylang"
 
-@out = private unnamed_addr constant [13 x i8] c"hello world\0A\00", align 1
+@bytes.0 = private constant [12 x i8] c"hello world\00"
+@str.0 = private constant { ptr, i64 } { ptr @bytes.0, i64 11 }
 
-declare i64 @write(i32, ptr, i64)
+declare ptr @tl_concat(ptr, ptr)
+
+declare ptr @tl_int_to_str(i64)
+
+declare i64 @tl_str_eq(ptr, ptr)
+
+declare i64 @tl_str_cmp(ptr, ptr)
+
+declare void @tl_print(ptr)
 
 define i32 @main() {
 entry:
-  %0 = call i64 @write(i32 1, ptr @out, i64 12)
+  call void @tl_print(ptr @str.0)
   ret i32 0
 }

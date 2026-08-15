@@ -41,6 +41,10 @@ is the whole of what the user needs to know, and the fix is always the same: put
 that says. That is a much better failure than the inference guess the draft is arguing against,
 which fails somewhere else entirely.
 
+The mirror image, a type with no expression that produces one rather than an expression that
+cannot state its type, is
+[a type you can declare but cannot build](a-type-you-can-declare-but-cannot-build.md).
+
 Related, because the machinery is shared:
 [the lowering needs types the checker already computed](the-lowering-needs-types-the-checker-already-computed.md)
 is about the same checker handing what it learned to the backend.

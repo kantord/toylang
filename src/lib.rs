@@ -112,8 +112,14 @@ pub fn link(program: &Program, out: &std::path::Path) -> Result<(), Box<dyn std:
     let object = dir.path().join("program.o");
     emit_llvm::compile_to_object(program, &object)?;
 
+    // The runtime is compiled alongside rather than shipped as a library, which keeps the build
+    // to one `cc` call and means there is nothing to install.
+    let runtime = dir.path().join("toylang.c");
+    std::fs::write(&runtime, emit_llvm::RUNTIME_C)?;
+
     let status = std::process::Command::new("cc")
         .arg(&object)
+        .arg(&runtime)
         .arg("-o")
         .arg(out)
         .status()

@@ -1,6 +1,18 @@
-# Step 6: Vec, select, field access
+# Step 6: Vec, records, input, select, field access
 
 The rest of prototype 1, natively, and the step where the interesting decisions are.
+
+## Records and input arrive here
+
+Moved from step 5, because a record cannot be built: the language has no record literal, so the
+only record value that exists comes from `input`. That makes records inseparable from parsing
+JSON inside the compiled binary, and doing it here unlocks four corpus programs rather than one.
+
+The JSON parser goes in `runtime/toylang.c` alongside the rest of the runtime. It can be
+narrower than a general parser, because the checker already knows the exact type the input must
+have and the Rust side already rejects anything that does not match before the binary ever runs.
+Whether the binary re-validates or trusts a pre-checked shape is open, and it decides whether
+`./adults < data.json` works standalone or only under the harness. It should work standalone.
 
 Acceptance is `examples/adults.toy`, built to a binary, reading the same JSON on stdin and
 printing `["ada"]` -- agreeing with Lua and JavaScript through the step 3 harness.
