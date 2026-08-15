@@ -1,6 +1,7 @@
 pub mod ast;
 pub mod check;
 pub mod emit_js;
+pub mod emit_llvm;
 pub mod emit_lua;
 pub mod error;
 pub mod input;
@@ -20,23 +21,31 @@ use tir::Program;
 pub enum Backend {
     Lua,
     Js,
+    Native,
 }
 
 impl Backend {
+    /// The backends that must agree on every corpus program. Native is deliberately absent
+    /// until it can compile the whole language: a backend that can only do part of it would
+    /// turn the harness permanently red, and softening the harness to tolerate that is exactly
+    /// the silent skip it exists to prevent. What native cannot do yet is tracked instead by
+    /// tests/backend_llvm.rs, as a list that has to shrink.
     pub const ALL: [Backend; 2] = [Backend::Lua, Backend::Js];
 
     pub fn name(self) -> &'static str {
         match self {
             Backend::Lua => "lua",
             Backend::Js => "js",
+            Backend::Native => "native",
         }
     }
 
-    pub fn emit(self, program: &Program) -> String {
-        match self {
+    pub fn emit(self, program: &Program) -> Result<String, String> {
+        Ok(match self {
             Backend::Lua => emit_lua::emit(program),
             Backend::Js => emit_js::emit(program),
-        }
+            Backend::Native => return emit_llvm::to_ir(program),
+        })
     }
 }
 
@@ -81,11 +90,62 @@ pub fn run_on(
         (None, _) => None,
     };
 
-    let source = backend.emit(&program);
     match backend {
-        Backend::Lua => run_lua(&source, value.as_ref()),
-        Backend::Js => run_node(&source, value.as_ref()),
+        Backend::Lua => run_lua(&emit_lua::emit(&program), value.as_ref()),
+        Backend::Js => run_node(&emit_js::emit(&program), value.as_ref()),
+        Backend::Native => {
+            let dir = tempfile::tempdir()?;
+            let exe = dir.path().join("program");
+            link(&program, &exe)?;
+            run_binary(&exe, value.as_ref())
+        }
     }
+}
+
+/// Compile to a native executable at `out`.
+///
+/// LLVM produces an object file, which is not a program, so this shells out to `cc` for the
+/// link. That is a toolchain requirement the Lua backend does not have, since mlua vendors its
+/// interpreter.
+pub fn link(program: &Program, out: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let object = dir.path().join("program.o");
+    emit_llvm::compile_to_object(program, &object)?;
+
+    let status = std::process::Command::new("cc")
+        .arg(&object)
+        .arg("-o")
+        .arg(out)
+        .status()
+        .map_err(|e| format!("could not run `cc`: {e}"))?;
+    if !status.success() {
+        return Err(format!("cc failed to link: {status}").into());
+    }
+    Ok(())
+}
+
+fn run_binary(
+    exe: &std::path::Path,
+    value: Option<&serde_json::Value>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut child = std::process::Command::new(exe)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+
+    let text = value.map(|v| v.to_string()).unwrap_or_default();
+    child.stdin.take().expect("piped").write_all(text.as_bytes())?;
+
+    let out = child.wait_with_output()?;
+    if !out.status.success() {
+        return Err(format!(
+            "the compiled program failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+        .into());
+    }
+    Ok(String::from_utf8(out.stdout)?)
 }
 
 fn run_lua(

@@ -52,7 +52,11 @@ and running `command -v node` to confirm it was gone. Only then did the failures
 three modes did fire.
 
 So "I verified the test can fail" is a claim that needs its own evidence, and the evidence is
-seeing the failure text, not seeing the suite go red-then-green. If the answer is "none", the test is documentation with a green tick next to it,
+seeing the failure text, not seeing the suite go red-then-green.
+
+The coverage version of the same question -- not "can this assertion fail" but "would anyone
+notice if this were never checked" -- is
+[track an incomplete backend as a shrinking list](track-an-incomplete-backend-as-a-shrinking-list.md). If the answer is "none", the test is documentation with a green tick next to it,
 which is worse than no test because it is counted as coverage.
 
 This is worth watching for specifically in a compiler, where the same output can be produced by

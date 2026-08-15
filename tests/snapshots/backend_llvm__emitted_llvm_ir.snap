@@ -1,0 +1,16 @@
+---
+source: tests/backend_llvm.rs
+expression: "toylang::emit_llvm::to_ir(&program).unwrap()"
+---
+; ModuleID = 'toylang'
+source_filename = "toylang"
+
+@out = private unnamed_addr constant [13 x i8] c"hello world\0A\00", align 1
+
+declare i64 @write(i32, ptr, i64)
+
+define i32 @main() {
+entry:
+  %0 = call i64 @write(i32 1, ptr @out, i64 12)
+  ret i32 0
+}

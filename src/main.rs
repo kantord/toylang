@@ -1,20 +1,22 @@
 use std::io::Read;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js]";
+use toylang::Backend;
+
+const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|llvm]\n       toylang build FILE";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (cmd, path, backend) = match args.as_slice() {
-        [cmd, path] => (cmd, path, toylang::Backend::Lua),
-        [cmd, path, name] => match name.as_str() {
-            "lua" => (cmd, path, toylang::Backend::Lua),
-            "js" => (cmd, path, toylang::Backend::Js),
-            _ => {
+        [cmd, path] => (cmd.as_str(), path, Backend::Lua),
+        [cmd, path, name] => {
+            let Some(backend) = named(name) else {
                 eprintln!("{USAGE}");
                 return ExitCode::FAILURE;
-            }
-        },
+            };
+            (cmd.as_str(), path, backend)
+        }
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::FAILURE;
@@ -29,9 +31,13 @@ fn main() -> ExitCode {
         }
     };
 
-    let result = match cmd.as_str() {
+    let result = match cmd {
         "run" => run(&src, backend),
-        "emit" => toylang::compile(&src).map(|p| backend.emit(&p)).map_err(Into::into),
+        "emit" => match toylang::compile(&src) {
+            Err(e) => Err(e.into()),
+            Ok(p) => backend.emit(&p).map_err(|e| -> Box<dyn std::error::Error> { e.into() }),
+        },
+        "build" => build(&src, path).map(|out| format!("{}\n", out.display())),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::FAILURE;
@@ -50,9 +56,29 @@ fn main() -> ExitCode {
     }
 }
 
+fn named(name: &str) -> Option<Backend> {
+    match name {
+        "lua" => Some(Backend::Lua),
+        "js" => Some(Backend::Js),
+        "llvm" => Some(Backend::Native),
+        _ => None,
+    }
+}
+
+/// Writes the binary next to where it was invoked, named after the source file.
+fn build(src: &str, path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let stem = std::path::Path::new(path)
+        .file_stem()
+        .ok_or("the source file has no name")?
+        .to_owned();
+    let out = PathBuf::from(stem);
+    toylang::link(&toylang::compile(src)?, &out)?;
+    Ok(out)
+}
+
 /// stdin is only read when the program says it reads input, so a program that does not is not
 /// left waiting on a terminal.
-fn run(src: &str, backend: toylang::Backend) -> Result<String, Box<dyn std::error::Error>> {
+fn run(src: &str, backend: Backend) -> Result<String, Box<dyn std::error::Error>> {
     if toylang::compile(src)?.input.is_none() {
         return toylang::run_on(src, None, backend);
     }

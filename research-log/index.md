@@ -31,6 +31,9 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [Checked-only forms are a class, not a lambda rule](checked-only-forms-are-a-class-not-a-lambda-rule.md)
   -- Two more expressions turned up that can only be checked and never synthesised, so the
   annotation rule is about a class rather than about lambdas.
+- [Track an incomplete backend as a shrinking list](track-an-incomplete-backend-as-a-shrinking-list.md)
+  -- A partial backend cannot join an agreement harness without softening it, and leaving it out
+  is a silent skip, so snapshot what it cannot do and require that list to shrink.
 - [Merging passes turns redundant traversals into bugs](merging-passes-turns-redundant-traversals-into-bugs.md)
   -- A double traversal that was pure waste while the checker only asked questions became a
   correctness bug the moment the checker also allocated.
