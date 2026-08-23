@@ -26,6 +26,15 @@ Stop when you're done. No closing summary, no "Key takeaways," no paragraph rest
 section above it. If the document is short enough to read, it's short enough not to need a
 recap.
 
+Name the thing, not its label. "Q8" and "option 3" tell a reader nothing and cost them a lookup;
+"the vectorizability question" says what is being discussed. A short identifier is fine as the
+*heading* of the thing it names, so that it can be referred to and linked, but it is not a
+substitute for saying what the reference is about.
+
+Cross-references inside a document are links. If one section points at another, the reader
+should be able to follow it, which means the target is a heading and the reference is real
+markdown. A reference that only names a section leaves the reader to search for it.
+
 Add a heading when a reader needs to navigate past something. Six headings over 400 words is
 furniture, not structure. Same for horizontal rules: they separate genuinely unrelated material,
 which is rare inside one document.

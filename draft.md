@@ -213,17 +213,17 @@ concern and does not change the type.
 
 Two consequences if this holds.
 
-It answers Q1. If effect multiplicity is only ever born from I/O and only ever collapses into
+It answers [the streams question](#q1-streams-first-class-values-or-evaluation-level-multiplicity). If effect multiplicity is only ever born from I/O and only ever collapses into
 values, there is no need for a `Stream<T>` *type* at all. `Stream` becomes an effect annotation
 on an expression rather than a type constructor, which is the evaluation-level answer arriving
 for a fourth time.
 
-It simplifies Q7. If `..` is value-layer, producing a collection of nodes, then whether it
+It simplifies [the recursive-descent ordering question](#q7-does-promise-depth-first-order-or-only-the-set-of-nodes). If `..` is value-layer, producing a collection of nodes, then whether it
 promises depth-first order is an ordinary question about how a value is ordered, rather than a
 question about evaluation strategy.
 
 The case that would break it: any value with genuinely unknown extent. That is exactly what a
-first-class `Stream` value would be, so Q1 and this proposal stand or fall together.
+first-class `Stream` value would be, so [the streams question](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and this proposal stand or fall together.
 
 ### Does a value-layer `select` copy?
 
@@ -310,7 +310,7 @@ Two costs worth naming before adopting it.
 It trades a static guarantee for a data-dependent one. Static uniqueness typing promises at
 compile time that no copy happens. A runtime check promises only that a copy happens when
 needed, so whether a program allocates depends on aliasing the type system never reported. That
-collides with principle 2 and with Q8: the type would say "view", and the runtime would
+collides with principle 2 and with [the vectorizability question](#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization): the type would say "view", and the runtime would
 sometimes copy. Defensible if performance is deliberately excluded from what the type
 guarantees, but that should be a decision rather than a side effect.
 
@@ -324,9 +324,9 @@ refcounting alone is complete for them. Cycles only become constructible once mu
 exist. So the mutation model and the copy-on-write question are the same decision viewed from
 two sides, and settling one settles the other.
 
-One connection: adopting projection semantics pulls open question Q2 (cartesian vs. zip) toward
+One connection: adopting projection semantics pulls [the binary-operator question](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) (cartesian vs. zip) toward
 broadcast, because multidimensional projection and elementwise broadcast are the same tradition.
-Q2 and this TODO may be one question.
+[That question](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) and this TODO may be one question.
 
 Under the hood these are all the same shape, unpacked a different number of times. Unpacking a
 sequence yields either *nothing* or *one item plus a remainder*, written `1 + T*X`, where `1`
@@ -576,7 +576,7 @@ path expressions, update assignment, `error`, and `input`.
 
 #### This contradicts an earlier claim, and the earlier claim was wrong
 
-Q8 was argued on the grounds that cardinality and vectorizability are *orthogonal*: `select`
+[The vectorizability question](#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization) was argued on the grounds that cardinality and vectorizability are *orthogonal*: `select`
 changes cardinality and vectorizes fine as a mask, while `first` changes cardinality the same way
 and cannot vectorize at all. If cardinality is the admissibility predicate, that counterexample
 has to go somewhere.
@@ -655,7 +655,7 @@ becomes the trait's law, which both implementations have to satisfy in order to 
 implementations of the same thing at all. A trait without a stated law is only overloading, and
 this is the law.
 
-**Q20 then answers itself.** The blocking operators are exactly those with no lawful stream
+**[The blocking-operator question](#q20-how-are-blocking-operators-sort-groupby-joins-classified) then answers itself.** The blocking operators are exactly those with no lawful stream
 implementation. Sorting each batch does not sort the stream, so `sort` cannot satisfy the law
 batch-locally. Its options are to have no stream impl, which is a compile error and honest, or
 to buffer the whole stream, which silently defeats streaming. `group_by` and joins are the same
@@ -743,7 +743,7 @@ back through a single sequential pass.
 mask-filtered view knows its *capacity* but its *count* needs a popcount. Both are launchable,
 but not by the same path: the second needs a reduction before the output buffer can be sized,
 which is precisely the prefix-sum step of stream compaction. So dense and masked probably need
-to be distinguishable in the type, since they have different launch preconditions. This is Q14
+to be distinguishable in the type, since they have different launch preconditions. This is [the select-result question](#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy)
 arriving from the other side.
 
 **What `gpu(...)` means on the other backends.** It cannot be a compile error on Lua and
@@ -998,58 +998,86 @@ JavaScript, and native through LLVM -- and a corpus of 22 programs is checked to
 identical output on all three, with disagreement between backends counted as its own kind of
 failure.
 
-That produced evidence for questions below that were argued rather than tested. Recorded here as
-what happened, not as verdicts; the statuses in the table are still yours to move.
+That produced evidence for questions that had been argued rather than tested. Recorded here as
+what happened, not as verdicts; the statuses in [the open questions table](#open-questions) are
+still yours to move.
 
-**Q5 is not what it says it is.** The table calls it "blocks all backend work" and the detail
-says it "must be decided before any backend is written". Three backends are written and Q5 was
-never touched. The reason is that prototype 1 has no effect layer, so every program has
-statically known extent and lowers to a counted loop on any target -- including one with neither
-coroutines nor generators. Q5 blocks *streaming* backend work, which is a much narrower claim,
-and the window in which backends are cheap is exactly the window before streams exist. The row
-is corrected below on that basis alone.
+### Stream lowering does not block a backend that does not stream
 
-**Q13 held, and it has a price.** Prototype 1 implemented no value-to-effect shifter at all,
-taking the proposal at its word to see what broke. Nothing needed one, and every program still
-typechecked. What it cost is that three of jq's defining operators came out trivial: `.[]` is the
-identity on a `Vec` -- the same program compiles to byte-identical code with and without it,
-which is asserted in the test suite -- `,` has no meaning as an operator, since at the value
-layer it would build a `Vec` and `[...]` already does, and `|` is ordinary composition rather
-than a map. They get meaning back only where extent is genuinely unknown. The question that
-raises is not whether the proposal is coherent, because it is, but whether a language in which
-`.[]` does nothing is still recognisably in the jq family.
+[The stream-lowering question](#q5-stream-lowering-strategy-across-the-three-backends) was recorded as blocking all backend work, and its
+detail said the strategy must be decided before any backend is written. Three backends are
+written and it was never touched.
 
-**Q8 has an argument for "silent".** Under struct-of-arrays, `select` binds `.` to a position
-rather than a value, so `.age >= 18` compiles to `ages[i]` and nothing materialises an element.
-The vectorizable form is what falls out of compiling the obvious thing against that layout; no
-pass recovered it and nothing in the type had to declare it. That is not decisive, but it is a
-data point against paying for a second effect to report something the layout already gives.
+The reason is that prototype 1 has no effect layer, so every program has statically known extent
+and lowers to a counted loop on any target, including one with neither coroutines nor
+generators. It blocks *streaming* backend work, which is a much narrower claim, and it means the
+window in which backends are cheap is exactly the window before streams exist. That row is
+corrected rather than proposed, since it is a fact about what the repository now does.
 
-**Q14 and Q22 have an implementation to argue with.** `select` is a copy today: it builds a mask
-and then compacts every column with the same surviving indices. Under struct-of-arrays a masked
-view is visibly the cheaper option, because compaction is the only part that touches element
-data at all. Still open, but now open against something measurable.
+### The one-way layer shift held, and it has a price
 
-**Q15 is demonstrated.** LLVM through inkwell, against LLVM 22.1. Native output is an object
-file plus a linked C runtime, since LLVM does not link and string concatenation, integer
-formatting and JSON parsing all want C rather than hand-written IR.
+Prototype 1 implemented no value-to-effect shifter at all, taking
+[the one-way shift proposal](#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator) at its word to see what would break. Nothing needed one,
+and every program still typechecked.
 
-**Q16 is concrete now.** Three string representations ship and agree: Lua bytes, JavaScript
-UTF-16, and a pointer-and-length byte string natively. They agree on ASCII and are not
-guaranteed to agree beyond it. `<` on `Str` is where that surfaces first, and it typechecks
-today.
+What it cost is that three of jq's defining operators came out trivial. `.[]` is the identity on
+a `Vec`, so the same program compiles to byte-identical code with and without it, which the test
+suite asserts. `,` has no meaning as an operator, because at the value layer it would build a
+`Vec` and `[...]` already does. And `|` is ordinary composition rather than a map. They get
+meaning back only where extent is genuinely unknown.
 
-Two things above are contradicted by what got built, rather than being open questions.
+The question this raises is not whether the proposal is coherent, because it is. It is whether a
+language in which `.[]` does nothing is still recognisably in the jq family. Written up in
+[a pure value layer dissolves jq's iteration operators](research-log/a-pure-value-layer-dissolves-jqs-iteration-operators.md).
+
+### Vectorizability fell out of the layout without being declared
+
+[Whether vectorizability is visible in the type](#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization) gains an argument for staying silent.
+Under struct-of-arrays, `select` binds `.` to a position rather than a value, so `.age >= 18`
+compiles to `ages[i]` and nothing materialises an element. The vectorizable form is what falls
+out of compiling the obvious thing against that layout: no pass recovered it, and nothing in the
+type had to declare it.
+
+Not decisive, but it is a data point against paying for a second effect to report something the
+layout already provides.
+
+### Masking now has an implementation to argue with
+
+[What select returns](#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy) and
+[whether dense and masked vectors are distinguishable](#q22-are-dense-and-masked-vectors-distinguishable-in-the-type) were open in the abstract.
+`select` is a copy today: it builds a mask and then compacts every column with the same surviving
+indices. Under struct-of-arrays a masked view is visibly the cheaper option, because compaction
+is the only part that touches element data at all. Still open, but open against something
+measurable. See
+[SoA is cheap until something wants a whole element](research-log/soa-is-cheap-until-something-wants-a-whole-element.md).
+
+### The native backend is built
+
+[The backend choice](#q15-backend-llvm-via-inkwell-cranelift-or-both) is demonstrated rather than leaning. LLVM through inkwell,
+against LLVM 22.1. Native output is an object file plus a linked C runtime, since LLVM does not
+link, and string concatenation, integer formatting and JSON parsing all want C rather than
+hand-written IR.
+
+### Three string representations now disagree in a specific place
+
+[The string representation question](#q16-string-representation-given-wtf-16-on-the-js-target) is concrete. Lua holds bytes, JavaScript holds
+UTF-16, and the native backend holds a pointer and a length over bytes. They agree on ASCII and
+are not guaranteed to agree beyond it. `<` on `Str` is where that surfaces first, and it
+typechecks today.
+
+### Two claims above are contradicted by what got built
 
 The annotation rule is stated as a rule about lambdas. It is a rule about a *class* of
 expression: `input` has no type of its own and can only be checked against an expected one, and
 an empty `[]` has the same shape. Three instances, one rule, and every future form of the kind
-gets it for free.
+gets it without a new rule. See
+[checked-only forms are a class, not a lambda rule](research-log/checked-only-forms-are-a-class-not-a-lambda-rule.md).
 
-Record types can be declared and cannot be built. There is no record literal -- object
-construction is excluded -- so `{` occurs in type position only, and the sole record value a
+Record types can be declared and cannot be built. There is no record literal, since object
+construction is excluded, so a brace occurs in type position only and the sole record value a
 program can hold arrives from `input`. That makes records and input one feature rather than two,
-which is worth knowing before either is designed further.
+which is worth knowing before either is designed further. See
+[a type you can declare but cannot build](research-log/a-type-you-can-declare-but-cannot-build.md).
 
 ## Open questions
 
@@ -1063,129 +1091,201 @@ checked for completeness, and the settled entries are what stop a decision being
 
 | # | Question | Status |
 |---|---|---|
-| Q1 | Streams: first-class values, or evaluation-level multiplicity? | LEANING, evaluation-level; four independent arguments now agree |
-| Q2 | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
-| Q3 | What symbol replaces `=` for the product-forming update? | LEANING, blocked on Q2 |
-| Q4 | Can the type express ordering over heterogeneous streams? | OPEN, subsumes cardinality-vs-order |
-| Q5 | Stream-lowering strategy across the three backends | OPEN, blocks streaming backends only; three non-streaming backends exist |
-| Q6 | Does a reconciler belong in the language or a library? | OPEN |
-| Q7 | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
-| Q8 | Is vectorizability visible in the type system, or a silent optimization? | OPEN |
-| Q9 | Are vectors multidimensional, with `[]` as projection? | OPEN, may merge with Q2 |
-| Q10 | Is uniqueness analysis in scope, for deciding when a lens materializes? | OPEN |
-| Q11 | How does the query/transformation split manifest in the type system? | SETTLED |
-| Q12 | On a type mismatch, does field access error, yield null, or something third? | SETTLED |
-| Q13 | Does the layer shift run only one way, with no value-to-effect operator? | LEANING, decides Q1 |
-| Q14 | Does `select` return a masked view, a selection vector, or a copy? | OPEN |
-| Q15 | Backend: LLVM via inkwell, Cranelift, or both? | SETTLED, LLVM via inkwell, built and running |
-| Q16 | String representation, given WTF-16 on the JS target | OPEN, decides the string API permanently |
-| Q17 | Is there a dense tensor type, constructed explicitly? | LEANING yes |
-| Q18 | Does `.[]` on a rank-2 tensor yield rows or scalars? | LEANING rows |
-| Q19 | How are nulls carried in a dense typed buffer? | LEANING, Arrow validity bitmask |
-| Q20 | How are blocking operators (`sort`, `group_by`, joins) classified? | SETTLED, a trait with no lawful stream instance |
-| Q21 | What guarantees batch size is unobservable over a batched stream? | LEANING, the trait law that ops commute with reification |
-| Q22 | Are dense and masked vectors distinguishable in the type? | OPEN, Q14 from the other side |
-| Q23 | What primitive set is the standard library defined over? | LEANING, the parallel basis |
+| [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity) | Streams: first-class values, or evaluation-level multiplicity? | LEANING, evaluation-level; four independent arguments now agree |
+| [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
+| [Q3](#q3-what-symbol-replaces-for-the-product-forming-update) | What symbol replaces `=` for the product-forming update? | LEANING, blocked on Q2 |
+| [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN, subsumes cardinality-vs-order |
+| [Q5](#q5-stream-lowering-strategy-across-the-three-backends) | Stream-lowering strategy across the three backends | OPEN, blocks streaming backends only; three non-streaming backends exist |
+| [Q6](#q6-does-a-reconciler-belong-in-the-language-or-a-library) | Does a reconciler belong in the language or a library? | OPEN |
+| [Q7](#q7-does-promise-depth-first-order-or-only-the-set-of-nodes) | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
+| [Q8](#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization) | Is vectorizability visible in the type system, or a silent optimization? | OPEN |
+| [Q9](#q9-are-vectors-multidimensional-with-as-projection) | Are vectors multidimensional, with `[]` as projection? | OPEN, may merge with Q2 |
+| [Q10](#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes) | Is uniqueness analysis in scope, for deciding when a lens materializes? | OPEN |
+| [Q11](#q11-how-does-the-querytransformation-split-manifest-in-the-type-system) | How does the query/transformation split manifest in the type system? | SETTLED |
+| [Q12](#q12-on-a-type-mismatch-does-field-access-error-yield-null-or-something-third) | On a type mismatch, does field access error, yield null, or something third? | SETTLED |
+| [Q13](#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator) | Does the layer shift run only one way, with no value-to-effect operator? | LEANING, decides Q1 |
+| [Q14](#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy) | Does `select` return a masked view, a selection vector, or a copy? | OPEN |
+| [Q15](#q15-backend-llvm-via-inkwell-cranelift-or-both) | Backend: LLVM via inkwell, Cranelift, or both? | SETTLED, LLVM via inkwell, built and running |
+| [Q16](#q16-string-representation-given-wtf-16-on-the-js-target) | String representation, given WTF-16 on the JS target | OPEN, decides the string API permanently |
+| [Q17](#q17-is-there-a-dense-tensor-type-constructed-explicitly) | Is there a dense tensor type, constructed explicitly? | LEANING yes |
+| [Q18](#q18-does-on-a-rank-2-tensor-yield-rows-or-scalars) | Does `.[]` on a rank-2 tensor yield rows or scalars? | LEANING rows |
+| [Q19](#q19-how-are-nulls-carried-in-a-dense-typed-buffer) | How are nulls carried in a dense typed buffer? | LEANING, Arrow validity bitmask |
+| [Q20](#q20-how-are-blocking-operators-sort-groupby-joins-classified) | How are blocking operators (`sort`, `group_by`, joins) classified? | SETTLED, a trait with no lawful stream instance |
+| [Q21](#q21-what-guarantees-batch-size-is-unobservable-over-a-batched-stream) | What guarantees batch size is unobservable over a batched stream? | LEANING, the trait law that ops commute with reification |
+| [Q22](#q22-are-dense-and-masked-vectors-distinguishable-in-the-type) | Are dense and masked vectors distinguishable in the type? | OPEN, Q14 from the other side |
+| [Q23](#q23-what-primitive-set-is-the-standard-library-defined-over) | What primitive set is the standard library defined over? | LEANING, the parallel basis |
 
-Q5 is the one that blocks building anything. Q1 and Q9 both change the two-layer section, so
+[Stream lowering](#q5-stream-lowering-strategy-across-the-three-backends) is the one that blocks streaming work. [Streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and [multidimensional vectors](#q9-are-vectors-multidimensional-with-as-projection) both change the two-layer section, so
 they should be settled before that section is treated as stable.
 
-### Detail
+## Question detail
 
-1. **Are streams first-class values, or evaluation-level multiplicity?** jq has no stream
-   *value*: `Val` has no stream case, and streams exist only during evaluation. That keeps
-   values finite and acyclic, and lets streams compile to loops rather than heap-allocated
-   iterators. But the base-functor formulation above implies a *remainder*, which is a value.
-   Possible resolution: coinductive in the type system, erased by the compiler when the stream
-   provably does not escape, with an acknowledged cliff when it does.
-2. **Binary operators over two multi-valued expressions.** Cartesian (jq today), zip
-   (vectorized, with broadcast), or neither by default with explicit `cross` and `zip`?
-3. **What symbol replaces `=`** for the product-forming assignment?
-4. **Ordering guarantees over heterogeneous streams.** Subsumes the older cardinality-versus-
-   order thread, which asked whether the type system should track *how many* values an
-   expression produces or *in what order* the kinds arrive. Those turned out to be the same
-   question asked from two sides, so they are tracked here as one. The cardinality half is the
-   cheaper and more decidable option, and it catches the failure that actually bites, which is
-   multiplicity leaking into a position wanting exactly one value. The order half is what the
-   rest of this entry is about.
-   If a stream is "some `A`s, then some `B`s", can the type say so? One approach is *regular
-   expressions over types*, the same
-   algebra as string regexes but with types as the alphabet, so a pattern denotes a set of
-   permitted value-sequences: `Seq<A,B>` = `A* B*`, `Alt<A,B>` = `(A|B)*`, `Star<A>` = `A*`.
-   Three primitives suffice (Kleene's theorem), it is decidable, and unlike full session types
-   it needs no *linear types*, a discipline requiring each value be consumed exactly once,
-   which is powerful but infects the whole system. Unpacking one item is then the **derivative**
-   of the pattern: given that an `A` was just consumed, what remains? Open: how type tagging is
-   represented so the runtime and type-level guarantees stay symmetrical.
-5. **The stream-lowering strategy.** Lua has true coroutines, JavaScript has generators, native
-   has neither for free. Previously recorded as needing to be decided before any backend is
-   written, which turned out to be false: three backends exist without it, because nothing in
-   them streams. It has to be decided before any backend *streams*.
-6. **Does a reconciler belong in the language** as a first-class construct, or in a library?
-7. **Does `..` promise depth-first order, or only the set of nodes?** On a flat columnar layout,
-   "every node at every depth" is "every element of every buffer", which is embarrassingly
-   parallel. The dependent part is not the traversal but the *order*, since the flat layout is
-   not in depth-first order. jq promises the order. If this language only promises the set,
-   recursive descent becomes one of the cheapest operators rather than one of the most
-   expensive. This is not only a performance question: a jq-derived language that is fast
-   everywhere except recursive descent has a positioning problem, because `..` is one of the two
-   things people reach for jq to do.
-8. **Is vectorizability visible in the type system, or a silent optimization?** Reporting it
-   means a second effect alongside cardinality, and a visible fast-path/slow-path distinction in
-   signatures. Hiding it makes performance unpredictable in exactly the way this design is
-   trying to avoid. Note the two effects are orthogonal: `select` changes cardinality and
-   vectorizes fine as a mask, while `first` changes cardinality the same way and cannot
-   vectorize at all.
-9. **Are vectors multidimensional, with `[]` as projection?** See the TODO and response in the
-   cardinality section. Unifies indexing with iteration, but disturbs the claim that there are
-   exactly two layer shifters, and per-dimension cardinality only describes rectangular data
-   while JSON is ragged.
-10. **Is uniqueness analysis in scope?** Deciding when a projection lens can materialize instead
-    of staying a view requires knowing no other reference to the source survives. That is
-    linearity or uniqueness typing, the machinery deliberately avoided in Q4.
-11. **How does the query/transformation split manifest?** SETTLED: it does not need to. The two
-    are the same operation with the multiplicity stored in different places, so `map` and
-    `select` are not different kinds of thing. `map(f)` is `[ .[] | f ]`, meaning reflect,
-    apply, reify, and `[...]` absorbs whatever cardinality the argument had. See the two-layer
-    section. This was the longest-running untracked thread and is recorded here so it is not
-    reopened by accident.
-12. **On a type mismatch, does field access error, yield null, or something third?** SETTLED:
-    something third. jq conflates missing with type error, so `null.a.b.c` yields `null` while
-    `1 | .a` raises. Field access desugars to a lens returning three distinguishable outcomes: a
-    value, a *specific* absence, and a *specific* error. See the field-access section.
-13. **Does the layer shift run only one way?** If effect multiplicity is born only from
-    streaming sources and dies only into values through `[...]`, then no value-to-effect
-    operator is needed, because degrading a `Vec` forgets its extent and buys nothing. LEANING
-    toward yes. This decides Q1 with it, since the only thing that would break it is a value
-    with genuinely unknown extent, which is what a first-class stream value would be.
-14. **Does `select` return a masked view, a selection vector, or a copy?** See the section on
-    whether a value-layer `select` copies. A bitmask breaks `Vec`'s constant-time indexing
-    promise, a selection vector keeps it and pays memory per survivor, and either view pins its
-    whole source buffer alive.
-15. **Backend: LLVM via inkwell, Cranelift, or both?** Cranelift never auto-vectorizes, which
-    matters because the whole vectorization argument here rests on handing a vectorizer loops it
-    likes. It also emits nothing for the web, so a WebAssembly target would need a second
-    unrelated backend. Cranelift wins decisively on build simplicity and compile speed, so using
-    both, as rustc does, is a real option. LEANING toward LLVM for release builds.
-16. **How are strings represented, given that the JavaScript target uses WTF-16?** The three
-    options are WTF-16 everywhere, UTF-8 everywhere with the JavaScript-shaped API emulated, or
-    designing the difference away by never exposing code-unit indexing or length. Only the third
-    is cheap on both sides. It has to be decided early because it constrains the string API
-    permanently.
-17. **Is there a dense tensor type, constructed explicitly?** `@f32` as a narrowing constructor
-    that hard-fails rather than an inference, with `reshape` attaching shape. It is also the
-    second number type, a deliberate lossy exit from the `f64` commitment.
-18. **Does `.[]` on a rank-2 tensor yield rows or scalars?** NumPy and APL both yield rows,
-    which makes `map` rank-polymorphic and gives row sums as `map(fold(add; 0))` with no new
-    syntax. Then rank-1 yields scalars and full linearization needs a separate flattening view.
-19. **How are nulls carried in a dense typed buffer?** JSON has null and an `f32` buffer does
-    not. NaN as a sentinel collides with genuine NaN. Arrow's separate validity bitmask solves
-    it and brings zero-copy interop with Polars, DuckDB and pandas.
-20. **How are blocking operators classified?** `sort`, `group_by` and joins are one value in and
-    one value out, so the per-element cardinality mapping does not describe them. They need the
-    whole input before producing anything and are parallelizable by other means. The
-    kernel-admissibility result covers elementwise filters only, and this is the gap it leaves.
+### Q1. Streams: first-class values, or evaluation-level multiplicity?
 
+That keeps
+values finite and acyclic, and lets streams compile to loops rather than heap-allocated
+iterators. But the base-functor formulation above implies a *remainder*, which is a value.
+Possible resolution: coinductive in the type system, erased by the compiler when the stream
+provably does not escape, with an acknowledged cliff when it does.
+
+### Q2. Binary operators over two multi-valued expressions: cartesian, zip, or explicit?
+
+Cartesian (jq today), zip
+(vectorized, with broadcast), or neither by default with explicit `cross` and `zip`?
+
+### Q3. What symbol replaces `=` for the product-forming update?
+
+### Q4. Can the type express ordering over heterogeneous streams?
+
+Subsumes the older cardinality-versus-
+order thread, which asked whether the type system should track *how many* values an
+expression produces or *in what order* the kinds arrive. Those turned out to be the same
+question asked from two sides, so they are tracked here as one. The cardinality half is the
+cheaper and more decidable option, and it catches the failure that actually bites, which is
+multiplicity leaking into a position wanting exactly one value. The order half is what the
+rest of this entry is about.
+If a stream is "some `A`s, then some `B`s", can the type say so? One approach is *regular
+expressions over types*, the same
+algebra as string regexes but with types as the alphabet, so a pattern denotes a set of
+permitted value-sequences: `Seq<A,B>` = `A* B*`, `Alt<A,B>` = `(A|B)*`, `Star<A>` = `A*`.
+Three primitives suffice (Kleene's theorem), it is decidable, and unlike full session types
+it needs no *linear types*, a discipline requiring each value be consumed exactly once,
+which is powerful but infects the whole system. Unpacking one item is then the **derivative**
+of the pattern: given that an `A` was just consumed, what remains? Open: how type tagging is
+represented so the runtime and type-level guarantees stay symmetrical.
+
+### Q5. Stream-lowering strategy across the three backends
+
+Lua has true coroutines, JavaScript has generators, native
+has neither for free. Previously recorded as needing to be decided before any backend is
+written, which turned out to be false: three backends exist without it, because nothing in
+them streams. It has to be decided before any backend *streams*.
+
+### Q6. Does a reconciler belong in the language or a library?
+
+### Q7. Does `..` promise depth-first order, or only the set of nodes?
+
+On a flat columnar layout,
+"every node at every depth" is "every element of every buffer", which is embarrassingly
+parallel. The dependent part is not the traversal but the *order*, since the flat layout is
+not in depth-first order. jq promises the order. If this language only promises the set,
+recursive descent becomes one of the cheapest operators rather than one of the most
+expensive. This is not only a performance question: a jq-derived language that is fast
+everywhere except recursive descent has a positioning problem, because `..` is one of the two
+things people reach for jq to do.
+
+### Q8. Is vectorizability visible in the type system, or a silent optimization?
+
+Reporting it
+means a second effect alongside cardinality, and a visible fast-path/slow-path distinction in
+signatures. Hiding it makes performance unpredictable in exactly the way this design is
+trying to avoid. Note the two effects are orthogonal: `select` changes cardinality and
+vectorizes fine as a mask, while `first` changes cardinality the same way and cannot
+vectorize at all.
+
+### Q9. Are vectors multidimensional, with `[]` as projection?
+
+See the TODO and response in the
+cardinality section. Unifies indexing with iteration, but disturbs the claim that there are
+exactly two layer shifters, and per-dimension cardinality only describes rectangular data
+while JSON is ragged.
+
+### Q10. Is uniqueness analysis in scope, for deciding when a lens materializes?
+
+Deciding when a projection lens can materialize instead
+ of staying a view requires knowing no other reference to the source survives. That is
+ linearity or uniqueness typing, the machinery deliberately avoided in [the ordering question](#q4-can-the-type-express-ordering-over-heterogeneous-streams).
+
+### Q11. How does the query/transformation split manifest in the type system?
+
+SETTLED: it does not need to. The two
+ are the same operation with the multiplicity stored in different places, so `map` and
+ `select` are not different kinds of thing. `map(f)` is `[ .[] | f ]`, meaning reflect,
+ apply, reify, and `[...]` absorbs whatever cardinality the argument had. See the two-layer
+ section. This was the longest-running untracked thread and is recorded here so it is not
+ reopened by accident.
+
+### Q12. On a type mismatch, does field access error, yield null, or something third?
+
+SETTLED:
+ something third. jq conflates missing with type error, so `null.a.b.c` yields `null` while
+ `1 | .a` raises. Field access desugars to a lens returning three distinguishable outcomes: a
+ value, a *specific* absence, and a *specific* error. See the field-access section.
+
+### Q13. Does the layer shift run only one way, with no value-to-effect operator?
+
+If effect multiplicity is born only from
+ streaming sources and dies only into values through `[...]`, then no value-to-effect
+ operator is needed, because degrading a `Vec` forgets its extent and buys nothing. LEANING
+ toward yes. This decides [the streams question](#q1-streams-first-class-values-or-evaluation-level-multiplicity) with it, since the only thing that would break it is a value
+ with genuinely unknown extent, which is what a first-class stream value would be.
+
+### Q14. Does `select` return a masked view, a selection vector, or a copy?
+
+See the section on
+ whether a value-layer `select` copies. A bitmask breaks `Vec`'s constant-time indexing
+ promise, a selection vector keeps it and pays memory per survivor, and either view pins its
+ whole source buffer alive.
+
+### Q15. Backend: LLVM via inkwell, Cranelift, or both?
+
+Cranelift never auto-vectorizes, which
+ matters because the whole vectorization argument here rests on handing a vectorizer loops it
+ likes. It also emits nothing for the web, so a WebAssembly target would need a second
+ unrelated backend. Cranelift wins decisively on build simplicity and compile speed, so using
+ both, as rustc does, is a real option. LEANING toward LLVM for release builds.
+
+### Q16. String representation, given WTF-16 on the JS target
+
+The three
+ options are WTF-16 everywhere, UTF-8 everywhere with the JavaScript-shaped API emulated, or
+ designing the difference away by never exposing code-unit indexing or length. Only the third
+ is cheap on both sides. It has to be decided early because it constrains the string API
+ permanently.
+
+### Q17. Is there a dense tensor type, constructed explicitly?
+
+`@f32` as a narrowing constructor
+ that hard-fails rather than an inference, with `reshape` attaching shape. It is also the
+ second number type, a deliberate lossy exit from the `f64` commitment.
+
+### Q18. Does `.[]` on a rank-2 tensor yield rows or scalars?
+
+NumPy and APL both yield rows,
+ which makes `map` rank-polymorphic and gives row sums as `map(fold(add; 0))` with no new
+ syntax. Then rank-1 yields scalars and full linearization needs a separate flattening view.
+
+### Q19. How are nulls carried in a dense typed buffer?
+
+JSON has null and an `f32` buffer does
+ not. NaN as a sentinel collides with genuine NaN. Arrow's separate validity bitmask solves
+ it and brings zero-copy interop with Polars, DuckDB and pandas.
+
+### Q20. How are blocking operators (`sort`, `group_by`, joins) classified?
+
+`sort`, `group_by` and joins are one value in and
+ one value out, so the per-element cardinality mapping does not describe them. They need the
+ whole input before producing anything and are parallelizable by other means. The
+ kernel-admissibility result covers elementwise filters only, and this is the gap it leaves.
+
+### Q21. What guarantees batch size is unobservable over a batched stream?
+
+Argued in [the admissible input set, and where batching comes from](#the-admissible-input-set-and-where-batching-comes-from) rather than
+here, since it arrived with that material. The leaning is the trait law that operations commute
+with reification, which is what makes a batch boundary invisible to a program.
+
+### Q22. Are dense and masked vectors distinguishable in the type?
+
+Argued in [the admissible input set, and where batching comes from](#the-admissible-input-set-and-where-batching-comes-from), where it
+appears as the observation that a masked view and a dense buffer have different launch
+preconditions. The same question as [what select returns](#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy), approached from
+the layout side rather than the operator side.
+
+### Q23. What primitive set is the standard library defined over?
+
+Argued in [the primitive set cannot be fold and recursion](#the-primitive-set-cannot-be-fold-and-recursion). The leaning is the
+parallel basis, with `fold` and general recursion available but not the thing everything else
+is defined over.
 ## Non-goals
 
 - JavaScript semantic compatibility. Prototype chains, `this` binding, coercion, and array
