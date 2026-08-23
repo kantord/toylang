@@ -1188,6 +1188,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q21](#q21-what-guarantees-batch-size-is-unobservable-over-a-batched-stream) | What guarantees batch size is unobservable over a batched stream? | LEANING, the trait law that ops commute with reification |
 | [Q22](#q22-are-dense-and-masked-vectors-distinguishable-in-the-type) | Are dense and masked vectors distinguishable in the type? | OPEN, Q14 from the other side |
 | [Q23](#q23-what-primitive-set-is-the-standard-library-defined-over) | What primitive set is the standard library defined over? | LEANING, the parallel basis |
+| [Q24](#q24-are-compile-time-macros-a-first-class-concept) | Are compile-time macros a first-class concept? | OPEN, not yet evaluated |
 
 [Stream lowering](#q5-stream-lowering-strategy-across-the-three-backends) is the one that blocks streaming work. [Streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and [multidimensional vectors](#q9-are-vectors-multidimensional-with-as-projection) both change the two-layer section, so
 they should be settled before that section is treated as stable.
@@ -1360,6 +1361,21 @@ the layout side rather than the operator side.
 Argued in [the primitive set cannot be fold and recursion](#the-primitive-set-cannot-be-fold-and-recursion). The leaning is the
 parallel basis, with `fold` and general recursion available but not the thing everything else
 is defined over.
+### Q24. Are compile-time macros a first-class concept?
+
+A macro would be a function that runs at compile time and transforms the compiler's own
+representation of a program, which means that representation has to be a type the language
+defines rather than an implementation detail the compiler happens to have. Fully compile-time, as
+in Rust, with no runtime component.
+
+The syntax idea is decorator-style, as in Python, where the same notation can attach either an
+ordinary closure or a macro. That the two look alike is the point worth checking: it is either
+the feature's main convenience or its main trap, since one runs when the program runs and the
+other runs while it is being compiled, and the principle about writing crossings down applies to
+that boundary too.
+
+Not evaluated. Recorded so it is not rediscovered.
+
 ## Non-goals
 
 - JavaScript semantic compatibility. Prototype chains, `this` binding, coercion, and array

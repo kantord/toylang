@@ -46,3 +46,6 @@ operators non-trivial behaviour again, or only `|`.
 Finding this required the emitted output to be compared, not just the program's result -- the
 identity claim is invisible in what the program prints. See
 [a test that cannot fail is worse than no test](a-test-that-cannot-fail-is-worse-than-no-test.md).
+
+Why it happens, established later by running the cases through jq itself:
+[jq's item-wise access is the effect layer wearing brackets](jqs-item-wise-access-is-the-effect-layer-wearing-brackets.md).
