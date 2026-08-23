@@ -989,6 +989,68 @@ Making cardinality visible turns each into a type error at the point of the mist
 Multiplicity stays free where it is useful, notably in structural positions, where `0..n`
 naturally means "this many children."
 
+## What the prototype showed
+
+A working compiler exists: `plans/` has the build order, `research-log/` has the findings, and
+the language it accepts is the one described above minus the effect layer, object construction,
+and everything listed under prototype 1's exclusions. It runs on three backends -- Lua,
+JavaScript, and native through LLVM -- and a corpus of 22 programs is checked to produce
+identical output on all three, with disagreement between backends counted as its own kind of
+failure.
+
+That produced evidence for questions below that were argued rather than tested. Recorded here as
+what happened, not as verdicts; the statuses in the table are still yours to move.
+
+**Q5 is not what it says it is.** The table calls it "blocks all backend work" and the detail
+says it "must be decided before any backend is written". Three backends are written and Q5 was
+never touched. The reason is that prototype 1 has no effect layer, so every program has
+statically known extent and lowers to a counted loop on any target -- including one with neither
+coroutines nor generators. Q5 blocks *streaming* backend work, which is a much narrower claim,
+and the window in which backends are cheap is exactly the window before streams exist. The row
+is corrected below on that basis alone.
+
+**Q13 held, and it has a price.** Prototype 1 implemented no value-to-effect shifter at all,
+taking the proposal at its word to see what broke. Nothing needed one, and every program still
+typechecked. What it cost is that three of jq's defining operators came out trivial: `.[]` is the
+identity on a `Vec` -- the same program compiles to byte-identical code with and without it,
+which is asserted in the test suite -- `,` has no meaning as an operator, since at the value
+layer it would build a `Vec` and `[...]` already does, and `|` is ordinary composition rather
+than a map. They get meaning back only where extent is genuinely unknown. The question that
+raises is not whether the proposal is coherent, because it is, but whether a language in which
+`.[]` does nothing is still recognisably in the jq family.
+
+**Q8 has an argument for "silent".** Under struct-of-arrays, `select` binds `.` to a position
+rather than a value, so `.age >= 18` compiles to `ages[i]` and nothing materialises an element.
+The vectorizable form is what falls out of compiling the obvious thing against that layout; no
+pass recovered it and nothing in the type had to declare it. That is not decisive, but it is a
+data point against paying for a second effect to report something the layout already gives.
+
+**Q14 and Q22 have an implementation to argue with.** `select` is a copy today: it builds a mask
+and then compacts every column with the same surviving indices. Under struct-of-arrays a masked
+view is visibly the cheaper option, because compaction is the only part that touches element
+data at all. Still open, but now open against something measurable.
+
+**Q15 is demonstrated.** LLVM through inkwell, against LLVM 22.1. Native output is an object
+file plus a linked C runtime, since LLVM does not link and string concatenation, integer
+formatting and JSON parsing all want C rather than hand-written IR.
+
+**Q16 is concrete now.** Three string representations ship and agree: Lua bytes, JavaScript
+UTF-16, and a pointer-and-length byte string natively. They agree on ASCII and are not
+guaranteed to agree beyond it. `<` on `Str` is where that surfaces first, and it typechecks
+today.
+
+Two things above are contradicted by what got built, rather than being open questions.
+
+The annotation rule is stated as a rule about lambdas. It is a rule about a *class* of
+expression: `input` has no type of its own and can only be checked against an expected one, and
+an empty `[]` has the same shape. Three instances, one rule, and every future form of the kind
+gets it for free.
+
+Record types can be declared and cannot be built. There is no record literal -- object
+construction is excluded -- so `{` occurs in type position only, and the sole record value a
+program can hold arrives from `input`. That makes records and input one feature rather than two,
+which is worth knowing before either is designed further.
+
 ## Open questions
 
 Tracked here rather than scattered through the document. Status is one of OPEN (no preferred
@@ -1005,7 +1067,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | Q2 | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
 | Q3 | What symbol replaces `=` for the product-forming update? | LEANING, blocked on Q2 |
 | Q4 | Can the type express ordering over heterogeneous streams? | OPEN, subsumes cardinality-vs-order |
-| Q5 | Stream-lowering strategy across the three backends | OPEN, blocks all backend work |
+| Q5 | Stream-lowering strategy across the three backends | OPEN, blocks streaming backends only; three non-streaming backends exist |
 | Q6 | Does a reconciler belong in the language or a library? | OPEN |
 | Q7 | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
 | Q8 | Is vectorizability visible in the type system, or a silent optimization? | OPEN |
@@ -1015,7 +1077,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | Q12 | On a type mismatch, does field access error, yield null, or something third? | SETTLED |
 | Q13 | Does the layer shift run only one way, with no value-to-effect operator? | LEANING, decides Q1 |
 | Q14 | Does `select` return a masked view, a selection vector, or a copy? | OPEN |
-| Q15 | Backend: LLVM via inkwell, Cranelift, or both? | LEANING, LLVM for release |
+| Q15 | Backend: LLVM via inkwell, Cranelift, or both? | SETTLED, LLVM via inkwell, built and running |
 | Q16 | String representation, given WTF-16 on the JS target | OPEN, decides the string API permanently |
 | Q17 | Is there a dense tensor type, constructed explicitly? | LEANING yes |
 | Q18 | Does `.[]` on a rank-2 tensor yield rows or scalars? | LEANING rows |
@@ -1055,8 +1117,10 @@ they should be settled before that section is treated as stable.
    which is powerful but infects the whole system. Unpacking one item is then the **derivative**
    of the pattern: given that an `A` was just consumed, what remains? Open: how type tagging is
    represented so the runtime and type-level guarantees stay symmetrical.
-5. **The stream-lowering strategy**, which must be decided before any backend is written. Lua
-   has true coroutines, JavaScript has generators, native has neither for free.
+5. **The stream-lowering strategy.** Lua has true coroutines, JavaScript has generators, native
+   has neither for free. Previously recorded as needing to be decided before any backend is
+   written, which turned out to be false: three backends exist without it, because nothing in
+   them streams. It has to be decided before any backend *streams*.
 6. **Does a reconciler belong in the language** as a first-class construct, or in a library?
 7. **Does `..` promise depth-first order, or only the set of nodes?** On a flat columnar layout,
    "every node at every depth" is "every element of every buffer", which is embarrassingly
