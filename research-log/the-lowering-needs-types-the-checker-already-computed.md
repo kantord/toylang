@@ -77,3 +77,7 @@ This is the same seam as
 [the backend language has rules the checker does not](the-backend-language-has-rules-the-checker-does-not.md):
 there the backend knew something the checker did not, here the checker knows something the
 backend needs. Both say the two ends of this compiler are not yet speaking one language.
+
+Step 6b added a third instance: choosing which column a field lives in is a name-to-index lookup
+only the type can do. See
+[SoA is cheap until something wants a whole element](soa-is-cheap-until-something-wants-a-whole-element.md).

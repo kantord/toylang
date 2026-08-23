@@ -86,22 +86,29 @@ void tl_print(const tl_str *s) {
     (void)!write(1, "\n", 1);
 }
 
-/* A Vec of scalars: a length and one column of elements.
+/* A Vec: a length and `ncols` columns, each holding `len` raw 8-byte slots.
  *
- * The element width is passed in rather than baked in, so one set of functions serves Vec<Int>
- * (8-byte payloads) and Vec<Str> (8-byte pointers) alike. Step 6b generalises this to several
- * columns for a Vec of records; the layout is struct-of-arrays, so adding fields adds columns
- * rather than widening an element.
+ * The layout is struct of arrays. A Vec of scalars has one column; a Vec of records has one
+ * column per field, which is what makes reading a field off a Vec a column rather than a gather.
+ *
+ * Every scalar toylang has fits one slot: an Int is an i64, and a Str, a record or a nested Vec
+ * is a pointer. That is what lets one set of functions serve every element type instead of one
+ * per width.
  */
 typedef struct {
     int64_t len;
-    void *col;
+    int64_t ncols;
+    int64_t **cols;
 } tl_vec;
 
-tl_vec *tl_vec_new(int64_t len, int64_t width) {
+tl_vec *tl_vec_new(int64_t len, int64_t ncols) {
     tl_vec *v = tl_alloc(sizeof(tl_vec));
     v->len = len;
-    v->col = len > 0 ? tl_alloc((size_t)(len * width)) : NULL;
+    v->ncols = ncols;
+    v->cols = tl_alloc((size_t)ncols * sizeof(int64_t *));
+    for (int64_t c = 0; c < ncols; c++) {
+        v->cols[c] = len > 0 ? tl_alloc((size_t)len * sizeof(int64_t)) : NULL;
+    }
     return v;
 }
 
@@ -109,28 +116,43 @@ int64_t tl_vec_len(const tl_vec *v) {
     return v->len;
 }
 
-/* Elements are read and written as raw 8-byte slots. Every scalar toylang has fits one: an Int
- * is an i64 and a Str is a pointer. A narrower type would need a width here too. */
-int64_t tl_vec_get(const tl_vec *v, int64_t i) {
-    return ((const int64_t *)v->col)[i];
+int64_t tl_vec_get(const tl_vec *v, int64_t col, int64_t i) {
+    return v->cols[col][i];
 }
 
-void tl_vec_set(tl_vec *v, int64_t i, int64_t value) {
-    ((int64_t *)v->col)[i]  = value;
+void tl_vec_set(tl_vec *v, int64_t col, int64_t i, int64_t value) {
+    v->cols[col][i] = value;
+}
+
+/* One field of a Vec of records, as a Vec of that field's type.
+ *
+ * The column is shared rather than copied, so `.name` on a Vec<User> costs one small header and
+ * no element work. This is the whole reason the layout is struct of arrays.
+ */
+tl_vec *tl_vec_column(const tl_vec *v, int64_t col) {
+    tl_vec *out = tl_alloc(sizeof(tl_vec));
+    out->len = v->len;
+    out->ncols = 1;
+    out->cols = tl_alloc(sizeof(int64_t *));
+    out->cols[0] = v->cols[col];
+    return out;
 }
 
 /* select in two passes: count survivors, then fill. Two passes over a mask beats growing an
- * array, and it is the shape that stays correct when the columns multiply in step 6b. */
+ * array, and every column is compacted with the same surviving indices. */
 tl_vec *tl_vec_from_mask(const tl_vec *src, const int8_t *keep) {
     int64_t n = 0;
     for (int64_t i = 0; i < src->len; i++) {
         n += keep[i] != 0;
     }
-    tl_vec *out = tl_vec_new(n, (int64_t)sizeof(int64_t));
+    tl_vec *out = tl_vec_new(n, src->ncols);
     int64_t j = 0;
     for (int64_t i = 0; i < src->len; i++) {
         if (keep[i]) {
-            tl_vec_set(out, j++, tl_vec_get(src, i));
+            for (int64_t c = 0; c < src->ncols; c++) {
+                out->cols[c][j] = src->cols[c][i];
+            }
+            j++;
         }
     }
     return out;
@@ -142,6 +164,21 @@ int8_t *tl_mask_new(int64_t len) {
 
 void tl_mask_set(int8_t *mask, int64_t i, int64_t value) {
     mask[i] = value != 0;
+}
+
+/* A record: one slot per field, in the field order the type declares, which the checker keeps
+ * sorted by name. Records only ever arrive from input, since the language has no expression
+ * that builds one. */
+int64_t *tl_rec_new(int64_t nfields) {
+    return tl_alloc((size_t)nfields * sizeof(int64_t));
+}
+
+int64_t tl_rec_get(const int64_t *r, int64_t field) {
+    return r[field];
+}
+
+void tl_rec_set(int64_t *r, int64_t field, int64_t value) {
+    r[field] = value;
 }
 
 /* JSON string escaping, matching what the Lua and JavaScript printers emit. Anything below
@@ -177,7 +214,7 @@ tl_str *tl_str_join(const tl_vec *parts, const tl_str *open, const tl_str *sep,
                     const tl_str *close) {
     int64_t total = open->len + close->len;
     for (int64_t i = 0; i < parts->len; i++) {
-        total += ((const tl_str *)tl_vec_get(parts, i))->len;
+        total += ((const tl_str *)tl_vec_get(parts, 0, i))->len;
         if (i > 0) {
             total += sep->len;
         }
@@ -192,11 +229,418 @@ tl_str *tl_str_join(const tl_vec *parts, const tl_str *open, const tl_str *sep,
             memcpy(out + n, sep->ptr, (size_t)sep->len);
             n += sep->len;
         }
-        const tl_str *p = (const tl_str *)tl_vec_get(parts, i);
+        const tl_str *p = (const tl_str *)tl_vec_get(parts, 0, i);
         memcpy(out + n, p->ptr, (size_t)p->len);
         n += p->len;
     }
     memcpy(out + n, close->ptr, (size_t)close->len);
     n += close->len;
     return tl_str_new(out, n);
+}
+
+/* Reading input.
+ *
+ * The parser is driven by a type descriptor the compiler emits as one string, so it only ever
+ * looks for the shape the program declared. The grammar is:
+ *
+ *   s            Str
+ *   i            Int
+ *   b            Bool
+ *   [T           Vec of T
+ *   {n,name:T,...}   record with n fields, in the type's sorted order
+ *
+ * It re-validates rather than trusting a pre-checked shape, so a built binary works on its own
+ * with `./adults < data.json` and not only under the test harness. A mismatch names the path
+ * that failed and exits non-zero, which is what the Rust-side check does too.
+ */
+
+typedef struct {
+    const char *p;
+    const char *end;
+} tl_json;
+
+static void tl_fail(const char *what, const char *path) {
+    char buf[512];
+    int n = snprintf(buf, sizeof buf, "toylang: input: %s at %s\n", what,
+                     path[0] ? path : "input");
+    (void)!write(2, buf, (size_t)n);
+    exit(1);
+}
+
+static void tl_skip_ws(tl_json *j) {
+    while (j->p < j->end && (*j->p == ' ' || *j->p == '\t' || *j->p == '\n' || *j->p == '\r')) {
+        j->p++;
+    }
+}
+
+static void tl_expect(tl_json *j, char c, const char *path) {
+    tl_skip_ws(j);
+    if (j->p >= j->end || *j->p != c) {
+        char what[32];
+        snprintf(what, sizeof what, "expected `%c`", c);
+        tl_fail(what, path);
+    }
+    j->p++;
+}
+
+/* A growable list of slots, used while an array's length is still unknown. */
+typedef struct {
+    int64_t *data;
+    int64_t len;
+    int64_t cap;
+} tl_list;
+
+static void tl_list_push(tl_list *l, int64_t v) {
+    if (l->len == l->cap) {
+        int64_t cap = l->cap ? l->cap * 2 : 8;
+        int64_t *data = tl_alloc((size_t)cap * sizeof(int64_t));
+        memcpy(data, l->data, (size_t)l->len * sizeof(int64_t));
+        l->data = data;
+        l->cap = cap;
+    }
+    l->data[l->len++] = v;
+}
+
+/* Advance `t` past one complete type in the descriptor. */
+static const char *tl_type_skip(const char *t) {
+    switch (*t) {
+        case 's': case 'i': case 'b':
+            return t + 1;
+        case '[':
+            return tl_type_skip(t + 1);
+        case '{': {
+            t++;
+            int64_t n = 0;
+            while (*t != ',') {
+                n = n * 10 + (*t++ - '0');
+            }
+            t++;
+            for (int64_t f = 0; f < n; f++) {
+                while (*t != ':') {
+                    t++;
+                }
+                t = tl_type_skip(t + 1);
+                if (*t == ',') {
+                    t++;
+                }
+            }
+            return t + 1; /* past '}' */
+        }
+        default:
+            tl_fail("bad type descriptor", "");
+            return t;
+    }
+}
+
+static int64_t tl_parse(tl_json *j, const char *t, const char *path);
+
+static tl_str *tl_parse_string(tl_json *j, const char *path) {
+    tl_expect(j, '"', path);
+    char *out = tl_alloc((size_t)(j->end - j->p));
+    int64_t n = 0;
+    while (j->p < j->end && *j->p != '"') {
+        if (*j->p == '\\') {
+            j->p++;
+            if (j->p >= j->end) {
+                tl_fail("unterminated escape", path);
+            }
+            switch (*j->p) {
+                case '"': out[n++] = '"'; break;
+                case '\\': out[n++] = '\\'; break;
+                case '/': out[n++] = '/'; break;
+                case 'n': out[n++] = '\n'; break;
+                case 't': out[n++] = '\t'; break;
+                case 'r': out[n++] = '\r'; break;
+                case 'b': out[n++] = '\b'; break;
+                case 'f': out[n++] = '\f'; break;
+                default: tl_fail("unsupported escape", path);
+            }
+            j->p++;
+        } else {
+            out[n++] = *j->p++;
+        }
+    }
+    tl_expect(j, '"', path);
+    return tl_str_new(out, n);
+}
+
+/* Skip one JSON value without interpreting it, for fields the type does not declare. */
+static void tl_skip_value(tl_json *j, const char *path) {
+    tl_skip_ws(j);
+    if (j->p >= j->end) {
+        tl_fail("unexpected end of input", path);
+    }
+    if (*j->p == '"') {
+        tl_parse_string(j, path);
+        return;
+    }
+    if (*j->p == '[' || *j->p == '{') {
+        char open = *j->p;
+        char close = open == '[' ? ']' : '}';
+        int depth = 0;
+        while (j->p < j->end) {
+            if (*j->p == '"') {
+                tl_parse_string(j, path);
+                continue;
+            }
+            if (*j->p == open) {
+                depth++;
+            } else if (*j->p == close) {
+                depth--;
+                if (depth == 0) {
+                    j->p++;
+                    return;
+                }
+            }
+            j->p++;
+        }
+        tl_fail("unterminated value", path);
+    }
+    while (j->p < j->end && *j->p != ',' && *j->p != '}' && *j->p != ']') {
+        j->p++;
+    }
+}
+
+static int64_t tl_parse_record(tl_json *j, const char *t, const char *path) {
+    /* Field names and types, read off the descriptor once. */
+    t++;
+    int64_t n = 0;
+    while (*t != ',') {
+        n = n * 10 + (*t++ - '0');
+    }
+    t++;
+
+    const char *names[64];
+    int64_t name_lens[64];
+    const char *types[64];
+    if (n > 64) {
+        tl_fail("too many record fields", path);
+    }
+    for (int64_t f = 0; f < n; f++) {
+        names[f] = t;
+        while (*t != ':') {
+            t++;
+        }
+        name_lens[f] = t - names[f];
+        types[f] = t + 1;
+        t = tl_type_skip(t + 1);
+        if (*t == ',') {
+            t++;
+        }
+    }
+
+    int64_t *rec = tl_rec_new(n);
+    int8_t seen[64];
+    memset(seen, 0, sizeof seen);
+
+    tl_expect(j, '{', path);
+    tl_skip_ws(j);
+    if (j->p < j->end && *j->p == '}') {
+        j->p++;
+    } else {
+        for (;;) {
+            tl_str *key = tl_parse_string(j, path);
+            tl_expect(j, ':', path);
+
+            int64_t match = -1;
+            for (int64_t f = 0; f < n; f++) {
+                if (key->len == name_lens[f] && memcmp(key->ptr, names[f], (size_t)key->len) == 0) {
+                    match = f;
+                    break;
+                }
+            }
+            if (match < 0) {
+                /* Fields the program did not declare are ignored, matching the Rust-side check. */
+                tl_skip_value(j, path);
+            } else {
+                char sub[256];
+                snprintf(sub, sizeof sub, "%s.%.*s", path, (int)key->len, key->ptr);
+                rec[match] = tl_parse(j, types[match], sub);
+                seen[match] = 1;
+            }
+
+            tl_skip_ws(j);
+            if (j->p < j->end && *j->p == ',') {
+                j->p++;
+                continue;
+            }
+            break;
+        }
+        tl_expect(j, '}', path);
+    }
+
+    for (int64_t f = 0; f < n; f++) {
+        if (!seen[f]) {
+            char what[256];
+            snprintf(what, sizeof what, "missing field `%.*s`", (int)name_lens[f], names[f]);
+            tl_fail(what, path);
+        }
+    }
+    return (int64_t)rec;
+}
+
+/* A Vec of records is parsed element by element and then transposed into columns. Filling the
+ * columns directly would avoid materialising each record, and is worth doing when the parser
+ * stops being the cheapest part of reading input. */
+static int64_t tl_parse_vec(tl_json *j, const char *t, const char *path) {
+    const char *elem = t + 1;
+    /* Whether the element is a record is a separate question from how many columns it has: a
+     * record with one field also has one column, so the count cannot stand in for the test. */
+    int is_record = *elem == '{';
+    int64_t ncols = 1;
+    if (is_record) {
+        const char *c = elem + 1;
+        ncols = 0;
+        while (*c != ',') {
+            ncols = ncols * 10 + (*c++ - '0');
+        }
+    }
+
+    tl_list items = {NULL, 0, 0};
+    tl_expect(j, '[', path);
+    tl_skip_ws(j);
+    if (j->p < j->end && *j->p == ']') {
+        j->p++;
+    } else {
+        for (;;) {
+            char sub[256];
+            snprintf(sub, sizeof sub, "%s[%lld]", path, (long long)items.len);
+            tl_list_push(&items, tl_parse(j, elem, sub));
+            tl_skip_ws(j);
+            if (j->p < j->end && *j->p == ',') {
+                j->p++;
+                continue;
+            }
+            break;
+        }
+        tl_expect(j, ']', path);
+    }
+
+    tl_vec *v = tl_vec_new(items.len, ncols);
+    for (int64_t i = 0; i < items.len; i++) {
+        if (!is_record) {
+            v->cols[0][i] = items.data[i];
+        } else {
+            const int64_t *rec = (const int64_t *)items.data[i];
+            for (int64_t c = 0; c < ncols; c++) {
+                v->cols[c][i] = rec[c];
+            }
+        }
+    }
+    return (int64_t)v;
+}
+
+static int64_t tl_parse(tl_json *j, const char *t, const char *path) {
+    tl_skip_ws(j);
+    if (j->p >= j->end) {
+        tl_fail("unexpected end of input", path);
+    }
+    switch (*t) {
+        case 's': {
+            if (*j->p != '"') {
+                tl_fail("expected a string", path);
+            }
+            return (int64_t)tl_parse_string(j, path);
+        }
+        case 'i': {
+            const char *start = j->p;
+            if (j->p < j->end && (*j->p == '-' || *j->p == '+')) {
+                j->p++;
+            }
+            while (j->p < j->end && *j->p >= '0' && *j->p <= '9') {
+                j->p++;
+            }
+            if (j->p == start) {
+                tl_fail("expected an integer", path);
+            }
+            /* A float where Int was declared is an error, not a truncation. */
+            if (j->p < j->end && (*j->p == '.' || *j->p == 'e' || *j->p == 'E')) {
+                tl_fail("expected an integer, found a non-integer number", path);
+            }
+            char buf[32];
+            int64_t n = j->p - start;
+            if (n >= (int64_t)sizeof buf) {
+                tl_fail("integer is out of range", path);
+            }
+            memcpy(buf, start, (size_t)n);
+            buf[n] = 0;
+            return strtoll(buf, NULL, 10);
+        }
+        case 'b': {
+            if (j->end - j->p >= 4 && memcmp(j->p, "true", 4) == 0) {
+                j->p += 4;
+                return 1;
+            }
+            if (j->end - j->p >= 5 && memcmp(j->p, "false", 5) == 0) {
+                j->p += 5;
+                return 0;
+            }
+            tl_fail("expected a boolean", path);
+            return 0;
+        }
+        case '[':
+            if (*j->p != '[') {
+                tl_fail("expected an array", path);
+            }
+            return tl_parse_vec(j, t, path);
+        case '{':
+            if (*j->p != '{') {
+                tl_fail("expected an object", path);
+            }
+            return tl_parse_record(j, t, path);
+        default:
+            tl_fail("bad type descriptor", path);
+            return 0;
+    }
+}
+
+int64_t tl_read_input(const tl_str *descriptor) {
+    size_t cap = 1 << 16;
+    size_t len = 0;
+    char *buf = tl_alloc(cap);
+    for (;;) {
+        if (len == cap) {
+            cap *= 2;
+            char *bigger = tl_alloc(cap);
+            memcpy(bigger, buf, len);
+            buf = bigger;
+        }
+        ssize_t n = read(0, buf + len, cap - len);
+        if (n < 0) {
+            tl_fail("could not read stdin", "");
+        }
+        if (n == 0) {
+            break;
+        }
+        len += (size_t)n;
+    }
+
+    /* The descriptor is a literal the compiler emitted, so it is NUL-terminated in practice;
+     * copy it anyway so the C string functions above have one for certain. */
+    char *t = tl_alloc((size_t)descriptor->len + 1);
+    memcpy(t, descriptor->ptr, (size_t)descriptor->len);
+    t[descriptor->len] = 0;
+
+    tl_json j = {buf, buf + len};
+    int64_t value = tl_parse(&j, t, "input");
+    tl_skip_ws(&j);
+    if (j.p != j.end) {
+        tl_fail("trailing content after the value", "input");
+    }
+    return value;
+}
+
+/* Gather one element of a Vec of records back into a record.
+ *
+ * The struct-of-arrays layout means an element is spread across columns, and almost nothing in
+ * the language needs it whole: select reads single fields out of the columns, and `.field`
+ * returns a column. Printing is the exception, because rendering an element needs every field
+ * at once. This is the only gather, and it exists for output alone.
+ */
+int64_t *tl_rec_from_vec(const tl_vec *v, int64_t i) {
+    int64_t *rec = tl_rec_new(v->ncols);
+    for (int64_t c = 0; c < v->ncols; c++) {
+        rec[c] = v->cols[c][i];
+    }
+    return rec;
 }

@@ -26,15 +26,23 @@ declare ptr @tl_vec_new(i64, i64)
 
 declare i64 @tl_vec_len(ptr)
 
-declare i64 @tl_vec_get(ptr, i64)
+declare i64 @tl_vec_get(ptr, i64, i64)
 
-declare void @tl_vec_set(ptr, i64, i64)
+declare void @tl_vec_set(ptr, i64, i64, i64)
 
 declare ptr @tl_vec_from_mask(ptr, ptr)
 
 declare ptr @tl_mask_new(i64)
 
 declare void @tl_mask_set(ptr, i64, i64)
+
+declare ptr @tl_vec_column(ptr, i64)
+
+declare i64 @tl_rec_get(ptr, i64)
+
+declare i64 @tl_read_input(ptr)
+
+declare ptr @tl_rec_from_vec(ptr, i64)
 
 define i32 @main() {
 entry:

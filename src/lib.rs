@@ -25,12 +25,10 @@ pub enum Backend {
 }
 
 impl Backend {
-    /// The backends that must agree on every corpus program. Native is deliberately absent
-    /// until it can compile the whole language: a backend that can only do part of it would
-    /// turn the harness permanently red, and softening the harness to tolerate that is exactly
-    /// the silent skip it exists to prevent. What native cannot do yet is tracked instead by
-    /// tests/backend_llvm.rs, as a list that has to shrink.
-    pub const ALL: [Backend; 2] = [Backend::Lua, Backend::Js];
+    /// The backends that must agree on every corpus program. Native joined once it could
+    /// compile the whole language; until then it was kept out rather than allowed to turn the
+    /// harness permanently red, and tests/backend_llvm.rs tracked what it was missing.
+    pub const ALL: [Backend; 3] = [Backend::Lua, Backend::Js, Backend::Native];
 
     pub fn name(self) -> &'static str {
         match self {

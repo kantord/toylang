@@ -2,7 +2,8 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (18):
+compiles natively (22):
+adults
 bool_result
 concat
 concat_chain
@@ -14,16 +15,15 @@ forward_reference
 greet
 hello
 int_result
+nested_field_access
 pipe_chain
 projection_identity
+record_result
 shadowing_print
 str_equality
 str_inequality
 str_ordering
+undeclared_input_fields
 vec_through_function
 
-not yet (4):
-adults: the native backend cannot compile input yet
-nested_field_access: the native backend cannot compile input yet
-record_result: the native backend cannot compile input yet
-undeclared_input_fields: the native backend cannot compile input yet
+not yet (0):

@@ -39,6 +39,11 @@ an indexing operator arrives.
 columns, so `.age >= 18` reads `ages[i]` rather than materialising a record. That is the form
 that vectorises, and it arrives by construction rather than as an optimisation.
 
+The one place a whole element is needed turned out to be printing, since rendering an object
+requires every field at once. That is one gather in the whole backend, and it exists for output
+rather than for any language feature. A better outcome than the general case, and a more honest
+claim than "no gather ever".
+
 Ragged nesting is the part SoA does not answer. `Vec<Vec<T>>` is a column of pointers to inner
 `Vec` headers, not Arrow-style offsets. Offsets are the eventual answer and the draft already
 says so; a pointer column is the cheap version that works and is worth naming as a known

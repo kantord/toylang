@@ -49,6 +49,21 @@ struct Runtime<'ctx> {
     vec_from_mask: FunctionValue<'ctx>,
     mask_new: FunctionValue<'ctx>,
     mask_set: FunctionValue<'ctx>,
+    vec_column: FunctionValue<'ctx>,
+    rec_get: FunctionValue<'ctx>,
+    read_input: FunctionValue<'ctx>,
+    rec_from_vec: FunctionValue<'ctx>,
+}
+
+/// What a compiler-introduced binding holds.
+///
+/// `select` over a Vec of records binds `.` to a position rather than to a value, because
+/// struct-of-arrays spreads an element across columns and materialising it would undo the point
+/// of the layout. A cursor is only ever consumed by field access, which reads one column.
+#[derive(Clone, Copy)]
+enum Slot<'ctx> {
+    Value(BasicValueEnum<'ctx>),
+    Cursor { vec: PointerValue<'ctx>, index: IntValue<'ctx> },
 }
 
 struct Emitter<'ctx> {
@@ -57,7 +72,7 @@ struct Emitter<'ctx> {
     builder: Builder<'ctx>,
     rt: Runtime<'ctx>,
     funcs: HashMap<String, FunctionValue<'ctx>>,
-    locals: HashMap<LocalId, BasicValueEnum<'ctx>>,
+    locals: HashMap<LocalId, Slot<'ctx>>,
     params: HashMap<String, BasicValueEnum<'ctx>>,
     next_global: usize,
 }
@@ -108,12 +123,12 @@ impl<'ctx> Emitter<'ctx> {
             vec_len: module.add_function("tl_vec_len", i64t.fn_type(&[ptr.into()], false), None),
             vec_get: module.add_function(
                 "tl_vec_get",
-                i64t.fn_type(&[ptr.into(), i64t.into()], false),
+                i64t.fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
                 None,
             ),
             vec_set: module.add_function(
                 "tl_vec_set",
-                ctx.void_type().fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
+                ctx.void_type().fn_type(&[ptr.into(), i64t.into(), i64t.into(), i64t.into()], false),
                 None,
             ),
             vec_from_mask: module.add_function(
@@ -125,6 +140,26 @@ impl<'ctx> Emitter<'ctx> {
             mask_set: module.add_function(
                 "tl_mask_set",
                 ctx.void_type().fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
+                None,
+            ),
+            vec_column: module.add_function(
+                "tl_vec_column",
+                ptr.fn_type(&[ptr.into(), i64t.into()], false),
+                None,
+            ),
+            rec_get: module.add_function(
+                "tl_rec_get",
+                i64t.fn_type(&[ptr.into(), i64t.into()], false),
+                None,
+            ),
+            read_input: module.add_function(
+                "tl_read_input",
+                i64t.fn_type(&[ptr.into()], false),
+                None,
+            ),
+            rec_from_vec: module.add_function(
+                "tl_rec_from_vec",
+                ptr.fn_type(&[ptr.into(), i64t.into()], false),
                 None,
             ),
         };
@@ -154,8 +189,35 @@ impl<'ctx> Emitter<'ctx> {
             Type::Int => self.ctx.i64_type().into(),
             Type::Bool => self.ctx.bool_type().into(),
             Type::Vec(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
-            Type::Record(_) => return Err(unsupported(&format!("a {ty} value"))),
+            Type::Record(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
         })
+    }
+
+    /// How many columns a Vec of this element type has. Struct of arrays: a record contributes
+    /// one column per field, anything else one column.
+    fn columns(elem: &Type) -> u64 {
+        match elem {
+            Type::Record(fields) => fields.len() as u64,
+            _ => 1,
+        }
+    }
+
+    /// The type descriptor the runtime's JSON parser reads, so it only ever looks for the shape
+    /// the program declared. See the grammar in runtime/toylang.c.
+    fn descriptor(ty: &Type) -> String {
+        match ty {
+            Type::Str => "s".to_string(),
+            Type::Int => "i".to_string(),
+            Type::Bool => "b".to_string(),
+            Type::Vec(elem) => format!("[{}", Self::descriptor(elem)),
+            Type::Record(fields) => {
+                let body: Vec<String> = fields
+                    .iter()
+                    .map(|(name, t)| format!("{name}:{}", Self::descriptor(t)))
+                    .collect();
+                format!("{{{},{}}}", fields.len(), body.join(","))
+            }
+        }
     }
 
     /// A literal becomes a private constant for the bytes plus a private constant `tl_str`
@@ -228,11 +290,10 @@ impl<'ctx> Emitter<'ctx> {
                 .builder
                 .build_int_z_extend(value.into_int_value(), i64t, "slot")
                 .map_err(|e| e.to_string())?,
-            Type::Str | Type::Vec(_) => self
+            Type::Str | Type::Vec(_) | Type::Record(_) => self
                 .builder
                 .build_ptr_to_int(value.into_pointer_value(), i64t, "slot")
                 .map_err(|e| e.to_string())?,
-            Type::Record(_) => return Err(unsupported("a record in a Vec")),
         })
     }
 
@@ -249,12 +310,11 @@ impl<'ctx> Emitter<'ctx> {
                 .build_int_truncate(slot, self.ctx.bool_type(), "elem")
                 .map_err(|e| e.to_string())?
                 .into(),
-            Type::Str | Type::Vec(_) => self
+            Type::Str | Type::Vec(_) | Type::Record(_) => self
                 .builder
                 .build_int_to_ptr(slot, ptr, "elem")
                 .map_err(|e| e.to_string())?
                 .into(),
-            Type::Record(_) => return Err(unsupported("a record in a Vec")),
         })
     }
 
@@ -315,7 +375,7 @@ impl<'ctx> Emitter<'ctx> {
                 self.rt.vec_new,
                 &[
                     i64t.const_int(items.len() as u64, false).into(),
-                    i64t.const_int(8, false).into(),
+                    i64t.const_int(Self::columns(elem), false).into(),
                 ],
                 "vec",
             )?
@@ -327,7 +387,12 @@ impl<'ctx> Emitter<'ctx> {
             self.builder
                 .build_call(
                     self.rt.vec_set,
-                    &[vec.into(), i64t.const_int(index as u64, false).into(), slot.into()],
+                    &[
+                        vec.into(),
+                        i64t.const_zero().into(),
+                        i64t.const_int(index as u64, false).into(),
+                        slot.into(),
+                    ],
                     "",
                 )
                 .map_err(|e| e.to_string())?;
@@ -355,13 +420,18 @@ impl<'ctx> Emitter<'ctx> {
         let src = self.expr(source)?.into_pointer_value();
         let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
         let mask = self.call_rt(self.rt.mask_new, &[len.into()], "mask")?.into_pointer_value();
+        let zero = self.ctx.i64_type().const_zero();
 
         self.emit_loop(len, move |e, i| {
-            let slot = e
-                .call_rt(e.rt.vec_get, &[src.into(), i.into()], "slot")?
-                .into_int_value();
-            let elem = e.read_slot(slot, &elem_ty)?;
-            e.locals.insert(param, elem);
+            if matches!(elem_ty, Type::Record(_)) {
+                e.locals.insert(param, Slot::Cursor { vec: src, index: i });
+            } else {
+                let slot = e
+                    .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                    .into_int_value();
+                let elem = e.read_slot(slot, &elem_ty)?;
+                e.locals.insert(param, Slot::Value(elem));
+            }
 
             let keep = e.expr(pred)?;
             let keep = e.to_slot(keep, &Type::Bool)?;
@@ -376,6 +446,130 @@ impl<'ctx> Emitter<'ctx> {
 
     /// The JSON rendering of a value, built from its type. A native binary has no value to
     /// interrogate at runtime, so this is the only way it could work.
+    /// Read a field, descending through however many Vec layers the base type has.
+    ///
+    /// On a record it is one slot. On a Vec of records it is the column, shared rather than
+    /// copied, which is the payoff of the struct-of-arrays layout: `.name` on a Vec<User> costs
+    /// one header and no element work. Deeper nesting loops over the outer Vec and recurses.
+    fn field(
+        &mut self,
+        base: &Tir,
+        name: &str,
+        result: &Type,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        // A field off a cursor is one column read: `.age` inside select is `ages[i]`, with no
+        // element materialised. This is what the struct-of-arrays layout is for.
+        if let Kind::Local(id) = &base.kind
+            && let Some(Slot::Cursor { vec, index }) = self.locals.get(id).copied()
+        {
+            {
+                let Type::Record(fields) = &base.ty else {
+                    return Err("a cursor whose type is not a record".to_string());
+                };
+                let column = fields
+                    .iter()
+                    .position(|(n, _)| n == name)
+                    .ok_or_else(|| format!("no field `{name}` on {}", base.ty))?;
+                let slot = self
+                    .call_rt(
+                        self.rt.vec_get,
+                        &[
+                            vec.into(),
+                            self.ctx.i64_type().const_int(column as u64, false).into(),
+                            index.into(),
+                        ],
+                        "column_read",
+                    )?
+                    .into_int_value();
+                return self.read_slot(slot, result);
+            }
+        }
+
+        let base_ty = base.ty.clone();
+        let value = self.expr(base)?;
+        self.field_of(value, &base_ty, name, result)
+    }
+
+    fn field_of(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        base_ty: &Type,
+        name: &str,
+        result: &Type,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64t = self.ctx.i64_type();
+        match base_ty {
+            Type::Record(fields) => {
+                let index = fields
+                    .iter()
+                    .position(|(n, _)| n == name)
+                    .ok_or_else(|| format!("no field `{name}` on {base_ty}"))?;
+                let slot = self
+                    .call_rt(
+                        self.rt.rec_get,
+                        &[value, i64t.const_int(index as u64, false).into()],
+                        "field",
+                    )?
+                    .into_int_value();
+                self.read_slot(slot, result)
+            }
+
+            Type::Vec(elem) if matches!(**elem, Type::Record(_)) => {
+                let Type::Record(fields) = &**elem else { unreachable!("guarded") };
+                let index = fields
+                    .iter()
+                    .position(|(n, _)| n == name)
+                    .ok_or_else(|| format!("no field `{name}` on {elem}"))?;
+                self.call_rt(
+                    self.rt.vec_column,
+                    &[value, i64t.const_int(index as u64, false).into()],
+                    "column",
+                )
+            }
+
+            // A Vec of Vecs: one result per element, so the layer has to be walked.
+            Type::Vec(elem) => {
+                let inner_result = result
+                    .elem()
+                    .ok_or_else(|| "field access on a Vec did not yield a Vec".to_string())?
+                    .clone();
+                let elem_ty = (**elem).clone();
+                let src = value.into_pointer_value();
+                let len =
+                    self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+                let out = self
+                    .call_rt(
+                        self.rt.vec_new,
+                        &[len.into(), i64t.const_int(1, false).into()],
+                        "fields",
+                    )?
+                    .into_pointer_value();
+                let zero = i64t.const_zero();
+                let name = name.to_string();
+
+                self.emit_loop(len, move |e, i| {
+                    let slot = e
+                        .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                        .into_int_value();
+                    let item = e.read_slot(slot, &elem_ty)?;
+                    let got = e.field_of(item, &elem_ty, &name, &inner_result)?;
+                    let got = e.to_slot(got, &inner_result)?;
+                    e.builder
+                        .build_call(
+                            e.rt.vec_set,
+                            &[out.into(), zero.into(), i.into(), got.into()],
+                            "",
+                        )
+                        .map_err(|err| err.to_string())?;
+                    Ok(())
+                })?;
+                Ok(out.into())
+            }
+
+            other => Err(format!("no field `{name}` on {other}")),
+        }
+    }
+
     fn show(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match ty {
             Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
@@ -391,24 +585,30 @@ impl<'ctx> Emitter<'ctx> {
                 let i64t = self.ctx.i64_type();
                 let src = value.into_pointer_value();
                 let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+                let zero = i64t.const_zero();
                 let parts = self
                     .call_rt(
                         self.rt.vec_new,
-                        &[len.into(), i64t.const_int(8, false).into()],
+                        &[len.into(), i64t.const_int(1, false).into()],
                         "parts",
                     )?
                     .into_pointer_value();
 
                 let elem_ty = (**elem).clone();
+                let gather = matches!(elem_ty, Type::Record(_));
                 self.emit_loop(len, move |e, i| {
-                    let slot = e
-                        .call_rt(e.rt.vec_get, &[src.into(), i.into()], "slot")?
-                        .into_int_value();
-                    let item = e.read_slot(slot, &elem_ty)?;
+                    let item = if gather {
+                        e.call_rt(e.rt.rec_from_vec, &[src.into(), i.into()], "elem")?
+                    } else {
+                        let slot = e
+                            .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                            .into_int_value();
+                        e.read_slot(slot, &elem_ty)?
+                    };
                     let shown = e.show(item, &elem_ty)?;
                     let shown = e.to_slot(shown, &Type::Str)?;
                     e.builder
-                        .build_call(e.rt.vec_set, &[parts.into(), i.into(), shown.into()], "")
+                        .build_call(e.rt.vec_set, &[parts.into(), zero.into(), i.into(), shown.into()], "")
                         .map_err(|err| err.to_string())?;
                     Ok(())
                 })?;
@@ -422,7 +622,50 @@ impl<'ctx> Emitter<'ctx> {
                     "joined",
                 )?
             }
-            Type::Record(_) => return Err(unsupported(&format!("printing a {ty}"))),
+            // Keys are known and ordered at compile time, exactly as on the other two
+            // backends, so nothing enumerates fields at runtime.
+            Type::Record(fields) => {
+                let i64t = self.ctx.i64_type();
+                let parts = self
+                    .call_rt(
+                        self.rt.vec_new,
+                        &[
+                            i64t.const_int(fields.len() as u64, false).into(),
+                            i64t.const_int(1, false).into(),
+                        ],
+                        "parts",
+                    )?
+                    .into_pointer_value();
+
+                for (index, (name, fty)) in fields.iter().enumerate() {
+                    let got = self.field_of(value, ty, name, fty)?;
+                    let shown = self.show(got, fty)?;
+                    let key = self.string_const(&format!("\"{name}\":"));
+                    let part = self.call_rt(self.rt.concat, &[key.into(), shown], "pair")?;
+                    let part = self.to_slot(part, &Type::Str)?;
+                    self.builder
+                        .build_call(
+                            self.rt.vec_set,
+                            &[
+                                parts.into(),
+                                i64t.const_zero().into(),
+                                i64t.const_int(index as u64, false).into(),
+                                part.into(),
+                            ],
+                            "",
+                        )
+                        .map_err(|e| e.to_string())?;
+                }
+
+                let open = self.string_const("{");
+                let sep = self.string_const(",");
+                let close = self.string_const("}");
+                self.call_rt(
+                    self.rt.join,
+                    &[parts.into(), open.into(), sep.into(), close.into()],
+                    "joined",
+                )?
+            }
         })
     }
 
@@ -436,14 +679,20 @@ impl<'ctx> Emitter<'ctx> {
                 .get(name)
                 .ok_or_else(|| format!("`{name}` is not in scope in the native backend"))?,
 
-            Kind::Local(id) => *self
-                .locals
-                .get(id)
-                .ok_or_else(|| format!("local {id} is not bound in the native backend"))?,
+            Kind::Local(id) => match self.locals.get(id) {
+                Some(Slot::Value(v)) => *v,
+                // The struct-of-arrays boundary. Nothing in the language asks for a whole
+                // element out of a Vec, so this is unreachable until an indexing operator
+                // exists; printing gathers through the runtime instead.
+                Some(Slot::Cursor { .. }) => {
+                    return Err(unsupported("using a Vec element as a whole value"))
+                }
+                None => return Err(format!("local {id} is not bound in the native backend")),
+            },
 
             Kind::Bind { local, value, body } => {
                 let value = self.expr(value)?;
-                self.locals.insert(*local, value);
+                self.locals.insert(*local, Slot::Value(value));
                 self.expr(body)?
             }
 
@@ -480,8 +729,15 @@ impl<'ctx> Emitter<'ctx> {
 
             Kind::Select { source, param, pred } => self.select(source, *param, pred)?,
 
-            Kind::Input => return Err(unsupported("input")),
-            Kind::Field { .. } => return Err(unsupported("field access")),
+            Kind::Input => {
+                let descriptor = self.string_const(&Self::descriptor(&t.ty));
+                let slot = self
+                    .call_rt(self.rt.read_input, &[descriptor.into()], "input")?
+                    .into_int_value();
+                self.read_slot(slot, &t.ty)?
+            }
+
+            Kind::Field { base, name } => self.field(base, name, &t.ty)?,
         })
     }
 
@@ -558,10 +814,6 @@ impl<'ctx> Emitter<'ctx> {
 }
 
 fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'ctx>, String> {
-    if program.input.is_some() {
-        return Err(unsupported("input"));
-    }
-
     let mut e = Emitter::new(ctx);
 
     // Declared before any body, so a call to a function defined further down resolves. The

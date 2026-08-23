@@ -31,6 +31,9 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [Checked-only forms are a class, not a lambda rule](checked-only-forms-are-a-class-not-a-lambda-rule.md)
   -- Two more expressions turned up that can only be checked and never synthesised, so the
   annotation rule is about a class rather than about lambdas.
+- [SoA is cheap until something wants a whole element](soa-is-cheap-until-something-wants-a-whole-element.md)
+  -- Struct of arrays cost almost nothing because no operator extracts one element from a Vec,
+  and the one place that needs a whole element turned out to be printing.
 - [A type you can declare but cannot build](a-type-you-can-declare-but-cannot-build.md)
   -- Record types exist in the annotation grammar with no expression that produces one, so the
   only record a program can hold arrives from input.
