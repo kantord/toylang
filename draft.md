@@ -989,79 +989,82 @@ Making cardinality visible turns each into a type error at the point of the mist
 Multiplicity stays free where it is useful, notably in structural positions, where `0..n`
 naturally means "this many children."
 
-## PROPOSAL: a projection is a type, not a spelling
+## PROPOSAL: every dimension gets a spec
 
-Prototype 1 made `[]` a no-op. Not because of the one-way shift, and not inevitably: the compiler
-lets field access distribute over a `Vec` by itself, so `db.users.name` returns every name with
-no `[]` and no `|` anywhere. Once `.name` maps on its own there is nothing left for `[]` to do.
+This replaces an earlier proposal that a projection is its own type. That one was built on the
+idea that `[]` licenses a lifting, which needed a `Proj<T>` to carry the licence. The lifting
+framing turned out to be wrong, and with it the type.
 
-That was an implementation decision, made in passing to keep `.name` working after `|` turned out
-not to be elementwise, and it is wrong under principle 1. One name lookup becoming n name lookups
-is a boundary crossing, and `db.users.name` does not write it down. It is the implicit coercion
-that `[...]` being an operator exists to prevent.
+### Where it came from
 
-### Requiring `[]` is not enough on its own
+Prototype 1 let field access distribute over a `Vec` by itself, so `db.users.name` returned every
+name with no `[]` anywhere, and `[]` had nothing left to do. Running the same cases through jq
+showed why the operator went inert:
+[jq's item-wise access is the effect layer wearing brackets](research-log/jqs-item-wise-access-is-the-effect-layer-wearing-brackets.md). `[.[][1]]` applies its
+second bracket per element while `.[1][2]` applies the same token to the container, and what
+separates them is that a stream came first. jq's `[]` is not the item-wise operator; it is the
+usual way into the layer where everything already is. Remove the layer and nothing is left.
 
-The cheap repair is to demand `[]` syntactically without changing anything else. That fails
-against principle 2. `db.users` and `db.users[]` would both be `Vec<User>`, yet one accepts
-`.name` and the other does not, so the type says the two are the same thing while the checker
-treats them differently. A distinction that exists only in the checker is precisely what that
-principle rules out.
+### The proposal
 
-So `[]` has to change the type. That is forced, not chosen.
-
-### The gap this exposes in the current text
-
-[The index-versus-iterate section](#relationship-to-index-vs-iterate) already says `.[]` on a `Vec` "yields a `Vec`
-view with known cardinality, which never leaves the value layer", and the trait discussion
-repeats it. The prose has a view. [The cardinality table](#cardinality-is-part-of-the-type) does not: it lists `T`,
-`Opt<T>`, `Vec<T>` and `Stream<T>`, and a view is none of them.
-
-Calling the result "a `Vec` view" and then typing it as `Vec` is what collapses the distinction.
-The concept was recorded and the type was not, and the implementation faithfully reproduced the
-collapse.
-
-### What follows if a projection is its own type
-
-Write it `Proj<T>`: known extent, element type `T`, not a `Vec` and not a `Stream`. Field access
-then needs no distribution rule at all, because it takes a record or a projection of records, and
-`db.users.name` fails on the ordinary grounds that `.name` wants a record and got a `Vec`.
-
-Nesting needs no further rule either. One `[]` opens one layer:
+A type has an ordered list of **dimensions**, fixed by the type. An access says one thing about
+each of them -- a **spec** -- and may then select a **component**:
 
 ```
-db.groups[].members[].name     Proj<Proj<Str>>
-db.groups[].members.name       ERROR: `.name` needs a record, found Vec<Member>
+value[spec][spec]...component
 ```
 
-And `[...]` becomes load-bearing again, since returning a projection where `Vec<Str>` is declared
-would otherwise be an implicit crossing back:
+Three specs. **Keep**, written `[]`, leaves a dimension at full extent. **Narrow**, such as a
+mask, reduces it. **Collapse**, such as an index, removes it.
 
-```
-fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    [ db.users[] | select(.age >= 18) | .name ]
-```
+`db.users.name` is an error because dimension 0 was never given a spec. `db.users[].name` gives
+it one. That is the crossing being written down, and it is required by the grammar rather than by
+a rule about lifting.
 
-That is this document's own worked example, brackets included. The brackets were dropped by the
-implementation, not by the design.
+### What follows without further stipulation
 
-### The cost, which is the part worth arguing with
+**Nesting needs no rule.** One spec per dimension, so `db.groups[].members[].name` opens two and
+`db.groups[].members.name` does not typecheck.
 
-This puts a third multiplicity-bearing thing between `Vec` and `Stream`, against a design that
-has been trying to have as few as possible.
+**The `Vec` and `Stream` promise falls out.** Keep and narrow are streamable, since neither has to
+consume anything to know what it did. Collapse is not: finding entry three means passing the
+first three, so on a stream it destroys what it passed. The difference between the two collection
+types is the difference between the specs they admit.
 
-It also does not sit quietly beside
-[the one-way shift](#proposal-the-layer-shift-only-runs-one-way). That proposal rejected a value-to-effect operator on the grounds
-that converting a `Vec` to effect multiplicity destroys extent and buys nothing. A projection
-preserves extent, so the argument does not reach it. `Proj<T>` is not the effect layer returning,
-because effect multiplicity is for extent that is not yet known, but the two are close enough
-that the boundary needs stating rather than assuming.
+**Rectangularity becomes a refinement rather than a gate.** Collapsing an inner dimension of
+ragged data is perfectly meaningful, and jq does it: `[.[][1]]` on `[[1,2],[3]]` yields
+`[2,null]`. What rectangularity buys is that there is no hole. So it does not decide whether the
+operation exists, only whether the result is `Opt`.
 
-One piece of evidence that the shape is right: the native backend already works this way. `select`
-over a `Vec` of records binds `.` to a cursor into the columns rather than to a materialised
-element, because struct-of-arrays makes materialising one wasteful. A cursor is a projection
-element. The runtime arrived at the thing the principles imply before the type system had a name
-for it.
+**There is one access model, not two.** A tensor is not a second scheme with its own syntax; it is
+the same scheme over a type whose extents happen to be uniform.
+
+**A record is not a dimension.** Its component names are type-level, so iterating it would flatten
+them into positional order and lose them, which is the erasure principle 1 forbids. `to_entries`
+is the written-down version of that crossing, not a workaround for a missing feature. This holds
+whether or not the components share a type, so it is not a question of finding a common cell type.
+
+### Consequences to accept
+
+**`Map<K,V>` becomes a distinct type.** A product's keys are known to the compiler; a map's are
+known only to the program. Collapsing them is what forces jq to treat an object as a struct and a
+dictionary at once, which is where its own `.[]` ambiguity comes from. Accepted.
+
+**Five deliberate divergences from jq**, all measured rather than assumed:
+
+| | jq | here |
+|---|---|---|
+| `.[]` on an object | iterates values | error; use `to_entries` |
+| `.[]` at top level | many outputs | one value; there is no stream |
+| `.[9]` out of range | `null` | `Opt` |
+| `null \| .[0]` | `null` | error |
+| `[.[] + .[]]` | cartesian, `[2,3,3,4]` | not expressible by accident |
+
+### Still open
+
+Whether specs are written one bracket per dimension or comma-separated within one. Whether
+negative indices are a spec. Whether a string has a dimension, given jq allows `"abc"[0:2]` and
+not `"abc"[0]`.
 
 ## What the prototype showed
 
@@ -1189,6 +1192,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q22](#q22-are-dense-and-masked-vectors-distinguishable-in-the-type) | Are dense and masked vectors distinguishable in the type? | OPEN, Q14 from the other side |
 | [Q23](#q23-what-primitive-set-is-the-standard-library-defined-over) | What primitive set is the standard library defined over? | LEANING, the parallel basis |
 | [Q24](#q24-are-compile-time-macros-a-first-class-concept) | Are compile-time macros a first-class concept? | OPEN, not yet evaluated |
+| [Q25](#q25-does-the-language-have-union-types) | Does the language have union types? | OPEN, an absence rather than a decision |
 
 [Stream lowering](#q5-stream-lowering-strategy-across-the-three-backends) is the one that blocks streaming work. [Streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and [multidimensional vectors](#q9-are-vectors-multidimensional-with-as-projection) both change the two-layer section, so
 they should be settled before that section is treated as stable.
@@ -1375,6 +1379,19 @@ other runs while it is being compiled, and the principle about writing crossings
 that boundary too.
 
 Not evaluated. Recorded so it is not rediscovered.
+
+### Q25. Does the language have union types?
+
+There is no sum type. `Alt<A,B>` appears only inside the regular-expressions-over-types sketch for
+stream ordering, and `Json` stands in wherever a value might be several things, which makes it
+the permissive escape hatch principle 1 says it should not be.
+
+The gap surfaced from asking what `.[]` on a heterogeneous record would even produce. With a union
+it is `Str | Int`; without one there is no answer. That question is settled on other grounds, but
+the absence it exposed is not, and heterogeneous data is not a corner of a data language.
+
+Related: an alternation over types is also what the ordering question needs, so these may be one
+piece of machinery rather than two.
 
 ## Non-goals
 
