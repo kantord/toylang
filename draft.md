@@ -469,266 +469,7 @@ json.name           # Json's fields are all optional -> Opt<Json>
 json.name!          # unwrap, or propagate the error
 ```
 
-Three distinguishable outcomes: a value, a *specific* absence, a *specific* error. See
-[Pattern matching is decoding](#pattern-matching-is-decoding) for how these three outcomes extend into a full decode syntax.
-
-## Pattern matching is decoding
-
-TODO (user): Pattern matching in this language might not need dedicated syntax. Instead, an
-"inline mapping" reuses the same shape a zod-style parser already has: a matcher on one side,
-the unpacked value on the other. `int(.x) -> .x * 2` matches only if the subject is an integer,
-and fails otherwise; a list of these, `int(.x) -> .x * 2, any() -> .`, never fails, because
-`any()` matches anything. `.x` (with the dot) reads a field off the matched value; a bare `x`
-would instead be a fresh variable, so the dot has to be mandatory on the matching side to keep
-the two apart. That raises the question of a short, standard way to refer to "the value that was
-matched" rather than repeating its shape on both sides. If matching without transforming --
-`int(.) -> .` -- is just running the decode, this is a codec system in the zod/serde sense, and
-the natural next question is whether there is an inverse operator that encodes as well.
-
-RESPONSE (agent). Four things carry over from further up the document rather than being new.
-
-`.x` on the matching side is the right call, and it is not a new rule. `.` already means "the
-implicit subject" everywhere else -- `map(.name)`, `select(.age >= 18)` -- so requiring `.x` to
-mean "read field x off the subject" and leaving bare `x` to mean "bind a fresh name" is the same
-convention showing up in a new spot, not a special case invented for matching.
-
-`.` as the shorthand for "the matched value" is likewise already spoken for. `json.name!` in
-[the field-access section](#field-access-is-a-lens) is the existing idiom for "give me the value or propagate the failure," and
-`int(.) -> .` is the same shape: run the decode, keep what comes out unchanged. No new symbol is
-needed, since `.` was already "the current subject" before matching existed.
-
-The ordered arm list, `int(x) -> x*2, any() -> .`, should not actually be spelled with `,`. This
-document's `,` already has a meaning, "branch wider, explore every alternative"
-(see [Query is search](#query-is-search)), and an ordered, first-match-wins list is the opposite of that: once `int(x)`
-matches, `any()` is never even considered. That is exactly what `//` already means, "alternatives,
-left to right," so the arm list is a sugared `//` chain, and spelling it with `,` would make `,`
-mean two different things depending on where it appears.
-
-The inverse operator is real but it runs into a gap already on record. Decoding `Json -> T` is
-free: it is the same move as `as_tensor : Vec<Vec<Num>> -> Result<Tensor<Num, [n, m]>, ShapeError>`
-in [the tensor section](#a-dense-tensor-type), generalized to arbitrary shapes. Encoding `T -> Json`
-needs to *build* a `Json` value from a `T`, and object construction does not exist yet -- see
-[a type you can declare but cannot build](research-log/a-type-you-can-declare-but-cannot-build.md). So this design would replace the decode half of
-serde today and the encode half only once that gap closes.
-
-TODO (user): Pattern matching and codecs might both be an extension of boolean algebra, which
-argues for Python-style `and` / `or` / `not` rather than `&&` / `||` / `!`, to keep them visually
-apart from `|` as pipe. That raises a fork: does `Result` itself gain boolean-algebra traits, or
-is there a separate result-shaped type that carries the algebra instead, if for some reason
-`Result` should stay out of it? Convenient unpacking would also need a short way to turn an error
-into a runtime failure so it can feed back into the matching syntax. Codecs might double as type
-constructors -- `type Foo` could have a same-named codec `foo`, possibly enforced by casing at
-compile time. The character standing for "the matched value" might as well be `.`, partly because
-it would shadow the un-matched, wider value at the type level, so a branch body cannot reach past
-what it actually matched. And codecs presumably need to be overloaded: serializing to a string is
-a different operation from unpacking an already-typed enum.
-
-RESPONSE (agent). One of these should be adopted outright, one should be split into a distinct
-type, one connects to an existing open question rather than being new, and one should be deferred
-rather than enforced.
-
-Adopt `and` / `or` / `not`. `|` is already claimed by pipe; `||` sitting next to it is exactly the
-readability collision Python's split avoids, and for the same reason.
-
-Put the algebra on a new `Matcher<T>`, not on `Result<T, E>`. Making `Result` itself
-boolean-truthy would let a value read as "successful" while still carrying an unread error, which
-is the missing/error conflation [Q12](#q12-on-a-type-mismatch-does-field-access-error-yield-null-or-something-third) was written to rule out. A matcher's `and` / `or` combine the yes-or-no
-question of whether something matches; *running* a matcher against a value is the separate step
-that produces the `Result`. REJECTED: giving `Result` the algebra directly.
-
-The algebra is not new, either. [The regular-expressions-over-types idea](#q4-can-the-type-express-ordering-over-heterogeneous-streams) already proposes `Alt<A,B>`, `Seq`,
-and `Star` as the primitives for describing a sequence of types. `int() or str()` is `Alt`, a
-record pattern's fields in sequence is `Seq`, and `any()*`-style repetition over a `Vec` is
-`Star`. This is that algebra's value-level instance rather than a second one.
-
-One distinction the syntax hides and the compiler must not: matching a value whose type is
-already closed -- an enum you already have an instance of -- is total, checkable for
-exhaustiveness at compile time, no `Result` anywhere. Matching untyped `Json` is partial, since a
-shape nobody wrote a case for is a live possibility, so it needs `any()` or a `Result`. The two
-compile to different things behind one shared arm syntax.
-
-`.` shadowing the wider value inside a matched arm is correct, and it is [the same rule the document
-already has](#annotation-rule-named-functions-declare-lambdas-never-do) for block-scoped `.`:
-`map(.name)` rebinds `.` to each element already, so a matched arm rebinding `.` to the narrowed
-type is that rule applying once more, not a new one. Inside `int(.) -> ...`, `.` has type `Int`,
-not `Json`, and the wider `Json` is not reachable by name.
-
-Convenient unwrap-to-error already has its syntax: `.name!`, from [the field-access section](#field-access-is-a-lens),
-already turns absence or error into a propagated failure, and composes directly with a matcher --
-`int(json.name!) -> ...` decodes only after the field access has already committed to failing
-loudly rather than quietly.
-
-Adopt the naming convention, defer the enforcement. A type and its constructor sharing one name,
-resolved by which namespace looks it up, is precedented (Haskell's `data Foo = Foo Int`, Scala's
-companion objects). But *requiring* every `type Foo` to have a working `foo` codec means every
-declared type needs a constructor, which runs straight into the still-open gap that records can
-be declared but not built. Style convention now; compile-time enforcement only after that gap is
-closed.
-
-Overloading is real, and it is the total/partial split again rather than a third axis. `Json -> T`
-decode, `T -> Json` encode, and `Str -> T` parse are three instances of one trait family, picked
-by which types the codec sits between -- the same way [`Field<K>`](#field-access-is-a-lens) already picks an
-implementation by `K`. Encode is still blocked on the same construction gap named above.
-
-TODO (user): Given a large structure, the matcher should be able to name only the parts it cares
-about without spelling out the rest of the shape. Separately, matching something at an unknown
-depth -- where the path to it either is not known ahead of time or is inconvenient to write out --
-seems to call for some kind of aliasing.
-
-RESPONSE (agent). The first is free on one side and needs one borrowed marker on the other; the
-second already exists, and "aliasing" turns out to name two different features of very different
-size, only one of which this idea actually needs.
-
-Naming a subset of fields against `Json` costs nothing extra, because `Json`'s fields were already
-`Opt<Json>` -- structurally open -- before matching existed. `{name: str(.name), age: int(.age)}`
-builds exactly a two-field record and silently ignores every other key in the source object,
-because the pattern never claimed those other keys mattered. No rest-marker is needed on this
-side; openness already said "there may be more."
-
-Naming a subset of fields against a value of an already-closed type is a different claim, and does
-need a marker, borrowed from Rust: `User { name, .. } -> ...`. Without `..`, leaving fields out of
-a match against a closed type should be a compile error by default, the same exhaustiveness
-guarantee an enum match gets. `..` is what turns "I forgot a field" into "I meant to ignore it."
-
-Path-independent matching is already expressible with what the document has. [`..`](#query-is-search) is full
-depth-first traversal today; composing it with a matcher as the predicate is the whole feature:
-
-```
-tree.. | int(.) -> .        # every Int anywhere in the tree, whatever its path
-```
-
-No new operator, because the entire point of `..` was already "I don't want to name the path."
-
-This does raise the stakes on [whether `..` promises order](#q7-does-promise-depth-first-order-or-only-the-set-of-nodes). Before, the order it walks in was
-mostly a performance question. Once `..` is the mechanism for "find this shape somewhere," two
-runs disagreeing on order is a correctness problem for whatever consumes the result, not only a
-speed one. Worth folding into that question's detail rather than opening a new one.
-
-"Aliasing" a submatch so later code can refer to it by name is also already in the document, just
-not yet generalized. `("red","blue") as $c` in [the product-forming-update section](#undecided-what-to-call-the-product-forming-update) already binds a
-whole expression's result to a name; extending `as` to a matched submatch is the same binding,
-applied one level deeper:
-
-```
-{x: int(.x), y: int(.y)} as point -> point.x + point.y
-```
-
-This is an as-pattern (Rust and Haskell both have one), not new machinery.
-
-What "aliasing" does not cover, and should not be assumed to, is unifying two *separate* deep
-matches against each other -- finding a node `A` somewhere and a node `B` elsewhere such that `B`
-refers to `A`. [Query is search](#query-is-search) already grounds this document's nondeterminism in Prolog's
-vocabulary, so the connection is real, but that feature is full logic-variable unification with
-backtracking over bindings, which is a much larger commitment than binding one submatch to one
-name. Tracked below as its own open question rather than folded into this one.
-
-#### The constructor should be free, and that reverses a dependency claimed above
-
-TODO (user): Not every type needs a JSON codec, but every way of declaring a new type -- struct,
-enum -- could auto-generate at minimum the plain constructor that already exists implicitly in
-the declaration: the function from the declared field types to a value of the declared type. If,
-in addition, every built-in scalar and every built-in generic (`Vec<T>`, `Opt<T>`, and so on)
-carries a Json encode/decode pair, then for the common case -- a type built purely out of things
-that already have one -- the Json codec composes for free too, recursively. Possibly even a JSON
-Schema document falls out the same way.
-
-RESPONSE (agent). Correct, and it overturns the "defer enforcement" call two entries up. That
-call conflated two different artifacts under one name.
-
-The bare constructor -- `Foo(name: Str, age: Int) -> Foo` from a declaration of `type Foo =
-{name: Str, age: Int}` -- is not a codec at all. It takes already-typed values and is total: it
-cannot fail, because assembling already-checked fields into a record has no failure mode. This
-is what Rust, Haskell, and every ML-family language already give a `struct`/`data` declaration
-for free, and toylang not having it is a gap in the declaration syntax, not something waiting on
-a design decision elsewhere. There is no reason to defer this one: generate it unconditionally
-for every `struct` and `enum` declaration.
-
-That also reverses the dependency claimed two entries up: the naming convention was said to be
-blocked on object construction existing first. It runs the other way. The free constructor
-generated by the declaration *is* object construction, so there is no separate curly-brace
-literal to design; `Foo(name: "ada", age: 36)` already is one.
-[The type-you-can-declare-but-cannot-build gap](research-log/a-type-you-can-declare-but-cannot-build.md) closes as a side effect of giving declarations a
-constructor, rather than needing to be closed before declarations can have one. It also folds
-under [checked-only forms are a class, not a lambda rule](research-log/checked-only-forms-are-a-class-not-a-lambda-rule.md): a `{...}` literal checked against a
-declared record type is a fourth instance of the same class already identified there (alongside
-`input`, empty `[]`, and lambdas), and the free constructor is what gives that instance a name
-rather than leaving it anonymous.
-
-The `Json -> T` codec is a second, separate artifact, and "free" is conditional rather than
-unconditional the way the constructor is. It is free exactly when every field's own type already
-has a codec -- true by definition for the built-ins, and true recursively for any type built only
-out of things that already have one, the same structural composition [`Field<K>`](#field-access-is-a-lens) already uses
-per field. Most declared types are exactly this case, so deriving the pair mechanically, rather
-than requiring it be hand-written, is the right default. Precedent: Rust's
-`#[derive(Serialize, Deserialize)]`, Haskell's generic `aeson` deriving, Scala's circe
-derivation.
-
-One place this does not fall out for free: an enum needs a **discriminant convention**, some
-agreed way for the `Json` to say which variant it is (`{"kind": "circle", "r": 1}` versus
-`{"circle": {"r": 1}}` versus matching on shape alone). Struct fields compose without asking this
-question; variants cannot avoid it. Tracked as [Q26](#q26-what-is-the-default-discriminant-convention-for-a-derived-enum-codec).
-
-A JSON Schema document is a third projection of the same structural information, and it is
-cheaper than the codec rather than harder: it describes the shape without running any decode
-logic, so it falls out of whatever internal representation the derived matcher already builds --
-the same representation [the regular-expressions-over-types idea](#q4-can-the-type-express-ordering-over-heterogeneous-streams) assigns each type (`Alt` for a
-discriminated union, `Seq` for a record's fields).
-
-## One combinator algebra for trees, strings, and streams
-
-TODO (user): The built-in generic types might inherently double as parser-combinator primitives
--- `Vec<T>` as "many `T`", `Opt<T>` as "optional `T`", a sum type as choice, a product/record as
-sequencing. Separately, and perhaps as an application of the same idea, strings could get a
-pattern language that reads more like a URL route pattern than a regular expression: named,
-typed capture groups, easier than regex for the common case, but able to fall back to full regex
-power. Sketch offered and explicitly flagged as a bad first attempt at syntax: `b:foo{mul("a")}b`
-in place of `ba*b`, and `b:foo:b` in place of `b.*b`.
-
-RESPONSE (agent). The first half already has a name and thirty years of literature: this is
-parser combinators, built on exactly the base functors already in the document. `Seq` is
-`and_then`/product, `Alt` is `choice`/sum, `Star` is `many`, `Opt` is `optional`. Hutton and
-Meijer's original combinator paper and Wadler's "How to Replace Failure by a List of Successes"
-derive a parser library from precisely this shape; parsing with derivatives (Might, Darais, and
-Spiewak) is the same idea again, and it is also what [the regex-over-types entry](#q4-can-the-type-express-ordering-over-heterogeneous-streams) is already
-reaching for with "unpacking one item is the derivative of the pattern." Naming it does real
-work: this design does not have to invent parsing theory, only decide which known combinator set
-to adopt.
-
-One thing the name does not give away for free: a `Json` tree is already fully parsed, so
-recursing through it needs no backtracking and no notion of position, while a string or byte
-stream needs an actual parsing engine underneath, because "does `a*` match here" can require
-trying more than one length before the surrounding pattern succeeds. So this is one algebra with
-at least two implementations, the same shape [`Field<K>`](#field-access-is-a-lens) already has for indexable versus
-iterable receivers. What would need stating, and is not yet, is the law the two implementations
-have to share to count as the same trait -- in the spirit of
-[the batch-invariance law](#the-admissible-input-set-and-where-batching-comes-from), but for "matches the same shape" rather than "commutes with
-reification."
-
-The string pattern language is a specialization of exactly this algebra, not a separate feature.
-Spelling repetition as a named combinator call rather than a metacharacter (`mul("a")` instead of
-`a*`) trades density for not needing a second syntax to learn, the same trade this document
-already made for `and`/`or`/`not` over `&&`/`||`. Named, typed captures need no new mechanism
-either: a capture group decoding to an `Int` is `int(.)` from [Pattern matching is decoding](#pattern-matching-is-decoding) applied to a
-captured substring instead of a `Json` field, so "more specific than string" is the existing
-codec syntax, not a new one.
-
-One consequence is already decided without having been meant to be. [The arm-list section](#pattern-matching-is-decoding) settled
-on `//`'s left-to-right, first-match-wins semantics for alternation rather than `,`'s
-explore-all semantics. That is exactly PEG's defining feature over classical regex/CFG
-alternation: ordered choice, no ambiguity, no need to explore every branch. It is compatible with
-PCRE/Perl-style backtracking regex, which is also priority-ordered, but not with POSIX
-leftmost-longest regex (`grep -E`, `awk`), which is a genuinely different alternation semantics.
-So "extends to regular expressions" should be read as "extends to PCRE-flavored regex"
-specifically -- a real, load-bearing consequence of a decision already made, not a detail to
-leave implicit.
-
-Closest existing prior art for the surface syntax, worth reading before inventing one from
-scratch: Swift's `Regex` builder (named, typed captures composed via a result-builder DSL, fully
-interoperable with a real regex engine) is close to what the TODO describes, and path templating
-in Express's `path-to-regexp` and Rails routes is close to the "URL pattern" framing, including
-their convention of embedding a raw regex inside a named segment for cases the friendly syntax
-cannot express (`:id(\d+)`) -- the same "friendly by default, escape hatch to full power" shape
-being asked for here.
+Three distinguishable outcomes: a value, a *specific* absence, a *specific* error.
 
 ## Query is search
 
@@ -1248,6 +989,80 @@ Making cardinality visible turns each into a type error at the point of the mist
 Multiplicity stays free where it is useful, notably in structural positions, where `0..n`
 naturally means "this many children."
 
+## PROPOSAL: a projection is a type, not a spelling
+
+Prototype 1 made `[]` a no-op. Not because of the one-way shift, and not inevitably: the compiler
+lets field access distribute over a `Vec` by itself, so `db.users.name` returns every name with
+no `[]` and no `|` anywhere. Once `.name` maps on its own there is nothing left for `[]` to do.
+
+That was an implementation decision, made in passing to keep `.name` working after `|` turned out
+not to be elementwise, and it is wrong under principle 1. One name lookup becoming n name lookups
+is a boundary crossing, and `db.users.name` does not write it down. It is the implicit coercion
+that `[...]` being an operator exists to prevent.
+
+### Requiring `[]` is not enough on its own
+
+The cheap repair is to demand `[]` syntactically without changing anything else. That fails
+against principle 2. `db.users` and `db.users[]` would both be `Vec<User>`, yet one accepts
+`.name` and the other does not, so the type says the two are the same thing while the checker
+treats them differently. A distinction that exists only in the checker is precisely what that
+principle rules out.
+
+So `[]` has to change the type. That is forced, not chosen.
+
+### The gap this exposes in the current text
+
+[The index-versus-iterate section](#relationship-to-index-vs-iterate) already says `.[]` on a `Vec` "yields a `Vec`
+view with known cardinality, which never leaves the value layer", and the trait discussion
+repeats it. The prose has a view. [The cardinality table](#cardinality-is-part-of-the-type) does not: it lists `T`,
+`Opt<T>`, `Vec<T>` and `Stream<T>`, and a view is none of them.
+
+Calling the result "a `Vec` view" and then typing it as `Vec` is what collapses the distinction.
+The concept was recorded and the type was not, and the implementation faithfully reproduced the
+collapse.
+
+### What follows if a projection is its own type
+
+Write it `Proj<T>`: known extent, element type `T`, not a `Vec` and not a `Stream`. Field access
+then needs no distribution rule at all, because it takes a record or a projection of records, and
+`db.users.name` fails on the ordinary grounds that `.name` wants a record and got a `Vec`.
+
+Nesting needs no further rule either. One `[]` opens one layer:
+
+```
+db.groups[].members[].name     Proj<Proj<Str>>
+db.groups[].members.name       ERROR: `.name` needs a record, found Vec<Member>
+```
+
+And `[...]` becomes load-bearing again, since returning a projection where `Vec<Str>` is declared
+would otherwise be an implicit crossing back:
+
+```
+fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
+    [ db.users[] | select(.age >= 18) | .name ]
+```
+
+That is this document's own worked example, brackets included. The brackets were dropped by the
+implementation, not by the design.
+
+### The cost, which is the part worth arguing with
+
+This puts a third multiplicity-bearing thing between `Vec` and `Stream`, against a design that
+has been trying to have as few as possible.
+
+It also does not sit quietly beside
+[the one-way shift](#proposal-the-layer-shift-only-runs-one-way). That proposal rejected a value-to-effect operator on the grounds
+that converting a `Vec` to effect multiplicity destroys extent and buys nothing. A projection
+preserves extent, so the argument does not reach it. `Proj<T>` is not the effect layer returning,
+because effect multiplicity is for extent that is not yet known, but the two are close enough
+that the boundary needs stating rather than assuming.
+
+One piece of evidence that the shape is right: the native backend already works this way. `select`
+over a `Vec` of records binds `.` to a cursor into the columns rather than to a materialised
+element, because struct-of-arrays makes materialising one wasteful. A cursor is a projection
+element. The runtime arrived at the thing the principles imply before the type system had a name
+for it.
+
 ## What the prototype showed
 
 A working compiler exists: `plans/` has the build order, `research-log/` has the findings, and
@@ -1373,11 +1188,6 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q21](#q21-what-guarantees-batch-size-is-unobservable-over-a-batched-stream) | What guarantees batch size is unobservable over a batched stream? | LEANING, the trait law that ops commute with reification |
 | [Q22](#q22-are-dense-and-masked-vectors-distinguishable-in-the-type) | Are dense and masked vectors distinguishable in the type? | OPEN, Q14 from the other side |
 | [Q23](#q23-what-primitive-set-is-the-standard-library-defined-over) | What primitive set is the standard library defined over? | LEANING, the parallel basis |
-| [Q24](#q24-does-pattern-matching-need-a-separate-matcher-type-distinct-from-result) | Does pattern matching need a separate `Matcher` type, distinct from `Result`? | LEANING yes |
-| [Q25](#q25-does-deep-matching-need-cross-match-unification-of-logic-variables) | Does deep matching need cross-match unification of logic variables? | OPEN |
-| [Q26](#q26-what-is-the-default-discriminant-convention-for-a-derived-enum-codec) | What is the default discriminant convention for a derived enum codec? | OPEN |
-| [Q27](#q27-do-the-base-functor-generics-double-as-parser-combinators-across-trees-strings-and-streams) | Do the base-functor generics double as parser combinators, across trees, strings, and streams? | LEANING yes, implementation split still open |
-| [Q28](#q28-does-a-friendlier-string-pattern-language-belong-in-the-language-and-what-regex-flavor-does-it-extend-to) | Does a friendlier string-pattern language belong in the language, and what regex flavor does it extend to? | OPEN |
 
 [Stream lowering](#q5-stream-lowering-strategy-across-the-three-backends) is the one that blocks streaming work. [Streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and [multidimensional vectors](#q9-are-vectors-multidimensional-with-as-projection) both change the two-layer section, so
 they should be settled before that section is treated as stable.
@@ -1550,54 +1360,6 @@ the layout side rather than the operator side.
 Argued in [the primitive set cannot be fold and recursion](#the-primitive-set-cannot-be-fold-and-recursion). The leaning is the
 parallel basis, with `fold` and general recursion available but not the thing everything else
 is defined over.
-
-### Q24. Does pattern matching need a separate `Matcher` type, distinct from `Result`?
-
-LEANING yes. Giving `Result` itself boolean-algebra traits (`and`/`or`) would let a value read as
-"successful" while still carrying an unread error, the same missing/error conflation [Q12](#q12-on-a-type-mismatch-does-field-access-error-yield-null-or-something-third) was
-written to rule out. A `Matcher<T>` carries the yes-or-no algebra (`int() and even()`,
-`int() or str()`, spelled with keywords rather than `&&`/`||` to stay clear of `|` as pipe);
-running a matcher against a value is the separate step that produces a `Result`. The algebra
-itself is not new -- it is [the regular-expressions-over-types idea](#q4-can-the-type-express-ordering-over-heterogeneous-streams)'s `Alt`/`Seq`/`Star`, applied at the
-value level. See [Pattern matching is decoding](#pattern-matching-is-decoding).
-
-### Q25. Does deep matching need cross-match unification of logic variables?
-
-OPEN. `..` composed with a matcher already finds a shape anywhere in a tree without naming its
-path, and `as` already binds one submatch to a name for reuse within the same arm. Neither needs
-unification. What would: finding a node `A` and a separate node `B` elsewhere such that `B`
-refers to `A`, which is full Prolog-style unification with backtracking over bindings, not a
-bigger version of `as`. See [Pattern matching is decoding](#pattern-matching-is-decoding).
-
-### Q26. What is the default discriminant convention for a derived enum codec?
-
-OPEN. A struct's derived codec composes from its fields alone; an enum's cannot, because the
-`Json` also has to say which variant it is. Candidates: an explicit tag field (`{"kind":
-"circle", "r": 1}`), a single-key wrapper (`{"circle": {"r": 1}}`), or matching purely on shape
-when the variants are structurally distinct enough to allow it. Unlike the struct constructor and
-the field-composed codec, this is a real choice with no single derivable answer. See
-[the constructor-should-be-free correction](#the-constructor-should-be-free-and-that-reverses-a-dependency-claimed-above).
-
-### Q27. Do the base-functor generics double as parser combinators, across trees, strings, and streams?
-
-LEANING yes. `Seq`, `Alt`, `Star`, and `Opt` are already in the document as [the regex-over-types algebra](#q4-can-the-type-express-ordering-over-heterogeneous-streams)
-and as the shape [Pattern matching is decoding](#pattern-matching-is-decoding) builds `Matcher<T>` from; naming them as parser
-combinators only makes the precedent explicit (Hutton and Meijer; Wadler; parsing with
-derivatives). OPEN: whether this is one trait with implementations that differ by receiver (a
-parsed tree needs no backtracking, a string needs an actual parsing engine), the same shape as
-[`Field<K>`](#field-access-is-a-lens), and if so what law the implementations have to share. See
-[One combinator algebra for trees, strings, and streams](#one-combinator-algebra-for-trees-strings-and-streams).
-
-### Q28. Does a friendlier string-pattern language belong in the language, and what regex flavor does it extend to?
-
-OPEN. A URL-route-style syntax with named, typed captures composing through the existing
-`int(.)`-style codec syntax is one candidate, with Swift's `Regex` builder and route-pattern DSLs
-such as Express's `path-to-regexp` as the closest prior art. [The arm-list's `//` semantics](#pattern-matching-is-decoding) already
-commit any such language to ordered, PEG-style choice, which is compatible with PCRE/Perl-style
-regex and not with POSIX leftmost-longest regex, so "extends to regular expressions" needs to
-name which flavor. See
-[One combinator algebra for trees, strings, and streams](#one-combinator-algebra-for-trees-strings-and-streams).
-
 ## Non-goals
 
 - JavaScript semantic compatibility. Prototype chains, `this` binding, coercion, and array
