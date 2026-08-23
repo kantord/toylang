@@ -15,10 +15,14 @@ Prototype 1 implements no effect layer, taking the one-way-shift proposal at its
 out what breaks. Step 4 was the first step where that could bite, and it did, three times.
 
 **`[]` is the identity.** If projection by every index returns a view of the same extent, then
-`[1,2,3][]` is `[1,2,3]`. The compiler agrees literally: `[1,2,3][] | select(. >= 2)` and
-`[1,2,3] | select(. >= 2)` emit byte-identical Lua, which is asserted in
-`tests/step_4.rs::projection_is_the_identity` so that it goes red if this ever stops being true.
-`[]` does real work only on nested access, where it distributes.
+`[1,2,3][]` is `[1,2,3]`. The compiler agreed literally: the two spellings emitted byte-identical
+Lua, and a test asserted it.
+
+*Superseded.* This was true of the implementation, not of the design. `[]` is now a spec saying
+what happens to a dimension, and a spec with no access after it is an error rather than a no-op,
+so the identity claim no longer typechecks. The test that pinned it was replaced by one pinning
+the error. What follows below still holds: it was the auto-distribution that emptied `[]`, and
+that is what changed.
 
 **`|` cannot be elementwise.** The step 4 plan said the load-bearing assumption was that `|`
 applied to a `Vec` is elementwise. That assumption does not survive: if `|` hands `select` one

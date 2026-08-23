@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (22):
+compiles natively (21):
 adults
 bool_result
 concat
@@ -17,7 +17,6 @@ hello
 int_result
 nested_field_access
 pipe_chain
-projection_identity
 record_result
 shadowing_print
 str_equality

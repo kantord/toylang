@@ -144,16 +144,6 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Ok(Tir::new(Type::Vec(Box::new(elem)), Kind::VecLit(out)))
         }
 
-        // Projection by every index. On a Vec that is the same extent, so this is the identity;
-        // see research-log/a-pure-value-layer-dissolves-jqs-iteration-operators.md.
-        Expr::Project { base, span } => {
-            let base = synth(ctx, base)?;
-            if base.ty.elem().is_none() {
-                return Err(Error::new(*span, format!("`[]` needs a Vec, found {}", base.ty)));
-            }
-            Ok(base)
-        }
-
         // `|` binds `.` in the right side to the value of the left. It is composition, not a
         // map: the operators that distribute over a Vec do so themselves.
         Expr::Pipe { lhs, rhs, .. } => {
@@ -184,23 +174,12 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             ))
         }
 
-        // Field access distributes over a Vec rather than needing a map, which is how `.name`
-        // reads an element field straight off a filtered collection.
-        Expr::Field { base, name, span } => {
-            let base = synth(ctx, base)?;
-            let depth = tir::vec_depth(&base.ty);
-            let mut inner = &base.ty;
-            for _ in 0..depth {
-                inner = inner.elem().expect("depth counted these");
-            }
-            let Some(field) = inner.field(name) else {
-                return Err(Error::new(*span, format!("no field `{name}` on {inner}")));
-            };
-            let mut ty = field.clone();
-            for _ in 0..depth {
-                ty = Type::Vec(Box::new(ty));
-            }
-            Ok(Tir::new(ty, Kind::Field { base: Box::new(base), name: name.clone() }))
+        Expr::Field { .. } => access(ctx, expr).map(|(tir, _, _)| tir),
+
+        // A spec that specs nothing. `[]` says what happens to a dimension, so with no access
+        // after it there is no dimension being reached into and nothing for it to say.
+        Expr::Project { span, .. } => {
+            Err(Error::new(*span, "`[]` must be followed by a field access"))
         }
 
         // `input` is only ever checked, never synthesised, for the same reason a lambda is:
@@ -217,6 +196,55 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         }
 
         Expr::Binary { op, lhs, rhs, .. } => binary(ctx, *op, lhs, rhs),
+    }
+}
+
+/// Walk an access chain left to right, carrying what we are currently looking at and how many
+/// dimensions we are inside.
+///
+/// Every dimension needs a spec. `[]` enters one, so it strips a layer off what we are looking at
+/// and adds one to the depth; a field access reads a component of it and leaves the depth alone.
+/// The expression's type is what we are looking at, wrapped back up that many times.
+///
+/// This is why `db.users.name` is an error and `db.users[].name` is not: the first never said
+/// what happens to the dimension it reached through.
+fn access(ctx: &Ctx, expr: &Expr) -> Result<(Tir, Type, usize), Error> {
+    match expr {
+        Expr::Project { base, span } => {
+            let (tir, elem, depth) = access(ctx, base)?;
+            let Some(inner) = elem.elem().cloned() else {
+                return Err(Error::new(*span, format!("`[]` needs a dimension, found {elem}")));
+            };
+            Ok((tir, inner, depth + 1))
+        }
+
+        Expr::Field { base, name, span } => {
+            let (base_tir, elem, depth) = access(ctx, base)?;
+            if elem.elem().is_some() {
+                return Err(Error::new(
+                    *span,
+                    format!(
+                        "`.{name}` needs a record, found {elem}: give the dimension a spec with `[]`"
+                    ),
+                ));
+            }
+            let Some(field) = elem.field(name) else {
+                return Err(Error::new(*span, format!("no field `{name}` on {elem}")));
+            };
+            let field = field.clone();
+            let mut ty = field.clone();
+            for _ in 0..depth {
+                ty = Type::Vec(Box::new(ty));
+            }
+            let tir = Tir::new(ty, Kind::Field { base: Box::new(base_tir), name: name.clone() });
+            Ok((tir, field, depth))
+        }
+
+        other => {
+            let tir = synth(ctx, other)?;
+            let ty = tir.ty.clone();
+            Ok((tir, ty, 0))
+        }
     }
 }
 

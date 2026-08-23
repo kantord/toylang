@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(r#\"\nfn f(db: {users: Vec<{name: Str}>}) -> Vec<Str> = db.users.name\nf(input)\n\"#)"
+---
+`.name` needs a record, found Vec<{name: Str}>: give the dimension a spec with `[]` (at byte 51)

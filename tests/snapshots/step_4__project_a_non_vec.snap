@@ -1,5 +1,0 @@
----
-source: tests/step_4.rs
-expression: "err(\"1[]\")"
----
-`[]` needs a Vec, found Int (at byte 0)

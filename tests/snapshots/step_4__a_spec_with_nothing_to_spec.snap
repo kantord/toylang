@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(\"[1, 2, 3][] | select(. >= 2)\")"
+---
+`[]` must be followed by a field access (at byte 0)

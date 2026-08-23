@@ -6,7 +6,7 @@ use toylang::Backend;
 
 const ADULTS: &str = r#"
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users[] | select(.age >= 18) | .name
+    db.users | select(.age >= 18) | .[].name
 
 adults(input)
 "#;

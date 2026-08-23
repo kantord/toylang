@@ -1,2 +1,2 @@
 # Keep the elements that are at least 2.
-[1, 2, 3][] | select(. >= 2)
+[1, 2, 3] | select(. >= 2)

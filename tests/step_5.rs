@@ -2,7 +2,7 @@ const DB: &str = r#"{"users": [{"name": "ada", "age": 36}, {"name": "bo", "age":
 
 const ADULTS: &str = r#"
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users[] | select(.age >= 18) | .name
+    db.users | select(.age >= 18) | .[].name
 
 adults(input)
 "#;
@@ -61,7 +61,7 @@ first(input)
 fn misspelled_field() {
     insta::assert_snapshot!(err(r#"
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users[] | select(.age >= 18) | .nmae
+    db.users | select(.age >= 18) | .[].nmae
 
 adults(input)
 "#));

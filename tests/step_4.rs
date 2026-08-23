@@ -4,18 +4,24 @@ fn err(src: &str) -> String {
 
 #[test]
 fn filter_a_vec() {
-    insta::assert_snapshot!(toylang::run("[1, 2, 3][] | select(. >= 2)").unwrap());
+    insta::assert_snapshot!(toylang::run("[1, 2, 3] | select(. >= 2)").unwrap());
 }
 
-/// Under C1 a projection by every index keeps the same extent, so `[]` is the identity on a Vec
-/// and these two programs are the same program. Asserting it here so that if `[]` ever stops
-/// being a no-op, something goes red.
+/// `[]` says what happens to a dimension, so with no access after it there is nothing for it to
+/// say. This replaces a test that asserted `[]` was the identity, which is the behaviour the
+/// spec rule removed.
 #[test]
-fn projection_is_the_identity() {
-    let with = toylang::emit_lua::emit(&toylang::compile("[1, 2, 3][] | select(. >= 2)").unwrap());
-    let without = toylang::emit_lua::emit(&toylang::compile("[1, 2, 3] | select(. >= 2)").unwrap());
-    assert_eq!(with, without);
-    insta::assert_snapshot!(with);
+fn a_spec_with_nothing_to_spec() {
+    insta::assert_snapshot!(err("[1, 2, 3][] | select(. >= 2)"));
+}
+
+/// Every dimension needs a spec, so reaching a component through one without saying so fails.
+#[test]
+fn field_access_through_an_unspecced_dimension() {
+    insta::assert_snapshot!(err(r#"
+fn f(db: {users: Vec<{name: Str}>}) -> Vec<Str> = db.users.name
+f(input)
+"#));
 }
 
 #[test]
@@ -40,7 +46,7 @@ big([1, 2, 3])
 
 #[test]
 fn emitted_lua() {
-    let p = toylang::compile("[1, 2, 3][] | select(. >= 2)").unwrap();
+    let p = toylang::compile("[1, 2, 3] | select(. >= 2)").unwrap();
     let (lua, ty) = (toylang::emit_lua::emit(&p), p.body.ty.clone());
     insta::assert_snapshot!(format!("-- : {ty}\n{lua}"));
 }
@@ -67,9 +73,11 @@ fn select_without_a_subject() {
     insta::assert_snapshot!(err("select(. >= 2)"));
 }
 
+/// A spec needs a dimension to spec. Written with an access after it, so that it reaches the
+/// dimension check rather than stopping at the rule that a spec must be followed by one.
 #[test]
-fn project_a_non_vec() {
-    insta::assert_snapshot!(err("1[]"));
+fn spec_on_something_with_no_dimension() {
+    insta::assert_snapshot!(err("1[].foo"));
 }
 
 #[test]
