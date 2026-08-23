@@ -17,22 +17,41 @@ Whether the binary re-validates or trusts a pre-checked shape is open, and it de
 Acceptance is `examples/adults.toy`, built to a binary, reading the same JSON on stdin and
 printing `["ada"]` -- agreeing with Lua and JavaScript through the step 3 harness.
 
-## Layout is the real content of this step
+## Layout: struct of arrays
 
-A `Vec<T>` needs a representation, and the obvious one is a length and a pointer. The question
-that is not obvious, and that the draft cares about more than it cares about this prototype, is
-what `Vec<Record>` looks like:
+**Decided: struct of arrays.** A `Vec<Record>` is one array per field sharing a length, not an
+array of structs.
 
-- **array of structs**: one allocation, elements contiguous, `.name` strides across the record
-- **struct of arrays**: one allocation per field, `.name` is a contiguous run
+The reason is not raw speed, it is that it makes the language's own operators cheap. `.name` on a
+`Vec<User>` under SoA is the name column: a header pointing at bytes that already exist, no
+striding and no copy. Under AoS it is a gather loop. The draft's columnar material, Q7's
+"recursive descent is embarrassingly parallel on a flat layout" and Q8's vectorizability all
+assume this layout, so choosing AoS here would have quietly cost a chunk of the design's own
+argument.
 
-The draft's columnar material, Q7's "recursive descent is embarrassingly parallel on a flat
-layout", and Q8's vectorizability question all assume the second. Nothing before this step made
-the choice concrete, and nothing forces it until a static backend has to emit a `getelementptr`.
+What makes it affordable is a property of the language as it stands: **nothing extracts a single
+element from a `Vec`.** There is no `.[i]`, `[]` is the identity, `select` returns a `Vec`, and
+`.field` returns a column. So the AoS/SoA boundary -- gathering columns back into one struct --
+never has to be crossed, and the usual reason SoA is painful does not apply yet. It will the day
+an indexing operator arrives.
 
-Picking array-of-structs here is fine and probably right for a prototype. Picking it *without
-noticing* is not, because a good part of the design's performance argument rests on the other
-answer. Whichever is chosen, write down what it costs.
+`select` therefore compiles to a loop over indices where `.` is not a value but a cursor into the
+columns, so `.age >= 18` reads `ages[i]` rather than materialising a record. That is the form
+that vectorises, and it arrives by construction rather than as an optimisation.
+
+Ragged nesting is the part SoA does not answer. `Vec<Vec<T>>` is a column of pointers to inner
+`Vec` headers, not Arrow-style offsets. Offsets are the eventual answer and the draft already
+says so; a pointer column is the cheap version that works and is worth naming as a known
+placeholder rather than a design.
+
+## Split in two
+
+**6a: `Vec` of scalars.** Literal, `select`, printing, `Vec` through functions. Unlocks seven
+corpus programs. Needs no layout decision at all, since a `Vec<Int>` or `Vec<Str>` is one array
+either way.
+
+**6b: records, input, field access.** Where SoA actually applies, and where the JSON parser
+lands. Unlocks the remaining four.
 
 ## Allocation, and the decision not to make
 

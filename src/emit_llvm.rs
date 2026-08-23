@@ -17,7 +17,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType};
-use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
+use inkwell::values::{BasicValueEnum, FunctionValue, IntValue, PointerValue};
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 
 use crate::ast::BinOp;
@@ -40,6 +40,15 @@ struct Runtime<'ctx> {
     str_eq: FunctionValue<'ctx>,
     str_cmp: FunctionValue<'ctx>,
     print: FunctionValue<'ctx>,
+    quote: FunctionValue<'ctx>,
+    join: FunctionValue<'ctx>,
+    vec_new: FunctionValue<'ctx>,
+    vec_len: FunctionValue<'ctx>,
+    vec_get: FunctionValue<'ctx>,
+    vec_set: FunctionValue<'ctx>,
+    vec_from_mask: FunctionValue<'ctx>,
+    mask_new: FunctionValue<'ctx>,
+    mask_set: FunctionValue<'ctx>,
 }
 
 struct Emitter<'ctx> {
@@ -85,6 +94,39 @@ impl<'ctx> Emitter<'ctx> {
                 ctx.void_type().fn_type(&[ptr.into()], false),
                 None,
             ),
+            quote: module.add_function("tl_quote", ptr.fn_type(&[ptr.into()], false), None),
+            join: module.add_function(
+                "tl_str_join",
+                ptr.fn_type(&[ptr.into(), ptr.into(), ptr.into(), ptr.into()], false),
+                None,
+            ),
+            vec_new: module.add_function(
+                "tl_vec_new",
+                ptr.fn_type(&[i64t.into(), i64t.into()], false),
+                None,
+            ),
+            vec_len: module.add_function("tl_vec_len", i64t.fn_type(&[ptr.into()], false), None),
+            vec_get: module.add_function(
+                "tl_vec_get",
+                i64t.fn_type(&[ptr.into(), i64t.into()], false),
+                None,
+            ),
+            vec_set: module.add_function(
+                "tl_vec_set",
+                ctx.void_type().fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
+                None,
+            ),
+            vec_from_mask: module.add_function(
+                "tl_vec_from_mask",
+                ptr.fn_type(&[ptr.into(), ptr.into()], false),
+                None,
+            ),
+            mask_new: module.add_function("tl_mask_new", ptr.fn_type(&[i64t.into()], false), None),
+            mask_set: module.add_function(
+                "tl_mask_set",
+                ctx.void_type().fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
+                None,
+            ),
         };
 
         Emitter {
@@ -111,7 +153,7 @@ impl<'ctx> Emitter<'ctx> {
             Type::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Int => self.ctx.i64_type().into(),
             Type::Bool => self.ctx.bool_type().into(),
-            Type::Vec(_) => return Err(unsupported(&format!("a {ty} value"))),
+            Type::Vec(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Record(_) => return Err(unsupported(&format!("a {ty} value"))),
         })
     }
@@ -173,6 +215,217 @@ impl<'ctx> Emitter<'ctx> {
         Ok(())
     }
 
+    /// Convert a value to the raw 8-byte slot a Vec column stores, and back.
+    ///
+    /// Every scalar toylang has fits one slot: an Int is an i64, a Str and a nested Vec are
+    /// pointers, a Bool widens. That is what lets one set of runtime functions serve every
+    /// element type instead of one per width.
+    fn to_slot(&self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<IntValue<'ctx>, String> {
+        let i64t = self.ctx.i64_type();
+        Ok(match ty {
+            Type::Int => value.into_int_value(),
+            Type::Bool => self
+                .builder
+                .build_int_z_extend(value.into_int_value(), i64t, "slot")
+                .map_err(|e| e.to_string())?,
+            Type::Str | Type::Vec(_) => self
+                .builder
+                .build_ptr_to_int(value.into_pointer_value(), i64t, "slot")
+                .map_err(|e| e.to_string())?,
+            Type::Record(_) => return Err(unsupported("a record in a Vec")),
+        })
+    }
+
+    fn read_slot(
+        &self,
+        slot: IntValue<'ctx>,
+        ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let ptr = self.ctx.ptr_type(AddressSpace::default());
+        Ok(match ty {
+            Type::Int => slot.into(),
+            Type::Bool => self
+                .builder
+                .build_int_truncate(slot, self.ctx.bool_type(), "elem")
+                .map_err(|e| e.to_string())?
+                .into(),
+            Type::Str | Type::Vec(_) => self
+                .builder
+                .build_int_to_ptr(slot, ptr, "elem")
+                .map_err(|e| e.to_string())?
+                .into(),
+            Type::Record(_) => return Err(unsupported("a record in a Vec")),
+        })
+    }
+
+    /// Emit `for i in 0..len`, calling `body` to fill the loop body with the index in hand.
+    ///
+    /// The counter is an alloca rather than a phi. At OptimizationLevel::None it stays a stack
+    /// slot, which costs a load and a store per iteration and keeps the emitter from having to
+    /// thread incoming blocks through every nested construct.
+    fn emit_loop<F>(&mut self, len: IntValue<'ctx>, mut body: F) -> Result<(), String>
+    where
+        F: FnMut(&mut Self, IntValue<'ctx>) -> Result<(), String>,
+    {
+        let i64t = self.ctx.i64_type();
+        let function = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function to emit a loop into")?;
+
+        let counter = self.builder.build_alloca(i64t, "i").map_err(|e| e.to_string())?;
+        self.builder.build_store(counter, i64t.const_zero()).map_err(|e| e.to_string())?;
+
+        let cond = self.ctx.append_basic_block(function, "loop.cond");
+        let loop_body = self.ctx.append_basic_block(function, "loop.body");
+        let end = self.ctx.append_basic_block(function, "loop.end");
+
+        self.builder.build_unconditional_branch(cond).map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(cond);
+        let i = self
+            .builder
+            .build_load(i64t, counter, "iv")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let more = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, i, len, "more")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_conditional_branch(more, loop_body, end).map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(loop_body);
+        body(self, i)?;
+        let next = self
+            .builder
+            .build_int_add(i, i64t.const_int(1, false), "next")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_store(counter, next).map_err(|e| e.to_string())?;
+        self.builder.build_unconditional_branch(cond).map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(end);
+        Ok(())
+    }
+
+    fn vec_lit(&mut self, items: &[Tir], elem: &Type) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64t = self.ctx.i64_type();
+        let vec = self
+            .call_rt(
+                self.rt.vec_new,
+                &[
+                    i64t.const_int(items.len() as u64, false).into(),
+                    i64t.const_int(8, false).into(),
+                ],
+                "vec",
+            )?
+            .into_pointer_value();
+
+        for (index, item) in items.iter().enumerate() {
+            let value = self.expr(item)?;
+            let slot = self.to_slot(value, elem)?;
+            self.builder
+                .build_call(
+                    self.rt.vec_set,
+                    &[vec.into(), i64t.const_int(index as u64, false).into(), slot.into()],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(vec.into())
+    }
+
+    /// `select` builds a mask and then compacts, rather than growing an array.
+    ///
+    /// The predicate reads element `i` out of the column: nothing materialises an element, which
+    /// is what keeps the loop in the shape that vectorises and is what the struct-of-arrays
+    /// layout is for once a Vec of records has several columns.
+    fn select(
+        &mut self,
+        source: &Tir,
+        param: LocalId,
+        pred: &Tir,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let elem_ty = source
+            .ty
+            .elem()
+            .ok_or_else(|| "select on something that is not a Vec".to_string())?
+            .clone();
+
+        let src = self.expr(source)?.into_pointer_value();
+        let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+        let mask = self.call_rt(self.rt.mask_new, &[len.into()], "mask")?.into_pointer_value();
+
+        self.emit_loop(len, move |e, i| {
+            let slot = e
+                .call_rt(e.rt.vec_get, &[src.into(), i.into()], "slot")?
+                .into_int_value();
+            let elem = e.read_slot(slot, &elem_ty)?;
+            e.locals.insert(param, elem);
+
+            let keep = e.expr(pred)?;
+            let keep = e.to_slot(keep, &Type::Bool)?;
+            e.builder
+                .build_call(e.rt.mask_set, &[mask.into(), i.into(), keep.into()], "")
+                .map_err(|err| err.to_string())?;
+            Ok(())
+        })?;
+
+        self.call_rt(self.rt.vec_from_mask, &[src.into(), mask.into()], "kept")
+    }
+
+    /// The JSON rendering of a value, built from its type. A native binary has no value to
+    /// interrogate at runtime, so this is the only way it could work.
+    fn show(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<BasicValueEnum<'ctx>, String> {
+        Ok(match ty {
+            Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
+            Type::Int => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
+            Type::Bool => {
+                let t = self.string_const("true");
+                let f = self.string_const("false");
+                self.builder
+                    .build_select(value.into_int_value(), t, f, "bool_str")
+                    .map_err(|e| e.to_string())?
+            }
+            Type::Vec(elem) => {
+                let i64t = self.ctx.i64_type();
+                let src = value.into_pointer_value();
+                let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+                let parts = self
+                    .call_rt(
+                        self.rt.vec_new,
+                        &[len.into(), i64t.const_int(8, false).into()],
+                        "parts",
+                    )?
+                    .into_pointer_value();
+
+                let elem_ty = (**elem).clone();
+                self.emit_loop(len, move |e, i| {
+                    let slot = e
+                        .call_rt(e.rt.vec_get, &[src.into(), i.into()], "slot")?
+                        .into_int_value();
+                    let item = e.read_slot(slot, &elem_ty)?;
+                    let shown = e.show(item, &elem_ty)?;
+                    let shown = e.to_slot(shown, &Type::Str)?;
+                    e.builder
+                        .build_call(e.rt.vec_set, &[parts.into(), i.into(), shown.into()], "")
+                        .map_err(|err| err.to_string())?;
+                    Ok(())
+                })?;
+
+                let open = self.string_const("[");
+                let sep = self.string_const(",");
+                let close = self.string_const("]");
+                self.call_rt(
+                    self.rt.join,
+                    &[parts.into(), open.into(), sep.into(), close.into()],
+                    "joined",
+                )?
+            }
+            Type::Record(_) => return Err(unsupported(&format!("printing a {ty}"))),
+        })
+    }
+
     fn expr(&mut self, t: &Tir) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match &t.kind {
             Kind::Str(text) => self.string_const(text).into(),
@@ -216,9 +469,18 @@ impl<'ctx> Emitter<'ctx> {
 
             Kind::Compare { op, lhs, rhs } => self.compare(*op, lhs, rhs)?,
 
+            Kind::VecLit(items) => {
+                let elem = t
+                    .ty
+                    .elem()
+                    .ok_or_else(|| "a Vec literal that is not a Vec".to_string())?
+                    .clone();
+                self.vec_lit(items, &elem)?
+            }
+
+            Kind::Select { source, param, pred } => self.select(source, *param, pred)?,
+
             Kind::Input => return Err(unsupported("input")),
-            Kind::VecLit(_) => return Err(unsupported("a Vec literal")),
-            Kind::Select { .. } => return Err(unsupported("select")),
             Kind::Field { .. } => return Err(unsupported("field access")),
         })
     }
@@ -282,20 +544,11 @@ impl<'ctx> Emitter<'ctx> {
             .into())
     }
 
-    /// The printer is built from the result type, as in the other two backends. Here there is
-    /// no alternative: a native binary has no value to interrogate at runtime.
+    /// A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
     fn print(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<(), String> {
         let as_str = match ty {
             Type::Str => value,
-            Type::Int => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
-            Type::Bool => {
-                let t = self.string_const("true");
-                let f = self.string_const("false");
-                self.builder
-                    .build_select(value.into_int_value(), t, f, "bool_str")
-                    .map_err(|e| e.to_string())?
-            }
-            other => return Err(unsupported(&format!("printing a {other}"))),
+            other => self.show(value, other)?,
         };
         self.builder
             .build_call(self.rt.print, &[as_str.into()], "")

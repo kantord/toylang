@@ -2,28 +2,28 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (11):
+compiles natively (18):
 bool_result
 concat
 concat_chain
+empty_result
+escapes
+filter
+filter_strings
 forward_reference
 greet
 hello
 int_result
+pipe_chain
+projection_identity
 shadowing_print
 str_equality
 str_inequality
 str_ordering
+vec_through_function
 
-not yet (11):
+not yet (4):
 adults: the native backend cannot compile input yet
-empty_result: the native backend cannot compile a Vec literal yet
-escapes: the native backend cannot compile a Vec literal yet
-filter: the native backend cannot compile a Vec literal yet
-filter_strings: the native backend cannot compile a Vec literal yet
 nested_field_access: the native backend cannot compile input yet
-pipe_chain: the native backend cannot compile a Vec literal yet
-projection_identity: the native backend cannot compile a Vec literal yet
 record_result: the native backend cannot compile input yet
 undeclared_input_fields: the native backend cannot compile input yet
-vec_through_function: the native backend cannot compile a Vec<Int> value yet

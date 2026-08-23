@@ -18,6 +18,24 @@ declare i64 @tl_str_cmp(ptr, ptr)
 
 declare void @tl_print(ptr)
 
+declare ptr @tl_quote(ptr)
+
+declare ptr @tl_str_join(ptr, ptr, ptr, ptr)
+
+declare ptr @tl_vec_new(i64, i64)
+
+declare i64 @tl_vec_len(ptr)
+
+declare i64 @tl_vec_get(ptr, i64)
+
+declare void @tl_vec_set(ptr, i64, i64)
+
+declare ptr @tl_vec_from_mask(ptr, ptr)
+
+declare ptr @tl_mask_new(i64)
+
+declare void @tl_mask_set(ptr, i64, i64)
+
 define i32 @main() {
 entry:
   call void @tl_print(ptr @str.0)
