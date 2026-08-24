@@ -1357,6 +1357,55 @@ Whether records are open or closed, which the input rule already prejudges by ig
 undeclared fields. Whether a view and an owned buffer differ in the type. Whether there are
 union types at all.
 
+## DECIDED: Int is 32 bits and wraps
+
+Settled by measurement rather than by preference, after three recommendations that each got
+reversed by a fact. The rule that ended it is in
+[each target constrains the design differently](research-log/each-target-constrains-the-design-differently.md): a target's speed constrains the design
+only if that target is meant to be fast, while every target's correctness constrains it always.
+
+### The decision
+
+`Int` is a signed 32-bit integer, and arithmetic wraps. Free on native and on Lua 5.4, both of
+which have hardware integers. On node it is `|0`, which disappears once V8 has type feedback, and
+which keeps every value inside the Smi range where V8 is fast. On jq it is emulated exactly and
+slowly, which under the rule costs nothing.
+
+### Why not wider
+
+53 bits looks free on paper, being exactly representable in a double, and is worse on node than
+32 is. **V8's fast path is the Smi, a 32-bit integer**, so a value outside that range becomes a
+heap number. That is a representation change rather than an extra instruction, and no amount of
+arithmetic cleverness recovers it.
+
+64 bits is worse again: addition needs an overflow intrinsic rather than a compare, jq cannot
+represent it for arithmetic at all, and node would need `BigInt`.
+
+### Why wrapping rather than trapping
+
+Doubles do not wrap, so on node and jq a wrap costs a fixup that a check does not. But trapping
+is a branch, and a branch is a side effect, which is what stops a reduction from vectorising. For
+a language whose performance argument is columnar and vectorised, that is the wrong thing to
+spend.
+
+Verified rather than assumed: wrapping 32-bit multiplication has no direct spelling in jq, since
+the true product needs 62 bits and a double holds 53. Splitting into 16-bit halves reproduces it
+exactly, and agrees with C and with `Math.imul` on the cases that usually break an emulation,
+including `-2147483648 * -1` and `46341 * 46341`.
+
+### What this costs, and what pays it back later
+
+A millisecond timestamp is 1.8e12 and does not fit; the ceiling is 2.1e9. So `{ts: Int}` will
+typecheck and then be rejected by the input validator on real data. That is a loud failure with a
+one-word fix rather than a silent corruption, which is the trade being accepted.
+
+`Int64` is what fixes it, and the case it serves is narrower than it looks: identifiers and
+timestamps are *carried*, not computed. All four backends already carry a 64-bit integer exactly,
+jq included, since jq preserves a number's original text when it passes through unmodified. So
+the portability cliff is in arithmetic on such values, not in holding them.
+
+A timestamp type is a separate question again, and a better answer than an integer either way.
+
 ## What the prototype showed
 
 A working compiler exists: `plans/` has the build order, `research-log/` has the findings, and

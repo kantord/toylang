@@ -48,3 +48,7 @@ This is the third instance of
 [the backend language has rules the checker does not](the-backend-language-has-rules-the-checker-does-not.md),
 and the first where a rule the checker relies on was unsatisfiable rather than merely
 unimplemented.
+
+The rule that came out of weighing the four for a different decision, and which says why jq's
+slowness is not a cost:
+[each target constrains the design differently](each-target-constrains-the-design-differently.md).
