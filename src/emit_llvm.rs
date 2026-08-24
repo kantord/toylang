@@ -604,11 +604,55 @@ impl<'ctx> Emitter<'ctx> {
                     .iter()
                     .position(|(n, _)| n == name)
                     .ok_or_else(|| format!("no field `{name}` on {elem}"))?;
-                self.call_rt(
+                let field_ty = fields[index].1.clone();
+                let column = self.call_rt(
                     self.rt.vec_column,
                     &[value, i64t.const_int(index as u64, false).into()],
                     "column",
-                )
+                )?;
+
+                // Sharing the column is the whole point of the layout, and it is right for every
+                // field whose slot is the value: an Int, a Str pointer, a Vec pointer. It is
+                // wrong for a field that is itself a record, because a Vec of records is one
+                // column per field and a column of record pointers is one column of pointers.
+                // Reading `.b` off that later walks the pointer as if it were data.
+                let Type::Record(sub) = field_ty else {
+                    return Ok(column);
+                };
+                let ncols = sub.len();
+                let src = column.into_pointer_value();
+                let len =
+                    self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+                let out = self
+                    .call_rt(
+                        self.rt.vec_new,
+                        &[len.into(), i64t.const_int(ncols as u64, false).into()],
+                        "spread",
+                    )?
+                    .into_pointer_value();
+                let zero = i64t.const_zero();
+                let record_ty = Type::Record(sub);
+
+                self.emit_loop(len, move |e, i| {
+                    let slot = e
+                        .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "record")?
+                        .into_int_value();
+                    let record = e.read_slot(slot, &record_ty)?;
+                    for c in 0..ncols {
+                        let c = i64t.const_int(c as u64, false);
+                        let got =
+                            e.call_rt(e.rt.rec_get, &[record, c.into()], "sub")?;
+                        e.builder
+                            .build_call(
+                                e.rt.vec_set,
+                                &[out.into(), c.into(), i.into(), got.into()],
+                                "",
+                            )
+                            .map_err(|err| err.to_string())?;
+                    }
+                    Ok(())
+                })?;
+                Ok(out.into())
             }
 
             // A Vec of Vecs: one result per element, so the layer has to be walked.

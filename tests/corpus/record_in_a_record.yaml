@@ -1,0 +1,14 @@
+# Reaching a scalar through a record-valued field of a Vec's element. The native backend gave
+# raw pointers here: a Vec of records is one column per field, and the column for a
+# record-valued field holds pointers rather than the one-column-per-subfield a Vec of records
+# needs. Nothing in the corpus had a record directly inside a record.
+program: |
+  fn deep(db: Vec<{a: {b: Int}}>) -> Vec<Int> = db[].a.b
+
+  deep(input)
+
+input: |
+  [{"a": {"b": 1}}, {"a": {"b": 2}}]
+
+output: |
+  [1,2]
