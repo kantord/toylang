@@ -56,6 +56,13 @@ pub enum Kind {
         value: Box<Tir>,
         body: Box<Tir>,
     },
+    /// Every element replaced by `body`, with `param` bound to each. Same loop as Select, kept
+    /// separate because the result's element type is the body's rather than the source's.
+    Map {
+        source: Box<Tir>,
+        param: LocalId,
+        body: Box<Tir>,
+    },
     Select {
         source: Box<Tir>,
         param: LocalId,

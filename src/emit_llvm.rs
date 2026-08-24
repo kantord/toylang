@@ -58,6 +58,7 @@ struct Runtime<'ctx> {
     opt_get: FunctionValue<'ctx>,
     unwrap: FunctionValue<'ctx>,
     div_by_zero: FunctionValue<'ctx>,
+    map_new: FunctionValue<'ctx>,
 }
 
 /// What a compiler-introduced binding holds.
@@ -189,6 +190,7 @@ impl<'ctx> Emitter<'ctx> {
                 ctx.void_type().fn_type(&[], false),
                 None,
             ),
+            map_new: module.add_function("tl_map_new", ptr.fn_type(&[i64t.into()], false), None),
         };
 
         Emitter {
@@ -427,6 +429,57 @@ impl<'ctx> Emitter<'ctx> {
                 .map_err(|e| e.to_string())?;
         }
         Ok(vec.into())
+    }
+
+    /// Every element replaced by the body.
+    ///
+    /// The result has one column whatever the source had, because the body produces a single
+    /// value; a Vec of records going in does not mean a Vec of records coming out. The element
+    /// binding is the same cursor `select` uses, so a record source still reads its fields out
+    /// of the columns rather than being gathered.
+    fn map(
+        &mut self,
+        source: &Tir,
+        param: LocalId,
+        body: &Tir,
+        result: &Type,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let elem_ty = source
+            .ty
+            .elem()
+            .ok_or_else(|| "map over something that is not a Vec".to_string())?
+            .clone();
+        let out_elem = result
+            .elem()
+            .ok_or_else(|| "map did not produce a Vec".to_string())?
+            .clone();
+
+        let i64t = self.ctx.i64_type();
+        let src = self.expr(source)?.into_pointer_value();
+        let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+        let out = self
+            .call_rt(self.rt.map_new, &[len.into()], "mapped")?
+            .into_pointer_value();
+        let zero = i64t.const_zero();
+
+        self.emit_loop(len, move |e, i| {
+            if matches!(elem_ty, Type::Record(_)) {
+                e.locals.insert(param, Slot::Cursor { vec: src, index: i });
+            } else {
+                let slot = e
+                    .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                    .into_int_value();
+                let elem = e.read_slot(slot, &elem_ty)?;
+                e.locals.insert(param, Slot::Value(elem));
+            }
+            let value = e.expr(body)?;
+            let value = e.to_slot(value, &out_elem)?;
+            e.builder
+                .build_call(e.rt.vec_set, &[out.into(), zero.into(), i.into(), value.into()], "")
+                .map_err(|err| err.to_string())?;
+            Ok(())
+        })?;
+        Ok(out.into())
     }
 
     /// `select` builds a mask and then compacts, rather than growing an array.
@@ -804,6 +857,8 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Kind::Select { source, param, pred } => self.select(source, *param, pred)?,
+
+            Kind::Map { source, param, body } => self.map(source, *param, body, &t.ty)?,
 
             Kind::Input => {
                 let descriptor = self.string_const(&Self::descriptor(&t.ty));

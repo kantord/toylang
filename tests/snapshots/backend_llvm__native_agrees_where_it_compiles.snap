@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (52):
+compiles natively (58):
 adults
 arith_add
 arith_div_trunc
@@ -29,6 +29,12 @@ index_ragged_inner
 index_ragged_present
 index_strings
 int_result
+map_after_select
+map_double
+map_empty
+map_records
+map_to_bool
+map_to_str
 nested_field_access
 pipe_chain
 plus_concats

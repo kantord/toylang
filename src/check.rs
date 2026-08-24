@@ -191,6 +191,24 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             ))
         }
 
+        // The one way to produce a new element value. `select` removes elements and a field
+        // access reads a component; neither can turn a Vec<Int> into a Vec<Str>.
+        Expr::Map { body, span } => {
+            let Some((subject, id)) = ctx.subject.clone() else {
+                return Err(Error::new(*span, "`map` needs a subject, so it must follow `|`"));
+            };
+            let Some(elem) = subject.elem().cloned() else {
+                return Err(Error::new(*span, format!("`map` needs a Vec, found {subject}")));
+            };
+            let param = ctx.fresh();
+            let body = synth(&ctx.with(Some((elem, param))), body)?;
+            let source = Tir::new(subject, Kind::Local(id));
+            Ok(Tir::new(
+                Type::Vec(Box::new(body.ty.clone())),
+                Kind::Map { source: Box::new(source), param, body: Box::new(body) },
+            ))
+        }
+
         Expr::Field { .. } | Expr::Index { .. } | Expr::Unwrap { .. } => {
             access(ctx, expr).map(|(tir, _, _)| tir)
         }

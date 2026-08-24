@@ -25,6 +25,14 @@ local function tl_field(v, k, depth)
 end
 ";
 
+const MAP_HELPER: &str = "\
+local function tl_map(src, f)
+  local out = {}
+  for i = 1, #src do out[i] = f(src[i]) end
+  return out
+end
+";
+
 const OPT_HELPER: &str = "\
 -- Absence is a sentinel rather than nil, because nil inside a table breaks `#` and a Vec of Opt
 -- has to keep its length.
@@ -118,6 +126,9 @@ pub fn emit(program: &Program) -> String {
     }
     if used.arith {
         out.push_str(ARITH_HELPER);
+    }
+    if used.map {
+        out.push_str(MAP_HELPER);
     }
 
     // All names are declared before any body, because the checker collects signatures before
@@ -226,6 +237,7 @@ struct Helpers {
     index: bool,
     unwrap: bool,
     arith: bool,
+    map: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -240,6 +252,11 @@ fn used_helpers(program: &Program) -> Helpers {
             }
             Kind::Bind { value, body, .. } => {
                 walk(value, used);
+                walk(body, used);
+            }
+            Kind::Map { source, body, .. } => {
+                used.map = true;
+                walk(source, used);
                 walk(body, used);
             }
             Kind::Select { source, pred, .. } => {
@@ -305,6 +322,12 @@ fn expr(t: &Tir) -> String {
         Kind::Bind { local: id, value, body } => {
             format!("(function({}) return {} end)({})", local(*id), expr(body), expr(value))
         }
+        Kind::Map { source, param, body } => format!(
+            "tl_map({}, function({}) return {} end)",
+            expr(source),
+            local(*param),
+            expr(body)
+        ),
         Kind::Select { source, param, pred } => format!(
             "tl_select({}, function({}) return {} end)",
             expr(source),

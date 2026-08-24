@@ -116,6 +116,10 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
                 callees(source, out);
                 callees(pred, out);
             }
+            Kind::Map { source, body, .. } => {
+                callees(source, out);
+                callees(body, out);
+            }
             Kind::IntToStr(n) => callees(n, out),
             Kind::Arith { lhs, rhs, .. } => {
                 callees(lhs, out);
@@ -171,6 +175,7 @@ fn uses_arith(program: &Program) -> bool {
             Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => walk(l) || walk(r),
             Kind::Bind { value, body, .. } => walk(value) || walk(body),
             Kind::Select { source, pred, .. } => walk(source) || walk(pred),
+            Kind::Map { source, body, .. } => walk(source) || walk(body),
             Kind::Field { base, .. } | Kind::Unwrap { base } => walk(base),
             Kind::Index { base, index, .. } => walk(base) || walk(index),
         }
@@ -227,6 +232,14 @@ fn expr(t: &Tir) -> String {
         Kind::Bind { local: id, value, body } => {
             format!("({} as {} | {})", expr(value), local(*id), expr(body))
         }
+        // The one operator that is derived in jq and primitive here: `map(f)` is `[ .[] | f ]`
+        // there, and neither half of that exists in a language with no effect layer.
+        Kind::Map { source, param, body } => format!(
+            "[ {}[] | . as {} | {} ]",
+            expr(source),
+            local(*param),
+            expr(body)
+        ),
         Kind::Select { source, param, pred } => format!(
             "[ {}[] | . as {} | select({}) ]",
             expr(source),

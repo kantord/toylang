@@ -272,6 +272,13 @@ impl<'a> Parser<'a> {
                 Ok(Expr::Select { pred: Box::new(pred), span: t.span.to(close) })
             }
 
+            Tok::Map => {
+                self.eat(Tok::LParen)?;
+                let body = self.expr(0)?;
+                let close = self.eat(Tok::RParen)?.span;
+                Ok(Expr::Map { body: Box::new(body), span: t.span.to(close) })
+            }
+
             Tok::LBracket => {
                 // `,` is a separator here, not an operator. It has no meaning outside a literal
                 // while everything stays in the value layer.

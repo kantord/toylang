@@ -196,6 +196,10 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(value, used);
                 walk(body, used);
             }
+            Kind::Map { source, body, .. } => {
+                walk(source, used);
+                walk(body, used);
+            }
             Kind::Select { source, pred, .. } => {
                 used.select = true;
                 walk(source, used);
@@ -256,6 +260,10 @@ fn expr(t: &Tir) -> String {
         }
         Kind::Bind { local: id, value, body } => {
             format!("(({}) => {})({})", local(*id), expr(body), expr(value))
+        }
+        // Array.prototype.map is exactly this, so no helper is needed.
+        Kind::Map { source, param, body } => {
+            format!("{}.map(({}) => {})", expr(source), local(*param), expr(body))
         }
         Kind::Select { source, param, pred } => {
             format!("tl_select({}, ({}) => {})", expr(source), local(*param), expr(pred))

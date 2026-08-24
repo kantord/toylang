@@ -717,3 +717,9 @@ _Noreturn void tl_div_by_zero(void) {
     (void)!write(2, msg, strlen(msg));
     exit(1);
 }
+
+/* Build a Vec of `len` scalars, filled by the caller. `map` produces one column whatever the
+ * source had, since its result element is whatever the body returned. */
+tl_vec *tl_map_new(int64_t len) {
+    return tl_vec_new(len, 1);
+}

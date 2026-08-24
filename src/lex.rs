@@ -8,6 +8,7 @@ pub enum Tok {
     Ident(String),
     Fn,
     Select,
+    Map,
     Input,
     Plus,
     Minus,
@@ -44,6 +45,7 @@ impl std::fmt::Display for Tok {
             Tok::Ident(name) => return write!(f, "`{name}`"),
             Tok::Fn => "`fn`",
             Tok::Select => "`select`",
+            Tok::Map => "`map`",
             Tok::Input => "`input`",
             Tok::Plus => "`+`",
             Tok::Minus => "`-`",
@@ -122,6 +124,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
                 match &src[start..i] {
                     "fn" => Tok::Fn,
                     "select" => Tok::Select,
+                    "map" => Tok::Map,
                     "input" => Tok::Input,
                     name => Tok::Ident(name.to_string()),
                 }

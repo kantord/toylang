@@ -128,6 +128,9 @@ pub enum Expr {
     /// `select(pred)`, where `pred` is checked with `.` bound to the element type rather than
     /// evaluated in the enclosing scope.
     Select { pred: Box<Expr>, span: Span },
+    /// `map(f)`, where `f` is checked with `.` bound to the element type. Primitive here rather
+    /// than sugar for reflect-apply-reify, since neither half of that exists.
+    Map { body: Box<Expr>, span: Span },
     Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr>, span: Span },
 }
 
@@ -148,6 +151,7 @@ impl Expr {
             | Expr::Input { span }
             | Expr::Pipe { span, .. }
             | Expr::Select { span, .. }
+            | Expr::Map { span, .. }
             | Expr::Binary { span, .. } => *span,
         }
     }
