@@ -8,17 +8,17 @@ use crate::lex::{Tok, Token};
 /// ordering jq uses and the reason this table exists rather than a nest of functions.
 fn infix_power(tok: &Tok) -> Option<(BinOp, u8, u8)> {
     let (op, left, right) = match tok {
-        Tok::EqEq => (BinOp::Eq, 3, 4),
-        Tok::Ne => (BinOp::Ne, 3, 4),
-        Tok::Lt => (BinOp::Lt, 3, 4),
-        Tok::Le => (BinOp::Le, 3, 4),
-        Tok::Gt => (BinOp::Gt, 3, 4),
-        Tok::Ge => (BinOp::Ge, 3, 4),
-        Tok::Plus => (BinOp::Add, 5, 6),
-        Tok::Minus => (BinOp::Sub, 5, 6),
-        Tok::Star => (BinOp::Mul, 7, 8),
-        Tok::Slash => (BinOp::Div, 7, 8),
-        Tok::Percent => (BinOp::Rem, 7, 8),
+        Tok::EqEq => (BinOp::Eq, 5, 6),
+        Tok::Ne => (BinOp::Ne, 5, 6),
+        Tok::Lt => (BinOp::Lt, 5, 6),
+        Tok::Le => (BinOp::Le, 5, 6),
+        Tok::Gt => (BinOp::Gt, 5, 6),
+        Tok::Ge => (BinOp::Ge, 5, 6),
+        Tok::Plus => (BinOp::Add, 7, 8),
+        Tok::Minus => (BinOp::Sub, 7, 8),
+        Tok::Star => (BinOp::Mul, 9, 10),
+        Tok::Slash => (BinOp::Div, 9, 10),
+        Tok::Percent => (BinOp::Rem, 9, 10),
         _ => return None,
     };
     Some((op, left, right))
@@ -26,6 +26,12 @@ fn infix_power(tok: &Tok) -> Option<(BinOp, u8, u8)> {
 
 const PIPE_LEFT: u8 = 1;
 const PIPE_RIGHT: u8 = 2;
+
+/// The conditional sits between `|` and comparison, so `a if c else b | f` groups as
+/// `(a if c else b) | f` and `x | a if c else b` groups as `x | (a if c else b)`. Python puts
+/// its ternary below `|` because there `|` is bitwise or; ours is the pipe, so the better
+/// grouping comes for free.
+const COND_POWER: u8 = 3;
 
 pub fn parse(tokens: &[Token]) -> Result<File, Error> {
     let mut p = Parser { tokens, pos: 0 };
@@ -160,6 +166,21 @@ impl<'a> Parser<'a> {
 
     fn expr(&mut self, min_power: u8) -> Result<Expr, Error> {
         let mut lhs = self.operand(min_power)?;
+
+        // Right-associative, so `a if c else b if d else e` chains rightward without parens.
+        if self.peek().tok == Tok::If && COND_POWER >= min_power {
+            self.advance();
+            let cond = self.operand(COND_POWER + 1)?;
+            self.eat(Tok::Else)?;
+            let otherwise = self.expr(COND_POWER)?;
+            let span = lhs.span().to(otherwise.span());
+            lhs = Expr::Cond {
+                then: Box::new(lhs),
+                cond: Box::new(cond),
+                otherwise: Box::new(otherwise),
+                span,
+            };
+        }
 
         while self.peek().tok == Tok::Pipe && PIPE_LEFT >= min_power {
             self.advance();

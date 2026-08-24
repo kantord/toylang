@@ -71,3 +71,20 @@ fn plus_does_not_mix_its_operands() {
         toylang::compile(r#"1 + "a""#).map(|_| ()).unwrap_err().to_string()
     );
 }
+
+/// The condition is exactly one Bool. This is where jq runs both branches and gets two answers;
+/// here it does not typecheck.
+#[test]
+fn a_condition_must_be_a_bool() {
+    insta::assert_snapshot!(
+        toylang::compile(r#""a" if 1 else "b""#).map(|_| ()).unwrap_err().to_string()
+    );
+}
+
+/// Both branches have to agree, since the conditional is an expression with one type.
+#[test]
+fn both_branches_must_agree() {
+    insta::assert_snapshot!(
+        toylang::compile(r#""a" if 1 == 1 else 2"#).map(|_| ()).unwrap_err().to_string()
+    );
+}

@@ -45,6 +45,13 @@ pub enum Kind {
         lhs: Box<Tir>,
         rhs: Box<Tir>,
     },
+    /// The condition is exactly one Bool, which is what turns jq's run-both-branches behaviour
+    /// into a type error here.
+    Cond {
+        cond: Box<Tir>,
+        then: Box<Tir>,
+        otherwise: Box<Tir>,
+    },
     Compare {
         op: BinOp,
         lhs: Box<Tir>,

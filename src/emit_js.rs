@@ -210,6 +210,11 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
             }
             Kind::IntToStr(n) => walk(n, used),
+            Kind::Cond { cond, then, otherwise } => {
+                walk(cond, used);
+                walk(then, used);
+                walk(otherwise, used);
+            }
             Kind::Arith { lhs, rhs, .. } => {
                 used.arith = true;
                 walk(lhs, used);
@@ -255,6 +260,9 @@ fn expr(t: &Tir) -> String {
             BinOp::Sub => format!("(({} - {}) | 0)", expr(lhs), expr(rhs)),
             other => unreachable!("{other} is not arithmetic"),
         },
+        Kind::Cond { cond, then, otherwise } => {
+            format!("({} ? {} : {})", expr(cond), expr(then), expr(otherwise))
+        }
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), js_op(*op), expr(rhs))
         }

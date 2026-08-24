@@ -121,6 +121,11 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
                 callees(body, out);
             }
             Kind::IntToStr(n) => callees(n, out),
+            Kind::Cond { cond, then, otherwise } => {
+                callees(cond, out);
+                callees(then, out);
+                callees(otherwise, out);
+            }
             Kind::Arith { lhs, rhs, .. } => {
                 callees(lhs, out);
                 callees(rhs, out);
@@ -169,6 +174,7 @@ fn uses_arith(program: &Program) -> bool {
     fn walk(t: &Tir) -> bool {
         match &t.kind {
             Kind::Arith { .. } => true,
+            Kind::Cond { cond, then, otherwise } => walk(cond) || walk(then) || walk(otherwise),
             Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => false,
             Kind::VecLit(items) => items.iter().any(walk),
             Kind::Call { arg, .. } | Kind::IntToStr(arg) => walk(arg),
@@ -226,6 +232,12 @@ fn expr(t: &Tir) -> String {
             BinOp::Sub => format!("(({} - {}) | tl_i32)", expr(lhs), expr(rhs)),
             other => unreachable!("{other} is not arithmetic"),
         },
+        Kind::Cond { cond, then, otherwise } => format!(
+            "(if {} then {} else {} end)",
+            expr(cond),
+            expr(then),
+            expr(otherwise)
+        ),
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), jq_op(*op), expr(rhs))
         }

@@ -1435,6 +1435,35 @@ here.
 Every wrapping edge is checked against C in the corpus, including `-2147483648 / -1`,
 `-2147483648 % -1`, `-(-2147483648)` and `46341 * 46341`.
 
+### The conditional is an expression, spelled Python's way
+
+`then if condition else otherwise`, sitting between `|` and comparison, right-associative:
+
+```
+[1, 2, 3] | map(
+    "FizzBuzz" if . % 15 == 0 else
+    "Fizz"     if . % 3 == 0  else
+    "Buzz"     if . % 5 == 0  else
+    str(.)
+)
+```
+
+jq's `if ... then ... else ... end` was the alternative and was rejected. The objections to
+Python's form both dissolved on inspection. Precedence is one line: the conditional binds tighter
+than `|` and looser than comparison, so `a if c else b | f` groups as `(a if c else b) | f` and
+`x | a if c else b` groups as `x | (a if c else b)`. Python puts its ternary below `|` only
+because there `|` is bitwise or. And chaining reads well laid out as above, with the values in
+one column and the conditions in another, which for a transformation language means a reader can
+see what a branchpoint produces without reading a single condition.
+
+The deciding point is that this language has no statements. jq's form is an expression too, but
+shaped like a statement, with `end` closing a block that nothing else in the language has.
+
+**The condition is exactly one `Bool`**, which is the claim
+[the safety section](#why-cardinality-in-the-type-is-the-safety-mechanism) makes. `"a" if 1 else
+"b"` does not typecheck, where jq would run both branches and hand back two answers. Both arms
+must agree, since the whole thing is one expression with one type.
+
 ## What the prototype showed
 
 A working compiler exists: `plans/` has the build order, `research-log/` has the findings, and

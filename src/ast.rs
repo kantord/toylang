@@ -118,6 +118,8 @@ pub enum Expr {
     Unwrap { base: Box<Expr>, span: Span },
     /// `-base`.
     Neg { base: Box<Expr>, span: Span },
+    /// `then if cond else otherwise`. An expression, in a language that has only those.
+    Cond { then: Box<Expr>, cond: Box<Expr>, otherwise: Box<Expr>, span: Span },
     /// `base.name`. Distributes over a Vec rather than needing a map.
     Field { base: Box<Expr>, name: String, span: Span },
     /// The value read from stdin. It has no type of its own and can only be checked against an
@@ -147,6 +149,7 @@ impl Expr {
             | Expr::Index { span, .. }
             | Expr::Unwrap { span, .. }
             | Expr::Neg { span, .. }
+            | Expr::Cond { span, .. }
             | Expr::Field { span, .. }
             | Expr::Input { span }
             | Expr::Pipe { span, .. }

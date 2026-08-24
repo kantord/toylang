@@ -246,6 +246,22 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             ))
         }
 
+        // The first construct that consumes a type rather than carrying one: the condition has
+        // to be exactly one Bool, and both branches have to agree.
+        Expr::Cond { then, cond, otherwise, .. } => {
+            let cond = expect(ctx, cond, &Type::Bool)?;
+            let then = synth(ctx, then)?;
+            let otherwise = expect(ctx, otherwise, &then.ty)?;
+            Ok(Tir::new(
+                then.ty.clone(),
+                Kind::Cond {
+                    cond: Box::new(cond),
+                    then: Box::new(then),
+                    otherwise: Box::new(otherwise),
+                },
+            ))
+        }
+
         Expr::Binary { op, lhs, rhs, .. } => binary(ctx, *op, lhs, rhs),
     }
 }

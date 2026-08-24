@@ -872,6 +872,40 @@ impl<'ctx> Emitter<'ctx> {
 
             // The runtime returns the unwrapped slot as a pointer, so a scalar comes back
             // needing the integer put back; a pointer-shaped value is already right.
+            // A real branch rather than a select, so only the taken side runs: either branch
+            // may allocate, loop, or divide by zero.
+            Kind::Cond { cond, then, otherwise } => {
+                let function = self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_parent())
+                    .ok_or("no function to branch in")?;
+                let slot_ty = self.llvm_type(&t.ty)?;
+                let slot =
+                    self.builder.build_alloca(slot_ty, "cond").map_err(|e| e.to_string())?;
+
+                let test = self.expr(cond)?.into_int_value();
+                let yes = self.ctx.append_basic_block(function, "then");
+                let no = self.ctx.append_basic_block(function, "else");
+                let done = self.ctx.append_basic_block(function, "cond.done");
+                self.builder
+                    .build_conditional_branch(test, yes, no)
+                    .map_err(|e| e.to_string())?;
+
+                self.builder.position_at_end(yes);
+                let v = self.expr(then)?;
+                self.builder.build_store(slot, v).map_err(|e| e.to_string())?;
+                self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+
+                self.builder.position_at_end(no);
+                let v = self.expr(otherwise)?;
+                self.builder.build_store(slot, v).map_err(|e| e.to_string())?;
+                self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+
+                self.builder.position_at_end(done);
+                self.builder.build_load(slot_ty, slot, "cond").map_err(|e| e.to_string())?
+            }
+
             Kind::Arith { op, lhs, rhs } => {
                 let l = self.expr(lhs)?.into_int_value();
                 let r = self.expr(rhs)?.into_int_value();
