@@ -30,3 +30,20 @@ fn unwrapping_changes_how_a_string_prints() {
     assert_eq!(wrapped, "\"ada\"\n");
     assert_eq!(unwrapped, "ada\n");
 }
+
+/// `str` is a builtin, so a program cannot define its own and silently mean something else.
+#[test]
+fn a_builtin_cannot_be_redefined() {
+    let err = toylang::compile("fn str(x: Int) -> Str = x\nstr(1)")
+        .map(|_| ())
+        .unwrap_err()
+        .to_string();
+    insta::assert_snapshot!(err);
+}
+
+#[test]
+fn str_takes_an_int() {
+    insta::assert_snapshot!(
+        toylang::compile(r#"str("a")"#).map(|_| ()).unwrap_err().to_string()
+    );
+}

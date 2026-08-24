@@ -811,6 +811,11 @@ impl<'ctx> Emitter<'ctx> {
 
             // The runtime returns the unwrapped slot as a pointer, so a scalar comes back
             // needing the integer put back; a pointer-shaped value is already right.
+            Kind::IntToStr(n) => {
+                let n = self.expr(n)?;
+                self.call_rt(self.rt.int_to_str, &[n], "int_str")?
+            }
+
             Kind::Unwrap { base } => {
                 let depth = crate::tir::vec_depth(&base.ty);
                 let inner = t.ty.clone();

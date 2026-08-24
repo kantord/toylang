@@ -92,6 +92,7 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
                 callees(source, out);
                 callees(pred, out);
             }
+            Kind::IntToStr(n) => callees(n, out),
             Kind::Field { base, .. } | Kind::Unwrap { base } => callees(base, out),
             Kind::Index { base, index, .. } => {
                 callees(base, out);
@@ -183,6 +184,7 @@ fn expr(t: &Tir) -> String {
             let depth = tir::vec_depth(&base.ty);
             format!("({} | {})", expr(base), distribute(&field_of(".", name), depth))
         }
+        Kind::IntToStr(n) => format!("({} | tostring)", expr(n)),
         Kind::Unwrap { base } => {
             let check = format!("if . == null then error({}) else . end", jq_string("toylang: unwrapped a value that is not there"));
             format!("({} | {})", expr(base), distribute(&check, tir::vec_depth(&base.ty)))

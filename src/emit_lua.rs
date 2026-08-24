@@ -230,6 +230,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.field |= tir::vec_depth(&base.ty) > 0;
                 walk(base, used);
             }
+            Kind::IntToStr(n) => walk(n, used),
             Kind::Unwrap { base } => {
                 used.unwrap = true;
                 walk(base, used);
@@ -277,6 +278,7 @@ fn expr(t: &Tir) -> String {
         ),
         // The depth comes from the type on the node below, so it cannot disagree with it, and
         // the emitted helper is told the answer rather than inspecting the value for it.
+        Kind::IntToStr(n) => format!("tostring({})", expr(n)),
         Kind::Unwrap { base } => {
             format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
         }

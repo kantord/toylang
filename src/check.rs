@@ -81,9 +81,26 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     Ok(tir::Program { funcs, body, input: input.into_inner() })
 }
 
+/// Functions the language provides. Unary like every other function, so they need no special
+/// call syntax and go in the same table.
+const BUILTINS: &[(&str, Type, Type)] = &[("str", Type::Int, Type::Str)];
+
+fn builtin(name: &str) -> Option<Sig> {
+    BUILTINS
+        .iter()
+        .find(|(n, _, _)| *n == name)
+        .map(|(_, param, ret)| Sig { param: param.clone(), ret: ret.clone() })
+}
+
 fn signatures(defs: &[Def]) -> Result<HashMap<String, Sig>, Error> {
     let mut sigs = HashMap::new();
     for def in defs {
+        if builtin(&def.name).is_some() {
+            return Err(Error::new(
+                def.span,
+                format!("`{}` is a builtin and cannot be redefined", def.name),
+            ));
+        }
         if sigs.contains_key(&def.name) {
             return Err(Error::new(def.span, format!("`{}` is defined twice", def.name)));
         }
@@ -189,6 +206,10 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         Expr::Input { span } => Err(Error::new(*span, "cannot tell what `input` contains")),
 
         Expr::Call { func, func_span, arg, .. } => {
+            if let Some(sig) = builtin(func) {
+                let arg = expect(ctx, arg, &sig.param)?;
+                return Ok(Tir::new(sig.ret, Kind::IntToStr(Box::new(arg))));
+            }
             let sig = ctx
                 .sigs
                 .get(func)

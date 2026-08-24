@@ -1,0 +1,5 @@
+---
+source: tests/unwrap.rs
+expression: err
+---
+`str` is a builtin and cannot be redefined (at byte 0)

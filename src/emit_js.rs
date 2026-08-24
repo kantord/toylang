@@ -189,6 +189,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.field |= tir::vec_depth(&base.ty) > 0;
                 walk(base, used);
             }
+            Kind::IntToStr(n) => walk(n, used),
             Kind::Unwrap { base } => {
                 used.unwrap = true;
                 walk(base, used);
@@ -228,6 +229,7 @@ fn expr(t: &Tir) -> String {
         Kind::Select { source, param, pred } => {
             format!("tl_select({}, ({}) => {})", expr(source), local(*param), expr(pred))
         }
+        Kind::IntToStr(n) => format!("String({})", expr(n)),
         Kind::Unwrap { base } => {
             format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
         }

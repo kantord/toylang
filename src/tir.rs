@@ -65,6 +65,8 @@ pub enum Kind {
     /// Unlike a field access this has to store its depth. A field access leaves a record behind,
     /// so the depth is every Vec layer of the base; an index leaves a Vec behind, so the layers
     /// below the one being collapsed are indistinguishable from the ones above it.
+    /// `str(n)`. Rendering an Int the same way the printer does, but reachable from a program.
+    IntToStr(Box<Tir>),
     /// Insist an Opt is present, `depth` layers down. Like a field access and unlike an index,
     /// the depth is every Vec layer of the base, because an Opt is not a dimension.
     Unwrap {
