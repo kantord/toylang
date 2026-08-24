@@ -1,4 +1,4 @@
-use crate::ast::{BinOp, Def, Expr, File, Param, TypeExpr};
+use crate::ast::{Alias, BinOp, Def, Expr, File, Param, TypeExpr};
 use crate::error::Error;
 use crate::lex::{Tok, Token};
 
@@ -36,9 +36,16 @@ const COND_POWER: u8 = 3;
 pub fn parse(tokens: &[Token]) -> Result<File, Error> {
     let mut p = Parser { tokens, pos: 0 };
 
+    // Declarations in any order and any mix, since neither kind can refer to the other's
+    // position: aliases are resolved before any signature is read.
     let mut defs = Vec::new();
-    while p.peek().tok == Tok::Fn {
-        defs.push(p.def()?);
+    let mut aliases = Vec::new();
+    loop {
+        match p.peek().tok {
+            Tok::Fn => defs.push(p.def()?),
+            Tok::Type => aliases.push(p.alias()?),
+            _ => break,
+        }
     }
 
     let body = p.expr(0)?;
@@ -46,7 +53,7 @@ pub fn parse(tokens: &[Token]) -> Result<File, Error> {
     if rest.tok != Tok::Eof {
         return Err(Error::new(rest.span, format!("expected end of program, found {}", rest.tok)));
     }
-    Ok(File { defs, body })
+    Ok(File { aliases, defs, body })
 }
 
 struct Parser<'a> {
@@ -183,6 +190,22 @@ impl<'a> Parser<'a> {
         }
         let close = self.eat(Tok::RBrace)?.span;
         Ok(Expr::RecordLit { fields, span: open.to(close) })
+    }
+
+    /// `type Db = {users: Vec<User>}`
+    fn alias(&mut self) -> Result<Alias, Error> {
+        let start = self.eat(Tok::Type)?.span;
+        let t = self.advance();
+        let name = match &t.tok {
+            Tok::Ident(n) => n.clone(),
+            other => {
+                return Err(Error::new(t.span, format!("expected a type name, found {other}")));
+            }
+        };
+        self.eat(Tok::Eq)?;
+        let ty = self.type_expr()?;
+        let span = start.to(ty.span());
+        Ok(Alias { name, ty, span })
     }
 
     fn record_type(&mut self, open: crate::ast::Span) -> Result<TypeExpr, Error> {

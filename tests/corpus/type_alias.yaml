@@ -1,0 +1,15 @@
+# An alias is an abbreviation, so this program is the same program as one with the shapes
+# written out, and every backend emits the same bytes for both.
+program: |
+  type User = {name: Str, age: Int}
+  type Db = {users: Vec<User>}
+
+  fn adults(db: Db) -> Vec<Str> = db.users | select(.age >= 18) | map(.name)
+
+  adults(input)
+
+input: |
+  {"users": [{"name": "ada", "age": 36}, {"name": "bo", "age": 9}]}
+
+output: |
+  ["ada"]

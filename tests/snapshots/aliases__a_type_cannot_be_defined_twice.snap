@@ -1,0 +1,5 @@
+---
+source: tests/aliases.rs
+expression: "err(\"type A = Int\\ntype A = Str\\n\\nstr(1)\")"
+---
+type `A` is defined twice (at byte 13)

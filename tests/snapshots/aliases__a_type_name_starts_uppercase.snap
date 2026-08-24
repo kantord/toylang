@@ -1,0 +1,5 @@
+---
+source: tests/aliases.rs
+expression: "err(\"type db = {users: Vec<Int>}\\n\\nstr(1)\")"
+---
+a type name starts with a capital letter, and `db` reads as a value (at byte 0)

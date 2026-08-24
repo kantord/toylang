@@ -1,0 +1,5 @@
+---
+source: tests/aliases.rs
+expression: "err(\"type A = Nope\\n\\nstr(1)\")"
+---
+unknown type `Nope` (at byte 9)

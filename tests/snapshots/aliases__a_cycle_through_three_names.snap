@@ -1,0 +1,5 @@
+---
+source: tests/aliases.rs
+expression: "err(\"type A = {b: B}\\ntype B = {c: C}\\ntype C = {a: A}\\n\\nstr(1)\")"
+---
+type `A` is written in terms of itself, through `B` and `C` (at byte 45)

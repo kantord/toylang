@@ -1,0 +1,5 @@
+---
+source: tests/aliases.rs
+expression: "toylang::compile(\"type Db = {users: Vec<Int>}\\n\\nfn f(d: Db) -> Str = d\\n\\nf(input)\").map(|_|\n()).unwrap_err().to_string()"
+---
+`f` declares it returns Str, but its body is {users: Vec<Int>} (at byte 50)

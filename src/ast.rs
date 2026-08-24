@@ -97,8 +97,18 @@ pub struct Def {
 /// Zero or more definitions followed by the expression that is the program.
 #[derive(Debug)]
 pub struct File {
+    /// `type Db = {users: Vec<User>}`. An abbreviation and nothing more: the name and what it
+    /// stands for are one type, so nothing distinguishes them once resolved.
+    pub aliases: Vec<Alias>,
     pub defs: Vec<Def>,
     pub body: Expr,
+}
+
+#[derive(Debug)]
+pub struct Alias {
+    pub name: String,
+    pub ty: TypeExpr,
+    pub span: Span,
 }
 
 #[derive(Debug)]

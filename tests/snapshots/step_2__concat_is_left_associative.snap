@@ -3,6 +3,7 @@ source: tests/step_2.rs
 expression: "toylang::parse::parse(&tokens).unwrap()"
 ---
 File {
+    aliases: [],
     defs: [],
     body: Binary {
         op: Add,

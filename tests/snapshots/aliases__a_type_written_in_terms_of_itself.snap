@@ -1,0 +1,5 @@
+---
+source: tests/aliases.rs
+expression: "err(\"type T = {next: T}\\n\\nstr(1)\")"
+---
+type `T` is written in terms of itself (at byte 16)

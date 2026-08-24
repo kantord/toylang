@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use crate::ast::{BinOp, Def, Expr, File, Span, TypeExpr};
+use crate::ast::{Alias, BinOp, Def, Expr, File, Span, TypeExpr};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{Sig, Type};
@@ -36,7 +36,13 @@ impl Ctx<'_> {
 }
 
 pub fn check(file: &File) -> Result<tir::Program, Error> {
-    let sigs = signatures(&file.defs)?;
+    let aliases = alias_map(&file.aliases)?;
+    // Resolved eagerly so a broken alias is an error even when nothing uses it, and so a cycle
+    // is found here rather than wherever it happened to be reached from.
+    for a in &file.aliases {
+        resolve(&a.ty, &aliases, &mut vec![a.name.clone()])?;
+    }
+    let sigs = signatures(&file.defs, &aliases)?;
     let input = RefCell::new(None);
     let next_local = Cell::new(0);
 
@@ -111,7 +117,33 @@ fn value_name(name: &str, span: Span, what: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn signatures(defs: &[Def]) -> Result<HashMap<String, Sig>, Error> {
+/// What a type name stands for. An alias is an abbreviation, so this maps to the written form
+/// and `resolve` expands it; nothing downstream ever learns a name was involved.
+type Aliases<'a> = HashMap<String, &'a TypeExpr>;
+
+fn alias_map(aliases: &[Alias]) -> Result<Aliases<'_>, Error> {
+    let mut map: Aliases = HashMap::new();
+    for a in aliases {
+        if !a.name.chars().next().is_some_and(char::is_uppercase) {
+            return Err(Error::new(
+                a.span,
+                format!("a type name starts with a capital letter, and `{}` reads as a value", a.name),
+            ));
+        }
+        if Type::from_name(&a.name).is_some() || a.name == "Vec" || a.name == "Opt" {
+            return Err(Error::new(
+                a.span,
+                format!("`{}` is a built-in type and cannot be redefined", a.name),
+            ));
+        }
+        if map.insert(a.name.clone(), &a.ty).is_some() {
+            return Err(Error::new(a.span, format!("type `{}` is defined twice", a.name)));
+        }
+    }
+    Ok(map)
+}
+
+fn signatures(defs: &[Def], aliases: &Aliases) -> Result<HashMap<String, Sig>, Error> {
     let mut sigs = HashMap::new();
     for def in defs {
         value_name(&def.name, def.span, "function name")?;
@@ -125,25 +157,54 @@ fn signatures(defs: &[Def]) -> Result<HashMap<String, Sig>, Error> {
         if sigs.contains_key(&def.name) {
             return Err(Error::new(def.span, format!("`{}` is defined twice", def.name)));
         }
-        let sig = Sig { param: resolve(&def.param.ty)?, ret: resolve(&def.ret)? };
+        let sig = Sig {
+            param: resolve(&def.param.ty, aliases, &mut Vec::new())?,
+            ret: resolve(&def.ret, aliases, &mut Vec::new())?,
+        };
         sigs.insert(def.name.clone(), sig);
     }
     Ok(sigs)
 }
 
-fn resolve(ty: &TypeExpr) -> Result<Type, Error> {
+/// `seen` is the chain of alias names currently being expanded, so a type written in terms of
+/// itself is caught rather than expanded forever.
+fn resolve(ty: &TypeExpr, aliases: &Aliases, seen: &mut Vec<String>) -> Result<Type, Error> {
     match ty {
         TypeExpr::Named { name, span } => {
-            Type::from_name(name).ok_or_else(|| Error::new(*span, format!("unknown type `{name}`")))
+            if let Some(built_in) = Type::from_name(name) {
+                return Ok(built_in);
+            }
+            let Some(written) = aliases.get(name) else {
+                return Err(Error::new(*span, format!("unknown type `{name}`")));
+            };
+            if let Some(at) = seen.iter().position(|s| s == name) {
+                // The names expanded since this one last appeared are the cycle, and naming them
+                // is the difference between knowing there is one and finding it.
+                let through: Vec<String> =
+                    seen[at + 1..].iter().map(|s| format!("`{s}`")).collect();
+                let path = if through.is_empty() {
+                    String::new()
+                } else {
+                    format!(", through {}", through.join(" and "))
+                };
+                return Err(Error::new(
+                    *span,
+                    format!("type `{name}` is written in terms of itself{path}"),
+                ));
+            }
+            seen.push(name.clone());
+            let expanded = resolve(written, aliases, seen)?;
+            seen.pop();
+            Ok(expanded)
         }
-        TypeExpr::Vec { elem, .. } => Ok(Type::Vec(Box::new(resolve(elem)?))),
+        TypeExpr::Vec { elem, .. } => Ok(Type::Vec(Box::new(resolve(elem, aliases, seen)?))),
         TypeExpr::Record { fields, span } => {
             let mut out = Vec::new();
             for (name, ty) in fields {
                 if out.iter().any(|(n, _): &(String, Type)| n == name) {
                     return Err(Error::new(*span, format!("field `{name}` is declared twice")));
                 }
-                out.push((name.clone(), resolve(ty)?));
+                out.push((name.clone(), resolve(ty, aliases, seen)?));
             }
             Ok(Type::record(out))
         }

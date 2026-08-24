@@ -1654,6 +1654,19 @@ than two. See
 [a type you can declare but cannot build](research-log/a-type-you-can-declare-but-cannot-build.md).
 That is what the next section settles.
 
+`input` is not `stdin`, and is scaffolding rather than a decision.
+[The batching section](#the-admissible-input-set-and-where-batching-comes-from) gives `stdin` the
+type `Stream<Vec<T>>` with its batching visible in the type, and the worked examples throughout
+say `stdin.lines`. What got built is `input`: one value, read whole, validated in Rust before any
+backend starts, and with no type of its own at all. That is not `stdin` with features missing. It
+is a different construct standing where `stdin` will go, and it was the right trade -- the
+absence of an effect layer is exactly what made six backends cheap, and the 1.5 plan says so.
+
+The cost is that it invites being built on. Anything that names, types, or generates a codec for
+`input` is designing against scaffolding, and dies when stdin becomes a stream: annotating a
+stream with the type of one of its values is not a thing. A type alias is safe because it says
+nothing about how a value arrives; `input: Db` was not.
+
 ## DECIDED: records can be built, and a record is how several arguments travel
 
 Settled by grilling against the glossary rather than by measurement. Nothing here needed a
@@ -1822,6 +1835,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q32](#q32-does-the-dimension-model-subsume-the-effect-layer) | Does the dimension model subsume the effect layer? | OPEN, and it may dissolve Q13 rather than answer it |
 | [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | OPEN, and only expressible because arguments are a record |
 | [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN, and the constructor for one already works |
+| [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | OPEN, and untracked until now |
 
 [Stream lowering](#q5-stream-lowering-strategy-across-the-three-backends) is the one that blocks streaming work. [Streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and [multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) both change the two-layer section, so
 they should be settled before that section is treated as stable.
@@ -2202,6 +2216,35 @@ Not free, in rough order of how much they decide:
 
 Worth being explicit that cheapness is not an argument. What is recorded here is that the cost of
 identity is lower than it looked, not that the language wants it.
+
+### Q35. What are stdout and stderr, and does a program write or return?
+
+This document mentions `stdout` once and `stderr` never. For a language whose subject is
+transforming data on a command line, that is not deferral, it is an oversight, and it is recorded
+here rather than quietly fixed because the absence shaped things: every question about streams so
+far has been about values coming *in*.
+
+What exists is one answer by default. A program is an expression, its value is rendered by the
+type-driven printer, and that is the whole of output. It has served: line-oriented output needed
+no side effect, because a `Str` containing newlines already is line-oriented output.
+
+What it does not answer:
+
+- **Does a program write, or return?** Returning is what makes a program an expression and what
+  keeps `map` reorderable, since a write is an effect and an effect is an ordering constraint.
+  Writing is what a long-running filter over a stream has to do, because holding the output until
+  the input ends is the thing streaming exists to avoid. These are not obviously reconcilable.
+- **Is stderr in the language or under it?** Every backend refuses in its own words today, and the
+  agreement harness deliberately checks only *that* they refuse. Making the message part of the
+  language means six backends must agree on it.
+- **Does output have a type?** Input does, and it is checked. Output is whatever the body renders
+  to, which means the printer is the only specification of the format.
+- **Does a stream of outputs exist at all**, or does a program produce one value whose rendering
+  happens to be long? jq answers the first; the design so far assumes the second without saying
+  so.
+
+Blocked on the same thing as [Q5](#q5-stream-lowering-strategy-across-the-three-backends): a
+program that writes as it goes is a program with an effect layer.
 
 ## Non-goals
 

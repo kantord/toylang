@@ -1,0 +1,5 @@
+---
+source: tests/aliases.rs
+expression: "err(\"type Int = Str\\n\\nstr(1)\")"
+---
+`Int` is a built-in type and cannot be redefined (at byte 0)
