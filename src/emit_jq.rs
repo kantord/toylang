@@ -11,7 +11,7 @@
 //! is the one thing null can mean.
 
 use crate::ast::BinOp;
-use crate::tir::{self, Kind, LocalId, Program, Tir};
+use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
 use crate::ty::Type;
 
 /// The binding stdin is read into. jq puts the input in `.`, which this backend needs for the
@@ -120,7 +120,7 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
                 callees(source, out);
                 callees(body, out);
             }
-            Kind::IntToStr(n) => callees(n, out),
+            Kind::Builtin { arg, .. } => callees(arg, out),
             Kind::Cond { cond, then, otherwise } => {
                 callees(cond, out);
                 callees(then, out);
@@ -177,7 +177,7 @@ fn uses_arith(program: &Program) -> bool {
             Kind::Cond { cond, then, otherwise } => walk(cond) || walk(then) || walk(otherwise),
             Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => false,
             Kind::VecLit(items) => items.iter().any(walk),
-            Kind::Call { arg, .. } | Kind::IntToStr(arg) => walk(arg),
+            Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => walk(arg),
             Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => walk(l) || walk(r),
             Kind::Bind { value, body, .. } => walk(value) || walk(body),
             Kind::Select { source, pred, .. } => walk(source) || walk(pred),
@@ -238,6 +238,11 @@ fn expr(t: &Tir) -> String {
             expr(then),
             expr(otherwise)
         ),
+        Kind::Builtin { which, arg } => match which {
+            Builtin::IntToStr => format!("({} | tostring)", expr(arg)),
+            Builtin::Range => format!("[ range(0; {}) ]", expr(arg)),
+            Builtin::Unlines => format!("({} | join(\"\\n\"))", expr(arg)),
+        },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), jq_op(*op), expr(rhs))
         }
@@ -262,7 +267,6 @@ fn expr(t: &Tir) -> String {
             let depth = tir::vec_depth(&base.ty);
             format!("({} | {})", expr(base), distribute(&field_of(".", name), depth))
         }
-        Kind::IntToStr(n) => format!("({} | tostring)", expr(n)),
         Kind::Unwrap { base } => {
             let check = format!("if . == null then error({}) else . end", jq_string("toylang: unwrapped a value that is not there"));
             format!("({} | {})", expr(base), distribute(&check, tir::vec_depth(&base.ty)))

@@ -1,5 +1,5 @@
 use crate::ast::BinOp;
-use crate::tir::{self, Kind, LocalId, Program, Tir};
+use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
 use crate::ty::Type;
 
 /// The binding the input value is read into. Unspellable in source, since every source name is
@@ -209,7 +209,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.field |= tir::vec_depth(&base.ty) > 0;
                 walk(base, used);
             }
-            Kind::IntToStr(n) => walk(n, used),
+            Kind::Builtin { arg, .. } => walk(arg, used),
             Kind::Cond { cond, then, otherwise } => {
                 walk(cond, used);
                 walk(then, used);
@@ -263,6 +263,13 @@ fn expr(t: &Tir) -> String {
         Kind::Cond { cond, then, otherwise } => {
             format!("({} ? {} : {})", expr(cond), expr(then), expr(otherwise))
         }
+        Kind::Builtin { which, arg } => match which {
+            Builtin::IntToStr => format!("String({})", expr(arg)),
+            Builtin::Range => {
+                format!("Array.from({{ length: Math.max(0, {}) }}, (_, i) => i)", expr(arg))
+            }
+            Builtin::Unlines => format!("{}.join(\"\\n\")", expr(arg)),
+        },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), js_op(*op), expr(rhs))
         }
@@ -276,7 +283,6 @@ fn expr(t: &Tir) -> String {
         Kind::Select { source, param, pred } => {
             format!("tl_select({}, ({}) => {})", expr(source), local(*param), expr(pred))
         }
-        Kind::IntToStr(n) => format!("String({})", expr(n)),
         Kind::Unwrap { base } => {
             format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
         }

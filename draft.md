@@ -1459,6 +1459,38 @@ see what a branchpoint produces without reading a single condition.
 The deciding point is that this language has no statements. jq's form is an expression too, but
 shaped like a statement, with `end` closing a block that nothing else in the language has.
 
+### Output needs no side effect
+
+A top-level `Str` already prints raw, so a string containing newlines is line-oriented output.
+What was missing was not a way to print but a way to build that string, which is `unlines`, a
+pure conversion from `Vec<Str>`. FizzBuzz to a hundred is then an ordinary program:
+
+```
+unlines(
+    range(100) | map(. + 1) | map(
+        "FizzBuzz" if . % 15 == 0 else
+        "Fizz"     if . % 3 == 0  else
+        "Buzz"     if . % 5 == 0  else
+        str(.)
+    )
+)
+```
+
+Adding a `print` instead would have been the language's first side effect, and a much larger step
+than it looks. There is no answer to what `map(print(...))` returns in an expression language;
+ordering would become observable, which is exactly what stops a map being reordered or
+vectorised; and the effect would not be in the type, which is what principle 2 exists to prevent.
+
+`unlines` is named for Haskell's rather than being called `lines`, because `lines` is spoken for
+by the splitting direction that `stdin.lines` needs. The general `join(over, with)` cannot be
+written at all: functions are unary, so a second argument means passing a record, and there is no
+record literal to build one with. That is
+[a type you can declare but cannot build](research-log/a-type-you-can-declare-but-cannot-build.md)
+biting somewhere a user would actually reach.
+
+`range(n)` is zero-based, matching jq, Python, and this language's own indices, which is why the
+example shifts with `map(. + 1)` rather than starting at one.
+
 **The condition is exactly one `Bool`**, which is the claim
 [the safety section](#why-cardinality-in-the-type-is-the-safety-mechanism) makes. `"a" if 1 else
 "b"` does not typecheck, where jq would run both branches and hand back two answers. Both arms

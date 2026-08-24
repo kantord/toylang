@@ -21,7 +21,7 @@ use inkwell::values::{BasicValueEnum, FunctionValue, IntValue, PointerValue};
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 
 use crate::ast::BinOp;
-use crate::tir::{Func, Kind, LocalId, Program, Tir};
+use crate::tir::{Builtin, Func, Kind, LocalId, Program, Tir};
 use crate::ty::Type;
 
 /// The C source linked into every native binary.
@@ -59,6 +59,7 @@ struct Runtime<'ctx> {
     unwrap: FunctionValue<'ctx>,
     div_by_zero: FunctionValue<'ctx>,
     map_new: FunctionValue<'ctx>,
+    range: FunctionValue<'ctx>,
 }
 
 /// What a compiler-introduced binding holds.
@@ -191,6 +192,7 @@ impl<'ctx> Emitter<'ctx> {
                 None,
             ),
             map_new: module.add_function("tl_map_new", ptr.fn_type(&[i64t.into()], false), None),
+            range: module.add_function("tl_range", ptr.fn_type(&[i64t.into()], false), None),
         };
 
         Emitter {
@@ -912,9 +914,23 @@ impl<'ctx> Emitter<'ctx> {
                 self.arith(*op, l, r)?
             }
 
-            Kind::IntToStr(n) => {
-                let n = self.expr(n)?;
-                self.call_rt(self.rt.int_to_str, &[n], "int_str")?
+            Kind::Builtin { which, arg } => {
+                let arg = self.expr(arg)?;
+                match which {
+                    Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,
+                    Builtin::Range => self.call_rt(self.rt.range, &[arg], "range")?,
+                    // Reuse the joiner the printer uses, with no brackets around it.
+                    Builtin::Unlines => {
+                        let open = self.string_const("");
+                        let sep = self.string_const("\n");
+                        let close = self.string_const("");
+                        self.call_rt(
+                            self.rt.join,
+                            &[arg, open.into(), sep.into(), close.into()],
+                            "unlines",
+                        )?
+                    }
+                }
             }
 
             Kind::Unwrap { base } => {

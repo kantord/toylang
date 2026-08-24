@@ -1,0 +1,1 @@
+unlines(range(0) | map(str(.)))

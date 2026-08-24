@@ -82,14 +82,15 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
 }
 
 /// Functions the language provides. Unary like every other function, so they need no special
-/// call syntax and go in the same table.
-const BUILTINS: &[(&str, Type, Type)] = &[("str", Type::Int, Type::Str)];
-
-fn builtin(name: &str) -> Option<Sig> {
-    BUILTINS
-        .iter()
-        .find(|(n, _, _)| *n == name)
-        .map(|(_, param, ret)| Sig { param: param.clone(), ret: ret.clone() })
+/// call syntax and are looked up before user definitions.
+fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
+    let vec_of = |t: Type| Type::Vec(Box::new(t));
+    Some(match name {
+        "str" => (tir::Builtin::IntToStr, Sig { param: Type::Int, ret: Type::Str }),
+        "range" => (tir::Builtin::Range, Sig { param: Type::Int, ret: vec_of(Type::Int) }),
+        "unlines" => (tir::Builtin::Unlines, Sig { param: vec_of(Type::Str), ret: Type::Str }),
+        _ => return None,
+    })
 }
 
 fn signatures(defs: &[Def]) -> Result<HashMap<String, Sig>, Error> {
@@ -224,9 +225,9 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         Expr::Input { span } => Err(Error::new(*span, "cannot tell what `input` contains")),
 
         Expr::Call { func, func_span, arg, .. } => {
-            if let Some(sig) = builtin(func) {
+            if let Some((which, sig)) = builtin(func) {
                 let arg = expect(ctx, arg, &sig.param)?;
-                return Ok(Tir::new(sig.ret, Kind::IntToStr(Box::new(arg))));
+                return Ok(Tir::new(sig.ret, Kind::Builtin { which, arg: Box::new(arg) }));
             }
             let sig = ctx
                 .sigs

@@ -1,5 +1,5 @@
 use crate::ast::BinOp;
-use crate::tir::{self, Kind, LocalId, Program, Tir};
+use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
 use crate::ty::Type;
 
 /// The global the input value is bound to before the chunk runs. Unspellable in source, since
@@ -21,6 +21,14 @@ local function tl_field(v, k, depth)
   if depth == 0 then return v[k] end
   local out = {}
   for i = 1, #v do out[i] = tl_field(v[i], k, depth - 1) end
+  return out
+end
+";
+
+const RANGE_HELPER: &str = "\
+local function tl_range(n)
+  local out = {}
+  for i = 1, n do out[i] = i - 1 end
   return out
 end
 ";
@@ -130,6 +138,9 @@ pub fn emit(program: &Program) -> String {
     if used.map {
         out.push_str(MAP_HELPER);
     }
+    if used.range {
+        out.push_str(RANGE_HELPER);
+    }
 
     // All names are declared before any body, because the checker collects signatures before
     // checking bodies and so accepts a call to a function defined further down. Emitting
@@ -238,6 +249,7 @@ struct Helpers {
     unwrap: bool,
     arith: bool,
     map: bool,
+    range: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -269,7 +281,10 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.field |= tir::vec_depth(&base.ty) > 0;
                 walk(base, used);
             }
-            Kind::IntToStr(n) => walk(n, used),
+            Kind::Builtin { which, arg } => {
+                used.range |= *which == Builtin::Range;
+                walk(arg, used);
+            }
             Kind::Cond { cond, then, otherwise } => {
                 walk(cond, used);
                 walk(then, used);
@@ -326,6 +341,11 @@ fn expr(t: &Tir) -> String {
             expr(then),
             expr(otherwise)
         ),
+        Kind::Builtin { which, arg } => match which {
+            Builtin::IntToStr => format!("tostring({})", expr(arg)),
+            Builtin::Range => format!("tl_range({})", expr(arg)),
+            Builtin::Unlines => format!("table.concat({}, \"\\n\")", expr(arg)),
+        },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), lua_op(*op), expr(rhs))
         }
@@ -347,7 +367,6 @@ fn expr(t: &Tir) -> String {
         ),
         // The depth comes from the type on the node below, so it cannot disagree with it, and
         // the emitted helper is told the answer rather than inspecting the value for it.
-        Kind::IntToStr(n) => format!("tostring({})", expr(n)),
         Kind::Unwrap { base } => {
             format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
         }

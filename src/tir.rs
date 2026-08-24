@@ -86,8 +86,8 @@ pub enum Kind {
     /// Unlike a field access this has to store its depth. A field access leaves a record behind,
     /// so the depth is every Vec layer of the base; an index leaves a Vec behind, so the layers
     /// below the one being collapsed are indistinguishable from the ones above it.
-    /// `str(n)`. Rendering an Int the same way the printer does, but reachable from a program.
-    IntToStr(Box<Tir>),
+    /// A unary builtin. Unary like every other function, so it needs no special call form.
+    Builtin { which: Builtin, arg: Box<Tir> },
     /// Insist an Opt is present, `depth` layers down. Like a field access and unlike an index,
     /// the depth is every Vec layer of the base, because an Opt is not a dimension.
     Unwrap {
@@ -100,6 +100,20 @@ pub enum Kind {
         /// Whether an entry is a record, which decides if collapsing has to gather columns.
         elem_is_record: bool,
     },
+}
+
+/// The functions the language provides. Each is unary; anything wanting two arguments has to
+/// wait for object construction, since a second argument means passing a record.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Builtin {
+    /// `str(n)`, rendering an Int the way the printer does but reachable from a program.
+    IntToStr,
+    /// `range(n)`, the integers from zero up to but not including n. Zero-based, matching jq,
+    /// Python, and this language's own indices.
+    Range,
+    /// `unlines(v)`, joining with newlines. Named for Haskell's, because `lines` is spoken for
+    /// by the splitting direction that `stdin.lines` will need.
+    Unlines,
 }
 
 pub struct Func {

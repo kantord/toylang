@@ -723,3 +723,16 @@ _Noreturn void tl_div_by_zero(void) {
 tl_vec *tl_map_new(int64_t len) {
     return tl_vec_new(len, 1);
 }
+
+/* The integers from zero up to but not including n. A negative n gives an empty Vec rather
+ * than an error, the same as asking for zero of them. */
+tl_vec *tl_range(int64_t n) {
+    if (n < 0) {
+        n = 0;
+    }
+    tl_vec *v = tl_vec_new(n, 1);
+    for (int64_t i = 0; i < n; i++) {
+        v->cols[0][i] = i;
+    }
+    return v;
+}
