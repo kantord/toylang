@@ -8,6 +8,7 @@
 
 mod support;
 
+use support::Expect;
 use toylang::Backend;
 
 #[test]
@@ -18,6 +19,20 @@ fn every_backend_agrees_and_is_right() {
     let mut failures = Vec::new();
 
     for case in &cases {
+        if let Expect::Refusal = case.expect {
+            for backend in Backend::ALL {
+                if let Ok(out) = toylang::run_on(&case.program, case.input.as_deref(), backend) {
+                    failures.push(format!(
+                        "RAN     {}: {} produced {out:?} instead of refusing",
+                        case.name,
+                        backend.name()
+                    ));
+                }
+            }
+            continue;
+        }
+        let Expect::Output(want) = &case.expect else { unreachable!("refusal handled above") };
+
         let mut outputs: Vec<(&str, String)> = Vec::new();
         for backend in Backend::ALL {
             // A backend that cannot run is reported, never skipped. A report saying every
@@ -45,10 +60,10 @@ fn every_backend_agrees_and_is_right() {
             continue;
         }
 
-        if *first != case.output {
+        if first != want {
             failures.push(format!(
-                "WRONG   {}: expected {:?}, every backend gave {:?}",
-                case.name, case.output, first
+                "WRONG   {}: expected {want:?}, every backend gave {first:?}",
+                case.name
             ));
         }
     }

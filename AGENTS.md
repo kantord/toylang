@@ -106,11 +106,18 @@ Don't assert things that cannot fail. Asserting that a constructor set the field
 it will never once be red.
 
 The corpus is one YAML file per case in `tests/corpus/`, holding `program`, an optional `input`,
-the expected `output`, and any extra checks the case asks for -- today only `snapshot`, a list of
-backends whose emitted code gets pinned as well. Every case runs on every backend and has to
-agree; a snapshot is the exception, for a claim the output cannot carry. Use block scalars (`|`)
-so nothing is coerced by YAML's scalar rules. Unknown keys and unknown backend names are errors,
-because a case that asks for nothing looks exactly like a case that passes.
+either the expected `output` or `refuses: true`, and any extra checks the case asks for -- today
+only `snapshot`, a list of backends whose emitted code gets pinned as well.
+
+Every case runs on every backend. `output` means they all print it and agree; `refuses: true`
+means they all decline to run it, and what each says while refusing is its own business. A
+snapshot is the exception on top, for a claim the output cannot carry. A program that does not
+compile is not a corpus case: nothing about it differs per backend, so it stays in step_*.rs
+where the message is an insta snapshot.
+
+Use block scalars (`|`) so nothing is coerced by YAML's scalar rules. Unknown keys, unknown
+backend names, and a case with both or neither of `output` and `refuses` are all errors, because
+a case that asks for nothing looks exactly like a case that passes.
 
 ## Uncertainty
 

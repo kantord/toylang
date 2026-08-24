@@ -1,0 +1,5 @@
+# A zero divisor is the only way arithmetic can fail.
+program: |
+  str(1 / 0)
+
+refuses: true

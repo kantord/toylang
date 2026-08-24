@@ -23,7 +23,12 @@ struct Fields {
     program: String,
     #[serde(default)]
     input: Option<String>,
-    output: String,
+    #[serde(default)]
+    output: Option<String>,
+    /// Set when the program compiles but every backend has to refuse to run it. What each says
+    /// while refusing is its own business, so only the refusal is compared.
+    #[serde(default)]
+    refuses: bool,
     /// Backends whose emitted code is snapshotted for this program, for cases where what the
     /// program prints is not the whole claim. Empty for most cases: running on every backend and
     /// agreeing is the ordinary bar, and a snapshot on top of it is the exception.
@@ -31,11 +36,20 @@ struct Fields {
     snapshot: Vec<String>,
 }
 
+/// What every backend has to do with the program. A case says exactly one of these, because a
+/// case that says both, or neither, is one nobody wrote down the point of.
+pub enum Expect {
+    /// Every backend prints this, and they have to agree.
+    Output(String),
+    /// Every backend refuses to run it.
+    Refusal,
+}
+
 pub struct Case {
     pub name: String,
     pub program: String,
     pub input: Option<String>,
-    pub output: String,
+    pub expect: Expect,
     pub snapshot: Vec<toylang::Backend>,
 }
 
@@ -67,13 +81,13 @@ pub fn cases() -> Vec<Case> {
                         .unwrap_or_else(|| panic!("{name}: `{n}` is not a backend"))
                 })
                 .collect();
-            Case {
-                name,
-                program: fields.program,
-                input: fields.input,
-                output: fields.output,
-                snapshot,
-            }
+            let expect = match (fields.output, fields.refuses) {
+                (Some(output), false) => Expect::Output(output),
+                (None, true) => Expect::Refusal,
+                (Some(_), true) => panic!("{name}: has both `output` and `refuses`"),
+                (None, false) => panic!("{name}: has neither `output` nor `refuses`"),
+            };
+            Case { name, program: fields.program, input: fields.input, expect, snapshot }
         })
         .collect()
 }

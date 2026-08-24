@@ -1,0 +1,5 @@
+# The remainder fails on a zero divisor for the same reason division does.
+program: |
+  str(1 % 0)
+
+refuses: true

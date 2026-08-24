@@ -1,0 +1,6 @@
+# `!` insists a value is there. Every backend has to refuse; what each says while refusing is
+# its own business, which is why there is no expected output.
+program: |
+  [1, 2, 3][9]!
+
+refuses: true

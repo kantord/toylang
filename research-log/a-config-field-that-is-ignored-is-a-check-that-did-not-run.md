@@ -33,6 +33,19 @@ them and reading the message rather than by assuming serde was configured right.
 form: **anywhere a test reads configuration, the parser has to be strict, because the failure
 mode of a permissive one is silence.**
 
+The second field, `refuses: true`, is for a program every backend has to decline to run, which
+until then could not be a corpus case at all: the harness compared the output of programs that
+succeed. That one comes with its own version of the same trap, since a case marked `refuses`
+whose program has quietly started working reports nothing unless the harness looks. It does, and
+says `RAN` where it would otherwise say `WRONG`. A case must say exactly one of `output` and
+`refuses`; both and neither are errors, because a case with no stated outcome is one nobody
+wrote down the point of.
+
+What did *not* move is the compile-error tests. A program that fails to compile never reaches a
+backend, so there is nothing for the agreement harness to agree about, and putting them in the
+corpus would have meant the harness skipping them by the dozen. A harness that skips is the
+thing this corpus exists not to be.
+
 The migration itself followed the same rule. The YAML was generated, then checked field by field
 against the files it replaced with an independent parser, then checked again with the one the
 tests actually use, and the check was broken on purpose to confirm it could go red -- all before

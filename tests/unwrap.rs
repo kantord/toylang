@@ -1,25 +1,10 @@
-//! Unwrapping an absent value stops the program.
+//! What the checker refuses, and what unwrapping does to a type.
 //!
-//! This cannot live in the corpus, which compares the output of programs that succeed. What has
-//! to be identical here is that every backend refuses, not what it prints while refusing.
+//! The programs every backend has to refuse at *runtime* used to live here, because the corpus
+//! could only describe programs that succeed. It says `refuses: true` now, so they moved: see
+//! tests/corpus/unwrap_absent.yaml, div_by_zero.yaml and rem_by_zero.yaml.
 
 use toylang::Backend;
-
-#[test]
-fn unwrapping_an_absent_value_stops_every_backend() {
-    let mut ran = 0;
-    for backend in Backend::ALL {
-        let result = toylang::run_on("[1, 2, 3][9]!", None, backend);
-        assert!(
-            result.is_err(),
-            "{}: unwrapping an absent value produced {:?}",
-            backend.name(),
-            result
-        );
-        ran += 1;
-    }
-    assert_eq!(ran, Backend::ALL.len(), "every backend has to have been tried");
-}
 
 /// The type is what decides whether output is raw, so unwrapping changes it: `Opt<Str>` prints
 /// as JSON and the `Str` behind it prints raw.
@@ -46,22 +31,6 @@ fn str_takes_an_int() {
     insta::assert_snapshot!(
         toylang::compile(r#"str("a")"#).map(|_| ()).unwrap_err().to_string()
     );
-}
-
-#[test]
-fn dividing_by_zero_stops_every_backend() {
-    let mut ran = 0;
-    for backend in Backend::ALL {
-        for src in ["str(1 / 0)", "str(1 % 0)"] {
-            assert!(
-                toylang::run_on(src, None, backend).is_err(),
-                "{}: {src} did not stop",
-                backend.name()
-            );
-            ran += 1;
-        }
-    }
-    assert_eq!(ran, Backend::ALL.len() * 2);
 }
 
 /// `+` is the one operator whose meaning depends on its operands, and nothing is coerced.

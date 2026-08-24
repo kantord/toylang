@@ -23,11 +23,16 @@ fn native_agrees_where_it_compiles() {
         match toylang::emit_llvm::to_ir(&program) {
             Err(reason) => unsupported.push(format!("{name}: {reason}")),
             Ok(_) => {
-                let native = toylang::run_on(&src, input.as_deref(), Backend::Native)
-                    .unwrap_or_else(|e| panic!("{name}: native run failed: {e}"));
-                let lua = toylang::run_on(&src, input.as_deref(), Backend::Lua)
-                    .unwrap_or_else(|e| panic!("{name}: lua run failed: {e}"));
-                assert_eq!(native, lua, "{name}: native and lua disagree");
+                // Compared as results rather than as output, so a case that every backend has
+                // to refuse is checked here too: both refusing is agreement, and one refusing
+                // while the other runs is the disagreement worth catching.
+                let native = toylang::run_on(&src, input.as_deref(), Backend::Native);
+                let lua = toylang::run_on(&src, input.as_deref(), Backend::Lua);
+                match (native, lua) {
+                    (Ok(n), Ok(l)) => assert_eq!(n, l, "{name}: native and lua disagree"),
+                    (Err(_), Err(_)) => {}
+                    (n, l) => panic!("{name}: native gave {n:?} and lua gave {l:?}"),
+                }
                 supported.push(name);
             }
         }
