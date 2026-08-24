@@ -4,7 +4,7 @@ use std::process::ExitCode;
 
 use toylang::Backend;
 
-const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|llvm]\n       toylang build FILE";
+const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -61,6 +61,8 @@ fn named(name: &str) -> Option<Backend> {
         "lua" => Some(Backend::Lua),
         "js" => Some(Backend::Js),
         "jq" => Some(Backend::Jq),
+        "go" => Some(Backend::Go),
+        "py" => Some(Backend::Py),
         "llvm" => Some(Backend::Native),
         _ => None,
     }

@@ -88,3 +88,24 @@ fn both_branches_must_agree() {
         toylang::compile(r#""a" if 1 == 1 else 2"#).map(|_| ()).unwrap_err().to_string()
     );
 }
+
+/// Go folds constant arithmetic exactly and will not compile a result that does not fit, so it
+/// was the first backend that could not go along with a literal wider than the type. The other
+/// four agreed on the wrong answer, each holding the literal in its own wider representation
+/// until an operator wrapped it, which is agreement by coincidence rather than by rule.
+#[test]
+fn an_int_literal_has_to_fit_in_an_int() {
+    insta::assert_snapshot!(
+        toylang::compile("str(9999999999)").map(|_| ()).unwrap_err().to_string()
+    );
+}
+
+/// A minus directly on a literal is part of the literal, so the most negative Int is writable
+/// even though its magnitude is one past the most positive. One further and it is not.
+#[test]
+fn the_most_negative_int_is_writable_but_not_one_past_it() {
+    assert!(toylang::compile("str(-2147483648)").is_ok());
+    insta::assert_snapshot!(
+        toylang::compile("str(-2147483649)").map(|_| ()).unwrap_err().to_string()
+    );
+}

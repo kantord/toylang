@@ -1,0 +1,4 @@
+# The other side of opt_holds_an_empty_vec: nothing there at all.
+fn rows(db: {v: Vec<Vec<Int>>}) -> Vec<Vec<Int>> = db.v
+
+rows(input)[0]

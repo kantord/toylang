@@ -133,7 +133,19 @@ fn resolve(ty: &TypeExpr) -> Result<Type, Error> {
 fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     match expr {
         Expr::Str { text, .. } => Ok(Tir::new(Type::Str, Kind::Str(text.clone()))),
-        Expr::Int { value, .. } => Ok(Tir::new(Type::Int, Kind::Int(*value))),
+        Expr::Int { value, span } => {
+            // The literal is the one place a value could enter without meeting the 32-bit rule,
+            // and four backends agreed on the wrong answer only because each held it in its own
+            // wider representation until an operator wrapped it. Go refuses to compile such a
+            // constant at all, which is what made the hole visible.
+            if *value > i32::MAX as i64 {
+                return Err(Error::new(
+                    *span,
+                    format!("integer `{value}` does not fit in Int, which is 32 bits"),
+                ));
+            }
+            Ok(Tir::new(Type::Int, Kind::Int(*value)))
+        }
 
         Expr::Subject { span } => match &ctx.subject {
             Some((ty, id)) => Ok(Tir::new(ty.clone(), Kind::Local(*id))),
@@ -238,6 +250,19 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         }
 
         Expr::Neg { base, span } => {
+            // A minus directly on a literal is part of the literal, so the most negative Int can
+            // be written even though its magnitude is one past the most positive. This is the
+            // rule Rust uses, and it is why `-` was not folded into the lexer: `a -1` has to
+            // stay `a - 1`.
+            if let Expr::Int { value, span: lit } = base.as_ref() {
+                if *value > -(i32::MIN as i64) {
+                    return Err(Error::new(
+                        *lit,
+                        format!("integer `-{value}` does not fit in Int, which is 32 bits"),
+                    ));
+                }
+                return Ok(Tir::new(Type::Int, Kind::Int(-value)));
+            }
             let inner = expect(ctx, base, &Type::Int)?;
             let zero = Tir::new(Type::Int, Kind::Int(0));
             let _ = span;

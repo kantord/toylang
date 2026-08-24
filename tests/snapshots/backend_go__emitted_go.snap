@@ -1,0 +1,94 @@
+---
+source: tests/backend_go.rs
+expression: "toylang::emit_go::emit(&p)"
+---
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+func tlFail(msg string) {
+	fmt.Fprintln(os.Stderr, "toylang: "+msg)
+	os.Exit(1)
+}
+
+func tlInt(n int32) int32 { return n }
+
+func tlMap[A, B any](src []A, f func(A) B) []B {
+	out := make([]B, len(src))
+	for i, e := range src {
+		out[i] = f(e)
+	}
+	return out
+}
+
+func tlSelect[T any](src []T, pred func(T) bool) []T {
+	out := []T{}
+	for _, e := range src {
+		if pred(e) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func tlJoin[T any](v []T, f func(T) string) string {
+	parts := make([]string, len(v))
+	for i, e := range v {
+		parts[i] = f(e)
+	}
+	return "[" + strings.Join(parts, ",") + "]"
+}
+
+func tlQuote(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '"':
+			b.WriteString("\\\"")
+		case '\\':
+			b.WriteString("\\\\")
+		case '\n':
+			b.WriteString("\\n")
+		case '\r':
+			b.WriteString("\\r")
+		case '\t':
+			b.WriteString("\\t")
+		default:
+			if c < 0x20 {
+				fmt.Fprintf(&b, "\\u%04x", c)
+			} else {
+				b.WriteByte(c)
+			}
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+type tlRec0 struct {
+	Fage int32 `json:"age"`
+	Fname string `json:"name"`
+}
+
+type tlRec1 struct {
+	Fusers []tlRec0 `json:"users"`
+}
+
+func v_adults(v_db tlRec1) []string {
+	return func(t_2 []tlRec0) []string { return tlMap(t_2, func(m1 tlRec0) string { return (m1).Fname }) }(func(t_0 []tlRec0) []tlRec0 { return tlSelect(t_0, func(t_1 tlRec0) bool { return ((t_1).Fage >= tlInt(18)) }) }((v_db).Fusers))
+}
+
+func main() {
+	var t_input tlRec1
+	if err := json.NewDecoder(os.Stdin).Decode(&t_input); err != nil {
+		tlFail(err.Error())
+	}
+	fmt.Println(tlJoin(v_adults(t_input), func(e0 string) string { return tlQuote(e0) }))
+}

@@ -1,0 +1,5 @@
+---
+source: tests/unwrap.rs
+expression: "toylang::compile(\"str(-2147483649)\").map(|_| ()).unwrap_err().to_string()"
+---
+integer `-2147483649` does not fit in Int, which is 32 bits (at byte 5)

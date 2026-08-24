@@ -52,3 +52,7 @@ unimplemented.
 The rule that came out of weighing the four for a different decision, and which says why jq's
 slowness is not a cost:
 [each target constrains the design differently](each-target-constrains-the-design-differently.md).
+
+A fifth backend made the same argument in reverse: where three targets satisfied a rule by three
+accidents, four targets *violated* one by four. See
+[backends can agree and still be wrong](backends-can-agree-and-still-be-wrong.md).

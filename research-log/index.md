@@ -52,6 +52,15 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [Track an incomplete backend as a shrinking list](track-an-incomplete-backend-as-a-shrinking-list.md)
   -- A partial backend cannot join an agreement harness without softening it, and leaving it out
   is a silent skip, so snapshot what it cannot do and require that list to shrink.
+- [A statically typed target asks for the types the checker already has](a-statically-typed-target-asks-for-the-types-the-checker-already-has.md)
+  -- Go needs a declared name for every record and the element type spelled at every level of
+  distribution, and the checker had computed all of it already.
+- [Backends can agree and still be wrong](backends-can-agree-and-still-be-wrong.md)
+  -- An out-of-range Int literal printed identically on four backends, because each avoided the
+  rule by its own accident rather than by following it.
+- [A backend that finds nothing is evidence only if it is different](a-backend-that-finds-nothing-is-evidence-only-if-it-is-different.md)
+  -- Python ported 68 programs with no front-end change, which is worth something only because it
+  fails unlike the five already there.
 - [Merging passes turns redundant traversals into bugs](merging-passes-turns-redundant-traversals-into-bugs.md)
   -- A double traversal that was pure waste while the checker only asked questions became a
   correctness bug the moment the checker also allocated.

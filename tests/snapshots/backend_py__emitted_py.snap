@@ -1,0 +1,46 @@
+---
+source: tests/backend_py.rs
+expression: "toylang::emit_py::emit(&p)"
+---
+import sys
+import json
+
+
+
+def tl_field(v, k, depth):
+    if depth == 0:
+        return v[k]
+    return [tl_field(e, k, depth - 1) for e in v]
+
+
+def tl_join(v, f):
+    return "[" + ",".join(f(e) for e in v) + "]"
+
+
+def tl_quote(s):
+    out = ['"']
+    for c in s:
+        if c == '"':
+            out.append('\\"')
+        elif c == "\\":
+            out.append("\\\\")
+        elif c == "\n":
+            out.append("\\n")
+        elif c == "\r":
+            out.append("\\r")
+        elif c == "\t":
+            out.append("\\t")
+        elif ord(c) < 0x20:
+            out.append("\\u%04x" % ord(c))
+        else:
+            out.append(c)
+    out.append('"')
+    return "".join(out)
+
+
+def v_adults(v_db):
+    return (lambda t_2: tl_field(t_2, "name", 1))((lambda t_0: [t_1 for t_1 in t_0 if (t_1["age"] >= 18)])(v_db["users"]))
+
+
+t_input = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+sys.stdout.buffer.write((tl_join(v_adults(t_input), lambda e0: tl_quote(e0)) + "\n").encode("utf-8"))

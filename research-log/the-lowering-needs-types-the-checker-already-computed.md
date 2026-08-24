@@ -81,3 +81,7 @@ backend needs. Both say the two ends of this compiler are not yet speaking one l
 Step 6b added a third instance: choosing which column a field lives in is a name-to-index lookup
 only the type can do. See
 [SoA is cheap until something wants a whole element](soa-is-cheap-until-something-wants-a-whole-element.md).
+
+The target that could not have been written without the merge is Go, which needs a spelled type
+at every level of a distribution and has no side table that could supply one. See
+[a statically typed target asks for the types the checker already has](a-statically-typed-target-asks-for-the-types-the-checker-already-has.md).

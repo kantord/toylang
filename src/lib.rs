@@ -1,9 +1,11 @@
 pub mod ast;
 pub mod check;
+pub mod emit_go;
 pub mod emit_jq;
 pub mod emit_js;
 pub mod emit_llvm;
 pub mod emit_lua;
+pub mod emit_py;
 pub mod error;
 pub mod input;
 pub mod lex;
@@ -24,14 +26,16 @@ pub enum Backend {
     Js,
     Native,
     Jq,
+    Go,
+    Py,
 }
 
 impl Backend {
     /// The backends that must agree on every corpus program. Native joined once it could
     /// compile the whole language; until then it was kept out rather than allowed to turn the
     /// harness permanently red, and tests/backend_llvm.rs tracked what it was missing.
-    pub const ALL: [Backend; 4] =
-        [Backend::Lua, Backend::Js, Backend::Native, Backend::Jq];
+    pub const ALL: [Backend; 6] =
+        [Backend::Lua, Backend::Js, Backend::Native, Backend::Jq, Backend::Go, Backend::Py];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -39,6 +43,8 @@ impl Backend {
             Backend::Js => "js",
             Backend::Native => "native",
             Backend::Jq => "jq",
+            Backend::Go => "go",
+            Backend::Py => "py",
         }
     }
 
@@ -48,6 +54,8 @@ impl Backend {
             Backend::Js => emit_js::emit(program),
             Backend::Native => return emit_llvm::to_ir(program),
             Backend::Jq => emit_jq::emit(program),
+            Backend::Go => emit_go::emit(program),
+            Backend::Py => emit_py::emit(program),
         })
     }
 }
@@ -101,6 +109,8 @@ pub fn run_on(
             value.as_ref(),
             program.body.ty == ty::Type::Str,
         ),
+        Backend::Go => run_go(&emit_go::emit(&program), value.as_ref()),
+        Backend::Py => run_py(&emit_py::emit(&program), value.as_ref()),
         Backend::Native => {
             let dir = tempfile::tempdir()?;
             let exe = dir.path().join("program");
@@ -219,6 +229,64 @@ fn run_lua(
 
     let out = captured.borrow().clone();
     Ok(out)
+}
+
+/// Runs through `python3`. Like `node`, this is an interpreter that has to be on the machine
+/// rather than one vendored into the build.
+fn run_py(
+    source: &str,
+    value: Option<&serde_json::Value>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("program.py");
+    std::fs::write(&path, source)?;
+
+    let mut child = std::process::Command::new("python3")
+        .arg(&path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("could not run `python3`: {e}"))?;
+
+    let text = value.map(|v| v.to_string()).unwrap_or_default();
+    child.stdin.take().expect("piped").write_all(text.as_bytes())?;
+
+    let out = child.wait_with_output()?;
+    if !out.status.success() {
+        return Err(format!("python3 failed: {}", String::from_utf8_lossy(&out.stderr)).into());
+    }
+    Ok(String::from_utf8(out.stdout)?)
+}
+
+/// Runs through `go run`, which compiles and executes in one step. Go has no interpreter, so
+/// this is the second backend that needs a real toolchain; like `node` and `cc`, a missing one
+/// is an error rather than a skipped backend.
+fn run_go(
+    source: &str,
+    value: Option<&serde_json::Value>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("main.go");
+    std::fs::write(&path, source)?;
+
+    let mut child = std::process::Command::new("go")
+        .arg("run")
+        .arg(&path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("could not run `go`: {e}"))?;
+
+    let text = value.map(|v| v.to_string()).unwrap_or_default();
+    child.stdin.take().expect("piped").write_all(text.as_bytes())?;
+
+    let out = child.wait_with_output()?;
+    if !out.status.success() {
+        return Err(format!("go failed: {}", String::from_utf8_lossy(&out.stderr)).into());
+    }
+    Ok(String::from_utf8(out.stdout)?)
 }
 
 /// Runs through `node`, which must be present. A missing toolchain is an error rather than a

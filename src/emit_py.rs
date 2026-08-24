@@ -1,0 +1,317 @@
+//! The Python backend.
+//!
+//! Python is dynamically typed, so the depth-polymorphic helpers that Go could not have are
+//! available again: one `tl_field(v, k, depth)` serves every shape. What it stresses instead is
+//! arithmetic, from a direction none of the other five come from. Its integers are exact and
+//! unbounded, so wrapping is emulation like jq's -- but unlike jq nothing is lost on the way,
+//! so the whole rule is one modulo rather than a split into 16-bit halves. Its `//` and `%` are
+//! floored, so truncated division needs writing out.
+//!
+//! One mapping is better here than anywhere else: a record is a dict, which is also what
+//! `json.loads` produces, so reading input is the parse and nothing more. Go needed a declared
+//! struct and a decoder to reach the same place.
+
+use crate::ast::BinOp;
+use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
+use crate::ty::Type;
+
+/// The binding the input value is read into. Unspellable in source, since every source name is
+/// prefixed.
+const INPUT: &str = "t_input";
+
+const FAIL_HELPER: &str = r#"def tl_fail(msg):
+    sys.stderr.write("toylang: " + msg + "\n")
+    sys.exit(1)
+"#;
+
+/// Python's integers do not overflow, so the 32-bit rule is entirely emulated. It is exact
+/// arithmetic all the way through, which is what lets one modulo stand for the whole thing:
+/// jq needed a 16-bit split only because a double loses the low bits of a 62-bit product.
+const I32_HELPER: &str = r#"def tl_i32(n):
+    return ((n + 2147483648) % 4294967296) - 2147483648
+"#;
+
+/// Python floors, and `int(a / b)` would truncate through a float and lose bits on the way. The
+/// remainder takes its sign from the dividend, so `a == tl_div(a, b) * b + tl_rem(a, b)` holds.
+const ARITH_HELPER: &str = r#"def tl_div(a, b):
+    if b == 0:
+        tl_fail("divided by zero")
+    q = abs(a) // abs(b)
+    return tl_i32(-q if (a < 0) != (b < 0) else q)
+
+
+def tl_rem(a, b):
+    if b == 0:
+        tl_fail("divided by zero")
+    r = abs(a) % abs(b)
+    return -r if a < 0 else r
+"#;
+
+const FIELD_HELPER: &str = r#"def tl_field(v, k, depth):
+    if depth == 0:
+        return v[k]
+    return [tl_field(e, k, depth - 1) for e in v]
+"#;
+
+/// Absence is `None`, which is unambiguous because toylang has no null value: nothing else can
+/// produce one. This is the same mapping jq got, and lossless in this direction for the same
+/// reason.
+const AT_HELPER: &str = r#"def tl_at(v, i, depth):
+    if depth > 0:
+        return [tl_at(e, i, depth - 1) for e in v]
+    n = len(v)
+    if i < 0:
+        i = n + i
+    if i < 0 or i >= n:
+        return None
+    return v[i]
+"#;
+
+const UNWRAP_HELPER: &str = r#"def tl_unwrap(v, depth):
+    if depth > 0:
+        return [tl_unwrap(e, depth - 1) for e in v]
+    if v is None:
+        tl_fail("unwrapped a value that is not there")
+    return v
+"#;
+
+const RANGE_HELPER: &str = r#"def tl_range(n):
+    return list(range(max(0, n)))
+"#;
+
+const JOIN_HELPER: &str = r#"def tl_join(v, f):
+    return "[" + ",".join(f(e) for e in v) + "]"
+"#;
+
+/// Iterating characters rather than bytes, which agrees with the C runtime's byte loop because
+/// the two differ only above U+007F, where both pass the value through unchanged.
+const QUOTE_HELPER: &str = r#"def tl_quote(s):
+    out = ['"']
+    for c in s:
+        if c == '"':
+            out.append('\\"')
+        elif c == "\\":
+            out.append("\\\\")
+        elif c == "\n":
+            out.append("\\n")
+        elif c == "\r":
+            out.append("\\r")
+        elif c == "\t":
+            out.append("\\t")
+        elif ord(c) < 0x20:
+            out.append("\\u%04x" % ord(c))
+        else:
+            out.append(c)
+    out.append('"')
+    return "".join(out)
+"#;
+
+pub fn emit(program: &Program) -> String {
+    let mut decls = String::new();
+
+    // Module-level functions are looked up when called, not when defined, so the forward
+    // reference the checker accepts costs nothing here. Lua needed declarations, JavaScript
+    // relied on hoisting, and jq could not express it at all.
+    for f in &program.funcs {
+        decls.push_str(&format!(
+            "def {}({}):\n    return {}\n\n\n",
+            user(&f.name),
+            user(&f.param),
+            expr(&f.body)
+        ));
+    }
+
+    if program.input.is_some() {
+        decls.push_str(&format!(
+            "{INPUT} = json.loads(sys.stdin.buffer.read().decode(\"utf-8\"))\n"
+        ));
+    }
+
+    let body = expr(&program.body);
+    // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
+    let printed =
+        if program.body.ty == Type::Str { body } else { show(&program.body.ty, &body, 0) };
+    // Bytes rather than `print`, so output does not depend on the locale the interpreter was
+    // started under. The native backend writes bytes for the same reason.
+    decls.push_str(&format!(
+        "sys.stdout.buffer.write(({printed} + \"\\n\").encode(\"utf-8\"))\n"
+    ));
+
+    // Which helpers to include is read off the emitted text. Python objects to neither an unused
+    // function nor an unused import, so nothing here can break the way it would in Go; the
+    // helper-to-helper edges are still stated rather than read, since inclusion is what pulls
+    // them in.
+    let uses = |name: &str| decls.contains(name);
+    let unwrap = uses("tl_unwrap(");
+    let arith = uses("tl_div(") || uses("tl_rem(");
+
+    let mut helpers = false;
+    let mut out = String::from("import sys\n");
+    if program.input.is_some() {
+        out.push_str("import json\n");
+    }
+    out.push('\n');
+    for (on, text) in [
+        (unwrap || arith, FAIL_HELPER),
+        (arith || uses("tl_i32("), I32_HELPER),
+        (arith, ARITH_HELPER),
+        (uses("tl_field("), FIELD_HELPER),
+        (uses("tl_at("), AT_HELPER),
+        (unwrap, UNWRAP_HELPER),
+        (uses("tl_range("), RANGE_HELPER),
+        (uses("tl_join("), JOIN_HELPER),
+        (uses("tl_quote("), QUOTE_HELPER),
+    ] {
+        if on {
+            out.push_str("\n\n");
+            out.push_str(text);
+            helpers = true;
+        }
+    }
+    if helpers {
+        out.push_str("\n\n");
+    }
+    out.push_str(&decls);
+    out
+}
+
+/// The printer is built from the type rather than by inspecting the value, as on every backend.
+/// Here the type is doing one thing it does nowhere else: `str` on a Bool gives `True`, so the
+/// two JSON words have to be written out.
+fn show(ty: &Type, value: &str, depth: usize) -> String {
+    match ty {
+        Type::Str => format!("tl_quote({value})"),
+        Type::Int => format!("str({value})"),
+        Type::Bool => format!("(\"true\" if {value} else \"false\")"),
+        Type::Vec(elem) => {
+            let e = format!("e{depth}");
+            format!("tl_join({value}, lambda {e}: {})", show(elem, &e, depth + 1))
+        }
+        Type::Opt(inner) => {
+            let v = format!("o{depth}");
+            format!(
+                "(lambda {v}: \"null\" if {v} is None else {})({value})",
+                show(inner, &v, depth + 1)
+            )
+        }
+        Type::Record(fields) => {
+            if fields.is_empty() {
+                return "\"{}\"".to_string();
+            }
+            // Type::record keeps fields sorted, so this order is the type's order. Field names
+            // are identifiers, so the JSON key needs no escaping and is one literal.
+            let parts: Vec<String> = fields
+                .iter()
+                .map(|(name, fty)| {
+                    let read = format!("{value}[{}]", py_string(name));
+                    let key = py_string(&format!("\"{name}\":"));
+                    format!("{key} + {}", show(fty, &read, depth + 1))
+                })
+                .collect();
+            format!("(\"{{\" + {} + \"}}\")", parts.join(" + \",\" + "))
+        }
+    }
+}
+
+fn user(name: &str) -> String {
+    format!("v_{name}")
+}
+
+fn local(id: LocalId) -> String {
+    format!("t_{id}")
+}
+
+fn expr(t: &Tir) -> String {
+    match &t.kind {
+        Kind::Str(s) => py_string(s),
+        Kind::Int(n) => n.to_string(),
+        Kind::Var(name) => user(name),
+        Kind::Local(id) => local(*id),
+        Kind::Input => INPUT.to_string(),
+        Kind::VecLit(items) => {
+            let parts: Vec<String> = items.iter().map(expr).collect();
+            format!("[{}]", parts.join(", "))
+        }
+        Kind::Call { func, arg } => format!("{}({})", user(func), expr(arg)),
+        Kind::Concat(l, r) => format!("({} + {})", expr(l), expr(r)),
+        Kind::Arith { op, lhs, rhs } => match op {
+            BinOp::Div => format!("tl_div({}, {})", expr(lhs), expr(rhs)),
+            BinOp::Rem => format!("tl_rem({}, {})", expr(lhs), expr(rhs)),
+            BinOp::Add => format!("tl_i32({} + {})", expr(lhs), expr(rhs)),
+            BinOp::Sub => format!("tl_i32({} - {})", expr(lhs), expr(rhs)),
+            BinOp::Mul => format!("tl_i32({} * {})", expr(lhs), expr(rhs)),
+            other => unreachable!("{other} is not arithmetic"),
+        },
+        // The one construct this target spells exactly as toylang does, because toylang took the
+        // spelling from here.
+        Kind::Cond { cond, then, otherwise } => {
+            format!("({} if {} else {})", expr(then), expr(cond), expr(otherwise))
+        }
+        Kind::Builtin { which, arg } => match which {
+            Builtin::IntToStr => format!("str({})", expr(arg)),
+            Builtin::Range => format!("tl_range({})", expr(arg)),
+            Builtin::Unlines => format!("\"\\n\".join({})", expr(arg)),
+        },
+        Kind::Compare { op, lhs, rhs } => {
+            format!("({} {} {})", expr(lhs), py_op(*op), expr(rhs))
+        }
+        Kind::Bind { local: id, value, body } => {
+            format!("(lambda {}: {})({})", local(*id), expr(body), expr(value))
+        }
+        // A comprehension rather than `map`, which returns an iterator here and would need a
+        // `list` around it anyway.
+        Kind::Map { source, param, body } => {
+            format!("[{} for {} in {}]", expr(body), local(*param), expr(source))
+        }
+        Kind::Select { source, param, pred } => {
+            let p = local(*param);
+            format!("[{p} for {p} in {} if {}]", expr(source), expr(pred))
+        }
+        Kind::Unwrap { base } => {
+            format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
+        }
+        Kind::Index { base, index, depth, .. } => {
+            format!("tl_at({}, {}, {})", expr(base), expr(index), depth)
+        }
+        Kind::Field { base, name } => {
+            let depth = tir::vec_depth(&base.ty);
+            if depth == 0 {
+                format!("{}[{}]", expr(base), py_string(name))
+            } else {
+                format!("tl_field({}, {}, {})", expr(base), py_string(name), depth)
+            }
+        }
+    }
+}
+
+fn py_op(op: BinOp) -> &'static str {
+    match op {
+        BinOp::Eq => "==",
+        BinOp::Ne => "!=",
+        BinOp::Lt => "<",
+        BinOp::Le => "<=",
+        BinOp::Gt => ">",
+        BinOp::Ge => ">=",
+        other => unreachable!("{other} is not a comparison"),
+    }
+}
+
+fn py_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 || c == '\u{7f}' => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}

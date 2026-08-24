@@ -1,0 +1,5 @@
+---
+source: tests/unwrap.rs
+expression: "toylang::compile(\"str(9999999999)\").map(|_| ()).unwrap_err().to_string()"
+---
+integer `9999999999` does not fit in Int, which is 32 bits (at byte 4)

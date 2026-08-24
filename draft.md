@@ -1435,6 +1435,63 @@ here.
 Every wrapping edge is checked against C in the corpus, including `-2147483648 / -1`,
 `-2147483648 % -1`, `-(-2147483648)` and `46341 * 46341`.
 
+### The literal was where the rule leaked, and a fifth backend found it
+
+An `Int` literal wider than 32 bits used to be accepted, and all four backends printed it back
+unchanged. They agreed, so the agreement harness was quiet. They agreed by coincidence rather
+than by rule: each held the literal in its own wider representation and only wrapped once an
+operator touched it. `9999999999` was an `Int` that had never met the type.
+
+Go would not go along. Its constant arithmetic is exact and unbounded, and a typed constant that
+does not fit is a **compile** error rather than a wrapped value, so `int32(2147483647) + int32(1)`
+does not build at all. That is the reverse of every other target, where the wrap is what is free
+and the check is what costs.
+
+Two things came out of it.
+
+The rule is now stated where the value enters: **an `Int` literal must fit in 32 bits**, and a
+minus directly on a literal is part of the literal, so `-2147483648` is writable and
+`-2147483649` is not. This is Rust's rule, and it is the reason unary minus was left as a prefix
+operator rather than folded back into the lexer -- `a -1` still has to mean `a - 1`.
+
+The Go backend passes every literal through `func tlInt(n int32) int32 { return n }`, which makes
+the expression non-constant so the wrap happens at runtime where it is defined. Go inlines the
+call away, so the rule costs nothing at either end: `int32` wraps natively on `+`, `-` and `*`,
+truncates on `/` and `%`, and defines `MIN / -1` as `MIN` -- the only target that agrees with
+every arithmetic decision here without being made to.
+
+### Six backends, and why there are six
+
+`lua`, `js`, `llvm`, `jq`, `go` and `py`.
+
+**They are not all going to be kept.** Most of them are an exercise: a language that is easy to
+compile to one ecosystem and impossible in another has usually made a type decision it did not
+know it was making, and the cheapest way to find such a decision is to try. Backends are how the
+type model gets audited, not a compatibility promise, and one may be dropped once it has stopped
+saying anything new.
+
+That framing is what makes a target worth adding or not. A seventh imperative dynamic language
+would add cost and no information; what earns a slot is a target that is unlike the ones already
+there in some way the type model has to survive.
+
+Go is the first target that is statically typed *and* has no runtime type information, which
+changes what an emitter has to do rather than just how it spells things. See
+[a statically typed target asks for the types the checker already has](research-log/a-statically-typed-target-asks-for-the-types-the-checker-already-has.md).
+
+Python is the first with exact unbounded integers *and* floored division, so it lands in the
+emulated bucket for two separate arithmetic decisions at once and shows they do not compound: the
+32-bit rule is one modulo, and truncated division is a sign fixup over `//`. jq needed a split
+into 16-bit halves for the first only because a double loses the low bits of a 62-bit product,
+and Lua needed a fixup for the second only. Python needs both and neither is expensive.
+
+It is also the target where the type model costs least to reach. A record is a dict, which is
+what `json.loads` already returns, so reading input is the parse and nothing else, where Go
+needs two declared structs and a decoder for the same value.
+
+It found no defect. See
+[a backend that finds nothing is evidence only if it is different](research-log/a-backend-that-finds-nothing-is-evidence-only-if-it-is-different.md)
+for what that is and is not worth.
+
 ### The conditional is an expression, spelled Python's way
 
 `then if condition else otherwise`, sitting between `|` and comparison, right-associative:
