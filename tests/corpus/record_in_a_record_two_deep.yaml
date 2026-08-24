@@ -1,0 +1,12 @@
+# The record spread inside the Vec-of-Vecs walk, which is the two paths combined rather than
+# either alone.
+program: |
+  fn deep(db: Vec<Vec<{a: {b: Int}}>>) -> Vec<Vec<Int>> = db[][].a.b
+
+  deep(input)
+
+input: |
+  [[{"a": {"b": 1}}], [{"a": {"b": 2}}, {"a": {"b": 3}}]]
+
+output: |
+  [[1],[2,3]]
