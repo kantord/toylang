@@ -45,7 +45,7 @@ Two properties fall out for free. The list cannot quietly grow, since a regressi
 construct shows up as a line moving from one section to the other. And progress is visible as a
 diff rather than as a claim, so "step 5 added functions" is checkable rather than asserted.
 
-The general shape: when a component is deliberately incomplete, the incompleteness itself is the
+The general shape: when a field is deliberately incomplete, the incompleteness itself is the
 thing to put under test. An exclusion that lives in someone's head is indistinguishable from a
 bug; an exclusion that lives in a snapshot is a to-do list the test suite maintains.
 

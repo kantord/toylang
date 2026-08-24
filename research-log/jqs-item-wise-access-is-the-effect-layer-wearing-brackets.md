@@ -76,8 +76,8 @@ named dimension by a fixed set of labels. That generalisation works, and it is w
 libraries do, but only while **the cells stay uniform**.
 
 The moment the cells differ by label -- `name` is a `Str` and `age` is an `Int` -- the labelled
-axis is not a dimension at all. It is a product, and slicing it is meaningless because there is no
-common cell type to slice out. That is precisely why a data frame is a product of columns wearing
+axis is not a dimension at all. It is a record, and slicing it is meaningless because there is no
+common cell type to slice out. That is precisely why a data frame is a record of columns wearing
 a rectangular costume, rather than a matrix.
 
 So the split is not records versus dimensions. It is:

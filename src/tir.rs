@@ -28,10 +28,10 @@ pub enum Kind {
     Str(String),
     Int(i64),
     VecLit(Vec<Tir>),
-    /// A product literal, its components sorted by name so a component's position here matches
+    /// A record literal, its fields sorted by name so a field's position here matches
     /// its position in the type. That is what lets a backend address one by index rather than
     /// searching for it.
-    ProductLit { components: Vec<(String, Tir)> },
+    RecordLit { fields: Vec<(String, Tir)> },
     /// A name written in the source: today only a function parameter.
     Var(String),
     Local(LocalId),
@@ -107,7 +107,7 @@ pub enum Kind {
 }
 
 /// The functions the language provides. Each is unary, and so is every user function: something
-/// wanting two arguments takes a product, which is what a product literal is for in argument
+/// wanting two arguments takes a record, which is what a record literal is for in argument
 /// position.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Builtin {

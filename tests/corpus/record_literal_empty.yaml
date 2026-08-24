@@ -1,4 +1,4 @@
-# A product's type is its components, so having none is a complete answer and {} is {}.
+# A record's type is its fields, so having none is a complete answer and {} is {}.
 # Lua's `..` needs an operand on each side, so this is the one backend that had to say so.
 program: |
   {}

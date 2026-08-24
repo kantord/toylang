@@ -605,7 +605,7 @@ runs disagreeing on order is a correctness problem for whatever consumes the res
 speed one. Worth folding into that question's detail rather than opening a new one.
 
 "Aliasing" a submatch so later code can refer to it by name is also already in the document, just
-not yet generalized. `("red","blue") as $c` in [the product-forming-update section](#undecided-what-to-call-the-product-forming-update) already binds a
+not yet generalized. `("red","blue") as $c` in [the record-forming-update section](#undecided-what-to-call-the-record-forming-update) already binds a
 whole expression's result to a name; extending `as` to a matched submatch is the same binding,
 applied one level deeper:
 
@@ -677,7 +677,7 @@ discriminated union, `Seq` for a record's fields).
 ## One combinator algebra for trees, strings, and streams
 
 TODO (user): The built-in generic types might inherently double as parser-combinator primitives
--- `Vec<T>` as "many `T`", `Opt<T>` as "optional `T`", a sum type as choice, a product/record as
+-- `Vec<T>` as "many `T`", `Opt<T>` as "optional `T`", a sum type as choice, a record/record as
 sequencing. Separately, and perhaps as an application of the same idea, strings could get a
 pattern language that reads more like a URL route pattern than a regular expression: named,
 typed capture groups, easier than regex for the common case, but able to fall back to full regex
@@ -686,7 +686,7 @@ in place of `ba*b`, and `b:foo:b` in place of `b.*b`.
 
 RESPONSE (agent). The first half already has a name and thirty years of literature: this is
 parser combinators, built on exactly the base functors already in the document. `Seq` is
-`and_then`/product, `Alt` is `choice`/sum, `Star` is `many`, `Opt` is `optional`. Hutton and
+`and_then`/record, `Alt` is `choice`/sum, `Star` is `many`, `Opt` is `optional`. Hutton and
 Meijer's original combinator paper and Wadler's "How to Replace Failure by a List of Successes"
 derive a parser library from precisely this shape; parsing with derivatives (Might, Darais, and
 Spiewak) is the same idea again, and it is also what [the regex-over-types entry](#q4-can-the-type-express-ordering-over-heterogeneous-streams) is already
@@ -1143,7 +1143,7 @@ c <- c.get() + 1                       # in-place write
 
 Orthogonal to cardinality.
 
-### UNDECIDED: what to call the product-forming update
+### UNDECIDED: what to call the record-forming update
 
 In jq, `=` is not assignment. Its right-hand side is an ordinary expression, so if it yields
 several values, the whole update yields several results:
@@ -1154,7 +1154,7 @@ several values, the whole update yields several results:
 
 That is genuinely useful. It gives config-matrix expansion, variant generation, and
 property-test input enumeration for free. The problem is purely that `=` *looks* like mutation
-while behaving like a product, and the multiplicity is invisible at the call site.
+while behaving like a record, and the multiplicity is invisible at the call site.
 
 Compounding it, jq's `=` and `|=` disagree about cardinality and say nothing about it:
 
@@ -1170,7 +1170,7 @@ preserves exactly the readability problem, and the `=` versus `|=` mismatch stay
 
 **B. Require `One` on the right, and make forking explicit.** `=` typechecks only when its
 right-hand side yields exactly one value, so the surprising case becomes a compile error. When
-a product is wanted, it is written out:
+a record is wanted, it is written out:
 
 ```
 db.color = "red"                        # ok
@@ -1179,11 +1179,11 @@ db.color = ("red", "blue")              # ERROR: expected One<Str>, found 2 valu
 ```
 
 **C. Two distinct operators.** `=` for the single-valued case, and a visually distinct one for
-the deliberate product, such as `.color =* ("red","blue")` or `.color each= (...)`. Keeps both
+the deliberate record, such as `.color =* ("red","blue")` or `.color each= (...)`. Keeps both
 without either being silent, at the cost of more surface.
 
 **D. Drop `=` entirely and keep only `|=`.** All updates go through the update operator, and
-products come from an explicit `cross` or `for` construct. Smallest core, largest departure.
+records come from an explicit `cross` or `for` construct. Smallest core, largest departure.
 
 **E. Rename to a functional-update keyword.** `db with .color = "red"`, in the spirit of record
 update in ML-family languages. Removes the mutation reading, but adds a keyword and does not by
@@ -1267,10 +1267,10 @@ usual way into the layer where everything already is. Remove the layer and nothi
 ### The proposal
 
 A type has an ordered list of **dimensions**, fixed by the type. An access says one thing about
-each of them -- a **spec** -- and may then select a **component**:
+each of them -- a **spec** -- and may then select a **field**:
 
 ```
-value[spec][spec]...component
+value[spec][spec]...field
 ```
 
 Three specs. **Keep**, written `[]`, leaves a dimension at full extent. **Narrow**, such as a
@@ -1298,14 +1298,14 @@ operation exists, only whether the result is `Opt`.
 **There is one access model, not two.** A tensor is not a second scheme with its own syntax; it is
 the same scheme over a type whose extents happen to be uniform.
 
-**A record is not a dimension.** Its component names are type-level, so iterating it would flatten
+**A record is not a dimension.** Its field names are type-level, so iterating it would flatten
 them into positional order and lose them, which is the erasure principle 1 forbids. `to_entries`
 is the written-down version of that crossing, not a workaround for a missing feature. This holds
-whether or not the components share a type, so it is not a question of finding a common cell type.
+whether or not the fields share a type, so it is not a question of finding a common cell type.
 
 ### Consequences to accept
 
-**`Map<K,V>` becomes a distinct type.** A product's keys are known to the compiler; a map's are
+**`Map<K,V>` becomes a distinct type.** A record's keys are known to the compiler; a map's are
 known only to the program. Collapsing them is what forces jq to treat an object as a struct and a
 dictionary at once, which is where its own `.[]` ambiguity comes from. Accepted.
 
@@ -1492,7 +1492,7 @@ changes what an emitter has to do rather than just how it spells things. See
 Python is the first with exact unbounded integers *and* floored division, so it lands in the
 emulated bucket for two separate arithmetic decisions at once and shows they do not compound: the
 32-bit rule is one modulo, and truncated division is a sign fixup over `//`. jq needed a split
-into 16-bit halves for the first only because a double loses the low bits of a 62-bit product,
+into 16-bit halves for the first only because a double loses the low bits of a 62-bit record,
 and Lua needed a fixup for the second only. Python needs both and neither is expensive.
 
 It is also the target where the type model costs least to reach. A record is a dict, which is
@@ -1654,7 +1654,7 @@ than two. See
 [a type you can declare but cannot build](research-log/a-type-you-can-declare-but-cannot-build.md).
 That is what the next section settles.
 
-## DECIDED: products can be built, and a product is how several arguments travel
+## DECIDED: records can be built, and a record is how several arguments travel
 
 Settled by grilling against the glossary rather than by measurement. Nothing here needed a
 benchmark: every candidate answer was already implied by something the language had committed to,
@@ -1662,27 +1662,27 @@ and the work was finding which commitment applied.
 
 ### The form
 
-`{name: .n, age: .a}` is a **product literal**, the inverse of a projection.
+`{name: .n, age: .a}` is a **record literal**, the inverse of a projection.
 [CONTEXT.md](CONTEXT.md) carries the term and its counterpart.
 
-It synthesises structurally. `{a: 1, b: "x"}` is `{a: Int, b: Str}`, two products with the same
-components are one type as they already were, and nothing is declared or named. Whether named
+It synthesises structurally. `{a: 1, b: "x"}` is `{a: Int, b: Str}`, two records with the same
+fields are one type as they already were, and nothing is declared or named. Whether named
 types should exist, and whether a name would create a distinct type or only an abbreviation, is
 untouched: a nominal type would need its literal ascribed anyway, so it could never have used a
 bare brace, and deciding it later costs nothing.
 
-### Why a product and not a map
+### Why a record and not a map
 
 The glossary already separates the two by where the keys are known, and five built things need
 them known to the compiler:
 
-- the type grammar gives each component its own type, which one value type cannot express
-- a `Vec` of products is one column per component, which is the invariant that produced the
+- the type grammar gives each field its own type, which one value type cannot express
+- a `Vec` of records is one column per field, which is the invariant that produced the
   pointer bug fixed in the native backend
-- the Go backend declares a struct per product type and has nothing to declare for a map
-- the printer enumerates components from the type in sorted order, which is what stops six
+- the Go backend declares a struct per record type and has nothing to declare for a map
+- the printer enumerates fields from the type in sorted order, which is what stops six
   backends disagreeing about key order
-- `.name` is checked, so a missing component is a compile error rather than a failed lookup
+- `.name` is checked, so a missing field is a compile error rather than a failed lookup
 
 A map is a different type with different operations, whose lookup yields `Opt`. Worth having for
 grouped results and genuinely dynamic keys, and not this.
@@ -1690,7 +1690,7 @@ grouped results and genuinely dynamic keys, and not this.
 ### One meaning, and `map` is the only thing that crosses a dimension
 
 A spec is what an *access* says about a dimension, and a literal is not an access, so it has no
-dimension to spec. `map({...})` is how a product meets a dimension, and there is no `db[]{...}`.
+dimension to spec. `map({...})` is how a record meets a dimension, and there is no `db[]{...}`.
 
 Projection already has two spellings, `db[].n` and `db | map(.n)`, so symmetry was a real
 argument for giving assembly two as well. It loses to the cost: a brace that means one thing
@@ -1699,39 +1699,39 @@ already primitive precisely because there is no effect layer to derive it from.
 
 ### `{}` is legal where `[]` is not
 
-A product literal answers what it is from its contents alone, so it never needs its position to
-say. That is true even of the empty one: a product's type is the names and types of its
-components, and having none is a complete answer. `{}` is `{}`.
+A record literal answers what it is from its contents alone, so it never needs its position to
+say. That is true even of the empty one: a record's type is the names and types of its
+fields, and having none is a complete answer. `{}` is `{}`.
 
 The `Vec` literal cannot do this, because an entry is where an element type comes from and an
 empty one has none. So `[]` remains a form whose type must come from its position, and
-`{items: []}` fails for that reason rather than for anything to do with products.
+`{items: []}` fails for that reason rather than for anything to do with records.
 
 **That gap is real and pre-existing.** The class of position-typed forms is described in
 [checked-only forms are a class, not a lambda rule](research-log/checked-only-forms-are-a-class-not-a-lambda-rule.md),
 and the checker implements exactly one member of it: `expect` special-cases `input` and falls
 through to synthesis for everything else, so `[]` fails in every position including the ones with
 an expected type in plain sight. Function bodies compound it, being synthesised and then compared
-to the return annotation rather than checked against it. Product literals do not make this worse
+to the return annotation rather than checked against it. Record literals do not make this worse
 and are not the place to fix it.
 
 ### Punning is out
 
 `{name}` for `{name: .name}` is jq's most-used shorthand and is not being adopted, for a reason
-better than conservatism: it would answer a question by abbreviation. Narrowing a product to some
-of its components is arguably its own operation, the way `select` narrows a dimension, and the
+better than conservatism: it would answer a question by abbreviation. Narrowing a record to some
+of its fields is arguably its own operation, the way `select` narrows a dimension, and the
 glossary has no term for it because the language has not decided. Sugar that quietly implements
 one answer makes the question harder to ask.
 
 The worked example does not need it either. `{message: .commit.message, name: .commit.committer.name}`
 has names that differ from the paths they come from, which is the ordinary case.
 
-### Functions stay unary, and a product is how several arguments travel
+### Functions stay unary, and a record is how several arguments travel
 
 **This is the decision most likely to look arbitrary later, so it gets the most detail.**
 
 `Sig` is one parameter and one result, and every backend emits unary functions. A second argument
-therefore means a product:
+therefore means a record:
 
 ```
 fn join(a: {over: Vec<Str>, with: Str}) -> Str
@@ -1742,10 +1742,10 @@ form, and to all six emitters, and would then leave two ways to pass two things.
 
 What decided it is the call site rather than the cost. `join(", ")` in jq says nothing about
 which argument is which, and every two-argument builtin in every such language re-poses that
-question. A product answers it once and structurally, because components are named and order does
-not matter. Named arguments are not a feature here; they are what passing a product looks like.
+question. A record answers it once and structurally, because fields are named and order does
+not matter. Named arguments are not a feature here; they are what passing a record looks like.
 
-### Argument parens are optional when the argument is a product literal
+### Argument parens are optional when the argument is a record literal
 
 ```
 join {over: names, with: ", "}
@@ -1765,15 +1765,15 @@ the case that motivated it. Parens stay for everything else, so `map(.n)` and `s
 unchanged.
 
 This is sugar, and it was accepted where punning was refused, which is worth being explicit
-about. Punning hides an unanswered question. This hides nothing: it makes the product the
+about. Punning hides an unanswered question. This hides nothing: it makes the record the
 spelling of named arguments, which is what the previous section decided it already was. Two
 spellings for one call is the price, and the unary-function decision is worth less without it.
 
 ### What it costs the native backend
 
-`tl_map_new` allocates one column, so a `map` whose body returns a product would violate the
+`tl_map_new` allocates one column, so a `map` whose body returns a record would violate the
 struct-of-arrays invariant at a second site and reproduce the pointer bug the field access just
-had. `map` has to allocate one column per component and write column-wise, and the first test of
+had. `map` has to allocate one column per field and write column-wise, and the first test of
 it should be `map {a: {b: .x}}`, which is the shape that broke.
 
 ## Open questions
@@ -1790,7 +1790,7 @@ checked for completeness, and the settled entries are what stop a decision being
 |---|---|---|
 | [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity) | Streams: first-class values, or evaluation-level multiplicity? | LEANING, evaluation-level; four independent arguments now agree |
 | [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
-| [Q3](#q3-what-symbol-replaces--for-the-product-forming-update) | What symbol replaces `=` for the product-forming update? | LEANING, blocked on Q2 |
+| [Q3](#q3-what-symbol-replaces--for-the-record-forming-update) | What symbol replaces `=` for the record-forming update? | LEANING, blocked on Q2 |
 | [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN, subsumes cardinality-vs-order |
 | [Q5](#q5-stream-lowering-strategy-across-the-three-backends) | Stream-lowering strategy across the three backends | OPEN, blocks streaming backends only; three non-streaming backends exist |
 | [Q6](#q6-does-a-reconciler-belong-in-the-language-or-a-library) | Does a reconciler belong in the language or a library? | OPEN |
@@ -1820,7 +1820,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q30](#q30-do-the-base-functor-generics-double-as-parser-combinators-across-trees-strings-and-streams) | Do the base-functor generics double as parser combinators, across trees, strings, and streams? | LEANING yes, implementation split still open |
 | [Q31](#q31-does-a-friendlier-string-pattern-language-belong-in-the-language-and-what-regex-flavor-does-it-extend-to) | Does a friendlier string-pattern language belong in the language, and what regex flavor does it extend to? | OPEN |
 | [Q32](#q32-does-the-dimension-model-subsume-the-effect-layer) | Does the dimension model subsume the effect layer? | OPEN, and it may dissolve Q13 rather than answer it |
-| [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | OPEN, and only expressible because arguments are a product |
+| [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | OPEN, and only expressible because arguments are a record |
 | [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN, and the constructor for one already works |
 
 [Stream lowering](#q5-stream-lowering-strategy-across-the-three-backends) is the one that blocks streaming work. [Streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and [multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) both change the two-layer section, so
@@ -1841,7 +1841,7 @@ provably does not escape, with an acknowledged cliff when it does.
 Cartesian (jq today), zip
 (vectorized, with broadcast), or neither by default with explicit `cross` and `zip`?
 
-### Q3. What symbol replaces `=` for the product-forming update?
+### Q3. What symbol replaces `=` for the record-forming update?
 
 ### Q4. Can the type express ordering over heterogeneous streams?
 
@@ -1999,7 +1999,7 @@ is defined over.
 A macro would be a function that runs at compile time and transforms the compiler's own
 representation of a program, which means that representation has to be a type the language
 defines rather than an implementation detail the compiler happens to have. Fully compile-time, as
-in Rust, with no runtime component.
+in Rust, with no runtime field.
 
 The syntax idea is decorator-style, as in Python, where the same notation can attach either an
 ordinary closure or a macro. That the two look alike is the point worth checking: it is either
@@ -2024,7 +2024,7 @@ piece of machinery rather than two.
 
 ### Q26. Is JSX's children slot a closed per-site union, or an open one?
 
-Sketch: a creator function taking a `Product` of strictly-typed attrs (this is just `Component`
+Sketch: a creator function taking a `Record` of strictly-typed attrs (this is just `Field`
 in the existing sense, no new machinery) plus a `Dimension` of children. The children slot needs
 an element type, and that is where the interesting question lives.
 
@@ -2127,9 +2127,9 @@ turns out to be a dimension, is the open part.
 
 ### Q33. Does a spread slot in a call give partial application?
 
-Functions are unary and several arguments travel as one product, which makes a question available
+Functions are unary and several arguments travel as one record, which makes a question available
 that a positional language would have to answer with arity counting. If a call may leave a slot
-open -- spelled `...` for now -- what comes back is a function expecting the components that were
+open -- spelled `...` for now -- what comes back is a function expecting the fields that were
 not supplied:
 
 ```
@@ -2142,9 +2142,9 @@ computed structurally rather than by position, so there is no question of which 
 skipped and no need for placeholders in the other slots.
 
 What makes this worth recording rather than dismissing is that it is not a feature bolted onto
-the call syntax; it falls out of arguments already being a product. Partial application in a
+the call syntax; it falls out of arguments already being a record. Partial application in a
 positional language has to invent a convention for "this one, not that one". Here the convention
-is subtraction on component names, which the type system already does.
+is subtraction on field names, which the type system already does.
 
 Open, and roughly in dependency order:
 
@@ -2155,22 +2155,22 @@ Open, and roughly in dependency order:
 - **What does the residual type look like?** `{over: Vec<Str>} -> Str` needs an arrow in the type
   grammar, which is the same thing the previous point asks for.
 - **Is `...` the right spelling?** It reads as "and the rest", which is right, but the token is
-  unused and could go to a spread that *supplies* components instead -- `{...defaults, n: 1}` --
+  unused and could go to a spread that *supplies* fields instead -- `{...defaults, n: 1}` --
   and those two meanings would collide.
 - **Does supplying nothing mean anything?** `join {...}` would be `join` itself, which is either
   a harmless identity or a sign the spelling proves too much.
-- **Does it interact with the dimension model at all?** A product literal does not distribute, so
+- **Does it interact with the dimension model at all?** A record literal does not distribute, so
   presumably not, but partial application inside `map` is exactly where it would be used most.
 
 Blocked on first-class functions, which nothing else currently needs.
 
 ### Q34. Do named types exist, and is a name an alias or an identity?
 
-Deferred when product literals were settled, on the grounds that a literal synthesises its own
+Deferred when record literals were settled, on the grounds that a literal synthesises its own
 type and so forecloses nothing. What has since turned up is that the *constructor* for a named
 type already works, which changes what the question costs without changing what it asks.
 
-A constructor is a unary function from the structural product to the named type, and that shape
+A constructor is a unary function from the structural record to the named type, and that shape
 exists today:
 
 ```
@@ -2184,11 +2184,11 @@ name is defined. Type names and expression names already resolve by separate pat
 no ambiguity to invent a rule for.
 
 Free, then: the spelling, and the semantics, since a constructor being a unary function over a
-product is the same decision already made for arguments generally.
+record is the same decision already made for arguments generally.
 
 Not free, in rough order of how much they decide:
 
-- **Destructuring.** Does `.name` on a `User` see through the name, or does getting a component
+- **Destructuring.** Does `.name` on a `User` see through the name, or does getting a field
   out need an explicit step? Nothing about this direction falls out, and it is what decides
   whether an identity is pleasant or a tax.
 - **The declaration form.** `Type::from_name` knows three names and there is no `type X = ...`.
@@ -2197,7 +2197,7 @@ Not free, in rough order of how much they decide:
   probably right and should be chosen rather than arrived at.
 - **Alias or identity.** The question proper, and the only part the above does not touch. An
   alias abbreviates a type the tutorial's annotation shows is worth abbreviating; an identity
-  makes two same-shaped products refuse to interchange, which is a different feature with a
+  makes two same-shaped records refuse to interchange, which is a different feature with a
   different justification.
 
 Worth being explicit that cheapness is not an argument. What is recorded here is that the cost of

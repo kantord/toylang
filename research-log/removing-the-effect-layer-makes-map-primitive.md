@@ -27,7 +27,7 @@ being stored, and taking it away moves the cost somewhere visible rather than re
 ## What the hole actually is
 
 Everything the language can currently do to a `Vec` either removes elements, takes one out, or
-reads a named component off each:
+reads a named field off each:
 
 ```
 [1,2,3] | select(. >= 2)   ->  [2,3]
@@ -36,7 +36,7 @@ db.users[].name            ->  the names
 ```
 
 **Nothing produces a new element value.** A `Vec<Int>` can become a shorter `Vec<Int>` or a single
-`Int`, and can become a `Vec<Str>` only if a `Str` was already sitting there as a component. So
+`Int`, and can become a `Vec<Str>` only if a `Str` was already sitting there as a field. So
 the gap is not "a convenience is missing", it is that element transformation does not exist.
 
 Fifty-two corpus programs across four backends did not notice, because every one of them is a

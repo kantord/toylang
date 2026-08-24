@@ -228,8 +228,8 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
-        Kind::ProductLit { components } => {
-            let parts: Vec<String> = components
+        Kind::RecordLit { fields } => {
+            let parts: Vec<String> = fields
                 .iter()
                 .map(|(name, value)| format!("{}: {}", py_string(name), expr(value)))
                 .collect();

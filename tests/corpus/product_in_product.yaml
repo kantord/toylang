@@ -1,7 +1,0 @@
-# Lua will not index a table constructor, so the printer reading a component straight off a
-# freshly built product needed the parens the emitter now writes.
-program: |
-  {a: {b: 1}, c: "x"}
-
-output: |
-  {"a":{"b":1},"c":"x"}

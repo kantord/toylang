@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use crate::ast::{BinOp, Def, Expr, File, TypeExpr};
+use crate::ast::{BinOp, Def, Expr, File, Span, TypeExpr};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{Sig, Type};
@@ -93,9 +93,29 @@ fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
     })
 }
 
+/// Capitalised names are types and lowercase names are values.
+///
+/// Every name in the language already followed this, unenforced. Making it a rule is what lets a
+/// constructor share a spelling with a call without sharing a namespace: `User {..}` builds and
+/// `area {..}` calls, decided by the first letter rather than by looking either one up.
+///
+/// Field names are deliberately not covered. They come from data, and JSON objects are entitled
+/// to a key spelled `Name`.
+fn value_name(name: &str, span: Span, what: &str) -> Result<(), Error> {
+    if name.chars().next().is_some_and(char::is_uppercase) {
+        return Err(Error::new(
+            span,
+            format!("a {what} starts with a lowercase letter, and `{name}` reads as a type"),
+        ));
+    }
+    Ok(())
+}
+
 fn signatures(defs: &[Def]) -> Result<HashMap<String, Sig>, Error> {
     let mut sigs = HashMap::new();
     for def in defs {
+        value_name(&def.name, def.span, "function name")?;
+        value_name(&def.param.name, def.param.span, "parameter name")?;
         if builtin(&def.name).is_some() {
             return Err(Error::new(
                 def.span,
@@ -159,23 +179,23 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             .map(|(_, t)| Tir::new(t.clone(), Kind::Var(name.clone())))
             .ok_or_else(|| Error::new(*span, format!("`{name}` is not defined"))),
 
-        Expr::ProductLit { components, .. } => {
+        Expr::RecordLit { fields, .. } => {
             let mut built: Vec<(String, Tir)> = Vec::new();
-            for (name, name_span, value) in components {
+            for (name, name_span, value) in fields {
                 if built.iter().any(|(seen, _)| seen == name) {
                     return Err(Error::new(
                         *name_span,
-                        format!("component `{name}` is given twice"),
+                        format!("field `{name}` is given twice"),
                     ));
                 }
                 built.push((name.clone(), synth(ctx, value)?));
             }
-            // Sorted to match Type::record, so a component's index is the same in the value and
+            // Sorted to match Type::record, so a field's index is the same in the value and
             // in the type.
             built.sort_by(|a, b| a.0.cmp(&b.0));
             let ty =
                 Type::record(built.iter().map(|(n, t)| (n.clone(), t.ty.clone())).collect());
-            Ok(Tir::new(ty, Kind::ProductLit { components: built }))
+            Ok(Tir::new(ty, Kind::RecordLit { fields: built }))
         }
 
         Expr::VecLit { items, span } => {
@@ -224,7 +244,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         }
 
         // The one way to produce a new element value. `select` removes elements and a field
-        // access reads a component; neither can turn a Vec<Int> into a Vec<Str>.
+        // access reads a field; neither can turn a Vec<Int> into a Vec<Str>.
         Expr::Map { body, span } => {
             let Some((subject, id)) = ctx.subject.clone() else {
                 return Err(Error::new(*span, "`map` needs a subject, so it must follow `|`"));
@@ -315,7 +335,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 /// dimensions we are inside.
 ///
 /// Every dimension needs a spec. `[]` enters one, so it strips a layer off what we are looking at
-/// and adds one to the depth; a field access reads a component of it and leaves the depth alone.
+/// and adds one to the depth; a field access reads a field of it and leaves the depth alone.
 /// The expression's type is what we are looking at, wrapped back up that many times.
 ///
 /// This is why `db.users.name` is an error and `db.users[].name` is not: the first never said

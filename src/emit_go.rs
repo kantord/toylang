@@ -316,8 +316,8 @@ impl Collect<'_> {
         match &t.kind {
             Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => {}
             Kind::VecLit(items) => items.iter().for_each(|i| self.walk(i)),
-            Kind::ProductLit { components } => {
-                components.iter().for_each(|(_, v)| self.walk(v));
+            Kind::RecordLit { fields } => {
+                fields.iter().for_each(|(_, v)| self.walk(v));
             }
             Kind::Call { arg, .. } => self.walk(arg),
             Kind::Concat(l, r)
@@ -428,9 +428,9 @@ impl Emitter {
             Kind::Local(id) => self.local(*id),
             Kind::Input => INPUT.to_string(),
             // go_type resolves the struct name, and the collector registered it because a
-            // product literal carries its own record type.
-            Kind::ProductLit { components } => {
-                let parts: Vec<String> = components
+            // record literal carries its own record type.
+            Kind::RecordLit { fields } => {
+                let parts: Vec<String> = fields
                     .iter()
                     .map(|(name, value)| format!("F{name}: {}", self.expr(value)))
                     .collect();

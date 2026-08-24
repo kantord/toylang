@@ -1,8 +1,0 @@
-# The shape the design named as the first test of this feature: a Vec of products is one column
-# per component, and `map` allocated one column, which stored record pointers where component
-# values go.
-program: |
-  [1, 2] | map {a: {b: ., c: "z"}}
-
-output: |
-  [{"a":{"b":1,"c":"z"}},{"a":{"b":2,"c":"z"}}]

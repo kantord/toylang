@@ -44,7 +44,7 @@ change that. Letting its performance influence the design buys nothing. Its *cor
 worth a great deal, because it is the target that is structurally unlike the others and therefore
 the one that finds rules the others satisfy by accident.
 
-Concretely: wrapping 32-bit multiplication has no direct spelling in jq, since the true product
+Concretely: wrapping 32-bit multiplication has no direct spelling in jq, since the true record
 of two 32-bit numbers needs 62 bits and a double holds 53. It is still exactly implementable by
 splitting into 16-bit halves, at about five operations. Under the rule, five operations on jq is
 free, and the same five on native would not be.

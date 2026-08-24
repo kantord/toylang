@@ -24,7 +24,7 @@ truncated division has to be written out -- Lua is the only other target in that
 the first target in **both** buckets at once, and the useful finding is that the two emulations
 do not compound: wrapping is one modulo, because exact integers lose nothing on the way, and
 truncated division is a sign fixup over `//`. jq's expensive case was the multiply, where a
-double drops the low bits of a 62-bit product and the fix is a split into 16-bit halves. Python
+double drops the low bits of a 62-bit record and the fix is a split into 16-bit halves. Python
 needs no such thing.
 
 **Where its silence means nothing.** Python is dynamically typed, so the depth-polymorphic

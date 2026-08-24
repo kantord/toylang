@@ -1,4 +1,4 @@
-# Functions are unary, so a second argument is a product, and the parens may be dropped when
+# Functions are unary, so a second argument is a record, and the parens may be dropped when
 # the argument is one. This is what makes that read as named arguments.
 program: |
   fn area(r: {w: Int, h: Int}) -> Int = r.w * r.h

@@ -15,7 +15,7 @@ fn a_spec_with_nothing_to_spec() {
     insta::assert_snapshot!(err("[1, 2, 3][] | select(. >= 2)"));
 }
 
-/// Every dimension needs a spec, so reaching a component through one without saying so fails.
+/// Every dimension needs a spec, so reaching a field through one without saying so fails.
 #[test]
 fn field_access_through_an_unspecced_dimension() {
     insta::assert_snapshot!(err(r#"

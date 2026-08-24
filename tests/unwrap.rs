@@ -97,10 +97,33 @@ fn an_int_from_input_has_to_fit_too() {
     }
 }
 
-/// A product's components are its type, so naming one twice is a type with two answers.
+/// A record's fields are its type, so naming one twice is a type with two answers.
 #[test]
-fn a_component_cannot_be_given_twice() {
+fn a_field_cannot_be_given_twice() {
     insta::assert_snapshot!(
         toylang::compile("{a: 1, a: 2}").map(|_| ()).unwrap_err().to_string()
     );
+}
+
+/// Capitalised names are types and lowercase names are values, which is what will let a
+/// constructor share a spelling with a call without sharing a namespace.
+#[test]
+fn a_function_name_starts_lowercase() {
+    insta::assert_snapshot!(
+        toylang::compile("fn User(c: {n: Str}) -> Str = c.n\n\nUser {n: \"a\"}")
+            .map(|_| ())
+            .unwrap_err()
+            .to_string()
+    );
+}
+
+/// Field names are exempt, because they come from data rather than from the program.
+#[test]
+fn a_field_name_may_be_capitalised() {
+    let out = toylang::run_with_input(
+        "fn f(c: {Name: Str}) -> Str = c.Name\n\nf(input)",
+        Some(r#"{"Name": "ada"}"#),
+    )
+    .unwrap();
+    assert_eq!(out, "ada\n");
 }

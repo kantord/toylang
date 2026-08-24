@@ -1,0 +1,5 @@
+---
+source: tests/unwrap.rs
+expression: "toylang::compile(\"fn User(c: {n: Str}) -> Str = c.n\\n\\nUser {n: \\\"a\\\"}\").map(|_|\n()).unwrap_err().to_string()"
+---
+a function name starts with a lowercase letter, and `User` reads as a type (at byte 0)

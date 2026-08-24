@@ -469,9 +469,9 @@ impl<'ctx> Emitter<'ctx> {
         let i64t = self.ctx.i64_type();
         let src = self.expr(source)?.into_pointer_value();
         let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
-        // One column per component when the body builds a product, because that is what a Vec
+        // One column per field when the body builds a record, because that is what a Vec
         // of products is. Allocating one column here would store record pointers where the
-        // layout says component values go, which is the same break that field access had.
+        // layout says field values go, which is the same break that field access had.
         let ncols = Self::columns(&out_elem);
         let out = self
             .call_rt(
@@ -493,10 +493,10 @@ impl<'ctx> Emitter<'ctx> {
                 e.locals.insert(param, Slot::Value(elem));
             }
             let value = e.expr(body)?;
-            if let Type::Record(components) = &out_elem {
-                for c in 0..components.len() {
+            if let Type::Record(fields) = &out_elem {
+                for c in 0..fields.len() {
                     let c = i64t.const_int(c as u64, false);
-                    let got = e.call_rt(e.rt.rec_get, &[value, c.into()], "component")?;
+                    let got = e.call_rt(e.rt.rec_get, &[value, c.into()], "field")?;
                     e.builder
                         .build_call(
                             e.rt.vec_set,
@@ -929,18 +929,18 @@ impl<'ctx> Emitter<'ctx> {
 
             Kind::Compare { op, lhs, rhs } => self.compare(*op, lhs, rhs)?,
 
-            // Components are sorted, so component `i` here is component `i` of the type,
+            // Fields are sorted, so field `i` here is field `i` of the type,
             // which is what every reader of the record relies on.
-            Kind::ProductLit { components } => {
+            Kind::RecordLit { fields } => {
                 let i64t = self.ctx.i64_type();
                 let rec = self
                     .call_rt(
                         self.rt.rec_new,
-                        &[i64t.const_int(components.len() as u64, false).into()],
+                        &[i64t.const_int(fields.len() as u64, false).into()],
                         "rec",
                     )?
                     .into_pointer_value();
-                for (i, (_, value)) in components.iter().enumerate() {
+                for (i, (_, value)) in fields.iter().enumerate() {
                     let built = self.expr(value)?;
                     let slot = self.to_slot(built, &value.ty)?;
                     self.builder
