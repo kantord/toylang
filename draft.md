@@ -1562,6 +1562,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q23](#q23-what-primitive-set-is-the-standard-library-defined-over) | What primitive set is the standard library defined over? | LEANING, the parallel basis |
 | [Q24](#q24-are-compile-time-macros-a-first-class-concept) | Are compile-time macros a first-class concept? | OPEN, not yet evaluated |
 | [Q25](#q25-does-the-language-have-union-types) | Does the language have union types? | OPEN, an absence rather than a decision |
+| [Q26](#q26-does-the-dimension-model-subsume-the-effect-layer) | Does the dimension model subsume the effect layer? | OPEN, and it may dissolve Q13 rather than answer it |
 | [Q26](#q26-is-jsxs-children-slot-a-closed-per-site-union-or-an-open-one) | Is JSX's children slot a closed per-site union, or an open one? | OPEN, deliberately deferred to last |
 | [Q27](#q27-does-pattern-matching-need-a-separate-matcher-type-distinct-from-result) | Does pattern matching need a separate `Matcher` type, distinct from `Result`? | LEANING yes |
 | [Q28](#q28-does-deep-matching-need-cross-match-unification-of-logic-variables) | Does deep matching need cross-match unification of logic variables? | OPEN |
@@ -1835,6 +1836,41 @@ commit any such language to ordered, PEG-style choice, which is compatible with 
 regex and not with POSIX leftmost-longest regex, so "extends to regular expressions" needs to
 name which flavor. See
 [One combinator algebra for trees, strings, and streams](#one-combinator-algebra-for-trees-strings-and-streams).
+
+### Q26. Does the dimension model subsume the effect layer?
+
+The two-layer section says multiplicity lives either in a value or in evaluation, and
+[the one-way shift](#proposal-the-layer-shift-only-runs-one-way) narrows that to
+effect multiplicity being born from streaming input and never from a value. The dimension
+proposal says something that may be the same thing in different words: a value has an ordered
+list of dimensions, and a spec says what happens to each.
+
+Put them together and a `Stream` looks like a value with a dimension whose extent is not known
+yet. The spec vocabulary already covers it without a second layer: keep and narrow are
+streamable, since neither has to consume anything to know what it did, and collapse is not. That
+distinction is written down in the dimension proposal and it is exactly the `Vec` and `Stream`
+difference.
+
+If that holds, there is one layer with a refinement rather than two layers, and the question
+stops being which direction the shift runs and becomes whether anything shifts at all.
+
+Three things would follow, and they are what makes this worth settling rather than leaving
+implicit:
+
+`map` stays primitive rather than becoming sugar for `[ .[] | f ]` later, since the thing it
+would be sugar for never comes back.
+
+`.[]` stays inert on a `Vec` permanently. Keeping every index of a known extent changes nothing,
+and no future feature makes it change something.
+
+The two-layer framing that opens this document becomes a description of a special case rather
+than the organising idea.
+
+Not proposed, because the two-layer section is load-bearing and this has not been worked through
+against an actual streaming input. What prompted it: prototype 1 has no effect layer, and that
+is not a departure from the design but what the design predicts for a program that reads one
+whole value and hands one back. Whether the layer returns with streaming, or whether streaming
+turns out to be a dimension, is the open part.
 
 ## Non-goals
 

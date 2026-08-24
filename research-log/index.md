@@ -28,6 +28,9 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [Losing jaq's corpus means building the agreement harness](losing-jaqs-corpus-means-building-the-agreement-harness.md)
   -- Dropping the jaq fork also dropped a ready-made conformance suite, and cross-backend
   agreement testing is now toylang's problem.
+- [Removing the effect layer makes map primitive](removing-the-effect-layer-makes-map-primitive.md)
+  -- jq derives map from reflect-apply-reify, so a language without the layer cannot, and the
+  operator that was free in the inspiration becomes a builtin here.
 - [A pure value layer dissolves jq's iteration operators](a-pure-value-layer-dissolves-jqs-iteration-operators.md)
   -- Building step 4 under the one-way-shift proposal left three of jq's defining operators with
   nothing to do, which is a cost of the proposal rather than a refutation of it.

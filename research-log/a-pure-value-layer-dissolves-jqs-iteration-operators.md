@@ -53,3 +53,7 @@ identity claim is invisible in what the program prints. See
 
 Why it happens, established later by running the cases through jq itself:
 [jq's item-wise access is the effect layer wearing brackets](jqs-item-wise-access-is-the-effect-layer-wearing-brackets.md).
+
+The same accounting from the other side, where a derived operation becomes primitive rather than
+a primitive becoming inert:
+[removing the effect layer makes map primitive](removing-the-effect-layer-makes-map-primitive.md).
