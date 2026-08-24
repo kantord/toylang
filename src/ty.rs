@@ -4,6 +4,8 @@ pub enum Type {
     Int,
     Bool,
     Vec(Box<Type>),
+    /// Zero or one. Produced by collapsing a dimension, since the entry may not be there.
+    Opt(Box<Type>),
     /// Field names are kept sorted, so two records written in different orders are one type.
     Record(Vec<(String, Type)>),
 }
@@ -45,6 +47,7 @@ impl std::fmt::Display for Type {
             Type::Int => write!(f, "Int"),
             Type::Bool => write!(f, "Bool"),
             Type::Vec(t) => write!(f, "Vec<{t}>"),
+            Type::Opt(t) => write!(f, "Opt<{t}>"),
             Type::Record(fields) => {
                 let parts: Vec<String> =
                     fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();

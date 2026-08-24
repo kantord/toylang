@@ -53,6 +53,9 @@ struct Runtime<'ctx> {
     rec_get: FunctionValue<'ctx>,
     read_input: FunctionValue<'ctx>,
     rec_from_vec: FunctionValue<'ctx>,
+    at: FunctionValue<'ctx>,
+    opt_is_some: FunctionValue<'ctx>,
+    opt_get: FunctionValue<'ctx>,
 }
 
 /// What a compiler-introduced binding holds.
@@ -82,6 +85,7 @@ impl<'ctx> Emitter<'ctx> {
         let module = ctx.create_module("toylang");
         let ptr = ctx.ptr_type(AddressSpace::default());
         let i64t = ctx.i64_type();
+        let i32t = ctx.i32_type();
 
         // Nothing crosses into the runtime by value. A 16-byte struct is passed in registers
         // under the SysV ABI, but that lowering is a C frontend's job rather than LLVM's, and
@@ -162,6 +166,17 @@ impl<'ctx> Emitter<'ctx> {
                 ptr.fn_type(&[ptr.into(), i64t.into()], false),
                 None,
             ),
+            at: module.add_function(
+                "tl_at",
+                ptr.fn_type(&[ptr.into(), i64t.into(), i64t.into(), i32t.into()], false),
+                None,
+            ),
+            opt_is_some: module.add_function(
+                "tl_opt_is_some",
+                i64t.fn_type(&[ptr.into()], false),
+                None,
+            ),
+            opt_get: module.add_function("tl_opt_get", i64t.fn_type(&[ptr.into()], false), None),
         };
 
         Emitter {
@@ -188,7 +203,7 @@ impl<'ctx> Emitter<'ctx> {
             Type::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Int => self.ctx.i64_type().into(),
             Type::Bool => self.ctx.bool_type().into(),
-            Type::Vec(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
+            Type::Vec(_) | Type::Opt(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Record(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
         })
     }
@@ -210,6 +225,8 @@ impl<'ctx> Emitter<'ctx> {
             Type::Int => "i".to_string(),
             Type::Bool => "b".to_string(),
             Type::Vec(elem) => format!("[{}", Self::descriptor(elem)),
+            // Opt has no spelling in the type syntax, so an input type can never contain one.
+            Type::Opt(_) => unreachable!("Opt cannot be declared, so input never has one"),
             Type::Record(fields) => {
                 let body: Vec<String> = fields
                     .iter()
@@ -290,7 +307,7 @@ impl<'ctx> Emitter<'ctx> {
                 .builder
                 .build_int_z_extend(value.into_int_value(), i64t, "slot")
                 .map_err(|e| e.to_string())?,
-            Type::Str | Type::Vec(_) | Type::Record(_) => self
+            Type::Str | Type::Vec(_) | Type::Opt(_) | Type::Record(_) => self
                 .builder
                 .build_ptr_to_int(value.into_pointer_value(), i64t, "slot")
                 .map_err(|e| e.to_string())?,
@@ -310,7 +327,7 @@ impl<'ctx> Emitter<'ctx> {
                 .build_int_truncate(slot, self.ctx.bool_type(), "elem")
                 .map_err(|e| e.to_string())?
                 .into(),
-            Type::Str | Type::Vec(_) | Type::Record(_) => self
+            Type::Str | Type::Vec(_) | Type::Opt(_) | Type::Record(_) => self
                 .builder
                 .build_int_to_ptr(slot, ptr, "elem")
                 .map_err(|e| e.to_string())?
@@ -622,6 +639,53 @@ impl<'ctx> Emitter<'ctx> {
                     "joined",
                 )?
             }
+            // Absence needs a branch rather than a select, because rendering what is present
+            // may itself emit a loop, and a select would evaluate both sides.
+            Type::Opt(inner) => {
+                let function = self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_parent())
+                    .ok_or("no function to branch in")?;
+                let ptr_ty = self.ctx.ptr_type(AddressSpace::default());
+                let slot = self.builder.build_alloca(ptr_ty, "shown").map_err(|e| e.to_string())?;
+
+                let present = self.call_rt(self.rt.opt_is_some, &[value], "some")?;
+                let cond = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        present.into_int_value(),
+                        self.ctx.i64_type().const_zero(),
+                        "is_some",
+                    )
+                    .map_err(|e| e.to_string())?;
+
+                let some = self.ctx.append_basic_block(function, "some");
+                let none = self.ctx.append_basic_block(function, "none");
+                let done = self.ctx.append_basic_block(function, "shown.done");
+                self.builder
+                    .build_conditional_branch(cond, some, none)
+                    .map_err(|e| e.to_string())?;
+
+                self.builder.position_at_end(some);
+                let raw = self.call_rt(self.rt.opt_get, &[value], "unwrapped")?.into_int_value();
+                let item = self.read_slot(raw, inner)?;
+                let shown = self.show(item, inner)?;
+                self.builder.build_store(slot, shown).map_err(|e| e.to_string())?;
+                self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+
+                self.builder.position_at_end(none);
+                let null = self.string_const("null");
+                self.builder.build_store(slot, null).map_err(|e| e.to_string())?;
+                self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+
+                self.builder.position_at_end(done);
+                self.builder
+                    .build_load(ptr_ty, slot, "shown")
+                    .map_err(|e| e.to_string())?
+            }
+
             // Keys are known and ordered at compile time, exactly as on the other two
             // backends, so nothing enumerates fields at runtime.
             Type::Record(fields) => {
@@ -738,6 +802,22 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Kind::Field { base, name } => self.field(base, name, &t.ty)?,
+
+            Kind::Index { base, index, depth, elem_is_record } => {
+                let i64t = self.ctx.i64_type();
+                let base = self.expr(base)?;
+                let index = self.expr(index)?;
+                self.call_rt(
+                    self.rt.at,
+                    &[
+                        base,
+                        index,
+                        i64t.const_int(*depth as u64, false).into(),
+                        self.ctx.i32_type().const_int(*elem_is_record as u64, false).into(),
+                    ],
+                    "at",
+                )?
+            }
         })
     }
 

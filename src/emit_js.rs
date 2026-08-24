@@ -23,6 +23,18 @@ function tl_field(v, k, depth) {
 }
 ";
 
+const OPT_HELPER: &str = "\
+// Absence is a sentinel: toylang has no null value, so nothing else can produce one.
+const tl_none = Symbol(\"none\");
+function tl_at(v, i, depth) {
+  if (depth > 0) return v.map((e) => tl_at(e, i, depth - 1));
+  const n = v.length;
+  if (i < 0) i = n + i;
+  if (i < 0 || i >= n) return tl_none;
+  return v[i];
+}
+";
+
 const JOIN_HELPER: &str = "\
 function tl_join(v, f) {
   const parts = [];
@@ -43,6 +55,9 @@ pub fn emit(program: &Program) -> String {
     }
     if matches!(program.body.ty, Type::Vec(_)) || contains_vec(&program.body.ty) {
         out.push_str(JOIN_HELPER);
+    }
+    if used.index || contains_opt(&program.body.ty) {
+        out.push_str(OPT_HELPER);
     }
 
     // Function declarations hoist, so a call to one defined further down resolves without the
@@ -84,6 +99,13 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
             let e = format!("e{depth}");
             format!("tl_join({value}, ({e}) => {})", show(elem, &e, depth + 1))
         }
+        Type::Opt(inner) => {
+            let v = format!("o{depth}");
+            format!(
+                "(({v}) => {v} === tl_none ? \"null\" : {})({value})",
+                show(inner, &v, depth + 1)
+            )
+        }
         Type::Record(fields) => {
             // Type::record keeps fields sorted, so this order is the type's order. Field names
             // are identifiers, so the JSON key needs no escaping and is one literal.
@@ -100,9 +122,19 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
     }
 }
 
+fn contains_opt(ty: &Type) -> bool {
+    match ty {
+        Type::Opt(_) => true,
+        Type::Vec(t) => contains_opt(t),
+        Type::Record(fields) => fields.iter().any(|(_, t)| contains_opt(t)),
+        _ => false,
+    }
+}
+
 fn contains_vec(ty: &Type) -> bool {
     match ty {
         Type::Vec(_) => true,
+        Type::Opt(t) => contains_vec(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_vec(t)),
         _ => false,
     }
@@ -120,6 +152,7 @@ fn local(id: LocalId) -> String {
 struct Helpers {
     select: bool,
     field: bool,
+    index: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -144,6 +177,11 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::Field { base, .. } => {
                 used.field |= tir::vec_depth(&base.ty) > 0;
                 walk(base, used);
+            }
+            Kind::Index { base, index, .. } => {
+                used.index = true;
+                walk(base, used);
+                walk(index, used);
             }
         }
     }
@@ -174,6 +212,9 @@ fn expr(t: &Tir) -> String {
         }
         Kind::Select { source, param, pred } => {
             format!("tl_select({}, ({}) => {})", expr(source), local(*param), expr(pred))
+        }
+        Kind::Index { base, index, depth, .. } => {
+            format!("tl_at({}, {}, {})", expr(base), expr(index), depth)
         }
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);

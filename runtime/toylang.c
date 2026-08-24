@@ -644,3 +644,47 @@ int64_t *tl_rec_from_vec(const tl_vec *v, int64_t i) {
     }
     return rec;
 }
+
+/* Opt: a pointer to a slot, or NULL for absent.
+ *
+ * Boxing rather than a tag pair, because a slot holds any value an Int can and there is no
+ * spare bit pattern to mean absent. Uniform across element types, which is what lets one
+ * function serve them all.
+ */
+int64_t *tl_opt_some(int64_t value) {
+    int64_t *p = tl_alloc(sizeof(int64_t));
+    *p = value;
+    return p;
+}
+
+int64_t tl_opt_is_some(const int64_t *o) {
+    return o != NULL;
+}
+
+int64_t tl_opt_get(const int64_t *o) {
+    return *o;
+}
+
+/* Collapse one dimension at `i`, `depth` layers down, counting from the end when negative.
+ *
+ * `is_record` decides whether an entry has to be gathered out of the columns. The column count
+ * cannot stand in for that test: a record with one field has one column exactly like a Vec of
+ * scalars does.
+ */
+int64_t *tl_at(const tl_vec *v, int64_t i, int64_t depth, int is_record) {
+    if (depth > 0) {
+        tl_vec *out = tl_vec_new(v->len, 1);
+        for (int64_t k = 0; k < v->len; k++) {
+            const tl_vec *inner = (const tl_vec *)v->cols[0][k];
+            out->cols[0][k] = (int64_t)tl_at(inner, i, depth - 1, is_record);
+        }
+        return (int64_t *)out;
+    }
+    if (i < 0) {
+        i = v->len + i;
+    }
+    if (i < 0 || i >= v->len) {
+        return NULL;
+    }
+    return tl_opt_some(is_record ? (int64_t)tl_rec_from_vec(v, i) : v->cols[0][i]);
+}

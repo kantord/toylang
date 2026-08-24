@@ -117,12 +117,27 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
                 }
             }
             b'-' => {
-                // `-` only ever begins `->`; there is no subtraction and no unary minus yet.
-                if bytes.get(i + 1) != Some(&b'>') {
-                    return Err(Error::new(Span::new(start, i + 1), "expected `->`"));
+                // `-` begins either `->` or a negative literal. There is no subtraction, so a
+                // digit after it is never ambiguous.
+                if bytes.get(i + 1) == Some(&b'>') {
+                    i += 2;
+                    Tok::Arrow
+                } else if bytes.get(i + 1).is_some_and(u8::is_ascii_digit) {
+                    i += 1;
+                    while i < bytes.len() && bytes[i].is_ascii_digit() {
+                        i += 1;
+                    }
+                    let digits = &src[start..i];
+                    let n = digits.parse::<i64>().map_err(|_| {
+                        Error::new(
+                            Span::new(start, i),
+                            format!("integer `{digits}` is out of range"),
+                        )
+                    })?;
+                    Tok::Int(n)
+                } else {
+                    return Err(Error::new(Span::new(start, i + 1), "expected `->` or a number"));
                 }
-                i += 2;
-                Tok::Arrow
             }
             b'!' => {
                 if bytes.get(i + 1) != Some(&b'=') {

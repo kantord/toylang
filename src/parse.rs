@@ -190,9 +190,20 @@ impl<'a> Parser<'a> {
             match self.peek().tok {
                 Tok::LBracket => {
                     self.advance();
-                    let close = self.eat(Tok::RBracket)?.span;
-                    let span = e.span().to(close);
-                    e = Expr::Project { base: Box::new(e), span };
+                    if self.peek().tok == Tok::RBracket {
+                        let close = self.advance().span;
+                        let span = e.span().to(close);
+                        e = Expr::Project { base: Box::new(e), span };
+                    } else {
+                        let index = self.expr(0)?;
+                        let close = self.eat(Tok::RBracket)?.span;
+                        let span = e.span().to(close);
+                        e = Expr::Index {
+                            base: Box::new(e),
+                            index: Box::new(index),
+                            span,
+                        };
+                    }
                 }
                 Tok::Dot => {
                     self.advance();

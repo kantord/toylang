@@ -1328,9 +1328,20 @@ comma-separated form can be added later as sugar over it if rank-3 tensors turn 
 **Negative indices are a spec.** `[-1]` counts from the end. It collapses, so it was already not
 streamable, and out of range yields `Opt` exactly as a positive index does.
 
+Built, and the ragged case comes out identical to jq: `[[1,2],[3]][][1]` is `[2,null]` on all
+three backends, which is `[.[][1]]` there. Keeping one dimension and collapsing the next is the
+same query, arrived at from dimensions rather than from streams.
+
 **A `Str` has no dimension.** It is a scalar, so no spec applies to it and `"abc"[0]` is an
 error. jq is incoherent on this, allowing `"abc"[0:2]` while rejecting `"abc"[0]`; a string is
 one value here, and reaching into it is a library operation rather than an access.
+
+### Known thin spot
+
+`Opt` has no spelling in the type syntax, so it cannot be declared, passed to a function or
+returned from one. An indexed value can be printed and nothing else. Unwrapping it is the
+missing piece, and the draft already sketches the spelling as `json.name!`, which brings the
+error path with it.
 
 ### Still open, and none of it blocks building this
 

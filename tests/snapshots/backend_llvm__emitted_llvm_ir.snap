@@ -44,6 +44,12 @@ declare i64 @tl_read_input(ptr)
 
 declare ptr @tl_rec_from_vec(ptr, i64)
 
+declare ptr @tl_at(ptr, i64, i64, i32)
+
+declare i64 @tl_opt_is_some(ptr)
+
+declare i64 @tl_opt_get(ptr)
+
 define i32 @main() {
 entry:
   call void @tl_print(ptr @str.0)

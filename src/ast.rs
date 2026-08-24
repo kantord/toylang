@@ -96,8 +96,10 @@ pub enum Expr {
     Subject { span: Span },
     Var { name: String, span: Span },
     Call { func: String, func_span: Span, arg: Box<Expr>, span: Span },
-    /// `base[]`. Projection by every index.
+    /// `base[]`. A spec that keeps a dimension.
     Project { base: Box<Expr>, span: Span },
+    /// `base[i]`. A spec that collapses a dimension, so the entry may not be there.
+    Index { base: Box<Expr>, index: Box<Expr>, span: Span },
     /// `base.name`. Distributes over a Vec rather than needing a map.
     Field { base: Box<Expr>, name: String, span: Span },
     /// The value read from stdin. It has no type of its own and can only be checked against an
@@ -121,6 +123,7 @@ impl Expr {
             | Expr::Var { span, .. }
             | Expr::Call { span, .. }
             | Expr::Project { span, .. }
+            | Expr::Index { span, .. }
             | Expr::Field { span, .. }
             | Expr::Input { span }
             | Expr::Pipe { span, .. }

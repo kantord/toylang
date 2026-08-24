@@ -174,7 +174,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             ))
         }
 
-        Expr::Field { .. } => access(ctx, expr).map(|(tir, _, _)| tir),
+        Expr::Field { .. } | Expr::Index { .. } => access(ctx, expr).map(|(tir, _, _)| tir),
 
         // A spec that specs nothing. `[]` says what happens to a dimension, so with no access
         // after it there is no dimension being reached into and nothing for it to say.
@@ -216,6 +216,31 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<(Tir, Type, usize), Error> {
                 return Err(Error::new(*span, format!("`[]` needs a dimension, found {elem}")));
             };
             Ok((tir, inner, depth + 1))
+        }
+
+        // Collapsing a dimension. The entry may not be there, so what comes out is `Opt`.
+        Expr::Index { base, index, span } => {
+            let (base_tir, elem, depth) = access(ctx, base)?;
+            let Some(inner) = elem.elem().cloned() else {
+                return Err(Error::new(*span, format!("`[i]` needs a dimension, found {elem}")));
+            };
+            let index_tir = expect(ctx, index, &Type::Int)?;
+            let elem_is_record = matches!(inner, Type::Record(_));
+            let out = Type::Opt(Box::new(inner));
+            let mut ty = out.clone();
+            for _ in 0..depth {
+                ty = Type::Vec(Box::new(ty));
+            }
+            let tir = Tir::new(
+                ty,
+                Kind::Index {
+                    base: Box::new(base_tir),
+                    index: Box::new(index_tir),
+                    depth,
+                    elem_is_record,
+                },
+            );
+            Ok((tir, out, depth))
         }
 
         Expr::Field { base, name, span } => {

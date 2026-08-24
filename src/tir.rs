@@ -60,6 +60,18 @@ pub enum Kind {
         base: Box<Tir>,
         name: String,
     },
+    /// Collapse one dimension of `base` at `index`, `depth` layers down.
+    ///
+    /// Unlike a field access this has to store its depth. A field access leaves a record behind,
+    /// so the depth is every Vec layer of the base; an index leaves a Vec behind, so the layers
+    /// below the one being collapsed are indistinguishable from the ones above it.
+    Index {
+        base: Box<Tir>,
+        index: Box<Tir>,
+        depth: usize,
+        /// Whether an entry is a record, which decides if collapsing has to gather columns.
+        elem_is_record: bool,
+    },
 }
 
 pub struct Func {

@@ -25,6 +25,23 @@ local function tl_field(v, k, depth)
 end
 ";
 
+const OPT_HELPER: &str = "\
+-- Absence is a sentinel rather than nil, because nil inside a table breaks `#` and a Vec of Opt
+-- has to keep its length.
+local tl_none = {}
+local function tl_at(v, i, depth)
+  if depth > 0 then
+    local out = {}
+    for k = 1, #v do out[k] = tl_at(v[k], i, depth - 1) end
+    return out
+  end
+  local n = #v
+  if i < 0 then i = n + i end
+  if i < 0 or i >= n then return tl_none end
+  return v[i + 1]
+end
+";
+
 const QUOTE_HELPER: &str = r#"local function tl_quote(s)
   return '"' .. s:gsub('[%c"\\]', function(c)
     if c == '"' then return '\\"' end
@@ -63,6 +80,9 @@ pub fn emit(program: &Program) -> String {
     }
     if structured && contains_vec(&program.body.ty) {
         out.push_str(JOIN_HELPER);
+    }
+    if used.index || contains_opt(&program.body.ty) {
+        out.push_str(OPT_HELPER);
     }
 
     // All names are declared before any body, because the checker collects signatures before
@@ -103,6 +123,13 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
             let e = format!("e{depth}");
             format!("tl_join({value}, function({e}) return {} end)", show(elem, &e, depth + 1))
         }
+        Type::Opt(inner) => {
+            let v = format!("o{depth}");
+            format!(
+                "(function({v}) if {v} == tl_none then return \"null\" else return {} end end)({value})",
+                show(inner, &v, depth + 1)
+            )
+        }
         Type::Record(fields) => {
             // Type::record keeps fields sorted, so this order is the type's order. Field names
             // are identifiers, so the JSON key needs no escaping and is one literal.
@@ -119,10 +146,19 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
     }
 }
 
+fn contains_opt(ty: &Type) -> bool {
+    match ty {
+        Type::Opt(_) => true,
+        Type::Vec(t) => contains_opt(t),
+        Type::Record(fields) => fields.iter().any(|(_, t)| contains_opt(t)),
+        _ => false,
+    }
+}
+
 fn needs_quote(ty: &Type) -> bool {
     match ty {
         Type::Str => true,
-        Type::Vec(elem) => needs_quote(elem),
+        Type::Vec(elem) | Type::Opt(elem) => needs_quote(elem),
         Type::Record(_) => true,
         _ => false,
     }
@@ -131,6 +167,7 @@ fn needs_quote(ty: &Type) -> bool {
 fn contains_vec(ty: &Type) -> bool {
     match ty {
         Type::Vec(_) => true,
+        Type::Opt(t) => contains_vec(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_vec(t)),
         _ => false,
     }
@@ -151,6 +188,7 @@ fn local(id: LocalId) -> String {
 struct Helpers {
     select: bool,
     field: bool,
+    index: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -176,6 +214,11 @@ fn used_helpers(program: &Program) -> Helpers {
                 // Depth zero is a plain index and needs no helper.
                 used.field |= tir::vec_depth(&base.ty) > 0;
                 walk(base, used);
+            }
+            Kind::Index { base, index, .. } => {
+                used.index = true;
+                walk(base, used);
+                walk(index, used);
             }
         }
     }
@@ -215,6 +258,11 @@ fn expr(t: &Tir) -> String {
         ),
         // The depth comes from the type on the node below, so it cannot disagree with it, and
         // the emitted helper is told the answer rather than inspecting the value for it.
+        // A Lua table of records is a table of tables, so collapsing needs no gather here;
+        // `elem_is_record` matters only where the columns are stored apart.
+        Kind::Index { base, index, depth, .. } => {
+            format!("tl_at({}, {}, {})", expr(base), expr(index), depth)
+        }
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);
             if depth == 0 {
