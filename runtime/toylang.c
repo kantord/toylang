@@ -710,3 +710,10 @@ int64_t *tl_unwrap(int64_t *o, int64_t depth) {
     }
     return (int64_t *)*o;
 }
+
+/* The only way arithmetic can fail. */
+_Noreturn void tl_div_by_zero(void) {
+    const char *msg = "toylang: divided by zero\n";
+    (void)!write(2, msg, strlen(msg));
+    exit(1);
+}

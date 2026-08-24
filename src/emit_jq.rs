@@ -18,8 +18,32 @@ use crate::ty::Type;
 /// subject, so it is bound away before the program starts.
 const INPUT: &str = "$t_input";
 
+/// jq has no integer type, so 32-bit wrapping is arithmetic on doubles. Addition and
+/// subtraction stay exact because the result never passes 2^33; multiplication does not, since
+/// the true product needs 62 bits, so it goes through 16-bit halves whose partial products each
+/// stay under 2^53. Verified against C and Math.imul, including -2147483648 * -1.
+const ARITH_HELPER: &str = r#"def tl_i32: . as $r
+  | ((($r % 4294967296) + 4294967296) % 4294967296)
+  | if . >= 2147483648 then . - 4294967296 else . end;
+def tl_mul($a; $b):
+  ($a | tl_i32) as $x | ($b | tl_i32) as $y
+  | (if $x < 0 then $x + 4294967296 else $x end) as $ua
+  | (if $y < 0 then $y + 4294967296 else $y end) as $ub
+  | ($ua / 65536 | floor) as $ah | ($ua % 65536) as $al
+  | ($ub / 65536 | floor) as $bh | ($ub % 65536) as $bl
+  | (($al * $bl) + ((($ah * $bl) + ($al * $bh)) % 65536) * 65536) | tl_i32;
+def tl_div($a; $b):
+  if $b == 0 then error("toylang: divided by zero")
+  else ($a / $b | trunc) | tl_i32 end;
+def tl_rem($a; $b):
+  if $b == 0 then error("toylang: divided by zero") else ($a % $b) | tl_i32 end;
+"#;
+
 pub fn emit(program: &Program) -> String {
     let mut out = String::new();
+    if uses_arith(program) {
+        out.push_str(ARITH_HELPER);
+    }
 
     // jq resolves a `def` only against what is already defined, so definitions have to come out
     // callee-first. The checker collects every signature before checking any body and therefore
@@ -93,6 +117,10 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
                 callees(pred, out);
             }
             Kind::IntToStr(n) => callees(n, out),
+            Kind::Arith { lhs, rhs, .. } => {
+                callees(lhs, out);
+                callees(rhs, out);
+            }
             Kind::Field { base, .. } | Kind::Unwrap { base } => callees(base, out),
             Kind::Index { base, index, .. } => {
                 callees(base, out);
@@ -133,6 +161,23 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
     done
 }
 
+fn uses_arith(program: &Program) -> bool {
+    fn walk(t: &Tir) -> bool {
+        match &t.kind {
+            Kind::Arith { .. } => true,
+            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => false,
+            Kind::VecLit(items) => items.iter().any(walk),
+            Kind::Call { arg, .. } | Kind::IntToStr(arg) => walk(arg),
+            Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => walk(l) || walk(r),
+            Kind::Bind { value, body, .. } => walk(value) || walk(body),
+            Kind::Select { source, pred, .. } => walk(source) || walk(pred),
+            Kind::Field { base, .. } | Kind::Unwrap { base } => walk(base),
+            Kind::Index { base, index, .. } => walk(base) || walk(index),
+        }
+    }
+    program.funcs.iter().any(|f| walk(&f.body)) || walk(&program.body)
+}
+
 fn user(name: &str) -> String {
     format!("v_{name}")
 }
@@ -168,6 +213,14 @@ fn expr(t: &Tir) -> String {
         }
         Kind::Call { func, arg } => format!("({} | {})", expr(arg), user(func)),
         Kind::Concat(l, r) => format!("({} + {})", expr(l), expr(r)),
+        Kind::Arith { op, lhs, rhs } => match op {
+            BinOp::Div => format!("tl_div({}; {})", expr(lhs), expr(rhs)),
+            BinOp::Rem => format!("tl_rem({}; {})", expr(lhs), expr(rhs)),
+            BinOp::Mul => format!("tl_mul({}; {})", expr(lhs), expr(rhs)),
+            BinOp::Add => format!("(({} + {}) | tl_i32)", expr(lhs), expr(rhs)),
+            BinOp::Sub => format!("(({} - {}) | tl_i32)", expr(lhs), expr(rhs)),
+            other => unreachable!("{other} is not arithmetic"),
+        },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), jq_op(*op), expr(rhs))
         }
@@ -205,7 +258,7 @@ fn jq_op(op: BinOp) -> &'static str {
         BinOp::Le => "<=",
         BinOp::Gt => ">",
         BinOp::Ge => ">=",
-        BinOp::Add => unreachable!("Add is emitted as Concat"),
+        other => unreachable!("{other} is not a comparison"),
     }
 }
 

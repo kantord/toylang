@@ -47,3 +47,27 @@ fn str_takes_an_int() {
         toylang::compile(r#"str("a")"#).map(|_| ()).unwrap_err().to_string()
     );
 }
+
+#[test]
+fn dividing_by_zero_stops_every_backend() {
+    let mut ran = 0;
+    for backend in Backend::ALL {
+        for src in ["str(1 / 0)", "str(1 % 0)"] {
+            assert!(
+                toylang::run_on(src, None, backend).is_err(),
+                "{}: {src} did not stop",
+                backend.name()
+            );
+            ran += 1;
+        }
+    }
+    assert_eq!(ran, Backend::ALL.len() * 2);
+}
+
+/// `+` is the one operator whose meaning depends on its operands, and nothing is coerced.
+#[test]
+fn plus_does_not_mix_its_operands() {
+    insta::assert_snapshot!(
+        toylang::compile(r#"1 + "a""#).map(|_| ()).unwrap_err().to_string()
+    );
+}

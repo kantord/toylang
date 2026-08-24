@@ -10,6 +10,10 @@ pub enum Tok {
     Select,
     Input,
     Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
     Pipe,
     Comma,
     Dot,
@@ -42,6 +46,10 @@ impl std::fmt::Display for Tok {
             Tok::Select => "`select`",
             Tok::Input => "`input`",
             Tok::Plus => "`+`",
+            Tok::Minus => "`-`",
+            Tok::Star => "`*`",
+            Tok::Slash => "`/`",
+            Tok::Percent => "`%`",
             Tok::Pipe => "`|`",
             Tok::Comma => "`,`",
             Tok::Dot => "`.`",
@@ -119,26 +127,14 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
                 }
             }
             b'-' => {
-                // `-` begins either `->` or a negative literal. There is no subtraction, so a
-                // digit after it is never ambiguous.
+                // `-` is subtraction and negation now, so a digit after it is no longer a
+                // negative literal: `a -1` would otherwise not be `a - 1`.
                 if bytes.get(i + 1) == Some(&b'>') {
                     i += 2;
                     Tok::Arrow
-                } else if bytes.get(i + 1).is_some_and(u8::is_ascii_digit) {
-                    i += 1;
-                    while i < bytes.len() && bytes[i].is_ascii_digit() {
-                        i += 1;
-                    }
-                    let digits = &src[start..i];
-                    let n = digits.parse::<i64>().map_err(|_| {
-                        Error::new(
-                            Span::new(start, i),
-                            format!("integer `{digits}` is out of range"),
-                        )
-                    })?;
-                    Tok::Int(n)
                 } else {
-                    return Err(Error::new(Span::new(start, i + 1), "expected `->` or a number"));
+                    i += 1;
+                    Tok::Minus
                 }
             }
             b'!' => {
@@ -171,6 +167,9 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
             _ => {
                 let tok = match bytes[i] {
                     b'+' => Tok::Plus,
+                    b'*' => Tok::Star,
+                    b'/' => Tok::Slash,
+                    b'%' => Tok::Percent,
                     b'|' => Tok::Pipe,
                     b',' => Tok::Comma,
                     b'.' => Tok::Dot,

@@ -38,6 +38,13 @@ pub enum Kind {
         arg: Box<Tir>,
     },
     Concat(Box<Tir>, Box<Tir>),
+    /// Wrapping 32-bit arithmetic. Division and remainder stop the program on a zero divisor,
+    /// which is the only way arithmetic can fail.
+    Arith {
+        op: BinOp,
+        lhs: Box<Tir>,
+        rhs: Box<Tir>,
+    },
     Compare {
         op: BinOp,
         lhs: Box<Tir>,

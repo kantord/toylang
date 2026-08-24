@@ -53,6 +53,24 @@ const UNWRAP_HELPER: &str = r#"local function tl_unwrap(v, depth)
 end
 "#;
 
+const ARITH_HELPER: &str = r#"local TL_2_31 <const> = 2147483648
+local TL_2_32 <const> = 4294967296
+-- Lua integers are 64-bit, so an Int has to be brought back into 32 bits after every operation.
+-- `%` is floored here and the modulus is positive, so this is exact for negatives too.
+local function tl_i32(x)
+  return (x + TL_2_31) % TL_2_32 - TL_2_31
+end
+-- Lua's `//` floors and `%` is floored; toylang truncates, which math.fmod already does.
+local function tl_div(a, b)
+  if b == 0 then error("toylang: divided by zero", 0) end
+  return tl_i32((a - math.fmod(a, b)) // b)
+end
+local function tl_rem(a, b)
+  if b == 0 then error("toylang: divided by zero", 0) end
+  return tl_i32(math.fmod(a, b))
+end
+"#;
+
 const QUOTE_HELPER: &str = r#"local function tl_quote(s)
   return '"' .. s:gsub('[%c"\\]', function(c)
     if c == '"' then return '\\"' end
@@ -97,6 +115,9 @@ pub fn emit(program: &Program) -> String {
     }
     if used.unwrap {
         out.push_str(UNWRAP_HELPER);
+    }
+    if used.arith {
+        out.push_str(ARITH_HELPER);
     }
 
     // All names are declared before any body, because the checker collects signatures before
@@ -204,6 +225,7 @@ struct Helpers {
     field: bool,
     index: bool,
     unwrap: bool,
+    arith: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -231,6 +253,11 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
             }
             Kind::IntToStr(n) => walk(n, used),
+            Kind::Arith { lhs, rhs, .. } => {
+                used.arith = true;
+                walk(lhs, used);
+                walk(rhs, used);
+            }
             Kind::Unwrap { base } => {
                 used.unwrap = true;
                 walk(base, used);
@@ -263,6 +290,14 @@ fn expr(t: &Tir) -> String {
         // Parenthesised because there is more than one operator, and Lua's precedence is not
         // toylang's to rely on.
         Kind::Concat(l, r) => format!("({} .. {})", expr(l), expr(r)),
+        Kind::Arith { op, lhs, rhs } => match op {
+            BinOp::Div => format!("tl_div({}, {})", expr(lhs), expr(rhs)),
+            BinOp::Rem => format!("tl_rem({}, {})", expr(lhs), expr(rhs)),
+            BinOp::Add => format!("tl_i32({} + {})", expr(lhs), expr(rhs)),
+            BinOp::Sub => format!("tl_i32({} - {})", expr(lhs), expr(rhs)),
+            BinOp::Mul => format!("tl_i32({} * {})", expr(lhs), expr(rhs)),
+            other => unreachable!("{other} is not arithmetic"),
+        },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), lua_op(*op), expr(rhs))
         }
@@ -306,7 +341,7 @@ fn lua_op(op: BinOp) -> &'static str {
         BinOp::Le => "<=",
         BinOp::Gt => ">",
         BinOp::Ge => ">=",
-        BinOp::Add => unreachable!("Add is emitted as Concat"),
+        other => unreachable!("{other} is not a comparison"),
     }
 }
 

@@ -218,6 +218,16 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Ok(Tir::new(sig.ret.clone(), Kind::Call { func: func.clone(), arg: Box::new(arg) }))
         }
 
+        Expr::Neg { base, span } => {
+            let inner = expect(ctx, base, &Type::Int)?;
+            let zero = Tir::new(Type::Int, Kind::Int(0));
+            let _ = span;
+            Ok(Tir::new(
+                Type::Int,
+                Kind::Arith { op: BinOp::Sub, lhs: Box::new(zero), rhs: Box::new(inner) },
+            ))
+        }
+
         Expr::Binary { op, lhs, rhs, .. } => binary(ctx, *op, lhs, rhs),
     }
 }
@@ -329,12 +339,33 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
         ));
     }
 
-    // `+` is Str concatenation. Int has no arithmetic yet.
-    if left.ty != Type::Str {
-        return Err(Error::new(lhs.span(), format!("expected Str, found {}", left.ty)));
+    if op.is_arithmetic() {
+        if left.ty != Type::Int {
+            return Err(Error::new(lhs.span(), format!("expected Int, found {}", left.ty)));
+        }
+        let right = expect(ctx, rhs, &Type::Int)?;
+        return Ok(Tir::new(
+            Type::Int,
+            Kind::Arith { op, lhs: Box::new(left), rhs: Box::new(right) },
+        ));
     }
-    let right = expect(ctx, rhs, &Type::Str)?;
-    Ok(Tir::new(Type::Str, Kind::Concat(Box::new(left), Box::new(right))))
+
+    // `+` is the one operator whose meaning depends on its operands: addition on Int and
+    // concatenation on Str. Both sides must agree, since nothing is coerced.
+    match left.ty {
+        Type::Int => {
+            let right = expect(ctx, rhs, &Type::Int)?;
+            Ok(Tir::new(
+                Type::Int,
+                Kind::Arith { op: BinOp::Add, lhs: Box::new(left), rhs: Box::new(right) },
+            ))
+        }
+        Type::Str => {
+            let right = expect(ctx, rhs, &Type::Str)?;
+            Ok(Tir::new(Type::Str, Kind::Concat(Box::new(left), Box::new(right))))
+        }
+        other => Err(Error::new(lhs.span(), format!("`+` needs Int or Str, found {other}"))),
+    }
 }
 
 /// The checking direction: an expected type goes in, and the expression is verified against it

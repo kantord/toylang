@@ -15,6 +15,10 @@ fn infix_power(tok: &Tok) -> Option<(BinOp, u8, u8)> {
         Tok::Gt => (BinOp::Gt, 3, 4),
         Tok::Ge => (BinOp::Ge, 3, 4),
         Tok::Plus => (BinOp::Add, 5, 6),
+        Tok::Minus => (BinOp::Sub, 5, 6),
+        Tok::Star => (BinOp::Mul, 7, 8),
+        Tok::Slash => (BinOp::Div, 7, 8),
+        Tok::Percent => (BinOp::Rem, 7, 8),
         _ => return None,
     };
     Some((op, left, right))
@@ -168,7 +172,7 @@ impl<'a> Parser<'a> {
     }
 
     fn operand(&mut self, min_power: u8) -> Result<Expr, Error> {
-        let mut lhs = self.postfix()?;
+        let mut lhs = self.unary()?;
 
         while let Some((op, left, right)) = infix_power(&self.peek().tok) {
             if left < min_power {
@@ -181,6 +185,18 @@ impl<'a> Parser<'a> {
         }
 
         Ok(lhs)
+    }
+
+    /// Negation binds tighter than any infix operator and looser than any postfix one, so
+    /// `-a.b` negates the field and `-a * b` negates only `a`.
+    fn unary(&mut self) -> Result<Expr, Error> {
+        if self.peek().tok == Tok::Minus {
+            let minus = self.advance().span;
+            let base = self.unary()?;
+            let span = minus.to(base.span());
+            return Ok(Expr::Neg { base: Box::new(base), span });
+        }
+        self.postfix()
     }
 
     /// `[]` and `.name` bind tighter than any infix operator, so `a.b[] | c` projects `a.b`.

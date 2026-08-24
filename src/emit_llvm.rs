@@ -57,6 +57,7 @@ struct Runtime<'ctx> {
     opt_is_some: FunctionValue<'ctx>,
     opt_get: FunctionValue<'ctx>,
     unwrap: FunctionValue<'ctx>,
+    div_by_zero: FunctionValue<'ctx>,
 }
 
 /// What a compiler-introduced binding holds.
@@ -181,6 +182,11 @@ impl<'ctx> Emitter<'ctx> {
             unwrap: module.add_function(
                 "tl_unwrap",
                 ptr.fn_type(&[ptr.into(), i64t.into()], false),
+                None,
+            ),
+            div_by_zero: module.add_function(
+                "tl_div_by_zero",
+                ctx.void_type().fn_type(&[], false),
                 None,
             ),
         };
@@ -811,6 +817,12 @@ impl<'ctx> Emitter<'ctx> {
 
             // The runtime returns the unwrapped slot as a pointer, so a scalar comes back
             // needing the integer put back; a pointer-shaped value is already right.
+            Kind::Arith { op, lhs, rhs } => {
+                let l = self.expr(lhs)?.into_int_value();
+                let r = self.expr(rhs)?.into_int_value();
+                self.arith(*op, l, r)?
+            }
+
             Kind::IntToStr(n) => {
                 let n = self.expr(n)?;
                 self.call_rt(self.rt.int_to_str, &[n], "int_str")?
@@ -871,6 +883,66 @@ impl<'ctx> Emitter<'ctx> {
             .ok_or_else(|| format!("{name} returned nothing"))
     }
 
+    /// Wrapping 32-bit arithmetic over an i64 representation.
+    ///
+    /// Computing in i64 and then narrowing is what makes this total. `MIN / -1` overflows i32 but
+    /// not i64, so it produces 2^31 and narrows back to MIN, with no branch and no hardware trap
+    /// -- the case that costs C and Rust a check costs nothing here. Only a zero divisor is left,
+    /// and it is the only way arithmetic can fail.
+    fn arith(
+        &mut self,
+        op: BinOp,
+        lhs: IntValue<'ctx>,
+        rhs: IntValue<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        if matches!(op, BinOp::Div | BinOp::Rem) {
+            self.trap_if_zero(rhs)?;
+        }
+        let wide = match op {
+            BinOp::Add => self.builder.build_int_add(lhs, rhs, "add"),
+            BinOp::Sub => self.builder.build_int_sub(lhs, rhs, "sub"),
+            BinOp::Mul => self.builder.build_int_mul(lhs, rhs, "mul"),
+            BinOp::Div => self.builder.build_int_signed_div(lhs, rhs, "div"),
+            BinOp::Rem => self.builder.build_int_signed_rem(lhs, rhs, "rem"),
+            other => return Err(format!("{other} is not arithmetic")),
+        }
+        .map_err(|e| e.to_string())?;
+        Ok(self.narrow_to_i32(wide)?.into())
+    }
+
+    /// Sign-extend the low 32 bits, which is the wrap.
+    fn narrow_to_i32(&self, wide: IntValue<'ctx>) -> Result<IntValue<'ctx>, String> {
+        let narrow = self
+            .builder
+            .build_int_truncate(wide, self.ctx.i32_type(), "narrow")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_int_s_extend(narrow, self.ctx.i64_type(), "wrapped")
+            .map_err(|e| e.to_string())
+    }
+
+    fn trap_if_zero(&mut self, divisor: IntValue<'ctx>) -> Result<(), String> {
+        let function = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function to branch in")?;
+        let is_zero = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, divisor, self.ctx.i64_type().const_zero(), "zero")
+            .map_err(|e| e.to_string())?;
+        let fail = self.ctx.append_basic_block(function, "div.zero");
+        let ok = self.ctx.append_basic_block(function, "div.ok");
+        self.builder.build_conditional_branch(is_zero, fail, ok).map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(fail);
+        self.builder.build_call(self.rt.div_by_zero, &[], "").map_err(|e| e.to_string())?;
+        self.builder.build_unreachable().map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(ok);
+        Ok(())
+    }
+
     fn compare(&mut self, op: BinOp, lhs: &Tir, rhs: &Tir) -> Result<BasicValueEnum<'ctx>, String> {
         let operand_ty = lhs.ty.clone();
         let l = self.expr(lhs)?;
@@ -883,7 +955,7 @@ impl<'ctx> Emitter<'ctx> {
             BinOp::Le => IntPredicate::SLE,
             BinOp::Gt => IntPredicate::SGT,
             BinOp::Ge => IntPredicate::SGE,
-            BinOp::Add => return Err("Add is not a comparison".to_string()),
+            other => return Err(format!("{other} is not a comparison")),
         };
 
         // Comparing two integers is one instruction. Comparing two strings is a runtime call

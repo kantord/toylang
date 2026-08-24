@@ -52,6 +52,8 @@ declare i64 @tl_opt_get(ptr)
 
 declare ptr @tl_unwrap(ptr, i64)
 
+declare void @tl_div_by_zero()
+
 define i32 @main() {
 entry:
   call void @tl_print(ptr @str.0)

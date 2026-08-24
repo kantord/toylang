@@ -1406,6 +1406,35 @@ the portability cliff is in arithmetic on such values, not in holding them.
 
 A timestamp type is a separate question again, and a better answer than an integer either way.
 
+### The operators, and the one way they fail
+
+`+ - * / %`, with `* / %` binding tighter than `+ -` and both tighter than comparison. Unary
+minus is a prefix operator, which is what forced the negative-literal lexing to go: `a -1` would
+otherwise not be `a - 1`.
+
+`+` is the only operator whose meaning depends on its operands, adding two `Int` and
+concatenating two `Str`. Nothing is coerced, so `1 + "a"` is an error. Comparison already
+dispatched on operand type, so this is the second such operator rather than the first.
+
+Division and remainder **truncate**, so `a == (a/b)*b + a%b` holds and `-7 % 3` is `-1`. Chosen
+because three of the four backends do it natively, and because Lua's `math.fmod` is already
+truncated, which made it free on the fourth as well. Floored was the alternative and cost extra
+on three of four.
+
+**A zero divisor is the only way arithmetic can fail.** Everything else wraps, including
+`MIN / -1`, which is `MIN` by the same rule that makes `MIN * -1` be `MIN`. Trapping there was
+the alternative and it is free on x86, where the hardware raises the same fault as for a zero
+divisor -- but it would mean multiplication and division disagreeing about what overflow does,
+which is a footnote that never goes away. One rule for arithmetic and one way to fail was worth
+more than the branch it costs.
+
+Natively that branch does not exist either: computing in i64 and narrowing to 32 bits makes
+`MIN / -1` produce 2^31 and wrap back, so the case that costs C and Rust a check costs nothing
+here.
+
+Every wrapping edge is checked against C in the corpus, including `-2147483648 / -1`,
+`-2147483648 % -1`, `-(-2147483648)` and `46341 * 46341`.
+
 ## What the prototype showed
 
 A working compiler exists: `plans/` has the build order, `research-log/` has the findings, and

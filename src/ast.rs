@@ -17,6 +17,10 @@ impl Span {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinOp {
     Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
     Eq,
     Ne,
     Lt,
@@ -27,7 +31,13 @@ pub enum BinOp {
 
 impl BinOp {
     pub fn is_comparison(self) -> bool {
-        self != BinOp::Add
+        matches!(self, BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge)
+    }
+
+    /// True for the operators that only ever mean arithmetic. `+` is missing because it also
+    /// concatenates, which is the one place an operator's meaning depends on its operands.
+    pub fn is_arithmetic(self) -> bool {
+        matches!(self, BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem)
     }
 }
 
@@ -35,6 +45,10 @@ impl std::fmt::Display for BinOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Rem => "%",
             BinOp::Eq => "==",
             BinOp::Ne => "!=",
             BinOp::Lt => "<",
@@ -102,6 +116,8 @@ pub enum Expr {
     Index { base: Box<Expr>, index: Box<Expr>, span: Span },
     /// `base!`. Insist the value is there, and stop the program if it is not.
     Unwrap { base: Box<Expr>, span: Span },
+    /// `-base`.
+    Neg { base: Box<Expr>, span: Span },
     /// `base.name`. Distributes over a Vec rather than needing a map.
     Field { base: Box<Expr>, name: String, span: Span },
     /// The value read from stdin. It has no type of its own and can only be checked against an
@@ -127,6 +143,7 @@ impl Expr {
             | Expr::Project { span, .. }
             | Expr::Index { span, .. }
             | Expr::Unwrap { span, .. }
+            | Expr::Neg { span, .. }
             | Expr::Field { span, .. }
             | Expr::Input { span }
             | Expr::Pipe { span, .. }

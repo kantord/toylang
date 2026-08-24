@@ -42,6 +42,18 @@ const UNWRAP_HELPER: &str = r#"function tl_unwrap(v, depth) {
 }
 "#;
 
+const ARITH_HELPER: &str = r#"// `|0` is ToInt32: it wraps to 32 bits and truncates toward zero, and V8 folds it away once it
+// knows the value is already a Smi.
+function tl_div(a, b) {
+  if (b === 0) { throw new Error("toylang: divided by zero"); }
+  return (a / b) | 0;
+}
+function tl_rem(a, b) {
+  if (b === 0) { throw new Error("toylang: divided by zero"); }
+  return (a % b) | 0;
+}
+"#;
+
 const JOIN_HELPER: &str = "\
 function tl_join(v, f) {
   const parts = [];
@@ -68,6 +80,9 @@ pub fn emit(program: &Program) -> String {
     }
     if used.unwrap {
         out.push_str(UNWRAP_HELPER);
+    }
+    if used.arith {
+        out.push_str(ARITH_HELPER);
     }
 
     // Function declarations hoist, so a call to one defined further down resolves without the
@@ -164,6 +179,7 @@ struct Helpers {
     field: bool,
     index: bool,
     unwrap: bool,
+    arith: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -190,6 +206,11 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
             }
             Kind::IntToStr(n) => walk(n, used),
+            Kind::Arith { lhs, rhs, .. } => {
+                used.arith = true;
+                walk(lhs, used);
+                walk(rhs, used);
+            }
             Kind::Unwrap { base } => {
                 used.unwrap = true;
                 walk(base, used);
@@ -220,6 +241,16 @@ fn expr(t: &Tir) -> String {
         }
         Kind::Call { func, arg } => format!("{}({})", user(func), expr(arg)),
         Kind::Concat(l, r) => format!("({} + {})", expr(l), expr(r)),
+        Kind::Arith { op, lhs, rhs } => match op {
+            BinOp::Div => format!("tl_div({}, {})", expr(lhs), expr(rhs)),
+            BinOp::Rem => format!("tl_rem({}, {})", expr(lhs), expr(rhs)),
+            // Math.imul is the only exact 32-bit multiply here: a plain `*` loses the low bits
+            // once the true product passes 2^53.
+            BinOp::Mul => format!("Math.imul({}, {})", expr(lhs), expr(rhs)),
+            BinOp::Add => format!("(({} + {}) | 0)", expr(lhs), expr(rhs)),
+            BinOp::Sub => format!("(({} - {}) | 0)", expr(lhs), expr(rhs)),
+            other => unreachable!("{other} is not arithmetic"),
+        },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), js_op(*op), expr(rhs))
         }
@@ -255,7 +286,7 @@ fn js_op(op: BinOp) -> &'static str {
         BinOp::Le => "<=",
         BinOp::Gt => ">",
         BinOp::Ge => ">=",
-        BinOp::Add => unreachable!("Add is emitted as Concat"),
+        other => unreachable!("{other} is not a comparison"),
     }
 }
 

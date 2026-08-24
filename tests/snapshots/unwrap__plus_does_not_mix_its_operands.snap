@@ -1,0 +1,5 @@
+---
+source: tests/unwrap.rs
+expression: "toylang::compile(r#\"1 + \"a\"\"#).map(|_| ()).unwrap_err().to_string()"
+---
+expected Int, found Str (at byte 4)
