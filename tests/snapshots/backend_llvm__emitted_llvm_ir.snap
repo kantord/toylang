@@ -40,6 +40,10 @@ declare ptr @tl_vec_column(ptr, i64)
 
 declare i64 @tl_rec_get(ptr, i64)
 
+declare ptr @tl_rec_new(i64)
+
+declare void @tl_rec_set(ptr, i64, i64)
+
 declare i64 @tl_read_input(ptr)
 
 declare ptr @tl_rec_from_vec(ptr, i64)
@@ -53,8 +57,6 @@ declare i64 @tl_opt_get(ptr)
 declare ptr @tl_unwrap(ptr, i64)
 
 declare void @tl_div_by_zero()
-
-declare ptr @tl_map_new(i64)
 
 declare ptr @tl_range(i64)
 

@@ -1,0 +1,24 @@
+# The last step of jq's own tutorial, whose output is byte-identical to what jq produces from
+# the same input:
+#   [.[] | {message: .commit.message, name: .commit.committer.name,
+#           parents: [.parents[].html_url]}]
+program: |
+  fn commits(db: Vec<{commit: {message: Str, committer: {name: Str}},
+                      parents: Vec<{html_url: Str}>}>)
+      -> Vec<{commit: {message: Str, committer: {name: Str}},
+              parents: Vec<{html_url: Str}>}> = db
+
+  commits(input) | map {
+      message: .commit.message,
+      name:    .commit.committer.name,
+      parents: .parents[].html_url
+  }
+
+input: |
+  [{"commit": {"message": "first", "committer": {"name": "ada"}},
+    "parents": [{"html_url": "u/1"}, {"html_url": "u/2"}]},
+   {"commit": {"message": "second", "committer": {"name": "bo"}},
+    "parents": []}]
+
+output: |
+  [{"message":"first","name":"ada","parents":["u/1","u/2"]},{"message":"second","name":"bo","parents":[]}]

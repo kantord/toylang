@@ -106,6 +106,9 @@ pub enum Expr {
     Str { text: String, span: Span },
     Int { value: i64, span: Span },
     VecLit { items: Vec<Expr>, span: Span },
+    /// `{name: expr, age: expr}`. A product literal, the inverse of a projection. Each component
+    /// keeps its own span so a repeated one can be pointed at rather than described.
+    ProductLit { components: Vec<(String, Span, Expr)>, span: Span },
     /// `.`, the value the enclosing pipeline or filter is currently working on.
     Subject { span: Span },
     Var { name: String, span: Span },
@@ -148,6 +151,7 @@ impl Expr {
             | Expr::Project { span, .. }
             | Expr::Index { span, .. }
             | Expr::Unwrap { span, .. }
+            | Expr::ProductLit { span, .. }
             | Expr::Neg { span, .. }
             | Expr::Cond { span, .. }
             | Expr::Field { span, .. }

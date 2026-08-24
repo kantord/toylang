@@ -1,0 +1,7 @@
+# Components come out in the type's order, not the order they were written, because
+# Type::record sorts and the printer reads the type.
+program: |
+  {b: 2, a: 1}
+
+output: |
+  {"a":1,"b":2}

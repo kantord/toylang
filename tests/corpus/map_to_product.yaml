@@ -1,0 +1,7 @@
+# A brace opening an arrow function's body is a block in JavaScript, so this is a labelled
+# statement rather than an object without the parens the emitter now writes.
+program: |
+  [1, 2] | map {n: ., m: . + 1}
+
+output: |
+  [{"m":2,"n":1},{"m":3,"n":2}]

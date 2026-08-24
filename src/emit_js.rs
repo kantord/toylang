@@ -187,6 +187,9 @@ fn used_helpers(program: &Program) -> Helpers {
         match &t.kind {
             Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => {}
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
+            Kind::ProductLit { components } => {
+                components.iter().for_each(|(_, v)| walk(v, used));
+            }
             Kind::Call { arg, .. } => walk(arg, used),
             Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
                 walk(l, used);
@@ -244,6 +247,16 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
+        Kind::ProductLit { components } => {
+            let parts: Vec<String> = components
+                .iter()
+                .map(|(name, value)| format!("{}: {}", js_string(name), expr(value)))
+                .collect();
+            // Parenthesised because a brace opening an arrow function's body is a block, so
+            // `(e) => {a: 1}` is a labelled statement rather than an object.
+            format!("({{{}}})", parts.join(", "))
+        }
+
         Kind::VecLit(items) => {
             let parts: Vec<String> = items.iter().map(expr).collect();
             format!("[{}]", parts.join(", "))

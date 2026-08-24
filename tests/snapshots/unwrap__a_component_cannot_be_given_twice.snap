@@ -1,0 +1,5 @@
+---
+source: tests/unwrap.rs
+expression: "toylang::compile(\"{a: 1, a: 2}\").map(|_| ()).unwrap_err().to_string()"
+---
+component `a` is given twice (at byte 7)

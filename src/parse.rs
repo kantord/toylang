@@ -138,6 +138,53 @@ impl<'a> Parser<'a> {
     }
 
     /// `{name: Str, age: Int}`
+    /// A call's argument, and the argument of `map` and `select`, which are keyword forms rather
+    /// than calls and would otherwise not share the rule.
+    ///
+    /// The parens may be omitted when the argument is a product literal. That is unambiguous
+    /// because `{` cannot start any other expression and cannot follow one, so `f {` was a syntax
+    /// error before this and nothing is taken away by giving it a meaning.
+    fn argument(&mut self) -> Result<(Expr, crate::ast::Span), Error> {
+        if self.peek().tok == Tok::LBrace {
+            let open = self.advance().span;
+            let lit = self.product_lit(open)?;
+            let span = lit.span();
+            return Ok((lit, span));
+        }
+        self.eat(Tok::LParen)?;
+        let inner = self.expr(0)?;
+        let close = self.eat(Tok::RParen)?.span;
+        Ok((inner, close))
+    }
+
+    /// `{name: expr, age: expr}`, the value form of the brace that `record_type` reads in type
+    /// position.
+    fn product_lit(&mut self, open: crate::ast::Span) -> Result<Expr, Error> {
+        let mut components = Vec::new();
+        if self.peek().tok != Tok::RBrace {
+            loop {
+                let ct = self.advance();
+                let name = match &ct.tok {
+                    Tok::Ident(n) => n.clone(),
+                    other => {
+                        return Err(Error::new(
+                            ct.span,
+                            format!("expected a component name, found {other}"),
+                        ));
+                    }
+                };
+                self.eat(Tok::Colon)?;
+                components.push((name, ct.span, self.expr(0)?));
+                if self.peek().tok != Tok::Comma {
+                    break;
+                }
+                self.advance();
+            }
+        }
+        let close = self.eat(Tok::RBrace)?.span;
+        Ok(Expr::ProductLit { components, span: open.to(close) })
+    }
+
     fn record_type(&mut self, open: crate::ast::Span) -> Result<TypeExpr, Error> {
         let mut fields = Vec::new();
         if self.peek().tok != Tok::RBrace {
@@ -287,18 +334,16 @@ impl<'a> Parser<'a> {
             }
 
             Tok::Select => {
-                self.eat(Tok::LParen)?;
-                let pred = self.expr(0)?;
-                let close = self.eat(Tok::RParen)?.span;
+                let (pred, close) = self.argument()?;
                 Ok(Expr::Select { pred: Box::new(pred), span: t.span.to(close) })
             }
 
             Tok::Map => {
-                self.eat(Tok::LParen)?;
-                let body = self.expr(0)?;
-                let close = self.eat(Tok::RParen)?.span;
+                let (body, close) = self.argument()?;
                 Ok(Expr::Map { body: Box::new(body), span: t.span.to(close) })
             }
+
+            Tok::LBrace => self.product_lit(t.span),
 
             Tok::LBracket => {
                 // `,` is a separator here, not an operator. It has no meaning outside a literal
@@ -318,12 +363,10 @@ impl<'a> Parser<'a> {
             }
 
             Tok::Ident(name) => {
-                if self.peek().tok != Tok::LParen {
+                if self.peek().tok != Tok::LParen && self.peek().tok != Tok::LBrace {
                     return Ok(Expr::Var { name: name.clone(), span: t.span });
                 }
-                self.advance();
-                let arg = self.expr(0)?;
-                let close = self.eat(Tok::RParen)?.span;
+                let (arg, close) = self.argument()?;
                 Ok(Expr::Call {
                     func: name.clone(),
                     func_span: t.span,

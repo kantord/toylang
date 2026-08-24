@@ -96,3 +96,11 @@ fn an_int_from_input_has_to_fit_too() {
         assert_eq!(ok.expect("the boundary value is in range"), "2147483647\n", "{}", backend.name());
     }
 }
+
+/// A product's components are its type, so naming one twice is a type with two answers.
+#[test]
+fn a_component_cannot_be_given_twice() {
+    insta::assert_snapshot!(
+        toylang::compile("{a: 1, a: 2}").map(|_| ()).unwrap_err().to_string()
+    );
+}

@@ -720,10 +720,6 @@ _Noreturn void tl_div_by_zero(void) {
 
 /* Build a Vec of `len` scalars, filled by the caller. `map` produces one column whatever the
  * source had, since its result element is whatever the body returned. */
-tl_vec *tl_map_new(int64_t len) {
-    return tl_vec_new(len, 1);
-}
-
 /* The integers from zero up to but not including n. A negative n gives an empty Vec rather
  * than an error, the same as asking for zero of them. */
 tl_vec *tl_range(int64_t n) {

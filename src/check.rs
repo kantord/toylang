@@ -159,6 +159,25 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             .map(|(_, t)| Tir::new(t.clone(), Kind::Var(name.clone())))
             .ok_or_else(|| Error::new(*span, format!("`{name}` is not defined"))),
 
+        Expr::ProductLit { components, .. } => {
+            let mut built: Vec<(String, Tir)> = Vec::new();
+            for (name, name_span, value) in components {
+                if built.iter().any(|(seen, _)| seen == name) {
+                    return Err(Error::new(
+                        *name_span,
+                        format!("component `{name}` is given twice"),
+                    ));
+                }
+                built.push((name.clone(), synth(ctx, value)?));
+            }
+            // Sorted to match Type::record, so a component's index is the same in the value and
+            // in the type.
+            built.sort_by(|a, b| a.0.cmp(&b.0));
+            let ty =
+                Type::record(built.iter().map(|(n, t)| (n.clone(), t.ty.clone())).collect());
+            Ok(Tir::new(ty, Kind::ProductLit { components: built }))
+        }
+
         Expr::VecLit { items, span } => {
             let Some(first) = items.first() else {
                 // Nothing says what an empty literal contains, and there is no expected type to

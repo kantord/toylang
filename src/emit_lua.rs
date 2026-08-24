@@ -188,6 +188,11 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
             )
         }
         Type::Record(fields) => {
+            // `..` needs an operand on each side, so a product with no components cannot be
+            // built by joining nothing. The other backends survive this by construction.
+            if fields.is_empty() {
+                return "\"{}\"".to_string();
+            }
             // Type::record keeps fields sorted, so this order is the type's order. Field names
             // are identifiers, so the JSON key needs no escaping and is one literal.
             let parts: Vec<String> = fields
@@ -257,6 +262,9 @@ fn used_helpers(program: &Program) -> Helpers {
         match &t.kind {
             Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => {}
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
+            Kind::ProductLit { components } => {
+                components.iter().for_each(|(_, v)| walk(v, used));
+            }
             Kind::Call { arg, .. } => walk(arg, used),
             Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
                 walk(l, used);
@@ -319,6 +327,17 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
+        // A record is a table keyed by component name, which is what field access reads.
+        Kind::ProductLit { components } => {
+            let parts: Vec<String> = components
+                .iter()
+                .map(|(name, value)| format!("[{}] = {}", lua_string(name), expr(value)))
+                .collect();
+            // Parenthesised because Lua will not index a table constructor: `{...}["a"]` does
+            // not parse, and the printer reads every component straight off the value.
+            format!("({{{}}})", parts.join(", "))
+        }
+
         Kind::VecLit(items) => {
             let parts: Vec<String> = items.iter().map(expr).collect();
             format!("{{{}}}", parts.join(", "))

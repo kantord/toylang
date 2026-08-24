@@ -100,6 +100,9 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
         match &t.kind {
             Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => {}
             Kind::VecLit(items) => items.iter().for_each(|i| callees(i, out)),
+            Kind::ProductLit { components } => {
+                components.iter().for_each(|(_, v)| callees(v, out));
+            }
             Kind::Call { func, arg } => {
                 out.push(func.clone());
                 callees(arg, out);
@@ -177,6 +180,7 @@ fn uses_arith(program: &Program) -> bool {
             Kind::Cond { cond, then, otherwise } => walk(cond) || walk(then) || walk(otherwise),
             Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => false,
             Kind::VecLit(items) => items.iter().any(walk),
+            Kind::ProductLit { components } => components.iter().any(|(_, v)| walk(v)),
             Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => walk(arg),
             Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => walk(l) || walk(r),
             Kind::Bind { value, body, .. } => walk(value) || walk(body),
@@ -218,6 +222,16 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => format!("${}", user(name)),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
+        // Each value is parenthesised: everything in jq is a filter, so an unbracketed `|`
+        // or `,` inside one would be read as part of the object rather than as its value.
+        Kind::ProductLit { components } => {
+            let parts: Vec<String> = components
+                .iter()
+                .map(|(name, value)| format!("{}: ({})", jq_string(name), expr(value)))
+                .collect();
+            format!("{{{}}}", parts.join(", "))
+        }
+
         Kind::VecLit(items) => {
             let parts: Vec<String> = items.iter().map(expr).collect();
             format!("[{}]", parts.join(", "))

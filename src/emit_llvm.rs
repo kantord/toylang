@@ -51,6 +51,8 @@ struct Runtime<'ctx> {
     mask_set: FunctionValue<'ctx>,
     vec_column: FunctionValue<'ctx>,
     rec_get: FunctionValue<'ctx>,
+    rec_new: FunctionValue<'ctx>,
+    rec_set: FunctionValue<'ctx>,
     read_input: FunctionValue<'ctx>,
     rec_from_vec: FunctionValue<'ctx>,
     at: FunctionValue<'ctx>,
@@ -58,7 +60,6 @@ struct Runtime<'ctx> {
     opt_get: FunctionValue<'ctx>,
     unwrap: FunctionValue<'ctx>,
     div_by_zero: FunctionValue<'ctx>,
-    map_new: FunctionValue<'ctx>,
     range: FunctionValue<'ctx>,
 }
 
@@ -160,6 +161,16 @@ impl<'ctx> Emitter<'ctx> {
                 i64t.fn_type(&[ptr.into(), i64t.into()], false),
                 None,
             ),
+            rec_new: module.add_function(
+                "tl_rec_new",
+                ptr.fn_type(&[i64t.into()], false),
+                None,
+            ),
+            rec_set: module.add_function(
+                "tl_rec_set",
+                ctx.void_type().fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
+                None,
+            ),
             read_input: module.add_function(
                 "tl_read_input",
                 i64t.fn_type(&[ptr.into()], false),
@@ -191,7 +202,6 @@ impl<'ctx> Emitter<'ctx> {
                 ctx.void_type().fn_type(&[], false),
                 None,
             ),
-            map_new: module.add_function("tl_map_new", ptr.fn_type(&[i64t.into()], false), None),
             range: module.add_function("tl_range", ptr.fn_type(&[i64t.into()], false), None),
         };
 
@@ -459,8 +469,16 @@ impl<'ctx> Emitter<'ctx> {
         let i64t = self.ctx.i64_type();
         let src = self.expr(source)?.into_pointer_value();
         let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+        // One column per component when the body builds a product, because that is what a Vec
+        // of products is. Allocating one column here would store record pointers where the
+        // layout says component values go, which is the same break that field access had.
+        let ncols = Self::columns(&out_elem);
         let out = self
-            .call_rt(self.rt.map_new, &[len.into()], "mapped")?
+            .call_rt(
+                self.rt.vec_new,
+                &[len.into(), i64t.const_int(ncols, false).into()],
+                "mapped",
+            )?
             .into_pointer_value();
         let zero = i64t.const_zero();
 
@@ -475,10 +493,28 @@ impl<'ctx> Emitter<'ctx> {
                 e.locals.insert(param, Slot::Value(elem));
             }
             let value = e.expr(body)?;
-            let value = e.to_slot(value, &out_elem)?;
-            e.builder
-                .build_call(e.rt.vec_set, &[out.into(), zero.into(), i.into(), value.into()], "")
-                .map_err(|err| err.to_string())?;
+            if let Type::Record(components) = &out_elem {
+                for c in 0..components.len() {
+                    let c = i64t.const_int(c as u64, false);
+                    let got = e.call_rt(e.rt.rec_get, &[value, c.into()], "component")?;
+                    e.builder
+                        .build_call(
+                            e.rt.vec_set,
+                            &[out.into(), c.into(), i.into(), got.into()],
+                            "",
+                        )
+                        .map_err(|err| err.to_string())?;
+                }
+            } else {
+                let value = e.to_slot(value, &out_elem)?;
+                e.builder
+                    .build_call(
+                        e.rt.vec_set,
+                        &[out.into(), zero.into(), i.into(), value.into()],
+                        "",
+                    )
+                    .map_err(|err| err.to_string())?;
+            }
             Ok(())
         })?;
         Ok(out.into())
@@ -892,6 +928,31 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Kind::Compare { op, lhs, rhs } => self.compare(*op, lhs, rhs)?,
+
+            // Components are sorted, so component `i` here is component `i` of the type,
+            // which is what every reader of the record relies on.
+            Kind::ProductLit { components } => {
+                let i64t = self.ctx.i64_type();
+                let rec = self
+                    .call_rt(
+                        self.rt.rec_new,
+                        &[i64t.const_int(components.len() as u64, false).into()],
+                        "rec",
+                    )?
+                    .into_pointer_value();
+                for (i, (_, value)) in components.iter().enumerate() {
+                    let built = self.expr(value)?;
+                    let slot = self.to_slot(built, &value.ty)?;
+                    self.builder
+                        .build_call(
+                            self.rt.rec_set,
+                            &[rec.into(), i64t.const_int(i as u64, false).into(), slot.into()],
+                            "",
+                        )
+                        .map_err(|e| e.to_string())?;
+                }
+                rec.into()
+            }
 
             Kind::VecLit(items) => {
                 let elem = t
