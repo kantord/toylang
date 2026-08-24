@@ -35,6 +35,22 @@ A collection whose keys are data rather than type-level, with one value type. Di
 product: a product's keys are known to the compiler, a map's are known only to the program.
 _Avoid_: object, dict, record
 
+### Building a value
+
+**Product literal**:
+The form that builds a product from its components, and the inverse of a projection.
+`{name: .n, age: .a}` is one. Its type is the names and types of its components, so it answers
+what it is from its contents alone and never needs its position to say. In argument position it
+is also how a function takes more than one thing, because a function takes one argument and a
+product is how several travel as one.
+_Avoid_: object literal, struct literal, construction
+
+**Vec literal**:
+The form that builds a dimension from its entries. `[1, 2]` is one. Unlike a product literal it
+cannot always answer what it is, because an entry is where an element type comes from and an
+empty one has none.
+_Avoid_: array literal, list literal
+
 ### Reaching into a value
 
 **Spec**:

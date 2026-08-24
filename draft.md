@@ -218,7 +218,7 @@ values, there is no need for a `Stream<T>` *type* at all. `Stream` becomes an ef
 on an expression rather than a type constructor, which is the evaluation-level answer arriving
 for a fourth time.
 
-It simplifies [the recursive-descent ordering question](#q7-does-promise-depth-first-order-or-only-the-set-of-nodes). If `..` is value-layer, producing a collection of nodes, then whether it
+It simplifies [the recursive-descent ordering question](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes). If `..` is value-layer, producing a collection of nodes, then whether it
 promises depth-first order is an ordinary question about how a value is ordered, rather than a
 question about evaluation strategy.
 
@@ -599,7 +599,7 @@ tree.. | int(.) -> .        # every Int anywhere in the tree, whatever its path
 
 No new operator, because the entire point of `..` was already "I don't want to name the path."
 
-This does raise the stakes on [whether `..` promises order](#q7-does-promise-depth-first-order-or-only-the-set-of-nodes). Before, the order it walks in was
+This does raise the stakes on [whether `..` promises order](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes). Before, the order it walks in was
 mostly a performance question. Once `..` is the mechanism for "find this shape somewhere," two
 runs disagreeing on order is a correctness problem for whatever consumes the result, not only a
 speed one. Worth folding into that question's detail rather than opening a new one.
@@ -1648,11 +1648,133 @@ an empty `[]` has the same shape. Three instances, one rule, and every future fo
 gets it without a new rule. See
 [checked-only forms are a class, not a lambda rule](research-log/checked-only-forms-are-a-class-not-a-lambda-rule.md).
 
-Record types can be declared and cannot be built. There is no record literal, since object
-construction is excluded, so a brace occurs in type position only and the sole record value a
-program can hold arrives from `input`. That makes records and input one feature rather than two,
-which is worth knowing before either is designed further. See
+Record types could be declared and not built. A brace occurred in type position only, so the sole
+record a program could hold arrived from `input`, which made records and input one feature rather
+than two. See
 [a type you can declare but cannot build](research-log/a-type-you-can-declare-but-cannot-build.md).
+That is what the next section settles.
+
+## DECIDED: products can be built, and a product is how several arguments travel
+
+Settled by grilling against the glossary rather than by measurement. Nothing here needed a
+benchmark: every candidate answer was already implied by something the language had committed to,
+and the work was finding which commitment applied.
+
+### The form
+
+`{name: .n, age: .a}` is a **product literal**, the inverse of a projection.
+[CONTEXT.md](CONTEXT.md) carries the term and its counterpart.
+
+It synthesises structurally. `{a: 1, b: "x"}` is `{a: Int, b: Str}`, two products with the same
+components are one type as they already were, and nothing is declared or named. Whether named
+types should exist, and whether a name would create a distinct type or only an abbreviation, is
+untouched: a nominal type would need its literal ascribed anyway, so it could never have used a
+bare brace, and deciding it later costs nothing.
+
+### Why a product and not a map
+
+The glossary already separates the two by where the keys are known, and five built things need
+them known to the compiler:
+
+- the type grammar gives each component its own type, which one value type cannot express
+- a `Vec` of products is one column per component, which is the invariant that produced the
+  pointer bug fixed in the native backend
+- the Go backend declares a struct per product type and has nothing to declare for a map
+- the printer enumerates components from the type in sorted order, which is what stops six
+  backends disagreeing about key order
+- `.name` is checked, so a missing component is a compile error rather than a failed lookup
+
+A map is a different type with different operations, whose lookup yields `Opt`. Worth having for
+grouped results and genuinely dynamic keys, and not this.
+
+### One meaning, and `map` is the only thing that crosses a dimension
+
+A spec is what an *access* says about a dimension, and a literal is not an access, so it has no
+dimension to spec. `map({...})` is how a product meets a dimension, and there is no `db[]{...}`.
+
+Projection already has two spellings, `db[].n` and `db | map(.n)`, so symmetry was a real
+argument for giving assembly two as well. It loses to the cost: a brace that means one thing
+alone and another thing after a spec is the ambiguity this design keeps refusing, and `map` is
+already primitive precisely because there is no effect layer to derive it from.
+
+### `{}` is legal where `[]` is not
+
+A product literal answers what it is from its contents alone, so it never needs its position to
+say. That is true even of the empty one: a product's type is the names and types of its
+components, and having none is a complete answer. `{}` is `{}`.
+
+The `Vec` literal cannot do this, because an entry is where an element type comes from and an
+empty one has none. So `[]` remains a form whose type must come from its position, and
+`{items: []}` fails for that reason rather than for anything to do with products.
+
+**That gap is real and pre-existing.** The class of position-typed forms is described in
+[checked-only forms are a class, not a lambda rule](research-log/checked-only-forms-are-a-class-not-a-lambda-rule.md),
+and the checker implements exactly one member of it: `expect` special-cases `input` and falls
+through to synthesis for everything else, so `[]` fails in every position including the ones with
+an expected type in plain sight. Function bodies compound it, being synthesised and then compared
+to the return annotation rather than checked against it. Product literals do not make this worse
+and are not the place to fix it.
+
+### Punning is out
+
+`{name}` for `{name: .name}` is jq's most-used shorthand and is not being adopted, for a reason
+better than conservatism: it would answer a question by abbreviation. Narrowing a product to some
+of its components is arguably its own operation, the way `select` narrows a dimension, and the
+glossary has no term for it because the language has not decided. Sugar that quietly implements
+one answer makes the question harder to ask.
+
+The worked example does not need it either. `{message: .commit.message, name: .commit.committer.name}`
+has names that differ from the paths they come from, which is the ordinary case.
+
+### Functions stay unary, and a product is how several arguments travel
+
+**This is the decision most likely to look arbitrary later, so it gets the most detail.**
+
+`Sig` is one parameter and one result, and every backend emits unary functions. A second argument
+therefore means a product:
+
+```
+fn join(a: {over: Vec<Str>, with: Str}) -> Str
+```
+
+The alternative was real parameter lists, which cost a change to `Sig`, to `Func`, to the call
+form, and to all six emitters, and would then leave two ways to pass two things.
+
+What decided it is the call site rather than the cost. `join(", ")` in jq says nothing about
+which argument is which, and every two-argument builtin in every such language re-poses that
+question. A product answers it once and structurally, because components are named and order does
+not matter. Named arguments are not a feature here; they are what passing a product looks like.
+
+### Argument parens are optional when the argument is a product literal
+
+```
+join {over: names, with: ", "}
+
+db | map {
+    message: .commit.message,
+    name:    .commit.committer.name
+}
+```
+
+Unambiguous, because `{` cannot start an expression and cannot follow one, so `ident {` is a
+syntax error today and giving it a meaning takes nothing away.
+
+The rule is about the argument and not about calls, which matters: `map` and `select` are keyword
+forms with their own parens rather than calls, so a rule phrased about calls would have missed
+the case that motivated it. Parens stay for everything else, so `map(.n)` and `str(x)` are
+unchanged.
+
+This is sugar, and it was accepted where punning was refused, which is worth being explicit
+about. Punning hides an unanswered question. This hides nothing: it makes the product the
+spelling of named arguments, which is what the previous section decided it already was. Two
+spellings for one call is the price, and the unary-function decision is worth less without it.
+
+### What it costs the native backend
+
+`tl_map_new` allocates one column, so a `map` whose body returns a product would violate the
+struct-of-arrays invariant at a second site and reproduce the pointer bug the field access just
+had. `map` has to allocate one column per component and write column-wise, and the first test of
+it should be `map {a: {b: .x}}`, which is the shape that broke.
 
 ## Open questions
 
@@ -1668,13 +1790,13 @@ checked for completeness, and the settled entries are what stop a decision being
 |---|---|---|
 | [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity) | Streams: first-class values, or evaluation-level multiplicity? | LEANING, evaluation-level; four independent arguments now agree |
 | [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
-| [Q3](#q3-what-symbol-replaces-for-the-product-forming-update) | What symbol replaces `=` for the product-forming update? | LEANING, blocked on Q2 |
+| [Q3](#q3-what-symbol-replaces--for-the-product-forming-update) | What symbol replaces `=` for the product-forming update? | LEANING, blocked on Q2 |
 | [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN, subsumes cardinality-vs-order |
 | [Q5](#q5-stream-lowering-strategy-across-the-three-backends) | Stream-lowering strategy across the three backends | OPEN, blocks streaming backends only; three non-streaming backends exist |
 | [Q6](#q6-does-a-reconciler-belong-in-the-language-or-a-library) | Does a reconciler belong in the language or a library? | OPEN |
-| [Q7](#q7-does-promise-depth-first-order-or-only-the-set-of-nodes) | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
+| [Q7](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes) | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
 | [Q8](#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization) | Is vectorizability visible in the type system, or a silent optimization? | OPEN |
-| [Q9](#q9-are-vectors-multidimensional-with-as-projection) | Are vectors multidimensional, with `[]` as projection? | OPEN, may merge with Q2 |
+| [Q9](#q9-are-vectors-multidimensional-with--as-projection) | Are vectors multidimensional, with `[]` as projection? | OPEN, may merge with Q2 |
 | [Q10](#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes) | Is uniqueness analysis in scope, for deciding when a lens materializes? | OPEN |
 | [Q11](#q11-how-does-the-querytransformation-split-manifest-in-the-type-system) | How does the query/transformation split manifest in the type system? | SETTLED |
 | [Q12](#q12-on-a-type-mismatch-does-field-access-error-yield-null-or-something-third) | On a type mismatch, does field access error, yield null, or something third? | SETTLED |
@@ -1683,7 +1805,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q15](#q15-backend-llvm-via-inkwell-cranelift-or-both) | Backend: LLVM via inkwell, Cranelift, or both? | SETTLED, LLVM via inkwell, built and running |
 | [Q16](#q16-string-representation-given-wtf-16-on-the-js-target) | String representation, given WTF-16 on the JS target | OPEN, decides the string API permanently |
 | [Q17](#q17-is-there-a-dense-tensor-type-constructed-explicitly) | Is there a dense tensor type, constructed explicitly? | LEANING yes |
-| [Q18](#q18-does-on-a-rank-2-tensor-yield-rows-or-scalars) | Does `.[]` on a rank-2 tensor yield rows or scalars? | LEANING rows |
+| [Q18](#q18-does--on-a-rank-2-tensor-yield-rows-or-scalars) | Does `.[]` on a rank-2 tensor yield rows or scalars? | LEANING rows |
 | [Q19](#q19-how-are-nulls-carried-in-a-dense-typed-buffer) | How are nulls carried in a dense typed buffer? | LEANING, Arrow validity bitmask |
 | [Q20](#q20-how-are-blocking-operators-sort-groupby-joins-classified) | How are blocking operators (`sort`, `group_by`, joins) classified? | SETTLED, a trait with no lawful stream instance |
 | [Q21](#q21-what-guarantees-batch-size-is-unobservable-over-a-batched-stream) | What guarantees batch size is unobservable over a batched stream? | LEANING, the trait law that ops commute with reification |
@@ -1691,15 +1813,16 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q23](#q23-what-primitive-set-is-the-standard-library-defined-over) | What primitive set is the standard library defined over? | LEANING, the parallel basis |
 | [Q24](#q24-are-compile-time-macros-a-first-class-concept) | Are compile-time macros a first-class concept? | OPEN, not yet evaluated |
 | [Q25](#q25-does-the-language-have-union-types) | Does the language have union types? | OPEN, an absence rather than a decision |
-| [Q26](#q26-does-the-dimension-model-subsume-the-effect-layer) | Does the dimension model subsume the effect layer? | OPEN, and it may dissolve Q13 rather than answer it |
 | [Q26](#q26-is-jsxs-children-slot-a-closed-per-site-union-or-an-open-one) | Is JSX's children slot a closed per-site union, or an open one? | OPEN, deliberately deferred to last |
 | [Q27](#q27-does-pattern-matching-need-a-separate-matcher-type-distinct-from-result) | Does pattern matching need a separate `Matcher` type, distinct from `Result`? | LEANING yes |
 | [Q28](#q28-does-deep-matching-need-cross-match-unification-of-logic-variables) | Does deep matching need cross-match unification of logic variables? | OPEN |
 | [Q29](#q29-what-is-the-default-discriminant-convention-for-a-derived-enum-codec) | What is the default discriminant convention for a derived enum codec? | OPEN |
 | [Q30](#q30-do-the-base-functor-generics-double-as-parser-combinators-across-trees-strings-and-streams) | Do the base-functor generics double as parser combinators, across trees, strings, and streams? | LEANING yes, implementation split still open |
 | [Q31](#q31-does-a-friendlier-string-pattern-language-belong-in-the-language-and-what-regex-flavor-does-it-extend-to) | Does a friendlier string-pattern language belong in the language, and what regex flavor does it extend to? | OPEN |
+| [Q32](#q32-does-the-dimension-model-subsume-the-effect-layer) | Does the dimension model subsume the effect layer? | OPEN, and it may dissolve Q13 rather than answer it |
+| [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | OPEN, and only expressible because arguments are a product |
 
-[Stream lowering](#q5-stream-lowering-strategy-across-the-three-backends) is the one that blocks streaming work. [Streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and [multidimensional vectors](#q9-are-vectors-multidimensional-with-as-projection) both change the two-layer section, so
+[Stream lowering](#q5-stream-lowering-strategy-across-the-three-backends) is the one that blocks streaming work. [Streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and [multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) both change the two-layer section, so
 they should be settled before that section is treated as stable.
 
 ## Question detail
@@ -1966,7 +2089,7 @@ regex and not with POSIX leftmost-longest regex, so "extends to regular expressi
 name which flavor. See
 [One combinator algebra for trees, strings, and streams](#one-combinator-algebra-for-trees-strings-and-streams).
 
-### Q26. Does the dimension model subsume the effect layer?
+### Q32. Does the dimension model subsume the effect layer?
 
 The two-layer section says multiplicity lives either in a value or in evaluation, and
 [the one-way shift](#proposal-the-layer-shift-only-runs-one-way) narrows that to
@@ -2000,6 +2123,45 @@ against an actual streaming input. What prompted it: prototype 1 has no effect l
 is not a departure from the design but what the design predicts for a program that reads one
 whole value and hands one back. Whether the layer returns with streaming, or whether streaming
 turns out to be a dimension, is the open part.
+
+### Q33. Does a spread slot in a call give partial application?
+
+Functions are unary and several arguments travel as one product, which makes a question available
+that a positional language would have to answer with arity counting. If a call may leave a slot
+open -- spelled `...` for now -- what comes back is a function expecting the components that were
+not supplied:
+
+```
+join {with: ", ", ...}
+```
+
+`join` takes `{over: Vec<Str>, with: Str}`, so supplying `with` leaves a function from
+`{over: Vec<Str>}` to `Str`. The remaining parameter is **the complement of what was given**,
+computed structurally rather than by position, so there is no question of which argument was
+skipped and no need for placeholders in the other slots.
+
+What makes this worth recording rather than dismissing is that it is not a feature bolted onto
+the call syntax; it falls out of arguments already being a product. Partial application in a
+positional language has to invent a convention for "this one, not that one". Here the convention
+is subtraction on component names, which the type system already does.
+
+Open, and roughly in dependency order:
+
+- **Does it need first-class functions?** The language has none: `Sig` is a parameter and a
+  result, and there is no function type in the type grammar. A partial application evaluates to a
+  function, so it needs one to have a type. That is the real cost, and it is much larger than the
+  syntax.
+- **What does the residual type look like?** `{over: Vec<Str>} -> Str` needs an arrow in the type
+  grammar, which is the same thing the previous point asks for.
+- **Is `...` the right spelling?** It reads as "and the rest", which is right, but the token is
+  unused and could go to a spread that *supplies* components instead -- `{...defaults, n: 1}` --
+  and those two meanings would collide.
+- **Does supplying nothing mean anything?** `join {...}` would be `join` itself, which is either
+  a harmless identity or a sign the spelling proves too much.
+- **Does it interact with the dimension model at all?** A product literal does not distribute, so
+  presumably not, but partial application inside `map` is exactly where it would be used most.
+
+Blocked on first-class functions, which nothing else currently needs.
 
 ## Non-goals
 

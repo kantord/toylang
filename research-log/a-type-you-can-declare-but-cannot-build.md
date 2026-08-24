@@ -15,7 +15,7 @@ Prototype 1.5 step 5 was planned as "scalars, functions, and records, natively".
 not be done, and the reason was not that they are hard.
 
 **There is no way to write one down.** `{` appears in the parser in type position only. The
-expression grammar has a `Vec` literal and nothing for records, because object construction was
+expression grammar has a `Vec` literal and nothing for records, because a product literal was
 deliberately excluded from prototype 1. So `{name: Str, age: Int}` is a type a function can
 declare, a value the checker will happily reason about, and a thing no program can construct.
 
@@ -41,3 +41,6 @@ is really the same feature.
 This is close to [checked-only forms are a class, not a lambda rule](checked-only-forms-are-a-class-not-a-lambda-rule.md),
 which is about expressions that cannot state their own type. This is the reverse: a type with no
 expression at all.
+
+Closed: products can be built now, and the same literal is how a function takes more than one
+argument. See `## DECIDED: products can be built` in [draft.md](../draft.md).
