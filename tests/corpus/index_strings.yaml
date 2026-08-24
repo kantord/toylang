@@ -1,0 +1,5 @@
+program: |
+  ["ada", "bo"][0]
+
+output: |
+  "ada"

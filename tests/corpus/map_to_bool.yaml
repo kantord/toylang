@@ -1,0 +1,5 @@
+program: |
+  [1, 2, 3] | map(. % 2 == 0)
+
+output: |
+  [false,true,false]

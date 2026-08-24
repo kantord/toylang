@@ -4,19 +4,6 @@
 //! being the first target that is statically typed with no runtime type information: it needs a
 //! declared name for every record, and it rejects an import nothing uses.
 
-const ADULTS: &str = r#"
-fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users | select(.age >= 18) | .[].name
-
-adults(input)
-"#;
-
-#[test]
-fn emitted_go() {
-    let p = toylang::compile(ADULTS).unwrap();
-    insta::assert_snapshot!(toylang::emit_go::emit(&p));
-}
-
 /// A record type here is structural, so `{name: Str, age: Int}` and `{age: Int, name: Str}` are
 /// one type however often either is written. Go is nominal and needs a declaration, so this is
 /// the first backend that has to decide how many types the program actually has -- and getting

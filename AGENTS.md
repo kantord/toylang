@@ -105,6 +105,13 @@ happy-path suite.
 Don't assert things that cannot fail. Asserting that a constructor set the field you just passed
 it will never once be red.
 
+The corpus is one YAML file per case in `tests/corpus/`, holding `program`, an optional `input`,
+the expected `output`, and any extra checks the case asks for -- today only `snapshot`, a list of
+backends whose emitted code gets pinned as well. Every case runs on every backend and has to
+agree; a snapshot is the exception, for a claim the output cannot carry. Use block scalars (`|`)
+so nothing is coerced by YAML's scalar rules. Unknown keys and unknown backend names are errors,
+because a case that asks for nothing looks exactly like a case that passes.
+
 ## Uncertainty
 
 Say what you're unsure about and what would settle it. This is only useful if it's selective:

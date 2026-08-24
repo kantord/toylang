@@ -6,32 +6,9 @@
 //! either compiled natively and checked against Lua, or listed by name in a snapshot of what
 //! native cannot do. The snapshot has to shrink at steps 5 and 6, and cannot quietly grow.
 
-use std::path::{Path, PathBuf};
+mod support;
 
 use toylang::Backend;
-
-fn corpus() -> Vec<(String, String, Option<String>)> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
-    let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
-        .expect("corpus directory")
-        .map(|e| e.expect("entry").path())
-        .filter(|p| p.extension().is_some_and(|e| e == "toy"))
-        .collect();
-    paths.sort();
-
-    paths
-        .into_iter()
-        .map(|path| {
-            let name = path.file_stem().expect("stem").to_string_lossy().into_owned();
-            let src = std::fs::read_to_string(&path).expect("program");
-            let input_path = dir.join(format!("{name}.in.json"));
-            let input = input_path
-                .exists()
-                .then(|| std::fs::read_to_string(&input_path).expect("input"));
-            (name, src, input)
-        })
-        .collect()
-}
 
 /// Everything native compiles must agree with Lua. Everything it does not is named here with
 /// the reason, so the gap is a tracked artifact rather than an absence.
@@ -40,7 +17,8 @@ fn native_agrees_where_it_compiles() {
     let mut supported = Vec::new();
     let mut unsupported = Vec::new();
 
-    for (name, src, input) in corpus() {
+    for case in support::cases() {
+        let (name, src, input) = (case.name, case.program, case.input);
         let program = toylang::compile(&src).expect("corpus programs compile");
         match toylang::emit_llvm::to_ir(&program) {
             Err(reason) => unsupported.push(format!("{name}: {reason}")),

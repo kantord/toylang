@@ -1,3 +1,0 @@
-fn twice_over(x: Int) -> Int = x
-
-twice_over(42)

@@ -1,0 +1,10 @@
+program: |
+  fn first(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
+
+  first(input)
+
+input: |
+  {"u": {"name": "ada", "age": 36}}
+
+output: |
+  {"age":36,"name":"ada"}

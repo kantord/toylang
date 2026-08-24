@@ -61,6 +61,9 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [A backend that finds nothing is evidence only if it is different](a-backend-that-finds-nothing-is-evidence-only-if-it-is-different.md)
   -- Python ported 68 programs with no front-end change, which is worth something only because it
   fails unlike the five already there.
+- [A config field that is ignored is a check that did not run](a-config-field-that-is-ignored-is-a-check-that-did-not-run.md)
+  -- Letting corpus cases ask for extra checks created a new way to fail silently, since a
+  misspelt key asks for nothing and looks exactly like a case that passes.
 - [Merging passes turns redundant traversals into bugs](merging-passes-turns-redundant-traversals-into-bugs.md)
   -- A double traversal that was pure waste while the checker only asked questions became a
   correctness bug the moment the checker also allocated.

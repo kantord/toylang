@@ -1,0 +1,5 @@
+program: |
+  str(-7 % 3) + "," + str(7 % -3)
+
+output: |
+  -1,1

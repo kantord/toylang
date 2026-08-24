@@ -1,0 +1,5 @@
+program: |
+  str(-(-5)) + "," + str(0 - 5)
+
+output: |
+  5,-5

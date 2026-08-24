@@ -1,0 +1,12 @@
+program: |
+  # Python is the only target where absence and an empty Vec are both falsy, so a
+  # truthiness test for absence would print null here. It uses `is None`.
+  fn rows(db: {v: Vec<Vec<Int>>}) -> Vec<Vec<Int>> = db.v
+
+  rows(input)[0]
+
+input: |
+  {"v": [[], [1]]}
+
+output: |
+  []

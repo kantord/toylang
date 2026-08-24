@@ -1,0 +1,5 @@
+program: |
+  [1, 2, 3] | select(. >= 2) | map(. * 10)
+
+output: |
+  [20,30]

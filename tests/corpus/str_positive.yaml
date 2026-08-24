@@ -1,0 +1,5 @@
+program: |
+  str(42)
+
+output: |
+  42

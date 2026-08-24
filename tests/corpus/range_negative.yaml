@@ -1,0 +1,6 @@
+# Quoted rather than a block scalar: output
+# holds bytes a block cannot reproduce.
+program: |
+  unlines(range(-3) | map(str(.)))
+
+output: "\n"

@@ -1,0 +1,5 @@
+program: |
+  "ada" == "ada"
+
+output: |
+  true

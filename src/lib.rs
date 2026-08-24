@@ -37,6 +37,11 @@ impl Backend {
     pub const ALL: [Backend; 6] =
         [Backend::Lua, Backend::Js, Backend::Native, Backend::Jq, Backend::Go, Backend::Py];
 
+    /// The spelling used on the command line and in a corpus case's `snapshot` list.
+    pub fn from_name(name: &str) -> Option<Backend> {
+        Backend::ALL.into_iter().find(|b| b.name() == name)
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Backend::Lua => "lua",

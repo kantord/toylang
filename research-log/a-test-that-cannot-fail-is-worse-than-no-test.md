@@ -68,3 +68,6 @@ got its evidence.
 [The backend language has rules the checker does not](the-backend-language-has-rules-the-checker-does-not.md)
 is the other side of the same problem: there, a property that was not observed turned out to be
 an actual bug.
+
+The same failure arriving through a fixture's configuration rather than through an assertion is
+[a config field that is ignored is a check that did not run](a-config-field-that-is-ignored-is-a-check-that-did-not-run.md).

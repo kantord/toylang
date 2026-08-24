@@ -1,0 +1,5 @@
+program: |
+  str(range(5)[3]!)
+
+output: |
+  3

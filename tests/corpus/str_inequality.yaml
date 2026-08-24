@@ -1,0 +1,5 @@
+program: |
+  "ada" != "bo"
+
+output: |
+  true

@@ -4,17 +4,15 @@
 //! two backends, which a corpus entry cannot express because it runs one program and compares
 //! outputs.
 
-const ADULTS: &str = r#"
-fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users | select(.age >= 18) | .[].name
+mod support;
 
-adults(input)
-"#;
-
-#[test]
-fn emitted_py() {
-    let p = toylang::compile(ADULTS).unwrap();
-    insta::assert_snapshot!(toylang::emit_py::emit(&p));
+/// The corpus holds the one copy of this program; three test files each had their own.
+fn adults() -> String {
+    support::cases()
+        .into_iter()
+        .find(|c| c.name == "adults")
+        .expect("the corpus has an `adults` case")
+        .program
 }
 
 /// A record is a dict, which is what `json.loads` already returns, so reading input is the parse
@@ -25,7 +23,7 @@ fn emitted_py() {
 /// while the other cannot proceed without them.
 #[test]
 fn reading_input_costs_python_nothing_and_go_two_declarations() {
-    let p = toylang::compile(ADULTS).unwrap();
+    let p = toylang::compile(&adults()).unwrap();
 
     let py = toylang::emit_py::emit(&p);
     assert_eq!(py.matches("json.").count(), 1, "one parse, no decoding:\n{py}");

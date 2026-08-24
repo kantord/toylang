@@ -1,0 +1,5 @@
+program: |
+  str(0)
+
+output: |
+  0

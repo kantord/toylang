@@ -1,1 +1,0 @@
-unlines(range(4) | map(str(.)))

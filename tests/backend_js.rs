@@ -4,13 +4,6 @@
 
 use toylang::Backend;
 
-const ADULTS: &str = r#"
-fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users | select(.age >= 18) | .[].name
-
-adults(input)
-"#;
-
 #[track_caller]
 fn agree(src: &str, stdin: Option<&str>) -> String {
     let mut results =
@@ -36,10 +29,4 @@ first(input)
     let reversed = agree(src, Some(r#"{"u": {"age": 36, "name": "ada"}}"#));
     assert_eq!(declared_order, reversed);
     insta::assert_snapshot!(declared_order);
-}
-
-#[test]
-fn emitted_js() {
-    let p = toylang::compile(ADULTS).unwrap();
-    insta::assert_snapshot!(toylang::emit_js::emit(&p));
 }

@@ -1,0 +1,6 @@
+# Quoted rather than a block scalar: program
+# holds bytes a block cannot reproduce.
+program: "# Every backend writes its own JSON quoter, and until now none was given anything\n# harder than ASCII.\n[\"café 🎉\", \"a\\\"b\\\\c\", \"tab\\there\", \"ctl\x01end\"]\n"
+
+output: |
+  ["café 🎉","a\"b\\c","tab\there","ctl\u0001end"]

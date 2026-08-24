@@ -1,0 +1,5 @@
+program: |
+  ["say \"hi\"", "a\\b", "tab\there"]
+
+output: |
+  ["say \"hi\"","a\\b","tab\there"]

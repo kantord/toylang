@@ -11,7 +11,8 @@ fn main() -> ExitCode {
     let (cmd, path, backend) = match args.as_slice() {
         [cmd, path] => (cmd.as_str(), path, Backend::Lua),
         [cmd, path, name] => {
-            let Some(backend) = named(name) else {
+            let name = if name == "llvm" { "native" } else { name };
+            let Some(backend) = Backend::from_name(name) else {
                 eprintln!("{USAGE}");
                 return ExitCode::FAILURE;
             };
@@ -53,18 +54,6 @@ fn main() -> ExitCode {
             eprintln!("toylang: {path}: {e}");
             ExitCode::FAILURE
         }
-    }
-}
-
-fn named(name: &str) -> Option<Backend> {
-    match name {
-        "lua" => Some(Backend::Lua),
-        "js" => Some(Backend::Js),
-        "jq" => Some(Backend::Jq),
-        "go" => Some(Backend::Go),
-        "py" => Some(Backend::Py),
-        "llvm" => Some(Backend::Native),
-        _ => None,
     }
 }
 

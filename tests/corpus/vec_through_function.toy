@@ -1,3 +1,0 @@
-fn big(xs: Vec<Int>) -> Vec<Int> = xs | select(. >= 2)
-
-big([1, 2, 3])

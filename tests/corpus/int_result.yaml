@@ -1,0 +1,7 @@
+program: |
+  fn twice_over(x: Int) -> Int = x
+
+  twice_over(42)
+
+output: |
+  42

@@ -1,0 +1,11 @@
+program: |
+  fn shout(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
+      db.users | map(.name + " is " + str(.age))
+
+  shout(input)
+
+input: |
+  {"users": [{"name": "ada", "age": 36}, {"name": "bo", "age": 9}]}
+
+output: |
+  ["ada is 36","bo is 9"]

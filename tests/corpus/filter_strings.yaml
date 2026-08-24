@@ -1,0 +1,5 @@
+program: |
+  ["ada", "bo"] | select(. == "ada")
+
+output: |
+  ["ada"]

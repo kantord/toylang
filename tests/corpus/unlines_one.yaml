@@ -1,0 +1,5 @@
+program: |
+  unlines(["only"])
+
+output: |
+  only

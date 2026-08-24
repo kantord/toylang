@@ -1,3 +1,0 @@
-fn first(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
-
-first(input)

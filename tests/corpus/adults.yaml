@@ -1,0 +1,16 @@
+# The emitted code is pinned for the three backends whose handling of this program says
+# something the output cannot: JavaScript hoists, Go declares a struct per record type,
+# and Python needs no declarations at all.
+program: |
+  fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
+      db.users | select(.age >= 18) | .[].name
+
+  adults(input)
+
+input: |
+  {"users": [{"name": "ada", "age": 36}, {"name": "bo", "age": 9}]}
+
+output: |
+  ["ada"]
+
+snapshot: [js, go, py]

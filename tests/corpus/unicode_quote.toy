@@ -1,3 +1,0 @@
-# Every backend writes its own JSON quoter, and until now none was given anything
-# harder than ASCII.
-["café 🎉", "a\"b\\c", "tab\there", "ctlend"]
