@@ -1399,10 +1399,21 @@ A millisecond timestamp is 1.8e12 and does not fit; the ceiling is 2.1e9. So `{t
 typecheck and then be rejected by the input validator on real data. That is a loud failure with a
 one-word fix rather than a silent corruption, which is the trade being accepted.
 
-`Int64` is what fixes it, and the case it serves is narrower than it looks: identifiers and
-timestamps are *carried*, not computed. All four backends already carry a 64-bit integer exactly,
-jq included, since jq preserves a number's original text when it passes through unmodified. So
-the portability cliff is in arithmetic on such values, not in holding them.
+A second integer type is what fixes it, and the case it serves is narrower than it looks:
+identifiers and timestamps are *carried*, not computed. So the portability cliff is in arithmetic
+on such values, not in holding them.
+
+**Corrected by measurement.** This section previously claimed every backend carries a 64-bit
+integer exactly, jq included. Five of the six do, and jq is indeed one of them, since it
+preserves a number's original text when it passes through unmodified. JavaScript does not: at
+2^53 + 1 it is off by one, and at `i64::MAX` it is off by 193. **The portable carrying width is
+53 bits, not 64, and it is JavaScript that sets the ceiling.**
+
+That narrows the choice rather than settling it. A millisecond timestamp is 1.8e12 and is exact
+on all six, so 53 bits covers the case that motivated this. Snowflake ids and `bigint` primary
+keys are past 2^53 and are not covered, and reaching them means JavaScript uses `BigInt` and
+carries a second numeric representation. Which of those two the second type is for is still
+open.
 
 A timestamp type is a separate question again, and a better answer than an integer either way.
 

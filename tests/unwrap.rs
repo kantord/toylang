@@ -109,3 +109,21 @@ fn the_most_negative_int_is_writable_but_not_one_past_it() {
         toylang::compile("str(-2147483649)").map(|_| ()).unwrap_err().to_string()
     );
 }
+
+/// The 32-bit rule has to hold at both places an Int enters, and input is the other one.
+/// Before this, five backends carried the value and Go refused to decode it, which the corpus
+/// would have reported as one backend broken rather than as a rule the language was not keeping.
+#[test]
+fn an_int_from_input_has_to_fit_too() {
+    let src = "fn ts(db: {t: Int}) -> Int = db.t\n\nts(input)";
+    let err = toylang::run_on(src, Some(r#"{"t": 9999999999}"#), Backend::Lua)
+        .map(|_| ())
+        .unwrap_err()
+        .to_string();
+    insta::assert_snapshot!(err);
+
+    for backend in Backend::ALL {
+        let ok = toylang::run_on(src, Some(r#"{"t": 2147483647}"#), backend);
+        assert_eq!(ok.expect("the boundary value is in range"), "2147483647\n", "{}", backend.name());
+    }
+}
