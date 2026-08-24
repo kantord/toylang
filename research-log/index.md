@@ -16,6 +16,9 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [A second type is what makes a checker falsifiable](a-second-type-is-what-makes-a-checker-falsifiable.md)
   -- With one type in the language every check passes by construction, so a type checker cannot
   be tested until a second type exists to violate it.
+- [A fourth backend found two rules three could not](a-fourth-backend-found-two-rules-three-could-not.md)
+  -- Compiling to jq surfaced a scoping rule and an output rule that the other three all happened
+  to satisfy, which is the argument for a structurally unlike target.
 - [The backend language has rules the checker does not](the-backend-language-has-rules-the-checker-does-not.md)
   -- Two prototype 1 bugs came from the emitted Lua rather than from toylang, and neither was
   visible anywhere in the front end.

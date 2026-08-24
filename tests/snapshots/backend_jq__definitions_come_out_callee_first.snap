@@ -1,0 +1,7 @@
+---
+source: tests/backend_jq.rs
+expression: jq
+---
+def v_inner: . as $v_x | (("[" + $v_x) + "]");
+def v_outer: . as $v_x | (($v_x | v_inner) + "!");
+("hi" | v_outer)

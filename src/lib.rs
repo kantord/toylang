@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod check;
+pub mod emit_jq;
 pub mod emit_js;
 pub mod emit_llvm;
 pub mod emit_lua;
@@ -22,19 +23,22 @@ pub enum Backend {
     Lua,
     Js,
     Native,
+    Jq,
 }
 
 impl Backend {
     /// The backends that must agree on every corpus program. Native joined once it could
     /// compile the whole language; until then it was kept out rather than allowed to turn the
     /// harness permanently red, and tests/backend_llvm.rs tracked what it was missing.
-    pub const ALL: [Backend; 3] = [Backend::Lua, Backend::Js, Backend::Native];
+    pub const ALL: [Backend; 4] =
+        [Backend::Lua, Backend::Js, Backend::Native, Backend::Jq];
 
     pub fn name(self) -> &'static str {
         match self {
             Backend::Lua => "lua",
             Backend::Js => "js",
             Backend::Native => "native",
+            Backend::Jq => "jq",
         }
     }
 
@@ -43,6 +47,7 @@ impl Backend {
             Backend::Lua => emit_lua::emit(program),
             Backend::Js => emit_js::emit(program),
             Backend::Native => return emit_llvm::to_ir(program),
+            Backend::Jq => emit_jq::emit(program),
         })
     }
 }
@@ -91,6 +96,11 @@ pub fn run_on(
     match backend {
         Backend::Lua => run_lua(&emit_lua::emit(&program), value.as_ref()),
         Backend::Js => run_node(&emit_js::emit(&program), value.as_ref()),
+        Backend::Jq => run_jq(
+            &emit_jq::emit(&program),
+            value.as_ref(),
+            program.body.ty == ty::Type::Str,
+        ),
         Backend::Native => {
             let dir = tempfile::tempdir()?;
             let exe = dir.path().join("program");
@@ -148,6 +158,41 @@ fn run_binary(
             String::from_utf8_lossy(&out.stderr)
         )
         .into());
+    }
+    Ok(String::from_utf8(out.stdout)?)
+}
+
+/// jq puts stdin in `.`, so a program that reads no input runs with `-n` rather than waiting on
+/// a terminal.
+fn run_jq(
+    source: &str,
+    value: Option<&serde_json::Value>,
+    raw: bool,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut cmd = std::process::Command::new("jq");
+    cmd.arg("-c");
+    // `-r` decides from the runtime value, so it would print a present Opt<Str> raw and an
+    // absent one as the word null. The rule here is the type's, as on every other backend.
+    if raw {
+        cmd.arg("-r");
+    }
+    if value.is_none() {
+        cmd.arg("-n");
+    }
+    let mut child = cmd
+        .arg(source)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("could not run `jq`: {e}"))?;
+
+    let text = value.map(|v| v.to_string()).unwrap_or_default();
+    child.stdin.take().expect("piped").write_all(text.as_bytes())?;
+
+    let out = child.wait_with_output()?;
+    if !out.status.success() {
+        return Err(format!("jq failed: {}", String::from_utf8_lossy(&out.stderr)).into());
     }
     Ok(String::from_utf8(out.stdout)?)
 }

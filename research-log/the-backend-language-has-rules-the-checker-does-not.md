@@ -45,3 +45,7 @@ Expect more of this once streams lower to something other than a counted loop, s
 where the three backends diverge most. Step 5 found the mirror image, where the checker holds
 something the backend needs:
 [the lowering needs types the checker already computed](the-lowering-needs-types-the-checker-already-computed.md).
+
+A jq backend later supplied the third instance, and the sharpest: forward references, which Lua
+satisfied with declarations and JavaScript with hoisting, cannot be expressed there at all. See
+[a fourth backend found two rules three could not](a-fourth-backend-found-two-rules-three-could-not.md).
