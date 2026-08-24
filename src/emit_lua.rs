@@ -42,6 +42,17 @@ local function tl_at(v, i, depth)
 end
 ";
 
+const UNWRAP_HELPER: &str = r#"local function tl_unwrap(v, depth)
+  if depth > 0 then
+    local out = {}
+    for k = 1, #v do out[k] = tl_unwrap(v[k], depth - 1) end
+    return out
+  end
+  if v == tl_none then error("toylang: unwrapped a value that is not there", 0) end
+  return v
+end
+"#;
+
 const QUOTE_HELPER: &str = r#"local function tl_quote(s)
   return '"' .. s:gsub('[%c"\\]', function(c)
     if c == '"' then return '\\"' end
@@ -81,8 +92,11 @@ pub fn emit(program: &Program) -> String {
     if structured && contains_vec(&program.body.ty) {
         out.push_str(JOIN_HELPER);
     }
-    if used.index || contains_opt(&program.body.ty) {
+    if used.index || used.unwrap || contains_opt(&program.body.ty) {
         out.push_str(OPT_HELPER);
+    }
+    if used.unwrap {
+        out.push_str(UNWRAP_HELPER);
     }
 
     // All names are declared before any body, because the checker collects signatures before
@@ -189,6 +203,7 @@ struct Helpers {
     select: bool,
     field: bool,
     index: bool,
+    unwrap: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -213,6 +228,10 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::Field { base, .. } => {
                 // Depth zero is a plain index and needs no helper.
                 used.field |= tir::vec_depth(&base.ty) > 0;
+                walk(base, used);
+            }
+            Kind::Unwrap { base } => {
+                used.unwrap = true;
                 walk(base, used);
             }
             Kind::Index { base, index, .. } => {
@@ -258,6 +277,9 @@ fn expr(t: &Tir) -> String {
         ),
         // The depth comes from the type on the node below, so it cannot disagree with it, and
         // the emitted helper is told the answer rather than inspecting the value for it.
+        Kind::Unwrap { base } => {
+            format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
+        }
         // A Lua table of records is a table of tables, so collapsing needs no gather here;
         // `elem_is_record` matters only where the columns are stored apart.
         Kind::Index { base, index, depth, .. } => {

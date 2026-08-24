@@ -1336,12 +1336,20 @@ same query, arrived at from dimensions rather than from streams.
 error. jq is incoherent on this, allowing `"abc"[0:2]` while rejecting `"abc"[0]`; a string is
 one value here, and reaching into it is a library operation rather than an access.
 
-### Known thin spot
+### Unwrapping
 
-`Opt` has no spelling in the type syntax, so it cannot be declared, passed to a function or
-returned from one. An indexed value can be printed and nothing else. Unwrapping it is the
-missing piece, and the draft already sketches the spelling as `json.name!`, which brings the
-error path with it.
+`!` insists a value is there and stops the program if it is not, which is the spelling this
+document already sketched as `json.name!`. It brings the first abort into the language: every
+backend now has a way to refuse, and what has to agree across them is that they all refuse rather
+than what each says while refusing.
+
+The type is what decides whether output is raw, so unwrapping changes it. `["ada","bo"][0]` is
+`Opt<Str>` and prints `"ada"`; `["ada","bo"][0]!` is `Str` and prints `ada`.
+
+Still thin: `Opt` has no spelling in the type syntax, so it cannot be declared, passed to a
+function or returned from one. It can be produced by an index, unwrapped, or printed. Giving it
+a name in the type syntax is the next step, and it is what would let a function hand one back
+rather than being forced to insist.
 
 ### Still open, and none of it blocks building this
 

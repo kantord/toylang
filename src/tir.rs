@@ -65,6 +65,11 @@ pub enum Kind {
     /// Unlike a field access this has to store its depth. A field access leaves a record behind,
     /// so the depth is every Vec layer of the base; an index leaves a Vec behind, so the layers
     /// below the one being collapsed are indistinguishable from the ones above it.
+    /// Insist an Opt is present, `depth` layers down. Like a field access and unlike an index,
+    /// the depth is every Vec layer of the base, because an Opt is not a dimension.
+    Unwrap {
+        base: Box<Tir>,
+    },
     Index {
         base: Box<Tir>,
         index: Box<Tir>,

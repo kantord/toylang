@@ -174,7 +174,9 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             ))
         }
 
-        Expr::Field { .. } | Expr::Index { .. } => access(ctx, expr).map(|(tir, _, _)| tir),
+        Expr::Field { .. } | Expr::Index { .. } | Expr::Unwrap { .. } => {
+            access(ctx, expr).map(|(tir, _, _)| tir)
+        }
 
         // A spec that specs nothing. `[]` says what happens to a dimension, so with no access
         // after it there is no dimension being reached into and nothing for it to say.
@@ -216,6 +218,21 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<(Tir, Type, usize), Error> {
                 return Err(Error::new(*span, format!("`[]` needs a dimension, found {elem}")));
             };
             Ok((tir, inner, depth + 1))
+        }
+
+        // The absence stops being carried and starts being asserted.
+        Expr::Unwrap { base, span } => {
+            let (base_tir, elem, depth) = access(ctx, base)?;
+            let Type::Opt(inner) = elem else {
+                return Err(Error::new(*span, format!("`!` needs an Opt, found {elem}")));
+            };
+            let inner = *inner;
+            let mut ty = inner.clone();
+            for _ in 0..depth {
+                ty = Type::Vec(Box::new(ty));
+            }
+            let tir = Tir::new(ty, Kind::Unwrap { base: Box::new(base_tir) });
+            Ok((tir, inner, depth))
         }
 
         // Collapsing a dimension. The entry may not be there, so what comes out is `Opt`.

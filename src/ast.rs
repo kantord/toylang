@@ -100,6 +100,8 @@ pub enum Expr {
     Project { base: Box<Expr>, span: Span },
     /// `base[i]`. A spec that collapses a dimension, so the entry may not be there.
     Index { base: Box<Expr>, index: Box<Expr>, span: Span },
+    /// `base!`. Insist the value is there, and stop the program if it is not.
+    Unwrap { base: Box<Expr>, span: Span },
     /// `base.name`. Distributes over a Vec rather than needing a map.
     Field { base: Box<Expr>, name: String, span: Span },
     /// The value read from stdin. It has no type of its own and can only be checked against an
@@ -124,6 +126,7 @@ impl Expr {
             | Expr::Call { span, .. }
             | Expr::Project { span, .. }
             | Expr::Index { span, .. }
+            | Expr::Unwrap { span, .. }
             | Expr::Field { span, .. }
             | Expr::Input { span }
             | Expr::Pipe { span, .. }

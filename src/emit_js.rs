@@ -35,6 +35,13 @@ function tl_at(v, i, depth) {
 }
 ";
 
+const UNWRAP_HELPER: &str = r#"function tl_unwrap(v, depth) {
+  if (depth > 0) return v.map((e) => tl_unwrap(e, depth - 1));
+  if (v === tl_none) { throw new Error("toylang: unwrapped a value that is not there"); }
+  return v;
+}
+"#;
+
 const JOIN_HELPER: &str = "\
 function tl_join(v, f) {
   const parts = [];
@@ -56,8 +63,11 @@ pub fn emit(program: &Program) -> String {
     if matches!(program.body.ty, Type::Vec(_)) || contains_vec(&program.body.ty) {
         out.push_str(JOIN_HELPER);
     }
-    if used.index || contains_opt(&program.body.ty) {
+    if used.index || used.unwrap || contains_opt(&program.body.ty) {
         out.push_str(OPT_HELPER);
+    }
+    if used.unwrap {
+        out.push_str(UNWRAP_HELPER);
     }
 
     // Function declarations hoist, so a call to one defined further down resolves without the
@@ -153,6 +163,7 @@ struct Helpers {
     select: bool,
     field: bool,
     index: bool,
+    unwrap: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -176,6 +187,10 @@ fn used_helpers(program: &Program) -> Helpers {
             }
             Kind::Field { base, .. } => {
                 used.field |= tir::vec_depth(&base.ty) > 0;
+                walk(base, used);
+            }
+            Kind::Unwrap { base } => {
+                used.unwrap = true;
                 walk(base, used);
             }
             Kind::Index { base, index, .. } => {
@@ -212,6 +227,9 @@ fn expr(t: &Tir) -> String {
         }
         Kind::Select { source, param, pred } => {
             format!("tl_select({}, ({}) => {})", expr(source), local(*param), expr(pred))
+        }
+        Kind::Unwrap { base } => {
+            format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
         }
         Kind::Index { base, index, depth, .. } => {
             format!("tl_at({}, {}, {})", expr(base), expr(index), depth)

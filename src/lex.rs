@@ -16,6 +16,7 @@ pub enum Tok {
     Eq,
     EqEq,
     Ne,
+    Bang,
     Lt,
     Le,
     Gt,
@@ -47,6 +48,7 @@ impl std::fmt::Display for Tok {
             Tok::Eq => "`=`",
             Tok::EqEq => "`==`",
             Tok::Ne => "`!=`",
+            Tok::Bang => "`!`",
             Tok::Lt => "`<`",
             Tok::Le => "`<=`",
             Tok::Gt => "`>`",
@@ -140,11 +142,13 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
                 }
             }
             b'!' => {
-                if bytes.get(i + 1) != Some(&b'=') {
-                    return Err(Error::new(Span::new(start, i + 1), "expected `!=`"));
+                if bytes.get(i + 1) == Some(&b'=') {
+                    i += 2;
+                    Tok::Ne
+                } else {
+                    i += 1;
+                    Tok::Bang
                 }
-                i += 2;
-                Tok::Ne
             }
             b'=' | b'<' | b'>' => {
                 let c = bytes[i];

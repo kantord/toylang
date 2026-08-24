@@ -688,3 +688,25 @@ int64_t *tl_at(const tl_vec *v, int64_t i, int64_t depth, int is_record) {
     }
     return tl_opt_some(is_record ? (int64_t)tl_rec_from_vec(v, i) : v->cols[0][i]);
 }
+
+/* Insist an Opt is present, `depth` layers down.
+ *
+ * Unlike an index this needs no is_record flag: an Opt already holds a gathered value, so there
+ * is nothing left to collect out of columns.
+ */
+int64_t *tl_unwrap(int64_t *o, int64_t depth) {
+    if (depth > 0) {
+        tl_vec *v = (tl_vec *)o;
+        tl_vec *out = tl_vec_new(v->len, 1);
+        for (int64_t k = 0; k < v->len; k++) {
+            out->cols[0][k] = (int64_t)tl_unwrap((int64_t *)v->cols[0][k], depth - 1);
+        }
+        return (int64_t *)out;
+    }
+    if (o == NULL) {
+        const char *msg = "toylang: unwrapped a value that is not there\n";
+        (void)!write(2, msg, strlen(msg));
+        exit(1);
+    }
+    return (int64_t *)*o;
+}

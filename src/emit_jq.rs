@@ -92,7 +92,7 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
                 callees(source, out);
                 callees(pred, out);
             }
-            Kind::Field { base, .. } => callees(base, out),
+            Kind::Field { base, .. } | Kind::Unwrap { base } => callees(base, out),
             Kind::Index { base, index, .. } => {
                 callees(base, out);
                 callees(index, out);
@@ -182,6 +182,10 @@ fn expr(t: &Tir) -> String {
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);
             format!("({} | {})", expr(base), distribute(&field_of(".", name), depth))
+        }
+        Kind::Unwrap { base } => {
+            let check = format!("if . == null then error({}) else . end", jq_string("toylang: unwrapped a value that is not there"));
+            format!("({} | {})", expr(base), distribute(&check, tir::vec_depth(&base.ty)))
         }
         // Out of range is null in jq, which is exactly what an absent Opt is here.
         Kind::Index { base, index, depth, .. } => {

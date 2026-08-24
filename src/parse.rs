@@ -205,6 +205,11 @@ impl<'a> Parser<'a> {
                         };
                     }
                 }
+                Tok::Bang => {
+                    let bang = self.advance().span;
+                    let span = e.span().to(bang);
+                    e = Expr::Unwrap { base: Box::new(e), span };
+                }
                 Tok::Dot => {
                     self.advance();
                     let ft = self.advance();

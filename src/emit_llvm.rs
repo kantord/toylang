@@ -56,6 +56,7 @@ struct Runtime<'ctx> {
     at: FunctionValue<'ctx>,
     opt_is_some: FunctionValue<'ctx>,
     opt_get: FunctionValue<'ctx>,
+    unwrap: FunctionValue<'ctx>,
 }
 
 /// What a compiler-introduced binding holds.
@@ -177,6 +178,11 @@ impl<'ctx> Emitter<'ctx> {
                 None,
             ),
             opt_get: module.add_function("tl_opt_get", i64t.fn_type(&[ptr.into()], false), None),
+            unwrap: module.add_function(
+                "tl_unwrap",
+                ptr.fn_type(&[ptr.into(), i64t.into()], false),
+                None,
+            ),
         };
 
         Emitter {
@@ -802,6 +808,30 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Kind::Field { base, name } => self.field(base, name, &t.ty)?,
+
+            // The runtime returns the unwrapped slot as a pointer, so a scalar comes back
+            // needing the integer put back; a pointer-shaped value is already right.
+            Kind::Unwrap { base } => {
+                let depth = crate::tir::vec_depth(&base.ty);
+                let inner = t.ty.clone();
+                let base = self.expr(base)?;
+                let raw = self
+                    .call_rt(
+                        self.rt.unwrap,
+                        &[base, self.ctx.i64_type().const_int(depth as u64, false).into()],
+                        "unwrapped",
+                    )?
+                    .into_pointer_value();
+                if depth == 0 && matches!(inner, Type::Int | Type::Bool) {
+                    let slot = self
+                        .builder
+                        .build_ptr_to_int(raw, self.ctx.i64_type(), "slot")
+                        .map_err(|e| e.to_string())?;
+                    self.read_slot(slot, &inner)?
+                } else {
+                    raw.into()
+                }
+            }
 
             Kind::Index { base, index, depth, elem_is_record } => {
                 let i64t = self.ctx.i64_type();
