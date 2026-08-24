@@ -1821,6 +1821,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q31](#q31-does-a-friendlier-string-pattern-language-belong-in-the-language-and-what-regex-flavor-does-it-extend-to) | Does a friendlier string-pattern language belong in the language, and what regex flavor does it extend to? | OPEN |
 | [Q32](#q32-does-the-dimension-model-subsume-the-effect-layer) | Does the dimension model subsume the effect layer? | OPEN, and it may dissolve Q13 rather than answer it |
 | [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | OPEN, and only expressible because arguments are a product |
+| [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN, and the constructor for one already works |
 
 [Stream lowering](#q5-stream-lowering-strategy-across-the-three-backends) is the one that blocks streaming work. [Streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and [multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) both change the two-layer section, so
 they should be settled before that section is treated as stable.
@@ -2162,6 +2163,45 @@ Open, and roughly in dependency order:
   presumably not, but partial application inside `map` is exactly where it would be used most.
 
 Blocked on first-class functions, which nothing else currently needs.
+
+### Q34. Do named types exist, and is a name an alias or an identity?
+
+Deferred when product literals were settled, on the grounds that a literal synthesises its own
+type and so forecloses nothing. What has since turned up is that the *constructor* for a named
+type already works, which changes what the question costs without changing what it asks.
+
+A constructor is a unary function from the structural product to the named type, and that shape
+exists today:
+
+```
+fn User(c: {name: Str, age: Int}) -> {name: Str, age: Int} = c
+
+User {name: "ada", age: 36}
+```
+
+`User {...}` parses and reaches the checker, which rejects it only because no function of that
+name is defined. Type names and expression names already resolve by separate paths, so there is
+no ambiguity to invent a rule for.
+
+Free, then: the spelling, and the semantics, since a constructor being a unary function over a
+product is the same decision already made for arguments generally.
+
+Not free, in rough order of how much they decide:
+
+- **Destructuring.** Does `.name` on a `User` see through the name, or does getting a component
+  out need an explicit step? Nothing about this direction falls out, and it is what decides
+  whether an identity is pleasant or a tax.
+- **The declaration form.** `Type::from_name` knows three names and there is no `type X = ...`.
+- **One namespace or two.** The checker looks a call up in `sigs`, so a type declaration
+  introducing a constructor would put type names and function names in one namespace. That is
+  probably right and should be chosen rather than arrived at.
+- **Alias or identity.** The question proper, and the only part the above does not touch. An
+  alias abbreviates a type the tutorial's annotation shows is worth abbreviating; an identity
+  makes two same-shaped products refuse to interchange, which is a different feature with a
+  different justification.
+
+Worth being explicit that cheapness is not an argument. What is recorded here is that the cost of
+identity is lower than it looked, not that the language wants it.
 
 ## Non-goals
 
