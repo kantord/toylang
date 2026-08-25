@@ -674,6 +674,35 @@ logic, so it falls out of whatever internal representation the derived matcher a
 the same representation [the regular-expressions-over-types idea](#q4-can-the-type-express-ordering-over-heterogeneous-streams) assigns each type (`Alt` for a
 discriminated union, `Seq` for a record's fields).
 
+TODO (user): Types, constructors and codecs are probably one and the same thing, with the
+built-in generic types making up a generic codec-and-data-structure compositor.
+
+RESPONSE (agent). The composition half is already settled twice over, above and in the next
+section. What is new here is the *identity* claim, and that part needs one correction, because
+the entry two up deliberately separated the same three things.
+
+Right about the mechanism. One declaration yields a structure, a constructor, a decoder, an
+encoder and a schema, and all of them are derived by the same recursion over the same base
+functors: a record sequences, a sum chooses, `Vec<T>` repeats, `Opt<T>` makes optional. Nothing
+is written per artifact; each is a projection of one structural description. That is the useful
+content of "one and the same thing" and it is worth stating as bluntly as the TODO does.
+
+Wrong about the artifact, and the difference is total versus partial. The constructor takes
+already-typed values and cannot fail: assembling checked fields into a record has no failure
+mode. The decoder takes untyped input and can fail on every field. They cannot be the same
+function because one has a failure mode and the other does not, which is also why the
+constructor is unconditionally free and the codec is free only when every field's own type
+already has one.
+
+So: one description, several projections, and the projections differ in whether they can fail.
+
+A prediction from that entry has half come true from the other direction. It said the free
+constructor *is* object construction, so no separate brace literal needs designing. The brace
+literal got built first, and with the parens rule of
+[the record literal section](#decided-records-can-be-built-and-a-record-is-how-several-arguments-travel),
+`Foo {name: "ada", age: 36}` is the shape that entry wanted from `Foo(name: "ada", age: 36)`,
+differing only in the bracket. The two converge rather than one replacing the other.
+
 ## One combinator algebra for trees, strings, and streams
 
 TODO (user): The built-in generic types might inherently double as parser-combinator primitives
@@ -1105,6 +1134,42 @@ that is a large return on a layout decision that has to be made anyway.
 
 Arithmetic on tensors broadcasts, so `$m * 2` is elementwise. That extension is confined to the
 new type; plain JSON arrays keep erroring exactly as they do now.
+
+TODO (user): stdin and stdout should not require solving generic effect types, because they are
+always string streams and so have no choice of element type. At worst the end of input shows up
+at the type level, and a `ClosableStream<Str>` primitive, working the way `Opt<>` does, would be
+the most trivial effect type: one that promises it is potentially not infinite in time.
+
+RESPONSE (agent). The pragmatic move is right and the bit being asked for already exists, but it
+is named on the wrong side, and the proposal cuts against a leaning that has four arguments
+behind it. Those are three separate things.
+
+**The bit already exists.** In the base-functor table above, `Stream<T> = nuX. 1 + T*X`, and the
+`1 +` is exactly closability: it is the case where the stream stops. So `ClosableStream<T>` is
+`Stream<T>` as already defined. What has no name is the *other* one, `nuX. T*X`, which never
+stops. If a name is wanted for the distinction, it should attach there, because that is the case
+a reduction over the stream can never produce a value for.
+
+**The pragmatic move is right.** stdin and stdout are byte streams with no element type to
+choose, so the machinery a general `Stream<T>` needs is not needed to build them. That is a real
+saving and it is the difference between starting now and waiting on
+[Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity).
+
+**The tension.** Q1 leans evaluation-level, meaning there is no `Stream<T>` *type* at all and
+`Stream` is an effect annotation on an expression. A `ClosableStream<Str>` primitive is a stream
+type, so taken generally it reverses that.
+
+The sidestep that makes it a starting point rather than a reversal: one concrete opaque built-in
+is not a type constructor. A file handle is a value in languages that have no first-class
+streams, and `ClosableStream<Str>` can be that, monomorphic and un-parameterisable, without
+committing to `Stream<T>` being spellable over an arbitrary `T`. That is a middle position worth
+naming deliberately, because arriving at it by accident would look exactly like having answered
+Q1 without noticing.
+
+What to watch, if this is built: whatever is written against the concrete primitive has to
+survive `Stream` later becoming an annotation rather than a type. The safe version keeps stdin
+and stdout as opaque handles that only a small set of operations touch, so that the operations
+are what generalise and the type does not have to.
 
 ## Strings are where platform independence actually costs something
 
