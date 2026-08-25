@@ -9,6 +9,8 @@ export interface Case {
   input: string | null
   /** The type the program declares its input has, for a reader editing that input. */
   inputType: string | null
+  /** Whether `input` here is a `lines` program's fixture text rather than a JSON document. */
+  usesLines: boolean
   resultType: string
   expect: Expect
   emitted: Record<string, string>

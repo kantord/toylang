@@ -6,7 +6,8 @@ import { Textarea } from "@/components/ui/textarea"
 import type { Case } from "@/lib/corpus"
 import { runJs, type RunResult } from "@/lib/run-js"
 
-/** Whether the JSON parses, so the Run button can say why it is disabled. */
+/** Whether the JSON parses, so the Run button can say why it is disabled. Only meaningful for
+ *  an `input` program: a `lines` program's stdin is never JSON, so any text is fine as-is. */
 function parse(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
   try {
     return { ok: true, value: JSON.parse(text) }
@@ -27,11 +28,14 @@ export function RunPanel({ current }: { current: Case }) {
 
   const parsed = useMemo(() => parse(text), [text])
   const needsInput = current.input !== null
+  const needsJson = needsInput && !current.usesLines
   const edited = needsInput && text !== current.input
-  const canRun = !needsInput || parsed.ok
+  const canRun = !needsJson || parsed.ok
 
   const run = () => {
-    setResult(runJs(current.emitted.js, needsInput && parsed.ok ? parsed.value : null))
+    // Raw text either way: the emitted code itself decides whether to JSON.parse it or split it
+    // into lines, exactly as node would.
+    setResult(runJs(current.emitted.js, needsInput ? text : null))
   }
 
   const expected = current.expect.kind === "output" ? current.expect.value : null
@@ -61,7 +65,9 @@ export function RunPanel({ current }: { current: Case }) {
               htmlFor="stdin"
               className="block font-mono text-xs text-muted-foreground"
             >
-              stdin, which must be {current.inputType}
+              {current.usesLines
+                ? "stdin, one line per line"
+                : `stdin, which must be ${current.inputType}`}
             </label>
             <Textarea
               id="stdin"
@@ -71,7 +77,7 @@ export function RunPanel({ current }: { current: Case }) {
               rows={4}
               className="font-mono text-[13px]"
             />
-            {!parsed.ok && (
+            {needsJson && !parsed.ok && (
               <p className="text-xs text-destructive">Not valid JSON: {parsed.error}</p>
             )}
           </>

@@ -1,0 +1,10 @@
+# The final line has no trailing newline, which is the one case wc -l gets wrong: it
+# counts newline characters, so a file missing its last one is undercounted. This line
+# is still yielded here, matching jq -R and every backend's own line-splitting rather
+# than that mistake. Quoted so the missing trailing newline in `input` is unambiguous
+# rather than something a block scalar's own conventions could paper over.
+program: "unlines(collect(lines))\n"
+
+input: "ada\nbo"
+
+output: "ada\nbo\n"

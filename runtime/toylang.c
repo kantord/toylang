@@ -630,6 +630,37 @@ int64_t tl_read_input(const tl_str *descriptor) {
     return value;
 }
 
+/* One line of stdin at a time via getline, in contrast to tl_read_input just above, which reads
+ * the whole stream before anything else can run. getline reuses the same growable buffer across
+ * calls, so each line is copied out to its own allocation before being stored; the buffer would
+ * otherwise be overwritten, and every previously stored line, on the next call.
+ *
+ * The trailing newline getline includes is stripped; a final line with none is still yielded,
+ * matching wc -l's undercount being the mistake to avoid rather than the convention to follow.
+ * A bare \r is left untouched as ordinary content, matching jq -R and Python's own stdin
+ * iteration, neither of which treats CRLF specially. */
+tl_vec *tl_collect_lines(void) {
+    tl_list items = {NULL, 0, 0};
+    char *line = NULL;
+    size_t cap = 0;
+    ssize_t len;
+    while ((len = getline(&line, &cap, stdin)) != -1) {
+        if (len > 0 && line[len - 1] == '\n') {
+            len--;
+        }
+        char *bytes = tl_alloc((size_t)len);
+        memcpy(bytes, line, (size_t)len);
+        tl_list_push(&items, (int64_t)tl_str_new(bytes, len));
+    }
+    free(line);
+
+    tl_vec *v = tl_vec_new(items.len, 1);
+    for (int64_t i = 0; i < items.len; i++) {
+        v->cols[0][i] = items.data[i];
+    }
+    return v;
+}
+
 /* Gather one element of a Vec of records back into a record.
  *
  * The struct-of-arrays layout means an element is spread across columns, and almost nothing in

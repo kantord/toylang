@@ -49,3 +49,6 @@ something the backend needs:
 A jq backend later supplied the third instance, and the sharpest: forward references, which Lua
 satisfied with declarations and JavaScript with hoisting, cannot be expressed there at all. See
 [a fourth backend found two rules three could not](a-fourth-backend-found-two-rules-three-could-not.md).
+
+A sixth instance, the first found by a target silently disagreeing rather than refusing to
+compile or run: [a sixth instance of the backend having rules the checker does not](a-sixth-backend-rule-the-checker-did-not-know.md).

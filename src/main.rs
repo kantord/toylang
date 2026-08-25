@@ -71,6 +71,8 @@ fn build(src: &str, path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
 /// stdin is only read when the program says it reads input, so a program that does not is not
 /// left waiting on a terminal.
 fn run(src: &str, backend: Backend) -> Result<String, Box<dyn std::error::Error>> {
+    // A program reading `lines` also takes this branch: it needs the real stdin left alone, not
+    // drained into a Rust String, so each backend can read it incrementally for itself.
     if toylang::compile(src)?.input.is_none() {
         return toylang::run_on(src, None, backend);
     }

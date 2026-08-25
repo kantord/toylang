@@ -106,22 +106,67 @@ pub fn run_on(
         (None, _) => None,
     };
 
+    // What a backend's stdin should be connected to. `input` always has known bytes: the
+    // re-serialized, already-validated value. `lines` has known bytes only when a caller (a
+    // corpus fixture, most often) supplied them directly -- and when it does, they are piped in
+    // verbatim rather than pre-split, so a backend's own splitting genuinely runs against them
+    // rather than being bypassed by the test that is supposed to exercise it. Only when nothing
+    // was supplied, which is the real command-line case, does `lines` connect the real stdin
+    // straight through, with no Rust-side buffering in between -- the one thing that would make
+    // its streaming indistinguishable from having read everything first.
+    let feed = if program.uses_lines {
+        match stdin {
+            Some(text) => Feed::Text(text.to_string()),
+            None => Feed::Live,
+        }
+    } else {
+        Feed::Text(value.as_ref().map(|v| v.to_string()).unwrap_or_default())
+    };
+
     match backend {
-        Backend::Lua => run_lua(&emit_lua::emit(&program), value.as_ref()),
-        Backend::Js => run_node(&emit_js::emit(&program), value.as_ref()),
+        Backend::Lua => run_lua(&emit_lua::emit(&program), value.as_ref(), &feed),
+        Backend::Js => run_node(&emit_js::emit(&program), &feed),
         Backend::Jq => run_jq(
             &emit_jq::emit(&program),
-            value.as_ref(),
+            value.is_some(),
             program.body.ty == ty::Type::Str,
+            program.uses_lines,
+            &feed,
         ),
-        Backend::Go => run_go(&emit_go::emit(&program), value.as_ref()),
-        Backend::Py => run_py(&emit_py::emit(&program), value.as_ref()),
+        Backend::Go => run_go(&emit_go::emit(&program), &feed),
+        Backend::Py => run_py(&emit_py::emit(&program), &feed),
         Backend::Native => {
             let dir = tempfile::tempdir()?;
             let exe = dir.path().join("program");
             link(&program, &exe)?;
-            run_binary(&exe, value.as_ref())
+            run_binary(&exe, &feed)
         }
+    }
+}
+
+/// What a subprocess backend's stdin is connected to.
+enum Feed {
+    /// Known bytes, written through a pipe: `input`'s re-serialized value, a `lines` program's
+    /// fixture text verbatim, or nothing for a program that reads no stdin at all.
+    Text(String),
+    /// The real process stdin, inherited rather than piped. Reachable only for a `lines`
+    /// program run with no fixture supplied.
+    Live,
+}
+
+impl Feed {
+    fn stdio(&self) -> std::process::Stdio {
+        match self {
+            Feed::Text(_) => std::process::Stdio::piped(),
+            Feed::Live => std::process::Stdio::inherit(),
+        }
+    }
+
+    fn write_to(&self, child: &mut std::process::Child) -> std::io::Result<()> {
+        if let Feed::Text(text) = self {
+            child.stdin.take().expect("piped").write_all(text.as_bytes())?;
+        }
+        Ok(())
     }
 }
 
@@ -155,16 +200,15 @@ pub fn link(program: &Program, out: &std::path::Path) -> Result<(), Box<dyn std:
 
 fn run_binary(
     exe: &std::path::Path,
-    value: Option<&serde_json::Value>,
+    feed: &Feed,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut child = std::process::Command::new(exe)
-        .stdin(std::process::Stdio::piped())
+        .stdin(feed.stdio())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()?;
 
-    let text = value.map(|v| v.to_string()).unwrap_or_default();
-    child.stdin.take().expect("piped").write_all(text.as_bytes())?;
+    feed.write_to(&mut child)?;
 
     let out = child.wait_with_output()?;
     if !out.status.success() {
@@ -178,11 +222,14 @@ fn run_binary(
 }
 
 /// jq puts stdin in `.`, so a program that reads no input runs with `-n` rather than waiting on
-/// a terminal.
+/// a terminal. `has_value` rather than the `Feed` itself, since a `lines` program run live
+/// (`Feed::Live`) still has real stdin coming and must not get `-n` on that account.
 fn run_jq(
     source: &str,
-    value: Option<&serde_json::Value>,
+    has_value: bool,
     raw: bool,
+    uses_lines: bool,
+    feed: &Feed,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut cmd = std::process::Command::new("jq");
     cmd.arg("-c");
@@ -191,19 +238,26 @@ fn run_jq(
     if raw {
         cmd.arg("-r");
     }
-    if value.is_none() {
+    if !has_value && !uses_lines {
         cmd.arg("-n");
+    }
+    // Raw-input mode, needed for `[ inputs ]` to read lines rather than JSON, and forced by the
+    // checker to be the only way `lines` is used in this invocation: mixing it with `input` was
+    // rejected there, because `-R` changes what the whole invocation means, not just one call.
+    // `-n` here is not "no input coming"; it is what raw-input mode needs regardless, since
+    // `[ inputs ]` reads for itself rather than through the implicit `.` a normal run would use.
+    if uses_lines {
+        cmd.arg("-R").arg("-n");
     }
     let mut child = cmd
         .arg(source)
-        .stdin(std::process::Stdio::piped())
+        .stdin(feed.stdio())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("could not run `jq`: {e}"))?;
 
-    let text = value.map(|v| v.to_string()).unwrap_or_default();
-    child.stdin.take().expect("piped").write_all(text.as_bytes())?;
+    feed.write_to(&mut child)?;
 
     let out = child.wait_with_output()?;
     if !out.status.success() {
@@ -215,10 +269,30 @@ fn run_jq(
 fn run_lua(
     source: &str,
     value: Option<&serde_json::Value>,
+    feed: &Feed,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let lua = mlua::Lua::new();
     if let Some(value) = value {
         lua.globals().set(emit_lua::INPUT, input::to_lua(&lua, value)?)?;
+    }
+    // mlua is embedded in this same process, so `io.lines()` in the emitted source reads the
+    // real stdin directly -- verified against a live pipe, and exactly what a `lines` program
+    // run for real should do. A fixture is different: cargo test runs many tests concurrently
+    // in one process, so redirecting the process's own fd 0 would race with all of them, and is
+    // not done. Instead the fixture is written to a file of its own and `io.lines` is pointed at
+    // it, which keeps Lua's own real line-splitting in the loop rather than reimplementing it in
+    // Rust and only testing that reimplementation.
+    let _fixture_dir;
+    if let Feed::Text(text) = feed {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("stdin.txt");
+        std::fs::write(&path, text)?;
+        let path = path.to_str().expect("a temp path is valid UTF-8").to_string();
+        let io: mlua::Table = lua.globals().get("io")?;
+        let real_lines: mlua::Function = io.get("lines")?;
+        let fixture = lua.create_function(move |_, ()| real_lines.call::<mlua::Value>(path.clone()))?;
+        io.set("lines", fixture)?;
+        _fixture_dir = Some(dir);
     }
 
     let captured = Rc::new(RefCell::new(String::new()));
@@ -240,7 +314,7 @@ fn run_lua(
 /// rather than one vendored into the build.
 fn run_py(
     source: &str,
-    value: Option<&serde_json::Value>,
+    feed: &Feed,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("program.py");
@@ -248,14 +322,13 @@ fn run_py(
 
     let mut child = std::process::Command::new("python3")
         .arg(&path)
-        .stdin(std::process::Stdio::piped())
+        .stdin(feed.stdio())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("could not run `python3`: {e}"))?;
 
-    let text = value.map(|v| v.to_string()).unwrap_or_default();
-    child.stdin.take().expect("piped").write_all(text.as_bytes())?;
+    feed.write_to(&mut child)?;
 
     let out = child.wait_with_output()?;
     if !out.status.success() {
@@ -269,7 +342,7 @@ fn run_py(
 /// is an error rather than a skipped backend.
 fn run_go(
     source: &str,
-    value: Option<&serde_json::Value>,
+    feed: &Feed,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("main.go");
@@ -278,14 +351,13 @@ fn run_go(
     let mut child = std::process::Command::new("go")
         .arg("run")
         .arg(&path)
-        .stdin(std::process::Stdio::piped())
+        .stdin(feed.stdio())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("could not run `go`: {e}"))?;
 
-    let text = value.map(|v| v.to_string()).unwrap_or_default();
-    child.stdin.take().expect("piped").write_all(text.as_bytes())?;
+    feed.write_to(&mut child)?;
 
     let out = child.wait_with_output()?;
     if !out.status.success() {
@@ -299,7 +371,7 @@ fn run_go(
 /// than no report.
 fn run_node(
     source: &str,
-    value: Option<&serde_json::Value>,
+    feed: &Feed,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("program.js");
@@ -307,15 +379,13 @@ fn run_node(
 
     let mut child = std::process::Command::new("node")
         .arg(&path)
-        .stdin(std::process::Stdio::piped())
+        .stdin(feed.stdio())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("could not run `node`: {e}"))?;
 
-    // Written even when empty, so a program that does not read input still sees stdin close.
-    let text = value.map(|v| v.to_string()).unwrap_or_default();
-    child.stdin.take().expect("piped").write_all(text.as_bytes())?;
+    feed.write_to(&mut child)?;
 
     let out = child.wait_with_output()?;
     if !out.status.success() {

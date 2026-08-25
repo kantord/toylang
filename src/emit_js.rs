@@ -54,6 +54,30 @@ function tl_rem(a, b) {
 }
 "#;
 
+const COLLECT_HELPER: &str = r#"// Synchronous, because a toylang expression evaluates to completion and node has no
+// synchronous line reader built in. Reads in fixed chunks off the real fd rather than
+// `readFileSync(0)`, so a line is available to the rest of the program as soon as it arrives
+// rather than only once stdin closes.
+function tl_collect_lines() {
+  const fs = require("fs");
+  const out = [];
+  let buf = "";
+  const chunk = Buffer.alloc(65536);
+  for (;;) {
+    const n = fs.readSync(0, chunk, 0, chunk.length, null);
+    if (n === 0) break;
+    buf += chunk.toString("utf8", 0, n);
+    let i;
+    while ((i = buf.indexOf("\n")) !== -1) {
+      out.push(buf.slice(0, i));
+      buf = buf.slice(i + 1);
+    }
+  }
+  if (buf.length > 0) out.push(buf);
+  return out;
+}
+"#;
+
 const JOIN_HELPER: &str = "\
 function tl_join(v, f) {
   const parts = [];
@@ -83,6 +107,9 @@ pub fn emit(program: &Program) -> String {
     }
     if used.arith {
         out.push_str(ARITH_HELPER);
+    }
+    if used.collect {
+        out.push_str(COLLECT_HELPER);
     }
 
     // Function declarations hoist, so a call to one defined further down resolves without the
@@ -118,6 +145,9 @@ pub fn emit(program: &Program) -> String {
 /// native backend will have to do anyway, having no runtime type information at all.
 fn show(ty: &Type, value: &str, depth: usize) -> String {
     match ty {
+        // The checker refuses a program whose result contains Lines, since there is nothing to
+        // print: a stream has no value, only a promise that collect can redeem.
+        Type::Lines => unreachable!("Lines cannot reach the printer"),
         Type::Str => format!("JSON.stringify({value})"),
         Type::Int | Type::Bool => format!("String({value})"),
         Type::Vec(elem) => {
@@ -180,12 +210,13 @@ struct Helpers {
     index: bool,
     unwrap: bool,
     arith: bool,
+    collect: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
     fn walk(t: &Tir, used: &mut Helpers) {
         match &t.kind {
-            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => {}
+            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input | Kind::Lines => {}
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -212,7 +243,10 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.field |= tir::vec_depth(&base.ty) > 0;
                 walk(base, used);
             }
-            Kind::Builtin { arg, .. } => walk(arg, used),
+            Kind::Builtin { which, arg } => {
+                used.collect |= *which == Builtin::Collect;
+                walk(arg, used);
+            }
             Kind::Cond { cond, then, otherwise } => {
                 walk(cond, used);
                 walk(then, used);
@@ -247,6 +281,9 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
+        // `lines` has no value of its own -- it is a promise that the real stdin has not been
+        // read yet, made good only by `collect`. `undefined` is never actually inspected.
+        Kind::Lines => "undefined".to_string(),
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
@@ -282,6 +319,7 @@ fn expr(t: &Tir) -> String {
                 format!("Array.from({{ length: Math.max(0, {}) }}, (_, i) => i)", expr(arg))
             }
             Builtin::Unlines => format!("{}.join(\"\\n\")", expr(arg)),
+            Builtin::Collect => "tl_collect_lines()".to_string(),
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), js_op(*op), expr(rhs))

@@ -28,8 +28,9 @@ let checked = 0
 const failures = []
 
 for (const c of corpus.cases) {
-  const input = c.input === null ? null : JSON.parse(c.input)
-  const result = runJs(c.emitted.js, input)
+  // Raw text either way: an `input` program's own emitted code calls JSON.parse on it, and a
+  // `lines` program never was JSON to begin with.
+  const result = runJs(c.emitted.js, c.input)
   checked++
 
   if (c.expect.kind === "refusal") {

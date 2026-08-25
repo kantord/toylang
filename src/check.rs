@@ -14,6 +14,10 @@ struct Ctx<'a> {
     subject: Option<(Type, LocalId)>,
     /// The type `input` was checked against, filled in the first time it is used.
     input: &'a RefCell<Option<Type>>,
+    /// Whether `lines` has already been read. There is only ever one real stdin, so a second
+    /// read is refused rather than silently handed nothing, the way a second pass over an
+    /// already-consumed iterator would be in a language that let it compile.
+    lines_used: &'a Cell<bool>,
     next_local: &'a Cell<LocalId>,
 }
 
@@ -24,6 +28,7 @@ impl Ctx<'_> {
             scope: self.scope.clone(),
             subject,
             input: self.input,
+            lines_used: self.lines_used,
             next_local: self.next_local,
         }
     }
@@ -36,6 +41,7 @@ impl Ctx<'_> {
 }
 
 pub fn check(file: &File) -> Result<tir::Program, Error> {
+    let lines_used = Cell::new(false);
     let aliases = alias_map(&file.aliases)?;
     // Resolved eagerly so a broken alias is an error even when nothing uses it, and so a cycle
     // is found here rather than wherever it happened to be reached from.
@@ -56,6 +62,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             scope: vec![(def.param.name.clone(), sig.param.clone())],
             subject: None,
             input: &input,
+            lines_used: &lines_used,
             next_local: &next_local,
         };
         let body = synth(&ctx, &def.body)?;
@@ -81,10 +88,35 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         scope: Vec::new(),
         subject: None,
         input: &input,
+        lines_used: &lines_used,
         next_local: &next_local,
     };
     let body = synth(&ctx, &file.body)?;
-    Ok(tir::Program { funcs, body, input: input.into_inner() })
+    // Lines cannot be printed, having nothing to show: it is a stream, not a value, and
+    // collect() is what turns it into one. A function body catches this for free, since its
+    // return annotation can never spell Lines and so can never match a body that contains one;
+    // the program's own result has no annotation to check against, so it needs asking directly.
+    if body.ty.contains_lines() {
+        return Err(Error::new(
+            file.body.span(),
+            "the program's result contains `lines`, which has nothing to print; pass it to \
+             `collect` first"
+                .to_string(),
+        ));
+    }
+    let input = input.into_inner();
+    // Forced by jq specifically: reading `lines` needs raw-input mode for the whole invocation,
+    // and raw-input mode is what stops `input` from being parsed as JSON at all. The other five
+    // backends have no such conflict, but the language is one language across all six.
+    if input.is_some() && lines_used.get() {
+        return Err(Error::new(
+            file.body.span(),
+            "a program cannot use both `input` and `lines`; they read the same real stdin two \
+             different ways"
+                .to_string(),
+        ));
+    }
+    Ok(tir::Program { funcs, body, input, uses_lines: lines_used.get() })
 }
 
 /// Functions the language provides. Unary like every other function, so they need no special
@@ -95,6 +127,7 @@ fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
         "str" => (tir::Builtin::IntToStr, Sig { param: Type::Int, ret: Type::Str }),
         "range" => (tir::Builtin::Range, Sig { param: Type::Int, ret: vec_of(Type::Int) }),
         "unlines" => (tir::Builtin::Unlines, Sig { param: vec_of(Type::Str), ret: Type::Str }),
+        "collect" => (tir::Builtin::Collect, Sig { param: Type::Lines, ret: vec_of(Type::Str) }),
         _ => return None,
     })
 }
@@ -214,6 +247,16 @@ fn resolve(ty: &TypeExpr, aliases: &Aliases, seen: &mut Vec<String>) -> Result<T
 fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     match expr {
         Expr::Str { text, .. } => Ok(Tir::new(Type::Str, Kind::Str(text.clone()))),
+        Expr::Lines { span } => {
+            if ctx.lines_used.get() {
+                return Err(Error::new(
+                    *span,
+                    "`lines` has already been read; there is only one stdin".to_string(),
+                ));
+            }
+            ctx.lines_used.set(true);
+            Ok(Tir::new(Type::Lines, Kind::Lines))
+        }
         Expr::Int { value, span } => {
             // The literal is the one place a value could enter without meeting the 32-bit rule,
             // and four backends agreed on the wrong answer only because each held it in its own
@@ -249,7 +292,17 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                         format!("field `{name}` is given twice"),
                     ));
                 }
-                built.push((name.clone(), synth(ctx, value)?));
+                let field = synth(ctx, value)?;
+                // Lines can never enter a record: a record's fields can be printed, copied,
+                // and read back out by name, none of which make sense for a single-use stream,
+                // and no path exists for a `Lines`-typed field to leave one again once inside.
+                if field.ty.contains_lines() {
+                    return Err(Error::new(
+                        value.span(),
+                        format!("`{name}` cannot be `lines`, which has nothing to store"),
+                    ));
+                }
+                built.push((name.clone(), field));
             }
             // Sorted to match Type::record, so a field's index is the same in the value and
             // in the type.
@@ -267,6 +320,15 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             };
             let head = synth(ctx, first)?;
             let elem = head.ty.clone();
+            // Same reasoning as a record field: nothing can get a `Lines` value back out of a
+            // Vec once it is in one, and a Vec of them makes no sense when there is only ever
+            // one real stdin to begin with.
+            if elem.contains_lines() {
+                return Err(Error::new(
+                    first.span(),
+                    "a Vec cannot hold `lines`, which has nothing to store".to_string(),
+                ));
+            }
             let mut out = vec![head];
             for item in &items[1..] {
                 out.push(expect(ctx, item, &elem)?);

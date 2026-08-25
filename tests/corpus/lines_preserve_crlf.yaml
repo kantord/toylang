@@ -1,0 +1,10 @@
+# CRLF is left alone: a bare \r is ordinary content, matching jq -R and Python's own
+# stdin iteration, neither of which treats it specially. Go's default scanner strips it,
+# which is why this backend's split function is hand-written rather than the stdlib
+# default. Quoted rather than a block scalar: YAML folds a block scalar's line endings,
+# which would silently turn \r\n into \n before the fixture ever reached a backend.
+program: "unlines(collect(lines))\n"
+
+input: "ada\r\nbo\r\n"
+
+output: "ada\r\nbo\r\n"

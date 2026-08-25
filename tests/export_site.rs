@@ -46,6 +46,10 @@ fn export_the_corpus_for_the_site() {
             "program": case.program,
             "input": case.input,
             "inputType": program.input.as_ref().map(|t| t.to_string()),
+            // A case's `input` is raw text either way -- an `input` program's declared JSON
+            // type, or a `lines` program's fixture lines -- and the site needs to know which,
+            // since only one of them is meant to be valid JSON.
+            "usesLines": program.uses_lines,
             "resultType": program.body.ty.to_string(),
             "expect": expect,
             "emitted": Value::Object(emitted),

@@ -52,6 +52,7 @@ struct Runtime<'ctx> {
     vec_column: FunctionValue<'ctx>,
     rec_get: FunctionValue<'ctx>,
     rec_new: FunctionValue<'ctx>,
+    collect_lines: FunctionValue<'ctx>,
     rec_set: FunctionValue<'ctx>,
     read_input: FunctionValue<'ctx>,
     rec_from_vec: FunctionValue<'ctx>,
@@ -166,6 +167,11 @@ impl<'ctx> Emitter<'ctx> {
                 ptr.fn_type(&[i64t.into()], false),
                 None,
             ),
+            collect_lines: module.add_function(
+                "tl_collect_lines",
+                ptr.fn_type(&[], false),
+                None,
+            ),
             rec_set: module.add_function(
                 "tl_rec_set",
                 ctx.void_type().fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
@@ -226,6 +232,10 @@ impl<'ctx> Emitter<'ctx> {
 
     fn llvm_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, String> {
         Ok(match ty {
+            // Proven unreachable by the checker: Lines cannot be a function's parameter or
+            // return type (unspellable in an annotation), cannot enter a Vec or a record, and a
+            // Cond branch typed Lines would need `lines` written twice, which is refused.
+            Type::Lines => unreachable!("Lines never reaches llvm_type"),
             Type::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Int => self.ctx.i64_type().into(),
             Type::Bool => self.ctx.bool_type().into(),
@@ -247,6 +257,9 @@ impl<'ctx> Emitter<'ctx> {
     /// the program declared. See the grammar in runtime/toylang.c.
     fn descriptor(ty: &Type) -> String {
         match ty {
+            // Lines is unspellable in a type annotation, so `input`'s declared type -- the only
+            // thing this function is ever called on -- can never contain one.
+            Type::Lines => unreachable!("Lines cannot be declared, so input never has one"),
             Type::Str => "s".to_string(),
             Type::Int => "i".to_string(),
             Type::Bool => "b".to_string(),
@@ -328,6 +341,9 @@ impl<'ctx> Emitter<'ctx> {
     fn to_slot(&self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<IntValue<'ctx>, String> {
         let i64t = self.ctx.i64_type();
         Ok(match ty {
+            // Proven unreachable the same way as llvm_type: nothing can put a Lines value where
+            // to_slot would be asked to pack one.
+            Type::Lines => unreachable!("Lines never reaches to_slot"),
             Type::Int => value.into_int_value(),
             Type::Bool => self
                 .builder
@@ -347,6 +363,7 @@ impl<'ctx> Emitter<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr = self.ctx.ptr_type(AddressSpace::default());
         Ok(match ty {
+            Type::Lines => unreachable!("Lines never reaches read_slot"),
             Type::Int => slot.into(),
             Type::Bool => self
                 .builder
@@ -736,6 +753,9 @@ impl<'ctx> Emitter<'ctx> {
 
     fn show(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match ty {
+            // The checker refuses a program whose result contains Lines, since there is
+            // nothing to print: a stream has no value, only a promise that collect can redeem.
+            Type::Lines => unreachable!("Lines cannot reach the printer"),
             Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
             Type::Int => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
             Type::Bool => {
@@ -967,6 +987,10 @@ impl<'ctx> Emitter<'ctx> {
 
             Kind::Map { source, param, body } => self.map(source, *param, body, &t.ty)?,
 
+            // No value to speak of: a promise that the real stdin has not been read yet, made
+            // good only by collect. The constant is never actually inspected.
+            Kind::Lines => self.ctx.i64_type().const_zero().into(),
+
             Kind::Input => {
                 let descriptor = self.string_const(&Self::descriptor(&t.ty));
                 let slot = self
@@ -1024,6 +1048,10 @@ impl<'ctx> Emitter<'ctx> {
                 match which {
                     Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,
                     Builtin::Range => self.call_rt(self.rt.range, &[arg], "range")?,
+                    // `arg` is ignored: it is always Lines, directly or through a local bound
+                    // to it, and there is only ever one real stdin, so nothing about the
+                    // argument's value could change what this reads.
+                    Builtin::Collect => self.call_rt(self.rt.collect_lines, &[], "lines")?,
                     // Reuse the joiner the printer uses, with no brackets around it.
                     Builtin::Unlines => {
                         let open = self.string_const("");

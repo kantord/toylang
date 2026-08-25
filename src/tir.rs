@@ -37,6 +37,8 @@ pub enum Kind {
     Local(LocalId),
     /// The value read from stdin.
     Input,
+    /// The stream of lines read from stdin, read incrementally by whatever consumes it.
+    Lines,
     Call {
         func: String,
         arg: Box<Tir>,
@@ -119,6 +121,10 @@ pub enum Builtin {
     /// `unlines(v)`, joining with newlines. Named for Haskell's, because `lines` is spoken for
     /// by the splitting direction that `stdin.lines` will need.
     Unlines,
+    /// `collect(lines)`, reading every line of stdin into a Vec<Str>. The one place `Lines`
+    /// stops being a stream: what comes back is an ordinary value, exactly as sized as it needs
+    /// to be, with no trace left of how it arrived.
+    Collect,
 }
 
 pub struct Func {
@@ -133,6 +139,10 @@ pub struct Program {
     pub body: Tir,
     /// The type stdin must have, if the program reads it.
     pub input: Option<Type>,
+    /// Whether the program reads `lines`. A separate flag from `input`, since the two are
+    /// unrelated readers of the same real stdin and a program using `lines` alone still needs
+    /// it connected, even though `input` is `None`.
+    pub uses_lines: bool,
 }
 
 /// How many `Vec` layers wrap a scalar. Field access distributes over each of them.

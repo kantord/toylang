@@ -73,6 +73,9 @@ pub fn emit(program: &Program) -> String {
 /// backends rather than the input's key order.
 fn canonical(ty: &Type, value: &str) -> String {
     match ty {
+        // The checker refuses a program whose result contains Lines, since there is nothing to
+        // print: a stream has no value, only a promise that collect can redeem.
+        Type::Lines => unreachable!("Lines cannot reach the printer"),
         Type::Str | Type::Int | Type::Bool => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(elem, ".")),
         Type::Opt(inner) => {
@@ -98,7 +101,8 @@ fn canonical(ty: &Type, value: &str) -> String {
 fn ordered(program: &Program) -> Vec<&tir::Func> {
     fn callees(t: &Tir, out: &mut Vec<String>) {
         match &t.kind {
-            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => {}
+            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input
+            | Kind::Lines => {}
             Kind::VecLit(items) => items.iter().for_each(|i| callees(i, out)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| callees(v, out));
@@ -178,7 +182,8 @@ fn uses_arith(program: &Program) -> bool {
         match &t.kind {
             Kind::Arith { .. } => true,
             Kind::Cond { cond, then, otherwise } => walk(cond) || walk(then) || walk(otherwise),
-            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => false,
+            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input
+            | Kind::Lines => false,
             Kind::VecLit(items) => items.iter().any(walk),
             Kind::RecordLit { fields } => fields.iter().any(|(_, v)| walk(v)),
             Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => walk(arg),
@@ -222,6 +227,9 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => format!("${}", user(name)),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
+        // `lines` has no value of its own -- it is a promise that the real stdin has not been
+        // read yet, made good only by `collect`. `.` is never actually inspected.
+        Kind::Lines => ".".to_string(),
         // Each value is parenthesised: everything in jq is a filter, so an unbracketed `|`
         // or `,` inside one would be read as part of the object rather than as its value.
         Kind::RecordLit { fields } => {
@@ -256,6 +264,11 @@ fn expr(t: &Tir) -> String {
             Builtin::IntToStr => format!("({} | tostring)", expr(arg)),
             Builtin::Range => format!("[ range(0; {}) ]", expr(arg)),
             Builtin::Unlines => format!("({} | join(\"\\n\"))", expr(arg)),
+            // `arg` is never anything but Lines (directly, or through a local bound to it), and
+            // there is only ever one real stdin, so what it evaluated to is irrelevant: `inputs`
+            // always means the same thing. `-n -R` on the invocation is what makes this mode
+            // available; see the checker rule against mixing `input` and `lines` in one program.
+            Builtin::Collect => "[ inputs ]".to_string(),
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), jq_op(*op), expr(rhs))

@@ -340,6 +340,7 @@ impl<'a> Parser<'a> {
             Tok::Str(text) => Ok(Expr::Str { text: text.clone(), span: t.span }),
             Tok::Int(value) => Ok(Expr::Int { value: *value, span: t.span }),
             Tok::Input => Ok(Expr::Input { span: t.span }),
+            Tok::Lines => Ok(Expr::Lines { span: t.span }),
 
             // `.name` is field access on the subject, so the leading dot yields `.` and the
             // postfix loop above picks the field up.

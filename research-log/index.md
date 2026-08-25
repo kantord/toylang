@@ -58,6 +58,12 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [Backends can agree and still be wrong](backends-can-agree-and-still-be-wrong.md)
   -- An out-of-range Int literal printed identically on four backends, because each avoided the
   rule by its own accident rather than by following it.
+- [Streaming input is pull, verified against jq itself](streaming-input-is-pull-verified-against-jq-itself.md)
+  -- Every mature abstraction that stops a producer from outrunning its consumer turns out to be
+  pull, including jq, which decided the model with no new machinery needed for backpressure.
+- [A sixth instance of the backend having rules the checker does not](a-sixth-backend-rule-the-checker-did-not-know.md)
+  -- Go's default line scanner strips a carriage return the other five backends leave alone, and
+  mlua's embedded Lua reads the real process stdin directly with no interception needed.
 - [A backend that finds nothing is evidence only if it is different](a-backend-that-finds-nothing-is-evidence-only-if-it-is-different.md)
   -- Python ported 68 programs with no front-end change, which is worth something only because it
   fails unlike the five already there.

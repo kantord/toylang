@@ -102,6 +102,33 @@ func tlRem(a, b int32) int32 {
 const INT_HELPER: &str = r#"func tlInt(n int32) int32 { return n }
 "#;
 
+// bufio.ScanLines strips a trailing \r along with the \n, which the other five backends do
+// not, so the split function is copied here with that one line removed rather than reused.
+const COLLECT_HELPER: &str = r#"func tlScanLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		return i + 1, data[0:i], nil
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
+func tlCollectLines() []string {
+	out := []string{}
+	s := bufio.NewScanner(os.Stdin)
+	s.Buffer(make([]byte, 0, 65536), 1024*1024)
+	s.Split(tlScanLines)
+	for s.Scan() {
+		out = append(out, s.Text())
+	}
+	return out
+}
+"#;
+
 const RANGE_HELPER: &str = r#"func tlRange(n int32) []int32 {
 	if n < 0 {
 		n = 0
@@ -218,6 +245,7 @@ pub fn emit(program: &Program) -> String {
     let uses = |name: &str| decls.contains(name);
     let unwrap = uses("tlUnwrap(");
     let arith = uses("tlDiv(") || uses("tlRem(");
+    let collect = uses("tlCollectLines(");
     let fail = unwrap || arith || program.input.is_some();
     let quote = uses("tlQuote(");
     let join = uses("tlJoin(");
@@ -238,6 +266,7 @@ pub fn emit(program: &Program) -> String {
         (unwrap, UNWRAP_HELPER),
         (arith, ARITH_HELPER),
         (uses("tlRange("), RANGE_HELPER),
+        (collect, COLLECT_HELPER),
         (join, JOIN_HELPER),
         (quote, QUOTE_HELPER),
     ] {
@@ -249,8 +278,12 @@ pub fn emit(program: &Program) -> String {
 
     let mut imports = BTreeSet::new();
     imports.insert("fmt");
-    if fail || program.input.is_some() {
+    if fail || program.input.is_some() || collect {
         imports.insert("os");
+    }
+    if collect {
+        imports.insert("bufio");
+        imports.insert("bytes");
     }
     if program.input.is_some() {
         imports.insert("encoding/json");
@@ -275,6 +308,9 @@ pub fn emit(program: &Program) -> String {
 /// Whether printing this type reaches an Int or a Bool, which are the two `strconv` needs.
 fn has_scalar(ty: &Type) -> bool {
     match ty {
+        // Only ever called on the program's own result type, which the checker guarantees is
+        // never Lines and never contains one.
+        Type::Lines => unreachable!("Lines cannot reach has_scalar"),
         Type::Int | Type::Bool => true,
         Type::Str => false,
         Type::Vec(t) | Type::Opt(t) => has_scalar(t),
@@ -314,7 +350,7 @@ impl Collect<'_> {
     fn walk(&mut self, t: &Tir) {
         self.ty(&t.ty);
         match &t.kind {
-            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => {}
+            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input | Kind::Lines => {}
             Kind::VecLit(items) => items.iter().for_each(|i| self.walk(i)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| self.walk(v));
@@ -352,7 +388,7 @@ impl Collect<'_> {
                 match which {
                     Builtin::IntToStr => self.used.itoa = true,
                     Builtin::Unlines => self.used.unlines = true,
-                    Builtin::Range => {}
+                    Builtin::Range | Builtin::Collect => {}
                 }
                 self.walk(arg);
             }
@@ -381,6 +417,9 @@ impl Emitter {
             Type::Bool => "bool".to_string(),
             Type::Vec(e) => format!("[]{}", self.go_type(e)),
             Type::Opt(e) => format!("tlOpt[{}]", self.go_type(e)),
+            // A phantom marker: Go still needs a real type for the closure-based Bind pattern
+            // to name, even though no value of it is ever read.
+            Type::Lines => "struct{}".to_string(),
             Type::Record(_) => {
                 let key = ty.to_string();
                 let i = self
@@ -427,6 +466,9 @@ impl Emitter {
             Kind::Var(name) => self.user(name),
             Kind::Local(id) => self.local(*id),
             Kind::Input => INPUT.to_string(),
+        // `lines` has no value of its own -- it is a promise that the real stdin has not been
+        // read yet, made good only by `collect`. The empty struct is never actually inspected.
+        Kind::Lines => "struct{}{}".to_string(),
             // go_type resolves the struct name, and the collector registered it because a
             // record literal carries its own record type.
             Kind::RecordLit { fields } => {
@@ -467,6 +509,7 @@ impl Emitter {
                 Builtin::IntToStr => format!("strconv.FormatInt(int64({}), 10)", self.expr(arg)),
                 Builtin::Range => format!("tlRange({})", self.expr(arg)),
                 Builtin::Unlines => format!("strings.Join({}, \"\\n\")", self.expr(arg)),
+                Builtin::Collect => "tlCollectLines()".to_string(),
             },
             Kind::Compare { op, lhs, rhs } => {
                 format!("({} {} {})", self.expr(lhs), go_op(*op), self.expr(rhs))
@@ -519,6 +562,9 @@ impl Emitter {
     /// backend. Here there is no choice at all: a Go value cannot be asked what it is.
     fn show(&self, ty: &Type, value: &str, depth: usize) -> String {
         match ty {
+            // The checker refuses a program whose result contains Lines, since there is
+            // nothing to print: a stream has no value, only a promise that collect can redeem.
+            Type::Lines => unreachable!("Lines cannot reach the printer"),
             Type::Str => format!("tlQuote({value})"),
             Type::Int => format!("strconv.FormatInt(int64({value}), 10)"),
             Type::Bool => format!("strconv.FormatBool({value})"),

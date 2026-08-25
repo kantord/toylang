@@ -33,6 +33,14 @@ local function tl_range(n)
 end
 ";
 
+const COLLECT_HELPER: &str = "\
+local function tl_collect_lines()
+  local out = {}
+  for line in io.lines() do out[#out + 1] = line end
+  return out
+end
+";
+
 const MAP_HELPER: &str = "\
 local function tl_map(src, f)
   local out = {}
@@ -141,6 +149,9 @@ pub fn emit(program: &Program) -> String {
     if used.range {
         out.push_str(RANGE_HELPER);
     }
+    if used.collect {
+        out.push_str(COLLECT_HELPER);
+    }
 
     // All names are declared before any body, because the checker collects signatures before
     // checking bodies and so accepts a call to a function defined further down. Emitting
@@ -174,6 +185,9 @@ pub fn emit(program: &Program) -> String {
 /// function, and step 4 onwards, where a native target has nothing to ask.
 fn show(ty: &Type, value: &str, depth: usize) -> String {
     match ty {
+        // The checker refuses a program whose result contains Lines, since there is nothing to
+        // print: a stream has no value, only a promise that collect can redeem.
+        Type::Lines => unreachable!("Lines cannot reach the printer"),
         Type::Str => format!("tl_quote({value})"),
         Type::Int | Type::Bool => format!("tostring({value})"),
         Type::Vec(elem) => {
@@ -255,12 +269,13 @@ struct Helpers {
     arith: bool,
     map: bool,
     range: bool,
+    collect: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
     fn walk(t: &Tir, used: &mut Helpers) {
         match &t.kind {
-            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input => {}
+            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input | Kind::Lines => {}
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -291,6 +306,7 @@ fn used_helpers(program: &Program) -> Helpers {
             }
             Kind::Builtin { which, arg } => {
                 used.range |= *which == Builtin::Range;
+                used.collect |= *which == Builtin::Collect;
                 walk(arg, used);
             }
             Kind::Cond { cond, then, otherwise } => {
@@ -327,6 +343,9 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
+        // `lines` has no value of its own -- it is a promise that the real stdin has not been
+        // read yet, made good only by `collect`. `nil` is never actually inspected.
+        Kind::Lines => "nil".to_string(),
         // A record is a table keyed by field name, which is what field access reads.
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
@@ -364,6 +383,7 @@ fn expr(t: &Tir) -> String {
             Builtin::IntToStr => format!("tostring({})", expr(arg)),
             Builtin::Range => format!("tl_range({})", expr(arg)),
             Builtin::Unlines => format!("table.concat({}, \"\\n\")", expr(arg)),
+            Builtin::Collect => "tl_collect_lines()".to_string(),
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), lua_op(*op), expr(rhs))

@@ -8,6 +8,10 @@ pub enum Type {
     Opt(Box<Type>),
     /// Field names are kept sorted, so two records written in different orders are one type.
     Record(Vec<(String, Type)>),
+    /// The stream of lines from stdin. Not resolvable from a written annotation, so it can
+    /// never be a function's declared parameter or return type: the only way to get one is the
+    /// `lines` keyword itself, and the only thing that consumes one is `collect`.
+    Lines,
 }
 
 impl Type {
@@ -17,6 +21,18 @@ impl Type {
             "Int" => Some(Type::Int),
             "Bool" => Some(Type::Bool),
             _ => None,
+        }
+    }
+
+    /// Whether `ty` could hold a `Lines` value anywhere inside it -- through a Vec, an Opt,
+    /// or a record field. `Lines` cannot be printed, so this is what the checker asks before
+    /// letting a type become the program's final result.
+    pub fn contains_lines(&self) -> bool {
+        match self {
+            Type::Lines => true,
+            Type::Vec(t) | Type::Opt(t) => t.contains_lines(),
+            Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_lines()),
+            _ => false,
         }
     }
 
@@ -43,6 +59,7 @@ impl Type {
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Type::Lines => write!(f, "Lines"),
             Type::Str => write!(f, "Str"),
             Type::Int => write!(f, "Int"),
             Type::Bool => write!(f, "Bool"),

@@ -75,6 +75,13 @@ const UNWRAP_HELPER: &str = r#"def tl_unwrap(v, depth):
     return v
 "#;
 
+const COLLECT_HELPER: &str = r#"def tl_collect_lines():
+    out = []
+    for line in sys.stdin:
+        out.append(line[:-1] if line.endswith("\n") else line)
+    return out
+"#;
+
 const RANGE_HELPER: &str = r#"def tl_range(n):
     return list(range(max(0, n)))
 "#;
@@ -159,6 +166,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_at("), AT_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_range("), RANGE_HELPER),
+        (uses("tl_collect_lines("), COLLECT_HELPER),
         (uses("tl_join("), JOIN_HELPER),
         (uses("tl_quote("), QUOTE_HELPER),
     ] {
@@ -180,6 +188,9 @@ pub fn emit(program: &Program) -> String {
 /// two JSON words have to be written out.
 fn show(ty: &Type, value: &str, depth: usize) -> String {
     match ty {
+        // The checker refuses a program whose result contains Lines, since there is nothing to
+        // print: a stream has no value, only a promise that collect can redeem.
+        Type::Lines => unreachable!("Lines cannot reach the printer"),
         Type::Str => format!("tl_quote({value})"),
         Type::Int => format!("str({value})"),
         Type::Bool => format!("(\"true\" if {value} else \"false\")"),
@@ -228,6 +239,9 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
+        // `lines` has no value of its own -- it is a promise that the real stdin has not been
+        // read yet, made good only by `collect`. `None` is never actually inspected.
+        Kind::Lines => "None".to_string(),
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
@@ -259,6 +273,7 @@ fn expr(t: &Tir) -> String {
             Builtin::IntToStr => format!("str({})", expr(arg)),
             Builtin::Range => format!("tl_range({})", expr(arg)),
             Builtin::Unlines => format!("\"\\n\".join({})", expr(arg)),
+            Builtin::Collect => "tl_collect_lines()".to_string(),
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), py_op(*op), expr(rhs))

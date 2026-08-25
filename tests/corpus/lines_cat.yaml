@@ -1,0 +1,15 @@
+# The forcing program for this cut: reading stdin incrementally, line by line, on all six
+# backends, none of which pre-materializes it in Rust first. `collect` is the one place a
+# stream becomes an ordinary Vec; `unlines` and printing are unchanged from every other program.
+program: |
+  unlines(collect(lines))
+
+input: |
+  ada
+  bo
+  cy
+
+output: |
+  ada
+  bo
+  cy

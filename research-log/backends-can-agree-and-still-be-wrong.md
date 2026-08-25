@@ -59,3 +59,6 @@ for what else the fifth backend turned up.
 
 The positive form of the same rule -- when a backend's agreement *is* evidence -- is
 [a backend that finds nothing is evidence only if it is different](a-backend-that-finds-nothing-is-evidence-only-if-it-is-different.md).
+
+A sixth instance of the same shape, found by testing a carriage return that nothing before it
+had exercised: [a sixth instance of the backend having rules the checker does not](a-sixth-backend-rule-the-checker-did-not-know.md).

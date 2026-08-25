@@ -138,6 +138,11 @@ pub enum Expr {
     /// The value read from stdin. It has no type of its own and can only be checked against an
     /// expected one, which is the same rule the draft gives for lambdas.
     Input { span: Span },
+    /// The stream of lines read from stdin. Unspellable as a type, since it has exactly one
+    /// producer and one consumer and nothing else needs to name it: the checker rejects a
+    /// second use rather than accepting a second stream, since there is only ever one real
+    /// stdin.
+    Lines { span: Span },
     /// `lhs | rhs`, which binds `.` in `rhs` to the value of `lhs`.
     Pipe { lhs: Box<Expr>, rhs: Box<Expr>, span: Span },
     /// `select(pred)`, where `pred` is checked with `.` bound to the element type rather than
@@ -166,6 +171,7 @@ impl Expr {
             | Expr::Cond { span, .. }
             | Expr::Field { span, .. }
             | Expr::Input { span }
+            | Expr::Lines { span }
             | Expr::Pipe { span, .. }
             | Expr::Select { span, .. }
             | Expr::Map { span, .. }

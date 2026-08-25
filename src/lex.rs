@@ -13,6 +13,7 @@ pub enum Tok {
     If,
     Else,
     Input,
+    Lines,
     Plus,
     Minus,
     Star,
@@ -53,6 +54,7 @@ impl std::fmt::Display for Tok {
             Tok::If => "`if`",
             Tok::Else => "`else`",
             Tok::Input => "`input`",
+            Tok::Lines => "`lines`",
             Tok::Plus => "`+`",
             Tok::Minus => "`-`",
             Tok::Star => "`*`",
@@ -135,6 +137,7 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Error> {
                     "if" => Tok::If,
                     "else" => Tok::Else,
                     "input" => Tok::Input,
+                    "lines" => Tok::Lines,
                     name => Tok::Ident(name.to_string()),
                 }
             }

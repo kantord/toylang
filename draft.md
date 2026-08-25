@@ -1854,6 +1854,129 @@ struct-of-arrays invariant at a second site and reproduce the pointer bug the fi
 had. `map` has to allocate one column per field and write column-wise, and the first test of
 it should be `map {a: {b: .x}}`, which is the shape that broke.
 
+## DECIDED: a minimal cut of streaming input, pull-based, one new keyword
+
+Not an attempt to settle [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity)
+in general. Q1 leans evaluation-level -- no `Stream<T>` type constructor, multiplicity born from
+I/O and dying into values -- and that leaning is close to right but general enough to be
+expensive to get wrong. What is decided here is the smallest concrete instance that neither
+commits to nor contradicts it: one monomorphic, unparameterised primitive, not `Stream<T>` over
+an arbitrary `T`.
+
+### Pull, not push
+
+Every mature abstraction whose job is specifically "do not let the producer outrun the consumer"
+turns out to be pull: Rust's `Iterator`, Python's generators, JavaScript's async iterators (the
+layer people actually write against, even though the *raw* primitive underneath, `Readable` in
+flowing mode, is push and is Node's own documented backpressure footgun), and jq itself --
+verified empirically, `limit(3; range(100000000000))` returns three values instantly rather than
+attempting to materialise an impossible sequence. Push-based designs need a second, explicit
+protocol bolted on to get the same property (Node's `pause`/`resume`, Reactive Streams' `request`
+demand signal); pull gets it as a consequence of the calling convention, for free.
+
+Two costs of this choice, named rather than discovered later. Fan-out -- using one stream in two
+places -- is not supported; a pulled item is consumed once, and buffering it into a `Vec` first
+(`collect`) is the only way to reuse it. Concurrency and overlap between pipeline stages are not
+supported either; a pull chain does not run ahead of the consumer, so nothing overlaps with
+anything. Both are named non-goals for this cut rather than gaps found later. What is not lost:
+cross-process overlap, the kind `grep foo | wc -l` already gets from the kernel, is a property of
+not pre-reading stdin into Rust before a subprocess backend runs, which this cut does -- an
+architectural fact rather than a language feature.
+
+### `lines`, `collect`, and nothing else exposed
+
+```
+unlines(collect(lines))
+```
+
+is the acceptance program: `cat`, echoing stdin back unchanged. `lines` is a bare keyword, zero
+arguments, of one new monomorphic type with no spelling in the type grammar -- unlike `Str` or
+`Int`, it cannot be a function's declared parameter or return type, which is what makes several
+downstream checks unconditionally true rather than needing their own case: a `Lines` value can
+never cross a function boundary, so a function body's synthesised type can never disagree with a
+declared return type by containing one.
+
+No general `stdin` value is exposed. `input` (JSON, one document, read whole, validated before
+any backend starts) is untouched, and a program may not use both: forced by jq specifically,
+since raw-input mode (`-R`), needed for `[inputs]` to read lines rather than JSON, changes what
+the whole invocation means, not just one call, and cannot coexist with `.`-is-the-document mode
+in one run -- verified against real jq before the rule was written.
+
+`lines` may be referenced once, checked by the same mechanism that already caught `input` being
+used at two disagreeing types, simplified to "used at all, twice." Python's generators are the
+cautionary example on the other side of this decision: consuming one twice silently returns
+nothing, no error, and Rust's ownership model catching the equivalent mistake at compile time
+(usually) is closer to what was chosen here on purpose.
+
+`Lines` is refused from a Vec, a record field, or the program's own printed result, checked at
+three separate points rather than one, because a single "does the top-level result contain
+Lines" scan does not catch every path: `collect([lines][0]!)` never makes Lines the program's own
+result, but would have reached `to_slot`/`read_slot`/`go_type`'s struct-of-arrays or
+closure-typing machinery with a type those never expected, on every backend, had the containment
+check not been pushed back to where a Vec or record literal is built.
+
+### The line rule, checked rather than assumed
+
+Split on `\n` only. Strip it from each yielded string. No trailing empty entry when input ends in
+`\n`. The final line is still yielded even with none, which is deliberately not `wc -l`'s
+mistake: `wc -l` counts newline characters rather than lines, so a file missing its last one is
+undercounted -- verified directly, `printf 'a\nb'` reports 1 rather than 2. A bare `\r` is left
+alone as ordinary content, matching `jq -R` and Python's own raw stdin iteration, neither of
+which treats CRLF specially; Go's default `bufio.Scanner` split function does strip it, verified
+directly, so the native Go split function is `bufio.ScanLines` with that one line removed rather
+than the stdlib default.
+
+Every other backend's own native mechanism already agrees with the rule once verified: `getline`
+(native), `io.lines()` (Lua, confirmed reading the real process stdin directly under `mlua`'s
+default, unrestricted `Lua::new()`), raw `for line in sys.stdin` (Python), and a hand-written
+`fs.readSync` chunk loop (JavaScript, which has no synchronous line reader built in -- the
+well-known reason competitive-programming Node code writes this exact idiom by hand).
+
+### What "each backend reads for itself" actually meant to build
+
+Two thirds of the six backends are separate OS processes Rust spawns (native, jq, Go, Python,
+JavaScript); the toylang compiler is never a runtime dependency of what any of them emits, only
+of producing it. The sixth, Lua, is not a process at all: `mlua` embeds the interpreter in the
+same address space as the Rust harness, so "reading stdin" there is a function call, not IPC.
+
+For the five subprocesses, genuine streaming meant stopping Rust from reading all of stdin into a
+`String` and re-`write_all`-ing it once, and instead connecting the real stdin straight through
+(`Stdio::inherit()`) so the OS does the buffering it was always going to do. `main.rs`'s existing
+gate -- read stdin only if `input` is used -- already did the right thing for `lines` by
+accident, since neither construct needs Rust to touch the real stdin at all.
+
+What is fed depends on whether a caller supplied fixture text. `Some(text)` (a corpus case, most
+often) is piped in verbatim and each backend does its own real splitting against it, which is the
+only way the corpus can prove all six backends' splitting genuinely agrees rather than testing a
+Rust-side reimplementation instead. `None` (the real command-line case) connects the live stdin.
+Getting this distinction wrong the first time silently would have meant every corpus case for
+this feature passing while testing nothing: the first version skipped writing fixture text to a
+`lines` program's pipe entirely, matching `Stdio::inherit()`'s empty-until-corrected mental model
+rather than the fixture's actual bytes, and would have reported every case as agreeing on an
+empty string.
+
+Lua needed a different mechanism for the same distinction, since `Stdio` does not apply to a
+function call in the same process, and `cargo test` runs many tests concurrently on shared
+threads, which rules out redirecting the test process's own real stdin even temporarily. The
+fixture is written to a file of its own, and the *global* `io.lines` function -- not `io.stdin`
+-- is overridden to call the *real* `io.lines`, pointed at that file, so Lua's own line-splitting
+still runs, verified rather than replaced by a Rust-side reimplementation feeding a pre-split
+list.
+
+### What this does not attempt
+
+No progressive output: a program still computes one final value and prints it once, unchanged
+from every other program in the language. Real per-line output, and what a stream of *outputs*
+would even mean, is [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return)'s
+territory and stays there. No concurrency, no event loop, no `async`/`await` -- and not
+having them is not merely smaller, it sidesteps two more named historical mistakes: JavaScript's
+`Promise` starting eagerly with no cancellation designed in (irrelevant here, since nothing runs
+until asked), and the sync/async colouring split that Rust and Python both still carry scars
+from (irrelevant here, since there is only one calling convention). A future main loop, if one is
+ever built, would not invalidate this: `stdin`/`lines` as a pull-shaped surface over an
+event-loop-driven scheduler underneath is exactly how Python's `asyncio` and JavaScript's async
+iterators are actually built, precedent rather than a hope.
+
 ## Open questions
 
 Tracked here rather than scattered through the document. Status is one of OPEN (no preferred
