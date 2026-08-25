@@ -264,6 +264,17 @@ fn expr(t: &Tir) -> String {
             Builtin::IntToStr => format!("({} | tostring)", expr(arg)),
             Builtin::Range => format!("[ range(0; {}) ]", expr(arg)),
             Builtin::Unlines => format!("({} | join(\"\\n\"))", expr(arg)),
+            // `canonical` reorders a record's keys but leaves the *value*, not text; `tojson`
+            // is what turns each element into the same compact JSON string `-c` would print for
+            // it, matching every other backend's per-element encoding.
+            Builtin::JsonLines => {
+                let elem = arg.ty.elem().expect("checked to be a Vec");
+                format!(
+                    "({} | [.[] | ({} | tojson)] | join(\"\\n\"))",
+                    expr(arg),
+                    canonical(elem, ".")
+                )
+            }
             // `arg` is never anything but Lines (directly, or through a local bound to it), and
             // there is only ever one real stdin, so what it evaluated to is irrelevant: `inputs`
             // always means the same thing. `-n -R` on the invocation is what makes this mode

@@ -1,0 +1,9 @@
+# The minimal form: no record spreading, no nesting, just per-element JSON encoding joined by
+# newline instead of wrapped in [...].
+program: |
+  jsonlines(["ada", "bo", "cy"])
+
+output: |
+  "ada"
+  "bo"
+  "cy"

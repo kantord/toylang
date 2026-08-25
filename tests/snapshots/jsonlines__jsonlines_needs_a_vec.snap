@@ -1,0 +1,5 @@
+---
+source: tests/jsonlines.rs
+expression: "err(r#\"jsonlines(\"not a vec\")\"#)"
+---
+`jsonlines` needs a Vec, found Str (at byte 10)

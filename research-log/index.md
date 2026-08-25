@@ -58,6 +58,9 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [Backends can agree and still be wrong](backends-can-agree-and-still-be-wrong.md)
   -- An out-of-range Int literal printed identically on four backends, because each avoided the
   rule by its own accident rather than by following it.
+- [One invariant, three independent construction sites](one-invariant-three-independent-construction-sites.md)
+  -- A Vec of records is one column per field on native, and field access, map, and a Vec
+  literal each independently violated it, none of the earlier fixes implying the next was safe.
 - [Streaming input is pull, verified against jq itself](streaming-input-is-pull-verified-against-jq-itself.md)
   -- Every mature abstraction that stops a producer from outrunning its consumer turns out to be
   pull, including jq, which decided the model with no new machinery needed for backpressure.

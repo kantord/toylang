@@ -141,6 +141,15 @@ const RANGE_HELPER: &str = r#"func tlRange(n int32) []int32 {
 }
 "#;
 
+const JSONLINES_HELPER: &str = r#"func tlJsonlines[T any](v []T, f func(T) string) string {
+	parts := make([]string, len(v))
+	for i, e := range v {
+		parts[i] = f(e)
+	}
+	return strings.Join(parts, "\n")
+}
+"#;
+
 const JOIN_HELPER: &str = r#"func tlJoin[T any](v []T, f func(T) string) string {
 	parts := make([]string, len(v))
 	for i, e := range v {
@@ -267,6 +276,7 @@ pub fn emit(program: &Program) -> String {
         (arith, ARITH_HELPER),
         (uses("tlRange("), RANGE_HELPER),
         (collect, COLLECT_HELPER),
+        (used.jsonlines, JSONLINES_HELPER),
         (join, JOIN_HELPER),
         (quote, QUOTE_HELPER),
     ] {
@@ -288,10 +298,13 @@ pub fn emit(program: &Program) -> String {
     if program.input.is_some() {
         imports.insert("encoding/json");
     }
-    if join || quote || used.unlines {
+    if join || quote || used.unlines || used.jsonlines {
         imports.insert("strings");
     }
-    if used.itoa || (program.body.ty != Type::Str && has_scalar(&program.body.ty)) {
+    if used.itoa
+        || used.jsonlines_has_scalar
+        || (program.body.ty != Type::Str && has_scalar(&program.body.ty))
+    {
         imports.insert("strconv");
     }
 
@@ -322,6 +335,13 @@ fn has_scalar(ty: &Type) -> bool {
 struct Used {
     itoa: bool,
     unlines: bool,
+    /// Whether `jsonlines` was called at all, following the same import-decision shape as
+    /// `unlines`.
+    jsonlines: bool,
+    /// Whether `strconv` is needed for a scalar inside a `jsonlines` element type, which the
+    /// ordinary `has_scalar(&program.body.ty)` check misses whenever the top-level result is
+    /// exactly `Str` -- true for every `jsonlines` call, since that is what it returns.
+    jsonlines_has_scalar: bool,
 }
 
 /// One walk, collecting the record types that need declaring and the two builtins whose imports
@@ -388,6 +408,11 @@ impl Collect<'_> {
                 match which {
                     Builtin::IntToStr => self.used.itoa = true,
                     Builtin::Unlines => self.used.unlines = true,
+                    Builtin::JsonLines => {
+                        self.used.jsonlines = true;
+                        let elem = arg.ty.elem().expect("checked to be a Vec");
+                        self.used.jsonlines_has_scalar |= has_scalar(elem);
+                    }
                     Builtin::Range | Builtin::Collect => {}
                 }
                 self.walk(arg);
@@ -509,6 +534,16 @@ impl Emitter {
                 Builtin::IntToStr => format!("strconv.FormatInt(int64({}), 10)", self.expr(arg)),
                 Builtin::Range => format!("tlRange({})", self.expr(arg)),
                 Builtin::Unlines => format!("strings.Join({}, \"\\n\")", self.expr(arg)),
+                Builtin::JsonLines => {
+                    let elem = arg.ty.elem().expect("checked to be a Vec");
+                    let e = "e0".to_string();
+                    format!(
+                        "tlJsonlines({}, func({e} {}) string {{ return {} }})",
+                        self.expr(arg),
+                        self.go_type(elem),
+                        self.show(elem, &e, 1)
+                    )
+                }
                 Builtin::Collect => "tlCollectLines()".to_string(),
             },
             Kind::Compare { op, lhs, rhs } => {

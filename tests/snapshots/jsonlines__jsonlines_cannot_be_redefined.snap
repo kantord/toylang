@@ -1,0 +1,5 @@
+---
+source: tests/jsonlines.rs
+expression: "err(\"fn jsonlines(x: Int) -> Int = x\\n\\njsonlines(1)\")"
+---
+`jsonlines` is a builtin and cannot be redefined (at byte 0)

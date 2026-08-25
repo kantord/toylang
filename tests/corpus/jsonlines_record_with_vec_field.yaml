@@ -1,0 +1,10 @@
+# A regression guard for a native-backend bug jsonlines found: a Vec literal whose elements are
+# records stored the whole record pointer into column 0 instead of spreading each field across
+# its own column, which is the same struct-of-arrays invariant 363710f fixed for field access.
+# Nothing in the corpus had ever written `[{...}, {...}]` as a literal before this.
+program: |
+  jsonlines([{a: [1, 2], b: "x"}, {a: [3], b: "y"}])
+
+output: |
+  {"a":[1,2],"b":"x"}
+  {"a":[3],"b":"y"}

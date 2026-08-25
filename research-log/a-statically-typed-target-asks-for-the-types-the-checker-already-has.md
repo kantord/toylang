@@ -54,3 +54,5 @@ This is the fifth instance of
 [the backend language has rules the checker does not](the-backend-language-has-rules-the-checker-does-not.md),
 and the first where the target's rules are *stricter* than the checker's rather than merely
 different -- so the Go build acts as a second opinion on the emitter, free.
+
+The invariant this note explains cost three separate fixes before it held everywhere: [one invariant, three independent construction sites](one-invariant-three-independent-construction-sites.md).

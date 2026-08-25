@@ -1,0 +1,17 @@
+# The step of jq's own tutorial that toylang could not reproduce until jsonlines existed:
+#   .[] | {message: .commit.message, name: .commit.committer.name}
+# jq prints one JSON object per line here rather than one array, which is what jsonlines is
+# for. Verified byte-identical to real jq on this input.
+program: |
+  fn commits(db: Vec<{commit: {message: Str, committer: {name: Str}}}>)
+      -> Vec<{commit: {message: Str, committer: {name: Str}}}> = db
+
+  jsonlines(commits(input) | map {message: .commit.message, name: .commit.committer.name})
+
+input: |
+  [{"commit": {"message": "first", "committer": {"name": "ada"}}},
+   {"commit": {"message": "second", "committer": {"name": "bo"}}}]
+
+output: |
+  {"message":"first","name":"ada"}
+  {"message":"second","name":"bo"}

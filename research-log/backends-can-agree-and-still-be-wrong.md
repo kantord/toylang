@@ -62,3 +62,5 @@ The positive form of the same rule -- when a backend's agreement *is* evidence -
 
 A sixth instance of the same shape, found by testing a carriage return that nothing before it
 had exercised: [a sixth instance of the backend having rules the checker does not](a-sixth-backend-rule-the-checker-did-not-know.md).
+
+The same shape one level down, inside a single backend rather than across six: [one invariant, three independent construction sites](one-invariant-three-independent-construction-sites.md).

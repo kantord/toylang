@@ -125,6 +125,12 @@ pub enum Builtin {
     /// stops being a stream: what comes back is an ordinary value, exactly as sized as it needs
     /// to be, with no trace left of how it arrived.
     Collect,
+    /// `jsonlines(v)`, printing each element of a `Vec<T>` on its own line rather than wrapping
+    /// the whole thing in `[...]`. Named for the format (jsonlines.org, also called NDJSON):
+    /// one JSON value per line. Polymorphic over the element type, so it is not in the fixed
+    /// signature table `builtin()` reads from; `synth` checks it directly, the way `map` and
+    /// `select` are checked from their own arm rather than through a table.
+    JsonLines,
 }
 
 pub struct Func {

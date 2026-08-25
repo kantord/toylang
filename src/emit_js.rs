@@ -86,6 +86,14 @@ function tl_join(v, f) {
 }
 ";
 
+const JSONLINES_HELPER: &str = "\
+function tl_jsonlines(v, f) {
+  const parts = [];
+  for (let i = 0; i < v.length; i++) parts.push(f(v[i]));
+  return parts.join(\"\\n\");
+}
+";
+
 pub fn emit(program: &Program) -> String {
     let mut out = String::new();
 
@@ -96,7 +104,7 @@ pub fn emit(program: &Program) -> String {
     if used.field {
         out.push_str(FIELD_HELPER);
     }
-    if matches!(program.body.ty, Type::Vec(_)) || contains_vec(&program.body.ty) {
+    if matches!(program.body.ty, Type::Vec(_)) || contains_vec(&program.body.ty) || used.jsonlines {
         out.push_str(JOIN_HELPER);
     }
     if used.index || used.unwrap || contains_opt(&program.body.ty) {
@@ -110,6 +118,9 @@ pub fn emit(program: &Program) -> String {
     }
     if used.collect {
         out.push_str(COLLECT_HELPER);
+    }
+    if used.jsonlines {
+        out.push_str(JSONLINES_HELPER);
     }
 
     // Function declarations hoist, so a call to one defined further down resolves without the
@@ -211,6 +222,7 @@ struct Helpers {
     unwrap: bool,
     arith: bool,
     collect: bool,
+    jsonlines: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -245,6 +257,7 @@ fn used_helpers(program: &Program) -> Helpers {
             }
             Kind::Builtin { which, arg } => {
                 used.collect |= *which == Builtin::Collect;
+                used.jsonlines |= *which == Builtin::JsonLines;
                 walk(arg, used);
             }
             Kind::Cond { cond, then, otherwise } => {
@@ -319,6 +332,11 @@ fn expr(t: &Tir) -> String {
                 format!("Array.from({{ length: Math.max(0, {}) }}, (_, i) => i)", expr(arg))
             }
             Builtin::Unlines => format!("{}.join(\"\\n\")", expr(arg)),
+            Builtin::JsonLines => {
+                let elem = arg.ty.elem().expect("checked to be a Vec");
+                let e = "e0".to_string();
+                format!("tl_jsonlines({}, ({e}) => {})", expr(arg), show(elem, &e, 1))
+            }
             Builtin::Collect => "tl_collect_lines()".to_string(),
         },
         Kind::Compare { op, lhs, rhs } => {

@@ -181,7 +181,9 @@ fn signatures(defs: &[Def], aliases: &Aliases) -> Result<HashMap<String, Sig>, E
     for def in defs {
         value_name(&def.name, def.span, "function name")?;
         value_name(&def.param.name, def.param.span, "parameter name")?;
-        if builtin(&def.name).is_some() {
+        // `jsonlines` is polymorphic and so is not in `builtin()`'s fixed table, but it is
+        // still a reserved name for the same reason every other builtin is.
+        if builtin(&def.name).is_some() || def.name == "jsonlines" {
             return Err(Error::new(
                 def.span,
                 format!("`{}` is a builtin and cannot be redefined", def.name),
@@ -399,6 +401,23 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         Expr::Input { span } => Err(Error::new(*span, "cannot tell what `input` contains")),
 
         Expr::Call { func, func_span, arg, .. } => {
+            // Polymorphic over the element type, so there is no one fixed Sig to check the
+            // argument against the way every other builtin has: the argument is synthesised
+            // first, and only then is its shape checked, the reverse of the usual direction.
+            if func == "jsonlines" {
+                let arg_span = arg.span();
+                let arg = synth(ctx, arg)?;
+                if arg.ty.elem().is_none() {
+                    return Err(Error::new(
+                        arg_span,
+                        format!("`jsonlines` needs a Vec, found {}", arg.ty),
+                    ));
+                }
+                return Ok(Tir::new(
+                    Type::Str,
+                    Kind::Builtin { which: tir::Builtin::JsonLines, arg: Box::new(arg) },
+                ));
+            }
             if let Some((which, sig)) = builtin(func) {
                 let arg = expect(ctx, arg, &sig.param)?;
                 return Ok(Tir::new(sig.ret, Kind::Builtin { which, arg: Box::new(arg) }));

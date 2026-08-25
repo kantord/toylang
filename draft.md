@@ -1977,6 +1977,43 @@ ever built, would not invalidate this: `stdin`/`lines` as a pull-shaped surface 
 event-loop-driven scheduler underneath is exactly how Python's `asyncio` and JavaScript's async
 iterators are actually built, precedent rather than a hope.
 
+## DECIDED: `jsonlines`, and the jq tutorial reproduces in full
+
+jq's own tutorial (jqlang.org/tutorial) has six filters. Five already matched real jq byte for
+byte: `.`, `.[0]`, `.[0] | {...}`, `[.[] | {...}]`, and the full nested version with `parents`.
+The sixth, `.[] | {message: ..., name: ...}`, printed as impossible for a real reason: jq's `.[]`
+is lazy, so a later element's failure does not erase what already printed for earlier ones --
+verified directly, `[1,2,0,3] | .[] | 10/.` in real jq prints `10` then `5` before erroring on the
+zero. toylang's `Vec` is eager and whole, exactly as the streaming section above kept it: nothing
+prints until everything exists.
+
+That was the truth about step 4's *failure* semantics, and it is still true. It was not, on
+inspection, the truth about its *success* semantics. `jq -c` printing one JSON value per line and
+`jq -c` printing one array are the same bytes with the brackets and commas swapped for
+newlines -- verified, `.[] | f` and `[.[] | f][]` produce identical output on the happy path. So
+what was missing was not an effect layer. It was a printer.
+
+`jsonlines(v: Vec<T>) -> Str`, for any printable `T`, joins each element's compact-JSON encoding
+with `\n` instead of wrapping the whole `Vec` in `[...]`. It is the first polymorphic builtin --
+every earlier one (`str`, `range`, `unlines`, `collect`) has one fixed signature -- so it is
+checked directly in `synth`'s own `Call` arm rather than through the fixed-signature table, the
+same way `map` and `select` are. Every backend already had the per-type encoding this needs, in
+the same function that prints the program's own result; `jsonlines` is that function invoked
+mid-program instead of only at the top, joined by `\n` in place of `[`, `,`, `]`.
+
+```
+jsonlines(commits(input) | map {message: .commit.message, name: .commit.committer.name})
+```
+
+reproduces jq's step 4 exactly, on all six backends, verified against real jq.
+
+Finding the right spelling exposed a real bug rather than causing one: `jsonlines` was the first
+thing to print a `Vec` of records with more than one element built directly as a literal, and
+native's `vec_lit` wrote every record's whole pointer into column 0 instead of spreading its
+fields across columns -- the same struct-of-arrays invariant that field access and `map` had each
+already been fixed for, at a third, independent site. See
+[one invariant, three independent construction sites](research-log/one-invariant-three-independent-construction-sites.md).
+
 ## Open questions
 
 Tracked here rather than scattered through the document. Status is one of OPEN (no preferred

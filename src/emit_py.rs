@@ -90,6 +90,10 @@ const JOIN_HELPER: &str = r#"def tl_join(v, f):
     return "[" + ",".join(f(e) for e in v) + "]"
 "#;
 
+const JSONLINES_HELPER: &str = r#"def tl_jsonlines(v, f):
+    return "\n".join(f(e) for e in v)
+"#;
+
 /// Iterating characters rather than bytes, which agrees with the C runtime's byte loop because
 /// the two differ only above U+007F, where both pass the value through unchanged.
 const QUOTE_HELPER: &str = r#"def tl_quote(s):
@@ -168,6 +172,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_collect_lines("), COLLECT_HELPER),
         (uses("tl_join("), JOIN_HELPER),
+        (uses("tl_jsonlines("), JSONLINES_HELPER),
         (uses("tl_quote("), QUOTE_HELPER),
     ] {
         if on {
@@ -273,6 +278,11 @@ fn expr(t: &Tir) -> String {
             Builtin::IntToStr => format!("str({})", expr(arg)),
             Builtin::Range => format!("tl_range({})", expr(arg)),
             Builtin::Unlines => format!("\"\\n\".join({})", expr(arg)),
+            Builtin::JsonLines => {
+                let elem = arg.ty.elem().expect("checked to be a Vec");
+                let e = "e0".to_string();
+                format!("tl_jsonlines({}, lambda {e}: {})", expr(arg), show(elem, &e, 1))
+            }
             Builtin::Collect => "tl_collect_lines()".to_string(),
         },
         Kind::Compare { op, lhs, rhs } => {

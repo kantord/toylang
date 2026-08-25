@@ -443,19 +443,29 @@ impl<'ctx> Emitter<'ctx> {
 
         for (index, item) in items.iter().enumerate() {
             let value = self.expr(item)?;
-            let slot = self.to_slot(value, elem)?;
-            self.builder
-                .build_call(
-                    self.rt.vec_set,
-                    &[
-                        vec.into(),
-                        i64t.const_zero().into(),
-                        i64t.const_int(index as u64, false).into(),
-                        slot.into(),
-                    ],
-                    "",
-                )
-                .map_err(|e| e.to_string())?;
+            let i = i64t.const_int(index as u64, false);
+            // A Vec of records is one column per field, same invariant as everywhere else this
+            // layout appears; writing the whole record into column 0 is the bug 363710f fixed
+            // for field access, here at the other site that builds a Vec of records: a literal
+            // never exercised it, since nothing in the corpus wrote `[{...}, {...}]` directly.
+            if let Type::Record(fields) = elem {
+                for col in 0..fields.len() {
+                    let c = i64t.const_int(col as u64, false);
+                    let got = self.call_rt(self.rt.rec_get, &[value, c.into()], "field")?;
+                    self.builder
+                        .build_call(self.rt.vec_set, &[vec.into(), c.into(), i.into(), got.into()], "")
+                        .map_err(|e| e.to_string())?;
+                }
+            } else {
+                let slot = self.to_slot(value, elem)?;
+                self.builder
+                    .build_call(
+                        self.rt.vec_set,
+                        &[vec.into(), i64t.const_zero().into(), i.into(), slot.into()],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
         }
         Ok(vec.into())
     }
@@ -751,6 +761,51 @@ impl<'ctx> Emitter<'ctx> {
         }
     }
 
+    /// Show every element of a `Vec<elem>`, joined between `open` and `close` with `sep`. What
+    /// the top-level printer uses for a `Vec` (`[`, `,`, `]`) and what `jsonlines` uses for one
+    /// (``, `\n`, ``) are the same loop with different punctuation, and the loop is intricate
+    /// enough -- gather-vs-scalar branching, a slot conversion, loop emission -- that it is
+    /// worth not writing twice.
+    fn join_shown(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        elem: &Type,
+        open: &str,
+        sep: &str,
+        close: &str,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64t = self.ctx.i64_type();
+        let src = value.into_pointer_value();
+        let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+        let zero = i64t.const_zero();
+        let parts = self
+            .call_rt(self.rt.vec_new, &[len.into(), i64t.const_int(1, false).into()], "parts")?
+            .into_pointer_value();
+
+        let elem_ty = elem.clone();
+        let gather = matches!(elem_ty, Type::Record(_));
+        self.emit_loop(len, move |e, i| {
+            let item = if gather {
+                e.call_rt(e.rt.rec_from_vec, &[src.into(), i.into()], "elem")?
+            } else {
+                let slot =
+                    e.call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?.into_int_value();
+                e.read_slot(slot, &elem_ty)?
+            };
+            let shown = e.show(item, &elem_ty)?;
+            let shown = e.to_slot(shown, &Type::Str)?;
+            e.builder
+                .build_call(e.rt.vec_set, &[parts.into(), zero.into(), i.into(), shown.into()], "")
+                .map_err(|err| err.to_string())?;
+            Ok(())
+        })?;
+
+        let open = self.string_const(open);
+        let sep = self.string_const(sep);
+        let close = self.string_const(close);
+        self.call_rt(self.rt.join, &[parts.into(), open.into(), sep.into(), close.into()], "joined")
+    }
+
     fn show(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match ty {
             // The checker refuses a program whose result contains Lines, since there is
@@ -765,47 +820,7 @@ impl<'ctx> Emitter<'ctx> {
                     .build_select(value.into_int_value(), t, f, "bool_str")
                     .map_err(|e| e.to_string())?
             }
-            Type::Vec(elem) => {
-                let i64t = self.ctx.i64_type();
-                let src = value.into_pointer_value();
-                let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
-                let zero = i64t.const_zero();
-                let parts = self
-                    .call_rt(
-                        self.rt.vec_new,
-                        &[len.into(), i64t.const_int(1, false).into()],
-                        "parts",
-                    )?
-                    .into_pointer_value();
-
-                let elem_ty = (**elem).clone();
-                let gather = matches!(elem_ty, Type::Record(_));
-                self.emit_loop(len, move |e, i| {
-                    let item = if gather {
-                        e.call_rt(e.rt.rec_from_vec, &[src.into(), i.into()], "elem")?
-                    } else {
-                        let slot = e
-                            .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
-                            .into_int_value();
-                        e.read_slot(slot, &elem_ty)?
-                    };
-                    let shown = e.show(item, &elem_ty)?;
-                    let shown = e.to_slot(shown, &Type::Str)?;
-                    e.builder
-                        .build_call(e.rt.vec_set, &[parts.into(), zero.into(), i.into(), shown.into()], "")
-                        .map_err(|err| err.to_string())?;
-                    Ok(())
-                })?;
-
-                let open = self.string_const("[");
-                let sep = self.string_const(",");
-                let close = self.string_const("]");
-                self.call_rt(
-                    self.rt.join,
-                    &[parts.into(), open.into(), sep.into(), close.into()],
-                    "joined",
-                )?
-            }
+            Type::Vec(elem) => self.join_shown(value, elem, "[", ",", "]")?,
             // Absence needs a branch rather than a select, because rendering what is present
             // may itself emit a loop, and a select would evaluate both sides.
             Type::Opt(inner) => {
@@ -1044,10 +1059,15 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Kind::Builtin { which, arg } => {
+                let elem_ty = arg.ty.elem().cloned();
                 let arg = self.expr(arg)?;
                 match which {
                     Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,
                     Builtin::Range => self.call_rt(self.rt.range, &[arg], "range")?,
+                    Builtin::JsonLines => {
+                        let elem = elem_ty.expect("checked to be a Vec");
+                        self.join_shown(arg, &elem, "", "\n", "")?
+                    }
                     // `arg` is ignored: it is always Lines, directly or through a local bound
                     // to it, and there is only ever one real stdin, so nothing about the
                     // argument's value could change what this reads.

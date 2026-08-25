@@ -115,6 +115,14 @@ local function tl_join(v, f)
 end
 ";
 
+const JSONLINES_HELPER: &str = "\
+local function tl_jsonlines(v, f)
+  local parts = {}
+  for i = 1, #v do parts[i] = f(v[i]) end
+  return table.concat(parts, \"\\n\")
+end
+";
+
 pub fn emit(program: &Program) -> String {
     let mut out = String::new();
 
@@ -128,10 +136,10 @@ pub fn emit(program: &Program) -> String {
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON. So a
     // string inside a Vec is quoted while a bare string is not.
     let structured = program.body.ty != Type::Str;
-    if structured && needs_quote(&program.body.ty) {
+    if (structured && needs_quote(&program.body.ty)) || used.jsonlines {
         out.push_str(QUOTE_HELPER);
     }
-    if structured && contains_vec(&program.body.ty) {
+    if (structured && contains_vec(&program.body.ty)) || used.jsonlines {
         out.push_str(JOIN_HELPER);
     }
     if used.index || used.unwrap || contains_opt(&program.body.ty) {
@@ -151,6 +159,9 @@ pub fn emit(program: &Program) -> String {
     }
     if used.collect {
         out.push_str(COLLECT_HELPER);
+    }
+    if used.jsonlines {
+        out.push_str(JSONLINES_HELPER);
     }
 
     // All names are declared before any body, because the checker collects signatures before
@@ -270,6 +281,7 @@ struct Helpers {
     map: bool,
     range: bool,
     collect: bool,
+    jsonlines: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -307,6 +319,7 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::Builtin { which, arg } => {
                 used.range |= *which == Builtin::Range;
                 used.collect |= *which == Builtin::Collect;
+                used.jsonlines |= *which == Builtin::JsonLines;
                 walk(arg, used);
             }
             Kind::Cond { cond, then, otherwise } => {
@@ -383,6 +396,15 @@ fn expr(t: &Tir) -> String {
             Builtin::IntToStr => format!("tostring({})", expr(arg)),
             Builtin::Range => format!("tl_range({})", expr(arg)),
             Builtin::Unlines => format!("table.concat({}, \"\\n\")", expr(arg)),
+            Builtin::JsonLines => {
+                let elem = arg.ty.elem().expect("checked to be a Vec");
+                let e = "e0".to_string();
+                format!(
+                    "tl_jsonlines({}, function({e}) return {} end)",
+                    expr(arg),
+                    show(elem, &e, 1)
+                )
+            }
             Builtin::Collect => "tl_collect_lines()".to_string(),
         },
         Kind::Compare { op, lhs, rhs } => {
