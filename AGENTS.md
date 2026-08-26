@@ -4,6 +4,8 @@ This repository is a language-design project, mostly prose and design reasoning 
 code. Two things follow: how something is written is part of the work, and where an idea came
 from matters as much as whether it works.
 
+Run `just test` to run the test suite (`cargo nextest run`); `just` alone lists other recipes.
+
 # Writing
 
 The goal is not to pass as human-written. It's that the usual tells are downstream of real
