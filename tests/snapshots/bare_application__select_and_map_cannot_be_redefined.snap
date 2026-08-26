@@ -1,0 +1,5 @@
+---
+source: tests/bare_application.rs
+expression: "err(\"fn select(x: Int) -> Int = x\\n\\n1\")"
+---
+`select` is a builtin and cannot be redefined (at byte 0)

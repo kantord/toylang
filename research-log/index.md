@@ -76,3 +76,7 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [Merging passes turns redundant traversals into bugs](merging-passes-turns-redundant-traversals-into-bugs.md)
   -- A double traversal that was pure waste while the checker only asked questions became a
   correctness bug the moment the checker also allocated.
+- [Juxtaposition is unsafe at any undelimited boundary](juxtaposition-is-unsafe-at-any-undelimited-boundary.md)
+  -- Adding parenless function application broke a program with no application in it, because two
+  unrelated expressions had always sat adjacent at one spot the grammar never bothered to
+  delimit.

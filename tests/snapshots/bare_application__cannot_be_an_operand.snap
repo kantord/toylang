@@ -1,0 +1,5 @@
+---
+source: tests/bare_application.rs
+expression: "err(\"1 + str 2\")"
+---
+expected end of program, found `2` (at byte 8)

@@ -57,6 +57,15 @@ cannot always answer what it is, because an entry is where an element type comes
 empty one has none.
 _Avoid_: array literal, list literal
 
+**Application**:
+Calling a function with its one argument. Two spellings, one meaning: `f(x)` (or `f{...}` for a
+record-literal argument) works anywhere an atom does, including as an operand; `f x`, the bare
+form, works only where an expression begins fresh (a pipe stage, a function body, inside
+`(...)`/`[...]`/`{...}`) and never as an operand, so it cannot surface partway through a larger
+expression. `select` and `map` are not special syntax -- they are ordinary names reached through
+this same rule.
+_Avoid_: call, invocation, function call
+
 ### Reaching into a value
 
 **Spec**:

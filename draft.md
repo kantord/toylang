@@ -2014,6 +2014,50 @@ fields across columns -- the same struct-of-arrays invariant that field access a
 already been fixed for, at a third, independent site. See
 [one invariant, three independent construction sites](research-log/one-invariant-three-independent-construction-sites.md).
 
+## DECIDED: `f x` reads as `f(x)`, but only where an expression begins fresh
+
+Every function is unary, so `f(x)` never needed the parens to disambiguate which argument is
+which -- only to mark where the argument starts and ends. Parens were doing two jobs: grouping
+(`(x + y)`) and marking a call's boundary (`f(x)`), and those turn out to be the same job. `f(x)`
+*is* `f` applied to the atom `(x)`, which happens to be a grouped `x`; nothing distinguishes it
+from `f (x)`. Once seen that way, the parens around a call's argument are exactly as optional as
+the parens around any other atom that does not need grouping: `f x` should mean `f(x)`.
+
+The obstacle was never precedence, once framed correctly. `f x + y` looks ambiguous only if the
+grammar has to decide whether `+ y` extends the argument or the whole call. It does not have to
+decide, because it does not have to accept the program: `x`, once taken as `f`'s bare argument,
+is not an operand of anything, so `+ y` is simply left over and rejected as trailing garbage
+rather than resolved either way. This is not a rule bolted on top -- it falls out of a bare call
+never being reachable from `operand`'s own recursive tree (`unary`, `postfix`, `atom`), only from
+`expr`'s outermost dispatch. `f(x) + y` stays legal, because the parenthesized form is an
+ordinary atom, reachable from anywhere `atom` is; only the bare, parenless spelling is confined
+to root position. Chaining follows the same recursion: `f g x` is `f(g(x))`, right-associative,
+because `f`'s bare argument is itself allowed to be another bare call -- and, since toylang has no
+first-class functions or currying, that is the only reading that could ever typecheck anyway, so
+nothing was given up by not entertaining the other one.
+
+`-` is the one place a token is both a legitimate binary operator and could plausibly start an
+argument (negation). It is excluded from starting a bare argument entirely, so `f -x` stays
+`f - x` -- the same resolution Haskell gives the identical clash -- rather than adding a rule to
+prefer negation. If `f` is a function name rather than a real variable, the checker rejects it as
+an unbound name, a plain error rather than a silently wrong parse.
+
+`select` and `map` are not special syntax any more. They used to be keyword tokens with their own
+grammar production; now they are ordinary identifiers, reserved by name the same way `jsonlines`
+already was, checked inside `Call`'s own `synth` arm rather than through dedicated AST nodes. The
+parser no longer knows anything about them.
+
+Building this surfaced a real grammar hole rather than causing one: the file grammar is
+`(fn | type)* body`, and a definition's own body is the one place in the whole grammar where an
+expression is parsed with no delimiter marking where it ends -- not preceded by `|`/`(`/`[`/`{`,
+not followed by a required closing token the way the program's own `body` is bounded by `Eof`.
+`fn f(x: Int) -> Int = x` followed by `f(1)` stopped compiling: `x`, followed immediately by `f`
+with nothing between them, was read as `x` applied to `f(1)`. The fix is a parser flag, off for
+exactly a definition's own undelimited top-level chain and switched back on the instant a real
+delimiter (`(`, `[`, `{`) is entered, since a closing token bounds those regardless of what is
+outside them. See
+[juxtaposition is unsafe at any undelimited boundary](research-log/juxtaposition-is-unsafe-at-any-undelimited-boundary.md).
+
 ## Open questions
 
 Tracked here rather than scattered through the document. Status is one of OPEN (no preferred

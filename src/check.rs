@@ -181,9 +181,10 @@ fn signatures(defs: &[Def], aliases: &Aliases) -> Result<HashMap<String, Sig>, E
     for def in defs {
         value_name(&def.name, def.span, "function name")?;
         value_name(&def.param.name, def.param.span, "parameter name")?;
-        // `jsonlines` is polymorphic and so is not in `builtin()`'s fixed table, but it is
-        // still a reserved name for the same reason every other builtin is.
-        if builtin(&def.name).is_some() || def.name == "jsonlines" {
+        // `jsonlines`, `select`, and `map` are not in `builtin()`'s fixed table -- the first is
+        // polymorphic, the other two rebind `.` -- but all three are reserved names for the same
+        // reason every other builtin is.
+        if builtin(&def.name).is_some() || matches!(def.name.as_str(), "jsonlines" | "select" | "map") {
             return Err(Error::new(
                 def.span,
                 format!("`{}` is a builtin and cannot be redefined", def.name),
@@ -350,42 +351,6 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             ))
         }
 
-        // A mask over the subject Vec. The predicate is checked with `.` rebound to the element
-        // type rather than evaluated in the enclosing scope.
-        Expr::Select { pred, span } => {
-            let Some((subject, id)) = ctx.subject.clone() else {
-                return Err(Error::new(*span, "`select` needs a subject, so it must follow `|`"));
-            };
-            let Some(elem) = subject.elem().cloned() else {
-                return Err(Error::new(*span, format!("`select` needs a Vec, found {subject}")));
-            };
-            let param = ctx.fresh();
-            let pred = expect(&ctx.with(Some((elem, param))), pred, &Type::Bool)?;
-            let source = Tir::new(subject.clone(), Kind::Local(id));
-            Ok(Tir::new(
-                subject,
-                Kind::Select { source: Box::new(source), param, pred: Box::new(pred) },
-            ))
-        }
-
-        // The one way to produce a new element value. `select` removes elements and a field
-        // access reads a field; neither can turn a Vec<Int> into a Vec<Str>.
-        Expr::Map { body, span } => {
-            let Some((subject, id)) = ctx.subject.clone() else {
-                return Err(Error::new(*span, "`map` needs a subject, so it must follow `|`"));
-            };
-            let Some(elem) = subject.elem().cloned() else {
-                return Err(Error::new(*span, format!("`map` needs a Vec, found {subject}")));
-            };
-            let param = ctx.fresh();
-            let body = synth(&ctx.with(Some((elem, param))), body)?;
-            let source = Tir::new(subject, Kind::Local(id));
-            Ok(Tir::new(
-                Type::Vec(Box::new(body.ty.clone())),
-                Kind::Map { source: Box::new(source), param, body: Box::new(body) },
-            ))
-        }
-
         Expr::Field { .. } | Expr::Index { .. } | Expr::Unwrap { .. } => {
             access(ctx, expr).map(|(tir, _, _)| tir)
         }
@@ -400,7 +365,43 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         // nothing here says what it contains, and guessing is what the annotation rule avoids.
         Expr::Input { span } => Err(Error::new(*span, "cannot tell what `input` contains")),
 
-        Expr::Call { func, func_span, arg, .. } => {
+        Expr::Call { func, func_span, arg, span } => {
+            // `select` and `map` are not special syntax, only special names: they are ordinary
+            // calls whose argument is checked with `.` rebound to the subject's element type
+            // instead of evaluated in the enclosing scope, which no ordinary function needs and
+            // is why they cannot be defined as one (see `signatures`).
+            if func == "select" {
+                let Some((subject, id)) = ctx.subject.clone() else {
+                    return Err(Error::new(*span, "`select` needs a subject, so it must follow `|`"));
+                };
+                let Some(elem) = subject.elem().cloned() else {
+                    return Err(Error::new(*span, format!("`select` needs a Vec, found {subject}")));
+                };
+                let param = ctx.fresh();
+                let pred = expect(&ctx.with(Some((elem, param))), arg, &Type::Bool)?;
+                let source = Tir::new(subject.clone(), Kind::Local(id));
+                return Ok(Tir::new(
+                    subject,
+                    Kind::Select { source: Box::new(source), param, pred: Box::new(pred) },
+                ));
+            }
+            // The one way to produce a new element value. `select` removes elements and a field
+            // access reads a field; neither can turn a Vec<Int> into a Vec<Str>.
+            if func == "map" {
+                let Some((subject, id)) = ctx.subject.clone() else {
+                    return Err(Error::new(*span, "`map` needs a subject, so it must follow `|`"));
+                };
+                let Some(elem) = subject.elem().cloned() else {
+                    return Err(Error::new(*span, format!("`map` needs a Vec, found {subject}")));
+                };
+                let param = ctx.fresh();
+                let body = synth(&ctx.with(Some((elem, param))), arg)?;
+                let source = Tir::new(subject, Kind::Local(id));
+                return Ok(Tir::new(
+                    Type::Vec(Box::new(body.ty.clone())),
+                    Kind::Map { source: Box::new(source), param, body: Box::new(body) },
+                ));
+            }
             // Polymorphic over the element type, so there is no one fixed Sig to check the
             // argument against the way every other builtin has: the argument is synthesised
             // first, and only then is its shape checked, the reverse of the usual direction.

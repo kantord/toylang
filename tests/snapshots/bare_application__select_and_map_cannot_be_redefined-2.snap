@@ -1,0 +1,5 @@
+---
+source: tests/bare_application.rs
+expression: "err(\"fn map(x: Int) -> Int = x\\n\\n1\")"
+---
+`map` is a builtin and cannot be redefined (at byte 0)

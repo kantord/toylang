@@ -34,7 +34,7 @@ const PIPE_RIGHT: u8 = 2;
 const COND_POWER: u8 = 3;
 
 pub fn parse(tokens: &[Token]) -> Result<File, Error> {
-    let mut p = Parser { tokens, pos: 0 };
+    let mut p = Parser { tokens, pos: 0, bare_ok: true };
 
     // Declarations in any order and any mix, since neither kind can refer to the other's
     // position: aliases are resolved before any signature is read.
@@ -59,12 +59,36 @@ pub fn parse(tokens: &[Token]) -> Result<File, Error> {
 struct Parser<'a> {
     tokens: &'a [Token],
     pos: usize,
+    /// Off while parsing a function body's own undelimited chain (see `def` and `root`). A
+    /// definition's body and whatever follows it -- another `fn`, or the file's own body -- sit
+    /// adjacent with no token between them, the one place in the grammar two `expr` calls meet
+    /// without a delimiter to anchor on. A trailing bare call there could reach across that
+    /// boundary and swallow unrelated content, so bare calls are suspended for the outermost
+    /// chain of a definition's body and restored by `delimited` the moment real bracketing
+    /// (`(...)`, `[...]`, `{...}`) is entered, since a closing token bounds those regardless of
+    /// what sits outside.
+    bare_ok: bool,
 }
 
 impl<'a> Parser<'a> {
     fn peek(&self) -> &'a Token {
         // The lexer always emits Eof, so the index cannot run past the end.
         &self.tokens[self.pos]
+    }
+
+    /// One token past `peek`, capped at the trailing `Eof` rather than indexing off the end.
+    fn peek2(&self) -> &'a Token {
+        self.tokens.get(self.pos + 1).unwrap_or_else(|| self.tokens.last().unwrap())
+    }
+
+    /// Runs `f` with bare calls turned back on, for content bounded by a real delimiter. See
+    /// `bare_ok`.
+    fn delimited<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T, Error>) -> Result<T, Error> {
+        let saved = self.bare_ok;
+        self.bare_ok = true;
+        let out = f(self);
+        self.bare_ok = saved;
+        out
     }
 
     fn advance(&mut self) -> &'a Token {
@@ -121,7 +145,9 @@ impl<'a> Parser<'a> {
         let ret = self.type_expr()?;
 
         self.eat(Tok::Eq)?;
+        self.bare_ok = false;
         let body = self.expr(0)?;
+        self.bare_ok = true;
         Ok(Def { span: start.to(body.span()), name, param, ret, body })
     }
 
@@ -144,9 +170,9 @@ impl<'a> Parser<'a> {
         Ok(TypeExpr::Vec { elem: Box::new(elem), span: t.span.to(close) })
     }
 
-    /// `{name: Str, age: Int}`
-    /// A call's argument, and the argument of `map` and `select`, which are keyword forms rather
-    /// than calls and would otherwise not share the rule.
+    /// A call's argument, wrapped in parens or spelled as a bare record literal. This is the
+    /// "nested" call form: legal anywhere an atom is legal, including as an operand, because the
+    /// closing `)` or `}` marks its end unambiguously wherever it appears.
     ///
     /// The parens may be omitted when the argument is a record literal. That is unambiguous
     /// because `{` cannot start any other expression and cannot follow one, so `f {` was a syntax
@@ -159,7 +185,7 @@ impl<'a> Parser<'a> {
             return Ok((lit, span));
         }
         self.eat(Tok::LParen)?;
-        let inner = self.expr(0)?;
+        let inner = self.delimited(|p| p.expr(0))?;
         let close = self.eat(Tok::RParen)?.span;
         Ok((inner, close))
     }
@@ -181,7 +207,7 @@ impl<'a> Parser<'a> {
                     }
                 };
                 self.eat(Tok::Colon)?;
-                fields.push((name, ct.span, self.expr(0)?));
+                fields.push((name, ct.span, self.delimited(|p| p.expr(0))?));
                 if self.peek().tok != Tok::Comma {
                     break;
                 }
@@ -234,8 +260,44 @@ impl<'a> Parser<'a> {
         Ok(TypeExpr::Record { fields, span: open.to(close) })
     }
 
+    /// `f x`, the parenless "root" call form. Legal only where `expr` is entered fresh (a pipe
+    /// stage, a function body, inside `(...)`/`[...]`/`{...}`), never as an operand: `operand`
+    /// and everything it calls (`unary`, `postfix`, `atom`) never look for this, so it cannot
+    /// surface partway through a larger expression. `x` stops at the first infix operator, `|`,
+    /// or `if`, which is what makes `f x | y` mean `(f x) | y` and `f x + y` a parse error
+    /// (the trailing `+ y` is left for the caller to reject) rather than a silent `(f x) + y`.
+    fn root(&mut self, min_power: u8) -> Result<Expr, Error> {
+        if let Tok::Ident(name) = &self.peek().tok
+            && self.bare_ok
+            && starts_bare_argument(&self.peek2().tok)
+        {
+            let name = name.clone();
+            let ft = self.advance().span;
+            let arg = self.bare_argument()?;
+            let span = ft.to(arg.span());
+            return Ok(Expr::Call { func: name, func_span: ft, arg: Box::new(arg), span });
+        }
+        self.operand(min_power)
+    }
+
+    /// The argument of a bare call: another bare call (so `f g x` is `f(g(x))`, right-recursive)
+    /// or an ordinary postfix chain. Not `expr`: an infix operator, `|`, or `if` here belongs to
+    /// whatever encloses the whole application, not to this argument.
+    fn bare_argument(&mut self) -> Result<Expr, Error> {
+        if let Tok::Ident(name) = &self.peek().tok
+            && starts_bare_argument(&self.peek2().tok)
+        {
+            let name = name.clone();
+            let ft = self.advance().span;
+            let arg = self.bare_argument()?;
+            let span = ft.to(arg.span());
+            return Ok(Expr::Call { func: name, func_span: ft, arg: Box::new(arg), span });
+        }
+        self.postfix()
+    }
+
     fn expr(&mut self, min_power: u8) -> Result<Expr, Error> {
-        let mut lhs = self.operand(min_power)?;
+        let mut lhs = self.root(min_power)?;
 
         // Right-associative, so `a if c else b if d else e` chains rightward without parens.
         if self.peek().tok == Tok::If && COND_POWER >= min_power {
@@ -302,7 +364,7 @@ impl<'a> Parser<'a> {
                         let span = e.span().to(close);
                         e = Expr::Project { base: Box::new(e), span };
                     } else {
-                        let index = self.expr(0)?;
+                        let index = self.delimited(|p| p.expr(0))?;
                         let close = self.eat(Tok::RBracket)?.span;
                         let span = e.span().to(close);
                         e = Expr::Index {
@@ -357,16 +419,6 @@ impl<'a> Parser<'a> {
                 Ok(Expr::Subject { span: t.span })
             }
 
-            Tok::Select => {
-                let (pred, close) = self.argument()?;
-                Ok(Expr::Select { pred: Box::new(pred), span: t.span.to(close) })
-            }
-
-            Tok::Map => {
-                let (body, close) = self.argument()?;
-                Ok(Expr::Map { body: Box::new(body), span: t.span.to(close) })
-            }
-
             Tok::LBrace => self.record_lit(t.span),
 
             Tok::LBracket => {
@@ -375,7 +427,7 @@ impl<'a> Parser<'a> {
                 let mut items = Vec::new();
                 if self.peek().tok != Tok::RBracket {
                     loop {
-                        items.push(self.expr(0)?);
+                        items.push(self.delimited(|p| p.expr(0))?);
                         if self.peek().tok != Tok::Comma {
                             break;
                         }
@@ -400,7 +452,7 @@ impl<'a> Parser<'a> {
             }
 
             Tok::LParen => {
-                let inner = self.expr(0)?;
+                let inner = self.delimited(|p| p.expr(0))?;
                 self.eat(Tok::RParen)?;
                 Ok(inner)
             }
@@ -408,4 +460,16 @@ impl<'a> Parser<'a> {
             other => Err(Error::new(t.span, format!("expected an expression, found {other}"))),
         }
     }
+}
+
+/// Whether `name tok` reads as `name` applied bare to an argument starting with `tok`. `(` and
+/// `{` are excluded because those are the "nested" call form (`argument`), which works
+/// unconditionally and does not need root placement. `-` is excluded because it is already
+/// subtraction: `f -x` stays `f - x`, the same resolution Haskell gives the identical clash,
+/// rather than adding a rule to prefer negation.
+fn starts_bare_argument(tok: &Tok) -> bool {
+    matches!(
+        tok,
+        Tok::Str(_) | Tok::Int(_) | Tok::Input | Tok::Lines | Tok::Dot | Tok::LBracket | Tok::Ident(_)
+    )
 }

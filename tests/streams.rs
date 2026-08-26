@@ -47,13 +47,11 @@ fn lines_cannot_enter_a_record() {
     insta::assert_snapshot!(err("{a: lines}"));
 }
 
-/// The parens-optional rule reaches `collect` as an ordinary call, so this is one more way to
-/// spell the acceptance program alongside `collect(lines)`.
+/// `collect` is an ordinary function, so the bare-application rule reaches it like any other:
+/// `collect lines`, with no parens at all, is one more way to spell the acceptance program
+/// alongside `collect(lines)`.
 #[test]
-fn collect_takes_lines_without_parens_around_the_call_but_needs_them_here() {
-    // `collect` is an ordinary function, not a keyword form like `map`/`select`, so it was never
-    // given the argument-parens-optional treatment those two specifically needed; there is
-    // nothing to omit parens around here since its one argument is a bare keyword, not a record
-    // literal. This test exists to say so rather than leave the omission looking accidental.
+fn collect_takes_lines_with_or_without_parens() {
     assert!(toylang::compile("collect(lines)").is_ok());
+    assert!(toylang::compile("collect lines").is_ok());
 }

@@ -53,3 +53,7 @@ See
 [a statically typed target asks for the types the checker already has](a-statically-typed-target-asks-for-the-types-the-checker-already-has.md)
 for why native needs this invariant at all -- it is the price of having no runtime type
 information to fall back on, which every other backend is spared.
+
+The same manual-invariant shape showed up again, one layer up, in the parser rather than a
+backend: see
+[juxtaposition is unsafe at any undelimited boundary](juxtaposition-is-unsafe-at-any-undelimited-boundary.md).
