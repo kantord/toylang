@@ -3,3 +3,5 @@ program: |
 
 output: |
   ["1!","2!","3!"]
+
+node_types: [builtin.str, concat, int, local, map-over, pipe, str, vec-literal]

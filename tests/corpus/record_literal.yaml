@@ -5,3 +5,5 @@ program: |
 
 output: |
   {"a":1,"b":2}
+
+node_types: [int, record-literal]

@@ -3,3 +3,5 @@ program: |
 
 output: |
   true
+
+node_types: [compare.ne, str]

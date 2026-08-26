@@ -3,3 +3,5 @@ program: |
 
 output: |
   14,20
+
+node_types: [arith.add, arith.mul, builtin.str, concat, int, str]

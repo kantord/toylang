@@ -3,3 +3,5 @@ program: |
 
 output: |
   -3
+
+node_types: [arith.div, builtin.str, int]

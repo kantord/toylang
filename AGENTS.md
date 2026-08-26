@@ -109,6 +109,10 @@ The corpus is one YAML file per case in `tests/corpus/`, holding `program`, an o
 either the expected `output` or `refuses: true`, and any extra checks the case asks for -- today
 only `snapshot`, a list of backends whose emitted code gets pinned as well.
 
+`node_types` is different: a case never writes it, `tests/tag_corpus.rs` does, on every run. It's
+the AST shapes (`src/tags.rs`, drawn from `tir::Kind`) the program exercises, as dotted paths --
+`arith.add`, `selection.narrow`, `projection` -- and it is what the site's case tree browses by.
+
 Every case runs on every backend. `output` means they all print it and agree; `refuses: true`
 means they all decline to run it, and what each says while refusing is its own business. A
 snapshot is the exception on top, for a claim the output cannot carry. A program that does not

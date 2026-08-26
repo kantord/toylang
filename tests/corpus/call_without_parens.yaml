@@ -7,3 +7,5 @@ program: |
 
 output: |
   12
+
+node_types: [application, arith.mul, int, projection, record-literal, var]

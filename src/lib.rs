@@ -10,6 +10,7 @@ pub mod error;
 pub mod input;
 pub mod lex;
 pub mod parse;
+pub mod tags;
 pub mod tir;
 pub mod ty;
 

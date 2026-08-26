@@ -3,3 +3,5 @@ program: |
 
 output: |
   [2,3]
+
+node_types: [compare.ge, int, local, pipe, selection.narrow, vec-literal]

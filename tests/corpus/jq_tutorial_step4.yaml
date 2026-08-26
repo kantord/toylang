@@ -15,3 +15,5 @@ input: |
 output: |
   {"message":"first","name":"ada"}
   {"message":"second","name":"bo"}
+
+node_types: [application, builtin.jsonlines, input, local, map-over, pipe, projection, record-literal, var]

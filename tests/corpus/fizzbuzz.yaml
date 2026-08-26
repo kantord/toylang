@@ -110,3 +110,5 @@ output: |
   98
   Fizz
   Buzz
+
+node_types: [arith.add, arith.rem, builtin.range, builtin.str, builtin.unlines, compare.eq, conditional, int, local, map-over, pipe, str]

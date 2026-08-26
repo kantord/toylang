@@ -3,3 +3,5 @@ program: |
 
 output: |
   3
+
+node_types: [builtin.range, builtin.str, int, selection.collapse, unwrap]

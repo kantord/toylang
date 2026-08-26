@@ -6,3 +6,5 @@ program: |
 
 output: |
   got it
+
+node_types: [application, concat, str, var]

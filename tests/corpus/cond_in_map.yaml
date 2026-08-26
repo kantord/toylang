@@ -3,3 +3,5 @@ program: |
 
 output: |
   ["odd","even","odd"]
+
+node_types: [arith.rem, compare.eq, conditional, int, local, map-over, pipe, str, vec-literal]

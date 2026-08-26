@@ -3,3 +3,5 @@ program: |
   str(1 % 0)
 
 refuses: true
+
+node_types: [arith.rem, builtin.str, int]

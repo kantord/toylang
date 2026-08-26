@@ -4,3 +4,5 @@ program: |
   unlines(range(-3) | map(str(.)))
 
 output: "\n"
+
+node_types: [builtin.range, builtin.str, builtin.unlines, int, local, map-over, pipe]

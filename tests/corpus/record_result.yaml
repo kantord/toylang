@@ -8,3 +8,5 @@ input: |
 
 output: |
   {"age":36,"name":"ada"}
+
+node_types: [application, input, projection, var]

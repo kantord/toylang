@@ -10,3 +10,5 @@ input: |
 
 output: |
   []
+
+node_types: [application, input, int, projection, selection.collapse, var]

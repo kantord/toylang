@@ -9,3 +9,5 @@ input: |
 
 output: |
   [{"name":"café","tag":"é🎉"},{"name":"a\"b","tag":"\t"}]
+
+node_types: [application, input, projection, var]

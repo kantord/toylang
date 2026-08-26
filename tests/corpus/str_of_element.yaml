@@ -3,3 +3,5 @@ program: |
 
 output: |
   20
+
+node_types: [builtin.str, int, local, pipe, selection.collapse, unwrap, vec-literal]

@@ -5,3 +5,5 @@ program: |
 
 output: |
   {}
+
+node_types: [record-literal]

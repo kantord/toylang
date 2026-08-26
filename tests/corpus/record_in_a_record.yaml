@@ -12,3 +12,5 @@ input: |
 
 output: |
   [1,2]
+
+node_types: [application, input, projection, var]

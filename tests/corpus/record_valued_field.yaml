@@ -10,3 +10,5 @@ input: |
 
 output: |
   [{"b":"x"},{"b":"y"}]
+
+node_types: [application, input, projection, var]

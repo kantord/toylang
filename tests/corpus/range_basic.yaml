@@ -6,3 +6,5 @@ output: |
   1
   2
   3
+
+node_types: [builtin.range, builtin.str, builtin.unlines, int, local, map-over, pipe]

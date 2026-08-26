@@ -8,3 +8,5 @@ program: "unlines(collect(lines))\n"
 input: "ada\r\nbo\r\n"
 
 output: "ada\r\nbo\r\n"
+
+node_types: [builtin.collect, builtin.unlines, lines]

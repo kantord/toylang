@@ -7,3 +7,5 @@ output: |
   "ada"
   "bo"
   "cy"
+
+node_types: [builtin.jsonlines, str, vec-literal]

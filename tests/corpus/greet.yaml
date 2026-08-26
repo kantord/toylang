@@ -5,3 +5,5 @@ program: |
 
 output: |
   hello world
+
+node_types: [application, concat, str, var]

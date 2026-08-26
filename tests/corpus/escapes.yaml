@@ -3,3 +3,5 @@ program: |
 
 output: |
   ["say \"hi\"","a\\b","tab\there"]
+
+node_types: [str, vec-literal]

@@ -3,3 +3,5 @@ program: |
 
 output: |
   0
+
+node_types: [builtin.str, int]

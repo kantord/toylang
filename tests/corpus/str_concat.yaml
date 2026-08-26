@@ -3,3 +3,5 @@ program: |
 
 output: |
   n=3
+
+node_types: [builtin.str, concat, int, str]

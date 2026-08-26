@@ -3,3 +3,5 @@ program: |
 
 output: |
   [2,4,6]
+
+node_types: [arith.mul, int, local, map-over, pipe, vec-literal]

@@ -9,3 +9,5 @@ input: |
 
 output: |
   null
+
+node_types: [application, input, int, projection, selection.collapse, var]

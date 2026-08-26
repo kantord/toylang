@@ -3,3 +3,5 @@ program: |
 
 output: |
   [20,30]
+
+node_types: [arith.mul, compare.ge, int, local, map-over, pipe, selection.narrow, vec-literal]

@@ -3,3 +3,5 @@ program: |
 
 output: |
   abcd
+
+node_types: [concat, str]

@@ -12,6 +12,8 @@ export interface Case {
   /** Whether `input` here is a `lines` program's fixture text rather than a JSON document. */
   usesLines: boolean
   resultType: string
+  /** Which AST shapes this program exercises, in dotted-path form (`arith.add`, `projection`). */
+  nodeTypes: string[]
   expect: Expect
   emitted: Record<string, string>
 }

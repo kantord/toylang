@@ -4,3 +4,5 @@ program: "# Every backend writes its own JSON quoter, and until now none was giv
 
 output: |
   ["café 🎉","a\"b\\c","tab\there","ctl\u0001end"]
+
+node_types: [str, vec-literal]

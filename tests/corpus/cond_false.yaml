@@ -3,3 +3,5 @@ program: |
 
 output: |
   no
+
+node_types: [compare.eq, conditional, int, str]

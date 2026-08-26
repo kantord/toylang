@@ -3,3 +3,5 @@ program: |
 
 output: |
   -1,1
+
+node_types: [arith.rem, builtin.str, concat, int, str]

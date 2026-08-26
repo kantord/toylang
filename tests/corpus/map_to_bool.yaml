@@ -3,3 +3,5 @@ program: |
 
 output: |
   [false,true,false]
+
+node_types: [arith.rem, compare.eq, int, local, map-over, pipe, vec-literal]

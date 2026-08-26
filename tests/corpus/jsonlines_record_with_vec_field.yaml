@@ -8,3 +8,5 @@ program: |
 output: |
   {"a":[1,2],"b":"x"}
   {"a":[3],"b":"y"}
+
+node_types: [builtin.jsonlines, int, record-literal, str, vec-literal]

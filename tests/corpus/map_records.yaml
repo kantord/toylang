@@ -9,3 +9,5 @@ input: |
 
 output: |
   ["ada is 36","bo is 9"]
+
+node_types: [application, builtin.str, concat, input, local, map-over, pipe, projection, str, var]

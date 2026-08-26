@@ -3,3 +3,5 @@ program: |
 
 output: |
   only
+
+node_types: [builtin.unlines, str, vec-literal]

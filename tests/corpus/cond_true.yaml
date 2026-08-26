@@ -3,3 +3,5 @@ program: |
 
 output: |
   yes
+
+node_types: [compare.eq, conditional, int, str]

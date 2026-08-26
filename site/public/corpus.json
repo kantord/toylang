@@ -24,6 +24,17 @@
       "input": "{\"users\": [{\"name\": \"ada\", \"age\": 36}, {\"name\": \"bo\", \"age\": 9}]}\n",
       "inputType": "{users: Vec<{age: Int, name: Str}>}",
       "name": "adults",
+      "nodeTypes": [
+        "application",
+        "compare.ge",
+        "input",
+        "int",
+        "local",
+        "pipe",
+        "projection",
+        "selection.narrow",
+        "var"
+      ],
       "program": "fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =\n    db.users | select(.age >= 18) | .[].name\n\nadults(input)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
@@ -44,6 +55,11 @@
       "input": null,
       "inputType": null,
       "name": "arith_add",
+      "nodeTypes": [
+        "arith.add",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(1 + 2)\n",
       "resultType": "Str",
       "usesLines": false
@@ -64,6 +80,11 @@
       "input": null,
       "inputType": null,
       "name": "arith_div_trunc",
+      "nodeTypes": [
+        "arith.div",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(-7 / 2)\n",
       "resultType": "Str",
       "usesLines": false
@@ -84,6 +105,11 @@
       "input": null,
       "inputType": null,
       "name": "arith_mul",
+      "nodeTypes": [
+        "arith.mul",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(6 * 7)\n",
       "resultType": "Str",
       "usesLines": false
@@ -104,6 +130,13 @@
       "input": null,
       "inputType": null,
       "name": "arith_neg",
+      "nodeTypes": [
+        "arith.sub",
+        "builtin.str",
+        "concat",
+        "int",
+        "str"
+      ],
       "program": "str(-(-5)) + \",\" + str(0 - 5)\n",
       "resultType": "Str",
       "usesLines": false
@@ -124,6 +157,14 @@
       "input": null,
       "inputType": null,
       "name": "arith_precedence",
+      "nodeTypes": [
+        "arith.add",
+        "arith.mul",
+        "builtin.str",
+        "concat",
+        "int",
+        "str"
+      ],
       "program": "str(2 + 3 * 4) + \",\" + str((2 + 3) * 4)\n",
       "resultType": "Str",
       "usesLines": false
@@ -144,6 +185,13 @@
       "input": null,
       "inputType": null,
       "name": "arith_rem_sign",
+      "nodeTypes": [
+        "arith.rem",
+        "builtin.str",
+        "concat",
+        "int",
+        "str"
+      ],
       "program": "str(-7 % 3) + \",\" + str(7 % -3)\n",
       "resultType": "Str",
       "usesLines": false
@@ -164,6 +212,11 @@
       "input": null,
       "inputType": null,
       "name": "arith_sub",
+      "nodeTypes": [
+        "arith.sub",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(7 - 10)\n",
       "resultType": "Str",
       "usesLines": false
@@ -184,6 +237,10 @@
       "input": null,
       "inputType": null,
       "name": "bool_result",
+      "nodeTypes": [
+        "compare.eq",
+        "int"
+      ],
       "program": "1 == 1\n",
       "resultType": "Bool",
       "usesLines": false
@@ -204,6 +261,14 @@
       "input": null,
       "inputType": null,
       "name": "call_without_parens",
+      "nodeTypes": [
+        "application",
+        "arith.mul",
+        "int",
+        "projection",
+        "record-literal",
+        "var"
+      ],
       "program": "fn area(r: {w: Int, h: Int}) -> Int = r.w * r.h\n\narea {w: 3, h: 4}\n",
       "resultType": "Int",
       "usesLines": false
@@ -224,6 +289,10 @@
       "input": null,
       "inputType": null,
       "name": "concat",
+      "nodeTypes": [
+        "concat",
+        "str"
+      ],
       "program": "\"hello \" + \"world\"\n",
       "resultType": "Str",
       "usesLines": false
@@ -244,6 +313,10 @@
       "input": null,
       "inputType": null,
       "name": "concat_chain",
+      "nodeTypes": [
+        "concat",
+        "str"
+      ],
       "program": "\"a\" + \"b\" + \"c\" + \"d\"\n",
       "resultType": "Str",
       "usesLines": false
@@ -264,6 +337,12 @@
       "input": null,
       "inputType": null,
       "name": "cond_chain",
+      "nodeTypes": [
+        "builtin.str",
+        "compare.eq",
+        "conditional",
+        "int"
+      ],
       "program": "str(1) if 1 == 2 else str(2) if 1 == 1 else str(3)\n",
       "resultType": "Str",
       "usesLines": false
@@ -284,6 +363,12 @@
       "input": null,
       "inputType": null,
       "name": "cond_false",
+      "nodeTypes": [
+        "compare.eq",
+        "conditional",
+        "int",
+        "str"
+      ],
       "program": "\"yes\" if 1 == 2 else \"no\"\n",
       "resultType": "Str",
       "usesLines": false
@@ -304,6 +389,17 @@
       "input": null,
       "inputType": null,
       "name": "cond_in_map",
+      "nodeTypes": [
+        "arith.rem",
+        "compare.eq",
+        "conditional",
+        "int",
+        "local",
+        "map-over",
+        "pipe",
+        "str",
+        "vec-literal"
+      ],
       "program": "[1,2,3] | map(\"even\" if . % 2 == 0 else \"odd\")\n",
       "resultType": "Vec<Str>",
       "usesLines": false
@@ -324,6 +420,12 @@
       "input": null,
       "inputType": null,
       "name": "cond_true",
+      "nodeTypes": [
+        "compare.eq",
+        "conditional",
+        "int",
+        "str"
+      ],
       "program": "\"yes\" if 1 == 1 else \"no\"\n",
       "resultType": "Str",
       "usesLines": false
@@ -343,6 +445,11 @@
       "input": null,
       "inputType": null,
       "name": "div_by_zero",
+      "nodeTypes": [
+        "arith.div",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(1 / 0)\n",
       "resultType": "Str",
       "usesLines": false
@@ -363,6 +470,14 @@
       "input": null,
       "inputType": null,
       "name": "empty_result",
+      "nodeTypes": [
+        "compare.ge",
+        "int",
+        "local",
+        "pipe",
+        "selection.narrow",
+        "vec-literal"
+      ],
       "program": "[1, 2] | select(. >= 99)\n",
       "resultType": "Vec<Int>",
       "usesLines": false
@@ -383,6 +498,10 @@
       "input": null,
       "inputType": null,
       "name": "escapes",
+      "nodeTypes": [
+        "str",
+        "vec-literal"
+      ],
       "program": "[\"say \\\"hi\\\"\", \"a\\\\b\", \"tab\\there\"]\n",
       "resultType": "Vec<Str>",
       "usesLines": false
@@ -403,6 +522,14 @@
       "input": null,
       "inputType": null,
       "name": "filter",
+      "nodeTypes": [
+        "compare.ge",
+        "int",
+        "local",
+        "pipe",
+        "selection.narrow",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3] | select(. >= 2)\n",
       "resultType": "Vec<Int>",
       "usesLines": false
@@ -423,6 +550,14 @@
       "input": null,
       "inputType": null,
       "name": "filter_strings",
+      "nodeTypes": [
+        "compare.eq",
+        "local",
+        "pipe",
+        "selection.narrow",
+        "str",
+        "vec-literal"
+      ],
       "program": "[\"ada\", \"bo\"] | select(. == \"ada\")\n",
       "resultType": "Vec<Str>",
       "usesLines": false
@@ -443,6 +578,20 @@
       "input": null,
       "inputType": null,
       "name": "fizzbuzz",
+      "nodeTypes": [
+        "arith.add",
+        "arith.rem",
+        "builtin.range",
+        "builtin.str",
+        "builtin.unlines",
+        "compare.eq",
+        "conditional",
+        "int",
+        "local",
+        "map-over",
+        "pipe",
+        "str"
+      ],
       "program": "# FizzBuzz to 100: one transformation, one string, printed as lines.\nunlines(\n    range(100) | map(. + 1) | map(\n        \"FizzBuzz\" if . % 15 == 0 else\n        \"Fizz\"     if . % 3 == 0  else\n        \"Buzz\"     if . % 5 == 0  else\n        str(.)\n    )\n)\n",
       "resultType": "Str",
       "usesLines": false
@@ -463,6 +612,12 @@
       "input": null,
       "inputType": null,
       "name": "forward_reference",
+      "nodeTypes": [
+        "application",
+        "concat",
+        "str",
+        "var"
+      ],
       "program": "fn outer(x: Str) -> Str = inner(x) + \"!\"\nfn inner(x: Str) -> Str = \"[\" + x + \"]\"\n\nouter(\"hi\")\n",
       "resultType": "Str",
       "usesLines": false
@@ -483,6 +638,12 @@
       "input": null,
       "inputType": null,
       "name": "greet",
+      "nodeTypes": [
+        "application",
+        "concat",
+        "str",
+        "var"
+      ],
       "program": "fn greet(who: Str) -> Str = \"hello \" + who\n\ngreet(\"world\")\n",
       "resultType": "Str",
       "usesLines": false
@@ -503,6 +664,9 @@
       "input": null,
       "inputType": null,
       "name": "hello",
+      "nodeTypes": [
+        "str"
+      ],
       "program": "\"hello world\"\n",
       "resultType": "Str",
       "usesLines": false
@@ -523,6 +687,11 @@
       "input": null,
       "inputType": null,
       "name": "index_negative",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3][-1]\n",
       "resultType": "Opt<Int>",
       "usesLines": false
@@ -543,6 +712,11 @@
       "input": null,
       "inputType": null,
       "name": "index_negative_out_of_range",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3][-9]\n",
       "resultType": "Opt<Int>",
       "usesLines": false
@@ -563,6 +737,11 @@
       "input": null,
       "inputType": null,
       "name": "index_out_of_range",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3][9]\n",
       "resultType": "Opt<Int>",
       "usesLines": false
@@ -583,6 +762,11 @@
       "input": null,
       "inputType": null,
       "name": "index_positive",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3][1]\n",
       "resultType": "Opt<Int>",
       "usesLines": false
@@ -603,6 +787,11 @@
       "input": null,
       "inputType": null,
       "name": "index_ragged_inner",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "vec-literal"
+      ],
       "program": "[[1, 2], [3]][][1]\n",
       "resultType": "Vec<Opt<Int>>",
       "usesLines": false
@@ -623,6 +812,11 @@
       "input": null,
       "inputType": null,
       "name": "index_ragged_present",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "vec-literal"
+      ],
       "program": "[[1, 2], [3]][][0]\n",
       "resultType": "Vec<Opt<Int>>",
       "usesLines": false
@@ -643,6 +837,12 @@
       "input": null,
       "inputType": null,
       "name": "index_strings",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "str",
+        "vec-literal"
+      ],
       "program": "[\"ada\", \"bo\"][0]\n",
       "resultType": "Opt<Str>",
       "usesLines": false
@@ -663,6 +863,11 @@
       "input": null,
       "inputType": null,
       "name": "int_result",
+      "nodeTypes": [
+        "application",
+        "int",
+        "var"
+      ],
       "program": "fn twice_over(x: Int) -> Int = x\n\ntwice_over(42)\n",
       "resultType": "Int",
       "usesLines": false
@@ -683,6 +888,16 @@
       "input": "[{\"commit\": {\"message\": \"first\", \"committer\": {\"name\": \"ada\"}},\n  \"parents\": [{\"html_url\": \"u/1\"}, {\"html_url\": \"u/2\"}]},\n {\"commit\": {\"message\": \"second\", \"committer\": {\"name\": \"bo\"}},\n  \"parents\": []}]\n",
       "inputType": "Vec<{commit: {committer: {name: Str}, message: Str}, parents: Vec<{html_url: Str}>}>",
       "name": "jq_tutorial",
+      "nodeTypes": [
+        "application",
+        "input",
+        "local",
+        "map-over",
+        "pipe",
+        "projection",
+        "record-literal",
+        "var"
+      ],
       "program": "fn commits(db: Vec<{commit: {message: Str, committer: {name: Str}},\n                    parents: Vec<{html_url: Str}>}>)\n    -> Vec<{commit: {message: Str, committer: {name: Str}},\n            parents: Vec<{html_url: Str}>}> = db\n\ncommits(input) | map {\n    message: .commit.message,\n    name:    .commit.committer.name,\n    parents: .parents[].html_url\n}\n",
       "resultType": "Vec<{message: Str, name: Str, parents: Vec<Str>}>",
       "usesLines": false
@@ -703,6 +918,17 @@
       "input": "[{\"commit\": {\"message\": \"first\", \"committer\": {\"name\": \"ada\"}}},\n {\"commit\": {\"message\": \"second\", \"committer\": {\"name\": \"bo\"}}}]\n",
       "inputType": "Vec<{commit: {committer: {name: Str}, message: Str}}>",
       "name": "jq_tutorial_step4",
+      "nodeTypes": [
+        "application",
+        "builtin.jsonlines",
+        "input",
+        "local",
+        "map-over",
+        "pipe",
+        "projection",
+        "record-literal",
+        "var"
+      ],
       "program": "fn commits(db: Vec<{commit: {message: Str, committer: {name: Str}}}>)\n    -> Vec<{commit: {message: Str, committer: {name: Str}}}> = db\n\njsonlines(commits(input) | map {message: .commit.message, name: .commit.committer.name})\n",
       "resultType": "Str",
       "usesLines": false
@@ -723,6 +949,13 @@
       "input": null,
       "inputType": null,
       "name": "jsonlines_record_with_vec_field",
+      "nodeTypes": [
+        "builtin.jsonlines",
+        "int",
+        "record-literal",
+        "str",
+        "vec-literal"
+      ],
       "program": "jsonlines([{a: [1, 2], b: \"x\"}, {a: [3], b: \"y\"}])\n",
       "resultType": "Str",
       "usesLines": false
@@ -743,6 +976,11 @@
       "input": null,
       "inputType": null,
       "name": "jsonlines_scalars",
+      "nodeTypes": [
+        "builtin.jsonlines",
+        "str",
+        "vec-literal"
+      ],
       "program": "jsonlines([\"ada\", \"bo\", \"cy\"])\n",
       "resultType": "Str",
       "usesLines": false
@@ -763,6 +1001,11 @@
       "input": "ada\nbo\ncy\n",
       "inputType": null,
       "name": "lines_cat",
+      "nodeTypes": [
+        "builtin.collect",
+        "builtin.unlines",
+        "lines"
+      ],
       "program": "unlines(collect(lines))\n",
       "resultType": "Str",
       "usesLines": true
@@ -783,6 +1026,11 @@
       "input": "ada\r\nbo\r\n",
       "inputType": null,
       "name": "lines_preserve_crlf",
+      "nodeTypes": [
+        "builtin.collect",
+        "builtin.unlines",
+        "lines"
+      ],
       "program": "unlines(collect(lines))\n",
       "resultType": "Str",
       "usesLines": true
@@ -803,6 +1051,11 @@
       "input": "ada\nbo",
       "inputType": null,
       "name": "lines_unterminated_final_line",
+      "nodeTypes": [
+        "builtin.collect",
+        "builtin.unlines",
+        "lines"
+      ],
       "program": "unlines(collect(lines))\n",
       "resultType": "Str",
       "usesLines": true
@@ -823,6 +1076,16 @@
       "input": null,
       "inputType": null,
       "name": "map_after_select",
+      "nodeTypes": [
+        "arith.mul",
+        "compare.ge",
+        "int",
+        "local",
+        "map-over",
+        "pipe",
+        "selection.narrow",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3] | select(. >= 2) | map(. * 10)\n",
       "resultType": "Vec<Int>",
       "usesLines": false
@@ -843,6 +1106,14 @@
       "input": null,
       "inputType": null,
       "name": "map_double",
+      "nodeTypes": [
+        "arith.mul",
+        "int",
+        "local",
+        "map-over",
+        "pipe",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3] | map(. * 2)\n",
       "resultType": "Vec<Int>",
       "usesLines": false
@@ -863,6 +1134,16 @@
       "input": null,
       "inputType": null,
       "name": "map_empty",
+      "nodeTypes": [
+        "arith.mul",
+        "compare.ge",
+        "int",
+        "local",
+        "map-over",
+        "pipe",
+        "selection.narrow",
+        "vec-literal"
+      ],
       "program": "[1, 2] | select(. >= 9) | map(. * 2)\n",
       "resultType": "Vec<Int>",
       "usesLines": false
@@ -883,6 +1164,18 @@
       "input": "{\"users\": [{\"name\": \"ada\", \"age\": 36}, {\"name\": \"bo\", \"age\": 9}]}\n",
       "inputType": "{users: Vec<{age: Int, name: Str}>}",
       "name": "map_records",
+      "nodeTypes": [
+        "application",
+        "builtin.str",
+        "concat",
+        "input",
+        "local",
+        "map-over",
+        "pipe",
+        "projection",
+        "str",
+        "var"
+      ],
       "program": "fn shout(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =\n    db.users | map(.name + \" is \" + str(.age))\n\nshout(input)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
@@ -903,6 +1196,15 @@
       "input": null,
       "inputType": null,
       "name": "map_to_bool",
+      "nodeTypes": [
+        "arith.rem",
+        "compare.eq",
+        "int",
+        "local",
+        "map-over",
+        "pipe",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3] | map(. % 2 == 0)\n",
       "resultType": "Vec<Bool>",
       "usesLines": false
@@ -923,6 +1225,15 @@
       "input": null,
       "inputType": null,
       "name": "map_to_nested_record",
+      "nodeTypes": [
+        "int",
+        "local",
+        "map-over",
+        "pipe",
+        "record-literal",
+        "str",
+        "vec-literal"
+      ],
       "program": "[1, 2] | map {a: {b: ., c: \"z\"}}\n",
       "resultType": "Vec<{a: {b: Int, c: Str}}>",
       "usesLines": false
@@ -943,6 +1254,15 @@
       "input": null,
       "inputType": null,
       "name": "map_to_record",
+      "nodeTypes": [
+        "arith.add",
+        "int",
+        "local",
+        "map-over",
+        "pipe",
+        "record-literal",
+        "vec-literal"
+      ],
       "program": "[1, 2] | map {n: ., m: . + 1}\n",
       "resultType": "Vec<{m: Int, n: Int}>",
       "usesLines": false
@@ -963,6 +1283,16 @@
       "input": null,
       "inputType": null,
       "name": "map_to_str",
+      "nodeTypes": [
+        "builtin.str",
+        "concat",
+        "int",
+        "local",
+        "map-over",
+        "pipe",
+        "str",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3] | map(str(.) + \"!\")\n",
       "resultType": "Vec<Str>",
       "usesLines": false
@@ -983,6 +1313,12 @@
       "input": "{\"groups\": [{\"members\": [{\"name\": \"ada\"}, {\"name\": \"bo\"}]}, {\"members\": [{\"name\": \"cy\"}]}]}\n",
       "inputType": "{groups: Vec<{members: Vec<{name: Str}>}>}",
       "name": "nested_field_access",
+      "nodeTypes": [
+        "application",
+        "input",
+        "projection",
+        "var"
+      ],
       "program": "# Two dimensions, so two specs: one for the groups and one for the members.\nfn names(db: {groups: Vec<{members: Vec<{name: Str}>}>}) -> Vec<Vec<Str>> =\n    db.groups[].members[].name\n\nnames(input)\n",
       "resultType": "Vec<Vec<Str>>",
       "usesLines": false
@@ -1003,6 +1339,14 @@
       "input": "{\"v\": [[], [1]]}\n",
       "inputType": "{v: Vec<Vec<Int>>}",
       "name": "opt_holds_an_empty_vec",
+      "nodeTypes": [
+        "application",
+        "input",
+        "int",
+        "projection",
+        "selection.collapse",
+        "var"
+      ],
       "program": "# Python is the only target where absence and an empty Vec are both falsy, so a\n# truthiness test for absence would print null here. It uses `is None`.\nfn rows(db: {v: Vec<Vec<Int>>}) -> Vec<Vec<Int>> = db.v\n\nrows(input)[0]\n",
       "resultType": "Opt<Vec<Int>>",
       "usesLines": false
@@ -1023,6 +1367,14 @@
       "input": "{\"v\": []}\n",
       "inputType": "{v: Vec<Vec<Int>>}",
       "name": "opt_is_absent_not_empty",
+      "nodeTypes": [
+        "application",
+        "input",
+        "int",
+        "projection",
+        "selection.collapse",
+        "var"
+      ],
       "program": "# The other side of opt_holds_an_empty_vec: nothing there at all.\nfn rows(db: {v: Vec<Vec<Int>>}) -> Vec<Vec<Int>> = db.v\n\nrows(input)[0]\n",
       "resultType": "Opt<Vec<Int>>",
       "usesLines": false
@@ -1043,6 +1395,14 @@
       "input": null,
       "inputType": null,
       "name": "pipe_chain",
+      "nodeTypes": [
+        "compare.ge",
+        "int",
+        "local",
+        "pipe",
+        "selection.narrow",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3] | select(. >= 2) | select(. >= 3)\n",
       "resultType": "Vec<Int>",
       "usesLines": false
@@ -1063,6 +1423,10 @@
       "input": null,
       "inputType": null,
       "name": "plus_concats",
+      "nodeTypes": [
+        "concat",
+        "str"
+      ],
       "program": "\"a\" + \"b\"\n",
       "resultType": "Str",
       "usesLines": false
@@ -1083,6 +1447,15 @@
       "input": null,
       "inputType": null,
       "name": "range_basic",
+      "nodeTypes": [
+        "builtin.range",
+        "builtin.str",
+        "builtin.unlines",
+        "int",
+        "local",
+        "map-over",
+        "pipe"
+      ],
       "program": "unlines(range(4) | map(str(.)))\n",
       "resultType": "Str",
       "usesLines": false
@@ -1103,6 +1476,15 @@
       "input": null,
       "inputType": null,
       "name": "range_empty",
+      "nodeTypes": [
+        "builtin.range",
+        "builtin.str",
+        "builtin.unlines",
+        "int",
+        "local",
+        "map-over",
+        "pipe"
+      ],
       "program": "unlines(range(0) | map(str(.)))\n",
       "resultType": "Str",
       "usesLines": false
@@ -1123,6 +1505,13 @@
       "input": null,
       "inputType": null,
       "name": "range_index",
+      "nodeTypes": [
+        "builtin.range",
+        "builtin.str",
+        "int",
+        "selection.collapse",
+        "unwrap"
+      ],
       "program": "str(range(5)[3]!)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1143,6 +1532,15 @@
       "input": null,
       "inputType": null,
       "name": "range_negative",
+      "nodeTypes": [
+        "builtin.range",
+        "builtin.str",
+        "builtin.unlines",
+        "int",
+        "local",
+        "map-over",
+        "pipe"
+      ],
       "program": "unlines(range(-3) | map(str(.)))\n",
       "resultType": "Str",
       "usesLines": false
@@ -1163,6 +1561,12 @@
       "input": "[{\"a\": {\"b\": 1}}, {\"a\": {\"b\": 2}}]\n",
       "inputType": "Vec<{a: {b: Int}}>",
       "name": "record_in_a_record",
+      "nodeTypes": [
+        "application",
+        "input",
+        "projection",
+        "var"
+      ],
       "program": "fn deep(db: Vec<{a: {b: Int}}>) -> Vec<Int> = db[].a.b\n\ndeep(input)\n",
       "resultType": "Vec<Int>",
       "usesLines": false
@@ -1183,6 +1587,12 @@
       "input": "[[{\"a\": {\"b\": 1}}], [{\"a\": {\"b\": 2}}, {\"a\": {\"b\": 3}}]]\n",
       "inputType": "Vec<Vec<{a: {b: Int}}>>",
       "name": "record_in_a_record_two_deep",
+      "nodeTypes": [
+        "application",
+        "input",
+        "projection",
+        "var"
+      ],
       "program": "fn deep(db: Vec<Vec<{a: {b: Int}}>>) -> Vec<Vec<Int>> = db[][].a.b\n\ndeep(input)\n",
       "resultType": "Vec<Vec<Int>>",
       "usesLines": false
@@ -1203,6 +1613,10 @@
       "input": null,
       "inputType": null,
       "name": "record_literal",
+      "nodeTypes": [
+        "int",
+        "record-literal"
+      ],
       "program": "{b: 2, a: 1}\n",
       "resultType": "{a: Int, b: Int}",
       "usesLines": false
@@ -1223,6 +1637,9 @@
       "input": null,
       "inputType": null,
       "name": "record_literal_empty",
+      "nodeTypes": [
+        "record-literal"
+      ],
       "program": "{}\n",
       "resultType": "{}",
       "usesLines": false
@@ -1243,6 +1660,11 @@
       "input": null,
       "inputType": null,
       "name": "record_literal_nested",
+      "nodeTypes": [
+        "int",
+        "record-literal",
+        "str"
+      ],
       "program": "{a: {b: 1}, c: \"x\"}\n",
       "resultType": "{a: {b: Int}, c: Str}",
       "usesLines": false
@@ -1263,6 +1685,12 @@
       "input": "{\"u\": {\"name\": \"ada\", \"age\": 36}}\n",
       "inputType": "{u: {age: Int, name: Str}}",
       "name": "record_result",
+      "nodeTypes": [
+        "application",
+        "input",
+        "projection",
+        "var"
+      ],
       "program": "fn first(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u\n\nfirst(input)\n",
       "resultType": "{age: Int, name: Str}",
       "usesLines": false
@@ -1283,6 +1711,12 @@
       "input": "[{\"a\": {\"b\": \"x\"}, \"z\": 7}, {\"a\": {\"b\": \"y\"}, \"z\": 8}]\n",
       "inputType": "Vec<{a: {b: Str}, z: Int}>",
       "name": "record_valued_field",
+      "nodeTypes": [
+        "application",
+        "input",
+        "projection",
+        "var"
+      ],
       "program": "fn inner(db: Vec<{a: {b: Str}, z: Int}>) -> Vec<{b: Str}> = db[].a\n\ninner(input)\n",
       "resultType": "Vec<{b: Str}>",
       "usesLines": false
@@ -1302,6 +1736,11 @@
       "input": null,
       "inputType": null,
       "name": "rem_by_zero",
+      "nodeTypes": [
+        "arith.rem",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(1 % 0)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1322,6 +1761,12 @@
       "input": null,
       "inputType": null,
       "name": "shadowing_print",
+      "nodeTypes": [
+        "application",
+        "concat",
+        "str",
+        "var"
+      ],
       "program": "# `print` is a legal toylang name and must not collide with the target's.\nfn print(x: Str) -> Str = \"got \" + x\n\nprint(\"it\")\n",
       "resultType": "Str",
       "usesLines": false
@@ -1342,6 +1787,12 @@
       "input": null,
       "inputType": null,
       "name": "str_concat",
+      "nodeTypes": [
+        "builtin.str",
+        "concat",
+        "int",
+        "str"
+      ],
       "program": "\"n=\" + str(3)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1362,6 +1813,10 @@
       "input": null,
       "inputType": null,
       "name": "str_equality",
+      "nodeTypes": [
+        "compare.eq",
+        "str"
+      ],
       "program": "\"ada\" == \"ada\"\n",
       "resultType": "Bool",
       "usesLines": false
@@ -1382,6 +1837,10 @@
       "input": null,
       "inputType": null,
       "name": "str_inequality",
+      "nodeTypes": [
+        "compare.ne",
+        "str"
+      ],
       "program": "\"ada\" != \"bo\"\n",
       "resultType": "Bool",
       "usesLines": false
@@ -1402,6 +1861,10 @@
       "input": null,
       "inputType": null,
       "name": "str_negative",
+      "nodeTypes": [
+        "builtin.str",
+        "int"
+      ],
       "program": "str(-7)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1422,6 +1885,15 @@
       "input": null,
       "inputType": null,
       "name": "str_of_element",
+      "nodeTypes": [
+        "builtin.str",
+        "int",
+        "local",
+        "pipe",
+        "selection.collapse",
+        "unwrap",
+        "vec-literal"
+      ],
       "program": "[10, 20, 30][1]! | str(.)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1442,6 +1914,10 @@
       "input": null,
       "inputType": null,
       "name": "str_ordering",
+      "nodeTypes": [
+        "compare.lt",
+        "str"
+      ],
       "program": "\"ada\" < \"bo\"\n",
       "resultType": "Bool",
       "usesLines": false
@@ -1462,6 +1938,10 @@
       "input": null,
       "inputType": null,
       "name": "str_positive",
+      "nodeTypes": [
+        "builtin.str",
+        "int"
+      ],
       "program": "str(42)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1482,6 +1962,10 @@
       "input": null,
       "inputType": null,
       "name": "str_zero",
+      "nodeTypes": [
+        "builtin.str",
+        "int"
+      ],
       "program": "str(0)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1502,6 +1986,18 @@
       "input": "{\"users\": [{\"name\": \"ada\", \"age\": 36}, {\"name\": \"bo\", \"age\": 9}]}\n",
       "inputType": "{users: Vec<{age: Int, name: Str}>}",
       "name": "type_alias",
+      "nodeTypes": [
+        "application",
+        "compare.ge",
+        "input",
+        "int",
+        "local",
+        "map-over",
+        "pipe",
+        "projection",
+        "selection.narrow",
+        "var"
+      ],
       "program": "type User = {name: Str, age: Int}\ntype Db = {users: Vec<User>}\n\nfn adults(db: Db) -> Vec<Str> = db.users | select(.age >= 18) | map(.name)\n\nadults(input)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
@@ -1522,6 +2018,17 @@
       "input": "{\"users\": [{\"name\": \"ada\", \"age\": 36, \"email\": \"a@b.c\"}], \"version\": 3}\n",
       "inputType": "{users: Vec<{age: Int, name: Str}>}",
       "name": "undeclared_input_fields",
+      "nodeTypes": [
+        "application",
+        "compare.ge",
+        "input",
+        "int",
+        "local",
+        "pipe",
+        "projection",
+        "selection.narrow",
+        "var"
+      ],
       "program": "fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =\n    db.users | select(.age >= 18) | .[].name\n\nadults(input)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
@@ -1542,6 +2049,12 @@
       "input": "{\"rows\": [{\"name\": \"café\", \"tag\": \"\\u00e9\\ud83c\\udf89\"}, {\"name\": \"a\\\"b\", \"tag\": \"\\t\"}]}\n",
       "inputType": "{rows: Vec<{name: Str, tag: Str}>}",
       "name": "unicode_input",
+      "nodeTypes": [
+        "application",
+        "input",
+        "projection",
+        "var"
+      ],
       "program": "# Six JSON parsers and six string representations, one answer.\nfn tags(db: {rows: Vec<{name: Str, tag: Str}>}) -> Vec<{name: Str, tag: Str}> = db.rows\n\ntags(input)\n",
       "resultType": "Vec<{name: Str, tag: Str}>",
       "usesLines": false
@@ -1562,6 +2075,10 @@
       "input": null,
       "inputType": null,
       "name": "unicode_quote",
+      "nodeTypes": [
+        "str",
+        "vec-literal"
+      ],
       "program": "# Every backend writes its own JSON quoter, and until now none was given anything\n# harder than ASCII.\n[\"café 🎉\", \"a\\\"b\\\\c\", \"tab\\there\", \"ctl\u0001end\"]\n",
       "resultType": "Vec<Str>",
       "usesLines": false
@@ -1582,6 +2099,11 @@
       "input": null,
       "inputType": null,
       "name": "unlines_one",
+      "nodeTypes": [
+        "builtin.unlines",
+        "str",
+        "vec-literal"
+      ],
       "program": "unlines([\"only\"])\n",
       "resultType": "Str",
       "usesLines": false
@@ -1601,6 +2123,12 @@
       "input": null,
       "inputType": null,
       "name": "unwrap_absent",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "unwrap",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3][9]!\n",
       "resultType": "Int",
       "usesLines": false
@@ -1621,6 +2149,12 @@
       "input": null,
       "inputType": null,
       "name": "unwrap_int",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "unwrap",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3][1]!\n",
       "resultType": "Int",
       "usesLines": false
@@ -1641,6 +2175,12 @@
       "input": null,
       "inputType": null,
       "name": "unwrap_negative",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "unwrap",
+        "vec-literal"
+      ],
       "program": "[1, 2, 3][-1]!\n",
       "resultType": "Int",
       "usesLines": false
@@ -1661,6 +2201,12 @@
       "input": null,
       "inputType": null,
       "name": "unwrap_nested",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "unwrap",
+        "vec-literal"
+      ],
       "program": "[[1, 2], [3]][][0]!\n",
       "resultType": "Vec<Int>",
       "usesLines": false
@@ -1681,6 +2227,13 @@
       "input": null,
       "inputType": null,
       "name": "unwrap_str",
+      "nodeTypes": [
+        "int",
+        "selection.collapse",
+        "str",
+        "unwrap",
+        "vec-literal"
+      ],
       "program": "[\"ada\", \"bo\"][0]!\n",
       "resultType": "Str",
       "usesLines": false
@@ -1701,6 +2254,16 @@
       "input": null,
       "inputType": null,
       "name": "vec_through_function",
+      "nodeTypes": [
+        "application",
+        "compare.ge",
+        "int",
+        "local",
+        "pipe",
+        "selection.narrow",
+        "var",
+        "vec-literal"
+      ],
       "program": "fn big(xs: Vec<Int>) -> Vec<Int> = xs | select(. >= 2)\n\nbig([1, 2, 3])\n",
       "resultType": "Vec<Int>",
       "usesLines": false
@@ -1721,6 +2284,11 @@
       "input": null,
       "inputType": null,
       "name": "wrap_add",
+      "nodeTypes": [
+        "arith.add",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(2147483647 + 1)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1741,6 +2309,11 @@
       "input": null,
       "inputType": null,
       "name": "wrap_div_min",
+      "nodeTypes": [
+        "arith.div",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(-2147483648 / -1)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1761,6 +2334,11 @@
       "input": null,
       "inputType": null,
       "name": "wrap_mul",
+      "nodeTypes": [
+        "arith.mul",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(123456789 * 987654321)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1781,6 +2359,11 @@
       "input": null,
       "inputType": null,
       "name": "wrap_mul_square",
+      "nodeTypes": [
+        "arith.mul",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(46341 * 46341)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1801,6 +2384,11 @@
       "input": null,
       "inputType": null,
       "name": "wrap_neg_min",
+      "nodeTypes": [
+        "arith.sub",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(-(-2147483648))\n",
       "resultType": "Str",
       "usesLines": false
@@ -1821,6 +2409,11 @@
       "input": null,
       "inputType": null,
       "name": "wrap_rem_min",
+      "nodeTypes": [
+        "arith.rem",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(-2147483648 % -1)\n",
       "resultType": "Str",
       "usesLines": false
@@ -1841,6 +2434,11 @@
       "input": null,
       "inputType": null,
       "name": "wrap_sub",
+      "nodeTypes": [
+        "arith.sub",
+        "builtin.str",
+        "int"
+      ],
       "program": "str(-2147483648 - 1)\n",
       "resultType": "Str",
       "usesLines": false

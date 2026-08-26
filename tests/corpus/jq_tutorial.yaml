@@ -22,3 +22,5 @@ input: |
 
 output: |
   [{"message":"first","name":"ada","parents":["u/1","u/2"]},{"message":"second","name":"bo","parents":[]}]
+
+node_types: [application, input, local, map-over, pipe, projection, record-literal, var]

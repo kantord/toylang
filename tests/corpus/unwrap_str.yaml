@@ -3,3 +3,5 @@ program: |
 
 output: |
   ada
+
+node_types: [int, selection.collapse, str, unwrap, vec-literal]

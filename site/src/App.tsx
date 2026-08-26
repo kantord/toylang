@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 
-import { CaseList } from "@/components/CaseList"
+import { CaseTree } from "@/components/CaseTree"
 import { Code } from "@/components/Code"
 import { RunPanel } from "@/components/RunPanel"
 import { Badge } from "@/components/ui/badge"
@@ -60,7 +60,7 @@ export default function App() {
 
       <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="lg:h-[calc(100vh-11rem)] lg:sticky lg:top-6">
-          <CaseList cases={corpus.cases} selected={selected} onSelect={setSelected} />
+          <CaseTree cases={corpus.cases} selected={selected} onSelect={setSelected} />
         </aside>
 
         <main className="min-w-0 space-y-6">

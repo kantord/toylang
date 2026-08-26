@@ -3,3 +3,5 @@ program: |
 
 output: |
   2147483647
+
+node_types: [arith.sub, builtin.str, int]

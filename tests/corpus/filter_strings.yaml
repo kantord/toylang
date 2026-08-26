@@ -3,3 +3,5 @@ program: |
 
 output: |
   ["ada"]
+
+node_types: [compare.eq, local, pipe, selection.narrow, str, vec-literal]

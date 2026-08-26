@@ -3,3 +3,5 @@ program: |
 
 output: |
   42
+
+node_types: [arith.mul, builtin.str, int]

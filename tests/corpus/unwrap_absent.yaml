@@ -4,3 +4,5 @@ program: |
   [1, 2, 3][9]!
 
 refuses: true
+
+node_types: [int, selection.collapse, unwrap, vec-literal]

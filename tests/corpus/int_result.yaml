@@ -5,3 +5,5 @@ program: |
 
 output: |
   42
+
+node_types: [application, int, var]

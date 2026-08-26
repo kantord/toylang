@@ -9,3 +9,5 @@ input: |
 
 output: |
   ["ada"]
+
+node_types: [application, compare.ge, input, int, local, pipe, projection, selection.narrow, var]

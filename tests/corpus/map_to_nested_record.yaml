@@ -6,3 +6,5 @@ program: |
 
 output: |
   [{"a":{"b":1,"c":"z"}},{"a":{"b":2,"c":"z"}}]
+
+node_types: [int, local, map-over, pipe, record-literal, str, vec-literal]

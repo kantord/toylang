@@ -51,6 +51,7 @@ fn export_the_corpus_for_the_site() {
             // since only one of them is meant to be valid JSON.
             "usesLines": program.uses_lines,
             "resultType": program.body.ty.to_string(),
+            "nodeTypes": toylang::tags::node_types(&program),
             "expect": expect,
             "emitted": Value::Object(emitted),
         }));

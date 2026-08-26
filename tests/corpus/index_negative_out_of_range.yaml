@@ -3,3 +3,5 @@ program: |
 
 output: |
   null
+
+node_types: [int, selection.collapse, vec-literal]

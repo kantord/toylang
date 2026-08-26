@@ -10,3 +10,5 @@ input: |
 
 output: |
   [["ada","bo"],["cy"]]
+
+node_types: [application, input, projection, var]

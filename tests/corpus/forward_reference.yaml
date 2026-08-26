@@ -6,3 +6,5 @@ program: |
 
 output: |
   [hi]!
+
+node_types: [application, concat, str, var]
