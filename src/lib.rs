@@ -6,6 +6,7 @@ pub mod emit_js;
 pub mod emit_llvm;
 pub mod emit_lua;
 pub mod emit_py;
+pub mod emit_rs;
 pub mod error;
 pub mod input;
 pub mod parse;
@@ -29,14 +30,23 @@ pub enum Backend {
     Jq,
     Go,
     Py,
+    Rust,
 }
 
 impl Backend {
-    /// The backends that must agree on every corpus program. Native joined once it could
-    /// compile the whole language; until then it was kept out rather than allowed to turn the
-    /// harness permanently red, and tests/backend_llvm.rs tracked what it was missing.
-    pub const ALL: [Backend; 6] =
-        [Backend::Lua, Backend::Js, Backend::Native, Backend::Jq, Backend::Go, Backend::Py];
+    /// The backends that must agree on every corpus program. Native and Rust each joined once
+    /// they could compile the whole language; until then they were kept out rather than allowed
+    /// to turn the harness permanently red, tracked by tests/backend_llvm.rs and
+    /// tests/backend_rust.rs respectively.
+    pub const ALL: [Backend; 7] = [
+        Backend::Lua,
+        Backend::Js,
+        Backend::Native,
+        Backend::Jq,
+        Backend::Go,
+        Backend::Py,
+        Backend::Rust,
+    ];
 
     /// The spelling used on the command line and in a corpus case's `snapshot` list.
     pub fn from_name(name: &str) -> Option<Backend> {
@@ -51,6 +61,7 @@ impl Backend {
             Backend::Jq => "jq",
             Backend::Go => "go",
             Backend::Py => "py",
+            Backend::Rust => "rust",
         }
     }
 
@@ -62,6 +73,7 @@ impl Backend {
             Backend::Jq => emit_jq::emit(program),
             Backend::Go => emit_go::emit(program),
             Backend::Py => emit_py::emit(program),
+            Backend::Rust => emit_rs::emit(program),
         })
     }
 }
@@ -163,6 +175,12 @@ pub fn run_on(
             link(&program, &exe)?;
             run_binary(&exe, &feed)
         }
+        Backend::Rust => {
+            let dir = tempfile::tempdir()?;
+            let exe = dir.path().join("program");
+            link_rust(&emit_rs::emit(&program), &exe)?;
+            run_binary(&exe, &feed)
+        }
     }
 }
 
@@ -216,6 +234,35 @@ pub fn link(program: &Program, out: &std::path::Path) -> Result<(), Box<dyn std:
         .map_err(|e| format!("could not run `cc`: {e}"))?;
     if !status.success() {
         return Err(format!("cc failed to link: {status}").into());
+    }
+    Ok(())
+}
+
+/// Compile Rust source to an executable at `out`. One `rustc` call on one self-contained file,
+/// no external crate and no Cargo project, the same reason `link` above is one `cc` call: the
+/// generated source depends on nothing this compiler did not already assume was installed.
+/// Public for the same reason as `link`: `tests/backend_rust.rs` calls it directly, separately
+/// from running the result, so a genuine codegen gap (`rustc` rejects the source) is told apart
+/// from a legitimate runtime refusal (`rustc` succeeds, the binary exits non-zero).
+pub fn link_rust(source: &str, out: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let src = dir.path().join("program.rs");
+    std::fs::write(&src, source)?;
+
+    let result = std::process::Command::new("rustc")
+        .arg("--edition")
+        .arg("2021")
+        .arg(&src)
+        .arg("-o")
+        .arg(out)
+        .output()
+        .map_err(|e| format!("could not run `rustc`: {e}"))?;
+    if !result.status.success() {
+        return Err(format!(
+            "rustc failed to compile: {}",
+            String::from_utf8_lossy(&result.stderr)
+        )
+        .into());
     }
     Ok(())
 }
