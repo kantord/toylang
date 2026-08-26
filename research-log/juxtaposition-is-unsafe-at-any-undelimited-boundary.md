@@ -40,3 +40,6 @@ parser: whitespace-insensitive juxtaposition syntax is only as safe as the delim
 every boundary it can reach, and a grammar that has gotten away without delimiters somewhere (here,
 between definitions and the body) has been relying on no construct ever needing to look past that
 boundary -- which stops being true the moment one does.
+
+The fix itself was later ported onto `winnow` unchanged in shape, which is its own finding: see
+[winnow replaced the tokenizer, not the grammar](winnow-replaced-the-tokenizer-not-the-grammar.md).

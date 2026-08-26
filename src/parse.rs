@@ -1,6 +1,283 @@
-use crate::ast::{Alias, BinOp, Def, Expr, File, Param, TypeExpr};
+use winnow::error::ParserError;
+use winnow::prelude::*;
+use winnow::stream::{LocatingSlice, Location, Stream};
+use winnow::token::take_while;
+
+use crate::ast::{Alias, BinOp, Def, Expr, File, Param, Span, TypeExpr};
 use crate::error::Error;
-use crate::lex::{Tok, Token};
+
+/// The stream this whole module parses over: a source string with byte-offset tracking built
+/// in, so every sub-parser gets `Span`s for free from `current_token_start` rather than threading
+/// position by hand.
+type Input<'i> = LocatingSlice<&'i str>;
+
+/// Lets every winnow combinator used below (`take_while`, and anything built on it) report
+/// failure as this crate's own `Error` directly -- there is no separate winnow error type to
+/// translate out of. `from_input` is winnow's fallback for a failure it synthesises itself
+/// rather than one this module constructs explicitly; nothing here is expected to hit it; the
+/// hand-written parsers below always build their own `Error` with a specific message instead.
+impl<'i> ParserError<Input<'i>> for Error {
+    type Inner = Error;
+
+    fn from_input(input: &Input<'i>) -> Error {
+        let at = input.current_token_start();
+        Error::new(Span::new(at, at), "expected a token".to_string())
+    }
+
+    fn into_inner(self) -> Result<Error, Error> {
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Tok {
+    Str(String),
+    Int(i64),
+    Ident(String),
+    Fn,
+    Type,
+    If,
+    Else,
+    Input,
+    Lines,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Pipe,
+    Comma,
+    Dot,
+    Eq,
+    EqEq,
+    Ne,
+    Bang,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    LParen,
+    RParen,
+    LBracket,
+    RBracket,
+    LBrace,
+    RBrace,
+    Colon,
+    Arrow,
+    Eof,
+}
+
+impl std::fmt::Display for Tok {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Tok::Str(_) => return write!(f, "a string"),
+            Tok::Int(n) => return write!(f, "`{n}`"),
+            Tok::Ident(name) => return write!(f, "`{name}`"),
+            Tok::Fn => "`fn`",
+            Tok::Type => "`type`",
+            Tok::If => "`if`",
+            Tok::Else => "`else`",
+            Tok::Input => "`input`",
+            Tok::Lines => "`lines`",
+            Tok::Plus => "`+`",
+            Tok::Minus => "`-`",
+            Tok::Star => "`*`",
+            Tok::Slash => "`/`",
+            Tok::Percent => "`%`",
+            Tok::Pipe => "`|`",
+            Tok::Comma => "`,`",
+            Tok::Dot => "`.`",
+            Tok::Eq => "`=`",
+            Tok::EqEq => "`==`",
+            Tok::Ne => "`!=`",
+            Tok::Bang => "`!`",
+            Tok::Lt => "`<`",
+            Tok::Le => "`<=`",
+            Tok::Gt => "`>`",
+            Tok::Ge => "`>=`",
+            Tok::LParen => "`(`",
+            Tok::RParen => "`)`",
+            Tok::LBracket => "`[`",
+            Tok::RBracket => "`]`",
+            Tok::LBrace => "`{`",
+            Tok::RBrace => "`}`",
+            Tok::Colon => "`:`",
+            Tok::Arrow => "`->`",
+            Tok::Eof => "end of program",
+        };
+        write!(f, "{s}")
+    }
+}
+
+/// Zero or more ASCII spaces/tabs/newlines, then a `#`-to-newline comment if one follows,
+/// repeated: a run of trivia can mix any number of either in any order.
+fn skip_trivia(input: &mut Input) {
+    loop {
+        take_while::<_, _, Error>(0.., |c: char| c.is_ascii_whitespace())
+            .parse_next(input)
+            .expect("a lower bound of zero never fails");
+        if input.peek_token() != Some('#') {
+            return;
+        }
+        input.next_token();
+        while !matches!(input.peek_token(), None | Some('\n')) {
+            input.next_token();
+        }
+    }
+}
+
+/// Skips trivia, then reads exactly one token from the front of `input`. Called fresh for every
+/// `peek`/`peek2`/`advance` rather than once up front into a `Vec`, so a lexical error (a bad
+/// escape, an out-of-range integer) surfaces at the point parsing actually reaches it instead of
+/// always winning over a parse error earlier in the file the way a separate up-front pass would.
+fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
+    skip_trivia(input);
+    let start = input.current_token_start();
+    let Some(c) = input.peek_token() else {
+        return Ok((Tok::Eof, Span::new(start, start)));
+    };
+
+    let tok = match c {
+        '"' => Tok::Str(read_string(input)?),
+        '0'..='9' => {
+            let digits = take_while::<_, _, Error>(1.., |c: char| c.is_ascii_digit())
+                .parse_next(input)
+                .expect("a digit was just confirmed to follow");
+            let n = digits.parse::<i64>().map_err(|_| {
+                Error::new(
+                    Span::new(start, input.current_token_start()),
+                    format!("integer `{digits}` is out of range"),
+                )
+            })?;
+            Tok::Int(n)
+        }
+        c if c.is_ascii_alphabetic() || c == '_' => {
+            let word = take_while::<_, _, Error>(1.., |c: char| c.is_ascii_alphanumeric() || c == '_')
+                .parse_next(input)
+                .expect("a letter or underscore was just confirmed to follow");
+            match word {
+                "fn" => Tok::Fn,
+                "type" => Tok::Type,
+                "if" => Tok::If,
+                "else" => Tok::Else,
+                "input" => Tok::Input,
+                "lines" => Tok::Lines,
+                name => Tok::Ident(name.to_string()),
+            }
+        }
+        // `-` is subtraction and negation now, so a digit after it is no longer a negative
+        // literal: `a -1` would otherwise not be `a - 1`.
+        '-' => {
+            input.next_token();
+            if input.peek_token() == Some('>') {
+                input.next_token();
+                Tok::Arrow
+            } else {
+                Tok::Minus
+            }
+        }
+        '!' => {
+            input.next_token();
+            if input.peek_token() == Some('=') {
+                input.next_token();
+                Tok::Ne
+            } else {
+                Tok::Bang
+            }
+        }
+        '=' | '<' | '>' => {
+            input.next_token();
+            if input.peek_token() == Some('=') {
+                input.next_token();
+                match c {
+                    '=' => Tok::EqEq,
+                    '<' => Tok::Le,
+                    _ => Tok::Ge,
+                }
+            } else {
+                match c {
+                    '=' => Tok::Eq,
+                    '<' => Tok::Lt,
+                    _ => Tok::Gt,
+                }
+            }
+        }
+        '+' => single(input, Tok::Plus),
+        '*' => single(input, Tok::Star),
+        '/' => single(input, Tok::Slash),
+        '%' => single(input, Tok::Percent),
+        '|' => single(input, Tok::Pipe),
+        ',' => single(input, Tok::Comma),
+        '.' => single(input, Tok::Dot),
+        '(' => single(input, Tok::LParen),
+        ')' => single(input, Tok::RParen),
+        '[' => single(input, Tok::LBracket),
+        ']' => single(input, Tok::RBracket),
+        '{' => single(input, Tok::LBrace),
+        '}' => single(input, Tok::RBrace),
+        ':' => single(input, Tok::Colon),
+        other => {
+            return Err(Error::new(
+                Span::new(start, start + 1),
+                format!("unexpected character `{other}`"),
+            ));
+        }
+    };
+    Ok((tok, Span::new(start, input.current_token_start())))
+}
+
+fn single(input: &mut Input, tok: Tok) -> Tok {
+    input.next_token();
+    tok
+}
+
+/// Returns the unescaped contents of a string literal, having consumed through the closing
+/// quote. `input` is positioned on the opening `"` on entry.
+fn read_string(input: &mut Input) -> Result<String, Error> {
+    let open = input.current_token_start();
+    input.next_token();
+    let mut text = String::new();
+    loop {
+        let pos = input.current_token_start();
+        match input.peek_token() {
+            None => return Err(Error::new(Span::new(open, pos), "unterminated string")),
+            Some('"') => {
+                input.next_token();
+                return Ok(text);
+            }
+            // Escapes are JSON's set minus \u, which waits for a real value model.
+            Some('\\') => {
+                let backslash = pos;
+                input.next_token();
+                let Some(esc) = input.peek_token() else {
+                    return Err(Error::new(
+                        Span::new(backslash, backslash + 1),
+                        "unterminated escape sequence",
+                    ));
+                };
+                text.push(match esc {
+                    '"' => '"',
+                    '\\' => '\\',
+                    '/' => '/',
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    other => {
+                        return Err(Error::new(
+                            Span::new(backslash, backslash + 2),
+                            format!("unknown escape sequence `\\{other}`"),
+                        ));
+                    }
+                });
+                input.next_token();
+            }
+            Some(c) => {
+                text.push(c);
+                input.next_token();
+            }
+        }
+    }
+}
 
 /// Left and right binding power. Left below right makes the operator left-associative.
 ///
@@ -33,15 +310,16 @@ const PIPE_RIGHT: u8 = 2;
 /// grouping comes for free.
 const COND_POWER: u8 = 3;
 
-pub fn parse(tokens: &[Token]) -> Result<File, Error> {
-    let mut p = Parser { tokens, pos: 0, bare_ok: true };
+pub fn parse(src: &str) -> Result<File, Error> {
+    let mut p = Cursor { input: LocatingSlice::new(src), bare_ok: true };
 
     // Declarations in any order and any mix, since neither kind can refer to the other's
     // position: aliases are resolved before any signature is read.
     let mut defs = Vec::new();
     let mut aliases = Vec::new();
     loop {
-        match p.peek().tok {
+        let (tok, _) = p.peek()?;
+        match tok {
             Tok::Fn => defs.push(p.def()?),
             Tok::Type => aliases.push(p.alias()?),
             _ => break,
@@ -49,16 +327,15 @@ pub fn parse(tokens: &[Token]) -> Result<File, Error> {
     }
 
     let body = p.expr(0)?;
-    let rest = p.peek();
-    if rest.tok != Tok::Eof {
-        return Err(Error::new(rest.span, format!("expected end of program, found {}", rest.tok)));
+    let (rest, rest_span) = p.peek()?;
+    if rest != Tok::Eof {
+        return Err(Error::new(rest_span, format!("expected end of program, found {rest}")));
     }
     Ok(File { aliases, defs, body })
 }
 
-struct Parser<'a> {
-    tokens: &'a [Token],
-    pos: usize,
+struct Cursor<'i> {
+    input: Input<'i>,
     /// Off while parsing a function body's own undelimited chain (see `def` and `root`). A
     /// definition's body and whatever follows it -- another `fn`, or the file's own body -- sit
     /// adjacent with no token between them, the one place in the grammar two `expr` calls meet
@@ -70,15 +347,39 @@ struct Parser<'a> {
     bare_ok: bool,
 }
 
-impl<'a> Parser<'a> {
-    fn peek(&self) -> &'a Token {
-        // The lexer always emits Eof, so the index cannot run past the end.
-        &self.tokens[self.pos]
+impl<'i> Cursor<'i> {
+    /// Reads the next token without consuming it. `Input` is `Copy` (a source `&str` plus an
+    /// offset), so looking ahead is just tokenizing a throwaway copy of the cursor.
+    fn peek(&self) -> Result<(Tok, Span), Error> {
+        let mut probe = self.input;
+        read_tok(&mut probe)
     }
 
-    /// One token past `peek`, capped at the trailing `Eof` rather than indexing off the end.
-    fn peek2(&self) -> &'a Token {
-        self.tokens.get(self.pos + 1).unwrap_or_else(|| self.tokens.last().unwrap())
+    /// One token past `peek`.
+    fn peek2(&self) -> Result<(Tok, Span), Error> {
+        let mut probe = self.input;
+        read_tok(&mut probe)?;
+        read_tok(&mut probe)
+    }
+
+    fn advance(&mut self) -> Result<(Tok, Span), Error> {
+        read_tok(&mut self.input)
+    }
+
+    fn eat(&mut self, want: Tok) -> Result<Span, Error> {
+        let (tok, span) = self.peek()?;
+        if tok != want {
+            return Err(Error::new(span, format!("expected {want}, found {tok}")));
+        }
+        self.advance()?;
+        Ok(span)
+    }
+
+    fn eat_ident(&mut self, what: &str) -> Result<(String, Span), Error> {
+        match self.advance()? {
+            (Tok::Ident(n), span) => Ok((n, span)),
+            (other, span) => Err(Error::new(span, format!("expected {what}, found {other}"))),
+        }
     }
 
     /// Runs `f` with bare calls turned back on, for content bounded by a real delimiter. See
@@ -91,83 +392,60 @@ impl<'a> Parser<'a> {
         out
     }
 
-    fn advance(&mut self) -> &'a Token {
-        let t = &self.tokens[self.pos];
-        if t.tok != Tok::Eof {
-            self.pos += 1;
-        }
-        t
-    }
-
-    fn eat(&mut self, want: Tok) -> Result<&'a Token, Error> {
-        let t = self.peek();
-        if t.tok != want {
-            return Err(Error::new(t.span, format!("expected {want}, found {}", t.tok)));
-        }
-        Ok(self.advance())
-    }
-
     /// `fn name(param: Type) -> Type = body`
     ///
     /// Both annotations are required by the grammar rather than by the checker, which is what
     /// makes the message point at the missing annotation instead of at an inference failure.
     fn def(&mut self) -> Result<Def, Error> {
-        let start = self.eat(Tok::Fn)?.span;
-        let name = match &self.advance().tok {
-            Tok::Ident(n) => n.clone(),
-            other => {
-                let t = &self.tokens[self.pos - 1];
-                return Err(Error::new(t.span, format!("expected a name, found {other}")));
-            }
-        };
+        let start = self.eat(Tok::Fn)?;
+        let (name, _) = self.eat_ident("a name")?;
         self.eat(Tok::LParen)?;
 
-        let pt = self.advance();
-        let (param_name, param_span) = match &pt.tok {
-            Tok::Ident(n) => (n.clone(), pt.span),
-            other => return Err(Error::new(pt.span, format!("expected a name, found {other}"))),
-        };
-        if self.peek().tok != Tok::Colon {
+        let (param_name, param_span) = self.eat_ident("a name")?;
+        let (colon, _) = self.peek()?;
+        if colon != Tok::Colon {
             return Err(Error::new(
                 param_span,
                 format!("parameter `{param_name}` needs a type annotation"),
             ));
         }
-        self.advance();
+        self.advance()?;
         let param_ty = self.type_expr()?;
         let param = Param { span: param_span.to(param_ty.span()), name: param_name, ty: param_ty };
 
-        let close = self.eat(Tok::RParen)?.span;
-        if self.peek().tok != Tok::Arrow {
+        let close = self.eat(Tok::RParen)?;
+        let (arrow, _) = self.peek()?;
+        if arrow != Tok::Arrow {
             return Err(Error::new(close, format!("function `{name}` needs a return type")));
         }
-        self.advance();
+        self.advance()?;
         let ret = self.type_expr()?;
 
         self.eat(Tok::Eq)?;
         self.bare_ok = false;
-        let body = self.expr(0)?;
+        let body = self.expr(0);
         self.bare_ok = true;
+        let body = body?;
         Ok(Def { span: start.to(body.span()), name, param, ret, body })
     }
 
     /// `Str`, `Int`, `Bool`, or `Vec<T>`.
     fn type_expr(&mut self) -> Result<TypeExpr, Error> {
-        let t = self.advance();
-        if t.tok == Tok::LBrace {
-            return self.record_type(t.span);
+        let (tok, span) = self.advance()?;
+        if tok == Tok::LBrace {
+            return self.record_type(span);
         }
-        let name = match &t.tok {
-            Tok::Ident(n) => n.clone(),
-            other => return Err(Error::new(t.span, format!("expected a type, found {other}"))),
+        let name = match tok {
+            Tok::Ident(n) => n,
+            other => return Err(Error::new(span, format!("expected a type, found {other}"))),
         };
         if name != "Vec" {
-            return Ok(TypeExpr::Named { name, span: t.span });
+            return Ok(TypeExpr::Named { name, span });
         }
         self.eat(Tok::Lt)?;
         let elem = self.type_expr()?;
-        let close = self.eat(Tok::Gt)?.span;
-        Ok(TypeExpr::Vec { elem: Box::new(elem), span: t.span.to(close) })
+        let close = self.eat(Tok::Gt)?;
+        Ok(TypeExpr::Vec { elem: Box::new(elem), span: span.to(close) })
     }
 
     /// A call's argument, wrapped in parens or spelled as a bare record literal. This is the
@@ -177,86 +455,67 @@ impl<'a> Parser<'a> {
     /// The parens may be omitted when the argument is a record literal. That is unambiguous
     /// because `{` cannot start any other expression and cannot follow one, so `f {` was a syntax
     /// error before this and nothing is taken away by giving it a meaning.
-    fn argument(&mut self) -> Result<(Expr, crate::ast::Span), Error> {
-        if self.peek().tok == Tok::LBrace {
-            let open = self.advance().span;
-            let lit = self.record_lit(open)?;
-            let span = lit.span();
-            return Ok((lit, span));
+    fn argument(&mut self) -> Result<(Expr, Span), Error> {
+        let (tok, span) = self.peek()?;
+        if tok == Tok::LBrace {
+            self.advance()?;
+            let lit = self.record_lit(span)?;
+            let lit_span = lit.span();
+            return Ok((lit, lit_span));
         }
         self.eat(Tok::LParen)?;
         let inner = self.delimited(|p| p.expr(0))?;
-        let close = self.eat(Tok::RParen)?.span;
+        let close = self.eat(Tok::RParen)?;
         Ok((inner, close))
     }
 
     /// `{name: expr, age: expr}`, the value form of the brace that `record_type` reads in type
     /// position.
-    fn record_lit(&mut self, open: crate::ast::Span) -> Result<Expr, Error> {
+    fn record_lit(&mut self, open: Span) -> Result<Expr, Error> {
         let mut fields = Vec::new();
-        if self.peek().tok != Tok::RBrace {
+        let (first, _) = self.peek()?;
+        if first != Tok::RBrace {
             loop {
-                let ct = self.advance();
-                let name = match &ct.tok {
-                    Tok::Ident(n) => n.clone(),
-                    other => {
-                        return Err(Error::new(
-                            ct.span,
-                            format!("expected a field name, found {other}"),
-                        ));
-                    }
-                };
+                let (name, name_span) = self.eat_ident("a field name")?;
                 self.eat(Tok::Colon)?;
-                fields.push((name, ct.span, self.delimited(|p| p.expr(0))?));
-                if self.peek().tok != Tok::Comma {
+                fields.push((name, name_span, self.delimited(|p| p.expr(0))?));
+                let (sep, _) = self.peek()?;
+                if sep != Tok::Comma {
                     break;
                 }
-                self.advance();
+                self.advance()?;
             }
         }
-        let close = self.eat(Tok::RBrace)?.span;
+        let close = self.eat(Tok::RBrace)?;
         Ok(Expr::RecordLit { fields, span: open.to(close) })
     }
 
     /// `type Db = {users: Vec<User>}`
     fn alias(&mut self) -> Result<Alias, Error> {
-        let start = self.eat(Tok::Type)?.span;
-        let t = self.advance();
-        let name = match &t.tok {
-            Tok::Ident(n) => n.clone(),
-            other => {
-                return Err(Error::new(t.span, format!("expected a type name, found {other}")));
-            }
-        };
+        let start = self.eat(Tok::Type)?;
+        let (name, _) = self.eat_ident("a type name")?;
         self.eat(Tok::Eq)?;
         let ty = self.type_expr()?;
         let span = start.to(ty.span());
         Ok(Alias { name, ty, span })
     }
 
-    fn record_type(&mut self, open: crate::ast::Span) -> Result<TypeExpr, Error> {
+    fn record_type(&mut self, open: Span) -> Result<TypeExpr, Error> {
         let mut fields = Vec::new();
-        if self.peek().tok != Tok::RBrace {
+        let (first, _) = self.peek()?;
+        if first != Tok::RBrace {
             loop {
-                let ft = self.advance();
-                let fname = match &ft.tok {
-                    Tok::Ident(n) => n.clone(),
-                    other => {
-                        return Err(Error::new(
-                            ft.span,
-                            format!("expected a field name, found {other}"),
-                        ));
-                    }
-                };
+                let (fname, _) = self.eat_ident("a field name")?;
                 self.eat(Tok::Colon)?;
                 fields.push((fname, self.type_expr()?));
-                if self.peek().tok != Tok::Comma {
+                let (sep, _) = self.peek()?;
+                if sep != Tok::Comma {
                     break;
                 }
-                self.advance();
+                self.advance()?;
             }
         }
-        let close = self.eat(Tok::RBrace)?.span;
+        let close = self.eat(Tok::RBrace)?;
         Ok(TypeExpr::Record { fields, span: open.to(close) })
     }
 
@@ -267,15 +526,17 @@ impl<'a> Parser<'a> {
     /// or `if`, which is what makes `f x | y` mean `(f x) | y` and `f x + y` a parse error
     /// (the trailing `+ y` is left for the caller to reject) rather than a silent `(f x) + y`.
     fn root(&mut self, min_power: u8) -> Result<Expr, Error> {
-        if let Tok::Ident(name) = &self.peek().tok
-            && self.bare_ok
-            && starts_bare_argument(&self.peek2().tok)
-        {
-            let name = name.clone();
-            let ft = self.advance().span;
-            let arg = self.bare_argument()?;
-            let span = ft.to(arg.span());
-            return Ok(Expr::Call { func: name, func_span: ft, arg: Box::new(arg), span });
+        if self.bare_ok {
+            let (tok, span) = self.peek()?;
+            if let Tok::Ident(name) = tok {
+                let (tok2, _) = self.peek2()?;
+                if starts_bare_argument(&tok2) {
+                    self.advance()?;
+                    let arg = self.bare_argument()?;
+                    let full = span.to(arg.span());
+                    return Ok(Expr::Call { func: name, func_span: span, arg: Box::new(arg), span: full });
+                }
+            }
         }
         self.operand(min_power)
     }
@@ -284,14 +545,15 @@ impl<'a> Parser<'a> {
     /// or an ordinary postfix chain. Not `expr`: an infix operator, `|`, or `if` here belongs to
     /// whatever encloses the whole application, not to this argument.
     fn bare_argument(&mut self) -> Result<Expr, Error> {
-        if let Tok::Ident(name) = &self.peek().tok
-            && starts_bare_argument(&self.peek2().tok)
-        {
-            let name = name.clone();
-            let ft = self.advance().span;
-            let arg = self.bare_argument()?;
-            let span = ft.to(arg.span());
-            return Ok(Expr::Call { func: name, func_span: ft, arg: Box::new(arg), span });
+        let (tok, span) = self.peek()?;
+        if let Tok::Ident(name) = tok {
+            let (tok2, _) = self.peek2()?;
+            if starts_bare_argument(&tok2) {
+                self.advance()?;
+                let arg = self.bare_argument()?;
+                let full = span.to(arg.span());
+                return Ok(Expr::Call { func: name, func_span: span, arg: Box::new(arg), span: full });
+            }
         }
         self.postfix()
     }
@@ -300,8 +562,9 @@ impl<'a> Parser<'a> {
         let mut lhs = self.root(min_power)?;
 
         // Right-associative, so `a if c else b if d else e` chains rightward without parens.
-        if self.peek().tok == Tok::If && COND_POWER >= min_power {
-            self.advance();
+        let (tok, _) = self.peek()?;
+        if tok == Tok::If && COND_POWER >= min_power {
+            self.advance()?;
             let cond = self.operand(COND_POWER + 1)?;
             self.eat(Tok::Else)?;
             let otherwise = self.expr(COND_POWER)?;
@@ -314,8 +577,12 @@ impl<'a> Parser<'a> {
             };
         }
 
-        while self.peek().tok == Tok::Pipe && PIPE_LEFT >= min_power {
-            self.advance();
+        loop {
+            let (tok, _) = self.peek()?;
+            if tok != Tok::Pipe || PIPE_LEFT < min_power {
+                break;
+            }
+            self.advance()?;
             let rhs = self.expr(PIPE_RIGHT)?;
             let span = lhs.span().to(rhs.span());
             lhs = Expr::Pipe { lhs: Box::new(lhs), rhs: Box::new(rhs), span };
@@ -327,11 +594,15 @@ impl<'a> Parser<'a> {
     fn operand(&mut self, min_power: u8) -> Result<Expr, Error> {
         let mut lhs = self.unary()?;
 
-        while let Some((op, left, right)) = infix_power(&self.peek().tok) {
+        loop {
+            let (tok, _) = self.peek()?;
+            let Some((op, left, right)) = infix_power(&tok) else {
+                break;
+            };
             if left < min_power {
                 break;
             }
-            self.advance();
+            self.advance()?;
             let rhs = self.operand(right)?;
             let span = lhs.span().to(rhs.span());
             lhs = Expr::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs), span };
@@ -343,11 +614,12 @@ impl<'a> Parser<'a> {
     /// Negation binds tighter than any infix operator and looser than any postfix one, so
     /// `-a.b` negates the field and `-a * b` negates only `a`.
     fn unary(&mut self) -> Result<Expr, Error> {
-        if self.peek().tok == Tok::Minus {
-            let minus = self.advance().span;
+        let (tok, span) = self.peek()?;
+        if tok == Tok::Minus {
+            self.advance()?;
             let base = self.unary()?;
-            let span = minus.to(base.span());
-            return Ok(Expr::Neg { base: Box::new(base), span });
+            let full = span.to(base.span());
+            return Ok(Expr::Neg { base: Box::new(base), span: full });
         }
         self.postfix()
     }
@@ -356,40 +628,35 @@ impl<'a> Parser<'a> {
     fn postfix(&mut self) -> Result<Expr, Error> {
         let mut e = self.atom()?;
         loop {
-            match self.peek().tok {
+            let (tok, _) = self.peek()?;
+            match tok {
                 Tok::LBracket => {
-                    self.advance();
-                    if self.peek().tok == Tok::RBracket {
-                        let close = self.advance().span;
+                    self.advance()?;
+                    let (next, _) = self.peek()?;
+                    if next == Tok::RBracket {
+                        let close = self.advance()?.1;
                         let span = e.span().to(close);
                         e = Expr::Project { base: Box::new(e), span };
                     } else {
                         let index = self.delimited(|p| p.expr(0))?;
-                        let close = self.eat(Tok::RBracket)?.span;
+                        let close = self.eat(Tok::RBracket)?;
                         let span = e.span().to(close);
-                        e = Expr::Index {
-                            base: Box::new(e),
-                            index: Box::new(index),
-                            span,
-                        };
+                        e = Expr::Index { base: Box::new(e), index: Box::new(index), span };
                     }
                 }
                 Tok::Bang => {
-                    let bang = self.advance().span;
+                    let bang = self.advance()?.1;
                     let span = e.span().to(bang);
                     e = Expr::Unwrap { base: Box::new(e), span };
                 }
                 Tok::Dot => {
-                    self.advance();
-                    let ft = self.advance();
-                    let Tok::Ident(name) = &ft.tok else {
-                        return Err(Error::new(
-                            ft.span,
-                            format!("expected a field name, found {}", ft.tok),
-                        ));
+                    self.advance()?;
+                    let (ft, fspan) = self.advance()?;
+                    let Tok::Ident(name) = ft else {
+                        return Err(Error::new(fspan, format!("expected a field name, found {ft}")));
                     };
-                    let span = e.span().to(ft.span);
-                    e = Expr::Field { base: Box::new(e), name: name.clone(), span };
+                    let span = e.span().to(fspan);
+                    e = Expr::Field { base: Box::new(e), name, span };
                 }
                 _ => return Ok(e),
             }
@@ -397,58 +664,56 @@ impl<'a> Parser<'a> {
     }
 
     fn atom(&mut self) -> Result<Expr, Error> {
-        let t = self.advance();
-        match &t.tok {
-            Tok::Str(text) => Ok(Expr::Str { text: text.clone(), span: t.span }),
-            Tok::Int(value) => Ok(Expr::Int { value: *value, span: t.span }),
-            Tok::Input => Ok(Expr::Input { span: t.span }),
-            Tok::Lines => Ok(Expr::Lines { span: t.span }),
+        let (tok, span) = self.advance()?;
+        match tok {
+            Tok::Str(text) => Ok(Expr::Str { text, span }),
+            Tok::Int(value) => Ok(Expr::Int { value, span }),
+            Tok::Input => Ok(Expr::Input { span }),
+            Tok::Lines => Ok(Expr::Lines { span }),
 
             // `.name` is field access on the subject, so the leading dot yields `.` and the
             // postfix loop above picks the field up.
             Tok::Dot => {
-                if let Tok::Ident(name) = &self.peek().tok {
-                    let name = name.clone();
-                    let ft = self.advance();
+                let (next, _) = self.peek()?;
+                if let Tok::Ident(name) = next {
+                    let (_, fspan) = self.advance()?;
                     return Ok(Expr::Field {
-                        base: Box::new(Expr::Subject { span: t.span }),
+                        base: Box::new(Expr::Subject { span }),
                         name,
-                        span: t.span.to(ft.span),
+                        span: span.to(fspan),
                     });
                 }
-                Ok(Expr::Subject { span: t.span })
+                Ok(Expr::Subject { span })
             }
 
-            Tok::LBrace => self.record_lit(t.span),
+            Tok::LBrace => self.record_lit(span),
 
             Tok::LBracket => {
                 // `,` is a separator here, not an operator. It has no meaning outside a literal
                 // while everything stays in the value layer.
                 let mut items = Vec::new();
-                if self.peek().tok != Tok::RBracket {
+                let (first, _) = self.peek()?;
+                if first != Tok::RBracket {
                     loop {
                         items.push(self.delimited(|p| p.expr(0))?);
-                        if self.peek().tok != Tok::Comma {
+                        let (sep, _) = self.peek()?;
+                        if sep != Tok::Comma {
                             break;
                         }
-                        self.advance();
+                        self.advance()?;
                     }
                 }
-                let close = self.eat(Tok::RBracket)?.span;
-                Ok(Expr::VecLit { items, span: t.span.to(close) })
+                let close = self.eat(Tok::RBracket)?;
+                Ok(Expr::VecLit { items, span: span.to(close) })
             }
 
             Tok::Ident(name) => {
-                if self.peek().tok != Tok::LParen && self.peek().tok != Tok::LBrace {
-                    return Ok(Expr::Var { name: name.clone(), span: t.span });
+                let (next, _) = self.peek()?;
+                if next != Tok::LParen && next != Tok::LBrace {
+                    return Ok(Expr::Var { name, span });
                 }
                 let (arg, close) = self.argument()?;
-                Ok(Expr::Call {
-                    func: name.clone(),
-                    func_span: t.span,
-                    arg: Box::new(arg),
-                    span: t.span.to(close),
-                })
+                Ok(Expr::Call { func: name, func_span: span, arg: Box::new(arg), span: span.to(close) })
             }
 
             Tok::LParen => {
@@ -457,7 +722,7 @@ impl<'a> Parser<'a> {
                 Ok(inner)
             }
 
-            other => Err(Error::new(t.span, format!("expected an expression, found {other}"))),
+            other => Err(Error::new(span, format!("expected an expression, found {other}"))),
         }
     }
 }

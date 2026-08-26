@@ -8,7 +8,6 @@ pub mod emit_lua;
 pub mod emit_py;
 pub mod error;
 pub mod input;
-pub mod lex;
 pub mod parse;
 pub mod tags;
 pub mod tir;
@@ -67,8 +66,7 @@ impl Backend {
 }
 
 pub fn compile(src: &str) -> Result<Program, Error> {
-    let tokens = lex::lex(src)?;
-    let file = parse::parse(&tokens)?;
+    let file = parse::parse(src)?;
     check::check(&file)
 }
 

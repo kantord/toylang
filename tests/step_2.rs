@@ -17,8 +17,7 @@ fn concat_chain() {
 /// table is for, so assert on the tree: this must nest left, not right.
 #[test]
 fn concat_is_left_associative() {
-    let tokens = toylang::lex::lex(r#""a" + "b" + "c""#).unwrap();
-    insta::assert_debug_snapshot!(toylang::parse::parse(&tokens).unwrap());
+    insta::assert_debug_snapshot!(toylang::parse::parse(r#""a" + "b" + "c""#).unwrap());
 }
 
 #[test]

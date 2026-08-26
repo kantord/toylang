@@ -80,3 +80,7 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
   -- Adding parenless function application broke a program with no application in it, because two
   unrelated expressions had always sat adjacent at one spot the grammar never bothered to
   delimit.
+- [winnow replaced the tokenizer, not the grammar](winnow-replaced-the-tokenizer-not-the-grammar.md)
+  -- Porting the hand-rolled lexer and parser onto winnow kept every dispatch decision and error
+  message exactly as written, because the library's real value here was position tracking and
+  character-level primitives, not its combinators.
