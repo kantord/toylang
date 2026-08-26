@@ -57,3 +57,8 @@ information to fall back on, which every other backend is spared.
 The same manual-invariant shape showed up again, one layer up, in the parser rather than a
 backend: see
 [juxtaposition is unsafe at any undelimited boundary](juxtaposition-is-unsafe-at-any-undelimited-boundary.md).
+
+A fourth site -- `tl_vec_tail` and `tl_vec_concat`, added later -- had the chance to violate this
+same invariant and did not, having been written as a generic loop over `ncols` from the start.
+See [named functions kept an open question open](named-functions-kept-an-open-question-open.md)
+for what those two were added for.

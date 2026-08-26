@@ -1,0 +1,7 @@
+program: |
+  tail([1, 2, 3])!
+
+output: |
+  [2,3]
+
+node_types: [builtin.tail, int, unwrap, vec-literal]

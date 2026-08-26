@@ -62,6 +62,8 @@ struct Runtime<'ctx> {
     unwrap: FunctionValue<'ctx>,
     div_by_zero: FunctionValue<'ctx>,
     range: FunctionValue<'ctx>,
+    vec_tail: FunctionValue<'ctx>,
+    vec_concat: FunctionValue<'ctx>,
 }
 
 /// What a compiler-introduced binding holds.
@@ -209,6 +211,12 @@ impl<'ctx> Emitter<'ctx> {
                 None,
             ),
             range: module.add_function("tl_range", ptr.fn_type(&[i64t.into()], false), None),
+            vec_tail: module.add_function("tl_vec_tail", ptr.fn_type(&[ptr.into()], false), None),
+            vec_concat: module.add_function(
+                "tl_vec_concat",
+                ptr.fn_type(&[ptr.into(), i64t.into()], false),
+                None,
+            ),
         };
 
         Emitter {
@@ -1072,6 +1080,15 @@ impl<'ctx> Emitter<'ctx> {
                     // to it, and there is only ever one real stdin, so nothing about the
                     // argument's value could change what this reads.
                     Builtin::Collect => self.call_rt(self.rt.collect_lines, &[], "lines")?,
+                    // Already tracked on the Vec header; nothing to compute.
+                    Builtin::Extent => self.call_rt(self.rt.vec_len, &[arg], "extent")?,
+                    Builtin::Tail => self.call_rt(self.rt.vec_tail, &[arg], "tail")?,
+                    Builtin::Concat => {
+                        let elem = t.ty.elem().expect("checked to be Vec<Vec<T>> -> Vec<T>");
+                        let ncols =
+                            self.ctx.i64_type().const_int(Self::columns(elem), false);
+                        self.call_rt(self.rt.vec_concat, &[arg, ncols.into()], "concat")?
+                    }
                     // Reuse the joiner the printer uses, with no brackets around it.
                     Builtin::Unlines => {
                         let open = self.string_const("");

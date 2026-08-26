@@ -117,5 +117,8 @@ fn builtin_tag(which: Builtin) -> &'static str {
         Builtin::Unlines => "unlines",
         Builtin::Collect => "collect",
         Builtin::JsonLines => "jsonlines",
+        Builtin::Extent => "extent",
+        Builtin::Concat => "concat",
+        Builtin::Tail => "tail",
     }
 }

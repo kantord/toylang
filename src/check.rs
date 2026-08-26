@@ -181,10 +181,15 @@ fn signatures(defs: &[Def], aliases: &Aliases) -> Result<HashMap<String, Sig>, E
     for def in defs {
         value_name(&def.name, def.span, "function name")?;
         value_name(&def.param.name, def.param.span, "parameter name")?;
-        // `jsonlines`, `select`, and `map` are not in `builtin()`'s fixed table -- the first is
-        // polymorphic, the other two rebind `.` -- but all three are reserved names for the same
-        // reason every other builtin is.
-        if builtin(&def.name).is_some() || matches!(def.name.as_str(), "jsonlines" | "select" | "map") {
+        // `jsonlines`, `extent`, `concat`, `tail`, `select`, and `map` are not in `builtin()`'s
+        // fixed table -- the first four are polymorphic, the last two rebind `.` -- but all six
+        // are reserved names for the same reason every other builtin is.
+        if builtin(&def.name).is_some()
+            || matches!(
+                def.name.as_str(),
+                "jsonlines" | "extent" | "concat" | "tail" | "select" | "map"
+            )
+        {
             return Err(Error::new(
                 def.span,
                 format!("`{}` is a builtin and cannot be redefined", def.name),
@@ -417,6 +422,55 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 return Ok(Tir::new(
                     Type::Str,
                     Kind::Builtin { which: tir::Builtin::JsonLines, arg: Box::new(arg) },
+                ));
+            }
+            // `extent`, `tail`, and `concat` are polymorphic over the element type, the same
+            // reason `jsonlines` is checked here rather than through `builtin()`'s fixed table.
+            if func == "extent" {
+                let arg_span = arg.span();
+                let arg = synth(ctx, arg)?;
+                if arg.ty.elem().is_none() {
+                    return Err(Error::new(
+                        arg_span,
+                        format!("`extent` needs a Vec, found {}", arg.ty),
+                    ));
+                }
+                return Ok(Tir::new(
+                    Type::Int,
+                    Kind::Builtin { which: tir::Builtin::Extent, arg: Box::new(arg) },
+                ));
+            }
+            // `None` on an empty Vec, the same way `Index` turns reaching past what's there
+            // into `Opt` rather than a runtime failure.
+            if func == "tail" {
+                let arg_span = arg.span();
+                let arg = synth(ctx, arg)?;
+                let Some(elem) = arg.ty.elem().cloned() else {
+                    return Err(Error::new(
+                        arg_span,
+                        format!("`tail` needs a Vec, found {}", arg.ty),
+                    ));
+                };
+                return Ok(Tir::new(
+                    Type::Opt(Box::new(Type::Vec(Box::new(elem)))),
+                    Kind::Builtin { which: tir::Builtin::Tail, arg: Box::new(arg) },
+                ));
+            }
+            // Flattens a Vec<Vec<T>> into a Vec<T>, the way jq's `add` flattens a list of
+            // arrays. A named function rather than `+` on Vec, so it does not decide Q2.
+            if func == "concat" {
+                let arg_span = arg.span();
+                let arg = synth(ctx, arg)?;
+                let inner = arg.ty.elem().cloned();
+                let Some(elem) = inner.as_ref().and_then(Type::elem).cloned() else {
+                    return Err(Error::new(
+                        arg_span,
+                        format!("`concat` needs a Vec of Vecs, found {}", arg.ty),
+                    ));
+                };
+                return Ok(Tir::new(
+                    Type::Vec(Box::new(elem)),
+                    Kind::Builtin { which: tir::Builtin::Concat, arg: Box::new(arg) },
                 ));
             }
             if let Some((which, sig)) = builtin(func) {

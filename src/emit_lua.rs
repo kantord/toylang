@@ -66,6 +66,26 @@ local function tl_at(v, i, depth)
 end
 ";
 
+const TAIL_HELPER: &str = "\
+local function tl_tail(v)
+  if #v == 0 then return tl_none end
+  local out = {}
+  for i = 2, #v do out[i - 1] = v[i] end
+  return out
+end
+";
+
+const VEC_CONCAT_HELPER: &str = "\
+local function tl_vec_concat(vv)
+  local out = {}
+  for i = 1, #vv do
+    local inner = vv[i]
+    for j = 1, #inner do out[#out + 1] = inner[j] end
+  end
+  return out
+end
+";
+
 const UNWRAP_HELPER: &str = r#"local function tl_unwrap(v, depth)
   if depth > 0 then
     local out = {}
@@ -142,11 +162,17 @@ pub fn emit(program: &Program) -> String {
     if (structured && contains_vec(&program.body.ty)) || used.jsonlines {
         out.push_str(JOIN_HELPER);
     }
-    if used.index || used.unwrap || contains_opt(&program.body.ty) {
+    if used.index || used.unwrap || used.tail || contains_opt(&program.body.ty) {
         out.push_str(OPT_HELPER);
     }
     if used.unwrap {
         out.push_str(UNWRAP_HELPER);
+    }
+    if used.tail {
+        out.push_str(TAIL_HELPER);
+    }
+    if used.concat {
+        out.push_str(VEC_CONCAT_HELPER);
     }
     if used.arith {
         out.push_str(ARITH_HELPER);
@@ -282,6 +308,8 @@ struct Helpers {
     range: bool,
     collect: bool,
     jsonlines: bool,
+    tail: bool,
+    concat: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -320,6 +348,8 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.range |= *which == Builtin::Range;
                 used.collect |= *which == Builtin::Collect;
                 used.jsonlines |= *which == Builtin::JsonLines;
+                used.tail |= *which == Builtin::Tail;
+                used.concat |= *which == Builtin::Concat;
                 walk(arg, used);
             }
             Kind::Cond { cond, then, otherwise } => {
@@ -406,6 +436,9 @@ fn expr(t: &Tir) -> String {
                 )
             }
             Builtin::Collect => "tl_collect_lines()".to_string(),
+            Builtin::Extent => format!("#{}", expr(arg)),
+            Builtin::Tail => format!("tl_tail({})", expr(arg)),
+            Builtin::Concat => format!("tl_vec_concat({})", expr(arg)),
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), lua_op(*op), expr(rhs))

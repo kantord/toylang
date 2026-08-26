@@ -696,6 +696,42 @@ int64_t tl_opt_get(const int64_t *o) {
     return *o;
 }
 
+/* Every element but the first. NULL on an empty Vec -- the same absence encoding tl_opt_some
+ * uses everywhere else, so a caller unwraps it the same way an Index result is unwrapped. */
+int64_t *tl_vec_tail(const tl_vec *v) {
+    if (v->len == 0) {
+        return NULL;
+    }
+    tl_vec *out = tl_vec_new(v->len - 1, v->ncols);
+    for (int64_t c = 0; c < v->ncols; c++) {
+        if (out->len > 0) {
+            memcpy(out->cols[c], v->cols[c] + 1, (size_t)out->len * sizeof(int64_t));
+        }
+    }
+    return tl_opt_some((int64_t)out);
+}
+
+/* Flatten a Vec<Vec<T>> into a Vec<T>. `ncols` is T's column count: passed in rather than read
+ * off an inner Vec, since an empty outer Vec has no inner Vec to read it from. */
+tl_vec *tl_vec_concat(const tl_vec *vv, int64_t ncols) {
+    int64_t total = 0;
+    for (int64_t i = 0; i < vv->len; i++) {
+        total += ((const tl_vec *)vv->cols[0][i])->len;
+    }
+    tl_vec *out = tl_vec_new(total, ncols);
+    int64_t at = 0;
+    for (int64_t i = 0; i < vv->len; i++) {
+        const tl_vec *inner = (const tl_vec *)vv->cols[0][i];
+        for (int64_t c = 0; c < ncols; c++) {
+            if (inner->len > 0) {
+                memcpy(out->cols[c] + at, inner->cols[c], (size_t)inner->len * sizeof(int64_t));
+            }
+        }
+        at += inner->len;
+    }
+    return out;
+}
+
 /* Collapse one dimension at `i`, `depth` layers down, counting from the end when negative.
  *
  * `is_record` decides whether an entry has to be gathered out of the columns. The column count

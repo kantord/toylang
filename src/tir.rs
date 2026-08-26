@@ -131,6 +131,18 @@ pub enum Builtin {
     /// signature table `builtin()` reads from; `synth` checks it directly, the way `map` and
     /// `select` are checked from their own arm rather than through a table.
     JsonLines,
+    /// `extent(v)`, a Vec's length. Named for CONTEXT.md's glossary term rather than `length`,
+    /// which the glossary lists under Avoid. A dense Vec already tracks this at runtime, so
+    /// reading it out costs nothing -- there is no fold or scan hiding behind the name.
+    Extent,
+    /// `concat(vv)`, flattening a `Vec<Vec<T>>` into one `Vec<T>`. A named function rather than
+    /// an overload of `+`, so it does not touch or prejudge Q2 (draft.md), which is still open
+    /// for the general question of binary operators over two Vecs.
+    Concat,
+    /// `tail(v)`, every element but the first, `None` when `v` is empty. Consistent with how
+    /// `Index` already turns "reaching past what's there" into `Opt` rather than a runtime
+    /// failure.
+    Tail,
 }
 
 pub struct Func {

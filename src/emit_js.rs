@@ -35,6 +35,13 @@ function tl_at(v, i, depth) {
 }
 ";
 
+const TAIL_HELPER: &str = "\
+function tl_tail(v) {
+  if (v.length === 0) return tl_none;
+  return v.slice(1);
+}
+";
+
 const UNWRAP_HELPER: &str = r#"function tl_unwrap(v, depth) {
   if (depth > 0) return v.map((e) => tl_unwrap(e, depth - 1));
   if (v === tl_none) { throw new Error("toylang: unwrapped a value that is not there"); }
@@ -107,8 +114,11 @@ pub fn emit(program: &Program) -> String {
     if matches!(program.body.ty, Type::Vec(_)) || contains_vec(&program.body.ty) || used.jsonlines {
         out.push_str(JOIN_HELPER);
     }
-    if used.index || used.unwrap || contains_opt(&program.body.ty) {
+    if used.index || used.unwrap || used.tail || contains_opt(&program.body.ty) {
         out.push_str(OPT_HELPER);
+    }
+    if used.tail {
+        out.push_str(TAIL_HELPER);
     }
     if used.unwrap {
         out.push_str(UNWRAP_HELPER);
@@ -223,6 +233,7 @@ struct Helpers {
     arith: bool,
     collect: bool,
     jsonlines: bool,
+    tail: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -258,6 +269,7 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::Builtin { which, arg } => {
                 used.collect |= *which == Builtin::Collect;
                 used.jsonlines |= *which == Builtin::JsonLines;
+                used.tail |= *which == Builtin::Tail;
                 walk(arg, used);
             }
             Kind::Cond { cond, then, otherwise } => {
@@ -338,6 +350,9 @@ fn expr(t: &Tir) -> String {
                 format!("tl_jsonlines({}, ({e}) => {})", expr(arg), show(elem, &e, 1))
             }
             Builtin::Collect => "tl_collect_lines()".to_string(),
+            Builtin::Extent => format!("{}.length", expr(arg)),
+            Builtin::Tail => format!("tl_tail({})", expr(arg)),
+            Builtin::Concat => format!("{}.flat()", expr(arg)),
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), js_op(*op), expr(rhs))

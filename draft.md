@@ -2124,6 +2124,12 @@ provably does not escape, with an acknowledged cliff when it does.
 Cartesian (jq today), zip
 (vectorized, with broadcast), or neither by default with explicit `cross` and `zip`?
 
+Vec concatenation specifically is decided, without touching the rest of this question:
+`concat(vv: Vec<Vec<T>>) -> Vec<T>` flattens, as a named builtin rather than an overload of `+`
+(see [named functions kept an open question open](research-log/named-functions-kept-an-open-question-open.md)).
+The general question -- what `+`, or any other operator, means when both operands are Vecs --
+is still open.
+
 ### Q3. What symbol replaces `=` for the record-forming update?
 
 ### Q4. Can the type express ordering over heterogeneous streams?

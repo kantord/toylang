@@ -1,0 +1,9 @@
+# `None` on an empty Vec, the same way an out-of-range Index does -- so unwrapping it refuses,
+# the same way unwrapping an out-of-range Index does. The empty Vec<Int> comes from tail of a
+# one-element Vec, since a bare `[]` literal cannot be typed.
+program: |
+  tail(tail([1])!)!
+
+refuses: true
+
+node_types: [builtin.tail, int, unwrap, vec-literal]

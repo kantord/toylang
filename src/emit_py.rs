@@ -75,6 +75,16 @@ const UNWRAP_HELPER: &str = r#"def tl_unwrap(v, depth):
     return v
 "#;
 
+const TAIL_HELPER: &str = r#"def tl_tail(v):
+    if len(v) == 0:
+        return None
+    return v[1:]
+"#;
+
+const VEC_CONCAT_HELPER: &str = r#"def tl_vec_concat(vv):
+    return [e for sub in vv for e in sub]
+"#;
+
 const COLLECT_HELPER: &str = r#"def tl_collect_lines():
     out = []
     for line in sys.stdin:
@@ -168,6 +178,8 @@ pub fn emit(program: &Program) -> String {
         (arith, ARITH_HELPER),
         (uses("tl_field("), FIELD_HELPER),
         (uses("tl_at("), AT_HELPER),
+        (uses("tl_tail("), TAIL_HELPER),
+        (uses("tl_vec_concat("), VEC_CONCAT_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_collect_lines("), COLLECT_HELPER),
@@ -284,6 +296,9 @@ fn expr(t: &Tir) -> String {
                 format!("tl_jsonlines({}, lambda {e}: {})", expr(arg), show(elem, &e, 1))
             }
             Builtin::Collect => "tl_collect_lines()".to_string(),
+            Builtin::Extent => format!("len({})", expr(arg)),
+            Builtin::Tail => format!("tl_tail({})", expr(arg)),
+            Builtin::Concat => format!("tl_vec_concat({})", expr(arg)),
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), py_op(*op), expr(rhs))

@@ -280,6 +280,15 @@ fn expr(t: &Tir) -> String {
             // always means the same thing. `-n -R` on the invocation is what makes this mode
             // available; see the checker rule against mixing `input` and `lines` in one program.
             Builtin::Collect => "[ inputs ]".to_string(),
+            Builtin::Extent => format!("({} | length)", expr(arg)),
+            // jq's own `.[1:]` on an empty array is `[]`, not null; toylang's tail needs the
+            // Opt convention instead, so the empty case is spelled out rather than borrowed.
+            Builtin::Tail => {
+                format!("({} | if length == 0 then null else .[1:] end)", expr(arg))
+            }
+            // Not jq's own `add`, which is `null` on an empty list rather than `[]` -- a reduce
+            // starting from `[]` gives the right answer in both cases.
+            Builtin::Concat => format!("({} | reduce .[] as $x ([]; . + $x))", expr(arg)),
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), jq_op(*op), expr(rhs))

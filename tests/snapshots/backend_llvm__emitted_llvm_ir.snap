@@ -62,6 +62,10 @@ declare void @tl_div_by_zero()
 
 declare ptr @tl_range(i64)
 
+declare ptr @tl_vec_tail(ptr)
+
+declare ptr @tl_vec_concat(ptr, i64)
+
 define i32 @main() {
 entry:
   call void @tl_print(ptr @str.0)

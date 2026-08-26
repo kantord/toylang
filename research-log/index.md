@@ -84,3 +84,6 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
   -- Porting the hand-rolled lexer and parser onto winnow kept every dispatch decision and error
   message exactly as written, because the library's real value here was position tracking and
   character-level primitives, not its combinators.
+- [Named functions kept an open question open](named-functions-kept-an-open-question-open.md) --
+  extent, concat, and tail were spelled as named builtins rather than as an operator overload or
+  a new Spec, specifically so adding them would not force an answer to Q2, which is still open.

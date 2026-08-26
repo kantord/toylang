@@ -77,6 +77,23 @@ const UNWRAP_HELPER: &str = r#"func tlUnwrap[T any](o tlOpt[T]) T {
 }
 "#;
 
+const TAIL_HELPER: &str = r#"func tlTail[T any](v []T) tlOpt[[]T] {
+	if len(v) == 0 {
+		return tlOpt[[]T]{}
+	}
+	return tlOpt[[]T]{true, v[1:]}
+}
+"#;
+
+const CONCAT_HELPER: &str = r#"func tlConcat[T any](vv [][]T) []T {
+	out := []T{}
+	for _, v := range vv {
+		out = append(out, v...)
+	}
+	return out
+}
+"#;
+
 /// Go's `int32` wraps on overflow by definition, and its `/` and `%` truncate toward zero, so
 /// only the zero divisor needs a guard. `MIN / -1` is defined to be `MIN` here, which is the
 /// wrapping answer the other backends were made to give.
@@ -262,7 +279,7 @@ pub fn emit(program: &Program) -> String {
     let mut helpers = String::new();
     // tlOpt is what tlAt and tlUnwrap are written in terms of, and inference means the emitted
     // text need never spell it. Helper-to-helper dependencies are stated rather than read back.
-    if uses("tlOpt[") || uses("tlAt(") || unwrap {
+    if uses("tlOpt[") || uses("tlAt(") || uses("tlTail(") || unwrap {
         helpers.push_str(OPT_TYPE);
         helpers.push('\n');
     }
@@ -272,6 +289,8 @@ pub fn emit(program: &Program) -> String {
         (uses("tlMap("), MAP_HELPER),
         (uses("tlSelect("), SELECT_HELPER),
         (uses("tlAt("), AT_HELPER),
+        (uses("tlTail("), TAIL_HELPER),
+        (uses("tlConcat("), CONCAT_HELPER),
         (unwrap, UNWRAP_HELPER),
         (arith, ARITH_HELPER),
         (uses("tlRange("), RANGE_HELPER),
@@ -413,7 +432,10 @@ impl Collect<'_> {
                         let elem = arg.ty.elem().expect("checked to be a Vec");
                         self.used.jsonlines_has_scalar |= has_scalar(elem);
                     }
-                    Builtin::Range | Builtin::Collect => {}
+                    // Purely textually gated below, like tlAt and tlRange: nothing here needs
+                    // the element type, so there is nothing to record on the walk.
+                    Builtin::Range | Builtin::Collect | Builtin::Extent | Builtin::Concat
+                    | Builtin::Tail => {}
                 }
                 self.walk(arg);
             }
@@ -545,6 +567,9 @@ impl Emitter {
                     )
                 }
                 Builtin::Collect => "tlCollectLines()".to_string(),
+                Builtin::Extent => format!("int32(len({}))", self.expr(arg)),
+                Builtin::Tail => format!("tlTail({})", self.expr(arg)),
+                Builtin::Concat => format!("tlConcat({})", self.expr(arg)),
             },
             Kind::Compare { op, lhs, rhs } => {
                 format!("({} {} {})", self.expr(lhs), go_op(*op), self.expr(rhs))
