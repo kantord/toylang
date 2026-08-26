@@ -9,4 +9,4 @@ input: "ada\r\nbo\r\n"
 
 output: "ada\r\nbo\r\n"
 
-node_types: [builtin.collect, builtin.unlines, lines]
+node_types: [application, builtin.collect, builtin.extent, builtin.tail, compare.eq, concat, conditional, int, lines, selection.collapse, str, unwrap, var]

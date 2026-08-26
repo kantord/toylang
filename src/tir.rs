@@ -118,9 +118,6 @@ pub enum Builtin {
     /// `range(n)`, the integers from zero up to but not including n. Zero-based, matching jq,
     /// Python, and this language's own indices.
     Range,
-    /// `unlines(v)`, joining with newlines. Named for Haskell's, because `lines` is spoken for
-    /// by the splitting direction that `stdin.lines` will need.
-    Unlines,
     /// `collect(lines)`, reading every line of stdin into a Vec<Str>. The one place `Lines`
     /// stops being a stream: what comes back is an ordinary value, exactly as sized as it needs
     /// to be, with no trace left of how it arrived.

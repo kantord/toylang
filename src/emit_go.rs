@@ -317,7 +317,7 @@ pub fn emit(program: &Program) -> String {
     if program.input.is_some() {
         imports.insert("encoding/json");
     }
-    if join || quote || used.unlines || used.jsonlines {
+    if join || quote || used.jsonlines {
         imports.insert("strings");
     }
     if used.itoa
@@ -353,9 +353,7 @@ fn has_scalar(ty: &Type) -> bool {
 #[derive(Default)]
 struct Used {
     itoa: bool,
-    unlines: bool,
-    /// Whether `jsonlines` was called at all, following the same import-decision shape as
-    /// `unlines`.
+    /// Whether `jsonlines` was called at all, which decides whether `strings` needs importing.
     jsonlines: bool,
     /// Whether `strconv` is needed for a scalar inside a `jsonlines` element type, which the
     /// ordinary `has_scalar(&program.body.ty)` check misses whenever the top-level result is
@@ -426,7 +424,6 @@ impl Collect<'_> {
             Kind::Builtin { which, arg } => {
                 match which {
                     Builtin::IntToStr => self.used.itoa = true,
-                    Builtin::Unlines => self.used.unlines = true,
                     Builtin::JsonLines => {
                         self.used.jsonlines = true;
                         let elem = arg.ty.elem().expect("checked to be a Vec");
@@ -555,7 +552,6 @@ impl Emitter {
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("strconv.FormatInt(int64({}), 10)", self.expr(arg)),
                 Builtin::Range => format!("tlRange({})", self.expr(arg)),
-                Builtin::Unlines => format!("strings.Join({}, \"\\n\")", self.expr(arg)),
                 Builtin::JsonLines => {
                     let elem = arg.ty.elem().expect("checked to be a Vec");
                     let e = "e0".to_string();

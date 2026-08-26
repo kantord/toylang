@@ -9,6 +9,7 @@ pub mod emit_py;
 pub mod error;
 pub mod input;
 pub mod parse;
+pub mod prelude;
 pub mod tags;
 pub mod tir;
 pub mod ty;
@@ -66,7 +67,8 @@ impl Backend {
 }
 
 pub fn compile(src: &str) -> Result<Program, Error> {
-    let file = parse::parse(src)?;
+    let mut file = parse::parse(src)?;
+    prelude::inject(&mut file);
     check::check(&file)
 }
 

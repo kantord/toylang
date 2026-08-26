@@ -2058,6 +2058,41 @@ delimiter (`(`, `[`, `{`) is entered, since a closing token bounds those regardl
 outside them. See
 [juxtaposition is unsafe at any undelimited boundary](research-log/juxtaposition-is-unsafe-at-any-undelimited-boundary.md).
 
+## DECIDED: a rudimentary module system, one prelude file and `pub`
+
+`unlines` used to be a `tir::Builtin`, needing its own codegen in six backends. It is now ordinary
+toylang source in `prelude.toy`, marked `pub`, and every `pub` definition there is always
+available to a program -- there is no import statement, and a program cannot yet name what it
+wants from the prelude or export anything of its own for another file to use. `pub fn` is parsed
+(and stored on `ast::Def`) everywhere a `fn` is, including in an ordinary program, but it has no
+effect there yet: nothing imports from a program file today.
+
+Non-`pub` is not yet a working privacy boundary. A `pub` prelude function can only be fully
+self-contained, calling only compiler builtins and itself -- it cannot call a private prelude
+helper, because a non-`pub` definition is never merged into any compiled program at all, not even
+one that merges in a `pub` sibling from the same file. Real scoping (a `pub` function using a
+private one, without exposing it to callers) needs the checker to track which file a definition
+came from and enforce visibility per call site, which does not exist yet. This cost nothing today,
+with one function in the prelude and no helpers of its own, but it is the reason a second prelude
+function that needs a private helper cannot be added yet without that machinery first.
+
+Merging every `pub` definition unconditionally reopened a problem `unlines` had already solved
+once, by scanning the program's source text for the name before merging it in. That approach does
+not extend to "always merge everything": an unused prelude function would sit in every compiled
+program's `Program.funcs`, which is exactly what `tags::node_types` walks and what every backend
+turns into output. The fix generalizes past the textual approximation: `check::check` now prunes
+`Program.funcs` to whatever the program's body can actually reach, directly or through a call a
+reached function itself makes -- the same treatment an unused function the program wrote itself
+now also gets, which nothing pruned before. See
+[named functions kept an open question open](research-log/named-functions-kept-an-open-question-open.md)
+for the related choice, made the same way, to add a capability as a name rather than by extending
+existing syntax.
+
+`prelude.toy` is parsed as a module -- `parse::parse_module`, a second entry point next to
+`parse::parse` -- rather than as a program with a throwaway trailing expression, since it is a
+real, checked-in file meant to be read: a module is zero or more `[pub] fn` definitions and
+nothing else, with no body to fake.
+
 ## Open questions
 
 Tracked here rather than scattered through the document. Status is one of OPEN (no preferred
@@ -2105,6 +2140,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | OPEN, and only expressible because arguments are a record |
 | [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN, and the constructor for one already works |
 | [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | OPEN, and untracked until now |
+| [Q36](#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy) | Does a real module system need imports, multiple files, and enforced privacy? | OPEN, one always-on prelude file exists; nothing beyond it does |
 
 [Stream lowering](#q5-stream-lowering-strategy-across-the-three-backends) is the one that blocks streaming work. [Streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and [multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) both change the two-layer section, so
 they should be settled before that section is treated as stable.
@@ -2520,6 +2556,20 @@ What it does not answer:
 
 Blocked on the same thing as [Q5](#q5-stream-lowering-strategy-across-the-three-backends): a
 program that writes as it goes is a program with an effect layer.
+
+### Q36. Does a real module system need imports, multiple files, and enforced privacy?
+
+One file exists: `prelude.toy`, always merged in whole, `pub` picking which of its definitions a
+program receives. What it does not have: a way to name what a program wants rather than receiving
+all of it; a way for a program's own file to export something another file imports; more than one
+file to import from at all; and enforced privacy, since a non-`pub` prelude definition today is
+not "private to the prelude," it is simply never compiled, which forecloses a `pub` function
+calling a private helper.
+
+None of these were needed to get one function (`unlines`) out of six backends' worth of hand-
+written codegen, and building them speculatively risks shaping them around a prelude that has
+exactly one function in it. What would force an answer: a second prelude function needing an
+internal helper, at which point the non-`pub`-is-simply-absent rule stops being free.
 
 ## Non-goals
 

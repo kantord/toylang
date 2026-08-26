@@ -1,0 +1,12 @@
+# `pub` currently has no effect on a program's own file -- nothing imports from one yet -- but
+# the grammar accepts it uniformly with the prelude's, and this pins that a pub fn works exactly
+# like an ordinary one.
+program: |
+  pub fn double(x: Int) -> Int = x * 2
+
+  double(21)
+
+output: |
+  42
+
+node_types: [application, arith.mul, int, var]

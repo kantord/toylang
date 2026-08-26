@@ -111,4 +111,4 @@ output: |
   Fizz
   Buzz
 
-node_types: [arith.add, arith.rem, builtin.range, builtin.str, builtin.unlines, compare.eq, conditional, int, local, map-over, pipe, str]
+node_types: [application, arith.add, arith.rem, builtin.extent, builtin.range, builtin.str, builtin.tail, compare.eq, concat, conditional, int, local, map-over, pipe, selection.collapse, str, unwrap, var]

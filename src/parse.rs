@@ -35,6 +35,7 @@ enum Tok {
     Int(i64),
     Ident(String),
     Fn,
+    Pub,
     Type,
     If,
     Else,
@@ -74,6 +75,7 @@ impl std::fmt::Display for Tok {
             Tok::Int(n) => return write!(f, "`{n}`"),
             Tok::Ident(name) => return write!(f, "`{name}`"),
             Tok::Fn => "`fn`",
+            Tok::Pub => "`pub`",
             Tok::Type => "`type`",
             Tok::If => "`if`",
             Tok::Else => "`else`",
@@ -157,6 +159,7 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 .expect("a letter or underscore was just confirmed to follow");
             match word {
                 "fn" => Tok::Fn,
+                "pub" => Tok::Pub,
                 "type" => Tok::Type,
                 "if" => Tok::If,
                 "else" => Tok::Else,
@@ -320,7 +323,11 @@ pub fn parse(src: &str) -> Result<File, Error> {
     loop {
         let (tok, _) = p.peek()?;
         match tok {
-            Tok::Fn => defs.push(p.def()?),
+            Tok::Pub => {
+                p.advance()?;
+                defs.push(p.def(true)?);
+            }
+            Tok::Fn => defs.push(p.def(false)?),
             Tok::Type => aliases.push(p.alias()?),
             _ => break,
         }
@@ -332,6 +339,28 @@ pub fn parse(src: &str) -> Result<File, Error> {
         return Err(Error::new(rest_span, format!("expected end of program, found {rest}")));
     }
     Ok(File { aliases, defs, body })
+}
+
+/// A module is definitions only, with no trailing expression -- there is nothing here to run,
+/// only names for a program to import. `pub` marks which ones a program actually receives.
+pub fn parse_module(src: &str) -> Result<Vec<Def>, Error> {
+    let mut p = Cursor { input: LocatingSlice::new(src), bare_ok: true };
+    let mut defs = Vec::new();
+    loop {
+        let (tok, span) = p.peek()?;
+        match tok {
+            Tok::Pub => {
+                p.advance()?;
+                defs.push(p.def(true)?);
+            }
+            Tok::Fn => defs.push(p.def(false)?),
+            Tok::Eof => break,
+            other => {
+                return Err(Error::new(span, format!("expected `fn` or end of module, found {other}")));
+            }
+        }
+    }
+    Ok(defs)
 }
 
 struct Cursor<'i> {
@@ -396,7 +425,7 @@ impl<'i> Cursor<'i> {
     ///
     /// Both annotations are required by the grammar rather than by the checker, which is what
     /// makes the message point at the missing annotation instead of at an inference failure.
-    fn def(&mut self) -> Result<Def, Error> {
+    fn def(&mut self, is_pub: bool) -> Result<Def, Error> {
         let start = self.eat(Tok::Fn)?;
         let (name, _) = self.eat_ident("a name")?;
         self.eat(Tok::LParen)?;
@@ -426,7 +455,7 @@ impl<'i> Cursor<'i> {
         let body = self.expr(0);
         self.bare_ok = true;
         let body = body?;
-        Ok(Def { span: start.to(body.span()), name, param, ret, body })
+        Ok(Def { span: start.to(body.span()), name, param, ret, body, is_pub })
     }
 
     /// `Str`, `Int`, `Bool`, or `Vec<T>`.

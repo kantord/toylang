@@ -114,7 +114,6 @@ fn builtin_tag(which: Builtin) -> &'static str {
     match which {
         Builtin::IntToStr => "str",
         Builtin::Range => "range",
-        Builtin::Unlines => "unlines",
         Builtin::Collect => "collect",
         Builtin::JsonLines => "jsonlines",
         Builtin::Extent => "extent",

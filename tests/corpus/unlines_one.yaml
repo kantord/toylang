@@ -1,7 +1,12 @@
+# unlines is prelude.toy source now, not a per-backend builtin -- pinned on two backends of
+# different shape (dynamic and statically typed) to show it compiles as an ordinary recursive
+# function call in both, not through special-cased codegen.
 program: |
   unlines(["only"])
 
 output: |
   only
 
-node_types: [builtin.unlines, str, vec-literal]
+snapshot: [js, go]
+
+node_types: [application, builtin.extent, builtin.tail, compare.eq, concat, conditional, int, selection.collapse, str, unwrap, var, vec-literal]

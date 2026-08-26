@@ -1,0 +1,55 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+type tlOpt[T any] struct {
+	ok bool
+	v  T
+}
+
+func tlFail(msg string) {
+	fmt.Fprintln(os.Stderr, "toylang: "+msg)
+	os.Exit(1)
+}
+
+func tlInt(n int32) int32 { return n }
+
+func tlAt[T any](v []T, i int32) tlOpt[T] {
+	n := int32(len(v))
+	if i < 0 {
+		i = n + i
+	}
+	if i < 0 || i >= n {
+		return tlOpt[T]{}
+	}
+	return tlOpt[T]{true, v[i]}
+}
+
+func tlTail[T any](v []T) tlOpt[[]T] {
+	if len(v) == 0 {
+		return tlOpt[[]T]{}
+	}
+	return tlOpt[[]T]{true, v[1:]}
+}
+
+func tlUnwrap[T any](o tlOpt[T]) T {
+	if !o.ok {
+		tlFail("unwrapped a value that is not there")
+	}
+	return o.v
+}
+
+func v_unlines(v_v []string) string {
+	return func() string { if (int32(len(v_v)) == tlInt(0)) { return "" }; return func() string { if (int32(len(v_v)) == tlInt(1)) { return tlUnwrap(tlAt(v_v, tlInt(0))) }; return ((tlUnwrap(tlAt(v_v, tlInt(0))) + "\n") + v_unlines(tlUnwrap(tlTail(v_v)))) }() }()
+}
+
+func main() {
+	fmt.Println(v_unlines([]string{"only"}))
+}

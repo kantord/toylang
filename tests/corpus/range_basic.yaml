@@ -7,4 +7,4 @@ output: |
   2
   3
 
-node_types: [builtin.range, builtin.str, builtin.unlines, int, local, map-over, pipe]
+node_types: [application, builtin.extent, builtin.range, builtin.str, builtin.tail, compare.eq, concat, conditional, int, local, map-over, pipe, selection.collapse, str, unwrap, var]

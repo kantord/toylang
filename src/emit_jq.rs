@@ -263,7 +263,6 @@ fn expr(t: &Tir) -> String {
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("({} | tostring)", expr(arg)),
             Builtin::Range => format!("[ range(0; {}) ]", expr(arg)),
-            Builtin::Unlines => format!("({} | join(\"\\n\"))", expr(arg)),
             // `canonical` reorders a record's keys but leaves the *value*, not text; `tojson`
             // is what turns each element into the same compact JSON string `-c` would print for
             // it, matching every other backend's per-element encoding.

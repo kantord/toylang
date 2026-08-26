@@ -92,6 +92,9 @@ pub struct Def {
     pub ret: TypeExpr,
     pub body: Expr,
     pub span: Span,
+    /// Whether a module's prelude includes this definition when compiling a program. Meaningless
+    /// outside a module today, since nothing yet imports from a program file.
+    pub is_pub: bool,
 }
 
 /// Zero or more definitions followed by the expression that is the program.

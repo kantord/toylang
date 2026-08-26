@@ -116,7 +116,74 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 .to_string(),
         ));
     }
-    Ok(tir::Program { funcs, body, input, uses_lines: lines_used.get() })
+    Ok(tir::Program { funcs: prune_unreachable(funcs, &body), body, input, uses_lines: lines_used.get() })
+}
+
+/// Every function the program's body can actually reach, directly or through calls a reached
+/// function itself makes. `pub fn`s from the prelude are always merged into `file.defs` before
+/// this runs, so a `pub` one the program never calls needs pruning here to keep it out of a
+/// backend's output and out of `tags::node_types` -- and an unused function the program wrote
+/// itself is pruned by the same pass, for the same reason.
+fn prune_unreachable(funcs: Vec<tir::Func>, body: &Tir) -> Vec<tir::Func> {
+    let mut reached: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut worklist: Vec<String> = Vec::new();
+    calls_in(body, &mut worklist);
+    while let Some(name) = worklist.pop() {
+        if reached.insert(name.clone())
+            && let Some(f) = funcs.iter().find(|f| f.name == name)
+        {
+            calls_in(&f.body, &mut worklist);
+        }
+    }
+    funcs.into_iter().filter(|f| reached.contains(&f.name)).collect()
+}
+
+/// Every function name a `Kind::Call` inside `t` names, collected recursively through every
+/// other kind of node.
+fn calls_in(t: &Tir, out: &mut Vec<String>) {
+    if let Kind::Call { func, arg } = &t.kind {
+        out.push(func.clone());
+        calls_in(arg, out);
+        return;
+    }
+    match &t.kind {
+        Kind::Str(_)
+        | Kind::Int(_)
+        | Kind::Var(_)
+        | Kind::Local(_)
+        | Kind::Input
+        | Kind::Lines => {}
+        Kind::VecLit(items) => items.iter().for_each(|i| calls_in(i, out)),
+        Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| calls_in(v, out)),
+        Kind::Call { .. } => unreachable!("handled above"),
+        Kind::Concat(l, r) => {
+            calls_in(l, out);
+            calls_in(r, out);
+        }
+        Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => {
+            calls_in(lhs, out);
+            calls_in(rhs, out);
+        }
+        Kind::Cond { cond, then, otherwise } => {
+            calls_in(cond, out);
+            calls_in(then, out);
+            calls_in(otherwise, out);
+        }
+        Kind::Bind { value, body, .. } | Kind::Map { source: value, body, .. } => {
+            calls_in(value, out);
+            calls_in(body, out);
+        }
+        Kind::Select { source, pred, .. } => {
+            calls_in(source, out);
+            calls_in(pred, out);
+        }
+        Kind::Field { base, .. } | Kind::Unwrap { base } => calls_in(base, out),
+        Kind::Builtin { arg, .. } => calls_in(arg, out),
+        Kind::Index { base, index, .. } => {
+            calls_in(base, out);
+            calls_in(index, out);
+        }
+    }
 }
 
 /// Functions the language provides. Unary like every other function, so they need no special
@@ -126,7 +193,6 @@ fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
     Some(match name {
         "str" => (tir::Builtin::IntToStr, Sig { param: Type::Int, ret: Type::Str }),
         "range" => (tir::Builtin::Range, Sig { param: Type::Int, ret: vec_of(Type::Int) }),
-        "unlines" => (tir::Builtin::Unlines, Sig { param: vec_of(Type::Str), ret: Type::Str }),
         "collect" => (tir::Builtin::Collect, Sig { param: Type::Lines, ret: vec_of(Type::Str) }),
         _ => return None,
     })

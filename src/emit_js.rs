@@ -343,7 +343,6 @@ fn expr(t: &Tir) -> String {
             Builtin::Range => {
                 format!("Array.from({{ length: Math.max(0, {}) }}, (_, i) => i)", expr(arg))
             }
-            Builtin::Unlines => format!("{}.join(\"\\n\")", expr(arg)),
             Builtin::JsonLines => {
                 let elem = arg.ty.elem().expect("checked to be a Vec");
                 let e = "e0".to_string();

@@ -1,0 +1,26 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+// Absence is a sentinel: toylang has no null value, so nothing else can produce one.
+const tl_none = Symbol("none");
+function tl_at(v, i, depth) {
+  if (depth > 0) return v.map((e) => tl_at(e, i, depth - 1));
+  const n = v.length;
+  if (i < 0) i = n + i;
+  if (i < 0 || i >= n) return tl_none;
+  return v[i];
+}
+function tl_tail(v) {
+  if (v.length === 0) return tl_none;
+  return v.slice(1);
+}
+function tl_unwrap(v, depth) {
+  if (depth > 0) return v.map((e) => tl_unwrap(e, depth - 1));
+  if (v === tl_none) { throw new Error("toylang: unwrapped a value that is not there"); }
+  return v;
+}
+function v_unlines(v_v) {
+  return ((v_v.length === 0) ? "" : ((v_v.length === 1) ? tl_unwrap(tl_at(v_v, 0, 0), 0) : ((tl_unwrap(tl_at(v_v, 0, 0), 0) + "\n") + v_unlines(tl_unwrap(tl_tail(v_v), 0)))));
+}
+console.log(v_unlines(["only"]));

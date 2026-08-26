@@ -1089,17 +1089,6 @@ impl<'ctx> Emitter<'ctx> {
                             self.ctx.i64_type().const_int(Self::columns(elem), false);
                         self.call_rt(self.rt.vec_concat, &[arg, ncols.into()], "concat")?
                     }
-                    // Reuse the joiner the printer uses, with no brackets around it.
-                    Builtin::Unlines => {
-                        let open = self.string_const("");
-                        let sep = self.string_const("\n");
-                        let close = self.string_const("");
-                        self.call_rt(
-                            self.rt.join,
-                            &[arg, open.into(), sep.into(), close.into()],
-                            "unlines",
-                        )?
-                    }
                 }
             }
 

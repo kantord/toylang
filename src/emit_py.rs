@@ -289,7 +289,6 @@ fn expr(t: &Tir) -> String {
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("str({})", expr(arg)),
             Builtin::Range => format!("tl_range({})", expr(arg)),
-            Builtin::Unlines => format!("\"\\n\".join({})", expr(arg)),
             Builtin::JsonLines => {
                 let elem = arg.ty.elem().expect("checked to be a Vec");
                 let e = "e0".to_string();
