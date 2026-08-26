@@ -1977,6 +1977,49 @@ ever built, would not invalidate this: `stdin`/`lines` as a pull-shaped surface 
 event-loop-driven scheduler underneath is exactly how Python's `asyncio` and JavaScript's async
 iterators are actually built, precedent rather than a hope.
 
+## DECIDED: `inputs`, eager, not an answer to Q1 either
+
+jq's own `inputs` -- every remaining JSON value on stdin, one per line -- was the obvious next
+question once Field distributing over a Vec turned out to only need what CONTEXT.md's Spec
+glossary already calls Keep and Narrow "streamable" for: an iterator, not storage. That
+observation does not, on its own, get toylang a lazy `Stream<T>`,
+because a program still has to terminate and return one value
+([Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) again): nothing can
+consume a stream incrementally forever today, so the only thing genuine laziness would buy is
+memory, not a new capability. `inputs` is eager instead: a bare keyword, typed `Vec<T>`, `T`
+inferred from first use exactly the way `input`'s own type is -- read in full, parsed, collected,
+before the program body runs. Ergonomics, not the general question; Q1 stays exactly as open as it
+was.
+
+A more general alternative was considered first and rejected on a concrete, checkable ground
+rather than taste: a `parse(s: Str) -> T` builtin, composing as `collect(lines) | map(parse(.))`,
+would have been more reusable (also parsing a JSON string embedded in an ordinary field) and
+would have needed no third stdin mode at all. It does not work with the checker as it stands.
+`expect()` threads an expected type into exactly one form, `Expr::Input`; a `map` body is always
+`synth`ed bottom-up, with nothing flowing in from whatever consumes the map's result. `parse(.)`
+inside `map` has no expected type to resolve `T` against, the same hole an empty `[]` literal
+falls into and for the same reason. Fixing that generally -- expected types flowing through `Map`,
+at minimum -- is real, separate checker work, not scoped to this feature, and this would only be
+its first forcing use case.
+
+All three stdin readers are now mutually exclusive, not just `input` and `lines` as before, and
+the third leg was not a judgment call: Python's `input` reads all of stdin to EOF as one buffer
+(`sys.stdin.buffer.read()`) before parsing, leaving nothing for `inputs` to read afterward even in
+principle, and jq needs a different invocation flag for raw-line mode (`-R -n`) than for
+parsed-JSON mode (`-n` alone) -- one process cannot run with both. `inputs` and `lines` could not
+have coexisted on either backend regardless of what this document decided.
+
+Native's `tl_read_inputs` (`runtime/toylang.c`) reuses both existing pieces rather than needing a
+new parser: the same `getline` loop `tl_collect_lines` already has for "one line at a time," and
+the same descriptor-driven `tl_parse` `tl_read_input` already has for "one JSON value, this
+shape" -- `tl_parse` was already structured around an arbitrary buffer range, not "all of stdin,"
+so looping it per line needed no changes to it at all. The one new piece of care: `tl_parse` hands
+a record back as one packed blob, not columnar data, so `tl_read_inputs` spreads it into the
+struct-of-arrays layout itself -- a fourth site for the invariant
+[three other construction sites](research-log/one-invariant-three-independent-construction-sites.md)
+each violated independently, verified here against a corpus case
+(`tests/corpus/inputs_records.yaml`) rather than found the way those three were.
+
 ## DECIDED: `jsonlines`, and the jq tutorial reproduces in full
 
 jq's own tutorial (jqlang.org/tutorial) has six filters. Five already matched real jq byte for

@@ -630,6 +630,62 @@ int64_t tl_read_input(const tl_str *descriptor) {
     return value;
 }
 
+/* Every remaining JSON value on stdin, one per line, parsed with the same descriptor-driven
+ * grammar tl_read_input uses above and assembled into a proper Vec -- spread into columns when
+ * the element is a record, the same invariant vec_lit and tl_at already keep, since tl_parse
+ * hands back a record as one packed blob rather than already-columnar data.
+ *
+ * A blank line is skipped rather than fed to tl_parse, which would fail trying to parse nothing.
+ */
+tl_vec *tl_read_inputs(const tl_str *descriptor) {
+    char *t = tl_alloc((size_t)descriptor->len + 1);
+    memcpy(t, descriptor->ptr, (size_t)descriptor->len);
+    t[descriptor->len] = 0;
+
+    int is_record = t[0] == '{';
+    int64_t ncols = 1;
+    if (is_record) {
+        const char *p = t + 1;
+        ncols = 0;
+        while (*p != ',') {
+            ncols = ncols * 10 + (*p++ - '0');
+        }
+    }
+
+    tl_list items = {NULL, 0, 0};
+    char *line = NULL;
+    size_t cap = 0;
+    ssize_t len;
+    while ((len = getline(&line, &cap, stdin)) != -1) {
+        tl_json j = {line, line + len};
+        tl_skip_ws(&j);
+        if (j.p == j.end) {
+            continue;
+        }
+        j.p = line;
+        int64_t value = tl_parse(&j, t, "inputs");
+        tl_skip_ws(&j);
+        if (j.p != j.end) {
+            tl_fail("trailing content after the value", "inputs");
+        }
+        tl_list_push(&items, value);
+    }
+    free(line);
+
+    tl_vec *out = tl_vec_new(items.len, ncols);
+    for (int64_t i = 0; i < items.len; i++) {
+        if (is_record) {
+            const int64_t *rec = (const int64_t *)items.data[i];
+            for (int64_t c = 0; c < ncols; c++) {
+                out->cols[c][i] = rec[c];
+            }
+        } else {
+            out->cols[0][i] = items.data[i];
+        }
+    }
+    return out;
+}
+
 /* One line of stdin at a time via getline, in contrast to tl_read_input just above, which reads
  * the whole stream before anything else can run. getline reuses the same growable buffer across
  * calls, so each line is copied out to its own allocation before being stored; the buffer would

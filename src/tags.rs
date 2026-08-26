@@ -35,6 +35,7 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
         | Kind::Var(_)
         | Kind::Local(_)
         | Kind::Input
+        | Kind::Inputs
         | Kind::Lines => {}
         Kind::VecLit(items) => items.iter().for_each(|i| walk(i, tags)),
         Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| walk(v, tags)),
@@ -91,6 +92,7 @@ fn tag(kind: &Kind) -> String {
         Kind::Builtin { which, .. } => format!("builtin.{}", builtin_tag(*which)),
         Kind::Unwrap { .. } => "unwrap".into(),
         Kind::Index { .. } => "selection.collapse".into(),
+        Kind::Inputs => "inputs".into(),
     }
 }
 

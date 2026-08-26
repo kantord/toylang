@@ -87,3 +87,7 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [Named functions kept an open question open](named-functions-kept-an-open-question-open.md) --
   extent, concat, and tail were spelled as named builtins rather than as an operator overload or
   a new Spec, specifically so adding them would not force an answer to Q2, which is still open.
+- [A map body cannot infer from what consumes it](a-map-body-cannot-infer-from-what-consumes-it.md)
+  -- expect() threads an expected type into exactly one form, Expr::Input; a map body is always
+  synth'd bottom-up, so a polymorphic parse(s) -> T builtin has nothing to resolve T against
+  inside map(parse(.)), the same hole an empty [] literal falls into.

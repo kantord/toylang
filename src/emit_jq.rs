@@ -17,6 +17,7 @@ use crate::ty::Type;
 /// The binding stdin is read into. jq puts the input in `.`, which this backend needs for the
 /// subject, so it is bound away before the program starts.
 const INPUT: &str = "$t_input";
+const INPUTS: &str = "$t_inputs";
 
 /// jq has no integer type, so 32-bit wrapping is arithmetic on doubles. Addition and
 /// subtraction stay exact because the result never passes 2^33; multiplication does not, since
@@ -62,6 +63,11 @@ pub fn emit(program: &Program) -> String {
     if program.input.is_some() {
         out.push_str(&format!(". as {INPUT} | "));
     }
+    // `-n` (added whenever the invocation has no value already in `.`, run_jq's job) is what
+    // makes `inputs` mean "every value on stdin" rather than "every value after the first."
+    if program.inputs.is_some() {
+        out.push_str(&format!("[inputs] as {INPUTS} | "));
+    }
     // Records are rebuilt in the type's field order, because jq preserves insertion order and
     // an object read from input carries whatever order the input had.
     out.push_str(&canonical(&program.body.ty, &expr(&program.body)));
@@ -102,7 +108,7 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
     fn callees(t: &Tir, out: &mut Vec<String>) {
         match &t.kind {
             Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input
-            | Kind::Lines => {}
+            | Kind::Inputs | Kind::Lines => {}
             Kind::VecLit(items) => items.iter().for_each(|i| callees(i, out)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| callees(v, out));
@@ -183,7 +189,7 @@ fn uses_arith(program: &Program) -> bool {
             Kind::Arith { .. } => true,
             Kind::Cond { cond, then, otherwise } => walk(cond) || walk(then) || walk(otherwise),
             Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input
-            | Kind::Lines => false,
+            | Kind::Inputs | Kind::Lines => false,
             Kind::VecLit(items) => items.iter().any(walk),
             Kind::RecordLit { fields } => fields.iter().any(|(_, v)| walk(v)),
             Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => walk(arg),
@@ -227,6 +233,7 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => format!("${}", user(name)),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
+        Kind::Inputs => INPUTS.to_string(),
         // `lines` has no value of its own -- it is a promise that the real stdin has not been
         // read yet, made good only by `collect`. `.` is never actually inspected.
         Kind::Lines => ".".to_string(),

@@ -26,6 +26,39 @@ fn input_and_lines_cannot_both_be_used() {
     insta::assert_snapshot!(err("fn f(x: Int) -> Int = x\n\nf(input) + (collect(lines) | 0)"));
 }
 
+/// `inputs` reads the same real stdin `input` does, eagerly, so the two cannot coexist any more
+/// than `input` and `lines` can.
+#[test]
+fn input_and_inputs_cannot_both_be_used() {
+    insta::assert_snapshot!(err(
+        "fn f(x: Int) -> Int = x\nfn g(x: Vec<Int>) -> Int = extent(x)\n\nf(input) + g(inputs)"
+    ));
+}
+
+/// Forced by jq specifically, the same way `input`/`lines` is: raw-input mode for `lines` and
+/// parsed-JSON mode for `inputs` are different invocation-wide flags, so one jq process cannot
+/// run a program that asks for both.
+#[test]
+fn lines_and_inputs_cannot_both_be_used() {
+    insta::assert_snapshot!(err(
+        "fn g(x: Vec<Int>) -> Int = extent(x)\n\n(collect(lines) | 0) + g(inputs)"
+    ));
+}
+
+/// Like `input`, `inputs` has no type of its own until it is checked against one.
+#[test]
+fn inputs_needs_a_position_to_check_against() {
+    insta::assert_snapshot!(err("inputs"));
+}
+
+/// Like `input`, every use of `inputs` in one program has to agree on the element type.
+#[test]
+fn inputs_used_at_two_element_types() {
+    insta::assert_snapshot!(err(
+        "fn f(x: Vec<Int>) -> Int = extent(x)\nfn g(x: Vec<Str>) -> Int = extent(x)\n\nf(inputs) + g(inputs)"
+    ));
+}
+
 /// A stream has nothing to print: only `collect` turns it into a value. Caught for the
 /// program's own result, which has no annotation to check against the way a function's return
 /// type does.

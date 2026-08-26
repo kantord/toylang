@@ -37,6 +37,8 @@ pub enum Kind {
     Local(LocalId),
     /// The value read from stdin.
     Input,
+    /// Every remaining JSON value on stdin, one per line, eagerly collected into a `Vec<T>`.
+    Inputs,
     /// The stream of lines read from stdin, read incrementally by whatever consumes it.
     Lines,
     Call {
@@ -154,6 +156,8 @@ pub struct Program {
     pub body: Tir,
     /// The type stdin must have, if the program reads it.
     pub input: Option<Type>,
+    /// The element type each line of stdin parses as, if the program reads `inputs`.
+    pub inputs: Option<Type>,
     /// Whether the program reads `lines`. A separate flag from `input`, since the two are
     /// unrelated readers of the same real stdin and a program using `lines` alone still needs
     /// it connected, even though `input` is `None`.

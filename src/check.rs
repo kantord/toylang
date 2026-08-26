@@ -14,6 +14,9 @@ struct Ctx<'a> {
     subject: Option<(Type, LocalId)>,
     /// The type `input` was checked against, filled in the first time it is used.
     input: &'a RefCell<Option<Type>>,
+    /// The element type `inputs` was checked against, filled in the first time it is used. A
+    /// separate cell from `input`'s: one records a whole value's type, the other one line's.
+    inputs: &'a RefCell<Option<Type>>,
     /// Whether `lines` has already been read. There is only ever one real stdin, so a second
     /// read is refused rather than silently handed nothing, the way a second pass over an
     /// already-consumed iterator would be in a language that let it compile.
@@ -28,6 +31,7 @@ impl Ctx<'_> {
             scope: self.scope.clone(),
             subject,
             input: self.input,
+            inputs: self.inputs,
             lines_used: self.lines_used,
             next_local: self.next_local,
         }
@@ -50,6 +54,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     }
     let sigs = signatures(&file.defs, &aliases)?;
     let input = RefCell::new(None);
+    let inputs = RefCell::new(None);
     let next_local = Cell::new(0);
 
     // Signatures are collected before any body is checked, so a definition may call one that
@@ -62,6 +67,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             scope: vec![(def.param.name.clone(), sig.param.clone())],
             subject: None,
             input: &input,
+            inputs: &inputs,
             lines_used: &lines_used,
             next_local: &next_local,
         };
@@ -88,6 +94,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         scope: Vec::new(),
         subject: None,
         input: &input,
+        inputs: &inputs,
         lines_used: &lines_used,
         next_local: &next_local,
     };
@@ -105,9 +112,12 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         ));
     }
     let input = input.into_inner();
-    // Forced by jq specifically: reading `lines` needs raw-input mode for the whole invocation,
-    // and raw-input mode is what stops `input` from being parsed as JSON at all. The other five
-    // backends have no such conflict, but the language is one language across all six.
+    let inputs = inputs.into_inner();
+    // Forced by the backends, not chosen: Python's `input` reads all of stdin to EOF before
+    // parsing, leaving nothing for anything else to read afterward, and jq needs a different
+    // invocation flag for raw lines (`-R -n`) than for parsed JSON values (`-n` alone) -- one
+    // process cannot run with both. So all three ways of reading the same real stdin are
+    // mutually exclusive, not just `input` and `lines` as before.
     if input.is_some() && lines_used.get() {
         return Err(Error::new(
             file.body.span(),
@@ -116,7 +126,29 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 .to_string(),
         ));
     }
-    Ok(tir::Program { funcs: prune_unreachable(funcs, &body), body, input, uses_lines: lines_used.get() })
+    if input.is_some() && inputs.is_some() {
+        return Err(Error::new(
+            file.body.span(),
+            "a program cannot use both `input` and `inputs`; they read the same real stdin two \
+             different ways"
+                .to_string(),
+        ));
+    }
+    if lines_used.get() && inputs.is_some() {
+        return Err(Error::new(
+            file.body.span(),
+            "a program cannot use both `lines` and `inputs`; they read the same real stdin two \
+             different ways"
+                .to_string(),
+        ));
+    }
+    Ok(tir::Program {
+        funcs: prune_unreachable(funcs, &body),
+        body,
+        input,
+        inputs,
+        uses_lines: lines_used.get(),
+    })
 }
 
 /// Every function the program's body can actually reach, directly or through calls a reached
@@ -152,6 +184,7 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
         | Kind::Var(_)
         | Kind::Local(_)
         | Kind::Input
+        | Kind::Inputs
         | Kind::Lines => {}
         Kind::VecLit(items) => items.iter().for_each(|i| calls_in(i, out)),
         Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| calls_in(v, out)),
@@ -435,6 +468,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         // `input` is only ever checked, never synthesised, for the same reason a lambda is:
         // nothing here says what it contains, and guessing is what the annotation rule avoids.
         Expr::Input { span } => Err(Error::new(*span, "cannot tell what `input` contains")),
+        Expr::Inputs { span } => Err(Error::new(*span, "cannot tell what `inputs` contains")),
 
         Expr::Call { func, func_span, arg, span } => {
             // `select` and `map` are not special syntax, only special names: they are ordinary
@@ -747,6 +781,25 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
             Some(_) => {}
         }
         return Ok(Tir::new(want.clone(), Kind::Input));
+    }
+
+    if let Expr::Inputs { span } = expr {
+        let Some(elem) = want.elem() else {
+            return Err(Error::new(*span, format!("`inputs` produces a Vec, but {want} is wanted here")));
+        };
+        let elem = elem.clone();
+        let mut slot = ctx.inputs.borrow_mut();
+        match slot.as_ref() {
+            None => *slot = Some(elem),
+            Some(prev) if *prev != elem => {
+                return Err(Error::new(
+                    *span,
+                    format!("`inputs` is used as Vec<{prev}> here and as {want} elsewhere"),
+                ));
+            }
+            Some(_) => {}
+        }
+        return Ok(Tir::new(want.clone(), Kind::Inputs));
     }
 
     let found = synth(ctx, expr)?;

@@ -72,8 +72,10 @@ fn build(src: &str, path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
 /// left waiting on a terminal.
 fn run(src: &str, backend: Backend) -> Result<String, Box<dyn std::error::Error>> {
     // A program reading `lines` also takes this branch: it needs the real stdin left alone, not
-    // drained into a Rust String, so each backend can read it incrementally for itself.
-    if toylang::compile(src)?.input.is_none() {
+    // drained into a Rust String, so each backend can read it incrementally for itself. `inputs`
+    // is eager like `input`, not incremental like `lines`, so it needs the same up-front read.
+    let program = toylang::compile(src)?;
+    if program.input.is_none() && program.inputs.is_none() {
         return toylang::run_on(src, None, backend);
     }
     let mut stdin = String::new();

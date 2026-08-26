@@ -5,6 +5,8 @@ use crate::ty::Type;
 /// The global the input value is bound to before the chunk runs. Unspellable in source, since
 /// every source name is prefixed.
 pub const INPUT: &str = "t_input";
+/// The global every remaining stdin line, already parsed, is bound to before the chunk runs.
+pub const INPUTS: &str = "t_inputs";
 
 const SELECT_HELPER: &str = "\
 local function tl_select(src, pred)
@@ -315,7 +317,13 @@ struct Helpers {
 fn used_helpers(program: &Program) -> Helpers {
     fn walk(t: &Tir, used: &mut Helpers) {
         match &t.kind {
-            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input | Kind::Lines => {}
+            Kind::Str(_)
+            | Kind::Int(_)
+            | Kind::Var(_)
+            | Kind::Local(_)
+            | Kind::Input
+            | Kind::Inputs
+            | Kind::Lines => {}
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -386,6 +394,7 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
+        Kind::Inputs => INPUTS.to_string(),
         // `lines` has no value of its own -- it is a promise that the real stdin has not been
         // read yet, made good only by `collect`. `nil` is never actually inspected.
         Kind::Lines => "nil".to_string(),

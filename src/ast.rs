@@ -141,6 +141,9 @@ pub enum Expr {
     /// The value read from stdin. It has no type of its own and can only be checked against an
     /// expected one, which is the same rule the draft gives for lambdas.
     Input { span: Span },
+    /// Every remaining JSON value on stdin, one per line, collected eagerly into a `Vec<T>`.
+    /// Like `input`, its element type comes only from where it is used.
+    Inputs { span: Span },
     /// The stream of lines read from stdin. Unspellable as a type, since it has exactly one
     /// producer and one consumer and nothing else needs to name it: the checker rejects a
     /// second use rather than accepting a second stream, since there is only ever one real
@@ -168,6 +171,7 @@ impl Expr {
             | Expr::Cond { span, .. }
             | Expr::Field { span, .. }
             | Expr::Input { span }
+            | Expr::Inputs { span }
             | Expr::Lines { span }
             | Expr::Pipe { span, .. }
             | Expr::Binary { span, .. } => *span,

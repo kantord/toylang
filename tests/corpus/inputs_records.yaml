@@ -1,0 +1,19 @@
+# NDJSON in, one record per line, no wrapping [...] the way `input` alone would need. Also a
+# regression guard for native's struct-of-arrays spread: tl_read_inputs assembles the packed
+# record tl_parse hands back for each line into proper columns, the same invariant vec_lit and
+# concat/tail already keep.
+program: |
+  fn names(users: Vec<{name: Str, age: Int}>) -> Vec<Str> =
+      users | select(.age >= 18) | .[].name
+
+  names(inputs)
+
+input: |
+  {"name": "ada", "age": 36}
+  {"name": "bo", "age": 9}
+  {"name": "cy", "age": 21}
+
+output: |
+  ["ada","cy"]
+
+node_types: [application, compare.ge, inputs, int, local, pipe, projection, selection.narrow, var]

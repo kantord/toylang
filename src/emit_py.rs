@@ -18,6 +18,7 @@ use crate::ty::Type;
 /// The binding the input value is read into. Unspellable in source, since every source name is
 /// prefixed.
 const INPUT: &str = "t_input";
+const INPUTS: &str = "t_inputs";
 
 const FAIL_HELPER: &str = r#"def tl_fail(msg):
     sys.stderr.write("toylang: " + msg + "\n")
@@ -147,6 +148,9 @@ pub fn emit(program: &Program) -> String {
             "{INPUT} = json.loads(sys.stdin.buffer.read().decode(\"utf-8\"))\n"
         ));
     }
+    if program.inputs.is_some() {
+        decls.push_str(&format!("{INPUTS} = [json.loads(_l) for _l in sys.stdin]\n"));
+    }
 
     let body = expr(&program.body);
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
@@ -168,7 +172,7 @@ pub fn emit(program: &Program) -> String {
 
     let mut helpers = false;
     let mut out = String::from("import sys\n");
-    if program.input.is_some() {
+    if program.input.is_some() || program.inputs.is_some() {
         out.push_str("import json\n");
     }
     out.push('\n');
@@ -256,6 +260,7 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
+        Kind::Inputs => INPUTS.to_string(),
         // `lines` has no value of its own -- it is a promise that the real stdin has not been
         // read yet, made good only by `collect`. `None` is never actually inspected.
         Kind::Lines => "None".to_string(),

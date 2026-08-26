@@ -40,6 +40,7 @@ enum Tok {
     If,
     Else,
     Input,
+    Inputs,
     Lines,
     Plus,
     Minus,
@@ -80,6 +81,7 @@ impl std::fmt::Display for Tok {
             Tok::If => "`if`",
             Tok::Else => "`else`",
             Tok::Input => "`input`",
+            Tok::Inputs => "`inputs`",
             Tok::Lines => "`lines`",
             Tok::Plus => "`+`",
             Tok::Minus => "`-`",
@@ -164,6 +166,7 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "if" => Tok::If,
                 "else" => Tok::Else,
                 "input" => Tok::Input,
+                "inputs" => Tok::Inputs,
                 "lines" => Tok::Lines,
                 name => Tok::Ident(name.to_string()),
             }
@@ -698,6 +701,7 @@ impl<'i> Cursor<'i> {
             Tok::Str(text) => Ok(Expr::Str { text, span }),
             Tok::Int(value) => Ok(Expr::Int { value, span }),
             Tok::Input => Ok(Expr::Input { span }),
+            Tok::Inputs => Ok(Expr::Inputs { span }),
             Tok::Lines => Ok(Expr::Lines { span }),
 
             // `.name` is field access on the subject, so the leading dot yields `.` and the
@@ -764,6 +768,13 @@ impl<'i> Cursor<'i> {
 fn starts_bare_argument(tok: &Tok) -> bool {
     matches!(
         tok,
-        Tok::Str(_) | Tok::Int(_) | Tok::Input | Tok::Lines | Tok::Dot | Tok::LBracket | Tok::Ident(_)
+        Tok::Str(_)
+            | Tok::Int(_)
+            | Tok::Input
+            | Tok::Inputs
+            | Tok::Lines
+            | Tok::Dot
+            | Tok::LBracket
+            | Tok::Ident(_)
     )
 }

@@ -107,6 +107,25 @@ pub fn run_on(
         (None, _) => None,
     };
 
+    // `inputs` is eager like `input`, not incremental like `lines`, so it goes through the same
+    // validate-then-re-serialize step: every backend receives canonical bytes, one compact JSON
+    // value per line, rather than whatever formatting the original text happened to use.
+    let inputs_values = match (&program.inputs, stdin) {
+        (Some(elem_ty), Some(text)) => {
+            let mut values = Vec::new();
+            for line in text.lines().filter(|l| !l.trim().is_empty()) {
+                let value: serde_json::Value = serde_json::from_str(line)?;
+                input::validate(&value, elem_ty, "inputs")?;
+                values.push(value);
+            }
+            Some(values)
+        }
+        (Some(elem_ty), None) => {
+            return Err(format!("this program reads inputs, of type Vec<{elem_ty}>").into());
+        }
+        (None, _) => None,
+    };
+
     // What a backend's stdin should be connected to. `input` always has known bytes: the
     // re-serialized, already-validated value. `lines` has known bytes only when a caller (a
     // corpus fixture, most often) supplied them directly -- and when it does, they are piped in
@@ -120,12 +139,14 @@ pub fn run_on(
             Some(text) => Feed::Text(text.to_string()),
             None => Feed::Live,
         }
+    } else if let Some(values) = &inputs_values {
+        Feed::Text(values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\n"))
     } else {
         Feed::Text(value.as_ref().map(|v| v.to_string()).unwrap_or_default())
     };
 
     match backend {
-        Backend::Lua => run_lua(&emit_lua::emit(&program), value.as_ref(), &feed),
+        Backend::Lua => run_lua(&emit_lua::emit(&program), value.as_ref(), inputs_values.as_ref(), &feed),
         Backend::Js => run_node(&emit_js::emit(&program), &feed),
         Backend::Jq => run_jq(
             &emit_jq::emit(&program),
@@ -270,11 +291,16 @@ fn run_jq(
 fn run_lua(
     source: &str,
     value: Option<&serde_json::Value>,
+    inputs_values: Option<&Vec<serde_json::Value>>,
     feed: &Feed,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let lua = mlua::Lua::new();
     if let Some(value) = value {
         lua.globals().set(emit_lua::INPUT, input::to_lua(&lua, value)?)?;
+    }
+    if let Some(values) = inputs_values {
+        let array = serde_json::Value::Array(values.clone());
+        lua.globals().set(emit_lua::INPUTS, input::to_lua(&lua, &array)?)?;
     }
     // mlua is embedded in this same process, so `io.lines()` in the emitted source reads the
     // real stdin directly -- verified against a live pipe, and exactly what a `lines` program

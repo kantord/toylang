@@ -1,0 +1,5 @@
+---
+source: tests/streams.rs
+expression: "err(\"fn f(x: Int) -> Int = x\\nfn g(x: Vec<Int>) -> Int = extent(x)\\n\\nf(input) + g(inputs)\")"
+---
+a program cannot use both `input` and `inputs`; they read the same real stdin two different ways (at byte 62)

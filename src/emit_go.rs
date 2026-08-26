@@ -22,6 +22,7 @@ use crate::ty::Type;
 /// The binding the input value is read into. Unspellable in source, since every source name is
 /// prefixed.
 const INPUT: &str = "t_input";
+const INPUTS: &str = "t_inputs";
 
 /// Absence is a field rather than a nil pointer: `Opt<Vec<T>>` would otherwise have two
 /// spellings of empty, and a nil slice is a perfectly ordinary present value here.
@@ -219,6 +220,9 @@ pub fn emit(program: &Program) -> String {
     if let Some(ty) = &program.input {
         ctx.ty(ty);
     }
+    if let Some(ty) = &program.inputs {
+        ctx.ty(ty);
+    }
     records.sort_by_key(|t| t.to_string());
 
     let e = Emitter { records };
@@ -255,6 +259,15 @@ pub fn emit(program: &Program) -> String {
             "\tif err := json.NewDecoder(os.Stdin).Decode(&{INPUT}); err != nil {{\n\t\ttlFail(err.Error())\n\t}}\n"
         ));
     }
+    if let Some(ty) = &program.inputs {
+        // Decode in a loop until io.EOF rather than reading one array token: the wire format is
+        // consecutive top-level JSON values, one per line, not a single `[...]`.
+        decls.push_str(&format!(
+            "\tvar {INPUTS} []{}\n\t{{\n\t\tdec := json.NewDecoder(os.Stdin)\n\t\tfor {{\n\t\t\tvar item {}\n\t\t\tif err := dec.Decode(&item); err != nil {{\n\t\t\t\tif err == io.EOF {{\n\t\t\t\t\tbreak\n\t\t\t\t}}\n\t\t\t\ttlFail(err.Error())\n\t\t\t}}\n\t\t\t{INPUTS} = append({INPUTS}, item)\n\t\t}}\n\t}}\n",
+            e.go_type(ty),
+            e.go_type(ty)
+        ));
+    }
     let body = e.expr(&program.body);
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
     let printed = if program.body.ty == Type::Str {
@@ -272,7 +285,7 @@ pub fn emit(program: &Program) -> String {
     let unwrap = uses("tlUnwrap(");
     let arith = uses("tlDiv(") || uses("tlRem(");
     let collect = uses("tlCollectLines(");
-    let fail = unwrap || arith || program.input.is_some();
+    let fail = unwrap || arith || program.input.is_some() || program.inputs.is_some();
     let quote = uses("tlQuote(");
     let join = uses("tlJoin(");
 
@@ -307,15 +320,18 @@ pub fn emit(program: &Program) -> String {
 
     let mut imports = BTreeSet::new();
     imports.insert("fmt");
-    if fail || program.input.is_some() || collect {
+    if fail || program.input.is_some() || program.inputs.is_some() || collect {
         imports.insert("os");
     }
     if collect {
         imports.insert("bufio");
         imports.insert("bytes");
     }
-    if program.input.is_some() {
+    if program.input.is_some() || program.inputs.is_some() {
         imports.insert("encoding/json");
+    }
+    if program.inputs.is_some() {
+        imports.insert("io");
     }
     if join || quote || used.jsonlines {
         imports.insert("strings");
@@ -387,7 +403,13 @@ impl Collect<'_> {
     fn walk(&mut self, t: &Tir) {
         self.ty(&t.ty);
         match &t.kind {
-            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input | Kind::Lines => {}
+            Kind::Str(_)
+            | Kind::Int(_)
+            | Kind::Var(_)
+            | Kind::Local(_)
+            | Kind::Input
+            | Kind::Inputs
+            | Kind::Lines => {}
             Kind::VecLit(items) => items.iter().for_each(|i| self.walk(i)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| self.walk(v));
@@ -510,6 +532,7 @@ impl Emitter {
             Kind::Var(name) => self.user(name),
             Kind::Local(id) => self.local(*id),
             Kind::Input => INPUT.to_string(),
+            Kind::Inputs => INPUTS.to_string(),
         // `lines` has no value of its own -- it is a promise that the real stdin has not been
         // read yet, made good only by `collect`. The empty struct is never actually inspected.
         Kind::Lines => "struct{}{}".to_string(),

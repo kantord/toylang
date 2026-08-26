@@ -5,6 +5,7 @@ use crate::ty::Type;
 /// The binding the input value is read into. Unspellable in source, since every source name is
 /// prefixed.
 const INPUT: &str = "t_input";
+const INPUTS: &str = "t_inputs";
 
 const SELECT_HELPER: &str = "\
 function tl_select(src, pred) {
@@ -149,6 +150,11 @@ pub fn emit(program: &Program) -> String {
             "const {INPUT} = JSON.parse(require(\"fs\").readFileSync(0, \"utf8\"));\n"
         ));
     }
+    if program.inputs.is_some() {
+        out.push_str(&format!(
+            "const {INPUTS} = require(\"fs\").readFileSync(0, \"utf8\").split(\"\\n\").filter((l) => l.length > 0).map((l) => JSON.parse(l));\n"
+        ));
+    }
 
     let body = expr(&program.body);
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
@@ -239,7 +245,13 @@ struct Helpers {
 fn used_helpers(program: &Program) -> Helpers {
     fn walk(t: &Tir, used: &mut Helpers) {
         match &t.kind {
-            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input | Kind::Lines => {}
+            Kind::Str(_)
+            | Kind::Int(_)
+            | Kind::Var(_)
+            | Kind::Local(_)
+            | Kind::Input
+            | Kind::Inputs
+            | Kind::Lines => {}
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -306,6 +318,7 @@ fn expr(t: &Tir) -> String {
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
+        Kind::Inputs => INPUTS.to_string(),
         // `lines` has no value of its own -- it is a promise that the real stdin has not been
         // read yet, made good only by `collect`. `undefined` is never actually inspected.
         Kind::Lines => "undefined".to_string(),

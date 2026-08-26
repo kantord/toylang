@@ -62,3 +62,10 @@ A fourth site -- `tl_vec_tail` and `tl_vec_concat`, added later -- had the chanc
 same invariant and did not, having been written as a generic loop over `ncols` from the start.
 See [named functions kept an open question open](named-functions-kept-an-open-question-open.md)
 for what those two were added for.
+
+A fifth site, `tl_read_inputs`, held for the same reason and for a more specific one: `tl_parse`
+hands a record back as one packed blob, not columnar data, the same shape `vec_lit`'s own input
+(a record literal's value) already arrives in, so spreading it into columns was the already-known
+move rather than a new one. See
+[a map body cannot infer from what consumes it](a-map-body-cannot-infer-from-what-consumes-it.md)
+for why `inputs` exists as its own keyword rather than a more general builtin.

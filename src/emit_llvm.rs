@@ -55,6 +55,7 @@ struct Runtime<'ctx> {
     collect_lines: FunctionValue<'ctx>,
     rec_set: FunctionValue<'ctx>,
     read_input: FunctionValue<'ctx>,
+    read_inputs: FunctionValue<'ctx>,
     rec_from_vec: FunctionValue<'ctx>,
     at: FunctionValue<'ctx>,
     opt_is_some: FunctionValue<'ctx>,
@@ -182,6 +183,11 @@ impl<'ctx> Emitter<'ctx> {
             read_input: module.add_function(
                 "tl_read_input",
                 i64t.fn_type(&[ptr.into()], false),
+                None,
+            ),
+            read_inputs: module.add_function(
+                "tl_read_inputs",
+                ptr.fn_type(&[ptr.into()], false),
                 None,
             ),
             rec_from_vec: module.add_function(
@@ -1020,6 +1026,14 @@ impl<'ctx> Emitter<'ctx> {
                     .call_rt(self.rt.read_input, &[descriptor.into()], "input")?
                     .into_int_value();
                 self.read_slot(slot, &t.ty)?
+            }
+
+            // Already a proper Vec pointer, unlike Input's raw slot: tl_read_inputs assembles
+            // it itself, so there is nothing here for read_slot to unpack.
+            Kind::Inputs => {
+                let elem = t.ty.elem().expect("checked to be Vec<T>");
+                let descriptor = self.string_const(&Self::descriptor(elem));
+                self.call_rt(self.rt.read_inputs, &[descriptor.into()], "inputs")?
             }
 
             Kind::Field { base, name } => self.field(base, name, &t.ty)?,
