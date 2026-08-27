@@ -2108,6 +2108,14 @@ argument (negation). It is excluded from starting a bare argument entirely, so `
 prefer negation. If `f` is a function name rather than a real variable, the checker rejects it as
 an unbound name, a plain error rather than a silently wrong parse.
 
+Enums added a second exclusion, on the callee side this time: only a lowercase name can be a
+bare call's function. Functions are values under the casing rule, so a capitalised callee was
+already impossible to satisfy; stating it in the parser is what keeps `Shape.circle`, the
+[qualified variant spelling](#decided-enums-nominal-and-json-native), from being swallowed as
+`Shape (.circle)`, since `.` also starts a bare argument. Nothing legal was lost -- a
+capitalised bare call could never have typechecked -- but the rule is a parser fact now rather
+than a checker consequence, which is why it is recorded here.
+
 `select` and `map` are not special syntax any more. They used to be keyword tokens with their own
 grammar production; now they are ordinary identifiers, reserved by name the same way `jsonlines`
 already was, checked inside `Call`'s own `synth` arm rather than through dedicated AST nodes. The
