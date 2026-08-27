@@ -2220,6 +2220,22 @@ tests are needed for what the type now forbids: a nested `jsonlines`, a twice-co
 a `Stream` in a record. The output-equality corpus cannot see any of this, the same blindness
 that made `tests/streaming.rs` necessary.
 
+## DECIDED: Float is JavaScript's double
+
+`Float`, when it is built, is exactly the IEEE 754 binary64 double that every JavaScript
+engine carries: no alternative width, no decimal type. The reasoning is one step long, which
+is why this section is short where the `Int` one is not: every backend has this
+representation natively, JavaScript and jq have *nothing else*, and the carrying measurements
+in [the Int decision](#decided-int-is-32-bits-and-wraps) already established the double's
+53-bit integer ceiling as the portable envelope. Choosing anything else means emulating a
+second float on the two targets that have only this one, to gain a width nothing asked for.
+Recorded as [an ADR](docs/adr/0007-float-is-javascripts-double.md) as well; nothing is
+implemented yet, and `3.14` in the values list above is still only notation.
+
+Representation was the easy half. What the decision opens is tracked as
+[the float-semantics question](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model)
+rather than assumed here.
+
 ## Open questions
 
 Tracked here rather than scattered through the document. Status is one of OPEN (no preferred
@@ -2268,6 +2284,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN, and the constructor for one already works |
 | [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | OPEN; `jsonlines` is now a top-level-only sink with no result type, which removes a placeholder answer without deciding the question |
 | [Q36](#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy) | Does a real module system need imports, multiple files, and enforced privacy? | OPEN, one always-on prelude file exists; nothing beyond it does |
+| [Q37](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model) | How do floats print, and what are NaN and Infinity in a JSON-shaped value model? | OPEN, blocks implementing `Float`; the representation itself is decided |
 
 [Multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) is the one
 question still capable of changing the two-layer section, now that
@@ -2719,6 +2736,29 @@ None of these were needed to get one function (`unlines`) out of six backends' w
 written codegen, and building them speculatively risks shaping them around a prelude that has
 exactly one function in it. What would force an answer: a second prelude function needing an
 internal helper, at which point the non-`pub`-is-simply-absent rule stops being free.
+
+### Q37. How do floats print, and what are NaN and Infinity in a JSON-shaped value model?
+
+The representation is [decided](#decided-float-is-javascripts-double): IEEE 754 binary64,
+JavaScript's number. Everything observable about it is not, and each piece has to survive the
+agreement harness, which checks bytes.
+
+- **Printing.** Every backend must render the same double to the same text, and their defaults
+  do not agree on shortest-roundtrip versus fixed formatting, or on `1e21`-style switchover
+  points. The printer is currently the only specification of output format
+  ([Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return)), which makes
+  this a per-backend conformance rule to be stated by hand, the same lesson as
+  [backends can agree and still be wrong](research-log/backends-can-agree-and-still-be-wrong.md).
+- **NaN and Infinity.** IEEE produces both; JSON can spell neither. A language whose values
+  are JSON-shaped either forbids them (a check on every producing operation), maps them to
+  something at the boundary (jq-style lossiness, the kind this design usually refuses), or
+  admits values its own output cannot carry.
+- **Division by zero.** The Int rule says a zero divisor is the only way arithmetic fails.
+  IEEE says `1.0 / 0.0` is `Infinity`, no failure at all. Keeping both means division's
+  behavior depends on its operand type; unifying means overriding one standard or the other.
+
+None of this blocks anything else, so it waits for `Float` to be forced by a real program the
+way `inputs` and `jsonlines` were.
 
 ## Non-goals
 
