@@ -1,0 +1,12 @@
+# A top-level unit variant prints with quotes. The raw-output rule keys on the type being
+# exactly Str, and Status is not Str, so nothing strips them -- the case plans/enums.md step 1
+# says to pin.
+program: |
+  enum Status { active, inactive }
+
+  active
+
+output: |
+  "active"
+
+node_types: [variant.unit]

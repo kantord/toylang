@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum Status { active, inactive }\\nenum Toggle { active, off }\\n\\nactive\")"
+---
+`active` is a variant of `Status` and `Toggle`; qualify it as `Status.active` or `Toggle.active` (at byte 62)

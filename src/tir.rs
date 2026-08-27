@@ -32,6 +32,12 @@ pub enum Kind {
     /// its position in the type. That is what lets a backend address one by index rather than
     /// searching for it.
     RecordLit { fields: Vec<(String, Tir)> },
+    /// A constructed enum value. The node's type is the enum, which carries the variant list,
+    /// so a backend finds the variant's position (its tag, where one is needed) and its payload
+    /// type there rather than in the node. `payload` is `None` for a unit variant, which every
+    /// backend renders as the bare variant-name string; a payload variant is the single-key
+    /// wrapper (ADR 0009).
+    EnumLit { variant: String, payload: Option<Box<Tir>> },
     /// A name written in the source: today only a function parameter.
     Var(String),
     Local(LocalId),
@@ -269,6 +275,7 @@ fn mentions_inputs(t: &Tir) -> bool {
     match &t.kind {
         Kind::Inputs => true,
         Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input | Kind::Lines => false,
+        Kind::EnumLit { payload, .. } => payload.as_deref().is_some_and(mentions_inputs),
         Kind::VecLit(items) => items.iter().any(mentions_inputs),
         Kind::RecordLit { fields } => fields.iter().any(|(_, v)| mentions_inputs(v)),
         Kind::Call { arg, .. } => mentions_inputs(arg),

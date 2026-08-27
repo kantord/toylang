@@ -255,6 +255,37 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
                 show(inner, &v, depth + 1)
             )
         }
+        // One type, two runtime shapes (ADR 0009): a unit variant is a bare string, a payload
+        // variant a single-key object, so the shape is inspected before rendering. Which payload
+        // follows which key is still the type's knowledge, as everywhere else.
+        Type::Enum { variants, .. } => {
+            let n = format!("n{depth}");
+            let payloads: Vec<&(String, Option<Type>)> =
+                variants.iter().filter(|(_, p)| p.is_some()).collect();
+            if payloads.is_empty() {
+                return format!("JSON.stringify({value})");
+            }
+            let mut body = String::new();
+            if payloads.len() < variants.len() {
+                body.push_str(&format!("typeof {n} === \"string\" ? JSON.stringify({n}) : "));
+            }
+            for (i, (vname, pty)) in payloads.iter().enumerate() {
+                let pty = pty.as_ref().expect("filtered to payload variants");
+                let read = format!("{n}[{}]", js_string(vname));
+                let wrapped = format!(
+                    "({} + {} + \"}}\")",
+                    js_string(&format!("{{\"{vname}\":")),
+                    show(pty, &read, depth + 1)
+                );
+                if i + 1 < payloads.len() {
+                    body.push_str(&format!("{read} !== undefined ? {wrapped} : "));
+                } else {
+                    // The last payload variant needs no test: the type says nothing else is left.
+                    body.push_str(&wrapped);
+                }
+            }
+            format!("(({n}) => {body})({value})")
+        }
         Type::Record(fields) => {
             // Type::record keeps fields sorted, so this order is the type's order. Field names
             // are identifiers, so the JSON key needs no escaping and is one literal.
@@ -276,6 +307,9 @@ fn contains_opt(ty: &Type) -> bool {
         Type::Opt(_) => true,
         Type::Vec(t) => contains_opt(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_opt(t)),
+        Type::Enum { variants, .. } => {
+            variants.iter().any(|(_, p)| p.as_ref().is_some_and(contains_opt))
+        }
         _ => false,
     }
 }
@@ -285,6 +319,9 @@ fn contains_vec(ty: &Type) -> bool {
         Type::Vec(_) => true,
         Type::Opt(t) => contains_vec(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_vec(t)),
+        Type::Enum { variants, .. } => {
+            variants.iter().any(|(_, p)| p.as_ref().is_some_and(contains_vec))
+        }
         _ => false,
     }
 }
@@ -322,6 +359,11 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
+            }
+            Kind::EnumLit { payload, .. } => {
+                if let Some(p) = payload {
+                    walk(p, used);
+                }
             }
             Kind::Call { arg, .. } => walk(arg, used),
             Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
@@ -398,6 +440,13 @@ fn expr(t: &Tir) -> String {
             // `(e) => {a: 1}` is a labelled statement rather than an object.
             format!("({{{}}})", parts.join(", "))
         }
+
+        // The value is its JSON shape: a unit variant is the variant-name string, a payload
+        // variant the single-key object a record already is.
+        Kind::EnumLit { variant, payload } => match payload {
+            None => js_string(variant),
+            Some(p) => format!("({{{}: {}}})", js_string(variant), expr(p)),
+        },
 
         Kind::VecLit(items) => {
             let parts: Vec<String> = items.iter().map(expr).collect();

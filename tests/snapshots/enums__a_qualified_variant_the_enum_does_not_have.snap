@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum Shape { point, circle{r: Int} }\\n\\nShape.square\")"
+---
+`Shape` has no variant `square` (at byte 44)

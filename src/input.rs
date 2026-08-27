@@ -49,6 +49,10 @@ pub fn validate(value: &Value, ty: &Type, path: &str) -> Result<(), String> {
             return Ok(());
         }
 
+        // The checker refuses an enum anywhere in `input`'s or `inputs`'s type until the
+        // enum-aware validation step (plans/enums.md step 5) exists.
+        (Type::Enum { .. }, _) => unreachable!("enum-typed input is rejected by the checker"),
+
         (_, v) => describe(v),
     };
     Err(format!("{path}: expected {ty}, found {found}"))

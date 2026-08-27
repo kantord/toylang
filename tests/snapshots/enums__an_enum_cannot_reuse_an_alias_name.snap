@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"type A = Int\\nenum A { x }\\n\\nstr(1)\")"
+---
+type `A` is defined twice (at byte 13)

@@ -1,9 +1,10 @@
 ---
 source: tests/step_2.rs
-expression: "toylang::parse::parse(&tokens).unwrap()"
+expression: "toylang::parse::parse(r#\"\"a\" + \"b\" + \"c\"\"#).unwrap()"
 ---
 File {
     aliases: [],
+    enums: [],
     defs: [],
     body: Binary {
         op: Add,

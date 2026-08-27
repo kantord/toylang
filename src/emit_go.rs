@@ -113,6 +113,11 @@ func tlRem(a, b int32) int32 {
 }
 "#;
 
+/// Ad-hoc address-of: `&expr` only works on composite literals, and a payload is whatever
+/// expression the program wrote. The call inlines away.
+const PTR_HELPER: &str = r#"func tlPtr[T any](v T) *T { return &v }
+"#;
+
 /// Go folds constant arithmetic exactly and rejects a result that does not fit, which is the
 /// direct opposite of the wrapping rule: `2147483647 + 1` is a compile error rather than
 /// `-2147483648`. Passing every literal through a function makes the expression non-constant, so
@@ -211,7 +216,8 @@ const QUOTE_HELPER: &str = r#"func tlQuote(s string) string {
 pub fn emit(program: &Program) -> String {
     let mut used = Used::default();
     let mut records = Vec::new();
-    let mut ctx = Collect { used: &mut used, records: &mut records };
+    let mut enums = Vec::new();
+    let mut ctx = Collect { used: &mut used, records: &mut records, enums: &mut enums };
     for f in &program.funcs {
         ctx.ty(&f.param_ty);
         ctx.walk(&f.body);
@@ -224,8 +230,9 @@ pub fn emit(program: &Program) -> String {
         ctx.ty(ty);
     }
     records.sort_by_key(|t| t.to_string());
+    enums.sort_by_key(|t| t.to_string());
 
-    let e = Emitter { records };
+    let e = Emitter { records, enums };
 
     let mut decls = String::new();
     for (i, rec) in e.records.iter().enumerate() {
@@ -235,6 +242,19 @@ pub fn emit(program: &Program) -> String {
             // Exported, because encoding/json only fills fields it can see. The `F` prefix keeps
             // the mapping injective, so two toylang fields cannot collide on one Go field.
             decls.push_str(&format!("\tF{name} {} `json:\"{name}\"`\n", e.go_type(ty)));
+        }
+        decls.push_str("}\n\n");
+    }
+
+    // Go has no sum type, so an enum is a tag (the variant's declaration index) plus one
+    // pointer per payload variant, nil except for the one the tag names.
+    for en in &e.enums {
+        let Type::Enum { variants, .. } = en else { unreachable!("only enums are collected") };
+        decls.push_str(&format!("type {} struct {{\n\ttag int32\n", e.go_type(en)));
+        for (i, (_, payload)) in variants.iter().enumerate() {
+            if let Some(p) = payload {
+                decls.push_str(&format!("\tp{i} *{}\n", e.go_type(p)));
+            }
         }
         decls.push_str("}\n\n");
     }
@@ -302,6 +322,7 @@ pub fn emit(program: &Program) -> String {
     }
     for (on, text) in [
         (fail, FAIL_HELPER),
+        (uses("tlPtr("), PTR_HELPER),
         (uses("tlInt("), INT_HELPER),
         (uses("tlMap("), MAP_HELPER),
         (uses("tlSelect("), SELECT_HELPER),
@@ -367,6 +388,9 @@ fn has_scalar(ty: &Type) -> bool {
         Type::Str => false,
         Type::Vec(t) | Type::Opt(t) => has_scalar(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| has_scalar(t)),
+        Type::Enum { variants, .. } => {
+            variants.iter().any(|(_, p)| p.as_ref().is_some_and(has_scalar))
+        }
     }
 }
 
@@ -386,6 +410,7 @@ struct Used {
 struct Collect<'a> {
     used: &'a mut Used,
     records: &'a mut Vec<Type>,
+    enums: &'a mut Vec<Type>,
 }
 
 impl Collect<'_> {
@@ -398,6 +423,16 @@ impl Collect<'_> {
                 }
                 for (_, f) in fields {
                     self.ty(f);
+                }
+            }
+            Type::Enum { variants, .. } => {
+                if !self.enums.contains(t) {
+                    self.enums.push(t.clone());
+                }
+                for (_, p) in variants {
+                    if let Some(p) = p {
+                        self.ty(p);
+                    }
                 }
             }
             _ => {}
@@ -417,6 +452,11 @@ impl Collect<'_> {
             Kind::VecLit(items) => items.iter().for_each(|i| self.walk(i)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| self.walk(v));
+            }
+            Kind::EnumLit { payload, .. } => {
+                if let Some(p) = payload {
+                    self.walk(p);
+                }
             }
             Kind::Call { arg, .. } => self.walk(arg),
             Kind::Concat(l, r)
@@ -468,6 +508,7 @@ impl Collect<'_> {
 
 struct Emitter {
     records: Vec<Type>,
+    enums: Vec<Type>,
 }
 
 impl Emitter {
@@ -499,7 +540,17 @@ impl Emitter {
                     .expect("every record reachable from the program was collected");
                 format!("tlRec{i}")
             }
+            // The enum's own name is the identity and is unique, so it names the struct too.
+            Type::Enum { name, .. } => format!("tlE_{name}"),
         }
+    }
+
+    /// The declaration index of `variant`, which is its tag and its pointer field's suffix.
+    fn variant_index(variants: &[(String, Option<Type>)], variant: &str) -> usize {
+        variants
+            .iter()
+            .position(|(n, _)| n == variant)
+            .expect("the checker resolved the variant against this enum")
     }
 
     /// A `jsonlines(f(inputs))` program, compiled as a loop that decodes one JSON value at a
@@ -604,6 +655,21 @@ impl Emitter {
                     .map(|(name, value)| format!("F{name}: {}", self.expr(value)))
                     .collect();
                 format!("{}{{{}}}", self.go_type(&t.ty), parts.join(", "))
+            }
+
+            Kind::EnumLit { variant, payload } => {
+                let Type::Enum { variants, .. } = &t.ty else {
+                    unreachable!("an EnumLit's type is its enum")
+                };
+                let i = Self::variant_index(variants, variant);
+                match payload {
+                    None => format!("{}{{tag: {i}}}", self.go_type(&t.ty)),
+                    Some(p) => format!(
+                        "{}{{tag: {i}, p{i}: tlPtr({})}}",
+                        self.go_type(&t.ty),
+                        self.expr(p)
+                    ),
+                }
             }
 
             Kind::VecLit(items) => {
@@ -722,6 +788,30 @@ impl Emitter {
                     self.go_type(ty),
                     self.show(inner, &format!("{v}.v"), depth + 1)
                 )
+            }
+            // The tag says which of the two JSON shapes (ADR 0009) this value is: a unit
+            // variant renders as its quoted name, a payload variant as the single-key wrapper.
+            // The last variant needs no test, since the type says nothing else is left.
+            Type::Enum { variants, .. } => {
+                let n = format!("n{depth}");
+                let render = |i: usize, vname: &str, payload: &Option<Type>| match payload {
+                    None => go_string(&format!("\"{vname}\"")),
+                    Some(p) => format!(
+                        "({} + {} + \"}}\")",
+                        go_string(&format!("{{\"{vname}\":")),
+                        self.show(p, &format!("(*{n}.p{i})"), depth + 1)
+                    ),
+                };
+                let mut body = String::new();
+                for (i, (vname, payload)) in variants.iter().enumerate() {
+                    let rendered = render(i, vname, payload);
+                    if i + 1 < variants.len() {
+                        body.push_str(&format!("if {n}.tag == {i} {{ return {rendered} }}; "));
+                    } else {
+                        body.push_str(&format!("return {rendered}"));
+                    }
+                }
+                format!("func({n} {}) string {{ {body} }}({value})", self.go_type(ty))
             }
             Type::Record(fields) => {
                 if fields.is_empty() {

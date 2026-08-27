@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum Shape { point, circle{r: Int} }\\n\\ncircle\")"
+---
+`circle` of `Shape` carries a payload of {r: Int}, so it is written `circle{...}` (at byte 38)

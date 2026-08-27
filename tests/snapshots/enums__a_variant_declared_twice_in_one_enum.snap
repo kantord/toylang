@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum Shape { point, point }\\n\\nstr(1)\")"
+---
+variant `point` is declared twice in `Shape` (at byte 20)

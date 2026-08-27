@@ -3,7 +3,7 @@ use winnow::prelude::*;
 use winnow::stream::{LocatingSlice, Location, Stream};
 use winnow::token::take_while;
 
-use crate::ast::{Alias, BinOp, Def, Expr, File, Param, Span, TypeExpr};
+use crate::ast::{Alias, BinOp, Def, EnumDecl, Expr, File, Module, Param, Span, TypeExpr, Variant};
 use crate::error::Error;
 
 /// The stream this whole module parses over: a source string with byte-offset tracking built
@@ -37,6 +37,7 @@ enum Tok {
     Fn,
     Pub,
     Type,
+    Enum,
     If,
     Else,
     Input,
@@ -78,6 +79,7 @@ impl std::fmt::Display for Tok {
             Tok::Fn => "`fn`",
             Tok::Pub => "`pub`",
             Tok::Type => "`type`",
+            Tok::Enum => "`enum`",
             Tok::If => "`if`",
             Tok::Else => "`else`",
             Tok::Input => "`input`",
@@ -163,6 +165,7 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "fn" => Tok::Fn,
                 "pub" => Tok::Pub,
                 "type" => Tok::Type,
+                "enum" => Tok::Enum,
                 "if" => Tok::If,
                 "else" => Tok::Else,
                 "input" => Tok::Input,
@@ -319,19 +322,24 @@ const COND_POWER: u8 = 3;
 pub fn parse(src: &str) -> Result<File, Error> {
     let mut p = Cursor { input: LocatingSlice::new(src), bare_ok: true };
 
-    // Declarations in any order and any mix, since neither kind can refer to the other's
-    // position: aliases are resolved before any signature is read.
+    // Declarations in any order and any mix, since no kind can refer to another's position:
+    // aliases and enums are resolved before any signature is read.
     let mut defs = Vec::new();
     let mut aliases = Vec::new();
+    let mut enums = Vec::new();
     loop {
         let (tok, _) = p.peek()?;
         match tok {
             Tok::Pub => {
                 p.advance()?;
-                defs.push(p.def(true)?);
+                match p.peek()?.0 {
+                    Tok::Enum => enums.push(p.enum_decl(true)?),
+                    _ => defs.push(p.def(true)?),
+                }
             }
             Tok::Fn => defs.push(p.def(false)?),
             Tok::Type => aliases.push(p.alias()?),
+            Tok::Enum => enums.push(p.enum_decl(false)?),
             _ => break,
         }
     }
@@ -341,29 +349,34 @@ pub fn parse(src: &str) -> Result<File, Error> {
     if rest != Tok::Eof {
         return Err(Error::new(rest_span, format!("expected end of program, found {rest}")));
     }
-    Ok(File { aliases, defs, body })
+    Ok(File { aliases, enums, defs, body })
 }
 
-/// A module is definitions only, with no trailing expression -- there is nothing here to run,
+/// A module is declarations only, with no trailing expression -- there is nothing here to run,
 /// only names for a program to import. `pub` marks which ones a program actually receives.
-pub fn parse_module(src: &str) -> Result<Vec<Def>, Error> {
+pub fn parse_module(src: &str) -> Result<Module, Error> {
     let mut p = Cursor { input: LocatingSlice::new(src), bare_ok: true };
     let mut defs = Vec::new();
+    let mut enums = Vec::new();
     loop {
         let (tok, span) = p.peek()?;
         match tok {
             Tok::Pub => {
                 p.advance()?;
-                defs.push(p.def(true)?);
+                match p.peek()?.0 {
+                    Tok::Enum => enums.push(p.enum_decl(true)?),
+                    _ => defs.push(p.def(true)?),
+                }
             }
             Tok::Fn => defs.push(p.def(false)?),
+            Tok::Enum => enums.push(p.enum_decl(false)?),
             Tok::Eof => break,
             other => {
                 return Err(Error::new(span, format!("expected `fn` or end of module, found {other}")));
             }
         }
     }
-    Ok(defs)
+    Ok(Module { defs, enums })
 }
 
 struct Cursor<'i> {
@@ -522,6 +535,39 @@ impl<'i> Cursor<'i> {
         Ok(Expr::RecordLit { fields, span: open.to(close) })
     }
 
+    /// `enum Shape { point, circle{r: Int} }`
+    ///
+    /// A variant is a name, optionally followed by a record type spelling its payload. The
+    /// payload rule is any single type, but the record form is the only spelling that exists so
+    /// far, the same way arguments already travel as records.
+    fn enum_decl(&mut self, is_pub: bool) -> Result<EnumDecl, Error> {
+        let start = self.eat(Tok::Enum)?;
+        let (name, _) = self.eat_ident("an enum name")?;
+        self.eat(Tok::LBrace)?;
+        let mut variants = Vec::new();
+        let (first, _) = self.peek()?;
+        if first != Tok::RBrace {
+            loop {
+                let (vname, vspan) = self.eat_ident("a variant name")?;
+                let payload = match self.peek()? {
+                    (Tok::LBrace, open) => {
+                        self.advance()?;
+                        Some(self.record_type(open)?)
+                    }
+                    _ => None,
+                };
+                variants.push(Variant { name: vname, span: vspan, payload });
+                let (sep, _) = self.peek()?;
+                if sep != Tok::Comma {
+                    break;
+                }
+                self.advance()?;
+            }
+        }
+        let close = self.eat(Tok::RBrace)?;
+        Ok(EnumDecl { name, variants, span: start.to(close), is_pub })
+    }
+
     /// `type Db = {users: Vec<User>}`
     fn alias(&mut self) -> Result<Alias, Error> {
         let start = self.eat(Tok::Type)?;
@@ -560,7 +606,9 @@ impl<'i> Cursor<'i> {
     fn root(&mut self, min_power: u8) -> Result<Expr, Error> {
         if self.bare_ok {
             let (tok, span) = self.peek()?;
-            if let Tok::Ident(name) = tok {
+            if let Tok::Ident(name) = tok
+                && bare_callee(&name)
+            {
                 let (tok2, _) = self.peek2()?;
                 if starts_bare_argument(&tok2) {
                     self.advance()?;
@@ -578,7 +626,9 @@ impl<'i> Cursor<'i> {
     /// whatever encloses the whole application, not to this argument.
     fn bare_argument(&mut self) -> Result<Expr, Error> {
         let (tok, span) = self.peek()?;
-        if let Tok::Ident(name) = tok {
+        if let Tok::Ident(name) = tok
+            && bare_callee(&name)
+        {
             let (tok2, _) = self.peek2()?;
             if starts_bare_argument(&tok2) {
                 self.advance()?;
@@ -742,6 +792,27 @@ impl<'i> Cursor<'i> {
 
             Tok::Ident(name) => {
                 let (next, _) = self.peek()?;
+                // `Shape.circle`: the casing rule makes uppercase-then-dot unambiguous, since a
+                // capitalised name can never be a value for `.` to project a field out of.
+                if next == Tok::Dot && name.chars().next().is_some_and(char::is_uppercase) {
+                    self.advance()?;
+                    let (variant, variant_span) = self.eat_ident("a variant name")?;
+                    let (after, _) = self.peek()?;
+                    let (payload, end) = if after == Tok::LParen || after == Tok::LBrace {
+                        let (arg, close) = self.argument()?;
+                        (Some(Box::new(arg)), close)
+                    } else {
+                        (None, variant_span)
+                    };
+                    return Ok(Expr::Variant {
+                        enum_name: name,
+                        enum_span: span,
+                        variant,
+                        variant_span,
+                        payload,
+                        span: span.to(end),
+                    });
+                }
                 if next != Tok::LParen && next != Tok::LBrace {
                     return Ok(Expr::Var { name, span });
                 }
@@ -765,6 +836,14 @@ impl<'i> Cursor<'i> {
 /// unconditionally and does not need root placement. `-` is excluded because it is already
 /// subtraction: `f -x` stays `f - x`, the same resolution Haskell gives the identical clash,
 /// rather than adding a rule to prefer negation.
+/// Whether `name` can be a bare call's function. Only a lowercase name can: functions are
+/// values under the casing rule, and a capitalised name followed by `.` is the qualified
+/// variant spelling (`Shape.circle`), which would otherwise be swallowed as `Shape (.circle)`
+/// since `.` also starts a bare argument.
+fn bare_callee(name: &str) -> bool {
+    !name.chars().next().is_some_and(char::is_uppercase)
+}
+
 fn starts_bare_argument(tok: &Tok) -> bool {
     matches!(
         tok,

@@ -284,6 +284,37 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
                 show(inner, &v, depth + 1)
             )
         }
+        // One type, two runtime shapes (ADR 0009): a unit variant is a bare string, a payload
+        // variant a single-key table, so this is the one printer that has to look before it
+        // renders. Only the shape is inspected; which payload follows which key is the type's.
+        Type::Enum { variants, .. } => {
+            let n = format!("n{depth}");
+            let payloads: Vec<&(String, Option<Type>)> =
+                variants.iter().filter(|(_, p)| p.is_some()).collect();
+            if payloads.is_empty() {
+                return format!("tl_quote({value})");
+            }
+            let mut body = String::new();
+            if payloads.len() < variants.len() {
+                body.push_str(&format!("if type({n}) == \"string\" then return tl_quote({n}) end "));
+            }
+            for (i, (vname, pty)) in payloads.iter().enumerate() {
+                let pty = pty.as_ref().expect("filtered to payload variants");
+                let read = format!("{n}[{}]", lua_string(vname));
+                let wrapped = format!(
+                    "({} .. {} .. \"}}\")",
+                    lua_string(&format!("{{\"{vname}\":")),
+                    show(pty, &read, depth + 1)
+                );
+                if i + 1 < payloads.len() {
+                    body.push_str(&format!("if {read} ~= nil then return {wrapped} end "));
+                } else {
+                    // The last payload variant needs no test: the type says nothing else is left.
+                    body.push_str(&format!("return {wrapped} "));
+                }
+            }
+            format!("(function({n}) {body}end)({value})")
+        }
         Type::Record(fields) => {
             // `..` needs an operand on each side, so a record with no fields cannot be
             // built by joining nothing. The other backends survive this by construction.
@@ -310,6 +341,9 @@ fn contains_opt(ty: &Type) -> bool {
         Type::Opt(_) => true,
         Type::Vec(t) => contains_opt(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_opt(t)),
+        Type::Enum { variants, .. } => {
+            variants.iter().any(|(_, p)| p.as_ref().is_some_and(contains_opt))
+        }
         _ => false,
     }
 }
@@ -319,6 +353,8 @@ fn needs_quote(ty: &Type) -> bool {
         Type::Str => true,
         Type::Vec(elem) | Type::Opt(elem) => needs_quote(elem),
         Type::Record(_) => true,
+        // A unit variant prints as a quoted string, and a payload wrapper is a record.
+        Type::Enum { .. } => true,
         _ => false,
     }
 }
@@ -328,6 +364,9 @@ fn contains_vec(ty: &Type) -> bool {
         Type::Vec(_) => true,
         Type::Opt(t) => contains_vec(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_vec(t)),
+        Type::Enum { variants, .. } => {
+            variants.iter().any(|(_, p)| p.as_ref().is_some_and(contains_vec))
+        }
         _ => false,
     }
 }
@@ -371,6 +410,11 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
+            }
+            Kind::EnumLit { payload, .. } => {
+                if let Some(p) = payload {
+                    walk(p, used);
+                }
             }
             Kind::Call { arg, .. } => walk(arg, used),
             Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
@@ -452,6 +496,13 @@ fn expr(t: &Tir) -> String {
             // not parse, and the printer reads every field straight off the value.
             format!("({{{}}})", parts.join(", "))
         }
+
+        // The value is its JSON shape: a unit variant is the variant-name string, a payload
+        // variant the single-key table a record already is.
+        Kind::EnumLit { variant, payload } => match payload {
+            None => lua_string(variant),
+            Some(p) => format!("({{[{}] = {}}})", lua_string(variant), expr(p)),
+        },
 
         Kind::VecLit(items) => {
             let parts: Vec<String> = items.iter().map(expr).collect();

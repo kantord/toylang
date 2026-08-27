@@ -268,6 +268,37 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
                 show(inner, &v, depth + 1)
             )
         }
+        // One type, two runtime shapes (ADR 0009): a unit variant is a bare string, a payload
+        // variant a single-key dict, so the shape is inspected before rendering. Which payload
+        // follows which key is still the type's knowledge, as everywhere else.
+        Type::Enum { variants, .. } => {
+            let n = format!("n{depth}");
+            let payloads: Vec<&(String, Option<Type>)> =
+                variants.iter().filter(|(_, p)| p.is_some()).collect();
+            if payloads.is_empty() {
+                return format!("tl_quote({value})");
+            }
+            let mut body = String::new();
+            if payloads.len() < variants.len() {
+                body.push_str(&format!("tl_quote({n}) if isinstance({n}, str) else "));
+            }
+            for (i, (vname, pty)) in payloads.iter().enumerate() {
+                let pty = pty.as_ref().expect("filtered to payload variants");
+                let read = format!("{n}[{}]", py_string(vname));
+                let wrapped = format!(
+                    "({} + {} + \"}}\")",
+                    py_string(&format!("{{\"{vname}\":")),
+                    show(pty, &read, depth + 1)
+                );
+                if i + 1 < payloads.len() {
+                    body.push_str(&format!("{wrapped} if {} in {n} else ", py_string(vname)));
+                } else {
+                    // The last payload variant needs no test: the type says nothing else is left.
+                    body.push_str(&wrapped);
+                }
+            }
+            format!("(lambda {n}: {body})({value})")
+        }
         Type::Record(fields) => {
             if fields.is_empty() {
                 return "\"{}\"".to_string();
@@ -313,6 +344,13 @@ fn expr(t: &Tir) -> String {
                 .collect();
             format!("{{{}}}", parts.join(", "))
         }
+
+        // The value is its JSON shape: a unit variant is the variant-name string, a payload
+        // variant the single-key dict a record already is.
+        Kind::EnumLit { variant, payload } => match payload {
+            None => py_string(variant),
+            Some(p) => format!("{{{}: {}}}", py_string(variant), expr(p)),
+        },
 
         Kind::VecLit(items) => {
             let parts: Vec<String> = items.iter().map(expr).collect();
