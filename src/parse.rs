@@ -932,11 +932,6 @@ impl<'i> Cursor<'i> {
     }
 }
 
-/// Whether `name tok` reads as `name` applied bare to an argument starting with `tok`. `(` and
-/// `{` are excluded because those are the "nested" call form (`argument`), which works
-/// unconditionally and does not need root placement. `-` is excluded because it is already
-/// subtraction: `f -x` stays `f - x`, the same resolution Haskell gives the identical clash,
-/// rather than adding a rule to prefer negation.
 /// Whether `name` can be a bare call's function. Only a lowercase name can: functions are
 /// values under the casing rule, and a capitalised name followed by `.` is the qualified
 /// variant spelling (`Shape.circle`), which would otherwise be swallowed as `Shape (.circle)`
@@ -945,6 +940,11 @@ fn bare_callee(name: &str) -> bool {
     !name.chars().next().is_some_and(char::is_uppercase)
 }
 
+/// Whether `name tok` reads as `name` applied bare to an argument starting with `tok`. `(` and
+/// `{` are excluded because those are the "nested" call form (`argument`), which works
+/// unconditionally and does not need root placement. `-` is excluded because it is already
+/// subtraction: `f -x` stays `f - x`, the same resolution Haskell gives the identical clash,
+/// rather than adding a rule to prefer negation.
 fn starts_bare_argument(tok: &Tok) -> bool {
     matches!(
         tok,
