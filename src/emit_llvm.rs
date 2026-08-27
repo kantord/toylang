@@ -1275,7 +1275,101 @@ impl<'ctx> Emitter<'ctx> {
                     "at",
                 )?
             }
+
+            // The same tag chain the enum printer uses, but each arm computes the body instead
+            // of a rendering: compare the box's tag against each variant's index, bind the
+            // payload slot where the arm asks for it, and take the last arm without a test,
+            // since the checker proved the chain exhaustive.
+            Kind::Match { subject, arms } => {
+                let Type::Enum { variants, .. } = subject.ty.clone() else {
+                    return Err("a match subject that is not an enum".to_string());
+                };
+                let function = self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_parent())
+                    .ok_or("no function to branch in")?;
+                let i64t = self.ctx.i64_type();
+                let result_ty = self.llvm_type(&t.ty)?;
+                let slot =
+                    self.builder.build_alloca(result_ty, "matched").map_err(|e| e.to_string())?;
+                let subj = self.expr(subject)?;
+                let tag = self
+                    .call_rt(self.rt.rec_get, &[subj, i64t.const_zero().into()], "tag")?
+                    .into_int_value();
+                let done = self.ctx.append_basic_block(function, "match.done");
+
+                for (i, arm) in arms.iter().enumerate() {
+                    let arm_block = self.ctx.append_basic_block(function, "match.arm");
+                    if i + 1 < arms.len() {
+                        let variant =
+                            arm.variant.as_ref().ok_or("a default arm that is not last")?;
+                        let vi = variants
+                            .iter()
+                            .position(|(n, _)| n == variant)
+                            .ok_or_else(|| format!("`{variant}` is not a variant"))?;
+                        let next = self.ctx.append_basic_block(function, "match.next");
+                        let is = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::EQ,
+                                tag,
+                                i64t.const_int(vi as u64, false),
+                                "is",
+                            )
+                            .map_err(|e| e.to_string())?;
+                        self.builder
+                            .build_conditional_branch(is, arm_block, next)
+                            .map_err(|e| e.to_string())?;
+                        self.builder.position_at_end(arm_block);
+                        self.match_arm(subj, &variants, arm, slot)?;
+                        self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+                        self.builder.position_at_end(next);
+                    } else {
+                        self.builder
+                            .build_unconditional_branch(arm_block)
+                            .map_err(|e| e.to_string())?;
+                        self.builder.position_at_end(arm_block);
+                        self.match_arm(subj, &variants, arm, slot)?;
+                        self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+                    }
+                }
+
+                self.builder.position_at_end(done);
+                self.builder.build_load(result_ty, slot, "matched").map_err(|e| e.to_string())?
+            }
         })
+    }
+
+    /// Compute one arm's body into `slot`, binding the payload local first when the arm has
+    /// one.
+    fn match_arm(
+        &mut self,
+        subj: BasicValueEnum<'ctx>,
+        variants: &[(String, Option<Type>)],
+        arm: &tir::MatchArm,
+        slot: PointerValue<'ctx>,
+    ) -> Result<(), String> {
+        if let Some(pid) = arm.payload {
+            let variant = arm.variant.as_ref().ok_or("a payload on a default arm")?;
+            let pty = variants
+                .iter()
+                .find(|(n, _)| n == variant)
+                .and_then(|(_, p)| p.as_ref())
+                .ok_or_else(|| format!("`{variant}` has no payload"))?;
+            let raw = self
+                .call_rt(
+                    self.rt.rec_get,
+                    &[subj, self.ctx.i64_type().const_int(1, false).into()],
+                    "payload",
+                )?
+                .into_int_value();
+            let p = self.read_slot(raw, pty)?;
+            self.locals.insert(pid, Slot::Value(p));
+        }
+        let v = self.expr(&arm.body)?;
+        self.builder.build_store(slot, v).map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     fn call_rt(

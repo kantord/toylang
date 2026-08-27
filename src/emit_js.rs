@@ -412,6 +412,10 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
                 walk(index, used);
             }
+            Kind::Match { subject, arms } => {
+                walk(subject, used);
+                arms.iter().for_each(|a| walk(&a.body, used));
+            }
         }
     }
     let mut used = Helpers::default();
@@ -508,6 +512,37 @@ fn expr(t: &Tir) -> String {
             } else {
                 format!("tl_field({}, {}, {})", expr(base), js_string(name), depth)
             }
+        }
+        // A chain of shape tests over the subject (a plain local, so re-reading it is free):
+        // string equality for a unit variant, key presence for a payload variant. The checker
+        // proved the arms exhaustive, so the last one needs no test.
+        Kind::Match { subject, arms } => {
+            let subj = expr(subject);
+            let mut body = String::new();
+            for (i, arm) in arms.iter().enumerate() {
+                let mut run = String::new();
+                if let Some(pid) = arm.payload {
+                    let variant = arm.variant.as_ref().expect("only a variant arm has a payload");
+                    run.push_str(&format!(
+                        "const {} = {subj}[{}]; ",
+                        local(pid),
+                        js_string(variant)
+                    ));
+                }
+                run.push_str(&format!("return {}; ", expr(&arm.body)));
+                match &arm.variant {
+                    Some(v) if i + 1 < arms.len() => {
+                        let test = if arm.payload.is_some() {
+                            format!("{subj}[{}] !== undefined", js_string(v))
+                        } else {
+                            format!("{subj} === {}", js_string(v))
+                        };
+                        body.push_str(&format!("if ({test}) {{ {run}}} "));
+                    }
+                    _ => body.push_str(&run),
+                }
+            }
+            format!("(() => {{ {body}}})()")
         }
     }
 }

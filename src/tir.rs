@@ -114,6 +114,23 @@ pub enum Kind {
         /// Whether an entry is a record, which decides if collapsing has to gather columns.
         elem_is_record: bool,
     },
+    /// First-match-wins dispatch over an enum subject's variants. The checker has already
+    /// proved the arms exhaustive, so a backend may take the last arm without a test, and has
+    /// already resolved every name a pattern bound, so an arm is only a variant to test for, a
+    /// payload local to bind, and a body.
+    Match {
+        subject: Box<Tir>,
+        arms: Vec<MatchArm>,
+    },
+}
+
+pub struct MatchArm {
+    /// `None` is the default arm (`any()`), which the checker keeps last.
+    pub variant: Option<String>,
+    /// The local the payload binds to in a payload-variant arm; `.` and destructured field
+    /// names in the body both read through it.
+    pub payload: Option<LocalId>,
+    pub body: Tir,
 }
 
 /// The functions the language provides. Each is unary, and so is every user function: something
@@ -291,5 +308,8 @@ fn mentions_inputs(t: &Tir) -> bool {
         Kind::Field { base, .. } | Kind::Unwrap { base } => mentions_inputs(base),
         Kind::Index { base, index, .. } => mentions_inputs(base) || mentions_inputs(index),
         Kind::Builtin { arg, .. } => mentions_inputs(arg),
+        Kind::Match { subject, arms } => {
+            mentions_inputs(subject) || arms.iter().any(|a| mentions_inputs(&a.body))
+        }
     }
 }

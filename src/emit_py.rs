@@ -413,6 +413,44 @@ fn expr(t: &Tir) -> String {
                 format!("tl_field({}, {}, {})", expr(base), py_string(name), depth)
             }
         }
+        // A right-fold of conditional expressions over the subject, tests first-match-wins;
+        // the last arm carries no test, since the checker proved the chain exhaustive. The
+        // payload key test needs the isinstance guard: `"a" in v` on a unit variant's *string*
+        // would be a substring test, and `"a" in "ab"` answers yes.
+        Kind::Match { subject, arms } => {
+            let subj = expr(subject);
+            let mut out = String::new();
+            let mut closing = 0;
+            for (i, arm) in arms.iter().enumerate() {
+                let run = match arm.payload {
+                    Some(pid) => {
+                        let variant =
+                            arm.variant.as_ref().expect("only a variant arm has a payload");
+                        format!(
+                            "(lambda {}: {})({subj}[{}])",
+                            local(pid),
+                            expr(&arm.body),
+                            py_string(variant)
+                        )
+                    }
+                    None => expr(&arm.body),
+                };
+                match &arm.variant {
+                    Some(v) if i + 1 < arms.len() => {
+                        let test = if arm.payload.is_some() {
+                            format!("(isinstance({subj}, dict) and {} in {subj})", py_string(v))
+                        } else {
+                            format!("{subj} == {}", py_string(v))
+                        };
+                        out.push_str(&format!("({run} if {test} else "));
+                        closing += 1;
+                    }
+                    _ => out.push_str(&run),
+                }
+            }
+            out.push_str(&")".repeat(closing));
+            format!("({out})")
+        }
     }
 }
 

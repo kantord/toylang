@@ -61,6 +61,59 @@ fn enum_typed_input_is_refused_for_now() {
     ));
 }
 
+/// The proof has to say what is missing, not only that something is.
+#[test]
+fn a_match_that_misses_variants_names_them() {
+    insta::assert_snapshot!(err(
+        "enum Shape { point, circle{r: Int}, square{s: Int} }\n\nShape.point | point -> 0"
+    ));
+}
+
+#[test]
+fn an_arm_for_a_variant_the_enum_does_not_have() {
+    insta::assert_snapshot!(err(
+        "enum Shape { point }\n\nShape.point | square -> 1 // any() -> 0"
+    ));
+}
+
+#[test]
+fn an_arm_after_the_default_can_never_match() {
+    insta::assert_snapshot!(err(
+        "enum Shape { point, circle{r: Int} }\n\nShape.point | any() -> 0 // point -> 1"
+    ));
+}
+
+/// Leaving payload fields out of a pattern is a forgotten field until `..` says it was meant --
+/// the closed-type half of the sketch's subset rule.
+#[test]
+fn a_pattern_naming_only_some_payload_fields() {
+    insta::assert_snapshot!(err(
+        "enum P { xy{x: Int, y: Int} }\n\nxy{x: 1, y: 2} | xy{x} -> x"
+    ));
+}
+
+#[test]
+fn a_unit_variant_has_nothing_to_destructure() {
+    insta::assert_snapshot!(err("enum S { a, b }\n\nS.a | a{q} -> 1 // b -> 2"));
+}
+
+#[test]
+fn a_match_needs_an_enum_subject() {
+    insta::assert_snapshot!(err("enum S { a }\n\n1 | a -> 2 // any() -> 3"));
+}
+
+#[test]
+fn a_match_needs_a_subject_at_all() {
+    insta::assert_snapshot!(err("enum S { a }\n\na -> 2"));
+}
+
+/// A unit arm rebinds `.` to nothing: there is no payload to reach, and the wider subject is
+/// deliberately not reachable past the match.
+#[test]
+fn the_subject_is_not_reachable_inside_a_unit_arm() {
+    insta::assert_snapshot!(err("enum S { a }\n\nS.a | a -> ."));
+}
+
 /// The declaration parses in a module the same as in a program, `pub` and all; nothing in the
 /// prelude declares one yet, so the module form is witnessed here rather than by a corpus case.
 #[test]

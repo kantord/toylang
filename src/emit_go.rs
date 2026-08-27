@@ -487,6 +487,10 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
+            Kind::Match { subject, arms } => {
+                self.walk(subject);
+                arms.iter().for_each(|a| self.walk(&a.body));
+            }
             Kind::Builtin { which, arg } => {
                 match which {
                     Builtin::IntToStr => self.used.itoa = true,
@@ -759,6 +763,39 @@ impl Emitter {
                 self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
                     format!("tlAt({v}, {i})")
                 })
+            }
+            // Tag tests over the subject (a plain local, so re-reading it is free), the same
+            // chain the enum printer uses: the checker proved the arms exhaustive, so the last
+            // one needs no test. `_ =` after a payload binding, as in the fused loop, because
+            // Go rejects an unused local and a body is free to ignore its payload.
+            Kind::Match { subject, arms } => {
+                let Type::Enum { variants, .. } = &subject.ty else {
+                    unreachable!("a match subject is an enum")
+                };
+                let subj = self.expr(subject);
+                let mut body = String::new();
+                for (i, arm) in arms.iter().enumerate() {
+                    let mut run = String::new();
+                    if let Some(pid) = arm.payload {
+                        let variant =
+                            arm.variant.as_ref().expect("only a variant arm has a payload");
+                        let vi = Self::variant_index(variants, variant);
+                        run.push_str(&format!(
+                            "{} := *{subj}.p{vi}; _ = {}; ",
+                            self.local(pid),
+                            self.local(pid)
+                        ));
+                    }
+                    run.push_str(&format!("return {}", self.expr(&arm.body)));
+                    match &arm.variant {
+                        Some(v) if i + 1 < arms.len() => {
+                            let vi = Self::variant_index(variants, v);
+                            body.push_str(&format!("if {subj}.tag == {vi} {{ {run} }}; "));
+                        }
+                        _ => body.push_str(&run),
+                    }
+                }
+                format!("func() {} {{ {body} }}()", self.go_type(&t.ty))
             }
         }
     }

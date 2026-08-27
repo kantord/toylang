@@ -72,6 +72,10 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
             walk(base, tags);
             walk(index, tags);
         }
+        Kind::Match { subject, arms } => {
+            walk(subject, tags);
+            arms.iter().for_each(|a| walk(&a.body, tags));
+        }
     }
 }
 
@@ -101,6 +105,7 @@ fn tag(kind: &Kind) -> String {
         Kind::Unwrap { .. } => "unwrap".into(),
         Kind::Index { .. } => "selection.collapse".into(),
         Kind::Inputs => "inputs".into(),
+        Kind::Match { .. } => "match".into(),
     }
 }
 

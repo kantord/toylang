@@ -179,6 +179,10 @@ pub enum Expr {
     /// second use rather than accepting a second stream, since there is only ever one real
     /// stdin.
     Lines { span: Span },
+    /// A `//` chain of match arms over the subject `.`: `point -> 0 // circle{r} -> r * r`.
+    /// The subject is not part of the node; a match reads `.` the way `select` does, so it
+    /// appears as a pipe stage.
+    Match { arms: Vec<MatchArm>, span: Span },
     /// `Shape.circle` or `Shape.circle{r: 1}`: a variant constructor spelled through its enum.
     /// Only the qualified form needs its own node; a bare `circle{r: 1}` is an ordinary `Call`
     /// and a bare `active` an ordinary `Var`, resolved through the enum registry by the checker.
@@ -193,6 +197,37 @@ pub enum Expr {
     /// `lhs | rhs`, which binds `.` in `rhs` to the value of `lhs`.
     Pipe { lhs: Box<Expr>, rhs: Box<Expr>, span: Span },
     Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr>, span: Span },
+}
+
+#[derive(Debug)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub body: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub enum Pattern {
+    /// A variant name, optionally destructuring its payload's fields. Bare names inside the
+    /// braces bind fresh, and `rest` is the `..` marker that permits naming only some of them.
+    Variant { name: String, span: Span, fields: Option<FieldsPattern> },
+    /// `any()`, the default arm: matches whatever is left.
+    Default { span: Span },
+}
+
+impl Pattern {
+    pub fn span(&self) -> Span {
+        match self {
+            Pattern::Variant { span, .. } | Pattern::Default { span } => *span,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FieldsPattern {
+    pub names: Vec<(String, Span)>,
+    pub rest: bool,
+    pub span: Span,
 }
 
 impl Expr {
@@ -215,6 +250,7 @@ impl Expr {
             | Expr::Inputs { span }
             | Expr::Lines { span }
             | Expr::Variant { span, .. }
+            | Expr::Match { span, .. }
             | Expr::Pipe { span, .. }
             | Expr::Binary { span, .. } => *span,
         }

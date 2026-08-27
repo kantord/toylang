@@ -3,7 +3,10 @@ use winnow::prelude::*;
 use winnow::stream::{LocatingSlice, Location, Stream};
 use winnow::token::take_while;
 
-use crate::ast::{Alias, BinOp, Def, EnumDecl, Expr, File, Module, Param, Span, TypeExpr, Variant};
+use crate::ast::{
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, MatchArm, Module, Param, Pattern,
+    Span, TypeExpr, Variant,
+};
 use crate::error::Error;
 
 /// The stream this whole module parses over: a source string with byte-offset tracking built
@@ -47,6 +50,7 @@ enum Tok {
     Minus,
     Star,
     Slash,
+    SlashSlash,
     Percent,
     Pipe,
     Comma,
@@ -89,6 +93,7 @@ impl std::fmt::Display for Tok {
             Tok::Minus => "`-`",
             Tok::Star => "`*`",
             Tok::Slash => "`/`",
+            Tok::SlashSlash => "`//`",
             Tok::Percent => "`%`",
             Tok::Pipe => "`|`",
             Tok::Comma => "`,`",
@@ -213,7 +218,15 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
         }
         '+' => single(input, Tok::Plus),
         '*' => single(input, Tok::Star),
-        '/' => single(input, Tok::Slash),
+        '/' => {
+            input.next_token();
+            if input.peek_token() == Some('/') {
+                input.next_token();
+                Tok::SlashSlash
+            } else {
+                Tok::Slash
+            }
+        }
         '%' => single(input, Tok::Percent),
         '|' => single(input, Tok::Pipe),
         ',' => single(input, Tok::Comma),
@@ -640,8 +653,96 @@ impl<'i> Cursor<'i> {
         self.postfix()
     }
 
+    /// Whether the tokens ahead begin a match arm: `name ->`, `name{a, b} ->`, or `any() ->`.
+    /// The one place this has to look carefully is a brace: a record *pattern* holds bare names
+    /// (and `..`), so the first `:` proves the braces are a constructor's record literal
+    /// argument instead. A lexical error while probing is not an arm; the ordinary path will
+    /// surface it.
+    fn arm_starts_here(&self) -> bool {
+        let mut probe = self.input;
+        let mut next = || read_tok(&mut probe).map(|(t, _)| t);
+        let Ok(Tok::Ident(name)) = next() else { return false };
+        match next() {
+            Ok(Tok::Arrow) => true,
+            Ok(Tok::LParen) if name == "any" => {
+                matches!(next(), Ok(Tok::RParen)) && matches!(next(), Ok(Tok::Arrow))
+            }
+            Ok(Tok::LBrace) => {
+                loop {
+                    match next() {
+                        Ok(Tok::Ident(_) | Tok::Comma | Tok::Dot) => continue,
+                        Ok(Tok::RBrace) => break,
+                        _ => return false,
+                    }
+                }
+                matches!(next(), Ok(Tok::Arrow))
+            }
+            _ => false,
+        }
+    }
+
+    /// `pattern -> body // pattern -> body // ...`, first match wins. The chain reads `.` as
+    /// its subject, so it usually sits to the right of a `|`; each body stops at `|` or `//`,
+    /// which is what lets the chain be one pipe stage.
+    fn match_expr(&mut self) -> Result<Expr, Error> {
+        let mut arms = Vec::new();
+        loop {
+            let pattern = self.pattern()?;
+            self.eat(Tok::Arrow)?;
+            let body = self.expr(COND_POWER)?;
+            let span = pattern.span().to(body.span());
+            arms.push(MatchArm { pattern, body, span });
+            let (sep, _) = self.peek()?;
+            if sep != Tok::SlashSlash {
+                break;
+            }
+            self.advance()?;
+        }
+        let span = arms[0].span.to(arms[arms.len() - 1].span);
+        Ok(Expr::Match { arms, span })
+    }
+
+    fn pattern(&mut self) -> Result<Pattern, Error> {
+        let (name, span) = self.eat_ident("a pattern")?;
+        let (next, brace_span) = self.peek()?;
+        if name == "any" && next == Tok::LParen {
+            self.advance()?;
+            let close = self.eat(Tok::RParen)?;
+            return Ok(Pattern::Default { span: span.to(close) });
+        }
+        if next != Tok::LBrace {
+            return Ok(Pattern::Variant { name, span, fields: None });
+        }
+        self.advance()?;
+        let mut names = Vec::new();
+        let mut rest = false;
+        let (first, _) = self.peek()?;
+        if first != Tok::RBrace {
+            loop {
+                // `..` is two Dot tokens, and it ends the list: naming a field after "and the
+                // rest" would make the marker meaningless.
+                if self.peek()?.0 == Tok::Dot {
+                    self.advance()?;
+                    self.eat(Tok::Dot)?;
+                    rest = true;
+                    break;
+                }
+                names.push(self.eat_ident("a field name")?);
+                let (sep, _) = self.peek()?;
+                if sep != Tok::Comma {
+                    break;
+                }
+                self.advance()?;
+            }
+        }
+        let close = self.eat(Tok::RBrace)?;
+        let fields = FieldsPattern { names, rest, span: brace_span.to(close) };
+        Ok(Pattern::Variant { name, span: span.to(close), fields: Some(fields) })
+    }
+
     fn expr(&mut self, min_power: u8) -> Result<Expr, Error> {
-        let mut lhs = self.root(min_power)?;
+        let mut lhs =
+            if self.arm_starts_here() { self.match_expr()? } else { self.root(min_power)? };
 
         // Right-associative, so `a if c else b if d else e` chains rightward without parens.
         let (tok, _) = self.peek()?;

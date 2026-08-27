@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum S { a }\\n\\n1 | a -> 2 // any() -> 3\")"
+---
+a match needs an enum subject, found Int (at byte 18)

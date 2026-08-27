@@ -608,6 +608,10 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
+            Kind::Match { subject, arms } => {
+                self.walk(subject);
+                arms.iter().for_each(|a| self.walk(&a.body));
+            }
             Kind::Builtin { which, arg } => {
                 if *which == Builtin::JsonLines {
                     self.used.jsonlines = true;
@@ -915,6 +919,41 @@ impl Emitter {
                 self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
                     format!("tl_at(&{v}, {i})")
                 })
+            }
+            // The one target with the construct itself: a toylang match is a Rust match, and
+            // rustc re-proves the exhaustiveness the checker already established. A default
+            // arm is `_`; a duplicate or dead arm costs a warning, not an error.
+            Kind::Match { subject, arms } => {
+                let Type::Enum { variants, .. } = &subject.ty else {
+                    unreachable!("a match subject is an enum")
+                };
+                let ename = self.rs_type(&subject.ty);
+                let rendered: Vec<String> = arms
+                    .iter()
+                    .map(|arm| match &arm.variant {
+                        None => format!("_ => {}", self.expr(&arm.body)),
+                        Some(v) => {
+                            let has_payload = variants
+                                .iter()
+                                .find(|(n, _)| n == v)
+                                .expect("the checker resolved the variant")
+                                .1
+                                .is_some();
+                            if has_payload {
+                                let pid =
+                                    arm.payload.expect("a payload arm always binds its payload");
+                                format!(
+                                    "{ename}::V_{v}({}) => {}",
+                                    self.local(pid),
+                                    self.expr(&arm.body)
+                                )
+                            } else {
+                                format!("{ename}::V_{v} => {}", self.expr(&arm.body))
+                            }
+                        }
+                    })
+                    .collect();
+                format!("(match {} {{ {} }})", self.expr(subject), rendered.join(", "))
             }
         }
     }

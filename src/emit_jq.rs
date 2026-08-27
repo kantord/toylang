@@ -209,6 +209,10 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
                 callees(base, out);
                 callees(index, out);
             }
+            Kind::Match { subject, arms } => {
+                callees(subject, out);
+                arms.iter().for_each(|a| callees(&a.body, out));
+            }
         }
     }
 
@@ -261,6 +265,9 @@ fn uses_arith(program: &Program) -> bool {
             Kind::Map { source, body, .. } => walk(source) || walk(body),
             Kind::Field { base, .. } | Kind::Unwrap { base } => walk(base),
             Kind::Index { base, index, .. } => walk(base) || walk(index),
+            Kind::Match { subject, arms } => {
+                walk(subject) || arms.iter().any(|a| walk(&a.body))
+            }
         }
     }
     program.funcs.iter().any(|f| walk(&f.body)) || walk(&program.body)
@@ -396,6 +403,44 @@ fn expr(t: &Tir) -> String {
         Kind::Index { base, index, depth, .. } => {
             let at = format!(".[{}]", expr(index));
             format!("({} | {})", expr(base), distribute(&at, *depth))
+        }
+        // Shape tests over the subject: equality for a unit variant, `type`-guarded `has` for a
+        // payload one, since `has` on a string is an error rather than false. The checker
+        // proved the arms exhaustive, so the last one is the `else`.
+        Kind::Match { subject, arms } => {
+            let subj = expr(subject);
+            let run = |arm: &tir::MatchArm| match arm.payload {
+                Some(pid) => {
+                    let variant = arm.variant.as_ref().expect("only a variant arm has a payload");
+                    format!(
+                        "({subj}[{}] as {} | {})",
+                        jq_string(variant),
+                        local(pid),
+                        expr(&arm.body)
+                    )
+                }
+                None => expr(&arm.body),
+            };
+            if arms.len() == 1 {
+                return format!("({})", run(&arms[0]));
+            }
+            let mut out = String::from("(");
+            for (i, arm) in arms.iter().enumerate() {
+                match &arm.variant {
+                    Some(v) if i + 1 < arms.len() => {
+                        let test = if arm.payload.is_some() {
+                            format!("({subj} | type == \"object\" and has({}))", jq_string(v))
+                        } else {
+                            format!("{subj} == {}", jq_string(v))
+                        };
+                        let word = if i == 0 { "if" } else { "elif" };
+                        out.push_str(&format!("{word} {test} then {} ", run(arm)));
+                    }
+                    _ => out.push_str(&format!("else {} end", run(arm))),
+                }
+            }
+            out.push(')');
+            out
         }
     }
 }

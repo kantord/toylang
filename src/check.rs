@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use crate::ast::{Alias, BinOp, Def, EnumDecl, Expr, File, Span, TypeExpr};
+use crate::ast::{Alias, BinOp, Def, EnumDecl, Expr, File, Pattern, Span, TypeExpr};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{Sig, Type};
@@ -16,6 +16,10 @@ struct Ctx<'a> {
     variant_owners: &'a HashMap<String, Vec<String>>,
     /// Named bindings. At most one, since functions are unary and there is no `let`.
     scope: Vec<(String, Type)>,
+    /// Names a match arm's record pattern bound, innermost last: reading one reads that field
+    /// off the arm's payload local, so nothing beyond ordinary `Field` nodes reaches the
+    /// backends. Each entry is the bound name, the payload's record type, and its local.
+    arm_fields: Vec<(String, Type, LocalId)>,
     /// What `.` refers to here, if anything: its type and the local holding it.
     subject: Option<(Type, LocalId)>,
     /// The type `input` was checked against, filled in the first time it is used.
@@ -37,6 +41,7 @@ impl Ctx<'_> {
             enums: self.enums,
             variant_owners: self.variant_owners,
             scope: self.scope.clone(),
+            arm_fields: self.arm_fields.clone(),
             subject,
             input: self.input,
             inputs: self.inputs,
@@ -91,6 +96,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             enums: &enums,
             variant_owners: &variant_owners,
             scope: vec![(def.param.name.clone(), sig.param.clone())],
+            arm_fields: Vec::new(),
             subject: None,
             input: &input,
             inputs: &inputs,
@@ -120,6 +126,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         enums: &enums,
         variant_owners: &variant_owners,
         scope: Vec::new(),
+        arm_fields: Vec::new(),
         subject: None,
         input: &input,
         inputs: &inputs,
@@ -248,6 +255,10 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
         Kind::Index { base, index, .. } => {
             calls_in(base, out);
             calls_in(index, out);
+        }
+        Kind::Match { subject, arms } => {
+            calls_in(subject, out);
+            arms.iter().for_each(|a| calls_in(&a.body, out));
         }
     }
 }
@@ -530,9 +541,19 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             None => Err(Error::new(*span, "`.` is not bound here")),
         },
 
-        // Scope first, so a parameter shadows a variant of the same name the way any binding
-        // shadows a constant.
+        // Innermost binding first: a pattern binding shadows a parameter, and a parameter
+        // shadows a variant, the way any binding shadows a constant.
         Expr::Var { name, span } => {
+            if let Some((_, payload_ty, pid)) =
+                ctx.arm_fields.iter().rev().find(|(n, _, _)| n == name)
+            {
+                let fty = payload_ty
+                    .field(name)
+                    .expect("the field existed when the pattern was checked")
+                    .clone();
+                let base = Tir::new(payload_ty.clone(), Kind::Local(*pid));
+                return Ok(Tir::new(fty, Kind::Field { base: Box::new(base), name: name.clone() }));
+            }
             if let Some((_, t)) = ctx.scope.iter().find(|(n, _)| n == name) {
                 return Ok(Tir::new(t.clone(), Kind::Var(name.clone())));
             }
@@ -741,6 +762,142 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             };
             let arg = expect(ctx, arg, &sig.param)?;
             Ok(Tir::new(sig.ret.clone(), Kind::Call { func: func.clone(), arg: Box::new(arg) }))
+        }
+
+        // The closed-world branch the pattern-matching sketch reserved: the subject is a
+        // declared enum, so the arms are proved to cover every variant (or end in `any()`) and
+        // no Result exists anywhere. `.` narrows per arm -- to the payload in a payload arm, to
+        // nothing in a unit arm, since there is no payload to reach and the wider subject is
+        // deliberately not reachable past the match.
+        Expr::Match { arms, span } => {
+            let Some((subject_ty, sid)) = ctx.subject.clone() else {
+                return Err(Error::new(
+                    *span,
+                    "a match needs a subject, so it must follow `|`".to_string(),
+                ));
+            };
+            let Type::Enum { name: enum_name, variants } = &subject_ty else {
+                return Err(Error::new(
+                    *span,
+                    format!("a match needs an enum subject, found {subject_ty}"),
+                ));
+            };
+            let mut covered: Vec<String> = Vec::new();
+            let mut default_seen = false;
+            let mut result: Option<Type> = None;
+            let mut out = Vec::new();
+            for arm in arms {
+                if default_seen {
+                    return Err(Error::new(
+                        arm.span,
+                        "this arm can never match; the `any()` arm above it already matches everything"
+                            .to_string(),
+                    ));
+                }
+                let (variant, payload, arm_ctx) = match &arm.pattern {
+                    Pattern::Default { .. } => {
+                        default_seen = true;
+                        // A default matched the whole subject, so `.` stays the enum value.
+                        (None, None, ctx.with(ctx.subject.clone()))
+                    }
+                    Pattern::Variant { name: vname, span: vspan, fields } => {
+                        let Some((_, payload_ty)) = variants.iter().find(|(n, _)| n == vname)
+                        else {
+                            return Err(Error::new(
+                                *vspan,
+                                format!("`{enum_name}` has no variant `{vname}`"),
+                            ));
+                        };
+                        covered.push(vname.clone());
+                        match payload_ty {
+                            None => {
+                                if let Some(f) = fields {
+                                    return Err(Error::new(
+                                        f.span,
+                                        format!(
+                                            "`{vname}` is a unit variant of `{enum_name}` and has no payload to destructure"
+                                        ),
+                                    ));
+                                }
+                                (Some(vname.clone()), None, ctx.with(None))
+                            }
+                            Some(pty) => {
+                                let pid = ctx.fresh();
+                                let mut arm_ctx = ctx.with(Some((pty.clone(), pid)));
+                                if let Some(f) = fields {
+                                    let Type::Record(pfields) = pty else {
+                                        unreachable!("a declared payload is a record today")
+                                    };
+                                    for (i, (fname, fspan)) in f.names.iter().enumerate() {
+                                        if f.names[..i].iter().any(|(seen, _)| seen == fname) {
+                                            return Err(Error::new(
+                                                *fspan,
+                                                format!("`{fname}` is bound twice in this pattern"),
+                                            ));
+                                        }
+                                        if !pfields.iter().any(|(n, _)| n == fname) {
+                                            return Err(Error::new(
+                                                *fspan,
+                                                format!("no field `{fname}` on {pty}"),
+                                            ));
+                                        }
+                                        arm_ctx.arm_fields.push((fname.clone(), pty.clone(), pid));
+                                    }
+                                    // Leaving fields out of a match against a closed type is a
+                                    // forgotten field until `..` says it was meant.
+                                    if !f.rest {
+                                        let missing: Vec<String> = pfields
+                                            .iter()
+                                            .filter(|(n, _)| !f.names.iter().any(|(m, _)| m == n))
+                                            .map(|(n, _)| format!("`{n}`"))
+                                            .collect();
+                                        if !missing.is_empty() {
+                                            return Err(Error::new(
+                                                f.span,
+                                                format!(
+                                                    "a `{vname}` pattern must name every payload field or end in `..`; missing {}",
+                                                    missing.join(" and ")
+                                                ),
+                                            ));
+                                        }
+                                    }
+                                }
+                                (Some(vname.clone()), Some(pid), arm_ctx)
+                            }
+                        }
+                    }
+                };
+                let body = match &result {
+                    None => {
+                        let body = synth(&arm_ctx, &arm.body)?;
+                        result = Some(body.ty.clone());
+                        body
+                    }
+                    Some(t) => expect(&arm_ctx, &arm.body, t)?,
+                };
+                out.push(tir::MatchArm { variant, payload, body });
+            }
+            if !default_seen {
+                let missing: Vec<String> = variants
+                    .iter()
+                    .filter(|(n, _)| !covered.contains(n))
+                    .map(|(n, _)| format!("`{n}`"))
+                    .collect();
+                if !missing.is_empty() {
+                    return Err(Error::new(
+                        *span,
+                        format!(
+                            "a match over `{enum_name}` must cover every variant or end in `any()`; missing {}",
+                            missing.join(" and ")
+                        ),
+                    ));
+                }
+            }
+            let subject = Tir::new(subject_ty.clone(), Kind::Local(sid));
+            Ok(Tir::new(
+                result.expect("the parser produces at least one arm"),
+                Kind::Match { subject: Box::new(subject), arms: out },
+            ))
         }
 
         Expr::Variant { enum_name, enum_span, variant, variant_span, payload, .. } => {
