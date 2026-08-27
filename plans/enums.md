@@ -69,13 +69,23 @@ do the rest.
 A scalar `Shape` value is easy. `Vec<Shape>` is not: the native backend stores `Vec<Record>`
 as struct-of-arrays, and an enum is precisely a value whose shape varies per element, which
 columnar layout cannot represent directly. This is the dense-union problem (Arrow solves it
-with a tag buffer plus one child buffer per variant), and it is an open implementation choice,
-not decided by the design: tag-plus-per-variant-columns (columnar, vectorizable, more work) or
-a boxed per-element representation for enum-typed columns (simpler, slower, a special case in
-a backend built on not having special cases). Whoever takes this step should decide it looking
-at `runtime/toylang.c` as it actually is, and record the choice in the research log -- the
-struct-of-arrays invariant already has four independent construction sites, and this adds
-enum-aware ones.
+with a tag buffer, an offsets buffer, and one packed child per variant; `arrow-rs`'s
+`UnionArray` is a reference implementation, and ECS archetype storage is the same idea with
+its ergonomics proven).
+
+**Start with the simplest correct layout and do not build the dense union yet.** The
+reasoning, recorded so it is not re-derived: memory layout sits entirely below the emit
+boundary, so the output-equality corpus cannot observe it and swapping it later breaks
+nothing -- it is the reversible kind of decision, unlike the JSON shapes above it. Meanwhile
+the columnar-vectorization thesis this backend exists to prove is argued in the draft but not
+yet measured by any benchmark, and optimizing for an untested claim inverts the repo's own
+rule that a target's speed constrains the design only where it is demonstrated to matter. The
+dense union is the right upgrade the day an enum-heavy workload measurably bottlenecks on the
+simple layout; building that benchmark is its prerequisite, not this plan's business. A
+row-major tagged representation (Rust's own `Vec<enum>` shape) is the likely first cut, but
+whoever takes this step decides against `runtime/toylang.c` as it actually is, and records
+the choice in the research log -- the struct-of-arrays invariant already has four independent
+construction sites, and this adds enum-aware ones.
 
 `tl_parse` also needs an enum descriptor for step 5, so the descriptor design here should
 anticipate it.
