@@ -5,14 +5,30 @@ specification. Syntax is illustrative; several core decisions are still open (se
 
 ## What this is
 
-A compiled, statically typed language derived from the jq family.
+A compiled, statically typed language derived from the jq family -- a jq dialect that keeps
+jq's semantics as its reference while extending and generalizing them, aspiring to be a real
+language rather than a study.
 
-- **Data-oriented.** JSON is the native value model, not a library.
-- **Compiled**, with more than one backend: native, JavaScript, and Lua (the last so it can
-  script game engines).
-- **Rust-like syntax**, closer to Go in simplicity.
-- Aimed at three uses that share one shape: data transformation, shell scripting, and
-  result-set-oriented tooling such as an editor whose buffer is a query result.
+- **Data-oriented.** JSON is the native value model, not a library, and data orientation is
+  the organizing principle: transformation, selection, and querying of data are how programs
+  are structured, not one feature among many.
+- **Compiled**, with seven backends (native/LLVM, JavaScript, Lua, jq, Go, Python, Rust) --
+  kept as falsifiers of the design rather than as a compatibility promise (ADR 0002).
+- **Rust-like syntax**, aiming at a version of Go's simplicity without following it into the
+  absurd: where Go's refusals cost too much, ideas come from Rust instead. Enums are the
+  first such import.
+- **The ambition is general-purpose** -- eventually HTTP servers, GUIs, web frontends, shell
+  scripts -- but through a deliberate sequence. The beachhead is CLI data transformation,
+  where the dogfood test is concrete: it replaces jq in its author's own shell. Shell
+  scripting is the first area to expand into after that. Result-set-oriented tooling (an
+  editor whose buffer is a query result) stays on the long horizon, and nearer-term design
+  decisions must not foreclose it.
+
+Aspiring to be real puts weight on claims that a study could leave as prose: the performance
+thesis (columnar, vectorized, faster than jq's boxed-iterator-per-step ceiling) is a
+commitment that will eventually owe benchmarks, and positioning worries like
+[recursive descent's cost](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes) are
+real product concerns, not rhetorical ones.
 
 The front end is written from scratch. See `plans/prototype_1.md`.
 
