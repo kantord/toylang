@@ -2251,7 +2251,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity) | Streams: first-class values, or evaluation-level multiplicity? | SETTLED, evaluation-level and typed: `Stream<T>` is the effect layer's type, not a value type |
 | [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
 | [Q3](#q3-what-symbol-replaces--for-the-record-forming-update) | What symbol replaces `=` for the record-forming update? | LEANING, blocked on Q2 |
-| [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN, subsumes cardinality-vs-order |
+| [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN, but the shape is decided (ADR 0008: Kleene patterns in effect position); unions and tagging still block the rest |
 | [Q5](#q5-stream-lowering-strategy-across-the-three-backends) | Stream-lowering strategy across the three backends | OPEN in general; all seven backends stream the fused pipeline shape, so only lowering beyond that shape remains |
 | [Q6](#q6-does-a-reconciler-belong-in-the-language-or-a-library) | Does a reconciler belong in the language or a library? | OPEN |
 | [Q7](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes) | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
@@ -2335,6 +2335,23 @@ it needs no *linear types*, a discipline requiring each value be consumed exactl
 which is powerful but infects the whole system. Unpacking one item is then the **derivative**
 of the pattern: given that an `A` was just consumed, what remains? Open: how type tagging is
 represented so the runtime and type-level guarantees stay symmetrical.
+
+An exploration after [the streams decision](#decided-stream-is-the-effect-layer-typed)
+committed to this shape without settling the open parts; it is recorded as
+[ADR 0008](docs/adr/0008-stream-protocols-are-kleene-patterns.md). The load-bearing findings:
+the linearity objection above is obsolete, since the streams decision introduced exactly-once
+consumption scoped to one second-class type, which is all a protocol type needs; `Opt`, `Vec`,
+and `Stream` are already this algebra (`?` and `*` on the value side, `*` on the effect side),
+so the pattern constructors extend the cardinality table rather than joining it; the empty
+pattern is `Seq`'s unit, which makes a payload-free end cost nothing and collapses any
+"stream plus end slot" primitive back into `Star<T>`; a closing message is `Seq<Star<T>, E>`
+and several ways to end is `Alt` in terminal position, which types mid-stream failure and
+makes errors structurally terminal. The soundness condition that keeps all of it second-class:
+a `Stream` never appears under a value constructor, and may appear freely under pattern
+constructors. Still blocking: union types ([Q25](#q25-does-the-language-have-union-types)),
+discriminants ([Q29](#q29-what-is-the-default-discriminant-convention-for-a-derived-enum-codec)),
+the matcher surface ([Q27](#q27-does-pattern-matching-need-a-separate-matcher-type-distinct-from-result)),
+and the spelling question (patterns inside the constructor versus outer combinators).
 
 ### Q5. Stream-lowering strategy across the three backends
 
