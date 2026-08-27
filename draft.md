@@ -2236,6 +2236,64 @@ Representation was the easy half. What the decision opens is tracked as
 [the float-semantics question](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model)
 rather than assumed here.
 
+## DECIDED: enums, nominal and JSON-native
+
+The language gets a Rust-inspired enum: a declared, closed set of named variants, each
+optionally carrying a payload. `enum Shape { point, circle{r: Int} }` is the first
+user-written type declaration the language has, and it is prioritized ahead of implementing
+the stream type-system work, because it feeds nearly everything around it: tagged alternation
+for [heterogeneous streams](#q4-can-the-type-express-ordering-over-heterogeneous-streams),
+the closed-world half of
+[pattern matching](#pattern-matching-is-decoding), and the first real answer to
+[the union question](#q25-does-the-language-have-union-types).
+
+### The value is JSON, canonically
+
+An enum value is not an abstract sum with a codec; it *is* a JSON shape, the same way every
+other value here is. A payload variant is the single-key wrapper, `{"circle": {"r": 1}}`. A
+unit variant is a bare string, `"active"` -- which makes an all-unit enum a string enum, so
+`{"status": "active"}`-shaped data, the most common enum shape in the wild, is directly
+typeable. Payloads are any single type, with a record when several values travel, the same
+rule arguments already follow. Variant names are data (they appear as JSON keys and strings),
+so like record fields they are exempt from the capital-means-type casing rule.
+
+The costs were weighed, not missed: tag-field data (`{"kind": "circle", "r": 1}`) is also
+common in the wild and is *not* directly typeable as an enum; reaching it needs the codec
+layer this decision deliberately does not build. And `Opt` is provably not self-hostable as
+an enum -- its canonical form has been value-or-`null` (untagged) since it existed, so Rust's
+"Option is just an enum" elegance is unavailable. `Opt` stays built-in.
+
+### Nominal, closed, exhaustive
+
+The enum's name is an identity, not an alias: exhaustiveness checking has to know which
+closed set it is proving coverage of. This decides
+[the named-types question](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity)
+for enums only; whether *records* get identity stays open.
+
+Consumption routes through the arm syntax
+[pattern matching is decoding](#pattern-matching-is-decoding) already sketched, as its first
+minimal implementation: variant arms chained with `//`, `.` rebinding to the payload inside
+an arm, and the compile-time-total branch that section already reserved for "an enum you
+already have an instance of." A match over an enum must cover every variant or end in a
+default arm. The `Matcher` algebra (`and`/`or`/`not`, dynamic `Json` decoding) is not part of
+this slice; [Q27](#q27-does-pattern-matching-need-a-separate-matcher-type-distinct-from-result)
+is untouched.
+
+### Construction and naming
+
+Declaring an enum derives one constructor per variant: `circle{r: 1}` is ordinary
+application, `active` an ordinary named constant. A bare variant name resolves while exactly
+one enum in scope declares it; a collision is a loud compile error naming the candidates, and
+the qualified spelling is `Shape.circle` -- type-dot-variant, which the casing rule already
+makes unambiguous, so no new syntax exists. Typing a literal directly as an enum
+(`"active" : Status` with no constructor) is deferred: it needs expected types flowing down
+through synthesis, and it is recorded here as the second forcing case for that rework, after
+the one [the `inputs` decision](#decided-inputs-eager-not-an-answer-to-q1-either) documented
+for `parse`.
+
+First cut is monomorphic: no type parameters. The named motivations all work without them;
+generics' first real customer is `Result<T, E>`, which belongs to the decoding work.
+
 ## Open questions
 
 Tracked here rather than scattered through the document. Status is one of OPEN (no preferred
@@ -2251,7 +2309,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity) | Streams: first-class values, or evaluation-level multiplicity? | SETTLED, evaluation-level and typed: `Stream<T>` is the effect layer's type, not a value type |
 | [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
 | [Q3](#q3-what-symbol-replaces--for-the-record-forming-update) | What symbol replaces `=` for the record-forming update? | LEANING, blocked on Q2 |
-| [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN, but the shape is decided (ADR 0008: Kleene patterns in effect position); unions and tagging still block the rest |
+| [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN, but the shape is decided (ADR 0008: Kleene patterns in effect position); enums now supply tagged alternation, leaving the matcher surface and spelling |
 | [Q5](#q5-stream-lowering-strategy-across-the-three-backends) | Stream-lowering strategy across the three backends | OPEN in general; all seven backends stream the fused pipeline shape, so only lowering beyond that shape remains |
 | [Q6](#q6-does-a-reconciler-belong-in-the-language-or-a-library) | Does a reconciler belong in the language or a library? | OPEN |
 | [Q7](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes) | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
@@ -2272,16 +2330,16 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q22](#q22-are-dense-and-masked-vectors-distinguishable-in-the-type) | Are dense and masked vectors distinguishable in the type? | OPEN, Q14 from the other side |
 | [Q23](#q23-what-primitive-set-is-the-standard-library-defined-over) | What primitive set is the standard library defined over? | LEANING, the parallel basis |
 | [Q24](#q24-are-compile-time-macros-a-first-class-concept) | Are compile-time macros a first-class concept? | OPEN, not yet evaluated |
-| [Q25](#q25-does-the-language-have-union-types) | Does the language have union types? | OPEN, an absence rather than a decision |
+| [Q25](#q25-does-the-language-have-union-types) | Does the language have union types? | PARTLY SETTLED: closed nominal sums exist (enums); anonymous structural unions remain an absence |
 | [Q26](#q26-is-jsxs-children-slot-a-closed-per-site-union-or-an-open-one) | Is JSX's children slot a closed per-site union, or an open one? | OPEN, deliberately deferred to last |
 | [Q27](#q27-does-pattern-matching-need-a-separate-matcher-type-distinct-from-result) | Does pattern matching need a separate `Matcher` type, distinct from `Result`? | LEANING yes |
 | [Q28](#q28-does-deep-matching-need-cross-match-unification-of-logic-variables) | Does deep matching need cross-match unification of logic variables? | OPEN |
-| [Q29](#q29-what-is-the-default-discriminant-convention-for-a-derived-enum-codec) | What is the default discriminant convention for a derived enum codec? | OPEN |
+| [Q29](#q29-what-is-the-default-discriminant-convention-for-a-derived-enum-codec) | What is the default discriminant convention for a derived enum codec? | SUPERSEDED: the enum decision made the single-key wrapper the value itself, not a codec default |
 | [Q30](#q30-do-the-base-functor-generics-double-as-parser-combinators-across-trees-strings-and-streams) | Do the base-functor generics double as parser combinators, across trees, strings, and streams? | LEANING yes, implementation split still open |
 | [Q31](#q31-does-a-friendlier-string-pattern-language-belong-in-the-language-and-what-regex-flavor-does-it-extend-to) | Does a friendlier string-pattern language belong in the language, and what regex flavor does it extend to? | OPEN |
 | [Q32](#q32-does-the-dimension-model-subsume-the-effect-layer) | Does the dimension model subsume the effect layer? | OPEN, and it may dissolve Q13 rather than answer it |
 | [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | OPEN, and only expressible because arguments are a record |
-| [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN, and the constructor for one already works |
+| [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN for records; enums decided identity for themselves, and enum declarations are the first declaration form |
 | [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | OPEN; `jsonlines` is now a top-level-only sink with no result type, which removes a placeholder answer without deciding the question |
 | [Q36](#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy) | Does a real module system need imports, multiple files, and enforced privacy? | OPEN, one always-on prelude file exists; nothing beyond it does |
 | [Q37](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model) | How do floats print, and what are NaN and Infinity in a JSON-shaped value model? | OPEN, blocks implementing `Float`; the representation itself is decided |
@@ -2521,6 +2579,12 @@ the absence it exposed is not, and heterogeneous data is not a corner of a data 
 Related: an alternation over types is also what the ordering question needs, so these may be one
 piece of machinery rather than two.
 
+Partly settled by [the enum decision](#decided-enums-nominal-and-json-native): closed nominal
+sums now exist, and they serve both this question's motivating case (heterogeneous data) and the
+ordering question's `Alt` (a stream of several message kinds is `Stream<SomeEnum>`). What
+remains absent is the anonymous structural union, `Str | Int` with no declaration -- a
+different feature with a different justification, still an absence rather than a decision.
+
 ### Q26. Is JSX's children slot a closed per-site union, or an open one?
 
 Sketch: a creator function taking a `Record` of strictly-typed attrs (this is just `Field`
@@ -2562,11 +2626,15 @@ bigger version of `as`. See [Pattern matching is decoding](#pattern-matching-is-
 
 ### Q29. What is the default discriminant convention for a derived enum codec?
 
-OPEN. A struct's derived codec composes from its fields alone; an enum's cannot, because the
-`Json` also has to say which variant it is. Candidates: an explicit tag field (`{"kind":
+SUPERSEDED by [the enum decision](#decided-enums-nominal-and-json-native), which dissolved the
+question's premise: there is no derived codec choosing a representation, because the
+representation *is* the value -- the single-key wrapper for payload variants, a bare string for
+unit variants. The candidates as originally recorded: an explicit tag field (`{"kind":
 "circle", "r": 1}`), a single-key wrapper (`{"circle": {"r": 1}}`), or matching purely on shape
-when the variants are structurally distinct enough to allow it. Unlike the struct constructor and
-the field-composed codec, this is a real choice with no single derivable answer. See
+when the variants are structurally distinct enough to allow it. The tag field lost knowingly --
+it is what much wild data looks like, and typing such data as an enum now needs the deferred
+codec layer; shape-matching cannot represent all-unit enums at all, though it survives as
+`Opt`'s special form. See
 [the constructor-should-be-free correction](#the-constructor-should-be-free-and-that-reverses-a-dependency-claimed-above).
 
 ### Q30. Do the base-functor generics double as parser combinators, across trees, strings, and streams?
@@ -2701,6 +2769,12 @@ Not free, in rough order of how much they decide:
 
 Worth being explicit that cheapness is not an argument. What is recorded here is that the cost of
 identity is lower than it looked, not that the language wants it.
+
+[The enum decision](#decided-enums-nominal-and-json-native) has since answered every bullet for
+enums specifically: they are identities (exhaustiveness requires it), `enum` is the declaration
+form, and variant constructors land in the value namespace with bare-until-ambiguous
+resolution. Records are deliberately not carried along; the alias-or-identity question stays
+open for them, and this entry now tracks only that half.
 
 ### Q35. What are stdout and stderr, and does a program write or return?
 

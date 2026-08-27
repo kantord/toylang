@@ -107,6 +107,24 @@ _Avoid_: jagged, irregular
 A type fixes how deep it goes, so its dimensions can be named in order. `Vec<Vec<Int>>` has two.
 A type of unbounded depth has none, and is reached only by recursive descent.
 
+### Choosing among shapes
+
+**Enum**:
+A declared, closed set of named variants, nominal: the name is the identity, and consuming one
+must handle every variant. As data it is plain JSON, never an opaque value.
+_Avoid_: union, sum type, ADT, tagged union
+
+**Variant**:
+One named alternative of an enum, optionally carrying a payload of one type. As data: the
+single-key wrapper, `{"circle": {"r": 1}}`. Variant names are data, so they are lowercase and
+exempt from name casing, like fields.
+_Avoid_: case, constructor, alternative
+
+**Unit variant**:
+A variant with no payload. As data: a bare string, so an all-unit enum types the
+`{"status": "active"}` shape directly.
+_Avoid_: nullary constructor, bare tag
+
 ### Where multiplicity lives
 
 **Stream**:
