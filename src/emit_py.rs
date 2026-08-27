@@ -143,24 +143,28 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if program.input.is_some() {
+    if let Some(fusion) = tir::recognize_fusion(program) {
+        decls.push_str(&fused_main(program, &fusion));
+    } else {
+        if program.input.is_some() {
+            decls.push_str(&format!(
+                "{INPUT} = json.loads(sys.stdin.buffer.read().decode(\"utf-8\"))\n"
+            ));
+        }
+        if program.inputs.is_some() {
+            decls.push_str(&format!("{INPUTS} = [json.loads(_l) for _l in sys.stdin]\n"));
+        }
+
+        let body = expr(&program.body);
+        // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
+        let printed =
+            if program.body.ty == Type::Str { body } else { show(&program.body.ty, &body, 0) };
+        // Bytes rather than `print`, so output does not depend on the locale the interpreter was
+        // started under. The native backend writes bytes for the same reason.
         decls.push_str(&format!(
-            "{INPUT} = json.loads(sys.stdin.buffer.read().decode(\"utf-8\"))\n"
+            "sys.stdout.buffer.write(({printed} + \"\\n\").encode(\"utf-8\"))\n"
         ));
     }
-    if program.inputs.is_some() {
-        decls.push_str(&format!("{INPUTS} = [json.loads(_l) for _l in sys.stdin]\n"));
-    }
-
-    let body = expr(&program.body);
-    // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
-    let printed =
-        if program.body.ty == Type::Str { body } else { show(&program.body.ty, &body, 0) };
-    // Bytes rather than `print`, so output does not depend on the locale the interpreter was
-    // started under. The native backend writes bytes for the same reason.
-    decls.push_str(&format!(
-        "sys.stdout.buffer.write(({printed} + \"\\n\").encode(\"utf-8\"))\n"
-    ));
 
     // Which helpers to include is read off the emitted text. Python objects to neither an unused
     // function nor an unused import, so nothing here can break the way it would in Go; the
@@ -201,6 +205,44 @@ pub fn emit(program: &Program) -> String {
         out.push_str("\n\n");
     }
     out.push_str(&decls);
+    out
+}
+
+/// A `jsonlines(f(inputs))` program, compiled as a loop reading one line at a time from `sys.
+/// stdin` (which iterates lazily) rather than the eager path's `[json.loads(_l) for _l in
+/// sys.stdin]`. `sys.stdout.buffer` is block-buffered whenever it is not a terminal, the same as
+/// the eager path already writes bytes rather than using `print` for, so the explicit `.flush()`
+/// after each line is what makes a record appear before the next one arrives rather than after
+/// the whole run ends.
+fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
+    let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
+    let mut out = String::new();
+    out.push_str("for _line in sys.stdin:\n");
+    out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
+    out.push_str("    if _line.strip() == \"\":\n        continue\n");
+    out.push_str("    t_line = json.loads(_line)\n");
+
+    let mut current = "t_line".to_string();
+    let mut current_ty = elem_ty.clone();
+    for stage in &fusion.stages {
+        match stage {
+            tir::Stage::Map { param, body } => {
+                out.push_str(&format!("    {} = {}\n", local(*param), current));
+                current = expr(body);
+                current_ty = body.ty.clone();
+            }
+            tir::Stage::Select { param, pred } => {
+                out.push_str(&format!("    {} = {}\n", local(*param), current));
+                out.push_str(&format!("    if not ({}):\n        continue\n", expr(pred)));
+                current = local(*param);
+            }
+        }
+    }
+    let printed = show(&current_ty, &current, 0);
+    out.push_str(&format!(
+        "    sys.stdout.buffer.write(({printed} + \"\\n\").encode(\"utf-8\"))\n"
+    ));
+    out.push_str("    sys.stdout.buffer.flush()\n");
     out
 }
 

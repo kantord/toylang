@@ -2,7 +2,7 @@
 source: tests/backend_rust.rs
 expression: "format!(\"compiles (rust) ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles (rust) (101):
+compiles (rust) (102):
 adults
 arith_add
 arith_div_trunc
@@ -44,6 +44,7 @@ inputs_scalars
 int_result
 jq_tutorial
 jq_tutorial_step4
+jsonlines_of_inputs
 jsonlines_record_with_vec_field
 jsonlines_scalars
 lines_cat

@@ -686,6 +686,49 @@ tl_vec *tl_read_inputs(const tl_str *descriptor) {
     return out;
 }
 
+/* One JSON value from stdin per call, parsed the same descriptor-driven way tl_read_inputs
+ * assembles its whole Vec from, but one line at a time and with no Vec ever built: the caller
+ * drives its own loop and decides when to stop, which is what lets the native backend fuse
+ * `jsonlines(f(inputs))` into a read-one/transform-one/write-one loop (see tir::recognize_fusion)
+ * instead of collecting everything before printing anything.
+ *
+ * Returns 0 at EOF (*out untouched) and 1 with *out set otherwise. A separate flag rather than a
+ * sentinel value in *out, because a record pointer or an Int result can legitimately be any
+ * int64_t, including whatever a sentinel would need to reserve.
+ *
+ * getline's buffer is not reused across calls the way tl_read_inputs's is within its own single
+ * call: this function is called once per record from the caller's own loop, so there is no one
+ * long-lived buffer to reuse, and toylang optimises for none of this to begin with. */
+int tl_read_one_input(const tl_str *descriptor, int64_t *out) {
+    char *t = tl_alloc((size_t)descriptor->len + 1);
+    memcpy(t, descriptor->ptr, (size_t)descriptor->len);
+    t[descriptor->len] = 0;
+
+    char *line = NULL;
+    size_t cap = 0;
+    for (;;) {
+        ssize_t len = getline(&line, &cap, stdin);
+        if (len == -1) {
+            free(line);
+            return 0;
+        }
+        tl_json j = {line, line + len};
+        tl_skip_ws(&j);
+        if (j.p == j.end) {
+            continue;
+        }
+        j.p = line;
+        int64_t value = tl_parse(&j, t, "inputs");
+        tl_skip_ws(&j);
+        if (j.p != j.end) {
+            tl_fail("trailing content after the value", "inputs");
+        }
+        *out = value;
+        free(line);
+        return 1;
+    }
+}
+
 /* One line of stdin at a time via getline, in contrast to tl_read_input just above, which reads
  * the whole stream before anything else can run. getline reuses the same growable buffer across
  * calls, so each line is copied out to its own allocation before being stored; the buffer would

@@ -60,6 +60,31 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
+    if let Some(fusion) = tir::recognize_fusion(program) {
+        // jq's own `inputs` is already lazy; the eager path below only becomes eager by wrapping
+        // it in `[...]`. Skipping that wrapper and running the whole `map`/`select` chain as one
+        // filter over the `inputs` generator is what makes jq print each record as it arrives
+        // rather than after the last one, the same as running the equivalent `jq` program by
+        // hand would.
+        out.push_str("inputs");
+        for stage in &fusion.stages {
+            match stage {
+                tir::Stage::Map { param, body } => {
+                    out.push_str(&format!(" | . as {} | {}", local(*param), expr(body)));
+                }
+                tir::Stage::Select { param, pred } => {
+                    out.push_str(&format!(" | . as {} | select({})", local(*param), expr(pred)));
+                }
+            }
+        }
+        let Kind::Builtin { arg, .. } = &program.body.kind else {
+            unreachable!("recognize_fusion only matches a jsonlines body")
+        };
+        let elem = arg.ty.elem().expect("jsonlines's argument is a Vec");
+        out.push_str(&format!(" | ({} | tojson)\n", canonical(elem, ".")));
+        return out;
+    }
+
     if program.input.is_some() {
         out.push_str(&format!(". as {INPUT} | "));
     }

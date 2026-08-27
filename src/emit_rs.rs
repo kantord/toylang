@@ -431,28 +431,32 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    decls.push_str("fn main() {\n");
-    if let Some(ty) = &program.input {
-        decls.push_str(&format!(
-            "    let {INPUT}: {} = tl_read_value({});\n",
-            e.rs_type(ty),
-            e.parser_expr(ty)
-        ));
-    }
-    if let Some(ty) = &program.inputs {
-        decls.push_str(&format!(
-            "    let {INPUTS}: Vec<{}> = tl_read_values({});\n",
-            e.rs_type(ty),
-            e.parser_expr(ty)
-        ));
-    }
-    let body = e.expr(&program.body);
-    let printed = if program.body.ty == Type::Str {
-        body
+    if let Some(fusion) = tir::recognize_fusion(program) {
+        decls.push_str(&e.fused_main(program, &fusion));
     } else {
-        e.show(&program.body.ty, &body, 0)
-    };
-    decls.push_str(&format!("    println!(\"{{}}\", {printed});\n}}\n"));
+        decls.push_str("fn main() {\n");
+        if let Some(ty) = &program.input {
+            decls.push_str(&format!(
+                "    let {INPUT}: {} = tl_read_value({});\n",
+                e.rs_type(ty),
+                e.parser_expr(ty)
+            ));
+        }
+        if let Some(ty) = &program.inputs {
+            decls.push_str(&format!(
+                "    let {INPUTS}: Vec<{}> = tl_read_values({});\n",
+                e.rs_type(ty),
+                e.parser_expr(ty)
+            ));
+        }
+        let body = e.expr(&program.body);
+        let printed = if program.body.ty == Type::Str {
+            body
+        } else {
+            e.show(&program.body.ty, &body, 0)
+        };
+        decls.push_str(&format!("    println!(\"{{}}\", {printed});\n}}\n"));
+    }
 
     let uses = |name: &str| decls.contains(name);
     let unwrap = uses("tl_unwrap(");
@@ -667,6 +671,69 @@ impl Emitter {
             ));
         }
         out.push_str("    }\n}\n\n");
+        out
+    }
+
+    /// A `jsonlines(f(inputs))` program, compiled as a loop that reads one line, runs it through
+    /// `fusion`'s stages, and prints it, rather than the eager path's read-everything-then-print.
+    /// `read_line` (not `tl_read_lines`) and an explicit `flush()` are both load-bearing: Rust's
+    /// stdout is fully buffered rather than line-buffered whenever it is not a terminal, which is
+    /// exactly the case piping into another process needs, and buffering the whole run would
+    /// defeat the one thing this loop exists for.
+    fn fused_main(&self, program: &Program, fusion: &tir::Fusion) -> String {
+        let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
+        let mut out = String::new();
+        out.push_str("fn main() {\n");
+        out.push_str("    use std::io::{BufRead, Write};\n");
+        out.push_str("    let stdin = std::io::stdin();\n");
+        out.push_str("    let mut stdin = stdin.lock();\n");
+        out.push_str("    let stdout = std::io::stdout();\n");
+        out.push_str("    let mut stdout = stdout.lock();\n");
+        out.push_str("    let mut line = String::new();\n");
+        out.push_str("    loop {\n");
+        out.push_str("        line.clear();\n");
+        out.push_str(
+            "        let n = stdin.read_line(&mut line).unwrap_or_else(|e| tl_fail(&format!(\"could not read stdin: {e}\")));\n",
+        );
+        out.push_str("        if n == 0 { break; }\n");
+        out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
+        out.push_str("        if line.trim().is_empty() { continue; }\n");
+        out.push_str(&format!(
+            "        let t_line: {} = tl_parse_line(&line, {});\n",
+            self.rs_type(elem_ty),
+            self.parser_expr(elem_ty)
+        ));
+
+        let mut current = "t_line".to_string();
+        let mut current_ty = elem_ty.clone();
+        for stage in &fusion.stages {
+            match stage {
+                tir::Stage::Map { param, body } => {
+                    out.push_str(&format!(
+                        "        let {}: {} = {};\n",
+                        self.local(*param),
+                        self.rs_type(&current_ty),
+                        current
+                    ));
+                    current = self.expr(body);
+                    current_ty = body.ty.clone();
+                }
+                tir::Stage::Select { param, pred } => {
+                    out.push_str(&format!(
+                        "        let {}: {} = {};\n",
+                        self.local(*param),
+                        self.rs_type(&current_ty),
+                        current
+                    ));
+                    out.push_str(&format!("        if !({}) {{ continue; }}\n", self.expr(pred)));
+                    current = format!("{}.clone()", self.local(*param));
+                }
+            }
+        }
+        let printed = self.show(&current_ty, &current, 0);
+        out.push_str(&format!("        writeln!(stdout, \"{{}}\", {printed}).unwrap();\n"));
+        out.push_str("        stdout.flush().unwrap();\n");
+        out.push_str("    }\n}\n");
         out
     }
 

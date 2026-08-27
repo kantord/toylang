@@ -1,0 +1,20 @@
+# The one shape the compiler fuses into a read-one/transform-one/write-one loop instead of
+# reading all of stdin before printing anything: `jsonlines(f(inputs))` where `f`'s own body is
+# a `map`/`select` chain over its parameter. Output is unaffected either way -- this case only
+# pins the value; tests/streaming.rs is what checks output actually arrives before stdin closes.
+program: |
+  fn adults(users: Vec<{name: Str, age: Int}>) -> Vec<{name: Str}> =
+      users | select(.age >= 18) | map {name: .name}
+
+  jsonlines(adults(inputs))
+
+input: |
+  {"name": "ada", "age": 36}
+  {"name": "bo", "age": 9}
+  {"name": "cy", "age": 21}
+
+output: |
+  {"name":"ada"}
+  {"name":"cy"}
+
+node_types: [application, builtin.jsonlines, compare.ge, inputs, int, local, map-over, pipe, projection, record-literal, selection.narrow, var]

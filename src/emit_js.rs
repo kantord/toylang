@@ -145,6 +145,11 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
+    if let Some(fusion) = tir::recognize_fusion(program) {
+        out.push_str(&fused_main(program, &fusion));
+        return out;
+    }
+
     if program.input.is_some() {
         out.push_str(&format!(
             "const {INPUT} = JSON.parse(require(\"fs\").readFileSync(0, \"utf8\"));\n"
@@ -163,6 +168,68 @@ pub fn emit(program: &Program) -> String {
     } else {
         out.push_str(&format!("console.log({});\n", show(&program.body.ty, &body, 0)));
     }
+    out
+}
+
+/// A `jsonlines(f(inputs))` program, compiled as a loop reading one line at a time off the real
+/// fd rather than `readFileSync(0)`'s read-everything-first.
+///
+/// `process.stdout.write` is synchronous to a file or TTY on POSIX but asynchronous to a pipe --
+/// queued rather than issued immediately -- and the very next thing this loop does is a
+/// *synchronous* read that blocks the whole event loop, which risks stopping a queued write from
+/// ever reaching the pipe before the process blocks again. `tests/streaming.rs`'s `js_streams`
+/// checks this directly against a live pipe rather than assuming either way.
+fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
+    let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
+    let mut out = String::new();
+    out.push_str("let tl_stdin_buf = \"\";\n");
+    out.push_str("let tl_stdin_eof = false;\n");
+    out.push_str("function tl_read_line() {\n");
+    out.push_str("  const fs = require(\"fs\");\n");
+    out.push_str("  for (;;) {\n");
+    out.push_str("    const i = tl_stdin_buf.indexOf(\"\\n\");\n");
+    out.push_str("    if (i !== -1) {\n");
+    out.push_str("      const line = tl_stdin_buf.slice(0, i);\n");
+    out.push_str("      tl_stdin_buf = tl_stdin_buf.slice(i + 1);\n");
+    out.push_str("      return line;\n");
+    out.push_str("    }\n");
+    out.push_str("    if (tl_stdin_eof) {\n");
+    out.push_str("      if (tl_stdin_buf.length === 0) return null;\n");
+    out.push_str("      const line = tl_stdin_buf;\n");
+    out.push_str("      tl_stdin_buf = \"\";\n");
+    out.push_str("      return line;\n");
+    out.push_str("    }\n");
+    out.push_str("    const chunk = Buffer.alloc(65536);\n");
+    out.push_str("    const n = fs.readSync(0, chunk, 0, chunk.length, null);\n");
+    out.push_str("    if (n === 0) { tl_stdin_eof = true; continue; }\n");
+    out.push_str("    tl_stdin_buf += chunk.toString(\"utf8\", 0, n);\n");
+    out.push_str("  }\n");
+    out.push_str("}\n");
+
+    out.push_str("for (;;) {\n");
+    out.push_str("  const t_line_raw = tl_read_line();\n");
+    out.push_str("  if (t_line_raw === null) break;\n");
+    out.push_str("  if (t_line_raw.length === 0) continue;\n");
+    out.push_str("  const t_line = JSON.parse(t_line_raw);\n");
+
+    let mut current = "t_line".to_string();
+    let mut current_ty = elem_ty.clone();
+    for stage in &fusion.stages {
+        match stage {
+            tir::Stage::Map { param, body } => {
+                out.push_str(&format!("  const {} = {};\n", local(*param), current));
+                current = expr(body);
+                current_ty = body.ty.clone();
+            }
+            tir::Stage::Select { param, pred } => {
+                out.push_str(&format!("  const {} = {};\n", local(*param), current));
+                out.push_str(&format!("  if (!({})) continue;\n", expr(pred)));
+                current = local(*param);
+            }
+        }
+    }
+    out.push_str(&format!("  console.log({});\n", show(&current_ty, &current, 0)));
+    out.push_str("}\n");
     out
 }
 

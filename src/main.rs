@@ -71,11 +71,17 @@ fn build(src: &str, path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
 /// stdin is only read when the program says it reads input, so a program that does not is not
 /// left waiting on a terminal.
 fn run(src: &str, backend: Backend) -> Result<String, Box<dyn std::error::Error>> {
-    // A program reading `lines` also takes this branch: it needs the real stdin left alone, not
-    // drained into a Rust String, so each backend can read it incrementally for itself. `inputs`
-    // is eager like `input`, not incremental like `lines`, so it needs the same up-front read.
+    // A program reading `lines` also takes the live branch: it needs the real stdin left alone,
+    // not drained into a Rust String, so each backend can read it incrementally for itself.
+    // `inputs` used to always need the same up-front read `input` does, since every backend
+    // materialized it into a Vec before the program body ran; a backend whose generated code now
+    // reads `inputs` for itself one record at a time (`streams_inputs`) gets the same live
+    // treatment `lines` always had, and everything else still needs the whole thing in hand
+    // before `run_on` can validate it.
     let program = toylang::compile(src)?;
-    if program.input.is_none() && program.inputs.is_none() {
+    let needs_upfront_read = program.input.is_some()
+        || (program.inputs.is_some() && !toylang::streams_inputs(&program, backend));
+    if !needs_upfront_read {
         return toylang::run_on(src, None, backend);
     }
     let mut stdin = String::new();

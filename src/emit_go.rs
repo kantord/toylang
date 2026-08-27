@@ -252,30 +252,34 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    decls.push_str("func main() {\n");
-    if let Some(ty) = &program.input {
-        decls.push_str(&format!("\tvar {INPUT} {}\n", e.go_type(ty)));
-        decls.push_str(&format!(
-            "\tif err := json.NewDecoder(os.Stdin).Decode(&{INPUT}); err != nil {{\n\t\ttlFail(err.Error())\n\t}}\n"
-        ));
-    }
-    if let Some(ty) = &program.inputs {
-        // Decode in a loop until io.EOF rather than reading one array token: the wire format is
-        // consecutive top-level JSON values, one per line, not a single `[...]`.
-        decls.push_str(&format!(
-            "\tvar {INPUTS} []{}\n\t{{\n\t\tdec := json.NewDecoder(os.Stdin)\n\t\tfor {{\n\t\t\tvar item {}\n\t\t\tif err := dec.Decode(&item); err != nil {{\n\t\t\t\tif err == io.EOF {{\n\t\t\t\t\tbreak\n\t\t\t\t}}\n\t\t\t\ttlFail(err.Error())\n\t\t\t}}\n\t\t\t{INPUTS} = append({INPUTS}, item)\n\t\t}}\n\t}}\n",
-            e.go_type(ty),
-            e.go_type(ty)
-        ));
-    }
-    let body = e.expr(&program.body);
-    // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
-    let printed = if program.body.ty == Type::Str {
-        body
+    if let Some(fusion) = tir::recognize_fusion(program) {
+        decls.push_str(&e.fused_main(program, &fusion));
     } else {
-        e.show(&program.body.ty, &body, 0)
-    };
-    decls.push_str(&format!("\tfmt.Println({printed})\n}}\n"));
+        decls.push_str("func main() {\n");
+        if let Some(ty) = &program.input {
+            decls.push_str(&format!("\tvar {INPUT} {}\n", e.go_type(ty)));
+            decls.push_str(&format!(
+                "\tif err := json.NewDecoder(os.Stdin).Decode(&{INPUT}); err != nil {{\n\t\ttlFail(err.Error())\n\t}}\n"
+            ));
+        }
+        if let Some(ty) = &program.inputs {
+            // Decode in a loop until io.EOF rather than reading one array token: the wire format
+            // is consecutive top-level JSON values, one per line, not a single `[...]`.
+            decls.push_str(&format!(
+                "\tvar {INPUTS} []{}\n\t{{\n\t\tdec := json.NewDecoder(os.Stdin)\n\t\tfor {{\n\t\t\tvar item {}\n\t\t\tif err := dec.Decode(&item); err != nil {{\n\t\t\t\tif err == io.EOF {{\n\t\t\t\t\tbreak\n\t\t\t\t}}\n\t\t\t\ttlFail(err.Error())\n\t\t\t}}\n\t\t\t{INPUTS} = append({INPUTS}, item)\n\t\t}}\n\t}}\n",
+                e.go_type(ty),
+                e.go_type(ty)
+            ));
+        }
+        let body = e.expr(&program.body);
+        // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
+        let printed = if program.body.ty == Type::Str {
+            body
+        } else {
+            e.show(&program.body.ty, &body, 0)
+        };
+        decls.push_str(&format!("\tfmt.Println({printed})\n}}\n"));
+    }
 
     // Which helpers to include is read off the emitted text rather than tracked alongside it. An
     // unused function is not an error in Go, so a false positive costs nothing, while a missed
@@ -496,6 +500,62 @@ impl Emitter {
                 format!("tlRec{i}")
             }
         }
+    }
+
+    /// A `jsonlines(f(inputs))` program, compiled as a loop that decodes one JSON value at a
+    /// time (the same `json.Decoder`-until-`io.EOF` loop the eager `inputs` path already used,
+    /// just without collecting into a slice first) and prints it immediately. No explicit flush
+    /// is needed: unlike Rust, Python, jq and Lua, `fmt.Println` writes straight through to the
+    /// underlying `os.Stdout` file descriptor with no userspace buffering in between.
+    ///
+    /// Each stage's binding is followed by `_ = t_N`: it is a `:=` local, not a closure parameter
+    /// the way the eager path's `tlMap`/`tlSelect` callback argument is, and Go rejects an unused
+    /// local at compile time -- a `select` whose predicate is the only use, or a `map` whose body
+    /// ignores its argument entirely, would otherwise fail to build only in the fused case.
+    fn fused_main(&self, program: &Program, fusion: &tir::Fusion) -> String {
+        let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
+        let mut out = String::new();
+        out.push_str("func main() {\n");
+        out.push_str("\tdec := json.NewDecoder(os.Stdin)\n");
+        out.push_str("\tfor {\n");
+        out.push_str(&format!("\t\tvar t_line {}\n", self.go_type(elem_ty)));
+        out.push_str(
+            "\t\tif err := dec.Decode(&t_line); err != nil {\n\t\t\tif err == io.EOF {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\ttlFail(err.Error())\n\t\t}\n",
+        );
+
+        let mut current = "t_line".to_string();
+        let mut current_ty = elem_ty.clone();
+        for stage in &fusion.stages {
+            match stage {
+                tir::Stage::Map { param, body } => {
+                    out.push_str(&format!(
+                        "\t\t{} := {}\n\t\t_ = {}\n",
+                        self.local(*param),
+                        current,
+                        self.local(*param)
+                    ));
+                    current = self.expr(body);
+                    current_ty = body.ty.clone();
+                }
+                tir::Stage::Select { param, pred } => {
+                    out.push_str(&format!(
+                        "\t\t{} := {}\n\t\t_ = {}\n",
+                        self.local(*param),
+                        current,
+                        self.local(*param)
+                    ));
+                    out.push_str(&format!(
+                        "\t\tif !({}) {{\n\t\t\tcontinue\n\t\t}}\n",
+                        self.expr(pred)
+                    ));
+                    current = self.local(*param);
+                }
+            }
+        }
+        let printed = self.show(&current_ty, &current, 0);
+        out.push_str(&format!("\t\tfmt.Println({printed})\n"));
+        out.push_str("\t}\n}\n");
+        out
     }
 
     /// Wrap `leaf` in `depth` layers of `tlMap`, spelling the element type at each one.

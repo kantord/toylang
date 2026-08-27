@@ -21,7 +21,7 @@ use inkwell::values::{BasicValueEnum, FunctionValue, IntValue, PointerValue};
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 
 use crate::ast::BinOp;
-use crate::tir::{Builtin, Func, Kind, LocalId, Program, Tir};
+use crate::tir::{self, Builtin, Func, Fusion, Kind, LocalId, Program, Stage, Tir};
 use crate::ty::Type;
 
 /// The C source linked into every native binary.
@@ -56,6 +56,7 @@ struct Runtime<'ctx> {
     rec_set: FunctionValue<'ctx>,
     read_input: FunctionValue<'ctx>,
     read_inputs: FunctionValue<'ctx>,
+    read_one_input: FunctionValue<'ctx>,
     rec_from_vec: FunctionValue<'ctx>,
     at: FunctionValue<'ctx>,
     opt_is_some: FunctionValue<'ctx>,
@@ -188,6 +189,11 @@ impl<'ctx> Emitter<'ctx> {
             read_inputs: module.add_function(
                 "tl_read_inputs",
                 ptr.fn_type(&[ptr.into()], false),
+                None,
+            ),
+            read_one_input: module.add_function(
+                "tl_read_one_input",
+                i32t.fn_type(&[ptr.into(), ptr.into()], false),
                 None,
             ),
             rec_from_vec: module.add_function(
@@ -1265,6 +1271,82 @@ impl<'ctx> Emitter<'ctx> {
             .into())
     }
 
+    /// A `jsonlines(f(inputs))` program, compiled as a loop over `tl_read_one_input` instead of
+    /// `self.expr(&program.body)` + one `print` at the end. `tl_print` already writes with a raw
+    /// `write(1, ...)` syscall and needs no explicit flush, unlike every other backend that had
+    /// to add one -- the one backend with no libc stdio buffering to fight.
+    ///
+    /// Each record is bound with `Slot::Value`, the same as `Kind::Input` binds a single read
+    /// value, not `Slot::Cursor`: the struct-of-arrays optimisation `map`/`select` use for a
+    /// cursor into an existing Vec's columns does not apply here, since there is no Vec -- each
+    /// record arrives as its own one-off parsed value, exactly like `input` already is.
+    fn fused_main(&mut self, program: &Program, fusion: &Fusion<'_>) -> Result<(), String> {
+        let elem_ty = program
+            .inputs
+            .as_ref()
+            .ok_or("fusion only matches an `inputs` source")?
+            .clone();
+        let function = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function to emit a loop into")?;
+
+        let i64t = self.ctx.i64_type();
+        let i32t = self.ctx.i32_type();
+        let descriptor = self.string_const(&Self::descriptor(&elem_ty));
+        let out_slot = self.builder.build_alloca(i64t, "next_input").map_err(|e| e.to_string())?;
+
+        let cond = self.ctx.append_basic_block(function, "fused.cond");
+        let body = self.ctx.append_basic_block(function, "fused.body");
+        let end = self.ctx.append_basic_block(function, "fused.end");
+
+        self.builder.build_unconditional_branch(cond).map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(cond);
+        let got = self
+            .call_rt(self.rt.read_one_input, &[descriptor.into(), out_slot.into()], "got")?
+            .into_int_value();
+        let has_more = self
+            .builder
+            .build_int_compare(IntPredicate::NE, got, i32t.const_zero(), "has_more")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(has_more, body, end)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(body);
+        let slot =
+            self.builder.build_load(i64t, out_slot, "slot").map_err(|e| e.to_string())?.into_int_value();
+        let mut current = self.read_slot(slot, &elem_ty)?;
+        let mut current_ty = elem_ty;
+
+        for (i, stage) in fusion.stages.iter().enumerate() {
+            match stage {
+                Stage::Map { param, body } => {
+                    self.locals.insert(*param, Slot::Value(current));
+                    current = self.expr(body)?;
+                    current_ty = body.ty.clone();
+                }
+                Stage::Select { param, pred } => {
+                    self.locals.insert(*param, Slot::Value(current));
+                    let keep = self.expr(pred)?.into_int_value();
+                    let keep_block = self.ctx.append_basic_block(function, &format!("fused.keep{i}"));
+                    self.builder
+                        .build_conditional_branch(keep, keep_block, cond)
+                        .map_err(|e| e.to_string())?;
+                    self.builder.position_at_end(keep_block);
+                }
+            }
+        }
+
+        self.print(current, &current_ty)?;
+        self.builder.build_unconditional_branch(cond).map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(end);
+        Ok(())
+    }
+
     /// A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
     fn print(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<(), String> {
         let as_str = match ty {
@@ -1296,8 +1378,12 @@ fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'c
     e.params.clear();
     e.locals.clear();
 
-    let body = e.expr(&program.body)?;
-    e.print(body, &program.body.ty)?;
+    if let Some(fusion) = tir::recognize_fusion(program) {
+        e.fused_main(program, &fusion)?;
+    } else {
+        let body = e.expr(&program.body)?;
+        e.print(body, &program.body.ty)?;
+    }
     e.builder.build_return(Some(&i32t.const_zero())).map_err(|err| err.to_string())?;
 
     e.module.verify().map_err(|err| format!("LLVM rejected the module: {err}"))?;

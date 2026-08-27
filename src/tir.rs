@@ -174,3 +174,115 @@ pub fn vec_depth(ty: &Type) -> usize {
     }
     depth
 }
+
+/// One `map`/`select` applied between reading a record and printing it, in source order (the
+/// stage nearest `inputs` first).
+pub enum Stage<'a> {
+    Map { param: LocalId, body: &'a Tir },
+    Select { param: LocalId, pred: &'a Tir },
+}
+
+/// A program shaped as `jsonlines(chain of map/select over inputs)`, recognized so a backend can
+/// compile it as a read-one/transform-one/write-one loop instead of collecting all of stdin into
+/// a `Vec` before printing anything.
+///
+/// This is deliberately narrow: a structural match on this one shape, not a general `Stream<T>`
+/// type. draft.md's open question on first-class streams (Q1) is still open -- a real `Stream`
+/// type would let a program of *any* shape stream, where this only fuses the one idiom actually
+/// written for it today. Widening this into Q1's answer is future work, not started here.
+pub struct Fusion<'a> {
+    pub stages: Vec<Stage<'a>>,
+}
+
+/// What a chain of `map`/`select` bottoms out at. `Inputs` is what `recognize_fusion` needs at
+/// the top; `Var` shows up one level down, inside a function's own body, where the chain bottoms
+/// out at that function's parameter rather than at stdin directly.
+enum Base<'a> {
+    Inputs,
+    Var(&'a String),
+}
+
+/// `inputs` can only ever be checked with its type already known (see `check.rs`'s `expect` vs
+/// `synth` split), so it can never sit directly under `select`/`map` the way a plain Vec can --
+/// it only ever appears as a whole function call's argument, e.g. `f(inputs)`. That is why this
+/// walks through at most one `Call` back into `program.funcs`: it is not chasing an arbitrary
+/// call graph, only unwrapping the one indirection `inputs`'s own typing rule forces every real
+/// program to go through.
+///
+/// Each `|` desugars to `Bind { value, body, .. }` with the piped-from expression as `value` and
+/// the next stage as `body`, so the chain is walked by recursing into `value` first and treating
+/// `body` as one more stage on the way back out -- which is also why a stage that is not exactly
+/// a `map`/`select` call (a bare field projection like `.[].name`, say) ends the recognition
+/// rather than being folded in: only the two are represented as their own `Kind` variant here.
+fn flatten<'a>(t: &'a Tir, program: &'a Program, stages: &mut Vec<Stage<'a>>) -> Option<Base<'a>> {
+    match &t.kind {
+        Kind::Bind { value, body, .. } => {
+            let base = flatten(value, program, stages)?;
+            match &body.kind {
+                Kind::Map { param, body, .. } => stages.push(Stage::Map { param: *param, body }),
+                Kind::Select { param, pred, .. } => stages.push(Stage::Select { param: *param, pred }),
+                _ => return None,
+            }
+            Some(base)
+        }
+        Kind::Call { func, arg } => {
+            if !matches!(arg.kind, Kind::Inputs) {
+                return None;
+            }
+            let f = program.funcs.iter().find(|f| &f.name == func)?;
+            match flatten(&f.body, program, stages)? {
+                Base::Var(name) if name == &f.param => Some(Base::Inputs),
+                _ => None,
+            }
+        }
+        Kind::Var(name) => Some(Base::Var(name)),
+        Kind::Inputs => Some(Base::Inputs),
+        _ => None,
+    }
+}
+
+pub fn recognize_fusion(program: &Program) -> Option<Fusion<'_>> {
+    let Kind::Builtin { which: Builtin::JsonLines, arg } = &program.body.kind else {
+        return None;
+    };
+    let mut stages = Vec::new();
+    if !matches!(flatten(arg, program, &mut stages)?, Base::Inputs) {
+        return None;
+    }
+
+    // A stage (inside or outside the one function this chain called into) that reads `inputs`
+    // again would need the whole materialized Vec this loop deliberately never builds. Nothing in
+    // the corpus does this and it is arguably nonsensical (the source stdin is not yet fully
+    // read), but falling back to the eager path is free and correct, where forcing fusion would
+    // reference a Vec that was never declared.
+    let stage_reads_inputs = stages.iter().any(|s| match s {
+        Stage::Map { body, .. } => mentions_inputs(body),
+        Stage::Select { pred, .. } => mentions_inputs(pred),
+    });
+    if stage_reads_inputs || program.funcs.iter().any(|f| mentions_inputs(&f.body)) {
+        return None;
+    }
+    Some(Fusion { stages })
+}
+
+fn mentions_inputs(t: &Tir) -> bool {
+    match &t.kind {
+        Kind::Inputs => true,
+        Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input | Kind::Lines => false,
+        Kind::VecLit(items) => items.iter().any(mentions_inputs),
+        Kind::RecordLit { fields } => fields.iter().any(|(_, v)| mentions_inputs(v)),
+        Kind::Call { arg, .. } => mentions_inputs(arg),
+        Kind::Concat(l, r)
+        | Kind::Compare { lhs: l, rhs: r, .. }
+        | Kind::Arith { lhs: l, rhs: r, .. } => mentions_inputs(l) || mentions_inputs(r),
+        Kind::Bind { value, body, .. } => mentions_inputs(value) || mentions_inputs(body),
+        Kind::Map { source, body, .. } => mentions_inputs(source) || mentions_inputs(body),
+        Kind::Select { source, pred, .. } => mentions_inputs(source) || mentions_inputs(pred),
+        Kind::Cond { cond, then, otherwise } => {
+            mentions_inputs(cond) || mentions_inputs(then) || mentions_inputs(otherwise)
+        }
+        Kind::Field { base, .. } | Kind::Unwrap { base } => mentions_inputs(base),
+        Kind::Index { base, index, .. } => mentions_inputs(base) || mentions_inputs(index),
+        Kind::Builtin { arg, .. } => mentions_inputs(arg),
+    }
+}
