@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "run_err(FLIP, \"\\\"frozen\\\"\")"
+---
+input: `frozen` is not a variant of Status

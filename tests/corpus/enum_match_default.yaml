@@ -1,0 +1,13 @@
+# A bare payload arm rebinds `.` to the payload, and `any()` is the default arm that stands in
+# for the variants nothing named.
+program: |
+  enum Msg { ping, text{body: Str}, quit }
+
+  fn describe(m: Msg) -> Str = m | text -> .body // any() -> "control"
+
+  {a: describe(text{body: "hi"}), b: describe(ping), c: describe(quit)}
+
+output: |
+  {"a":"hi","b":"control","c":"control"}
+
+node_types: [application, local, match, pipe, projection, record-literal, str, var, variant.payload, variant.unit]

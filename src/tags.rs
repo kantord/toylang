@@ -39,6 +39,11 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
         | Kind::Lines => {}
         Kind::VecLit(items) => items.iter().for_each(|i| walk(i, tags)),
         Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| walk(v, tags)),
+        Kind::EnumLit { payload, .. } => {
+            if let Some(p) = payload {
+                walk(p, tags);
+            }
+        }
         Kind::Call { arg, .. } => walk(arg, tags),
         Kind::Concat(lhs, rhs) => {
             walk(lhs, tags);
@@ -67,6 +72,10 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
             walk(base, tags);
             walk(index, tags);
         }
+        Kind::Match { subject, arms } => {
+            walk(subject, tags);
+            arms.iter().for_each(|a| walk(&a.body, tags));
+        }
     }
 }
 
@@ -76,6 +85,9 @@ fn tag(kind: &Kind) -> String {
         Kind::Int(_) => "int".into(),
         Kind::VecLit(_) => "vec-literal".into(),
         Kind::RecordLit { .. } => "record-literal".into(),
+        // CONTEXT.md's terms: a `variant` is one alternative, a `unit variant` carries nothing.
+        Kind::EnumLit { payload: None, .. } => "variant.unit".into(),
+        Kind::EnumLit { payload: Some(_), .. } => "variant.payload".into(),
         Kind::Var(_) => "var".into(),
         Kind::Local(_) => "local".into(),
         Kind::Input => "input".into(),
@@ -93,6 +105,7 @@ fn tag(kind: &Kind) -> String {
         Kind::Unwrap { .. } => "unwrap".into(),
         Kind::Index { .. } => "selection.collapse".into(),
         Kind::Inputs => "inputs".into(),
+        Kind::Match { .. } => "match".into(),
     }
 }
 

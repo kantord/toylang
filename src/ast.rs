@@ -97,14 +97,44 @@ pub struct Def {
     pub is_pub: bool,
 }
 
+/// `enum Shape { point, circle{r: Int} }`. The first declaration that creates a type identity
+/// rather than abbreviating one: the name is what exhaustiveness will be proved against.
+#[derive(Debug)]
+pub struct EnumDecl {
+    pub name: String,
+    pub variants: Vec<Variant>,
+    pub span: Span,
+    /// Same meaning as `Def::is_pub`: whether a module exports this declaration.
+    pub is_pub: bool,
+}
+
+/// One alternative of an enum. Variant names are data (they appear as JSON keys and strings),
+/// so they are exempt from the capital-means-type casing rule, like record fields.
+#[derive(Debug)]
+pub struct Variant {
+    pub name: String,
+    pub span: Span,
+    /// `None` for a unit variant. The payload is written as a record type today, but any single
+    /// type is the rule, so nothing downstream assumes a record.
+    pub payload: Option<TypeExpr>,
+}
+
 /// Zero or more definitions followed by the expression that is the program.
 #[derive(Debug)]
 pub struct File {
     /// `type Db = {users: Vec<User>}`. An abbreviation and nothing more: the name and what it
     /// stands for are one type, so nothing distinguishes them once resolved.
     pub aliases: Vec<Alias>,
+    pub enums: Vec<EnumDecl>,
     pub defs: Vec<Def>,
     pub body: Expr,
+}
+
+/// What a module file holds: declarations only, no trailing expression.
+#[derive(Debug)]
+pub struct Module {
+    pub defs: Vec<Def>,
+    pub enums: Vec<EnumDecl>,
 }
 
 #[derive(Debug)]
@@ -149,9 +179,55 @@ pub enum Expr {
     /// second use rather than accepting a second stream, since there is only ever one real
     /// stdin.
     Lines { span: Span },
+    /// A `//` chain of match arms over the subject `.`: `point -> 0 // circle{r} -> r * r`.
+    /// The subject is not part of the node; a match reads `.` the way `select` does, so it
+    /// appears as a pipe stage.
+    Match { arms: Vec<MatchArm>, span: Span },
+    /// `Shape.circle` or `Shape.circle{r: 1}`: a variant constructor spelled through its enum.
+    /// Only the qualified form needs its own node; a bare `circle{r: 1}` is an ordinary `Call`
+    /// and a bare `active` an ordinary `Var`, resolved through the enum registry by the checker.
+    Variant {
+        enum_name: String,
+        enum_span: Span,
+        variant: String,
+        variant_span: Span,
+        payload: Option<Box<Expr>>,
+        span: Span,
+    },
     /// `lhs | rhs`, which binds `.` in `rhs` to the value of `lhs`.
     Pipe { lhs: Box<Expr>, rhs: Box<Expr>, span: Span },
     Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr>, span: Span },
+}
+
+#[derive(Debug)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub body: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub enum Pattern {
+    /// A variant name, optionally destructuring its payload's fields. Bare names inside the
+    /// braces bind fresh, and `rest` is the `..` marker that permits naming only some of them.
+    Variant { name: String, span: Span, fields: Option<FieldsPattern> },
+    /// `any()`, the default arm: matches whatever is left.
+    Default { span: Span },
+}
+
+impl Pattern {
+    pub fn span(&self) -> Span {
+        match self {
+            Pattern::Variant { span, .. } | Pattern::Default { span } => *span,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FieldsPattern {
+    pub names: Vec<(String, Span)>,
+    pub rest: bool,
+    pub span: Span,
 }
 
 impl Expr {
@@ -173,6 +249,8 @@ impl Expr {
             | Expr::Input { span }
             | Expr::Inputs { span }
             | Expr::Lines { span }
+            | Expr::Variant { span, .. }
+            | Expr::Match { span, .. }
             | Expr::Pipe { span, .. }
             | Expr::Binary { span, .. } => *span,
         }

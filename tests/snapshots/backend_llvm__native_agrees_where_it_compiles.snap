@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (102):
+compiles natively (110):
 adults
 arith_add
 arith_div_trunc
@@ -24,6 +24,14 @@ cond_in_map
 cond_true
 div_by_zero
 empty_result
+enum_input
+enum_inputs
+enum_inputs_reject
+enum_match
+enum_match_default
+enum_payload_variant
+enum_unit_variant
+enum_variant_at_runtime
 escapes
 extent_of_vec
 filter

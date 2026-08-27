@@ -12,6 +12,12 @@ pub enum Type {
     /// never be a function's declared parameter or return type: the only way to get one is the
     /// `lines` keyword itself, and the only thing that consumes one is `collect`.
     Lines,
+    /// A declared enum: nominal, so the name is the identity. The variants ride along so that
+    /// every consumer of a `Type` -- printers, backends, input validation -- has them in hand
+    /// without a registry beside the tree; a name determines its variants within a program, so
+    /// the derived equality is still name equality in practice. A variant's payload is `None`
+    /// for a unit variant, in declaration order.
+    Enum { name: String, variants: Vec<(String, Option<Type>)> },
 }
 
 impl Type {
@@ -32,6 +38,7 @@ impl Type {
             Type::Lines => true,
             Type::Vec(t) | Type::Opt(t) => t.contains_lines(),
             Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_lines()),
+            // A payload type is resolved from a written annotation, which cannot spell Lines.
             _ => false,
         }
     }
@@ -70,6 +77,9 @@ impl std::fmt::Display for Type {
                     fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();
                 write!(f, "{{{}}}", parts.join(", "))
             }
+            // The name is the identity, so the name is the display: spelling the variants out
+            // would print the definition where the reader wants the reference.
+            Type::Enum { name, .. } => write!(f, "{name}"),
         }
     }
 }

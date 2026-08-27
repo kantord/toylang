@@ -248,6 +248,9 @@ tl_str *tl_str_join(const tl_vec *parts, const tl_str *open, const tl_str *sep,
  *   b            Bool
  *   [T           Vec of T
  *   {n,name:T,...}   record with n fields, in the type's sorted order
+ *   e{n,Name,variant,variant:T,...}   enum with n variants, in declaration order (the
+ *                variant's position is its tag); a variant with no `:T` is a unit variant.
+ *                Name is carried only so a mismatch can say which enum it expected.
  *
  * It re-validates rather than trusting a pre-checked shape, so a built binary works on its own
  * with `./adults < data.json` and not only under the test harness. A mismatch names the path
@@ -322,6 +325,27 @@ static const char *tl_type_skip(const char *t) {
                 t = tl_type_skip(t + 1);
                 if (*t == ',') {
                     t++;
+                }
+            }
+            return t + 1; /* past '}' */
+        }
+        case 'e': {
+            t += 2; /* past "e{" */
+            int64_t n = 0;
+            while (*t != ',') {
+                n = n * 10 + (*t++ - '0');
+            }
+            t++;
+            while (*t != ',' && *t != '}') {
+                t++; /* the enum's name */
+            }
+            for (int64_t v = 0; v < n; v++) {
+                t++; /* past ',' */
+                while (*t != ':' && *t != ',' && *t != '}') {
+                    t++;
+                }
+                if (*t == ':') {
+                    t = tl_type_skip(t + 1);
                 }
             }
             return t + 1; /* past '}' */
@@ -479,6 +503,87 @@ static int64_t tl_parse_record(tl_json *j, const char *t, const char *path) {
     return (int64_t)rec;
 }
 
+/* One enum value spans two JSON shapes (ADR 0009): a bare string for a unit variant, a
+ * single-key object for a payload one. What comes back is the same two-slot box the compiler
+ * builds for a constructed enum: slot 0 the variant's declaration index, slot 1 the payload. */
+static int64_t tl_parse_enum(tl_json *j, const char *t, const char *path) {
+    t += 2; /* past "e{" */
+    int64_t n = 0;
+    while (*t != ',') {
+        n = n * 10 + (*t++ - '0');
+    }
+    t++;
+    const char *ename = t;
+    while (*t != ',' && *t != '}') {
+        t++;
+    }
+    int64_t ename_len = t - ename;
+
+    const char *names[64];
+    int64_t name_lens[64];
+    const char *types[64]; /* NULL marks a unit variant */
+    if (n > 64) {
+        tl_fail("too many variants", path);
+    }
+    for (int64_t v = 0; v < n; v++) {
+        t++;
+        names[v] = t;
+        while (*t != ':' && *t != ',' && *t != '}') {
+            t++;
+        }
+        name_lens[v] = t - names[v];
+        if (*t == ':') {
+            types[v] = t + 1;
+            t = tl_type_skip(t + 1);
+        } else {
+            types[v] = NULL;
+        }
+    }
+
+    tl_skip_ws(j);
+    if (j->p < j->end && *j->p == '"') {
+        tl_str *s = tl_parse_string(j, path);
+        for (int64_t v = 0; v < n; v++) {
+            if (types[v] == NULL && s->len == name_lens[v] &&
+                memcmp(s->ptr, names[v], (size_t)s->len) == 0) {
+                int64_t *box = tl_rec_new(2);
+                box[0] = v;
+                return (int64_t)box;
+            }
+        }
+        char what[256];
+        snprintf(what, sizeof what, "`%.*s` is not a unit variant of %.*s", (int)s->len,
+                 s->ptr, (int)ename_len, ename);
+        tl_fail(what, path);
+    }
+    if (j->p < j->end && *j->p == '{') {
+        j->p++;
+        tl_str *key = tl_parse_string(j, path);
+        tl_expect(j, ':', path);
+        for (int64_t v = 0; v < n; v++) {
+            if (types[v] != NULL && key->len == name_lens[v] &&
+                memcmp(key->ptr, names[v], (size_t)key->len) == 0) {
+                char sub[256];
+                snprintf(sub, sizeof sub, "%s.%.*s", path, (int)key->len, key->ptr);
+                int64_t *box = tl_rec_new(2);
+                box[0] = v;
+                box[1] = tl_parse(j, types[v], sub);
+                /* One key is the whole shape, so the wrapper closes right here. */
+                tl_expect(j, '}', path);
+                return (int64_t)box;
+            }
+        }
+        char what[256];
+        snprintf(what, sizeof what, "`%.*s` is not a payload variant of %.*s", (int)key->len,
+                 key->ptr, (int)ename_len, ename);
+        tl_fail(what, path);
+    }
+    char what[256];
+    snprintf(what, sizeof what, "expected %.*s", (int)ename_len, ename);
+    tl_fail(what, path);
+    return 0;
+}
+
 /* A Vec of records is parsed element by element and then transposed into columns. Filling the
  * columns directly would avoid materialising each record, and is worth doing when the parser
  * stops being the cheapest part of reading input. */
@@ -588,6 +693,9 @@ static int64_t tl_parse(tl_json *j, const char *t, const char *path) {
                 tl_fail("expected an object", path);
             }
             return tl_parse_record(j, t, path);
+        case 'e':
+            /* Which of its two shapes arrived is tl_parse_enum's own question. */
+            return tl_parse_enum(j, t, path);
         default:
             tl_fail("bad type descriptor", path);
             return 0;

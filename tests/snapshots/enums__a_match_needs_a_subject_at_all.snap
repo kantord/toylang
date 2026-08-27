@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum S { a }\\n\\na -> 2\")"
+---
+a match needs a subject, so it must follow `|` (at byte 14)

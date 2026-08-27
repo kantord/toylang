@@ -1,0 +1,17 @@
+# A line that names no variant is refused, not coerced: the string shape is only valid when it
+# spells a unit variant of the declared enum.
+program: |
+  enum Msg { ping, text{body: Str} }
+
+  fn render(msgs: Vec<Msg>) -> Vec<Str> =
+      msgs | map(. | text -> .body // any() -> "*ping*")
+
+  jsonlines(render(inputs))
+
+input: |
+  "ping"
+  "burst"
+
+refuses: true
+
+node_types: [application, builtin.jsonlines, inputs, local, map-over, match, pipe, projection, str, var]

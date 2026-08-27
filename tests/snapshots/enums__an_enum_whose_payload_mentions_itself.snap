@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum E { leaf, node{next: E} }\\n\\nleaf\")"
+---
+type `E` is written in terms of itself (at byte 26)

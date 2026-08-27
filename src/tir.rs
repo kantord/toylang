@@ -32,6 +32,12 @@ pub enum Kind {
     /// its position in the type. That is what lets a backend address one by index rather than
     /// searching for it.
     RecordLit { fields: Vec<(String, Tir)> },
+    /// A constructed enum value. The node's type is the enum, which carries the variant list,
+    /// so a backend finds the variant's position (its tag, where one is needed) and its payload
+    /// type there rather than in the node. `payload` is `None` for a unit variant, which every
+    /// backend renders as the bare variant-name string; a payload variant is the single-key
+    /// wrapper (ADR 0009).
+    EnumLit { variant: String, payload: Option<Box<Tir>> },
     /// A name written in the source: today only a function parameter.
     Var(String),
     Local(LocalId),
@@ -108,6 +114,23 @@ pub enum Kind {
         /// Whether an entry is a record, which decides if collapsing has to gather columns.
         elem_is_record: bool,
     },
+    /// First-match-wins dispatch over an enum subject's variants. The checker has already
+    /// proved the arms exhaustive, so a backend may take the last arm without a test, and has
+    /// already resolved every name a pattern bound, so an arm is only a variant to test for, a
+    /// payload local to bind, and a body.
+    Match {
+        subject: Box<Tir>,
+        arms: Vec<MatchArm>,
+    },
+}
+
+pub struct MatchArm {
+    /// `None` is the default arm (`any()`), which the checker keeps last.
+    pub variant: Option<String>,
+    /// The local the payload binds to in a payload-variant arm; `.` and destructured field
+    /// names in the body both read through it.
+    pub payload: Option<LocalId>,
+    pub body: Tir,
 }
 
 /// The functions the language provides. Each is unary, and so is every user function: something
@@ -269,6 +292,7 @@ fn mentions_inputs(t: &Tir) -> bool {
     match &t.kind {
         Kind::Inputs => true,
         Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input | Kind::Lines => false,
+        Kind::EnumLit { payload, .. } => payload.as_deref().is_some_and(mentions_inputs),
         Kind::VecLit(items) => items.iter().any(mentions_inputs),
         Kind::RecordLit { fields } => fields.iter().any(|(_, v)| mentions_inputs(v)),
         Kind::Call { arg, .. } => mentions_inputs(arg),
@@ -284,5 +308,8 @@ fn mentions_inputs(t: &Tir) -> bool {
         Kind::Field { base, .. } | Kind::Unwrap { base } => mentions_inputs(base),
         Kind::Index { base, index, .. } => mentions_inputs(base) || mentions_inputs(index),
         Kind::Builtin { arg, .. } => mentions_inputs(arg),
+        Kind::Match { subject, arms } => {
+            mentions_inputs(subject) || arms.iter().any(|a| mentions_inputs(&a.body))
+        }
     }
 }

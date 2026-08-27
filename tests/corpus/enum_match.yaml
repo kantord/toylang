@@ -1,0 +1,17 @@
+# The closed-world match: arms chained with `//`, first match wins, a record pattern binding
+# its field fresh. The emitted code is pinned for the two backends whose handling says
+# something the output cannot: jq leans on `type`/`has` because `has` on a string errors, and
+# Rust lowers to a real match that re-proves the exhaustiveness the checker established.
+program: |
+  enum Shape { point, circle{r: Int} }
+
+  fn area_ish(s: Shape) -> Int = s | circle{r} -> r * r // point -> 0
+
+  {a: area_ish(Shape.point), b: area_ish(circle{r: 3})}
+
+output: |
+  {"a":0,"b":9}
+
+snapshot: [jq, rust]
+
+node_types: [application, arith.mul, int, local, match, pipe, projection, record-literal, var, variant.payload, variant.unit]

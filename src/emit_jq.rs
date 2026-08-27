@@ -112,6 +112,37 @@ fn canonical(ty: &Type, value: &str) -> String {
         Type::Opt(inner) => {
             format!("({value} | if . == null then null else {} end)", canonical(inner, "."))
         }
+        // One type, two runtime shapes (ADR 0009). A unit variant is already canonical, being a
+        // bare string; a payload wrapper is rebuilt so the payload's own keys come out in the
+        // type's order, the same reason records are rebuilt.
+        Type::Enum { variants, .. } => {
+            let payloads: Vec<(&String, &Type)> = variants
+                .iter()
+                .filter_map(|(n, p)| p.as_ref().map(|p| (n, p)))
+                .collect();
+            if payloads.is_empty() {
+                return value.to_string();
+            }
+            let wrap = |vname: &String, pty: &Type| {
+                format!("{{{}: {}}}", jq_string(vname), canonical(pty, &field_of(".", vname)))
+            };
+            // The conditions cover everything but the last shape, which needs no test: the type
+            // says nothing else is left. A unit variant, if any exists, is the string shape.
+            let mut tests: Vec<String> = Vec::new();
+            if payloads.len() < variants.len() {
+                tests.push("if type == \"string\" then .".to_string());
+            }
+            for (vname, pty) in &payloads[..payloads.len() - 1] {
+                let word = if tests.is_empty() { "if" } else { "elif" };
+                tests.push(format!("{word} has({}) then {}", jq_string(vname), wrap(vname, pty)));
+            }
+            let (last_name, last_ty) = payloads[payloads.len() - 1];
+            let last = wrap(last_name, last_ty);
+            if tests.is_empty() {
+                return format!("({value} | {last})");
+            }
+            format!("({value} | {} else {last} end)", tests.join(" "))
+        }
         Type::Record(fields) => {
             let parts: Vec<String> = fields
                 .iter()
@@ -137,6 +168,11 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
             Kind::VecLit(items) => items.iter().for_each(|i| callees(i, out)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| callees(v, out));
+            }
+            Kind::EnumLit { payload, .. } => {
+                if let Some(p) = payload {
+                    callees(p, out);
+                }
             }
             Kind::Call { func, arg } => {
                 out.push(func.clone());
@@ -172,6 +208,10 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
             Kind::Index { base, index, .. } => {
                 callees(base, out);
                 callees(index, out);
+            }
+            Kind::Match { subject, arms } => {
+                callees(subject, out);
+                arms.iter().for_each(|a| callees(&a.body, out));
             }
         }
     }
@@ -217,6 +257,7 @@ fn uses_arith(program: &Program) -> bool {
             | Kind::Inputs | Kind::Lines => false,
             Kind::VecLit(items) => items.iter().any(walk),
             Kind::RecordLit { fields } => fields.iter().any(|(_, v)| walk(v)),
+            Kind::EnumLit { payload, .. } => payload.as_deref().is_some_and(walk),
             Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => walk(arg),
             Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => walk(l) || walk(r),
             Kind::Bind { value, body, .. } => walk(value) || walk(body),
@@ -224,6 +265,9 @@ fn uses_arith(program: &Program) -> bool {
             Kind::Map { source, body, .. } => walk(source) || walk(body),
             Kind::Field { base, .. } | Kind::Unwrap { base } => walk(base),
             Kind::Index { base, index, .. } => walk(base) || walk(index),
+            Kind::Match { subject, arms } => {
+                walk(subject) || arms.iter().any(|a| walk(&a.body))
+            }
         }
     }
     program.funcs.iter().any(|f| walk(&f.body)) || walk(&program.body)
@@ -271,6 +315,12 @@ fn expr(t: &Tir) -> String {
                 .collect();
             format!("{{{}}}", parts.join(", "))
         }
+
+        // The value is its JSON shape, which jq spells directly.
+        Kind::EnumLit { variant, payload } => match payload {
+            None => jq_string(variant),
+            Some(p) => format!("{{{}: ({})}}", jq_string(variant), expr(p)),
+        },
 
         Kind::VecLit(items) => {
             let parts: Vec<String> = items.iter().map(expr).collect();
@@ -353,6 +403,44 @@ fn expr(t: &Tir) -> String {
         Kind::Index { base, index, depth, .. } => {
             let at = format!(".[{}]", expr(index));
             format!("({} | {})", expr(base), distribute(&at, *depth))
+        }
+        // Shape tests over the subject: equality for a unit variant, `type`-guarded `has` for a
+        // payload one, since `has` on a string is an error rather than false. The checker
+        // proved the arms exhaustive, so the last one is the `else`.
+        Kind::Match { subject, arms } => {
+            let subj = expr(subject);
+            let run = |arm: &tir::MatchArm| match arm.payload {
+                Some(pid) => {
+                    let variant = arm.variant.as_ref().expect("only a variant arm has a payload");
+                    format!(
+                        "({subj}[{}] as {} | {})",
+                        jq_string(variant),
+                        local(pid),
+                        expr(&arm.body)
+                    )
+                }
+                None => expr(&arm.body),
+            };
+            if arms.len() == 1 {
+                return format!("({})", run(&arms[0]));
+            }
+            let mut out = String::from("(");
+            for (i, arm) in arms.iter().enumerate() {
+                match &arm.variant {
+                    Some(v) if i + 1 < arms.len() => {
+                        let test = if arm.payload.is_some() {
+                            format!("({subj} | type == \"object\" and has({}))", jq_string(v))
+                        } else {
+                            format!("{subj} == {}", jq_string(v))
+                        };
+                        let word = if i == 0 { "if" } else { "elif" };
+                        out.push_str(&format!("{word} {test} then {} ", run(arm)));
+                    }
+                    _ => out.push_str(&format!("else {} end", run(arm))),
+                }
+            }
+            out.push(')');
+            out
         }
     }
 }

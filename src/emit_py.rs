@@ -268,6 +268,37 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
                 show(inner, &v, depth + 1)
             )
         }
+        // One type, two runtime shapes (ADR 0009): a unit variant is a bare string, a payload
+        // variant a single-key dict, so the shape is inspected before rendering. Which payload
+        // follows which key is still the type's knowledge, as everywhere else.
+        Type::Enum { variants, .. } => {
+            let n = format!("n{depth}");
+            let payloads: Vec<&(String, Option<Type>)> =
+                variants.iter().filter(|(_, p)| p.is_some()).collect();
+            if payloads.is_empty() {
+                return format!("tl_quote({value})");
+            }
+            let mut body = String::new();
+            if payloads.len() < variants.len() {
+                body.push_str(&format!("tl_quote({n}) if isinstance({n}, str) else "));
+            }
+            for (i, (vname, pty)) in payloads.iter().enumerate() {
+                let pty = pty.as_ref().expect("filtered to payload variants");
+                let read = format!("{n}[{}]", py_string(vname));
+                let wrapped = format!(
+                    "({} + {} + \"}}\")",
+                    py_string(&format!("{{\"{vname}\":")),
+                    show(pty, &read, depth + 1)
+                );
+                if i + 1 < payloads.len() {
+                    body.push_str(&format!("{wrapped} if {} in {n} else ", py_string(vname)));
+                } else {
+                    // The last payload variant needs no test: the type says nothing else is left.
+                    body.push_str(&wrapped);
+                }
+            }
+            format!("(lambda {n}: {body})({value})")
+        }
         Type::Record(fields) => {
             if fields.is_empty() {
                 return "\"{}\"".to_string();
@@ -313,6 +344,13 @@ fn expr(t: &Tir) -> String {
                 .collect();
             format!("{{{}}}", parts.join(", "))
         }
+
+        // The value is its JSON shape: a unit variant is the variant-name string, a payload
+        // variant the single-key dict a record already is.
+        Kind::EnumLit { variant, payload } => match payload {
+            None => py_string(variant),
+            Some(p) => format!("{{{}: {}}}", py_string(variant), expr(p)),
+        },
 
         Kind::VecLit(items) => {
             let parts: Vec<String> = items.iter().map(expr).collect();
@@ -374,6 +412,44 @@ fn expr(t: &Tir) -> String {
             } else {
                 format!("tl_field({}, {}, {})", expr(base), py_string(name), depth)
             }
+        }
+        // A right-fold of conditional expressions over the subject, tests first-match-wins;
+        // the last arm carries no test, since the checker proved the chain exhaustive. The
+        // payload key test needs the isinstance guard: `"a" in v` on a unit variant's *string*
+        // would be a substring test, and `"a" in "ab"` answers yes.
+        Kind::Match { subject, arms } => {
+            let subj = expr(subject);
+            let mut out = String::new();
+            let mut closing = 0;
+            for (i, arm) in arms.iter().enumerate() {
+                let run = match arm.payload {
+                    Some(pid) => {
+                        let variant =
+                            arm.variant.as_ref().expect("only a variant arm has a payload");
+                        format!(
+                            "(lambda {}: {})({subj}[{}])",
+                            local(pid),
+                            expr(&arm.body),
+                            py_string(variant)
+                        )
+                    }
+                    None => expr(&arm.body),
+                };
+                match &arm.variant {
+                    Some(v) if i + 1 < arms.len() => {
+                        let test = if arm.payload.is_some() {
+                            format!("(isinstance({subj}, dict) and {} in {subj})", py_string(v))
+                        } else {
+                            format!("{subj} == {}", py_string(v))
+                        };
+                        out.push_str(&format!("({run} if {test} else "));
+                        closing += 1;
+                    }
+                    _ => out.push_str(&run),
+                }
+            }
+            out.push_str(&")".repeat(closing));
+            format!("({out})")
         }
     }
 }

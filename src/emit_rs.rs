@@ -391,7 +391,8 @@ const JSONLINES_HELPER: &str = r#"fn tl_jsonlines<T>(v: &[T], f: fn(&T) -> Strin
 pub fn emit(program: &Program) -> String {
     let mut used = Used::default();
     let mut records = Vec::new();
-    let mut ctx = Collect { used: &mut used, records: &mut records };
+    let mut enums = Vec::new();
+    let mut ctx = Collect { used: &mut used, records: &mut records, enums: &mut enums };
     for f in &program.funcs {
         ctx.ty(&f.param_ty);
         ctx.walk(&f.body);
@@ -404,8 +405,9 @@ pub fn emit(program: &Program) -> String {
         ctx.ty(ty);
     }
     records.sort_by_key(|t| t.to_string());
+    enums.sort_by_key(|t| t.to_string());
 
-    let e = Emitter { records };
+    let e = Emitter { records, enums };
 
     let mut decls = String::new();
     for (i, rec) in e.records.iter().enumerate() {
@@ -417,6 +419,27 @@ pub fn emit(program: &Program) -> String {
         decls.push_str("}\n\n");
         if program.input.is_some() || program.inputs.is_some() {
             decls.push_str(&e.record_parser(i, fields));
+        }
+    }
+
+    // The one backend whose target has the construct being compiled: a toylang enum is a Rust
+    // enum. `allow(non_camel_case_types)` because variant names are data and keep their source
+    // spelling rather than being case-mangled.
+    for (i, en) in e.enums.iter().enumerate() {
+        let Type::Enum { name, variants } = en else { unreachable!("only enums are collected") };
+        decls.push_str(&format!(
+            "#[derive(Clone)]\n#[allow(non_camel_case_types)]\nenum {} {{\n",
+            e.rs_type(en)
+        ));
+        for (vname, payload) in variants {
+            match payload {
+                None => decls.push_str(&format!("    V_{vname},\n")),
+                Some(p) => decls.push_str(&format!("    V_{vname}({}),\n", e.rs_type(p))),
+            }
+        }
+        decls.push_str("}\n\n");
+        if program.input.is_some() || program.inputs.is_some() {
+            decls.push_str(&e.enum_parser(i, name, variants));
         }
     }
 
@@ -513,6 +536,7 @@ struct Used {
 struct Collect<'a> {
     used: &'a mut Used,
     records: &'a mut Vec<Type>,
+    enums: &'a mut Vec<Type>,
 }
 
 impl Collect<'_> {
@@ -525,6 +549,16 @@ impl Collect<'_> {
                 }
                 for (_, f) in fields {
                     self.ty(f);
+                }
+            }
+            Type::Enum { variants, .. } => {
+                if !self.enums.contains(t) {
+                    self.enums.push(t.clone());
+                }
+                for (_, p) in variants {
+                    if let Some(p) = p {
+                        self.ty(p);
+                    }
                 }
             }
             _ => {}
@@ -543,6 +577,11 @@ impl Collect<'_> {
             | Kind::Lines => {}
             Kind::VecLit(items) => items.iter().for_each(|i| self.walk(i)),
             Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| self.walk(v)),
+            Kind::EnumLit { payload, .. } => {
+                if let Some(p) = payload {
+                    self.walk(p);
+                }
+            }
             Kind::Call { arg, .. } => self.walk(arg),
             Kind::Concat(l, r)
             | Kind::Compare { lhs: l, rhs: r, .. }
@@ -572,6 +611,10 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
+            Kind::Match { subject, arms } => {
+                self.walk(subject);
+                arms.iter().for_each(|a| self.walk(&a.body));
+            }
             Kind::Builtin { which, arg } => {
                 if *which == Builtin::JsonLines {
                     self.used.jsonlines = true;
@@ -584,6 +627,7 @@ impl Collect<'_> {
 
 struct Emitter {
     records: Vec<Type>,
+    enums: Vec<Type>,
 }
 
 impl Emitter {
@@ -603,6 +647,14 @@ impl Emitter {
             .expect("every record reachable from the program was collected")
     }
 
+    fn enum_index(&self, ty: &Type) -> usize {
+        let key = ty.to_string();
+        self.enums
+            .iter()
+            .position(|r| r.to_string() == key)
+            .expect("every enum reachable from the program was collected")
+    }
+
     fn rs_type(&self, ty: &Type) -> String {
         match ty {
             Type::Str => "String".to_string(),
@@ -614,6 +666,8 @@ impl Emitter {
             // annotation, so this is never asked to name a real value.
             Type::Lines => "()".to_string(),
             Type::Record(_) => format!("TlRec{}", self.record_index(ty)),
+            // The enum's own name is the identity and is unique, so it names the Rust enum too.
+            Type::Enum { name, .. } => format!("TlE_{name}"),
         }
     }
 
@@ -631,8 +685,50 @@ impl Emitter {
             ),
             Type::Opt(_) => unreachable!("Opt cannot be declared, so input never has one"),
             Type::Lines => unreachable!("Lines cannot be declared, so input never has one"),
+            Type::Enum { .. } => format!("tl_parse_enum{}", self.enum_index(ty)),
             Type::Record(_) => format!("tl_parse_rec{}", self.record_index(ty)),
         }
+    }
+
+    /// A named parsing function for one enum, dispatching on which of the two JSON shapes
+    /// (ADR 0009) arrived: a bare string resolves among the unit variants, a single-key object
+    /// among the payload ones, and a near miss is refused naming the enum.
+    fn enum_parser(&self, i: usize, name: &str, variants: &[(String, Option<Type>)]) -> String {
+        let ename = format!("TlE_{name}");
+        let mut out = String::new();
+        out.push_str(&format!("fn tl_parse_enum{i}(p: &mut TlParser) -> {ename} {{\n"));
+        out.push_str("    if p.peek() == b'\"' {\n");
+        out.push_str("        let s = p.parse_str();\n");
+        out.push_str("        match s.as_str() {\n");
+        for (vname, payload) in variants {
+            if payload.is_none() {
+                out.push_str(&format!("            \"{vname}\" => {ename}::V_{vname},\n"));
+            }
+        }
+        out.push_str(&format!(
+            "            _ => tl_fail(&format!(\"`{{s}}` is not a unit variant of {name}\")),\n"
+        ));
+        out.push_str("        }\n    } else {\n");
+        out.push_str("        p.expect(b'{');\n");
+        out.push_str("        let key = tl_parse_str(p);\n");
+        out.push_str("        p.expect(b':');\n");
+        out.push_str("        let v = match key.as_str() {\n");
+        for (vname, payload) in variants {
+            if let Some(pty) = payload {
+                out.push_str(&format!(
+                    "            \"{vname}\" => {ename}::V_{vname}(({})(p)),\n",
+                    self.parser_expr(pty)
+                ));
+            }
+        }
+        out.push_str(&format!(
+            "            _ => tl_fail(&format!(\"`{{key}}` is not a payload variant of {name}\")),\n"
+        ));
+        out.push_str("        };\n");
+        // One key is the whole shape, so the wrapper closes right here.
+        out.push_str("        p.expect(b'}');\n");
+        out.push_str("        v\n    }\n}\n\n");
+        out
     }
 
     /// A named parsing function for one record shape, reading fields in whatever order they
@@ -780,6 +876,10 @@ impl Emitter {
                     .collect();
                 format!("{} {{ {} }}", self.rs_type(&t.ty), parts.join(", "))
             }
+            Kind::EnumLit { variant, payload } => match payload {
+                None => format!("{}::V_{variant}", self.rs_type(&t.ty)),
+                Some(p) => format!("{}::V_{variant}({})", self.rs_type(&t.ty), self.expr(p)),
+            },
             Kind::VecLit(items) => {
                 let parts: Vec<String> = items.iter().map(|i| self.expr(i)).collect();
                 format!("vec![{}]", parts.join(", "))
@@ -872,6 +972,41 @@ impl Emitter {
                     format!("tl_at(&{v}, {i})")
                 })
             }
+            // The one target with the construct itself: a toylang match is a Rust match, and
+            // rustc re-proves the exhaustiveness the checker already established. A default
+            // arm is `_`; a duplicate or dead arm costs a warning, not an error.
+            Kind::Match { subject, arms } => {
+                let Type::Enum { variants, .. } = &subject.ty else {
+                    unreachable!("a match subject is an enum")
+                };
+                let ename = self.rs_type(&subject.ty);
+                let rendered: Vec<String> = arms
+                    .iter()
+                    .map(|arm| match &arm.variant {
+                        None => format!("_ => {}", self.expr(&arm.body)),
+                        Some(v) => {
+                            let has_payload = variants
+                                .iter()
+                                .find(|(n, _)| n == v)
+                                .expect("the checker resolved the variant")
+                                .1
+                                .is_some();
+                            if has_payload {
+                                let pid =
+                                    arm.payload.expect("a payload arm always binds its payload");
+                                format!(
+                                    "{ename}::V_{v}({}) => {}",
+                                    self.local(pid),
+                                    self.expr(&arm.body)
+                                )
+                            } else {
+                                format!("{ename}::V_{v} => {}", self.expr(&arm.body))
+                            }
+                        }
+                    })
+                    .collect();
+                format!("(match {} {{ {} }})", self.expr(subject), rendered.join(", "))
+            }
         }
     }
 
@@ -898,6 +1033,29 @@ impl Emitter {
                     "(match {value} {{ None => \"null\".to_string(), Some({v}) => {} }})",
                     self.show(inner, &v, depth + 1)
                 )
+            }
+            // The match is the shape dispatch ADR 0009 asks of every printer, native here: a
+            // unit variant renders as its quoted name, a payload variant as the single-key
+            // wrapper.
+            Type::Enum { variants, .. } => {
+                let n = format!("n{depth}");
+                let arms: Vec<String> = variants
+                    .iter()
+                    .map(|(vname, payload)| match payload {
+                        None => format!(
+                            "{}::V_{vname} => {}",
+                            self.rs_type(ty),
+                            rs_string(&format!("\"{vname}\""))
+                        ),
+                        Some(p) => format!(
+                            "{}::V_{vname}({n}) => ({} + &{} + \"}}\")",
+                            self.rs_type(ty),
+                            rs_string(&format!("{{\"{vname}\":")),
+                            self.show(p, &n, depth + 1)
+                        ),
+                    })
+                    .collect();
+                format!("(match {value} {{ {} }})", arms.join(", "))
             }
             Type::Record(fields) => {
                 if fields.is_empty() {

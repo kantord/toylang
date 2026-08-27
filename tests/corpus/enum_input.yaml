@@ -1,0 +1,18 @@
+# Enum-typed input, scalar: the wire value is the bare unit-variant string, every backend's own
+# reader accepts it (the eager path hands each one canonical bytes to parse for itself), and the
+# result prints back as the other variant.
+program: |
+  enum Status { active, inactive }
+
+  fn flip(s: Status) -> Status =
+      s | active -> Status.inactive // inactive -> Status.active
+
+  flip(input)
+
+input: |
+  "active"
+
+output: |
+  "inactive"
+
+node_types: [application, input, local, match, pipe, var, variant.unit]

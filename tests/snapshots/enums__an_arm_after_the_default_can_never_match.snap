@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum Shape { point, circle{r: Int} }\\n\\nShape.point | any() -> 0 // point -> 1\")"
+---
+this arm can never match; the `any()` arm above it already matches everything (at byte 66)

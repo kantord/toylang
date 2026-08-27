@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum P { xy{x: Int, y: Int} }\\n\\nxy{x: 1, y: 2} | xy{x} -> x\")"
+---
+a `xy` pattern must name every payload field or end in `..`; missing `y` (at byte 50)

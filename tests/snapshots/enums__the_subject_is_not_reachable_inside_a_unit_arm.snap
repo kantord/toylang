@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum S { a }\\n\\nS.a | a -> .\")"
+---
+`.` is not bound here (at byte 25)

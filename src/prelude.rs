@@ -14,21 +14,26 @@
 //! pass, which prunes any function -- prelude or the program's own -- that the program's body
 //! never calls, directly or transitively.
 
-use crate::ast::Def;
+use crate::ast::Module;
 
 const PRELUDE_SRC: &str = include_str!("../prelude.toy");
 
-/// Every `pub` definition in `prelude.toy`.
-pub fn defs() -> Vec<Def> {
-    let defs = crate::parse::parse_module(PRELUDE_SRC).expect("prelude.toy is valid toylang");
-    defs.into_iter().filter(|d| d.is_pub).collect()
+/// Every `pub` declaration in `prelude.toy`.
+pub fn module() -> Module {
+    let module = crate::parse::parse_module(PRELUDE_SRC).expect("prelude.toy is valid toylang");
+    Module {
+        defs: module.defs.into_iter().filter(|d| d.is_pub).collect(),
+        enums: module.enums.into_iter().filter(|e| e.is_pub).collect(),
+    }
 }
 
-/// Prepends the prelude's definitions to `file`, so a program can call any of them. Prepended
+/// Prepends the prelude's declarations to `file`, so a program can call any of them. Prepended
 /// rather than appended, so a program that redefines the same name is the one flagged as the
 /// duplicate -- its span is the one worth showing.
 pub fn inject(file: &mut crate::ast::File) {
-    let mut merged = defs();
-    merged.append(&mut file.defs);
-    file.defs = merged;
+    let mut module = module();
+    module.defs.append(&mut file.defs);
+    file.defs = module.defs;
+    module.enums.append(&mut file.enums);
+    file.enums = module.enums;
 }

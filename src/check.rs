@@ -1,15 +1,25 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use crate::ast::{Alias, BinOp, Def, Expr, File, Span, TypeExpr};
+use crate::ast::{Alias, BinOp, Def, EnumDecl, Expr, File, Pattern, Span, TypeExpr};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{Sig, Type};
 
 struct Ctx<'a> {
     sigs: &'a HashMap<String, Sig>,
+    /// Every declared enum, resolved. Keyed by name, which is the identity.
+    enums: &'a HashMap<String, Type>,
+    /// Which enums declare each variant name, in declaration order. A bare variant use resolves
+    /// through this while exactly one enum claims the name; two claimants are a loud error
+    /// naming both, with `Shape.circle` as the qualified way out.
+    variant_owners: &'a HashMap<String, Vec<String>>,
     /// Named bindings. At most one, since functions are unary and there is no `let`.
     scope: Vec<(String, Type)>,
+    /// Names a match arm's record pattern bound, innermost last: reading one reads that field
+    /// off the arm's payload local, so nothing beyond ordinary `Field` nodes reaches the
+    /// backends. Each entry is the bound name, the payload's record type, and its local.
+    arm_fields: Vec<(String, Type, LocalId)>,
     /// What `.` refers to here, if anything: its type and the local holding it.
     subject: Option<(Type, LocalId)>,
     /// The type `input` was checked against, filled in the first time it is used.
@@ -28,7 +38,10 @@ impl Ctx<'_> {
     fn with(&self, subject: Option<(Type, LocalId)>) -> Ctx<'_> {
         Ctx {
             sigs: self.sigs,
+            enums: self.enums,
+            variant_owners: self.variant_owners,
             scope: self.scope.clone(),
+            arm_fields: self.arm_fields.clone(),
             subject,
             input: self.input,
             inputs: self.inputs,
@@ -47,12 +60,28 @@ impl Ctx<'_> {
 pub fn check(file: &File) -> Result<tir::Program, Error> {
     let lines_used = Cell::new(false);
     let aliases = alias_map(&file.aliases)?;
-    // Resolved eagerly so a broken alias is an error even when nothing uses it, and so a cycle
-    // is found here rather than wherever it happened to be reached from.
-    for a in &file.aliases {
-        resolve(&a.ty, &aliases, &mut vec![a.name.clone()])?;
+    let env = TypeEnv { aliases, enums: enum_map(&file.enums)? };
+    for e in &file.enums {
+        if env.aliases.contains_key(&e.name) {
+            return Err(Error::new(e.span, format!("type `{}` is defined twice", e.name)));
+        }
     }
-    let sigs = signatures(&file.defs, &aliases)?;
+    // Resolved eagerly so a broken declaration is an error even when nothing uses it, and so a
+    // cycle is found here rather than wherever it happened to be reached from.
+    for a in &file.aliases {
+        resolve(&a.ty, &env, &mut vec![a.name.clone()])?;
+    }
+    let mut enums: HashMap<String, Type> = HashMap::new();
+    for e in &file.enums {
+        enums.insert(e.name.clone(), resolve_enum(e, &env, &mut Vec::new())?);
+    }
+    let mut variant_owners: HashMap<String, Vec<String>> = HashMap::new();
+    for e in &file.enums {
+        for v in &e.variants {
+            variant_owners.entry(v.name.clone()).or_default().push(e.name.clone());
+        }
+    }
+    let sigs = signatures(&file.defs, &env)?;
     let input = RefCell::new(None);
     let inputs = RefCell::new(None);
     let next_local = Cell::new(0);
@@ -64,7 +93,10 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         let sig = &sigs[&def.name];
         let ctx = Ctx {
             sigs: &sigs,
+            enums: &enums,
+            variant_owners: &variant_owners,
             scope: vec![(def.param.name.clone(), sig.param.clone())],
+            arm_fields: Vec::new(),
             subject: None,
             input: &input,
             inputs: &inputs,
@@ -91,7 +123,10 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
 
     let ctx = Ctx {
         sigs: &sigs,
+        enums: &enums,
+        variant_owners: &variant_owners,
         scope: Vec::new(),
+        arm_fields: Vec::new(),
         subject: None,
         input: &input,
         inputs: &inputs,
@@ -188,6 +223,11 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
         | Kind::Lines => {}
         Kind::VecLit(items) => items.iter().for_each(|i| calls_in(i, out)),
         Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| calls_in(v, out)),
+        Kind::EnumLit { payload, .. } => {
+            if let Some(p) = payload {
+                calls_in(p, out);
+            }
+        }
         Kind::Call { .. } => unreachable!("handled above"),
         Kind::Concat(l, r) => {
             calls_in(l, out);
@@ -215,6 +255,10 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
         Kind::Index { base, index, .. } => {
             calls_in(base, out);
             calls_in(index, out);
+        }
+        Kind::Match { subject, arms } => {
+            calls_in(subject, out);
+            arms.iter().for_each(|a| calls_in(&a.body, out));
         }
     }
 }
@@ -253,6 +297,60 @@ fn value_name(name: &str, span: Span, what: &str) -> Result<(), Error> {
 /// and `resolve` expands it; nothing downstream ever learns a name was involved.
 type Aliases<'a> = HashMap<String, &'a TypeExpr>;
 
+/// The named types a written annotation can refer to. Aliases expand away; an enum resolves to
+/// the identity its declaration created.
+struct TypeEnv<'a> {
+    aliases: Aliases<'a>,
+    enums: HashMap<String, &'a EnumDecl>,
+}
+
+fn enum_map(enums: &[EnumDecl]) -> Result<HashMap<String, &EnumDecl>, Error> {
+    let mut map: HashMap<String, &EnumDecl> = HashMap::new();
+    for e in enums {
+        if !e.name.chars().next().is_some_and(char::is_uppercase) {
+            return Err(Error::new(
+                e.span,
+                format!("a type name starts with a capital letter, and `{}` reads as a value", e.name),
+            ));
+        }
+        if Type::from_name(&e.name).is_some() || e.name == "Vec" || e.name == "Opt" {
+            return Err(Error::new(
+                e.span,
+                format!("`{}` is a built-in type and cannot be redefined", e.name),
+            ));
+        }
+        for (i, v) in e.variants.iter().enumerate() {
+            if e.variants[..i].iter().any(|earlier| earlier.name == v.name) {
+                return Err(Error::new(
+                    v.span,
+                    format!("variant `{}` is declared twice in `{}`", v.name, e.name),
+                ));
+            }
+        }
+        if map.insert(e.name.clone(), e).is_some() {
+            return Err(Error::new(e.span, format!("type `{}` is defined twice", e.name)));
+        }
+    }
+    Ok(map)
+}
+
+/// Resolve one enum declaration to its type. `seen` carries the names being expanded, exactly
+/// as for aliases, so an enum whose payload mentions itself is refused rather than expanded
+/// forever -- there is no indirection for a recursive payload to hide behind yet.
+fn resolve_enum(decl: &EnumDecl, env: &TypeEnv, seen: &mut Vec<String>) -> Result<Type, Error> {
+    seen.push(decl.name.clone());
+    let mut variants = Vec::new();
+    for v in &decl.variants {
+        let payload = match &v.payload {
+            Some(ty) => Some(resolve(ty, env, seen)?),
+            None => None,
+        };
+        variants.push((v.name.clone(), payload));
+    }
+    seen.pop();
+    Ok(Type::Enum { name: decl.name.clone(), variants })
+}
+
 fn alias_map(aliases: &[Alias]) -> Result<Aliases<'_>, Error> {
     let mut map: Aliases = HashMap::new();
     for a in aliases {
@@ -275,7 +373,7 @@ fn alias_map(aliases: &[Alias]) -> Result<Aliases<'_>, Error> {
     Ok(map)
 }
 
-fn signatures(defs: &[Def], aliases: &Aliases) -> Result<HashMap<String, Sig>, Error> {
+fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, Sig>, Error> {
     let mut sigs = HashMap::new();
     for def in defs {
         value_name(&def.name, def.span, "function name")?;
@@ -298,25 +396,22 @@ fn signatures(defs: &[Def], aliases: &Aliases) -> Result<HashMap<String, Sig>, E
             return Err(Error::new(def.span, format!("`{}` is defined twice", def.name)));
         }
         let sig = Sig {
-            param: resolve(&def.param.ty, aliases, &mut Vec::new())?,
-            ret: resolve(&def.ret, aliases, &mut Vec::new())?,
+            param: resolve(&def.param.ty, env, &mut Vec::new())?,
+            ret: resolve(&def.ret, env, &mut Vec::new())?,
         };
         sigs.insert(def.name.clone(), sig);
     }
     Ok(sigs)
 }
 
-/// `seen` is the chain of alias names currently being expanded, so a type written in terms of
-/// itself is caught rather than expanded forever.
-fn resolve(ty: &TypeExpr, aliases: &Aliases, seen: &mut Vec<String>) -> Result<Type, Error> {
+/// `seen` is the chain of names currently being expanded -- aliases and enums share it -- so a
+/// type written in terms of itself is caught rather than expanded forever.
+fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> Result<Type, Error> {
     match ty {
         TypeExpr::Named { name, span } => {
             if let Some(built_in) = Type::from_name(name) {
                 return Ok(built_in);
             }
-            let Some(written) = aliases.get(name) else {
-                return Err(Error::new(*span, format!("unknown type `{name}`")));
-            };
             if let Some(at) = seen.iter().position(|s| s == name) {
                 // The names expanded since this one last appeared are the cycle, and naming them
                 // is the difference between knowing there is one and finding it.
@@ -332,23 +427,86 @@ fn resolve(ty: &TypeExpr, aliases: &Aliases, seen: &mut Vec<String>) -> Result<T
                     format!("type `{name}` is written in terms of itself{path}"),
                 ));
             }
-            seen.push(name.clone());
-            let expanded = resolve(written, aliases, seen)?;
-            seen.pop();
-            Ok(expanded)
+            if let Some(written) = env.aliases.get(name) {
+                seen.push(name.clone());
+                let expanded = resolve(written, env, seen)?;
+                seen.pop();
+                return Ok(expanded);
+            }
+            if let Some(decl) = env.enums.get(name) {
+                return resolve_enum(decl, env, seen);
+            }
+            Err(Error::new(*span, format!("unknown type `{name}`")))
         }
-        TypeExpr::Vec { elem, .. } => Ok(Type::Vec(Box::new(resolve(elem, aliases, seen)?))),
+        TypeExpr::Vec { elem, .. } => Ok(Type::Vec(Box::new(resolve(elem, env, seen)?))),
         TypeExpr::Record { fields, span } => {
             let mut out = Vec::new();
             for (name, ty) in fields {
                 if out.iter().any(|(n, _): &(String, Type)| n == name) {
                     return Err(Error::new(*span, format!("field `{name}` is declared twice")));
                 }
-                out.push((name.clone(), resolve(ty, aliases, seen)?));
+                out.push((name.clone(), resolve(ty, env, seen)?));
             }
             Ok(Type::record(out))
         }
     }
+}
+
+/// The one enum a bare variant name refers to, or the error naming every candidate: guessing
+/// between two claimants would silently pick a type the program never wrote down.
+fn sole_owner<'a>(
+    ctx: &'a Ctx,
+    variant: &str,
+    owners: &[String],
+    span: Span,
+) -> Result<&'a Type, Error> {
+    if owners.len() > 1 {
+        let named: Vec<String> = owners.iter().map(|e| format!("`{e}`")).collect();
+        let qualified: Vec<String> = owners.iter().map(|e| format!("`{e}.{variant}`")).collect();
+        return Err(Error::new(
+            span,
+            format!(
+                "`{variant}` is a variant of {}; qualify it as {}",
+                named.join(" and "),
+                qualified.join(" or ")
+            ),
+        ));
+    }
+    Ok(&ctx.enums[&owners[0]])
+}
+
+/// Build one variant of `enum_ty`, checking that the payload written matches the payload
+/// declared: a unit variant takes none, a payload variant requires one.
+fn construct(
+    ctx: &Ctx,
+    enum_ty: &Type,
+    variant: &str,
+    variant_span: Span,
+    payload: Option<&Expr>,
+) -> Result<Tir, Error> {
+    let Type::Enum { name, variants } = enum_ty else {
+        unreachable!("construct is only called with an enum type")
+    };
+    let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
+        return Err(Error::new(variant_span, format!("`{name}` has no variant `{variant}`")));
+    };
+    let payload = match (declared, payload) {
+        (None, None) => None,
+        (Some(want), Some(expr)) => Some(Box::new(expect(ctx, expr, want)?)),
+        (None, Some(expr)) => {
+            return Err(Error::new(
+                expr.span(),
+                format!("`{variant}` is a unit variant of `{name}` and takes no payload"),
+            ));
+        }
+        (Some(want), None) => {
+            return Err(Error::new(
+                variant_span,
+                format!("`{variant}` of `{name}` carries a payload of {want}, so it is written `{variant}{{...}}`"),
+            ));
+        }
+    };
+    Ok(Tir::new(enum_ty.clone(), Kind::EnumLit { variant: variant.to_string(), payload }))
 }
 
 fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
@@ -383,12 +541,28 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             None => Err(Error::new(*span, "`.` is not bound here")),
         },
 
-        Expr::Var { name, span } => ctx
-            .scope
-            .iter()
-            .find(|(n, _)| n == name)
-            .map(|(_, t)| Tir::new(t.clone(), Kind::Var(name.clone())))
-            .ok_or_else(|| Error::new(*span, format!("`{name}` is not defined"))),
+        // Innermost binding first: a pattern binding shadows a parameter, and a parameter
+        // shadows a variant, the way any binding shadows a constant.
+        Expr::Var { name, span } => {
+            if let Some((_, payload_ty, pid)) =
+                ctx.arm_fields.iter().rev().find(|(n, _, _)| n == name)
+            {
+                let fty = payload_ty
+                    .field(name)
+                    .expect("the field existed when the pattern was checked")
+                    .clone();
+                let base = Tir::new(payload_ty.clone(), Kind::Local(*pid));
+                return Ok(Tir::new(fty, Kind::Field { base: Box::new(base), name: name.clone() }));
+            }
+            if let Some((_, t)) = ctx.scope.iter().find(|(n, _)| n == name) {
+                return Ok(Tir::new(t.clone(), Kind::Var(name.clone())));
+            }
+            if let Some(owners) = ctx.variant_owners.get(name) {
+                let enum_ty = sole_owner(ctx, name, owners, *span)?.clone();
+                return construct(ctx, &enum_ty, name, *span, None);
+            }
+            Err(Error::new(*span, format!("`{name}` is not defined")))
+        }
 
         Expr::RecordLit { fields, .. } => {
             let mut built: Vec<(String, Tir)> = Vec::new();
@@ -577,12 +751,160 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 let arg = expect(ctx, arg, &sig.param)?;
                 return Ok(Tir::new(sig.ret, Kind::Builtin { which, arg: Box::new(arg) }));
             }
-            let sig = ctx
-                .sigs
-                .get(func)
-                .ok_or_else(|| Error::new(*func_span, format!("`{func}` is not a function")))?;
+            let Some(sig) = ctx.sigs.get(func) else {
+                // A payload constructor is ordinary application (the Q34 path), so `circle{r: 1}`
+                // lands here; it resolves as a variant only after the function namespace declines.
+                if let Some(owners) = ctx.variant_owners.get(func) {
+                    let enum_ty = sole_owner(ctx, func, owners, *func_span)?.clone();
+                    return construct(ctx, &enum_ty, func, *func_span, Some(arg));
+                }
+                return Err(Error::new(*func_span, format!("`{func}` is not a function")));
+            };
             let arg = expect(ctx, arg, &sig.param)?;
             Ok(Tir::new(sig.ret.clone(), Kind::Call { func: func.clone(), arg: Box::new(arg) }))
+        }
+
+        // The closed-world branch the pattern-matching sketch reserved: the subject is a
+        // declared enum, so the arms are proved to cover every variant (or end in `any()`) and
+        // no Result exists anywhere. `.` narrows per arm -- to the payload in a payload arm, to
+        // nothing in a unit arm, since there is no payload to reach and the wider subject is
+        // deliberately not reachable past the match.
+        Expr::Match { arms, span } => {
+            let Some((subject_ty, sid)) = ctx.subject.clone() else {
+                return Err(Error::new(
+                    *span,
+                    "a match needs a subject, so it must follow `|`".to_string(),
+                ));
+            };
+            let Type::Enum { name: enum_name, variants } = &subject_ty else {
+                return Err(Error::new(
+                    *span,
+                    format!("a match needs an enum subject, found {subject_ty}"),
+                ));
+            };
+            let mut covered: Vec<String> = Vec::new();
+            let mut default_seen = false;
+            let mut result: Option<Type> = None;
+            let mut out = Vec::new();
+            for arm in arms {
+                if default_seen {
+                    return Err(Error::new(
+                        arm.span,
+                        "this arm can never match; the `any()` arm above it already matches everything"
+                            .to_string(),
+                    ));
+                }
+                let (variant, payload, arm_ctx) = match &arm.pattern {
+                    Pattern::Default { .. } => {
+                        default_seen = true;
+                        // A default matched the whole subject, so `.` stays the enum value.
+                        (None, None, ctx.with(ctx.subject.clone()))
+                    }
+                    Pattern::Variant { name: vname, span: vspan, fields } => {
+                        let Some((_, payload_ty)) = variants.iter().find(|(n, _)| n == vname)
+                        else {
+                            return Err(Error::new(
+                                *vspan,
+                                format!("`{enum_name}` has no variant `{vname}`"),
+                            ));
+                        };
+                        covered.push(vname.clone());
+                        match payload_ty {
+                            None => {
+                                if let Some(f) = fields {
+                                    return Err(Error::new(
+                                        f.span,
+                                        format!(
+                                            "`{vname}` is a unit variant of `{enum_name}` and has no payload to destructure"
+                                        ),
+                                    ));
+                                }
+                                (Some(vname.clone()), None, ctx.with(None))
+                            }
+                            Some(pty) => {
+                                let pid = ctx.fresh();
+                                let mut arm_ctx = ctx.with(Some((pty.clone(), pid)));
+                                if let Some(f) = fields {
+                                    let Type::Record(pfields) = pty else {
+                                        unreachable!("a declared payload is a record today")
+                                    };
+                                    for (i, (fname, fspan)) in f.names.iter().enumerate() {
+                                        if f.names[..i].iter().any(|(seen, _)| seen == fname) {
+                                            return Err(Error::new(
+                                                *fspan,
+                                                format!("`{fname}` is bound twice in this pattern"),
+                                            ));
+                                        }
+                                        if !pfields.iter().any(|(n, _)| n == fname) {
+                                            return Err(Error::new(
+                                                *fspan,
+                                                format!("no field `{fname}` on {pty}"),
+                                            ));
+                                        }
+                                        arm_ctx.arm_fields.push((fname.clone(), pty.clone(), pid));
+                                    }
+                                    // Leaving fields out of a match against a closed type is a
+                                    // forgotten field until `..` says it was meant.
+                                    if !f.rest {
+                                        let missing: Vec<String> = pfields
+                                            .iter()
+                                            .filter(|(n, _)| !f.names.iter().any(|(m, _)| m == n))
+                                            .map(|(n, _)| format!("`{n}`"))
+                                            .collect();
+                                        if !missing.is_empty() {
+                                            return Err(Error::new(
+                                                f.span,
+                                                format!(
+                                                    "a `{vname}` pattern must name every payload field or end in `..`; missing {}",
+                                                    missing.join(" and ")
+                                                ),
+                                            ));
+                                        }
+                                    }
+                                }
+                                (Some(vname.clone()), Some(pid), arm_ctx)
+                            }
+                        }
+                    }
+                };
+                let body = match &result {
+                    None => {
+                        let body = synth(&arm_ctx, &arm.body)?;
+                        result = Some(body.ty.clone());
+                        body
+                    }
+                    Some(t) => expect(&arm_ctx, &arm.body, t)?,
+                };
+                out.push(tir::MatchArm { variant, payload, body });
+            }
+            if !default_seen {
+                let missing: Vec<String> = variants
+                    .iter()
+                    .filter(|(n, _)| !covered.contains(n))
+                    .map(|(n, _)| format!("`{n}`"))
+                    .collect();
+                if !missing.is_empty() {
+                    return Err(Error::new(
+                        *span,
+                        format!(
+                            "a match over `{enum_name}` must cover every variant or end in `any()`; missing {}",
+                            missing.join(" and ")
+                        ),
+                    ));
+                }
+            }
+            let subject = Tir::new(subject_ty.clone(), Kind::Local(sid));
+            Ok(Tir::new(
+                result.expect("the parser produces at least one arm"),
+                Kind::Match { subject: Box::new(subject), arms: out },
+            ))
+        }
+
+        Expr::Variant { enum_name, enum_span, variant, variant_span, payload, .. } => {
+            let Some(enum_ty) = ctx.enums.get(enum_name) else {
+                return Err(Error::new(*enum_span, format!("`{enum_name}` is not an enum")));
+            };
+            construct(ctx, &enum_ty.clone(), variant, *variant_span, payload.as_deref())
         }
 
         Expr::Neg { base, span } => {

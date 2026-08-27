@@ -32,6 +32,22 @@ place `expr` is called fresh from inside such a delimiter -- five call sites in 
 because forgetting one silently reopens the hazard for that one construct rather than failing
 loudly.
 
+A second instance surfaced while writing enum corpus cases, and the flag does not cover it:
+`fn g(s: Int) -> Int = 1` followed by a program body of `[g(1), g(2)]` fails with
+`expected ']', found ','`, because postfix indexing reaches across the same boundary and reads
+the body's Vec literal as `1[g(1), ...]`. Bare application was suspended at that boundary;
+`[` was not, and suspending it the same way would break legitimate indexing inside a
+definition's body (`v[0]!`). Nothing in the corpus had ever put a `[`-literal body directly
+after a definition, which is how it stayed invisible for as long as bare application's version
+did. And a third: the parenless record-argument form (`f {..}` as a call) reaches across the
+same spot whenever a definition's body *ends* in an identifier and the program body starts
+with `{` -- `... -> r * r` followed by `{a: ...}` reads the record as an argument to `r`. That
+form was justified as "was a syntax error before, so nothing is taken away," which is true
+inside any delimiter and false at exactly this boundary. Until the boundary gets a real
+delimiter (or the grammar goes newline-sensitive), a program body cannot start with `[` after
+a definition, nor with `{` when the definition ends in an identifier -- worked around in the
+corpus by shaping bodies to avoid both.
+
 What is still open: this is a manual invariant with no structural enforcement, the same shape as
 [one invariant, three independent construction sites](one-invariant-three-independent-construction-sites.md)
 -- nothing stops a future grammar addition from introducing a new undelimited adjacency, or a new
