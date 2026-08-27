@@ -106,3 +106,25 @@ _Avoid_: jagged, irregular
 **Enumerable dimensions**:
 A type fixes how deep it goes, so its dimensions can be named in order. `Vec<Vec<Int>>` has two.
 A type of unbounded depth has none, and is reached only by recursive descent.
+
+### Where multiplicity lives
+
+**Stream**:
+The type of effect-layer multiplicity: `Stream<T>` says an expression yields its entries one at
+a time as evaluation proceeds, not that a stream object exists. Born at a source, consumed
+exactly once, dead at `collect` or a sink; never inside a record, a `Vec`, or another `Stream`.
+_Avoid_: lazy list, generator, iterator, channel
+
+**Source**:
+An expression a `Stream` is born from, and the only way one arises: `inputs`, `lines`.
+_Avoid_: producer, reader
+
+**Sink**:
+A stream consumer legal only as a program's outermost expression, writing as it goes, with no
+result type. `jsonlines` is one.
+_Avoid_: printer, writer, output function
+
+**Collect**:
+The named spelling of reify at the stream boundary: `Stream<T> -> Vec<T>`, the one explicit way
+a `Stream` becomes a value. Not a third layer shifter.
+_Avoid_: materialize, realize, to_vec

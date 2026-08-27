@@ -101,14 +101,14 @@ If multiplicity in the effect layer is purely an evaluation-time phenomenon, wit
 *values* existing at all, then the two distinctions collapse into one. The effect layer is then
 the only iterate-only thing, and `Vec` is the only multiplicity-bearing value.
 
-If streams are instead first-class values, there are three things to distinguish: `Vec` (a
-value, indexable), `Stream` (a value, iterate-only), and effect-layer multiplicity. The
-distinctions then stay separate and both must be tracked.
-
-**This document has not yet chosen**, and two sections below are written from opposite
-assumptions. The cardinality table presents `Stream<T>` as a type, which presumes first-class
-streams, while this section treats multiplicity as evaluation-level. That tension is the open
-question showing through, not an oversight to be papered over.
+**Chosen: the collapse, with a spelling.** Multiplicity in the effect layer is
+evaluation-level, and `Stream<T>` is its type -- the type of an expression that yields its
+entries as evaluation proceeds, not the type of a stream object. The cardinality table below
+and this section were describing the same thing from two sides, which is why earlier versions
+of this document read as contradicting each other here. The alternative, streams as
+first-class values, would have meant three things to track (`Vec`, a `Stream` value, and
+effect multiplicity) and a held value of genuinely unknown extent. See
+[the decision](#decided-stream-is-the-effect-layer-typed) for the full rules.
 
 ## Values
 
@@ -2020,6 +2020,13 @@ struct-of-arrays layout itself -- a fourth site for the invariant
 each violated independently, verified here against a corpus case
 (`tests/corpus/inputs_records.yaml`) rather than found the way those three were.
 
+Superseded on one point: the premise above, that nothing can consume a stream incrementally so
+laziness would only buy memory, stopped being true when the fused `jsonlines(f(inputs))` loop
+shipped. `inputs` is no longer typed `Vec<T>`; it is a source of `Stream<T>`, and eager
+consumption is spelled `collect(inputs)`. See
+[the streams decision](#decided-stream-is-the-effect-layer-typed). The rejection of `parse`
+and the three-way stdin exclusivity above are untouched by this.
+
 ## DECIDED: `jsonlines`, and the jq tutorial reproduces in full
 
 jq's own tutorial (jqlang.org/tutorial) has six filters. Five already matched real jq byte for
@@ -2136,6 +2143,83 @@ existing syntax.
 real, checked-in file meant to be read: a module is zero or more `[pub] fn` definitions and
 nothing else, with no body to fake.
 
+## DECIDED: Stream is the effect layer, typed
+
+This settles [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity), and not by
+picking either of its two named options. Streams are evaluation-level multiplicity, as every
+argument collected under that question kept concluding -- but the type system now writes that
+multiplicity down. `Stream<T>` enters the type grammar as the type *of* effect-layer
+multiplicity: it says "this expression yields its entries one at a time as evaluation
+proceeds," never "a stream object exists." The two-layer section's confessed tension -- a
+cardinality table presenting `Stream<T>` as a type while the layer model treated multiplicity
+as evaluation-level -- dissolves, because the two were describing the same thing from two
+sides.
+
+What forced the question was not theory but a lie already shipped. The fused
+`jsonlines(f(inputs))` loop made programs stream for real, while the checker kept typing
+`inputs` as `Vec<T>` and `jsonlines(...)` as `Str`. Whether a program streamed was decided by a
+backend-side pattern match (`tir::recognize_fusion`), invisible to the type, and a program one
+shape away from the recognized pattern fell back to materializing all of stdin with no
+indication anything had changed. That silent cliff, not a missing value type, is the defect
+this decision fixes: eager use of stdin now has a visible, greppable spelling, and streaming
+use is checked rather than guessed.
+
+### The rules
+
+A `Stream<T>` is born only at a source, flows only through a pipeline, and dies only at an
+exit.
+
+**Sources.** `inputs : Stream<T>` (element type inferred from use, as before) and
+`lines : Stream<Str>`, replacing the monomorphic `Lines`. Nothing else creates one: there is
+no value-to-effect operator, exactly as [Q13](#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator)
+leans.
+
+**Mappers.** `Stream` is spellable in signatures -- the one thing the `Lines` design
+deliberately withheld -- so `fn f(s: Stream<A>) -> Stream<B>` is legal. `map`, `select`, and
+projection are cardinality-polymorphic: stream in, stream out.
+
+**Exits.** `collect : Stream<T> -> Vec<T>`, generalized from its `Lines`-only signature, and
+`jsonlines`, which becomes a *sink*: legal only as the program's outermost expression, with no
+result type at all, since nothing remains that could observe one. Its old `Str` typing was a
+placeholder asserting the opposite of what the fused loop does. `collect` is reify spelled as
+a word, not a third layer shifter; whether the `[...]` form subsumes it is deferred along with
+the vec-literal and [cartesian-vs-zip](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit)
+questions, because deciding it means deciding how literals interact with effect typing.
+
+**Linearity.** A stream is consumed exactly once. This generalizes the existing "`lines` may
+be referenced once" check rather than inventing a discipline, and the strictness runs the
+reversible direction: exactly-once can relax to at-most-once later without breaking a single
+program, while the reverse tightening would break every program that dropped a stream. The
+[ordering question](#q4-can-the-type-express-ordering-over-heterogeneous-streams)'s warning
+that linear types "infect the whole system" is about linearity as a discipline over all
+values; one second-class type consumed linearly is the `Lines` rule with a type parameter.
+
+**Second-class by construction.** No `Stream` in a record, in a `Vec`, or in another `Stream`.
+These are not new restrictions but the existing `Lines` containment rules, which were always
+justified the same way: an effect is not a value, so there is nowhere for it to be stored.
+
+### What this deliberately does not decide
+
+[What stdout is](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) stays
+open. Making `jsonlines` a top-level-only sink removes the placeholder answer without
+smuggling in a real one: no `Out` or unit type exists, and stdout-as-value versus
+stdout-as-effect gets its own argument another day.
+
+No stream reducers yet. `extent` stays `Vec`-only, keeping its documented no-fold promise; a
+fold over a stream is real future work, not a typing tweak. The one eager corpus case,
+`total(inputs)`, migrates to `total(collect(inputs))` -- the honest spelling of what it always
+did.
+
+### Consequences
+
+`recognize_fusion` stops guessing. Types say what streams; backends compile stream-typed
+pipelines as the loops they already know how to emit; an eager fallback for a stream-typed
+program stops being a silent behavior and becomes a compiler bug. The corpus cases over
+`inputs` change signatures (`Vec` to `Stream` for the two mapper-shaped ones), and rejection
+tests are needed for what the type now forbids: a nested `jsonlines`, a twice-consumed stream,
+a `Stream` in a record. The output-equality corpus cannot see any of this, the same blindness
+that made `tests/streaming.rs` necessary.
+
 ## Open questions
 
 Tracked here rather than scattered through the document. Status is one of OPEN (no preferred
@@ -2148,11 +2232,11 @@ checked for completeness, and the settled entries are what stop a decision being
 
 | # | Question | Status |
 |---|---|---|
-| [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity) | Streams: first-class values, or evaluation-level multiplicity? | LEANING, evaluation-level; four independent arguments now agree |
+| [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity) | Streams: first-class values, or evaluation-level multiplicity? | SETTLED, evaluation-level and typed: `Stream<T>` is the effect layer's type, not a value type |
 | [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
 | [Q3](#q3-what-symbol-replaces--for-the-record-forming-update) | What symbol replaces `=` for the record-forming update? | LEANING, blocked on Q2 |
 | [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN, subsumes cardinality-vs-order |
-| [Q5](#q5-stream-lowering-strategy-across-the-three-backends) | Stream-lowering strategy across the three backends | OPEN, blocks streaming backends only; three non-streaming backends exist |
+| [Q5](#q5-stream-lowering-strategy-across-the-three-backends) | Stream-lowering strategy across the three backends | OPEN in general; all seven backends stream the fused pipeline shape, so only lowering beyond that shape remains |
 | [Q6](#q6-does-a-reconciler-belong-in-the-language-or-a-library) | Does a reconciler belong in the language or a library? | OPEN |
 | [Q7](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes) | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
 | [Q8](#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization) | Is vectorizability visible in the type system, or a silent optimization? | OPEN |
@@ -2160,7 +2244,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q10](#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes) | Is uniqueness analysis in scope, for deciding when a lens materializes? | OPEN |
 | [Q11](#q11-how-does-the-querytransformation-split-manifest-in-the-type-system) | How does the query/transformation split manifest in the type system? | SETTLED |
 | [Q12](#q12-on-a-type-mismatch-does-field-access-error-yield-null-or-something-third) | On a type mismatch, does field access error, yield null, or something third? | SETTLED |
-| [Q13](#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator) | Does the layer shift run only one way, with no value-to-effect operator? | LEANING, decides Q1 |
+| [Q13](#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator) | Does the layer shift run only one way, with no value-to-effect operator? | LEANING yes, and now load-bearing: born-at-sources, dies-at-exits is the `Stream<T>` typing rule |
 | [Q14](#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy) | Does `select` return a masked view, a selection vector, or a copy? | OPEN |
 | [Q15](#q15-backend-llvm-via-inkwell-cranelift-or-both) | Backend: LLVM via inkwell, Cranelift, or both? | SETTLED, LLVM via inkwell, built and running |
 | [Q16](#q16-string-representation-given-wtf-16-on-the-js-target) | String representation, given WTF-16 on the JS target | OPEN, decides the string API permanently |
@@ -2182,21 +2266,26 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q32](#q32-does-the-dimension-model-subsume-the-effect-layer) | Does the dimension model subsume the effect layer? | OPEN, and it may dissolve Q13 rather than answer it |
 | [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | OPEN, and only expressible because arguments are a record |
 | [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN, and the constructor for one already works |
-| [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | OPEN, and untracked until now |
+| [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | OPEN; `jsonlines` is now a top-level-only sink with no result type, which removes a placeholder answer without deciding the question |
 | [Q36](#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy) | Does a real module system need imports, multiple files, and enforced privacy? | OPEN, one always-on prelude file exists; nothing beyond it does |
 
-[Stream lowering](#q5-stream-lowering-strategy-across-the-three-backends) is the one that blocks streaming work. [Streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) and [multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) both change the two-layer section, so
-they should be settled before that section is treated as stable.
+[Multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) is the one
+question still capable of changing the two-layer section, now that
+[streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) are settled, so it
+should be resolved before that section is treated as stable.
 
 ## Question detail
 
 ### Q1. Streams: first-class values, or evaluation-level multiplicity?
 
-That keeps
+SETTLED: evaluation-level, and typed. `Stream<T>` is the type of effect-layer multiplicity,
+second-class and consumed exactly once, not a value type; see
+[the decision](#decided-stream-is-the-effect-layer-typed). The earlier reasoning stands:
+evaluation-level keeps
 values finite and acyclic, and lets streams compile to loops rather than heap-allocated
-iterators. But the base-functor formulation above implies a *remainder*, which is a value.
-Possible resolution: coinductive in the type system, erased by the compiler when the stream
-provably does not escape, with an acknowledged cliff when it does.
+iterators. The base-functor formulation's *remainder*, which is a value, is exactly the
+first-class-stream cliff the second-class restrictions exist to avoid; if a remainder is ever
+needed, lifting a restriction is additive in a way that imposing one is not.
 
 ### Q2. Binary operators over two multi-valued expressions: cartesian, zip, or explicit?
 
@@ -2235,7 +2324,12 @@ represented so the runtime and type-level guarantees stay symmetrical.
 Lua has true coroutines, JavaScript has generators, native
 has neither for free. Previously recorded as needing to be decided before any backend is
 written, which turned out to be false: three backends exist without it, because nothing in
-them streams. It has to be decided before any backend *streams*.
+them streams. Then recorded as blocking any backend that *streams*, which the fused
+`jsonlines(f(inputs))` loop showed is also false: all seven backends now stream that pipeline
+shape as a plain read/transform/write loop, no coroutines or generators involved, because a
+straight-line pipeline never needs to suspend. What the question still covers is lowering
+beyond that shape -- a stream consumed by something that is not the tail of its own loop --
+where the coroutine/generator/state-machine choice becomes real.
 
 ### Q6. Does a reconciler belong in the language or a library?
 
@@ -2294,7 +2388,10 @@ If effect multiplicity is born only from
  streaming sources and dies only into values through `[...]`, then no value-to-effect
  operator is needed, because degrading a `Vec` forgets its extent and buys nothing. LEANING
  toward yes. This decides [the streams question](#q1-streams-first-class-values-or-evaluation-level-multiplicity) with it, since the only thing that would break it is a value
- with genuinely unknown extent, which is what a first-class stream value would be.
+ with genuinely unknown extent, which is what a first-class stream value would be. The streams
+ question is now settled the compatible way, and this lifecycle -- born at `inputs`/`lines`,
+ dead at `collect` or a sink -- became the `Stream<T>` typing rule, so reversing this lean now
+ means amending that decision too.
 
 ### Q14. Does `select` return a masked view, a selection vector, or a copy?
 
@@ -2599,6 +2696,15 @@ What it does not answer:
 
 Blocked on the same thing as [Q5](#q5-stream-lowering-strategy-across-the-three-backends): a
 program that writes as it goes is a program with an effect layer.
+
+The fused `jsonlines(f(inputs))` loop has since made write-as-it-goes real at the backend
+level, and [the streams decision](#decided-stream-is-the-effect-layer-typed) gave the effect
+layer a type -- so the blockage above is gone, and the question is sharpened rather than
+answered. What was decided there about output is deliberately minimal: `jsonlines` is a sink,
+legal only as the program's outermost expression, with no result type. That removes the old
+placeholder (`jsonlines(...) : Str`, a type claiming the whole output exists as one value)
+without deciding whether stdout is a value, an effect, or something a program returns into.
+Everything in the bullet list above remains open.
 
 ### Q36. Does a real module system need imports, multiple files, and enforced privacy?
 
