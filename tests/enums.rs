@@ -52,12 +52,30 @@ fn an_enum_cannot_reuse_an_alias_name() {
     insta::assert_snapshot!(err("type A = Int\nenum A { x }\n\nstr(1)"));
 }
 
-/// Validating a wire value against an enum is step 5 of plans/enums.md; until every backend can
-/// do it, the checker refuses rather than letting seven readers disagree.
+#[track_caller]
+fn run_err(src: &str, stdin: &str) -> String {
+    toylang::run_with_input(src, Some(stdin)).map(|_| ()).unwrap_err().to_string()
+}
+
+const FLIP: &str =
+    "enum Status { active, inactive }\n\nfn f(s: Status) -> Status = s\n\nf(input)";
+
+/// A wire mismatch names the enum, since "found a string" alone would not say which closed set
+/// the string missed.
 #[test]
-fn enum_typed_input_is_refused_for_now() {
-    insta::assert_snapshot!(err(
-        "enum Status { active, inactive }\n\nfn f(s: Status) -> Status = s\n\nf(input)"
+fn input_that_is_no_variant_names_the_enum() {
+    insta::assert_snapshot!(run_err(FLIP, "\"frozen\""));
+}
+
+/// The two wire shapes are not interchangeable: a payload variant's bare name is not a value
+/// of it, and a unit variant wrapped in an object is not one either.
+#[test]
+fn input_using_the_wrong_shape_for_a_variant() {
+    let src = "enum Shape { point, circle{r: Int} }\n\nfn f(s: Shape) -> Shape = s\n\nf(input)";
+    insta::assert_snapshot!(format!(
+        "{}\n{}",
+        run_err(src, "\"circle\""),
+        run_err(src, "{\"point\": 1}")
     ));
 }
 

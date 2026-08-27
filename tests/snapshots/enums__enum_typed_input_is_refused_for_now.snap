@@ -1,5 +1,0 @@
----
-source: tests/enums.rs
-expression: "err(\"enum Status { active, inactive }\\n\\nfn f(s: Status) -> Status = s\\n\\nf(input)\")"
----
-`input` cannot be checked against Status: enum-typed input is not implemented yet (at byte 67)

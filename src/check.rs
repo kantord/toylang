@@ -1091,14 +1091,6 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
 fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
     // The forms whose type comes from their position rather than their contents.
     if let Expr::Input { span } = expr {
-        // Validating a wire value against an enum is step 5 of plans/enums.md; until it exists
-        // on all seven backends, refusing here is what keeps them agreeing.
-        if want.contains_enum() {
-            return Err(Error::new(
-                *span,
-                format!("`input` cannot be checked against {want}: enum-typed input is not implemented yet"),
-            ));
-        }
         let mut slot = ctx.input.borrow_mut();
         match slot.as_ref() {
             None => *slot = Some(want.clone()),
@@ -1114,12 +1106,6 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
     }
 
     if let Expr::Inputs { span } = expr {
-        if want.contains_enum() {
-            return Err(Error::new(
-                *span,
-                format!("`inputs` cannot be checked against {want}: enum-typed input is not implemented yet"),
-            ));
-        }
         let Some(elem) = want.elem() else {
             return Err(Error::new(*span, format!("`inputs` produces a Vec, but {want} is wanted here")));
         };

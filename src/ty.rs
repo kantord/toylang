@@ -43,17 +43,6 @@ impl Type {
         }
     }
 
-    /// Whether `ty` reaches an enum anywhere inside it. `input` and `inputs` are checked against
-    /// this until enum-aware input validation exists (plans/enums.md step 5).
-    pub fn contains_enum(&self) -> bool {
-        match self {
-            Type::Enum { .. } => true,
-            Type::Vec(t) | Type::Opt(t) => t.contains_enum(),
-            Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_enum()),
-            _ => false,
-        }
-    }
-
     pub fn elem(&self) -> Option<&Type> {
         match self {
             Type::Vec(t) => Some(t),

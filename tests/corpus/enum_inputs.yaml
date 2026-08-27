@@ -1,0 +1,23 @@
+# The motivating case the whole enum plan aims at (plans/enums.md step 5): NDJSON of mixed
+# messages, `inputs` typed as a Vec of the enum, one match in a map -- the heterogeneous-stream
+# story end to end on all seven backends. The shape also fuses, so each backend's own reader
+# parses and dispatches one line at a time.
+program: |
+  enum Msg { ping, text{body: Str} }
+
+  fn render(msgs: Vec<Msg>) -> Vec<Str> =
+      msgs | map(. | text -> .body // any() -> "*ping*")
+
+  jsonlines(render(inputs))
+
+input: |
+  "ping"
+  {"text": {"body": "hi"}}
+  "ping"
+
+output: |
+  "*ping*"
+  "hi"
+  "*ping*"
+
+node_types: [application, builtin.jsonlines, inputs, local, map-over, match, pipe, projection, str, var]

@@ -49,9 +49,34 @@ pub fn validate(value: &Value, ty: &Type, path: &str) -> Result<(), String> {
             return Ok(());
         }
 
-        // The checker refuses an enum anywhere in `input`'s or `inputs`'s type until the
-        // enum-aware validation step (plans/enums.md step 5) exists.
-        (Type::Enum { .. }, _) => unreachable!("enum-typed input is rejected by the checker"),
+        // One enum value spans two JSON shapes (ADR 0009): a bare string naming a unit
+        // variant, or a single-key object whose key names a payload variant. Everything else
+        // is refused with the enum's name, since "found a string" alone would not say which
+        // closed set the string missed.
+        (Type::Enum { name, variants }, v) => {
+            return match v {
+                Value::String(s) => match variants.iter().find(|(n, _)| n == s) {
+                    Some((_, None)) => Ok(()),
+                    Some((_, Some(_))) => Err(format!(
+                        "{path}: `{s}` is a payload variant of {name}, written {{\"{s}\": ...}}"
+                    )),
+                    None => Err(format!("{path}: `{s}` is not a variant of {name}")),
+                },
+                Value::Object(map) if map.len() == 1 => {
+                    let (key, inner) = map.iter().next().expect("exactly one entry");
+                    match variants.iter().find(|(n, _)| n == key) {
+                        Some((_, Some(payload))) => {
+                            validate(inner, payload, &format!("{path}.{key}"))
+                        }
+                        Some((_, None)) => Err(format!(
+                            "{path}: `{key}` is a unit variant of {name}, written \"{key}\""
+                        )),
+                        None => Err(format!("{path}: `{key}` is not a variant of {name}")),
+                    }
+                }
+                v => Err(format!("{path}: expected {name}, found {}", describe(v))),
+            };
+        }
 
         (_, v) => describe(v),
     };

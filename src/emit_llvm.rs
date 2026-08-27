@@ -288,7 +288,18 @@ impl<'ctx> Emitter<'ctx> {
             Type::Vec(elem) => format!("[{}", Self::descriptor(elem)),
             // Opt has no spelling in the type syntax, so an input type can never contain one.
             Type::Opt(_) => unreachable!("Opt cannot be declared, so input never has one"),
-            Type::Enum { .. } => unreachable!("enum-typed input is rejected by the checker"),
+            // Declaration order, because the entry's position is the tag the compiled code
+            // tests against. The name rides along only for the runtime's mismatch messages.
+            Type::Enum { name, variants } => {
+                let body: Vec<String> = variants
+                    .iter()
+                    .map(|(v, payload)| match payload {
+                        None => v.clone(),
+                        Some(p) => format!("{v}:{}", Self::descriptor(p)),
+                    })
+                    .collect();
+                format!("e{{{},{name},{}}}", variants.len(), body.join(","))
+            }
             Type::Record(fields) => {
                 let body: Vec<String> = fields
                     .iter()
@@ -1560,7 +1571,13 @@ impl<'ctx> Emitter<'ctx> {
             }
         }
 
-        self.print(current, &current_ty)?;
+        // Always the JSON rendering, never `print`'s top-level raw-Str rule: each line is one
+        // JSON value (that is what jsonlines promises), so a Str element prints quoted here
+        // exactly as the eager path's per-element `show` does.
+        let shown = self.show(current, &current_ty)?;
+        self.builder
+            .build_call(self.rt.print, &[shown.into()], "")
+            .map_err(|e| e.to_string())?;
         self.builder.build_unconditional_branch(cond).map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(end);

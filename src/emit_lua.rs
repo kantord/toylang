@@ -255,7 +255,10 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
             }
         }
     }
-    let printed = if current_ty == Type::Str { current } else { show(&current_ty, &current, 0) };
+    // Always the JSON rendering, never the top-level raw-Str rule: each line is one JSON value
+    // (that is what jsonlines promises), so a Str element prints quoted here exactly as the
+    // eager path's per-element `show` prints it. Only whole-program results print raw.
+    let printed = show(&current_ty, &current, 0);
     out.push_str(&format!("  print({printed})\n"));
     out.push_str("  ::tl_continue::\n");
     out.push_str("end\n");

@@ -28,12 +28,20 @@ corpus case pins it, deliberately, so step 4 is still free to choose (a) -- but 
 step 4 should know the incumbent is already running, because an incumbent that works is harder
 to displace than a blank page, and silence here would make the accident look like a decision.
 
-Still open, and now slightly sharpened: step 4's real question is no longer "how do we represent
-`Vec<enum>` at all" but "is the boxed representation that fell out acceptable, or does the
-dense-union layout pay for itself". The gather boundary from
+Step 4 then examined the accident against `runtime/toylang.c` as it actually is, and adopted
+it. What the reading showed: the runtime has exactly two column shapes, not one per type --
+`tl_parse_vec` asks `is_record` and gives everything else one column of 8-byte slots, and a
+`Str` element is already a boxed pointer per element. So "boxed enum columns" is not the
+special case the plan's framing feared; it is the existing non-record default doing its job,
+and the *columnar* dense union (a tag buffer plus per-variant child columns, Arrow's answer)
+would be a third column shape -- new construction sites for the invariant
+[one invariant, three independent construction sites](one-invariant-three-independent-construction-sites.md)
+already shows is easy to violate. Nothing in the language yet projects per-variant data out of
+a `Vec<enum>` (match branches per element; no operator is vectorizable over variants), so the
+columnar layout's payoff has no customer. The gather boundary from
 [SoA is cheap until something wants a whole element](soa-is-cheap-until-something-wants-a-whole-element.md)
-is the frame: an enum element is a whole-element want by construction, since its shape varies
-per element. And the reason to be suspicious of the accident surviving unexamined is
-[one invariant, three independent construction sites](one-invariant-three-independent-construction-sites.md):
-the struct-of-arrays invariant already has four construction sites, and enum-aware ones would
-join each of them.
+frames the revisit trigger precisely: an enum element is a whole-element want by construction,
+and the day an operation wants a single variant's data across a whole Vec -- a vectorizable
+match, a per-variant projection -- is the day the dense union earns its construction sites.
+The corpus now pins the boxed behaviour (enum elements travel through `Vec` on all seven
+backends), so the choice is a decision with a witness rather than a default nobody looks at.

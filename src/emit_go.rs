@@ -249,7 +249,7 @@ pub fn emit(program: &Program) -> String {
     // Go has no sum type, so an enum is a tag (the variant's declaration index) plus one
     // pointer per payload variant, nil except for the one the tag names.
     for en in &e.enums {
-        let Type::Enum { variants, .. } = en else { unreachable!("only enums are collected") };
+        let Type::Enum { name, variants } = en else { unreachable!("only enums are collected") };
         decls.push_str(&format!("type {} struct {{\n\ttag int32\n", e.go_type(en)));
         for (i, (_, payload)) in variants.iter().enumerate() {
             if let Some(p) = payload {
@@ -257,6 +257,11 @@ pub fn emit(program: &Program) -> String {
             }
         }
         decls.push_str("}\n\n");
+        // encoding/json cannot guess which of the enum's two wire shapes (ADR 0009) it is
+        // looking at, so decoding is spelled out. Only a program that reads input decodes.
+        if program.input.is_some() || program.inputs.is_some() {
+            decls.push_str(&e.enum_unmarshal(name, variants));
+        }
     }
 
     // Package-level functions are visible in any order, so the forward reference the checker
@@ -555,6 +560,54 @@ impl Emitter {
             .iter()
             .position(|(n, _)| n == variant)
             .expect("the checker resolved the variant against this enum")
+    }
+
+    /// The decoder for one enum: a bare string resolves among the unit variants, a single-key
+    /// object among the payload ones, and a near miss is refused naming the enum.
+    fn enum_unmarshal(&self, name: &str, variants: &[(String, Option<Type>)]) -> String {
+        let ename = format!("tlE_{name}");
+        let mut out = String::new();
+        out.push_str(&format!("func (e *{ename}) UnmarshalJSON(b []byte) error {{\n"));
+        out.push_str("\tvar s string\n");
+        out.push_str("\tif json.Unmarshal(b, &s) == nil {\n");
+        out.push_str("\t\tswitch s {\n");
+        for (i, (vname, payload)) in variants.iter().enumerate() {
+            if payload.is_none() {
+                out.push_str(&format!(
+                    "\t\tcase \"{vname}\":\n\t\t\t*e = {ename}{{tag: {i}}}\n\t\t\treturn nil\n"
+                ));
+            }
+        }
+        out.push_str("\t\t}\n");
+        out.push_str(&format!(
+            "\t\treturn fmt.Errorf(\"`%s` is not a unit variant of {name}\", s)\n\t}}\n"
+        ));
+        let payloads: Vec<(usize, &String, &Type)> = variants
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (v, p))| p.as_ref().map(|p| (i, v, p)))
+            .collect();
+        if payloads.is_empty() {
+            out.push_str(&format!("\treturn fmt.Errorf(\"expected {name}\")\n}}\n\n"));
+            return out;
+        }
+        out.push_str("\tvar m map[string]json.RawMessage\n");
+        out.push_str("\tif err := json.Unmarshal(b, &m); err != nil || len(m) != 1 {\n");
+        out.push_str(&format!("\t\treturn fmt.Errorf(\"expected {name}\")\n\t}}\n"));
+        out.push_str("\tfor k, v := range m {\n");
+        out.push_str("\t\tswitch k {\n");
+        for (i, vname, pty) in &payloads {
+            out.push_str(&format!("\t\tcase \"{vname}\":\n"));
+            out.push_str(&format!("\t\t\tvar p {}\n", self.go_type(pty)));
+            out.push_str("\t\t\tif err := json.Unmarshal(v, &p); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n");
+            out.push_str(&format!("\t\t\t*e = {ename}{{tag: {i}, p{i}: &p}}\n\t\t\treturn nil\n"));
+        }
+        out.push_str("\t\t}\n");
+        out.push_str(&format!(
+            "\t\treturn fmt.Errorf(\"`%s` is not a payload variant of {name}\", k)\n\t}}\n"
+        ));
+        out.push_str(&format!("\treturn fmt.Errorf(\"expected {name}\")\n}}\n\n"));
+        out
     }
 
     /// A `jsonlines(f(inputs))` program, compiled as a loop that decodes one JSON value at a

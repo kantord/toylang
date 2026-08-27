@@ -425,8 +425,8 @@ pub fn emit(program: &Program) -> String {
     // The one backend whose target has the construct being compiled: a toylang enum is a Rust
     // enum. `allow(non_camel_case_types)` because variant names are data and keep their source
     // spelling rather than being case-mangled.
-    for en in &e.enums {
-        let Type::Enum { variants, .. } = en else { unreachable!("only enums are collected") };
+    for (i, en) in e.enums.iter().enumerate() {
+        let Type::Enum { name, variants } = en else { unreachable!("only enums are collected") };
         decls.push_str(&format!(
             "#[derive(Clone)]\n#[allow(non_camel_case_types)]\nenum {} {{\n",
             e.rs_type(en)
@@ -438,6 +438,9 @@ pub fn emit(program: &Program) -> String {
             }
         }
         decls.push_str("}\n\n");
+        if program.input.is_some() || program.inputs.is_some() {
+            decls.push_str(&e.enum_parser(i, name, variants));
+        }
     }
 
     for f in &program.funcs {
@@ -644,6 +647,14 @@ impl Emitter {
             .expect("every record reachable from the program was collected")
     }
 
+    fn enum_index(&self, ty: &Type) -> usize {
+        let key = ty.to_string();
+        self.enums
+            .iter()
+            .position(|r| r.to_string() == key)
+            .expect("every enum reachable from the program was collected")
+    }
+
     fn rs_type(&self, ty: &Type) -> String {
         match ty {
             Type::Str => "String".to_string(),
@@ -674,9 +685,50 @@ impl Emitter {
             ),
             Type::Opt(_) => unreachable!("Opt cannot be declared, so input never has one"),
             Type::Lines => unreachable!("Lines cannot be declared, so input never has one"),
-            Type::Enum { .. } => unreachable!("enum-typed input is rejected by the checker"),
+            Type::Enum { .. } => format!("tl_parse_enum{}", self.enum_index(ty)),
             Type::Record(_) => format!("tl_parse_rec{}", self.record_index(ty)),
         }
+    }
+
+    /// A named parsing function for one enum, dispatching on which of the two JSON shapes
+    /// (ADR 0009) arrived: a bare string resolves among the unit variants, a single-key object
+    /// among the payload ones, and a near miss is refused naming the enum.
+    fn enum_parser(&self, i: usize, name: &str, variants: &[(String, Option<Type>)]) -> String {
+        let ename = format!("TlE_{name}");
+        let mut out = String::new();
+        out.push_str(&format!("fn tl_parse_enum{i}(p: &mut TlParser) -> {ename} {{\n"));
+        out.push_str("    if p.peek() == b'\"' {\n");
+        out.push_str("        let s = p.parse_str();\n");
+        out.push_str("        match s.as_str() {\n");
+        for (vname, payload) in variants {
+            if payload.is_none() {
+                out.push_str(&format!("            \"{vname}\" => {ename}::V_{vname},\n"));
+            }
+        }
+        out.push_str(&format!(
+            "            _ => tl_fail(&format!(\"`{{s}}` is not a unit variant of {name}\")),\n"
+        ));
+        out.push_str("        }\n    } else {\n");
+        out.push_str("        p.expect(b'{');\n");
+        out.push_str("        let key = tl_parse_str(p);\n");
+        out.push_str("        p.expect(b':');\n");
+        out.push_str("        let v = match key.as_str() {\n");
+        for (vname, payload) in variants {
+            if let Some(pty) = payload {
+                out.push_str(&format!(
+                    "            \"{vname}\" => {ename}::V_{vname}(({})(p)),\n",
+                    self.parser_expr(pty)
+                ));
+            }
+        }
+        out.push_str(&format!(
+            "            _ => tl_fail(&format!(\"`{{key}}` is not a payload variant of {name}\")),\n"
+        ));
+        out.push_str("        };\n");
+        // One key is the whole shape, so the wrapper closes right here.
+        out.push_str("        p.expect(b'}');\n");
+        out.push_str("        v\n    }\n}\n\n");
+        out
     }
 
     /// A named parsing function for one record shape, reading fields in whatever order they
