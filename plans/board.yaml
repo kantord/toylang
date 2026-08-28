@@ -32,6 +32,32 @@
   needs: [stdin-rule-decision]
   status: todo
 
+- id: quality-practices-survey
+  issue: gh:8
+  title: Evaluate toy-browser's quality skills/hooks/practices; propose what toylang adopts
+  kind: build
+  needs: []
+  status: delegated
+
+- id: quality-practices-adoption
+  title: Review the proposal and decide what gets introduced
+  kind: decide
+  needs: [quality-practices-survey]
+  status: todo
+
+- id: language-oddities-survey
+  issue: gh:9
+  title: Inventory duplications, cryptic syntax, and ill-fitting jq inheritances
+  kind: build
+  needs: []
+  status: delegated
+
+- id: language-oddities-review
+  title: Review the oddities inventory and settle each item
+  kind: decide
+  needs: [language-oddities-survey]
+  status: todo
+
 - id: frontend-cleanups
   issue: gh:6
   title: Front-end cleanups from the typed-streams review
