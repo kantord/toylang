@@ -2196,7 +2196,12 @@ exit.
 **Sources.** `inputs : Stream<T>` (element type inferred from use, as before) and
 `lines : Stream<Str>`, replacing the monomorphic `Lines`. Nothing else creates one: there is
 no value-to-effect operator, exactly as [Q13](#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator)
-leans.
+leans. Decided after the implementation disclosed a cross-function hole (a function reading a
+source, called from a mapper body, re-read stdin per element): a source may appear only in
+the program's own body, never inside a `fn` definition -- functions receive streams
+exclusively through `Stream<T>` parameters. The alternative, tracking source-consumption per
+function transitively, was rejected as an invisible effect on every signature, the implicit
+shape this design keeps refusing.
 
 **Mappers.** `Stream` is spellable in signatures -- the one thing the `Lines` design
 deliberately withheld -- so `fn f(s: Stream<A>) -> Stream<B>` is legal. `map`, `select`, and

@@ -23,7 +23,7 @@
   title: Decide the rule for a source-consuming function called from a mapper body
   kind: decide
   needs: []
-  status: todo
+  status: done
 
 - id: stdin-rule-build
   issue: gh:7
