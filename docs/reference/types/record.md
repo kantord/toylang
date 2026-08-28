@@ -1,5 +1,13 @@
 # Records
 
+<!-- @review Coordinator, needs your ratification (issue #24): field order now lives in the
+type (your decision), and the implementation took the strict reading -- {a: 1, b: 2} and
+{b: 2, a: 1} are now DISTINCT types, so passing one where a function declares the other is
+a type error. Disclosed as agent-invented, so it is a placeholder until you rule. The
+alternative: order-insensitive typing where declaration order only controls printing, so
+both spellings interchange and print the declared way. Strict buys wire-order fidelity and
+a simpler checker; loose buys friendlier call sites. Edit this note with your ruling. -->
+
 `{name: Str, age: Int}`: a fixed set of differently-typed parts addressed by name, where the
 names are part of the type. A record answers what it is from its contents alone, which is
 what lets a record literal appear anywhere without an annotation:
