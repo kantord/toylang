@@ -1,6 +1,5 @@
 ---
 source: tests/backend_llvm.rs
-assertion_line: 55
 expression: "toylang::emit_llvm::to_ir(&program).unwrap()"
 ---
 ; ModuleID = 'toylang'
@@ -62,6 +61,8 @@ declare ptr @tl_at(ptr, i64, i64, i32)
 declare i64 @tl_opt_is_some(ptr)
 
 declare i64 @tl_opt_get(ptr)
+
+declare ptr @tl_opt_some(i64)
 
 declare ptr @tl_unwrap(ptr, i64)
 

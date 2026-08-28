@@ -4,7 +4,7 @@
 program: |
   enum Temp { unknown, celsius(Int) }
 
-  fn read(t: Temp) -> Int = t | celsius -> . // unknown -> 0
+  fn read(t: Temp) -> Int = t | celsius -> . or unknown -> 0
 
   read(input)
 

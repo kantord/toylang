@@ -1,0 +1,10 @@
+# A pure guard chain with no default is honestly partial: an element no arm claims comes out
+# as the absent Opt, printed null -- the same answer indexing already gives to reaching past
+# what's there.
+program: |
+  [1, 2, 3, 4] | map(. % 2 == 0 -> . * 10)
+
+output: |
+  [null,20,null,40]
+
+node_types: [arith.mul, arith.rem, compare.eq, int, local, map-over, match, pipe, vec-literal]

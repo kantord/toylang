@@ -322,11 +322,26 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
             }
             Ok(stream_uses(cond, binding)? + t)
         }
-        Kind::Match { subject, arms } => {
-            let counts: Vec<usize> = arms
-                .iter()
-                .map(|a| stream_uses(&a.body, binding))
-                .collect::<Result<_, _>>()?;
+        Kind::Match {
+            subject,
+            arms,
+            partial,
+        } => {
+            // A path through the chain evaluates every guard up to its arm, then that arm's
+            // body; a partial chain has one more path, the fall-through, which evaluates every
+            // guard and no body. All of them must agree, exactly as a conditional's branches
+            // must.
+            let mut guards_so_far = 0;
+            let mut counts: Vec<usize> = Vec::new();
+            for a in arms {
+                if let Some(g) = &a.guard {
+                    guards_so_far += stream_uses(g, binding)?;
+                }
+                counts.push(guards_so_far + stream_uses(&a.body, binding)?);
+            }
+            if *partial {
+                counts.push(guards_so_far);
+            }
             if let Some(w) = counts.windows(2).find(|w| w[0] != w[1]) {
                 return Err(LinearViolation::Branches {
                     first: w[0],
@@ -457,9 +472,14 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
             calls_in(base, out);
             calls_in(index, out);
         }
-        Kind::Match { subject, arms } => {
+        Kind::Match { subject, arms, .. } => {
             calls_in(subject, out);
-            arms.iter().for_each(|a| calls_in(&a.body, out));
+            for a in arms {
+                if let Some(g) = &a.guard {
+                    calls_in(g, out);
+                }
+                calls_in(&a.body, out);
+            }
         }
     }
 }
@@ -1368,11 +1388,13 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             ))
         }
 
-        // The closed-world branch the pattern-matching sketch reserved: the subject is a
-        // declared enum, so the arms are proved to cover every variant (or end in `any()`) and
-        // no Result exists anywhere. `.` narrows per arm -- to the payload in a payload arm, to
-        // nothing in a unit arm, since there is no payload to reach and the wider subject is
-        // deliberately not reachable past the match.
+        // The hybrid totality the match-arms decision fixed. A chain with variant patterns is
+        // closed-world: the subject is a declared enum, and the arms are proved to cover every
+        // variant (or end in a default); guards do not count toward that coverage. A pure guard
+        // chain is open-world and may be honestly partial, yielding `Opt` -- except when the
+        // arm bodies are themselves `Opt`-typed, refused below. `.` narrows per arm: to the
+        // payload in a payload arm, to nothing in a unit arm, and it stays the subject in a
+        // guard or default arm.
         Expr::Match { arms, span } => {
             let Some((subject_ty, sid)) = ctx.subject.clone() else {
                 return Err(Error::new(
@@ -1380,18 +1402,9 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     "a match needs a subject, so it must follow `|`".to_string(),
                 ));
             };
-            let Type::Enum {
-                name: enum_name,
-                variants,
-            } = &subject_ty
-            else {
-                return Err(Error::new(
-                    *span,
-                    format!("a match needs an enum subject, found {subject_ty}"),
-                ));
-            };
             let mut covered: Vec<String> = Vec::new();
             let mut default_seen = false;
+            let mut has_pattern_arm = false;
             let mut result: Option<Type> = None;
             let mut out = Vec::new();
             for arm in arms {
@@ -1402,17 +1415,48 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                             .to_string(),
                     ));
                 }
-                let (variant, payload, arm_ctx) = match &arm.pattern {
+                // The same dead-arm rule for the other way a chain can be finished: once every
+                // variant is covered, nothing is left for a later arm to see. (This is also
+                // what lets every backend take a total chain's last arm without a test.)
+                if let Type::Enum { name, variants } = &subject_ty
+                    && !covered.is_empty()
+                    && variants.iter().all(|(n, _)| covered.contains(n))
+                {
+                    return Err(Error::new(
+                        arm.span,
+                        format!(
+                            "this arm can never match; the arms above it already cover every variant of `{name}`"
+                        ),
+                    ));
+                }
+                let (variant, guard, payload, arm_ctx) = match &arm.pattern {
                     Pattern::Default { .. } => {
                         default_seen = true;
                         // A default matched the whole subject, so `.` stays the enum value.
-                        (None, None, ctx.with(ctx.subject.clone()))
+                        (None, None, None, ctx.with(ctx.subject.clone()))
+                    }
+                    // The guard is a Bool over the unrebound subject, so it is checked in the
+                    // enclosing context, and the body keeps `.` as the subject too.
+                    Pattern::Guard(g) => {
+                        let cond = expect(ctx, g, &Type::Bool)?;
+                        (None, Some(cond), None, ctx.with(ctx.subject.clone()))
                     }
                     Pattern::Variant {
                         name: vname,
                         span: vspan,
                         fields,
                     } => {
+                        let Type::Enum {
+                            name: enum_name,
+                            variants,
+                        } = &subject_ty
+                        else {
+                            return Err(Error::new(
+                                *vspan,
+                                format!("a match needs an enum subject, found {subject_ty}"),
+                            ));
+                        };
+                        has_pattern_arm = true;
                         let Some((_, payload_ty)) = variants.iter().find(|(n, _)| n == vname)
                         else {
                             return Err(Error::new(
@@ -1431,7 +1475,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                                         ),
                                     ));
                                 }
-                                (Some(vname.clone()), None, ctx.with(None))
+                                (Some(vname.clone()), None, None, ctx.with(None))
                             }
                             Some(pty) => {
                                 let pid = ctx.fresh();
@@ -1479,7 +1523,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                                         }
                                     }
                                 }
-                                (Some(vname.clone()), Some(pid), arm_ctx)
+                                (Some(vname.clone()), None, Some(pid), arm_ctx)
                             }
                         }
                     }
@@ -1503,11 +1547,22 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 };
                 out.push(tir::MatchArm {
                     variant,
+                    guard,
                     payload,
                     body,
                 });
             }
-            if !default_seen {
+            // Closed-world half: a chain with variant patterns keeps exhaustiveness, and only
+            // patterns count toward it -- a guard is a runtime Bool the checker cannot see
+            // through.
+            if has_pattern_arm && !default_seen {
+                let Type::Enum {
+                    name: enum_name,
+                    variants,
+                } = &subject_ty
+                else {
+                    unreachable!("a pattern arm was checked against an enum subject")
+                };
                 let missing: Vec<String> = variants
                     .iter()
                     .filter(|(n, _)| !covered.contains(n))
@@ -1517,18 +1572,40 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     return Err(Error::new(
                         *span,
                         format!(
-                            "a match over `{enum_name}` must cover every variant or end in `any()`; missing {}",
+                            "a match over `{enum_name}` must cover every variant or end in a default; missing {}",
                             missing.join(" and ")
                         ),
                     ));
                 }
             }
+            let result = result.expect("the parser produces at least one arm");
+            // Open-world half: a pure guard chain with no default may decline every arm, so
+            // its result is `Opt` -- unless the bodies are already `Opt`-typed, where one
+            // `null` would mean both "no arm matched" and "matched, and found nothing" (our
+            // `Opt` is untagged), the exact conflation the field-access rule forbids.
+            let partial = !has_pattern_arm && !default_seen;
+            let result = if partial {
+                if matches!(result, Type::Opt(_)) {
+                    return Err(Error::new(
+                        *span,
+                        format!(
+                            "this guard chain is partial, and its arms are already {result}: \
+                             a declined chain and a matched-but-absent value would both print \
+                             `null`; add a default arm"
+                        ),
+                    ));
+                }
+                Type::Opt(Box::new(result))
+            } else {
+                result
+            };
             let subject = Tir::new(subject_ty.clone(), Kind::Local(sid));
             Ok(Tir::new(
-                result.expect("the parser produces at least one arm"),
+                result,
                 Kind::Match {
                     subject: Box::new(subject),
                     arms: out,
+                    partial,
                 },
             ))
         }

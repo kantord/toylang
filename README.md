@@ -45,7 +45,7 @@ types wire data directly.
 ```
 enum Shape { point, circle{r: Int} }
 
-fn area_ish(s: Shape) -> Int = s | circle{r} -> r * r // point -> 0
+fn area_ish(s: Shape) -> Int = s | circle{r} -> r * r or point -> 0
 
 {a: area_ish(Shape.point), b: area_ish(circle{r: 3})}
 ```
@@ -55,7 +55,7 @@ $ cargo run --quiet -- run examples/shapes.toy
 {"a":0,"b":9}
 ```
 
-Match arms chain with `//`; the first that matches wins. The match is closed-world: a
+Match arms chain with `or`; the first that matches wins. The match is closed-world: a
 program whose match handles only `circle`,
 
 ```
@@ -69,7 +69,7 @@ area_ish(Shape.point)
 is refused:
 
 ```
-a match over `Shape` must cover every variant or end in `any()`; missing `point` (at byte 73)
+a match over `Shape` must cover every variant or end in a default; missing `point` (at byte 73)
 ```
 
 ## Seven backends, kept as falsifiers

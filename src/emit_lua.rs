@@ -168,7 +168,12 @@ pub fn emit(program: &Program) -> String {
     if (structured && contains_vec(&program.body.ty)) || used.jsonlines {
         out.push_str(JOIN_HELPER);
     }
-    if used.index || used.unwrap || used.tail || contains_opt(&program.body.ty) {
+    if used.index
+        || used.unwrap
+        || used.tail
+        || used.partial_match
+        || contains_opt(&program.body.ty)
+    {
         out.push_str(OPT_HELPER);
     }
     if used.unwrap {
@@ -413,6 +418,7 @@ struct Helpers {
     jsonlines: bool,
     tail: bool,
     concat: bool,
+    partial_match: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -489,9 +495,20 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
                 walk(index, used);
             }
-            Kind::Match { subject, arms } => {
+            Kind::Match {
+                subject,
+                arms,
+                partial,
+            } => {
+                // A partial chain's fall-through is `tl_none`, which lives in OPT_HELPER.
+                used.partial_match |= *partial;
                 walk(subject, used);
-                arms.iter().for_each(|a| walk(&a.body, used));
+                for a in arms {
+                    if let Some(g) = &a.guard {
+                        walk(g, used);
+                    }
+                    walk(&a.body, used);
+                }
             }
         }
     }
@@ -630,11 +647,16 @@ fn expr(t: &Tir) -> String {
                 format!("tl_field({}, {}, {})", expr(base), lua_string(name), depth)
             }
         }
-        // A chain of shape tests over the subject (a plain local, so re-reading it is free):
-        // string equality for a unit variant, key presence for a payload variant. The checker
-        // proved the arms exhaustive, so the last one needs no test -- the same rule the enum
-        // printer already leans on.
-        Kind::Match { subject, arms } => {
+        // A chain of tests over the subject (a plain local, so re-reading it is free): string
+        // equality for a unit variant, key presence for a payload variant, the guard's own
+        // Bool for a guard arm. A total chain's last arm needs no test, the checker having
+        // proved nothing else can reach it; a partial chain tests every arm and falls through
+        // to `tl_none`, the absent Opt.
+        Kind::Match {
+            subject,
+            arms,
+            partial,
+        } => {
             let subj = expr(subject);
             let mut body = String::new();
             for (i, arm) in arms.iter().enumerate() {
@@ -651,17 +673,23 @@ fn expr(t: &Tir) -> String {
                     ));
                 }
                 run.push_str(&format!("return {} ", expr(&arm.body)));
-                match &arm.variant {
-                    Some(v) if i + 1 < arms.len() => {
-                        let test = if arm.payload.is_some() {
-                            format!("{subj}[{}] ~= nil", lua_string(v))
-                        } else {
-                            format!("{subj} == {}", lua_string(v))
-                        };
+                let test = match (&arm.variant, &arm.guard) {
+                    (Some(v), _) if arm.payload.is_some() => {
+                        Some(format!("{subj}[{}] ~= nil", lua_string(v)))
+                    }
+                    (Some(v), _) => Some(format!("{subj} == {}", lua_string(v))),
+                    (None, Some(g)) => Some(expr(g)),
+                    (None, None) => None,
+                };
+                match test {
+                    Some(test) if *partial || i + 1 < arms.len() => {
                         body.push_str(&format!("if {test} then {run}end "));
                     }
                     _ => body.push_str(&run),
                 }
+            }
+            if *partial {
+                body.push_str("return tl_none ");
             }
             format!("(function() {body}end)()")
         }

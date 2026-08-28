@@ -504,9 +504,14 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
-            Kind::Match { subject, arms } => {
+            Kind::Match { subject, arms, .. } => {
                 self.walk(subject);
-                arms.iter().for_each(|a| self.walk(&a.body));
+                for a in arms {
+                    if let Some(g) = &a.guard {
+                        self.walk(g);
+                    }
+                    self.walk(&a.body);
+                }
             }
             Kind::Builtin { which, arg } => {
                 match which {
@@ -873,14 +878,18 @@ impl Emitter {
                     format!("tlAt({v}, {i})")
                 })
             }
-            // Tag tests over the subject (a plain local, so re-reading it is free), the same
-            // chain the enum printer uses: the checker proved the arms exhaustive, so the last
-            // one needs no test. `_ =` after a payload binding, as in the fused loop, because
-            // Go rejects an unused local and a body is free to ignore its payload.
-            Kind::Match { subject, arms } => {
-                let Type::Enum { variants, .. } = &subject.ty else {
-                    unreachable!("a match subject is an enum")
-                };
+            // Tests over the subject (a plain local, so re-reading it is free): a tag test for
+            // a variant arm, the same chain the enum printer uses, and the guard's own Bool
+            // for a guard arm. A total chain's last arm needs no test, the checker having
+            // proved nothing else can reach it; a partial chain tests every arm, wraps each
+            // body in the present Opt, and falls through to the absent one. `_ =` after a
+            // payload binding, as in the fused loop, because Go rejects an unused local and a
+            // body is free to ignore its payload.
+            Kind::Match {
+                subject,
+                arms,
+                partial,
+            } => {
                 let subj = self.expr(subject);
                 let mut body = String::new();
                 for (i, arm) in arms.iter().enumerate() {
@@ -890,6 +899,9 @@ impl Emitter {
                             .variant
                             .as_ref()
                             .expect("only a variant arm has a payload");
+                        let Type::Enum { variants, .. } = &subject.ty else {
+                            unreachable!("a variant arm's subject is an enum")
+                        };
                         let vi = Self::variant_index(variants, variant);
                         run.push_str(&format!(
                             "{} := *{subj}.p{vi}; _ = {}; ",
@@ -897,14 +909,34 @@ impl Emitter {
                             self.local(pid)
                         ));
                     }
-                    run.push_str(&format!("return {}", self.expr(&arm.body)));
-                    match &arm.variant {
-                        Some(v) if i + 1 < arms.len() => {
-                            let vi = Self::variant_index(variants, v);
-                            body.push_str(&format!("if {subj}.tag == {vi} {{ {run} }}; "));
+                    let produced = if *partial {
+                        format!("{}{{true, {}}}", self.go_type(&t.ty), self.expr(&arm.body))
+                    } else {
+                        self.expr(&arm.body)
+                    };
+                    run.push_str(&format!("return {produced}"));
+                    let test = match (&arm.variant, &arm.guard) {
+                        (Some(v), _) => {
+                            let Type::Enum { variants, .. } = &subject.ty else {
+                                unreachable!("a variant arm's subject is an enum")
+                            };
+                            Some(format!(
+                                "{subj}.tag == {}",
+                                Self::variant_index(variants, v)
+                            ))
+                        }
+                        (None, Some(g)) => Some(self.expr(g)),
+                        (None, None) => None,
+                    };
+                    match test {
+                        Some(test) if *partial || i + 1 < arms.len() => {
+                            body.push_str(&format!("if {test} {{ {run} }}; "));
                         }
                         _ => body.push_str(&run),
                     }
+                }
+                if *partial {
+                    body.push_str(&format!("return {}{{}}", self.go_type(&t.ty)));
                 }
                 format!("func() {} {{ {body} }}()", self.go_type(&t.ty))
             }

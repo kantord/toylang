@@ -237,9 +237,14 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
                 callees(base, out);
                 callees(index, out);
             }
-            Kind::Match { subject, arms } => {
+            Kind::Match { subject, arms, .. } => {
                 callees(subject, out);
-                arms.iter().for_each(|a| callees(&a.body, out));
+                for a in arms {
+                    if let Some(g) = &a.guard {
+                        callees(g, out);
+                    }
+                    callees(&a.body, out);
+                }
             }
         }
     }
@@ -300,7 +305,12 @@ fn uses_arith(program: &Program) -> bool {
             Kind::Map { source, body, .. } => walk(source) || walk(body),
             Kind::Field { base, .. } | Kind::Unwrap { base } => walk(base),
             Kind::Index { base, index, .. } => walk(base) || walk(index),
-            Kind::Match { subject, arms } => walk(subject) || arms.iter().any(|a| walk(&a.body)),
+            Kind::Match { subject, arms, .. } => {
+                walk(subject)
+                    || arms
+                        .iter()
+                        .any(|a| a.guard.as_ref().is_some_and(walk) || walk(&a.body))
+            }
         }
     }
     program.funcs.iter().any(|f| walk(&f.body)) || walk(&program.body)
@@ -464,10 +474,16 @@ fn expr(t: &Tir) -> String {
             let at = format!(".[{}]", expr(index));
             format!("({} | {})", expr(base), distribute(&at, *depth))
         }
-        // Shape tests over the subject: equality for a unit variant, `type`-guarded `has` for a
-        // payload one, since `has` on a string is an error rather than false. The checker
-        // proved the arms exhaustive, so the last one is the `else`.
-        Kind::Match { subject, arms } => {
+        // Tests over the subject: equality for a unit variant, `type`-guarded `has` for a
+        // payload one, since `has` on a string is an error rather than false, and the guard's
+        // own Bool for a guard arm. A total chain's last arm is the `else`, the checker having
+        // proved nothing else can reach it; a partial chain tests every arm and its `else` is
+        // `null`, which is exactly what an absent Opt is in jq.
+        Kind::Match {
+            subject,
+            arms,
+            partial,
+        } => {
             let subj = expr(subject);
             let run = |arm: &tir::MatchArm| match arm.payload {
                 Some(pid) => {
@@ -484,23 +500,30 @@ fn expr(t: &Tir) -> String {
                 }
                 None => expr(&arm.body),
             };
-            if arms.len() == 1 {
+            if !*partial && arms.len() == 1 {
                 return format!("({})", run(&arms[0]));
             }
             let mut out = String::from("(");
             for (i, arm) in arms.iter().enumerate() {
-                match &arm.variant {
-                    Some(v) if i + 1 < arms.len() => {
-                        let test = if arm.payload.is_some() {
-                            format!("({subj} | type == \"object\" and has({}))", jq_string(v))
-                        } else {
-                            format!("{subj} == {}", jq_string(v))
-                        };
+                let test = match (&arm.variant, &arm.guard) {
+                    (Some(v), _) if arm.payload.is_some() => Some(format!(
+                        "({subj} | type == \"object\" and has({}))",
+                        jq_string(v)
+                    )),
+                    (Some(v), _) => Some(format!("{subj} == {}", jq_string(v))),
+                    (None, Some(g)) => Some(expr(g)),
+                    (None, None) => None,
+                };
+                match test {
+                    Some(test) if *partial || i + 1 < arms.len() => {
                         let word = if i == 0 { "if" } else { "elif" };
                         out.push_str(&format!("{word} {test} then {} ", run(arm)));
                     }
                     _ => out.push_str(&format!("else {} end", run(arm))),
                 }
+            }
+            if *partial {
+                out.push_str("else null end");
             }
             out.push(')');
             out

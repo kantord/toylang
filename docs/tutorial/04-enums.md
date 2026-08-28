@@ -34,12 +34,12 @@ The bare name (`circle{r: 3}`, `active`) works while only one enum claims it; th
 ## Match
 
 Consuming an enum must handle every variant. The subject arrives through a pipe, arms chain
-with `//`, first match wins:
+with `or`, first match wins:
 
 ```toylang
 enum Shape { point, circle{r: Int} }
 
-fn area_ish(s: Shape) -> Int = s | circle{r} -> r * r // point -> 0
+fn area_ish(s: Shape) -> Int = s | circle{r} -> r * r or point -> 0
 
 {a: area_ish(Shape.point), b: area_ish(circle{r: 3})}
 ```

@@ -246,7 +246,7 @@ pub enum Expr {
     Lines {
         span: Span,
     },
-    /// A `//` chain of match arms over the subject `.`: `point -> 0 // circle{r} -> r * r`.
+    /// An `or` chain of match arms over the subject `.`: `point -> 0 or circle{r} -> r * r`.
     /// The subject is not part of the node; a match reads `.` the way `select` does, so it
     /// appears as a pipe stage.
     Match {
@@ -294,7 +294,11 @@ pub enum Pattern {
         span: Span,
         fields: Option<FieldsPattern>,
     },
-    /// `any()`, the default arm: matches whatever is left.
+    /// A Bool guard: the arm matches when the expression is true. `.` inside it (and inside
+    /// the arm's body) is still the chain's subject, unlike a variant arm, which rebinds it.
+    Guard(Expr),
+    /// The default arm: `any()`, or the bare trailing expression the parser desugars into one
+    /// (its body doubles as its span). Matches whatever is left.
     Default { span: Span },
 }
 
@@ -302,6 +306,7 @@ impl Pattern {
     pub fn span(&self) -> Span {
         match self {
             Pattern::Variant { span, .. } | Pattern::Default { span } => *span,
+            Pattern::Guard(e) => e.span(),
         }
     }
 }
