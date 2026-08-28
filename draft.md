@@ -490,15 +490,9 @@ Three distinguishable outcomes: a value, a *specific* absence, a *specific* erro
 
 ## Pattern matching is decoding
 
-TODO (user, 2026-08-28): FizzBuzz is the case study for the matcher surface's first cut. The
-shipped conditional chain -- `"FizzBuzz" if . % 15 == 0 else "Fizz" if . % 3 == 0 else ...` --
-should be writable as guard arms, `. % 15 == 0 -> "FizzBuzz" or . % 3 == 0 -> "Fizz" or ...`:
-an arm is a match-typed value (produce-or-decline), `or` is its composition, and arms compose
-the way logical expressions do, so the program barely changes shape. Convergence to resolve
-when this gets its grilling: the enum match shipped `//` as its arm separator, and the
-oddities inventory already questions that token -- if `or` becomes arm composition, one of
-them yields, because two spellings for first-match-wins is the duplication this language
-keeps refusing.
+The matcher surface's first cut is decided; see
+[the arms decision](#decided-match-arms-compose-with-or-and-a-guard-chain-may-be-honestly-partial),
+which grew out of FizzBuzz as the case study and retired `//` in favor of `or`.
 
 TODO (user): Pattern matching in this language might not need dedicated syntax. Instead, an
 "inline mapping" reuses the same shape a zod-style parser already has: a matcher on one side,
@@ -2274,6 +2268,44 @@ implemented yet, and `3.14` in the values list above is still only notation.
 Representation was the easy half. What the decision opens is tracked as
 [the float-semantics question](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model)
 rather than assumed here.
+
+## DECIDED: match arms compose with `or`, and a guard chain may be honestly partial
+
+FizzBuzz was the case study. The shipped conditional chain and the decided arm chain, side by
+side -- the program barely changes shape, which was the point:
+
+```
+"FizzBuzz" if . % 15 == 0 else          . % 15 == 0 -> "FizzBuzz" or
+"Fizz"     if . % 3 == 0  else          . % 3 == 0  -> "Fizz"     or
+"Buzz"     if . % 5 == 0  else          . % 5 == 0  -> "Buzz"     or
+str(.)                                  str(.)
+```
+
+An arm is a produce-or-decline value: its left side is either a variant pattern
+(`circle{r}`) or a Bool guard (`. % 15 == 0`), its right side the produced expression. `or`
+composes arms first-match-wins, and it is the *only* spelling of that composition: `//`
+retires, and the enum match migrates (`s | circle{r} -> r * r or point -> 0`). One operator,
+overloaded by operand kind, exactly as `+` already is over Int and Str. The chain's final
+element may be a bare expression, the default. Reserved now rather than discovered later:
+the language has no Bool `or` yet, and if one ever lands, arm-`or` binds loosest and a bare
+`or` inside an arm body needs parens.
+
+Totality is a hybrid, and the failure mode that shaped it is worth keeping. An enum pattern
+chain is closed-world: it must cover every variant or end in a default, keeping the shipped
+named-missing-variant error. A guard chain is open-world and may be partial, yielding `Opt`
+-- the same answer indexing already gives to "found nothing" -- EXCEPT when an arm's body is
+itself `Opt`-typed, which is refused ("add a default"): our `Opt` is untagged, so a partial
+chain over an `Opt`-bodied arm would print one `null` for two different absences (arm
+declined, versus arm matched and found nothing), the exact conflation
+[the field-access question](#q12-on-a-type-mismatch-does-field-access-error-yield-null-or-something-third)
+forbids. `map(.valid -> .readings[0])` over `{valid: false, readings: [5]}` and
+`{valid: true, readings: []}` printing `[null,null]` is the program this rule exists to
+refuse.
+
+Deferred with their own triggers: matcher values (`int()`, decoders), `and`/`not`,
+running a matcher to a `Result`, and deep patterns -- Q27's decode work, when it has
+customers. Mixed chains (pattern arms and guard arms over one enum subject) are legal;
+guards do not count toward variant coverage.
 
 ## DECIDED: enums, nominal and JSON-native
 
