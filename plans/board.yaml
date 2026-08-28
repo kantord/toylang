@@ -32,7 +32,7 @@
   title: Validate input on the live fused-inputs path, matching fixture runs
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: stdin-rule-build
   issue: gh:7
@@ -89,7 +89,7 @@
   title: Empty keep is identity; != failure suggests bang-space-equals
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: json-string-conformance
   title: Prove full JSON-string support across backends, pinning codepoint ordering
