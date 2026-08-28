@@ -93,6 +93,5 @@ Prefer the sink when the program can print as it goes; `collect` when it genuine
 everything at once, such as to count. The [streams guide](../guides/streams.md) covers
 choosing, and the rules the checker holds you to.
 
-That is the core of the language. From here: the [guides](../guides/enums.md) for
-feature-sized tasks, the reference for every builtin, type, and operator, and Examples for
-every corpus program with the code all seven backends compile it to.
+Next: [matching](06-matching.md), for the other arm shape -- guards, and what happens when a
+chain declines every arm.
