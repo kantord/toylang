@@ -1,3 +1,9 @@
+---
+type: Reference
+title: research-log index
+description: Index of what building toylang taught us; every note is linked from here and from at least one sibling.
+---
+
 # research-log
 
 What building toylang taught us, as opposed to what we decided. `draft.md` holds the design and

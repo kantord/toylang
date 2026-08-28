@@ -1,4 +1,5 @@
 ---
+type: Playbook
 name: drive
 description: Drive development autonomously from plans/board.yaml - the ordered task board with dependencies. Use when the user says "drive", "keep going", "work the board", asks what's next, or wants autonomous development to continue while they only do grilling and goal-setting.
 ---
