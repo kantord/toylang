@@ -25,6 +25,22 @@ pub enum Type {
     },
 }
 
+/// Names reserved for the built-in type constructors, on top of `Str`/`Int`/`Bool`
+/// (`Type::from_name`): a program cannot declare an alias or enum under any of these.
+const RESERVED_TYPE_NAMES: [&str; 3] = ["Vec", "Opt", "Stream"];
+
+/// Whether `name` is a built-in type and so cannot be redefined as an alias or an enum.
+pub fn is_builtin_type_name(name: &str) -> bool {
+    Type::from_name(name).is_some() || RESERVED_TYPE_NAMES.contains(&name)
+}
+
+/// Whether `name` takes a `<...>` type argument in the grammar. Of the three reserved
+/// constructors, only these two are ever spelled by a program; `Opt` is produced only by the
+/// checker, when collapsing a dimension, and never appears in written syntax.
+pub fn takes_type_arg(name: &str) -> bool {
+    matches!(name, "Vec" | "Stream")
+}
+
 impl Type {
     pub fn from_name(name: &str) -> Option<Type> {
         match name {

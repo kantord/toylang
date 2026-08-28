@@ -1,5 +1,0 @@
----
-source: tests/streams.rs
-expression: "err(\"fn f(x: Int) -> Int = x\\n\\nf(input) + (collect(lines) | 0)\")"
----
-a program cannot use both `input` and `lines`; they read the same real stdin two different ways (at byte 25)

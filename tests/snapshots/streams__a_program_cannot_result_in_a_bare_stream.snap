@@ -1,5 +1,0 @@
----
-source: tests/streams.rs
-expression: "err(\"fn noisy(s: Stream<Str>) -> Stream<Str> = s | map(. + \\\"!\\\")\\n\\nnoisy(lines)\")"
----
-the program's result contains a stream, which has nothing to print; pass it to `collect` first (at byte 60)

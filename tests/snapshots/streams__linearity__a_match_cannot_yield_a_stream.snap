@@ -1,0 +1,6 @@
+---
+source: tests/streams.rs
+assertion_line: 131
+expression: "err(\"enum E { a, b }\\n\\nfn f(s: Stream<Str>) -> Stream<Str> = a | (a -> s // b -> s)\\n\\n1\")"
+---
+a match cannot yield a stream; pass each arm to `collect` first (at byte 65)

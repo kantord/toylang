@@ -1,0 +1,6 @@
+---
+source: tests/streams.rs
+assertion_line: 247
+expression: "err(\"fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\\n\\nf(input)\")"
+---
+`input` is one value read from stdin, but Stream<Str> is wanted here (at byte 49)

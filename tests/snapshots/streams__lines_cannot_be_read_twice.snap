@@ -1,5 +1,0 @@
----
-source: tests/streams.rs
-expression: "err(\"[collect(lines), collect(lines)]\")"
----
-`lines` has already been read; there is only one stdin (at byte 25)

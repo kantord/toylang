@@ -1,5 +1,0 @@
----
-source: tests/streams.rs
-expression: "err(\"fn f(x: Int) -> Int = extent(collect(lines)) + x\\n\\nextent([1, 2] | map(f(.)))\")"
----
-`lines` cannot be read inside `fn f`; a source is legal only in the program's own body, so take the stream through a `Stream` parameter (at byte 37)

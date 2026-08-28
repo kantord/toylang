@@ -1,5 +1,0 @@
----
-source: tests/streams.rs
-expression: "err(\"fn f(s: Stream<Str>) -> Vec<Int> = [1] | map(extent(collect(s)))\\n\\n1\")"
----
-`s` is a stream and must be consumed exactly once, but here it is consumed inside a mapper body, which runs once per element (at byte 35)

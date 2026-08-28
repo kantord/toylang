@@ -1,5 +1,0 @@
----
-source: tests/streams.rs
-expression: "err(\"fn f(v: Vec<Stream<Str>>) -> Int = 0\\n\\n1\")"
----
-a Vec cannot hold a stream, which has nothing to store (at byte 12)

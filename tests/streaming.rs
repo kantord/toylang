@@ -119,43 +119,44 @@ fn spawn_rust(program: &str) -> Child {
     piped(cmd)
 }
 
-fn spawn_go(program: &str) -> Child {
+/// The shape `spawn_go`, `spawn_py`, and `spawn_js` share: emit a backend's source to a temp
+/// file, then hand it to that backend's own interpreter. `args_before` is `go run`'s subcommand,
+/// which comes before the path; `python3` and `node` take the path as their only argument.
+fn spawn_interpreted(
+    program: &str,
+    emit: impl Fn(&toylang::tir::Program) -> String,
+    filename: &str,
+    interpreter: &str,
+    args_before: &[&str],
+) -> Child {
     let program = toylang::compile(program).expect("compiles");
-    let source = toylang::emit_go::emit(&program);
+    let source = emit(&program);
     let dir = tempfile::tempdir().expect("temp dir");
-    let path = dir.path().join("main.go");
+    let path = dir.path().join(filename);
     std::fs::write(&path, source).expect("write source");
 
-    let mut cmd = Command::new("go");
-    cmd.arg("run").arg(&path);
+    let mut cmd = Command::new(interpreter);
+    cmd.args(args_before).arg(&path);
     std::mem::forget(dir);
     piped(cmd)
+}
+
+fn spawn_go(program: &str) -> Child {
+    spawn_interpreted(program, toylang::emit_go::emit, "main.go", "go", &["run"])
 }
 
 fn spawn_py(program: &str) -> Child {
-    let program = toylang::compile(program).expect("compiles");
-    let source = toylang::emit_py::emit(&program);
-    let dir = tempfile::tempdir().expect("temp dir");
-    let path = dir.path().join("program.py");
-    std::fs::write(&path, source).expect("write source");
-
-    let mut cmd = Command::new("python3");
-    cmd.arg(&path);
-    std::mem::forget(dir);
-    piped(cmd)
+    spawn_interpreted(
+        program,
+        toylang::emit_py::emit,
+        "program.py",
+        "python3",
+        &[],
+    )
 }
 
 fn spawn_js(program: &str) -> Child {
-    let program = toylang::compile(program).expect("compiles");
-    let source = toylang::emit_js::emit(&program);
-    let dir = tempfile::tempdir().expect("temp dir");
-    let path = dir.path().join("program.js");
-    std::fs::write(&path, source).expect("write source");
-
-    let mut cmd = Command::new("node");
-    cmd.arg(&path);
-    std::mem::forget(dir);
-    piped(cmd)
+    spawn_interpreted(program, toylang::emit_js::emit, "program.js", "node", &[])
 }
 
 fn spawn_jq(program: &str) -> Child {

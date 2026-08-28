@@ -1,0 +1,6 @@
+---
+source: tests/streams.rs
+assertion_line: 208
+expression: "err(\"inputs\")"
+---
+cannot tell what `inputs` contains (at byte 0)

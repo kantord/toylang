@@ -1,0 +1,6 @@
+---
+source: tests/streams.rs
+assertion_line: 158
+expression: "err(\"1 | (lines | map(. + \\\"!\\\"))\")"
+---
+this stream does not flow in from the left of `|`; write the pipeline as one chain from its source (at byte 5)
