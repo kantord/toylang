@@ -164,7 +164,7 @@
   status: todo
 
 - id: variant-types-flip
-  title: Variants become capitalized types -- subtype rules planned first, then the migration
+  title: Variants become capitalized types -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference)
   kind: build
   needs: []
   model: fable
