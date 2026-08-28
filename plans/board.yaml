@@ -30,7 +30,7 @@
   title: Implement the decided mapper-body source rule, with its rejection test
   kind: build
   needs: [stdin-rule-decision]
-  status: todo
+  status: done
 
 - id: quality-practices-survey
   issue: gh:8
