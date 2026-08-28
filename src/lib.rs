@@ -215,9 +215,11 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
         Backend::Js => run_node(&emit_js::emit(&program), &feed),
         Backend::Jq => run_jq(
             &emit_jq::emit(&program),
-            value.is_some(),
-            program.body.ty == ty::Type::Str,
-            program.uses_lines,
+            JqInvocation {
+                has_value: value.is_some(),
+                raw: program.body.ty == ty::Type::Str,
+                uses_lines: program.uses_lines,
+            },
             &feed,
         ),
         Backend::Go => run_go(&emit_go::emit(&program), &feed),
@@ -422,13 +424,18 @@ fn run_binary(exe: &std::path::Path, feed: &Feed) -> Result<String> {
 /// jq puts stdin in `.`, so a program that reads no input runs with `-n` rather than waiting on
 /// a terminal. `has_value` rather than the `Feed` itself, since a `lines` program run live
 /// (`Feed::Live`) still has real stdin coming and must not get `-n` on that account.
-fn run_jq(
-    source: &str,
+/// The three facts about a program that shape a jq invocation's flags. Each is derived from
+/// the compiled program, not a caller identity -- the fn-params-excessive-bools finding on the
+/// old three-bool signature was escalated, and the settled answer was this struct: the facts
+/// travel under their names.
+struct JqInvocation {
     has_value: bool,
     raw: bool,
     uses_lines: bool,
-    feed: &Feed,
-) -> Result<String> {
+}
+
+fn run_jq(source: &str, inv: JqInvocation, feed: &Feed) -> Result<String> {
+    let JqInvocation { has_value, raw, uses_lines } = inv;
     let mut cmd = std::process::Command::new("jq");
     // jq's stdout is fully buffered rather than line-buffered whenever it is not a terminal, the
     // same as any other libc stdio program, so a filter over `inputs` piped into another process
