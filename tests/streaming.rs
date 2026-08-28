@@ -80,22 +80,27 @@ fn piped(mut cmd: Command) -> Child {
         .expect("spawn the child")
 }
 
-/// Lua runs embedded via `mlua`, not as a subprocess `toylang::run_on` spawns and pipes to like
-/// every other backend, so there is no child process boundary to test against by calling
-/// `emit_lua::emit` directly the way the others call their own `emit_*`. The compiled `toylang`
-/// binary itself is that boundary here: it is what actually decides live vs. captured (see
-/// `run_lua`'s `feed` handling in `lib.rs`), so this drives it exactly as a real user would.
-fn spawn_lua(program: &str) -> Child {
+/// Drives the compiled `toylang` binary itself rather than calling an `emit_*` module directly:
+/// the boundary that decides live vs. captured, and -- for a fused `inputs` program -- whether a
+/// record gets validated before a backend ever sees it, is `run_on`'s own `feed` handling in
+/// `lib.rs`, reachable only through the CLI's real, unset stdin. Lua has no other way to reach
+/// that boundary at all, since it runs embedded via `mlua` rather than as a subprocess `run_on`
+/// spawns and pipes to like every other backend.
+fn spawn_cli(program: &str, backend: &str) -> Child {
     let dir = tempfile::tempdir().expect("temp dir");
     let path = dir.path().join("program.toy");
     std::fs::write(&path, program).expect("write program");
 
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_toylang"));
-    cmd.arg("run").arg(&path).arg("lua");
+    cmd.arg("run").arg(&path).arg(backend);
     // The dir must outlive the child's own read of the source, and the child outlives this
     // function, so leak it for the test's short life rather than racing the cleanup.
     std::mem::forget(dir);
     piped(cmd)
+}
+
+fn spawn_lua(program: &str) -> Child {
+    spawn_cli(program, "lua")
 }
 
 fn spawn_native(program: &str) -> Child {
@@ -251,4 +256,63 @@ fn py_streams_lines() {
 #[test]
 fn native_streams_lines() {
     assert_streams_first_record(spawn_native(SHOUT), b"ada\n", r#""ada!""#);
+}
+
+/// `tests/corpus/enum_inputs_reject.yaml` pins this program's real `run_on` behavior against a
+/// fixture, where validation is eager and happens before anything runs. A real command-line run
+/// has no such up-front check to lean on (issue #15): `render`'s emitted code just trusted
+/// `JSON.parse` to produce a valid `Msg`, so live and fixture runs disagreed on every backend but
+/// Lua, which validates through its own embedded host function rather than a subprocess's code at
+/// all. This is the same program and the same bad record, driven through the real CLI with real,
+/// unset stdin instead of `run_on`'s fixture path, to prove the two now agree.
+const REJECT: &str = r#"
+enum Msg { ping, text{body: Str} }
+
+fn render(msgs: Stream<Msg>) -> Stream<Str> =
+    msgs | map(. | text -> .body // any() -> "*ping*")
+
+jsonlines(render(inputs))
+"#;
+
+/// The valid record ahead of the bad one still streams before the refusal ends the run: a live
+/// refusal can only stop the records after the one it caught, not retroactively un-print ones
+/// that already passed validation and reached the backend.
+#[test]
+fn js_streams_a_valid_record_before_a_later_one_fails_live_validation() {
+    assert_streams_first_record(spawn_cli(REJECT, "js"), b"\"ping\"\n", r#""*ping*""#);
+}
+
+fn assert_refuses_live(backend: &str) {
+    let mut child = spawn_cli(REJECT, backend);
+    child
+        .stdin
+        .take()
+        .expect("piped stdin")
+        .write_all(b"\"ping\"\n\"burst\"\n")
+        .expect("write both records");
+    let output = child.wait_with_output().expect("wait for exit");
+    assert!(
+        !output.status.success(),
+        "{backend} exited successfully on a record no variant of Msg names"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("inputs: `burst` is not a variant of Msg"),
+        "{backend} stderr did not name the bad record: {stderr}"
+    );
+}
+
+#[test]
+fn js_refuses_live_same_as_the_fixture() {
+    assert_refuses_live("js");
+}
+
+#[test]
+fn go_refuses_live_same_as_the_fixture() {
+    assert_refuses_live("go");
+}
+
+#[test]
+fn py_refuses_live_same_as_the_fixture() {
+    assert_refuses_live("py");
 }
