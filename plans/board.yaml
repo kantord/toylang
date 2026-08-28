@@ -74,7 +74,7 @@
   kind: build
   needs: []
   model: fable
-  status: todo
+  status: delegated
 
 - id: field-order-build
   issue: gh:21
