@@ -1,66 +1,80 @@
-import { useMemo } from "react"
-import { Marked, type Token, type Tokens } from "marked"
+import { useEffect, useMemo, useState } from "react"
+import type { Tokens } from "marked"
 
 import { Code } from "@/components/Code"
+import type { Piece } from "@/lib/blocks"
+import { splitBlocks } from "@/lib/blocks"
 import type { Corpus } from "@/lib/corpus"
-import { resolveLink, type Page } from "@/lib/docs"
+import type { Page } from "@/lib/docs"
+
+type AnnotateModule = typeof import("@/components/AnnotateMode")
+
+/** Loads the annotate-mode module only once that mode is actually on, and only in dev: the
+ *  `import.meta.env.DEV` check is a dynamic-import guard, not just a render guard, so
+ *  `vite build` never puts AnnotateMode.tsx (or the annotation scan it pulls in) in the
+ *  production bundle (kantord/toylang#23). */
+function useAnnotateMode(active: boolean): AnnotateModule | null {
+  const [mod, setMod] = useState<AnnotateModule | null>(null)
+  useEffect(() => {
+    if (active && import.meta.env.DEV) {
+      import("@/components/AnnotateMode").then(setMod)
+    }
+  }, [active])
+  return active ? mod : null
+}
 
 /**
  * Renders one docs page. Everything except code fences goes through marked; the fences are the
  * fragment protocol the harness (tests/docs.rs) runs, so each kind gets its own presentation
  * here rather than appearing as an anonymous code block.
+ *
+ * `annotate` is the dev-only annotations mode (kantord/toylang#23): prose blocks get a
+ * marker-pen wash where the coordinator left a review/comment/fill note, and become editable so
+ * a reply autosaves to the edit inbox. It never runs outside `import.meta.env.DEV`.
  */
-export function Markdown({ page, corpus }: { page: Page; corpus: Corpus }) {
-  const blocks = useMemo(() => split(page), [page])
+export function Markdown({
+  page,
+  corpus,
+  annotate = false,
+  scrollToBlock,
+}: {
+  page: Page
+  corpus: Corpus
+  annotate?: boolean
+  scrollToBlock?: number
+}) {
+  const blocks = useMemo(() => splitBlocks(page), [page])
+  const annotateMode = useAnnotateMode(annotate)
+  const annotations = useMemo(
+    () => (annotateMode ? annotateMode.pageAnnotations(page, blocks) : []),
+    [annotateMode, page, blocks],
+  )
 
   return (
     <article className="docs-prose min-w-0 max-w-2xl">
-      {blocks.map((b, i) =>
-        b.kind === "html" ? (
-          <div key={i} dangerouslySetInnerHTML={{ __html: b.html }} />
-        ) : (
-          <Fence key={i} token={b.token} corpus={corpus} />
-        ),
-      )}
+      {blocks.map((b, i) => {
+        if (b.kind === "fence") return <Fence key={i} token={b.token} corpus={corpus} />
+        if (annotateMode) {
+          const { AnnotatedProseBlock } = annotateMode
+          return (
+            <AnnotatedProseBlock
+              key={i}
+              pieces={b.pieces}
+              scrollTo={scrollToBlock === i}
+              annotations={annotations.filter((a) => a.block === i)}
+              onEdited={(edited, original) => annotateMode.saveEdit(page, i, original, edited)}
+            />
+          )
+        }
+        return <ProseBlock key={i} pieces={b.pieces} />
+      })}
     </article>
   )
 }
 
-type Block = { kind: "html"; html: string } | { kind: "fence"; token: Tokens.Code }
-
-/** The fence languages that belong to the fragment protocol; anything else is illustration. */
-const FRAGMENT = new Set(["toylang", "input", "output", "refuses", "error", "case"])
-
-function split(page: Page): Block[] {
-  const md = new Marked({
-    renderer: {
-      // Relative markdown links are written for the repository; rendered, they should lead to
-      // the matching page here, or to GitHub for files this site does not show.
-      link(token) {
-        const target = resolveLink(page, token.href) ?? token.href
-        const text = this.parser.parseInline(token.tokens)
-        const external = target.startsWith("http")
-        return `<a href="${target}"${external ? ' target="_blank" rel="noreferrer"' : ""}>${text}</a>`
-      },
-    },
-  })
-
-  const blocks: Block[] = []
-  let run: Token[] = []
-  const flush = () => {
-    if (run.length) blocks.push({ kind: "html", html: md.parser(run) })
-    run = []
-  }
-  for (const token of md.lexer(page.markdown)) {
-    if (token.type === "code" && FRAGMENT.has((token as Tokens.Code).lang ?? "")) {
-      flush()
-      blocks.push({ kind: "fence", token: token as Tokens.Code })
-    } else {
-      run.push(token)
-    }
-  }
-  flush()
-  return blocks
+function ProseBlock({ pieces }: { pieces: Piece[] }) {
+  const html = useMemo(() => pieces.map((p) => p.html).join(""), [pieces])
+  return <div dangerouslySetInnerHTML={{ __html: html }} />
 }
 
 function Fence({ token, corpus }: { token: Tokens.Code; corpus: Corpus }) {
