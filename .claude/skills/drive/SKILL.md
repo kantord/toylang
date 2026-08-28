@@ -6,6 +6,30 @@ description: Drive development autonomously from plans/board.yaml - the ordered 
 
 # Drive the board
 
+## Session bootstrap (a fresh session starts here)
+
+Cron jobs die with their session, so a new driving session re-arms them first:
+
+1. **Reconstruct in-flight reality before dispatching anything**: for every `delegated` board
+   row, check its worktree (commits vs main, dirty files, live worker via pgrep cwd). Adopt
+   healthy lanes, intervene on dead ones (see the stall guidance below), land finished ones.
+2. **Arm the drive tick**: a recurring cron at off-minutes (9,39 * * * *) whose prompt names
+   the current lanes and both annotation stores -- poll
+   `docs/.annotations/inbox.json` AND `docs/.annotations/notes.json` (compose messages and
+   span notes), applying answers when 5+ minutes quiet or marked read.
+3. **Arm the audit cron**: every ~5 hours (23 */5 * * *), running "The periodic audit" below.
+4. Verify push distance before any dispatch (worktrees branch from origin).
+
+## Stall diagnosis, learned the hard way
+
+The dead-worker signature: the newest file in the session's tool-results dir is its own
+session-start hook message -- the worker died (usually machine suspend) and a fresh idle
+session auto-spawned. A worktree whose tree is fully STAGED by a dead worker may be verified
+(suite + build) and committed by the coordinator directly, with the commit message saying so;
+uncommitted half-done work gets a continuation dispatch into the same env whose brief says to
+read ALL issue comments and assess the existing diff. File-write mtimes and commit times are
+the truth; transcript timestamps lie.
+
 `plans/board.yaml` is the single source of truth: an ordered list where position is priority.
 Each entry: `id`, `title`, `kind: build | decide`, `needs: [ids]`, `status: todo | delegated |
 done`, optionally `issue: gh:N`. The maintainer's role is decide-tasks and goal-setting;
