@@ -1,0 +1,8 @@
+# `v[]` with nothing after it means "keep every entry," which is the identity on a Vec.
+program: |
+  [1, 2, 3][]
+
+output: |
+  [1,2,3]
+
+node_types: [int, vec-literal]

@@ -79,7 +79,7 @@
   title: Empty keep is identity; != failure suggests bang-space-equals
   kind: build
   needs: []
-  status: todo
+  status: done
 
 - id: json-string-conformance
   title: Prove full JSON-string support across backends, pinning codepoint ordering

@@ -1,0 +1,5 @@
+---
+source: tests/unwrap.rs
+expression: "toylang::compile(\"[1, 2][0]!=1\").map(|_| ()).unwrap_err().to_string()"
+---
+expected Opt<Int>, found Int: `!` and `=` read as one token here (`!=`); did you mean `! ==`? (at byte 11)

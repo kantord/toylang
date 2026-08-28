@@ -1107,10 +1107,11 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Ok(tir)
         }
 
-        // A spec that specs nothing. `[]` says what happens to a dimension, so with no access
-        // after it there is no dimension being reached into and nothing for it to say.
-        Expr::Project { span, .. } => {
-            Err(Error::new(*span, "`[]` must be followed by a field access"))
+        // `v[]` with nothing after it is the identity: "keep every entry" is what a Vec (or
+        // stream) already is, with no field/index/unwrap left to distribute across it.
+        Expr::Project { .. } => {
+            let (tir, _, _, _) = access(ctx, expr)?;
+            Ok(tir)
         }
 
         // `input` is only ever checked, never synthesised, for the same reason a lambda is:
@@ -1706,7 +1707,29 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     }
 
     if op.is_comparison() {
-        let right = expect(ctx, rhs, &left.ty)?;
+        let right = match expect(ctx, rhs, &left.ty) {
+            Ok(right) => right,
+            Err(err) => {
+                // Postfix `!` next to `!=` merges into one token: `x!=y` lexes as `!=`, not
+                // `x! == y`. Once the plain comparison has failed, Opt<T> against its own
+                // element is specific enough to name the likely cause instead of just the
+                // type mismatch.
+                if op == BinOp::Ne
+                    && let Type::Opt(inner) = &left.ty
+                    && expect(ctx, rhs, inner).is_ok()
+                {
+                    return Err(Error::new(
+                        rhs.span(),
+                        format!(
+                            "expected {}, found {inner}: `!` and `=` read as one token \
+                             here (`!=`); did you mean `! ==`?",
+                            left.ty
+                        ),
+                    ));
+                }
+                return Err(err);
+            }
+        };
         return Ok(Tir::new(
             Type::Bool,
             Kind::Compare {
