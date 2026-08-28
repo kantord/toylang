@@ -115,14 +115,15 @@ must handle every variant. As data it is plain JSON, never an opaque value.
 _Avoid_: union, sum type, ADT, tagged union
 
 **Variant**:
-One named alternative of an enum, optionally carrying a payload of one type. As data: the
-single-key wrapper, `{"circle": {"r": 1}}`. Variant names are data, so they are lowercase and
-exempt from name casing, like fields.
+One named alternative of an enum, optionally carrying a payload of one type -- and itself a
+type, a subtype of its enum, so a signature can name it. Capitalized, per the casing rule,
+because it is a type. As data: the single-key wrapper, `{"Circle": {"r": 1}}`, the name
+verbatim.
 _Avoid_: case, constructor, alternative
 
 **Unit variant**:
-A variant with no payload. As data: a bare string, so an all-unit enum types the
-`{"status": "active"}` shape directly.
+A variant with no payload. As data: a bare string, the name verbatim (`"Active"`). Wild
+lowercase string enums are no longer directly typeable; they wait for the codec layer.
 _Avoid_: nullary constructor, bare tag
 
 ### Where multiplicity lives

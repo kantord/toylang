@@ -2352,9 +2352,29 @@ is untouched.
 
 ### Construction and naming
 
-Declaring an enum derives one constructor per variant: `circle{r: 1}` is ordinary
-application, `active` an ordinary named constant. Payloads accept any single type, so a
-record payload has two spellings -- `circle{r: 1}` and `circle({r: 1})` -- because the
+REVISED (2026-08-28, superseding the lowercase rule below): **variants are capitalized, and
+a variant name is a type** -- each variant is a subtype of its enum, so a signature can
+promise one specific variant:
+
+```
+enum Status { Active, Paused }
+
+fn initial() -> Active = Active
+fn describe(s: Status) -> Str = s | Active -> "on" or Paused -> "off"
+```
+
+The JSON form is the name verbatim (`"Active"`), so wild lowercase data
+(`{"status": "active"}`) is no longer directly typeable and waits for the codec layer -- a
+knowing reversal of the original bare-string argument, traded for signatures that can narrow.
+This also restores the casing rule's purity: capital means type, with no data-exemption
+needed, because variants now are types. Subtyping (a variant accepted where its enum is
+wanted) enters the type system here and nowhere else yet; its exact rules are the build
+task's plan to draft and this section's next revision to record. The original decision below
+stands for everything else (wrapper payloads, constructors as application, exhaustiveness).
+
+Declaring an enum derives one constructor per variant: `Circle{r: 1}` is ordinary
+application, `Active` an ordinary named constant. Payloads accept any single type, so a
+record payload has two spellings -- `Circle{r: 1}` and `Circle({r: 1})` -- because the
 constructor is an ordinary unary function and the braces form is the same record-argument
 sugar every call has. The braces spelling is the one the checker hints. A bare variant name resolves while exactly
 one enum in scope declares it; a collision is a loud compile error naming the candidates, and

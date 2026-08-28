@@ -133,6 +133,13 @@
   model: fable
   status: todo
 
+- id: variant-types-flip
+  title: Variants become capitalized types -- subtype rules planned first, then the migration
+  kind: build
+  needs: []
+  model: fable
+  status: todo
+
 - id: draft-split-decision
   title: Decide whether and how draft.md gets split (it is excluded from the prose budget by name)
   kind: decide
