@@ -45,6 +45,11 @@ cost.
   right place. `kitty --detach` forks, so the launching shell returns immediately.
 - The kickoff prompt is one or two sentences naming the task's in-repo source of truth. For a
   `repo#issue` env the issue rule does the heavy lifting; do not duplicate the issue body.
+- Every kickoff prompt ends with this instruction, verbatim: "When the work is finished,
+  COMMIT it. Never end your turn to present work for approval -- nobody reads this chat; the
+  coordinator reviews after you commit." Sessions that finish and wait politely are the most
+  common stall (it has happened twice), and from outside, a turn-end is indistinguishable
+  from a crash.
 
 ## 2b. Update the board
 
