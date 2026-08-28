@@ -58,6 +58,64 @@ pub struct Case {
     pub snapshot: Vec<toylang::Backend>,
 }
 
+/// Runs `program` on every backend and reports how the run fell short of `expect`, one line per
+/// failure, empty when every backend did what the case asked. The corpus harness and the docs
+/// harness both feed programs through this: a docs fragment is a corpus case defined in prose,
+/// so what "agrees" means must be one definition, not two.
+pub fn agreement_failures(
+    name: &str,
+    program: &str,
+    input: Option<&str>,
+    expect: &Expect,
+) -> Vec<String> {
+    let mut failures = Vec::new();
+
+    if let Expect::Refusal = expect {
+        for backend in toylang::Backend::ALL {
+            if let Ok(out) = toylang::run_on(program, input, backend) {
+                failures.push(format!(
+                    "RAN     {name}: {} produced {out:?} instead of refusing",
+                    backend.name()
+                ));
+            }
+        }
+        return failures;
+    }
+    let Expect::Output(want) = expect else { unreachable!("refusal handled above") };
+
+    let mut outputs: Vec<(&str, String)> = Vec::new();
+    for backend in toylang::Backend::ALL {
+        // A backend that cannot run is reported, never skipped. A report saying every backend
+        // agreed when only one of them ran is worse than no report.
+        match toylang::run_on(program, input, backend) {
+            Ok(out) => outputs.push((backend.name(), out)),
+            Err(e) => {
+                failures.push(format!("BROKEN  {name}: {} could not run: {e}", backend.name()))
+            }
+        }
+    }
+
+    if outputs.len() < toylang::Backend::ALL.len() {
+        return failures;
+    }
+
+    // Disagreement first, and reported on its own. Which backend matches the expectation is not
+    // the point: the language is underspecified either way.
+    let (_, first) = &outputs[0];
+    if outputs.iter().any(|(_, out)| out != first) {
+        let shown: Vec<String> = outputs.iter().map(|(n, o)| format!("{n}={o:?}")).collect();
+        failures.push(format!("DISAGREE {name}: {}", shown.join(" ")));
+        return failures;
+    }
+
+    if first != want {
+        failures.push(format!(
+            "WRONG   {name}: expected {want:?}, every backend gave {first:?}"
+        ));
+    }
+    failures
+}
+
 pub fn dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus")
 }
