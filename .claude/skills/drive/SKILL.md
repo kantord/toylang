@@ -39,6 +39,25 @@ grilling/planning session or an explicit user request, and gets a row before it 
    what the reviews found, what is now unblocked, and which decide-tasks are waiting.
    No play-by-play.
 
+## The periodic audit
+
+Roughly every ten ticks (about every five hours of driving), run the full reconciliation --
+the drift it catches is the kind each individual tick is blind to:
+
+1. `git branch --no-merged main` -- any branch with commits main lacks that is not a live
+   delegation is forgotten work (post-landing hook growth is the known producer); review and
+   sweep it.
+2. Open GitHub issues versus the board: every open issue maps to a row; every row's `issue:`
+   field points at a real open (or deliberately open) issue; anything unmatched gets a row,
+   a close, or a link.
+3. Board statuses versus reality: every `delegated` row has a live worker; every `done` row
+   has a merge on main; every `todo` row has a nameable gate (footprint, needs edge, or the
+   user's decide queue). A status that cannot be justified is the finding.
+4. Push distance, lingering sessions in landed worktrees, and env kanban status.
+
+Report only the discrepancies and their root causes, and fix the mechanism (a skill edit, a
+new check) rather than only the instance -- every audit finding so far became a rule.
+
 ## Board hygiene
 
 - Review follow-ups become new rows (usually `build`, sometimes a `decide` + `build` pair
