@@ -74,7 +74,7 @@
   kind: build
   needs: []
   model: fable
-  status: delegated
+  status: done
 
 - id: field-order-build
   issue: gh:21
@@ -96,7 +96,7 @@
   title: Dev-only annotations mode -- marker-pen highlights, contenteditable, quiet-period inbox
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: grill-via-annotations
   title: A repo skill running grilling rounds through the annotations mode inbox
