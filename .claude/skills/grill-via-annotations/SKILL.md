@@ -50,8 +50,63 @@ annotations mode and its annotations join the sidebar; it never appears in publi
    decision that lives only in `.grill` does not exist -- the directory is gitignored and
    disposable. Delete or overwrite round files freely once captured.
 
+## Wizard rounds (kantord/toylang#34)
+
+For a session with several questions that each want their own screen -- one decision, its
+full context, its options with real code previews, next/back, a summary before submit -- write
+a structured round instead of a markdown one: `docs/.grill/<topic>.round.yaml` (gitignored,
+ephemeral, same directory as the markdown rounds above but a distinct `.round.yaml` extension
+so the two never collide). YAML over JSON because the rest of the repo's structured data
+(`plans/board.yaml`, the corpus) is already YAML, and block scalars (`|`) keep multi-line
+markdown and code fences legible in the file itself.
+
+Schema:
+
+```yaml
+intro: |                    # optional, markdown, shown on a "Begin" screen before Q1
+  # Round title
+  Framing prose.
+questions:
+  - id: unique-slug          # required, becomes the inbox record's block index (not its key)
+    title: Short label        # required, shown in the flow badge and the summary
+    flow: question             # optional: question | escalation | status (default: question)
+    background: |              # optional, markdown, full code blocks allowed
+      ...
+    thesis: |                  # optional, markdown
+      ...
+    question: |                # required, markdown -- the direct ask
+      ...
+    options:                   # optional
+      - label: Option name
+        description: One-line tradeoff.
+        preview: |              # optional, real code as it would look under this option
+          ...
+        previewLang: toylang     # optional, defaults to toylang
+    freeText: true              # optional: true, or a string used as the placeholder.
+                                 # Required as the answer mechanism when a question has no
+                                 # options; otherwise it's an extra notes box next to them.
+```
+
+The wizard renders each question's `background`/`thesis`/`question` as its own color-coded
+left-bordered section (the design-system comment on the issue), one question per screen, with
+a progress indicator, back/next, and a summary screen listing every answer before an explicit
+Submit. It lives at `#/grill-wizard/<topic>` in the dev server (`GrillWizard.tsx`, dev-only and
+tree-shaken out of `vite build` the same way `AnnotationsSidebar.tsx` is) and is written by the
+coordinator, read and answered by the maintainer -- no terminal round-trip in between.
+
+**Delivery**: Submit posts one `/__annotations/save` record per question, `page` set to
+`docs/.grill/<topic>.round.yaml` and `block` to the question's index, `edited` a small JSON blob
+(`{"option": "...", "notes": "..."}`) rather than prose, per the issue's "shaped so the
+coordinator can map answers to questions mechanically." **A record whose `page` ends in
+`.round.yaml` is a wizard submission, not an incremental annotation edit: process it as soon as
+it shows up, ignoring the quiet-period wait below.** The wizard already withheld the whole batch
+until the maintainer pressed Submit; waiting five more minutes on top of that would be waiting
+on nothing.
+
 ## When not to use it
 
 A single quick ratification with no code context still goes through `AskUserQuestion` (with
-previews). The annotations page earns its setup cost when a round carries several questions
-or real program listings.
+previews). The annotations page (markdown round) earns its setup cost when a round carries one
+discursive thread with real program listings; the wizard earns its when the round is really
+several separable decisions that read better one at a time, each with its own options to weigh
+side by side.

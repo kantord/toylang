@@ -124,7 +124,7 @@
   title: Wizard rounds -- one question per screen, previews, summary-and-submit
   kind: build
   needs: [annotations-email-inbox]
-  status: todo
+  status: done
 
 - id: board-page-v2
   issue: gh:33
