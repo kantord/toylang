@@ -1,9 +1,8 @@
 ---
 source: tests/backend_llvm.rs
-assertion_line: 43
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (113):
+compiles natively (117):
 adults
 arith_add
 arith_div_trunc
@@ -31,8 +30,12 @@ enum_inputs_reject
 enum_match
 enum_match_default
 enum_payload_variant
+enum_scalar_input
+enum_scalar_input_reject
+enum_scalar_payload
 enum_unit_variant
 enum_variant_at_runtime
+enum_vec_payload
 escapes
 extent_of_vec
 filter

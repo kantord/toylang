@@ -553,11 +553,11 @@ impl<'i> Cursor<'i> {
         Ok(Expr::RecordLit { fields, span: open.to(close) })
     }
 
-    /// `enum Shape { point, circle{r: Int} }`
+    /// `enum Shape { point, circle{r: Int}, celsius(Int) }`
     ///
-    /// A variant is a name, optionally followed by a record type spelling its payload. The
-    /// payload rule is any single type, but the record form is the only spelling that exists so
-    /// far, the same way arguments already travel as records.
+    /// A variant is a name, optionally followed by its payload type. The payload rule is any
+    /// single type, spelled the way a call spells its argument: a record type directly in
+    /// braces, or any type in parens.
     fn enum_decl(&mut self, is_pub: bool) -> Result<EnumDecl, Error> {
         let start = self.eat(Tok::Enum)?;
         let (name, _) = self.eat_ident("an enum name")?;
@@ -571,6 +571,12 @@ impl<'i> Cursor<'i> {
                     (Tok::LBrace, open) => {
                         self.advance()?;
                         Some(self.record_type(open)?)
+                    }
+                    (Tok::LParen, _) => {
+                        self.advance()?;
+                        let ty = self.type_expr()?;
+                        self.eat(Tok::RParen)?;
+                        Some(ty)
                     }
                     _ => None,
                 };

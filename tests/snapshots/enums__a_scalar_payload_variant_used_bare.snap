@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum Temp { unknown, celsius(Int) }\\n\\ncelsius\")"
+---
+`celsius` of `Temp` carries a payload of Int, so it is written `celsius(...)` (at byte 37)

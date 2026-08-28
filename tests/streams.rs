@@ -134,6 +134,13 @@ fn an_enum_payload_cannot_hold_a_stream() {
     insta::assert_snapshot!(err("enum E { v{s: Stream<Str>} }\n\n1"));
 }
 
+/// The parens spelling puts a type directly in payload position, so the ban has to hold there
+/// too, not only inside a record.
+#[test]
+fn a_scalar_enum_payload_cannot_be_a_stream() {
+    insta::assert_snapshot!(err("enum E { v(Stream<Str>) }\n\n1"));
+}
+
 /// A stream of streams has nothing it could yield: its entries would not be values.
 #[test]
 fn a_stream_cannot_hold_another_stream() {

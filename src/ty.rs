@@ -40,7 +40,7 @@ impl Type {
             Type::Stream(_) => true,
             Type::Vec(t) | Type::Opt(t) => t.contains_stream(),
             Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_stream()),
-            // A payload type is resolved from a written annotation, which cannot spell Stream.
+            // An enum payload cannot hold a stream: resolve_enum refuses the declaration.
             _ => false,
         }
     }
