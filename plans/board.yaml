@@ -277,7 +277,7 @@
   title: Native cannot lower a Vec-typed record field read inside map
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: second-int-type-design
   issue: gh:38
