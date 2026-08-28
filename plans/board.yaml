@@ -163,7 +163,7 @@
   title: Opt<T> accepted in the type grammar -- head(v) -> Opt<Int> compiles as written
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: type-flow-rework
   title: Top-down type flow -- declared types resolve [] and literals in bodies
@@ -206,6 +206,13 @@
 
 - id: mutation-semantics-design
   title: Grill privileged/shared references -- mutation as a static optimization, no borrow checker
+  kind: decide
+  needs: []
+  status: todo
+
+- id: opt-nesting-semantics
+  issue: gh:29
+  title: Ratify Opt<Opt> -- refuse nesting, or document the collapse
   kind: decide
   needs: []
   status: todo
