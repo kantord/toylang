@@ -1,0 +1,43 @@
+---
+type: Playbook
+title: An inherited file-too-long finding is not this session's to fix
+description: What to do when a file was already over the line budget at merge-base and this session's own diff does not push it further over.
+tags: [file-too-long, inherited-debt]
+---
+
+# An inherited file-too-long finding is not this session's to fix
+
+`check.rs` was 1851 lines at this branch's original merge-base, already over
+the 1000-line budget, before this session touched it. A run of style
+cleanups (naming a couple of tuple returns as structs, extracting a few
+helpers) left it at 1898 -- still over, and the finding still fires, but the
+session neither caused the file being over budget nor grew it past what the
+current merge-base already carries.
+
+## What settled it
+
+Nothing to do here. `plans/quality-practices.md`'s design for this check
+says so directly: findings are meant to carry a caused/inherited split "so a
+session is never asked to haul a 600-line refactor into a two-line change,"
+and `clippy.toml` names `check.rs` as one of the "three right first
+conversations" the 1000-line budget exists to *name*, not to force whoever
+next opens the file to resolve. That conversation is a split, and
+`plans/quality-practices.md` is explicit that the first such split (these
+files are parallel in shape to several emitters) deserves a grilling
+session, not an agent's improvisation mid-task.
+
+React to this finding only when:
+
+- **the session's own diff is what pushed the file over budget** (merge-base
+  was under 1000, this branch is over) -- that is caused debt, and worth
+  raising even if splitting the file is out of scope for the task at hand;
+  or
+- **the session was asked to address the file's size directly** -- then this
+  lesson does not apply; that is the split conversation itself.
+
+Otherwise, note in the session's own report that the finding is present and
+inherited (the check's own message already says "already N lines at
+merge-base"), and move on. See
+[too-many-lines](/.claude/skills/code-style/lints/too-many-lines.md) for the
+sibling case (a function, not a whole file) and the same reasoning applied
+there.

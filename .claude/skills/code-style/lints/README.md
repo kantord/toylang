@@ -22,6 +22,9 @@ key. Nothing here needs a runtime, an index to rebuild, or a tool to read it.
   what to do when naming a tuple return as a struct pushes a function over
   the clippy line budget, and how to tell a caused finding from inherited
   debt.
+- [file-too-long](/.claude/skills/code-style/lints/file-too-long.md) -- an
+  inherited file-too-long finding, not grown further by the session's own
+  diff, is not that session's to fix.
 
 Otherwise empty, deliberately. A lesson records a decision this repo
 actually made after a finding forced the question. toy-browser's eleven
