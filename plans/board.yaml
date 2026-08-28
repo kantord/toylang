@@ -174,7 +174,7 @@
   title: "run_jq's fn-params-excessive-bools finding (src/lib.rs): fix, exempt, or write the lesson"
   kind: decide
   needs: []
-  status: todo
+  status: done
 
 - id: opt-in-signatures
   issue: gh:27
@@ -280,10 +280,23 @@
   needs: [q37-float-semantics]
   status: todo
 
+- id: checker-structure-survey
+  title: Survey how compilers structure the checker layer -- strategies, pitfalls, crates
+  kind: build
+  needs: []
+  status: todo
+
+- id: cognitive-complexity-lesson
+  issue: gh:25
+  title: Write the cognitive-complexity lesson (look at the shape, not the number)
+  kind: build
+  needs: []
+  status: todo
+
 - id: check-rs-split-decision
   title: Decide how to split src/check.rs (1874 lines, budget 1000; synth() and check() also over the line/complexity limits) -- inherited debt, predates issue #14
   kind: decide
-  needs: []
+  needs: [checker-structure-survey]
   status: todo
 
 - id: quality-hooks-introduction
