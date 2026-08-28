@@ -122,7 +122,7 @@
   title: Implement or-composed arms, guard arms, hybrid totality; retire //
   kind: build
   needs: [matcher-first-cut-design]
-  status: delegated
+  status: done
 
 - id: language-oddities-review
   title: Review the oddities inventory and settle each item
