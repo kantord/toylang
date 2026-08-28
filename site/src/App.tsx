@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 
+import { BoardPage } from "@/components/BoardPage"
 import { ExamplesPage } from "@/components/ExamplesPage"
 import { Markdown } from "@/components/Markdown"
 import { loadCorpus, type Corpus } from "@/lib/corpus"
@@ -7,12 +8,14 @@ import { href, PAGES, type Page, type Section } from "@/lib/docs"
 import { cn } from "@/lib/utils"
 
 /** The four sections, each with one job (plans/docs-site.md): a linear course, task-oriented
- *  feature pages, the complete reference, and the corpus browser. */
-const SECTIONS: { key: Section | "examples"; label: string }[] = [
+ *  feature pages, the complete reference, and the corpus browser -- plus Board, the project
+ *  status view (kantord/toylang#31), which isn't part of that Diataxis split. */
+const SECTIONS: { key: Section | "examples" | "board"; label: string }[] = [
   { key: "tutorial", label: "Tutorial" },
   { key: "guides", label: "Guides" },
   { key: "reference", label: "Reference" },
   { key: "examples", label: "Examples" },
+  { key: "board", label: "Board" },
 ]
 
 function useHash(): string {
@@ -65,7 +68,9 @@ export default function App() {
 
   const section = segments[0] ?? ""
   let body
-  if (section === "examples") {
+  if (section === "board") {
+    body = <BoardPage />
+  } else if (section === "examples") {
     body = (
       <ExamplesPage
         corpus={corpus}
