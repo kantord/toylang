@@ -39,7 +39,10 @@ fn rust_agrees_where_it_compiles() {
         }
     }
 
-    assert!(!supported.is_empty(), "rust compiles nothing, so this test proves nothing");
+    assert!(
+        !supported.is_empty(),
+        "rust compiles nothing, so this test proves nothing"
+    );
 
     insta::assert_snapshot!(format!(
         "compiles (rust) ({}):\n{}\n\nnot yet ({}):\n{}",

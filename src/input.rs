@@ -10,15 +10,16 @@ use crate::ty::Type;
 /// and the type system have stopped making the same guarantee.
 pub fn validate(value: &Value, ty: &Type, path: &str) -> Result<(), String> {
     let found = match (ty, value) {
-        (Type::Str, Value::String(_))
-        | (Type::Bool, Value::Bool(_)) => return Ok(()),
+        (Type::Str, Value::String(_)) | (Type::Bool, Value::Bool(_)) => return Ok(()),
 
         (Type::Int, Value::Number(n)) => {
             // Input is the other place an Int enters, and the 32-bit rule has to hold at both.
             // Accepting an i64 here left five backends carrying a value the type cannot hold
             // while Go refused to decode it, which is a disagreement rather than a wrong answer.
             let Some(n) = n.as_i64() else {
-                return Err(format!("{path}: expected Int, found the non-integer number {n}"));
+                return Err(format!(
+                    "{path}: expected Int, found the non-integer number {n}"
+                ));
             };
             return if i32::try_from(n).is_ok() {
                 Ok(())

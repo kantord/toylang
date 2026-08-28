@@ -12,7 +12,10 @@ fn err(src: &str) -> String {
 }
 
 fn run_err(src: &str, stdin: &str) -> String {
-    toylang::run_with_input(src, Some(stdin)).map(|_| ()).unwrap_err().to_string()
+    toylang::run_with_input(src, Some(stdin))
+        .map(|_| ())
+        .unwrap_err()
+        .to_string()
 }
 
 #[test]
@@ -114,7 +117,10 @@ fn input_is_the_wrong_shape() {
 /// A float where Int was declared is an error, not a truncation.
 #[test]
 fn input_float_where_int_declared() {
-    insta::assert_snapshot!(run_err(ADULTS, r#"{"users": [{"name": "ada", "age": 36.5}]}"#));
+    insta::assert_snapshot!(run_err(
+        ADULTS,
+        r#"{"users": [{"name": "ada", "age": 36.5}]}"#
+    ));
 }
 
 /// Fields the program did not declare are ignored, so a program can read two fields off a log

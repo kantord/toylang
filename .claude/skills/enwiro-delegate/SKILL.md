@@ -1,4 +1,5 @@
 ---
+type: Playbook
 name: enwiro-delegate
 description: Delegate a task to a fresh interactive Claude Code session in its own enwiro environment (git worktree) and workspace, visually navigable for the user. Use when the user wants implementation handed to a separate session/worktree/workspace, says "delegate this", "spawn a session for this", or names enwiro delegation.
 ---

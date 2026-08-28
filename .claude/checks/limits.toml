@@ -1,0 +1,15 @@
+# Budgets the checks enforce.
+#
+# Lowered deliberately, one commit at a time, as splits land; never raised to
+# make a finding go away. Findings quote it back, so the ratchet is visible in
+# the message an agent receives.
+#
+# 1000 was chosen to name the three right first conversations (emit_llvm.rs,
+# check.rs, emit_rs.rs) instead of opening every session with the
+# inherited-debt talk: at toy-browser's 320, ten of eighteen src/ files would
+# fire, and a finding that fires on every session teaches agents to skip
+# reading findings. Measured after the one-time rustfmt baseline, five files
+# actually stand over (emit_go.rs at 1017 and parse.rs at 1091 joined, pushed
+# across by formatting alone). The floor is unproven; 400 looks reachable.
+# See plans/quality-practices.md.
+max_file_lines = 1000

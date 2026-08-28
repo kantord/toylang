@@ -217,7 +217,11 @@ pub fn emit(program: &Program) -> String {
     let mut used = Used::default();
     let mut records = Vec::new();
     let mut enums = Vec::new();
-    let mut ctx = Collect { used: &mut used, records: &mut records, enums: &mut enums };
+    let mut ctx = Collect {
+        used: &mut used,
+        records: &mut records,
+        enums: &mut enums,
+    };
     for f in &program.funcs {
         ctx.ty(&f.param_ty);
         ctx.walk(&f.body);
@@ -236,7 +240,9 @@ pub fn emit(program: &Program) -> String {
 
     let mut decls = String::new();
     for (i, rec) in e.records.iter().enumerate() {
-        let Type::Record(fields) = rec else { unreachable!("only records are collected") };
+        let Type::Record(fields) = rec else {
+            unreachable!("only records are collected")
+        };
         decls.push_str(&format!("type tlRec{i} struct {{\n"));
         for (name, ty) in fields {
             // Exported, because encoding/json only fills fields it can see. The `F` prefix keeps
@@ -249,7 +255,9 @@ pub fn emit(program: &Program) -> String {
     // Go has no sum type, so an enum is a tag (the variant's declaration index) plus one
     // pointer per payload variant, nil except for the one the tag names.
     for en in &e.enums {
-        let Type::Enum { name, variants } = en else { unreachable!("only enums are collected") };
+        let Type::Enum { name, variants } = en else {
+            unreachable!("only enums are collected")
+        };
         decls.push_str(&format!("type {} struct {{\n\ttag int32\n", e.go_type(en)));
         for (i, (_, payload)) in variants.iter().enumerate() {
             if let Some(p) = payload {
@@ -393,9 +401,9 @@ fn has_scalar(ty: &Type) -> bool {
         Type::Str => false,
         Type::Vec(t) | Type::Opt(t) => has_scalar(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| has_scalar(t)),
-        Type::Enum { variants, .. } => {
-            variants.iter().any(|(_, p)| p.as_ref().is_some_and(has_scalar))
-        }
+        Type::Enum { variants, .. } => variants
+            .iter()
+            .any(|(_, p)| p.as_ref().is_some_and(has_scalar)),
     }
 }
 
@@ -482,7 +490,11 @@ impl Collect<'_> {
                 self.walk(source);
                 self.walk(pred);
             }
-            Kind::Cond { cond, then, otherwise } => {
+            Kind::Cond {
+                cond,
+                then,
+                otherwise,
+            } => {
                 self.walk(cond);
                 self.walk(then);
                 self.walk(otherwise);
@@ -501,12 +513,16 @@ impl Collect<'_> {
                     Builtin::IntToStr => self.used.itoa = true,
                     Builtin::JsonLines => {
                         self.used.jsonlines = true;
-                        let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
+                        let elem =
+                            tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                         self.used.jsonlines_has_scalar |= has_scalar(elem);
                     }
                     // Purely textually gated below, like tlAt and tlRange: nothing here needs
                     // the element type, so there is nothing to record on the walk.
-                    Builtin::Range | Builtin::Collect | Builtin::Extent | Builtin::Concat
+                    Builtin::Range
+                    | Builtin::Collect
+                    | Builtin::Extent
+                    | Builtin::Concat
                     | Builtin::Tail => {}
                 }
                 self.walk(arg);
@@ -567,7 +583,9 @@ impl Emitter {
     fn enum_unmarshal(&self, name: &str, variants: &[(String, Option<Type>)]) -> String {
         let ename = format!("tlE_{name}");
         let mut out = String::new();
-        out.push_str(&format!("func (e *{ename}) UnmarshalJSON(b []byte) error {{\n"));
+        out.push_str(&format!(
+            "func (e *{ename}) UnmarshalJSON(b []byte) error {{\n"
+        ));
         out.push_str("\tvar s string\n");
         out.push_str("\tif json.Unmarshal(b, &s) == nil {\n");
         out.push_str("\t\tswitch s {\n");
@@ -593,14 +611,18 @@ impl Emitter {
         }
         out.push_str("\tvar m map[string]json.RawMessage\n");
         out.push_str("\tif err := json.Unmarshal(b, &m); err != nil || len(m) != 1 {\n");
-        out.push_str(&format!("\t\treturn fmt.Errorf(\"expected {name}\")\n\t}}\n"));
+        out.push_str(&format!(
+            "\t\treturn fmt.Errorf(\"expected {name}\")\n\t}}\n"
+        ));
         out.push_str("\tfor k, v := range m {\n");
         out.push_str("\t\tswitch k {\n");
         for (i, vname, pty) in &payloads {
             out.push_str(&format!("\t\tcase \"{vname}\":\n"));
             out.push_str(&format!("\t\t\tvar p {}\n", self.go_type(pty)));
             out.push_str("\t\t\tif err := json.Unmarshal(v, &p); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n");
-            out.push_str(&format!("\t\t\t*e = {ename}{{tag: {i}, p{i}: &p}}\n\t\t\treturn nil\n"));
+            out.push_str(&format!(
+                "\t\t\t*e = {ename}{{tag: {i}, p{i}: &p}}\n\t\t\treturn nil\n"
+            ));
         }
         out.push_str("\t\t}\n");
         out.push_str(&format!(
@@ -625,7 +647,10 @@ impl Emitter {
         out.push_str("func main() {\n");
         let (mut current, mut current_ty) = match fusion.source {
             tir::Source::Inputs => {
-                let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+                let elem = program
+                    .inputs
+                    .as_ref()
+                    .expect("an inputs source recorded its element");
                 out.push_str("\tdec := json.NewDecoder(os.Stdin)\n");
                 out.push_str("\tfor {\n");
                 out.push_str(&format!("\t\tvar t_line {}\n", self.go_type(elem)));
@@ -760,7 +785,11 @@ impl Emitter {
             // Go has no conditional expression, so this is a call to a function literal rather
             // than an operator. Both branches stay unevaluated, which a `tlCond(c, a, b)` helper
             // could not manage: its arguments would both run, and one of them may divide by zero.
-            Kind::Cond { cond, then, otherwise } => format!(
+            Kind::Cond {
+                cond,
+                then,
+                otherwise,
+            } => format!(
                 "func() {} {{ if {} {{ return {} }}; return {} }}()",
                 self.go_type(&t.ty),
                 self.expr(cond),
@@ -789,7 +818,11 @@ impl Emitter {
             Kind::Compare { op, lhs, rhs } => {
                 format!("({} {} {})", self.expr(lhs), go_op(*op), self.expr(rhs))
             }
-            Kind::Bind { local: id, value, body } => format!(
+            Kind::Bind {
+                local: id,
+                value,
+                body,
+            } => format!(
                 "func({} {}) {} {{ return {} }}({})",
                 self.local(*id),
                 self.go_type(&value.ty),
@@ -797,7 +830,11 @@ impl Emitter {
                 self.expr(body),
                 self.expr(value)
             ),
-            Kind::Map { source, param, body } => format!(
+            Kind::Map {
+                source,
+                param,
+                body,
+            } => format!(
                 "tlMap({}, func({} {}) {} {{ return {} }})",
                 self.expr(source),
                 self.local(*param),
@@ -805,7 +842,11 @@ impl Emitter {
                 self.go_type(&body.ty),
                 self.expr(body)
             ),
-            Kind::Select { source, param, pred } => format!(
+            Kind::Select {
+                source,
+                param,
+                pred,
+            } => format!(
                 "tlSelect({}, func({} {}) bool {{ return {} }})",
                 self.expr(source),
                 self.local(*param),
@@ -824,7 +865,9 @@ impl Emitter {
                     format!("tlUnwrap({v})")
                 })
             }
-            Kind::Index { base, index, depth, .. } => {
+            Kind::Index {
+                base, index, depth, ..
+            } => {
                 let i = self.expr(index);
                 self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
                     format!("tlAt({v}, {i})")
@@ -843,8 +886,10 @@ impl Emitter {
                 for (i, arm) in arms.iter().enumerate() {
                     let mut run = String::new();
                     if let Some(pid) = arm.payload {
-                        let variant =
-                            arm.variant.as_ref().expect("only a variant arm has a payload");
+                        let variant = arm
+                            .variant
+                            .as_ref()
+                            .expect("only a variant arm has a payload");
                         let vi = Self::variant_index(variants, variant);
                         run.push_str(&format!(
                             "{} := *{subj}.p{vi}; _ = {}; ",
@@ -914,7 +959,10 @@ impl Emitter {
                         body.push_str(&format!("return {rendered}"));
                     }
                 }
-                format!("func({n} {}) string {{ {body} }}({value})", self.go_type(ty))
+                format!(
+                    "func({n} {}) string {{ {body} }}({value})",
+                    self.go_type(ty)
+                )
             }
             Type::Record(fields) => {
                 if fields.is_empty() {

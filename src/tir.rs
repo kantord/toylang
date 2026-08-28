@@ -31,13 +31,18 @@ pub enum Kind {
     /// A record literal, its fields sorted by name so a field's position here matches
     /// its position in the type. That is what lets a backend address one by index rather than
     /// searching for it.
-    RecordLit { fields: Vec<(String, Tir)> },
+    RecordLit {
+        fields: Vec<(String, Tir)>,
+    },
     /// A constructed enum value. The node's type is the enum, which carries the variant list,
     /// so a backend finds the variant's position (its tag, where one is needed) and its payload
     /// type there rather than in the node. `payload` is `None` for a unit variant, which every
     /// backend renders as the bare variant-name string; a payload variant is the single-key
     /// wrapper (ADR 0009).
-    EnumLit { variant: String, payload: Option<Box<Tir>> },
+    EnumLit {
+        variant: String,
+        payload: Option<Box<Tir>>,
+    },
     /// A name written in the source: today only a function parameter.
     Var(String),
     Local(LocalId),
@@ -101,7 +106,10 @@ pub enum Kind {
     /// so the depth is every Vec layer of the base; an index leaves a Vec behind, so the layers
     /// below the one being collapsed are indistinguishable from the ones above it.
     /// A unary builtin. Unary like every other function, so it needs no special call form.
-    Builtin { which: Builtin, arg: Box<Tir> },
+    Builtin {
+        which: Builtin,
+        arg: Box<Tir>,
+    },
     /// Insist an Opt is present, `depth` layers down. Like a field access and unlike an index,
     /// the depth is every Vec layer of the base, because an Opt is not a dimension.
     Unwrap {
@@ -262,14 +270,28 @@ fn flatten<'a>(t: &'a Tir, program: &'a Program, stages: &mut Vec<Stage<'a>>) ->
                 _ => unreachable!("a piped stream is consumed by the pipe's own body"),
             }
         }
-        Kind::Map { source, param, body } => {
+        Kind::Map {
+            source,
+            param,
+            body,
+        } => {
             let base = flatten(source, program, stages);
-            stages.push(Stage::Map { param: *param, body });
+            stages.push(Stage::Map {
+                param: *param,
+                body,
+            });
             base
         }
-        Kind::Select { source, param, pred } => {
+        Kind::Select {
+            source,
+            param,
+            pred,
+        } => {
             let base = flatten(source, program, stages);
-            stages.push(Stage::Select { param: *param, pred });
+            stages.push(Stage::Select {
+                param: *param,
+                pred,
+            });
             base
         }
         // The argument's stages first, then the callee's body inlined: its chain bottoms at
@@ -295,7 +317,11 @@ fn flatten<'a>(t: &'a Tir, program: &'a Program, stages: &mut Vec<Stage<'a>>) ->
 /// whose argument is stream-typed fuses, and one whose argument is a Vec (already collected)
 /// stays an ordinary value and runs eagerly, exactly as its types say.
 pub fn fusion(program: &Program) -> Option<Fusion<'_>> {
-    let Kind::Builtin { which: Builtin::JsonLines, arg } = &program.body.kind else {
+    let Kind::Builtin {
+        which: Builtin::JsonLines,
+        arg,
+    } = &program.body.kind
+    else {
         return None;
     };
     if !matches!(arg.ty, Type::Stream(_)) {

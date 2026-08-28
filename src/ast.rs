@@ -31,7 +31,10 @@ pub enum BinOp {
 
 impl BinOp {
     pub fn is_comparison(self) -> bool {
-        matches!(self, BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge)
+        matches!(
+            self,
+            BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge
+        )
     }
 
     /// True for the operators that only ever mean arithmetic. `+` is missing because it also
@@ -63,12 +66,24 @@ impl std::fmt::Display for BinOp {
 /// A type as written in source, before it is resolved to a `Type`.
 #[derive(Debug)]
 pub enum TypeExpr {
-    Named { name: String, span: Span },
-    Vec { elem: Box<TypeExpr>, span: Span },
+    Named {
+        name: String,
+        span: Span,
+    },
+    Vec {
+        elem: Box<TypeExpr>,
+        span: Span,
+    },
     /// `Stream<T>`, legal only as the whole of a parameter or return annotation: a stream is
     /// not a value, so the checker refuses it anywhere a type would describe something stored.
-    Stream { elem: Box<TypeExpr>, span: Span },
-    Record { fields: Vec<(String, TypeExpr)>, span: Span },
+    Stream {
+        elem: Box<TypeExpr>,
+        span: Span,
+    },
+    Record {
+        fields: Vec<(String, TypeExpr)>,
+        span: Span,
+    },
 }
 
 impl TypeExpr {
@@ -150,41 +165,94 @@ pub struct Alias {
 
 #[derive(Debug)]
 pub enum Expr {
-    Str { text: String, span: Span },
-    Int { value: i64, span: Span },
-    VecLit { items: Vec<Expr>, span: Span },
+    Str {
+        text: String,
+        span: Span,
+    },
+    Int {
+        value: i64,
+        span: Span,
+    },
+    VecLit {
+        items: Vec<Expr>,
+        span: Span,
+    },
     /// `{name: expr, age: expr}`. A record literal, the inverse of a projection. Each field
     /// keeps its own span so a repeated one can be pointed at rather than described.
-    RecordLit { fields: Vec<(String, Span, Expr)>, span: Span },
+    RecordLit {
+        fields: Vec<(String, Span, Expr)>,
+        span: Span,
+    },
     /// `.`, the value the enclosing pipeline or filter is currently working on.
-    Subject { span: Span },
-    Var { name: String, span: Span },
-    Call { func: String, func_span: Span, arg: Box<Expr>, span: Span },
+    Subject {
+        span: Span,
+    },
+    Var {
+        name: String,
+        span: Span,
+    },
+    Call {
+        func: String,
+        func_span: Span,
+        arg: Box<Expr>,
+        span: Span,
+    },
     /// `base[]`. A spec that keeps a dimension.
-    Project { base: Box<Expr>, span: Span },
+    Project {
+        base: Box<Expr>,
+        span: Span,
+    },
     /// `base[i]`. A spec that collapses a dimension, so the entry may not be there.
-    Index { base: Box<Expr>, index: Box<Expr>, span: Span },
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
+        span: Span,
+    },
     /// `base!`. Insist the value is there, and stop the program if it is not.
-    Unwrap { base: Box<Expr>, span: Span },
+    Unwrap {
+        base: Box<Expr>,
+        span: Span,
+    },
     /// `-base`.
-    Neg { base: Box<Expr>, span: Span },
+    Neg {
+        base: Box<Expr>,
+        span: Span,
+    },
     /// `then if cond else otherwise`. An expression, in a language that has only those.
-    Cond { then: Box<Expr>, cond: Box<Expr>, otherwise: Box<Expr>, span: Span },
+    Cond {
+        then: Box<Expr>,
+        cond: Box<Expr>,
+        otherwise: Box<Expr>,
+        span: Span,
+    },
     /// `base.name`. Distributes over a Vec rather than needing a map.
-    Field { base: Box<Expr>, name: String, span: Span },
+    Field {
+        base: Box<Expr>,
+        name: String,
+        span: Span,
+    },
     /// The value read from stdin. It has no type of its own and can only be checked against an
     /// expected one, which is the same rule the draft gives for lambdas.
-    Input { span: Span },
+    Input {
+        span: Span,
+    },
     /// Every remaining JSON value on stdin, one per line, collected eagerly into a `Vec<T>`.
     /// Like `input`, its element type comes only from where it is used.
-    Inputs { span: Span },
+    Inputs {
+        span: Span,
+    },
     /// The stream of lines read from stdin, born `Stream<Str>`. The checker rejects a second
     /// use rather than accepting a second stream, since there is only ever one real stdin.
-    Lines { span: Span },
+    Lines {
+        span: Span,
+    },
     /// A `//` chain of match arms over the subject `.`: `point -> 0 // circle{r} -> r * r`.
     /// The subject is not part of the node; a match reads `.` the way `select` does, so it
     /// appears as a pipe stage.
-    Match { arms: Vec<MatchArm>, span: Span },
+    Match {
+        arms: Vec<MatchArm>,
+        span: Span,
+    },
     /// `Shape.circle` or `Shape.circle{r: 1}`: a variant constructor spelled through its enum.
     /// Only the qualified form needs its own node; a bare `circle{r: 1}` is an ordinary `Call`
     /// and a bare `active` an ordinary `Var`, resolved through the enum registry by the checker.
@@ -197,8 +265,17 @@ pub enum Expr {
         span: Span,
     },
     /// `lhs | rhs`, which binds `.` in `rhs` to the value of `lhs`.
-    Pipe { lhs: Box<Expr>, rhs: Box<Expr>, span: Span },
-    Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr>, span: Span },
+    Pipe {
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+        span: Span,
+    },
+    Binary {
+        op: BinOp,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+        span: Span,
+    },
 }
 
 #[derive(Debug)]
@@ -212,7 +289,11 @@ pub struct MatchArm {
 pub enum Pattern {
     /// A variant name, optionally destructuring its payload's fields. Bare names inside the
     /// braces bind fresh, and `rest` is the `..` marker that permits naming only some of them.
-    Variant { name: String, span: Span, fields: Option<FieldsPattern> },
+    Variant {
+        name: String,
+        span: Span,
+        fields: Option<FieldsPattern>,
+    },
     /// `any()`, the default arm: matches whatever is left.
     Default { span: Span },
 }

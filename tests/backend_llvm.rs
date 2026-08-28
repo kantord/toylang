@@ -38,7 +38,10 @@ fn native_agrees_where_it_compiles() {
         }
     }
 
-    assert!(!supported.is_empty(), "native compiles nothing, so this test proves nothing");
+    assert!(
+        !supported.is_empty(),
+        "native compiles nothing, so this test proves nothing"
+    );
 
     insta::assert_snapshot!(format!(
         "compiles natively ({}):\n{}\n\nnot yet ({}):\n{}",

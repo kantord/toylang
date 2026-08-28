@@ -1,4 +1,5 @@
 ---
+type: Playbook
 name: land-delegated-work
 description: Review and merge a finished delegated session's branch without bothering the user. Use when a delegated agent session (enwiro-delegate flow) has finished its work, or the user asks to land/merge an agent's branch. Runs code-review and style-review, fixes findings, merges locally, and reports once.
 ---

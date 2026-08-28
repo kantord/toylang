@@ -38,7 +38,11 @@ fn an_alias_emits_identically_to_the_type_written_out() {
         );
         checked += 1;
     }
-    assert_eq!(checked, Backend::ALL.len(), "every backend has to have been tried");
+    assert_eq!(
+        checked,
+        Backend::ALL.len(),
+        "every backend has to have been tried"
+    );
 }
 
 /// An alias has no identity, so an error reports the shape rather than the name. This is the
@@ -79,7 +83,9 @@ fn an_unused_alias_is_still_checked() {
 /// Naming the chain is the difference between knowing there is a cycle and finding it.
 #[test]
 fn a_cycle_through_three_names() {
-    insta::assert_snapshot!(err("type A = {b: B}\ntype B = {c: C}\ntype C = {a: A}\n\nstr(1)"));
+    insta::assert_snapshot!(err(
+        "type A = {b: B}\ntype B = {c: C}\ntype C = {a: A}\n\nstr(1)"
+    ));
 }
 
 #[test]

@@ -6,8 +6,9 @@ use toylang::Backend;
 
 #[track_caller]
 fn agree(src: &str, stdin: Option<&str>) -> String {
-    let mut results =
-        Backend::ALL.iter().map(|b| (b.name(), toylang::run_on(src, stdin, *b).unwrap()));
+    let mut results = Backend::ALL
+        .iter()
+        .map(|b| (b.name(), toylang::run_on(src, stdin, *b).unwrap()));
     let (first_name, first) = results.next().expect("at least one backend");
     for (name, out) in results {
         assert_eq!(first, out, "{first_name} and {name} disagree on:\n{src}");

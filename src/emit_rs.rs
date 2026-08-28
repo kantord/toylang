@@ -392,7 +392,11 @@ pub fn emit(program: &Program) -> String {
     let mut used = Used::default();
     let mut records = Vec::new();
     let mut enums = Vec::new();
-    let mut ctx = Collect { used: &mut used, records: &mut records, enums: &mut enums };
+    let mut ctx = Collect {
+        used: &mut used,
+        records: &mut records,
+        enums: &mut enums,
+    };
     for f in &program.funcs {
         ctx.ty(&f.param_ty);
         ctx.walk(&f.body);
@@ -411,7 +415,9 @@ pub fn emit(program: &Program) -> String {
 
     let mut decls = String::new();
     for (i, rec) in e.records.iter().enumerate() {
-        let Type::Record(fields) = rec else { unreachable!("only records are collected") };
+        let Type::Record(fields) = rec else {
+            unreachable!("only records are collected")
+        };
         decls.push_str(&format!("#[derive(Clone)]\nstruct TlRec{i} {{\n"));
         for (name, ty) in fields {
             decls.push_str(&format!("    {}: {},\n", rs_field(name), e.rs_type(ty)));
@@ -426,7 +432,9 @@ pub fn emit(program: &Program) -> String {
     // enum. `allow(non_camel_case_types)` because variant names are data and keep their source
     // spelling rather than being case-mangled.
     for (i, en) in e.enums.iter().enumerate() {
-        let Type::Enum { name, variants } = en else { unreachable!("only enums are collected") };
+        let Type::Enum { name, variants } = en else {
+            unreachable!("only enums are collected")
+        };
         decls.push_str(&format!(
             "#[derive(Clone)]\n#[allow(non_camel_case_types)]\nenum {} {{\n",
             e.rs_type(en)
@@ -504,7 +512,10 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_tail("), TAIL_HELPER),
         (uses("tl_concat("), CONCAT_HELPER),
         (uses("tl_range("), RANGE_HELPER),
-        (reads_value || uses("tl_read_all_stdin(") || uses("tl_read_lines("), READ_HELPER),
+        (
+            reads_value || uses("tl_read_all_stdin(") || uses("tl_read_lines("),
+            READ_HELPER,
+        ),
         (reads_value || uses("TlParser"), PARSER_HELPER),
         (uses("tl_quote("), QUOTE_HELPER),
         (uses("tl_join("), JOIN_HELPER),
@@ -602,7 +613,11 @@ impl Collect<'_> {
                 self.walk(source);
                 self.walk(pred);
             }
-            Kind::Cond { cond, then, otherwise } => {
+            Kind::Cond {
+                cond,
+                then,
+                otherwise,
+            } => {
                 self.walk(cond);
                 self.walk(then);
                 self.walk(otherwise);
@@ -697,7 +712,9 @@ impl Emitter {
     fn enum_parser(&self, i: usize, name: &str, variants: &[(String, Option<Type>)]) -> String {
         let ename = format!("TlE_{name}");
         let mut out = String::new();
-        out.push_str(&format!("fn tl_parse_enum{i}(p: &mut TlParser) -> {ename} {{\n"));
+        out.push_str(&format!(
+            "fn tl_parse_enum{i}(p: &mut TlParser) -> {ename} {{\n"
+        ));
         out.push_str("    if p.peek() == b'\"' {\n");
         out.push_str("        let s = p.parse_str();\n");
         out.push_str("        match s.as_str() {\n");
@@ -737,9 +754,15 @@ impl Emitter {
     /// skipped rather than rejected, matching `input::validate` on the compiler side.
     fn record_parser(&self, i: usize, fields: &[(String, Type)]) -> String {
         let mut out = String::new();
-        out.push_str(&format!("fn tl_parse_rec{i}(p: &mut TlParser) -> TlRec{i} {{\n"));
+        out.push_str(&format!(
+            "fn tl_parse_rec{i}(p: &mut TlParser) -> TlRec{i} {{\n"
+        ));
         for (name, ty) in fields {
-            out.push_str(&format!("    let mut {}: Option<{}> = None;\n", rs_field(name), self.rs_type(ty)));
+            out.push_str(&format!(
+                "    let mut {}: Option<{}> = None;\n",
+                rs_field(name),
+                self.rs_type(ty)
+            ));
         }
         out.push_str("    p.expect(b'{');\n");
         out.push_str("    if !p.at(b'}') {\n        loop {\n");
@@ -795,7 +818,10 @@ impl Emitter {
         out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
         let (mut current, mut current_ty) = match fusion.source {
             tir::Source::Inputs => {
-                let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+                let elem = program
+                    .inputs
+                    .as_ref()
+                    .expect("an inputs source recorded its element");
                 out.push_str("        if line.trim().is_empty() { continue; }\n");
                 out.push_str(&format!(
                     "        let t_line: {} = tl_parse_line(&line, {});\n",
@@ -829,13 +855,18 @@ impl Emitter {
                         self.rs_type(&current_ty),
                         current
                     ));
-                    out.push_str(&format!("        if !({}) {{ continue; }}\n", self.expr(pred)));
+                    out.push_str(&format!(
+                        "        if !({}) {{ continue; }}\n",
+                        self.expr(pred)
+                    ));
                     current = format!("{}.clone()", self.local(*param));
                 }
             }
         }
         let printed = self.show(&current_ty, &current, 0);
-        out.push_str(&format!("        writeln!(stdout, \"{{}}\", {printed}).unwrap();\n"));
+        out.push_str(&format!(
+            "        writeln!(stdout, \"{{}}\", {printed}).unwrap();\n"
+        ));
         out.push_str("        stdout.flush().unwrap();\n");
         out.push_str("    }\n}\n");
         out
@@ -862,7 +893,13 @@ impl Emitter {
             "{value}.iter().map(|{var}: &{}| -> {} {{ {} }}).collect::<Vec<_>>()",
             self.rs_type(elem),
             self.rs_type(result_elem),
-            self.distribute(&format!("{var}.clone()"), elem, result_elem, depth - 1, leaf)
+            self.distribute(
+                &format!("{var}.clone()"),
+                elem,
+                result_elem,
+                depth - 1,
+                leaf
+            )
         )
     }
 
@@ -904,7 +941,11 @@ impl Emitter {
             },
             // A genuine expression, unlike Go: both branches stay unevaluated except the taken
             // one, which is what `if`/`else` already guarantees.
-            Kind::Cond { cond, then, otherwise } => format!(
+            Kind::Cond {
+                cond,
+                then,
+                otherwise,
+            } => format!(
                 "(if {} {{ {} }} else {{ {} }})",
                 self.expr(cond),
                 self.expr(then),
@@ -937,14 +978,22 @@ impl Emitter {
             // or binary operator chains onto it safely -- a bare `{ ... }` at the start of a
             // statement parses as a block statement, not an expression, and a parenthesized
             // block can never be mistaken for one.
-            Kind::Bind { local: id, value, body } => format!(
+            Kind::Bind {
+                local: id,
+                value,
+                body,
+            } => format!(
                 "({{ let {}: {} = {}; {} }})",
                 self.local(*id),
                 self.rs_type(&value.ty),
                 self.expr(value),
                 self.expr(body)
             ),
-            Kind::Map { source, param, body } => format!(
+            Kind::Map {
+                source,
+                param,
+                body,
+            } => format!(
                 "{}.iter().map(|{}: &{}| -> {} {{ {} }}).collect::<Vec<_>>()",
                 self.expr(source),
                 self.local(*param),
@@ -956,7 +1005,11 @@ impl Emitter {
             // of reference (`&T`, not `&&T` the way `.iter().filter()` alone would give):
             // `.clone()` on `&T` derefs one level to `T`, but on `&&T` it only strips one level
             // of reference, leaving `&T` -- verified directly, not assumed.
-            Kind::Select { source, param, pred } => format!(
+            Kind::Select {
+                source,
+                param,
+                pred,
+            } => format!(
                 "{}.iter().cloned().filter(|{}: &{}| -> bool {{ {} }}).collect::<Vec<_>>()",
                 self.expr(source),
                 self.local(*param),
@@ -975,7 +1028,9 @@ impl Emitter {
                     format!("tl_unwrap({v})")
                 })
             }
-            Kind::Index { base, index, depth, .. } => {
+            Kind::Index {
+                base, index, depth, ..
+            } => {
                 let i = self.expr(index);
                 self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
                     format!("tl_at(&{v}, {i})")
@@ -1014,7 +1069,11 @@ impl Emitter {
                         }
                     })
                     .collect();
-                format!("(match {} {{ {} }})", self.expr(subject), rendered.join(", "))
+                format!(
+                    "(match {} {{ {} }})",
+                    self.expr(subject),
+                    rendered.join(", ")
+                )
             }
         }
     }
@@ -1078,7 +1137,10 @@ impl Emitter {
                         format!("{key}.to_string() + &{}", self.show(fty, &read, depth + 1))
                     })
                     .collect();
-                format!("(\"{{\".to_string() + &{} + \"}}\")", parts.join(" + \",\" + &"))
+                format!(
+                    "(\"{{\".to_string() + &{} + \"}}\")",
+                    parts.join(" + \",\" + &")
+                )
             }
         }
     }

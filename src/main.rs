@@ -4,7 +4,8 @@ use std::process::ExitCode;
 
 use toylang::Backend;
 
-const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE";
+const USAGE: &str =
+    "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -36,7 +37,9 @@ fn main() -> ExitCode {
         "run" => run(&src, backend),
         "emit" => match toylang::compile(&src) {
             Err(e) => Err(e.into()),
-            Ok(p) => backend.emit(&p).map_err(|e| -> Box<dyn std::error::Error> { e.into() }),
+            Ok(p) => backend
+                .emit(&p)
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() }),
         },
         "build" => build(&src, path).map(|out| format!("{}\n", out.display())),
         _ => {
@@ -79,8 +82,8 @@ fn run(src: &str, backend: Backend) -> Result<String, Box<dyn std::error::Error>
     // treatment `lines` always had, and everything else still needs the whole thing in hand
     // before `run_on` can validate it.
     let program = toylang::compile(src)?;
-    let needs_upfront_read = program.input.is_some()
-        || (program.inputs.is_some() && !toylang::streams_inputs(&program));
+    let needs_upfront_read =
+        program.input.is_some() || (program.inputs.is_some() && !toylang::streams_inputs(&program));
     if !needs_upfront_read {
         return toylang::run_on(src, None, backend);
     }

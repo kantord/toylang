@@ -26,8 +26,16 @@ fn reading_input_costs_python_nothing_and_go_two_declarations() {
     let p = toylang::compile(&adults()).unwrap();
 
     let py = toylang::emit_py::emit(&p);
-    assert_eq!(py.matches("json.").count(), 1, "one parse, no decoding:\n{py}");
+    assert_eq!(
+        py.matches("json.").count(),
+        1,
+        "one parse, no decoding:\n{py}"
+    );
 
     let go = toylang::emit_go::emit(&p);
-    assert_eq!(go.matches("type tlRec").count(), 2, "the same two record types:\n{go}");
+    assert_eq!(
+        go.matches("type tlRec").count(),
+        2,
+        "the same two record types:\n{go}"
+    );
 }

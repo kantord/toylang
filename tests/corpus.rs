@@ -14,7 +14,10 @@ use toylang::Backend;
 #[test]
 fn every_backend_agrees_and_is_right() {
     let cases = support::cases();
-    assert!(!cases.is_empty(), "the corpus is empty, so this test proves nothing");
+    assert!(
+        !cases.is_empty(),
+        "the corpus is empty, so this test proves nothing"
+    );
 
     let mut failures = Vec::new();
 
@@ -31,7 +34,9 @@ fn every_backend_agrees_and_is_right() {
             }
             continue;
         }
-        let Expect::Output(want) = &case.expect else { unreachable!("refusal handled above") };
+        let Expect::Output(want) = &case.expect else {
+            unreachable!("refusal handled above")
+        };
 
         let mut outputs: Vec<(&str, String)> = Vec::new();
         for backend in Backend::ALL {
@@ -85,15 +90,18 @@ fn every_backend_agrees_and_is_right() {
 fn emitted_code_matches_the_snapshot() {
     let mut asked = 0;
     for case in support::cases() {
-        let program = toylang::compile(&case.program)
-            .unwrap_or_else(|e| panic!("{}: {e}", case.name));
+        let program =
+            toylang::compile(&case.program).unwrap_or_else(|e| panic!("{}: {e}", case.name));
         for backend in case.snapshot {
-            let emitted = backend
-                .emit(&program)
-                .unwrap_or_else(|e| panic!("{}: {} could not emit: {e}", case.name, backend.name()));
+            let emitted = backend.emit(&program).unwrap_or_else(|e| {
+                panic!("{}: {} could not emit: {e}", case.name, backend.name())
+            });
             insta::assert_snapshot!(format!("{}__{}", case.name, backend.name()), emitted);
             asked += 1;
         }
     }
-    assert!(asked > 0, "no case asks for a snapshot, so this test proves nothing");
+    assert!(
+        asked > 0,
+        "no case asks for a snapshot, so this test proves nothing"
+    );
 }

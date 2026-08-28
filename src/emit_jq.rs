@@ -73,7 +73,11 @@ pub fn emit(program: &Program) -> String {
                     out.push_str(&format!(" | . as {} | {}", local(*param), expr(body)));
                 }
                 tir::Stage::Select { param, pred } => {
-                    out.push_str(&format!(" | . as {} | select({})", local(*param), expr(pred)));
+                    out.push_str(&format!(
+                        " | . as {} | select({})",
+                        local(*param),
+                        expr(pred)
+                    ));
                 }
             }
         }
@@ -110,7 +114,10 @@ fn canonical(ty: &Type, value: &str) -> String {
         Type::Str | Type::Int | Type::Bool => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(elem, ".")),
         Type::Opt(inner) => {
-            format!("({value} | if . == null then null else {} end)", canonical(inner, "."))
+            format!(
+                "({value} | if . == null then null else {} end)",
+                canonical(inner, ".")
+            )
         }
         // One type, two runtime shapes (ADR 0009). A unit variant is already canonical, being a
         // bare string; a payload wrapper is rebuilt so the payload's own keys come out in the
@@ -124,7 +131,11 @@ fn canonical(ty: &Type, value: &str) -> String {
                 return value.to_string();
             }
             let wrap = |vname: &String, pty: &Type| {
-                format!("{{{}: {}}}", jq_string(vname), canonical(pty, &field_of(".", vname)))
+                format!(
+                    "{{{}: {}}}",
+                    jq_string(vname),
+                    canonical(pty, &field_of(".", vname))
+                )
             };
             // The conditions cover everything but the last shape, which needs no test: the type
             // says nothing else is left. A unit variant, if any exists, is the string shape.
@@ -134,7 +145,11 @@ fn canonical(ty: &Type, value: &str) -> String {
             }
             for (vname, pty) in &payloads[..payloads.len() - 1] {
                 let word = if tests.is_empty() { "if" } else { "elif" };
-                tests.push(format!("{word} has({}) then {}", jq_string(vname), wrap(vname, pty)));
+                tests.push(format!(
+                    "{word} has({}) then {}",
+                    jq_string(vname),
+                    wrap(vname, pty)
+                ));
             }
             let (last_name, last_ty) = payloads[payloads.len() - 1];
             let last = wrap(last_name, last_ty);
@@ -147,7 +162,11 @@ fn canonical(ty: &Type, value: &str) -> String {
             let parts: Vec<String> = fields
                 .iter()
                 .map(|(name, fty)| {
-                    format!("{}: {}", jq_string(name), canonical(fty, &field_of(".", name)))
+                    format!(
+                        "{}: {}",
+                        jq_string(name),
+                        canonical(fty, &field_of(".", name))
+                    )
                 })
                 .collect();
             format!("({value} | {{{}}})", parts.join(", "))
@@ -163,8 +182,13 @@ fn canonical(ty: &Type, value: &str) -> String {
 fn ordered(program: &Program) -> Vec<&tir::Func> {
     fn callees(t: &Tir, out: &mut Vec<String>) {
         match &t.kind {
-            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input
-            | Kind::Inputs | Kind::Lines => {}
+            Kind::Str(_)
+            | Kind::Int(_)
+            | Kind::Var(_)
+            | Kind::Local(_)
+            | Kind::Input
+            | Kind::Inputs
+            | Kind::Lines => {}
             Kind::VecLit(items) => items.iter().for_each(|i| callees(i, out)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| callees(v, out));
@@ -195,7 +219,11 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
                 callees(body, out);
             }
             Kind::Builtin { arg, .. } => callees(arg, out),
-            Kind::Cond { cond, then, otherwise } => {
+            Kind::Cond {
+                cond,
+                then,
+                otherwise,
+            } => {
                 callees(cond, out);
                 callees(then, out);
                 callees(otherwise, out);
@@ -227,9 +255,7 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
             .filter(|(_, f)| {
                 let mut calls = Vec::new();
                 callees(&f.body, &mut calls);
-                calls
-                    .iter()
-                    .all(|c| c == &f.name || placed.contains(c))
+                calls.iter().all(|c| c == &f.name || placed.contains(c))
             })
             .map(|(i, _)| i)
             .collect();
@@ -252,9 +278,18 @@ fn uses_arith(program: &Program) -> bool {
     fn walk(t: &Tir) -> bool {
         match &t.kind {
             Kind::Arith { .. } => true,
-            Kind::Cond { cond, then, otherwise } => walk(cond) || walk(then) || walk(otherwise),
-            Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input
-            | Kind::Inputs | Kind::Lines => false,
+            Kind::Cond {
+                cond,
+                then,
+                otherwise,
+            } => walk(cond) || walk(then) || walk(otherwise),
+            Kind::Str(_)
+            | Kind::Int(_)
+            | Kind::Var(_)
+            | Kind::Local(_)
+            | Kind::Input
+            | Kind::Inputs
+            | Kind::Lines => false,
             Kind::VecLit(items) => items.iter().any(walk),
             Kind::RecordLit { fields } => fields.iter().any(|(_, v)| walk(v)),
             Kind::EnumLit { payload, .. } => payload.as_deref().is_some_and(walk),
@@ -265,9 +300,7 @@ fn uses_arith(program: &Program) -> bool {
             Kind::Map { source, body, .. } => walk(source) || walk(body),
             Kind::Field { base, .. } | Kind::Unwrap { base } => walk(base),
             Kind::Index { base, index, .. } => walk(base) || walk(index),
-            Kind::Match { subject, arms } => {
-                walk(subject) || arms.iter().any(|a| walk(&a.body))
-            }
+            Kind::Match { subject, arms } => walk(subject) || arms.iter().any(|a| walk(&a.body)),
         }
     }
     program.funcs.iter().any(|f| walk(&f.body)) || walk(&program.body)
@@ -337,7 +370,11 @@ fn expr(t: &Tir) -> String {
             BinOp::Sub => format!("(({} - {}) | tl_i32)", expr(lhs), expr(rhs)),
             other => unreachable!("{other} is not arithmetic"),
         },
-        Kind::Cond { cond, then, otherwise } => format!(
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => format!(
             "(if {} then {} else {} end)",
             expr(cond),
             expr(then),
@@ -372,18 +409,30 @@ fn expr(t: &Tir) -> String {
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), jq_op(*op), expr(rhs))
         }
-        Kind::Bind { local: id, value, body } => {
+        Kind::Bind {
+            local: id,
+            value,
+            body,
+        } => {
             format!("({} as {} | {})", expr(value), local(*id), expr(body))
         }
         // The one operator that is derived in jq and primitive here: `map(f)` is `[ .[] | f ]`
         // there, and neither half of that exists in a language with no effect layer.
-        Kind::Map { source, param, body } => format!(
+        Kind::Map {
+            source,
+            param,
+            body,
+        } => format!(
             "[ {}[] | . as {} | {} ]",
             expr(source),
             local(*param),
             expr(body)
         ),
-        Kind::Select { source, param, pred } => format!(
+        Kind::Select {
+            source,
+            param,
+            pred,
+        } => format!(
             "[ {}[] | . as {} | select({}) ]",
             expr(source),
             local(*param),
@@ -391,14 +440,27 @@ fn expr(t: &Tir) -> String {
         ),
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);
-            format!("({} | {})", expr(base), distribute(&field_of(".", name), depth))
+            format!(
+                "({} | {})",
+                expr(base),
+                distribute(&field_of(".", name), depth)
+            )
         }
         Kind::Unwrap { base } => {
-            let check = format!("if . == null then error({}) else . end", jq_string("toylang: unwrapped a value that is not there"));
-            format!("({} | {})", expr(base), distribute(&check, tir::vec_depth(&base.ty)))
+            let check = format!(
+                "if . == null then error({}) else . end",
+                jq_string("toylang: unwrapped a value that is not there")
+            );
+            format!(
+                "({} | {})",
+                expr(base),
+                distribute(&check, tir::vec_depth(&base.ty))
+            )
         }
         // Out of range is null in jq, which is exactly what an absent Opt is here.
-        Kind::Index { base, index, depth, .. } => {
+        Kind::Index {
+            base, index, depth, ..
+        } => {
             let at = format!(".[{}]", expr(index));
             format!("({} | {})", expr(base), distribute(&at, *depth))
         }
@@ -409,7 +471,10 @@ fn expr(t: &Tir) -> String {
             let subj = expr(subject);
             let run = |arm: &tir::MatchArm| match arm.payload {
                 Some(pid) => {
-                    let variant = arm.variant.as_ref().expect("only a variant arm has a payload");
+                    let variant = arm
+                        .variant
+                        .as_ref()
+                        .expect("only a variant arm has a payload");
                     format!(
                         "({subj}[{}] as {} | {})",
                         jq_string(variant),

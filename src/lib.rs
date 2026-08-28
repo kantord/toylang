@@ -192,7 +192,13 @@ pub fn run_on(
     } else if lua_fused {
         Feed::Text(stdin.map(str::to_string).unwrap_or_default())
     } else if let Some(values) = &inputs_values {
-        Feed::Text(values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\n"))
+        Feed::Text(
+            values
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
     } else {
         Feed::Text(value.as_ref().map(|v| v.to_string()).unwrap_or_default())
     };
@@ -250,7 +256,11 @@ impl Feed {
 
     fn write_to(&self, child: &mut std::process::Child) -> std::io::Result<()> {
         if let Feed::Text(text) = self {
-            child.stdin.take().expect("piped").write_all(text.as_bytes())?;
+            child
+                .stdin
+                .take()
+                .expect("piped")
+                .write_all(text.as_bytes())?;
         }
         Ok(())
     }
@@ -329,8 +339,16 @@ fn run_subprocess(
     let live = matches!(feed, Feed::Live);
     let mut child = cmd
         .stdin(feed.stdio())
-        .stdout(if live { std::process::Stdio::inherit() } else { std::process::Stdio::piped() })
-        .stderr(if live { std::process::Stdio::inherit() } else { std::process::Stdio::piped() })
+        .stdout(if live {
+            std::process::Stdio::inherit()
+        } else {
+            std::process::Stdio::piped()
+        })
+        .stderr(if live {
+            std::process::Stdio::inherit()
+        } else {
+            std::process::Stdio::piped()
+        })
         .spawn()
         .map_err(|e| format!("could not run `{label}`: {e}"))?;
 
@@ -352,11 +370,12 @@ fn run_subprocess(
     Ok(String::from_utf8(out.stdout)?)
 }
 
-fn run_binary(
-    exe: &std::path::Path,
-    feed: &Feed,
-) -> Result<String, Box<dyn std::error::Error>> {
-    run_subprocess(std::process::Command::new(exe), "the compiled program", feed)
+fn run_binary(exe: &std::path::Path, feed: &Feed) -> Result<String, Box<dyn std::error::Error>> {
+    run_subprocess(
+        std::process::Command::new(exe),
+        "the compiled program",
+        feed,
+    )
 }
 
 /// jq puts stdin in `.`, so a program that reads no input runs with `-n` rather than waiting on
@@ -406,11 +425,13 @@ fn run_lua(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let lua = mlua::Lua::new();
     if let Some(value) = value {
-        lua.globals().set(emit_lua::INPUT, input::to_lua(&lua, value)?)?;
+        lua.globals()
+            .set(emit_lua::INPUT, input::to_lua(&lua, value)?)?;
     }
     if let Some(values) = inputs_values {
         let array = serde_json::Value::Array(values.clone());
-        lua.globals().set(emit_lua::INPUTS, input::to_lua(&lua, &array)?)?;
+        lua.globals()
+            .set(emit_lua::INPUTS, input::to_lua(&lua, &array)?)?;
     } else if let Some(elem_ty) = inputs_elem_ty {
         // `inputs_values` is `None` here for one of two reasons: the program does not read
         // `inputs` at all (then `inputs_elem_ty` is also `None`, and neither branch runs), or
@@ -461,10 +482,14 @@ fn run_lua(
         let dir = tempfile::tempdir()?;
         let path = dir.path().join("stdin.txt");
         std::fs::write(&path, text)?;
-        let path = path.to_str().expect("a temp path is valid UTF-8").to_string();
+        let path = path
+            .to_str()
+            .expect("a temp path is valid UTF-8")
+            .to_string();
         let io: mlua::Table = lua.globals().get("io")?;
         let real_lines: mlua::Function = io.get("lines")?;
-        let fixture = lua.create_function(move |_, ()| real_lines.call::<mlua::Value>(path.clone()))?;
+        let fixture =
+            lua.create_function(move |_, ()| real_lines.call::<mlua::Value>(path.clone()))?;
         io.set("lines", fixture)?;
         _fixture_dir = Some(dir);
     }
@@ -500,10 +525,7 @@ fn run_lua(
 
 /// Runs through `python3`. Like `node`, this is an interpreter that has to be on the machine
 /// rather than one vendored into the build.
-fn run_py(
-    source: &str,
-    feed: &Feed,
-) -> Result<String, Box<dyn std::error::Error>> {
+fn run_py(source: &str, feed: &Feed) -> Result<String, Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("program.py");
     std::fs::write(&path, source)?;
@@ -516,10 +538,7 @@ fn run_py(
 /// Runs through `go run`, which compiles and executes in one step. Go has no interpreter, so
 /// this is the second backend that needs a real toolchain; like `node` and `cc`, a missing one
 /// is an error rather than a skipped backend.
-fn run_go(
-    source: &str,
-    feed: &Feed,
-) -> Result<String, Box<dyn std::error::Error>> {
+fn run_go(source: &str, feed: &Feed) -> Result<String, Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("main.go");
     std::fs::write(&path, source)?;
@@ -532,10 +551,7 @@ fn run_go(
 /// Runs through `node`, which must be present. A missing toolchain is an error rather than a
 /// quietly skipped backend: a report that says two backends agreed when only one ran is worse
 /// than no report.
-fn run_node(
-    source: &str,
-    feed: &Feed,
-) -> Result<String, Box<dyn std::error::Error>> {
+fn run_node(source: &str, feed: &Feed) -> Result<String, Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("program.js");
     std::fs::write(&path, source)?;

@@ -47,7 +47,9 @@ fn a_scalar_payload_variant_used_bare() {
 
 #[test]
 fn a_scalar_payload_of_the_wrong_type() {
-    insta::assert_snapshot!(err("enum Temp { unknown, celsius(Int) }\n\ncelsius(\"hot\")"));
+    insta::assert_snapshot!(err(
+        "enum Temp { unknown, celsius(Int) }\n\ncelsius(\"hot\")"
+    ));
 }
 
 /// Expanding this would not terminate: there is no indirection for a recursive payload to hide
@@ -66,11 +68,13 @@ fn an_enum_cannot_reuse_an_alias_name() {
 
 #[track_caller]
 fn run_err(src: &str, stdin: &str) -> String {
-    toylang::run_with_input(src, Some(stdin)).map(|_| ()).unwrap_err().to_string()
+    toylang::run_with_input(src, Some(stdin))
+        .map(|_| ())
+        .unwrap_err()
+        .to_string()
 }
 
-const FLIP: &str =
-    "enum Status { active, inactive }\n\nfn f(s: Status) -> Status = s\n\nf(input)";
+const FLIP: &str = "enum Status { active, inactive }\n\nfn f(s: Status) -> Status = s\n\nf(input)";
 
 /// A wire mismatch names the enum, since "found a string" alone would not say which closed set
 /// the string missed.

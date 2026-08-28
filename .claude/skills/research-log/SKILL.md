@@ -1,4 +1,5 @@
 ---
+type: Playbook
 name: research-log
 description: Capture what building toylang taught us as an OKF note in research-log/. Use after finding a bug worth remembering, hitting a dead end, discovering a target-language constraint, or learning something that changes how the next step gets built. Also use when asked to write up a finding, or to check research-log/ for orphans and duplicates.
 ---

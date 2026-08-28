@@ -166,7 +166,10 @@ pub fn emit(program: &Program) -> String {
     if program.body.ty == Type::Str {
         out.push_str(&format!("console.log({body});\n"));
     } else {
-        out.push_str(&format!("console.log({});\n", show(&program.body.ty, &body, 0)));
+        out.push_str(&format!(
+            "console.log({});\n",
+            show(&program.body.ty, &body, 0)
+        ));
     }
     out
 }
@@ -212,7 +215,10 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
         tir::Source::Inputs => {
             out.push_str("  if (t_line_raw.length === 0) continue;\n");
             out.push_str("  const t_line = JSON.parse(t_line_raw);\n");
-            let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+            let elem = program
+                .inputs
+                .as_ref()
+                .expect("an inputs source recorded its element");
             ("t_line".to_string(), elem.clone())
         }
         // A raw line is already the element, blank ones included: `lines` keeps them.
@@ -232,7 +238,10 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
             }
         }
     }
-    out.push_str(&format!("  console.log({});\n", show(&current_ty, &current, 0)));
+    out.push_str(&format!(
+        "  console.log({});\n",
+        show(&current_ty, &current, 0)
+    ));
     out.push_str("}\n");
     out
 }
@@ -271,7 +280,9 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
             }
             let mut body = String::new();
             if payloads.len() < variants.len() {
-                body.push_str(&format!("typeof {n} === \"string\" ? JSON.stringify({n}) : "));
+                body.push_str(&format!(
+                    "typeof {n} === \"string\" ? JSON.stringify({n}) : "
+                ));
             }
             for (i, (vname, pty)) in payloads.iter().enumerate() {
                 let pty = pty.as_ref().expect("filtered to payload variants");
@@ -311,9 +322,9 @@ fn contains_opt(ty: &Type) -> bool {
         Type::Opt(_) => true,
         Type::Vec(t) => contains_opt(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_opt(t)),
-        Type::Enum { variants, .. } => {
-            variants.iter().any(|(_, p)| p.as_ref().is_some_and(contains_opt))
-        }
+        Type::Enum { variants, .. } => variants
+            .iter()
+            .any(|(_, p)| p.as_ref().is_some_and(contains_opt)),
         _ => false,
     }
 }
@@ -323,9 +334,9 @@ fn contains_vec(ty: &Type) -> bool {
         Type::Vec(_) => true,
         Type::Opt(t) => contains_vec(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_vec(t)),
-        Type::Enum { variants, .. } => {
-            variants.iter().any(|(_, p)| p.as_ref().is_some_and(contains_vec))
-        }
+        Type::Enum { variants, .. } => variants
+            .iter()
+            .any(|(_, p)| p.as_ref().is_some_and(contains_vec)),
         _ => false,
     }
 }
@@ -397,7 +408,11 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.tail |= *which == Builtin::Tail;
                 walk(arg, used);
             }
-            Kind::Cond { cond, then, otherwise } => {
+            Kind::Cond {
+                cond,
+                then,
+                otherwise,
+            } => {
                 walk(cond, used);
                 walk(then, used);
                 walk(otherwise, used);
@@ -472,18 +487,29 @@ fn expr(t: &Tir) -> String {
             BinOp::Sub => format!("(({} - {}) | 0)", expr(lhs), expr(rhs)),
             other => unreachable!("{other} is not arithmetic"),
         },
-        Kind::Cond { cond, then, otherwise } => {
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => {
             format!("({} ? {} : {})", expr(cond), expr(then), expr(otherwise))
         }
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("String({})", expr(arg)),
             Builtin::Range => {
-                format!("Array.from({{ length: Math.max(0, {}) }}, (_, i) => i)", expr(arg))
+                format!(
+                    "Array.from({{ length: Math.max(0, {}) }}, (_, i) => i)",
+                    expr(arg)
+                )
             }
             Builtin::JsonLines => {
                 let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 let e = "e0".to_string();
-                format!("tl_jsonlines({}, ({e}) => {})", expr(arg), show(elem, &e, 1))
+                format!(
+                    "tl_jsonlines({}, ({e}) => {})",
+                    expr(arg),
+                    show(elem, &e, 1)
+                )
             }
             // The source already materialized, so the exit has nothing left to do.
             Builtin::Collect => expr(arg),
@@ -494,20 +520,44 @@ fn expr(t: &Tir) -> String {
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), js_op(*op), expr(rhs))
         }
-        Kind::Bind { local: id, value, body } => {
+        Kind::Bind {
+            local: id,
+            value,
+            body,
+        } => {
             format!("(({}) => {})({})", local(*id), expr(body), expr(value))
         }
         // Array.prototype.map is exactly this, so no helper is needed.
-        Kind::Map { source, param, body } => {
-            format!("{}.map(({}) => {})", expr(source), local(*param), expr(body))
+        Kind::Map {
+            source,
+            param,
+            body,
+        } => {
+            format!(
+                "{}.map(({}) => {})",
+                expr(source),
+                local(*param),
+                expr(body)
+            )
         }
-        Kind::Select { source, param, pred } => {
-            format!("tl_select({}, ({}) => {})", expr(source), local(*param), expr(pred))
+        Kind::Select {
+            source,
+            param,
+            pred,
+        } => {
+            format!(
+                "tl_select({}, ({}) => {})",
+                expr(source),
+                local(*param),
+                expr(pred)
+            )
         }
         Kind::Unwrap { base } => {
             format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
         }
-        Kind::Index { base, index, depth, .. } => {
+        Kind::Index {
+            base, index, depth, ..
+        } => {
             format!("tl_at({}, {}, {})", expr(base), expr(index), depth)
         }
         Kind::Field { base, name } => {
@@ -527,7 +577,10 @@ fn expr(t: &Tir) -> String {
             for (i, arm) in arms.iter().enumerate() {
                 let mut run = String::new();
                 if let Some(pid) = arm.payload {
-                    let variant = arm.variant.as_ref().expect("only a variant arm has a payload");
+                    let variant = arm
+                        .variant
+                        .as_ref()
+                        .expect("only a variant arm has a payload");
                     run.push_str(&format!(
                         "const {} = {subj}[{}]; ",
                         local(pid),
