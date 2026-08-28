@@ -54,10 +54,13 @@ cost.
 - The kickoff prompt is one or two sentences naming the task's in-repo source of truth. For a
   `repo#issue` env the issue rule does the heavy lifting; do not duplicate the issue body.
 - Every kickoff prompt ends with this instruction, verbatim: "When the work is finished,
-  COMMIT it. Never end your turn to present work for approval -- nobody reads this chat; the
-  coordinator reviews after you commit." Sessions that finish and wait politely are the most
-  common stall (it has happened twice), and from outside, a turn-end is indistinguishable
-  from a crash.
+  COMMIT it. Never end your turn to present work for approval, and never wait on a human for
+  a decision: if something needs deciding that your brief does not settle, file a GitHub
+  issue for the coordinator with the alternatives and costs, take the most conservative
+  continuation, and keep going. Nobody reads this chat; the coordinator reviews after you
+  commit." Sessions that finish and wait politely are the most common stall (it has happened
+  twice), and from outside, a turn-end is indistinguishable from a crash. The maintainer
+  interacts only with the coordinator, never with delegated sessions.
 
 ## 2b. Update the board
 

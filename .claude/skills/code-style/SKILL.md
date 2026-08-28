@@ -39,31 +39,25 @@ it is empty, every finding leads here, and from here to *Escalate*.
 Escalating is the normal outcome for anything new. It is not a failure, and it
 is not something to avoid by picking the nearest example and hoping.
 
-**Escalate by asking a real question -- call `AskUserQuestion`.** Writing a
-paragraph and continuing is not escalation. Most sessions run in auto mode,
-where prose reads as narration and flows straight past; a question is the only
-thing that actually stops and reaches a person. Permission prompts will not do
-it either, and neither will this hook -- a blocking hook talks to the agent,
-not to the human.
+**In a delegated session, escalate by filing a GitHub issue for the
+coordinator -- never by waiting for a human.** The maintainer interacts only
+with the drive loop's coordinator, not with delegated sessions, so an
+`AskUserQuestion` in a delegated session parks it forever. Instead: file an
+issue (`gh issue create`) stating what fired, why the lessons do not settle
+it, and the real alternatives with what each costs -- "split by
+responsibility, or by kind of item, or leave it and record the exemption?" is
+an escalation; "how should I fix this?" is not. Then take the most
+conservative continuation (leave the finding standing and the code as it is),
+commit everything that IS settled, and end the turn. The coordinator triages
+the issue: answers it where decided design already does, or turns it into a
+decide row on `plans/board.yaml` for a grilling session.
 
-Offer the real alternatives, with what each costs. "How should I fix this?" is
-not a question; "split by responsibility, or by kind of item, or leave it and
-record the exemption?" is.
+**Only a session the maintainer is personally driving may `AskUserQuestion`
+directly.** A subagent can do neither -- it has no channel at all; it reports
+the escalation in its result and returns, and its spawner files the issue.
 
-**Also record the open question in your report.** Delegated sessions are
-interactive and the user can take any of them over, but they may not; the
-drive loop's coordinator reads session reports, and an escalation recorded
-there becomes a decide row on `plans/board.yaml` -- usually a grilling session,
-which is this repo's native unit for exactly these decisions -- instead of
-being read as a stall.
-
-**A subagent cannot ask.** It has no channel to the user. It reports the
-escalation -- what fired, and why the lessons do not settle it -- and returns.
-The agent that spawned it turns that into a question, or into a board row, as
-above.
-
-Then stop. Do not fix the finding, and do not finish the work as if it were
-not there.
+Do not fix the finding, and do not finish the escalated part as if the
+question were not there.
 
 ## Writing what was settled
 
