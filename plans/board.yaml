@@ -125,6 +125,12 @@
   needs: [docs-annotations-mode]
   status: done
 
+- id: matching-tutorial-chapter
+  title: Tutorial chapter and guide for matching -- guard arms, chains, partial-to-Opt
+  kind: build
+  needs: []
+  status: todo
+
 - id: json-string-conformance
   issue: gh:26
   title: Prove full JSON-string support across backends, pinning codepoint ordering
