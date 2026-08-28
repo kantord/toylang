@@ -487,7 +487,7 @@ impl<'i> Cursor<'i> {
         Ok(Def { span: start.to(body.span()), name, param, ret, body, is_pub })
     }
 
-    /// `Str`, `Int`, `Bool`, or `Vec<T>`.
+    /// `Str`, `Int`, `Bool`, `Vec<T>`, or `Stream<T>`.
     fn type_expr(&mut self) -> Result<TypeExpr, Error> {
         let (tok, span) = self.advance()?;
         if tok == Tok::LBrace {
@@ -497,13 +497,18 @@ impl<'i> Cursor<'i> {
             Tok::Ident(n) => n,
             other => return Err(Error::new(span, format!("expected a type, found {other}"))),
         };
-        if name != "Vec" {
+        if name != "Vec" && name != "Stream" {
             return Ok(TypeExpr::Named { name, span });
         }
         self.eat(Tok::Lt)?;
         let elem = self.type_expr()?;
         let close = self.eat(Tok::Gt)?;
-        Ok(TypeExpr::Vec { elem: Box::new(elem), span: span.to(close) })
+        let (elem, span) = (Box::new(elem), span.to(close));
+        Ok(if name == "Vec" {
+            TypeExpr::Vec { elem, span }
+        } else {
+            TypeExpr::Stream { elem, span }
+        })
     }
 
     /// A call's argument, wrapped in parens or spelled as a bare record literal. This is the

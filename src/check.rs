@@ -104,6 +104,17 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             next_local: &next_local,
         };
         let body = synth(&ctx, &def.body)?;
+        // A signature may spell Stream now, which un-does the trick the Lines design leaned on
+        // (a return annotation could never match a body holding a stream), so what that trick
+        // guaranteed for free is checked for real here.
+        if matches!(sig.param, Type::Stream(_)) {
+            check_linear(
+                &body,
+                &StreamBinding::Param(&def.param.name),
+                &format!("`{}` is a stream and", def.param.name),
+                def.body.span(),
+            )?;
+        }
         if body.ty != sig.ret {
             return Err(Error::new(
                 def.body.span(),
@@ -184,6 +195,97 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         inputs,
         uses_lines: lines_used.get(),
     })
+}
+
+/// What a linearity count is looking for: a stream-typed binding, named either by the source
+/// (a function parameter) or by the checker (the local a `|` binds `.` to).
+enum StreamBinding<'a> {
+    Param(&'a str),
+    Local(LocalId),
+}
+
+/// How many times `t` consumes `binding`, counted along one evaluation path: a conditional
+/// runs one branch, so its branches must agree with each other rather than being summed, and
+/// a match's arms likewise. `Err` carries the two counts that disagreed.
+fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, (usize, usize)> {
+    let both = |a: &Tir, b: &Tir| Ok(stream_uses(a, binding)? + stream_uses(b, binding)?);
+    match &t.kind {
+        Kind::Var(name) => Ok(match binding {
+            StreamBinding::Param(p) => (p == name) as usize,
+            StreamBinding::Local(_) => 0,
+        }),
+        Kind::Local(id) => Ok(match binding {
+            StreamBinding::Local(l) => (l == id) as usize,
+            StreamBinding::Param(_) => 0,
+        }),
+        Kind::Str(_) | Kind::Int(_) | Kind::Input | Kind::Inputs | Kind::Lines => Ok(0),
+        Kind::VecLit(items) => {
+            items.iter().try_fold(0, |n, i| Ok(n + stream_uses(i, binding)?))
+        }
+        Kind::RecordLit { fields } => {
+            fields.iter().try_fold(0, |n, (_, v)| Ok(n + stream_uses(v, binding)?))
+        }
+        Kind::EnumLit { payload, .. } => {
+            payload.as_deref().map_or(Ok(0), |p| stream_uses(p, binding))
+        }
+        Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => stream_uses(arg, binding),
+        Kind::Concat(l, r) => both(l, r),
+        Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => both(lhs, rhs),
+        Kind::Bind { value, body, .. } | Kind::Map { source: value, body, .. } => {
+            both(value, body)
+        }
+        Kind::Select { source, pred, .. } => both(source, pred),
+        Kind::Field { base, .. } | Kind::Unwrap { base } => stream_uses(base, binding),
+        Kind::Index { base, index, .. } => both(base, index),
+        Kind::Cond { cond, then, otherwise } => {
+            let t = stream_uses(then, binding)?;
+            let o = stream_uses(otherwise, binding)?;
+            if t != o {
+                return Err((t, o));
+            }
+            Ok(stream_uses(cond, binding)? + t)
+        }
+        Kind::Match { subject, arms } => {
+            let counts: Vec<usize> = arms
+                .iter()
+                .map(|a| stream_uses(&a.body, binding))
+                .collect::<Result<_, _>>()?;
+            if let Some(w) = counts.windows(2).find(|w| w[0] != w[1]) {
+                return Err((w[0], w[1]));
+            }
+            Ok(stream_uses(subject, binding)? + counts.first().copied().unwrap_or(0))
+        }
+    }
+}
+
+/// The per-binding half of stream linearity: `binding`, already known to be stream-typed, must
+/// be consumed exactly once by `body`. Zero uses is an error too -- linear, not affine: a
+/// dropped stream is the Python silent-empty-generator mistake, and exactly-once can relax to
+/// at-most-once later without breaking a program, while the reverse tightening could not.
+fn check_linear(
+    body: &Tir,
+    binding: &StreamBinding,
+    what: &str,
+    span: Span,
+) -> Result<(), Error> {
+    match stream_uses(body, binding) {
+        Err((a, b)) => Err(Error::new(
+            span,
+            format!(
+                "{what} must be consumed exactly once on every path, but one branch \
+                 consumes it {a} times and another {b}"
+            ),
+        )),
+        Ok(1) => Ok(()),
+        Ok(0) => Err(Error::new(
+            span,
+            format!("{what} must be consumed exactly once; it is never consumed"),
+        )),
+        Ok(n) => Err(Error::new(
+            span,
+            format!("{what} must be consumed exactly once, not {n} times"),
+        )),
+    }
 }
 
 /// Every function the program's body can actually reach, directly or through calls a reached
@@ -312,7 +414,7 @@ fn enum_map(enums: &[EnumDecl]) -> Result<HashMap<String, &EnumDecl>, Error> {
                 format!("a type name starts with a capital letter, and `{}` reads as a value", e.name),
             ));
         }
-        if Type::from_name(&e.name).is_some() || e.name == "Vec" || e.name == "Opt" {
+        if Type::from_name(&e.name).is_some() || e.name == "Vec" || e.name == "Opt" || e.name == "Stream" {
             return Err(Error::new(
                 e.span,
                 format!("`{}` is a built-in type and cannot be redefined", e.name),
@@ -359,7 +461,7 @@ fn alias_map(aliases: &[Alias]) -> Result<Aliases<'_>, Error> {
                 format!("a type name starts with a capital letter, and `{}` reads as a value", a.name),
             ));
         }
-        if Type::from_name(&a.name).is_some() || a.name == "Vec" || a.name == "Opt" {
+        if Type::from_name(&a.name).is_some() || a.name == "Vec" || a.name == "Opt" || a.name == "Stream" {
             return Err(Error::new(
                 a.span,
                 format!("`{}` is a built-in type and cannot be redefined", a.name),
@@ -437,14 +539,43 @@ fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> Result<Type,
             }
             Err(Error::new(*span, format!("unknown type `{name}`")))
         }
-        TypeExpr::Vec { elem, .. } => Ok(Type::Vec(Box::new(resolve(elem, env, seen)?))),
+        // The containment bans hold in the grammar itself, not just at value construction
+        // sites: a stream is not a value, so no annotation may describe one as stored.
+        TypeExpr::Vec { elem, .. } => {
+            let inner = resolve(elem, env, seen)?;
+            if inner.contains_stream() {
+                return Err(Error::new(
+                    elem.span(),
+                    "a Vec cannot hold a stream, which has nothing to store".to_string(),
+                ));
+            }
+            Ok(Type::Vec(Box::new(inner)))
+        }
+        TypeExpr::Stream { elem, .. } => {
+            let inner = resolve(elem, env, seen)?;
+            if inner.contains_stream() {
+                return Err(Error::new(
+                    elem.span(),
+                    "a Stream cannot hold another stream; there is nothing it could yield"
+                        .to_string(),
+                ));
+            }
+            Ok(Type::Stream(Box::new(inner)))
+        }
         TypeExpr::Record { fields, span } => {
             let mut out = Vec::new();
             for (name, ty) in fields {
                 if out.iter().any(|(n, _): &(String, Type)| n == name) {
                     return Err(Error::new(*span, format!("field `{name}` is declared twice")));
                 }
-                out.push((name.clone(), resolve(ty, env, seen)?));
+                let field = resolve(ty, env, seen)?;
+                if field.contains_stream() {
+                    return Err(Error::new(
+                        ty.span(),
+                        format!("`{name}` cannot hold a stream, which has nothing to store"),
+                    ));
+                }
+                out.push((name.clone(), field));
             }
             Ok(Type::record(out))
         }
@@ -622,6 +753,16 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             let value = synth(ctx, lhs)?;
             let local = ctx.fresh();
             let body = synth(&ctx.with(Some((value.ty.clone(), local))), rhs)?;
+            // The same linearity a stream-typed parameter gets: `|` is the one construct that
+            // can silently drop its left side, so a stream piped in must be consumed here.
+            if matches!(value.ty, Type::Stream(_)) {
+                check_linear(
+                    &body,
+                    &StreamBinding::Local(local),
+                    "the stream piped in here",
+                    rhs.span(),
+                )?;
+            }
             Ok(Tir::new(
                 body.ty.clone(),
                 Kind::Bind { local, value: Box::new(value), body: Box::new(body) },
@@ -1107,6 +1248,14 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
 fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
     // The forms whose type comes from their position rather than their contents.
     if let Expr::Input { span } = expr {
+        // A signature can spell Stream now, so this position can ask for one; `input` is a
+        // whole value already in hand, which is exactly what a stream is not.
+        if want.contains_stream() {
+            return Err(Error::new(
+                *span,
+                format!("`input` is one value read from stdin, but {want} is wanted here"),
+            ));
+        }
         let mut slot = ctx.input.borrow_mut();
         match slot.as_ref() {
             None => *slot = Some(want.clone()),

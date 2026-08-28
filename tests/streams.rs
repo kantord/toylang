@@ -88,3 +88,66 @@ fn collect_takes_lines_with_or_without_parens() {
     assert!(toylang::compile("collect(lines)").is_ok());
     assert!(toylang::compile("collect lines").is_ok());
 }
+
+/// `Stream` is spellable in a signature now -- the one thing the `Lines` design deliberately
+/// withheld -- so a user function can take the stream and consume it itself.
+#[test]
+fn a_stream_signature_checks_end_to_end() {
+    assert!(toylang::compile("fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\n\nf(lines)").is_ok());
+}
+
+/// Zero uses is an error: linear, not affine. Exactly-once can relax to at-most-once later
+/// without breaking a program, while the reverse tightening would break every program that
+/// dropped a stream.
+#[test]
+fn a_stream_parameter_must_be_consumed() {
+    insta::assert_snapshot!(err("fn f(s: Stream<Str>) -> Int = 0\n\n1"));
+}
+
+/// Two uses is the Python-generator mistake the single-use rule exists to prevent: the second
+/// pass over an already-consumed iterator is silently empty.
+#[test]
+fn a_stream_parameter_cannot_be_consumed_twice() {
+    insta::assert_snapshot!(err(
+        "fn f(s: Stream<Str>) -> Int = extent(collect(s)) + extent(collect(s))\n\n1"
+    ));
+}
+
+/// The containment bans hold in the type grammar itself, not just at value construction
+/// sites: an annotation cannot describe a stream as stored in a Vec.
+#[test]
+fn a_signature_cannot_put_a_stream_in_a_vec() {
+    insta::assert_snapshot!(err("fn f(v: Vec<Stream<Str>>) -> Int = 0\n\n1"));
+}
+
+/// Same ban for a record field, spelled in a signature.
+#[test]
+fn a_signature_cannot_put_a_stream_in_a_record() {
+    insta::assert_snapshot!(err("fn f(r: {s: Stream<Str>}) -> Int = 0\n\n1"));
+}
+
+/// And for an enum variant's payload, the one other annotation a value constructor reads.
+#[test]
+fn an_enum_payload_cannot_hold_a_stream() {
+    insta::assert_snapshot!(err("enum E { v{s: Stream<Str>} }\n\n1"));
+}
+
+/// A stream of streams has nothing it could yield: its entries would not be values.
+#[test]
+fn a_stream_cannot_hold_another_stream() {
+    insta::assert_snapshot!(err("fn f(s: Stream<Stream<Str>>) -> Int = 0\n\n1"));
+}
+
+/// `|` is the one construct that can silently drop its left side, so a stream piped into an
+/// expression gets the same exactly-once rule a stream-typed parameter does.
+#[test]
+fn a_piped_stream_must_be_consumed() {
+    insta::assert_snapshot!(err("lines | 0"));
+}
+
+/// `input` is one whole value already in hand, which is exactly what a stream is not, so a
+/// stream-typed position cannot ask for it.
+#[test]
+fn input_cannot_be_a_stream() {
+    insta::assert_snapshot!(err("fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\n\nf(input)"));
+}

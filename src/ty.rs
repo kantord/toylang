@@ -9,9 +9,10 @@ pub enum Type {
     /// Field names are kept sorted, so two records written in different orders are one type.
     Record(Vec<(String, Type)>),
     /// Effect-layer multiplicity: the entries arrive one at a time as evaluation proceeds, and
-    /// no stream object ever exists as a value (ADR 0001). Not resolvable from a written
-    /// annotation yet, so it can never be a function's declared parameter or return type: the
-    /// only source is the `lines` keyword (born `Stream<Str>`), and the only exit is `collect`.
+    /// no stream object ever exists as a value (ADR 0001). Spellable in function signatures,
+    /// and only there -- the type grammar refuses it inside a Vec, a record, or another Stream
+    /// -- born at a source (`lines` is `Stream<Str>`), consumed exactly once per binding, and
+    /// exiting only through `collect`.
     Stream(Box<Type>),
     /// A declared enum: nominal, so the name is the identity. The variants ride along so that
     /// every consumer of a `Type` -- printers, backends, input validation -- has them in hand
