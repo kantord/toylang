@@ -110,7 +110,7 @@
   title: Inbox becomes email-like -- two areas, span highlights, read status
   kind: build
   needs: [annotations-edit-persistence]
-  status: delegated
+  status: done
 
 - id: board-graph-page
   issue: gh:31
