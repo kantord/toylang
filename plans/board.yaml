@@ -82,7 +82,7 @@
   kind: build
   needs: []
   model: fable
-  status: todo
+  status: delegated
 
 - id: oddities-quick-fixes
   issue: gh:14
