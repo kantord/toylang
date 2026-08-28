@@ -91,6 +91,13 @@
   needs: []
   status: done
 
+- id: docs-annotations-mode
+  issue: gh:23
+  title: Dev-only annotations mode -- marker-pen highlights, contenteditable, quiet-period inbox
+  kind: build
+  needs: []
+  status: delegated
+
 - id: json-string-conformance
   title: Prove full JSON-string support across backends, pinning codepoint ordering
   kind: build
