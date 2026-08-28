@@ -4,7 +4,7 @@
  * the site is only a renderer of files something else already verified.
  */
 
-export type Section = "tutorial" | "guides" | "reference"
+export type Section = "tutorial" | "guides" | "reference" | "grill"
 
 export interface Page {
   section: Section
@@ -27,20 +27,33 @@ const files = import.meta.glob("../../../docs/**/*.md", {
   eager: true,
 }) as Record<string, string>
 
+// A dot directory, so it needs its own glob: bare `**` patterns don't descend into dotfiles,
+// and this one is gitignored (kantord/toylang#23) rather than part of the repo's docs tree.
+const grillFiles = import.meta.glob("../../../docs/.grill/*.md", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>
+
 function parse(): Page[] {
   const pages: Page[] = []
-  for (const [file, markdown] of Object.entries(files)) {
+  for (const [file, markdown] of Object.entries({ ...files, ...grillFiles })) {
     const path = file.replace(/^(\.\.\/)+/, "")
     const rel = path.replace(/^docs\//, "")
     const parts = rel.split("/")
-    const section = parts[0]
+    // The grill directory holds session documents (grilling rounds): not one of the public
+    // sections, and not filtered out either -- it rides the same renderer under its own section
+    // so the annotations sidebar can jump to it.
+    const section = parts[0] === ".grill" ? "grill" : parts[0]
     // ADRs are decision records, not presentation content; the drafts directory does not exist
     // yet but the same reasoning would apply.
-    if (section !== "tutorial" && section !== "guides" && section !== "reference") continue
+    if (section !== "tutorial" && section !== "guides" && section !== "reference" && section !== "grill") {
+      continue
+    }
     const stem = parts[parts.length - 1].replace(/\.md$/, "")
     pages.push({
       section,
-      group: parts.length > 2 ? parts[1] : "",
+      group: section === "grill" ? "" : parts.length > 2 ? parts[1] : "",
       slug: stem.replace(/^\d+-/, ""),
       title: /^# (.+)$/m.exec(markdown)?.[1] ?? stem,
       path,

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react"
 
-import { AnnotationsSidebar } from "@/components/AnnotationsSidebar"
 import { ExamplesPage } from "@/components/ExamplesPage"
 import { Markdown } from "@/components/Markdown"
 import { loadCorpus, type Corpus } from "@/lib/corpus"
@@ -76,7 +75,7 @@ export default function App() {
         onBackend={setBackend}
       />
     )
-  } else if (section === "tutorial" || section === "guides" || section === "reference") {
+  } else if (section === "tutorial" || section === "guides" || section === "reference" || section === "grill") {
     body = (
       <DocsSection
         section={section}
@@ -133,6 +132,19 @@ export default function App() {
   )
 }
 
+/** Loads the annotations sidebar only when its mode is on, so `import.meta.env.DEV` guards a
+ *  dynamic import rather than a static one: the dead-code check (`vite build` + grep of `dist/`)
+ *  needs the module absent from the production bundle, not just unrendered (kantord/toylang#23). */
+function useAnnotationsSidebar(active: boolean): typeof import("@/components/AnnotationsSidebar") | null {
+  const [mod, setMod] = useState<typeof import("@/components/AnnotationsSidebar") | null>(null)
+  useEffect(() => {
+    if (active && import.meta.env.DEV) {
+      import("@/components/AnnotationsSidebar").then(setMod)
+    }
+  }, [active])
+  return active ? mod : null
+}
+
 function DocsSection({
   section,
   segments,
@@ -146,6 +158,7 @@ function DocsSection({
   annotate?: boolean
   scrollToBlock?: number
 }) {
+  const sidebarMod = useAnnotationsSidebar(annotate)
   const pages = PAGES.filter((p) => p.section === section)
   if (pages.length === 0) {
     return <p className="text-sm text-muted-foreground">Nothing here yet.</p>
@@ -164,8 +177,8 @@ function DocsSection({
   return (
     <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="lg:sticky lg:top-6 lg:self-start">
-        {annotate ? (
-          <AnnotationsSidebar current={current} />
+        {annotate && sidebarMod ? (
+          <sidebarMod.AnnotationsSidebar current={current} />
         ) : (
           <nav className="space-y-4 text-sm">
             {groups.map((g) => (

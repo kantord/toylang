@@ -6,3 +6,4 @@ site/node_modules
 site/dist
 site/*.tsbuildinfo
 docs/.annotations/
+docs/.grill/

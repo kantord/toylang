@@ -78,39 +78,10 @@ export function blockRaw(block: Block): string {
   return block.kind === "html" ? block.pieces.map((p) => p.raw).join("") : ""
 }
 
-export type AnnotationType = "review" | "comment" | "fill"
-
-export interface Annotation {
-  page: Page
-  block: number
-  type: AnnotationType
-  note: string
-}
-
-const ANNOTATION_RE = /<!--\s*@(review|comment|fill)\b([\s\S]*?)-->/g
-
 /** True when a token's whole source is nothing but one or more annotation comments, e.g. a
- *  `<!-- @review ... -->` line CommonMark split off of the paragraph above it. */
+ *  `<!-- @review ... -->` line CommonMark split off of the paragraph above it. Only the
+ *  `annotateRaw` folding below reads this; the annotation types themselves live in
+ *  lib/annotations.ts, out of the production bundle's reach. */
 function isCommentOnly(raw: string): boolean {
   return /^(?:\s*<!--\s*@(?:review|comment|fill)\b[\s\S]*?-->\s*)+$/.test(raw)
-}
-
-/** Every annotation comment on a page, one entry per match, keyed to the run it lives in (the
- *  edit-inbox unit); rendering pinpoints the exact piece via `annotationsIn`. */
-export function pageAnnotations(page: Page, blocks: Block[]): Annotation[] {
-  const found: Annotation[] = []
-  blocks.forEach((block, index) => {
-    for (const m of blockRaw(block).matchAll(ANNOTATION_RE)) {
-      found.push({ page, block: index, type: m[1] as AnnotationType, note: m[2].trim() })
-    }
-  })
-  return found
-}
-
-/** The first annotation type left inside one piece's own source, if any -- this is what a
- *  marker-pen wash attaches to, so it covers only the commented element and not its run-mates. */
-export function annotationIn(raw: string): AnnotationType | undefined {
-  const m = ANNOTATION_RE.exec(raw)
-  ANNOTATION_RE.lastIndex = 0
-  return m ? (m[1] as AnnotationType) : undefined
 }

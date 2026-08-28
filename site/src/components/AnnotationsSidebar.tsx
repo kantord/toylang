@@ -1,6 +1,7 @@
 import { useMemo } from "react"
 
-import { pageAnnotations, splitBlocks, type AnnotationType } from "@/lib/blocks"
+import { pageAnnotations, type AnnotationType } from "@/lib/annotations"
+import { splitBlocks } from "@/lib/blocks"
 import { href, PAGES, type Page } from "@/lib/docs"
 import { cn } from "@/lib/utils"
 
