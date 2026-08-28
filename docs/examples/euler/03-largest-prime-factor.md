@@ -1,4 +1,4 @@
-# Largest prime factor (skipped)
+# The biggest prime dividing a number (skipped)
 
 Skipped. [Project Euler 3](https://projecteuler.net/problem=3) asks for a prime factor of a
 specific number that does not fit in toylang's 32-bit `Int`; the checker refuses the literal

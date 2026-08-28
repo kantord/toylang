@@ -1,4 +1,4 @@
-# Summation of primes (skipped)
+# Adding up the primes below a bound (skipped)
 
 Skipped. [Project Euler 10](https://projecteuler.net/problem=10) asks for a sum that overflows
 toylang's 32-bit `Int` -- the true answer is on the order of 1.4e11, past `Int`'s roughly

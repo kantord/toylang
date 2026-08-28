@@ -1,4 +1,4 @@
-# Largest product in a series (skipped)
+# The best window of digits (skipped)
 
 Skipped, provisionally. [Project Euler 8](https://projecteuler.net/problem=8) hands the
 solver a specific 1000-digit number with no source but Project Euler itself; embedding it

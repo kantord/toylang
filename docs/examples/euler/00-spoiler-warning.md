@@ -17,7 +17,7 @@ Solved, one page each: [multiples of 3 and 5](01-multiples-of-3-and-5.md),
 [even Fibonacci terms](02-even-fibonacci-sum.md),
 [largest palindrome product](04-largest-palindrome-product.md),
 [smallest multiple](05-smallest-multiple.md),
-[sum square difference](06-sum-square-difference.md), [the 10001st prime](07-10001st-prime.md),
+[sum square difference](06-sum-square-difference.md), [the The ten-thousand-first prime](07-10001st-prime.md),
 and [special Pythagorean triplet](09-special-pythagorean-triplet.md).
 
 Three are skipped, each for a real reason found while trying to express it rather than
