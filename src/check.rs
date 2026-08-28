@@ -1643,6 +1643,17 @@ struct Access {
     stream: bool,
 }
 
+impl Access {
+    fn new(tir: Tir, elem: Type, depth: usize, stream: bool) -> Access {
+        Access {
+            tir,
+            elem,
+            depth,
+            stream,
+        }
+    }
+}
+
 fn access(ctx: &Ctx, expr: &Expr) -> Result<Access, Error> {
     /// `elem`, wrapped back up under every dimension the chain is inside.
     fn wrap(mut ty: Type, depth: usize, stream_outer: bool) -> Type {
@@ -1658,140 +1669,89 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<Access, Error> {
 
     match expr {
         Expr::Project { base, span } => {
-            let Access {
-                tir,
-                elem,
-                depth,
-                stream,
-            } = access(ctx, base)?;
-            if let Type::Stream(inner) = &elem {
-                return Ok(Access {
-                    tir,
-                    elem: (**inner).clone(),
-                    depth: depth + 1,
-                    stream: true,
-                });
+            let b = access(ctx, base)?;
+            if let Type::Stream(inner) = &b.elem {
+                return Ok(Access::new(b.tir, (**inner).clone(), b.depth + 1, true));
             }
-            let Some(inner) = elem.elem().cloned() else {
+            let Some(inner) = b.elem.elem().cloned() else {
                 return Err(Error::new(
                     *span,
-                    format!("`[]` needs a dimension, found {elem}"),
+                    format!("`[]` needs a dimension, found {}", b.elem),
                 ));
             };
-            Ok(Access {
-                tir,
-                elem: inner,
-                depth: depth + 1,
-                stream,
-            })
+            Ok(Access::new(b.tir, inner, b.depth + 1, b.stream))
         }
 
         // The absence stops being carried and starts being asserted.
         Expr::Unwrap { base, span } => {
-            let Access {
-                tir: base_tir,
-                elem,
-                depth,
-                stream,
-            } = access(ctx, base)?;
-            let Type::Opt(inner) = elem else {
-                return Err(Error::new(*span, format!("`!` needs an Opt, found {elem}")));
+            let b = access(ctx, base)?;
+            let Type::Opt(inner) = b.elem else {
+                return Err(Error::new(
+                    *span,
+                    format!("`!` needs an Opt, found {}", b.elem),
+                ));
             };
-            let inner = *inner;
-            let ty = wrap(inner.clone(), depth, stream);
+            let ty = wrap((*inner).clone(), b.depth, b.stream);
             let tir = Tir::new(
                 ty,
                 Kind::Unwrap {
-                    base: Box::new(base_tir),
+                    base: Box::new(b.tir),
                 },
             );
-            Ok(Access {
-                tir,
-                elem: inner,
-                depth,
-                stream,
-            })
+            Ok(Access::new(tir, *inner, b.depth, b.stream))
         }
 
         // Collapsing a dimension. The entry may not be there, so what comes out is `Opt`.
         Expr::Index { base, index, span } => {
-            let Access {
-                tir: base_tir,
-                elem,
-                depth,
-                stream,
-            } = access(ctx, base)?;
-            let Some(inner) = elem.elem().cloned() else {
+            let b = access(ctx, base)?;
+            let Some(inner) = b.elem.elem().cloned() else {
                 return Err(Error::new(
                     *span,
-                    format!("`[i]` needs a dimension, found {elem}"),
+                    format!("`[i]` needs a dimension, found {}", b.elem),
                 ));
             };
             let index_tir = expect(ctx, index, &Type::Int)?;
             let elem_is_record = matches!(inner, Type::Record(_));
             let out = Type::Opt(Box::new(inner));
-            let ty = wrap(out.clone(), depth, stream);
-            let tir = Tir::new(
-                ty,
-                Kind::Index {
-                    base: Box::new(base_tir),
-                    index: Box::new(index_tir),
-                    depth,
-                    elem_is_record,
-                },
-            );
-            Ok(Access {
-                tir,
-                elem: out,
-                depth,
-                stream,
-            })
+            let ty = wrap(out.clone(), b.depth, b.stream);
+            let kind = Kind::Index {
+                base: Box::new(b.tir),
+                index: Box::new(index_tir),
+                depth: b.depth,
+                elem_is_record,
+            };
+            Ok(Access::new(Tir::new(ty, kind), out, b.depth, b.stream))
         }
 
         Expr::Field { base, name, span } => {
-            let Access {
-                tir: base_tir,
-                elem,
-                depth,
-                stream,
-            } = access(ctx, base)?;
-            if elem.elem().is_some() || matches!(elem, Type::Stream(_)) {
+            let b = access(ctx, base)?;
+            if b.elem.elem().is_some() || matches!(b.elem, Type::Stream(_)) {
                 return Err(Error::new(
                     *span,
                     format!(
-                        "`.{name}` needs a record, found {elem}: give the dimension a spec with `[]`"
+                        "`.{name}` needs a record, found {}: give the dimension a spec with `[]`",
+                        b.elem
                     ),
                 ));
             }
-            let Some(field) = elem.field(name) else {
-                return Err(Error::new(*span, format!("no field `{name}` on {elem}")));
+            let Some(field) = b.elem.field(name).cloned() else {
+                return Err(Error::new(
+                    *span,
+                    format!("no field `{name}` on {}", b.elem),
+                ));
             };
-            let field = field.clone();
-            let ty = wrap(field.clone(), depth, stream);
-            let tir = Tir::new(
-                ty,
-                Kind::Field {
-                    base: Box::new(base_tir),
-                    name: name.clone(),
-                },
-            );
-            Ok(Access {
-                tir,
-                elem: field,
-                depth,
-                stream,
-            })
+            let ty = wrap(field.clone(), b.depth, b.stream);
+            let kind = Kind::Field {
+                base: Box::new(b.tir),
+                name: name.clone(),
+            };
+            Ok(Access::new(Tir::new(ty, kind), field, b.depth, b.stream))
         }
 
         other => {
             let tir = synth(ctx, other)?;
             let ty = tir.ty.clone();
-            Ok(Access {
-                tir,
-                elem: ty,
-                depth: 0,
-                stream: false,
-            })
+            Ok(Access::new(tir, ty, 0, false))
         }
     }
 }

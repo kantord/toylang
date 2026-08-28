@@ -1,0 +1,58 @@
+---
+type: Playbook
+title: Naming a tuple return pushed a function over budget
+description: What to do when a struct-literal rename (or similar mechanical refactor) pushes a function's own clippy too-many-lines count over budget.
+tags: [too-many-lines, structure]
+---
+
+# Naming a tuple return pushed a function over budget
+
+`check.rs`'s `access()` returned `(Tir, Type, usize, bool)`. A review asked
+for the tuple to become a named `Access` struct (readability at call sites,
+not a line-count concern). Doing it the direct way -- a full `Access { .. }`
+literal at every return site, and a `let Access { tir, elem, depth, stream }
+= ...` destructure at every recursive call -- pushed `access()` from under
+the 100-line clippy budget (it was not previously flagged) to 132/100: a
+finding this session caused, not inherited.
+
+## What settled it
+
+Kept the named struct, shrank the boilerplate instead of reverting or
+splitting the function:
+
+- A positional `Access::new(tir, elem, depth, stream)`, matching the
+  `Tir::new` convention already used throughout this file, replaces the
+  struct literal at every return site.
+- A recursive call's result binds to a short local (`let b = access(ctx,
+  base)?;`) and is read field-by-field (`b.tir`, `b.elem`, ...) instead of
+  being destructured into four names up front.
+
+This got `access()` to 101 lines (then further edits to fit line width
+brought individual lines under rustfmt's wrap point, since a name like
+`base.tir` inside an already-long `Access::new(...)` call can push rustfmt
+to wrap it back onto several lines, undoing the saving).
+
+Reach for this first when a struct/enum-naming refactor is what pushed a
+function over budget: the boilerplate is usually the four-line-per-field
+literal, not the logic, and a positional constructor removes it without
+losing the named type. Split the function instead only if there is no
+"tighten the construction" way to fit -- see the *split-by-match-arm*
+alternative discussed and passed over in this case, kept here as the next
+thing to try if tightening does not work.
+
+## Telling caused from inherited
+
+`file-too-long` findings from `.claude/checks/run.sh` say whether they are
+caused or inherited directly, by diffing against the merge-base blob.
+`too-many-lines` findings come from clippy and carry no such label. To tell
+them apart: check out the merge-base commit into a scratch `git worktree`
+and run the same `cargo clippy --all-targets --message-format=json` query,
+filtered to `clippy::too_many_lines`, for the same file. A function's count
+there is what this branch inherited; only the gap above that is caused.
+
+In this case, `check()` (152 at merge-base, 132 now) and `synth()` (560 at
+merge-base, 543 now) were both already over budget and both shrank; neither
+is a new finding, so neither was chased further here. `clippy.toml` already
+documents `check.rs` as one of the three files the 100-line budget was set
+to name a real conversation about, not fix incidentally -- see
+`plans/quality-practices.md`.
