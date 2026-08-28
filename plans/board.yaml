@@ -66,7 +66,7 @@
   title: Stop-hook finding for uncommitted work at turn end, closing the politeness stall mechanically
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: bare-default-build
   issue: gh:20
@@ -197,7 +197,7 @@
   title: Front-end cleanups from the typed-streams review
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: crate-simplification-survey
   issue: gh:13
@@ -236,4 +236,4 @@
   title: Generalize the site per plans/docs-site.md -- fence harness, Diataxis nav, complete reference
   kind: build
   needs: [docs-site-design]
-  status: delegated
+  status: done
