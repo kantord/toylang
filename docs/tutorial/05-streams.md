@@ -16,7 +16,7 @@ stdin must be:
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
     db.users | select(.age >= 18) | map(.name)
 
-adults(input)
+adults input
 ```
 
 ```input
@@ -41,7 +41,7 @@ the same `select`/`map`/projection spellings work on it:
 fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
     users | select(.age >= 18) | map {name: .name}
 
-jsonlines(adults(inputs))
+jsonlines adults inputs
 ```
 
 ```input
@@ -70,7 +70,7 @@ exit, turning `Stream<T>` into an ordinary `Vec<T>` by reading everything:
 ```toylang
 fn count(xs: Vec<Int>) -> Int = extent(xs)
 
-count(collect(inputs))
+count collect inputs
 ```
 
 ```input

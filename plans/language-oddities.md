@@ -123,6 +123,10 @@ writes `f(x)` or `map {...}`. The feature's only users are its own unit tests
 Changing it breaks the decided section "`f x` reads as `f(x)`" and its test file, and no
 program. Keeping it costs the two misleading diagnostics above plus the next item.
 
+Resolved by the bare-default revision (issue #20): bare application is now the default call
+form, confined only by the same-line rule, and both diagnostics above are gone -- `= extent v`
+parses as the call it looks like, and `f -1` now reports that `f` is a function, not a value.
+
 ## The paren-free record argument reaches across the definition boundary
 
 The record-argument sugar (`ident {` is a call) was decided as safe because "`{` cannot start an
@@ -144,6 +148,10 @@ Homegrown, and arguably a bug rather than a design question -- but the fix has o
 `ident {` at the same boundary the bare form is suspended at; require parens in def bodies;
 delimit def bodies) and picking one is a decision. No corpus case hits it because no corpus
 program ends a definition body with a bare variable.
+
+Resolved by the same-line rule (issues #10 and #20): an argument, bare or delimited, must start
+on the same line as its function, so the swallowed program body above parses now; the corpus
+case `record_body_after_definition` pins it.
 
 ## `//` separates match arms
 

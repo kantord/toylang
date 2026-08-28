@@ -41,7 +41,7 @@ enum Shape { point, circle{r: Int} }
 
 fn area_ish(s: Shape) -> Int = s | circle{r} -> r * r or point -> 0
 
-{a: area_ish(Shape.point), b: area_ish(circle{r: 3})}
+{a: area_ish Shape.point, b: area_ish circle{r: 3}}
 ```
 
 ```output

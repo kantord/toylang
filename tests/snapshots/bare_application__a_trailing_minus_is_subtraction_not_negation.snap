@@ -2,4 +2,4 @@
 source: tests/bare_application.rs
 expression: "err(\"fn f(n: Int) -> Int = n\\n\\nf -1\")"
 ---
-`f` is not defined (at byte 25)
+`f` is a function, not a value; write `f(...)` to call it (at byte 25)

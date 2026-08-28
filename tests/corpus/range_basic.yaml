@@ -1,5 +1,5 @@
 program: |
-  unlines(range(4) | map(str(.)))
+  unlines(range 4 | map(str(.)))
 
 output: |
   0

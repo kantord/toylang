@@ -15,7 +15,7 @@ enum Msg { ping, quit, text{body: Str} }
 
 fn render(m: Msg) -> Str = m | ping -> "*ping*" or quit -> "*quit*" or text -> .body
 
-render(text{body: "hi"})
+render text{body: "hi"}
 ```
 
 ```output
@@ -23,7 +23,7 @@ hi
 ```
 
 Declare the variants after the strings and wrappers the wire actually carries, and the type
-system takes it from there: `flip(input)` below is a complete program that reads a status
+system takes it from there: `flip input` below is a complete program that reads a status
 and answers with the other one.
 
 ```case

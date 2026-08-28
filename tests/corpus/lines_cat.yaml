@@ -2,7 +2,7 @@
 # backends, none of which pre-materializes it in Rust first. `collect` is the one place a
 # stream becomes an ordinary Vec; `unlines` and printing are unchanged from every other program.
 program: |
-  unlines(collect(lines))
+  unlines collect lines
 
 input: |
   ada

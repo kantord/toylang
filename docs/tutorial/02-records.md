@@ -29,7 +29,8 @@ area({w: 3, h: 4})
 12
 ```
 
-When the argument is a record literal, the parens may go, and the call reads as named
+The parens are optional -- bare application, `f x`, is the default call form, and `f(x)` is
+the same call with its argument grouped. On a record literal the bare form reads as named
 arguments:
 
 ```toylang

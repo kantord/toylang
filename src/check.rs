@@ -1069,6 +1069,15 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 let enum_ty = sole_owner(ctx, name, owners, *span)?.clone();
                 return construct(ctx, &enum_ty, name, *span, None);
             }
+            // A function is not a value, but "`f` is not defined" for a defined function is a
+            // lie. This is where `f -1` lands: `-` cannot start a bare argument, so the parse
+            // is subtraction and `f` arrives here alone.
+            if ctx.sigs.contains_key(name) || BUILTIN_NAMES.contains(&name.as_str()) {
+                return Err(Error::new(
+                    *span,
+                    format!("`{name}` is a function, not a value; write `{name}(...)` to call it"),
+                ));
+            }
             Err(Error::new(*span, format!("`{name}` is not defined")))
         }
 

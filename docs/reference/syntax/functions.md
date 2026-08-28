@@ -7,7 +7,7 @@ signature is inferred.
 ```toylang
 fn double(x: Int) -> Int = x * 2
 
-double(21)
+double 21
 ```
 
 ```output
@@ -33,5 +33,11 @@ a `Stream` parameter (a stream is born only at a source; see
 [Stream](../types/stream.md)). A function is not a value -- it cannot be stored, passed, or
 returned -- and the nine [builtin names](../builtins/str.md) cannot be redefined.
 
-There is also a bare application form, `f x`, legal only where an expression begins fresh.
-No real program in the repository uses it; write `f(x)` or `f {record}`.
+Bare application, `f x`, is the default call form. Every function is unary, so parens never
+said which argument is which -- only where the argument starts and ends -- and `f(x)` is the
+same call with the argument grouped. Chains read right-to-left: `str double 21` is
+`str(double(21))`. Reach for the parens when the bare form would read differently: `-`
+starts subtraction rather than an argument (`f -1` is `f - 1`), and `.` and `[` bind
+tighter as [projection](../operators/projection.md) and indexing, so a projection or
+Vec-literal argument is spelled `map(.name)` or `some([4, 5])`. An argument must also start
+on the same line as its function; to call across lines, use the parens.

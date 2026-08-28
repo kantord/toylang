@@ -4,7 +4,7 @@
 Zero-based, matching jq, Python, and the language's own indices.
 
 ```toylang
-range(4)
+range 4
 ```
 
 ```output

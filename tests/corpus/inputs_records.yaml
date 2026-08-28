@@ -6,7 +6,7 @@ program: |
   fn names(users: Stream<{name: Str, age: Int}>) -> Stream<Str> =
       users | select(.age >= 18) | .[].name
 
-  collect(names(inputs))
+  collect names inputs
 
 input: |
   {"name": "ada", "age": 36}

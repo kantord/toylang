@@ -1,0 +1,5 @@
+---
+source: tests/bare_application.rs
+expression: "err(\"[{n: 1}] | map .n\")"
+---
+`map` is a function, not a value; write `map(...)` to call it (at byte 11)

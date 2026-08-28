@@ -8,7 +8,7 @@ program: |
   fn render(msgs: Stream<Msg>) -> Stream<Str> =
       msgs | map(. | text -> .body or any() -> "*ping*")
 
-  jsonlines(render(inputs))
+  jsonlines render inputs
 
 input: |
   "ping"
