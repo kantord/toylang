@@ -110,7 +110,14 @@
   title: Review the crate proposal and decide what gets adopted
   kind: decide
   needs: [crate-simplification-survey]
-  status: todo
+  status: done
+
+- id: anyhow-install
+  issue: gh:17
+  title: Install anyhow for the harness error plumbing
+  kind: build
+  needs: [crate-adoption]
+  status: delegated
 
 - id: draft-split-decision
   title: Decide whether and how draft.md gets split (it is excluded from the prose budget by name)
