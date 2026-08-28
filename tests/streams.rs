@@ -227,6 +227,29 @@ fn inputs_cannot_be_read_inside_a_mapper() {
     ));
 }
 
+/// A source is legal only in the program's own body, so a `fn` body cannot read one however it
+/// is called. The rule is this blunt because anything finer leaked: see the reproducer below.
+#[test]
+fn lines_cannot_be_read_inside_a_fn_body() {
+    insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Str> = collect(lines)\n\n1"));
+}
+
+#[test]
+fn inputs_cannot_be_read_inside_a_fn_body() {
+    insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Int> = collect(inputs)\n\n1"));
+}
+
+/// The reproducer that forced the rule: the source is read in `f`'s body, the mapper only sees
+/// an innocent `f(.)`, and before the fn-body ban this compiled and re-read stdin once per
+/// element. The mapper-body check alone cannot catch it, because nothing at the call site says
+/// a source is behind it.
+#[test]
+fn a_function_reading_a_source_cannot_be_called_from_a_mapper() {
+    insta::assert_snapshot!(err(
+        "fn f(x: Int) -> Int = extent(collect(lines)) + x\n\nextent([1, 2] | map(f(.)))"
+    ));
+}
+
 /// A stream is born only at a source, so a function cannot conjure one: a stream result flows
 /// in through a stream parameter, keeping every pipeline one chain from source to sink.
 #[test]

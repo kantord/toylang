@@ -35,6 +35,10 @@ struct Ctx<'a> {
     /// runs once per element: a source read there would drain stdin on the first element and
     /// hand every later one nothing, so `lines` and `inputs` are refused in that position.
     in_mapper: bool,
+    /// The name of the `fn` whose body is being checked; `None` in the program's own body. A
+    /// source is legal only in the program body (see `source_in_fn`), so `lines` and `inputs`
+    /// are refused whenever this is set.
+    in_fn: Option<&'a str>,
     next_local: &'a Cell<LocalId>,
 }
 
@@ -51,6 +55,7 @@ impl Ctx<'_> {
             inputs: self.inputs,
             lines_used: self.lines_used,
             in_mapper: self.in_mapper,
+            in_fn: self.in_fn,
             next_local: self.next_local,
         }
     }
@@ -107,6 +112,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             inputs: &inputs,
             lines_used: &lines_used,
             in_mapper: false,
+            in_fn: Some(&def.name),
             next_local: &next_local,
         };
         let body = synth(&ctx, &def.body)?;
@@ -149,6 +155,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         inputs: &inputs,
         lines_used: &lines_used,
         in_mapper: false,
+        in_fn: None,
         next_local: &next_local,
     };
     // `jsonlines` is a sink: legal only here, as the program's outermost expression, taking a
@@ -786,10 +793,28 @@ fn construct(
     Ok(Tir::new(enum_ty.clone(), Kind::EnumLit { variant: variant.to_string(), payload }))
 }
 
+/// A source spelled inside a `fn` body. The rule exists because the mapper-body check alone had
+/// a cross-function hole: a function reading a source, called from a mapper's body, re-read
+/// stdin once per element with nothing at the call site to refuse. Refusing sources in every
+/// `fn` closes that everywhere; the alternative, tracking source consumption per function
+/// transitively, was rejected as an invisible effect on every signature.
+fn source_in_fn(span: Span, source: &str, func: &str) -> Error {
+    Error::new(
+        span,
+        format!(
+            "`{source}` cannot be read inside `fn {func}`; a source is legal only in the \
+             program's own body, so take the stream through a `Stream` parameter"
+        ),
+    )
+}
+
 fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     match expr {
         Expr::Str { text, .. } => Ok(Tir::new(Type::Str, Kind::Str(text.clone()))),
         Expr::Lines { span } => {
+            if let Some(func) = ctx.in_fn {
+                return Err(source_in_fn(*span, "lines", func));
+            }
             if ctx.in_mapper {
                 return Err(Error::new(
                     *span,
@@ -959,7 +984,10 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         // `input` is only ever checked, never synthesised, for the same reason a lambda is:
         // nothing here says what it contains, and guessing is what the annotation rule avoids.
         Expr::Input { span } => Err(Error::new(*span, "cannot tell what `input` contains")),
-        Expr::Inputs { span } => Err(Error::new(*span, "cannot tell what `inputs` contains")),
+        Expr::Inputs { span } => match ctx.in_fn {
+            Some(func) => Err(source_in_fn(*span, "inputs", func)),
+            None => Err(Error::new(*span, "cannot tell what `inputs` contains")),
+        },
 
         Expr::Call { func, func_span, arg, span } => {
             // `select` and `map` are not special syntax, only special names: they are ordinary
@@ -1504,6 +1532,9 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
     }
 
     if let Expr::Inputs { span } = expr {
+        if let Some(func) = ctx.in_fn {
+            return Err(source_in_fn(*span, "inputs", func));
+        }
         if ctx.in_mapper {
             return Err(Error::new(
                 *span,
