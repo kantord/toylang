@@ -105,10 +105,11 @@
   status: done
 
 - id: json-string-conformance
+  issue: gh:26
   title: Prove full JSON-string support across backends, pinning codepoint ordering
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: matcher-first-cut-design
   title: Grill the matcher surface first cut -- guard arms with or-composition, FizzBuzz the case study, reconcile with the enum arms token
@@ -151,10 +152,11 @@
   status: todo
 
 - id: opt-in-signatures
+  issue: gh:27
   title: Opt<T> accepted in the type grammar -- head(v) -> Opt<Int> compiles as written
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: type-flow-rework
   title: Top-down type flow -- declared types resolve [] and literals in bodies
