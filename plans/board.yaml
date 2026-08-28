@@ -151,7 +151,7 @@
   title: Tutorial chapter and guide for matching -- guard arms, chains, partial-to-Opt
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: json-string-conformance
   issue: gh:26
