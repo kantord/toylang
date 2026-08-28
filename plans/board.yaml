@@ -32,7 +32,7 @@
   title: Validate input on the live fused-inputs path, matching fixture runs
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: stdin-rule-build
   issue: gh:7
