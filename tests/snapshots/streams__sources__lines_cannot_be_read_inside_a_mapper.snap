@@ -1,0 +1,6 @@
+---
+source: tests/streams.rs
+assertion_line: 255
+expression: "err(\"extent([1] | map(extent(collect(lines))))\")"
+---
+`lines` cannot be read inside a mapper body, which runs once per element (at byte 32)

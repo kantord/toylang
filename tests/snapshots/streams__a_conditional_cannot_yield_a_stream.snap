@@ -1,5 +1,0 @@
----
-source: tests/streams.rs
-expression: "err(\"fn f(s: Stream<Str>) -> Stream<Str> = s if 1 == 1 else s\\n\\n1\")"
----
-a conditional cannot yield a stream; pass each branch to `collect` first (at byte 38)

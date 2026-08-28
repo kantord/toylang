@@ -1,0 +1,6 @@
+---
+source: tests/streams.rs
+assertion_line: 275
+expression: "err(\"fn f(x: Int) -> Vec<Int> = collect(inputs)\\n\\n1\")"
+---
+`inputs` cannot be read inside `fn f`; a source is legal only in the program's own body, so take the stream through a `Stream` parameter (at byte 35)

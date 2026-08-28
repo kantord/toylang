@@ -1,0 +1,6 @@
+---
+source: tests/streams.rs
+assertion_line: 200
+expression: "err(\"fn g(x: Vec<Int>) -> Int = extent(x)\\n\\n(collect(lines) | 0) + g(collect(inputs))\")"
+---
+a program cannot use both `lines` and `inputs`; they read the same real stdin two different ways (at byte 39)

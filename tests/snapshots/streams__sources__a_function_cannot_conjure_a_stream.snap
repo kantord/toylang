@@ -1,0 +1,6 @@
+---
+source: tests/streams.rs
+assertion_line: 294
+expression: "err(\"fn f(x: Int) -> Stream<Str> = lines\\n\\n1\")"
+---
+`f` returns Stream<Str> without taking a stream; a stream is born only at a source (at byte 0)

@@ -1,0 +1,6 @@
+---
+source: tests/streams.rs
+assertion_line: 107
+expression: "err(\"lines | 0\")"
+---
+the stream piped in here must be consumed exactly once; it is never consumed (at byte 8)
