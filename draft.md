@@ -2311,7 +2311,10 @@ is untouched.
 ### Construction and naming
 
 Declaring an enum derives one constructor per variant: `circle{r: 1}` is ordinary
-application, `active` an ordinary named constant. A bare variant name resolves while exactly
+application, `active` an ordinary named constant. Payloads accept any single type, so a
+record payload has two spellings -- `circle{r: 1}` and `circle({r: 1})` -- because the
+constructor is an ordinary unary function and the braces form is the same record-argument
+sugar every call has. The braces spelling is the one the checker hints. A bare variant name resolves while exactly
 one enum in scope declares it; a collision is a loud compile error naming the candidates, and
 the qualified spelling is `Shape.circle` -- type-dot-variant, which the casing rule already
 makes unambiguous, so no new syntax exists. Typing a literal directly as an enum

@@ -16,7 +16,7 @@
   title: Enum payloads accept any single type, not only records
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: stdin-rule-decision
   issue: gh:7
@@ -24,6 +24,13 @@
   kind: decide
   needs: []
   status: done
+
+- id: def-boundary-brace-bug
+  issue: gh:10
+  title: Fix ident-brace sugar reaching across the definition boundary
+  kind: build
+  needs: []
+  status: todo
 
 - id: stdin-rule-build
   issue: gh:7
@@ -37,7 +44,7 @@
   title: Evaluate toy-browser's quality skills/hooks/practices; propose what toylang adopts
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: quality-practices-adoption
   title: Review the proposal and decide what gets introduced
@@ -50,7 +57,7 @@
   title: Inventory duplications, cryptic syntax, and ill-fitting jq inheritances
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: language-oddities-review
   title: Review the oddities inventory and settle each item
