@@ -9,7 +9,7 @@ pub const INPUT: &str = "t_input";
 pub const INPUTS: &str = "t_inputs";
 /// The function `run_lua` injects in place of `INPUTS` for a fused, live-streamable program:
 /// called with no arguments, it returns the next `inputs` record already parsed and converted,
-/// or `nil` at EOF. See `tir::recognize_fusion` and this file's `fused_main`.
+/// or `nil` at EOF. See `tir::fusion` and this file's `fused_main`.
 pub const NEXT_INPUT: &str = "tl_next_input";
 
 const SELECT_HELPER: &str = "\
@@ -213,7 +213,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         out.push_str(&fused_main(program, &fusion));
     } else {
         let body = expr(&program.body);
@@ -226,18 +226,25 @@ pub fn emit(program: &Program) -> String {
     out
 }
 
-/// A `jsonlines(f(inputs))` program, compiled as a loop calling `NEXT_INPUT` for one already-
-/// parsed record at a time rather than reading a pre-populated `INPUTS` global -- see that
-/// constant's doc comment for why the parsing itself is not written here.
+/// A stream-typed `jsonlines` program, compiled as a loop over one entry at a time: for an
+/// `inputs` source, a call to `NEXT_INPUT` for one already-parsed record (see that constant's
+/// doc comment for why the parsing itself is not written here); for `lines`, `io.lines()`
+/// itself, exactly as the eager collect helper reads it.
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
-    let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
     let mut out = String::new();
-    out.push_str("while true do\n");
-    out.push_str(&format!("  local t_line = {NEXT_INPUT}()\n"));
-    out.push_str("  if t_line == nil then break end\n");
-
-    let mut current = "t_line".to_string();
-    let mut current_ty = elem_ty.clone();
+    let (mut current, mut current_ty) = match fusion.source {
+        tir::Source::Inputs => {
+            out.push_str("while true do\n");
+            out.push_str(&format!("  local t_line = {NEXT_INPUT}()\n"));
+            out.push_str("  if t_line == nil then break end\n");
+            let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+            ("t_line".to_string(), elem.clone())
+        }
+        tir::Source::Lines => {
+            out.push_str("for t_line in io.lines() do\n");
+            ("t_line".to_string(), Type::Str)
+        }
+    };
     for stage in &fusion.stages {
         match stage {
             tir::Stage::Map { param, body } => {
@@ -271,9 +278,9 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
 /// function, and step 4 onwards, where a native target has nothing to ask.
 fn show(ty: &Type, value: &str, depth: usize) -> String {
     match ty {
-        // The checker refuses a program whose result contains Lines, since there is nothing to
+        // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
-        Type::Lines => unreachable!("Lines cannot reach the printer"),
+        Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Str => format!("tl_quote({value})"),
         Type::Int | Type::Bool => format!("tostring({value})"),
         Type::Vec(elem) => {
@@ -408,8 +415,9 @@ fn used_helpers(program: &Program) -> Helpers {
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
-            | Kind::Inputs
-            | Kind::Lines => {}
+            | Kind::Inputs => {}
+            // The source is what reads stdin now, so it is what needs the helper.
+            Kind::Lines => used.collect = true,
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -445,7 +453,6 @@ fn used_helpers(program: &Program) -> Helpers {
             }
             Kind::Builtin { which, arg } => {
                 used.range |= *which == Builtin::Range;
-                used.collect |= *which == Builtin::Collect;
                 used.jsonlines |= *which == Builtin::JsonLines;
                 used.tail |= *which == Builtin::Tail;
                 used.concat |= *which == Builtin::Concat;
@@ -490,9 +497,9 @@ fn expr(t: &Tir) -> String {
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
         Kind::Inputs => INPUTS.to_string(),
-        // `lines` has no value of its own -- it is a promise that the real stdin has not been
-        // read yet, made good only by `collect`. `nil` is never actually inspected.
-        Kind::Lines => "nil".to_string(),
+        // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
+        // works on the table of its entries. Fusion is what will remove this materialization.
+        Kind::Lines => "tl_collect_lines()".to_string(),
         // A record is a table keyed by field name, which is what field access reads.
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
@@ -537,7 +544,7 @@ fn expr(t: &Tir) -> String {
             Builtin::IntToStr => format!("tostring({})", expr(arg)),
             Builtin::Range => format!("tl_range({})", expr(arg)),
             Builtin::JsonLines => {
-                let elem = arg.ty.elem().expect("checked to be a Vec");
+                let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 let e = "e0".to_string();
                 format!(
                     "tl_jsonlines({}, function({e}) return {} end)",
@@ -545,7 +552,8 @@ fn expr(t: &Tir) -> String {
                     show(elem, &e, 1)
                 )
             }
-            Builtin::Collect => "tl_collect_lines()".to_string(),
+            // The source already materialized, so the exit has nothing left to do.
+            Builtin::Collect => expr(arg),
             Builtin::Extent => format!("#{}", expr(arg)),
             Builtin::Tail => format!("tl_tail({})", expr(arg)),
             Builtin::Concat => format!("tl_vec_concat({})", expr(arg)),

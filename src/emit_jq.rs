@@ -60,7 +60,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         // jq's own `inputs` is already lazy; the eager path below only becomes eager by wrapping
         // it in `[...]`. Skipping that wrapper and running the whole `map`/`select` chain as one
         // filter over the `inputs` generator is what makes jq print each record as it arrives
@@ -78,9 +78,9 @@ pub fn emit(program: &Program) -> String {
             }
         }
         let Kind::Builtin { arg, .. } = &program.body.kind else {
-            unreachable!("recognize_fusion only matches a jsonlines body")
+            unreachable!("fusion only matches a jsonlines body")
         };
-        let elem = arg.ty.elem().expect("jsonlines's argument is a Vec");
+        let elem = tir::runtime_elem(&arg.ty).expect("jsonlines's argument has an element");
         out.push_str(&format!(" | ({} | tojson)\n", canonical(elem, ".")));
         return out;
     }
@@ -104,9 +104,9 @@ pub fn emit(program: &Program) -> String {
 /// backends rather than the input's key order.
 fn canonical(ty: &Type, value: &str) -> String {
     match ty {
-        // The checker refuses a program whose result contains Lines, since there is nothing to
+        // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
-        Type::Lines => unreachable!("Lines cannot reach the printer"),
+        Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Str | Type::Int | Type::Bool => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(elem, ".")),
         Type::Opt(inner) => {
@@ -303,9 +303,10 @@ fn expr(t: &Tir) -> String {
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
         Kind::Inputs => INPUTS.to_string(),
-        // `lines` has no value of its own -- it is a promise that the real stdin has not been
-        // read yet, made good only by `collect`. `.` is never actually inspected.
-        Kind::Lines => ".".to_string(),
+        // The stream, materialized eagerly: `[ inputs ]` in raw-input mode is every line of
+        // stdin as an array of strings. `-n -R` on the invocation is what makes this mode
+        // available; see the checker rule against mixing `input` and `lines` in one program.
+        Kind::Lines => "[ inputs ]".to_string(),
         // Each value is parenthesised: everything in jq is a filter, so an unbracketed `|`
         // or `,` inside one would be read as part of the object rather than as its value.
         Kind::RecordLit { fields } => {
@@ -349,18 +350,15 @@ fn expr(t: &Tir) -> String {
             // is what turns each element into the same compact JSON string `-c` would print for
             // it, matching every other backend's per-element encoding.
             Builtin::JsonLines => {
-                let elem = arg.ty.elem().expect("checked to be a Vec");
+                let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 format!(
                     "({} | [.[] | ({} | tojson)] | join(\"\\n\"))",
                     expr(arg),
                     canonical(elem, ".")
                 )
             }
-            // `arg` is never anything but Lines (directly, or through a local bound to it), and
-            // there is only ever one real stdin, so what it evaluated to is irrelevant: `inputs`
-            // always means the same thing. `-n -R` on the invocation is what makes this mode
-            // available; see the checker rule against mixing `input` and `lines` in one program.
-            Builtin::Collect => "[ inputs ]".to_string(),
+            // The source already materialized, so the exit has nothing left to do.
+            Builtin::Collect => expr(arg),
             Builtin::Extent => format!("({} | length)", expr(arg)),
             // jq's own `.[1:]` on an empty array is `[]`, not null; toylang's tail needs the
             // Opt convention instead, so the empty case is spelled out rather than borrowed.

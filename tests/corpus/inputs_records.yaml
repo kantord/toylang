@@ -3,10 +3,10 @@
 # record tl_parse hands back for each line into proper columns, the same invariant vec_lit and
 # concat/tail already keep.
 program: |
-  fn names(users: Vec<{name: Str, age: Int}>) -> Vec<Str> =
+  fn names(users: Stream<{name: Str, age: Int}>) -> Stream<Str> =
       users | select(.age >= 18) | .[].name
 
-  names(inputs)
+  collect(names(inputs))
 
 input: |
   {"name": "ada", "age": 36}
@@ -16,4 +16,4 @@ input: |
 output: |
   ["ada","cy"]
 
-node_types: [application, compare.ge, inputs, int, local, pipe, projection, selection.narrow, var]
+node_types: [application, builtin.collect, compare.ge, inputs, int, local, map-over, pipe, projection, selection.narrow, var]

@@ -65,6 +65,9 @@ impl std::fmt::Display for BinOp {
 pub enum TypeExpr {
     Named { name: String, span: Span },
     Vec { elem: Box<TypeExpr>, span: Span },
+    /// `Stream<T>`, legal only as the whole of a parameter or return annotation: a stream is
+    /// not a value, so the checker refuses it anywhere a type would describe something stored.
+    Stream { elem: Box<TypeExpr>, span: Span },
     Record { fields: Vec<(String, TypeExpr)>, span: Span },
 }
 
@@ -73,6 +76,7 @@ impl TypeExpr {
         match self {
             TypeExpr::Named { span, .. }
             | TypeExpr::Vec { span, .. }
+            | TypeExpr::Stream { span, .. }
             | TypeExpr::Record { span, .. } => *span,
         }
     }
@@ -174,10 +178,8 @@ pub enum Expr {
     /// Every remaining JSON value on stdin, one per line, collected eagerly into a `Vec<T>`.
     /// Like `input`, its element type comes only from where it is used.
     Inputs { span: Span },
-    /// The stream of lines read from stdin. Unspellable as a type, since it has exactly one
-    /// producer and one consumer and nothing else needs to name it: the checker rejects a
-    /// second use rather than accepting a second stream, since there is only ever one real
-    /// stdin.
+    /// The stream of lines read from stdin, born `Stream<Str>`. The checker rejects a second
+    /// use rather than accepting a second stream, since there is only ever one real stdin.
     Lines { span: Span },
     /// A `//` chain of match arms over the subject `.`: `point -> 0 // circle{r} -> r * r`.
     /// The subject is not part of the node; a match reads `.` the way `select` does, so it

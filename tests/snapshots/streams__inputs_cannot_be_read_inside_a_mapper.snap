@@ -1,0 +1,5 @@
+---
+source: tests/streams.rs
+expression: "err(\"fn g(x: Vec<Int>) -> Int = extent(x)\\n\\nextent([1] | map(g(collect(inputs))))\")"
+---
+`inputs` cannot be read inside a mapper body, which runs once per element (at byte 65)

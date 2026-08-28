@@ -8,10 +8,12 @@ pub enum Type {
     Opt(Box<Type>),
     /// Field names are kept sorted, so two records written in different orders are one type.
     Record(Vec<(String, Type)>),
-    /// The stream of lines from stdin. Not resolvable from a written annotation, so it can
-    /// never be a function's declared parameter or return type: the only way to get one is the
-    /// `lines` keyword itself, and the only thing that consumes one is `collect`.
-    Lines,
+    /// Effect-layer multiplicity: the entries arrive one at a time as evaluation proceeds, and
+    /// no stream object ever exists as a value (ADR 0001). Spellable in function signatures,
+    /// and only there -- the type grammar refuses it inside a Vec, a record, or another Stream
+    /// -- born at a source (`lines` is `Stream<Str>`), consumed exactly once per binding, and
+    /// exiting only through `collect`.
+    Stream(Box<Type>),
     /// A declared enum: nominal, so the name is the identity. The variants ride along so that
     /// every consumer of a `Type` -- printers, backends, input validation -- has them in hand
     /// without a registry beside the tree; a name determines its variants within a program, so
@@ -30,15 +32,15 @@ impl Type {
         }
     }
 
-    /// Whether `ty` could hold a `Lines` value anywhere inside it -- through a Vec, an Opt,
-    /// or a record field. `Lines` cannot be printed, so this is what the checker asks before
+    /// Whether `ty` could hold a stream anywhere inside it -- through a Vec, an Opt, or a
+    /// record field. A stream cannot be printed, so this is what the checker asks before
     /// letting a type become the program's final result.
-    pub fn contains_lines(&self) -> bool {
+    pub fn contains_stream(&self) -> bool {
         match self {
-            Type::Lines => true,
-            Type::Vec(t) | Type::Opt(t) => t.contains_lines(),
-            Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_lines()),
-            // A payload type is resolved from a written annotation, which cannot spell Lines.
+            Type::Stream(_) => true,
+            Type::Vec(t) | Type::Opt(t) => t.contains_stream(),
+            Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_stream()),
+            // A payload type is resolved from a written annotation, which cannot spell Stream.
             _ => false,
         }
     }
@@ -66,7 +68,7 @@ impl Type {
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Type::Lines => write!(f, "Lines"),
+            Type::Stream(t) => write!(f, "Stream<{t}>"),
             Type::Str => write!(f, "Str"),
             Type::Int => write!(f, "Int"),
             Type::Bool => write!(f, "Bool"),

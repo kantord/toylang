@@ -95,24 +95,14 @@ pub fn run_with_input(
     run_on(src, stdin, Backend::Lua)
 }
 
-/// Whether `backend`'s generated code for `program` reads `inputs` for itself, one record at a
-/// time, rather than needing the whole thing parsed and handed over up front. True only for a
-/// backend that has a fused loop to emit at all, and only for a program shaped so that loop
-/// applies (`tir::recognize_fusion`) -- an aggregate like `extent(inputs)` still has no way to
+/// Whether the generated code for `program` reads `inputs` for itself, one record at a time,
+/// rather than needing the whole thing parsed and handed over up front. A type question now,
+/// not a shape guess: exactly the programs `tir::fusion` reads from `inputs` -- every backend
+/// has a fused loop to emit. An aggregate like `extent(collect(inputs))` still has no way to
 /// stream no matter which backend runs it. Public so `main.rs` can decide, before it has read
 /// anything, whether to drain real stdin itself or hand it to `run_on` untouched.
-pub fn streams_inputs(program: &tir::Program, backend: Backend) -> bool {
-    matches!(
-        backend,
-        Backend::Jq
-            | Backend::Rust
-            | Backend::Py
-            | Backend::Go
-            | Backend::Js
-            | Backend::Lua
-            | Backend::Native
-    )
-        && tir::recognize_fusion(program).is_some()
+pub fn streams_inputs(program: &tir::Program) -> bool {
+    matches!(tir::fusion(program), Some(f) if f.source == tir::Source::Inputs)
 }
 
 /// Compile and run, capturing what the program printed -- except when `stdin` is `None` and
@@ -132,14 +122,14 @@ pub fn run_on(
     // supplied, which only happens on the real command line, never from a test fixture. Only
     // then is there real live stdin worth handing straight to a subprocess backend rather than
     // something already sitting in memory to validate up front.
-    let live_inputs = stdin.is_none() && streams_inputs(&program, backend);
+    let live_inputs = stdin.is_none() && streams_inputs(&program);
     // Lua is the one backend with no subprocess of its own: `run_lua` itself decides how
     // `inputs` reaches the running chunk, by injecting either a pre-populated global or a
     // per-call function, and the emitted source commits to one of those two shapes purely from
-    // `tir::recognize_fusion`, independent of whether a fixture or the real command line
-    // supplied the bytes. So unlike `live_inputs` above, this also has to hold for a fixture-fed
-    // test, or the host would inject the global while the fused source calls the function.
-    let lua_fused = matches!(backend, Backend::Lua) && streams_inputs(&program, backend);
+    // `tir::fusion`, independent of whether a fixture or the real command line supplied the
+    // bytes. So unlike `live_inputs` above, this also has to hold for a fixture-fed test, or
+    // the host would inject the global while the fused source calls the function.
+    let lua_fused = matches!(backend, Backend::Lua) && streams_inputs(&program);
 
     // The input is checked against the declared type once, here, rather than by each backend.
     // What a backend receives has already been parsed, so no backend re-decides what is valid.
@@ -158,7 +148,7 @@ pub fn run_on(
     // compact JSON value per line, rather than whatever formatting the original text happened to
     // use. `live_inputs` and `lua_fused` are the exceptions -- the backend's own generated code
     // (or, for Lua, the host function it calls into) reads and validates each record for itself
-    // there, which is what `tir::recognize_fusion` guarantees before `streams_inputs` says yes,
+    // there, which is what `tir::fusion` guarantees before `streams_inputs` says yes,
     // so there is nothing left for the host to precompute.
     let inputs_values = if live_inputs || lua_fused {
         None

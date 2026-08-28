@@ -1,0 +1,5 @@
+---
+source: tests/streams.rs
+expression: "err(\"fn f(s: Stream<Str>) -> Int = extent(collect(s)) + extent(collect(s))\\n\\n1\")"
+---
+`s` is a stream and must be consumed exactly once, not 2 times (at byte 30)

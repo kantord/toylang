@@ -143,7 +143,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         decls.push_str(&fused_main(program, &fusion));
     } else {
         if program.input.is_some() {
@@ -208,22 +208,26 @@ pub fn emit(program: &Program) -> String {
     out
 }
 
-/// A `jsonlines(f(inputs))` program, compiled as a loop reading one line at a time from `sys.
-/// stdin` (which iterates lazily) rather than the eager path's `[json.loads(_l) for _l in
-/// sys.stdin]`. `sys.stdout.buffer` is block-buffered whenever it is not a terminal, the same as
-/// the eager path already writes bytes rather than using `print` for, so the explicit `.flush()`
-/// after each line is what makes a record appear before the next one arrives rather than after
-/// the whole run ends.
+/// A stream-typed `jsonlines` program, compiled as a loop reading one entry at a time from
+/// `sys.stdin` (which iterates lazily) rather than the eager path's read-everything-first.
+/// `sys.stdout.buffer` is block-buffered whenever it is not a terminal, the same as the eager
+/// path already writes bytes rather than using `print` for, so the explicit `.flush()` after
+/// each line is what makes a record appear before the next one arrives rather than after the
+/// whole run ends.
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
-    let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
     let mut out = String::new();
     out.push_str("for _line in sys.stdin:\n");
     out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
-    out.push_str("    if _line.strip() == \"\":\n        continue\n");
-    out.push_str("    t_line = json.loads(_line)\n");
-
-    let mut current = "t_line".to_string();
-    let mut current_ty = elem_ty.clone();
+    let (mut current, mut current_ty) = match fusion.source {
+        tir::Source::Inputs => {
+            out.push_str("    if _line.strip() == \"\":\n        continue\n");
+            out.push_str("    t_line = json.loads(_line)\n");
+            let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+            ("t_line".to_string(), elem.clone())
+        }
+        // A raw line is already the element, blank ones included: `lines` keeps them.
+        tir::Source::Lines => ("_line".to_string(), Type::Str),
+    };
     for stage in &fusion.stages {
         match stage {
             tir::Stage::Map { param, body } => {
@@ -251,9 +255,9 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
 /// two JSON words have to be written out.
 fn show(ty: &Type, value: &str, depth: usize) -> String {
     match ty {
-        // The checker refuses a program whose result contains Lines, since there is nothing to
+        // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
-        Type::Lines => unreachable!("Lines cannot reach the printer"),
+        Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Str => format!("tl_quote({value})"),
         Type::Int => format!("str({value})"),
         Type::Bool => format!("(\"true\" if {value} else \"false\")"),
@@ -334,9 +338,9 @@ fn expr(t: &Tir) -> String {
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
         Kind::Inputs => INPUTS.to_string(),
-        // `lines` has no value of its own -- it is a promise that the real stdin has not been
-        // read yet, made good only by `collect`. `None` is never actually inspected.
-        Kind::Lines => "None".to_string(),
+        // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
+        // works on the Vec of its entries. Fusion is what will remove this materialization.
+        Kind::Lines => "tl_collect_lines()".to_string(),
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
@@ -375,11 +379,12 @@ fn expr(t: &Tir) -> String {
             Builtin::IntToStr => format!("str({})", expr(arg)),
             Builtin::Range => format!("tl_range({})", expr(arg)),
             Builtin::JsonLines => {
-                let elem = arg.ty.elem().expect("checked to be a Vec");
+                let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 let e = "e0".to_string();
                 format!("tl_jsonlines({}, lambda {e}: {})", expr(arg), show(elem, &e, 1))
             }
-            Builtin::Collect => "tl_collect_lines()".to_string(),
+            // The source already materialized, so the exit has nothing left to do.
+            Builtin::Collect => expr(arg),
             Builtin::Extent => format!("len({})", expr(arg)),
             Builtin::Tail => format!("tl_tail({})", expr(arg)),
             Builtin::Concat => format!("tl_vec_concat({})", expr(arg)),

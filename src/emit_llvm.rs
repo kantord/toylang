@@ -57,6 +57,7 @@ struct Runtime<'ctx> {
     read_input: FunctionValue<'ctx>,
     read_inputs: FunctionValue<'ctx>,
     read_one_input: FunctionValue<'ctx>,
+    read_one_line: FunctionValue<'ctx>,
     rec_from_vec: FunctionValue<'ctx>,
     at: FunctionValue<'ctx>,
     opt_is_some: FunctionValue<'ctx>,
@@ -196,6 +197,11 @@ impl<'ctx> Emitter<'ctx> {
                 i32t.fn_type(&[ptr.into(), ptr.into()], false),
                 None,
             ),
+            read_one_line: module.add_function(
+                "tl_read_one_line",
+                i32t.fn_type(&[ptr.into()], false),
+                None,
+            ),
             rec_from_vec: module.add_function(
                 "tl_rec_from_vec",
                 ptr.fn_type(&[ptr.into(), i64t.into()], false),
@@ -252,10 +258,9 @@ impl<'ctx> Emitter<'ctx> {
 
     fn llvm_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, String> {
         Ok(match ty {
-            // Proven unreachable by the checker: Lines cannot be a function's parameter or
-            // return type (unspellable in an annotation), cannot enter a Vec or a record, and a
-            // Cond branch typed Lines would need `lines` written twice, which is refused.
-            Type::Lines => unreachable!("Lines never reaches llvm_type"),
+            // Materialized eagerly as the Vec of its entries, so it is the same pointer a Vec
+            // is. Fusion is what will remove this materialization.
+            Type::Stream(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Int => self.ctx.i64_type().into(),
             Type::Bool => self.ctx.bool_type().into(),
@@ -279,9 +284,9 @@ impl<'ctx> Emitter<'ctx> {
     /// the program declared. See the grammar in runtime/toylang.c.
     fn descriptor(ty: &Type) -> String {
         match ty {
-            // Lines is unspellable in a type annotation, so `input`'s declared type -- the only
+            // Stream is unspellable in a type annotation, so `input`'s declared type -- the only
             // thing this function is ever called on -- can never contain one.
-            Type::Lines => unreachable!("Lines cannot be declared, so input never has one"),
+            Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
             Type::Str => "s".to_string(),
             Type::Int => "i".to_string(),
             Type::Bool => "b".to_string(),
@@ -375,9 +380,7 @@ impl<'ctx> Emitter<'ctx> {
     fn to_slot(&self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<IntValue<'ctx>, String> {
         let i64t = self.ctx.i64_type();
         Ok(match ty {
-            // Proven unreachable the same way as llvm_type: nothing can put a Lines value where
-            // to_slot would be asked to pack one.
-            Type::Lines => unreachable!("Lines never reaches to_slot"),
+            Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Int => value.into_int_value(),
             Type::Bool => self
                 .builder
@@ -398,7 +401,7 @@ impl<'ctx> Emitter<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr = self.ctx.ptr_type(AddressSpace::default());
         Ok(match ty {
-            Type::Lines => unreachable!("Lines never reaches read_slot"),
+            Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Int => slot.into(),
             Type::Bool => self
                 .builder
@@ -518,14 +521,11 @@ impl<'ctx> Emitter<'ctx> {
         body: &Tir,
         result: &Type,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let elem_ty = source
-            .ty
-            .elem()
-            .ok_or_else(|| "map over something that is not a Vec".to_string())?
+        let elem_ty = crate::tir::runtime_elem(&source.ty)
+            .ok_or_else(|| "map over something that has no dimension".to_string())?
             .clone();
-        let out_elem = result
-            .elem()
-            .ok_or_else(|| "map did not produce a Vec".to_string())?
+        let out_elem = crate::tir::runtime_elem(result)
+            .ok_or_else(|| "map did not produce a dimension".to_string())?
             .clone();
 
         let i64t = self.ctx.i64_type();
@@ -593,10 +593,8 @@ impl<'ctx> Emitter<'ctx> {
         param: LocalId,
         pred: &Tir,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let elem_ty = source
-            .ty
-            .elem()
-            .ok_or_else(|| "select on something that is not a Vec".to_string())?
+        let elem_ty = crate::tir::runtime_elem(&source.ty)
+            .ok_or_else(|| "select on something that has no dimension".to_string())?
             .clone();
 
         let src = self.expr(source)?.into_pointer_value();
@@ -696,7 +694,7 @@ impl<'ctx> Emitter<'ctx> {
                 self.read_slot(slot, result)
             }
 
-            Type::Vec(elem) if matches!(**elem, Type::Record(_)) => {
+            Type::Vec(elem) | Type::Stream(elem) if matches!(**elem, Type::Record(_)) => {
                 let Type::Record(fields) = &**elem else { unreachable!("guarded") };
                 let index = fields
                     .iter()
@@ -754,10 +752,9 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             // A Vec of Vecs: one result per element, so the layer has to be walked.
-            Type::Vec(elem) => {
-                let inner_result = result
-                    .elem()
-                    .ok_or_else(|| "field access on a Vec did not yield a Vec".to_string())?
+            Type::Vec(elem) | Type::Stream(elem) => {
+                let inner_result = crate::tir::runtime_elem(result)
+                    .ok_or_else(|| "field access on a dimension did not keep it".to_string())?
                     .clone();
                 let elem_ty = (**elem).clone();
                 let src = value.into_pointer_value();
@@ -843,9 +840,9 @@ impl<'ctx> Emitter<'ctx> {
 
     fn show(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match ty {
-            // The checker refuses a program whose result contains Lines, since there is
+            // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
-            Type::Lines => unreachable!("Lines cannot reach the printer"),
+            Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
             Type::Int => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
             Type::Bool => {
@@ -1159,9 +1156,9 @@ impl<'ctx> Emitter<'ctx> {
 
             Kind::Map { source, param, body } => self.map(source, *param, body, &t.ty)?,
 
-            // No value to speak of: a promise that the real stdin has not been read yet, made
-            // good only by collect. The constant is never actually inspected.
-            Kind::Lines => self.ctx.i64_type().const_zero().into(),
+            // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
+            // works on the Vec of its entries.
+            Kind::Lines => self.call_rt(self.rt.collect_lines, &[], "lines")?,
 
             Kind::Input => {
                 let descriptor = self.string_const(&Self::descriptor(&t.ty));
@@ -1174,7 +1171,7 @@ impl<'ctx> Emitter<'ctx> {
             // Already a proper Vec pointer, unlike Input's raw slot: tl_read_inputs assembles
             // it itself, so there is nothing here for read_slot to unpack.
             Kind::Inputs => {
-                let elem = t.ty.elem().expect("checked to be Vec<T>");
+                let elem = crate::tir::runtime_elem(&t.ty).expect("checked to be Vec<T> or Stream<T>");
                 let descriptor = self.string_const(&Self::descriptor(elem));
                 self.call_rt(self.rt.read_inputs, &[descriptor.into()], "inputs")?
             }
@@ -1224,7 +1221,7 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Kind::Builtin { which, arg } => {
-                let elem_ty = arg.ty.elem().cloned();
+                let elem_ty = crate::tir::runtime_elem(&arg.ty).cloned();
                 let arg = self.expr(arg)?;
                 match which {
                     Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,
@@ -1233,10 +1230,8 @@ impl<'ctx> Emitter<'ctx> {
                         let elem = elem_ty.expect("checked to be a Vec");
                         self.join_shown(arg, &elem, "", "\n", "")?
                     }
-                    // `arg` is ignored: it is always Lines, directly or through a local bound
-                    // to it, and there is only ever one real stdin, so nothing about the
-                    // argument's value could change what this reads.
-                    Builtin::Collect => self.call_rt(self.rt.collect_lines, &[], "lines")?,
+                    // The source already materialized, so the exit has nothing left to do.
+                    Builtin::Collect => arg,
                     // Already tracked on the Vec header; nothing to compute.
                     Builtin::Extent => self.call_rt(self.rt.vec_len, &[arg], "extent")?,
                     Builtin::Tail => self.call_rt(self.rt.vec_tail, &[arg], "tail")?,
@@ -1502,7 +1497,8 @@ impl<'ctx> Emitter<'ctx> {
             .into())
     }
 
-    /// A `jsonlines(f(inputs))` program, compiled as a loop over `tl_read_one_input` instead of
+    /// A stream-typed `jsonlines` program, compiled as a loop over `tl_read_one_input` (or, for
+    /// a `lines` source, `tl_read_one_line`) instead of
     /// `self.expr(&program.body)` + one `print` at the end. `tl_print` already writes with a raw
     /// `write(1, ...)` syscall and needs no explicit flush, unlike every other backend that had
     /// to add one -- the one backend with no libc stdio buffering to fight.
@@ -1512,11 +1508,14 @@ impl<'ctx> Emitter<'ctx> {
     /// cursor into an existing Vec's columns does not apply here, since there is no Vec -- each
     /// record arrives as its own one-off parsed value, exactly like `input` already is.
     fn fused_main(&mut self, program: &Program, fusion: &Fusion<'_>) -> Result<(), String> {
-        let elem_ty = program
-            .inputs
-            .as_ref()
-            .ok_or("fusion only matches an `inputs` source")?
-            .clone();
+        let elem_ty = match fusion.source {
+            crate::tir::Source::Inputs => program
+                .inputs
+                .as_ref()
+                .ok_or("an inputs source recorded its element")?
+                .clone(),
+            crate::tir::Source::Lines => Type::Str,
+        };
         let function = self
             .builder
             .get_insert_block()
@@ -1525,7 +1524,6 @@ impl<'ctx> Emitter<'ctx> {
 
         let i64t = self.ctx.i64_type();
         let i32t = self.ctx.i32_type();
-        let descriptor = self.string_const(&Self::descriptor(&elem_ty));
         let out_slot = self.builder.build_alloca(i64t, "next_input").map_err(|e| e.to_string())?;
 
         let cond = self.ctx.append_basic_block(function, "fused.cond");
@@ -1535,9 +1533,20 @@ impl<'ctx> Emitter<'ctx> {
         self.builder.build_unconditional_branch(cond).map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(cond);
-        let got = self
-            .call_rt(self.rt.read_one_input, &[descriptor.into(), out_slot.into()], "got")?
-            .into_int_value();
+        let got = match fusion.source {
+            crate::tir::Source::Inputs => {
+                let descriptor = self.string_const(&Self::descriptor(&elem_ty));
+                self.call_rt(
+                    self.rt.read_one_input,
+                    &[descriptor.into(), out_slot.into()],
+                    "got",
+                )?
+            }
+            crate::tir::Source::Lines => {
+                self.call_rt(self.rt.read_one_line, &[out_slot.into()], "got")?
+            }
+        }
+        .into_int_value();
         let has_more = self
             .builder
             .build_int_compare(IntPredicate::NE, got, i32t.const_zero(), "has_more")
@@ -1615,7 +1624,7 @@ fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'c
     e.params.clear();
     e.locals.clear();
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         e.fused_main(program, &fusion)?;
     } else {
         let body = e.expr(&program.body)?;

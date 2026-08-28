@@ -1,0 +1,5 @@
+---
+source: tests/streams.rs
+expression: "err(\"fn f(s: Stream<Stream<Str>>) -> Int = 0\\n\\n1\")"
+---
+a Stream cannot hold another stream; there is nothing it could yield (at byte 15)

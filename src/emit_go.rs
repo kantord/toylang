@@ -277,7 +277,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         decls.push_str(&e.fused_main(program, &fusion));
     } else {
         decls.push_str("func main() {\n");
@@ -313,7 +313,7 @@ pub fn emit(program: &Program) -> String {
     let uses = |name: &str| decls.contains(name);
     let unwrap = uses("tlUnwrap(");
     let arith = uses("tlDiv(") || uses("tlRem(");
-    let collect = uses("tlCollectLines(");
+    let collect = uses("tlCollectLines(") || uses("tlScanLines");
     let fail = unwrap || arith || program.input.is_some() || program.inputs.is_some();
     let quote = uses("tlQuote(");
     let join = uses("tlJoin(");
@@ -387,8 +387,8 @@ pub fn emit(program: &Program) -> String {
 fn has_scalar(ty: &Type) -> bool {
     match ty {
         // Only ever called on the program's own result type, which the checker guarantees is
-        // never Lines and never contains one.
-        Type::Lines => unreachable!("Lines cannot reach has_scalar"),
+        // never a stream and never contains one.
+        Type::Stream(_) => unreachable!("a stream cannot reach has_scalar"),
         Type::Int | Type::Bool => true,
         Type::Str => false,
         Type::Vec(t) | Type::Opt(t) => has_scalar(t),
@@ -421,7 +421,7 @@ struct Collect<'a> {
 impl Collect<'_> {
     fn ty(&mut self, t: &Type) {
         match t {
-            Type::Vec(e) | Type::Opt(e) => self.ty(e),
+            Type::Vec(e) | Type::Opt(e) | Type::Stream(e) => self.ty(e),
             Type::Record(fields) => {
                 if !self.records.contains(t) {
                     self.records.push(t.clone());
@@ -501,7 +501,7 @@ impl Collect<'_> {
                     Builtin::IntToStr => self.used.itoa = true,
                     Builtin::JsonLines => {
                         self.used.jsonlines = true;
-                        let elem = arg.ty.elem().expect("checked to be a Vec");
+                        let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                         self.used.jsonlines_has_scalar |= has_scalar(elem);
                     }
                     // Purely textually gated below, like tlAt and tlRange: nothing here needs
@@ -537,9 +537,9 @@ impl Emitter {
             Type::Bool => "bool".to_string(),
             Type::Vec(e) => format!("[]{}", self.go_type(e)),
             Type::Opt(e) => format!("tlOpt[{}]", self.go_type(e)),
-            // A phantom marker: Go still needs a real type for the closure-based Bind pattern
-            // to name, even though no value of it is ever read.
-            Type::Lines => "struct{}".to_string(),
+            // Materialized eagerly as the slice of its entries, so it is a slice here too.
+            // Fusion is what will remove this materialization.
+            Type::Stream(e) => format!("[]{}", self.go_type(e)),
             Type::Record(_) => {
                 let key = ty.to_string();
                 let i = self
@@ -621,18 +621,30 @@ impl Emitter {
     /// local at compile time -- a `select` whose predicate is the only use, or a `map` whose body
     /// ignores its argument entirely, would otherwise fail to build only in the fused case.
     fn fused_main(&self, program: &Program, fusion: &tir::Fusion) -> String {
-        let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
         let mut out = String::new();
         out.push_str("func main() {\n");
-        out.push_str("\tdec := json.NewDecoder(os.Stdin)\n");
-        out.push_str("\tfor {\n");
-        out.push_str(&format!("\t\tvar t_line {}\n", self.go_type(elem_ty)));
-        out.push_str(
-            "\t\tif err := dec.Decode(&t_line); err != nil {\n\t\t\tif err == io.EOF {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\ttlFail(err.Error())\n\t\t}\n",
-        );
-
-        let mut current = "t_line".to_string();
-        let mut current_ty = elem_ty.clone();
+        let (mut current, mut current_ty) = match fusion.source {
+            tir::Source::Inputs => {
+                let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+                out.push_str("\tdec := json.NewDecoder(os.Stdin)\n");
+                out.push_str("\tfor {\n");
+                out.push_str(&format!("\t\tvar t_line {}\n", self.go_type(elem)));
+                out.push_str(
+                    "\t\tif err := dec.Decode(&t_line); err != nil {\n\t\t\tif err == io.EOF {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\ttlFail(err.Error())\n\t\t}\n",
+                );
+                ("t_line".to_string(), elem.clone())
+            }
+            // The same scanner the eager collect helper uses, one line per Scan; a raw line is
+            // already the element, blank ones included.
+            tir::Source::Lines => {
+                out.push_str("\ts := bufio.NewScanner(os.Stdin)\n");
+                out.push_str("\ts.Buffer(make([]byte, 0, 65536), 1024*1024)\n");
+                out.push_str("\ts.Split(tlScanLines)\n");
+                out.push_str("\tfor s.Scan() {\n");
+                out.push_str("\t\tt_line := s.Text()\n");
+                ("t_line".to_string(), Type::Str)
+            }
+        };
         for stage in &fusion.stages {
             match stage {
                 tir::Stage::Map { param, body } => {
@@ -682,8 +694,8 @@ impl Emitter {
         if depth == 0 {
             return leaf(value);
         }
-        let elem = value_ty.elem().expect("a dimension to distribute over");
-        let result_elem = result_ty.elem().expect("the result keeps the dimension");
+        let elem = tir::runtime_elem(value_ty).expect("a dimension to distribute over");
+        let result_elem = tir::runtime_elem(result_ty).expect("the result keeps the dimension");
         let var = format!("m{depth}");
         format!(
             "tlMap({value}, func({var} {}) {} {{ return {} }})",
@@ -701,9 +713,9 @@ impl Emitter {
             Kind::Local(id) => self.local(*id),
             Kind::Input => INPUT.to_string(),
             Kind::Inputs => INPUTS.to_string(),
-        // `lines` has no value of its own -- it is a promise that the real stdin has not been
-        // read yet, made good only by `collect`. The empty struct is never actually inspected.
-        Kind::Lines => "struct{}{}".to_string(),
+            // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
+            // works on the slice of its entries.
+            Kind::Lines => "tlCollectLines()".to_string(),
             // go_type resolves the struct name, and the collector registered it because a
             // record literal carries its own record type.
             Kind::RecordLit { fields } => {
@@ -759,7 +771,7 @@ impl Emitter {
                 Builtin::IntToStr => format!("strconv.FormatInt(int64({}), 10)", self.expr(arg)),
                 Builtin::Range => format!("tlRange({})", self.expr(arg)),
                 Builtin::JsonLines => {
-                    let elem = arg.ty.elem().expect("checked to be a Vec");
+                    let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                     let e = "e0".to_string();
                     format!(
                         "tlJsonlines({}, func({e} {}) string {{ return {} }})",
@@ -768,7 +780,8 @@ impl Emitter {
                         self.show(elem, &e, 1)
                     )
                 }
-                Builtin::Collect => "tlCollectLines()".to_string(),
+                // The source already materialized, so the exit has nothing left to do.
+                Builtin::Collect => self.expr(arg),
                 Builtin::Extent => format!("int32(len({}))", self.expr(arg)),
                 Builtin::Tail => format!("tlTail({})", self.expr(arg)),
                 Builtin::Concat => format!("tlConcat({})", self.expr(arg)),
@@ -788,7 +801,7 @@ impl Emitter {
                 "tlMap({}, func({} {}) {} {{ return {} }})",
                 self.expr(source),
                 self.local(*param),
-                self.go_type(source.ty.elem().expect("map runs over a Vec")),
+                self.go_type(tir::runtime_elem(&source.ty).expect("map runs over a dimension")),
                 self.go_type(&body.ty),
                 self.expr(body)
             ),
@@ -796,7 +809,7 @@ impl Emitter {
                 "tlSelect({}, func({} {}) bool {{ return {} }})",
                 self.expr(source),
                 self.local(*param),
-                self.go_type(source.ty.elem().expect("select runs over a Vec")),
+                self.go_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
                 self.expr(pred)
             ),
             Kind::Field { base, name } => {
@@ -857,9 +870,9 @@ impl Emitter {
     /// backend. Here there is no choice at all: a Go value cannot be asked what it is.
     fn show(&self, ty: &Type, value: &str, depth: usize) -> String {
         match ty {
-            // The checker refuses a program whose result contains Lines, since there is
+            // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
-            Type::Lines => unreachable!("Lines cannot reach the printer"),
+            Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Str => format!("tlQuote({value})"),
             Type::Int => format!("strconv.FormatInt(int64({value}), 10)"),
             Type::Bool => format!("strconv.FormatBool({value})"),

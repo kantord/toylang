@@ -1,0 +1,5 @@
+---
+source: tests/streams.rs
+expression: "err(\"fn g(x: Vec<Int>) -> Int = extent(x)\\n\\ng(inputs)\")"
+---
+`inputs` is a stream, but Vec<Int> is wanted here; eager use is spelled `collect(inputs)` (at byte 40)

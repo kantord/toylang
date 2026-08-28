@@ -1,0 +1,19 @@
+# jsonlines over a lines-sourced pipeline: the elements are raw lines, so the sink prints each
+# as a JSON string. A shape the old recognizer never knew (it demanded an `inputs` base), fused
+# now that fusion reads types; tests/streaming.rs is what proves the fusion, output is what
+# this pins.
+program: |
+  fn shout(names: Stream<Str>) -> Stream<Str> =
+      names | map(. + "!")
+
+  jsonlines(shout(lines))
+
+input: |
+  ada
+  bo
+
+output: |
+  "ada!"
+  "bo!"
+
+node_types: [application, builtin.jsonlines, concat, lines, local, map-over, pipe, str, var]

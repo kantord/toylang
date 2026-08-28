@@ -1,0 +1,5 @@
+---
+source: tests/jsonlines.rs
+expression: "err(\"jsonlines([jsonlines([1])])\")"
+---
+`jsonlines` is a sink, legal only as the program's outermost expression (at byte 11)

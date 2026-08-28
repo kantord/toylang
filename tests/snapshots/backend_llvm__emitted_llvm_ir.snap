@@ -1,5 +1,6 @@
 ---
 source: tests/backend_llvm.rs
+assertion_line: 55
 expression: "toylang::emit_llvm::to_ir(&program).unwrap()"
 ---
 ; ModuleID = 'toylang'
@@ -51,6 +52,8 @@ declare i64 @tl_read_input(ptr)
 declare ptr @tl_read_inputs(ptr)
 
 declare i32 @tl_read_one_input(ptr, ptr)
+
+declare i32 @tl_read_one_line(ptr)
 
 declare ptr @tl_rec_from_vec(ptr, i64)
 

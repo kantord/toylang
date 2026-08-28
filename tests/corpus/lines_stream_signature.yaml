@@ -1,0 +1,20 @@
+# A user-written stream-signature function, checked end to end: select, map, and projection
+# all accept the Stream subject and yield a Stream back, so the whole pipeline lives in the
+# effect layer until collect. Eagerly lowered on every backend for now -- output is what the
+# corpus can check; fusion is step 5's business.
+program: |
+  fn shout(names: Stream<Str>) -> Stream<Str> =
+      names | select(. != "bo") | map {who: . + "!"} | .[].who
+
+  unlines(collect(shout(lines)))
+
+input: |
+  ada
+  bo
+  cy
+
+output: |
+  ada!
+  cy!
+
+node_types: [application, builtin.collect, builtin.extent, builtin.tail, compare.eq, compare.ne, concat, conditional, int, lines, local, map-over, pipe, projection, record-literal, selection.collapse, selection.narrow, str, unwrap, var]

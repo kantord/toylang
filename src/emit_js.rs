@@ -145,7 +145,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         out.push_str(&fused_main(program, &fusion));
         return out;
     }
@@ -171,8 +171,8 @@ pub fn emit(program: &Program) -> String {
     out
 }
 
-/// A `jsonlines(f(inputs))` program, compiled as a loop reading one line at a time off the real
-/// fd rather than `readFileSync(0)`'s read-everything-first.
+/// A stream-typed `jsonlines` program, compiled as a loop reading one line at a time off the
+/// real fd rather than `readFileSync(0)`'s read-everything-first.
 ///
 /// `process.stdout.write` is synchronous to a file or TTY on POSIX but asynchronous to a pipe --
 /// queued rather than issued immediately -- and the very next thing this loop does is a
@@ -180,7 +180,6 @@ pub fn emit(program: &Program) -> String {
 /// ever reaching the pipe before the process blocks again. `tests/streaming.rs`'s `js_streams`
 /// checks this directly against a live pipe rather than assuming either way.
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
-    let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
     let mut out = String::new();
     out.push_str("let tl_stdin_buf = \"\";\n");
     out.push_str("let tl_stdin_eof = false;\n");
@@ -209,11 +208,16 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     out.push_str("for (;;) {\n");
     out.push_str("  const t_line_raw = tl_read_line();\n");
     out.push_str("  if (t_line_raw === null) break;\n");
-    out.push_str("  if (t_line_raw.length === 0) continue;\n");
-    out.push_str("  const t_line = JSON.parse(t_line_raw);\n");
-
-    let mut current = "t_line".to_string();
-    let mut current_ty = elem_ty.clone();
+    let (mut current, mut current_ty) = match fusion.source {
+        tir::Source::Inputs => {
+            out.push_str("  if (t_line_raw.length === 0) continue;\n");
+            out.push_str("  const t_line = JSON.parse(t_line_raw);\n");
+            let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+            ("t_line".to_string(), elem.clone())
+        }
+        // A raw line is already the element, blank ones included: `lines` keeps them.
+        tir::Source::Lines => ("t_line_raw".to_string(), Type::Str),
+    };
     for stage in &fusion.stages {
         match stage {
             tir::Stage::Map { param, body } => {
@@ -239,9 +243,9 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
 /// native backend will have to do anyway, having no runtime type information at all.
 fn show(ty: &Type, value: &str, depth: usize) -> String {
     match ty {
-        // The checker refuses a program whose result contains Lines, since there is nothing to
+        // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
-        Type::Lines => unreachable!("Lines cannot reach the printer"),
+        Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Str => format!("JSON.stringify({value})"),
         Type::Int | Type::Bool => format!("String({value})"),
         Type::Vec(elem) => {
@@ -354,8 +358,9 @@ fn used_helpers(program: &Program) -> Helpers {
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
-            | Kind::Inputs
-            | Kind::Lines => {}
+            | Kind::Inputs => {}
+            // The source is what reads stdin now, so it is what needs the helper.
+            Kind::Lines => used.collect = true,
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -388,7 +393,6 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
             }
             Kind::Builtin { which, arg } => {
-                used.collect |= *which == Builtin::Collect;
                 used.jsonlines |= *which == Builtin::JsonLines;
                 used.tail |= *which == Builtin::Tail;
                 walk(arg, used);
@@ -432,9 +436,9 @@ fn expr(t: &Tir) -> String {
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
         Kind::Inputs => INPUTS.to_string(),
-        // `lines` has no value of its own -- it is a promise that the real stdin has not been
-        // read yet, made good only by `collect`. `undefined` is never actually inspected.
-        Kind::Lines => "undefined".to_string(),
+        // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
+        // works on the array of its entries. Fusion is what will remove this materialization.
+        Kind::Lines => "tl_collect_lines()".to_string(),
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
@@ -477,11 +481,12 @@ fn expr(t: &Tir) -> String {
                 format!("Array.from({{ length: Math.max(0, {}) }}, (_, i) => i)", expr(arg))
             }
             Builtin::JsonLines => {
-                let elem = arg.ty.elem().expect("checked to be a Vec");
+                let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 let e = "e0".to_string();
                 format!("tl_jsonlines({}, ({e}) => {})", expr(arg), show(elem, &e, 1))
             }
-            Builtin::Collect => "tl_collect_lines()".to_string(),
+            // The source already materialized, so the exit has nothing left to do.
+            Builtin::Collect => expr(arg),
             Builtin::Extent => format!("{}.length", expr(arg)),
             Builtin::Tail => format!("tl_tail({})", expr(arg)),
             Builtin::Concat => format!("{}.flat()", expr(arg)),

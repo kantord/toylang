@@ -454,7 +454,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         decls.push_str(&e.fused_main(program, &fusion));
     } else {
         decls.push_str("fn main() {\n");
@@ -491,7 +491,8 @@ pub fn emit(program: &Program) -> String {
         || uses("tl_at(")
         || uses("tl_tail(")
         || uses("tl_range(")
-        || uses("tl_read_all_stdin(");
+        || uses("tl_read_all_stdin(")
+        || uses("tl_fail(");
 
     let mut helpers = String::new();
     for (on, text) in [
@@ -542,7 +543,7 @@ struct Collect<'a> {
 impl Collect<'_> {
     fn ty(&mut self, t: &Type) {
         match t {
-            Type::Vec(e) | Type::Opt(e) => self.ty(e),
+            Type::Vec(e) | Type::Opt(e) | Type::Stream(e) => self.ty(e),
             Type::Record(fields) => {
                 if !self.records.contains(t) {
                     self.records.push(t.clone());
@@ -662,9 +663,9 @@ impl Emitter {
             Type::Bool => "bool".to_string(),
             Type::Vec(e) => format!("Vec<{}>", self.rs_type(e)),
             Type::Opt(e) => format!("Option<{}>", self.rs_type(e)),
-            // Never a function's declared parameter or return type -- unspellable in an
-            // annotation, so this is never asked to name a real value.
-            Type::Lines => "()".to_string(),
+            // Materialized eagerly as the Vec of its entries, so it is a Vec here too.
+            // Fusion is what will remove this materialization.
+            Type::Stream(e) => format!("Vec<{}>", self.rs_type(e)),
             Type::Record(_) => format!("TlRec{}", self.record_index(ty)),
             // The enum's own name is the identity and is unique, so it names the Rust enum too.
             Type::Enum { name, .. } => format!("TlE_{name}"),
@@ -684,7 +685,7 @@ impl Emitter {
                 self.parser_expr(e)
             ),
             Type::Opt(_) => unreachable!("Opt cannot be declared, so input never has one"),
-            Type::Lines => unreachable!("Lines cannot be declared, so input never has one"),
+            Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
             Type::Enum { .. } => format!("tl_parse_enum{}", self.enum_index(ty)),
             Type::Record(_) => format!("tl_parse_rec{}", self.record_index(ty)),
         }
@@ -770,14 +771,13 @@ impl Emitter {
         out
     }
 
-    /// A `jsonlines(f(inputs))` program, compiled as a loop that reads one line, runs it through
+    /// A stream-typed `jsonlines` program, compiled as a loop that reads one line, runs it through
     /// `fusion`'s stages, and prints it, rather than the eager path's read-everything-then-print.
     /// `read_line` (not `tl_read_lines`) and an explicit `flush()` are both load-bearing: Rust's
     /// stdout is fully buffered rather than line-buffered whenever it is not a terminal, which is
     /// exactly the case piping into another process needs, and buffering the whole run would
     /// defeat the one thing this loop exists for.
     fn fused_main(&self, program: &Program, fusion: &tir::Fusion) -> String {
-        let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
         let mut out = String::new();
         out.push_str("fn main() {\n");
         out.push_str("    use std::io::{BufRead, Write};\n");
@@ -793,15 +793,23 @@ impl Emitter {
         );
         out.push_str("        if n == 0 { break; }\n");
         out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
-        out.push_str("        if line.trim().is_empty() { continue; }\n");
-        out.push_str(&format!(
-            "        let t_line: {} = tl_parse_line(&line, {});\n",
-            self.rs_type(elem_ty),
-            self.parser_expr(elem_ty)
-        ));
-
-        let mut current = "t_line".to_string();
-        let mut current_ty = elem_ty.clone();
+        let (mut current, mut current_ty) = match fusion.source {
+            tir::Source::Inputs => {
+                let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+                out.push_str("        if line.trim().is_empty() { continue; }\n");
+                out.push_str(&format!(
+                    "        let t_line: {} = tl_parse_line(&line, {});\n",
+                    self.rs_type(elem),
+                    self.parser_expr(elem)
+                ));
+                ("t_line".to_string(), elem.clone())
+            }
+            // A raw line is already the element, blank ones included: `lines` keeps them.
+            tir::Source::Lines => {
+                out.push_str("        let t_line: String = line.clone();\n");
+                ("t_line".to_string(), Type::Str)
+            }
+        };
         for stage in &fusion.stages {
             match stage {
                 tir::Stage::Map { param, body } => {
@@ -847,8 +855,8 @@ impl Emitter {
         if depth == 0 {
             return leaf(value);
         }
-        let elem = value_ty.elem().expect("a dimension to distribute over");
-        let result_elem = result_ty.elem().expect("the result keeps the dimension");
+        let elem = tir::runtime_elem(value_ty).expect("a dimension to distribute over");
+        let result_elem = tir::runtime_elem(result_ty).expect("the result keeps the dimension");
         let var = format!("m{depth}");
         format!(
             "{value}.iter().map(|{var}: &{}| -> {} {{ {} }}).collect::<Vec<_>>()",
@@ -866,9 +874,9 @@ impl Emitter {
             Kind::Local(id) => format!("{}.clone()", self.local(*id)),
             Kind::Input => format!("{INPUT}.clone()"),
             Kind::Inputs => format!("{INPUTS}.clone()"),
-            // No value of its own -- a promise that the real stdin has not been read yet, made
-            // good only by `collect`. `()` is never actually inspected.
-            Kind::Lines => "()".to_string(),
+            // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
+            // works on the Vec of its entries.
+            Kind::Lines => "tl_read_lines()".to_string(),
             Kind::RecordLit { fields } => {
                 let parts: Vec<String> = fields
                     .iter()
@@ -906,7 +914,7 @@ impl Emitter {
                 Builtin::IntToStr => format!("({}).to_string()", self.expr(arg)),
                 Builtin::Range => format!("tl_range({})", self.expr(arg)),
                 Builtin::JsonLines => {
-                    let elem = arg.ty.elem().expect("checked to be a Vec");
+                    let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                     let e = "e0".to_string();
                     format!(
                         "tl_jsonlines(&{}, |{e}: &{}| -> String {{ {} }})",
@@ -915,7 +923,8 @@ impl Emitter {
                         self.show(elem, &format!("{e}.clone()"), 1)
                     )
                 }
-                Builtin::Collect => "tl_read_lines()".to_string(),
+                // The source already materialized, so the exit has nothing left to do.
+                Builtin::Collect => self.expr(arg),
                 Builtin::Extent => format!("(({}).len() as i32)", self.expr(arg)),
                 Builtin::Tail => format!("tl_tail(&{})", self.expr(arg)),
                 Builtin::Concat => format!("tl_concat(&{})", self.expr(arg)),
@@ -939,7 +948,7 @@ impl Emitter {
                 "{}.iter().map(|{}: &{}| -> {} {{ {} }}).collect::<Vec<_>>()",
                 self.expr(source),
                 self.local(*param),
-                self.rs_type(source.ty.elem().expect("map runs over a Vec")),
+                self.rs_type(tir::runtime_elem(&source.ty).expect("map runs over a dimension")),
                 self.rs_type(&body.ty),
                 self.expr(body)
             ),
@@ -951,7 +960,7 @@ impl Emitter {
                 "{}.iter().cloned().filter(|{}: &{}| -> bool {{ {} }}).collect::<Vec<_>>()",
                 self.expr(source),
                 self.local(*param),
-                self.rs_type(source.ty.elem().expect("select runs over a Vec")),
+                self.rs_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
                 self.expr(pred)
             ),
             Kind::Field { base, name } => {
@@ -1015,7 +1024,7 @@ impl Emitter {
     /// Go one can.
     fn show(&self, ty: &Type, value: &str, depth: usize) -> String {
         match ty {
-            Type::Lines => unreachable!("Lines cannot reach the printer"),
+            Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Str => format!("tl_quote(&{value})"),
             Type::Int => format!("({value}).to_string()"),
             Type::Bool => format!("({value}).to_string()"),

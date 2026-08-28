@@ -80,7 +80,7 @@ fn run(src: &str, backend: Backend) -> Result<String, Box<dyn std::error::Error>
     // before `run_on` can validate it.
     let program = toylang::compile(src)?;
     let needs_upfront_read = program.input.is_some()
-        || (program.inputs.is_some() && !toylang::streams_inputs(&program, backend));
+        || (program.inputs.is_some() && !toylang::streams_inputs(&program));
     if !needs_upfront_read {
         return toylang::run_on(src, None, backend);
     }
