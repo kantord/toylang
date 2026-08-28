@@ -23,7 +23,8 @@ The declarations are [type aliases](../types/alias.md), [enums](../types/enum.md
 file.
 
 How the value prints: a top-level `Str` prints raw; everything else prints as compact JSON,
-with record fields in sorted order. A program whose outermost expression is the
+with record fields in the order their type declares them. A program whose outermost
+expression is the
 [`jsonlines`](../builtins/jsonlines.md) sink prints line by line instead and has no value.
 
 Name casing is a rule, not a convention: a capitalized name is a type, a lowercase name is

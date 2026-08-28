@@ -140,8 +140,11 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             return Err(Error::new(
                 def.body.span(),
                 format!(
-                    "`{}` declares it returns {}, but its body is {}",
-                    def.name, sig.ret, body.ty
+                    "`{}` declares it returns {}, but its body is {}{}",
+                    def.name,
+                    sig.ret,
+                    body.ty,
+                    reordered_fields_hint(&sig.ret, &body.ty)
                 ),
             ));
         }
@@ -765,7 +768,7 @@ fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> Result<Type,
                 }
                 out.push((name.clone(), field));
             }
-            Ok(Type::record(out))
+            Ok(Type::Record(out))
         }
     }
 }
@@ -1102,10 +1105,9 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 }
                 built.push((name.clone(), field));
             }
-            // Sorted to match Type::record, so a field's index is the same in the value and
-            // in the type.
-            built.sort_by(|a, b| a.0.cmp(&b.0));
-            let ty = Type::record(
+            // Declaration order, kept as written: the type's field list and this literal's
+            // fields stay index-for-index aligned, which is what the columnar backends key on.
+            let ty = Type::Record(
                 built
                     .iter()
                     .map(|(n, t)| (n.clone(), t.ty.clone()))
@@ -1954,7 +1956,10 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
             Some(prev) if prev != want => {
                 return Err(Error::new(
                     *span,
-                    format!("`input` is used as {prev} here and as {want} elsewhere"),
+                    format!(
+                        "`input` is used as {prev} here and as {want} elsewhere{}",
+                        reordered_fields_hint(prev, want)
+                    ),
                 ));
             }
             Some(_) => {}
@@ -2009,8 +2014,26 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
     if &found.ty != want {
         return Err(Error::new(
             expr.span(),
-            format!("expected {want}, found {}", found.ty),
+            format!(
+                "expected {want}, found {}{}",
+                found.ty,
+                reordered_fields_hint(want, &found.ty)
+            ),
         ));
     }
     Ok(found)
+}
+
+/// The hint for the one mismatch that looks self-contradictory: both sides spell the same
+/// fields, so "expected X, found X-with-the-fields-shuffled" needs the reader told that order
+/// is the difference. Fires only when the field sets (names and types both) genuinely match.
+fn reordered_fields_hint(a: &Type, b: &Type) -> &'static str {
+    let (Type::Record(x), Type::Record(y)) = (a, b) else {
+        return "";
+    };
+    if x.len() == y.len() && x.iter().all(|f| y.contains(f)) {
+        "; the fields agree, but field order is part of a record type"
+    } else {
+        ""
+    }
 }

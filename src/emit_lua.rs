@@ -344,8 +344,8 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
             if fields.is_empty() {
                 return "\"{}\"".to_string();
             }
-            // Type::record keeps fields sorted, so this order is the type's order. Field names
-            // are identifiers, so the JSON key needs no escaping and is one literal.
+            // The type's field list is declaration order, so this prints as declared. Field
+            // names are identifiers, so the JSON key needs no escaping and is one literal.
             let parts: Vec<String> = fields
                 .iter()
                 .map(|(name, fty)| {

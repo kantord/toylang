@@ -4,6 +4,6 @@ program: |
   [1, 2] | map {n: ., m: . + 1}
 
 output: |
-  [{"m":2,"n":1},{"m":3,"n":2}]
+  [{"n":1,"m":2},{"n":2,"m":3}]
 
 node_types: [arith.add, int, local, map-over, pipe, record-literal, vec-literal]

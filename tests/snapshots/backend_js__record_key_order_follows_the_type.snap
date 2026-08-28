@@ -1,5 +1,5 @@
 ---
 source: tests/backend_js.rs
-expression: "agree(src, Some(listed_backwards))"
+expression: declared_order
 ---
-{"age":36,"name":"ada"}
+{"name":"ada","age":36}

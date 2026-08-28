@@ -43,15 +43,15 @@ area {w: 3, h: 4}
 12
 ```
 
-Records nest, projections chain, and a record prints its fields in sorted order -- the
-written order is not data:
+Records nest, projections chain, and a record prints its fields in the order it declares
+them -- order is part of the type, so every value of a type prints the same way:
 
 ```toylang
 {b: 1, a: {inner: "deep"}}
 ```
 
 ```output
-{"a":{"inner":"deep"},"b":1}
+{"b":1,"a":{"inner":"deep"}}
 ```
 
 Functions may call each other in any order, and may recurse; declarations are read before

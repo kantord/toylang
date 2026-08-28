@@ -2,6 +2,7 @@
 type: Lesson
 calendar:
   - 2026-08-26
+  - 2026-08-28
 title: One invariant, three independent construction sites
 description: A Vec of records is one column per field on native, and three unrelated places that build one each needed their own fix for it -- field access, map, and a Vec literal -- because none of them shared code and none of them implied the others were correct.
 tags:
@@ -69,3 +70,13 @@ hands a record back as one packed blob, not columnar data, the same shape `vec_l
 move rather than a new one. See
 [a map body cannot infer from what consumes it](a-map-body-cannot-infer-from-what-consumes-it.md)
 for why `inputs` exists as its own keyword rather than a more general builtin.
+
+The declared-order migration (draft.md's field-order decision, 2026-08-28) was this note's claim
+run in reverse, and the evidence that the sites had converged on one source of truth. Column
+order changed from sorted position to declaration position by deleting the two sorts that
+existed -- `Type::record`'s and the checker's record-literal sort -- and no construction or read
+site needed touching: every one of the sites above keys its column index off position in the
+type's field list, so re-keying the type re-keyed them all at once. The agreement harness ran
+all seven backends over the corpus with zero disagreements on the first try. An invariant with
+several independent implementations needs checking at every one; an invariant whose every
+implementation reads one source moves in one edit.

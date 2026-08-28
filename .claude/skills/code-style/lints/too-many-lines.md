@@ -60,4 +60,7 @@ to name a real conversation about, not fix incidentally -- see
 The bare-default session (issue #20) hit the same shape from the other
 direction -- a new nine-line diagnostic arm grew an already-over `synth()`
 slightly -- and the same reasoning applied: growth that neither creates the
-finding nor is the split conversation itself stays inherited.
+finding nor is the split conversation itself stays inherited. The
+field-order session (issue #21) is a third instance: the reordered-fields
+error hint grew the already-over `check()` by three lines (132 to 135), and
+stayed inherited by the same rule.

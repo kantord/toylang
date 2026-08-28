@@ -28,7 +28,7 @@ pub enum Kind {
     Str(String),
     Int(i64),
     VecLit(Vec<Tir>),
-    /// A record literal, its fields sorted by name so a field's position here matches
+    /// A record literal, its fields in declaration order so a field's position here matches
     /// its position in the type. That is what lets a backend address one by index rather than
     /// searching for it.
     RecordLit {

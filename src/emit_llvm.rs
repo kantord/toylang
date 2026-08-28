@@ -1158,7 +1158,7 @@ impl<'ctx> Emitter<'ctx> {
 
             Kind::Compare { op, lhs, rhs } => self.compare(*op, lhs, rhs)?,
 
-            // Fields are sorted, so field `i` here is field `i` of the type,
+            // Fields are in declaration order, so field `i` here is field `i` of the type,
             // which is what every reader of the record relies on.
             Kind::RecordLit { fields } => {
                 let i64t = self.ctx.i64_type();

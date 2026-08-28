@@ -252,9 +252,10 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
 }
 
 /// The printer is built from the type rather than by inspecting the value, so a record's keys
-/// are known and ordered at compile time. That removes the whole class of disagreement where
-/// one backend enumerates keys in insertion order and another sorts them, and it is what a
-/// native backend will have to do anyway, having no runtime type information at all.
+/// are known and ordered at compile time, in declaration order. That removes the whole class
+/// of disagreement where one backend enumerates keys in insertion order and another sorts
+/// them, and it is what a native backend will have to do anyway, having no runtime type
+/// information at all.
 fn show(ty: &Type, value: &str, depth: usize) -> String {
     match ty {
         // The checker refuses a program whose result contains a stream, since there is nothing to
@@ -307,8 +308,8 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
             format!("(({n}) => {body})({value})")
         }
         Type::Record(fields) => {
-            // Type::record keeps fields sorted, so this order is the type's order. Field names
-            // are identifiers, so the JSON key needs no escaping and is one literal.
+            // The type's field list is declaration order, so this prints as declared. Field
+            // names are identifiers, so the JSON key needs no escaping and is one literal.
             let parts: Vec<String> = fields
                 .iter()
                 .map(|(name, fty)| {

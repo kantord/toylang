@@ -166,9 +166,8 @@ void tl_mask_set(int8_t *mask, int64_t i, int64_t value) {
     mask[i] = value != 0;
 }
 
-/* A record: one slot per field, in the field order the type declares, which the checker keeps
- * sorted by name. Records only ever arrive from input, since the language has no expression
- * that builds one. */
+/* A record: one slot per field, in the field order the type declares. Records only ever
+ * arrive from input, since the language has no expression that builds one. */
 int64_t *tl_rec_new(int64_t nfields) {
     return tl_alloc((size_t)nfields * sizeof(int64_t));
 }
@@ -247,7 +246,7 @@ tl_str *tl_str_join(const tl_vec *parts, const tl_str *open, const tl_str *sep,
  *   i            Int
  *   b            Bool
  *   [T           Vec of T
- *   {n,name:T,...}   record with n fields, in the type's sorted order
+ *   {n,name:T,...}   record with n fields, in the type's declared order
  *   e{n,Name,variant,variant:T,...}   enum with n variants, in declaration order (the
  *                variant's position is its tag); a variant with no `:T` is a unit variant.
  *                Name is carried only so a mismatch can say which enum it expected.
