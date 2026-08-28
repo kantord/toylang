@@ -82,7 +82,7 @@
   kind: build
   needs: []
   model: fable
-  status: delegated
+  status: done
 
 - id: oddities-quick-fixes
   issue: gh:14
@@ -191,6 +191,13 @@
 
 - id: mutation-semantics-design
   title: Grill privileged/shared references -- mutation as a static optimization, no borrow checker
+  kind: decide
+  needs: []
+  status: todo
+
+- id: record-order-strictness
+  issue: gh:24
+  title: Ratify or relax -- are reordered record spellings distinct types?
   kind: decide
   needs: []
   status: todo
