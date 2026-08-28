@@ -9,13 +9,17 @@ what lets a record literal appear anywhere without an annotation:
 ```
 
 ```output
-{"logins":[1,2],"name":"ada"}
+{"name":"ada","logins":[1,2]}
 ```
 
-Two things the output above shows. Fields print in sorted order: the printer enumerates
-fields from the type, sorted, which is what keeps seven backends from disagreeing about key
-order -- so written order is not data. And `{}` is a complete record whose type is its empty
-field set.
+Two things the output above shows. Fields print in the order the type declares them: order is
+part of a record type, the printer enumerates fields from the type, and input is normalized to
+declaration order on read -- so every value of a type prints identically on all seven
+backends, and the order keys arrive in on stdin is not data. And `{}` is a complete record
+whose type is its empty field set.
+
+Because order is part of the type, `{a: Str, b: Int}` and `{b: Int, a: Str}` are two types.
+Where they meet, the error says the fields agree but their order does not.
 
 A field is read by [projection](../operators/projection.md): `.name` on a record,
 `[].name` distributed over a dimension of records.

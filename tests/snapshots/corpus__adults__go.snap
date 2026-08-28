@@ -73,8 +73,8 @@ func tlQuote(s string) string {
 }
 
 type tlRec0 struct {
-	Fage int32 `json:"age"`
 	Fname string `json:"name"`
+	Fage int32 `json:"age"`
 }
 
 type tlRec1 struct {

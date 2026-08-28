@@ -6,7 +6,10 @@ pub enum Type {
     Vec(Box<Type>),
     /// Zero or one. Produced by collapsing a dimension, since the entry may not be there.
     Opt(Box<Type>),
-    /// Field names are kept sorted, so two records written in different orders are one type.
+    /// Fields in declaration order, which is part of the type's identity: values print in this
+    /// order on every backend, and the native/Go column layouts key on position in this list.
+    /// Two records written in different orders are therefore two types, and meet as a type
+    /// error rather than as columns that silently disagree about what position means.
     Record(Vec<(String, Type)>),
     /// Effect-layer multiplicity: the entries arrive one at a time as evaluation proceeds, and
     /// no stream object ever exists as a value (ADR 0001). Spellable in function signatures,
@@ -69,11 +72,6 @@ impl Type {
             Type::Vec(t) => Some(t),
             _ => None,
         }
-    }
-
-    pub fn record(mut fields: Vec<(String, Type)>) -> Type {
-        fields.sort_by(|a, b| a.0.cmp(&b.0));
-        Type::Record(fields)
     }
 
     pub fn field(&self, name: &str) -> Option<&Type> {

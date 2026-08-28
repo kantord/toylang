@@ -4,22 +4,22 @@
 //! being the first target that is statically typed with no runtime type information: it needs a
 //! declared name for every record, and it rejects an import nothing uses.
 
-/// A record type here is structural, so `{name: Str, age: Int}` and `{age: Int, name: Str}` are
-/// one type however often either is written. Go is nominal and needs a declaration, so this is
-/// the first backend that has to decide how many types the program actually has -- and getting
-/// it wrong would mean two Go structs that no assignment between them would typecheck.
+/// A record type here is structural, so every spelling of `{name: Str, age: Int}` is one type
+/// however often it is written. Go is nominal and needs a declaration, so this is the first
+/// backend that has to decide how many types the program actually has -- and getting it wrong
+/// would mean two Go structs that no assignment between them would typecheck.
 #[test]
 fn one_struct_per_record_type() {
     let src = r#"
-fn keep(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<{age: Int, name: Str}> = db.users
-fn name(u: {age: Int, name: Str}) -> Str = u.name
+fn keep(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<{name: Str, age: Int}> = db.users
+fn name(u: {name: Str, age: Int}) -> Str = u.name
 
 keep(input)
 "#;
     let p = toylang::compile(src).unwrap();
     let go = toylang::emit_go::emit(&p);
-    // The user record and the wrapper around it, and nothing more: the three spellings of the
-    // user record are one type.
+    // The user record and the wrapper around it, and nothing more: the three occurrences of
+    // the user record are one type.
     assert_eq!(
         go.matches("type tlRec").count(),
         2,

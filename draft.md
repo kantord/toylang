@@ -1778,8 +1778,9 @@ them known to the compiler:
 - a `Vec` of records is one column per field, which is the invariant that produced the
   pointer bug fixed in the native backend
 - the Go backend declares a struct per record type and has nothing to declare for a map
-- the printer enumerates fields from the type in sorted order, which is what stops six
-  backends disagreeing about key order
+- the printer enumerates fields from the type, in [declared
+  order](#decided-record-fields-keep-their-declared-order), which is what stops six backends
+  disagreeing about key order
 - `.name` is checked, so a missing field is a compile error rather than a failed lookup
 
 A map is a different type with different operations, whose lookup yields `Opt`. Worth having for

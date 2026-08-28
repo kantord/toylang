@@ -2,4 +2,4 @@
 source: tests/step_5.rs
 expression: "run_err(ADULTS, r#\"{\"users\": {\"name\": \"ada\"}}\"#)"
 ---
-input.users: expected Vec<{age: Int, name: Str}>, found an object
+input.users: expected Vec<{name: Str, age: Int}>, found an object

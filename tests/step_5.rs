@@ -34,16 +34,18 @@ fn emitted_lua() {
     ));
 }
 
-/// Field order in an annotation does not make a different type.
+/// Field order is part of a record type: the same fields in a different order are a different
+/// type, because printing and the columnar layouts both key on position in the declared list.
+/// The error says so, since "expected X, found X-shuffled" is otherwise a riddle.
 #[test]
-fn record_field_order_does_not_matter() {
+fn record_field_order_is_part_of_the_type() {
     let src = r#"
 fn f(r: {a: Str, b: Int}) -> Str = r.a
 fn g(r: {b: Int, a: Str}) -> Str = f(r)
 
 g(input)
 "#;
-    insta::assert_snapshot!(toylang::run_with_input(src, Some(r#"{"a": "hi", "b": 1}"#)).unwrap());
+    insta::assert_snapshot!(err(src));
 }
 
 #[test]

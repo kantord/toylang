@@ -7,6 +7,6 @@ input: |
   {"u": {"name": "ada", "age": 36}}
 
 output: |
-  {"age":36,"name":"ada"}
+  {"name":"ada","age":36}
 
 node_types: [application, input, projection, var]

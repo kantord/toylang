@@ -1,9 +1,9 @@
-# Components come out in the type's order, not the order they were written, because
-# Type::record sorts and the printer reads the type.
+# Components come out in the order the literal declares them, because field order is part
+# of the type and the printer reads the type.
 program: |
   {b: 2, a: 1}
 
 output: |
-  {"a":1,"b":2}
+  {"b":2,"a":1}
 
 node_types: [int, record-literal]

@@ -2,7 +2,7 @@
 source: tests/step_5.rs
 expression: "format!(\"-- input : {}\\n-- : {}\\n{}\", p.input.clone().unwrap(), p.body.ty,\ntoylang::emit_lua::emit(&p))"
 ---
--- input : {users: Vec<{age: Int, name: Str}>}
+-- input : {users: Vec<{name: Str, age: Int}>}
 -- : Vec<Str>
 local function tl_select(src, pred)
   local out = {}
