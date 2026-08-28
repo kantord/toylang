@@ -1,0 +1,16 @@
+# Every escape JSON allows for a control character: the five with a named shorthand (\b, \f,
+# \n, \r, \t) plus a bare \u escape, which is the one still spelled the generic way after the
+# value is validated and re-serialized before any backend sees it (src/lib.rs). The native
+# runtime's hand-rolled JSON decoder had no \u handling at all until this case caught it --
+# every other backend uses a library that already had it.
+program: |
+  fn tag(db: {tag: Str}) -> Str = db.tag
+
+  tag(input)
+
+input: |
+  {"tag": "a\bb\fc\nd\re\tf g"}
+
+output: "a\bb\fc\nd\re\tf g\n"
+
+node_types: [application, input, projection, var]

@@ -1,0 +1,15 @@
+# A JSON string escape can name a lone surrogate (\ud800 with no following low surrogate),
+# which is not a valid Unicode scalar value and so cannot become a Str at all: input is parsed
+# once, centrally, before any backend runs (see run_on in src/lib.rs), so every backend refuses
+# identically rather than six JSON parsers each deciding this on their own.
+program: |
+  fn tag(db: {tag: Str}) -> Str = db.tag
+
+  tag(input)
+
+input: |
+  {"tag": "\ud800"}
+
+refuses: true
+
+node_types: [application, input, projection, var]

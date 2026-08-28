@@ -25,7 +25,15 @@ of a `Vec`, a field of a record -- prints as JSON, quoted and escaped:
 
 There is no string length, splitting, or indexing: a `Str` has no dimensions, so `extent` and
 the index specs do not apply. What exists today is concatenation, equality, and ordering.
-Ordering (`<` and friends) is pinned by the test corpus only for ASCII; what the backends do
-beyond ASCII is not yet a promise.
+Ordering (`<` and friends) compares by Unicode codepoint, pinned across every backend including
+past the astral plane:
+
+```toylang
+"Ａ" < "😀"
+```
+
+```output
+true
+```
 
 `str(n)` renders an `Int` as a `Str`; there is no conversion in the other direction.

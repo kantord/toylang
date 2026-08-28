@@ -1,0 +1,17 @@
+# Go's encoding/json falls back to a case-insensitive match on a struct field's json tag when
+# no exact key exists, which none of the other six targets do (Rust/serde, Python's dict lookup,
+# JS's property access, Lua's decoder, jq, and the native runtime's parser all require an exact
+# key). The quirk never reaches Go's decoder here: input is validated once, centrally, against
+# an exact key match (src/input.rs) before any backend runs, so a field whose JSON key differs
+# only in case is refused uniformly rather than silently filled on Go alone.
+program: |
+  fn get_name(db: {name: Str}) -> Str = db.name
+
+  get_name(input)
+
+input: |
+  {"Name": "ada"}
+
+refuses: true
+
+node_types: [application, input, projection, var]

@@ -63,8 +63,20 @@ slightly -- and the same reasoning applied: growth that neither creates the
 finding nor is the split conversation itself stays inherited. The
 field-order session (issue #21) is a third instance: the reordered-fields
 error hint grew the already-over `check()` by three lines (132 to 135), and
+<<<<<<< HEAD
 stayed inherited by the same rule. The Opt-in-the-grammar session (issue
 #27) is a fourth: its whole diff to `check.rs` was a ten-line `resolve()`
 match arm, touching neither `check()` (still 135) nor `synth()` (still 592)
 at all -- inherited by the same rule, with an even more direct read since
 the flagged functions were not edited.
+=======
+stayed inherited by the same rule.
+
+The JSON-string-conformance session (issue #26) is a fourth instance, and
+the first in an emitter rather than `check.rs`: dispatching `Str` ordering
+through a codepoint-aware helper grew `emit_js.rs`'s already-over `expr()`
+from 154 to 163 lines. Same rule, same outcome -- the same edit also grew
+that file's two cognitive-complexity findings (issue #25), which this
+session left standing for the same reason since that lesson does not
+exist yet.
+>>>>>>> issue-26

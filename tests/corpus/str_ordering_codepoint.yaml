@@ -1,0 +1,11 @@
+# Codepoint order, not UTF-16 code-unit order: an astral character (U+1F600) encodes as a
+# surrogate pair whose lead unit (0xD83D) sits below 0xE000, so a backend comparing raw UTF-16
+# code units instead of codepoints would say the astral character sorts first. By codepoint
+# value it does not (0x1F600 > 0xE000), which is the answer a codepoint-order comparison gives.
+program: |
+  "" < "😀"
+
+output: |
+  true
+
+node_types: [compare.lt, str]
