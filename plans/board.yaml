@@ -117,7 +117,7 @@
   title: The board as a dependency graph page -- status, live lanes, unblocked frontier
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: grill-via-annotations
   title: A repo skill running grilling rounds through the annotations mode inbox
