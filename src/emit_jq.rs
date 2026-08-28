@@ -303,9 +303,10 @@ fn expr(t: &Tir) -> String {
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
         Kind::Inputs => INPUTS.to_string(),
-        // `lines` has no value of its own -- it is a promise that the real stdin has not been
-        // read yet, made good only by `collect`. `.` is never actually inspected.
-        Kind::Lines => ".".to_string(),
+        // The stream, materialized eagerly: `[ inputs ]` in raw-input mode is every line of
+        // stdin as an array of strings. `-n -R` on the invocation is what makes this mode
+        // available; see the checker rule against mixing `input` and `lines` in one program.
+        Kind::Lines => "[ inputs ]".to_string(),
         // Each value is parenthesised: everything in jq is a filter, so an unbracketed `|`
         // or `,` inside one would be read as part of the object rather than as its value.
         Kind::RecordLit { fields } => {
@@ -356,11 +357,8 @@ fn expr(t: &Tir) -> String {
                     canonical(elem, ".")
                 )
             }
-            // `arg` is never anything but `lines` (directly, or through a local bound to it), and
-            // there is only ever one real stdin, so what it evaluated to is irrelevant: `inputs`
-            // always means the same thing. `-n -R` on the invocation is what makes this mode
-            // available; see the checker rule against mixing `input` and `lines` in one program.
-            Builtin::Collect => "[ inputs ]".to_string(),
+            // The source already materialized, so the exit has nothing left to do.
+            Builtin::Collect => expr(arg),
             Builtin::Extent => format!("({} | length)", expr(arg)),
             // jq's own `.[1:]` on an empty array is `[]`, not null; toylang's tail needs the
             // Opt convention instead, so the empty case is spelled out rather than borrowed.

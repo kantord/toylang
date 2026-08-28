@@ -187,11 +187,22 @@ pub struct Program {
     pub uses_lines: bool,
 }
 
-/// How many `Vec` layers wrap a scalar. Field access distributes over each of them.
+/// The element type a backend iterates over. Under eager lowering a stream is materialized as
+/// the Vec of its entries, so a Stream's element counts exactly as a Vec's here; the checker's
+/// `Type::elem` deliberately does not agree, keeping the reducers Vec-only at the surface.
+pub fn runtime_elem(ty: &Type) -> Option<&Type> {
+    match ty {
+        Type::Vec(t) | Type::Stream(t) => Some(t),
+        _ => None,
+    }
+}
+
+/// How many dimension layers wrap a scalar -- `Vec`s, plus the outermost `Stream` when there
+/// is one. Field access distributes over each of them.
 pub fn vec_depth(ty: &Type) -> usize {
     let mut depth = 0;
     let mut inner = ty;
-    while let Some(elem) = inner.elem() {
+    while let Some(elem) = runtime_elem(inner) {
         depth += 1;
         inner = elem;
     }

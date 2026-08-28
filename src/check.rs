@@ -582,6 +582,16 @@ fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> Result<Type,
     }
 }
 
+/// The element `select` and `map` rebind `.` to: a Vec's, or a Stream's. Deliberately not
+/// `Type::elem`, which stays Vec-only so the reducers (`extent`, `jsonlines` today) keep
+/// refusing a stream.
+fn mapper_elem(subject: &Type) -> Option<Type> {
+    match subject {
+        Type::Vec(t) | Type::Stream(t) => Some((**t).clone()),
+        _ => None,
+    }
+}
+
 /// The one enum a bare variant name refers to, or the error naming every candidate: guessing
 /// between two claimants would silently pick a type the program never wrote down.
 fn sole_owner<'a>(
@@ -770,7 +780,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         }
 
         Expr::Field { .. } | Expr::Index { .. } | Expr::Unwrap { .. } => {
-            access(ctx, expr).map(|(tir, _, _)| tir)
+            access(ctx, expr).map(|(tir, _, _, _)| tir)
         }
 
         // A spec that specs nothing. `[]` says what happens to a dimension, so with no access
@@ -789,12 +799,18 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             // calls whose argument is checked with `.` rebound to the subject's element type
             // instead of evaluated in the enclosing scope, which no ordinary function needs and
             // is why they cannot be defined as one (see `signatures`).
+            // Cardinality-polymorphic: the same subject-context mechanism types them over a
+            // Vec and over a Stream, with the element drawn from either's parameter. Stream in,
+            // stream out.
             if func == "select" {
                 let Some((subject, id)) = ctx.subject.clone() else {
                     return Err(Error::new(*span, "`select` needs a subject, so it must follow `|`"));
                 };
-                let Some(elem) = subject.elem().cloned() else {
-                    return Err(Error::new(*span, format!("`select` needs a Vec, found {subject}")));
+                let Some(elem) = mapper_elem(&subject) else {
+                    return Err(Error::new(
+                        *span,
+                        format!("`select` needs a Vec or a stream, found {subject}"),
+                    ));
                 };
                 let param = ctx.fresh();
                 let pred = expect(&ctx.with(Some((elem, param))), arg, &Type::Bool)?;
@@ -810,14 +826,21 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 let Some((subject, id)) = ctx.subject.clone() else {
                     return Err(Error::new(*span, "`map` needs a subject, so it must follow `|`"));
                 };
-                let Some(elem) = subject.elem().cloned() else {
-                    return Err(Error::new(*span, format!("`map` needs a Vec, found {subject}")));
+                let Some(elem) = mapper_elem(&subject) else {
+                    return Err(Error::new(
+                        *span,
+                        format!("`map` needs a Vec or a stream, found {subject}"),
+                    ));
                 };
                 let param = ctx.fresh();
                 let body = synth(&ctx.with(Some((elem, param))), arg)?;
+                let out = match &subject {
+                    Type::Stream(_) => Type::Stream(Box::new(body.ty.clone())),
+                    _ => Type::Vec(Box::new(body.ty.clone())),
+                };
                 let source = Tir::new(subject, Kind::Local(id));
                 return Ok(Tir::new(
-                    Type::Vec(Box::new(body.ty.clone())),
+                    out,
                     Kind::Map { source: Box::new(source), param, body: Box::new(body) },
                 ));
             }
@@ -1116,44 +1139,58 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 ///
 /// This is why `db.users.name` is an error and `db.users[].name` is not: the first never said
 /// what happens to the dimension it reached through.
-fn access(ctx: &Ctx, expr: &Expr) -> Result<(Tir, Type, usize), Error> {
+///
+/// A Stream is one more dimension `[]` can enter -- projection is a mapper -- and since the
+/// grammar keeps a stream strictly outermost, the walk only has to remember one bit: whether
+/// the first-stripped layer was a Stream (`stream_outer`), so wrapping back up restores a
+/// Stream there and a Vec everywhere below.
+fn access(ctx: &Ctx, expr: &Expr) -> Result<(Tir, Type, usize, bool), Error> {
+    /// `elem`, wrapped back up under every dimension the chain is inside.
+    fn wrap(mut ty: Type, depth: usize, stream_outer: bool) -> Type {
+        for i in 0..depth {
+            ty = if stream_outer && i == depth - 1 {
+                Type::Stream(Box::new(ty))
+            } else {
+                Type::Vec(Box::new(ty))
+            };
+        }
+        ty
+    }
+
     match expr {
         Expr::Project { base, span } => {
-            let (tir, elem, depth) = access(ctx, base)?;
+            let (tir, elem, depth, stream) = access(ctx, base)?;
+            if let Type::Stream(inner) = &elem {
+                return Ok((tir, (**inner).clone(), depth + 1, true));
+            }
             let Some(inner) = elem.elem().cloned() else {
                 return Err(Error::new(*span, format!("`[]` needs a dimension, found {elem}")));
             };
-            Ok((tir, inner, depth + 1))
+            Ok((tir, inner, depth + 1, stream))
         }
 
         // The absence stops being carried and starts being asserted.
         Expr::Unwrap { base, span } => {
-            let (base_tir, elem, depth) = access(ctx, base)?;
+            let (base_tir, elem, depth, stream) = access(ctx, base)?;
             let Type::Opt(inner) = elem else {
                 return Err(Error::new(*span, format!("`!` needs an Opt, found {elem}")));
             };
             let inner = *inner;
-            let mut ty = inner.clone();
-            for _ in 0..depth {
-                ty = Type::Vec(Box::new(ty));
-            }
+            let ty = wrap(inner.clone(), depth, stream);
             let tir = Tir::new(ty, Kind::Unwrap { base: Box::new(base_tir) });
-            Ok((tir, inner, depth))
+            Ok((tir, inner, depth, stream))
         }
 
         // Collapsing a dimension. The entry may not be there, so what comes out is `Opt`.
         Expr::Index { base, index, span } => {
-            let (base_tir, elem, depth) = access(ctx, base)?;
+            let (base_tir, elem, depth, stream) = access(ctx, base)?;
             let Some(inner) = elem.elem().cloned() else {
                 return Err(Error::new(*span, format!("`[i]` needs a dimension, found {elem}")));
             };
             let index_tir = expect(ctx, index, &Type::Int)?;
             let elem_is_record = matches!(inner, Type::Record(_));
             let out = Type::Opt(Box::new(inner));
-            let mut ty = out.clone();
-            for _ in 0..depth {
-                ty = Type::Vec(Box::new(ty));
-            }
+            let ty = wrap(out.clone(), depth, stream);
             let tir = Tir::new(
                 ty,
                 Kind::Index {
@@ -1163,12 +1200,12 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<(Tir, Type, usize), Error> {
                     elem_is_record,
                 },
             );
-            Ok((tir, out, depth))
+            Ok((tir, out, depth, stream))
         }
 
         Expr::Field { base, name, span } => {
-            let (base_tir, elem, depth) = access(ctx, base)?;
-            if elem.elem().is_some() {
+            let (base_tir, elem, depth, stream) = access(ctx, base)?;
+            if elem.elem().is_some() || matches!(elem, Type::Stream(_)) {
                 return Err(Error::new(
                     *span,
                     format!(
@@ -1180,18 +1217,15 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<(Tir, Type, usize), Error> {
                 return Err(Error::new(*span, format!("no field `{name}` on {elem}")));
             };
             let field = field.clone();
-            let mut ty = field.clone();
-            for _ in 0..depth {
-                ty = Type::Vec(Box::new(ty));
-            }
+            let ty = wrap(field.clone(), depth, stream);
             let tir = Tir::new(ty, Kind::Field { base: Box::new(base_tir), name: name.clone() });
-            Ok((tir, field, depth))
+            Ok((tir, field, depth, stream))
         }
 
         other => {
             let tir = synth(ctx, other)?;
             let ty = tir.ty.clone();
-            Ok((tir, ty, 0))
+            Ok((tir, ty, 0, false))
         }
     }
 }

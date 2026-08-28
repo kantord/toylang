@@ -408,8 +408,9 @@ fn used_helpers(program: &Program) -> Helpers {
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
-            | Kind::Inputs
-            | Kind::Lines => {}
+            | Kind::Inputs => {}
+            // The source is what reads stdin now, so it is what needs the helper.
+            Kind::Lines => used.collect = true,
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -445,7 +446,6 @@ fn used_helpers(program: &Program) -> Helpers {
             }
             Kind::Builtin { which, arg } => {
                 used.range |= *which == Builtin::Range;
-                used.collect |= *which == Builtin::Collect;
                 used.jsonlines |= *which == Builtin::JsonLines;
                 used.tail |= *which == Builtin::Tail;
                 used.concat |= *which == Builtin::Concat;
@@ -490,9 +490,9 @@ fn expr(t: &Tir) -> String {
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
         Kind::Inputs => INPUTS.to_string(),
-        // `lines` has no value of its own -- it is a promise that the real stdin has not been
-        // read yet, made good only by `collect`. `nil` is never actually inspected.
-        Kind::Lines => "nil".to_string(),
+        // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
+        // works on the table of its entries. Fusion is what will remove this materialization.
+        Kind::Lines => "tl_collect_lines()".to_string(),
         // A record is a table keyed by field name, which is what field access reads.
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
@@ -545,7 +545,8 @@ fn expr(t: &Tir) -> String {
                     show(elem, &e, 1)
                 )
             }
-            Builtin::Collect => "tl_collect_lines()".to_string(),
+            // The source already materialized, so the exit has nothing left to do.
+            Builtin::Collect => expr(arg),
             Builtin::Extent => format!("#{}", expr(arg)),
             Builtin::Tail => format!("tl_tail({})", expr(arg)),
             Builtin::Concat => format!("tl_vec_concat({})", expr(arg)),

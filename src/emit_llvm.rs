@@ -252,10 +252,9 @@ impl<'ctx> Emitter<'ctx> {
 
     fn llvm_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, String> {
         Ok(match ty {
-            // Proven unreachable by the checker: a stream cannot be a function's parameter or
-            // return type (unspellable in an annotation), cannot enter a Vec or a record, and a
-            // Cond branch typed Stream would need `lines` written twice, which is refused.
-            Type::Stream(_) => unreachable!("Stream never reaches llvm_type"),
+            // Materialized eagerly as the Vec of its entries, so it is the same pointer a Vec
+            // is. Fusion is what will remove this materialization.
+            Type::Stream(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Int => self.ctx.i64_type().into(),
             Type::Bool => self.ctx.bool_type().into(),
@@ -375,9 +374,7 @@ impl<'ctx> Emitter<'ctx> {
     fn to_slot(&self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<IntValue<'ctx>, String> {
         let i64t = self.ctx.i64_type();
         Ok(match ty {
-            // Proven unreachable the same way as llvm_type: nothing can put a stream where
-            // to_slot would be asked to pack one.
-            Type::Stream(_) => unreachable!("Stream never reaches to_slot"),
+            Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Int => value.into_int_value(),
             Type::Bool => self
                 .builder
@@ -398,7 +395,7 @@ impl<'ctx> Emitter<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr = self.ctx.ptr_type(AddressSpace::default());
         Ok(match ty {
-            Type::Stream(_) => unreachable!("Stream never reaches read_slot"),
+            Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Int => slot.into(),
             Type::Bool => self
                 .builder
@@ -518,14 +515,11 @@ impl<'ctx> Emitter<'ctx> {
         body: &Tir,
         result: &Type,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let elem_ty = source
-            .ty
-            .elem()
-            .ok_or_else(|| "map over something that is not a Vec".to_string())?
+        let elem_ty = crate::tir::runtime_elem(&source.ty)
+            .ok_or_else(|| "map over something that has no dimension".to_string())?
             .clone();
-        let out_elem = result
-            .elem()
-            .ok_or_else(|| "map did not produce a Vec".to_string())?
+        let out_elem = crate::tir::runtime_elem(result)
+            .ok_or_else(|| "map did not produce a dimension".to_string())?
             .clone();
 
         let i64t = self.ctx.i64_type();
@@ -593,10 +587,8 @@ impl<'ctx> Emitter<'ctx> {
         param: LocalId,
         pred: &Tir,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let elem_ty = source
-            .ty
-            .elem()
-            .ok_or_else(|| "select on something that is not a Vec".to_string())?
+        let elem_ty = crate::tir::runtime_elem(&source.ty)
+            .ok_or_else(|| "select on something that has no dimension".to_string())?
             .clone();
 
         let src = self.expr(source)?.into_pointer_value();
@@ -696,7 +688,7 @@ impl<'ctx> Emitter<'ctx> {
                 self.read_slot(slot, result)
             }
 
-            Type::Vec(elem) if matches!(**elem, Type::Record(_)) => {
+            Type::Vec(elem) | Type::Stream(elem) if matches!(**elem, Type::Record(_)) => {
                 let Type::Record(fields) = &**elem else { unreachable!("guarded") };
                 let index = fields
                     .iter()
@@ -754,10 +746,9 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             // A Vec of Vecs: one result per element, so the layer has to be walked.
-            Type::Vec(elem) => {
-                let inner_result = result
-                    .elem()
-                    .ok_or_else(|| "field access on a Vec did not yield a Vec".to_string())?
+            Type::Vec(elem) | Type::Stream(elem) => {
+                let inner_result = crate::tir::runtime_elem(result)
+                    .ok_or_else(|| "field access on a dimension did not keep it".to_string())?
                     .clone();
                 let elem_ty = (**elem).clone();
                 let src = value.into_pointer_value();
@@ -1159,9 +1150,9 @@ impl<'ctx> Emitter<'ctx> {
 
             Kind::Map { source, param, body } => self.map(source, *param, body, &t.ty)?,
 
-            // No value to speak of: a promise that the real stdin has not been read yet, made
-            // good only by collect. The constant is never actually inspected.
-            Kind::Lines => self.ctx.i64_type().const_zero().into(),
+            // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
+            // works on the Vec of its entries.
+            Kind::Lines => self.call_rt(self.rt.collect_lines, &[], "lines")?,
 
             Kind::Input => {
                 let descriptor = self.string_const(&Self::descriptor(&t.ty));
@@ -1233,10 +1224,8 @@ impl<'ctx> Emitter<'ctx> {
                         let elem = elem_ty.expect("checked to be a Vec");
                         self.join_shown(arg, &elem, "", "\n", "")?
                     }
-                    // `arg` is ignored: it is always `lines`, directly or through a local bound
-                    // to it, and there is only ever one real stdin, so nothing about the
-                    // argument's value could change what this reads.
-                    Builtin::Collect => self.call_rt(self.rt.collect_lines, &[], "lines")?,
+                    // The source already materialized, so the exit has nothing left to do.
+                    Builtin::Collect => arg,
                     // Already tracked on the Vec header; nothing to compute.
                     Builtin::Extent => self.call_rt(self.rt.vec_len, &[arg], "extent")?,
                     Builtin::Tail => self.call_rt(self.rt.vec_tail, &[arg], "tail")?,

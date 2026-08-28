@@ -421,7 +421,7 @@ struct Collect<'a> {
 impl Collect<'_> {
     fn ty(&mut self, t: &Type) {
         match t {
-            Type::Vec(e) | Type::Opt(e) => self.ty(e),
+            Type::Vec(e) | Type::Opt(e) | Type::Stream(e) => self.ty(e),
             Type::Record(fields) => {
                 if !self.records.contains(t) {
                     self.records.push(t.clone());
@@ -537,9 +537,9 @@ impl Emitter {
             Type::Bool => "bool".to_string(),
             Type::Vec(e) => format!("[]{}", self.go_type(e)),
             Type::Opt(e) => format!("tlOpt[{}]", self.go_type(e)),
-            // A phantom marker: Go still needs a real type for the closure-based Bind pattern
-            // to name, even though no value of it is ever read.
-            Type::Stream(_) => "struct{}".to_string(),
+            // Materialized eagerly as the slice of its entries, so it is a slice here too.
+            // Fusion is what will remove this materialization.
+            Type::Stream(e) => format!("[]{}", self.go_type(e)),
             Type::Record(_) => {
                 let key = ty.to_string();
                 let i = self
@@ -682,8 +682,8 @@ impl Emitter {
         if depth == 0 {
             return leaf(value);
         }
-        let elem = value_ty.elem().expect("a dimension to distribute over");
-        let result_elem = result_ty.elem().expect("the result keeps the dimension");
+        let elem = tir::runtime_elem(value_ty).expect("a dimension to distribute over");
+        let result_elem = tir::runtime_elem(result_ty).expect("the result keeps the dimension");
         let var = format!("m{depth}");
         format!(
             "tlMap({value}, func({var} {}) {} {{ return {} }})",
@@ -701,9 +701,9 @@ impl Emitter {
             Kind::Local(id) => self.local(*id),
             Kind::Input => INPUT.to_string(),
             Kind::Inputs => INPUTS.to_string(),
-        // `lines` has no value of its own -- it is a promise that the real stdin has not been
-        // read yet, made good only by `collect`. The empty struct is never actually inspected.
-        Kind::Lines => "struct{}{}".to_string(),
+            // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
+            // works on the slice of its entries.
+            Kind::Lines => "tlCollectLines()".to_string(),
             // go_type resolves the struct name, and the collector registered it because a
             // record literal carries its own record type.
             Kind::RecordLit { fields } => {
@@ -768,7 +768,8 @@ impl Emitter {
                         self.show(elem, &e, 1)
                     )
                 }
-                Builtin::Collect => "tlCollectLines()".to_string(),
+                // The source already materialized, so the exit has nothing left to do.
+                Builtin::Collect => self.expr(arg),
                 Builtin::Extent => format!("int32(len({}))", self.expr(arg)),
                 Builtin::Tail => format!("tlTail({})", self.expr(arg)),
                 Builtin::Concat => format!("tlConcat({})", self.expr(arg)),
@@ -788,7 +789,7 @@ impl Emitter {
                 "tlMap({}, func({} {}) {} {{ return {} }})",
                 self.expr(source),
                 self.local(*param),
-                self.go_type(source.ty.elem().expect("map runs over a Vec")),
+                self.go_type(tir::runtime_elem(&source.ty).expect("map runs over a dimension")),
                 self.go_type(&body.ty),
                 self.expr(body)
             ),
@@ -796,7 +797,7 @@ impl Emitter {
                 "tlSelect({}, func({} {}) bool {{ return {} }})",
                 self.expr(source),
                 self.local(*param),
-                self.go_type(source.ty.elem().expect("select runs over a Vec")),
+                self.go_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
                 self.expr(pred)
             ),
             Kind::Field { base, name } => {

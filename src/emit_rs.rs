@@ -542,7 +542,7 @@ struct Collect<'a> {
 impl Collect<'_> {
     fn ty(&mut self, t: &Type) {
         match t {
-            Type::Vec(e) | Type::Opt(e) => self.ty(e),
+            Type::Vec(e) | Type::Opt(e) | Type::Stream(e) => self.ty(e),
             Type::Record(fields) => {
                 if !self.records.contains(t) {
                     self.records.push(t.clone());
@@ -662,9 +662,9 @@ impl Emitter {
             Type::Bool => "bool".to_string(),
             Type::Vec(e) => format!("Vec<{}>", self.rs_type(e)),
             Type::Opt(e) => format!("Option<{}>", self.rs_type(e)),
-            // Never a function's declared parameter or return type -- unspellable in an
-            // annotation, so this is never asked to name a real value.
-            Type::Stream(_) => "()".to_string(),
+            // Materialized eagerly as the Vec of its entries, so it is a Vec here too.
+            // Fusion is what will remove this materialization.
+            Type::Stream(e) => format!("Vec<{}>", self.rs_type(e)),
             Type::Record(_) => format!("TlRec{}", self.record_index(ty)),
             // The enum's own name is the identity and is unique, so it names the Rust enum too.
             Type::Enum { name, .. } => format!("TlE_{name}"),
@@ -847,8 +847,8 @@ impl Emitter {
         if depth == 0 {
             return leaf(value);
         }
-        let elem = value_ty.elem().expect("a dimension to distribute over");
-        let result_elem = result_ty.elem().expect("the result keeps the dimension");
+        let elem = tir::runtime_elem(value_ty).expect("a dimension to distribute over");
+        let result_elem = tir::runtime_elem(result_ty).expect("the result keeps the dimension");
         let var = format!("m{depth}");
         format!(
             "{value}.iter().map(|{var}: &{}| -> {} {{ {} }}).collect::<Vec<_>>()",
@@ -866,9 +866,9 @@ impl Emitter {
             Kind::Local(id) => format!("{}.clone()", self.local(*id)),
             Kind::Input => format!("{INPUT}.clone()"),
             Kind::Inputs => format!("{INPUTS}.clone()"),
-            // No value of its own -- a promise that the real stdin has not been read yet, made
-            // good only by `collect`. `()` is never actually inspected.
-            Kind::Lines => "()".to_string(),
+            // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
+            // works on the Vec of its entries.
+            Kind::Lines => "tl_read_lines()".to_string(),
             Kind::RecordLit { fields } => {
                 let parts: Vec<String> = fields
                     .iter()
@@ -915,7 +915,8 @@ impl Emitter {
                         self.show(elem, &format!("{e}.clone()"), 1)
                     )
                 }
-                Builtin::Collect => "tl_read_lines()".to_string(),
+                // The source already materialized, so the exit has nothing left to do.
+                Builtin::Collect => self.expr(arg),
                 Builtin::Extent => format!("(({}).len() as i32)", self.expr(arg)),
                 Builtin::Tail => format!("tl_tail(&{})", self.expr(arg)),
                 Builtin::Concat => format!("tl_concat(&{})", self.expr(arg)),
@@ -939,7 +940,7 @@ impl Emitter {
                 "{}.iter().map(|{}: &{}| -> {} {{ {} }}).collect::<Vec<_>>()",
                 self.expr(source),
                 self.local(*param),
-                self.rs_type(source.ty.elem().expect("map runs over a Vec")),
+                self.rs_type(tir::runtime_elem(&source.ty).expect("map runs over a dimension")),
                 self.rs_type(&body.ty),
                 self.expr(body)
             ),
@@ -951,7 +952,7 @@ impl Emitter {
                 "{}.iter().cloned().filter(|{}: &{}| -> bool {{ {} }}).collect::<Vec<_>>()",
                 self.expr(source),
                 self.local(*param),
-                self.rs_type(source.ty.elem().expect("select runs over a Vec")),
+                self.rs_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
                 self.expr(pred)
             ),
             Kind::Field { base, name } => {

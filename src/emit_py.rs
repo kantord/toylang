@@ -334,9 +334,9 @@ fn expr(t: &Tir) -> String {
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
         Kind::Inputs => INPUTS.to_string(),
-        // `lines` has no value of its own -- it is a promise that the real stdin has not been
-        // read yet, made good only by `collect`. `None` is never actually inspected.
-        Kind::Lines => "None".to_string(),
+        // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
+        // works on the Vec of its entries. Fusion is what will remove this materialization.
+        Kind::Lines => "tl_collect_lines()".to_string(),
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
@@ -379,7 +379,8 @@ fn expr(t: &Tir) -> String {
                 let e = "e0".to_string();
                 format!("tl_jsonlines({}, lambda {e}: {})", expr(arg), show(elem, &e, 1))
             }
-            Builtin::Collect => "tl_collect_lines()".to_string(),
+            // The source already materialized, so the exit has nothing left to do.
+            Builtin::Collect => expr(arg),
             Builtin::Extent => format!("len({})", expr(arg)),
             Builtin::Tail => format!("tl_tail({})", expr(arg)),
             Builtin::Concat => format!("tl_vec_concat({})", expr(arg)),
