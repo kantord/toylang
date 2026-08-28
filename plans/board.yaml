@@ -87,10 +87,10 @@
   title: Grill the docs site generalization -- page types, navigation, content provenance
   kind: decide
   needs: []
-  status: todo
+  status: done
 
 - id: docs-site-build
-  title: Generalize the site per the design -- reference, tutorials, examples as a subsection
+  title: Generalize the site per plans/docs-site.md -- fence harness, Diataxis nav, complete reference
   kind: build
   needs: [docs-site-design]
   status: todo
