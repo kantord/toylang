@@ -62,6 +62,19 @@
   needs: []
   status: done
 
+- id: oddities-quick-fixes
+  issue: gh:14
+  title: Empty keep is identity; != failure suggests bang-space-equals
+  kind: build
+  needs: []
+  status: todo
+
+- id: json-string-conformance
+  title: Prove full JSON-string support across backends, pinning codepoint ordering
+  kind: build
+  needs: []
+  status: todo
+
 - id: language-oddities-review
   title: Review the oddities inventory and settle each item
   kind: decide
