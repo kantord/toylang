@@ -103,7 +103,7 @@
   title: Annotations mode must never lose or hide the maintainer's edits
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: annotations-email-inbox
   issue: gh:30
@@ -281,7 +281,7 @@
   title: Survey how compilers structure the checker layer -- strategies, pitfalls, crates
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: cognitive-complexity-lesson
   issue: gh:25
