@@ -56,3 +56,8 @@ is a new finding, so neither was chased further here. `clippy.toml` already
 documents `check.rs` as one of the three files the 100-line budget was set
 to name a real conversation about, not fix incidentally -- see
 `plans/quality-practices.md`.
+
+The bare-default session (issue #20) hit the same shape from the other
+direction -- a new nine-line diagnostic arm grew an already-over `synth()`
+slightly -- and the same reasoning applied: growth that neither creates the
+finding nor is the split conversation itself stays inherited.
