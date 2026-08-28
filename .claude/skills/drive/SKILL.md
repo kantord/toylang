@@ -25,7 +25,8 @@ grilling/planning session or an explicit user request, and gets a row before it 
    - `decide`: queue it for the user. These are the only things worth interrupting them for
      when no build work is ready; otherwise present them at the next natural report.
    - `build`: make sure a GitHub issue carries the spec (file one if the row has none), then
-     delegate via the `enwiro-delegate` skill and set `status: delegated`. More than one
+     delegate via the `enwiro-delegate` skill and set `status: delegated`. The session runs
+     on sonnet unless the row says `model: fable` (design-heavy or cross-cutting work only). More than one
      build task may run concurrently ONLY if their likely file footprints do not overlap --
      judge from the plans and the diff history; when in doubt, serialize. Priority order
      breaks ties, not the other way around.

@@ -24,10 +24,15 @@ Never use `claude -p` for this: headless output is not navigable and cannot be t
 ```sh
 prev=$(i3-msg -t get_workspaces | jq -r '.[] | select(.focused).name')
 enw activate 'toylang#12'
-enw wrap kitty 'toylang#12' -- --detach claude 'Implement step 1 of plans/enums.md. Read AGENTS.md first.'
+enw wrap kitty 'toylang#12' -- --detach claude --model sonnet 'Implement step 1 of plans/enums.md. Read AGENTS.md first.'
 sleep 4   # let the kitty window map on the env workspace, and verify the session is live
 i3-msg "workspace \"$prev\"" >/dev/null
 ```
+
+Regular build tasks run on `--model sonnet`; that is the default. Omit the flag (falling back
+to the account default, Fable) only when the board row says `model: fable` -- reserved for
+design-heavy or cross-cutting work where the coordinator judges the bigger model earns its
+cost.
 
 - `enw activate` cooks the env (worktree + branch) and binds/switches to its workspace,
   which yanks the user's focus. Capture the focused workspace BEFORE activating and switch

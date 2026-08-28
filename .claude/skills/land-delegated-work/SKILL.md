@@ -22,6 +22,8 @@ Do not ping for intermediate progress or ask permission to review or merge.
 - `/code-review` against `main`, with the spec sources named explicitly: the GitHub issue,
   the relevant `plans/*.md` steps, the draft.md DECIDED section, and any governing ADR.
 - `/style-review` on the branch's changed files.
+- Review subagents run on sonnet (`model: "sonnet"` on the Agent call); the coordinator's
+  own judgment of their findings is where the big model earns its keep.
 - Judge the findings. Hard violations and small fixes: fix them on the branch, committing
   per AGENTS.md (provenance lines, `Co-Authored-By` trailer). Non-blocking findings and
   spec gaps: file follow-up GitHub issues rather than blocking the merge. Genuine design

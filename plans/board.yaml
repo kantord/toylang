@@ -6,6 +6,9 @@
 #   needs: ids that must be done first (semantic dependencies only -- file-overlap conflicts
 #          are the drive skill's scheduling judgment, not edges here)
 #   status: todo | delegated | done  ("blocked" is derived from needs, never stored)
+#   model: which model the delegated session runs -- omitted means sonnet (the default for
+#          regular build work); "fable" is reserved for design-heavy or cross-cutting builds
+#          the coordinator judges worth it. decide rows have no model; they are the human.
 #
 # The drive skill (.claude/skills/drive) reads this top to bottom: first todo whose needs are
 # all done is the next task of its kind. A needs-cycle, or no unblocked task while todo
