@@ -105,6 +105,20 @@
   needs: []
   status: delegated
 
+- id: annotations-email-inbox
+  issue: gh:30
+  title: Inbox becomes email-like -- two areas, span highlights, read status
+  kind: build
+  needs: [annotations-edit-persistence]
+  status: todo
+
+- id: board-graph-page
+  issue: gh:31
+  title: The board as a dependency graph page -- status, live lanes, unblocked frontier
+  kind: build
+  needs: []
+  status: delegated
+
 - id: grill-via-annotations
   title: A repo skill running grilling rounds through the annotations mode inbox
   kind: build
