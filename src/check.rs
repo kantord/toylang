@@ -750,6 +750,16 @@ fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> Result<Type,
             }
             Ok(Type::Stream(Box::new(inner)))
         }
+        TypeExpr::Opt { elem, .. } => {
+            let inner = resolve(elem, env, seen)?;
+            if inner.contains_stream() {
+                return Err(Error::new(
+                    elem.span(),
+                    "an Opt cannot hold a stream, which has nothing to store".to_string(),
+                ));
+            }
+            Ok(Type::Opt(Box::new(inner)))
+        }
         TypeExpr::Record { fields, span } => {
             let mut out = Vec::new();
             for (name, ty) in fields {

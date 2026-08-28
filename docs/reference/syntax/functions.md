@@ -28,10 +28,10 @@ checked:
 forward_reference
 ```
 
-What a signature cannot say: `Opt` (not in the type grammar), or a `Stream` result without
-a `Stream` parameter (a stream is born only at a source; see
-[Stream](../types/stream.md)). A function is not a value -- it cannot be stored, passed, or
-returned -- and the nine [builtin names](../builtins/str.md) cannot be redefined.
+What a signature cannot say: a `Stream` result without a `Stream` parameter (a stream is
+born only at a source; see [Stream](../types/stream.md)). A function is not a value -- it
+cannot be stored, passed, or returned -- and the nine [builtin names](../builtins/str.md)
+cannot be redefined.
 
 Bare application, `f x`, is the default call form. Every function is unary, so parens never
 said which argument is which -- only where the argument starts and ends -- and `f(x)` is the

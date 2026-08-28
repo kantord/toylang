@@ -80,6 +80,10 @@ pub enum TypeExpr {
         elem: Box<TypeExpr>,
         span: Span,
     },
+    Opt {
+        elem: Box<TypeExpr>,
+        span: Span,
+    },
     Record {
         fields: Vec<(String, TypeExpr)>,
         span: Span,
@@ -92,6 +96,7 @@ impl TypeExpr {
             TypeExpr::Named { span, .. }
             | TypeExpr::Vec { span, .. }
             | TypeExpr::Stream { span, .. }
+            | TypeExpr::Opt { span, .. }
             | TypeExpr::Record { span, .. } => *span,
         }
     }
