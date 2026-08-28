@@ -68,6 +68,12 @@
   needs: []
   status: done
 
+- id: stop-hook-commit-check
+  title: Stop-hook finding for uncommitted work at turn end, closing the politeness stall mechanically
+  kind: build
+  needs: []
+  status: todo
+
 - id: oddities-quick-fixes
   issue: gh:14
   title: Empty keep is identity; != failure suggests bang-space-equals
