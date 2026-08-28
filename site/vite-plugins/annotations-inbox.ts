@@ -20,6 +20,15 @@ interface Inbox {
  * docs/.annotations directory it writes) out of `vite build` entirely, matching the issue's
  * "local dev server only" constraint.
  */
+async function readInbox(file: string): Promise<Inbox> {
+  try {
+    return JSON.parse(await readFile(file, "utf8"))
+  } catch {
+    // No inbox yet, or the coordinator just cleared it -- start fresh either way.
+    return { last_edit: "", records: [] }
+  }
+}
+
 export function annotationsInbox(): Plugin {
   const dir = path.resolve(import.meta.dirname, "..", "..", "docs", ".annotations")
   const file = path.join(dir, "inbox.json")
@@ -40,12 +49,7 @@ export function annotationsInbox(): Plugin {
           try {
             const { page, block, original, edited } = JSON.parse(body) as AnnotationRecord
             await mkdir(dir, { recursive: true })
-            let inbox: Inbox = { last_edit: "", records: [] }
-            try {
-              inbox = JSON.parse(await readFile(file, "utf8"))
-            } catch {
-              // No inbox yet, or the coordinator just cleared it -- start fresh either way.
-            }
+            const inbox = await readInbox(file)
             const records = inbox.records.filter((r) => !(r.page === page && r.block === block))
             records.push({ page, block, original, edited })
             const next: Inbox = { last_edit: new Date().toISOString(), records }
@@ -57,6 +61,26 @@ export function annotationsInbox(): Plugin {
             res.end(e instanceof Error ? e.message : String(e))
           }
         })
+      })
+
+      // Rehydration for a reloaded page (kantord/toylang#28): the record for one block, if the
+      // coordinator hasn't consumed it yet. Read-only, so a stale cache here never loses data --
+      // the browser's localStorage draft, written on every keystroke, is the source of truth for
+      // this same session, and this endpoint only covers what a fresh browser wouldn't have.
+      server.middlewares.use("/__annotations/inbox", async (req, res) => {
+        if (req.method !== "GET") {
+          res.statusCode = 405
+          res.end()
+          return
+        }
+        const query = new URLSearchParams((req.url ?? "").split("?")[1] ?? "")
+        const page = query.get("page")
+        const block = Number(query.get("block"))
+        const inbox = await readInbox(file)
+        const record = inbox.records.find((r) => r.page === page && r.block === block) ?? null
+        res.statusCode = 200
+        res.setHeader("Content-Type", "application/json")
+        res.end(JSON.stringify({ record }))
       })
     },
   }
