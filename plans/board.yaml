@@ -139,6 +139,13 @@
   needs: [docs-annotations-mode]
   status: done
 
+- id: euler-examples-1-10
+  issue: gh:35
+  title: Euler stress-test stream -- scaffolding plus problems 1-10, findings filed
+  kind: build
+  needs: []
+  status: todo
+
 - id: matching-tutorial-chapter
   title: Tutorial chapter and guide for matching -- guard arms, chains, partial-to-Opt
   kind: build
