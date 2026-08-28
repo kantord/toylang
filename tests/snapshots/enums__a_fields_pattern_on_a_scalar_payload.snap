@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum Temp { unknown, celsius(Int) }\\n\\ncelsius(21) | celsius{deg} -> deg // unknown -> 0\")"
+---
+the payload of `celsius` is Int, not a record, so there are no fields to destructure; the arm's `.` is the payload (at byte 58)

@@ -1,0 +1,15 @@
+# A payload is any single type (draft.md's enum decision; ADR 0009 cites scalar payloads as
+# what the single-key wrapper won on). Declared in parens the way a call passes a non-record
+# argument, constructed by ordinary application, and bound whole to `.` inside its arm, since
+# there are no fields to destructure.
+program: |
+  enum Temp { unknown, celsius(Int) }
+
+  fn warmer(t: Temp) -> Int = t | celsius -> . + 1 // unknown -> 0
+
+  {a: warmer(celsius(21)), b: warmer(Temp.unknown), raw: celsius(21)}
+
+output: |
+  {"a":22,"b":0,"raw":{"celsius":21}}
+
+node_types: [application, arith.add, int, local, match, pipe, record-literal, var, variant.payload, variant.unit]

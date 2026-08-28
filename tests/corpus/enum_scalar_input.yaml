@@ -1,0 +1,17 @@
+# Enum-typed input with a scalar payload: the wire shape is the same single-key wrapper a
+# record payload gets, so every backend's reader parses the payload by its declared type
+# rather than assuming an object inside the wrapper.
+program: |
+  enum Temp { unknown, celsius(Int) }
+
+  fn read(t: Temp) -> Int = t | celsius -> . // unknown -> 0
+
+  read(input)
+
+input: |
+  {"celsius": 21}
+
+output: |
+  21
+
+node_types: [application, input, int, local, match, pipe, var]

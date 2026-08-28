@@ -1,0 +1,16 @@
+# A wrapper whose key names the right variant but whose payload misses the declared type is
+# refused, not coerced: the payload is validated by its type, the same rule every other input
+# position follows.
+program: |
+  enum Temp { unknown, celsius(Int) }
+
+  fn read(t: Temp) -> Int = t | celsius -> . // unknown -> 0
+
+  read(input)
+
+input: |
+  {"celsius": "hot"}
+
+refuses: true
+
+node_types: [application, input, int, local, match, pipe, var]

@@ -118,8 +118,8 @@ pub struct EnumDecl {
 pub struct Variant {
     pub name: String,
     pub span: Span,
-    /// `None` for a unit variant. The payload is written as a record type today, but any single
-    /// type is the rule, so nothing downstream assumes a record.
+    /// `None` for a unit variant. Any single type, spelled the way a call spells its argument:
+    /// a record type directly in braces (`circle{r: Int}`), any type in parens (`celsius(Int)`).
     pub payload: Option<TypeExpr>,
 }
 

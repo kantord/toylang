@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum Temp { unknown, celsius(Int) }\\n\\ncelsius(\\\"hot\\\")\")"
+---
+expected Int, found Str (at byte 45)

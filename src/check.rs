@@ -495,7 +495,22 @@ fn resolve_enum(decl: &EnumDecl, env: &TypeEnv, seen: &mut Vec<String>) -> Resul
     let mut variants = Vec::new();
     for v in &decl.variants {
         let payload = match &v.payload {
-            Some(ty) => Some(resolve(ty, env, seen)?),
+            Some(ty) => {
+                let resolved = resolve(ty, env, seen)?;
+                // The record and Vec spellings refuse a stream inside themselves, but the
+                // parens spelling can put one directly in payload position, so the ban has to
+                // be stated here too: an enum value is storable, and a stream is not.
+                if resolved.contains_stream() {
+                    return Err(Error::new(
+                        ty.span(),
+                        format!(
+                            "the payload of `{}` cannot hold a stream, which has nothing to store",
+                            v.name
+                        ),
+                    ));
+                }
+                Some(resolved)
+            }
             None => None,
         };
         variants.push((v.name.clone(), payload));
@@ -756,9 +771,15 @@ fn construct(
             ));
         }
         (Some(want), None) => {
+            // The hint mirrors the declaration's two spellings: braces for a record payload,
+            // parens for any other type.
+            let spelled = match want {
+                Type::Record(_) => format!("{variant}{{...}}"),
+                _ => format!("{variant}(...)"),
+            };
             return Err(Error::new(
                 variant_span,
-                format!("`{variant}` of `{name}` carries a payload of {want}, so it is written `{variant}{{...}}`"),
+                format!("`{variant}` of `{name}` carries a payload of {want}, so it is written `{spelled}`"),
             ));
         }
     };
@@ -1160,7 +1181,12 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                                 let mut arm_ctx = ctx.with(Some((pty.clone(), pid)));
                                 if let Some(f) = fields {
                                     let Type::Record(pfields) = pty else {
-                                        unreachable!("a declared payload is a record today")
+                                        return Err(Error::new(
+                                            f.span,
+                                            format!(
+                                                "the payload of `{vname}` is {pty}, not a record, so there are no fields to destructure; the arm's `.` is the payload"
+                                            ),
+                                        ));
                                     };
                                     for (i, (fname, fspan)) in f.names.iter().enumerate() {
                                         if f.names[..i].iter().any(|(seen, _)| seen == fname) {

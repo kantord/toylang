@@ -38,6 +38,18 @@ fn a_payload_variant_used_bare() {
     insta::assert_snapshot!(err("enum Shape { point, circle{r: Int} }\n\ncircle"));
 }
 
+/// The hint follows the payload's spelling: parens for a scalar, where `circle{...}` would
+/// point at syntax the variant does not have.
+#[test]
+fn a_scalar_payload_variant_used_bare() {
+    insta::assert_snapshot!(err("enum Temp { unknown, celsius(Int) }\n\ncelsius"));
+}
+
+#[test]
+fn a_scalar_payload_of_the_wrong_type() {
+    insta::assert_snapshot!(err("enum Temp { unknown, celsius(Int) }\n\ncelsius(\"hot\")"));
+}
+
 /// Expanding this would not terminate: there is no indirection for a recursive payload to hide
 /// behind, so it is refused the way a recursive alias is.
 #[test]
@@ -113,6 +125,15 @@ fn a_pattern_naming_only_some_payload_fields() {
 #[test]
 fn a_unit_variant_has_nothing_to_destructure() {
     insta::assert_snapshot!(err("enum S { a, b }\n\nS.a | a{q} -> 1 // b -> 2"));
+}
+
+/// A scalar payload has no fields for a `{...}` pattern to name; the arm's `.` is already the
+/// payload, so the error points there.
+#[test]
+fn a_fields_pattern_on_a_scalar_payload() {
+    insta::assert_snapshot!(err(
+        "enum Temp { unknown, celsius(Int) }\n\ncelsius(21) | celsius{deg} -> deg // unknown -> 0"
+    ));
 }
 
 #[test]

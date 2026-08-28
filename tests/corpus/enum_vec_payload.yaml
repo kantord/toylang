@@ -1,0 +1,13 @@
+# A Vec payload: the single-type rule composes with the type grammar, so the payload can carry
+# a dimension, and the arm's `.` is the whole Vec, here handed straight to a reducer.
+program: |
+  enum Batch { empty, some(Vec<Int>) }
+
+  fn size(b: Batch) -> Int = b | some -> extent(.) // empty -> 0
+
+  {n: size(some([1, 2, 3])), raw: some([4, 5]), z: size(Batch.empty)}
+
+output: |
+  {"n":3,"raw":{"some":[4,5]},"z":0}
+
+node_types: [application, builtin.extent, int, local, match, pipe, record-literal, var, variant.payload, variant.unit, vec-literal]
