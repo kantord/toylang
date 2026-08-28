@@ -46,6 +46,11 @@ the GitHub issue (with a landing comment naming the merge commit) belongs here t
 merge is pushed or the user has said pushing is theirs. Removing the env (`enw rm`) stays the
 user's call.
 
+Marking done does not end sessions: check for claude processes whose cwd is under the landed
+worktree (a fresh idle one can even appear later, spawned by a workspace visit) and name any
+lingerers in the report so the user knows the window is safe to close. Never kill an
+interactive session yourself; it is the user's window.
+
 ## 4. Report once
 
 One consolidated report: what landed, test counts, review findings and what happened to each

@@ -19,16 +19,21 @@ Never use `claude -p` for this: headless output is not navigable and cannot be t
 - `repo@<branch-name>` (git recipe) -- for work with no issue. The new session gets its brief
   only from the kickoff prompt and in-repo docs, so name the source-of-truth file explicitly.
 
-## 2. Activate, then launch kitty with claude inside
+## 2. Activate, launch kitty with claude inside, then switch the user back
 
 ```sh
+prev=$(i3-msg -t get_workspaces | jq -r '.[] | select(.focused).name')
 enw activate 'toylang#12'
 enw wrap kitty 'toylang#12' -- --detach claude 'Implement step 1 of plans/enums.md. Read AGENTS.md first.'
+sleep 4   # let the kitty window map on the env workspace, and verify the session is live
+i3-msg "workspace \"$prev\"" >/dev/null
 ```
 
-- `enw activate` cooks the env (worktree + branch) and binds/switches to its workspace. This
-  moves the user's focus -- expected, since they asked for the delegation; use
-  `enw prep '<name>'` instead only if the user asked not to be switched.
+- `enw activate` cooks the env (worktree + branch) and binds/switches to its workspace,
+  which yanks the user's focus. Capture the focused workspace BEFORE activating and switch
+  back as the last step, so the delegation is barely noticeable: the sleep matters, because
+  the kitty window must map while the env workspace is focused, and it doubles as the moment
+  to verify the claude process is live (pgrep with cwd under the env worktree).
 - `enw wrap <cmd> <env> -- <args>` runs the command with the env's directory as cwd and
   `ENWIRO_ENV` exported (verified), so the child session's scratchpad protocol resolves to the
   right place. `kitty --detach` forks, so the launching shell returns immediately.
