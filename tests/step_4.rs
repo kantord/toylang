@@ -7,12 +7,10 @@ fn filter_a_vec() {
     insta::assert_snapshot!(toylang::run("[1, 2, 3] | select(. >= 2)").unwrap());
 }
 
-/// `[]` says what happens to a dimension, so with no access after it there is nothing for it to
-/// say. This replaces a test that asserted `[]` was the identity, which is the behaviour the
-/// spec rule removed.
+/// `v[]` with nothing after it is the identity: "keep every entry" is what a Vec already is.
 #[test]
-fn a_spec_with_nothing_to_spec() {
-    insta::assert_snapshot!(err("[1, 2, 3][] | select(. >= 2)"));
+fn a_spec_with_nothing_to_spec_is_the_identity() {
+    insta::assert_snapshot!(toylang::run("[1, 2, 3][] | select(. >= 2)").unwrap());
 }
 
 /// Every dimension needs a spec, so reaching a field through one without saying so fails.

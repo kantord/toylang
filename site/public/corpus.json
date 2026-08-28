@@ -563,6 +563,31 @@
     },
     {
       "emitted": {
+        "go": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n\t\"strings\"\n)\n\nfunc tlInt(n int32) int32 { return n }\n\nfunc tlJoin[T any](v []T, f func(T) string) string {\n\tparts := make([]string, len(v))\n\tfor i, e := range v {\n\t\tparts[i] = f(e)\n\t}\n\treturn \"[\" + strings.Join(parts, \",\") + \"]\"\n}\n\nfunc main() {\n\tfmt.Println(tlJoin([]int32{tlInt(1), tlInt(2), tlInt(3)}, func(e0 int32) string { return strconv.FormatInt(int64(e0), 10) }))\n}\n",
+        "jq": "[ [1, 2, 3][] | . ]\n",
+        "js": "function tl_join(v, f) {\n  const parts = [];\n  for (let i = 0; i < v.length; i++) parts.push(f(v[i]));\n  return \"[\" + parts.join(\",\") + \"]\";\n}\nconsole.log(tl_join([1, 2, 3], (e0) => String(e0)));\n",
+        "lua": "local function tl_join(v, f)\n  local parts = {}\n  for i = 1, #v do parts[i] = f(v[i]) end\n  return \"[\" .. table.concat(parts, \",\") .. \"]\"\nend\nprint(tl_join({1, 2, 3}, function(e0) return tostring(e0) end))\n",
+        "native": "; ModuleID = 'toylang'\nsource_filename = \"toylang\"\n\n@bytes.0 = private constant [2 x i8] c\"[\\00\"\n@str.0 = private constant { ptr, i64 } { ptr @bytes.0, i64 1 }\n@bytes.1 = private constant [2 x i8] c\",\\00\"\n@str.1 = private constant { ptr, i64 } { ptr @bytes.1, i64 1 }\n@bytes.2 = private constant [2 x i8] c\"]\\00\"\n@str.2 = private constant { ptr, i64 } { ptr @bytes.2, i64 1 }\n\ndeclare ptr @tl_concat(ptr, ptr)\n\ndeclare ptr @tl_int_to_str(i64)\n\ndeclare i64 @tl_str_eq(ptr, ptr)\n\ndeclare i64 @tl_str_cmp(ptr, ptr)\n\ndeclare void @tl_print(ptr)\n\ndeclare ptr @tl_quote(ptr)\n\ndeclare ptr @tl_str_join(ptr, ptr, ptr, ptr)\n\ndeclare ptr @tl_vec_new(i64, i64)\n\ndeclare i64 @tl_vec_len(ptr)\n\ndeclare i64 @tl_vec_get(ptr, i64, i64)\n\ndeclare void @tl_vec_set(ptr, i64, i64, i64)\n\ndeclare ptr @tl_vec_from_mask(ptr, ptr)\n\ndeclare ptr @tl_mask_new(i64)\n\ndeclare void @tl_mask_set(ptr, i64, i64)\n\ndeclare ptr @tl_vec_column(ptr, i64)\n\ndeclare i64 @tl_rec_get(ptr, i64)\n\ndeclare ptr @tl_rec_new(i64)\n\ndeclare ptr @tl_collect_lines()\n\ndeclare void @tl_rec_set(ptr, i64, i64)\n\ndeclare i64 @tl_read_input(ptr)\n\ndeclare ptr @tl_read_inputs(ptr)\n\ndeclare i32 @tl_read_one_input(ptr, ptr)\n\ndeclare i32 @tl_read_one_line(ptr)\n\ndeclare ptr @tl_rec_from_vec(ptr, i64)\n\ndeclare ptr @tl_at(ptr, i64, i64, i32)\n\ndeclare i64 @tl_opt_is_some(ptr)\n\ndeclare i64 @tl_opt_get(ptr)\n\ndeclare ptr @tl_unwrap(ptr, i64)\n\ndeclare void @tl_div_by_zero()\n\ndeclare ptr @tl_range(i64)\n\ndeclare ptr @tl_vec_tail(ptr)\n\ndeclare ptr @tl_vec_concat(ptr, i64)\n\ndefine i32 @main() {\nentry:\n  %vec = call ptr @tl_vec_new(i64 3, i64 1)\n  call void @tl_vec_set(ptr %vec, i64 0, i64 0, i64 1)\n  call void @tl_vec_set(ptr %vec, i64 0, i64 1, i64 2)\n  call void @tl_vec_set(ptr %vec, i64 0, i64 2, i64 3)\n  %len = call i64 @tl_vec_len(ptr %vec)\n  %parts = call ptr @tl_vec_new(i64 %len, i64 1)\n  %i = alloca i64, align 8\n  store i64 0, ptr %i, align 4\n  br label %loop.cond\n\nloop.cond:                                        ; preds = %loop.body, %entry\n  %iv = load i64, ptr %i, align 4\n  %more = icmp slt i64 %iv, %len\n  br i1 %more, label %loop.body, label %loop.end\n\nloop.body:                                        ; preds = %loop.cond\n  %slot = call i64 @tl_vec_get(ptr %vec, i64 0, i64 %iv)\n  %int_str = call ptr @tl_int_to_str(i64 %slot)\n  %slot1 = ptrtoint ptr %int_str to i64\n  call void @tl_vec_set(ptr %parts, i64 0, i64 %iv, i64 %slot1)\n  %next = add i64 %iv, 1\n  store i64 %next, ptr %i, align 4\n  br label %loop.cond\n\nloop.end:                                         ; preds = %loop.cond\n  %joined = call ptr @tl_str_join(ptr %parts, ptr @str.0, ptr @str.1, ptr @str.2)\n  call void @tl_print(ptr %joined)\n  ret i32 0\n}\n",
+        "py": "import sys\n\n\n\ndef tl_join(v, f):\n    return \"[\" + \",\".join(f(e) for e in v) + \"]\"\n\n\nsys.stdout.buffer.write((tl_join([1, 2, 3], lambda e0: str(e0)) + \"\\n\").encode(\"utf-8\"))\n",
+        "rust": "#![allow(dead_code)]\n\nfn tl_int(n: i32) -> i32 {\n    n\n}\n\nfn tl_join<T>(v: &[T], f: fn(&T) -> String) -> String {\n    let parts: Vec<String> = v.iter().map(f).collect();\n    format!(\"[{}]\", parts.join(\",\"))\n}\n\nfn main() {\n    println!(\"{}\", tl_join(&vec![tl_int(1), tl_int(2), tl_int(3)], |e0: &i32| -> String { (e0.clone()).to_string() }));\n}\n"
+      },
+      "expect": {
+        "kind": "output",
+        "value": "[1,2,3]\n"
+      },
+      "input": null,
+      "inputType": null,
+      "name": "empty_keep_is_identity",
+      "nodeTypes": [
+        "int",
+        "vec-literal"
+      ],
+      "program": "[1, 2, 3][]\n",
+      "resultType": "Vec<Int>",
+      "usesLines": false
+    },
+    {
+      "emitted": {
         "go": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n\t\"strings\"\n)\n\nfunc tlInt(n int32) int32 { return n }\n\nfunc tlSelect[T any](src []T, pred func(T) bool) []T {\n\tout := []T{}\n\tfor _, e := range src {\n\t\tif pred(e) {\n\t\t\tout = append(out, e)\n\t\t}\n\t}\n\treturn out\n}\n\nfunc tlJoin[T any](v []T, f func(T) string) string {\n\tparts := make([]string, len(v))\n\tfor i, e := range v {\n\t\tparts[i] = f(e)\n\t}\n\treturn \"[\" + strings.Join(parts, \",\") + \"]\"\n}\n\nfunc main() {\n\tfmt.Println(tlJoin(func(t_0 []int32) []int32 { return tlSelect(t_0, func(t_1 int32) bool { return (t_1 >= tlInt(99)) }) }([]int32{tlInt(1), tlInt(2)}), func(e0 int32) string { return strconv.FormatInt(int64(e0), 10) }))\n}\n",
         "jq": "[ ([1, 2] as $t_0 | [ $t_0[] | . as $t_1 | select(($t_1 >= 99)) ])[] | . ]\n",
         "js": "function tl_select(src, pred) {\n  const out = [];\n  for (let i = 0; i < src.length; i++) if (pred(src[i])) out.push(src[i]);\n  return out;\n}\nfunction tl_join(v, f) {\n  const parts = [];\n  for (let i = 0; i < v.length; i++) parts.push(f(v[i]));\n  return \"[\" + parts.join(\",\") + \"]\";\n}\nconsole.log(tl_join(((t_0) => tl_select(t_0, (t_1) => (t_1 >= 99)))([1, 2]), (e0) => String(e0)));\n",

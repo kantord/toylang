@@ -143,6 +143,19 @@ fn a_function_name_starts_lowercase() {
     );
 }
 
+/// Postfix `!` next to `!=` merges into one token, so the unwrap-then-compare a reader might
+/// intend (`x! == y`) instead lexes as a plain `!=` on the still-wrapped `Opt`. The error names
+/// the likely cause instead of just the type mismatch.
+#[test]
+fn ne_on_an_opt_suggests_the_unwrap() {
+    insta::assert_snapshot!(
+        toylang::compile("[1, 2][0]!=1")
+            .map(|_| ())
+            .unwrap_err()
+            .to_string()
+    );
+}
+
 /// Field names are exempt, because they come from data rather than from the program.
 #[test]
 fn a_field_name_may_be_capitalised() {
