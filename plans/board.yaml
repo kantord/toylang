@@ -277,10 +277,11 @@
   status: todo
 
 - id: checker-structure-survey
+  issue: gh:32
   title: Survey how compilers structure the checker layer -- strategies, pitfalls, crates
   kind: build
   needs: []
-  status: todo
+  status: done
 
 - id: cognitive-complexity-lesson
   issue: gh:25
