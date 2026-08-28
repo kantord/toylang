@@ -49,9 +49,24 @@ export function splitBlocks(page: Page): Block[] {
   const flush = () => {
     if (run.length) {
       const pieces = run.map((t) => ({ html: md.parser([t]), raw: t.raw, annotateRaw: t.raw }))
+      // CommonMark always puts a blank-line gap before a comment that interrupts a paragraph, so
+      // marked lexes that gap as its own "space" token -- a piece with nothing but whitespace for
+      // `raw`. Two or more annotation comments can also follow the same paragraph in a row
+      // (kantord/toylang#30 scope addition: the highlight-bleed bug). Either shape defeats
+      // `pieces[i-1]` alone: it lands on the blank-space piece (whose `.html` is empty, so the
+      // wash silently has nothing to attach a class to) or on an earlier comment's own already-
+      // emptied placeholder, rather than the real paragraph or heading the comment is about.
+      // Skipping past both blank and comment-only pieces on both sides fixes both.
+      const isSkippable = (raw: string) => isCommentOnly(raw) || raw.trim() === ""
       for (let i = 0; i < pieces.length; i++) {
         if (!isCommentOnly(pieces[i].raw)) continue
-        const target = pieces[i - 1] ?? pieces[i + 1]
+        let target: (typeof pieces)[number] | undefined
+        for (let j = i - 1; j >= 0 && !target; j--) {
+          if (!isSkippable(pieces[j].raw)) target = pieces[j]
+        }
+        for (let j = i + 1; j < pieces.length && !target; j++) {
+          if (!isSkippable(pieces[j].raw)) target = pieces[j]
+        }
         if (!target) continue
         target.annotateRaw += pieces[i].annotateRaw
         pieces[i].annotateRaw = ""
@@ -76,6 +91,16 @@ export function splitBlocks(page: Page): Block[] {
  *  block on and what the annotation scan runs over. */
 export function blockRaw(block: Block): string {
   return block.kind === "html" ? block.pieces.map((p) => p.raw).join("") : ""
+}
+
+/** A block's rendered text, with markup stripped -- the same "original" text the edit-inbox
+ *  record and the reply flow key on (kantord/toylang#30: the sidebar's immediate mark-as-read
+ *  needs it too, to acknowledge a block without opening it). Browser-only, like the rest of
+ *  annotations mode. */
+export function blockPlainText(block: Block): string {
+  if (block.kind !== "html") return ""
+  const html = block.pieces.map((p) => p.html).join("")
+  return new DOMParser().parseFromString(html, "text/html").body.textContent ?? ""
 }
 
 /** True when a token's whole source is nothing but one or more annotation comments, e.g. a

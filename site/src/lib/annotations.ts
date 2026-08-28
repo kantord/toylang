@@ -1,10 +1,13 @@
 /**
- * The `@review`/`@comment`/`@fill` comment scan for annotations mode (kantord/toylang#23).
+ * The `@review`/`@comment`/`@fill` comment scan for annotations mode (kantord/toylang#23):
+ * the INBOX, the coordinator's own annotations to the maintainer. The AUTHORING side --
+ * the maintainer's own notes back to the coordinator (kantord/toylang#30) -- doesn't live in
+ * the markdown source at all; see AnnotateMode.tsx and the `/__annotations/note` endpoint.
  * Split out of blocks.ts so this stays reachable only through a dynamic import: nothing in the
  * production bundle references it, and `vite build` tree-shakes it out accordingly.
  */
 
-import { blockRaw, type Block } from "@/lib/blocks"
+import { blockPlainText, blockRaw, type Block } from "@/lib/blocks"
 import type { Page } from "@/lib/docs"
 
 export type AnnotationType = "review" | "comment" | "fill"
@@ -13,27 +16,46 @@ export interface Annotation {
   page: Page
   block: number
   type: AnnotationType
+  /** The exact rendered text the annotation concerns (kantord/toylang#30), when the coordinator
+   *  quoted a span rather than commenting on the whole piece. */
+  anchor?: string
   note: string
+  /** The block's own rendered text (kantord/toylang#30): the sidebar's immediate mark-as-read
+   *  needs this to acknowledge a block without opening its page first. */
+  original: string
 }
 
-const ANNOTATION_RE = /<!--\s*@(review|comment|fill)\b([\s\S]*?)-->/g
+// A quoted span comes right after the type, before the free-text note: `@review "the exact
+// words" the rest is the note`. No escaping inside the quotes -- an anchor is copied verbatim
+// from rendered prose, and prose containing a literal `"` is rare enough not to plan for.
+const ANNOTATION_RE = /<!--\s*@(review|comment|fill)\b(?:\s+"([^"]*)")?([\s\S]*?)-->/g
 
 /** Every annotation comment on a page, one entry per match, keyed to the run it lives in (the
- *  edit-inbox unit); rendering pinpoints the exact piece via `annotationIn`. */
+ *  edit-inbox unit); rendering pinpoints the exact piece (and span) via `annotationsIn`. */
 export function pageAnnotations(page: Page, blocks: Block[]): Annotation[] {
   const found: Annotation[] = []
   blocks.forEach((block, index) => {
     for (const m of blockRaw(block).matchAll(ANNOTATION_RE)) {
-      found.push({ page, block: index, type: m[1] as AnnotationType, note: m[2].trim() })
+      found.push({
+        page,
+        block: index,
+        type: m[1] as AnnotationType,
+        anchor: m[2] || undefined,
+        note: m[3].trim(),
+        original: blockPlainText(block),
+      })
     }
   })
   return found
 }
 
-/** The first annotation type left inside one piece's own source, if any -- this is what a
- *  marker-pen wash attaches to, so it covers only the commented element and not its run-mates. */
-export function annotationIn(raw: string): AnnotationType | undefined {
-  const m = ANNOTATION_RE.exec(raw)
-  ANNOTATION_RE.lastIndex = 0
-  return m ? (m[1] as AnnotationType) : undefined
+/** Every annotation left inside one piece's own source -- what a marker-pen wash attaches to, so
+ *  it covers only the commented element (and, with an anchor, only the quoted words) rather than
+ *  its run-mates. */
+export function annotationsIn(raw: string): { type: AnnotationType; anchor?: string; note: string }[] {
+  return [...raw.matchAll(ANNOTATION_RE)].map((m) => ({
+    type: m[1] as AnnotationType,
+    anchor: m[2] || undefined,
+    note: m[3].trim(),
+  }))
 }
