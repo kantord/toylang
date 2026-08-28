@@ -2086,6 +2086,18 @@ already been fixed for, at a third, independent site. See
 
 ## DECIDED: `f x` reads as `f(x)`, but only where an expression begins fresh
 
+REVISED (2026-08-28): bare application is no longer a confined third spelling -- it is **the
+default calling style**, with `f(x)` as the explicit disambiguator. Three changes carry that:
+the root-position confinement and the definition-body suspension are replaced by a same-line
+rule (a bare argument must start on the same line as its function -- the same rule the
+record-argument sugar's boundary fix already decided, so `= extent v` works and a next-line
+program body is never swallowed); the `ident {` record-argument sugar stops being separate
+machinery and becomes ordinary bare application whose argument is a record atom, leaving
+exactly two call forms; and the corpus, examples, and docs migrate to bare style where it
+reads better, so the language teaches its own default. The `-` exclusion stands (`f -1` stays
+subtraction). The section below records the original confinement and its reasoning, which the
+same-line rule supersedes.
+
 Every function is unary, so `f(x)` never needed the parens to disambiguate which argument is
 which -- only to mark where the argument starts and ends. Parens were doing two jobs: grouping
 (`(x + y)`) and marking a call's boundary (`f(x)`), and those turn out to be the same job. `f(x)`
@@ -2170,6 +2182,19 @@ existing syntax.
 `parse::parse` -- rather than as a program with a throwaway trailing expression, since it is a
 real, checked-in file meant to be read: a module is zero or more `[pub] fn` definitions and
 nothing else, with no body to fake.
+
+## DECIDED: record fields keep their declared order
+
+Records print in the order their type declares, not sorted: `{name: .n, age: .a}` prints
+`{"name":...,"age":...}`. Order lives in the *type* -- record fields are static, so every
+value of a type prints identically and determinism survives -- and input is normalized to
+declaration order on read; arrival order is not data. (For a future arbitrary-keyed Map type,
+per-value order is a separate question, deliberately not prejudged here.) This replaces the
+alphabetical order the printers shipped with, which existed to keep seven backends agreeing
+cheaply: the same agreement now rides on declaration order, which is what jq users and
+downstream diffing actually expect. Migration: the printers and the native/Go layouts (whose
+column order was sorted position) move to declaration position, and the record-printing
+corpus expectations re-pin.
 
 ## DECIDED: Stream is the effect layer, typed
 

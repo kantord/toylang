@@ -27,13 +27,6 @@
   needs: []
   status: done
 
-- id: def-boundary-brace-bug
-  issue: gh:10
-  title: Fix ident-brace sugar reaching across the definition boundary
-  kind: build
-  needs: []
-  status: todo
-
 - id: live-inputs-validation
   issue: gh:15
   title: Validate input on the live fused-inputs path, matching fixture runs
@@ -74,6 +67,22 @@
   kind: build
   needs: []
   status: delegated
+
+- id: bare-default-build
+  issue: gh:20
+  title: Bare application becomes the default call form (same-line rule, sugar unified, style migration)
+  kind: build
+  needs: []
+  model: fable
+  status: todo
+
+- id: field-order-build
+  issue: gh:21
+  title: Record fields print in declared order across all backends
+  kind: build
+  needs: []
+  model: fable
+  status: todo
 
 - id: oddities-quick-fixes
   issue: gh:14
