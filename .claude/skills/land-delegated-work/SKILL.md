@@ -34,6 +34,10 @@ Do not ping for intermediate progress or ask permission to review or merge.
 
 - `git merge <branch> --no-ff` from the main checkout, with a merge message naming what was
   reviewed and where follow-ups went, plus the trailer.
+- On conflicts: resolve each conflicted path explicitly and NEVER `git add -A` while a merge
+  is in progress -- it once staged conflict markers into board.yaml unseen. Structured files
+  (board.yaml especially) get validated AFTER resolution and BEFORE the commit, with the
+  validation hard-gating the commit (`&&`, not a newline).
 - Re-run `just test` on main after the merge.
 - Pushing remains the user's call; do not push unless asked. Removing the enwiro env
   (`enw rm`) is also theirs -- it is safe only after the merge, and never with unmerged work.
