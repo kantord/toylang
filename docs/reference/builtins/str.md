@@ -1,5 +1,9 @@
 # str
 
+<!-- @comment Coordinator, adopted: your framing is now the page text below -- str is the
+constructor of the built-in Str type, which also settles the naming oddity (the name is
+right; what grows later is the set of accepted input types). Read and settled. -->
+
 `str(n)`, of type `Int -> Str`: renders an integer the way the printer does, but reachable
 from inside a program, where a number needs to take part in string concatenation.
 

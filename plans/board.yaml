@@ -239,10 +239,22 @@
   model: fable
   status: todo
 
+- id: precedent-survey
+  title: Survey how Rust and others treat field order, flatten naming, overloading, traits
+  kind: build
+  needs: []
+  status: todo
+
+- id: function-signature-ergonomics
+  title: Grill destructuring params and pipeline-first bodies -- wizard round with real code
+  kind: decide
+  needs: []
+  status: todo
+
 - id: overloading-and-traits-design
   title: Grill function overloading and Rust-style traits -- the direction that dissolves concat and kin
   kind: decide
-  needs: []
+  needs: [precedent-survey]
   status: todo
 
 - id: mutation-semantics-design
@@ -262,7 +274,7 @@
   issue: gh:24
   title: Ratify or relax -- are reordered record spellings distinct types?
   kind: decide
-  needs: []
+  needs: [precedent-survey]
   status: todo
 
 - id: draft-split-decision

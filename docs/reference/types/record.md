@@ -8,6 +8,10 @@ alternative: order-insensitive typing where declaration order only controls prin
 both spellings interchange and print the declared way. Strict buys wire-order fidelity and
 a simpler checker; loose buys friendlier call sites. Edit this note with your ruling. -->
 
+<!-- @comment Coordinator, re your question: queued -- a precedent survey (how Rust and
+other languages treat field order and this whole flatten/overloading family) is dispatched;
+this ratification re-asks with the survey in hand. -->
+
 `{name: Str, age: Int}`: a fixed set of differently-typed parts addressed by name, where the
 names are part of the type. A record answers what it is from its contents alone, which is
 what lets a record literal appear anywhere without an annotation:
