@@ -21,6 +21,11 @@ and the inbox delivers the whole round after five quiet minutes.
 Write `docs/.grill/<topic>-round-<n>.md` (gitignored, ephemeral). It renders in the site's
 annotations mode and its annotations join the sidebar; it never appears in public nav. Rules:
 
+- Coordinator messages follow the maintainer's structure: sections labeled Background /
+  Thesis / Question (only the ones needed, in that order), and the direct action or response
+  needed from the human stated in ONE bold line -- first where possible, never buried. The
+  site renders these as color-coded left-bordered sections per flow type; the authoring side
+  supplies the labels. ADHD-communication rules apply: action first, scannable, bounded.
 - AGENTS.md prose rules apply. Every code fragment is real and was run -- the fence harness
   does not check `.grill` files, so honesty is manual here.
 - Each question is one annotated span: `<!-- @fill ... -->` where an answer gets typed,
