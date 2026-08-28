@@ -35,11 +35,16 @@ Do not ping for intermediate progress or ask permission to review or merge.
 - Pushing remains the user's call; do not push unless asked. Removing the enwiro env
   (`enw rm`) is also theirs -- it is safe only after the merge, and never with unmerged work.
 
-## 3b. Update the board
+## 3b. Update the board and the env
 
 If `plans/board.yaml` exists: set the landed task's row to `status: done` (committed together
 with the merge), and add rows for any follow-up issues the review filed -- `build` rows
 usually, or a `decide` + `build` pair when a finding needs a design call first.
+
+Mark the enwiro environment done as part of landing: `enw mark done --env '<name>'`. Closing
+the GitHub issue (with a landing comment naming the merge commit) belongs here too, once the
+merge is pushed or the user has said pushing is theirs. Removing the env (`enw rm`) stays the
+user's call.
 
 ## 4. Report once
 

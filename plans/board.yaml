@@ -82,3 +82,15 @@
   kind: decide
   needs: []
   status: todo
+
+- id: docs-site-design
+  title: Grill the docs site generalization -- page types, navigation, content provenance
+  kind: decide
+  needs: []
+  status: todo
+
+- id: docs-site-build
+  title: Generalize the site per the design -- reference, tutorials, examples as a subsection
+  kind: build
+  needs: [docs-site-design]
+  status: todo
