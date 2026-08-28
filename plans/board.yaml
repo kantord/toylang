@@ -142,7 +142,7 @@
   title: Survey crates that would reduce hand-rolled compiler complexity
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: float-build
   title: Implement Float (IEEE binary64 per ADR 0007) across the backends
