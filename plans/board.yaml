@@ -130,11 +130,7 @@
   title: Prove full JSON-string support across backends, pinning codepoint ordering
   kind: build
   needs: []
-<<<<<<< HEAD
-  status: delegated
-=======
   status: done
->>>>>>> issue-26
 
 - id: matcher-first-cut-design
   title: Grill the matcher surface first cut -- guard arms with or-composition, FizzBuzz the case study, reconcile with the enum arms token
