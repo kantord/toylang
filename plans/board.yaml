@@ -120,6 +120,19 @@
   needs: [crate-adoption]
   status: delegated
 
+- id: opt-in-signatures
+  title: Opt<T> accepted in the type grammar -- head(v) -> Opt<Int> compiles as written
+  kind: build
+  needs: []
+  status: todo
+
+- id: type-flow-rework
+  title: Top-down type flow -- declared types resolve [] and literals in bodies
+  kind: build
+  needs: []
+  model: fable
+  status: todo
+
 - id: draft-split-decision
   title: Decide whether and how draft.md gets split (it is excluded from the prose budget by name)
   kind: decide
