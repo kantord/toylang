@@ -143,9 +143,9 @@ pub enum Builtin {
     /// `range(n)`, the integers from zero up to but not including n. Zero-based, matching jq,
     /// Python, and this language's own indices.
     Range,
-    /// `collect(lines)`, reading every line of stdin into a Vec<Str>. The one place `Lines`
-    /// stops being a stream: what comes back is an ordinary value, exactly as sized as it needs
-    /// to be, with no trace left of how it arrived.
+    /// `collect(s)`, `Stream<T> -> Vec<T>`: the one place a stream stops being a stream. What
+    /// comes back is an ordinary value, exactly as sized as it needs to be, with no trace left
+    /// of how it arrived.
     Collect,
     /// `jsonlines(v)`, printing each element of a `Vec<T>` on its own line rather than wrapping
     /// the whole thing in `[...]`. Named for the format (jsonlines.org, also called NDJSON):

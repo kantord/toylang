@@ -2,4 +2,4 @@
 source: tests/streams.rs
 expression: "err(\"lines\")"
 ---
-the program's result contains `lines`, which has nothing to print; pass it to `collect` first (at byte 0)
+the program's result contains a stream, which has nothing to print; pass it to `collect` first (at byte 0)

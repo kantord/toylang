@@ -251,9 +251,9 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
 /// two JSON words have to be written out.
 fn show(ty: &Type, value: &str, depth: usize) -> String {
     match ty {
-        // The checker refuses a program whose result contains Lines, since there is nothing to
+        // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
-        Type::Lines => unreachable!("Lines cannot reach the printer"),
+        Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Str => format!("tl_quote({value})"),
         Type::Int => format!("str({value})"),
         Type::Bool => format!("(\"true\" if {value} else \"false\")"),

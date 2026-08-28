@@ -134,14 +134,14 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         next_local: &next_local,
     };
     let body = synth(&ctx, &file.body)?;
-    // Lines cannot be printed, having nothing to show: it is a stream, not a value, and
-    // collect() is what turns it into one. A function body catches this for free, since its
-    // return annotation can never spell Lines and so can never match a body that contains one;
-    // the program's own result has no annotation to check against, so it needs asking directly.
-    if body.ty.contains_lines() {
+    // A stream cannot be printed, having nothing to show: it is not a value, and collect() is
+    // what turns it into one. A function body catches this for free, since its return
+    // annotation can never spell Stream and so can never match a body that contains one; the
+    // program's own result has no annotation to check against, so it needs asking directly.
+    if body.ty.contains_stream() {
         return Err(Error::new(
             file.body.span(),
-            "the program's result contains `lines`, which has nothing to print; pass it to \
+            "the program's result contains a stream, which has nothing to print; pass it to \
              `collect` first"
                 .to_string(),
         ));
@@ -270,7 +270,6 @@ fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
     Some(match name {
         "str" => (tir::Builtin::IntToStr, Sig { param: Type::Int, ret: Type::Str }),
         "range" => (tir::Builtin::Range, Sig { param: Type::Int, ret: vec_of(Type::Int) }),
-        "collect" => (tir::Builtin::Collect, Sig { param: Type::Lines, ret: vec_of(Type::Str) }),
         _ => return None,
     })
 }
@@ -378,13 +377,13 @@ fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, Sig>, Error
     for def in defs {
         value_name(&def.name, def.span, "function name")?;
         value_name(&def.param.name, def.param.span, "parameter name")?;
-        // `jsonlines`, `extent`, `concat`, `tail`, `select`, and `map` are not in `builtin()`'s
-        // fixed table -- the first four are polymorphic, the last two rebind `.` -- but all six
-        // are reserved names for the same reason every other builtin is.
+        // `jsonlines`, `extent`, `concat`, `tail`, `collect`, `select`, and `map` are not in
+        // `builtin()`'s fixed table -- the first five are polymorphic, the last two rebind `.`
+        // -- but all seven are reserved names for the same reason every other builtin is.
         if builtin(&def.name).is_some()
             || matches!(
                 def.name.as_str(),
-                "jsonlines" | "extent" | "concat" | "tail" | "select" | "map"
+                "jsonlines" | "extent" | "concat" | "tail" | "collect" | "select" | "map"
             )
         {
             return Err(Error::new(
@@ -520,7 +519,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 ));
             }
             ctx.lines_used.set(true);
-            Ok(Tir::new(Type::Lines, Kind::Lines))
+            Ok(Tir::new(Type::Stream(Box::new(Type::Str)), Kind::Lines))
         }
         Expr::Int { value, span } => {
             // The literal is the one place a value could enter without meeting the 32-bit rule,
@@ -574,13 +573,13 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     ));
                 }
                 let field = synth(ctx, value)?;
-                // Lines can never enter a record: a record's fields can be printed, copied,
+                // A stream can never enter a record: a record's fields can be printed, copied,
                 // and read back out by name, none of which make sense for a single-use stream,
-                // and no path exists for a `Lines`-typed field to leave one again once inside.
-                if field.ty.contains_lines() {
+                // and no path exists for a stream-typed field to leave one again once inside.
+                if field.ty.contains_stream() {
                     return Err(Error::new(
                         value.span(),
-                        format!("`{name}` cannot be `lines`, which has nothing to store"),
+                        format!("`{name}` cannot hold a stream, which has nothing to store"),
                     ));
                 }
                 built.push((name.clone(), field));
@@ -601,13 +600,13 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             };
             let head = synth(ctx, first)?;
             let elem = head.ty.clone();
-            // Same reasoning as a record field: nothing can get a `Lines` value back out of a
-            // Vec once it is in one, and a Vec of them makes no sense when there is only ever
-            // one real stdin to begin with.
-            if elem.contains_lines() {
+            // Same reasoning as a record field: nothing can get a stream back out of a Vec
+            // once it is in one, and a Vec of them makes no sense when there is only ever one
+            // real stdin to begin with.
+            if elem.contains_stream() {
                 return Err(Error::new(
                     first.span(),
-                    "a Vec cannot hold `lines`, which has nothing to store".to_string(),
+                    "a Vec cannot hold a stream, which has nothing to store".to_string(),
                 ));
             }
             let mut out = vec![head];
@@ -745,6 +744,23 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 return Ok(Tir::new(
                     Type::Vec(Box::new(elem)),
                     Kind::Builtin { which: tir::Builtin::Concat, arg: Box::new(arg) },
+                ));
+            }
+            // The one exit a stream has: `Stream<T> -> Vec<T>`, polymorphic over the element
+            // type like `extent` and the others above, so the argument is synthesised first.
+            if func == "collect" {
+                let arg_span = arg.span();
+                let arg = synth(ctx, arg)?;
+                let Type::Stream(elem) = &arg.ty else {
+                    return Err(Error::new(
+                        arg_span,
+                        format!("`collect` needs a stream, found {}", arg.ty),
+                    ));
+                };
+                let elem = elem.as_ref().clone();
+                return Ok(Tir::new(
+                    Type::Vec(Box::new(elem)),
+                    Kind::Builtin { which: tir::Builtin::Collect, arg: Box::new(arg) },
                 ));
             }
             if let Some((which, sig)) = builtin(func) {

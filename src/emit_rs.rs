@@ -664,7 +664,7 @@ impl Emitter {
             Type::Opt(e) => format!("Option<{}>", self.rs_type(e)),
             // Never a function's declared parameter or return type -- unspellable in an
             // annotation, so this is never asked to name a real value.
-            Type::Lines => "()".to_string(),
+            Type::Stream(_) => "()".to_string(),
             Type::Record(_) => format!("TlRec{}", self.record_index(ty)),
             // The enum's own name is the identity and is unique, so it names the Rust enum too.
             Type::Enum { name, .. } => format!("TlE_{name}"),
@@ -684,7 +684,7 @@ impl Emitter {
                 self.parser_expr(e)
             ),
             Type::Opt(_) => unreachable!("Opt cannot be declared, so input never has one"),
-            Type::Lines => unreachable!("Lines cannot be declared, so input never has one"),
+            Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
             Type::Enum { .. } => format!("tl_parse_enum{}", self.enum_index(ty)),
             Type::Record(_) => format!("tl_parse_rec{}", self.record_index(ty)),
         }
@@ -1015,7 +1015,7 @@ impl Emitter {
     /// Go one can.
     fn show(&self, ty: &Type, value: &str, depth: usize) -> String {
         match ty {
-            Type::Lines => unreachable!("Lines cannot reach the printer"),
+            Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Str => format!("tl_quote(&{value})"),
             Type::Int => format!("({value}).to_string()"),
             Type::Bool => format!("({value}).to_string()"),

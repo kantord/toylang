@@ -387,8 +387,8 @@ pub fn emit(program: &Program) -> String {
 fn has_scalar(ty: &Type) -> bool {
     match ty {
         // Only ever called on the program's own result type, which the checker guarantees is
-        // never Lines and never contains one.
-        Type::Lines => unreachable!("Lines cannot reach has_scalar"),
+        // never a stream and never contains one.
+        Type::Stream(_) => unreachable!("a stream cannot reach has_scalar"),
         Type::Int | Type::Bool => true,
         Type::Str => false,
         Type::Vec(t) | Type::Opt(t) => has_scalar(t),
@@ -539,7 +539,7 @@ impl Emitter {
             Type::Opt(e) => format!("tlOpt[{}]", self.go_type(e)),
             // A phantom marker: Go still needs a real type for the closure-based Bind pattern
             // to name, even though no value of it is ever read.
-            Type::Lines => "struct{}".to_string(),
+            Type::Stream(_) => "struct{}".to_string(),
             Type::Record(_) => {
                 let key = ty.to_string();
                 let i = self
@@ -857,9 +857,9 @@ impl Emitter {
     /// backend. Here there is no choice at all: a Go value cannot be asked what it is.
     fn show(&self, ty: &Type, value: &str, depth: usize) -> String {
         match ty {
-            // The checker refuses a program whose result contains Lines, since there is
+            // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
-            Type::Lines => unreachable!("Lines cannot reach the printer"),
+            Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Str => format!("tlQuote({value})"),
             Type::Int => format!("strconv.FormatInt(int64({value}), 10)"),
             Type::Bool => format!("strconv.FormatBool({value})"),

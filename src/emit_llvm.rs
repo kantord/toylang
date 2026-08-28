@@ -252,10 +252,10 @@ impl<'ctx> Emitter<'ctx> {
 
     fn llvm_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, String> {
         Ok(match ty {
-            // Proven unreachable by the checker: Lines cannot be a function's parameter or
+            // Proven unreachable by the checker: a stream cannot be a function's parameter or
             // return type (unspellable in an annotation), cannot enter a Vec or a record, and a
-            // Cond branch typed Lines would need `lines` written twice, which is refused.
-            Type::Lines => unreachable!("Lines never reaches llvm_type"),
+            // Cond branch typed Stream would need `lines` written twice, which is refused.
+            Type::Stream(_) => unreachable!("Stream never reaches llvm_type"),
             Type::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Int => self.ctx.i64_type().into(),
             Type::Bool => self.ctx.bool_type().into(),
@@ -279,9 +279,9 @@ impl<'ctx> Emitter<'ctx> {
     /// the program declared. See the grammar in runtime/toylang.c.
     fn descriptor(ty: &Type) -> String {
         match ty {
-            // Lines is unspellable in a type annotation, so `input`'s declared type -- the only
+            // Stream is unspellable in a type annotation, so `input`'s declared type -- the only
             // thing this function is ever called on -- can never contain one.
-            Type::Lines => unreachable!("Lines cannot be declared, so input never has one"),
+            Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
             Type::Str => "s".to_string(),
             Type::Int => "i".to_string(),
             Type::Bool => "b".to_string(),
@@ -375,9 +375,9 @@ impl<'ctx> Emitter<'ctx> {
     fn to_slot(&self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<IntValue<'ctx>, String> {
         let i64t = self.ctx.i64_type();
         Ok(match ty {
-            // Proven unreachable the same way as llvm_type: nothing can put a Lines value where
+            // Proven unreachable the same way as llvm_type: nothing can put a stream where
             // to_slot would be asked to pack one.
-            Type::Lines => unreachable!("Lines never reaches to_slot"),
+            Type::Stream(_) => unreachable!("Stream never reaches to_slot"),
             Type::Int => value.into_int_value(),
             Type::Bool => self
                 .builder
@@ -398,7 +398,7 @@ impl<'ctx> Emitter<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr = self.ctx.ptr_type(AddressSpace::default());
         Ok(match ty {
-            Type::Lines => unreachable!("Lines never reaches read_slot"),
+            Type::Stream(_) => unreachable!("Stream never reaches read_slot"),
             Type::Int => slot.into(),
             Type::Bool => self
                 .builder
@@ -843,9 +843,9 @@ impl<'ctx> Emitter<'ctx> {
 
     fn show(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match ty {
-            // The checker refuses a program whose result contains Lines, since there is
+            // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
-            Type::Lines => unreachable!("Lines cannot reach the printer"),
+            Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
             Type::Int => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
             Type::Bool => {
@@ -1233,7 +1233,7 @@ impl<'ctx> Emitter<'ctx> {
                         let elem = elem_ty.expect("checked to be a Vec");
                         self.join_shown(arg, &elem, "", "\n", "")?
                     }
-                    // `arg` is ignored: it is always Lines, directly or through a local bound
+                    // `arg` is ignored: it is always `lines`, directly or through a local bound
                     // to it, and there is only ever one real stdin, so nothing about the
                     // argument's value could change what this reads.
                     Builtin::Collect => self.call_rt(self.rt.collect_lines, &[], "lines")?,

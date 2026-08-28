@@ -104,9 +104,9 @@ pub fn emit(program: &Program) -> String {
 /// backends rather than the input's key order.
 fn canonical(ty: &Type, value: &str) -> String {
     match ty {
-        // The checker refuses a program whose result contains Lines, since there is nothing to
+        // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
-        Type::Lines => unreachable!("Lines cannot reach the printer"),
+        Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Str | Type::Int | Type::Bool => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(elem, ".")),
         Type::Opt(inner) => {
@@ -356,7 +356,7 @@ fn expr(t: &Tir) -> String {
                     canonical(elem, ".")
                 )
             }
-            // `arg` is never anything but Lines (directly, or through a local bound to it), and
+            // `arg` is never anything but `lines` (directly, or through a local bound to it), and
             // there is only ever one real stdin, so what it evaluated to is irrelevant: `inputs`
             // always means the same thing. `-n -R` on the invocation is what makes this mode
             // available; see the checker rule against mixing `input` and `lines` in one program.
