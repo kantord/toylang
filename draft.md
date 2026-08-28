@@ -2192,6 +2192,38 @@ existing syntax.
 real, checked-in file meant to be read: a module is zero or more `[pub] fn` definitions and
 nothing else, with no body to fake.
 
+## Mutation as an optimization: privileged and shared references
+
+TODO (user, 2026-08-28), queued for its own grilling. `Vec` is immutable and should likely
+stay that way *semantically* -- but a compiler-internal notion of **privileged references**
+(exactly one reference provably exists) versus **shared references** could make mutation an
+optimization without importing Rust's borrow checker or any runtime reference counting:
+
+- When `x = [0, 5]` has provably one user and flows into something like `x + [-1]`, the
+  backend may mutate in place. When other users exist, a copy is made -- and only at the
+  moment an actual mutation happens, not eagerly at the branch. Branching that shadows a
+  variable can therefore create copies lazily.
+- The analysis should fall out of the existing syntax statically: no runtime machinery.
+- Function-internal shadowing becomes the idiom for "mutation" that can never contaminate
+  the caller.
+- Calls are where it gets interesting: a function may receive a privileged or a shared
+  reference, and each *branch* of its body may return an inherited reference or one created
+  internally -- so one source-level function breaks down, per call site, into a
+  specialization with specific promises ("composite function call"), tracked internally by
+  the type system and never surfaced in syntax. Unary functions keep this tractable: per
+  overload, one privileged/shared bit in, and per-branch provenance out -- no combinatorial
+  parameter matrix.
+- The payoff is exactly [Q10](#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes)'s
+  question answered from the other side: native's vector implementation (and other targets)
+  gets honest in-place mutation, and the when-does-a-lens-materialize question gains its
+  mechanism. Related: [Q14](#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy)
+  (select's copy question) and the heap/stack model the draft has so far avoided inventing.
+
+Prior art to weigh at the grilling: Clean's uniqueness types (static, but surfaced in
+signatures -- this sketch deliberately hides them), Koka/Lean's Perceus and Roc's
+opportunistic in-place reuse (both runtime refcount-based -- this sketch deliberately
+refuses that), and functional-but-in-place compilation generally.
+
 ## DECIDED: record fields keep their declared order
 
 Records print in the order their type declares, not sorted: `{name: .n, age: .a}` prints
@@ -2443,7 +2475,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q7](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes) | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
 | [Q8](#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization) | Is vectorizability visible in the type system, or a silent optimization? | OPEN |
 | [Q9](#q9-are-vectors-multidimensional-with--as-projection) | Are vectors multidimensional, with `[]` as projection? | OPEN, may merge with Q2 |
-| [Q10](#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes) | Is uniqueness analysis in scope, for deciding when a lens materializes? | OPEN |
+| [Q10](#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes) | Is uniqueness analysis in scope, for deciding when a lens materializes? | LEANING yes, compiler-internal: see the privileged-references sketch |
 | [Q11](#q11-how-does-the-querytransformation-split-manifest-in-the-type-system) | How does the query/transformation split manifest in the type system? | SETTLED |
 | [Q12](#q12-on-a-type-mismatch-does-field-access-error-yield-null-or-something-third) | On a type mismatch, does field access error, yield null, or something third? | SETTLED |
 | [Q13](#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator) | Does the layer shift run only one way, with no value-to-effect operator? | LEANING yes, and now load-bearing: born-at-sources, dies-at-exits is the `Stream<T>` typing rule |
