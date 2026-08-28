@@ -1997,6 +1997,15 @@ ever built, would not invalidate this: `stdin`/`lines` as a pull-shaped surface 
 event-loop-driven scheduler underneath is exactly how Python's `asyncio` and JavaScript's async
 iterators are actually built, precedent rather than a hope.
 
+## DECIDED: one stdin source is the destination
+
+Direction settled 2026-08-28: the three stdin keywords (`input`, `inputs`, `lines`) are
+officially transitional. The destination is one raw source with parsing as ordinary,
+visible steps -- the design rejected earlier *only* because expected types could not flow
+into map bodies, a blocker the type-flow rework removes. Syntax is deliberately not settled
+here; it gets its own session once type-flow lands. Until then: no fourth stdin reader, no
+new exclusivity rules -- nothing that makes the migration bigger.
+
 ## DECIDED: `inputs`, eager, not an answer to Q1 either
 
 jq's own `inputs` -- every remaining JSON value on stdin, one per line -- was the obvious next

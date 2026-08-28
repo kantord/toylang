@@ -149,6 +149,25 @@
   model: fable
   status: todo
 
+- id: shell-out-design
+  title: Grill the syntax for calling external CLI programs -- bash-convenient or better
+  kind: decide
+  needs: []
+  status: todo
+
+- id: stdin-syntax-design
+  title: Grill the one-stdin-source syntax, once type flow makes parse steps possible
+  kind: decide
+  needs: [type-flow-rework]
+  status: todo
+
+- id: stdin-redesign-build
+  title: Retire the three stdin keywords for the one-source design
+  kind: build
+  needs: [stdin-syntax-design]
+  model: fable
+  status: todo
+
 - id: draft-split-decision
   title: Decide whether and how draft.md gets split (it is excluded from the prose budget by name)
   kind: decide
