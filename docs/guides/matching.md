@@ -111,5 +111,12 @@ fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Int> =
 {"a":null,"b":1}
 ```
 
+The same chain also runs directly per element inside `map`, guards and field reads over `.`
+with no named function in between:
+
+```case
+map_guard_chain_over_vec_field
+```
+
 The [match reference](../reference/operators/match.md) has the full arm-shape rundown; the
 [matching tutorial chapter](../tutorial/06-matching.md) is the narrative version.
