@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use std::io::Write;
 use std::rc::Rc;
 
+use anyhow::{Context, Result};
 use error::Error;
 use tir::Program;
 
@@ -84,14 +85,11 @@ pub fn compile(src: &str) -> Result<Program, Error> {
     check::check(&file)
 }
 
-pub fn run(src: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub fn run(src: &str) -> Result<String> {
     run_on(src, None, Backend::Lua)
 }
 
-pub fn run_with_input(
-    src: &str,
-    stdin: Option<&str>,
-) -> Result<String, Box<dyn std::error::Error>> {
+pub fn run_with_input(src: &str, stdin: Option<&str>) -> Result<String> {
     run_on(src, stdin, Backend::Lua)
 }
 
@@ -111,11 +109,7 @@ pub fn streams_inputs(program: &tir::Program) -> bool {
 /// Capturing otherwise keeps the tests to one call: it also means output is held in memory, which
 /// is fine for every program whose result has statically known extent, and is exactly the case
 /// `Feed::Live` exists for on the ones that no longer do.
-pub fn run_on(
-    src: &str,
-    stdin: Option<&str>,
-    backend: Backend,
-) -> Result<String, Box<dyn std::error::Error>> {
+pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String> {
     let program = compile(src)?;
 
     // `stdin.is_none()` is the same convention `uses_lines` already uses below: nothing was
@@ -136,10 +130,10 @@ pub fn run_on(
     let value = match (&program.input, stdin) {
         (Some(ty), Some(text)) => {
             let value: serde_json::Value = serde_json::from_str(text)?;
-            input::validate(&value, ty, "input")?;
+            input::validate(&value, ty, "input").map_err(anyhow::Error::msg)?;
             Some(value)
         }
-        (Some(ty), None) => return Err(format!("this program reads input, of type {ty}").into()),
+        (Some(ty), None) => anyhow::bail!("this program reads input, of type {ty}"),
         (None, _) => None,
     };
 
@@ -158,13 +152,13 @@ pub fn run_on(
                 let mut values = Vec::new();
                 for line in text.lines().filter(|l| !l.trim().is_empty()) {
                     let value: serde_json::Value = serde_json::from_str(line)?;
-                    input::validate(&value, elem_ty, "inputs")?;
+                    input::validate(&value, elem_ty, "inputs").map_err(anyhow::Error::msg)?;
                     values.push(value);
                 }
                 Some(values)
             }
             (Some(elem_ty), None) => {
-                return Err(format!("this program reads inputs, of type Vec<{elem_ty}>").into());
+                anyhow::bail!("this program reads inputs, of type Vec<{elem_ty}>");
             }
             (None, _) => None,
         }
@@ -271,10 +265,10 @@ impl Feed {
 /// LLVM produces an object file, which is not a program, so this shells out to `cc` for the
 /// link. That is a toolchain requirement the Lua backend does not have, since mlua vendors its
 /// interpreter.
-pub fn link(program: &Program, out: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn link(program: &Program, out: &std::path::Path) -> Result<()> {
     let dir = tempfile::tempdir()?;
     let object = dir.path().join("program.o");
-    emit_llvm::compile_to_object(program, &object)?;
+    emit_llvm::compile_to_object(program, &object).map_err(anyhow::Error::msg)?;
 
     // The runtime is compiled alongside rather than shipped as a library, which keeps the build
     // to one `cc` call and means there is nothing to install.
@@ -287,9 +281,9 @@ pub fn link(program: &Program, out: &std::path::Path) -> Result<(), Box<dyn std:
         .arg("-o")
         .arg(out)
         .status()
-        .map_err(|e| format!("could not run `cc`: {e}"))?;
+        .context("could not run `cc`")?;
     if !status.success() {
-        return Err(format!("cc failed to link: {status}").into());
+        anyhow::bail!("cc failed to link: {status}");
     }
     Ok(())
 }
@@ -300,7 +294,7 @@ pub fn link(program: &Program, out: &std::path::Path) -> Result<(), Box<dyn std:
 /// Public for the same reason as `link`: `tests/backend_rust.rs` calls it directly, separately
 /// from running the result, so a genuine codegen gap (`rustc` rejects the source) is told apart
 /// from a legitimate runtime refusal (`rustc` succeeds, the binary exits non-zero).
-pub fn link_rust(source: &str, out: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn link_rust(source: &str, out: &std::path::Path) -> Result<()> {
     let dir = tempfile::tempdir()?;
     let src = dir.path().join("program.rs");
     std::fs::write(&src, source)?;
@@ -312,13 +306,12 @@ pub fn link_rust(source: &str, out: &std::path::Path) -> Result<(), Box<dyn std:
         .arg("-o")
         .arg(out)
         .output()
-        .map_err(|e| format!("could not run `rustc`: {e}"))?;
+        .context("could not run `rustc`")?;
     if !result.status.success() {
-        return Err(format!(
+        anyhow::bail!(
             "rustc failed to compile: {}",
             String::from_utf8_lossy(&result.stderr)
-        )
-        .into());
+        );
     }
     Ok(())
 }
@@ -331,11 +324,7 @@ pub fn link_rust(source: &str, out: &std::path::Path) -> Result<(), Box<dyn std:
 /// which is what lets a program that streams actually show output as it produces it rather than
 /// all at once when it exits. `Ok(String::new())` reflects that nothing is left to hand back --
 /// it already went to the real stdout directly.
-fn run_subprocess(
-    mut cmd: std::process::Command,
-    label: &str,
-    feed: &Feed,
-) -> Result<String, Box<dyn std::error::Error>> {
+fn run_subprocess(mut cmd: std::process::Command, label: &str, feed: &Feed) -> Result<String> {
     let live = matches!(feed, Feed::Live);
     let mut child = cmd
         .stdin(feed.stdio())
@@ -350,27 +339,26 @@ fn run_subprocess(
             std::process::Stdio::piped()
         })
         .spawn()
-        .map_err(|e| format!("could not run `{label}`: {e}"))?;
+        .with_context(|| format!("could not run `{label}`"))?;
 
     feed.write_to(&mut child)?;
 
     if live {
         let status = child.wait()?;
-        return if status.success() {
-            Ok(String::new())
-        } else {
-            Err(format!("{label} failed").into())
-        };
+        if !status.success() {
+            anyhow::bail!("{label} failed");
+        }
+        return Ok(String::new());
     }
 
     let out = child.wait_with_output()?;
     if !out.status.success() {
-        return Err(format!("{label} failed: {}", String::from_utf8_lossy(&out.stderr)).into());
+        anyhow::bail!("{label} failed: {}", String::from_utf8_lossy(&out.stderr));
     }
     Ok(String::from_utf8(out.stdout)?)
 }
 
-fn run_binary(exe: &std::path::Path, feed: &Feed) -> Result<String, Box<dyn std::error::Error>> {
+fn run_binary(exe: &std::path::Path, feed: &Feed) -> Result<String> {
     run_subprocess(
         std::process::Command::new(exe),
         "the compiled program",
@@ -387,7 +375,7 @@ fn run_jq(
     raw: bool,
     uses_lines: bool,
     feed: &Feed,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String> {
     let mut cmd = std::process::Command::new("jq");
     // jq's stdout is fully buffered rather than line-buffered whenever it is not a terminal, the
     // same as any other libc stdio program, so a filter over `inputs` piped into another process
@@ -422,7 +410,7 @@ fn run_lua(
     inputs_values: Option<&Vec<serde_json::Value>>,
     inputs_elem_ty: Option<&ty::Type>,
     feed: &Feed,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String> {
     let lua = mlua::Lua::new();
     if let Some(value) = value {
         lua.globals()
@@ -525,7 +513,7 @@ fn run_lua(
 
 /// Runs through `python3`. Like `node`, this is an interpreter that has to be on the machine
 /// rather than one vendored into the build.
-fn run_py(source: &str, feed: &Feed) -> Result<String, Box<dyn std::error::Error>> {
+fn run_py(source: &str, feed: &Feed) -> Result<String> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("program.py");
     std::fs::write(&path, source)?;
@@ -538,7 +526,7 @@ fn run_py(source: &str, feed: &Feed) -> Result<String, Box<dyn std::error::Error
 /// Runs through `go run`, which compiles and executes in one step. Go has no interpreter, so
 /// this is the second backend that needs a real toolchain; like `node` and `cc`, a missing one
 /// is an error rather than a skipped backend.
-fn run_go(source: &str, feed: &Feed) -> Result<String, Box<dyn std::error::Error>> {
+fn run_go(source: &str, feed: &Feed) -> Result<String> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("main.go");
     std::fs::write(&path, source)?;
@@ -551,7 +539,7 @@ fn run_go(source: &str, feed: &Feed) -> Result<String, Box<dyn std::error::Error
 /// Runs through `node`, which must be present. A missing toolchain is an error rather than a
 /// quietly skipped backend: a report that says two backends agreed when only one ran is worse
 /// than no report.
-fn run_node(source: &str, feed: &Feed) -> Result<String, Box<dyn std::error::Error>> {
+fn run_node(source: &str, feed: &Feed) -> Result<String> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("program.js");
     std::fs::write(&path, source)?;

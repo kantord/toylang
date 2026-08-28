@@ -117,7 +117,7 @@
   title: Install anyhow for the harness error plumbing
   kind: build
   needs: [crate-adoption]
-  status: delegated
+  status: done
 
 - id: draft-split-decision
   title: Decide whether and how draft.md gets split (it is excluded from the prose budget by name)
