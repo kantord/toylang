@@ -1,10 +1,9 @@
 # concat
 
-<!-- @review Coordinator: the oddities inventory flags this name. Every other language's
-concat(a, b) is binary; ours is a unary flatten (jq calls this `add`). Renaming costs three
-corpus files. Candidates: `flatten` (says what it does), keep `concat` (jq family
-resemblance), or wait for Q2 (what `+` means on two Vecs) and fold it into that story.
-Edit this note with your call. -->
+<!-- @comment Coordinator, resolved per your answer: concat stays as-is. Your call was that
+renaming becomes unnecessary once proper function overloading and Rust-style traits land --
+that direction now has its own decide row (overloading-and-traits-design), and this name is
+one of its first customers. Read and settled. -->
 
 `concat(vv)`, of type `Vec<Vec<T>> -> Vec<T>`: flattens one level of nesting, keeping order.
 
