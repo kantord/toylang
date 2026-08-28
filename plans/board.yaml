@@ -37,7 +37,7 @@
   title: Implement the decided mapper-body source rule, with its rejection test
   kind: build
   needs: [stdin-rule-decision]
-  status: todo
+  status: delegated
 
 - id: quality-practices-survey
   issue: gh:8
@@ -97,7 +97,8 @@
   status: done
 
 - id: docs-site-build
+  issue: gh:11
   title: Generalize the site per plans/docs-site.md -- fence harness, Diataxis nav, complete reference
   kind: build
   needs: [docs-site-design]
-  status: todo
+  status: delegated
