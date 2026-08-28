@@ -501,7 +501,7 @@ impl Collect<'_> {
                     Builtin::IntToStr => self.used.itoa = true,
                     Builtin::JsonLines => {
                         self.used.jsonlines = true;
-                        let elem = arg.ty.elem().expect("checked to be a Vec");
+                        let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                         self.used.jsonlines_has_scalar |= has_scalar(elem);
                     }
                     // Purely textually gated below, like tlAt and tlRange: nothing here needs
@@ -759,7 +759,7 @@ impl Emitter {
                 Builtin::IntToStr => format!("strconv.FormatInt(int64({}), 10)", self.expr(arg)),
                 Builtin::Range => format!("tlRange({})", self.expr(arg)),
                 Builtin::JsonLines => {
-                    let elem = arg.ty.elem().expect("checked to be a Vec");
+                    let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                     let e = "e0".to_string();
                     format!(
                         "tlJsonlines({}, func({e} {}) string {{ return {} }})",

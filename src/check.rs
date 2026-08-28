@@ -144,7 +144,26 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         lines_used: &lines_used,
         next_local: &next_local,
     };
-    let body = synth(&ctx, &file.body)?;
+    // `jsonlines` is a sink: legal only here, as the program's outermost expression, taking a
+    // Vec or a Stream and having no result type at all, since nothing remains that could
+    // observe one. The Tir node still carries `Str` -- under eager lowering the emitted
+    // expression genuinely is the joined string every backend prints raw -- but no program can
+    // see that: `synth` refuses `jsonlines` everywhere else.
+    let body = if let Expr::Call { func, arg, .. } = &file.body
+        && func == "jsonlines"
+    {
+        let arg_span = arg.span();
+        let arg = synth(&ctx, arg)?;
+        if !matches!(arg.ty, Type::Vec(_) | Type::Stream(_)) {
+            return Err(Error::new(
+                arg_span,
+                format!("`jsonlines` needs a Vec or a stream, found {}", arg.ty),
+            ));
+        }
+        Tir::new(Type::Str, Kind::Builtin { which: tir::Builtin::JsonLines, arg: Box::new(arg) })
+    } else {
+        synth(&ctx, &file.body)?
+    };
     // A stream cannot be printed, having nothing to show: it is not a value, and collect() is
     // what turns it into one. A function body catches this for free, since its return
     // annotation can never spell Stream and so can never match a body that contains one; the
@@ -844,21 +863,16 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     Kind::Map { source: Box::new(source), param, body: Box::new(body) },
                 ));
             }
-            // Polymorphic over the element type, so there is no one fixed Sig to check the
-            // argument against the way every other builtin has: the argument is synthesised
-            // first, and only then is its shape checked, the reverse of the usual direction.
+            // A sink, not a function: `check` handles the one legal position (the program's
+            // outermost expression) before `synth` ever runs, so reaching it here means it is
+            // nested inside something that would need its result -- and it has none. The old
+            // `Str` typing was a placeholder asserting the opposite of what the fused loop
+            // does (a type claiming the whole output exists as one value).
             if func == "jsonlines" {
-                let arg_span = arg.span();
-                let arg = synth(ctx, arg)?;
-                if arg.ty.elem().is_none() {
-                    return Err(Error::new(
-                        arg_span,
-                        format!("`jsonlines` needs a Vec, found {}", arg.ty),
-                    ));
-                }
-                return Ok(Tir::new(
-                    Type::Str,
-                    Kind::Builtin { which: tir::Builtin::JsonLines, arg: Box::new(arg) },
+                return Err(Error::new(
+                    *span,
+                    "`jsonlines` is a sink, legal only as the program's outermost expression"
+                        .to_string(),
                 ));
             }
             // `extent`, `tail`, and `concat` are polymorphic over the element type, the same
@@ -1305,22 +1319,40 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
     }
 
     if let Expr::Inputs { span } = expr {
-        let Some(elem) = want.elem() else {
-            return Err(Error::new(*span, format!("`inputs` produces a Vec, but {want} is wanted here")));
+        let Type::Stream(elem) = want else {
+            return Err(Error::new(
+                *span,
+                format!(
+                    "`inputs` is a stream, but {want} is wanted here; eager use is spelled \
+                     `collect(inputs)`"
+                ),
+            ));
         };
-        let elem = elem.clone();
+        // The filled slot doubles as the single-use flag: a second `inputs` would be a second
+        // stream claiming the same real stdin, the same mistake a second `lines` is.
         let mut slot = ctx.inputs.borrow_mut();
-        match slot.as_ref() {
-            None => *slot = Some(elem),
-            Some(prev) if *prev != elem => {
-                return Err(Error::new(
-                    *span,
-                    format!("`inputs` is used as Vec<{prev}> here and as {want} elsewhere"),
-                ));
-            }
-            Some(_) => {}
+        if slot.is_some() {
+            return Err(Error::new(
+                *span,
+                "`inputs` has already been read; there is only one stdin".to_string(),
+            ));
         }
+        *slot = Some((**elem).clone());
         return Ok(Tir::new(want.clone(), Kind::Inputs));
+    }
+
+    // `collect(inputs)` in a Vec-wanted position: the honest eager spelling the decision
+    // records. `collect` is otherwise synthesised argument-first, but `inputs` has no type of
+    // its own until checked, so the wanted Vec<T> is pushed back through as Stream<T> here.
+    if let Expr::Call { func, arg, .. } = expr
+        && func == "collect"
+        && let Some(elem) = want.elem()
+    {
+        let arg = expect(ctx, arg, &Type::Stream(Box::new(elem.clone())))?;
+        return Ok(Tir::new(
+            want.clone(),
+            Kind::Builtin { which: tir::Builtin::Collect, arg: Box::new(arg) },
+        ));
     }
 
     let found = synth(ctx, expr)?;

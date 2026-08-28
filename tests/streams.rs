@@ -31,7 +31,7 @@ fn input_and_lines_cannot_both_be_used() {
 #[test]
 fn input_and_inputs_cannot_both_be_used() {
     insta::assert_snapshot!(err(
-        "fn f(x: Int) -> Int = x\nfn g(x: Vec<Int>) -> Int = extent(x)\n\nf(input) + g(inputs)"
+        "fn f(x: Int) -> Int = x\nfn g(x: Vec<Int>) -> Int = extent(x)\n\nf(input) + g(collect(inputs))"
     ));
 }
 
@@ -41,7 +41,7 @@ fn input_and_inputs_cannot_both_be_used() {
 #[test]
 fn lines_and_inputs_cannot_both_be_used() {
     insta::assert_snapshot!(err(
-        "fn g(x: Vec<Int>) -> Int = extent(x)\n\n(collect(lines) | 0) + g(inputs)"
+        "fn g(x: Vec<Int>) -> Int = extent(x)\n\n(collect(lines) | 0) + g(collect(inputs))"
     ));
 }
 
@@ -51,11 +51,13 @@ fn inputs_needs_a_position_to_check_against() {
     insta::assert_snapshot!(err("inputs"));
 }
 
-/// Like `input`, every use of `inputs` in one program has to agree on the element type.
+/// A second `inputs` would be a second stream claiming the same real stdin, refused exactly
+/// the way a second `lines` is. This also retires the old element-type-agreement rule: with
+/// one use, there is nothing left to disagree.
 #[test]
-fn inputs_used_at_two_element_types() {
+fn inputs_cannot_be_read_twice() {
     insta::assert_snapshot!(err(
-        "fn f(x: Vec<Int>) -> Int = extent(x)\nfn g(x: Vec<Str>) -> Int = extent(x)\n\nf(inputs) + g(inputs)"
+        "fn f(s: Stream<Int>) -> Vec<Int> = collect(s)\n\nextent(f(inputs)) + extent(f(inputs))"
     ));
 }
 
@@ -143,6 +145,28 @@ fn a_stream_cannot_hold_another_stream() {
 #[test]
 fn a_piped_stream_must_be_consumed() {
     insta::assert_snapshot!(err("lines | 0"));
+}
+
+/// The generalization of "contains `lines`, nothing to print": any bare unconsumed stream as
+/// the program's result, here one arriving through a user-written stream signature.
+#[test]
+fn a_program_cannot_result_in_a_bare_stream() {
+    insta::assert_snapshot!(err(
+        "fn noisy(s: Stream<Str>) -> Stream<Str> = s | map(. + \"!\")\n\nnoisy(lines)"
+    ));
+}
+
+/// A Vec is already a value; `collect` is the exit from the effect layer, not a copy.
+#[test]
+fn collect_of_a_vec_is_refused() {
+    insta::assert_snapshot!(err("collect([1, 2])"));
+}
+
+/// `inputs` is born a stream now, so a Vec-wanted position names the eager spelling instead of
+/// silently materializing.
+#[test]
+fn inputs_wanted_as_a_vec_names_the_eager_spelling() {
+    insta::assert_snapshot!(err("fn g(x: Vec<Int>) -> Int = extent(x)\n\ng(inputs)"));
 }
 
 /// `input` is one whole value already in hand, which is exactly what a stream is not, so a

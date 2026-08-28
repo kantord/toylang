@@ -1,9 +1,9 @@
-# `inputs` is eager, not the incremental `lines`/`collect` pair: every remaining JSON value on
-# stdin, one per line, parsed and collected into a Vec<T> before the program body runs.
+# `inputs` is a stream, so eager use has a visible spelling: `collect(inputs)` reads every
+# remaining JSON value on stdin, one per line, into a Vec<T> before the program body runs.
 program: |
   fn total(nums: Vec<Int>) -> Int = extent(nums)
 
-  total(inputs)
+  total(collect(inputs))
 
 input: |
   1
@@ -14,4 +14,4 @@ input: |
 output: |
   4
 
-node_types: [application, builtin.extent, inputs, var]
+node_types: [application, builtin.collect, builtin.extent, inputs, var]

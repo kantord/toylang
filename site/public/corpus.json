@@ -649,7 +649,7 @@
         "str",
         "var"
       ],
-      "program": "enum Msg { ping, text{body: Str} }\n\nfn render(msgs: Vec<Msg>) -> Vec<Str> =\n    msgs | map(. | text -> .body // any() -> \"*ping*\")\n\njsonlines(render(inputs))\n",
+      "program": "enum Msg { ping, text{body: Str} }\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n    msgs | map(. | text -> .body // any() -> \"*ping*\")\n\njsonlines(render(inputs))\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -681,7 +681,7 @@
         "str",
         "var"
       ],
-      "program": "enum Msg { ping, text{body: Str} }\n\nfn render(msgs: Vec<Msg>) -> Vec<Str> =\n    msgs | map(. | text -> .body // any() -> \"*ping*\")\n\njsonlines(render(inputs))\n",
+      "program": "enum Msg { ping, text{body: Str} }\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n    msgs | map(. | text -> .body // any() -> \"*ping*\")\n\njsonlines(render(inputs))\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -1263,6 +1263,7 @@
       "name": "inputs_records",
       "nodeTypes": [
         "application",
+        "builtin.collect",
         "compare.ge",
         "inputs",
         "int",
@@ -1272,7 +1273,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "fn names(users: Vec<{name: Str, age: Int}>) -> Vec<Str> =\n    users | select(.age >= 18) | .[].name\n\nnames(inputs)\n",
+      "program": "fn names(users: Stream<{name: Str, age: Int}>) -> Stream<Str> =\n    users | select(.age >= 18) | .[].name\n\ncollect(names(inputs))\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -1295,11 +1296,12 @@
       "name": "inputs_scalars",
       "nodeTypes": [
         "application",
+        "builtin.collect",
         "builtin.extent",
         "inputs",
         "var"
       ],
-      "program": "fn total(nums: Vec<Int>) -> Int = extent(nums)\n\ntotal(inputs)\n",
+      "program": "fn total(nums: Vec<Int>) -> Int = extent(nums)\n\ntotal(collect(inputs))\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -1423,7 +1425,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "fn adults(users: Vec<{name: Str, age: Int}>) -> Vec<{name: Str}> =\n    users | select(.age >= 18) | map {name: .name}\n\njsonlines(adults(inputs))\n",
+      "program": "fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =\n    users | select(.age >= 18) | map {name: .name}\n\njsonlines(adults(inputs))\n",
       "resultType": "Str",
       "usesLines": false
     },

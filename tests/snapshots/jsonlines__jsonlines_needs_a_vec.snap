@@ -2,4 +2,4 @@
 source: tests/jsonlines.rs
 expression: "err(r#\"jsonlines(\"not a vec\")\"#)"
 ---
-`jsonlines` needs a Vec, found Str (at byte 10)
+`jsonlines` needs a Vec or a stream, found Str (at byte 10)

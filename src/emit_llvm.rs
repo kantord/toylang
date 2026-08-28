@@ -1165,7 +1165,7 @@ impl<'ctx> Emitter<'ctx> {
             // Already a proper Vec pointer, unlike Input's raw slot: tl_read_inputs assembles
             // it itself, so there is nothing here for read_slot to unpack.
             Kind::Inputs => {
-                let elem = t.ty.elem().expect("checked to be Vec<T>");
+                let elem = crate::tir::runtime_elem(&t.ty).expect("checked to be Vec<T> or Stream<T>");
                 let descriptor = self.string_const(&Self::descriptor(elem));
                 self.call_rt(self.rt.read_inputs, &[descriptor.into()], "inputs")?
             }
@@ -1215,7 +1215,7 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Kind::Builtin { which, arg } => {
-                let elem_ty = arg.ty.elem().cloned();
+                let elem_ty = crate::tir::runtime_elem(&arg.ty).cloned();
                 let arg = self.expr(arg)?;
                 match which {
                     Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,

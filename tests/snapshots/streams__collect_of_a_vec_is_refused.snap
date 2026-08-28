@@ -1,0 +1,5 @@
+---
+source: tests/streams.rs
+expression: "err(\"collect([1, 2])\")"
+---
+`collect` needs a stream, found Vec<Int> (at byte 8)

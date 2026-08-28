@@ -80,7 +80,7 @@ pub fn emit(program: &Program) -> String {
         let Kind::Builtin { arg, .. } = &program.body.kind else {
             unreachable!("recognize_fusion only matches a jsonlines body")
         };
-        let elem = arg.ty.elem().expect("jsonlines's argument is a Vec");
+        let elem = tir::runtime_elem(&arg.ty).expect("jsonlines's argument has an element");
         out.push_str(&format!(" | ({} | tojson)\n", canonical(elem, ".")));
         return out;
     }
@@ -350,7 +350,7 @@ fn expr(t: &Tir) -> String {
             // is what turns each element into the same compact JSON string `-c` would print for
             // it, matching every other backend's per-element encoding.
             Builtin::JsonLines => {
-                let elem = arg.ty.elem().expect("checked to be a Vec");
+                let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 format!(
                     "({} | [.[] | ({} | tojson)] | join(\"\\n\"))",
                     expr(arg),

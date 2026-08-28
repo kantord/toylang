@@ -477,7 +477,7 @@ fn expr(t: &Tir) -> String {
                 format!("Array.from({{ length: Math.max(0, {}) }}, (_, i) => i)", expr(arg))
             }
             Builtin::JsonLines => {
-                let elem = arg.ty.elem().expect("checked to be a Vec");
+                let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 let e = "e0".to_string();
                 format!("tl_jsonlines({}, ({e}) => {})", expr(arg), show(elem, &e, 1))
             }

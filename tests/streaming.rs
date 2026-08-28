@@ -13,7 +13,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 const PROGRAM: &str = r#"
-fn adults(users: Vec<{name: Str, age: Int}>) -> Vec<{name: Str}> =
+fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
     users | select(.age >= 18) | map {name: .name}
 
 jsonlines(adults(inputs))

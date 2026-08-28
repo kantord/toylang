@@ -537,7 +537,7 @@ fn expr(t: &Tir) -> String {
             Builtin::IntToStr => format!("tostring({})", expr(arg)),
             Builtin::Range => format!("tl_range({})", expr(arg)),
             Builtin::JsonLines => {
-                let elem = arg.ty.elem().expect("checked to be a Vec");
+                let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 let e = "e0".to_string();
                 format!(
                     "tl_jsonlines({}, function({e}) return {} end)",

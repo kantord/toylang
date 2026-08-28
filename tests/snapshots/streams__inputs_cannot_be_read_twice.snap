@@ -1,0 +1,5 @@
+---
+source: tests/streams.rs
+expression: "err(\"fn f(s: Stream<Int>) -> Vec<Int> = collect(s)\\n\\nextent(f(inputs)) + extent(f(inputs))\")"
+---
+`inputs` has already been read; there is only one stdin (at byte 76)

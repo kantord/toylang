@@ -1,5 +1,0 @@
----
-source: tests/streams.rs
-expression: "err(\"fn f(x: Vec<Int>) -> Int = extent(x)\\nfn g(x: Vec<Str>) -> Int = extent(x)\\n\\nf(inputs) + g(inputs)\")"
----
-`inputs` is used as Vec<Int> here and as Vec<Str> elsewhere (at byte 89)
