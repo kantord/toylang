@@ -239,10 +239,17 @@
   model: fable
   status: todo
 
+- id: language-precedents-survey
+  issue: gh:36
+  title: Survey field order and flatten/overloading precedent across Rust, TypeScript, OCaml, Go, Haskell
+  kind: build
+  needs: []
+  status: done
+
 - id: overloading-and-traits-design
   title: Grill function overloading and Rust-style traits -- the direction that dissolves concat and kin
   kind: decide
-  needs: []
+  needs: [language-precedents-survey]
   status: todo
 
 - id: mutation-semantics-design
