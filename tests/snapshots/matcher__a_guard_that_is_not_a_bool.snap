@@ -1,0 +1,5 @@
+---
+source: tests/matcher.rs
+expression: "err(\"1 | . + 1 -> 2\")"
+---
+expected Bool, found Int (at byte 4)

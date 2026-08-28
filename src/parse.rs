@@ -47,11 +47,11 @@ enum Tok {
     Input,
     Inputs,
     Lines,
+    Or,
     Plus,
     Minus,
     Star,
     Slash,
-    SlashSlash,
     Percent,
     Pipe,
     Comma,
@@ -90,11 +90,11 @@ impl std::fmt::Display for Tok {
             Tok::Input => "`input`",
             Tok::Inputs => "`inputs`",
             Tok::Lines => "`lines`",
+            Tok::Or => "`or`",
             Tok::Plus => "`+`",
             Tok::Minus => "`-`",
             Tok::Star => "`*`",
             Tok::Slash => "`/`",
-            Tok::SlashSlash => "`//`",
             Tok::Percent => "`%`",
             Tok::Pipe => "`|`",
             Tok::Comma => "`,`",
@@ -178,6 +178,10 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "input" => Tok::Input,
                 "inputs" => Tok::Inputs,
                 "lines" => Tok::Lines,
+                // Reserved for arm composition now rather than discovered later: there is no
+                // Bool `or`, and if one ever lands, arm-`or` binds loosest (draft.md, the
+                // match-arms decision).
+                "or" => Tok::Or,
                 name => Tok::Ident(name.to_string()),
             }
         }
@@ -220,15 +224,9 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
         }
         '+' => single(input, Tok::Plus),
         '*' => single(input, Tok::Star),
-        '/' => {
-            input.next_token();
-            if input.peek_token() == Some('/') {
-                input.next_token();
-                Tok::SlashSlash
-            } else {
-                Tok::Slash
-            }
-        }
+        // `//` is not a token anymore: match arms compose with `or` now, so a second slash is
+        // just a `/` where no expression can start, which is the parse error migration needs.
+        '/' => single(input, Tok::Slash),
         '%' => single(input, Tok::Percent),
         '|' => single(input, Tok::Pipe),
         ',' => single(input, Tok::Comma),
@@ -752,29 +750,83 @@ impl<'i> Cursor<'i> {
         }
     }
 
-    /// `pattern -> body // pattern -> body // ...`, first match wins. The chain reads `.` as
-    /// its subject, so it usually sits to the right of a `|`; each body stops at `|` or `//`,
-    /// which is what lets the chain be one pipe stage.
-    fn match_expr(&mut self) -> Result<Expr, Error> {
+    /// `left -> body or left -> body or ...`, first match wins; `or` is the one arm composer.
+    /// A left side is a variant pattern (`circle{r}`), `any()`, or a Bool guard expression; the
+    /// chain's final element may instead be a bare expression, the default. The chain reads `.`
+    /// as its subject, so it usually sits to the right of a `|`; each body stops at `|` and
+    /// `or`, which is what lets the chain be one pipe stage.
+    ///
+    /// `lead` is an expression `expr` had already read when the `->` or `or` after it revealed
+    /// a chain; the first element continues from it instead of parsing fresh.
+    fn match_expr(&mut self, lead: Option<Expr>) -> Result<Expr, Error> {
         let mut arms = Vec::new();
+        let mut lead = lead;
         loop {
-            let pattern = self.pattern()?;
-            self.eat(Tok::Arrow)?;
-            let body = self.expr(COND_POWER)?;
-            let span = pattern.span().to(body.span());
-            arms.push(MatchArm {
-                pattern,
-                body,
-                span,
-            });
+            let (arm, bare) = match lead.take() {
+                Some(e) => self.guard_or_default_arm(e)?,
+                None if self.arm_starts_here() => {
+                    let pattern = self.pattern()?;
+                    self.eat(Tok::Arrow)?;
+                    let body = self.expr(COND_POWER)?;
+                    let span = pattern.span().to(body.span());
+                    (
+                        MatchArm {
+                            pattern,
+                            body,
+                            span,
+                        },
+                        false,
+                    )
+                }
+                None => {
+                    let e = self.root(COND_POWER)?;
+                    self.guard_or_default_arm(e)?
+                }
+            };
+            let arm_span = arm.span;
+            arms.push(arm);
             let (sep, _) = self.peek()?;
-            if sep != Tok::SlashSlash {
+            if sep != Tok::Or {
                 break;
+            }
+            if bare {
+                return Err(Error::new(
+                    arm_span,
+                    "a bare expression is the chain's default and must come last".to_string(),
+                ));
             }
             self.advance()?;
         }
         let span = arms[0].span.to(arms[arms.len() - 1].span);
         Ok(Expr::Match { arms, span })
+    }
+
+    /// The element `left` opens: `left -> body` makes `left` a guard, and a bare `left` is the
+    /// default, desugared to a `Default` arm whose body is `left` itself. Returns the arm and
+    /// whether it was bare, which only the chain's last element may be.
+    fn guard_or_default_arm(&mut self, left: Expr) -> Result<(MatchArm, bool), Error> {
+        if self.peek()?.0 == Tok::Arrow {
+            self.advance()?;
+            let body = self.expr(COND_POWER)?;
+            let span = left.span().to(body.span());
+            return Ok((
+                MatchArm {
+                    pattern: Pattern::Guard(left),
+                    body,
+                    span,
+                },
+                false,
+            ));
+        }
+        let span = left.span();
+        Ok((
+            MatchArm {
+                pattern: Pattern::Default { span },
+                body: left,
+                span,
+            },
+            true,
+        ))
     }
 
     fn pattern(&mut self) -> Result<Pattern, Error> {
@@ -830,10 +882,21 @@ impl<'i> Cursor<'i> {
     }
 
     fn expr(&mut self, min_power: u8) -> Result<Expr, Error> {
-        let mut lhs = if self.arm_starts_here() {
-            self.match_expr()?
+        // Arm chains begin only where an expression begins fresh (a pipe stage, a delimited
+        // position). An arm body or a conditional branch enters at COND_POWER and leaves any
+        // `->` or `or` it meets for the chain that owns it, instead of opening a nested chain
+        // that would swallow the rest of the outer one.
+        let fresh = min_power <= PIPE_RIGHT;
+        let mut lhs = if fresh && self.arm_starts_here() {
+            self.match_expr(None)?
         } else {
-            self.root(min_power)?
+            let e = self.root(min_power)?;
+            let (tok, _) = self.peek()?;
+            if fresh && (tok == Tok::Arrow || tok == Tok::Or) {
+                self.match_expr(Some(e))?
+            } else {
+                e
+            }
         };
 
         // Right-associative, so `a if c else b if d else e` chains rightward without parens.

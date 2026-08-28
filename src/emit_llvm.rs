@@ -62,6 +62,7 @@ struct Runtime<'ctx> {
     at: FunctionValue<'ctx>,
     opt_is_some: FunctionValue<'ctx>,
     opt_get: FunctionValue<'ctx>,
+    opt_some: FunctionValue<'ctx>,
     unwrap: FunctionValue<'ctx>,
     div_by_zero: FunctionValue<'ctx>,
     range: FunctionValue<'ctx>,
@@ -216,6 +217,7 @@ impl<'ctx> Emitter<'ctx> {
                 None,
             ),
             opt_get: module.add_function("tl_opt_get", i64t.fn_type(&[ptr.into()], false), None),
+            opt_some: module.add_function("tl_opt_some", ptr.fn_type(&[i64t.into()], false), None),
             unwrap: module.add_function(
                 "tl_unwrap",
                 ptr.fn_type(&[ptr.into(), i64t.into()], false),
@@ -1400,12 +1402,20 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             // The same tag chain the enum printer uses, but each arm computes the body instead
-            // of a rendering: compare the box's tag against each variant's index, bind the
-            // payload slot where the arm asks for it, and take the last arm without a test,
-            // since the checker proved the chain exhaustive.
-            Kind::Match { subject, arms } => {
-                let Type::Enum { variants, .. } = subject.ty.clone() else {
-                    return Err("a match subject that is not an enum".to_string());
+            // of a rendering: compare the box's tag against a variant arm's index, evaluate a
+            // guard arm's own Bool, bind the payload slot where the arm asks for it. A total
+            // chain's last arm runs without a test, the checker having proved nothing else can
+            // reach it; a partial chain tests every arm, stores each body as the present Opt,
+            // and falls through to the null pointer that is the absent one.
+            Kind::Match {
+                subject,
+                arms,
+                partial,
+            } => {
+                let variants = match subject.ty.clone() {
+                    Type::Enum { variants, .. } => variants,
+                    // A pure guard chain needs no variant table; nothing below looks one up.
+                    _ => Vec::new(),
                 };
                 let function = self
                     .builder
@@ -1419,37 +1429,44 @@ impl<'ctx> Emitter<'ctx> {
                     .build_alloca(result_ty, "matched")
                     .map_err(|e| e.to_string())?;
                 let subj = self.expr(subject)?;
-                let tag = self
-                    .call_rt(self.rt.rec_get, &[subj, i64t.const_zero().into()], "tag")?
-                    .into_int_value();
+                // The tag is read once, and only when a variant arm exists to test against it.
+                let tag = if arms.iter().any(|a| a.variant.is_some()) {
+                    Some(
+                        self.call_rt(self.rt.rec_get, &[subj, i64t.const_zero().into()], "tag")?
+                            .into_int_value(),
+                    )
+                } else {
+                    None
+                };
                 let done = self.ctx.append_basic_block(function, "match.done");
 
                 for (i, arm) in arms.iter().enumerate() {
                     let arm_block = self.ctx.append_basic_block(function, "match.arm");
-                    if i + 1 < arms.len() {
-                        let variant = arm
-                            .variant
-                            .as_ref()
-                            .ok_or("a default arm that is not last")?;
-                        let vi = variants
-                            .iter()
-                            .position(|(n, _)| n == variant)
-                            .ok_or_else(|| format!("`{variant}` is not a variant"))?;
+                    if *partial || i + 1 < arms.len() {
+                        let is = match (&arm.variant, &arm.guard) {
+                            (Some(variant), _) => {
+                                let vi = variants
+                                    .iter()
+                                    .position(|(n, _)| n == variant)
+                                    .ok_or_else(|| format!("`{variant}` is not a variant"))?;
+                                self.builder
+                                    .build_int_compare(
+                                        IntPredicate::EQ,
+                                        tag.ok_or("a variant arm with no tag read")?,
+                                        i64t.const_int(vi as u64, false),
+                                        "is",
+                                    )
+                                    .map_err(|e| e.to_string())?
+                            }
+                            (None, Some(g)) => self.expr(g)?.into_int_value(),
+                            (None, None) => return Err("a default arm that is not last".into()),
+                        };
                         let next = self.ctx.append_basic_block(function, "match.next");
-                        let is = self
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::EQ,
-                                tag,
-                                i64t.const_int(vi as u64, false),
-                                "is",
-                            )
-                            .map_err(|e| e.to_string())?;
                         self.builder
                             .build_conditional_branch(is, arm_block, next)
                             .map_err(|e| e.to_string())?;
                         self.builder.position_at_end(arm_block);
-                        self.match_arm(subj, &variants, arm, slot)?;
+                        self.match_arm(subj, &variants, arm, slot, *partial)?;
                         self.builder
                             .build_unconditional_branch(done)
                             .map_err(|e| e.to_string())?;
@@ -1459,11 +1476,23 @@ impl<'ctx> Emitter<'ctx> {
                             .build_unconditional_branch(arm_block)
                             .map_err(|e| e.to_string())?;
                         self.builder.position_at_end(arm_block);
-                        self.match_arm(subj, &variants, arm, slot)?;
+                        self.match_arm(subj, &variants, arm, slot, *partial)?;
                         self.builder
                             .build_unconditional_branch(done)
                             .map_err(|e| e.to_string())?;
                     }
+                }
+
+                // Every arm declined: the builder sits in the last `match.next` block, and the
+                // absent Opt is the null pointer, the same encoding tl_at uses.
+                if *partial {
+                    let none = self.ctx.ptr_type(AddressSpace::default()).const_null();
+                    self.builder
+                        .build_store(slot, none)
+                        .map_err(|e| e.to_string())?;
+                    self.builder
+                        .build_unconditional_branch(done)
+                        .map_err(|e| e.to_string())?;
                 }
 
                 self.builder.position_at_end(done);
@@ -1475,13 +1504,15 @@ impl<'ctx> Emitter<'ctx> {
     }
 
     /// Compute one arm's body into `slot`, binding the payload local first when the arm has
-    /// one.
+    /// one. In a partial chain the slot holds an Opt, so the body is boxed into the present
+    /// one on its way in.
     fn match_arm(
         &mut self,
         subj: BasicValueEnum<'ctx>,
         variants: &[(String, Option<Type>)],
         arm: &tir::MatchArm,
         slot: PointerValue<'ctx>,
+        partial: bool,
     ) -> Result<(), String> {
         if let Some(pid) = arm.payload {
             let variant = arm.variant.as_ref().ok_or("a payload on a default arm")?;
@@ -1500,7 +1531,11 @@ impl<'ctx> Emitter<'ctx> {
             let p = self.read_slot(raw, pty)?;
             self.locals.insert(pid, Slot::Value(p));
         }
-        let v = self.expr(&arm.body)?;
+        let mut v = self.expr(&arm.body)?;
+        if partial {
+            let raw = self.to_slot(v, &arm.body.ty)?;
+            v = self.call_rt(self.rt.opt_some, &[raw.into()], "some")?;
+        }
         self.builder
             .build_store(slot, v)
             .map_err(|e| e.to_string())?;

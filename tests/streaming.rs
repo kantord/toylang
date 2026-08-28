@@ -270,7 +270,7 @@ const REJECT: &str = r#"
 enum Msg { ping, text{body: Str} }
 
 fn render(msgs: Stream<Msg>) -> Stream<Str> =
-    msgs | map(. | text -> .body // any() -> "*ping*")
+    msgs | map(. | text -> .body or any() -> "*ping*")
 
 jsonlines(render(inputs))
 "#;

@@ -81,9 +81,14 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
             walk(base, tags);
             walk(index, tags);
         }
-        Kind::Match { subject, arms } => {
+        Kind::Match { subject, arms, .. } => {
             walk(subject, tags);
-            arms.iter().for_each(|a| walk(&a.body, tags));
+            for a in arms {
+                if let Some(g) = &a.guard {
+                    walk(g, tags);
+                }
+                walk(&a.body, tags);
+            }
         }
     }
 }

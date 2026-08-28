@@ -106,14 +106,14 @@ fn a_match_that_misses_variants_names_them() {
 #[test]
 fn an_arm_for_a_variant_the_enum_does_not_have() {
     insta::assert_snapshot!(err(
-        "enum Shape { point }\n\nShape.point | square -> 1 // any() -> 0"
+        "enum Shape { point }\n\nShape.point | square -> 1 or any() -> 0"
     ));
 }
 
 #[test]
 fn an_arm_after_the_default_can_never_match() {
     insta::assert_snapshot!(err(
-        "enum Shape { point, circle{r: Int} }\n\nShape.point | any() -> 0 // point -> 1"
+        "enum Shape { point, circle{r: Int} }\n\nShape.point | any() -> 0 or point -> 1"
     ));
 }
 
@@ -128,7 +128,7 @@ fn a_pattern_naming_only_some_payload_fields() {
 
 #[test]
 fn a_unit_variant_has_nothing_to_destructure() {
-    insta::assert_snapshot!(err("enum S { a, b }\n\nS.a | a{q} -> 1 // b -> 2"));
+    insta::assert_snapshot!(err("enum S { a, b }\n\nS.a | a{q} -> 1 or b -> 2"));
 }
 
 /// A scalar payload has no fields for a `{...}` pattern to name; the arm's `.` is already the
@@ -136,13 +136,13 @@ fn a_unit_variant_has_nothing_to_destructure() {
 #[test]
 fn a_fields_pattern_on_a_scalar_payload() {
     insta::assert_snapshot!(err(
-        "enum Temp { unknown, celsius(Int) }\n\ncelsius(21) | celsius{deg} -> deg // unknown -> 0"
+        "enum Temp { unknown, celsius(Int) }\n\ncelsius(21) | celsius{deg} -> deg or unknown -> 0"
     ));
 }
 
 #[test]
 fn a_match_needs_an_enum_subject() {
-    insta::assert_snapshot!(err("enum S { a }\n\n1 | a -> 2 // any() -> 3"));
+    insta::assert_snapshot!(err("enum S { a }\n\n1 | a -> 2 or any() -> 3"));
 }
 
 #[test]

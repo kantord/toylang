@@ -40,7 +40,7 @@ area_ish(Shape.point)
 ```
 
 ```error
-a match over `Shape` must cover every variant or end in `any()`; missing `point` (at byte 73)
+a match over `Shape` must cover every variant or end in a default; missing `point` (at byte 73)
 ```
 
 Because the wire shape is plain JSON, an enum types input directly, and the input is

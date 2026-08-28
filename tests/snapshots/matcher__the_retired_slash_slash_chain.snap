@@ -1,0 +1,5 @@
+---
+source: tests/matcher.rs
+expression: "err(\"enum Shape { point, circle{r: Int} }\\n\\nfn area_ish(s: Shape) -> Int = s | circle{r} -> r * r // point -> 0\\n\\narea_ish(Shape.point)\")"
+---
+expected an expression, found `/` (at byte 93)

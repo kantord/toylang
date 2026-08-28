@@ -6,7 +6,7 @@ program: |
   enum Msg { ping, quit, text{body: Str} }
 
   fn render(msgs: Stream<Msg>) -> Stream<Str> =
-      msgs | map(. | ping -> "*ping*" // quit -> "*quit*" // text -> .body)
+      msgs | map(. | ping -> "*ping*" or quit -> "*quit*" or text -> .body)
 
   jsonlines(render(inputs))
 

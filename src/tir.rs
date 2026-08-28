@@ -122,19 +122,27 @@ pub enum Kind {
         /// Whether an entry is a record, which decides if collapsing has to gather columns.
         elem_is_record: bool,
     },
-    /// First-match-wins dispatch over an enum subject's variants. The checker has already
-    /// proved the arms exhaustive, so a backend may take the last arm without a test, and has
-    /// already resolved every name a pattern bound, so an arm is only a variant to test for, a
-    /// payload local to bind, and a body.
+    /// First-match-wins dispatch over the subject: variant arms test its shape, guard arms
+    /// evaluate a Bool of their own. The checker has already resolved every name a pattern
+    /// bound, so an arm is only a test, a payload local to bind, and a body.
+    ///
+    /// When the chain is total (`partial` is false) -- every variant covered, or a default at
+    /// the end -- a backend may take the last arm without a test. A partial chain has no such
+    /// arm: every test is emitted, and falling off the end produces the absent `Opt`, which is
+    /// why the node's type is then `Opt` of the arms' common body type.
     Match {
         subject: Box<Tir>,
         arms: Vec<MatchArm>,
+        partial: bool,
     },
 }
 
 pub struct MatchArm {
-    /// `None` is the default arm (`any()`), which the checker keeps last.
+    /// `Some` tests the subject for this variant. `None` with a `guard` is a guard arm; `None`
+    /// with no guard is the default arm, which the checker keeps last.
     pub variant: Option<String>,
+    /// The Bool deciding a guard arm, already checked in the subject's scope.
+    pub guard: Option<Tir>,
     /// The local the payload binds to in a payload-variant arm; `.` and destructured field
     /// names in the body both read through it.
     pub payload: Option<LocalId>,

@@ -3,7 +3,7 @@
 program: |
   enum Batch { empty, some(Vec<Int>) }
 
-  fn size(b: Batch) -> Int = b | some -> extent(.) // empty -> 0
+  fn size(b: Batch) -> Int = b | some -> extent(.) or empty -> 0
 
   {n: size(some([1, 2, 3])), raw: some([4, 5]), z: size(Batch.empty)}
 

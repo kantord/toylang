@@ -627,9 +627,14 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
-            Kind::Match { subject, arms } => {
+            Kind::Match { subject, arms, .. } => {
                 self.walk(subject);
-                arms.iter().for_each(|a| self.walk(&a.body));
+                for a in arms {
+                    if let Some(g) = &a.guard {
+                        self.walk(g);
+                    }
+                    self.walk(&a.body);
+                }
             }
             Kind::Builtin { which, arg } => {
                 if *which == Builtin::JsonLines {
@@ -1037,38 +1042,54 @@ impl Emitter {
                 })
             }
             // The one target with the construct itself: a toylang match is a Rust match, and
-            // rustc re-proves the exhaustiveness the checker already established. A default
-            // arm is `_`; a duplicate or dead arm costs a warning, not an error.
-            Kind::Match { subject, arms } => {
-                let Type::Enum { variants, .. } = &subject.ty else {
-                    unreachable!("a match subject is an enum")
-                };
+            // for a chain of variant arms rustc re-proves the exhaustiveness the checker
+            // already established. A default arm is `_`, a guard arm `_ if cond` (the guard
+            // reads the subject's own local, not the scrutinee, so no borrow of the match is
+            // involved); a duplicate or dead arm costs a warning, not an error. A partial
+            // chain wraps each body in `Some` and ends `_ => None`, which is also what keeps
+            // rustc's exhaustiveness proof satisfied there.
+            Kind::Match {
+                subject,
+                arms,
+                partial,
+            } => {
                 let ename = self.rs_type(&subject.ty);
-                let rendered: Vec<String> = arms
+                let mut rendered: Vec<String> = arms
                     .iter()
-                    .map(|arm| match &arm.variant {
-                        None => format!("_ => {}", self.expr(&arm.body)),
-                        Some(v) => {
-                            let has_payload = variants
-                                .iter()
-                                .find(|(n, _)| n == v)
-                                .expect("the checker resolved the variant")
-                                .1
-                                .is_some();
-                            if has_payload {
-                                let pid =
-                                    arm.payload.expect("a payload arm always binds its payload");
-                                format!(
-                                    "{ename}::V_{v}({}) => {}",
-                                    self.local(pid),
-                                    self.expr(&arm.body)
-                                )
-                            } else {
-                                format!("{ename}::V_{v} => {}", self.expr(&arm.body))
+                    .map(|arm| {
+                        let body = if *partial {
+                            format!("Some({})", self.expr(&arm.body))
+                        } else {
+                            self.expr(&arm.body)
+                        };
+                        match (&arm.variant, &arm.guard) {
+                            (None, Some(g)) => format!("_ if {} => {body}", self.expr(g)),
+                            (None, None) => format!("_ => {body}"),
+                            (Some(v), _) => {
+                                let Type::Enum { variants, .. } = &subject.ty else {
+                                    unreachable!("a variant arm's subject is an enum")
+                                };
+                                let has_payload = variants
+                                    .iter()
+                                    .find(|(n, _)| n == v)
+                                    .expect("the checker resolved the variant")
+                                    .1
+                                    .is_some();
+                                if has_payload {
+                                    let pid = arm
+                                        .payload
+                                        .expect("a payload arm always binds its payload");
+                                    format!("{ename}::V_{v}({}) => {body}", self.local(pid))
+                                } else {
+                                    format!("{ename}::V_{v} => {body}")
+                                }
                             }
                         }
                     })
                     .collect();
+                if *partial {
+                    rendered.push("_ => None".to_string());
+                }
                 format!(
                     "(match {} {{ {} }})",
                     self.expr(subject),

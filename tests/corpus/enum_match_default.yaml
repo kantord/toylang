@@ -3,7 +3,7 @@
 program: |
   enum Msg { ping, text{body: Str}, quit }
 
-  fn describe(m: Msg) -> Str = m | text -> .body // any() -> "control"
+  fn describe(m: Msg) -> Str = m | text -> .body or any() -> "control"
 
   {a: describe(text{body: "hi"}), b: describe(ping), c: describe(quit)}
 

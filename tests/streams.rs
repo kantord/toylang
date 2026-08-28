@@ -129,7 +129,7 @@ mod linearity {
     #[test]
     fn a_match_cannot_yield_a_stream() {
         insta::assert_snapshot!(err(
-            "enum E { a, b }\n\nfn f(s: Stream<Str>) -> Stream<Str> = a | (a -> s // b -> s)\n\n1"
+            "enum E { a, b }\n\nfn f(s: Stream<Str>) -> Stream<Str> = a | (a -> s or b -> s)\n\n1"
         ));
     }
 

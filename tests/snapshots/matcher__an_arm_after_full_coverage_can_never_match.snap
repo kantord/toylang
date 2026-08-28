@@ -1,0 +1,5 @@
+---
+source: tests/matcher.rs
+expression: "err(\"enum S { a }\\n\\nS.a | a -> 1 or 1 == 1 -> 2\")"
+---
+this arm can never match; the arms above it already cover every variant of `S` (at byte 30)

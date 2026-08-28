@@ -5,7 +5,7 @@ program: |
   enum Status { active, inactive }
 
   fn flip(s: Status) -> Status =
-      s | active -> Status.inactive // inactive -> Status.active
+      s | active -> Status.inactive or inactive -> Status.active
 
   flip(input)
 

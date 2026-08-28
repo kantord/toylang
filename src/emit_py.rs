@@ -456,11 +456,17 @@ fn expr(t: &Tir) -> String {
                 format!("tl_field({}, {}, {})", expr(base), py_string(name), depth)
             }
         }
-        // A right-fold of conditional expressions over the subject, tests first-match-wins;
-        // the last arm carries no test, since the checker proved the chain exhaustive. The
-        // payload key test needs the isinstance guard: `"a" in v` on a unit variant's *string*
-        // would be a substring test, and `"a" in "ab"` answers yes.
-        Kind::Match { subject, arms } => {
+        // A right-fold of conditional expressions over the subject, tests first-match-wins; a
+        // guard arm's test is the guard itself. A total chain's last arm carries no test, the
+        // checker having proved nothing else can reach it; a partial chain tests every arm and
+        // bottoms out at `None`, the absent Opt. The payload key test needs the isinstance
+        // guard: `"a" in v` on a unit variant's *string* would be a substring test, and
+        // `"a" in "ab"` answers yes.
+        Kind::Match {
+            subject,
+            arms,
+            partial,
+        } => {
             let subj = expr(subject);
             let mut out = String::new();
             let mut closing = 0;
@@ -480,18 +486,25 @@ fn expr(t: &Tir) -> String {
                     }
                     None => expr(&arm.body),
                 };
-                match &arm.variant {
-                    Some(v) if i + 1 < arms.len() => {
-                        let test = if arm.payload.is_some() {
-                            format!("(isinstance({subj}, dict) and {} in {subj})", py_string(v))
-                        } else {
-                            format!("{subj} == {}", py_string(v))
-                        };
+                let test = match (&arm.variant, &arm.guard) {
+                    (Some(v), _) if arm.payload.is_some() => Some(format!(
+                        "(isinstance({subj}, dict) and {} in {subj})",
+                        py_string(v)
+                    )),
+                    (Some(v), _) => Some(format!("{subj} == {}", py_string(v))),
+                    (None, Some(g)) => Some(expr(g)),
+                    (None, None) => None,
+                };
+                match test {
+                    Some(test) if *partial || i + 1 < arms.len() => {
                         out.push_str(&format!("({run} if {test} else "));
                         closing += 1;
                     }
                     _ => out.push_str(&run),
                 }
+            }
+            if *partial {
+                out.push_str("None");
             }
             out.push_str(&")".repeat(closing));
             format!("({out})")
