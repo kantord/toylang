@@ -40,7 +40,11 @@ export function ExamplesPage({
         <p className="max-w-2xl text-sm text-muted-foreground">
           Every program in the test corpus, and the code each of the seven backends compiles it
           to. The same programs run on all seven and have to agree; what you see here is what
-          that agreement is made of.
+          that agreement is made of. Also here, off to the side:{" "}
+          <a href="#/examples/euler" className="underline">
+            Project Euler solutions
+          </a>{" "}
+          (spoiler warning).
         </p>
 
         <section className="space-y-3">
