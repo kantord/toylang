@@ -464,6 +464,14 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
     }
 }
 
+/// Every function name the language itself provides, and therefore reserves. `str` and `range`
+/// live in `builtin()`'s fixed table; `jsonlines`, `extent`, `concat`, `tail`, and `collect` are
+/// polymorphic and checked from `synth`'s own arms; `select` and `map` rebind `.`. All nine are
+/// reserved the same way, and the docs harness (tests/docs.rs) reads this list to insist each
+/// one has a reference page.
+pub const BUILTIN_NAMES: [&str; 9] =
+    ["collect", "concat", "extent", "jsonlines", "map", "range", "select", "str", "tail"];
+
 /// Functions the language provides. Unary like every other function, so they need no special
 /// call syntax and are looked up before user definitions.
 fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
@@ -620,15 +628,7 @@ fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, Sig>, Error
     for def in defs {
         value_name(&def.name, def.span, "function name")?;
         value_name(&def.param.name, def.param.span, "parameter name")?;
-        // `jsonlines`, `extent`, `concat`, `tail`, `collect`, `select`, and `map` are not in
-        // `builtin()`'s fixed table -- the first five are polymorphic, the last two rebind `.`
-        // -- but all seven are reserved names for the same reason every other builtin is.
-        if builtin(&def.name).is_some()
-            || matches!(
-                def.name.as_str(),
-                "jsonlines" | "extent" | "concat" | "tail" | "collect" | "select" | "map"
-            )
-        {
+        if BUILTIN_NAMES.contains(&def.name.as_str()) {
             return Err(Error::new(
                 def.span,
                 format!("`{}` is a builtin and cannot be redefined", def.name),

@@ -8,69 +8,22 @@
 
 mod support;
 
-use support::Expect;
 use toylang::Backend;
 
 #[test]
 fn every_backend_agrees_and_is_right() {
     let cases = support::cases();
-    assert!(
-        !cases.is_empty(),
-        "the corpus is empty, so this test proves nothing"
-    );
+    assert!(!cases.is_empty(), "the corpus is empty, so this test proves nothing");
 
     let mut failures = Vec::new();
 
     for case in &cases {
-        if let Expect::Refusal = case.expect {
-            for backend in Backend::ALL {
-                if let Ok(out) = toylang::run_on(&case.program, case.input.as_deref(), backend) {
-                    failures.push(format!(
-                        "RAN     {}: {} produced {out:?} instead of refusing",
-                        case.name,
-                        backend.name()
-                    ));
-                }
-            }
-            continue;
-        }
-        let Expect::Output(want) = &case.expect else {
-            unreachable!("refusal handled above")
-        };
-
-        let mut outputs: Vec<(&str, String)> = Vec::new();
-        for backend in Backend::ALL {
-            // A backend that cannot run is reported, never skipped. A report saying every
-            // backend agreed when only one of them ran is worse than no report.
-            match toylang::run_on(&case.program, case.input.as_deref(), backend) {
-                Ok(out) => outputs.push((backend.name(), out)),
-                Err(e) => failures.push(format!(
-                    "BROKEN  {}: {} could not run: {e}",
-                    case.name,
-                    backend.name()
-                )),
-            }
-        }
-
-        if outputs.len() < Backend::ALL.len() {
-            continue;
-        }
-
-        // Disagreement first, and reported on its own. Which backend matches the expectation is
-        // not the point: the language is underspecified either way.
-        let (_, first) = &outputs[0];
-        if outputs.iter().any(|(_, out)| out != first) {
-            let shown: Vec<String> = outputs.iter().map(|(n, o)| format!("{n}={o:?}")).collect();
-            failures.push(format!("DISAGREE {}: {}", case.name, shown.join(" ")));
-            continue;
-        }
-
-        if first != want {
-            failures.push(format!(
-                "WRONG   {}: expected {want:?}, every backend gave {first:?}",
-                case.name
-            ));
-        }
+        failures.extend(support::agreement_failures(
+            &case.name,
+            &case.program,
+            case.input.as_deref(),
+            &case.expect,
+        ));
     }
 
     assert!(
@@ -90,18 +43,15 @@ fn every_backend_agrees_and_is_right() {
 fn emitted_code_matches_the_snapshot() {
     let mut asked = 0;
     for case in support::cases() {
-        let program =
-            toylang::compile(&case.program).unwrap_or_else(|e| panic!("{}: {e}", case.name));
+        let program = toylang::compile(&case.program)
+            .unwrap_or_else(|e| panic!("{}: {e}", case.name));
         for backend in case.snapshot {
-            let emitted = backend.emit(&program).unwrap_or_else(|e| {
-                panic!("{}: {} could not emit: {e}", case.name, backend.name())
-            });
+            let emitted = backend
+                .emit(&program)
+                .unwrap_or_else(|e| panic!("{}: {} could not emit: {e}", case.name, backend.name()));
             insta::assert_snapshot!(format!("{}__{}", case.name, backend.name()), emitted);
             asked += 1;
         }
     }
-    assert!(
-        asked > 0,
-        "no case asks for a snapshot, so this test proves nothing"
-    );
+    assert!(asked > 0, "no case asks for a snapshot, so this test proves nothing");
 }

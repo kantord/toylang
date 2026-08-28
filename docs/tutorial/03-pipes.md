@@ -1,0 +1,59 @@
+# Pipes, select, and map
+
+`x | f` feeds the left side to the right, and inside the right side `.` is what arrived.
+The two workhorses that follow a pipe are `select`, which keeps the entries a predicate
+approves, and `map`, which transforms each entry:
+
+```toylang
+[1, 2, 3, 4] | select(. % 2 == 0) | map(. * 10)
+```
+
+```output
+[20,40]
+```
+
+When the entries are records, projections reach into the current entry, because `.` is that
+entry:
+
+```toylang
+fn adults(users: Vec<{name: Str, age: Int}>) -> Vec<Str> =
+    users | select(.age >= 18) | map(.name)
+
+adults([{name: "ada", age: 36}, {name: "bo", age: 9}])
+```
+
+```output
+["ada"]
+```
+
+`map(.name)` has a second spelling: `[].name` projects through the dimension directly.
+They are verified identical, and both are common.
+
+## Reaching in by position
+
+An index collapses a dimension to one entry -- `[0]` from the front, `[-1]` from the back.
+What comes back may be absent (the index can be out of range), so it is an `Opt`, and `!`
+insists the entry is there:
+
+```toylang
+["ada", "bo", "cy"][-1]!
+```
+
+```output
+cy
+```
+
+Without the `!`, absence flows to the output as `null`. With it, an absent value is refused
+at runtime. Chapter 1's `Vec` pages in the reference cover the whole spec story:
+[index specs](../reference/operators/specs.md), [Opt](../reference/types/opt.md).
+
+## Putting it together
+
+`range(n)` makes `[0 .. n-1]`, and `unlines` joins a `Vec<Str>` into printable lines.
+FizzBuzz is one pipeline:
+
+```case
+fizzbuzz
+```
+
+Next: [enums](04-enums.md), for data that is one of a known set of shapes.

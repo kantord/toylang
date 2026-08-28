@@ -8,7 +8,7 @@ import type { HighlighterCore } from "shiki/core"
  * jq and toylang are absent on purpose. Shiki has no jq grammar, and toylang does not have one
  * anywhere; both render as plain text, which is honest about what is known.
  */
-const LANGS = new Set(["go", "javascript", "json", "llvm", "lua", "python"])
+const LANGS = new Set(["go", "javascript", "json", "llvm", "lua", "python", "rust"])
 
 let pending: Promise<HighlighterCore> | null = null
 
@@ -17,7 +17,7 @@ function highlighter(): Promise<HighlighterCore> {
   // recompiled on every tab switch. Imported dynamically so they are a chunk of their own and
   // the corpus is readable before they arrive, rather than after 200kB of grammar.
   pending ??= (async () => {
-    const [core, engine, light, dark, go, javascript, json, llvm, lua, python] =
+    const [core, engine, light, dark, go, javascript, json, llvm, lua, python, rust] =
       await Promise.all([
         import("shiki/core"),
         import("shiki/engine/javascript"),
@@ -29,10 +29,11 @@ function highlighter(): Promise<HighlighterCore> {
         import("shiki/langs/llvm.mjs"),
         import("shiki/langs/lua.mjs"),
         import("shiki/langs/python.mjs"),
+        import("shiki/langs/rust.mjs"),
       ])
     return core.createHighlighterCore({
       themes: [light.default, dark.default],
-      langs: [go.default, javascript.default, json.default, llvm.default, lua.default, python.default],
+      langs: [go.default, javascript.default, json.default, llvm.default, lua.default, python.default, rust.default],
       // The JavaScript engine rather than Oniguruma, which would pull in a 600kB wasm blob for
       // six grammars this simple.
       engine: engine.createJavaScriptRegexEngine(),

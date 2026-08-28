@@ -25,9 +25,20 @@ if (onDisk.join() !== exported.join()) {
 }
 
 let checked = 0
+let skipped = 0
 const failures = []
 
 for (const c of corpus.cases) {
+  // A refusal of a program that reads stdin can live in the host's input validation
+  // (src/input.rs), which runs before any backend and which the shim does not carry, so the
+  // emitted code running here proves nothing either way. Refusals of input-free programs
+  // (division by zero, unwrapping an absent value) are the emitted code's own and stay checked.
+  // kantord/toylang#15 tracks the gap.
+  if (c.expect.kind === "refusal" && c.input !== null) {
+    skipped++
+    continue
+  }
+
   // Raw text either way: an `input` program's own emitted code calls JSON.parse on it, and a
   // `lines` program never was JSON to begin with.
   const result = runJs(c.emitted.js, c.input)
@@ -55,4 +66,7 @@ if (failures.length) {
   for (const f of failures) console.error(`  ${f}`)
   process.exit(1)
 }
-console.log(`${checked} cases: the browser shim reproduces the corpus exactly`)
+console.log(
+  `${checked} cases: the browser shim reproduces the corpus exactly` +
+    (skipped ? ` (${skipped} host-validated refusals skipped, kantord/toylang#15)` : ""),
+)
