@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 
+import { AnnotationsSidebar } from "@/components/AnnotationsSidebar"
 import { ExamplesPage } from "@/components/ExamplesPage"
 import { Markdown } from "@/components/Markdown"
 import { loadCorpus, type Corpus } from "@/lib/corpus"
@@ -29,6 +30,7 @@ export default function App() {
   const [corpus, setCorpus] = useState<Corpus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [backend, setBackend] = useState("js")
+  const [annotate, setAnnotate] = useState(false)
   const hash = useHash()
 
   useEffect(() => {
@@ -49,7 +51,12 @@ export default function App() {
     return <main className="p-10 text-sm text-muted-foreground">Loading...</main>
   }
 
-  const segments = hash.replace(/^#\/?/, "").split("/").filter(Boolean)
+  // Annotations-mode jump links append `?b=<block>` to a normal route; it never appears
+  // outside that mode, so plain reading routes are untouched by the split.
+  const [hashPath, hashQuery] = hash.replace(/^#\/?/, "").split("?")
+  const segments = hashPath.split("/").filter(Boolean)
+  const jumpBlock = hashQuery ? Number(new URLSearchParams(hashQuery).get("b")) : undefined
+  const scrollToBlock = jumpBlock !== undefined && Number.isFinite(jumpBlock) ? jumpBlock : undefined
 
   // Pre-Diataxis links were bare case names (`#greet`); they keep working under Examples.
   if (segments.length === 1 && corpus.cases.some((c) => c.name === segments[0])) {
@@ -70,7 +77,15 @@ export default function App() {
       />
     )
   } else if (section === "tutorial" || section === "guides" || section === "reference") {
-    body = <DocsSection section={section} segments={segments.slice(1)} corpus={corpus} />
+    body = (
+      <DocsSection
+        section={section}
+        segments={segments.slice(1)}
+        corpus={corpus}
+        annotate={annotate}
+        scrollToBlock={scrollToBlock}
+      />
+    )
   } else {
     // The landing route: the tutorial is where a new reader starts; before it has chapters,
     // the browser everyone already links to.
@@ -97,6 +112,20 @@ export default function App() {
             </a>
           ))}
         </nav>
+        {import.meta.env.DEV && (
+          <button
+            type="button"
+            onClick={() => setAnnotate((v) => !v)}
+            className={cn(
+              "ml-auto rounded-md border px-2 py-1 text-xs font-medium",
+              annotate
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Annotations{annotate ? " (on)" : ""}
+          </button>
+        )}
       </header>
 
       {body}
@@ -108,10 +137,14 @@ function DocsSection({
   section,
   segments,
   corpus,
+  annotate = false,
+  scrollToBlock,
 }: {
   section: Section
   segments: string[]
   corpus: Corpus
+  annotate?: boolean
+  scrollToBlock?: number
 }) {
   const pages = PAGES.filter((p) => p.section === section)
   if (pages.length === 0) {
@@ -131,33 +164,37 @@ function DocsSection({
   return (
     <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="lg:sticky lg:top-6 lg:self-start">
-        <nav className="space-y-4 text-sm">
-          {groups.map((g) => (
-            <div key={g.name} className="space-y-1">
-              {g.name && (
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {g.name}
-                </div>
-              )}
-              {g.pages.map((p) => (
-                <a
-                  key={p.path}
-                  href={href(p)}
-                  className={cn(
-                    "block rounded px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground",
-                    p === current && "bg-muted font-medium text-foreground",
-                  )}
-                >
-                  {p.title}
-                </a>
-              ))}
-            </div>
-          ))}
-        </nav>
+        {annotate ? (
+          <AnnotationsSidebar current={current} />
+        ) : (
+          <nav className="space-y-4 text-sm">
+            {groups.map((g) => (
+              <div key={g.name} className="space-y-1">
+                {g.name && (
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {g.name}
+                  </div>
+                )}
+                {g.pages.map((p) => (
+                  <a
+                    key={p.path}
+                    href={href(p)}
+                    className={cn(
+                      "block rounded px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground",
+                      p === current && "bg-muted font-medium text-foreground",
+                    )}
+                  >
+                    {p.title}
+                  </a>
+                ))}
+              </div>
+            ))}
+          </nav>
+        )}
       </aside>
 
       <main className="min-w-0">
-        <Markdown page={current} corpus={corpus} />
+        <Markdown page={current} corpus={corpus} annotate={annotate} scrollToBlock={scrollToBlock} />
         <PagerLinks pages={pages} current={current} />
       </main>
     </div>
