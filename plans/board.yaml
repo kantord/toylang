@@ -104,11 +104,12 @@
   status: done
 
 - id: matcher-first-cut-build
+  model: fable
   issue: gh:16
   title: Implement or-composed arms, guard arms, hybrid totality; retire //
   kind: build
   needs: [matcher-first-cut-design]
-  status: todo
+  status: delegated
 
 - id: language-oddities-review
   title: Review the oddities inventory and settle each item
