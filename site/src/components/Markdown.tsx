@@ -59,6 +59,8 @@ export function Markdown({
           return (
             <AnnotatedProseBlock
               key={i}
+              page={page}
+              block={i}
               pieces={b.pieces}
               scrollTo={scrollToBlock === i}
               annotations={annotations.filter((a) => a.block === i)}
