@@ -536,7 +536,7 @@ impl<'i> Cursor<'i> {
         })
     }
 
-    /// `Str`, `Int`, `Bool`, `Vec<T>`, or `Stream<T>`.
+    /// `Str`, `Int`, `Bool`, `Vec<T>`, `Stream<T>`, or `Opt<T>`.
     fn type_expr(&mut self) -> Result<TypeExpr, Error> {
         let (tok, span) = self.advance()?;
         if tok == Tok::LBrace {
@@ -553,10 +553,10 @@ impl<'i> Cursor<'i> {
         let elem = self.type_expr()?;
         let close = self.eat(Tok::Gt)?;
         let (elem, span) = (Box::new(elem), span.to(close));
-        Ok(if name == "Vec" {
-            TypeExpr::Vec { elem, span }
-        } else {
-            TypeExpr::Stream { elem, span }
+        Ok(match name.as_str() {
+            "Vec" => TypeExpr::Vec { elem, span },
+            "Stream" => TypeExpr::Stream { elem, span },
+            _ => TypeExpr::Opt { elem, span },
         })
     }
 

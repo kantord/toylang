@@ -1,0 +1,11 @@
+program: |
+  # The parser used to refuse this: Opt was produced by the checker but had no spelling of
+  # its own, so a signature could describe the Vec it collapses but not what collapsing yields.
+  fn head(v: Vec<Int>) -> Opt<Int> = v[0]
+
+  head([1, 2, 3])
+
+output: |
+  1
+
+node_types: [application, int, selection.collapse, var, vec-literal]

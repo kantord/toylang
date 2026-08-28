@@ -37,11 +37,11 @@ pub fn is_builtin_type_name(name: &str) -> bool {
     Type::from_name(name).is_some() || RESERVED_TYPE_NAMES.contains(&name)
 }
 
-/// Whether `name` takes a `<...>` type argument in the grammar. Of the three reserved
-/// constructors, only these two are ever spelled by a program; `Opt` is produced only by the
-/// checker, when collapsing a dimension, and never appears in written syntax.
+/// Whether `name` takes a `<...>` type argument in the grammar. All three reserved
+/// constructors do: `Opt` can be produced by the checker (collapsing a dimension) as well as
+/// spelled directly, which is what lets a function declare one as a parameter or return type.
 pub fn takes_type_arg(name: &str) -> bool {
-    matches!(name, "Vec" | "Stream")
+    matches!(name, "Vec" | "Stream" | "Opt")
 }
 
 impl Type {

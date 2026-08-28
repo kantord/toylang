@@ -1431,10 +1431,11 @@ than what each says while refusing.
 The type is what decides whether output is raw, so unwrapping changes it. `["ada","bo"][0]` is
 `Opt<Str>` and prints `"ada"`; `["ada","bo"][0]!` is `Str` and prints `ada`.
 
-Still thin: `Opt` has no spelling in the type syntax, so it cannot be declared, passed to a
-function or returned from one. It can be produced by an index, unwrapped, or printed. Giving it
-a name in the type syntax is the next step, and it is what would let a function hand one back
-rather than being forced to insist.
+`Opt` now has a spelling in the type syntax: a function can declare one as a parameter or
+return type, which is what lets it hand an absence back rather than being forced to insist.
+It nests the same way `Vec` and a record field already did -- `Opt<Opt<T>>` typechecks, since
+nothing singled out one level before this either -- and the stream containment ban extends to
+it: `Opt<Stream<T>>` is refused, matching `Vec<Stream<T>>` and a `Stream<T>` record field.
 
 ### Still open, and none of it blocks building this
 
