@@ -75,6 +75,19 @@
   needs: []
   status: todo
 
+- id: crate-simplification-survey
+  issue: gh:13
+  title: Survey crates that would reduce hand-rolled compiler complexity
+  kind: build
+  needs: []
+  status: delegated
+
+- id: crate-adoption
+  title: Review the crate proposal and decide what gets adopted
+  kind: decide
+  needs: [crate-simplification-survey]
+  status: todo
+
 - id: q37-float-semantics
   title: Grill Q37 -- float printing agreement, NaN/Infinity, division by zero
   kind: decide
