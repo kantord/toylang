@@ -1,0 +1,31 @@
+# Budgets for the clippy lints in Cargo.toml, which clippy reads for itself.
+#
+# They are not in .claude/checks/limits.toml with the file budget because
+# clippy owns both the measurement and the comparison; the check runner only
+# forwards what it says, and a finding carries the number with it, so there is
+# still one place to read each budget from.
+#
+# All three ratchet down by deliberate commits, never up to make a finding go
+# away. The targets are toy-browser's numbers: 5 / 40 / 1. The starts are set
+# where this tree's standing findings are countable rather than wallpaper; at
+# the targets there would be 82 on day one, and a check that fires constantly
+# is a check that stops being read. See plans/quality-practices.md.
+
+# 10 catches ten functions today, all in emitters and parse.rs. One warning
+# about the metric: clippy counts if/else/loops/guards but not match arms, and
+# the emitters are mostly wide matches over TIR, so the score ranks nothing.
+# Look at the shape, not the number.
+cognitive-complexity-threshold = 10
+
+# How long one function's body may be, counting neither comments nor blank
+# lines, so it measures code where `max_file_lines` deliberately measures
+# prose as well. It exists because a long straight function is invisible to
+# both the complexity and the file budget. 100 catches 15 functions today,
+# the worst being check.rs's 445-line checker body.
+too-many-lines-threshold = 100
+
+# Two bools in a signature usually means two callers sharing one body, which
+# is the cause `cognitive-complexity` only ever sees as a symptom. At 1 this
+# fires exactly once today (run_jq in src/lib.rs), and that once is worth a
+# look.
+max-fn-params-bools = 1
