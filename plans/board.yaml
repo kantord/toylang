@@ -119,6 +119,13 @@
   needs: []
   status: done
 
+- id: board-page-v2
+  issue: gh:33
+  title: Board v2 -- React Flow graph view and a plain kanban view
+  kind: build
+  needs: [annotations-email-inbox]
+  status: todo
+
 - id: grill-via-annotations
   title: A repo skill running grilling rounds through the annotations mode inbox
   kind: build
