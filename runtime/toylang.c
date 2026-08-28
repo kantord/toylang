@@ -357,6 +357,47 @@ static const char *tl_type_skip(const char *t) {
 
 static int64_t tl_parse(tl_json *j, const char *t, const char *path);
 
+/* Consumes exactly 4 hex digits at j->p and returns them as a UTF-16 code unit. */
+static uint32_t tl_hex4(tl_json *j, const char *path) {
+    uint32_t v = 0;
+    for (int i = 0; i < 4; i++) {
+        if (j->p >= j->end) {
+            tl_fail("unterminated \\u escape", path);
+        }
+        char c = *j->p;
+        int d = (c >= '0' && c <= '9')   ? c - '0'
+                : (c >= 'a' && c <= 'f') ? c - 'a' + 10
+                : (c >= 'A' && c <= 'F') ? c - 'A' + 10
+                                         : -1;
+        if (d < 0) {
+            tl_fail("bad \\u escape", path);
+        }
+        v = v * 16 + (uint32_t)d;
+        j->p++;
+    }
+    return v;
+}
+
+/* Appends cp's UTF-8 encoding to out, which tl_parse_string has already sized generously
+ * enough: every multi-byte encoding here is shorter than the \u escape(s) that produced it. */
+static void tl_utf8_encode(char *out, int64_t *n, uint32_t cp) {
+    if (cp < 0x80) {
+        out[(*n)++] = (char)cp;
+    } else if (cp < 0x800) {
+        out[(*n)++] = (char)(0xC0 | (cp >> 6));
+        out[(*n)++] = (char)(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out[(*n)++] = (char)(0xE0 | (cp >> 12));
+        out[(*n)++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[(*n)++] = (char)(0x80 | (cp & 0x3F));
+    } else {
+        out[(*n)++] = (char)(0xF0 | (cp >> 18));
+        out[(*n)++] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        out[(*n)++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[(*n)++] = (char)(0x80 | (cp & 0x3F));
+    }
+}
+
 static tl_str *tl_parse_string(tl_json *j, const char *path) {
     tl_expect(j, '"', path);
     char *out = tl_alloc((size_t)(j->end - j->p));
@@ -366,6 +407,33 @@ static tl_str *tl_parse_string(tl_json *j, const char *path) {
             j->p++;
             if (j->p >= j->end) {
                 tl_fail("unterminated escape", path);
+            }
+            // A control character with no named shorthand (NUL, say) is the only escape
+            // that reaches this in practice: src/lib.rs re-serializes input through
+            // serde_json before any backend sees it, and that writer emits raw UTF-8 for
+            // everything else. A surrogate pair is still combined into one codepoint below,
+            // to be a JSON decoder rather than one tied to that upstream behavior.
+            if (*j->p == 'u') {
+                j->p++;
+                uint32_t cu = tl_hex4(j, path);
+                uint32_t cp;
+                if (cu >= 0xD800 && cu <= 0xDBFF) {
+                    if (j->p + 1 >= j->end || j->p[0] != '\\' || j->p[1] != 'u') {
+                        tl_fail("unpaired surrogate", path);
+                    }
+                    j->p += 2;
+                    uint32_t lo = tl_hex4(j, path);
+                    if (lo < 0xDC00 || lo > 0xDFFF) {
+                        tl_fail("unpaired surrogate", path);
+                    }
+                    cp = 0x10000 + ((cu - 0xD800) << 10) + (lo - 0xDC00);
+                } else if (cu >= 0xDC00 && cu <= 0xDFFF) {
+                    tl_fail("unpaired surrogate", path);
+                } else {
+                    cp = cu;
+                }
+                tl_utf8_encode(out, &n, cp);
+                continue;
             }
             switch (*j->p) {
                 case '"': out[n++] = '"'; break;

@@ -94,6 +94,25 @@ function tl_join(v, f) {
 }
 ";
 
+// JS string comparison compares UTF-16 code units, which disagrees with codepoint order on any
+// pair straddling a surrogate pair: a BMP character above U+DFFF (e.g. U+E000) sorts below an
+// astral character's lead surrogate even though its codepoint is smaller. Iterating with the
+// string iterator (rather than indexing) steps one codepoint at a time, surrogate pairs included.
+const STR_CMP_HELPER: &str = "\
+function tl_str_cmp(a, b) {
+  const ai = a[Symbol.iterator]();
+  const bi = b[Symbol.iterator]();
+  for (;;) {
+    const x = ai.next();
+    const y = bi.next();
+    if (x.done || y.done) return (x.done ? 0 : 1) - (y.done ? 0 : 1);
+    const cx = x.value.codePointAt(0);
+    const cy = y.value.codePointAt(0);
+    if (cx !== cy) return cx < cy ? -1 : 1;
+  }
+}
+";
+
 const JSONLINES_HELPER: &str = "\
 function tl_jsonlines(v, f) {
   const parts = [];
@@ -137,6 +156,9 @@ pub fn emit(program: &Program) -> String {
     }
     if used.jsonlines {
         out.push_str(JSONLINES_HELPER);
+    }
+    if used.str_cmp {
+        out.push_str(STR_CMP_HELPER);
     }
 
     // Function declarations hoist, so a call to one defined further down resolves without the
@@ -366,6 +388,7 @@ struct Helpers {
     jsonlines: bool,
     tail: bool,
     partial_match: bool,
+    str_cmp: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -389,7 +412,13 @@ fn used_helpers(program: &Program) -> Helpers {
                 }
             }
             Kind::Call { arg, .. } => walk(arg, used),
-            Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
+            Kind::Concat(l, r) => {
+                walk(l, used);
+                walk(r, used);
+            }
+            Kind::Compare { op, lhs: l, rhs: r } => {
+                used.str_cmp |= l.ty == Type::Str
+                    && matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge);
                 walk(l, used);
                 walk(r, used);
             }
@@ -536,7 +565,20 @@ fn expr(t: &Tir) -> String {
             Builtin::Concat => format!("{}.flat()", expr(arg)),
         },
         Kind::Compare { op, lhs, rhs } => {
-            format!("({} {} {})", expr(lhs), js_op(*op), expr(rhs))
+            // `<`/`<=`/`>`/`>=` on native JS strings compare UTF-16 code units, which disagrees
+            // with codepoint order across a surrogate pair; `tl_str_cmp` steps by codepoint
+            // instead. Equality is unaffected (the same codepoint sequence gives the same UTF-16
+            // units either way), so `===`/`!==` stay as they are.
+            if lhs.ty == Type::Str && matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge) {
+                format!(
+                    "(tl_str_cmp({}, {}) {} 0)",
+                    expr(lhs),
+                    expr(rhs),
+                    js_op(*op)
+                )
+            } else {
+                format!("({} {} {})", expr(lhs), js_op(*op), expr(rhs))
+            }
         }
         Kind::Bind {
             local: id,

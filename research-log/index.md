@@ -101,3 +101,10 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
   -- expect() threads an expected type into exactly one form, Expr::Input; a map body is always
   synth'd bottom-up, so a polymorphic parse(s) -> T builtin has nothing to resolve T against
   inside map(parse(.)), the same hole an empty [] literal falls into.
+- [Codepoint order is not UTF-16 order](codepoint-order-is-not-utf-16-order.md) -- JavaScript's
+  native `<` on strings compares UTF-16 code units, which disagrees with the other six backends'
+  codepoint order on any pair straddling a surrogate pair.
+- [Unescapable control bytes are the crack in the re-serialization gate](unescapable-control-bytes-are-the-crack-in-the-reserialization-gate.md)
+  -- Input is validated once against serde_json and re-serialized before any backend runs, which
+  hides six backends' JSON-parsing differences except for the one class of character that gate
+  cannot normalize away.

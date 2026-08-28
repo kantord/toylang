@@ -267,6 +267,13 @@ portable candidate) and add the non-ASCII corpus case that proves it; or refuse 
 until Q16 settles the representation. The first is a conformance rule, the second breaks one
 corpus case.
 
+Resolved by pinning codepoint order (issue #26): `str_ordering_codepoint.yaml` compares an
+astral character against a BMP one, the pair whose UTF-16 code units and codepoints put them in
+opposite order, and JavaScript was the only backend that disagreed -- its native `<` compares
+UTF-16 code units. The emitted code now steps by codepoint there instead of using `<` directly;
+Go, Lua, Rust and the native runtime already compared UTF-8 bytes (equal to codepoint order for
+valid UTF-8), and Python and jq already compared codepoints natively.
+
 ## `Opt` can be produced but not written
 
 ```
