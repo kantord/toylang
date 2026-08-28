@@ -35,6 +35,12 @@ enw wrap kitty 'toylang#12' -- --detach claude 'Implement step 1 of plans/enums.
 - The kickoff prompt is one or two sentences naming the task's in-repo source of truth. For a
   `repo#issue` env the issue rule does the heavy lifting; do not duplicate the issue body.
 
+## 2b. Update the board
+
+If `plans/board.yaml` exists and has a row for this task, set its `status: delegated` (see
+the `drive` skill). A delegation without a board row means the task skipped planning -- add
+the row.
+
 ## 3. Hand over and keep in touch
 
 - Tell the user the env name; they switch to it with their WM or `enw activate '<name>'`,

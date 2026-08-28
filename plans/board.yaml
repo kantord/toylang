@@ -1,0 +1,58 @@
+# The task board: one ordered list, position is priority (top = next).
+#
+# Fields: id (slug; gh:N when a GitHub issue carries the spec), title, kind, needs, status.
+#   kind: build  = delegatable implementation work (enwiro-delegate out, land-delegated-work in)
+#         decide = needs a grilling/design session with the maintainer before anything builds
+#   needs: ids that must be done first (semantic dependencies only -- file-overlap conflicts
+#          are the drive skill's scheduling judgment, not edges here)
+#   status: todo | delegated | done  ("blocked" is derived from needs, never stored)
+#
+# The drive skill (.claude/skills/drive) reads this top to bottom: first todo whose needs are
+# all done is the next task of its kind. A needs-cycle, or no unblocked task while todo
+# entries remain, is a deadlock and gets reported rather than worked around.
+
+- id: scalar-payloads
+  issue: gh:2
+  title: Enum payloads accept any single type, not only records
+  kind: build
+  needs: []
+  status: todo
+
+- id: stdin-rule-decision
+  issue: gh:7
+  title: Decide the rule for a source-consuming function called from a mapper body
+  kind: decide
+  needs: []
+  status: todo
+
+- id: stdin-rule-build
+  issue: gh:7
+  title: Implement the decided mapper-body source rule, with its rejection test
+  kind: build
+  needs: [stdin-rule-decision]
+  status: todo
+
+- id: frontend-cleanups
+  issue: gh:6
+  title: Front-end cleanups from the typed-streams review
+  kind: build
+  needs: []
+  status: todo
+
+- id: q37-float-semantics
+  title: Grill Q37 -- float printing agreement, NaN/Infinity, division by zero
+  kind: decide
+  needs: []
+  status: todo
+
+- id: float-build
+  title: Implement Float (IEEE binary64 per ADR 0007) across the backends
+  kind: build
+  needs: [q37-float-semantics]
+  status: todo
+
+- id: benchmark-goals
+  title: Grill what workloads define the performance thesis, then plan the benchmark suite
+  kind: decide
+  needs: []
+  status: todo
