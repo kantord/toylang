@@ -4,7 +4,7 @@
  * the site is only a renderer of files something else already verified.
  */
 
-export type Section = "tutorial" | "guides" | "reference" | "grill"
+export type Section = "tutorial" | "guides" | "reference" | "grill" | "examples"
 
 export interface Page {
   section: Section
@@ -47,7 +47,13 @@ function parse(): Page[] {
     const section = parts[0] === ".grill" ? "grill" : parts[0]
     // ADRs are decision records, not presentation content; the drafts directory does not exist
     // yet but the same reasoning would apply.
-    if (section !== "tutorial" && section !== "guides" && section !== "reference" && section !== "grill") {
+    if (
+      section !== "tutorial" &&
+      section !== "guides" &&
+      section !== "reference" &&
+      section !== "grill" &&
+      section !== "examples"
+    ) {
       continue
     }
     const stem = parts[parts.length - 1].replace(/\.md$/, "")

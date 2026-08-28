@@ -70,6 +70,18 @@ export default function App() {
   let body
   if (section === "board") {
     body = <BoardPage />
+  } else if (section === "examples" && segments[1] === "euler") {
+    // The Euler stress-test stream: markdown pages under docs/examples/euler, out of the
+    // corpus browser's flat case-name routing (kantord/toylang#35).
+    body = (
+      <DocsSection
+        section="examples"
+        segments={segments.slice(1)}
+        corpus={corpus}
+        annotate={annotate}
+        scrollToBlock={scrollToBlock}
+      />
+    )
   } else if (section === "examples") {
     body = (
       <ExamplesPage
@@ -80,7 +92,12 @@ export default function App() {
         onBackend={setBackend}
       />
     )
-  } else if (section === "tutorial" || section === "guides" || section === "reference" || section === "grill") {
+  } else if (
+    section === "tutorial" ||
+    section === "guides" ||
+    section === "reference" ||
+    section === "grill"
+  ) {
     body = (
       <DocsSection
         section={section}
