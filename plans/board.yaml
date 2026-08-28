@@ -144,7 +144,7 @@
   title: Euler stress-test stream -- scaffolding plus problems 1-10, findings filed
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: matching-tutorial-chapter
   issue: gh:37
