@@ -98,6 +98,13 @@
   needs: []
   status: done
 
+- id: annotations-edit-persistence
+  issue: gh:28
+  title: Annotations mode must never lose or hide the maintainer's edits
+  kind: build
+  needs: []
+  status: delegated
+
 - id: grill-via-annotations
   title: A repo skill running grilling rounds through the annotations mode inbox
   kind: build
