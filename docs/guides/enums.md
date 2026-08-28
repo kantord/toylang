@@ -73,5 +73,6 @@ jsonlines_enum_stream
 ```
 
 A default arm (`any() -> ...`) trades some of that proof away for brevity; reach for it
-when new variants should fall through rather than break the build. The
-[match reference](../reference/operators/match.md) has the arm shapes.
+when new variants should fall through rather than break the build. A guard arm trades none
+of it away and cannot substitute for `any()` either -- the [matching guide](matching.md)
+covers why. The [match reference](../reference/operators/match.md) has the arm shapes.

@@ -60,4 +60,8 @@ The payload can be any single type, not only a record -- `celsius(Int)`, `some(V
 and in a bare payload arm `.` becomes the payload itself. The
 [guide on enums](../guides/enums.md) works through typing a real wire format with these.
 
+A match arm can also be a guard -- a Bool test instead of a variant pattern -- which is
+[matching](06-matching.md)'s subject, once streams (next) round out the pipeline shapes worth
+branching on.
+
 Next: [streams](05-streams.md), where the data comes from stdin.
