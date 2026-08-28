@@ -308,7 +308,7 @@
   title: Write the cognitive-complexity lesson (look at the shape, not the number)
   kind: build
   needs: []
-  status: todo
+  status: done
 
 - id: check-rs-split-decision
   title: "Decide how to split src/check.rs (1874 lines, budget 1000; synth() and check() also over the line/complexity limits) -- inherited debt, predates issue #14"
