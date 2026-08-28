@@ -102,7 +102,7 @@
   title: A repo skill running grilling rounds through the annotations mode inbox
   kind: build
   needs: [docs-annotations-mode]
-  status: todo
+  status: done
 
 - id: json-string-conformance
   title: Prove full JSON-string support across backends, pinning codepoint ordering
