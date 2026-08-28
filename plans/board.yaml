@@ -98,6 +98,12 @@
   needs: []
   status: delegated
 
+- id: grill-via-annotations
+  title: A repo skill running grilling rounds through the annotations mode inbox
+  kind: build
+  needs: [docs-annotations-mode]
+  status: todo
+
 - id: json-string-conformance
   title: Prove full JSON-string support across backends, pinning codepoint ordering
   kind: build
