@@ -144,7 +144,7 @@
   title: Euler stress-test stream -- scaffolding plus problems 1-10, findings filed
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: matching-tutorial-chapter
   title: Tutorial chapter and guide for matching -- guard arms, chains, partial-to-Opt
@@ -240,10 +240,11 @@
   status: todo
 
 - id: precedent-survey
+  issue: gh:36
   title: Survey how Rust and others treat field order, flatten naming, overloading, traits
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: function-signature-ergonomics
   title: Grill destructuring params and pipeline-first bodies -- wizard round with real code
