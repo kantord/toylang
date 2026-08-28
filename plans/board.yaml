@@ -81,7 +81,7 @@
   status: done
 
 - id: matcher-first-cut-build
-  issue: gh:15
+  issue: gh:16
   title: Implement or-composed arms, guard arms, hybrid totality; retire //
   kind: build
   needs: [matcher-first-cut-design]
