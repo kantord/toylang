@@ -8,6 +8,7 @@ use crate::ast::{
     TypeExpr, Variant,
 };
 use crate::error::Error;
+use crate::ty;
 
 /// The stream this whole module parses over: a source string with byte-offset tracking built
 /// in, so every sub-parser gets `Span`s for free from `current_token_start` rather than threading
@@ -529,7 +530,7 @@ impl<'i> Cursor<'i> {
             Tok::Ident(n) => n,
             other => return Err(Error::new(span, format!("expected a type, found {other}"))),
         };
-        if name != "Vec" && name != "Stream" {
+        if !ty::takes_type_arg(&name) {
             return Ok(TypeExpr::Named { name, span });
         }
         self.eat(Tok::Lt)?;

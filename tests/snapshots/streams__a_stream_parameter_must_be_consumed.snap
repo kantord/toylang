@@ -1,5 +1,6 @@
 ---
 source: tests/streams.rs
+assertion_line: 108
 expression: "err(\"fn f(s: Stream<Str>) -> Int = 0\\n\\n1\")"
 ---
-`s` is a stream and must be consumed exactly once; it is never consumed (at byte 30)
+`s` must be consumed exactly once; it is never consumed (at byte 30)
