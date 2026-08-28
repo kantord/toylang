@@ -63,6 +63,10 @@ new check) rather than only the instance -- every audit finding so far became a 
 - Review follow-ups become new rows (usually `build`, sometimes a `decide` + `build` pair
   when a finding needs a design call first), placed by priority judgment, linked to their
   filed issue.
+- **Scope added to an in-flight issue never reaches its session** -- a session reads its
+  issue once, at start (this lost the grill-directory scope once). New scope on dispatched
+  work is either a re-brief (a continuation dispatch into the same env, which reads the
+  comments fresh) or a follow-up row; commenting alone is not delivery.
 - Reordering rows IS reprioritizing; do it when the user says so, or propose it in a report
   when the order has stopped matching reality.
 - The board is committed like any other file (AGENTS.md rules apply). Keep rows terse; the
