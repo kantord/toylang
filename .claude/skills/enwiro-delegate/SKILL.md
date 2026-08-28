@@ -20,6 +20,14 @@ Never use `claude -p` for this: headless output is not navigable and cannot be t
 - `repo@<branch-name>` (git recipe) -- for work with no issue. The new session gets its brief
   only from the kickoff prompt and in-repo docs, so name the source-of-truth file explicitly.
 
+## 1b. Push first -- worktrees branch from origin, not local main
+
+The github cookbook cuts the delegation worktree from **origin's** default branch. If local
+main is ahead and unpushed, the session builds against a stale base and its branch merges
+back with semantic drift the suite only catches on main (this reverted the anyhow work once
+before being caught). Before dispatching: local main must be pushed, or the user asked to
+push. Never dispatch onto a stale origin.
+
 ## 2. Activate, launch kitty with claude inside, then switch the user back
 
 ```sh
