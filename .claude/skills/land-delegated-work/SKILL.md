@@ -54,6 +54,13 @@ worktree (a fresh idle one can even appear later, spawned by a workspace visit) 
 lingerers in the report so the user knows the window is safe to close. Never kill an
 interactive session yourself; it is the user's window.
 
+**A landed branch can keep growing.** If the session is still alive at landing, its next stop
+fires the hooks, which can drive lesson-writing and cleanup commits AFTER the merge (it has
+happened: the first two lessons in the bundle arrived that way and sat unmerged until an
+audit). Until the worker process is gone, re-check the branch for commits past the merge at
+each tick, and sweep any final growth with a follow-up merge before the env is truly
+finished.
+
 ## 4. Report once
 
 One consolidated report: what landed, test counts, review findings and what happened to each
