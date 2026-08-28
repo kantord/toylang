@@ -469,8 +469,17 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
 /// polymorphic and checked from `synth`'s own arms; `select` and `map` rebind `.`. All nine are
 /// reserved the same way, and the docs harness (tests/docs.rs) reads this list to insist each
 /// one has a reference page.
-pub const BUILTIN_NAMES: [&str; 9] =
-    ["collect", "concat", "extent", "jsonlines", "map", "range", "select", "str", "tail"];
+pub const BUILTIN_NAMES: [&str; 9] = [
+    "collect",
+    "concat",
+    "extent",
+    "jsonlines",
+    "map",
+    "range",
+    "select",
+    "str",
+    "tail",
+];
 
 /// Functions the language provides. Unary like every other function, so they need no special
 /// call syntax and are looked up before user definitions.
@@ -1160,8 +1169,8 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         // `v[]` with nothing after it is the identity: "keep every entry" is what a Vec (or
         // stream) already is, with no field/index/unwrap left to distribute across it.
         Expr::Project { .. } => {
-            let (tir, _, _, _) = access(ctx, expr)?;
-            Ok(tir)
+            let access = access(ctx, expr)?;
+            Ok(access.tir)
         }
 
         // `input` is only ever checked, never synthesised, for the same reason a lambda is:

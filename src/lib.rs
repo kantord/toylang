@@ -16,7 +16,7 @@ pub mod tir;
 pub mod ty;
 
 use std::cell::RefCell;
-use std::io::Write;
+use std::io::{BufRead, Write};
 use std::rc::Rc;
 
 use anyhow::{Context, Result};
@@ -140,10 +140,12 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
     // `inputs` is eager like `input`, not incremental like `lines`, so it normally goes through
     // the same validate-then-re-serialize step: every backend receives canonical bytes, one
     // compact JSON value per line, rather than whatever formatting the original text happened to
-    // use. `live_inputs` and `lua_fused` are the exceptions -- the backend's own generated code
-    // (or, for Lua, the host function it calls into) reads and validates each record for itself
-    // there, which is what `tir::fusion` guarantees before `streams_inputs` says yes,
-    // so there is nothing left for the host to precompute.
+    // use. `live_inputs` and `lua_fused` are the exceptions -- nothing is precomputed for them,
+    // because the whole point of a fused loop is not reading the whole stream before the first
+    // record is handled. Validation still happens record-by-record on the host: `run_lua`'s
+    // `next_input` function does it for the Lua backend it is embedded in, and `Feed::LiveInputs`
+    // below does it for every other, subprocess-based backend, since generated code cannot be
+    // trusted to reimplement `input::validate` correctly in six different target languages.
     let inputs_values = if live_inputs || lua_fused {
         None
     } else {
@@ -171,18 +173,23 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
     // rather than being bypassed by the test that is supposed to exercise it. Only when nothing
     // was supplied, which is the real command-line case, does `lines` connect the real stdin
     // straight through, with no Rust-side buffering in between -- the one thing that would make
-    // its streaming indistinguishable from having read everything first. `inputs` gets the same
-    // treatment exactly when `live_inputs` says the backend can read it for itself; a fused Lua
-    // program run against a fixture is not live, but still needs the raw bytes verbatim rather
-    // than the eager re-serialized form, since `run_lua`'s injected function does its own
-    // splitting the same way `lines` always has.
+    // its streaming indistinguishable from having read everything first. A live, fused `inputs`
+    // program has no type to lean on the way `lines` does (raw text is always valid `Str`), so it
+    // cannot connect the real stdin straight through: `Feed::LiveInputs` reads and validates one
+    // record at a time itself and forwards only what passes, real streaming with no read-it-all-
+    // first buffering, but through Rust rather than direct fd inheritance. The Lua backend is the
+    // one exception -- it validates through its own `next_input` function instead, direct from
+    // `Feed::Live`, since it runs embedded rather than as a subprocess with a pipe to mediate.
+    // A fused Lua program run against a fixture is not live, but still needs the raw bytes
+    // verbatim rather than the eager re-serialized form, since `run_lua`'s injected function does
+    // its own splitting the same way `lines` always has.
     let feed = if program.uses_lines {
         match stdin {
             Some(text) => Feed::Text(text.to_string()),
             None => Feed::Live,
         }
     } else if live_inputs {
-        Feed::Live
+        live_inputs_feed(&program, backend)
     } else if lua_fused {
         Feed::Text(stdin.map(str::to_string).unwrap_or_default())
     } else if let Some(values) = &inputs_values {
@@ -230,6 +237,22 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
     }
 }
 
+/// The feed for a live, fused `inputs` program: real stdin, but validated. Lua is the exception,
+/// since `run_lua`'s own `next_input` function validates directly off `Feed::Live` rather than
+/// needing `Feed::LiveInputs` to mediate a pipe it has no subprocess to write into.
+fn live_inputs_feed(program: &Program, backend: Backend) -> Feed {
+    if matches!(backend, Backend::Lua) {
+        Feed::Live
+    } else {
+        Feed::LiveInputs(
+            program
+                .inputs
+                .clone()
+                .expect("live_inputs implies an inputs type"),
+        )
+    }
+}
+
 /// What a subprocess backend's stdin is connected to.
 enum Feed {
     /// Known bytes, written through a pipe: `input`'s re-serialized value, a `lines` program's
@@ -238,23 +261,51 @@ enum Feed {
     /// The real process stdin, inherited rather than piped. Reachable only for a `lines`
     /// program run with no fixture supplied.
     Live,
+    /// The real process stdin, read and validated one record at a time against the element type,
+    /// then forwarded through a pipe -- real streaming, but mediated by the host rather than
+    /// inherited directly, which is what lets `input::validate` see every record before a
+    /// subprocess backend's own, untrusted parse of it does. Reachable only for a live, fused
+    /// `inputs` program on a backend other than Lua (see `write_to`).
+    LiveInputs(ty::Type),
 }
 
 impl Feed {
     fn stdio(&self) -> std::process::Stdio {
         match self {
-            Feed::Text(_) => std::process::Stdio::piped(),
+            Feed::Text(_) | Feed::LiveInputs(_) => std::process::Stdio::piped(),
             Feed::Live => std::process::Stdio::inherit(),
         }
     }
 
-    fn write_to(&self, child: &mut std::process::Child) -> std::io::Result<()> {
-        if let Feed::Text(text) = self {
-            child
-                .stdin
-                .take()
-                .expect("piped")
-                .write_all(text.as_bytes())?;
+    fn write_to(&self, child: &mut std::process::Child) -> Result<()> {
+        match self {
+            Feed::Text(text) => {
+                child
+                    .stdin
+                    .take()
+                    .expect("piped")
+                    .write_all(text.as_bytes())?;
+            }
+            Feed::Live => {}
+            Feed::LiveInputs(elem_ty) => {
+                let mut stdin = child.stdin.take().expect("piped");
+                for line in std::io::stdin().lock().lines() {
+                    let line = line?;
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+                    let value: serde_json::Value = serde_json::from_str(&line)?;
+                    if let Err(msg) = input::validate(&value, elem_ty, "inputs") {
+                        // Close the pipe so the child sees EOF and can finish printing whatever
+                        // it already validly received, then wait for it before reporting the
+                        // refusal -- otherwise this leaves an unreaped child behind.
+                        drop(stdin);
+                        child.wait()?;
+                        return Err(anyhow::Error::msg(msg));
+                    }
+                    writeln!(stdin, "{line}")?;
+                }
+            }
         }
         Ok(())
     }
@@ -319,13 +370,15 @@ pub fn link_rust(source: &str, out: &std::path::Path) -> Result<()> {
 /// Runs `cmd` (already given whatever args the caller needs) connected to `feed`, and returns
 /// what it printed.
 ///
-/// When `feed` is `Feed::Live` there is no test harness reading the result back: stdout and
-/// stderr are inherited straight through to the real terminal or pipe instead of being captured,
-/// which is what lets a program that streams actually show output as it produces it rather than
-/// all at once when it exits. `Ok(String::new())` reflects that nothing is left to hand back --
-/// it already went to the real stdout directly.
+/// When `feed` is `Feed::Live` or `Feed::LiveInputs` there is no test harness reading the result
+/// back: stdout and stderr are inherited straight through to the real terminal or pipe instead of
+/// being captured, which is what lets a program that streams actually show output as it produces
+/// it rather than all at once when it exits. `Ok(String::new())` reflects that nothing is left to
+/// hand back -- it already went to the real stdout directly. `feed.write_to` reports a validation
+/// refusal for `Feed::LiveInputs` as an `Err` before this function's own `child.wait()` runs, so
+/// that path never reaches here at all.
 fn run_subprocess(mut cmd: std::process::Command, label: &str, feed: &Feed) -> Result<String> {
-    let live = matches!(feed, Feed::Live);
+    let live = matches!(feed, Feed::Live | Feed::LiveInputs(_));
     let mut child = cmd
         .stdin(feed.stdio())
         .stdout(if live {
@@ -434,6 +487,9 @@ fn run_lua(
         let reader: RefCell<Box<dyn std::io::BufRead>> = RefCell::new(match feed {
             Feed::Live => Box::new(std::io::BufReader::new(std::io::stdin())),
             Feed::Text(text) => Box::new(std::io::Cursor::new(text.clone().into_bytes())),
+            // `run_on` never builds this feed for the Lua backend: `live_inputs` there stays
+            // `Feed::Live`, since this function's own reader validates each record itself.
+            Feed::LiveInputs(_) => unreachable!("run_on keeps the Lua backend on Feed::Live"),
         });
         let next_input = lua.create_function(move |lua, ()| {
             use std::io::BufRead;
