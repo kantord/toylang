@@ -232,6 +232,12 @@
   needs: [q37-float-semantics]
   status: todo
 
+- id: check-rs-split-decision
+  title: Decide how to split src/check.rs (1874 lines, budget 1000; synth() and check() also over the line/complexity limits) -- inherited debt, predates issue #14
+  kind: decide
+  needs: []
+  status: todo
+
 - id: quality-hooks-introduction
   issue: gh:12
   title: Introduce the hooks per the adopted proposal, steps 1-3
