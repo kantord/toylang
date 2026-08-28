@@ -144,6 +144,7 @@
   status: done
 
 - id: run-jq-bools-decision
+  issue: gh:22
   title: "run_jq's fn-params-excessive-bools finding (src/lib.rs): fix, exempt, or write the lesson"
   kind: decide
   needs: []
