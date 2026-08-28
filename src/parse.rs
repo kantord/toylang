@@ -335,7 +335,8 @@ const COND_POWER: u8 = 3;
 pub fn parse(src: &str) -> Result<File, Error> {
     let mut p = Cursor {
         input: LocatingSlice::new(src),
-        bare_ok: true,
+        src,
+        declined_cross_line: None,
     };
 
     // Declarations in any order and any mix, since no kind can refer to another's position:
@@ -363,10 +364,7 @@ pub fn parse(src: &str) -> Result<File, Error> {
     let body = p.expr(0)?;
     let (rest, rest_span) = p.peek()?;
     if rest != Tok::Eof {
-        return Err(Error::new(
-            rest_span,
-            format!("expected end of program, found {rest}"),
-        ));
+        return Err(p.unexpected(rest_span, format!("expected end of program, found {rest}")));
     }
     Ok(File {
         aliases,
@@ -381,7 +379,8 @@ pub fn parse(src: &str) -> Result<File, Error> {
 pub fn parse_module(src: &str) -> Result<Module, Error> {
     let mut p = Cursor {
         input: LocatingSlice::new(src),
-        bare_ok: true,
+        src,
+        declined_cross_line: None,
     };
     let mut defs = Vec::new();
     let mut enums = Vec::new();
@@ -411,15 +410,16 @@ pub fn parse_module(src: &str) -> Result<Module, Error> {
 
 struct Cursor<'i> {
     input: Input<'i>,
-    /// Off while parsing a function body's own undelimited chain (see `def` and `root`). A
-    /// definition's body and whatever follows it -- another `fn`, or the file's own body -- sit
-    /// adjacent with no token between them, the one place in the grammar two `expr` calls meet
-    /// without a delimiter to anchor on. A trailing bare call there could reach across that
-    /// boundary and swallow unrelated content, so bare calls are suspended for the outermost
-    /// chain of a definition's body and restored by `delimited` the moment real bracketing
-    /// (`(...)`, `[...]`, `{...}`) is entered, since a closing token bounds those regardless of
-    /// what sits outside.
-    bare_ok: bool,
+    /// The full source, kept alongside the advancing `input` so the same-line rule can look at
+    /// the trivia between two tokens it already has spans for.
+    src: &'i str,
+    /// Where a call was declined because its argument started on a later line: the argument
+    /// token's start, and the callee's name. Declining is usually right -- a definition's body
+    /// and the program's body sit adjacent with nothing between them, and the line break is what
+    /// keeps one from swallowing the other -- but when the parse then fails at exactly the
+    /// declined token, the intended reading was probably the call, and the error can name the
+    /// parens spelling that works across lines.
+    declined_cross_line: Option<(usize, String)>,
 }
 
 impl<'i> Cursor<'i> {
@@ -430,13 +430,6 @@ impl<'i> Cursor<'i> {
         read_tok(&mut probe)
     }
 
-    /// One token past `peek`.
-    fn peek2(&self) -> Result<(Tok, Span), Error> {
-        let mut probe = self.input;
-        read_tok(&mut probe)?;
-        read_tok(&mut probe)
-    }
-
     fn advance(&mut self) -> Result<(Tok, Span), Error> {
         read_tok(&mut self.input)
     }
@@ -444,10 +437,48 @@ impl<'i> Cursor<'i> {
     fn eat(&mut self, want: Tok) -> Result<Span, Error> {
         let (tok, span) = self.peek()?;
         if tok != want {
-            return Err(Error::new(span, format!("expected {want}, found {tok}")));
+            return Err(self.unexpected(span, format!("expected {want}, found {tok}")));
         }
         self.advance()?;
         Ok(span)
+    }
+
+    /// An "unexpected token" error, extended with the parens spelling when the failing token is
+    /// one a call declined to take as a cross-line argument (see `declined_cross_line`): the
+    /// token had somewhere to go, and only the line break kept it from going there.
+    fn unexpected(&self, span: Span, msg: String) -> Error {
+        if let Some((at, callee)) = &self.declined_cross_line
+            && *at == span.start
+        {
+            return Error::new(
+                span,
+                format!(
+                    "{msg}; an argument must start on the same line as its function -- \
+                     write `{callee}(...)` to call across lines"
+                ),
+            );
+        }
+        Error::new(span, msg)
+    }
+
+    /// Whether nothing but spaces and tabs sits between two byte offsets. The same-line rule for
+    /// call arguments: an argument, bare or parenthesized, must start on the same line as its
+    /// function, which is what lets a definition's body end next to the program's body without
+    /// either reaching across the line break and swallowing the other.
+    fn same_line(&self, from: usize, to: usize) -> bool {
+        !self.src[from..to].contains('\n')
+    }
+
+    /// The same-line rule applied at one call site: true when the argument starting at
+    /// `arg_span` is on `callee_span`'s line. A cross-line decline is recorded (see
+    /// `declined_cross_line`) so that if the parse then fails at that token, the error can say
+    /// why the call was not taken.
+    fn takes_argument(&mut self, callee: &str, callee_span: Span, arg_span: Span) -> bool {
+        if self.same_line(callee_span.end, arg_span.start) {
+            return true;
+        }
+        self.declined_cross_line = Some((arg_span.start, callee.to_string()));
+        false
     }
 
     fn eat_ident(&mut self, what: &str) -> Result<(String, Span), Error> {
@@ -455,16 +486,6 @@ impl<'i> Cursor<'i> {
             (Tok::Ident(n), span) => Ok((n, span)),
             (other, span) => Err(Error::new(span, format!("expected {what}, found {other}"))),
         }
-    }
-
-    /// Runs `f` with bare calls turned back on, for content bounded by a real delimiter. See
-    /// `bare_ok`.
-    fn delimited<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T, Error>) -> Result<T, Error> {
-        let saved = self.bare_ok;
-        self.bare_ok = true;
-        let out = f(self);
-        self.bare_ok = saved;
-        out
     }
 
     /// `fn name(param: Type) -> Type = body`
@@ -504,10 +525,7 @@ impl<'i> Cursor<'i> {
         let ret = self.type_expr()?;
 
         self.eat(Tok::Eq)?;
-        self.bare_ok = false;
-        let body = self.expr(0);
-        self.bare_ok = true;
-        let body = body?;
+        let body = self.expr(0)?;
         Ok(Def {
             span: start.to(body.span()),
             name,
@@ -542,13 +560,11 @@ impl<'i> Cursor<'i> {
         })
     }
 
-    /// A call's argument, wrapped in parens or spelled as a bare record literal. This is the
-    /// "nested" call form: legal anywhere an atom is legal, including as an operand, because the
-    /// closing `)` or `}` marks its end unambiguously wherever it appears.
-    ///
-    /// The parens may be omitted when the argument is a record literal. That is unambiguous
-    /// because `{` cannot start any other expression and cannot follow one, so `f {` was a syntax
-    /// error before this and nothing is taken away by giving it a meaning.
+    /// A call's argument when it opens with `(` or `{`: a parenthesized expression, or a record
+    /// literal standing bare because `{` cannot start any other expression. The closing token
+    /// marks the argument's end unambiguously, which is what makes the parens form the
+    /// disambiguator wherever the bare form's own stopping rules would read a program
+    /// differently.
     fn argument(&mut self) -> Result<(Expr, Span), Error> {
         let (tok, span) = self.peek()?;
         if tok == Tok::LBrace {
@@ -558,7 +574,7 @@ impl<'i> Cursor<'i> {
             return Ok((lit, lit_span));
         }
         self.eat(Tok::LParen)?;
-        let inner = self.delimited(|p| p.expr(0))?;
+        let inner = self.expr(0)?;
         let close = self.eat(Tok::RParen)?;
         Ok((inner, close))
     }
@@ -572,7 +588,7 @@ impl<'i> Cursor<'i> {
             loop {
                 let (name, name_span) = self.eat_ident("a field name")?;
                 self.eat(Tok::Colon)?;
-                fields.push((name, name_span, self.delimited(|p| p.expr(0))?));
+                fields.push((name, name_span, self.expr(0)?));
                 let (sep, _) = self.peek()?;
                 if sep != Tok::Comma {
                     break;
@@ -667,59 +683,6 @@ impl<'i> Cursor<'i> {
         })
     }
 
-    /// `f x`, the parenless "root" call form. Legal only where `expr` is entered fresh (a pipe
-    /// stage, a function body, inside `(...)`/`[...]`/`{...}`), never as an operand: `operand`
-    /// and everything it calls (`unary`, `postfix`, `atom`) never look for this, so it cannot
-    /// surface partway through a larger expression. `x` stops at the first infix operator, `|`,
-    /// or `if`, which is what makes `f x | y` mean `(f x) | y` and `f x + y` a parse error
-    /// (the trailing `+ y` is left for the caller to reject) rather than a silent `(f x) + y`.
-    fn root(&mut self, min_power: u8) -> Result<Expr, Error> {
-        if self.bare_ok {
-            let (tok, span) = self.peek()?;
-            if let Tok::Ident(name) = tok
-                && bare_callee(&name)
-            {
-                let (tok2, _) = self.peek2()?;
-                if starts_bare_argument(&tok2) {
-                    self.advance()?;
-                    let arg = self.bare_argument()?;
-                    let full = span.to(arg.span());
-                    return Ok(Expr::Call {
-                        func: name,
-                        func_span: span,
-                        arg: Box::new(arg),
-                        span: full,
-                    });
-                }
-            }
-        }
-        self.operand(min_power)
-    }
-
-    /// The argument of a bare call: another bare call (so `f g x` is `f(g(x))`, right-recursive)
-    /// or an ordinary postfix chain. Not `expr`: an infix operator, `|`, or `if` here belongs to
-    /// whatever encloses the whole application, not to this argument.
-    fn bare_argument(&mut self) -> Result<Expr, Error> {
-        let (tok, span) = self.peek()?;
-        if let Tok::Ident(name) = tok
-            && bare_callee(&name)
-        {
-            let (tok2, _) = self.peek2()?;
-            if starts_bare_argument(&tok2) {
-                self.advance()?;
-                let arg = self.bare_argument()?;
-                let full = span.to(arg.span());
-                return Ok(Expr::Call {
-                    func: name,
-                    func_span: span,
-                    arg: Box::new(arg),
-                    span: full,
-                });
-            }
-        }
-        self.postfix()
-    }
-
     /// Whether the tokens ahead begin a match arm: `name ->`, `name{a, b} ->`, or `any() ->`.
     /// The one place this has to look carefully is a brace: a record *pattern* holds bare names
     /// (and `..`), so the first `:` proves the braces are a constructor's record literal
@@ -779,7 +742,7 @@ impl<'i> Cursor<'i> {
                     )
                 }
                 None => {
-                    let e = self.root(COND_POWER)?;
+                    let e = self.operand(COND_POWER)?;
                     self.guard_or_default_arm(e)?
                 }
             };
@@ -890,7 +853,7 @@ impl<'i> Cursor<'i> {
         let mut lhs = if fresh && self.arm_starts_here() {
             self.match_expr(None)?
         } else {
-            let e = self.root(min_power)?;
+            let e = self.operand(min_power)?;
             let (tok, _) = self.peek()?;
             if fresh && (tok == Tok::Arrow || tok == Tok::Or) {
                 self.match_expr(Some(e))?
@@ -991,7 +954,7 @@ impl<'i> Cursor<'i> {
                             span,
                         };
                     } else {
-                        let index = self.delimited(|p| p.expr(0))?;
+                        let index = self.expr(0)?;
                         let close = self.eat(Tok::RBracket)?;
                         let span = e.span().to(close);
                         e = Expr::Index {
@@ -1030,6 +993,71 @@ impl<'i> Cursor<'i> {
         }
     }
 
+    /// What a name means once read: a qualified variant (`Shape.circle`), a call when an
+    /// argument starts after it on the same line, or a plain variable reference.
+    ///
+    /// A name followed by an argument is a call; bare application is the default spelling and
+    /// `f(x)` is `f` applied to the grouped atom `(x)`. The bare form asks two things of the
+    /// call that the delimited forms do not: the callee must be lowercase (a capitalised bare
+    /// call could never typecheck), and the argument's first token excludes `-` (already
+    /// subtraction: `f -1` stays `f - 1`), `.` (projection binds tighter than bare application
+    /// everywhere, so `p.b` is a field access even though `.b` alone could be an argument --
+    /// issue #19), and `[` (indexing owns it for the same reason: `v[0]` indexes, so a Vec
+    /// literal argument needs parens).
+    fn ident_expr(&mut self, name: String, span: Span) -> Result<Expr, Error> {
+        let (next, next_span) = self.peek()?;
+        // `Shape.circle`: the casing rule makes uppercase-then-dot unambiguous, since a
+        // capitalised name can never be a value for `.` to project a field out of.
+        if next == Tok::Dot && name.chars().next().is_some_and(char::is_uppercase) {
+            self.advance()?;
+            let (variant, variant_span) = self.eat_ident("a variant name")?;
+            let (after, after_span) = self.peek()?;
+            let (payload, end) = if (after == Tok::LParen || after == Tok::LBrace)
+                && self.takes_argument(&format!("{name}.{variant}"), variant_span, after_span)
+            {
+                let (arg, close) = self.argument()?;
+                (Some(Box::new(arg)), close)
+            } else {
+                (None, variant_span)
+            };
+            return Ok(Expr::Variant {
+                enum_name: name,
+                enum_span: span,
+                variant,
+                variant_span,
+                payload,
+                span: span.to(end),
+            });
+        }
+        let argument_starts = match next {
+            Tok::LParen | Tok::LBrace => true,
+            Tok::Str(_) | Tok::Int(_) | Tok::Input | Tok::Inputs | Tok::Lines | Tok::Ident(_) => {
+                bare_callee(&name)
+            }
+            _ => false,
+        };
+        if !argument_starts || !self.takes_argument(&name, span, next_span) {
+            return Ok(Expr::Var { name, span });
+        }
+        let (arg, close) = if next == Tok::LParen || next == Tok::LBrace {
+            self.argument()?
+        } else {
+            // A bare argument is a postfix chain, not an operand: an infix operator after it
+            // belongs to the enclosing expression, so `f x + y` is `f(x) + y`. Chaining is
+            // right-recursive through `atom` itself, making `f g x` read `f(g(x))` -- with no
+            // first-class functions, the only reading that could ever typecheck.
+            let arg = self.postfix()?;
+            let end = arg.span();
+            (arg, end)
+        };
+        Ok(Expr::Call {
+            func: name,
+            func_span: span,
+            arg: Box::new(arg),
+            span: span.to(close),
+        })
+    }
+
     fn atom(&mut self) -> Result<Expr, Error> {
         let (tok, span) = self.advance()?;
         match tok {
@@ -1063,7 +1091,7 @@ impl<'i> Cursor<'i> {
                 let (first, _) = self.peek()?;
                 if first != Tok::RBracket {
                     loop {
-                        items.push(self.delimited(|p| p.expr(0))?);
+                        items.push(self.expr(0)?);
                         let (sep, _) = self.peek()?;
                         if sep != Tok::Comma {
                             break;
@@ -1078,43 +1106,10 @@ impl<'i> Cursor<'i> {
                 })
             }
 
-            Tok::Ident(name) => {
-                let (next, _) = self.peek()?;
-                // `Shape.circle`: the casing rule makes uppercase-then-dot unambiguous, since a
-                // capitalised name can never be a value for `.` to project a field out of.
-                if next == Tok::Dot && name.chars().next().is_some_and(char::is_uppercase) {
-                    self.advance()?;
-                    let (variant, variant_span) = self.eat_ident("a variant name")?;
-                    let (after, _) = self.peek()?;
-                    let (payload, end) = if after == Tok::LParen || after == Tok::LBrace {
-                        let (arg, close) = self.argument()?;
-                        (Some(Box::new(arg)), close)
-                    } else {
-                        (None, variant_span)
-                    };
-                    return Ok(Expr::Variant {
-                        enum_name: name,
-                        enum_span: span,
-                        variant,
-                        variant_span,
-                        payload,
-                        span: span.to(end),
-                    });
-                }
-                if next != Tok::LParen && next != Tok::LBrace {
-                    return Ok(Expr::Var { name, span });
-                }
-                let (arg, close) = self.argument()?;
-                Ok(Expr::Call {
-                    func: name,
-                    func_span: span,
-                    arg: Box::new(arg),
-                    span: span.to(close),
-                })
-            }
+            Tok::Ident(name) => self.ident_expr(name, span),
 
             Tok::LParen => {
-                let inner = self.delimited(|p| p.expr(0))?;
+                let inner = self.expr(0)?;
                 self.eat(Tok::RParen)?;
                 Ok(inner)
             }
@@ -1127,29 +1122,10 @@ impl<'i> Cursor<'i> {
     }
 }
 
-/// Whether `name` can be a bare call's function. Only a lowercase name can: functions are
-/// values under the casing rule, and a capitalised name followed by `.` is the qualified
-/// variant spelling (`Shape.circle`), which would otherwise be swallowed as `Shape (.circle)`
-/// since `.` also starts a bare argument.
+/// Whether `name` can take a bare (undelimited) argument. Only a lowercase name can: a
+/// capitalised name is a type under the casing rule, so a capitalised bare call could never
+/// typecheck. Constructors still apply with the delimited forms (`Circle{r: 1}`,
+/// `Circle(...)`), which this does not gate.
 fn bare_callee(name: &str) -> bool {
     !name.chars().next().is_some_and(char::is_uppercase)
-}
-
-/// Whether `name tok` reads as `name` applied bare to an argument starting with `tok`. `(` and
-/// `{` are excluded because those are the "nested" call form (`argument`), which works
-/// unconditionally and does not need root placement. `-` is excluded because it is already
-/// subtraction: `f -x` stays `f - x`, the same resolution Haskell gives the identical clash,
-/// rather than adding a rule to prefer negation.
-fn starts_bare_argument(tok: &Tok) -> bool {
-    matches!(
-        tok,
-        Tok::Str(_)
-            | Tok::Int(_)
-            | Tok::Input
-            | Tok::Inputs
-            | Tok::Lines
-            | Tok::Dot
-            | Tok::LBracket
-            | Tok::Ident(_)
-    )
 }

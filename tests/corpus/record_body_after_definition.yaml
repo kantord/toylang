@@ -1,0 +1,12 @@
+# The record-literal program body used to be swallowed across the definition boundary as an
+# argument to the definition's trailing `s` (issue #10). An argument must start on the same
+# line as its function, and this `{` does not.
+program: |
+  fn id(s: Str) -> Str = s
+
+  {a: 1}
+
+output: |
+  {"a":1}
+
+node_types: [int, record-literal]

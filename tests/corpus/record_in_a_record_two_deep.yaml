@@ -3,7 +3,7 @@
 program: |
   fn deep(db: Vec<Vec<{a: {b: Int}}>>) -> Vec<Vec<Int>> = db[][].a.b
 
-  deep(input)
+  deep input
 
 input: |
   [[{"a": {"b": 1}}], [{"a": {"b": 2}}, {"a": {"b": 3}}]]

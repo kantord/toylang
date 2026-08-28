@@ -1,12 +1,12 @@
 # The one shape the compiler fuses into a read-one/transform-one/write-one loop instead of
-# reading all of stdin before printing anything: `jsonlines(f(inputs))` where `f`'s own body is
+# reading all of stdin before printing anything: `jsonlines f inputs` where `f`'s own body is
 # a `map`/`select` chain over its parameter. Output is unaffected either way -- this case only
 # pins the value; tests/streaming.rs is what checks output actually arrives before stdin closes.
 program: |
   fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
       users | select(.age >= 18) | map {name: .name}
 
-  jsonlines(adults(inputs))
+  jsonlines adults inputs
 
 input: |
   {"name": "ada", "age": 36}

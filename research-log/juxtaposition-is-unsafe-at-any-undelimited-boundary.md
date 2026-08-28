@@ -2,6 +2,7 @@
 type: Lesson
 calendar:
   - 2026-08-26
+  - 2026-08-28
 title: Juxtaposition is unsafe at any undelimited boundary
 description: Adding parenless function application broke a program with no application in it, because two unrelated expressions had always sat adjacent at one spot the grammar never bothered to delimit.
 tags:
@@ -59,3 +60,15 @@ boundary -- which stops being true the moment one does.
 
 The fix itself was later ported onto `winnow` unchanged in shape, which is its own finding: see
 [winnow replaced the tokenizer, not the grammar](winnow-replaced-the-tokenizer-not-the-grammar.md).
+
+The flag did not survive bare application becoming the default call form (2026-08-28). It was
+replaced by the newline sensitivity the paragraph above named as the alternative: an argument --
+bare, parenthesized, braced, or a variant's payload -- must start on the same line as its
+function. One rule at the argument's start covers every call form at every boundary, where the
+flag covered one form and had to be re-threaded through five call sites; the record-argument
+and `(`-argument reaches, which the flag never covered, closed with it. The measurement that
+picked the line rule over suspending the sugar is on issue #10: suspension would have broken
+two live corpus cases, the line rule broke zero. What it does not cover is the postfix `[`
+instance above -- indexing is not an argument, and making postfix tokens line-sensitive would
+be a different (and larger) decision -- so a program body still cannot start with `[` directly
+after a definition, and the corpus workaround for that one stands.

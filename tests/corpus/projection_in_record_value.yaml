@@ -1,0 +1,11 @@
+# A record literal's value position begins an expression fresh, and `p.b` there used to parse
+# as `p` applied bare to `.b` (issue #19). Projection wins over bare application everywhere.
+program: |
+  fn swap(p: {a: Int, b: Int}) -> {a: Int, b: Int} = {a: p.b, b: p.a}
+
+  swap({a: 1, b: 2})
+
+output: |
+  {"a":2,"b":1}
+
+node_types: [application, int, projection, record-literal, var]

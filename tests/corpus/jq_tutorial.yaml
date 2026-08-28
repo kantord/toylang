@@ -8,7 +8,7 @@ program: |
       -> Vec<{commit: {message: Str, committer: {name: Str}},
               parents: Vec<{html_url: Str}>}> = db
 
-  commits(input) | map {
+  commits input | map {
       message: .commit.message,
       name:    .commit.committer.name,
       parents: .parents[].html_url

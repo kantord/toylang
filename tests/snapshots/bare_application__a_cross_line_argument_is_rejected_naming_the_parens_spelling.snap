@@ -1,0 +1,5 @@
+---
+source: tests/bare_application.rs
+expression: "err(\"fn inc(n: Int) -> Int = n + 1\\n\\ninc\\n1\")"
+---
+expected end of program, found `1`; an argument must start on the same line as its function -- write `inc(...)` to call across lines (at byte 35)

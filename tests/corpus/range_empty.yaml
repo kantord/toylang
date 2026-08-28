@@ -1,7 +1,7 @@
 # Quoted rather than a block scalar: output
 # holds bytes a block cannot reproduce.
 program: |
-  unlines(range(0) | map(str(.)))
+  unlines(range 0 | map(str(.)))
 
 output: "\n"
 

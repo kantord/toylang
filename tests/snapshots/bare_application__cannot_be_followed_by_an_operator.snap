@@ -1,5 +1,0 @@
----
-source: tests/bare_application.rs
-expression: "err(\"str 5 + 1\")"
----
-expected end of program, found `+` (at byte 6)

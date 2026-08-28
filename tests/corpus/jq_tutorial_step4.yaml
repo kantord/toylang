@@ -6,7 +6,7 @@ program: |
   fn commits(db: Vec<{commit: {message: Str, committer: {name: Str}}}>)
       -> Vec<{commit: {message: Str, committer: {name: Str}}}> = db
 
-  jsonlines(commits(input) | map {message: .commit.message, name: .commit.committer.name})
+  jsonlines(commits input | map {message: .commit.message, name: .commit.committer.name})
 
 input: |
   [{"commit": {"message": "first", "committer": {"name": "ada"}}},
