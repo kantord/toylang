@@ -127,7 +127,13 @@
   title: Install anyhow for the harness error plumbing
   kind: build
   needs: [crate-adoption]
-  status: delegated
+  status: done
+
+- id: run-jq-bools-decision
+  title: "run_jq's fn-params-excessive-bools finding (src/lib.rs): fix, exempt, or write the lesson"
+  kind: decide
+  needs: []
+  status: todo
 
 - id: opt-in-signatures
   title: Opt<T> accepted in the type grammar -- head(v) -> Opt<Int> compiles as written

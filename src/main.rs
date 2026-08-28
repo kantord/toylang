@@ -2,6 +2,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use anyhow::{Context, Result};
 use toylang::Backend;
 
 const USAGE: &str =
@@ -37,9 +38,7 @@ fn main() -> ExitCode {
         "run" => run(&src, backend),
         "emit" => match toylang::compile(&src) {
             Err(e) => Err(e.into()),
-            Ok(p) => backend
-                .emit(&p)
-                .map_err(|e| -> Box<dyn std::error::Error> { e.into() }),
+            Ok(p) => backend.emit(&p).map_err(anyhow::Error::msg),
         },
         "build" => build(&src, path).map(|out| format!("{}\n", out.display())),
         _ => {
@@ -61,10 +60,10 @@ fn main() -> ExitCode {
 }
 
 /// Writes the binary next to where it was invoked, named after the source file.
-fn build(src: &str, path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn build(src: &str, path: &str) -> Result<PathBuf> {
     let stem = std::path::Path::new(path)
         .file_stem()
-        .ok_or("the source file has no name")?
+        .context("the source file has no name")?
         .to_owned();
     let out = PathBuf::from(stem);
     toylang::link(&toylang::compile(src)?, &out)?;
@@ -73,7 +72,7 @@ fn build(src: &str, path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
 
 /// stdin is only read when the program says it reads input, so a program that does not is not
 /// left waiting on a terminal.
-fn run(src: &str, backend: Backend) -> Result<String, Box<dyn std::error::Error>> {
+fn run(src: &str, backend: Backend) -> Result<String> {
     // A program reading `lines` also takes the live branch: it needs the real stdin left alone,
     // not drained into a Rust String, so each backend can read it incrementally for itself.
     // `inputs` used to always need the same up-front read `input` does, since every backend
