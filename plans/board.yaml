@@ -69,10 +69,11 @@
   status: done
 
 - id: stop-hook-commit-check
+  issue: gh:18
   title: Stop-hook finding for uncommitted work at turn end, closing the politeness stall mechanically
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: oddities-quick-fixes
   issue: gh:14
@@ -142,7 +143,7 @@
   title: Front-end cleanups from the typed-streams review
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: crate-simplification-survey
   issue: gh:13
