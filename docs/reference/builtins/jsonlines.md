@@ -1,5 +1,12 @@
 # jsonlines
 
+<!-- @review Coordinator: the oddities inventory notes this is the one construct with no
+result type wearing ordinary call syntax -- nothing in the spelling says it is a program
+form rather than a function, and the outermost-only rule is invisible until violated.
+Alternatives: leave it (the refusal teaches); a syntactically distinct final stage such as a
+`|> jsonlines` pipe-tail; a keyword position. Whatever you pick must not prejudge Q35 (what
+stdout is). Edit this note with your call. -->
+
 `jsonlines(v)`: prints each entry as JSON on its own line, instead of wrapping the whole
 thing in `[...]`. Named for the format (jsonlines.org, also called NDJSON). It takes a
 `Vec<T>` or a `Stream<T>`, and it is a sink: legal only as the program's outermost
