@@ -11,4 +11,9 @@ export default defineConfig({
   resolve: {
     alias: { "@": import.meta.dirname + "/src" },
   },
+  // The docs pages live at the repository root, beside the code and the harness that runs
+  // their fragments, so the dev server must be allowed to read one level up.
+  server: {
+    fs: { allow: [import.meta.dirname + "/.."] },
+  },
 })

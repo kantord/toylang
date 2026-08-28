@@ -22,9 +22,13 @@ export function runJs(code: string, stdinText: string | null): RunResult {
   const lines: string[] = []
   const console = { log: (value: unknown) => lines.push(String(value)) }
 
+  // One instance, however often it is asked for: node caches modules, and a `lines` program's
+  // read loop calls `require("fs")` once per line. A fresh `readSync` per call would reset the
+  // stdin cursor each time, and the loop would re-read the same input forever.
+  const fs = { readFileSync: () => stdinText ?? "", readSync: makeReadSync(stdinText ?? "") }
   const require = (name: string) => {
     if (name !== "fs") throw new Error(`the emitted code asked for an unexpected module: ${name}`)
-    return { readFileSync: () => stdinText ?? "", readSync: makeReadSync(stdinText ?? "") }
+    return fs
   }
 
   try {

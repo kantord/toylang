@@ -1,38 +1,41 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 
-import { CaseTree } from "@/components/CaseTree"
-import { Code } from "@/components/Code"
-import { RunPanel } from "@/components/RunPanel"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BACKENDS, loadCorpus, type Corpus } from "@/lib/corpus"
+import { ExamplesPage } from "@/components/ExamplesPage"
+import { Markdown } from "@/components/Markdown"
+import { loadCorpus, type Corpus } from "@/lib/corpus"
+import { href, PAGES, type Page, type Section } from "@/lib/docs"
+import { cn } from "@/lib/utils"
+
+/** The four sections, each with one job (plans/docs-site.md): a linear course, task-oriented
+ *  feature pages, the complete reference, and the corpus browser. */
+const SECTIONS: { key: Section | "examples"; label: string }[] = [
+  { key: "tutorial", label: "Tutorial" },
+  { key: "guides", label: "Guides" },
+  { key: "reference", label: "Reference" },
+  { key: "examples", label: "Examples" },
+]
+
+function useHash(): string {
+  const [hash, setHash] = useState(location.hash)
+  useEffect(() => {
+    const on = () => setHash(location.hash)
+    window.addEventListener("hashchange", on)
+    return () => window.removeEventListener("hashchange", on)
+  }, [])
+  return hash
+}
 
 export default function App() {
   const [corpus, setCorpus] = useState<Corpus | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState("")
   const [backend, setBackend] = useState("js")
+  const hash = useHash()
 
   useEffect(() => {
     loadCorpus()
-      .then((c) => {
-        setCorpus(c)
-        // The hash makes a case linkable, so a finding can be pointed at rather than described.
-        const wanted = decodeURIComponent(location.hash.slice(1))
-        setSelected(c.cases.some((x) => x.name === wanted) ? wanted : c.cases[0].name)
-      })
+      .then(setCorpus)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [])
-
-  useEffect(() => {
-    if (selected) history.replaceState(null, "", `#${encodeURIComponent(selected)}`)
-  }, [selected])
-
-  const current = useMemo(
-    () => corpus?.cases.find((c) => c.name === selected) ?? null,
-    [corpus, selected],
-  )
 
   if (error) {
     return (
@@ -42,96 +45,135 @@ export default function App() {
       </main>
     )
   }
+  if (!corpus) {
+    return <main className="p-10 text-sm text-muted-foreground">Loading...</main>
+  }
 
-  if (!corpus || !current) {
-    return <main className="p-10 text-sm text-muted-foreground">Loading the corpus...</main>
+  const segments = hash.replace(/^#\/?/, "").split("/").filter(Boolean)
+
+  // Pre-Diataxis links were bare case names (`#greet`); they keep working under Examples.
+  if (segments.length === 1 && corpus.cases.some((c) => c.name === segments[0])) {
+    location.hash = `#/examples/${segments[0]}`
+    return null
+  }
+
+  const section = segments[0] ?? ""
+  let body
+  if (section === "examples") {
+    body = (
+      <ExamplesPage
+        corpus={corpus}
+        selected={segments[1] ?? corpus.cases[0].name}
+        onSelect={(name) => (location.hash = `#/examples/${encodeURIComponent(name)}`)}
+        backend={backend}
+        onBackend={setBackend}
+      />
+    )
+  } else if (section === "tutorial" || section === "guides" || section === "reference") {
+    body = <DocsSection section={section} segments={segments.slice(1)} corpus={corpus} />
+  } else {
+    // The landing route: the tutorial is where a new reader starts; before it has chapters,
+    // the browser everyone already links to.
+    const first = PAGES.find((p) => p.section === "tutorial")
+    location.hash = first ? href(first) : "#/examples"
+    return null
   }
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[1500px] flex-col gap-6 p-6">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold tracking-tight">toylang corpus</h1>
-        <p className="text-sm text-muted-foreground">
-          Every program in the test corpus, and the code each of the six backends compiles it to.
-          The same programs run on all six and have to agree; what you see here is what that
-          agreement is made of.
-        </p>
+      <header className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+        <h1 className="text-xl font-semibold tracking-tight">toylang</h1>
+        <nav className="flex gap-4 text-sm">
+          {SECTIONS.map((s) => (
+            <a
+              key={s.key}
+              href={`#/${s.key}`}
+              className={cn(
+                "text-muted-foreground hover:text-foreground",
+                section === s.key && "font-medium text-foreground",
+              )}
+            >
+              {s.label}
+            </a>
+          ))}
+        </nav>
       </header>
 
-      <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="lg:h-[calc(100vh-11rem)] lg:sticky lg:top-6">
-          <CaseTree cases={corpus.cases} selected={selected} onSelect={setSelected} />
-        </aside>
+      {body}
+    </div>
+  )
+}
 
-        <main className="min-w-0 space-y-6">
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-mono text-lg font-medium">{current.name}</h2>
-              <Badge variant="secondary" className="font-mono text-[11px]">
-                {current.resultType}
-              </Badge>
-              {current.inputType && (
-                <Badge variant="outline" className="font-mono text-[11px]">
-                  reads {current.inputType}
-                </Badge>
+function DocsSection({
+  section,
+  segments,
+  corpus,
+}: {
+  section: Section
+  segments: string[]
+  corpus: Corpus
+}) {
+  const pages = PAGES.filter((p) => p.section === section)
+  if (pages.length === 0) {
+    return <p className="text-sm text-muted-foreground">Nothing here yet.</p>
+  }
+
+  const [group, slug] = segments.length > 1 ? segments : ["", segments[0]]
+  const current = pages.find((p) => p.group === group && p.slug === slug) ?? pages[0]
+
+  // The reference is grouped by its subdirectories (builtins, types, ...); the flat sections
+  // have a single unlabeled group.
+  const groups = [...new Set(pages.map((p) => p.group))].map((g) => ({
+    name: g,
+    pages: pages.filter((p) => p.group === g),
+  }))
+
+  return (
+    <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <aside className="lg:sticky lg:top-6 lg:self-start">
+        <nav className="space-y-4 text-sm">
+          {groups.map((g) => (
+            <div key={g.name} className="space-y-1">
+              {g.name && (
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {g.name}
+                </div>
               )}
-              {current.expect.kind === "refusal" && (
-                <Badge variant="destructive">every backend refuses</Badge>
-              )}
-            </div>
-            <Code code={current.program} lang="toylang" />
-          </section>
-
-          <section className="grid gap-4 md:grid-cols-2">
-            {current.input !== null && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-medium text-muted-foreground">Input</h3>
-                <Code code={current.input} lang="json" />
-              </div>
-            )}
-            <div className="space-y-2">
-              <h3 className="text-xs font-medium text-muted-foreground">
-                {current.expect.kind === "output" ? "Expected output" : "Expected outcome"}
-              </h3>
-              <Code
-                code={
-                  current.expect.kind === "output"
-                    ? current.expect.value
-                    : "Every backend refuses to run this."
-                }
-                lang="text"
-              />
-            </div>
-          </section>
-
-          <Separator />
-
-          <section className="space-y-3">
-            <h3 className="text-sm font-medium">Compiled to</h3>
-            <Tabs value={backend} onValueChange={setBackend}>
-              <TabsList>
-                {corpus.backends.map((name) => (
-                  <TabsTrigger key={name} value={name}>
-                    {BACKENDS[name]?.label ?? name}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {corpus.backends.map((name) => (
-                <TabsContent key={name} value={name} className="space-y-3">
-                  <p className="text-xs text-muted-foreground">{BACKENDS[name]?.note}</p>
-                  <Code code={current.emitted[name]} lang={BACKENDS[name]?.lang ?? "text"} />
-                </TabsContent>
+              {g.pages.map((p) => (
+                <a
+                  key={p.path}
+                  href={href(p)}
+                  className={cn(
+                    "block rounded px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground",
+                    p === current && "bg-muted font-medium text-foreground",
+                  )}
+                >
+                  {p.title}
+                </a>
               ))}
-            </Tabs>
-          </section>
+            </div>
+          ))}
+        </nav>
+      </aside>
 
-          <Separator />
+      <main className="min-w-0">
+        <Markdown page={current} corpus={corpus} />
+        <PagerLinks pages={pages} current={current} />
+      </main>
+    </div>
+  )
+}
 
-          <section>
-            <RunPanel current={current} />
-          </section>
-        </main>
-      </div>
+/** Previous/next within the section, so the tutorial reads as the linear course it is. */
+function PagerLinks({ pages, current }: { pages: Page[]; current: Page }) {
+  const i = pages.indexOf(current)
+  const prev = i > 0 ? pages[i - 1] : null
+  const next = i < pages.length - 1 ? pages[i + 1] : null
+  if (!prev && !next) return null
+  return (
+    <div className="mt-10 flex max-w-2xl justify-between border-t pt-4 text-sm">
+      <span>{prev && <a href={href(prev)} className="underline">&larr; {prev.title}</a>}</span>
+      <span>{next && <a href={href(next)} className="underline">{next.title} &rarr;</a>}</span>
     </div>
   )
 }

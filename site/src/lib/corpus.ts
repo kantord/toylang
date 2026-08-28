@@ -31,6 +31,7 @@ export const BACKENDS: Record<string, { label: string; lang: string; note: strin
   jq: { label: "jq", lang: "jq", note: "A stream language, so keeping a dimension means iterating and collecting." },
   go: { label: "Go", lang: "go", note: "Statically typed with no runtime type information, so every type is spelled out." },
   py: { label: "Python", lang: "python", note: "Exact unbounded integers, so the 32-bit rule is emulated." },
+  rust: { label: "Rust", lang: "rust", note: "Compiled by rustc; a match that re-proves the exhaustiveness the checker established." },
 }
 
 export async function loadCorpus(): Promise<Corpus> {
