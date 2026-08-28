@@ -175,3 +175,60 @@ fn inputs_wanted_as_a_vec_names_the_eager_spelling() {
 fn input_cannot_be_a_stream() {
     insta::assert_snapshot!(err("fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\n\nf(input)"));
 }
+
+/// Which branch runs is decided at runtime, and a pipeline's shape must not be: fusion has to
+/// know its stages at compile time. Refusing is the reversible direction.
+#[test]
+fn a_conditional_cannot_yield_a_stream() {
+    insta::assert_snapshot!(err("fn f(s: Stream<Str>) -> Stream<Str> = s if 1 == 1 else s\n\n1"));
+}
+
+/// The same rule for a match's arms.
+#[test]
+fn a_match_cannot_yield_a_stream() {
+    insta::assert_snapshot!(err(
+        "enum E { a, b }\n\nfn f(s: Stream<Str>) -> Stream<Str> = a | (a -> s // b -> s)\n\n1"
+    ));
+}
+
+/// The elements of a map's result are stored, and a stream is not storable: the same
+/// containment ban a Vec literal enforces, met before the Vec of streams could exist.
+#[test]
+fn a_map_body_cannot_be_a_stream() {
+    insta::assert_snapshot!(err("fn f(s: Stream<Str>) -> Int = extent([1] | map(s))\n\n1"));
+}
+
+/// One spelled consumption, many runtime ones: a mapper's body runs once per element, so a
+/// stream consumed there would be drained by the first element and empty for every later one.
+#[test]
+fn a_stream_cannot_be_consumed_inside_a_mapper() {
+    insta::assert_snapshot!(err(
+        "fn f(s: Stream<Str>) -> Vec<Int> = [1] | map(extent(collect(s)))\n\n1"
+    ));
+}
+
+/// The same once-per-element problem for the sources themselves.
+#[test]
+fn lines_cannot_be_read_inside_a_mapper() {
+    insta::assert_snapshot!(err("extent([1] | map(extent(collect(lines))))"));
+}
+
+#[test]
+fn inputs_cannot_be_read_inside_a_mapper() {
+    insta::assert_snapshot!(err(
+        "fn g(x: Vec<Int>) -> Int = extent(x)\n\nextent([1] | map(g(collect(inputs))))"
+    ));
+}
+
+/// A stream is born only at a source, so a function cannot conjure one: a stream result flows
+/// in through a stream parameter, keeping every pipeline one chain from source to sink.
+#[test]
+fn a_function_cannot_conjure_a_stream() {
+    insta::assert_snapshot!(err("fn f(x: Int) -> Stream<Str> = lines\n\n1"));
+}
+
+/// A source read beside an unrelated piped value is not one chain either.
+#[test]
+fn a_pipes_stream_must_flow_in_from_its_left() {
+    insta::assert_snapshot!(err("1 | (lines | map(. + \"!\"))"));
+}

@@ -210,117 +210,104 @@ pub fn vec_depth(ty: &Type) -> usize {
 }
 
 /// One `map`/`select` applied between reading a record and printing it, in source order (the
-/// stage nearest `inputs` first).
+/// stage nearest the source first).
 pub enum Stage<'a> {
     Map { param: LocalId, body: &'a Tir },
     Select { param: LocalId, pred: &'a Tir },
 }
 
-/// A program shaped as `jsonlines(chain of map/select over inputs)`, recognized so a backend can
-/// compile it as a read-one/transform-one/write-one loop instead of collecting all of stdin into
-/// a `Vec` before printing anything.
-///
-/// This is deliberately narrow: a structural match on this one shape, not a general `Stream<T>`
-/// type. draft.md's open question on first-class streams (Q1) is still open -- a real `Stream`
-/// type would let a program of *any* shape stream, where this only fuses the one idiom actually
-/// written for it today. Widening this into Q1's answer is future work, not started here.
+/// What a fused loop reads one entry at a time: parsed JSON values, or raw lines.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    Inputs,
+    Lines,
+}
+
+/// A stream-typed pipeline ending in `jsonlines`, compiled as a read-one/transform-one/
+/// write-one loop. Decided by the types, not by a structural guess: the old `recognize_fusion`
+/// pattern match retired when `Stream` entered the type grammar (plans/streams.md step 5), so
+/// whether a program streams is now exactly whether its types say so.
 pub struct Fusion<'a> {
+    pub source: Source,
     pub stages: Vec<Stage<'a>>,
 }
 
-/// What a chain of `map`/`select` bottoms out at. `Inputs` is what `recognize_fusion` needs at
-/// the top; `Var` shows up one level down, inside a function's own body, where the chain bottoms
-/// out at that function's parameter rather than at stdin directly.
+/// What a stream chain bottoms out at: a source, a function's own parameter, or the local a
+/// `|` bound.
 enum Base<'a> {
     Inputs,
+    Lines,
     Var(&'a String),
+    Local(LocalId),
 }
 
-/// `inputs` can only ever be checked with its type already known (see `check.rs`'s `expect` vs
-/// `synth` split), so it can never sit directly under `select`/`map` the way a plain Vec can --
-/// it only ever appears as a whole function call's argument, e.g. `f(inputs)`. That is why this
-/// walks through at most one `Call` back into `program.funcs`: it is not chasing an arbitrary
-/// call graph, only unwrapping the one indirection `inputs`'s own typing rule forces every real
-/// program to go through.
+/// Append the per-element stages of the stream-typed `t`, returning what its chain bottoms out
+/// at.
 ///
-/// Each `|` desugars to `Bind { value, body, .. }` with the piped-from expression as `value` and
-/// the next stage as `body`, so the chain is walked by recursing into `value` first and treating
-/// `body` as one more stage on the way back out -- which is also why a stage that is not exactly
-/// a `map`/`select` call (a bare field projection like `.[].name`, say) ends the recognition
-/// rather than being folded in: only the two are represented as their own `Kind` variant here.
-fn flatten<'a>(t: &'a Tir, program: &'a Program, stages: &mut Vec<Stage<'a>>) -> Option<Base<'a>> {
+/// Total, not a recognizer: the checker leaves exactly these kinds able to carry a Stream type
+/// (sources, bindings, mappers, calls -- a conditional or match yielding one is refused, and
+/// projection is normalized to a Map), so the `unreachable!` arms are compiler bugs, never
+/// program shapes. That is the invariant this step lands: a stream-typed program that failed
+/// to fuse would silently materialize stdin, which is the defect the feature exists to remove.
+fn flatten<'a>(t: &'a Tir, program: &'a Program, stages: &mut Vec<Stage<'a>>) -> Base<'a> {
     match &t.kind {
-        Kind::Bind { value, body, .. } => {
-            let base = flatten(value, program, stages)?;
-            match &body.kind {
-                Kind::Map { param, body, .. } => stages.push(Stage::Map { param: *param, body }),
-                Kind::Select { param, pred, .. } => stages.push(Stage::Select { param: *param, pred }),
-                _ => return None,
+        Kind::Inputs => Base::Inputs,
+        Kind::Lines => Base::Lines,
+        Kind::Var(name) => Base::Var(name),
+        Kind::Local(id) => Base::Local(*id),
+        Kind::Bind { local, value, body } => {
+            let base = flatten(value, program, stages);
+            match flatten(body, program, stages) {
+                Base::Local(id) if id == *local => base,
+                _ => unreachable!("a piped stream is consumed by the pipe's own body"),
             }
-            Some(base)
         }
+        Kind::Map { source, param, body } => {
+            let base = flatten(source, program, stages);
+            stages.push(Stage::Map { param: *param, body });
+            base
+        }
+        Kind::Select { source, param, pred } => {
+            let base = flatten(source, program, stages);
+            stages.push(Stage::Select { param: *param, pred });
+            base
+        }
+        // The argument's stages first, then the callee's body inlined: its chain bottoms at
+        // its own parameter (a stream-returning function must take a stream, and linearity
+        // makes the parameter the base of whatever it returns).
         Kind::Call { func, arg } => {
-            if !matches!(arg.kind, Kind::Inputs) {
-                return None;
-            }
-            let f = program.funcs.iter().find(|f| &f.name == func)?;
-            match flatten(&f.body, program, stages)? {
-                Base::Var(name) if name == &f.param => Some(Base::Inputs),
-                _ => None,
+            let f = program
+                .funcs
+                .iter()
+                .find(|f| &f.name == func)
+                .expect("the checker resolved every call");
+            let base = flatten(arg, program, stages);
+            match flatten(&f.body, program, stages) {
+                Base::Var(name) if name == &f.param => base,
+                _ => unreachable!("a stream-returning function's chain bottoms at its parameter"),
             }
         }
-        Kind::Var(name) => Some(Base::Var(name)),
-        Kind::Inputs => Some(Base::Inputs),
-        _ => None,
+        _ => unreachable!("the checker leaves no other kind stream-typed"),
     }
 }
 
-pub fn recognize_fusion(program: &Program) -> Option<Fusion<'_>> {
+/// The type question `streams_inputs` used to answer by pattern match: a `jsonlines` program
+/// whose argument is stream-typed fuses, and one whose argument is a Vec (already collected)
+/// stays an ordinary value and runs eagerly, exactly as its types say.
+pub fn fusion(program: &Program) -> Option<Fusion<'_>> {
     let Kind::Builtin { which: Builtin::JsonLines, arg } = &program.body.kind else {
         return None;
     };
+    if !matches!(arg.ty, Type::Stream(_)) {
+        return None;
+    }
     let mut stages = Vec::new();
-    if !matches!(flatten(arg, program, &mut stages)?, Base::Inputs) {
-        return None;
-    }
-
-    // A stage (inside or outside the one function this chain called into) that reads `inputs`
-    // again would need the whole materialized Vec this loop deliberately never builds. Nothing in
-    // the corpus does this and it is arguably nonsensical (the source stdin is not yet fully
-    // read), but falling back to the eager path is free and correct, where forcing fusion would
-    // reference a Vec that was never declared.
-    let stage_reads_inputs = stages.iter().any(|s| match s {
-        Stage::Map { body, .. } => mentions_inputs(body),
-        Stage::Select { pred, .. } => mentions_inputs(pred),
-    });
-    if stage_reads_inputs || program.funcs.iter().any(|f| mentions_inputs(&f.body)) {
-        return None;
-    }
-    Some(Fusion { stages })
-}
-
-fn mentions_inputs(t: &Tir) -> bool {
-    match &t.kind {
-        Kind::Inputs => true,
-        Kind::Str(_) | Kind::Int(_) | Kind::Var(_) | Kind::Local(_) | Kind::Input | Kind::Lines => false,
-        Kind::EnumLit { payload, .. } => payload.as_deref().is_some_and(mentions_inputs),
-        Kind::VecLit(items) => items.iter().any(mentions_inputs),
-        Kind::RecordLit { fields } => fields.iter().any(|(_, v)| mentions_inputs(v)),
-        Kind::Call { arg, .. } => mentions_inputs(arg),
-        Kind::Concat(l, r)
-        | Kind::Compare { lhs: l, rhs: r, .. }
-        | Kind::Arith { lhs: l, rhs: r, .. } => mentions_inputs(l) || mentions_inputs(r),
-        Kind::Bind { value, body, .. } => mentions_inputs(value) || mentions_inputs(body),
-        Kind::Map { source, body, .. } => mentions_inputs(source) || mentions_inputs(body),
-        Kind::Select { source, pred, .. } => mentions_inputs(source) || mentions_inputs(pred),
-        Kind::Cond { cond, then, otherwise } => {
-            mentions_inputs(cond) || mentions_inputs(then) || mentions_inputs(otherwise)
+    let source = match flatten(arg, program, &mut stages) {
+        Base::Inputs => Source::Inputs,
+        Base::Lines => Source::Lines,
+        Base::Var(_) | Base::Local(_) => {
+            unreachable!("a program-level stream chain bottoms at its source")
         }
-        Kind::Field { base, .. } | Kind::Unwrap { base } => mentions_inputs(base),
-        Kind::Index { base, index, .. } => mentions_inputs(base) || mentions_inputs(index),
-        Kind::Builtin { arg, .. } => mentions_inputs(arg),
-        Kind::Match { subject, arms } => {
-            mentions_inputs(subject) || arms.iter().any(|a| mentions_inputs(&a.body))
-        }
-    }
+    };
+    Some(Fusion { source, stages })
 }

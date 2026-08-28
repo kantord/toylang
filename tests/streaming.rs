@@ -1,5 +1,4 @@
-//! Liveness probes for the backends that fuse `jsonlines(f(inputs))` into a read-one/
-//! transform-one/write-one loop (see `tir::recognize_fusion`).
+//! Liveness probes for the fused read-one/transform-one/write-one loop (see `tir::fusion`).
 //!
 //! `tests/corpus.rs` cannot see this feature at all: a fused loop and an eager "read all of
 //! stdin, then print everything" implementation produce byte-identical output for any finite
@@ -19,15 +18,41 @@ fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
 jsonlines(adults(inputs))
 "#;
 
+/// The probe that proves the shape guess actually retired: two stream-signature functions
+/// composed. The old `recognize_fusion` unwrapped exactly one call whose argument was `inputs`
+/// itself, so `names(keep(inputs))` fell back -- silently -- to materializing all of stdin.
+/// Type-driven fusion reads it like any other stream pipeline.
+const COMPOSED: &str = r#"
+fn keep(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str, age: Int}> =
+    users | select(.age >= 18)
+
+fn names(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
+    users | map {name: .name}
+
+jsonlines(names(keep(inputs)))
+"#;
+
+/// A `lines`-sourced pipeline ending in `jsonlines`: a shape the old recognizer never knew
+/// (it demanded an `inputs` base), fused now because the types say stream.
+const SHOUT: &str = r#"
+fn shout(names: Stream<Str>) -> Stream<Str> =
+    names | map(. + "!")
+
+jsonlines(shout(lines))
+"#;
+
+const RECORD_IN: &[u8] = b"{\"name\": \"ada\", \"age\": 36}\n";
+const RECORD_OUT: &str = r#"{"name":"ada"}"#;
+
 /// Sends one record, then -- without ever sending EOF -- asserts its printed line arrives within
 /// a short timeout. An eager implementation is still blocked reading stdin to EOF at this point
 /// and never gets here, which is what a timeout here would mean; the fused implementations only
 /// need one record to produce one line.
-fn assert_streams_first_record(mut child: Child) {
+fn assert_streams_first_record(mut child: Child, send: &[u8], expect: &str) {
     let mut stdin = child.stdin.take().expect("piped stdin");
     let mut stdout = BufReader::new(child.stdout.take().expect("piped stdout"));
 
-    stdin.write_all(b"{\"name\": \"ada\", \"age\": 36}\n").expect("write first record");
+    stdin.write_all(send).expect("write first record");
     stdin.flush().expect("flush first record");
 
     let (tx, rx) = mpsc::channel();
@@ -39,7 +64,7 @@ fn assert_streams_first_record(mut child: Child) {
     let line = rx
         .recv_timeout(Duration::from_secs(5))
         .expect("no output arrived before stdin closed -- this is reading all of stdin first, not streaming");
-    assert_eq!(line.trim_end(), r#"{"name":"ada"}"#);
+    assert_eq!(line.trim_end(), expect);
 
     // Cleanup only, not part of the proof: nothing here is read again, and the child would
     // otherwise sit forever waiting for stdin to close.
@@ -47,132 +72,183 @@ fn assert_streams_first_record(mut child: Child) {
     let _ = child.wait();
 }
 
+fn piped(mut cmd: Command) -> Child {
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn the child")
+}
+
 /// Lua runs embedded via `mlua`, not as a subprocess `toylang::run_on` spawns and pipes to like
 /// every other backend, so there is no child process boundary to test against by calling
 /// `emit_lua::emit` directly the way the others call their own `emit_*`. The compiled `toylang`
 /// binary itself is that boundary here: it is what actually decides live vs. captured (see
 /// `run_lua`'s `feed` handling in `lib.rs`), so this drives it exactly as a real user would.
-#[test]
-fn lua_streams() {
+fn spawn_lua(program: &str) -> Child {
     let dir = tempfile::tempdir().expect("temp dir");
     let path = dir.path().join("program.toy");
-    std::fs::write(&path, PROGRAM).expect("write program");
+    std::fs::write(&path, program).expect("write program");
 
-    let child = Command::new(env!("CARGO_BIN_EXE_toylang"))
-        .arg("run")
-        .arg(&path)
-        .arg("lua")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("run the toylang binary");
-    assert_streams_first_record(child);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_toylang"));
+    cmd.arg("run").arg(&path).arg("lua");
+    // The dir must outlive the child's own read of the source, and the child outlives this
+    // function, so leak it for the test's short life rather than racing the cleanup.
+    std::mem::forget(dir);
+    piped(cmd)
 }
 
-#[test]
-fn native_streams() {
-    let program = toylang::compile(PROGRAM).expect("compiles");
+fn spawn_native(program: &str) -> Child {
+    let program = toylang::compile(program).expect("compiles");
     let dir = tempfile::tempdir().expect("temp dir");
     let exe = dir.path().join("program");
     toylang::link(&program, &exe).expect("compiles and links");
-
-    let child = Command::new(&exe)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("run the compiled binary");
-    assert_streams_first_record(child);
+    let cmd = Command::new(&exe);
+    std::mem::forget(dir);
+    piped(cmd)
 }
 
-#[test]
-fn rust_streams() {
-    let program = toylang::compile(PROGRAM).expect("compiles");
+fn spawn_rust(program: &str) -> Child {
+    let program = toylang::compile(program).expect("compiles");
     let source = toylang::emit_rs::emit(&program);
     let dir = tempfile::tempdir().expect("temp dir");
     let exe = dir.path().join("program");
     toylang::link_rust(&source, &exe).expect("compiles with rustc");
-
-    let child = Command::new(&exe)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("run the compiled binary");
-    assert_streams_first_record(child);
+    let cmd = Command::new(&exe);
+    std::mem::forget(dir);
+    piped(cmd)
 }
 
-#[test]
-fn go_streams() {
-    let program = toylang::compile(PROGRAM).expect("compiles");
+fn spawn_go(program: &str) -> Child {
+    let program = toylang::compile(program).expect("compiles");
     let source = toylang::emit_go::emit(&program);
     let dir = tempfile::tempdir().expect("temp dir");
     let path = dir.path().join("main.go");
     std::fs::write(&path, source).expect("write source");
 
-    let child = Command::new("go")
-        .arg("run")
-        .arg(&path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("run go");
-    assert_streams_first_record(child);
+    let mut cmd = Command::new("go");
+    cmd.arg("run").arg(&path);
+    std::mem::forget(dir);
+    piped(cmd)
 }
 
-#[test]
-fn py_streams() {
-    let program = toylang::compile(PROGRAM).expect("compiles");
+fn spawn_py(program: &str) -> Child {
+    let program = toylang::compile(program).expect("compiles");
     let source = toylang::emit_py::emit(&program);
     let dir = tempfile::tempdir().expect("temp dir");
     let path = dir.path().join("program.py");
     std::fs::write(&path, source).expect("write source");
 
-    let child = Command::new("python3")
-        .arg(&path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("run python3");
-    assert_streams_first_record(child);
+    let mut cmd = Command::new("python3");
+    cmd.arg(&path);
+    std::mem::forget(dir);
+    piped(cmd)
 }
 
-#[test]
-fn js_streams() {
-    let program = toylang::compile(PROGRAM).expect("compiles");
+fn spawn_js(program: &str) -> Child {
+    let program = toylang::compile(program).expect("compiles");
     let source = toylang::emit_js::emit(&program);
     let dir = tempfile::tempdir().expect("temp dir");
     let path = dir.path().join("program.js");
     std::fs::write(&path, source).expect("write source");
 
-    let child = Command::new("node")
-        .arg(&path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("run node");
-    assert_streams_first_record(child);
+    let mut cmd = Command::new("node");
+    cmd.arg(&path);
+    std::mem::forget(dir);
+    piped(cmd)
+}
+
+fn spawn_jq(program: &str) -> Child {
+    let program = toylang::compile(program).expect("compiles");
+    let source = toylang::emit_jq::emit(&program);
+
+    let mut cmd = Command::new("jq");
+    cmd.arg("--unbuffered").arg("-c").arg("-n").arg("-r");
+    if program.uses_lines {
+        cmd.arg("-R");
+    }
+    cmd.arg(&source);
+    piped(cmd)
+}
+
+#[test]
+fn lua_streams() {
+    assert_streams_first_record(spawn_lua(PROGRAM), RECORD_IN, RECORD_OUT);
+}
+
+#[test]
+fn native_streams() {
+    assert_streams_first_record(spawn_native(PROGRAM), RECORD_IN, RECORD_OUT);
+}
+
+#[test]
+fn rust_streams() {
+    assert_streams_first_record(spawn_rust(PROGRAM), RECORD_IN, RECORD_OUT);
+}
+
+#[test]
+fn go_streams() {
+    assert_streams_first_record(spawn_go(PROGRAM), RECORD_IN, RECORD_OUT);
+}
+
+#[test]
+fn py_streams() {
+    assert_streams_first_record(spawn_py(PROGRAM), RECORD_IN, RECORD_OUT);
+}
+
+#[test]
+fn js_streams() {
+    assert_streams_first_record(spawn_js(PROGRAM), RECORD_IN, RECORD_OUT);
 }
 
 #[test]
 fn jq_streams() {
-    let program = toylang::compile(PROGRAM).expect("compiles");
-    let source = toylang::emit_jq::emit(&program);
+    assert_streams_first_record(spawn_jq(PROGRAM), RECORD_IN, RECORD_OUT);
+}
 
-    let child = Command::new("jq")
-        .arg("--unbuffered")
-        .arg("-c")
-        .arg("-n")
-        .arg("-r")
-        .arg(&source)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("run jq");
-    assert_streams_first_record(child);
+#[test]
+fn lua_streams_composed_functions() {
+    assert_streams_first_record(spawn_lua(COMPOSED), RECORD_IN, RECORD_OUT);
+}
+
+#[test]
+fn native_streams_composed_functions() {
+    assert_streams_first_record(spawn_native(COMPOSED), RECORD_IN, RECORD_OUT);
+}
+
+#[test]
+fn rust_streams_composed_functions() {
+    assert_streams_first_record(spawn_rust(COMPOSED), RECORD_IN, RECORD_OUT);
+}
+
+#[test]
+fn go_streams_composed_functions() {
+    assert_streams_first_record(spawn_go(COMPOSED), RECORD_IN, RECORD_OUT);
+}
+
+#[test]
+fn py_streams_composed_functions() {
+    assert_streams_first_record(spawn_py(COMPOSED), RECORD_IN, RECORD_OUT);
+}
+
+#[test]
+fn js_streams_composed_functions() {
+    assert_streams_first_record(spawn_js(COMPOSED), RECORD_IN, RECORD_OUT);
+}
+
+#[test]
+fn jq_streams_composed_functions() {
+    assert_streams_first_record(spawn_jq(COMPOSED), RECORD_IN, RECORD_OUT);
+}
+
+/// One interpreted and one compiled backend for the `lines` source; the output equality of the
+/// shape on all seven is `jsonlines_of_lines.yaml`'s job.
+#[test]
+fn py_streams_lines() {
+    assert_streams_first_record(spawn_py(SHOUT), b"ada\n", r#""ada!""#);
+}
+
+#[test]
+fn native_streams_lines() {
+    assert_streams_first_record(spawn_native(SHOUT), b"ada\n", r#""ada!""#);
 }

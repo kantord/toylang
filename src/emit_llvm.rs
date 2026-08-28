@@ -57,6 +57,7 @@ struct Runtime<'ctx> {
     read_input: FunctionValue<'ctx>,
     read_inputs: FunctionValue<'ctx>,
     read_one_input: FunctionValue<'ctx>,
+    read_one_line: FunctionValue<'ctx>,
     rec_from_vec: FunctionValue<'ctx>,
     at: FunctionValue<'ctx>,
     opt_is_some: FunctionValue<'ctx>,
@@ -194,6 +195,11 @@ impl<'ctx> Emitter<'ctx> {
             read_one_input: module.add_function(
                 "tl_read_one_input",
                 i32t.fn_type(&[ptr.into(), ptr.into()], false),
+                None,
+            ),
+            read_one_line: module.add_function(
+                "tl_read_one_line",
+                i32t.fn_type(&[ptr.into()], false),
                 None,
             ),
             rec_from_vec: module.add_function(
@@ -1491,7 +1497,8 @@ impl<'ctx> Emitter<'ctx> {
             .into())
     }
 
-    /// A `jsonlines(f(inputs))` program, compiled as a loop over `tl_read_one_input` instead of
+    /// A stream-typed `jsonlines` program, compiled as a loop over `tl_read_one_input` (or, for
+    /// a `lines` source, `tl_read_one_line`) instead of
     /// `self.expr(&program.body)` + one `print` at the end. `tl_print` already writes with a raw
     /// `write(1, ...)` syscall and needs no explicit flush, unlike every other backend that had
     /// to add one -- the one backend with no libc stdio buffering to fight.
@@ -1501,11 +1508,14 @@ impl<'ctx> Emitter<'ctx> {
     /// cursor into an existing Vec's columns does not apply here, since there is no Vec -- each
     /// record arrives as its own one-off parsed value, exactly like `input` already is.
     fn fused_main(&mut self, program: &Program, fusion: &Fusion<'_>) -> Result<(), String> {
-        let elem_ty = program
-            .inputs
-            .as_ref()
-            .ok_or("fusion only matches an `inputs` source")?
-            .clone();
+        let elem_ty = match fusion.source {
+            crate::tir::Source::Inputs => program
+                .inputs
+                .as_ref()
+                .ok_or("an inputs source recorded its element")?
+                .clone(),
+            crate::tir::Source::Lines => Type::Str,
+        };
         let function = self
             .builder
             .get_insert_block()
@@ -1514,7 +1524,6 @@ impl<'ctx> Emitter<'ctx> {
 
         let i64t = self.ctx.i64_type();
         let i32t = self.ctx.i32_type();
-        let descriptor = self.string_const(&Self::descriptor(&elem_ty));
         let out_slot = self.builder.build_alloca(i64t, "next_input").map_err(|e| e.to_string())?;
 
         let cond = self.ctx.append_basic_block(function, "fused.cond");
@@ -1524,9 +1533,20 @@ impl<'ctx> Emitter<'ctx> {
         self.builder.build_unconditional_branch(cond).map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(cond);
-        let got = self
-            .call_rt(self.rt.read_one_input, &[descriptor.into(), out_slot.into()], "got")?
-            .into_int_value();
+        let got = match fusion.source {
+            crate::tir::Source::Inputs => {
+                let descriptor = self.string_const(&Self::descriptor(&elem_ty));
+                self.call_rt(
+                    self.rt.read_one_input,
+                    &[descriptor.into(), out_slot.into()],
+                    "got",
+                )?
+            }
+            crate::tir::Source::Lines => {
+                self.call_rt(self.rt.read_one_line, &[out_slot.into()], "got")?
+            }
+        }
+        .into_int_value();
         let has_more = self
             .builder
             .build_int_compare(IntPredicate::NE, got, i32t.const_zero(), "has_more")
@@ -1604,7 +1624,7 @@ fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'c
     e.params.clear();
     e.locals.clear();
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         e.fused_main(program, &fusion)?;
     } else {
         let body = e.expr(&program.body)?;

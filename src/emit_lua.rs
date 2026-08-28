@@ -9,7 +9,7 @@ pub const INPUT: &str = "t_input";
 pub const INPUTS: &str = "t_inputs";
 /// The function `run_lua` injects in place of `INPUTS` for a fused, live-streamable program:
 /// called with no arguments, it returns the next `inputs` record already parsed and converted,
-/// or `nil` at EOF. See `tir::recognize_fusion` and this file's `fused_main`.
+/// or `nil` at EOF. See `tir::fusion` and this file's `fused_main`.
 pub const NEXT_INPUT: &str = "tl_next_input";
 
 const SELECT_HELPER: &str = "\
@@ -213,7 +213,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         out.push_str(&fused_main(program, &fusion));
     } else {
         let body = expr(&program.body);
@@ -226,18 +226,25 @@ pub fn emit(program: &Program) -> String {
     out
 }
 
-/// A `jsonlines(f(inputs))` program, compiled as a loop calling `NEXT_INPUT` for one already-
-/// parsed record at a time rather than reading a pre-populated `INPUTS` global -- see that
-/// constant's doc comment for why the parsing itself is not written here.
+/// A stream-typed `jsonlines` program, compiled as a loop over one entry at a time: for an
+/// `inputs` source, a call to `NEXT_INPUT` for one already-parsed record (see that constant's
+/// doc comment for why the parsing itself is not written here); for `lines`, `io.lines()`
+/// itself, exactly as the eager collect helper reads it.
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
-    let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
     let mut out = String::new();
-    out.push_str("while true do\n");
-    out.push_str(&format!("  local t_line = {NEXT_INPUT}()\n"));
-    out.push_str("  if t_line == nil then break end\n");
-
-    let mut current = "t_line".to_string();
-    let mut current_ty = elem_ty.clone();
+    let (mut current, mut current_ty) = match fusion.source {
+        tir::Source::Inputs => {
+            out.push_str("while true do\n");
+            out.push_str(&format!("  local t_line = {NEXT_INPUT}()\n"));
+            out.push_str("  if t_line == nil then break end\n");
+            let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+            ("t_line".to_string(), elem.clone())
+        }
+        tir::Source::Lines => {
+            out.push_str("for t_line in io.lines() do\n");
+            ("t_line".to_string(), Type::Str)
+        }
+    };
     for stage in &fusion.stages {
         match stage {
             tir::Stage::Map { param, body } => {

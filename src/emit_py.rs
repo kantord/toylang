@@ -143,7 +143,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         decls.push_str(&fused_main(program, &fusion));
     } else {
         if program.input.is_some() {
@@ -208,22 +208,26 @@ pub fn emit(program: &Program) -> String {
     out
 }
 
-/// A `jsonlines(f(inputs))` program, compiled as a loop reading one line at a time from `sys.
-/// stdin` (which iterates lazily) rather than the eager path's `[json.loads(_l) for _l in
-/// sys.stdin]`. `sys.stdout.buffer` is block-buffered whenever it is not a terminal, the same as
-/// the eager path already writes bytes rather than using `print` for, so the explicit `.flush()`
-/// after each line is what makes a record appear before the next one arrives rather than after
-/// the whole run ends.
+/// A stream-typed `jsonlines` program, compiled as a loop reading one entry at a time from
+/// `sys.stdin` (which iterates lazily) rather than the eager path's read-everything-first.
+/// `sys.stdout.buffer` is block-buffered whenever it is not a terminal, the same as the eager
+/// path already writes bytes rather than using `print` for, so the explicit `.flush()` after
+/// each line is what makes a record appear before the next one arrives rather than after the
+/// whole run ends.
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
-    let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
     let mut out = String::new();
     out.push_str("for _line in sys.stdin:\n");
     out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
-    out.push_str("    if _line.strip() == \"\":\n        continue\n");
-    out.push_str("    t_line = json.loads(_line)\n");
-
-    let mut current = "t_line".to_string();
-    let mut current_ty = elem_ty.clone();
+    let (mut current, mut current_ty) = match fusion.source {
+        tir::Source::Inputs => {
+            out.push_str("    if _line.strip() == \"\":\n        continue\n");
+            out.push_str("    t_line = json.loads(_line)\n");
+            let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+            ("t_line".to_string(), elem.clone())
+        }
+        // A raw line is already the element, blank ones included: `lines` keeps them.
+        tir::Source::Lines => ("_line".to_string(), Type::Str),
+    };
     for stage in &fusion.stages {
         match stage {
             tir::Stage::Map { param, body } => {

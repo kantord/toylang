@@ -797,7 +797,7 @@ tl_vec *tl_read_inputs(const tl_str *descriptor) {
 /* One JSON value from stdin per call, parsed the same descriptor-driven way tl_read_inputs
  * assembles its whole Vec from, but one line at a time and with no Vec ever built: the caller
  * drives its own loop and decides when to stop, which is what lets the native backend fuse
- * `jsonlines(f(inputs))` into a read-one/transform-one/write-one loop (see tir::recognize_fusion)
+ * `jsonlines(f(inputs))` into a read-one/transform-one/write-one loop (see tir::fusion)
  * instead of collecting everything before printing anything.
  *
  * Returns 0 at EOF (*out untouched) and 1 with *out set otherwise. A separate flag rather than a
@@ -835,6 +835,28 @@ int tl_read_one_input(const tl_str *descriptor, int64_t *out) {
         free(line);
         return 1;
     }
+}
+
+/* One raw line of stdin at a time: the streaming counterpart of tl_collect_lines below, the
+ * same way tl_read_one_input above is tl_read_inputs's. Returns 0 at EOF (*out untouched) and
+ * 1 with *out set to the line's tl_str otherwise. Same trailing-newline rule as
+ * tl_collect_lines; a blank line is a line, since `lines` keeps them. */
+int tl_read_one_line(int64_t *out) {
+    char *line = NULL;
+    size_t cap = 0;
+    ssize_t len = getline(&line, &cap, stdin);
+    if (len == -1) {
+        free(line);
+        return 0;
+    }
+    if (len > 0 && line[len - 1] == '\n') {
+        len--;
+    }
+    char *bytes = tl_alloc((size_t)len);
+    memcpy(bytes, line, (size_t)len);
+    *out = (int64_t)tl_str_new(bytes, len);
+    free(line);
+    return 1;
 }
 
 /* One line of stdin at a time via getline, in contrast to tl_read_input just above, which reads

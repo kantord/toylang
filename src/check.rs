@@ -31,6 +31,10 @@ struct Ctx<'a> {
     /// read is refused rather than silently handed nothing, the way a second pass over an
     /// already-consumed iterator would be in a language that let it compile.
     lines_used: &'a Cell<bool>,
+    /// Whether checking is inside a mapper's body (`map`'s, or `select`'s predicate), which
+    /// runs once per element: a source read there would drain stdin on the first element and
+    /// hand every later one nothing, so `lines` and `inputs` are refused in that position.
+    in_mapper: bool,
     next_local: &'a Cell<LocalId>,
 }
 
@@ -46,6 +50,7 @@ impl Ctx<'_> {
             input: self.input,
             inputs: self.inputs,
             lines_used: self.lines_used,
+            in_mapper: self.in_mapper,
             next_local: self.next_local,
         }
     }
@@ -101,6 +106,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             input: &input,
             inputs: &inputs,
             lines_used: &lines_used,
+            in_mapper: false,
             next_local: &next_local,
         };
         let body = synth(&ctx, &def.body)?;
@@ -142,6 +148,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         input: &input,
         inputs: &inputs,
         lines_used: &lines_used,
+        in_mapper: false,
         next_local: &next_local,
     };
     // `jsonlines` is a sink: legal only here, as the program's outermost expression, taking a
@@ -223,10 +230,20 @@ enum StreamBinding<'a> {
     Local(LocalId),
 }
 
+/// What broke the exactly-once rule, when a plain count cannot say it.
+enum LinearViolation {
+    /// A conditional's or match's paths disagree on how often they consume the binding.
+    Branches(usize, usize),
+    /// The binding is consumed inside a mapper's body, which runs once per element -- one
+    /// spelled consumption, many runtime ones.
+    InMapper,
+}
+
 /// How many times `t` consumes `binding`, counted along one evaluation path: a conditional
 /// runs one branch, so its branches must agree with each other rather than being summed, and
-/// a match's arms likewise. `Err` carries the two counts that disagreed.
-fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, (usize, usize)> {
+/// a match's arms likewise. A mapper's body runs once per element, so any consumption there
+/// is its own violation rather than a count.
+fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolation> {
     let both = |a: &Tir, b: &Tir| Ok(stream_uses(a, binding)? + stream_uses(b, binding)?);
     match &t.kind {
         Kind::Var(name) => Ok(match binding {
@@ -250,17 +267,26 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, (usize, usize)
         Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => stream_uses(arg, binding),
         Kind::Concat(l, r) => both(l, r),
         Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => both(lhs, rhs),
-        Kind::Bind { value, body, .. } | Kind::Map { source: value, body, .. } => {
-            both(value, body)
+        Kind::Bind { value, body, .. } => both(value, body),
+        Kind::Map { source, body, .. } => {
+            if stream_uses(body, binding)? > 0 {
+                return Err(LinearViolation::InMapper);
+            }
+            stream_uses(source, binding)
         }
-        Kind::Select { source, pred, .. } => both(source, pred),
+        Kind::Select { source, pred, .. } => {
+            if stream_uses(pred, binding)? > 0 {
+                return Err(LinearViolation::InMapper);
+            }
+            stream_uses(source, binding)
+        }
         Kind::Field { base, .. } | Kind::Unwrap { base } => stream_uses(base, binding),
         Kind::Index { base, index, .. } => both(base, index),
         Kind::Cond { cond, then, otherwise } => {
             let t = stream_uses(then, binding)?;
             let o = stream_uses(otherwise, binding)?;
             if t != o {
-                return Err((t, o));
+                return Err(LinearViolation::Branches(t, o));
             }
             Ok(stream_uses(cond, binding)? + t)
         }
@@ -270,7 +296,7 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, (usize, usize)
                 .map(|a| stream_uses(&a.body, binding))
                 .collect::<Result<_, _>>()?;
             if let Some(w) = counts.windows(2).find(|w| w[0] != w[1]) {
-                return Err((w[0], w[1]));
+                return Err(LinearViolation::Branches(w[0], w[1]));
             }
             Ok(stream_uses(subject, binding)? + counts.first().copied().unwrap_or(0))
         }
@@ -288,11 +314,18 @@ fn check_linear(
     span: Span,
 ) -> Result<(), Error> {
     match stream_uses(body, binding) {
-        Err((a, b)) => Err(Error::new(
+        Err(LinearViolation::Branches(a, b)) => Err(Error::new(
             span,
             format!(
                 "{what} must be consumed exactly once on every path, but one branch \
                  consumes it {a} times and another {b}"
+            ),
+        )),
+        Err(LinearViolation::InMapper) => Err(Error::new(
+            span,
+            format!(
+                "{what} must be consumed exactly once, but here it is consumed inside a \
+                 mapper body, which runs once per element"
             ),
         )),
         Ok(1) => Ok(()),
@@ -519,6 +552,18 @@ fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, Sig>, Error
             param: resolve(&def.param.ty, env, &mut Vec::new())?,
             ret: resolve(&def.ret, env, &mut Vec::new())?,
         };
+        // A stream is born only at a source, so a function cannot conjure one: a stream result
+        // flows in through a stream parameter, and the pipeline stays one chain fusion can
+        // read. Refusing is the reversible direction.
+        if matches!(sig.ret, Type::Stream(_)) && !matches!(sig.param, Type::Stream(_)) {
+            return Err(Error::new(
+                def.span,
+                format!(
+                    "`{}` returns {} without taking a stream; a stream is born only at a source",
+                    def.name, sig.ret
+                ),
+            ));
+        }
         sigs.insert(def.name.clone(), sig);
     }
     Ok(sigs)
@@ -601,6 +646,58 @@ fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> Result<Type,
     }
 }
 
+/// Split an access chain whose outermost dimension is a stream from its source, rebasing the
+/// chain on `param` as a map body: every node's type loses its Stream wrapper, and an Index's
+/// stored depth drops by one, since the layer it counted is now the loop.
+///
+/// Returns the rebased body and the stream source it was split from. Only Field, Unwrap, and
+/// Index appear in a chain, and the source is never one of them: a stream-typed access chain
+/// is normalized to a Map right here, so one can never be the base of another.
+fn rebase(t: Tir, param: LocalId) -> (Tir, Tir) {
+    fn peel(ty: Type) -> Type {
+        match ty {
+            Type::Stream(t) => *t,
+            other => unreachable!("every node inside the stream dimension is stream-typed, found {other}"),
+        }
+    }
+    let is_chain =
+        |t: &Tir| matches!(t.kind, Kind::Field { .. } | Kind::Unwrap { .. } | Kind::Index { .. });
+    match t.kind {
+        Kind::Field { base, name } => {
+            let (base, src) = if is_chain(&base) {
+                let (b, src) = rebase(*base, param);
+                (b, src)
+            } else {
+                let elem = peel(base.ty.clone());
+                (Tir::new(elem, Kind::Local(param)), *base)
+            };
+            (Tir::new(peel(t.ty), Kind::Field { base: Box::new(base), name }), src)
+        }
+        Kind::Unwrap { base } => {
+            let (base, src) = if is_chain(&base) {
+                let (b, src) = rebase(*base, param);
+                (b, src)
+            } else {
+                let elem = peel(base.ty.clone());
+                (Tir::new(elem, Kind::Local(param)), *base)
+            };
+            (Tir::new(peel(t.ty), Kind::Unwrap { base: Box::new(base) }), src)
+        }
+        Kind::Index { base, index, depth, elem_is_record } => {
+            let (base, src) = if is_chain(&base) {
+                let (b, src) = rebase(*base, param);
+                (b, src)
+            } else {
+                let elem = peel(base.ty.clone());
+                (Tir::new(elem, Kind::Local(param)), *base)
+            };
+            let kind = Kind::Index { base: Box::new(base), index, depth: depth - 1, elem_is_record };
+            (Tir::new(peel(t.ty), kind), src)
+        }
+        other => unreachable!("only an access chain is rebased, found {:?}", std::mem::discriminant(&other)),
+    }
+}
+
 /// The element `select` and `map` rebind `.` to: a Vec's, or a Stream's. Deliberately not
 /// `Type::elem`, which stays Vec-only so the reducers (`extent`, `jsonlines` today) keep
 /// refusing a stream.
@@ -672,6 +769,13 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     match expr {
         Expr::Str { text, .. } => Ok(Tir::new(Type::Str, Kind::Str(text.clone()))),
         Expr::Lines { span } => {
+            if ctx.in_mapper {
+                return Err(Error::new(
+                    *span,
+                    "`lines` cannot be read inside a mapper body, which runs once per element"
+                        .to_string(),
+                ));
+            }
             if ctx.lines_used.get() {
                 return Err(Error::new(
                     *span,
@@ -782,6 +886,17 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             let value = synth(ctx, lhs)?;
             let local = ctx.fresh();
             let body = synth(&ctx.with(Some((value.ty.clone(), local))), rhs)?;
+            // A stream on the right of `|` must have flowed in from the left: a source read
+            // beside an unrelated piped value is not one chain, and one chain from source to
+            // sink is the shape the whole effect layer keeps.
+            if matches!(body.ty, Type::Stream(_)) && !matches!(value.ty, Type::Stream(_)) {
+                return Err(Error::new(
+                    rhs.span(),
+                    "this stream does not flow in from the left of `|`; write the pipeline as \
+                     one chain from its source"
+                        .to_string(),
+                ));
+            }
             // The same linearity a stream-typed parameter gets: `|` is the one construct that
             // can silently drop its left side, so a stream piped in must be consumed here.
             if matches!(value.ty, Type::Stream(_)) {
@@ -799,7 +914,19 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         }
 
         Expr::Field { .. } | Expr::Index { .. } | Expr::Unwrap { .. } => {
-            access(ctx, expr).map(|(tir, _, _, _)| tir)
+            let (tir, _, _, stream) = access(ctx, expr)?;
+            // Projection over a stream is a mapper, and it is normalized to one here: the chain
+            // is rebased onto a fresh per-element param, so neither the backends nor fusion
+            // ever see a Field, Index, or Unwrap whose base is stream-typed.
+            if stream {
+                let param = ctx.fresh();
+                let (body, source) = rebase(tir, param);
+                return Ok(Tir::new(
+                    Type::Stream(Box::new(body.ty.clone())),
+                    Kind::Map { source: Box::new(source), param, body: Box::new(body) },
+                ));
+            }
+            Ok(tir)
         }
 
         // A spec that specs nothing. `[]` says what happens to a dimension, so with no access
@@ -832,7 +959,9 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     ));
                 };
                 let param = ctx.fresh();
-                let pred = expect(&ctx.with(Some((elem, param))), arg, &Type::Bool)?;
+                let mut inner = ctx.with(Some((elem, param)));
+                inner.in_mapper = true;
+                let pred = expect(&inner, arg, &Type::Bool)?;
                 let source = Tir::new(subject.clone(), Kind::Local(id));
                 return Ok(Tir::new(
                     subject,
@@ -852,7 +981,18 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     ));
                 };
                 let param = ctx.fresh();
-                let body = synth(&ctx.with(Some((elem, param))), arg)?;
+                let mut inner = ctx.with(Some((elem, param)));
+                inner.in_mapper = true;
+                let body = synth(&inner, arg)?;
+                // The elements of the result are stored, and a stream is not storable: this is
+                // the same containment ban a Vec literal enforces, met here before the Vec or
+                // Stream of them could exist.
+                if body.ty.contains_stream() {
+                    return Err(Error::new(
+                        arg.span(),
+                        "a `map` body cannot be a stream, which has nothing to store".to_string(),
+                    ));
+                }
                 let out = match &subject {
                     Type::Stream(_) => Type::Stream(Box::new(body.ty.clone())),
                     _ => Type::Vec(Box::new(body.ty.clone())),
@@ -1064,6 +1204,15 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 let body = match &result {
                     None => {
                         let body = synth(&arm_ctx, &arm.body)?;
+                        // The same rule a conditional has: which arm runs is decided at
+                        // runtime, and a pipeline's shape must not be.
+                        if body.ty.contains_stream() {
+                            return Err(Error::new(
+                                arm.body.span(),
+                                "a match cannot yield a stream; pass each arm to `collect` first"
+                                    .to_string(),
+                            ));
+                        }
                         result = Some(body.ty.clone());
                         body
                     }
@@ -1129,6 +1278,16 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         Expr::Cond { then, cond, otherwise, .. } => {
             let cond = expect(ctx, cond, &Type::Bool)?;
             let then = synth(ctx, then)?;
+            // A pipeline's shape must be knowable at compile time for fusion to emit its loop,
+            // and a branch chosen at runtime is exactly what that excludes. Refusing is the
+            // reversible direction; lifting it later breaks nothing.
+            if then.ty.contains_stream() {
+                return Err(Error::new(
+                    expr.span(),
+                    "a conditional cannot yield a stream; pass each branch to `collect` first"
+                        .to_string(),
+                ));
+            }
             let otherwise = expect(ctx, otherwise, &then.ty)?;
             Ok(Tir::new(
                 then.ty.clone(),
@@ -1319,6 +1478,13 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
     }
 
     if let Expr::Inputs { span } = expr {
+        if ctx.in_mapper {
+            return Err(Error::new(
+                *span,
+                "`inputs` cannot be read inside a mapper body, which runs once per element"
+                    .to_string(),
+            ));
+        }
         let Type::Stream(elem) = want else {
             return Err(Error::new(
                 *span,

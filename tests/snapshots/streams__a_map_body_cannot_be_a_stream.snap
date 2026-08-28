@@ -1,0 +1,5 @@
+---
+source: tests/streams.rs
+expression: "err(\"fn f(s: Stream<Str>) -> Int = extent([1] | map(s))\\n\\n1\")"
+---
+a `map` body cannot be a stream, which has nothing to store (at byte 47)

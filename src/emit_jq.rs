@@ -60,7 +60,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         // jq's own `inputs` is already lazy; the eager path below only becomes eager by wrapping
         // it in `[...]`. Skipping that wrapper and running the whole `map`/`select` chain as one
         // filter over the `inputs` generator is what makes jq print each record as it arrives
@@ -78,7 +78,7 @@ pub fn emit(program: &Program) -> String {
             }
         }
         let Kind::Builtin { arg, .. } = &program.body.kind else {
-            unreachable!("recognize_fusion only matches a jsonlines body")
+            unreachable!("fusion only matches a jsonlines body")
         };
         let elem = tir::runtime_elem(&arg.ty).expect("jsonlines's argument has an element");
         out.push_str(&format!(" | ({} | tojson)\n", canonical(elem, ".")));

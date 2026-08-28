@@ -145,7 +145,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         out.push_str(&fused_main(program, &fusion));
         return out;
     }
@@ -171,8 +171,8 @@ pub fn emit(program: &Program) -> String {
     out
 }
 
-/// A `jsonlines(f(inputs))` program, compiled as a loop reading one line at a time off the real
-/// fd rather than `readFileSync(0)`'s read-everything-first.
+/// A stream-typed `jsonlines` program, compiled as a loop reading one line at a time off the
+/// real fd rather than `readFileSync(0)`'s read-everything-first.
 ///
 /// `process.stdout.write` is synchronous to a file or TTY on POSIX but asynchronous to a pipe --
 /// queued rather than issued immediately -- and the very next thing this loop does is a
@@ -180,7 +180,6 @@ pub fn emit(program: &Program) -> String {
 /// ever reaching the pipe before the process blocks again. `tests/streaming.rs`'s `js_streams`
 /// checks this directly against a live pipe rather than assuming either way.
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
-    let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
     let mut out = String::new();
     out.push_str("let tl_stdin_buf = \"\";\n");
     out.push_str("let tl_stdin_eof = false;\n");
@@ -209,11 +208,16 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     out.push_str("for (;;) {\n");
     out.push_str("  const t_line_raw = tl_read_line();\n");
     out.push_str("  if (t_line_raw === null) break;\n");
-    out.push_str("  if (t_line_raw.length === 0) continue;\n");
-    out.push_str("  const t_line = JSON.parse(t_line_raw);\n");
-
-    let mut current = "t_line".to_string();
-    let mut current_ty = elem_ty.clone();
+    let (mut current, mut current_ty) = match fusion.source {
+        tir::Source::Inputs => {
+            out.push_str("  if (t_line_raw.length === 0) continue;\n");
+            out.push_str("  const t_line = JSON.parse(t_line_raw);\n");
+            let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+            ("t_line".to_string(), elem.clone())
+        }
+        // A raw line is already the element, blank ones included: `lines` keeps them.
+        tir::Source::Lines => ("t_line_raw".to_string(), Type::Str),
+    };
     for stage in &fusion.stages {
         match stage {
             tir::Stage::Map { param, body } => {

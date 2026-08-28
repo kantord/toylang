@@ -277,7 +277,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         decls.push_str(&e.fused_main(program, &fusion));
     } else {
         decls.push_str("func main() {\n");
@@ -313,7 +313,7 @@ pub fn emit(program: &Program) -> String {
     let uses = |name: &str| decls.contains(name);
     let unwrap = uses("tlUnwrap(");
     let arith = uses("tlDiv(") || uses("tlRem(");
-    let collect = uses("tlCollectLines(");
+    let collect = uses("tlCollectLines(") || uses("tlScanLines");
     let fail = unwrap || arith || program.input.is_some() || program.inputs.is_some();
     let quote = uses("tlQuote(");
     let join = uses("tlJoin(");
@@ -621,18 +621,30 @@ impl Emitter {
     /// local at compile time -- a `select` whose predicate is the only use, or a `map` whose body
     /// ignores its argument entirely, would otherwise fail to build only in the fused case.
     fn fused_main(&self, program: &Program, fusion: &tir::Fusion) -> String {
-        let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
         let mut out = String::new();
         out.push_str("func main() {\n");
-        out.push_str("\tdec := json.NewDecoder(os.Stdin)\n");
-        out.push_str("\tfor {\n");
-        out.push_str(&format!("\t\tvar t_line {}\n", self.go_type(elem_ty)));
-        out.push_str(
-            "\t\tif err := dec.Decode(&t_line); err != nil {\n\t\t\tif err == io.EOF {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\ttlFail(err.Error())\n\t\t}\n",
-        );
-
-        let mut current = "t_line".to_string();
-        let mut current_ty = elem_ty.clone();
+        let (mut current, mut current_ty) = match fusion.source {
+            tir::Source::Inputs => {
+                let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+                out.push_str("\tdec := json.NewDecoder(os.Stdin)\n");
+                out.push_str("\tfor {\n");
+                out.push_str(&format!("\t\tvar t_line {}\n", self.go_type(elem)));
+                out.push_str(
+                    "\t\tif err := dec.Decode(&t_line); err != nil {\n\t\t\tif err == io.EOF {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\ttlFail(err.Error())\n\t\t}\n",
+                );
+                ("t_line".to_string(), elem.clone())
+            }
+            // The same scanner the eager collect helper uses, one line per Scan; a raw line is
+            // already the element, blank ones included.
+            tir::Source::Lines => {
+                out.push_str("\ts := bufio.NewScanner(os.Stdin)\n");
+                out.push_str("\ts.Buffer(make([]byte, 0, 65536), 1024*1024)\n");
+                out.push_str("\ts.Split(tlScanLines)\n");
+                out.push_str("\tfor s.Scan() {\n");
+                out.push_str("\t\tt_line := s.Text()\n");
+                ("t_line".to_string(), Type::Str)
+            }
+        };
         for stage in &fusion.stages {
             match stage {
                 tir::Stage::Map { param, body } => {

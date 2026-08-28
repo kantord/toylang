@@ -454,7 +454,7 @@ pub fn emit(program: &Program) -> String {
         ));
     }
 
-    if let Some(fusion) = tir::recognize_fusion(program) {
+    if let Some(fusion) = tir::fusion(program) {
         decls.push_str(&e.fused_main(program, &fusion));
     } else {
         decls.push_str("fn main() {\n");
@@ -491,7 +491,8 @@ pub fn emit(program: &Program) -> String {
         || uses("tl_at(")
         || uses("tl_tail(")
         || uses("tl_range(")
-        || uses("tl_read_all_stdin(");
+        || uses("tl_read_all_stdin(")
+        || uses("tl_fail(");
 
     let mut helpers = String::new();
     for (on, text) in [
@@ -770,14 +771,13 @@ impl Emitter {
         out
     }
 
-    /// A `jsonlines(f(inputs))` program, compiled as a loop that reads one line, runs it through
+    /// A stream-typed `jsonlines` program, compiled as a loop that reads one line, runs it through
     /// `fusion`'s stages, and prints it, rather than the eager path's read-everything-then-print.
     /// `read_line` (not `tl_read_lines`) and an explicit `flush()` are both load-bearing: Rust's
     /// stdout is fully buffered rather than line-buffered whenever it is not a terminal, which is
     /// exactly the case piping into another process needs, and buffering the whole run would
     /// defeat the one thing this loop exists for.
     fn fused_main(&self, program: &Program, fusion: &tir::Fusion) -> String {
-        let elem_ty = program.inputs.as_ref().expect("fusion only matches an `inputs` source");
         let mut out = String::new();
         out.push_str("fn main() {\n");
         out.push_str("    use std::io::{BufRead, Write};\n");
@@ -793,15 +793,23 @@ impl Emitter {
         );
         out.push_str("        if n == 0 { break; }\n");
         out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
-        out.push_str("        if line.trim().is_empty() { continue; }\n");
-        out.push_str(&format!(
-            "        let t_line: {} = tl_parse_line(&line, {});\n",
-            self.rs_type(elem_ty),
-            self.parser_expr(elem_ty)
-        ));
-
-        let mut current = "t_line".to_string();
-        let mut current_ty = elem_ty.clone();
+        let (mut current, mut current_ty) = match fusion.source {
+            tir::Source::Inputs => {
+                let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+                out.push_str("        if line.trim().is_empty() { continue; }\n");
+                out.push_str(&format!(
+                    "        let t_line: {} = tl_parse_line(&line, {});\n",
+                    self.rs_type(elem),
+                    self.parser_expr(elem)
+                ));
+                ("t_line".to_string(), elem.clone())
+            }
+            // A raw line is already the element, blank ones included: `lines` keeps them.
+            tir::Source::Lines => {
+                out.push_str("        let t_line: String = line.clone();\n");
+                ("t_line".to_string(), Type::Str)
+            }
+        };
         for stage in &fusion.stages {
             match stage {
                 tir::Stage::Map { param, body } => {

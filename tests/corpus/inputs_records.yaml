@@ -16,4 +16,4 @@ input: |
 output: |
   ["ada","cy"]
 
-node_types: [application, builtin.collect, compare.ge, inputs, int, local, pipe, projection, selection.narrow, var]
+node_types: [application, builtin.collect, compare.ge, inputs, int, local, map-over, pipe, projection, selection.narrow, var]
