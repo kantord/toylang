@@ -23,7 +23,9 @@ fn lines_cannot_be_read_twice() {
 /// added: `jq -Rn '[inputs]'` and ordinary `.`-is-the-document mode are mutually exclusive.
 #[test]
 fn input_and_lines_cannot_both_be_used() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> Int = x\n\nf(input) + (collect(lines) | 0)"));
+    insta::assert_snapshot!(err(
+        "fn f(x: Int) -> Int = x\n\nf(input) + (collect(lines) | 0)"
+    ));
 }
 
 /// `inputs` reads the same real stdin `input` does, eagerly, so the two cannot coexist any more
@@ -180,14 +182,18 @@ fn inputs_wanted_as_a_vec_names_the_eager_spelling() {
 /// stream-typed position cannot ask for it.
 #[test]
 fn input_cannot_be_a_stream() {
-    insta::assert_snapshot!(err("fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\n\nf(input)"));
+    insta::assert_snapshot!(err(
+        "fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\n\nf(input)"
+    ));
 }
 
 /// Which branch runs is decided at runtime, and a pipeline's shape must not be: fusion has to
 /// know its stages at compile time. Refusing is the reversible direction.
 #[test]
 fn a_conditional_cannot_yield_a_stream() {
-    insta::assert_snapshot!(err("fn f(s: Stream<Str>) -> Stream<Str> = s if 1 == 1 else s\n\n1"));
+    insta::assert_snapshot!(err(
+        "fn f(s: Stream<Str>) -> Stream<Str> = s if 1 == 1 else s\n\n1"
+    ));
 }
 
 /// The same rule for a match's arms.
@@ -202,7 +208,9 @@ fn a_match_cannot_yield_a_stream() {
 /// containment ban a Vec literal enforces, met before the Vec of streams could exist.
 #[test]
 fn a_map_body_cannot_be_a_stream() {
-    insta::assert_snapshot!(err("fn f(s: Stream<Str>) -> Int = extent([1] | map(s))\n\n1"));
+    insta::assert_snapshot!(err(
+        "fn f(s: Stream<Str>) -> Int = extent([1] | map(s))\n\n1"
+    ));
 }
 
 /// One spelled consumption, many runtime ones: a mapper's body runs once per element, so a

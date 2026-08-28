@@ -19,7 +19,10 @@ pub enum Type {
     /// without a registry beside the tree; a name determines its variants within a program, so
     /// the derived equality is still name equality in practice. A variant's payload is `None`
     /// for a unit variant, in declaration order.
-    Enum { name: String, variants: Vec<(String, Option<Type>)> },
+    Enum {
+        name: String,
+        variants: Vec<(String, Option<Type>)>,
+    },
 }
 
 impl Type {
@@ -75,8 +78,7 @@ impl std::fmt::Display for Type {
             Type::Vec(t) => write!(f, "Vec<{t}>"),
             Type::Opt(t) => write!(f, "Opt<{t}>"),
             Type::Record(fields) => {
-                let parts: Vec<String> =
-                    fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();
+                let parts: Vec<String> = fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();
                 write!(f, "{{{}}}", parts.join(", "))
             }
             // The name is the identity, so the name is the display: spelling the variants out

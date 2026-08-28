@@ -74,10 +74,14 @@ pub fn cases() -> Vec<Case> {
     paths
         .into_iter()
         .map(|path| {
-            let name = path.file_stem().expect("has a stem").to_string_lossy().into_owned();
+            let name = path
+                .file_stem()
+                .expect("has a stem")
+                .to_string_lossy()
+                .into_owned();
             let text = std::fs::read_to_string(&path).expect("readable case");
-            let fields: Fields = serde_norway::from_str(&text)
-                .unwrap_or_else(|e| panic!("{name}: {e}"));
+            let fields: Fields =
+                serde_norway::from_str(&text).unwrap_or_else(|e| panic!("{name}: {e}"));
             let snapshot = fields
                 .snapshot
                 .iter()
@@ -92,7 +96,13 @@ pub fn cases() -> Vec<Case> {
                 (Some(_), true) => panic!("{name}: has both `output` and `refuses`"),
                 (None, false) => panic!("{name}: has neither `output` nor `refuses`"),
             };
-            Case { name, program: fields.program, input: fields.input, expect, snapshot }
+            Case {
+                name,
+                program: fields.program,
+                input: fields.input,
+                expect,
+                snapshot,
+            }
         })
         .collect()
 }

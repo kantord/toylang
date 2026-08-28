@@ -29,7 +29,10 @@ fn a_builtin_cannot_be_redefined() {
 #[test]
 fn str_takes_an_int() {
     insta::assert_snapshot!(
-        toylang::compile(r#"str("a")"#).map(|_| ()).unwrap_err().to_string()
+        toylang::compile(r#"str("a")"#)
+            .map(|_| ())
+            .unwrap_err()
+            .to_string()
     );
 }
 
@@ -37,7 +40,10 @@ fn str_takes_an_int() {
 #[test]
 fn plus_does_not_mix_its_operands() {
     insta::assert_snapshot!(
-        toylang::compile(r#"1 + "a""#).map(|_| ()).unwrap_err().to_string()
+        toylang::compile(r#"1 + "a""#)
+            .map(|_| ())
+            .unwrap_err()
+            .to_string()
     );
 }
 
@@ -46,7 +52,10 @@ fn plus_does_not_mix_its_operands() {
 #[test]
 fn a_condition_must_be_a_bool() {
     insta::assert_snapshot!(
-        toylang::compile(r#""a" if 1 else "b""#).map(|_| ()).unwrap_err().to_string()
+        toylang::compile(r#""a" if 1 else "b""#)
+            .map(|_| ())
+            .unwrap_err()
+            .to_string()
     );
 }
 
@@ -54,7 +63,10 @@ fn a_condition_must_be_a_bool() {
 #[test]
 fn both_branches_must_agree() {
     insta::assert_snapshot!(
-        toylang::compile(r#""a" if 1 == 1 else 2"#).map(|_| ()).unwrap_err().to_string()
+        toylang::compile(r#""a" if 1 == 1 else 2"#)
+            .map(|_| ())
+            .unwrap_err()
+            .to_string()
     );
 }
 
@@ -65,7 +77,10 @@ fn both_branches_must_agree() {
 #[test]
 fn an_int_literal_has_to_fit_in_an_int() {
     insta::assert_snapshot!(
-        toylang::compile("str(9999999999)").map(|_| ()).unwrap_err().to_string()
+        toylang::compile("str(9999999999)")
+            .map(|_| ())
+            .unwrap_err()
+            .to_string()
     );
 }
 
@@ -75,7 +90,10 @@ fn an_int_literal_has_to_fit_in_an_int() {
 fn the_most_negative_int_is_writable_but_not_one_past_it() {
     assert!(toylang::compile("str(-2147483648)").is_ok());
     insta::assert_snapshot!(
-        toylang::compile("str(-2147483649)").map(|_| ()).unwrap_err().to_string()
+        toylang::compile("str(-2147483649)")
+            .map(|_| ())
+            .unwrap_err()
+            .to_string()
     );
 }
 
@@ -93,7 +111,12 @@ fn an_int_from_input_has_to_fit_too() {
 
     for backend in Backend::ALL {
         let ok = toylang::run_on(src, Some(r#"{"t": 2147483647}"#), backend);
-        assert_eq!(ok.expect("the boundary value is in range"), "2147483647\n", "{}", backend.name());
+        assert_eq!(
+            ok.expect("the boundary value is in range"),
+            "2147483647\n",
+            "{}",
+            backend.name()
+        );
     }
 }
 
@@ -101,7 +124,10 @@ fn an_int_from_input_has_to_fit_too() {
 #[test]
 fn a_field_cannot_be_given_twice() {
     insta::assert_snapshot!(
-        toylang::compile("{a: 1, a: 2}").map(|_| ()).unwrap_err().to_string()
+        toylang::compile("{a: 1, a: 2}")
+            .map(|_| ())
+            .unwrap_err()
+            .to_string()
     );
 }
 

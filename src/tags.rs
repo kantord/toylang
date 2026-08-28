@@ -53,12 +53,21 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
             walk(lhs, tags);
             walk(rhs, tags);
         }
-        Kind::Cond { cond, then, otherwise } => {
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => {
             walk(cond, tags);
             walk(then, tags);
             walk(otherwise, tags);
         }
-        Kind::Bind { value, body, .. } | Kind::Map { source: value, body, .. } => {
+        Kind::Bind { value, body, .. }
+        | Kind::Map {
+            source: value,
+            body,
+            ..
+        } => {
             walk(value, tags);
             walk(body, tags);
         }
@@ -87,7 +96,9 @@ fn tag(kind: &Kind) -> String {
         Kind::RecordLit { .. } => "record-literal".into(),
         // CONTEXT.md's terms: a `variant` is one alternative, a `unit variant` carries nothing.
         Kind::EnumLit { payload: None, .. } => "variant.unit".into(),
-        Kind::EnumLit { payload: Some(_), .. } => "variant.payload".into(),
+        Kind::EnumLit {
+            payload: Some(_), ..
+        } => "variant.payload".into(),
         Kind::Var(_) => "var".into(),
         Kind::Local(_) => "local".into(),
         Kind::Input => "input".into(),

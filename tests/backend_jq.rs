@@ -27,10 +27,7 @@ fn definitions_come_out_callee_first() {
 /// absent one as the word null. The rule here is the type's, as on every other backend.
 #[test]
 fn an_optional_string_prints_as_json() {
-    insta::assert_snapshot!(toylang::run_on(
-        r#"["ada", "bo"][0]"#,
-        None,
-        toylang::Backend::Jq
-    )
-    .unwrap());
+    insta::assert_snapshot!(
+        toylang::run_on(r#"["ada", "bo"][0]"#, None, toylang::Backend::Jq).unwrap()
+    );
 }

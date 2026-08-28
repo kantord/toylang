@@ -152,13 +152,18 @@ pub fn emit(program: &Program) -> String {
             ));
         }
         if program.inputs.is_some() {
-            decls.push_str(&format!("{INPUTS} = [json.loads(_l) for _l in sys.stdin]\n"));
+            decls.push_str(&format!(
+                "{INPUTS} = [json.loads(_l) for _l in sys.stdin]\n"
+            ));
         }
 
         let body = expr(&program.body);
         // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
-        let printed =
-            if program.body.ty == Type::Str { body } else { show(&program.body.ty, &body, 0) };
+        let printed = if program.body.ty == Type::Str {
+            body
+        } else {
+            show(&program.body.ty, &body, 0)
+        };
         // Bytes rather than `print`, so output does not depend on the locale the interpreter was
         // started under. The native backend writes bytes for the same reason.
         decls.push_str(&format!(
@@ -222,7 +227,10 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
         tir::Source::Inputs => {
             out.push_str("    if _line.strip() == \"\":\n        continue\n");
             out.push_str("    t_line = json.loads(_line)\n");
-            let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+            let elem = program
+                .inputs
+                .as_ref()
+                .expect("an inputs source recorded its element");
             ("t_line".to_string(), elem.clone())
         }
         // A raw line is already the element, blank ones included: `lines` keeps them.
@@ -263,7 +271,10 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
         Type::Bool => format!("(\"true\" if {value} else \"false\")"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
-            format!("tl_join({value}, lambda {e}: {})", show(elem, &e, depth + 1))
+            format!(
+                "tl_join({value}, lambda {e}: {})",
+                show(elem, &e, depth + 1)
+            )
         }
         Type::Opt(inner) => {
             let v = format!("o{depth}");
@@ -372,8 +383,17 @@ fn expr(t: &Tir) -> String {
         },
         // The one construct this target spells exactly as toylang does, because toylang took the
         // spelling from here.
-        Kind::Cond { cond, then, otherwise } => {
-            format!("({} if {} else {})", expr(then), expr(cond), expr(otherwise))
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => {
+            format!(
+                "({} if {} else {})",
+                expr(then),
+                expr(cond),
+                expr(otherwise)
+            )
         }
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("str({})", expr(arg)),
@@ -381,7 +401,11 @@ fn expr(t: &Tir) -> String {
             Builtin::JsonLines => {
                 let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 let e = "e0".to_string();
-                format!("tl_jsonlines({}, lambda {e}: {})", expr(arg), show(elem, &e, 1))
+                format!(
+                    "tl_jsonlines({}, lambda {e}: {})",
+                    expr(arg),
+                    show(elem, &e, 1)
+                )
             }
             // The source already materialized, so the exit has nothing left to do.
             Builtin::Collect => expr(arg),
@@ -392,22 +416,36 @@ fn expr(t: &Tir) -> String {
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), py_op(*op), expr(rhs))
         }
-        Kind::Bind { local: id, value, body } => {
+        Kind::Bind {
+            local: id,
+            value,
+            body,
+        } => {
             format!("(lambda {}: {})({})", local(*id), expr(body), expr(value))
         }
         // A comprehension rather than `map`, which returns an iterator here and would need a
         // `list` around it anyway.
-        Kind::Map { source, param, body } => {
+        Kind::Map {
+            source,
+            param,
+            body,
+        } => {
             format!("[{} for {} in {}]", expr(body), local(*param), expr(source))
         }
-        Kind::Select { source, param, pred } => {
+        Kind::Select {
+            source,
+            param,
+            pred,
+        } => {
             let p = local(*param);
             format!("[{p} for {p} in {} if {}]", expr(source), expr(pred))
         }
         Kind::Unwrap { base } => {
             format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
         }
-        Kind::Index { base, index, depth, .. } => {
+        Kind::Index {
+            base, index, depth, ..
+        } => {
             format!("tl_at({}, {}, {})", expr(base), expr(index), depth)
         }
         Kind::Field { base, name } => {
@@ -429,8 +467,10 @@ fn expr(t: &Tir) -> String {
             for (i, arm) in arms.iter().enumerate() {
                 let run = match arm.payload {
                     Some(pid) => {
-                        let variant =
-                            arm.variant.as_ref().expect("only a variant arm has a payload");
+                        let variant = arm
+                            .variant
+                            .as_ref()
+                            .expect("only a variant arm has a payload");
                         format!(
                             "(lambda {}: {})({subj}[{}])",
                             local(pid),

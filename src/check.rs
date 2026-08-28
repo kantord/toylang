@@ -70,10 +70,16 @@ impl Ctx<'_> {
 pub fn check(file: &File) -> Result<tir::Program, Error> {
     let lines_used = Cell::new(false);
     let aliases = alias_map(&file.aliases)?;
-    let env = TypeEnv { aliases, enums: enum_map(&file.enums)? };
+    let env = TypeEnv {
+        aliases,
+        enums: enum_map(&file.enums)?,
+    };
     for e in &file.enums {
         if env.aliases.contains_key(&e.name) {
-            return Err(Error::new(e.span, format!("type `{}` is defined twice", e.name)));
+            return Err(Error::new(
+                e.span,
+                format!("type `{}` is defined twice", e.name),
+            ));
         }
     }
     // Resolved eagerly so a broken declaration is an error even when nothing uses it, and so a
@@ -88,7 +94,10 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     let mut variant_owners: HashMap<String, Vec<String>> = HashMap::new();
     for e in &file.enums {
         for v in &e.variants {
-            variant_owners.entry(v.name.clone()).or_default().push(e.name.clone());
+            variant_owners
+                .entry(v.name.clone())
+                .or_default()
+                .push(e.name.clone());
         }
     }
     let sigs = signatures(&file.defs, &env)?;
@@ -174,7 +183,13 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 format!("`jsonlines` needs a Vec or a stream, found {}", arg.ty),
             ));
         }
-        Tir::new(Type::Str, Kind::Builtin { which: tir::Builtin::JsonLines, arg: Box::new(arg) })
+        Tir::new(
+            Type::Str,
+            Kind::Builtin {
+                which: tir::Builtin::JsonLines,
+                arg: Box::new(arg),
+            },
+        )
     } else {
         synth(&ctx, &file.body)?
     };
@@ -262,15 +277,15 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
             StreamBinding::Param(_) => 0,
         }),
         Kind::Str(_) | Kind::Int(_) | Kind::Input | Kind::Inputs | Kind::Lines => Ok(0),
-        Kind::VecLit(items) => {
-            items.iter().try_fold(0, |n, i| Ok(n + stream_uses(i, binding)?))
-        }
-        Kind::RecordLit { fields } => {
-            fields.iter().try_fold(0, |n, (_, v)| Ok(n + stream_uses(v, binding)?))
-        }
-        Kind::EnumLit { payload, .. } => {
-            payload.as_deref().map_or(Ok(0), |p| stream_uses(p, binding))
-        }
+        Kind::VecLit(items) => items
+            .iter()
+            .try_fold(0, |n, i| Ok(n + stream_uses(i, binding)?)),
+        Kind::RecordLit { fields } => fields
+            .iter()
+            .try_fold(0, |n, (_, v)| Ok(n + stream_uses(v, binding)?)),
+        Kind::EnumLit { payload, .. } => payload
+            .as_deref()
+            .map_or(Ok(0), |p| stream_uses(p, binding)),
         Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => stream_uses(arg, binding),
         Kind::Concat(l, r) => both(l, r),
         Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => both(lhs, rhs),
@@ -289,7 +304,11 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
         }
         Kind::Field { base, .. } | Kind::Unwrap { base } => stream_uses(base, binding),
         Kind::Index { base, index, .. } => both(base, index),
-        Kind::Cond { cond, then, otherwise } => {
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => {
             let t = stream_uses(then, binding)?;
             let o = stream_uses(otherwise, binding)?;
             if t != o {
@@ -314,12 +333,7 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
 /// be consumed exactly once by `body`. Zero uses is an error too -- linear, not affine: a
 /// dropped stream is the Python silent-empty-generator mistake, and exactly-once can relax to
 /// at-most-once later without breaking a program, while the reverse tightening could not.
-fn check_linear(
-    body: &Tir,
-    binding: &StreamBinding,
-    what: &str,
-    span: Span,
-) -> Result<(), Error> {
+fn check_linear(body: &Tir, binding: &StreamBinding, what: &str, span: Span) -> Result<(), Error> {
     match stream_uses(body, binding) {
         Err(LinearViolation::Branches(a, b)) => Err(Error::new(
             span,
@@ -363,7 +377,10 @@ fn prune_unreachable(funcs: Vec<tir::Func>, body: &Tir) -> Vec<tir::Func> {
             calls_in(&f.body, &mut worklist);
         }
     }
-    funcs.into_iter().filter(|f| reached.contains(&f.name)).collect()
+    funcs
+        .into_iter()
+        .filter(|f| reached.contains(&f.name))
+        .collect()
 }
 
 /// Every function name a `Kind::Call` inside `t` names, collected recursively through every
@@ -398,12 +415,21 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
             calls_in(lhs, out);
             calls_in(rhs, out);
         }
-        Kind::Cond { cond, then, otherwise } => {
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => {
             calls_in(cond, out);
             calls_in(then, out);
             calls_in(otherwise, out);
         }
-        Kind::Bind { value, body, .. } | Kind::Map { source: value, body, .. } => {
+        Kind::Bind { value, body, .. }
+        | Kind::Map {
+            source: value,
+            body,
+            ..
+        } => {
             calls_in(value, out);
             calls_in(body, out);
         }
@@ -429,8 +455,20 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
 fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
     let vec_of = |t: Type| Type::Vec(Box::new(t));
     Some(match name {
-        "str" => (tir::Builtin::IntToStr, Sig { param: Type::Int, ret: Type::Str }),
-        "range" => (tir::Builtin::Range, Sig { param: Type::Int, ret: vec_of(Type::Int) }),
+        "str" => (
+            tir::Builtin::IntToStr,
+            Sig {
+                param: Type::Int,
+                ret: Type::Str,
+            },
+        ),
+        "range" => (
+            tir::Builtin::Range,
+            Sig {
+                param: Type::Int,
+                ret: vec_of(Type::Int),
+            },
+        ),
         _ => return None,
     })
 }
@@ -470,10 +508,17 @@ fn enum_map(enums: &[EnumDecl]) -> Result<HashMap<String, &EnumDecl>, Error> {
         if !e.name.chars().next().is_some_and(char::is_uppercase) {
             return Err(Error::new(
                 e.span,
-                format!("a type name starts with a capital letter, and `{}` reads as a value", e.name),
+                format!(
+                    "a type name starts with a capital letter, and `{}` reads as a value",
+                    e.name
+                ),
             ));
         }
-        if Type::from_name(&e.name).is_some() || e.name == "Vec" || e.name == "Opt" || e.name == "Stream" {
+        if Type::from_name(&e.name).is_some()
+            || e.name == "Vec"
+            || e.name == "Opt"
+            || e.name == "Stream"
+        {
             return Err(Error::new(
                 e.span,
                 format!("`{}` is a built-in type and cannot be redefined", e.name),
@@ -488,7 +533,10 @@ fn enum_map(enums: &[EnumDecl]) -> Result<HashMap<String, &EnumDecl>, Error> {
             }
         }
         if map.insert(e.name.clone(), e).is_some() {
-            return Err(Error::new(e.span, format!("type `{}` is defined twice", e.name)));
+            return Err(Error::new(
+                e.span,
+                format!("type `{}` is defined twice", e.name),
+            ));
         }
     }
     Ok(map)
@@ -523,7 +571,10 @@ fn resolve_enum(decl: &EnumDecl, env: &TypeEnv, seen: &mut Vec<String>) -> Resul
         variants.push((v.name.clone(), payload));
     }
     seen.pop();
-    Ok(Type::Enum { name: decl.name.clone(), variants })
+    Ok(Type::Enum {
+        name: decl.name.clone(),
+        variants,
+    })
 }
 
 fn alias_map(aliases: &[Alias]) -> Result<Aliases<'_>, Error> {
@@ -532,17 +583,27 @@ fn alias_map(aliases: &[Alias]) -> Result<Aliases<'_>, Error> {
         if !a.name.chars().next().is_some_and(char::is_uppercase) {
             return Err(Error::new(
                 a.span,
-                format!("a type name starts with a capital letter, and `{}` reads as a value", a.name),
+                format!(
+                    "a type name starts with a capital letter, and `{}` reads as a value",
+                    a.name
+                ),
             ));
         }
-        if Type::from_name(&a.name).is_some() || a.name == "Vec" || a.name == "Opt" || a.name == "Stream" {
+        if Type::from_name(&a.name).is_some()
+            || a.name == "Vec"
+            || a.name == "Opt"
+            || a.name == "Stream"
+        {
             return Err(Error::new(
                 a.span,
                 format!("`{}` is a built-in type and cannot be redefined", a.name),
             ));
         }
         if map.insert(a.name.clone(), &a.ty).is_some() {
-            return Err(Error::new(a.span, format!("type `{}` is defined twice", a.name)));
+            return Err(Error::new(
+                a.span,
+                format!("type `{}` is defined twice", a.name),
+            ));
         }
     }
     Ok(map)
@@ -568,7 +629,10 @@ fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, Sig>, Error
             ));
         }
         if sigs.contains_key(&def.name) {
-            return Err(Error::new(def.span, format!("`{}` is defined twice", def.name)));
+            return Err(Error::new(
+                def.span,
+                format!("`{}` is defined twice", def.name),
+            ));
         }
         let sig = Sig {
             param: resolve(&def.param.ty, env, &mut Vec::new())?,
@@ -652,7 +716,10 @@ fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> Result<Type,
             let mut out = Vec::new();
             for (name, ty) in fields {
                 if out.iter().any(|(n, _): &(String, Type)| n == name) {
-                    return Err(Error::new(*span, format!("field `{name}` is declared twice")));
+                    return Err(Error::new(
+                        *span,
+                        format!("field `{name}` is declared twice"),
+                    ));
                 }
                 let field = resolve(ty, env, seen)?;
                 if field.contains_stream() {
@@ -679,11 +746,17 @@ fn rebase(t: Tir, param: LocalId) -> (Tir, Tir) {
     fn peel(ty: Type) -> Type {
         match ty {
             Type::Stream(t) => *t,
-            other => unreachable!("every node inside the stream dimension is stream-typed, found {other}"),
+            other => unreachable!(
+                "every node inside the stream dimension is stream-typed, found {other}"
+            ),
         }
     }
-    let is_chain =
-        |t: &Tir| matches!(t.kind, Kind::Field { .. } | Kind::Unwrap { .. } | Kind::Index { .. });
+    let is_chain = |t: &Tir| {
+        matches!(
+            t.kind,
+            Kind::Field { .. } | Kind::Unwrap { .. } | Kind::Index { .. }
+        )
+    };
     match t.kind {
         Kind::Field { base, name } => {
             let (base, src) = if is_chain(&base) {
@@ -693,7 +766,16 @@ fn rebase(t: Tir, param: LocalId) -> (Tir, Tir) {
                 let elem = peel(base.ty.clone());
                 (Tir::new(elem, Kind::Local(param)), *base)
             };
-            (Tir::new(peel(t.ty), Kind::Field { base: Box::new(base), name }), src)
+            (
+                Tir::new(
+                    peel(t.ty),
+                    Kind::Field {
+                        base: Box::new(base),
+                        name,
+                    },
+                ),
+                src,
+            )
         }
         Kind::Unwrap { base } => {
             let (base, src) = if is_chain(&base) {
@@ -703,9 +785,22 @@ fn rebase(t: Tir, param: LocalId) -> (Tir, Tir) {
                 let elem = peel(base.ty.clone());
                 (Tir::new(elem, Kind::Local(param)), *base)
             };
-            (Tir::new(peel(t.ty), Kind::Unwrap { base: Box::new(base) }), src)
+            (
+                Tir::new(
+                    peel(t.ty),
+                    Kind::Unwrap {
+                        base: Box::new(base),
+                    },
+                ),
+                src,
+            )
         }
-        Kind::Index { base, index, depth, elem_is_record } => {
+        Kind::Index {
+            base,
+            index,
+            depth,
+            elem_is_record,
+        } => {
             let (base, src) = if is_chain(&base) {
                 let (b, src) = rebase(*base, param);
                 (b, src)
@@ -713,10 +808,18 @@ fn rebase(t: Tir, param: LocalId) -> (Tir, Tir) {
                 let elem = peel(base.ty.clone());
                 (Tir::new(elem, Kind::Local(param)), *base)
             };
-            let kind = Kind::Index { base: Box::new(base), index, depth: depth - 1, elem_is_record };
+            let kind = Kind::Index {
+                base: Box::new(base),
+                index,
+                depth: depth - 1,
+                elem_is_record,
+            };
             (Tir::new(peel(t.ty), kind), src)
         }
-        other => unreachable!("only an access chain is rebased, found {:?}", std::mem::discriminant(&other)),
+        other => unreachable!(
+            "only an access chain is rebased, found {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
 }
 
@@ -766,7 +869,10 @@ fn construct(
         unreachable!("construct is only called with an enum type")
     };
     let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
-        return Err(Error::new(variant_span, format!("`{name}` has no variant `{variant}`")));
+        return Err(Error::new(
+            variant_span,
+            format!("`{name}` has no variant `{variant}`"),
+        ));
     };
     let payload = match (declared, payload) {
         (None, None) => None,
@@ -786,11 +892,19 @@ fn construct(
             };
             return Err(Error::new(
                 variant_span,
-                format!("`{variant}` of `{name}` carries a payload of {want}, so it is written `{spelled}`"),
+                format!(
+                    "`{variant}` of `{name}` carries a payload of {want}, so it is written `{spelled}`"
+                ),
             ));
         }
     };
-    Ok(Tir::new(enum_ty.clone(), Kind::EnumLit { variant: variant.to_string(), payload }))
+    Ok(Tir::new(
+        enum_ty.clone(),
+        Kind::EnumLit {
+            variant: variant.to_string(),
+            payload,
+        },
+    ))
 }
 
 /// A source spelled inside a `fn` body. The rule exists because the mapper-body check alone had
@@ -861,7 +975,13 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     .expect("the field existed when the pattern was checked")
                     .clone();
                 let base = Tir::new(payload_ty.clone(), Kind::Local(*pid));
-                return Ok(Tir::new(fty, Kind::Field { base: Box::new(base), name: name.clone() }));
+                return Ok(Tir::new(
+                    fty,
+                    Kind::Field {
+                        base: Box::new(base),
+                        name: name.clone(),
+                    },
+                ));
             }
             if let Some((_, t)) = ctx.scope.iter().find(|(n, _)| n == name) {
                 return Ok(Tir::new(t.clone(), Kind::Var(name.clone())));
@@ -897,8 +1017,12 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             // Sorted to match Type::record, so a field's index is the same in the value and
             // in the type.
             built.sort_by(|a, b| a.0.cmp(&b.0));
-            let ty =
-                Type::record(built.iter().map(|(n, t)| (n.clone(), t.ty.clone())).collect());
+            let ty = Type::record(
+                built
+                    .iter()
+                    .map(|(n, t)| (n.clone(), t.ty.clone()))
+                    .collect(),
+            );
             Ok(Tir::new(ty, Kind::RecordLit { fields: built }))
         }
 
@@ -955,7 +1079,11 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             }
             Ok(Tir::new(
                 body.ty.clone(),
-                Kind::Bind { local, value: Box::new(value), body: Box::new(body) },
+                Kind::Bind {
+                    local,
+                    value: Box::new(value),
+                    body: Box::new(body),
+                },
             ))
         }
 
@@ -969,7 +1097,11 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 let (body, source) = rebase(tir, param);
                 return Ok(Tir::new(
                     Type::Stream(Box::new(body.ty.clone())),
-                    Kind::Map { source: Box::new(source), param, body: Box::new(body) },
+                    Kind::Map {
+                        source: Box::new(source),
+                        param,
+                        body: Box::new(body),
+                    },
                 ));
             }
             Ok(tir)
@@ -989,7 +1121,12 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             None => Err(Error::new(*span, "cannot tell what `inputs` contains")),
         },
 
-        Expr::Call { func, func_span, arg, span } => {
+        Expr::Call {
+            func,
+            func_span,
+            arg,
+            span,
+        } => {
             // `select` and `map` are not special syntax, only special names: they are ordinary
             // calls whose argument is checked with `.` rebound to the subject's element type
             // instead of evaluated in the enclosing scope, which no ordinary function needs and
@@ -999,7 +1136,10 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             // stream out.
             if func == "select" {
                 let Some((subject, id)) = ctx.subject.clone() else {
-                    return Err(Error::new(*span, "`select` needs a subject, so it must follow `|`"));
+                    return Err(Error::new(
+                        *span,
+                        "`select` needs a subject, so it must follow `|`",
+                    ));
                 };
                 let Some(elem) = mapper_elem(&subject) else {
                     return Err(Error::new(
@@ -1014,14 +1154,21 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 let source = Tir::new(subject.clone(), Kind::Local(id));
                 return Ok(Tir::new(
                     subject,
-                    Kind::Select { source: Box::new(source), param, pred: Box::new(pred) },
+                    Kind::Select {
+                        source: Box::new(source),
+                        param,
+                        pred: Box::new(pred),
+                    },
                 ));
             }
             // The one way to produce a new element value. `select` removes elements and a field
             // access reads a field; neither can turn a Vec<Int> into a Vec<Str>.
             if func == "map" {
                 let Some((subject, id)) = ctx.subject.clone() else {
-                    return Err(Error::new(*span, "`map` needs a subject, so it must follow `|`"));
+                    return Err(Error::new(
+                        *span,
+                        "`map` needs a subject, so it must follow `|`",
+                    ));
                 };
                 let Some(elem) = mapper_elem(&subject) else {
                     return Err(Error::new(
@@ -1049,7 +1196,11 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 let source = Tir::new(subject, Kind::Local(id));
                 return Ok(Tir::new(
                     out,
-                    Kind::Map { source: Box::new(source), param, body: Box::new(body) },
+                    Kind::Map {
+                        source: Box::new(source),
+                        param,
+                        body: Box::new(body),
+                    },
                 ));
             }
             // A sink, not a function: `check` handles the one legal position (the program's
@@ -1077,7 +1228,10 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 }
                 return Ok(Tir::new(
                     Type::Int,
-                    Kind::Builtin { which: tir::Builtin::Extent, arg: Box::new(arg) },
+                    Kind::Builtin {
+                        which: tir::Builtin::Extent,
+                        arg: Box::new(arg),
+                    },
                 ));
             }
             // `None` on an empty Vec, the same way `Index` turns reaching past what's there
@@ -1093,7 +1247,10 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 };
                 return Ok(Tir::new(
                     Type::Opt(Box::new(Type::Vec(Box::new(elem)))),
-                    Kind::Builtin { which: tir::Builtin::Tail, arg: Box::new(arg) },
+                    Kind::Builtin {
+                        which: tir::Builtin::Tail,
+                        arg: Box::new(arg),
+                    },
                 ));
             }
             // Flattens a Vec<Vec<T>> into a Vec<T>, the way jq's `add` flattens a list of
@@ -1110,7 +1267,10 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 };
                 return Ok(Tir::new(
                     Type::Vec(Box::new(elem)),
-                    Kind::Builtin { which: tir::Builtin::Concat, arg: Box::new(arg) },
+                    Kind::Builtin {
+                        which: tir::Builtin::Concat,
+                        arg: Box::new(arg),
+                    },
                 ));
             }
             // The one exit a stream has: `Stream<T> -> Vec<T>`, polymorphic over the element
@@ -1127,12 +1287,21 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 let elem = elem.as_ref().clone();
                 return Ok(Tir::new(
                     Type::Vec(Box::new(elem)),
-                    Kind::Builtin { which: tir::Builtin::Collect, arg: Box::new(arg) },
+                    Kind::Builtin {
+                        which: tir::Builtin::Collect,
+                        arg: Box::new(arg),
+                    },
                 ));
             }
             if let Some((which, sig)) = builtin(func) {
                 let arg = expect(ctx, arg, &sig.param)?;
-                return Ok(Tir::new(sig.ret, Kind::Builtin { which, arg: Box::new(arg) }));
+                return Ok(Tir::new(
+                    sig.ret,
+                    Kind::Builtin {
+                        which,
+                        arg: Box::new(arg),
+                    },
+                ));
             }
             let Some(sig) = ctx.sigs.get(func) else {
                 // A payload constructor is ordinary application (the Q34 path), so `circle{r: 1}`
@@ -1141,10 +1310,19 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     let enum_ty = sole_owner(ctx, func, owners, *func_span)?.clone();
                     return construct(ctx, &enum_ty, func, *func_span, Some(arg));
                 }
-                return Err(Error::new(*func_span, format!("`{func}` is not a function")));
+                return Err(Error::new(
+                    *func_span,
+                    format!("`{func}` is not a function"),
+                ));
             };
             let arg = expect(ctx, arg, &sig.param)?;
-            Ok(Tir::new(sig.ret.clone(), Kind::Call { func: func.clone(), arg: Box::new(arg) }))
+            Ok(Tir::new(
+                sig.ret.clone(),
+                Kind::Call {
+                    func: func.clone(),
+                    arg: Box::new(arg),
+                },
+            ))
         }
 
         // The closed-world branch the pattern-matching sketch reserved: the subject is a
@@ -1159,7 +1337,11 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     "a match needs a subject, so it must follow `|`".to_string(),
                 ));
             };
-            let Type::Enum { name: enum_name, variants } = &subject_ty else {
+            let Type::Enum {
+                name: enum_name,
+                variants,
+            } = &subject_ty
+            else {
                 return Err(Error::new(
                     *span,
                     format!("a match needs an enum subject, found {subject_ty}"),
@@ -1183,7 +1365,11 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                         // A default matched the whole subject, so `.` stays the enum value.
                         (None, None, ctx.with(ctx.subject.clone()))
                     }
-                    Pattern::Variant { name: vname, span: vspan, fields } => {
+                    Pattern::Variant {
+                        name: vname,
+                        span: vspan,
+                        fields,
+                    } => {
                         let Some((_, payload_ty)) = variants.iter().find(|(n, _)| n == vname)
                         else {
                             return Err(Error::new(
@@ -1272,7 +1458,11 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     }
                     Some(t) => expect(&arm_ctx, &arm.body, t)?,
                 };
-                out.push(tir::MatchArm { variant, payload, body });
+                out.push(tir::MatchArm {
+                    variant,
+                    payload,
+                    body,
+                });
             }
             if !default_seen {
                 let missing: Vec<String> = variants
@@ -1293,15 +1483,34 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             let subject = Tir::new(subject_ty.clone(), Kind::Local(sid));
             Ok(Tir::new(
                 result.expect("the parser produces at least one arm"),
-                Kind::Match { subject: Box::new(subject), arms: out },
+                Kind::Match {
+                    subject: Box::new(subject),
+                    arms: out,
+                },
             ))
         }
 
-        Expr::Variant { enum_name, enum_span, variant, variant_span, payload, .. } => {
+        Expr::Variant {
+            enum_name,
+            enum_span,
+            variant,
+            variant_span,
+            payload,
+            ..
+        } => {
             let Some(enum_ty) = ctx.enums.get(enum_name) else {
-                return Err(Error::new(*enum_span, format!("`{enum_name}` is not an enum")));
+                return Err(Error::new(
+                    *enum_span,
+                    format!("`{enum_name}` is not an enum"),
+                ));
             };
-            construct(ctx, &enum_ty.clone(), variant, *variant_span, payload.as_deref())
+            construct(
+                ctx,
+                &enum_ty.clone(),
+                variant,
+                *variant_span,
+                payload.as_deref(),
+            )
         }
 
         Expr::Neg { base, span } => {
@@ -1323,13 +1532,22 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             let _ = span;
             Ok(Tir::new(
                 Type::Int,
-                Kind::Arith { op: BinOp::Sub, lhs: Box::new(zero), rhs: Box::new(inner) },
+                Kind::Arith {
+                    op: BinOp::Sub,
+                    lhs: Box::new(zero),
+                    rhs: Box::new(inner),
+                },
             ))
         }
 
         // The first construct that consumes a type rather than carrying one: the condition has
         // to be exactly one Bool, and both branches have to agree.
-        Expr::Cond { then, cond, otherwise, .. } => {
+        Expr::Cond {
+            then,
+            cond,
+            otherwise,
+            ..
+        } => {
             let cond = expect(ctx, cond, &Type::Bool)?;
             let then = synth(ctx, then)?;
             // A pipeline's shape must be knowable at compile time for fusion to emit its loop,
@@ -1391,7 +1609,10 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<(Tir, Type, usize, bool), Error> {
                 return Ok((tir, (**inner).clone(), depth + 1, true));
             }
             let Some(inner) = elem.elem().cloned() else {
-                return Err(Error::new(*span, format!("`[]` needs a dimension, found {elem}")));
+                return Err(Error::new(
+                    *span,
+                    format!("`[]` needs a dimension, found {elem}"),
+                ));
             };
             Ok((tir, inner, depth + 1, stream))
         }
@@ -1404,7 +1625,12 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<(Tir, Type, usize, bool), Error> {
             };
             let inner = *inner;
             let ty = wrap(inner.clone(), depth, stream);
-            let tir = Tir::new(ty, Kind::Unwrap { base: Box::new(base_tir) });
+            let tir = Tir::new(
+                ty,
+                Kind::Unwrap {
+                    base: Box::new(base_tir),
+                },
+            );
             Ok((tir, inner, depth, stream))
         }
 
@@ -1412,7 +1638,10 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<(Tir, Type, usize, bool), Error> {
         Expr::Index { base, index, span } => {
             let (base_tir, elem, depth, stream) = access(ctx, base)?;
             let Some(inner) = elem.elem().cloned() else {
-                return Err(Error::new(*span, format!("`[i]` needs a dimension, found {elem}")));
+                return Err(Error::new(
+                    *span,
+                    format!("`[i]` needs a dimension, found {elem}"),
+                ));
             };
             let index_tir = expect(ctx, index, &Type::Int)?;
             let elem_is_record = matches!(inner, Type::Record(_));
@@ -1445,7 +1674,13 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<(Tir, Type, usize, bool), Error> {
             };
             let field = field.clone();
             let ty = wrap(field.clone(), depth, stream);
-            let tir = Tir::new(ty, Kind::Field { base: Box::new(base_tir), name: name.clone() });
+            let tir = Tir::new(
+                ty,
+                Kind::Field {
+                    base: Box::new(base_tir),
+                    name: name.clone(),
+                },
+            );
             Ok((tir, field, depth, stream))
         }
 
@@ -1464,25 +1699,39 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     // broadcast or zip semantics. Under C1 that restriction is ordinary typing: there is no
     // separate cardinality to check, because a Vec is just a type.
     if left.ty.elem().is_some() {
-        return Err(Error::new(lhs.span(), format!("`{op}` does not apply to {}", left.ty)));
+        return Err(Error::new(
+            lhs.span(),
+            format!("`{op}` does not apply to {}", left.ty),
+        ));
     }
 
     if op.is_comparison() {
         let right = expect(ctx, rhs, &left.ty)?;
         return Ok(Tir::new(
             Type::Bool,
-            Kind::Compare { op, lhs: Box::new(left), rhs: Box::new(right) },
+            Kind::Compare {
+                op,
+                lhs: Box::new(left),
+                rhs: Box::new(right),
+            },
         ));
     }
 
     if op.is_arithmetic() {
         if left.ty != Type::Int {
-            return Err(Error::new(lhs.span(), format!("expected Int, found {}", left.ty)));
+            return Err(Error::new(
+                lhs.span(),
+                format!("expected Int, found {}", left.ty),
+            ));
         }
         let right = expect(ctx, rhs, &Type::Int)?;
         return Ok(Tir::new(
             Type::Int,
-            Kind::Arith { op, lhs: Box::new(left), rhs: Box::new(right) },
+            Kind::Arith {
+                op,
+                lhs: Box::new(left),
+                rhs: Box::new(right),
+            },
         ));
     }
 
@@ -1493,14 +1742,24 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
             let right = expect(ctx, rhs, &Type::Int)?;
             Ok(Tir::new(
                 Type::Int,
-                Kind::Arith { op: BinOp::Add, lhs: Box::new(left), rhs: Box::new(right) },
+                Kind::Arith {
+                    op: BinOp::Add,
+                    lhs: Box::new(left),
+                    rhs: Box::new(right),
+                },
             ))
         }
         Type::Str => {
             let right = expect(ctx, rhs, &Type::Str)?;
-            Ok(Tir::new(Type::Str, Kind::Concat(Box::new(left), Box::new(right))))
+            Ok(Tir::new(
+                Type::Str,
+                Kind::Concat(Box::new(left), Box::new(right)),
+            ))
         }
-        other => Err(Error::new(lhs.span(), format!("`+` needs Int or Str, found {other}"))),
+        other => Err(Error::new(
+            lhs.span(),
+            format!("`+` needs Int or Str, found {other}"),
+        )),
     }
 }
 
@@ -1574,13 +1833,19 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
         let arg = expect(ctx, arg, &Type::Stream(Box::new(elem.clone())))?;
         return Ok(Tir::new(
             want.clone(),
-            Kind::Builtin { which: tir::Builtin::Collect, arg: Box::new(arg) },
+            Kind::Builtin {
+                which: tir::Builtin::Collect,
+                arg: Box::new(arg),
+            },
         ));
     }
 
     let found = synth(ctx, expr)?;
     if &found.ty != want {
-        return Err(Error::new(expr.span(), format!("expected {want}, found {}", found.ty)));
+        return Err(Error::new(
+            expr.span(),
+            format!("expected {want}, found {}", found.ty),
+        ));
     }
     Ok(found)
 }

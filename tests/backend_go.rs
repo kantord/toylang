@@ -20,7 +20,11 @@ keep(input)
     let go = toylang::emit_go::emit(&p);
     // The user record and the wrapper around it, and nothing more: the three spellings of the
     // user record are one type.
-    assert_eq!(go.matches("type tlRec").count(), 2, "one struct per record type:\n{go}");
+    assert_eq!(
+        go.matches("type tlRec").count(),
+        2,
+        "one struct per record type:\n{go}"
+    );
 }
 
 /// An unused import does not compile in Go, so the import list cannot be padded the way an
@@ -29,9 +33,18 @@ keep(input)
 #[test]
 fn imports_are_exactly_what_is_used() {
     let strings_only = toylang::emit_go::emit(&toylang::compile(r#""a" + "b""#).unwrap());
-    assert!(!strings_only.contains("strconv"), "nothing here formats a number:\n{strings_only}");
-    assert!(!strings_only.contains("encoding/json"), "nothing here reads input:\n{strings_only}");
+    assert!(
+        !strings_only.contains("strconv"),
+        "nothing here formats a number:\n{strings_only}"
+    );
+    assert!(
+        !strings_only.contains("encoding/json"),
+        "nothing here reads input:\n{strings_only}"
+    );
 
     let with_int = toylang::emit_go::emit(&toylang::compile("[1, 2]").unwrap());
-    assert!(with_int.contains("\"strconv\""), "printing an Int needs strconv:\n{with_int}");
+    assert!(
+        with_int.contains("\"strconv\""),
+        "printing an Int needs strconv:\n{with_int}"
+    );
 }

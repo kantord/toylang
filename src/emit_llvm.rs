@@ -77,7 +77,10 @@ struct Runtime<'ctx> {
 #[derive(Clone, Copy)]
 enum Slot<'ctx> {
     Value(BasicValueEnum<'ctx>),
-    Cursor { vec: PointerValue<'ctx>, index: IntValue<'ctx> },
+    Cursor {
+        vec: PointerValue<'ctx>,
+        index: IntValue<'ctx>,
+    },
 }
 
 struct Emitter<'ctx> {
@@ -143,7 +146,8 @@ impl<'ctx> Emitter<'ctx> {
             ),
             vec_set: module.add_function(
                 "tl_vec_set",
-                ctx.void_type().fn_type(&[ptr.into(), i64t.into(), i64t.into(), i64t.into()], false),
+                ctx.void_type()
+                    .fn_type(&[ptr.into(), i64t.into(), i64t.into(), i64t.into()], false),
                 None,
             ),
             vec_from_mask: module.add_function(
@@ -154,7 +158,8 @@ impl<'ctx> Emitter<'ctx> {
             mask_new: module.add_function("tl_mask_new", ptr.fn_type(&[i64t.into()], false), None),
             mask_set: module.add_function(
                 "tl_mask_set",
-                ctx.void_type().fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
+                ctx.void_type()
+                    .fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
                 None,
             ),
             vec_column: module.add_function(
@@ -167,19 +172,12 @@ impl<'ctx> Emitter<'ctx> {
                 i64t.fn_type(&[ptr.into(), i64t.into()], false),
                 None,
             ),
-            rec_new: module.add_function(
-                "tl_rec_new",
-                ptr.fn_type(&[i64t.into()], false),
-                None,
-            ),
-            collect_lines: module.add_function(
-                "tl_collect_lines",
-                ptr.fn_type(&[], false),
-                None,
-            ),
+            rec_new: module.add_function("tl_rec_new", ptr.fn_type(&[i64t.into()], false), None),
+            collect_lines: module.add_function("tl_collect_lines", ptr.fn_type(&[], false), None),
             rec_set: module.add_function(
                 "tl_rec_set",
-                ctx.void_type().fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
+                ctx.void_type()
+                    .fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
                 None,
             ),
             read_input: module.add_function(
@@ -251,7 +249,10 @@ impl<'ctx> Emitter<'ctx> {
 
     fn str_struct(&self) -> StructType<'ctx> {
         self.ctx.struct_type(
-            &[self.ctx.ptr_type(AddressSpace::default()).into(), self.ctx.i64_type().into()],
+            &[
+                self.ctx.ptr_type(AddressSpace::default()).into(),
+                self.ctx.i64_type().into(),
+            ],
             false,
         )
     }
@@ -323,8 +324,9 @@ impl<'ctx> Emitter<'ctx> {
         self.next_global += 1;
 
         let bytes = self.ctx.const_string(text.as_bytes(), true);
-        let bytes_global =
-            self.module.add_global(bytes.get_type(), None, &format!("bytes.{id}"));
+        let bytes_global = self
+            .module
+            .add_global(bytes.get_type(), None, &format!("bytes.{id}"));
         bytes_global.set_initializer(&bytes);
         bytes_global.set_constant(true);
         bytes_global.set_linkage(Linkage::Private);
@@ -332,7 +334,10 @@ impl<'ctx> Emitter<'ctx> {
         let str_ty = self.str_struct();
         let init = str_ty.const_named_struct(&[
             bytes_global.as_pointer_value().into(),
-            self.ctx.i64_type().const_int(text.len() as u64, false).into(),
+            self.ctx
+                .i64_type()
+                .const_int(text.len() as u64, false)
+                .into(),
         ]);
         let global = self.module.add_global(str_ty, None, &format!("str.{id}"));
         global.set_initializer(&init);
@@ -352,7 +357,9 @@ impl<'ctx> Emitter<'ctx> {
         };
         // Names are prefixed for the same reason the other backends prefix: `main` is a legal
         // toylang function name and is already spoken for here.
-        let value = self.module.add_function(&format!("v_{}", func.name), sig, None);
+        let value = self
+            .module
+            .add_function(&format!("v_{}", func.name), sig, None);
         self.funcs.insert(func.name.clone(), value);
         Ok(())
     }
@@ -368,7 +375,9 @@ impl<'ctx> Emitter<'ctx> {
         self.params.insert(func.param.clone(), arg);
 
         let body = self.expr(&func.body)?;
-        self.builder.build_return(Some(&body)).map_err(|e| e.to_string())?;
+        self.builder
+            .build_return(Some(&body))
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -386,19 +395,14 @@ impl<'ctx> Emitter<'ctx> {
                 .builder
                 .build_int_z_extend(value.into_int_value(), i64t, "slot")
                 .map_err(|e| e.to_string())?,
-            Type::Str | Type::Vec(_) | Type::Opt(_) | Type::Record(_) | Type::Enum { .. } => {
-                self.builder
-                    .build_ptr_to_int(value.into_pointer_value(), i64t, "slot")
-                    .map_err(|e| e.to_string())?
-            }
+            Type::Str | Type::Vec(_) | Type::Opt(_) | Type::Record(_) | Type::Enum { .. } => self
+                .builder
+                .build_ptr_to_int(value.into_pointer_value(), i64t, "slot")
+                .map_err(|e| e.to_string())?,
         })
     }
 
-    fn read_slot(
-        &self,
-        slot: IntValue<'ctx>,
-        ty: &Type,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    fn read_slot(&self, slot: IntValue<'ctx>, ty: &Type) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr = self.ctx.ptr_type(AddressSpace::default());
         Ok(match ty {
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
@@ -432,14 +436,21 @@ impl<'ctx> Emitter<'ctx> {
             .and_then(|b| b.get_parent())
             .ok_or("no function to emit a loop into")?;
 
-        let counter = self.builder.build_alloca(i64t, "i").map_err(|e| e.to_string())?;
-        self.builder.build_store(counter, i64t.const_zero()).map_err(|e| e.to_string())?;
+        let counter = self
+            .builder
+            .build_alloca(i64t, "i")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(counter, i64t.const_zero())
+            .map_err(|e| e.to_string())?;
 
         let cond = self.ctx.append_basic_block(function, "loop.cond");
         let loop_body = self.ctx.append_basic_block(function, "loop.body");
         let end = self.ctx.append_basic_block(function, "loop.end");
 
-        self.builder.build_unconditional_branch(cond).map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(cond)
+            .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(cond);
         let i = self
@@ -451,7 +462,9 @@ impl<'ctx> Emitter<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SLT, i, len, "more")
             .map_err(|e| e.to_string())?;
-        self.builder.build_conditional_branch(more, loop_body, end).map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(more, loop_body, end)
+            .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(loop_body);
         body(self, i)?;
@@ -459,8 +472,12 @@ impl<'ctx> Emitter<'ctx> {
             .builder
             .build_int_add(i, i64t.const_int(1, false), "next")
             .map_err(|e| e.to_string())?;
-        self.builder.build_store(counter, next).map_err(|e| e.to_string())?;
-        self.builder.build_unconditional_branch(cond).map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(counter, next)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(cond)
+            .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(end);
         Ok(())
@@ -491,7 +508,11 @@ impl<'ctx> Emitter<'ctx> {
                     let c = i64t.const_int(col as u64, false);
                     let got = self.call_rt(self.rt.rec_get, &[value, c.into()], "field")?;
                     self.builder
-                        .build_call(self.rt.vec_set, &[vec.into(), c.into(), i.into(), got.into()], "")
+                        .build_call(
+                            self.rt.vec_set,
+                            &[vec.into(), c.into(), i.into(), got.into()],
+                            "",
+                        )
                         .map_err(|e| e.to_string())?;
                 }
             } else {
@@ -530,7 +551,9 @@ impl<'ctx> Emitter<'ctx> {
 
         let i64t = self.ctx.i64_type();
         let src = self.expr(source)?.into_pointer_value();
-        let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+        let len = self
+            .call_rt(self.rt.vec_len, &[src.into()], "len")?
+            .into_int_value();
         // One column per field when the body builds a record, because that is what a Vec
         // of products is. Allocating one column here would store record pointers where the
         // layout says field values go, which is the same break that field access had.
@@ -598,8 +621,12 @@ impl<'ctx> Emitter<'ctx> {
             .clone();
 
         let src = self.expr(source)?.into_pointer_value();
-        let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
-        let mask = self.call_rt(self.rt.mask_new, &[len.into()], "mask")?.into_pointer_value();
+        let len = self
+            .call_rt(self.rt.vec_len, &[src.into()], "len")?
+            .into_int_value();
+        let mask = self
+            .call_rt(self.rt.mask_new, &[len.into()], "mask")?
+            .into_pointer_value();
         let zero = self.ctx.i64_type().const_zero();
 
         self.emit_loop(len, move |e, i| {
@@ -695,7 +722,9 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Type::Vec(elem) | Type::Stream(elem) if matches!(**elem, Type::Record(_)) => {
-                let Type::Record(fields) = &**elem else { unreachable!("guarded") };
+                let Type::Record(fields) = &**elem else {
+                    unreachable!("guarded")
+                };
                 let index = fields
                     .iter()
                     .position(|(n, _)| n == name)
@@ -717,8 +746,9 @@ impl<'ctx> Emitter<'ctx> {
                 };
                 let ncols = sub.len();
                 let src = column.into_pointer_value();
-                let len =
-                    self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+                let len = self
+                    .call_rt(self.rt.vec_len, &[src.into()], "len")?
+                    .into_int_value();
                 let out = self
                     .call_rt(
                         self.rt.vec_new,
@@ -736,8 +766,7 @@ impl<'ctx> Emitter<'ctx> {
                     let record = e.read_slot(slot, &record_ty)?;
                     for c in 0..ncols {
                         let c = i64t.const_int(c as u64, false);
-                        let got =
-                            e.call_rt(e.rt.rec_get, &[record, c.into()], "sub")?;
+                        let got = e.call_rt(e.rt.rec_get, &[record, c.into()], "sub")?;
                         e.builder
                             .build_call(
                                 e.rt.vec_set,
@@ -758,8 +787,9 @@ impl<'ctx> Emitter<'ctx> {
                     .clone();
                 let elem_ty = (**elem).clone();
                 let src = value.into_pointer_value();
-                let len =
-                    self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+                let len = self
+                    .call_rt(self.rt.vec_len, &[src.into()], "len")?
+                    .into_int_value();
                 let out = self
                     .call_rt(
                         self.rt.vec_new,
@@ -808,10 +838,16 @@ impl<'ctx> Emitter<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let i64t = self.ctx.i64_type();
         let src = value.into_pointer_value();
-        let len = self.call_rt(self.rt.vec_len, &[src.into()], "len")?.into_int_value();
+        let len = self
+            .call_rt(self.rt.vec_len, &[src.into()], "len")?
+            .into_int_value();
         let zero = i64t.const_zero();
         let parts = self
-            .call_rt(self.rt.vec_new, &[len.into(), i64t.const_int(1, false).into()], "parts")?
+            .call_rt(
+                self.rt.vec_new,
+                &[len.into(), i64t.const_int(1, false).into()],
+                "parts",
+            )?
             .into_pointer_value();
 
         let elem_ty = elem.clone();
@@ -820,14 +856,19 @@ impl<'ctx> Emitter<'ctx> {
             let item = if gather {
                 e.call_rt(e.rt.rec_from_vec, &[src.into(), i.into()], "elem")?
             } else {
-                let slot =
-                    e.call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?.into_int_value();
+                let slot = e
+                    .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                    .into_int_value();
                 e.read_slot(slot, &elem_ty)?
             };
             let shown = e.show(item, &elem_ty)?;
             let shown = e.to_slot(shown, &Type::Str)?;
             e.builder
-                .build_call(e.rt.vec_set, &[parts.into(), zero.into(), i.into(), shown.into()], "")
+                .build_call(
+                    e.rt.vec_set,
+                    &[parts.into(), zero.into(), i.into(), shown.into()],
+                    "",
+                )
                 .map_err(|err| err.to_string())?;
             Ok(())
         })?;
@@ -835,10 +876,18 @@ impl<'ctx> Emitter<'ctx> {
         let open = self.string_const(open);
         let sep = self.string_const(sep);
         let close = self.string_const(close);
-        self.call_rt(self.rt.join, &[parts.into(), open.into(), sep.into(), close.into()], "joined")
+        self.call_rt(
+            self.rt.join,
+            &[parts.into(), open.into(), sep.into(), close.into()],
+            "joined",
+        )
     }
 
-    fn show(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<BasicValueEnum<'ctx>, String> {
+    fn show(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match ty {
             // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
@@ -862,7 +911,10 @@ impl<'ctx> Emitter<'ctx> {
                     .and_then(|b| b.get_parent())
                     .ok_or("no function to branch in")?;
                 let ptr_ty = self.ctx.ptr_type(AddressSpace::default());
-                let slot = self.builder.build_alloca(ptr_ty, "shown").map_err(|e| e.to_string())?;
+                let slot = self
+                    .builder
+                    .build_alloca(ptr_ty, "shown")
+                    .map_err(|e| e.to_string())?;
 
                 let present = self.call_rt(self.rt.opt_is_some, &[value], "some")?;
                 let cond = self
@@ -883,16 +935,26 @@ impl<'ctx> Emitter<'ctx> {
                     .map_err(|e| e.to_string())?;
 
                 self.builder.position_at_end(some);
-                let raw = self.call_rt(self.rt.opt_get, &[value], "unwrapped")?.into_int_value();
+                let raw = self
+                    .call_rt(self.rt.opt_get, &[value], "unwrapped")?
+                    .into_int_value();
                 let item = self.read_slot(raw, inner)?;
                 let shown = self.show(item, inner)?;
-                self.builder.build_store(slot, shown).map_err(|e| e.to_string())?;
-                self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(slot, shown)
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
 
                 self.builder.position_at_end(none);
                 let null = self.string_const("null");
-                self.builder.build_store(slot, null).map_err(|e| e.to_string())?;
-                self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(slot, null)
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
 
                 self.builder.position_at_end(done);
                 self.builder
@@ -915,7 +977,10 @@ impl<'ctx> Emitter<'ctx> {
                     .ok_or("no function to branch in")?;
                 let i64t = self.ctx.i64_type();
                 let ptr_ty = self.ctx.ptr_type(AddressSpace::default());
-                let slot = self.builder.build_alloca(ptr_ty, "shown").map_err(|e| e.to_string())?;
+                let slot = self
+                    .builder
+                    .build_alloca(ptr_ty, "shown")
+                    .map_err(|e| e.to_string())?;
                 let tag = self
                     .call_rt(self.rt.rec_get, &[value, i64t.const_zero().into()], "tag")?
                     .into_int_value();
@@ -939,18 +1004,26 @@ impl<'ctx> Emitter<'ctx> {
                             .map_err(|e| e.to_string())?;
                         self.builder.position_at_end(arm);
                         self.enum_arm(value, vname, payload, slot)?;
-                        self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+                        self.builder
+                            .build_unconditional_branch(done)
+                            .map_err(|e| e.to_string())?;
                         self.builder.position_at_end(next);
                     } else {
-                        self.builder.build_unconditional_branch(arm).map_err(|e| e.to_string())?;
+                        self.builder
+                            .build_unconditional_branch(arm)
+                            .map_err(|e| e.to_string())?;
                         self.builder.position_at_end(arm);
                         self.enum_arm(value, vname, payload, slot)?;
-                        self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+                        self.builder
+                            .build_unconditional_branch(done)
+                            .map_err(|e| e.to_string())?;
                     }
                 }
 
                 self.builder.position_at_end(done);
-                self.builder.build_load(ptr_ty, slot, "shown").map_err(|e| e.to_string())?
+                self.builder
+                    .build_load(ptr_ty, slot, "shown")
+                    .map_err(|e| e.to_string())?
             }
 
             // Keys are known and ordered at compile time, exactly as on the other two
@@ -1014,7 +1087,11 @@ impl<'ctx> Emitter<'ctx> {
             Some(pty) => {
                 let i64t = self.ctx.i64_type();
                 let raw = self
-                    .call_rt(self.rt.rec_get, &[value, i64t.const_int(1, false).into()], "payload")?
+                    .call_rt(
+                        self.rt.rec_get,
+                        &[value, i64t.const_int(1, false).into()],
+                        "payload",
+                    )?
                     .into_int_value();
                 let p = self.read_slot(raw, pty)?;
                 let shown_p = self.show(p, pty)?;
@@ -1024,7 +1101,9 @@ impl<'ctx> Emitter<'ctx> {
                 self.call_rt(self.rt.concat, &[open, close.into()], "wrapped")?
             }
         };
-        self.builder.build_store(slot, shown).map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(slot, shown)
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -1044,7 +1123,7 @@ impl<'ctx> Emitter<'ctx> {
                 // element out of a Vec, so this is unreachable until an indexing operator
                 // exists; printing gathers through the runtime instead.
                 Some(Slot::Cursor { .. }) => {
-                    return Err(unsupported("using a Vec element as a whole value"))
+                    return Err(unsupported("using a Vec element as a whole value"));
                 }
                 None => return Err(format!("local {id} is not bound in the native backend")),
             },
@@ -1094,7 +1173,11 @@ impl<'ctx> Emitter<'ctx> {
                     self.builder
                         .build_call(
                             self.rt.rec_set,
-                            &[rec.into(), i64t.const_int(i as u64, false).into(), slot.into()],
+                            &[
+                                rec.into(),
+                                i64t.const_int(i as u64, false).into(),
+                                slot.into(),
+                            ],
                             "",
                         )
                         .map_err(|e| e.to_string())?;
@@ -1144,17 +1227,24 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Kind::VecLit(items) => {
-                let elem = t
-                    .ty
-                    .elem()
-                    .ok_or_else(|| "a Vec literal that is not a Vec".to_string())?
-                    .clone();
+                let elem =
+                    t.ty.elem()
+                        .ok_or_else(|| "a Vec literal that is not a Vec".to_string())?
+                        .clone();
                 self.vec_lit(items, &elem)?
             }
 
-            Kind::Select { source, param, pred } => self.select(source, *param, pred)?,
+            Kind::Select {
+                source,
+                param,
+                pred,
+            } => self.select(source, *param, pred)?,
 
-            Kind::Map { source, param, body } => self.map(source, *param, body, &t.ty)?,
+            Kind::Map {
+                source,
+                param,
+                body,
+            } => self.map(source, *param, body, &t.ty)?,
 
             // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
             // works on the Vec of its entries.
@@ -1171,7 +1261,8 @@ impl<'ctx> Emitter<'ctx> {
             // Already a proper Vec pointer, unlike Input's raw slot: tl_read_inputs assembles
             // it itself, so there is nothing here for read_slot to unpack.
             Kind::Inputs => {
-                let elem = crate::tir::runtime_elem(&t.ty).expect("checked to be Vec<T> or Stream<T>");
+                let elem =
+                    crate::tir::runtime_elem(&t.ty).expect("checked to be Vec<T> or Stream<T>");
                 let descriptor = self.string_const(&Self::descriptor(elem));
                 self.call_rt(self.rt.read_inputs, &[descriptor.into()], "inputs")?
             }
@@ -1182,15 +1273,21 @@ impl<'ctx> Emitter<'ctx> {
             // needing the integer put back; a pointer-shaped value is already right.
             // A real branch rather than a select, so only the taken side runs: either branch
             // may allocate, loop, or divide by zero.
-            Kind::Cond { cond, then, otherwise } => {
+            Kind::Cond {
+                cond,
+                then,
+                otherwise,
+            } => {
                 let function = self
                     .builder
                     .get_insert_block()
                     .and_then(|b| b.get_parent())
                     .ok_or("no function to branch in")?;
                 let slot_ty = self.llvm_type(&t.ty)?;
-                let slot =
-                    self.builder.build_alloca(slot_ty, "cond").map_err(|e| e.to_string())?;
+                let slot = self
+                    .builder
+                    .build_alloca(slot_ty, "cond")
+                    .map_err(|e| e.to_string())?;
 
                 let test = self.expr(cond)?.into_int_value();
                 let yes = self.ctx.append_basic_block(function, "then");
@@ -1202,16 +1299,26 @@ impl<'ctx> Emitter<'ctx> {
 
                 self.builder.position_at_end(yes);
                 let v = self.expr(then)?;
-                self.builder.build_store(slot, v).map_err(|e| e.to_string())?;
-                self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(slot, v)
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
 
                 self.builder.position_at_end(no);
                 let v = self.expr(otherwise)?;
-                self.builder.build_store(slot, v).map_err(|e| e.to_string())?;
-                self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(slot, v)
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
 
                 self.builder.position_at_end(done);
-                self.builder.build_load(slot_ty, slot, "cond").map_err(|e| e.to_string())?
+                self.builder
+                    .build_load(slot_ty, slot, "cond")
+                    .map_err(|e| e.to_string())?
             }
 
             Kind::Arith { op, lhs, rhs } => {
@@ -1237,8 +1344,7 @@ impl<'ctx> Emitter<'ctx> {
                     Builtin::Tail => self.call_rt(self.rt.vec_tail, &[arg], "tail")?,
                     Builtin::Concat => {
                         let elem = t.ty.elem().expect("checked to be Vec<Vec<T>> -> Vec<T>");
-                        let ncols =
-                            self.ctx.i64_type().const_int(Self::columns(elem), false);
+                        let ncols = self.ctx.i64_type().const_int(Self::columns(elem), false);
                         self.call_rt(self.rt.vec_concat, &[arg, ncols.into()], "concat")?
                     }
                 }
@@ -1251,7 +1357,10 @@ impl<'ctx> Emitter<'ctx> {
                 let raw = self
                     .call_rt(
                         self.rt.unwrap,
-                        &[base, self.ctx.i64_type().const_int(depth as u64, false).into()],
+                        &[
+                            base,
+                            self.ctx.i64_type().const_int(depth as u64, false).into(),
+                        ],
                         "unwrapped",
                     )?
                     .into_pointer_value();
@@ -1266,7 +1375,12 @@ impl<'ctx> Emitter<'ctx> {
                 }
             }
 
-            Kind::Index { base, index, depth, elem_is_record } => {
+            Kind::Index {
+                base,
+                index,
+                depth,
+                elem_is_record,
+            } => {
                 let i64t = self.ctx.i64_type();
                 let base = self.expr(base)?;
                 let index = self.expr(index)?;
@@ -1276,7 +1390,10 @@ impl<'ctx> Emitter<'ctx> {
                         base,
                         index,
                         i64t.const_int(*depth as u64, false).into(),
-                        self.ctx.i32_type().const_int(*elem_is_record as u64, false).into(),
+                        self.ctx
+                            .i32_type()
+                            .const_int(*elem_is_record as u64, false)
+                            .into(),
                     ],
                     "at",
                 )?
@@ -1297,8 +1414,10 @@ impl<'ctx> Emitter<'ctx> {
                     .ok_or("no function to branch in")?;
                 let i64t = self.ctx.i64_type();
                 let result_ty = self.llvm_type(&t.ty)?;
-                let slot =
-                    self.builder.build_alloca(result_ty, "matched").map_err(|e| e.to_string())?;
+                let slot = self
+                    .builder
+                    .build_alloca(result_ty, "matched")
+                    .map_err(|e| e.to_string())?;
                 let subj = self.expr(subject)?;
                 let tag = self
                     .call_rt(self.rt.rec_get, &[subj, i64t.const_zero().into()], "tag")?
@@ -1308,8 +1427,10 @@ impl<'ctx> Emitter<'ctx> {
                 for (i, arm) in arms.iter().enumerate() {
                     let arm_block = self.ctx.append_basic_block(function, "match.arm");
                     if i + 1 < arms.len() {
-                        let variant =
-                            arm.variant.as_ref().ok_or("a default arm that is not last")?;
+                        let variant = arm
+                            .variant
+                            .as_ref()
+                            .ok_or("a default arm that is not last")?;
                         let vi = variants
                             .iter()
                             .position(|(n, _)| n == variant)
@@ -1329,7 +1450,9 @@ impl<'ctx> Emitter<'ctx> {
                             .map_err(|e| e.to_string())?;
                         self.builder.position_at_end(arm_block);
                         self.match_arm(subj, &variants, arm, slot)?;
-                        self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+                        self.builder
+                            .build_unconditional_branch(done)
+                            .map_err(|e| e.to_string())?;
                         self.builder.position_at_end(next);
                     } else {
                         self.builder
@@ -1337,12 +1460,16 @@ impl<'ctx> Emitter<'ctx> {
                             .map_err(|e| e.to_string())?;
                         self.builder.position_at_end(arm_block);
                         self.match_arm(subj, &variants, arm, slot)?;
-                        self.builder.build_unconditional_branch(done).map_err(|e| e.to_string())?;
+                        self.builder
+                            .build_unconditional_branch(done)
+                            .map_err(|e| e.to_string())?;
                     }
                 }
 
                 self.builder.position_at_end(done);
-                self.builder.build_load(result_ty, slot, "matched").map_err(|e| e.to_string())?
+                self.builder
+                    .build_load(result_ty, slot, "matched")
+                    .map_err(|e| e.to_string())?
             }
         })
     }
@@ -1374,7 +1501,9 @@ impl<'ctx> Emitter<'ctx> {
             self.locals.insert(pid, Slot::Value(p));
         }
         let v = self.expr(&arm.body)?;
-        self.builder.build_store(slot, v).map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(slot, v)
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -1439,15 +1568,26 @@ impl<'ctx> Emitter<'ctx> {
             .ok_or("no function to branch in")?;
         let is_zero = self
             .builder
-            .build_int_compare(IntPredicate::EQ, divisor, self.ctx.i64_type().const_zero(), "zero")
+            .build_int_compare(
+                IntPredicate::EQ,
+                divisor,
+                self.ctx.i64_type().const_zero(),
+                "zero",
+            )
             .map_err(|e| e.to_string())?;
         let fail = self.ctx.append_basic_block(function, "div.zero");
         let ok = self.ctx.append_basic_block(function, "div.ok");
-        self.builder.build_conditional_branch(is_zero, fail, ok).map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(is_zero, fail, ok)
+            .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(fail);
-        self.builder.build_call(self.rt.div_by_zero, &[], "").map_err(|e| e.to_string())?;
-        self.builder.build_unreachable().map_err(|e| e.to_string())?;
+        self.builder
+            .build_call(self.rt.div_by_zero, &[], "")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unreachable()
+            .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(ok);
         Ok(())
@@ -1477,7 +1617,10 @@ impl<'ctx> Emitter<'ctx> {
                 // the EQ/NE predicate then reads correctly for both operators.
                 BinOp::Eq | BinOp::Ne => {
                     let call = self.call_rt(self.rt.str_eq, &[l, r], "streq")?;
-                    (call.into_int_value(), self.ctx.i64_type().const_int(1, false))
+                    (
+                        call.into_int_value(),
+                        self.ctx.i64_type().const_int(1, false),
+                    )
                 }
                 // tl_str_cmp returns -1, 0 or 1, so ordering is that against zero.
                 _ => {
@@ -1524,13 +1667,18 @@ impl<'ctx> Emitter<'ctx> {
 
         let i64t = self.ctx.i64_type();
         let i32t = self.ctx.i32_type();
-        let out_slot = self.builder.build_alloca(i64t, "next_input").map_err(|e| e.to_string())?;
+        let out_slot = self
+            .builder
+            .build_alloca(i64t, "next_input")
+            .map_err(|e| e.to_string())?;
 
         let cond = self.ctx.append_basic_block(function, "fused.cond");
         let body = self.ctx.append_basic_block(function, "fused.body");
         let end = self.ctx.append_basic_block(function, "fused.end");
 
-        self.builder.build_unconditional_branch(cond).map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(cond)
+            .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(cond);
         let got = match fusion.source {
@@ -1556,8 +1704,11 @@ impl<'ctx> Emitter<'ctx> {
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(body);
-        let slot =
-            self.builder.build_load(i64t, out_slot, "slot").map_err(|e| e.to_string())?.into_int_value();
+        let slot = self
+            .builder
+            .build_load(i64t, out_slot, "slot")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
         let mut current = self.read_slot(slot, &elem_ty)?;
         let mut current_ty = elem_ty;
 
@@ -1571,7 +1722,9 @@ impl<'ctx> Emitter<'ctx> {
                 Stage::Select { param, pred } => {
                     self.locals.insert(*param, Slot::Value(current));
                     let keep = self.expr(pred)?.into_int_value();
-                    let keep_block = self.ctx.append_basic_block(function, &format!("fused.keep{i}"));
+                    let keep_block = self
+                        .ctx
+                        .append_basic_block(function, &format!("fused.keep{i}"));
                     self.builder
                         .build_conditional_branch(keep, keep_block, cond)
                         .map_err(|e| e.to_string())?;
@@ -1587,7 +1740,9 @@ impl<'ctx> Emitter<'ctx> {
         self.builder
             .build_call(self.rt.print, &[shown.into()], "")
             .map_err(|e| e.to_string())?;
-        self.builder.build_unconditional_branch(cond).map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(cond)
+            .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(end);
         Ok(())
@@ -1619,8 +1774,11 @@ fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'c
     }
 
     let i32t = ctx.i32_type();
-    let main = e.module.add_function("main", i32t.fn_type(&[], false), None);
-    e.builder.position_at_end(ctx.append_basic_block(main, "entry"));
+    let main = e
+        .module
+        .add_function("main", i32t.fn_type(&[], false), None);
+    e.builder
+        .position_at_end(ctx.append_basic_block(main, "entry"));
     e.params.clear();
     e.locals.clear();
 
@@ -1630,9 +1788,13 @@ fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'c
         let body = e.expr(&program.body)?;
         e.print(body, &program.body.ty)?;
     }
-    e.builder.build_return(Some(&i32t.const_zero())).map_err(|err| err.to_string())?;
+    e.builder
+        .build_return(Some(&i32t.const_zero()))
+        .map_err(|err| err.to_string())?;
 
-    e.module.verify().map_err(|err| format!("LLVM rejected the module: {err}"))?;
+    e.module
+        .verify()
+        .map_err(|err| format!("LLVM rejected the module: {err}"))?;
     Ok(e.module)
 }
 
@@ -1662,5 +1824,7 @@ pub fn compile_to_object(program: &Program, object: &Path) -> Result<(), String>
         )
         .ok_or_else(|| "LLVM has no target machine for this host".to_string())?;
 
-    machine.write_to_file(&module, FileType::Object, object).map_err(|e| e.to_string())
+    machine
+        .write_to_file(&module, FileType::Object, object)
+        .map_err(|e| e.to_string())
 }

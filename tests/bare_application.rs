@@ -10,7 +10,10 @@ fn err(src: &str) -> String {
 
 #[test]
 fn matches_the_parenthesized_form() {
-    assert_eq!(toylang::run("str 5").unwrap(), toylang::run("str(5)").unwrap());
+    assert_eq!(
+        toylang::run("str 5").unwrap(),
+        toylang::run("str(5)").unwrap()
+    );
 }
 
 /// Right-recursive, so `f g x` is `f(g(x))` rather than needing `f(g(x))` spelled with parens.
@@ -18,7 +21,10 @@ fn matches_the_parenthesized_form() {
 fn chains_right_to_left() {
     let chained = "fn inc(n: Int) -> Int = n + 1\n\nstr inc 5";
     let parenthesized = "fn inc(n: Int) -> Int = n + 1\n\nstr(inc(5))";
-    assert_eq!(toylang::run(chained).unwrap(), toylang::run(parenthesized).unwrap());
+    assert_eq!(
+        toylang::run(chained).unwrap(),
+        toylang::run(parenthesized).unwrap()
+    );
 }
 
 /// `operand` and everything it calls (`unary`, `postfix`, `atom`) never look for a bare call, so
@@ -59,5 +65,8 @@ fn select_and_map_cannot_be_redefined() {
 /// swallow the next definition.
 #[test]
 fn a_function_body_does_not_swallow_what_follows_it() {
-    assert_eq!(toylang::run("fn f(x: Int) -> Int = x\n\nf(1)").unwrap(), "1\n");
+    assert_eq!(
+        toylang::run("fn f(x: Int) -> Int = x\n\nf(1)").unwrap(),
+        "1\n"
+    );
 }

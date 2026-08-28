@@ -10,7 +10,10 @@ pub struct Error {
 
 impl Error {
     pub fn new(span: Span, msg: impl Into<String>) -> Self {
-        Error { span, msg: msg.into() }
+        Error {
+            span,
+            msg: msg.into(),
+        }
     }
 }
 

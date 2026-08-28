@@ -4,8 +4,8 @@ use winnow::stream::{LocatingSlice, Location, Stream};
 use winnow::token::take_while;
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, MatchArm, Module, Param, Pattern,
-    Span, TypeExpr, Variant,
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, MatchArm, Module, Param, Pattern, Span,
+    TypeExpr, Variant,
 };
 use crate::error::Error;
 
@@ -163,9 +163,10 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
             Tok::Int(n)
         }
         c if c.is_ascii_alphabetic() || c == '_' => {
-            let word = take_while::<_, _, Error>(1.., |c: char| c.is_ascii_alphanumeric() || c == '_')
-                .parse_next(input)
-                .expect("a letter or underscore was just confirmed to follow");
+            let word =
+                take_while::<_, _, Error>(1.., |c: char| c.is_ascii_alphanumeric() || c == '_')
+                    .parse_next(input)
+                    .expect("a letter or underscore was just confirmed to follow");
             match word {
                 "fn" => Tok::Fn,
                 "pub" => Tok::Pub,
@@ -333,7 +334,10 @@ const PIPE_RIGHT: u8 = 2;
 const COND_POWER: u8 = 3;
 
 pub fn parse(src: &str) -> Result<File, Error> {
-    let mut p = Cursor { input: LocatingSlice::new(src), bare_ok: true };
+    let mut p = Cursor {
+        input: LocatingSlice::new(src),
+        bare_ok: true,
+    };
 
     // Declarations in any order and any mix, since no kind can refer to another's position:
     // aliases and enums are resolved before any signature is read.
@@ -360,15 +364,26 @@ pub fn parse(src: &str) -> Result<File, Error> {
     let body = p.expr(0)?;
     let (rest, rest_span) = p.peek()?;
     if rest != Tok::Eof {
-        return Err(Error::new(rest_span, format!("expected end of program, found {rest}")));
+        return Err(Error::new(
+            rest_span,
+            format!("expected end of program, found {rest}"),
+        ));
     }
-    Ok(File { aliases, enums, defs, body })
+    Ok(File {
+        aliases,
+        enums,
+        defs,
+        body,
+    })
 }
 
 /// A module is declarations only, with no trailing expression -- there is nothing here to run,
 /// only names for a program to import. `pub` marks which ones a program actually receives.
 pub fn parse_module(src: &str) -> Result<Module, Error> {
-    let mut p = Cursor { input: LocatingSlice::new(src), bare_ok: true };
+    let mut p = Cursor {
+        input: LocatingSlice::new(src),
+        bare_ok: true,
+    };
     let mut defs = Vec::new();
     let mut enums = Vec::new();
     loop {
@@ -385,7 +400,10 @@ pub fn parse_module(src: &str) -> Result<Module, Error> {
             Tok::Enum => enums.push(p.enum_decl(false)?),
             Tok::Eof => break,
             other => {
-                return Err(Error::new(span, format!("expected `fn` or end of module, found {other}")));
+                return Err(Error::new(
+                    span,
+                    format!("expected `fn` or end of module, found {other}"),
+                ));
             }
         }
     }
@@ -469,12 +487,19 @@ impl<'i> Cursor<'i> {
         }
         self.advance()?;
         let param_ty = self.type_expr()?;
-        let param = Param { span: param_span.to(param_ty.span()), name: param_name, ty: param_ty };
+        let param = Param {
+            span: param_span.to(param_ty.span()),
+            name: param_name,
+            ty: param_ty,
+        };
 
         let close = self.eat(Tok::RParen)?;
         let (arrow, _) = self.peek()?;
         if arrow != Tok::Arrow {
-            return Err(Error::new(close, format!("function `{name}` needs a return type")));
+            return Err(Error::new(
+                close,
+                format!("function `{name}` needs a return type"),
+            ));
         }
         self.advance()?;
         let ret = self.type_expr()?;
@@ -484,7 +509,14 @@ impl<'i> Cursor<'i> {
         let body = self.expr(0);
         self.bare_ok = true;
         let body = body?;
-        Ok(Def { span: start.to(body.span()), name, param, ret, body, is_pub })
+        Ok(Def {
+            span: start.to(body.span()),
+            name,
+            param,
+            ret,
+            body,
+            is_pub,
+        })
     }
 
     /// `Str`, `Int`, `Bool`, `Vec<T>`, or `Stream<T>`.
@@ -550,7 +582,10 @@ impl<'i> Cursor<'i> {
             }
         }
         let close = self.eat(Tok::RBrace)?;
-        Ok(Expr::RecordLit { fields, span: open.to(close) })
+        Ok(Expr::RecordLit {
+            fields,
+            span: open.to(close),
+        })
     }
 
     /// `enum Shape { point, circle{r: Int}, celsius(Int) }`
@@ -580,7 +615,11 @@ impl<'i> Cursor<'i> {
                     }
                     _ => None,
                 };
-                variants.push(Variant { name: vname, span: vspan, payload });
+                variants.push(Variant {
+                    name: vname,
+                    span: vspan,
+                    payload,
+                });
                 let (sep, _) = self.peek()?;
                 if sep != Tok::Comma {
                     break;
@@ -589,7 +628,12 @@ impl<'i> Cursor<'i> {
             }
         }
         let close = self.eat(Tok::RBrace)?;
-        Ok(EnumDecl { name, variants, span: start.to(close), is_pub })
+        Ok(EnumDecl {
+            name,
+            variants,
+            span: start.to(close),
+            is_pub,
+        })
     }
 
     /// `type Db = {users: Vec<User>}`
@@ -618,7 +662,10 @@ impl<'i> Cursor<'i> {
             }
         }
         let close = self.eat(Tok::RBrace)?;
-        Ok(TypeExpr::Record { fields, span: open.to(close) })
+        Ok(TypeExpr::Record {
+            fields,
+            span: open.to(close),
+        })
     }
 
     /// `f x`, the parenless "root" call form. Legal only where `expr` is entered fresh (a pipe
@@ -638,7 +685,12 @@ impl<'i> Cursor<'i> {
                     self.advance()?;
                     let arg = self.bare_argument()?;
                     let full = span.to(arg.span());
-                    return Ok(Expr::Call { func: name, func_span: span, arg: Box::new(arg), span: full });
+                    return Ok(Expr::Call {
+                        func: name,
+                        func_span: span,
+                        arg: Box::new(arg),
+                        span: full,
+                    });
                 }
             }
         }
@@ -658,7 +710,12 @@ impl<'i> Cursor<'i> {
                 self.advance()?;
                 let arg = self.bare_argument()?;
                 let full = span.to(arg.span());
-                return Ok(Expr::Call { func: name, func_span: span, arg: Box::new(arg), span: full });
+                return Ok(Expr::Call {
+                    func: name,
+                    func_span: span,
+                    arg: Box::new(arg),
+                    span: full,
+                });
             }
         }
         self.postfix()
@@ -672,7 +729,9 @@ impl<'i> Cursor<'i> {
     fn arm_starts_here(&self) -> bool {
         let mut probe = self.input;
         let mut next = || read_tok(&mut probe).map(|(t, _)| t);
-        let Ok(Tok::Ident(name)) = next() else { return false };
+        let Ok(Tok::Ident(name)) = next() else {
+            return false;
+        };
         match next() {
             Ok(Tok::Arrow) => true,
             Ok(Tok::LParen) if name == "any" => {
@@ -702,7 +761,11 @@ impl<'i> Cursor<'i> {
             self.eat(Tok::Arrow)?;
             let body = self.expr(COND_POWER)?;
             let span = pattern.span().to(body.span());
-            arms.push(MatchArm { pattern, body, span });
+            arms.push(MatchArm {
+                pattern,
+                body,
+                span,
+            });
             let (sep, _) = self.peek()?;
             if sep != Tok::SlashSlash {
                 break;
@@ -719,10 +782,16 @@ impl<'i> Cursor<'i> {
         if name == "any" && next == Tok::LParen {
             self.advance()?;
             let close = self.eat(Tok::RParen)?;
-            return Ok(Pattern::Default { span: span.to(close) });
+            return Ok(Pattern::Default {
+                span: span.to(close),
+            });
         }
         if next != Tok::LBrace {
-            return Ok(Pattern::Variant { name, span, fields: None });
+            return Ok(Pattern::Variant {
+                name,
+                span,
+                fields: None,
+            });
         }
         self.advance()?;
         let mut names = Vec::new();
@@ -747,13 +816,24 @@ impl<'i> Cursor<'i> {
             }
         }
         let close = self.eat(Tok::RBrace)?;
-        let fields = FieldsPattern { names, rest, span: brace_span.to(close) };
-        Ok(Pattern::Variant { name, span: span.to(close), fields: Some(fields) })
+        let fields = FieldsPattern {
+            names,
+            rest,
+            span: brace_span.to(close),
+        };
+        Ok(Pattern::Variant {
+            name,
+            span: span.to(close),
+            fields: Some(fields),
+        })
     }
 
     fn expr(&mut self, min_power: u8) -> Result<Expr, Error> {
-        let mut lhs =
-            if self.arm_starts_here() { self.match_expr()? } else { self.root(min_power)? };
+        let mut lhs = if self.arm_starts_here() {
+            self.match_expr()?
+        } else {
+            self.root(min_power)?
+        };
 
         // Right-associative, so `a if c else b if d else e` chains rightward without parens.
         let (tok, _) = self.peek()?;
@@ -779,7 +859,11 @@ impl<'i> Cursor<'i> {
             self.advance()?;
             let rhs = self.expr(PIPE_RIGHT)?;
             let span = lhs.span().to(rhs.span());
-            lhs = Expr::Pipe { lhs: Box::new(lhs), rhs: Box::new(rhs), span };
+            lhs = Expr::Pipe {
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+                span,
+            };
         }
 
         Ok(lhs)
@@ -799,7 +883,12 @@ impl<'i> Cursor<'i> {
             self.advance()?;
             let rhs = self.operand(right)?;
             let span = lhs.span().to(rhs.span());
-            lhs = Expr::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs), span };
+            lhs = Expr::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+                span,
+            };
         }
 
         Ok(lhs)
@@ -813,7 +902,10 @@ impl<'i> Cursor<'i> {
             self.advance()?;
             let base = self.unary()?;
             let full = span.to(base.span());
-            return Ok(Expr::Neg { base: Box::new(base), span: full });
+            return Ok(Expr::Neg {
+                base: Box::new(base),
+                span: full,
+            });
         }
         self.postfix()
     }
@@ -830,27 +922,44 @@ impl<'i> Cursor<'i> {
                     if next == Tok::RBracket {
                         let close = self.advance()?.1;
                         let span = e.span().to(close);
-                        e = Expr::Project { base: Box::new(e), span };
+                        e = Expr::Project {
+                            base: Box::new(e),
+                            span,
+                        };
                     } else {
                         let index = self.delimited(|p| p.expr(0))?;
                         let close = self.eat(Tok::RBracket)?;
                         let span = e.span().to(close);
-                        e = Expr::Index { base: Box::new(e), index: Box::new(index), span };
+                        e = Expr::Index {
+                            base: Box::new(e),
+                            index: Box::new(index),
+                            span,
+                        };
                     }
                 }
                 Tok::Bang => {
                     let bang = self.advance()?.1;
                     let span = e.span().to(bang);
-                    e = Expr::Unwrap { base: Box::new(e), span };
+                    e = Expr::Unwrap {
+                        base: Box::new(e),
+                        span,
+                    };
                 }
                 Tok::Dot => {
                     self.advance()?;
                     let (ft, fspan) = self.advance()?;
                     let Tok::Ident(name) = ft else {
-                        return Err(Error::new(fspan, format!("expected a field name, found {ft}")));
+                        return Err(Error::new(
+                            fspan,
+                            format!("expected a field name, found {ft}"),
+                        ));
                     };
                     let span = e.span().to(fspan);
-                    e = Expr::Field { base: Box::new(e), name, span };
+                    e = Expr::Field {
+                        base: Box::new(e),
+                        name,
+                        span,
+                    };
                 }
                 _ => return Ok(e),
             }
@@ -899,7 +1008,10 @@ impl<'i> Cursor<'i> {
                     }
                 }
                 let close = self.eat(Tok::RBracket)?;
-                Ok(Expr::VecLit { items, span: span.to(close) })
+                Ok(Expr::VecLit {
+                    items,
+                    span: span.to(close),
+                })
             }
 
             Tok::Ident(name) => {
@@ -929,7 +1041,12 @@ impl<'i> Cursor<'i> {
                     return Ok(Expr::Var { name, span });
                 }
                 let (arg, close) = self.argument()?;
-                Ok(Expr::Call { func: name, func_span: span, arg: Box::new(arg), span: span.to(close) })
+                Ok(Expr::Call {
+                    func: name,
+                    func_span: span,
+                    arg: Box::new(arg),
+                    span: span.to(close),
+                })
             }
 
             Tok::LParen => {
@@ -938,7 +1055,10 @@ impl<'i> Cursor<'i> {
                 Ok(inner)
             }
 
-            other => Err(Error::new(span, format!("expected an expression, found {other}"))),
+            other => Err(Error::new(
+                span,
+                format!("expected an expression, found {other}"),
+            )),
         }
     }
 }

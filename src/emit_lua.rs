@@ -237,7 +237,10 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
             out.push_str("while true do\n");
             out.push_str(&format!("  local t_line = {NEXT_INPUT}()\n"));
             out.push_str("  if t_line == nil then break end\n");
-            let elem = program.inputs.as_ref().expect("an inputs source recorded its element");
+            let elem = program
+                .inputs
+                .as_ref()
+                .expect("an inputs source recorded its element");
             ("t_line".to_string(), elem.clone())
         }
         tir::Source::Lines => {
@@ -285,7 +288,10 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
         Type::Int | Type::Bool => format!("tostring({value})"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
-            format!("tl_join({value}, function({e}) return {} end)", show(elem, &e, depth + 1))
+            format!(
+                "tl_join({value}, function({e}) return {} end)",
+                show(elem, &e, depth + 1)
+            )
         }
         Type::Opt(inner) => {
             let v = format!("o{depth}");
@@ -306,7 +312,9 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
             }
             let mut body = String::new();
             if payloads.len() < variants.len() {
-                body.push_str(&format!("if type({n}) == \"string\" then return tl_quote({n}) end "));
+                body.push_str(&format!(
+                    "if type({n}) == \"string\" then return tl_quote({n}) end "
+                ));
             }
             for (i, (vname, pty)) in payloads.iter().enumerate() {
                 let pty = pty.as_ref().expect("filtered to payload variants");
@@ -351,9 +359,9 @@ fn contains_opt(ty: &Type) -> bool {
         Type::Opt(_) => true,
         Type::Vec(t) => contains_opt(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_opt(t)),
-        Type::Enum { variants, .. } => {
-            variants.iter().any(|(_, p)| p.as_ref().is_some_and(contains_opt))
-        }
+        Type::Enum { variants, .. } => variants
+            .iter()
+            .any(|(_, p)| p.as_ref().is_some_and(contains_opt)),
         _ => false,
     }
 }
@@ -374,9 +382,9 @@ fn contains_vec(ty: &Type) -> bool {
         Type::Vec(_) => true,
         Type::Opt(t) => contains_vec(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_vec(t)),
-        Type::Enum { variants, .. } => {
-            variants.iter().any(|(_, p)| p.as_ref().is_some_and(contains_vec))
-        }
+        Type::Enum { variants, .. } => variants
+            .iter()
+            .any(|(_, p)| p.as_ref().is_some_and(contains_vec)),
         _ => false,
     }
 }
@@ -458,7 +466,11 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.concat |= *which == Builtin::Concat;
                 walk(arg, used);
             }
-            Kind::Cond { cond, then, otherwise } => {
+            Kind::Cond {
+                cond,
+                then,
+                otherwise,
+            } => {
                 walk(cond, used);
                 walk(then, used);
                 walk(otherwise, used);
@@ -534,7 +546,11 @@ fn expr(t: &Tir) -> String {
             BinOp::Mul => format!("tl_i32({} * {})", expr(lhs), expr(rhs)),
             other => unreachable!("{other} is not arithmetic"),
         },
-        Kind::Cond { cond, then, otherwise } => format!(
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => format!(
             "(function() if {} then return {} else return {} end end)()",
             expr(cond),
             expr(then),
@@ -562,16 +578,33 @@ fn expr(t: &Tir) -> String {
             format!("({} {} {})", expr(lhs), lua_op(*op), expr(rhs))
         }
         // Lua has no expression-level `let`, so the binding becomes a call.
-        Kind::Bind { local: id, value, body } => {
-            format!("(function({}) return {} end)({})", local(*id), expr(body), expr(value))
+        Kind::Bind {
+            local: id,
+            value,
+            body,
+        } => {
+            format!(
+                "(function({}) return {} end)({})",
+                local(*id),
+                expr(body),
+                expr(value)
+            )
         }
-        Kind::Map { source, param, body } => format!(
+        Kind::Map {
+            source,
+            param,
+            body,
+        } => format!(
             "tl_map({}, function({}) return {} end)",
             expr(source),
             local(*param),
             expr(body)
         ),
-        Kind::Select { source, param, pred } => format!(
+        Kind::Select {
+            source,
+            param,
+            pred,
+        } => format!(
             "tl_select({}, function({}) return {} end)",
             expr(source),
             local(*param),
@@ -584,7 +617,9 @@ fn expr(t: &Tir) -> String {
         }
         // A Lua table of records is a table of tables, so collapsing needs no gather here;
         // `elem_is_record` matters only where the columns are stored apart.
-        Kind::Index { base, index, depth, .. } => {
+        Kind::Index {
+            base, index, depth, ..
+        } => {
             format!("tl_at({}, {}, {})", expr(base), expr(index), depth)
         }
         Kind::Field { base, name } => {
@@ -605,7 +640,10 @@ fn expr(t: &Tir) -> String {
             for (i, arm) in arms.iter().enumerate() {
                 let mut run = String::new();
                 if let Some(pid) = arm.payload {
-                    let variant = arm.variant.as_ref().expect("only a variant arm has a payload");
+                    let variant = arm
+                        .variant
+                        .as_ref()
+                        .expect("only a variant arm has a payload");
                     run.push_str(&format!(
                         "local {} = {subj}[{}] ",
                         local(pid),

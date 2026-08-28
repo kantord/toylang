@@ -12,8 +12,8 @@ use std::path::Path;
 #[test]
 fn tag_the_corpus_with_node_types() {
     for case in support::cases() {
-        let program = toylang::compile(&case.program)
-            .unwrap_or_else(|e| panic!("{}: {e}", case.name));
+        let program =
+            toylang::compile(&case.program).unwrap_or_else(|e| panic!("{}: {e}", case.name));
         let tags = toylang::tags::node_types(&program);
         let path = support::dir().join(format!("{}.yaml", case.name));
         patch_node_types(&path, &tags);
@@ -21,8 +21,7 @@ fn tag_the_corpus_with_node_types() {
 }
 
 fn patch_node_types(path: &Path, tags: &[String]) {
-    let text = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let line = format!("node_types: [{}]", tags.join(", "));
 
     let mut lines: Vec<&str> = text.lines().collect();
