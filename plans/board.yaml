@@ -34,6 +34,13 @@
   needs: []
   status: todo
 
+- id: live-inputs-validation
+  issue: gh:15
+  title: Validate input on the live fused-inputs path, matching fixture runs
+  kind: build
+  needs: []
+  status: todo
+
 - id: stdin-rule-build
   issue: gh:7
   title: Implement the decided mapper-body source rule, with its rejection test
