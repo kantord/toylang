@@ -490,6 +490,16 @@ Three distinguishable outcomes: a value, a *specific* absence, a *specific* erro
 
 ## Pattern matching is decoding
 
+TODO (user, 2026-08-28): FizzBuzz is the case study for the matcher surface's first cut. The
+shipped conditional chain -- `"FizzBuzz" if . % 15 == 0 else "Fizz" if . % 3 == 0 else ...` --
+should be writable as guard arms, `. % 15 == 0 -> "FizzBuzz" or . % 3 == 0 -> "Fizz" or ...`:
+an arm is a match-typed value (produce-or-decline), `or` is its composition, and arms compose
+the way logical expressions do, so the program barely changes shape. Convergence to resolve
+when this gets its grilling: the enum match shipped `//` as its arm separator, and the
+oddities inventory already questions that token -- if `or` becomes arm composition, one of
+them yields, because two spellings for first-match-wins is the duplication this language
+keeps refusing.
+
 TODO (user): Pattern matching in this language might not need dedicated syntax. Instead, an
 "inline mapping" reuses the same shape a zod-style parser already has: a matcher on one side,
 the unpacked value on the other. `int(.x) -> .x * 2` matches only if the subject is an integer,

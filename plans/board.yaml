@@ -75,6 +75,12 @@
   needs: []
   status: todo
 
+- id: matcher-first-cut-design
+  title: Grill the matcher surface first cut -- guard arms with or-composition, FizzBuzz the case study, reconcile with the enum arms token
+  kind: decide
+  needs: []
+  status: todo
+
 - id: language-oddities-review
   title: Review the oddities inventory and settle each item
   kind: decide
@@ -118,7 +124,7 @@
   title: Introduce the hooks per the adopted proposal, steps 1-3
   kind: build
   needs: [quality-practices-adoption]
-  status: delegated
+  status: done
 
 - id: sinkhole-machinery
   title: Adopt the sinkhole rule once real exemption pressure exists
