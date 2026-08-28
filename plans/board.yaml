@@ -16,7 +16,7 @@
   title: Enum payloads accept any single type, not only records
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: stdin-rule-decision
   issue: gh:7
