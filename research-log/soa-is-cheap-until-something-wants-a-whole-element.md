@@ -43,6 +43,11 @@ whole-element want by construction, and
 [Vec of enum falls into the boxed default nobody chose](vec-of-enum-falls-into-the-boxed-default-nobody-chose.md)
 records what the layout did about it while nobody was deciding.
 
+The boundary also broke without any new operator: a `Kind::Match` guard chain over `.` inside
+`map` tripped it by evaluating its subject unconditionally, even when no arm read the subject as
+a value. See
+[a match evaluated its subject even when no arm read it](a-match-evaluated-its-subject-even-when-no-arm-read-it.md).
+
 Implementation note that took a bug to learn: the number of columns cannot stand in for "is this
 element a record". A record with one field has one column, exactly like a `Vec<Int>`, and the
 input parser used the count as the test. `Vec<{name: Str}>` then stored record pointers where

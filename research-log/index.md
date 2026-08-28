@@ -108,3 +108,6 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
   -- Input is validated once against serde_json and re-serialized before any backend runs, which
   hides six backends' JSON-parsing differences except for the one class of character that gate
   cannot normalize away.
+- [A match evaluated its subject even when no arm read it](a-match-evaluated-its-subject-even-when-no-arm-read-it.md)
+  -- Native's match codegen called self.expr(subject) unconditionally, forcing a whole-record read
+  out of a struct-of-arrays cursor for a guard chain that never touches the subject value.

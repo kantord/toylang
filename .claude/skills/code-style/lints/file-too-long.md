@@ -41,3 +41,9 @@ merge-base"), and move on. See
 [too-many-lines](/.claude/skills/code-style/lints/too-many-lines.md) for the
 sibling case (a function, not a whole file) and the same reasoning applied
 there.
+
+The SoA-cursor-match session (issue #40) hit this on `emit_llvm.rs`: 1865
+lines at merge-base, 1870 after a five-line comment-and-restructure fix
+inside one function. Same rule -- the diff didn't cause the file being over
+budget, it nudged an already-over file by a few lines while fixing an
+unrelated bug, and that stays inherited.

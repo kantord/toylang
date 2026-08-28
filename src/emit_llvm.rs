@@ -1428,15 +1428,19 @@ impl<'ctx> Emitter<'ctx> {
                     .builder
                     .build_alloca(result_ty, "matched")
                     .map_err(|e| e.to_string())?;
-                let subj = self.expr(subject)?;
-                // The tag is read once, and only when a variant arm exists to test against it.
-                let tag = if arms.iter().any(|a| a.variant.is_some()) {
-                    Some(
+                // The subject is only read as a whole value when a variant arm needs its tag or
+                // payload. A pure guard chain never touches it, which matters when the subject is
+                // a struct-of-arrays cursor: `.` bound inside `map`/`select` over a Vec of records
+                // cannot be materialised, only its fields read, and a guard chain over `.` reads
+                // fields exclusively.
+                let needs_subject = arms.iter().any(|a| a.variant.is_some());
+                let subj = needs_subject.then(|| self.expr(subject)).transpose()?;
+                let tag = match subj {
+                    Some(subj) => Some(
                         self.call_rt(self.rt.rec_get, &[subj, i64t.const_zero().into()], "tag")?
                             .into_int_value(),
-                    )
-                } else {
-                    None
+                    ),
+                    None => None,
                 };
                 let done = self.ctx.append_basic_block(function, "match.done");
 
@@ -1508,7 +1512,7 @@ impl<'ctx> Emitter<'ctx> {
     /// one on its way in.
     fn match_arm(
         &mut self,
-        subj: BasicValueEnum<'ctx>,
+        subj: Option<BasicValueEnum<'ctx>>,
         variants: &[(String, Option<Type>)],
         arm: &tir::MatchArm,
         slot: PointerValue<'ctx>,
@@ -1521,6 +1525,7 @@ impl<'ctx> Emitter<'ctx> {
                 .find(|(n, _)| n == variant)
                 .and_then(|(_, p)| p.as_ref())
                 .ok_or_else(|| format!("`{variant}` has no payload"))?;
+            let subj = subj.ok_or("a payload arm with no subject value")?;
             let raw = self
                 .call_rt(
                     self.rt.rec_get,

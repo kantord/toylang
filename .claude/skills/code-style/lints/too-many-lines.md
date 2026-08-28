@@ -63,13 +63,6 @@ slightly -- and the same reasoning applied: growth that neither creates the
 finding nor is the split conversation itself stays inherited. The
 field-order session (issue #21) is a third instance: the reordered-fields
 error hint grew the already-over `check()` by three lines (132 to 135), and
-<<<<<<< HEAD
-stayed inherited by the same rule. The Opt-in-the-grammar session (issue
-#27) is a fourth: its whole diff to `check.rs` was a ten-line `resolve()`
-match arm, touching neither `check()` (still 135) nor `synth()` (still 592)
-at all -- inherited by the same rule, with an even more direct read since
-the flagged functions were not edited.
-=======
 stayed inherited by the same rule.
 
 The JSON-string-conformance session (issue #26) is a fourth instance, and
@@ -79,4 +72,17 @@ from 154 to 163 lines. Same rule, same outcome -- the same edit also grew
 that file's two cognitive-complexity findings (issue #25), which this
 session left standing for the same reason since that lesson does not
 exist yet.
->>>>>>> issue-26
+
+The Opt-in-the-grammar session (issue #27) is a fifth instance: its whole
+diff to `check.rs` was a ten-line `resolve()` match arm, touching neither
+`check()` (still 135) nor `synth()` (still 592) at all -- inherited by the
+same rule, with an even more direct read since the flagged functions were
+not edited.
+
+The SoA-cursor-match session (issue #40) is a sixth instance, and the
+clearest yet: the fix rewrote `emit_llvm.rs`'s `Kind::Match` arm inside
+`expr()`, adding a four-line comment and turning an `if`/`else` into a
+`match` -- text lines went up, but clippy's own count of `expr()` came out
+at 334/100 both before and after the change (verified the same way, via a
+merge-base worktree). The finding didn't just stay inherited, it was
+provably unaffected by lines added elsewhere in the same function.
