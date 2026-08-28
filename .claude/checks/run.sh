@@ -44,6 +44,22 @@ limit=$(grep -oE '^max_file_lines[[:space:]]*=[[:space:]]*[0-9]+' .claude/checks
 # rewrites node_types on every run).
 readonly OWNED=('*.rs' '*.md' '*.sh')
 
+# AGENTS.md has sessions commit their own work; ending a turn with a diff
+# still sitting in the tree is the politeness stall (issue #18), not a
+# decision anyone needs to make. Same reasoning as the rustfmt hook: one
+# right answer, so the finding is the fix itself, no lesson to look up.
+uncommitted=$(git status --porcelain -- "${OWNED[@]}" 2>/dev/null)
+if [ -n "$uncommitted" ]; then
+  {
+    echo "Uncommitted work at Stop:"
+    echo
+    echo "$uncommitted"
+    echo
+    echo "Commit it before ending the turn -- per AGENTS.md, agents commit their own work here. This is not a code-style finding: there is no lesson to read, committing is the fix."
+  } >&2
+  exit 2
+fi
+
 # Files this session touched: committed on this branch since it left main,
 # plus anything uncommitted. Renames in status report as "old -> new", so the
 # last field is the path that exists now.
