@@ -1,14 +1,21 @@
 //! The docs harness: every code fragment in `docs/**/*.md` is a real program.
 //!
-//! A fragment is a `toylang` fence, an `input` fence if the program reads one, and exactly one
-//! of an `output`, `refuses`, or `error` fence. The first two go through the same seven-backend
-//! agreement check as the corpus, because a docs fragment is a corpus case defined in prose; an
-//! `error` fence pins the checker's message for a program the docs show being turned away. A
-//! page can also embed an existing corpus case by id with a `case` fence instead of repeating
-//! its program.
+//! A fragment is a `toylang` fence, an `input` or `fixture` fence if the program reads stdin,
+//! and exactly one of an `output`, `refuses`, or `error` fence. The first two go through the
+//! same seven-backend agreement check as the corpus, because a docs fragment is a corpus case
+//! defined in prose; an `error` fence pins the checker's message for a program the docs show
+//! being turned away. A page can also embed an existing corpus case by id with a `case` fence
+//! instead of repeating its program.
 //!
 //! What this buys is that the documentation cannot lie: a claim about what a program prints is
 //! run, not proofread, and drift between the docs and the compiler fails `just test`.
+//!
+//! `fixture` is `input` for stdin that cannot live in the repo: the fence names a path,
+//! relative to the repo root, to a gitignored file supplied locally rather than committed
+//! text. A page reaches for it instead of `input` when the stdin itself would be the thing
+//! under a copyright or licensing question, not just the program that reads it. When the path
+//! doesn't resolve to a file -- the ordinary case for anyone who hasn't supplied their own copy
+//! -- the fragment is gated: skipped rather than failed, since there is nothing to run.
 
 mod support;
 
@@ -35,17 +42,60 @@ struct Fragment {
     outcome: Outcome,
 }
 
+/// What a pending fragment's stdin will be, before the closing expectation fence arrives.
+enum PendingInput {
+    None,
+    /// Text written into the page itself, via an `input` fence.
+    Inline(String),
+    /// Resolved from a `fixture` fence: the path named a file, and this is its content.
+    Fixture(String),
+    /// A `fixture` fence named a path with nothing there. The fragment is gated: real once
+    /// someone supplies the file, skipped rather than failed until they do.
+    Gated,
+}
+
+/// Reads a `fixture` fence's named path, relative to the repo root, into stdin content.
+fn resolve_fixture(path: &str) -> PendingInput {
+    match std::fs::read_to_string(repo_root().join(path)) {
+        Ok(content) => PendingInput::Fixture(content),
+        Err(_) => PendingInput::Gated,
+    }
+}
+
+/// The stdin a fragment actually runs with, or `None` if it is gated on a missing fixture.
+fn resolved(input: PendingInput) -> Option<Option<String>> {
+    match input {
+        PendingInput::None => Some(None),
+        PendingInput::Inline(s) | PendingInput::Fixture(s) => Some(Some(s)),
+        PendingInput::Gated => None,
+    }
+}
+
+/// Surfaces what could not be checked this run, without failing the test over it: a gated
+/// fragment is a claim nobody here can verify, not a broken one.
+fn report_gated(gated: &[String]) {
+    if !gated.is_empty() {
+        eprintln!(
+            "{} fragment(s) gated on a missing local fixture, not run: {}",
+            gated.len(),
+            gated.join(", ")
+        );
+    }
+}
+
 #[test]
 fn every_fragment_is_a_real_program() {
     let mut fragments = Vec::new();
     let mut embedded = Vec::new();
+    let mut gated = Vec::new();
     for (page, text) in pages() {
-        extract(&page, &text, &mut fragments, &mut embedded);
+        extract(&page, &text, &mut fragments, &mut embedded, &mut gated);
     }
     assert!(
         !fragments.is_empty(),
         "the docs have no fragments, so this test proves nothing"
     );
+    report_gated(&gated);
 
     let mut failures = Vec::new();
 
@@ -123,8 +173,12 @@ fn every_builtin_has_a_reference_page() {
     );
 }
 
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
+}
+
 fn docs_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("docs")
+    repo_root().join("docs")
 }
 
 /// Every markdown page under `docs/`, as (path relative to the repo, content), sorted so
@@ -169,9 +223,10 @@ fn extract(
     text: &str,
     fragments: &mut Vec<Fragment>,
     embedded: &mut Vec<(String, String)>,
+    gated: &mut Vec<String>,
 ) {
     // A `toylang` fence whose expectation fence has not arrived yet.
-    let mut pending: Option<(String, String, Option<String>)> = None;
+    let mut pending: Option<(String, String, PendingInput)> = None;
     let mut lines = text.lines().enumerate().peekable();
 
     while let Some((i, line)) = lines.next() {
@@ -195,12 +250,24 @@ fn extract(
                 if let Some((prev, ..)) = pending {
                     panic!("{prev}: fragment has no `output`, `refuses`, or `error` fence");
                 }
-                pending = Some((at, body, None));
+                pending = Some((at, body, PendingInput::None));
             }
             "input" => match &mut pending {
-                Some((_, _, input @ None)) => *input = Some(body),
-                Some((prev, _, Some(_))) => panic!("{at}: fragment at {prev} already has an input"),
+                Some((_, _, slot @ PendingInput::None)) => *slot = PendingInput::Inline(body),
+                Some((prev, ..)) => panic!("{at}: fragment at {prev} already has an input"),
                 None => panic!("{at}: `input` fence with no `toylang` fence before it"),
+            },
+            "fixture" => match &mut pending {
+                Some((_, _, slot @ PendingInput::None)) => {
+                    let path = body.trim();
+                    assert!(
+                        !path.is_empty() && !path.contains(char::is_whitespace),
+                        "{at}: a `fixture` fence holds one path, relative to the repo root"
+                    );
+                    *slot = resolve_fixture(path);
+                }
+                Some((prev, ..)) => panic!("{at}: fragment at {prev} already has an input"),
+                None => panic!("{at}: `fixture` fence with no `toylang` fence before it"),
             },
             "output" | "refuses" | "error" => {
                 let Some((frag_at, program, input)) = pending.take() else {
@@ -208,6 +275,10 @@ fn extract(
                         "{at}: `{}` fence with no `toylang` fence before it",
                         info.trim()
                     )
+                };
+                let Some(input) = resolved(input) else {
+                    gated.push(frag_at);
+                    continue;
                 };
                 let outcome = match info.trim() {
                     "output" => Outcome::Output(body),

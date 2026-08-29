@@ -23,31 +23,34 @@ and [special Pythagorean triplet](09-special-pythagorean-triplet.md).
 Three are skipped, each for a real reason found while trying to express it rather than
 avoided in advance:
 
-- [**Problem 3**](03-largest-prime-factor.md) and [**Problem 10**](10-summation-of-primes.md)
-  need an integer wider than toylang's 32-bit `Int` carries -- one to state the input, the
-  other to hold the correct sum. Filed as
-  [kantord/toylang#38](https://github.com/kantord/toylang/issues/38).
-- [**Problem 8**](08-largest-product-in-a-series.md) hands the solver a 1000-digit number
-  that has no source but Project Euler itself; whether a data blob like that is fair to embed
-  under the no-Euler-text rule is an open call. Filed as
-  [kantord/toylang#39](https://github.com/kantord/toylang/issues/39).
+- [**Problem 3**](03-largest-prime-factor.md), [**Problem 8**](08-largest-product-in-a-series.md),
+  and [**Problem 10**](10-summation-of-primes.md) need an integer wider than toylang's 32-bit
+  `Int` carries -- to state the input, to hold the correct sum, or (problem 8) because the
+  largest product of 13 digits is `9^13`, past `Int` regardless of how the input arrives.
+  Filed as [kantord/toylang#38](https://github.com/kantord/toylang/issues/38).
+
+Problem 8's other open question, whether a problem-given data blob is fair to embed at all, is
+settled: see problems 11-20 below.
 
 ## Problems 11-20
 
 Continuing the stream ([kantord/toylang#67](https://github.com/kantord/toylang/issues/67)):
-three solved, seven skipped. The skips lean almost entirely on the same two open gates batch
-1 found, rather than new ones -- this stretch of the problem set asks for wide integers and
-verbatim inputs more often than it asks for anything toylang cannot otherwise express.
+six solved, four skipped. [kantord/toylang#39](https://github.com/kantord/toylang/issues/39)
+settled the data question that had blocked three of them (and, in hindsight, problem 8 from
+batch 1): a problem-given blob arrives on stdin from a gitignored fixture, never committed to
+the repo, and the docs harness runs the fragment only when a contributor has supplied their
+own copy -- skipping it, not failing, otherwise. What remains skipped in this batch all needs
+more than 32 bits instead.
 
 Solved: [the first triangular number with over 500 divisors](12-highly-divisible-triangular-number.md),
-[counting letters in one to a thousand](17-number-letter-counts.md), and
-[Sundays on the first of the month, 1901-2000](19-counting-sundays.md).
+[counting letters in one to a thousand](17-number-letter-counts.md),
+[Sundays on the first of the month, 1901-2000](19-counting-sundays.md),
+[largest product in a grid](11-largest-product-in-a-grid.md),
+[summing a hundred large numbers](13-large-sum.md), and
+[the richest way down a triangle](18-maximum-path-sum-i.md) -- the last three gated on the
+fixture protocol above, per [kantord/toylang#69](https://github.com/kantord/toylang/issues/69).
 
 Skipped for [kantord/toylang#38](https://github.com/kantord/toylang/issues/38) (needs more
 than 32 bits): [**Problem 14**](14-longest-collatz-sequence.md),
 [**Problem 15**](15-lattice-paths.md), [**Problem 16**](16-power-digit-sum.md), and
 [**Problem 20**](20-factorial-digit-sum.md).
-
-Skipped for [kantord/toylang#39](https://github.com/kantord/toylang/issues/39) (verbatim
-problem-specific data with no other source): [**Problem 11**](11-largest-product-in-a-grid.md),
-[**Problem 13**](13-large-sum.md), and [**Problem 18**](18-maximum-path-sum-i.md).
