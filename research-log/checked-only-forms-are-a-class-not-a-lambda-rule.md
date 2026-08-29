@@ -52,7 +52,7 @@ is about the same checker handing what it learned to the backend.
 
 ## Closed by the type-flow rework (2026-08-29)
 
-The rework `plans/type-flow.md` planned landed, and the class held up. The positions that push
+The rework `plans/type-flow.md` planned has landed, and the class held up. The positions that push
 an expectation grew from one (`input`'s) to the whole surface: a declared return type flows
 into the function body, a record type into its fields, a parameter type into its argument, an
 expected element through a `map` body, and the expectation into both conditional branches and

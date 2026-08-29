@@ -2228,7 +2228,13 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     {
         let mut built = Vec::new();
         for ((name, _, value), (_, field_ty)) in fields.iter().zip(want_fields) {
-            built.push((name.clone(), expect(ctx, value, field_ty)?));
+            let field = expect(ctx, value, field_ty).map_err(|e| {
+                stream_refusal(ctx, value, || {
+                    format!("`{name}` cannot hold a stream, which has nothing to store")
+                })
+                .unwrap_or(e)
+            })?;
+            built.push((name.clone(), field));
         }
         return Ok(Expected::Checked(Tir::new(
             want.clone(),
@@ -2244,12 +2250,30 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     {
         let mut out = Vec::new();
         for item in items {
-            out.push(expect(ctx, item, elem)?);
+            let item = expect(ctx, item, elem).map_err(|e| {
+                stream_refusal(ctx, item, || {
+                    "a Vec cannot hold a stream, which has nothing to store".to_string()
+                })
+                .unwrap_or(e)
+            })?;
+            out.push(item);
         }
         return Ok(Expected::Checked(Tir::new(want.clone(), Kind::VecLit(out))));
     }
 
     synth(ctx, expr).map(Expected::Synthesised)
+}
+
+/// The synth arms refuse a stream inside a record or Vec with a message that teaches why
+/// (nothing can store or re-read one); the checked fast paths above would otherwise demote
+/// that refusal to a bare "expected T, found Stream<T>" mismatch. When a pushed field or
+/// element fails, ask synthesis whether a stream was the reason and keep the lesson.
+fn stream_refusal(ctx: &Ctx, value: &Expr, msg: impl FnOnce() -> String) -> Option<Error> {
+    let found = synth(ctx, value).ok()?;
+    found
+        .ty
+        .contains_stream()
+        .then(|| Error::new(value.span(), msg()))
 }
 
 /// The hint for the one mismatch that looks self-contradictory: both sides spell the same

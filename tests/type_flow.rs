@@ -265,3 +265,16 @@ fn an_uncovered_variant_is_still_refused_under_an_expectation() {
     insta::assert_snapshot!(err("enum Status { active, inactive }\n\n\
          fn f(s: Status) -> Vec<Int> = s | active -> []\n\nf(\"active\")"));
 }
+
+// The stream-containment lesson survives the checked fast paths (found landing this branch:
+// the pushed-expectation arms demoted it to a bare mismatch).
+
+#[test]
+fn a_stream_in_a_checked_record_field_keeps_its_refusal() {
+    insta::assert_snapshot!(err("fn f(v: Stream<Int>) -> {n: Int} = {n: v}\n\n1"));
+}
+
+#[test]
+fn a_stream_in_a_checked_vec_keeps_its_refusal() {
+    insta::assert_snapshot!(err("fn f(v: Stream<Int>) -> Vec<Int> = [v]\n\n1"));
+}
