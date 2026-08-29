@@ -59,7 +59,9 @@ export function DevApp() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-[1500px] flex-col gap-6 p-6">
+    // Mail wants the full viewport for its panes (the maintainer's compose ask, b1d3edc);
+    // the reading-measure cap stays for everything else.
+    <div className={cn("mx-auto flex min-h-screen flex-col gap-6 p-6", section !== "mail" && "max-w-[1500px]")}>
       <header className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
         <h1 className="text-xl font-semibold tracking-tight">toylang dev</h1>
         <nav className="flex gap-4 text-sm">
