@@ -473,7 +473,7 @@
   title: Action-first inbox -- category subfolders, default view hides status noise, acks visually muted
   kind: build
   needs: [mail-app-v2]
-  status: delegated
+  status: done
 
 - id: wizard-ui-polish
   issue: gh:43
