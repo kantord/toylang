@@ -288,7 +288,7 @@
   kind: decide
   needs: [type-flow-rework]
   prio: 2
-  status: delegated
+  status: todo
 
 - id: matcher-totality-and-alt-design
   title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test
@@ -322,6 +322,13 @@
   model: fable
   prio: 2
   status: todo
+
+- id: record-docs-order-sweep
+  issue: gh:65
+  title: Two doc pages stop claiming order is type identity (#60 prose follow-up)
+  kind: build
+  needs: [record-order-relaxation]
+  status: done
 
 - id: field-names-accessor
   issue: gh:63

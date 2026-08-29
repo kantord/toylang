@@ -44,7 +44,8 @@ area {w: 3, h: 4}
 ```
 
 Records nest, projections chain, and a record prints its fields in the order it declares
-them -- order is part of the type, so every value of a type prints the same way:
+them -- order is metadata the type carries, so every value checked against a type prints
+the same way:
 
 ```toylang
 {b: 1, a: {inner: "deep"}}

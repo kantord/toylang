@@ -18,8 +18,10 @@ declaration order on read -- so every value of a type prints identically on all 
 backends, and the order keys arrive in on stdin is not data. And `{}` is a complete record
 whose type is its empty field set.
 
-Because order is part of the type, `{a: Str, b: Int}` and `{b: Int, a: Str}` are two types.
-Where they meet, the error says the fields agree but their order does not.
+Order never separates types: `{a: Str, b: Int}` and `{b: Int, a: Str}` are one type, and a
+value spelled either way checks wherever that type is wanted. The declared order still
+matters -- it is the order every value of the type prints in, carried as metadata rather
+than identity.
 
 A field is read by [projection](../operators/projection.md): `.name` on a record,
 `[].name` distributed over a dimension of records.

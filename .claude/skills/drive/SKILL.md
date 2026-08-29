@@ -30,6 +30,11 @@ uncommitted half-done work gets a continuation dispatch into the same env whose 
 read ALL issue comments and assess the existing diff. File-write mtimes and commit times are
 the truth; transcript timestamps lie.
 
+Board-editing scripts match a row id ONLY with its terminator -- `'- id: <slug>\n'`, never a
+bare prefix: `- id: nullary-functions` also matches `nullary-functions-decision`, and the
+falls-through `index('status: todo')` then flips whatever row comes next (it silently marked
+a decide row delegated once; the audit caught it, not the edit).
+
 Two bookkeeping rules the audits keep re-finding: a follow-up issue filed during a landing
 gets its board row IN THE SAME COMMIT (an issue without a row is invisible to this loop --
 four accumulated once); and an inbox record dismissed as stale gets that dismissal NAMED in
