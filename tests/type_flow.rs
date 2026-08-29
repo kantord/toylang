@@ -203,3 +203,65 @@ fn a_map_body_that_misses_the_element_type() {
         "fn f(v: Vec<Int>) -> Vec<Str> = v | map(. + 1)\n\nf([1])"
     ));
 }
+
+// Step 5: both branches of a conditional and every arm of a total match chain receive the
+// expectation. Partial guard chains keep synthesising, so their hybrid-totality rules -- the
+// Opt wrapping and the arms-already-Opt refusal -- read exactly as before.
+
+#[test]
+fn both_conditional_branches_receive_the_expectation() {
+    let src = "fn f(x: Int) -> Vec<Int> = [] if x > 0 else [1]\n\nf(1)";
+    assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
+}
+
+#[test]
+fn conditional_branches_can_name_variants() {
+    let src = "enum Status { active, inactive }\n\n\
+               fn status(n: Int) -> Status = \"active\" if n > 0 else \"inactive\"\n\n\
+               status(0)";
+    assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Status"));
+}
+
+/// The annotation decides which branch is wrong, so the error lands on the branch that
+/// misses it rather than on whichever branch came second.
+#[test]
+fn the_branch_that_misses_the_annotation_is_blamed() {
+    insta::assert_snapshot!(err("fn f(x: Int) -> Str = 1 if x > 0 else \"a\"\n\nf(1)"));
+}
+
+#[test]
+fn match_arms_receive_the_expectation() {
+    let src = "enum Status { active, inactive }\n\n\
+               fn work(s: Status) -> Vec<Int> = s | active -> [1, 2] or inactive -> []\n\n\
+               work(\"inactive\")";
+    assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
+}
+
+#[test]
+fn a_default_arm_receives_the_expectation_too() {
+    let src = "fn f(x: Int) -> Vec<Int> = x | . > 0 -> [x] or any() -> []\n\nf(1)";
+    assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
+}
+
+/// A pure guard chain may decline every arm, so its arms synthesise and the chain yields Opt;
+/// the expectation is not peeled into the arms, which keeps the partial-chain refusals -- and
+/// means `[]` in a partial arm stays unknowable.
+#[test]
+fn a_partial_chain_still_synthesises_its_arms() {
+    let src = "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> [1]\n\nf(1)";
+    assert_eq!(
+        body_ty(src),
+        Type::Opt(Box::new(Type::Vec(Box::new(Type::Int))))
+    );
+    insta::assert_snapshot!(err(
+        "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> []\n\nf(1)"
+    ));
+}
+
+/// Exhaustiveness is unchanged by the expectation: covering every variant is still the arms'
+/// own duty.
+#[test]
+fn an_uncovered_variant_is_still_refused_under_an_expectation() {
+    insta::assert_snapshot!(err("enum Status { active, inactive }\n\n\
+         fn f(s: Status) -> Vec<Int> = s | active -> []\n\nf(\"active\")"));
+}

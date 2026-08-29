@@ -2,7 +2,7 @@
 source: tests/backend_rust.rs
 expression: "format!(\"compiles (rust) ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles (rust) (132):
+compiles (rust) (134):
 adults
 arith_add
 arith_div_trunc
@@ -18,6 +18,7 @@ concat_chain
 concat_empty
 concat_flattens
 concat_records
+cond_branches_from_annotation
 cond_chain
 cond_false
 cond_in_map
@@ -82,6 +83,7 @@ map_to_bool
 map_to_nested_record
 map_to_record
 map_to_str
+match_arms_from_annotation
 match_partial_guards
 nested_field_access
 opt_holds_an_empty_vec

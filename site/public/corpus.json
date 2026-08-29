@@ -425,6 +425,35 @@
     },
     {
       "emitted": {
+        "go": "package main\n\nimport (\n\t\"fmt\"\n)\n\nfunc tlInt(n int32) int32 { return n }\n\ntype tlE_Status struct {\n\ttag int32\n}\n\nfunc v_status(v_n int32) tlE_Status {\n\treturn func() tlE_Status { if (v_n > tlInt(0)) { return tlE_Status{tag: 0} }; return tlE_Status{tag: 1} }()\n}\n\nfunc main() {\n\tfmt.Println(func(n0 tlE_Status) string { if n0.tag == 0 { return \"\\\"active\\\"\" }; return \"\\\"inactive\\\"\" }(v_status(tlInt(0))))\n}\n",
+        "jq": "def v_status: . as $v_n | (if ($v_n > 0) then \"active\" else \"inactive\" end);\n(0 | v_status)\n",
+        "js": "function v_status(v_n) {\n  return ((v_n > 0) ? \"active\" : \"inactive\");\n}\nconsole.log(JSON.stringify(v_status(0)));\n",
+        "lua": "local function tl_quote(s)\n  return '\"' .. s:gsub('[%c\"\\\\]', function(c)\n    if c == '\"' then return '\\\\\"' end\n    if c == '\\\\' then return '\\\\\\\\' end\n    if c == '\\n' then return '\\\\n' end\n    if c == '\\r' then return '\\\\r' end\n    if c == '\\t' then return '\\\\t' end\n    return string.format('\\\\u%04x', c:byte())\n  end) .. '\"'\nend\nlocal v_status\nfunction v_status(v_n)\n  return (function() if (v_n > 0) then return \"active\" else return \"inactive\" end end)()\nend\nprint(tl_quote(v_status(0)))\n",
+        "native": "; ModuleID = 'toylang'\nsource_filename = \"toylang\"\n\n@bytes.0 = private constant [9 x i8] c\"\\22active\\22\\00\"\n@str.0 = private constant { ptr, i64 } { ptr @bytes.0, i64 8 }\n@bytes.1 = private constant [11 x i8] c\"\\22inactive\\22\\00\"\n@str.1 = private constant { ptr, i64 } { ptr @bytes.1, i64 10 }\n\ndeclare ptr @tl_concat(ptr, ptr)\n\ndeclare ptr @tl_int_to_str(i64)\n\ndeclare i64 @tl_str_eq(ptr, ptr)\n\ndeclare i64 @tl_str_cmp(ptr, ptr)\n\ndeclare void @tl_print(ptr)\n\ndeclare ptr @tl_quote(ptr)\n\ndeclare ptr @tl_str_join(ptr, ptr, ptr, ptr)\n\ndeclare ptr @tl_vec_new(i64, i64)\n\ndeclare i64 @tl_vec_len(ptr)\n\ndeclare i64 @tl_vec_get(ptr, i64, i64)\n\ndeclare void @tl_vec_set(ptr, i64, i64, i64)\n\ndeclare ptr @tl_vec_from_mask(ptr, ptr)\n\ndeclare ptr @tl_mask_new(i64)\n\ndeclare void @tl_mask_set(ptr, i64, i64)\n\ndeclare ptr @tl_vec_column(ptr, i64)\n\ndeclare i64 @tl_rec_get(ptr, i64)\n\ndeclare ptr @tl_rec_new(i64)\n\ndeclare ptr @tl_collect_lines()\n\ndeclare void @tl_rec_set(ptr, i64, i64)\n\ndeclare i64 @tl_read_input(ptr)\n\ndeclare ptr @tl_read_inputs(ptr)\n\ndeclare i32 @tl_read_one_input(ptr, ptr)\n\ndeclare i32 @tl_read_one_line(ptr)\n\ndeclare ptr @tl_rec_from_vec(ptr, i64)\n\ndeclare ptr @tl_at(ptr, i64, i64, i32)\n\ndeclare i64 @tl_opt_is_some(ptr)\n\ndeclare i64 @tl_opt_get(ptr)\n\ndeclare ptr @tl_opt_some(i64)\n\ndeclare ptr @tl_unwrap(ptr, i64)\n\ndeclare void @tl_div_by_zero()\n\ndeclare ptr @tl_range(i64)\n\ndeclare ptr @tl_vec_tail(ptr)\n\ndeclare ptr @tl_vec_concat(ptr, i64)\n\ndefine ptr @v_status(i64 %0) {\nentry:\n  %cond = alloca ptr, align 8\n  %cmp = icmp sgt i64 %0, 0\n  br i1 %cmp, label %then, label %else\n\nthen:                                             ; preds = %entry\n  %enum = call ptr @tl_rec_new(i64 2)\n  call void @tl_rec_set(ptr %enum, i64 0, i64 0)\n  store ptr %enum, ptr %cond, align 8\n  br label %cond.done\n\nelse:                                             ; preds = %entry\n  %enum1 = call ptr @tl_rec_new(i64 2)\n  call void @tl_rec_set(ptr %enum1, i64 0, i64 1)\n  store ptr %enum1, ptr %cond, align 8\n  br label %cond.done\n\ncond.done:                                        ; preds = %else, %then\n  %cond2 = load ptr, ptr %cond, align 8\n  ret ptr %cond2\n}\n\ndefine i32 @main() {\nentry:\n  %call = call ptr @v_status(i64 0)\n  %shown = alloca ptr, align 8\n  %tag = call i64 @tl_rec_get(ptr %call, i64 0)\n  %is = icmp eq i64 %tag, 0\n  br i1 %is, label %enum.arm, label %enum.next\n\nenum.done:                                        ; preds = %enum.arm1, %enum.arm\n  %shown2 = load ptr, ptr %shown, align 8\n  call void @tl_print(ptr %shown2)\n  ret i32 0\n\nenum.arm:                                         ; preds = %entry\n  store ptr @str.0, ptr %shown, align 8\n  br label %enum.done\n\nenum.next:                                        ; preds = %entry\n  br label %enum.arm1\n\nenum.arm1:                                        ; preds = %enum.next\n  store ptr @str.1, ptr %shown, align 8\n  br label %enum.done\n}\n",
+        "py": "import sys\n\n\n\ndef tl_quote(s):\n    out = ['\"']\n    for c in s:\n        if c == '\"':\n            out.append('\\\\\"')\n        elif c == \"\\\\\":\n            out.append(\"\\\\\\\\\")\n        elif c == \"\\n\":\n            out.append(\"\\\\n\")\n        elif c == \"\\r\":\n            out.append(\"\\\\r\")\n        elif c == \"\\t\":\n            out.append(\"\\\\t\")\n        elif ord(c) < 0x20:\n            out.append(\"\\\\u%04x\" % ord(c))\n        else:\n            out.append(c)\n    out.append('\"')\n    return \"\".join(out)\n\n\ndef v_status(v_n):\n    return (\"active\" if (v_n > 0) else \"inactive\")\n\n\nsys.stdout.buffer.write((tl_quote(v_status(0)) + \"\\n\").encode(\"utf-8\"))\n",
+        "rust": "#![allow(dead_code)]\n\nfn tl_int(n: i32) -> i32 {\n    n\n}\n\n#[derive(Clone)]\n#[allow(non_camel_case_types)]\nenum TlE_Status {\n    V_active,\n    V_inactive,\n}\n\nfn v_status(v_n: i32) -> TlE_Status {\n    (if (v_n.clone() > tl_int(0)) { TlE_Status::V_active } else { TlE_Status::V_inactive })\n}\n\nfn main() {\n    println!(\"{}\", (match v_status(tl_int(0)) { TlE_Status::V_active => \"\\\"active\\\"\".to_string(), TlE_Status::V_inactive => \"\\\"inactive\\\"\".to_string() }));\n}\n"
+      },
+      "expect": {
+        "kind": "output",
+        "value": "\"inactive\"\n"
+      },
+      "input": null,
+      "inputType": null,
+      "name": "cond_branches_from_annotation",
+      "nodeTypes": [
+        "application",
+        "compare.gt",
+        "conditional",
+        "int",
+        "var",
+        "variant.unit"
+      ],
+      "program": "enum Status { active, inactive }\n\nfn status(n: Int) -> Status = \"active\" if n > 0 else \"inactive\"\n\nstatus(0)\n",
+      "resultType": "Status",
+      "usesLines": false
+    },
+    {
+      "emitted": {
         "go": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n)\n\nfunc tlInt(n int32) int32 { return n }\n\nfunc main() {\n\tfmt.Println(func() string { if (tlInt(1) == tlInt(2)) { return strconv.FormatInt(int64(tlInt(1)), 10) }; return func() string { if (tlInt(1) == tlInt(1)) { return strconv.FormatInt(int64(tlInt(2)), 10) }; return strconv.FormatInt(int64(tlInt(3)), 10) }() }())\n}\n",
         "jq": "(if (1 == 2) then (1 | tostring) else (if (1 == 1) then (2 | tostring) else (3 | tostring) end) end)\n",
         "js": "console.log(((1 === 2) ? String(1) : ((1 === 1) ? String(2) : String(3))));\n",
@@ -2333,6 +2362,37 @@
       ],
       "program": "[1, 2, 3] | map(str(.) + \"!\")\n",
       "resultType": "Vec<Str>",
+      "usesLines": false
+    },
+    {
+      "emitted": {
+        "go": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n\t\"strings\"\n)\n\nfunc tlInt(n int32) int32 { return n }\n\nfunc tlJoin[T any](v []T, f func(T) string) string {\n\tparts := make([]string, len(v))\n\tfor i, e := range v {\n\t\tparts[i] = f(e)\n\t}\n\treturn \"[\" + strings.Join(parts, \",\") + \"]\"\n}\n\ntype tlE_Status struct {\n\ttag int32\n}\n\nfunc v_work(v_s tlE_Status) []int32 {\n\treturn func(t_0 tlE_Status) []int32 { return func() []int32 { if t_0.tag == 0 { return []int32{tlInt(1), tlInt(2)} }; return []int32{} }() }(v_s)\n}\n\nfunc main() {\n\tfmt.Println(tlJoin(v_work(tlE_Status{tag: 1}), func(e0 int32) string { return strconv.FormatInt(int64(e0), 10) }))\n}\n",
+        "jq": "def v_work: . as $v_s | ($v_s as $t_0 | (if $t_0 == \"active\" then [1, 2] else [] end));\n[ (\"inactive\" | v_work)[] | . ]\n",
+        "js": "function tl_join(v, f) {\n  const parts = [];\n  for (let i = 0; i < v.length; i++) parts.push(f(v[i]));\n  return \"[\" + parts.join(\",\") + \"]\";\n}\nfunction v_work(v_s) {\n  return ((t_0) => (() => { if (t_0 === \"active\") { return [1, 2]; } return []; })())(v_s);\n}\nconsole.log(tl_join(v_work(\"inactive\"), (e0) => String(e0)));\n",
+        "lua": "local function tl_join(v, f)\n  local parts = {}\n  for i = 1, #v do parts[i] = f(v[i]) end\n  return \"[\" .. table.concat(parts, \",\") .. \"]\"\nend\nlocal v_work\nfunction v_work(v_s)\n  return (function(t_0) return (function() if t_0 == \"active\" then return {1, 2} end return {} end)() end)(v_s)\nend\nprint(tl_join(v_work(\"inactive\"), function(e0) return tostring(e0) end))\n",
+        "native": "; ModuleID = 'toylang'\nsource_filename = \"toylang\"\n\n@bytes.0 = private constant [2 x i8] c\"[\\00\"\n@str.0 = private constant { ptr, i64 } { ptr @bytes.0, i64 1 }\n@bytes.1 = private constant [2 x i8] c\",\\00\"\n@str.1 = private constant { ptr, i64 } { ptr @bytes.1, i64 1 }\n@bytes.2 = private constant [2 x i8] c\"]\\00\"\n@str.2 = private constant { ptr, i64 } { ptr @bytes.2, i64 1 }\n\ndeclare ptr @tl_concat(ptr, ptr)\n\ndeclare ptr @tl_int_to_str(i64)\n\ndeclare i64 @tl_str_eq(ptr, ptr)\n\ndeclare i64 @tl_str_cmp(ptr, ptr)\n\ndeclare void @tl_print(ptr)\n\ndeclare ptr @tl_quote(ptr)\n\ndeclare ptr @tl_str_join(ptr, ptr, ptr, ptr)\n\ndeclare ptr @tl_vec_new(i64, i64)\n\ndeclare i64 @tl_vec_len(ptr)\n\ndeclare i64 @tl_vec_get(ptr, i64, i64)\n\ndeclare void @tl_vec_set(ptr, i64, i64, i64)\n\ndeclare ptr @tl_vec_from_mask(ptr, ptr)\n\ndeclare ptr @tl_mask_new(i64)\n\ndeclare void @tl_mask_set(ptr, i64, i64)\n\ndeclare ptr @tl_vec_column(ptr, i64)\n\ndeclare i64 @tl_rec_get(ptr, i64)\n\ndeclare ptr @tl_rec_new(i64)\n\ndeclare ptr @tl_collect_lines()\n\ndeclare void @tl_rec_set(ptr, i64, i64)\n\ndeclare i64 @tl_read_input(ptr)\n\ndeclare ptr @tl_read_inputs(ptr)\n\ndeclare i32 @tl_read_one_input(ptr, ptr)\n\ndeclare i32 @tl_read_one_line(ptr)\n\ndeclare ptr @tl_rec_from_vec(ptr, i64)\n\ndeclare ptr @tl_at(ptr, i64, i64, i32)\n\ndeclare i64 @tl_opt_is_some(ptr)\n\ndeclare i64 @tl_opt_get(ptr)\n\ndeclare ptr @tl_opt_some(i64)\n\ndeclare ptr @tl_unwrap(ptr, i64)\n\ndeclare void @tl_div_by_zero()\n\ndeclare ptr @tl_range(i64)\n\ndeclare ptr @tl_vec_tail(ptr)\n\ndeclare ptr @tl_vec_concat(ptr, i64)\n\ndefine ptr @v_work(ptr %0) {\nentry:\n  %matched = alloca ptr, align 8\n  %tag = call i64 @tl_rec_get(ptr %0, i64 0)\n  %is = icmp eq i64 %tag, 0\n  br i1 %is, label %match.arm, label %match.next\n\nmatch.done:                                       ; preds = %match.arm1, %match.arm\n  %matched3 = load ptr, ptr %matched, align 8\n  ret ptr %matched3\n\nmatch.arm:                                        ; preds = %entry\n  %vec = call ptr @tl_vec_new(i64 2, i64 1)\n  call void @tl_vec_set(ptr %vec, i64 0, i64 0, i64 1)\n  call void @tl_vec_set(ptr %vec, i64 0, i64 1, i64 2)\n  store ptr %vec, ptr %matched, align 8\n  br label %match.done\n\nmatch.next:                                       ; preds = %entry\n  br label %match.arm1\n\nmatch.arm1:                                       ; preds = %match.next\n  %vec2 = call ptr @tl_vec_new(i64 0, i64 1)\n  store ptr %vec2, ptr %matched, align 8\n  br label %match.done\n}\n\ndefine i32 @main() {\nentry:\n  %enum = call ptr @tl_rec_new(i64 2)\n  call void @tl_rec_set(ptr %enum, i64 0, i64 1)\n  %call = call ptr @v_work(ptr %enum)\n  %len = call i64 @tl_vec_len(ptr %call)\n  %parts = call ptr @tl_vec_new(i64 %len, i64 1)\n  %i = alloca i64, align 8\n  store i64 0, ptr %i, align 4\n  br label %loop.cond\n\nloop.cond:                                        ; preds = %loop.body, %entry\n  %iv = load i64, ptr %i, align 4\n  %more = icmp slt i64 %iv, %len\n  br i1 %more, label %loop.body, label %loop.end\n\nloop.body:                                        ; preds = %loop.cond\n  %slot = call i64 @tl_vec_get(ptr %call, i64 0, i64 %iv)\n  %int_str = call ptr @tl_int_to_str(i64 %slot)\n  %slot1 = ptrtoint ptr %int_str to i64\n  call void @tl_vec_set(ptr %parts, i64 0, i64 %iv, i64 %slot1)\n  %next = add i64 %iv, 1\n  store i64 %next, ptr %i, align 4\n  br label %loop.cond\n\nloop.end:                                         ; preds = %loop.cond\n  %joined = call ptr @tl_str_join(ptr %parts, ptr @str.0, ptr @str.1, ptr @str.2)\n  call void @tl_print(ptr %joined)\n  ret i32 0\n}\n",
+        "py": "import sys\n\n\n\ndef tl_join(v, f):\n    return \"[\" + \",\".join(f(e) for e in v) + \"]\"\n\n\ndef v_work(v_s):\n    return (lambda t_0: (([1, 2] if t_0 == \"active\" else [])))(v_s)\n\n\nsys.stdout.buffer.write((tl_join(v_work(\"inactive\"), lambda e0: str(e0)) + \"\\n\").encode(\"utf-8\"))\n",
+        "rust": "#![allow(dead_code)]\n\nfn tl_int(n: i32) -> i32 {\n    n\n}\n\nfn tl_join<T>(v: &[T], f: fn(&T) -> String) -> String {\n    let parts: Vec<String> = v.iter().map(f).collect();\n    format!(\"[{}]\", parts.join(\",\"))\n}\n\n#[derive(Clone)]\n#[allow(non_camel_case_types)]\nenum TlE_Status {\n    V_active,\n    V_inactive,\n}\n\nfn v_work(v_s: TlE_Status) -> Vec<i32> {\n    ({ let t_0: TlE_Status = v_s.clone(); (match t_0.clone() { TlE_Status::V_active => vec![tl_int(1), tl_int(2)], TlE_Status::V_inactive => vec![] }) })\n}\n\nfn main() {\n    println!(\"{}\", tl_join(&v_work(TlE_Status::V_inactive), |e0: &i32| -> String { (e0.clone()).to_string() }));\n}\n"
+      },
+      "expect": {
+        "kind": "output",
+        "value": "[]\n"
+      },
+      "input": null,
+      "inputType": null,
+      "name": "match_arms_from_annotation",
+      "nodeTypes": [
+        "application",
+        "int",
+        "local",
+        "match",
+        "pipe",
+        "var",
+        "variant.unit",
+        "vec-literal"
+      ],
+      "program": "enum Status { active, inactive }\n\nfn work(s: Status) -> Vec<Int> = s | active -> [1, 2] or inactive -> []\n\nwork(\"inactive\")\n",
+      "resultType": "Vec<Int>",
       "usesLines": false
     },
     {

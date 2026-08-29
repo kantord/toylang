@@ -435,7 +435,11 @@ struct JqInvocation {
 }
 
 fn run_jq(source: &str, inv: JqInvocation, feed: &Feed) -> Result<String> {
-    let JqInvocation { has_value, raw, uses_lines } = inv;
+    let JqInvocation {
+        has_value,
+        raw,
+        uses_lines,
+    } = inv;
     let mut cmd = std::process::Command::new("jq");
     // jq's stdout is fully buffered rather than line-buffered whenever it is not a terminal, the
     // same as any other libc stdio program, so a filter over `inputs` piped into another process
