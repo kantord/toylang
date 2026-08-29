@@ -145,7 +145,7 @@
   title: Board v2 -- React Flow graph-only and kanban-only views, as tabs inside the mail app
   kind: build
   needs: [mail-app-v2]
-  status: todo
+  status: delegated
 
 - id: static-site-split
   issue: gh:50
