@@ -12,8 +12,13 @@ export default defineConfig({
   base: "/toylang/",
   plugins: [react(), tailwindcss(), annotationsInbox(), grillRounds()],
   resolve: {
-    alias: { "@": import.meta.dirname + "/src" },
+    alias: { "@": import.meta.dirname + "/src", "@dev": import.meta.dirname + "/dev/src" },
   },
+  // No `build.rollupOptions.input` here: Vite's default build entry is just this directory's
+  // index.html, so dev/index.html and everything under dev/ (kantord/toylang#50 -- mail app,
+  // grill wizard, board, annotations mode) is never in `vite build`'s module graph at all. That
+  // is the tree-shaking guarantee now: a directory a production build never opens, not an
+  // `import.meta.env.DEV` check a future edit could forget.
   // The docs pages live at the repository root, beside the code and the harness that runs
   // their fragments, so the dev server must be allowed to read one level up.
   server: {

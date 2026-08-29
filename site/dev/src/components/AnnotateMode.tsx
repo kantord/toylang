@@ -1,19 +1,18 @@
 import { Check } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import { FLOW_FOR_TYPE, MessageCard } from "@/components/MessageCard"
+import { FLOW_FOR_TYPE, MessageCard } from "@dev/components/MessageCard"
 import { Button } from "@/components/ui/button"
-import { annotationsIn, pageAnnotations, type Annotation, type AnnotationType } from "@/lib/annotations"
+import { annotationsIn, pageAnnotations, type Annotation, type AnnotationType } from "@dev/lib/annotations"
 import type { Piece } from "@/lib/blocks"
 import type { Page } from "@/lib/docs"
 import { cn } from "@/lib/utils"
 
 /**
  * The editable half of annotations mode (kantord/toylang#23): the contenteditable prose block,
- * its marker-pen wash, and the autosave into the edit inbox. Loaded only through a dynamic
- * `import.meta.env.DEV` import from Markdown.tsx and App.tsx, so none of it reaches the
- * production bundle -- only the toggle button that would ever turn this mode on does, and that
- * button itself is compiled out of production builds.
+ * its marker-pen wash, and the autosave into the edit inbox. Reachable only from
+ * dev/src/components/DevDocsPage.tsx (kantord/toylang#50) -- the production build never opens
+ * dev/ at all, so none of it reaches that bundle.
  *
  * Two distinct areas live here (kantord/toylang#30): the INBOX is the coordinator's own
  * `@review`/`@comment`/`@fill` annotations, read out of the markdown source and answered by

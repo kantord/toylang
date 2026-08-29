@@ -23,6 +23,20 @@ export interface Corpus {
   cases: Case[]
 }
 
+/** What the case tree needs to search and list a case, without the emitted code for all seven
+ *  backends -- the bulk of a Case's weight, and not something the sidebar renders. */
+export interface CaseSummary {
+  name: string
+  program: string
+  resultType: string
+  nodeTypes: string[]
+  expectKind: Expect["kind"]
+}
+
+export function summarize(c: Case): CaseSummary {
+  return { name: c.name, program: c.program, resultType: c.resultType, nodeTypes: c.nodeTypes, expectKind: c.expect.kind }
+}
+
 /** How each backend's name is spelled for a reader, and what language its output is. */
 export const BACKENDS: Record<string, { label: string; lang: string; note: string }> = {
   lua: { label: "Lua", lang: "lua", note: "Runs on a vendored Lua 5.4, so it needs no toolchain." },

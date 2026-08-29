@@ -80,9 +80,11 @@ export function page(section: Section, group: string, slug: string): Page | null
   )
 }
 
-/** The route for a docs page, hash included. */
+/** A docs page's real route (kantord/toylang#50): the site-relative path GitHub Pages serves
+ *  the page's own static file at, directory-style so the URL needs no `.html`. Callers wrap
+ *  it with `withBase` (lib/route.ts) before putting it in an `href`. */
 export function href(p: Page): string {
-  return p.group ? `#/${p.section}/${p.group}/${p.slug}` : `#/${p.section}/${p.slug}`
+  return p.group ? `/${p.section}/${p.group}/${p.slug}/` : `/${p.section}/${p.slug}/`
 }
 
 /**

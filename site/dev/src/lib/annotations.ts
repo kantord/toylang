@@ -3,8 +3,9 @@
  * the INBOX, the coordinator's own annotations to the maintainer. The AUTHORING side --
  * the maintainer's own notes back to the coordinator (kantord/toylang#30) -- doesn't live in
  * the markdown source at all; see AnnotateMode.tsx and the `/__annotations/note` endpoint.
- * Split out of blocks.ts so this stays reachable only through a dynamic import: nothing in the
- * production bundle references it, and `vite build` tree-shakes it out accordingly.
+ * Split out of blocks.ts (which the production bundle does use) and moved under dev/
+ * (kantord/toylang#50): the production build never opens this directory, so nothing here
+ * reaches that bundle.
  */
 
 import { blockPlainText, blockRaw, type Block } from "@/lib/blocks"

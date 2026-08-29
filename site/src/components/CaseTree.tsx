@@ -3,7 +3,7 @@ import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { Case } from "@/lib/corpus"
+import type { CaseSummary } from "@/lib/corpus"
 import { cn } from "@/lib/utils"
 
 /** One segment of a dotted node-type path (`arith` in `arith.add`). A case sits at every
@@ -11,14 +11,14 @@ import { cn } from "@/lib/utils"
  * `selection.collapse`) is a leaf under both `projection` and `selection/collapse`. */
 interface TreeNode {
   children: Map<string, TreeNode>
-  cases: Case[]
+  cases: CaseSummary[]
 }
 
 function emptyNode(): TreeNode {
   return { children: new Map(), cases: [] }
 }
 
-function buildTree(cases: Case[]): TreeNode {
+function buildTree(cases: CaseSummary[]): TreeNode {
   const root = emptyNode()
   for (const c of cases) {
     for (const tag of c.nodeTypes) {
@@ -47,18 +47,17 @@ function CaseLeaf({
   c,
   depth,
   selected,
-  onSelect,
+  hrefFor,
 }: {
-  c: Case
+  c: CaseSummary
   depth: number
   selected: string
-  onSelect: (name: string) => void
+  hrefFor: (name: string) => string
 }) {
   return (
     <li>
-      <button
-        type="button"
-        onClick={() => onSelect(c.name)}
+      <a
+        href={hrefFor(c.name)}
         style={{ paddingLeft: `${depth * 14 + 28}px` }}
         className={cn(
           "flex w-full items-center justify-between gap-2 rounded-sm py-1 pr-2 text-left text-sm",
@@ -68,7 +67,7 @@ function CaseLeaf({
         )}
       >
         <span className="truncate font-mono text-[13px]">{c.name}</span>
-        {c.expect.kind === "refusal" ? (
+        {c.expectKind === "refusal" ? (
           <Badge variant="destructive" className="shrink-0 text-[10px]">
             refuses
           </Badge>
@@ -77,7 +76,7 @@ function CaseLeaf({
             {c.resultType}
           </span>
         )}
-      </button>
+      </a>
     </li>
   )
 }
@@ -91,7 +90,7 @@ function Folder({
   forceOpen,
   onToggle,
   selected,
-  onSelect,
+  hrefFor,
 }: {
   name: string
   node: TreeNode
@@ -101,7 +100,7 @@ function Folder({
   forceOpen: boolean
   onToggle: (path: string) => void
   selected: string
-  onSelect: (name: string) => void
+  hrefFor: (name: string) => string
 }) {
   const open = forceOpen || expanded.has(path)
   const childFolders = [...node.children.entries()].sort(([a], [b]) => a.localeCompare(b))
@@ -136,11 +135,11 @@ function Folder({
               forceOpen={forceOpen}
               onToggle={onToggle}
               selected={selected}
-              onSelect={onSelect}
+              hrefFor={hrefFor}
             />
           ))}
           {childCases.map((c) => (
-            <CaseLeaf key={c.name} c={c} depth={depth + 1} selected={selected} onSelect={onSelect} />
+            <CaseLeaf key={c.name} c={c} depth={depth + 1} selected={selected} hrefFor={hrefFor} />
           ))}
         </ul>
       )}
@@ -151,11 +150,11 @@ function Folder({
 export function CaseTree({
   cases,
   selected,
-  onSelect,
+  hrefFor,
 }: {
-  cases: Case[]
+  cases: CaseSummary[]
   selected: string
-  onSelect: (name: string) => void
+  hrefFor: (name: string) => string
 }) {
   const [query, setQuery] = useState("")
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -207,7 +206,7 @@ export function CaseTree({
               forceOpen={q.length > 0}
               onToggle={toggle}
               selected={selected}
-              onSelect={onSelect}
+              hrefFor={hrefFor}
             />
           ))}
           {topLevel.length === 0 && (

@@ -1,75 +1,34 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import type { Tokens } from "marked"
 
 import { Code } from "@/components/Code"
 import type { Piece } from "@/lib/blocks"
 import { splitBlocks } from "@/lib/blocks"
-import type { Corpus } from "@/lib/corpus"
+import type { EmbeddedCaseData } from "@/lib/pageData"
 import type { Page } from "@/lib/docs"
-
-type AnnotateModule = typeof import("@/components/AnnotateMode")
-
-/** Loads the annotate-mode module only once that mode is actually on, and only in dev: the
- *  `import.meta.env.DEV` check is a dynamic-import guard, not just a render guard, so
- *  `vite build` never puts AnnotateMode.tsx (or the annotation scan it pulls in) in the
- *  production bundle (kantord/toylang#23). */
-function useAnnotateMode(active: boolean): AnnotateModule | null {
-  const [mod, setMod] = useState<AnnotateModule | null>(null)
-  useEffect(() => {
-    if (active && import.meta.env.DEV) {
-      import("@/components/AnnotateMode").then(setMod)
-    }
-  }, [active])
-  return active ? mod : null
-}
+import { exampleHref } from "@/lib/pageData"
+import { withBase } from "@/lib/route"
 
 /**
  * Renders one docs page. Everything except code fences goes through marked; the fences are the
  * fragment protocol the harness (tests/docs.rs) runs, so each kind gets its own presentation
  * here rather than appearing as an anonymous code block.
  *
- * `annotate` is the dev-only annotations mode (kantord/toylang#23): prose blocks get a
- * marker-pen wash where the coordinator left a review/comment/fill note, and become editable so
- * a reply autosaves to the edit inbox. It never runs outside `import.meta.env.DEV`.
+ * `cases` is the small slice of the corpus this exact page's `<case>` fences reference
+ * (lib/pageData.ts), not the whole corpus -- the static build embeds only that per page.
  */
-export function Markdown({
-  page,
-  corpus,
-  annotate = false,
-  scrollToBlock,
-}: {
-  page: Page
-  corpus: Corpus
-  annotate?: boolean
-  scrollToBlock?: number
-}) {
+export function Markdown({ page, cases }: { page: Page; cases: Record<string, EmbeddedCaseData> }) {
   const blocks = useMemo(() => splitBlocks(page), [page])
-  const annotateMode = useAnnotateMode(annotate)
-  const annotations = useMemo(
-    () => (annotateMode ? annotateMode.pageAnnotations(page, blocks) : []),
-    [annotateMode, page, blocks],
-  )
 
   return (
     <article className="docs-prose min-w-0 max-w-2xl">
-      {blocks.map((b, i) => {
-        if (b.kind === "fence") return <Fence key={i} token={b.token} corpus={corpus} />
-        if (annotateMode) {
-          const { AnnotatedProseBlock } = annotateMode
-          return (
-            <AnnotatedProseBlock
-              key={i}
-              page={page}
-              block={i}
-              pieces={b.pieces}
-              scrollTo={scrollToBlock === i}
-              annotations={annotations.filter((a) => a.block === i)}
-              onEdited={(edited, original) => annotateMode.saveEdit(page, i, original, edited)}
-            />
-          )
-        }
-        return <ProseBlock key={i} pieces={b.pieces} />
-      })}
+      {blocks.map((b, i) =>
+        b.kind === "fence" ? (
+          <Fence key={i} token={b.token} cases={cases} />
+        ) : (
+          <ProseBlock key={i} pieces={b.pieces} />
+        ),
+      )}
     </article>
   )
 }
@@ -79,7 +38,7 @@ function ProseBlock({ pieces }: { pieces: Piece[] }) {
   return <div dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-function Fence({ token, corpus }: { token: Tokens.Code; corpus: Corpus }) {
+export function Fence({ token, cases }: { token: Tokens.Code; cases: Record<string, EmbeddedCaseData> }) {
   switch (token.lang) {
     case "toylang":
       return <Code code={token.text} lang="toylang" />
@@ -97,7 +56,7 @@ function Fence({ token, corpus }: { token: Tokens.Code; corpus: Corpus }) {
         </p>
       )
     case "case":
-      return <EmbeddedCase id={token.text.trim()} corpus={corpus} />
+      return <EmbeddedCase id={token.text.trim()} cases={cases} />
     default:
       return null
   }
@@ -116,8 +75,8 @@ function Labeled({ label, code }: { label: string; code: string }) {
  * A corpus case shown in place of repeating its program: same program, input, and expectation
  * the corpus runs, plus the way into the Examples browser where its emitted code lives.
  */
-function EmbeddedCase({ id, corpus }: { id: string; corpus: Corpus }) {
-  const c = corpus.cases.find((x) => x.name === id)
+function EmbeddedCase({ id, cases }: { id: string; cases: Record<string, EmbeddedCaseData> }) {
+  const c = cases[id]
   // The harness verifies every embedded id exists, so this renders only while corpus.json and
   // the docs are mid-edit; saying which id is better than rendering nothing.
   if (!c) {
@@ -127,7 +86,7 @@ function EmbeddedCase({ id, corpus }: { id: string; corpus: Corpus }) {
     <div className="space-y-3 rounded-md border p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-sm font-medium">{c.name}</span>
-        <a className="text-xs text-muted-foreground underline" href={`#/examples/${c.name}`}>
+        <a className="text-xs text-muted-foreground underline" href={withBase(exampleHref(c.name))}>
           open in Examples
         </a>
       </div>
