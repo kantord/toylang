@@ -133,11 +133,18 @@
   needs: [grilling-wizard]
   status: done
 
+- id: mail-app-v2
+  issue: gh:52
+  title: Everything is email -- gmail layout, previews with highlights, grill rounds and board as tabs, own-option always
+  kind: build
+  needs: [static-site-split]
+  status: todo
+
 - id: board-page-v2
   issue: gh:33
-  title: Board v2 -- React Flow graph view and a plain kanban view
+  title: Board v2 -- React Flow graph-only and kanban-only views, as tabs inside the mail app
   kind: build
-  needs: [annotations-email-inbox]
+  needs: [mail-app-v2]
   status: todo
 
 - id: static-site-split
