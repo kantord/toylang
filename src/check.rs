@@ -1020,6 +1020,105 @@ fn collect(ctx: &Ctx, arg: &Expr, want_elem: Option<&Type>) -> Result<Tir, Error
     ))
 }
 
+/// A `map` call over the subject. `want_elem` is the element type the position expects of the
+/// result, when it expects one whose cardinality matches the subject's; the body is checked
+/// against it, which is what lets a mapper body hold `[]`, a variant-naming string, or the
+/// other checked-only forms. With `None` the body synthesises, as it always has.
+fn map_call(ctx: &Ctx, arg: &Expr, span: Span, want_elem: Option<&Type>) -> Result<Tir, Error> {
+    let Some((subject, id)) = ctx.subject.clone() else {
+        return Err(Error::new(
+            span,
+            "`map` needs a subject, so it must follow `|`",
+        ));
+    };
+    let Some(elem) = mapper_elem(&subject) else {
+        return Err(Error::new(
+            span,
+            format!("`map` needs a Vec or a stream, found {subject}"),
+        ));
+    };
+    let param = ctx.fresh();
+    let inner = mapper_ctx(ctx, elem, param);
+    let body = match want_elem {
+        Some(want) => expect(&inner, arg, want)?,
+        None => synth(&inner, arg)?,
+    };
+    // The elements of the result are stored, and a stream is not storable: this is the same
+    // containment ban a Vec literal enforces, met here before the Vec or Stream of them could
+    // exist.
+    if body.ty.contains_stream() {
+        return Err(Error::new(
+            arg.span(),
+            "a `map` body cannot be a stream, which has nothing to store".to_string(),
+        ));
+    }
+    let out = match &subject {
+        Type::Stream(_) => Type::Stream(Box::new(body.ty.clone())),
+        _ => Type::Vec(Box::new(body.ty.clone())),
+    };
+    let source = Tir::new(subject, Kind::Local(id));
+    Ok(Tir::new(
+        out,
+        Kind::Map {
+            source: Box::new(source),
+            param,
+            body: Box::new(body),
+        },
+    ))
+}
+
+/// `|` binds `.` in the right side to the value of the left. It is composition, not a map:
+/// the operators that distribute over a Vec do so themselves. The pipe's value is the right
+/// side's, so an expectation flows into the right side whole -- which is how one reaches the
+/// subject-fed forms (`map`, `select`, a match chain), since they only exist after `|`.
+fn pipe(ctx: &Ctx, lhs: &Expr, rhs: &Expr, want: Option<&Type>) -> Result<Expected, Error> {
+    let value = synth(ctx, lhs)?;
+    let local = ctx.fresh();
+    let inner = ctx.with(Some((value.ty.clone(), local)));
+    let body = match want {
+        Some(want) => expect_inner(&inner, rhs, want)?,
+        None => Expected::Synthesised(synth(&inner, rhs)?),
+    };
+    let (checked, body) = match body {
+        Expected::Checked(tir) => (true, tir),
+        Expected::Synthesised(tir) => (false, tir),
+    };
+    // A stream on the right of `|` must have flowed in from the left: a source read beside an
+    // unrelated piped value is not one chain, and one chain from source to sink is the shape
+    // the whole effect layer keeps.
+    if matches!(body.ty, Type::Stream(_)) && !matches!(value.ty, Type::Stream(_)) {
+        return Err(Error::new(
+            rhs.span(),
+            "this stream does not flow in from the left of `|`; write the pipeline as \
+             one chain from its source"
+                .to_string(),
+        ));
+    }
+    // The same linearity a stream-typed parameter gets: `|` is the one construct that can
+    // silently drop its left side, so a stream piped in must be consumed here.
+    if matches!(value.ty, Type::Stream(_)) {
+        check_linear(
+            &body,
+            &StreamBinding::Local(local),
+            "the stream piped in here",
+            rhs.span(),
+        )?;
+    }
+    let tir = Tir::new(
+        body.ty.clone(),
+        Kind::Bind {
+            local,
+            value: Box::new(value),
+            body: Box::new(body),
+        },
+    );
+    Ok(if checked {
+        Expected::Checked(tir)
+    } else {
+        Expected::Synthesised(tir)
+    })
+}
+
 fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     match expr {
         Expr::Str { text, .. } => Ok(Tir::new(Type::Str, Kind::Str(text.clone()))),
@@ -1156,42 +1255,9 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Ok(Tir::new(Type::Vec(Box::new(elem)), Kind::VecLit(out)))
         }
 
-        // `|` binds `.` in the right side to the value of the left. It is composition, not a
-        // map: the operators that distribute over a Vec do so themselves.
-        Expr::Pipe { lhs, rhs, .. } => {
-            let value = synth(ctx, lhs)?;
-            let local = ctx.fresh();
-            let body = synth(&ctx.with(Some((value.ty.clone(), local))), rhs)?;
-            // A stream on the right of `|` must have flowed in from the left: a source read
-            // beside an unrelated piped value is not one chain, and one chain from source to
-            // sink is the shape the whole effect layer keeps.
-            if matches!(body.ty, Type::Stream(_)) && !matches!(value.ty, Type::Stream(_)) {
-                return Err(Error::new(
-                    rhs.span(),
-                    "this stream does not flow in from the left of `|`; write the pipeline as \
-                     one chain from its source"
-                        .to_string(),
-                ));
-            }
-            // The same linearity a stream-typed parameter gets: `|` is the one construct that
-            // can silently drop its left side, so a stream piped in must be consumed here.
-            if matches!(value.ty, Type::Stream(_)) {
-                check_linear(
-                    &body,
-                    &StreamBinding::Local(local),
-                    "the stream piped in here",
-                    rhs.span(),
-                )?;
-            }
-            Ok(Tir::new(
-                body.ty.clone(),
-                Kind::Bind {
-                    local,
-                    value: Box::new(value),
-                    body: Box::new(body),
-                },
-            ))
-        }
+        Expr::Pipe { lhs, rhs, .. } => match pipe(ctx, lhs, rhs, None)? {
+            Expected::Checked(tir) | Expected::Synthesised(tir) => Ok(tir),
+        },
 
         Expr::Field { .. } | Expr::Index { .. } | Expr::Unwrap { .. } => {
             let Access { tir, stream, .. } = access(ctx, expr)?;
@@ -1275,43 +1341,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             // The one way to produce a new element value. `select` removes elements and a field
             // access reads a field; neither can turn a Vec<Int> into a Vec<Str>.
             if func == "map" {
-                let Some((subject, id)) = ctx.subject.clone() else {
-                    return Err(Error::new(
-                        *span,
-                        "`map` needs a subject, so it must follow `|`",
-                    ));
-                };
-                let Some(elem) = mapper_elem(&subject) else {
-                    return Err(Error::new(
-                        *span,
-                        format!("`map` needs a Vec or a stream, found {subject}"),
-                    ));
-                };
-                let param = ctx.fresh();
-                let inner = mapper_ctx(ctx, elem, param);
-                let body = synth(&inner, arg)?;
-                // The elements of the result are stored, and a stream is not storable: this is
-                // the same containment ban a Vec literal enforces, met here before the Vec or
-                // Stream of them could exist.
-                if body.ty.contains_stream() {
-                    return Err(Error::new(
-                        arg.span(),
-                        "a `map` body cannot be a stream, which has nothing to store".to_string(),
-                    ));
-                }
-                let out = match &subject {
-                    Type::Stream(_) => Type::Stream(Box::new(body.ty.clone())),
-                    _ => Type::Vec(Box::new(body.ty.clone())),
-                };
-                let source = Tir::new(subject, Kind::Local(id));
-                return Ok(Tir::new(
-                    out,
-                    Kind::Map {
-                        source: Box::new(source),
-                        param,
-                        body: Box::new(body),
-                    },
-                ));
+                return map_call(ctx, arg, *span, None);
             }
             // A sink, not a function: `check` handles the one legal position (the program's
             // outermost expression) before `synth` ever runs, so reaching it here means it is
@@ -2070,6 +2100,30 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
         && matches!(want, Type::Enum { .. })
     {
         return construct(ctx, want, text, *span, None).map(Expected::Checked);
+    }
+
+    // The pipe's value is the right side's, so the expectation flows into the right side --
+    // the only road into the subject-fed forms, which exist only after `|`.
+    if let Expr::Pipe { lhs, rhs, .. } = expr {
+        return pipe(ctx, lhs, rhs, Some(want));
+    }
+
+    // A `map` whose position expects a Vec (over a Vec subject) or a Stream (over a Stream
+    // subject) pushes the expected element type into its body. Any other want, or no subject
+    // at all, falls through to synthesis, which owns those errors.
+    if let Expr::Call {
+        func, arg, span, ..
+    } = expr
+        && func == "map"
+    {
+        let want_elem = match (ctx.subject.as_ref().map(|(ty, _)| ty), want) {
+            (Some(Type::Vec(_)), Type::Vec(elem)) => Some(elem.as_ref()),
+            (Some(Type::Stream(_)), Type::Stream(elem)) => Some(elem.as_ref()),
+            _ => None,
+        };
+        if let Some(elem) = want_elem {
+            return map_call(ctx, arg, *span, Some(elem)).map(Expected::Checked);
+        }
     }
 
     // A record literal checked against a record type pushes each field's expected type into

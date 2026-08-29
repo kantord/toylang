@@ -1,0 +1,5 @@
+---
+source: tests/type_flow.rs
+expression: "err(\"fn f(v: Vec<Int>) -> Vec<Str> = v | map(. + 1)\\n\\nf([1])\")"
+---
+expected Str, found Int (at byte 40)

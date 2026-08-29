@@ -160,3 +160,46 @@ fn empty_vec_in_a_constructor_payload() {
 fn a_polymorphic_builtin_still_synthesises_its_argument() {
     insta::assert_snapshot!(err("extent([])"));
 }
+
+// Step 4: the expectation flows through `|` into the right side, and a `map` whose position
+// expects a matching cardinality pushes the expected element type into its body.
+
+#[test]
+fn the_expectation_flows_through_a_pipe() {
+    let src = "fn f(x: Int) -> Vec<Int> = x | [.]\n\nf(1)";
+    assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
+}
+
+#[test]
+fn empty_vec_in_a_map_body() {
+    let src = "fn pad(v: Vec<Int>) -> Vec<Vec<Int>> = v | map([])\n\npad([1, 2])";
+    assert_eq!(
+        body_ty(src),
+        Type::Vec(Box::new(Type::Vec(Box::new(Type::Int))))
+    );
+}
+
+/// The parse-shaped body the rejected `parse` design needed: the element the map must produce
+/// is declared, and each body form checks against it.
+#[test]
+fn a_record_map_body_takes_the_declared_element() {
+    let src = "enum Status { active, inactive }\n\n\
+               fn tag(v: Vec<Int>) -> Vec<{n: Int, s: Status}> = v | map({n: ., s: \"active\"})\n\n\
+               tag([1])";
+    assert!(matches!(body_ty(src), Type::Vec(_)));
+}
+
+#[test]
+fn a_stream_map_body_takes_the_declared_element() {
+    let src = "fn pad(s: Stream<Int>) -> Stream<Vec<Int>> = s | map([])\n\n\
+               collect(pad(inputs))";
+    assert!(matches!(body_ty(src), Type::Vec(_)));
+}
+
+/// The pushed element reaches the body, so the mismatch is the body's, not the whole map's.
+#[test]
+fn a_map_body_that_misses_the_element_type() {
+    insta::assert_snapshot!(err(
+        "fn f(v: Vec<Int>) -> Vec<Str> = v | map(. + 1)\n\nf([1])"
+    ));
+}
