@@ -1,5 +1,0 @@
----
-source: tests/matcher.rs
-expression: "err(\"[{valid: 1 == 2, readings: [5]}, {valid: 1 == 1, readings: [1]}] | map(.valid -> .readings[0])\")"
----
-this guard chain is partial, and its arms are already Opt<Int>: a declined chain and a matched-but-absent value would both print `null`; add a default arm (at byte 71)

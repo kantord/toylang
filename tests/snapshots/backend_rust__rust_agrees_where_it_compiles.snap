@@ -2,7 +2,7 @@
 source: tests/backend_rust.rs
 expression: "format!(\"compiles (rust) ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles (rust) (139):
+compiles (rust) (149):
 adults
 arith_add
 arith_div_trunc
@@ -51,6 +51,11 @@ filter_strings
 fizzbuzz
 fizzbuzz_arms
 forward_reference
+generic_enum_input
+generic_enum_match
+generic_enum_payload
+generic_enum_two_instantiations
+generic_enum_unit_expectation
 greet
 hello
 index_negative
@@ -87,11 +92,16 @@ map_to_record
 map_to_str
 match_arms_from_annotation
 match_partial_guards
+match_partial_opt_arms
 nested_field_access
 nullary_function
+opt_constructors
 opt_holds_an_empty_vec
 opt_in_a_function_signature
 opt_is_absent_not_empty
+opt_nesting_flattens
+opt_unwrap_of_none_refuses
+opt_unwrap_peels_one_level
 pipe_chain
 plus_concats
 projection_in_record_value

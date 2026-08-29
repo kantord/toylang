@@ -54,9 +54,8 @@ const FIELD_HELPER: &str = r#"def tl_field(v, k, depth):
     return [tl_field(e, k, depth - 1) for e in v]
 "#;
 
-/// Absence is `None`, which is unambiguous because toylang has no null value: nothing else can
-/// produce one. This is the same mapping jq got, and lossless in this direction for the same
-/// reason.
+/// An Opt is its enum's own runtime shape (ADR 0009): `{"some": v}` present, `"none"` absent.
+/// Tagged, so two levels of absence stay two values; only the printer flattens to null.
 const AT_HELPER: &str = r#"def tl_at(v, i, depth):
     if depth > 0:
         return [tl_at(e, i, depth - 1) for e in v]
@@ -64,22 +63,22 @@ const AT_HELPER: &str = r#"def tl_at(v, i, depth):
     if i < 0:
         i = n + i
     if i < 0 or i >= n:
-        return None
-    return v[i]
+        return "none"
+    return {"some": v[i]}
 "#;
 
 const UNWRAP_HELPER: &str = r#"def tl_unwrap(v, depth):
     if depth > 0:
         return [tl_unwrap(e, depth - 1) for e in v]
-    if v is None:
+    if v == "none":
         tl_fail("unwrapped a value that is not there")
-    return v
+    return v["some"]
 "#;
 
 const TAIL_HELPER: &str = r#"def tl_tail(v):
     if len(v) == 0:
-        return None
-    return v[1:]
+        return "none"
+    return {"some": v[1:]}
 "#;
 
 const VEC_CONCAT_HELPER: &str = r#"def tl_vec_concat(vv):
@@ -263,6 +262,7 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
 /// two JSON words have to be written out.
 fn show(ty: &Type, value: &str, depth: usize) -> String {
     match ty {
+        Type::Param(_) => unreachable!("params are substituted before emit"),
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
@@ -276,11 +276,12 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
                 show(elem, &e, depth + 1)
             )
         }
-        Type::Opt(inner) => {
+        Type::Enum { .. } if ty.as_opt().is_some() => {
+            let inner = ty.as_opt().expect("guarded");
             let v = format!("o{depth}");
             format!(
-                "(lambda {v}: \"null\" if {v} is None else {})({value})",
-                show(inner, &v, depth + 1)
+                "(lambda {v}: \"null\" if {v} == \"none\" else {})({value})",
+                show(inner, &format!("{v}[\"some\"]"), depth + 1)
             )
         }
         // One type, two runtime shapes (ADR 0009): a unit variant is a bare string, a payload
@@ -509,6 +510,12 @@ fn expr(t: &Tir) -> String {
                     (None, Some(g)) => Some(expr(g)),
                     (None, None) => None,
                 };
+                // A partial chain's yield is an Opt, so a present arm is tagged.
+                let run = if *partial {
+                    format!("{{\"some\": {run}}}")
+                } else {
+                    run
+                };
                 match test {
                     Some(test) if *partial || i + 1 < arms.len() => {
                         out.push_str(&format!("({run} if {test} else "));
@@ -518,7 +525,7 @@ fn expr(t: &Tir) -> String {
                 }
             }
             if *partial {
-                out.push_str("None");
+                out.push_str("\"none\"");
             }
             out.push_str(&")".repeat(closing));
             format!("({out})")

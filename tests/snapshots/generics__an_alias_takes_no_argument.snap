@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"type Db = {n: Int}\\n\\nfn f(d: Db<Int>) -> Int = 1\\n\\nf({n: 1})\")"
+---
+`Db` takes no type argument (at byte 28)

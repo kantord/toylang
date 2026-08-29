@@ -1,0 +1,20 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+#![allow(dead_code)]
+
+fn tl_int(n: i32) -> i32 {
+    n
+}
+
+#[derive(Clone)]
+#[allow(non_camel_case_types)]
+enum TlE_Box_Int {
+    V_wrap(i32),
+    V_empty,
+}
+
+fn main() {
+    println!("{}", (match TlE_Box_Int::V_wrap(tl_int(5)) { TlE_Box_Int::V_wrap(n0) => ("{\"wrap\":".to_string() + &(n0).to_string() + "}"), TlE_Box_Int::V_empty => "\"empty\"".to_string() }));
+}

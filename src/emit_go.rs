@@ -257,7 +257,7 @@ pub fn emit(program: &Program) -> String {
     // Go has no sum type, so an enum is a tag (the variant's declaration index) plus one
     // pointer per payload variant, nil except for the one the tag names.
     for en in &e.enums {
-        let Type::Enum { name, variants } = en else {
+        let Type::Enum { name, variants, .. } = en else {
             unreachable!("only enums are collected")
         };
         decls.push_str(&format!("type {} struct {{\n\ttag int32\n", e.go_type(en)));
@@ -270,7 +270,7 @@ pub fn emit(program: &Program) -> String {
         // encoding/json cannot guess which of the enum's two wire shapes (ADR 0009) it is
         // looking at, so decoding is spelled out. Only a program that reads input decodes.
         if program.input.is_some() || program.inputs.is_some() {
-            decls.push_str(&e.enum_unmarshal(name, variants));
+            decls.push_str(&e.enum_unmarshal(en, name));
         }
     }
 
@@ -405,11 +405,12 @@ fn has_scalar(ty: &Type) -> bool {
         Type::Stream(_) => unreachable!("a stream cannot reach has_scalar"),
         Type::Int | Type::Bool => true,
         Type::Str => false,
-        Type::Vec(t) | Type::Opt(t) => has_scalar(t),
+        Type::Vec(t) => has_scalar(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| has_scalar(t)),
         Type::Enum { variants, .. } => variants
             .iter()
             .any(|(_, p)| p.as_ref().is_some_and(has_scalar)),
+        Type::Param(_) => unreachable!("params are substituted before emit"),
     }
 }
 
@@ -435,7 +436,7 @@ struct Collect<'a> {
 impl Collect<'_> {
     fn ty(&mut self, t: &Type) {
         match t {
-            Type::Vec(e) | Type::Opt(e) | Type::Stream(e) => self.ty(e),
+            Type::Vec(e) | Type::Stream(e) => self.ty(e),
             Type::Record(fields) => {
                 if !self.records.contains(t) {
                     self.records.push(t.clone());
@@ -444,7 +445,13 @@ impl Collect<'_> {
                     self.ty(f);
                 }
             }
+            // Opt keeps the tlOpt[T] struct it always had (already tagged), so it is not
+            // harvested as a declared enum; only what it holds is.
             Type::Enum { variants, .. } => {
+                if let Some(inner) = t.as_opt() {
+                    self.ty(inner);
+                    return;
+                }
                 if !self.enums.contains(t) {
                     self.enums.push(t.clone());
                 }
@@ -568,7 +575,9 @@ impl Emitter {
             Type::Int => "int32".to_string(),
             Type::Bool => "bool".to_string(),
             Type::Vec(e) => format!("[]{}", self.go_type(e)),
-            Type::Opt(e) => format!("tlOpt[{}]", self.go_type(e)),
+            Type::Enum { .. } if ty.as_opt().is_some() => {
+                format!("tlOpt[{}]", self.go_type(ty.as_opt().expect("guarded")))
+            }
             // Materialized eagerly as the slice of its entries, so it is a slice here too.
             // Fusion is what will remove this materialization.
             Type::Stream(e) => format!("[]{}", self.go_type(e)),
@@ -580,12 +589,25 @@ impl Emitter {
                     .expect("every record reachable from the program was collected");
                 format!("tlRec{i}")
             }
-            // The enum's own name is the identity and is unique, so it names the struct too.
-            Type::Enum { name, .. } => format!("tlE_{name}"),
+            // The enum's identity -- name plus arguments -- names the struct: `ident()`
+            // embeds the arguments so each instantiation gets its own.
+            Type::Enum { .. } => format!("tlE_{}", ty.ident()),
+            Type::Param(_) => unreachable!("params are substituted before emit"),
         }
     }
 
     /// The declaration index of `variant`, which is its tag and its pointer field's suffix.
+    /// A partial chain's yield is an Opt, so a present arm wraps its value in the tag
+    /// struct; total chains return the body bare. Split out of `expr`'s match arm to keep
+    /// the tagging decision from deepening it (kantord/toylang#62).
+    fn arm_yield(go_ty: String, body: String, partial: bool) -> String {
+        if partial {
+            format!("{go_ty}{{true, {body}}}")
+        } else {
+            body
+        }
+    }
+
     fn variant_index(variants: &[(String, Option<Type>)], variant: &str) -> usize {
         variants
             .iter()
@@ -595,8 +617,11 @@ impl Emitter {
 
     /// The decoder for one enum: a bare string resolves among the unit variants, a single-key
     /// object among the payload ones, and a near miss is refused naming the enum.
-    fn enum_unmarshal(&self, name: &str, variants: &[(String, Option<Type>)]) -> String {
-        let ename = format!("tlE_{name}");
+    fn enum_unmarshal(&self, en: &Type, name: &str) -> String {
+        let Type::Enum { variants, .. } = en else {
+            unreachable!("only enums are collected")
+        };
+        let ename = self.go_type(en);
         let mut out = String::new();
         out.push_str(&format!(
             "func (e *{ename}) UnmarshalJSON(b []byte) error {{\n"
@@ -767,6 +792,16 @@ impl Emitter {
             }
 
             Kind::EnumLit { variant, payload } => {
+                // Opt's constructors build its tlOpt encoding, not a tag struct: `some(x)`
+                // is presence, `none` is the zero value.
+                if t.ty.as_opt().is_some() {
+                    return match payload {
+                        Some(p) => {
+                            format!("{}{{true, {}}}", self.go_type(&t.ty), self.expr(p))
+                        }
+                        None => format!("{}{{}}", self.go_type(&t.ty)),
+                    };
+                }
                 let Type::Enum { variants, .. } = &t.ty else {
                     unreachable!("an EnumLit's type is its enum")
                 };
@@ -938,11 +973,8 @@ impl Emitter {
                             self.local(pid)
                         ));
                     }
-                    let produced = if *partial {
-                        format!("{}{{true, {}}}", self.go_type(&t.ty), self.expr(&arm.body))
-                    } else {
-                        self.expr(&arm.body)
-                    };
+                    let produced =
+                        Self::arm_yield(self.go_type(&t.ty), self.expr(&arm.body), *partial);
                     run.push_str(&format!("return {produced}"));
                     let test = match (&arm.variant, &arm.guard) {
                         (Some(v), _) => {
@@ -976,6 +1008,7 @@ impl Emitter {
     /// backend. Here there is no choice at all: a Go value cannot be asked what it is.
     fn show(&self, ty: &Type, value: &str, depth: usize) -> String {
         match ty {
+            Type::Param(_) => unreachable!("params are substituted before emit"),
             // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
@@ -990,7 +1023,8 @@ impl Emitter {
                     self.show(elem, &e, depth + 1)
                 )
             }
-            Type::Opt(inner) => {
+            Type::Enum { .. } if ty.as_opt().is_some() => {
+                let inner = ty.as_opt().expect("guarded");
                 let v = format!("o{depth}");
                 format!(
                     "func({v} {}) string {{ if !{v}.ok {{ return \"null\" }}; return {} }}({value})",

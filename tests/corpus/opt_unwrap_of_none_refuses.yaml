@@ -1,0 +1,11 @@
+# The other half of opt_unwrap_peels_one_level.yaml: the outer level really is absent here,
+# so the same unwrap that survived some(none) stops the program on none. One value prints
+# null before the `!`, both print null without it -- the tag is the whole difference.
+program: |
+  fn shallow() -> Opt<Opt<Int>> = none
+
+  shallow()!
+
+refuses: true
+
+node_types: [application, unwrap, variant.unit]

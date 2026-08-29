@@ -1,0 +1,14 @@
+# Opt<Opt<T>> is two honest levels in memory, and serialization drops both tags: some(some(7))
+# prints the payload's payload, and some(none) prints null exactly as none would. Lossy by
+# design -- serialization already drops every type-level distinction (kantord/toylang#62).
+program: |
+  fn deep() -> Opt<Opt<Int>> = some(some(7))
+
+  fn shallow() -> Opt<Opt<Int>> = some(none)
+
+  {a: deep(), b: shallow()}
+
+output: |
+  {"a":7,"b":null}
+
+node_types: [application, int, record-literal, variant.payload, variant.unit]

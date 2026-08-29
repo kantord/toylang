@@ -434,7 +434,7 @@ pub fn emit(program: &Program) -> String {
     // enum. `allow(non_camel_case_types)` because variant names are data and keep their source
     // spelling rather than being case-mangled.
     for (i, en) in e.enums.iter().enumerate() {
-        let Type::Enum { name, variants } = en else {
+        let Type::Enum { name, variants, .. } = en else {
             unreachable!("only enums are collected")
         };
         decls.push_str(&format!(
@@ -449,7 +449,7 @@ pub fn emit(program: &Program) -> String {
         }
         decls.push_str("}\n\n");
         if program.input.is_some() || program.inputs.is_some() {
-            decls.push_str(&e.enum_parser(i, name, variants));
+            decls.push_str(&e.enum_parser(i, en, name));
         }
     }
 
@@ -560,7 +560,7 @@ struct Collect<'a> {
 impl Collect<'_> {
     fn ty(&mut self, t: &Type) {
         match t {
-            Type::Vec(e) | Type::Opt(e) | Type::Stream(e) => self.ty(e),
+            Type::Vec(e) | Type::Stream(e) => self.ty(e),
             Type::Record(fields) => {
                 if !self.records.contains(t) {
                     self.records.push(t.clone());
@@ -569,7 +569,13 @@ impl Collect<'_> {
                     self.ty(f);
                 }
             }
+            // Opt keeps the Option<T> it always had (already tagged), so it is not
+            // harvested as a declared enum; only what it holds is.
             Type::Enum { variants, .. } => {
+                if let Some(inner) = t.as_opt() {
+                    self.ty(inner);
+                    return;
+                }
                 if !self.enums.contains(t) {
                     self.enums.push(t.clone());
                 }
@@ -687,17 +693,21 @@ impl Emitter {
 
     fn rs_type(&self, ty: &Type) -> String {
         match ty {
+            Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Str => "String".to_string(),
             Type::Int => "i32".to_string(),
             Type::Bool => "bool".to_string(),
             Type::Vec(e) => format!("Vec<{}>", self.rs_type(e)),
-            Type::Opt(e) => format!("Option<{}>", self.rs_type(e)),
+            Type::Enum { .. } if ty.as_opt().is_some() => {
+                format!("Option<{}>", self.rs_type(ty.as_opt().expect("guarded")))
+            }
             // Materialized eagerly as the Vec of its entries, so it is a Vec here too.
             // Fusion is what will remove this materialization.
             Type::Stream(e) => format!("Vec<{}>", self.rs_type(e)),
             Type::Record(_) => format!("TlRec{}", self.record_index(ty)),
-            // The enum's own name is the identity and is unique, so it names the Rust enum too.
-            Type::Enum { name, .. } => format!("TlE_{name}"),
+            // The enum's identity -- name plus arguments -- names the Rust enum: `ident()`
+            // embeds the arguments so each instantiation gets its own declaration.
+            Type::Enum { .. } => format!("TlE_{}", ty.ident()),
         }
     }
 
@@ -706,6 +716,7 @@ impl Emitter {
     /// so a Vec of Vecs nests the same way without needing its own case.
     fn parser_expr(&self, ty: &Type) -> String {
         match ty {
+            Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Str => "tl_parse_str".to_string(),
             Type::Int => "tl_parse_i32".to_string(),
             Type::Bool => "tl_parse_bool".to_string(),
@@ -713,7 +724,7 @@ impl Emitter {
                 "(|p: &mut TlParser| tl_parse_vec(p, {}))",
                 self.parser_expr(e)
             ),
-            Type::Opt(_) => unreachable!("Opt cannot be declared, so input never has one"),
+            // The checker refuses Opt anywhere in an input type: absence has no wire form.
             Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
             Type::Enum { .. } => format!("tl_parse_enum{}", self.enum_index(ty)),
             Type::Record(_) => format!("tl_parse_rec{}", self.record_index(ty)),
@@ -723,8 +734,11 @@ impl Emitter {
     /// A named parsing function for one enum, dispatching on which of the two JSON shapes
     /// (ADR 0009) arrived: a bare string resolves among the unit variants, a single-key object
     /// among the payload ones, and a near miss is refused naming the enum.
-    fn enum_parser(&self, i: usize, name: &str, variants: &[(String, Option<Type>)]) -> String {
-        let ename = format!("TlE_{name}");
+    fn enum_parser(&self, i: usize, en: &Type, name: &str) -> String {
+        let Type::Enum { variants, .. } = en else {
+            unreachable!("only enums are collected")
+        };
+        let ename = self.rs_type(en);
         let mut out = String::new();
         out.push_str(&format!(
             "fn tl_parse_enum{i}(p: &mut TlParser) -> {ename} {{\n"
@@ -935,6 +949,11 @@ impl Emitter {
                     .collect();
                 format!("{} {{ {} }}", self.rs_type(&t.ty), parts.join(", "))
             }
+            // Opt's constructors are Option's own: `some(x)` is presence, `none` absence.
+            Kind::EnumLit { variant, payload } if t.ty.as_opt().is_some() => match payload {
+                Some(p) => format!("Some({})", self.expr(p)),
+                None => "None".to_string(),
+            },
             Kind::EnumLit { variant, payload } => match payload {
                 None => format!("{}::V_{variant}", self.rs_type(&t.ty)),
                 Some(p) => format!("{}::V_{variant}({})", self.rs_type(&t.ty), self.expr(p)),
@@ -1131,6 +1150,7 @@ impl Emitter {
     /// Go one can.
     fn show(&self, ty: &Type, value: &str, depth: usize) -> String {
         match ty {
+            Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Str => format!("tl_quote(&{value})"),
             Type::Int => format!("({value}).to_string()"),
@@ -1143,7 +1163,8 @@ impl Emitter {
                     self.show(elem, &format!("{e}.clone()"), depth + 1)
                 )
             }
-            Type::Opt(inner) => {
+            Type::Enum { .. } if ty.as_opt().is_some() => {
+                let inner = ty.as_opt().expect("guarded");
                 let v = format!("o{depth}");
                 format!(
                     "(match {value} {{ None => \"null\".to_string(), Some({v}) => {} }})",

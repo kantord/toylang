@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum Box<T> { wrap(T), empty }\\n\\nfn f(b: Box<Int, Str>) -> Int = 1\\n\\nf(wrap(1))\")"
+---
+`Box` takes one type argument, found 2 (at byte 40)

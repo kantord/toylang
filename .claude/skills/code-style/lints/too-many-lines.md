@@ -146,3 +146,12 @@ helper (mirroring `vec_lit`'s own Record-branch shape) removed the arm's
 branching from `expr()` entirely and brought it back to matching its
 merge-base count with no finding. The other six backends' growth stayed
 inherited by the same rule as every instance above.
+
+The opt-as-enum session (issue #62) is a tenth instance, verified by diffing the full clippy
+site list against the main checkout rather than per-function counts: the flagged set before
+and after is identical (every emitter `emit`/`expr`/`show` already flagged, none newly
+crossing), so all standing findings are inherited. The three findings the session's own diff
+did cause -- `resolve_bound` and `expect_inner` crossing the line budget, `emit_llvm.rs`'s
+`expr` picking up a cognitive-complexity score from a new Opt arm -- were tightened back
+under budget before Stop by the extract-a-named-helper move (`resolve_named`,
+`wanted_variant`, `opt_lit`), the same answer as the caused cases above.

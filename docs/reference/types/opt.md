@@ -1,8 +1,10 @@
 # Opt
 
-`Opt<T>`: a `T` that may be absent. Every `Opt` a value carries came from an operation that
+`Opt<T>`: a `T` that may be absent. The prelude declares it as an ordinary
+[enum](enum.md) -- `enum Opt<T> { some(T), none }` -- so absence is tagged in memory, and
+`null` appears only when a result is printed. Most `Opt`s come from an operation that
 cannot promise an entry -- a collapsing index, [`tail`](../builtins/tail.md), a projection
-through a ragged dimension.
+through a ragged dimension -- and the constructors `some(x)` and `none` spell one directly.
 
 ```toylang
 str(range(5)[3]!)

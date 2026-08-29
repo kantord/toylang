@@ -1,0 +1,5 @@
+---
+source: tests/opt.rs
+expression: "err(\"[1, 2][0] | some -> 1 or none -> 0\")"
+---
+Opt<Int> cannot be matched by variant yet; how its arms compose is still being decided, so insist with `!` or keep the value whole (at byte 12)

@@ -82,23 +82,29 @@ fn discount(total: Int) -> Int =
 {"a":15,"b":0}
 ```
 
-The one thing a partial chain cannot do is return `Opt` from its own arms: a declined chain
-and an arm that matched but found nothing would both print `null`, with no way to tell them
-apart, so the checker refuses it:
+A partial chain whose arms are themselves `Opt`-typed doubles the wrapping: declining the
+chain is one absence, matching and finding nothing is another, and since absence is tagged
+in memory they stay two different values -- `none` and `some(none)`. Note the doubled
+return type:
 
 ```toylang
-fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Int> =
-    entry | .valid -> entry.readings[0]
+fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Opt<Int>> =
+    entry | .valid -> entry.readings[9]
 
-first_reading({valid: 1 == 2, readings: [5]})
+{a: first_reading({valid: 1 == 2, readings: [5]}), b: first_reading({valid: 1 == 1, readings: [5]})}
 ```
 
-```error
-this guard chain is partial, and its arms are already Opt<Int>: a declined chain and a matched-but-absent value would both print `null`; add a default arm (at byte 85)
+```output
+{"a":null,"b":null}
 ```
 
-Adding a default resolves it -- even one that can itself come back absent -- because the
-chain is no longer partial; every input now hits an arm:
+Both *print* `null`, because serialization flattens every level of tagging away -- it is
+lossy about this the way it is about every type-level distinction. The program can still
+tell them apart: `!` peels exactly one level, so unwrapping `b` yields the inner absence
+and prints `null`, while unwrapping `a` stops the program.
+
+A default arm collapses the doubling back to one level -- even a default that can itself
+come back absent -- because the chain is no longer partial; every input now hits an arm:
 
 ```toylang
 fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Int> =

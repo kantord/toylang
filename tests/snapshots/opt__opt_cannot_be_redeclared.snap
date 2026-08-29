@@ -2,4 +2,4 @@
 source: tests/opt.rs
 expression: "err(\"type Opt = Int\\n\\n1\")"
 ---
-`Opt` is a built-in type and cannot be redefined (at byte 0)
+type `Opt` is defined twice (at byte 4)

@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum Box<T> { wrap(T<Int>) }\\n\\nstr(1)\")"
+---
+`T` is a type parameter and takes no type argument (at byte 19)

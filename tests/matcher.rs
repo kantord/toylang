@@ -15,16 +15,14 @@ fn a_bare_expression_mid_chain() {
     ));
 }
 
-/// The two-nulls program from the decision: our Opt is untagged, so a partial chain over an
-/// Opt-bodied arm would print one `null` for two different absences (arm declined, versus
-/// arm matched and found nothing). Refused, with add-a-default as the way out. (The
-/// decision's own data has an empty `readings`, which a literal cannot spell -- `[]` has no
-/// element type -- but the refusal is about the body's type, not the data.)
+/// The two-nulls program from the decision, on the other side of the #62 ratification:
+/// absence is tagged now, so a partial chain over an Opt-bodied arm is two distinguishable
+/// values in memory and legal -- the corpus case match_partial_opt_arms pins what it prints.
+/// What remains here is that the doubled type is what the chain honestly is.
 #[test]
-fn a_partial_chain_with_an_opt_typed_body() {
-    insta::assert_snapshot!(err(
-        "[{valid: 1 == 2, readings: [5]}, {valid: 1 == 1, readings: [1]}] | map(.valid -> .readings[0])"
-    ));
+fn a_partial_chain_over_opt_arms_is_doubly_opt() {
+    let program = "[{valid: 1 == 2, readings: [5]}, {valid: 1 == 1, readings: [1]}] | map(.valid -> .readings[0])";
+    assert!(toylang::compile(program).is_ok());
 }
 
 /// `//` retired when `or` became the arm composer. The token no longer exists, so the old

@@ -54,7 +54,7 @@ pub fn validate(value: &Value, ty: &Type, path: &str) -> Result<(), String> {
         // variant, or a single-key object whose key names a payload variant. Everything else
         // is refused with the enum's name, since "found a string" alone would not say which
         // closed set the string missed.
-        (Type::Enum { name, variants }, v) => {
+        (Type::Enum { name, variants, .. }, v) => {
             return match v {
                 Value::String(s) => match variants.iter().find(|(n, _)| n == s) {
                     Some((_, None)) => Ok(()),

@@ -2393,6 +2393,13 @@ forbids. `map(.valid -> .readings[0])` over `{valid: false, readings: [5]}` and
 `{valid: true, readings: []}` printing `[null,null]` is the program this rule exists to
 refuse.
 
+REVISED (2026-08-29, kantord/toylang#62): the refusal's premise -- "our `Opt` is untagged"
+-- fell with the Opt-as-enum ratification above. A partial chain over `Opt`-bodied arms now
+types as `Opt<Opt<T>>`, two honest levels a program can tell apart through `!`; the
+two-nulls program is legal and prints `[null,null]`, which is serialization's documented
+lossiness rather than a type-level conflation (the corpus case match_partial_opt_arms pins
+it). The closed-world half, and guards never counting toward coverage, stand unchanged.
+
 Deferred with their own triggers: matcher values (`int()`, decoders), `and`/`not`,
 running a matcher to a `Result`, and deep patterns -- Q27's decode work, when it has
 customers. Mixed chains (pattern arms and guard arms over one enum subject) are legal;
@@ -2504,6 +2511,11 @@ for `parse`.
 
 First cut is monomorphic: no type parameters. The named motivations all work without them;
 generics' first real customer is `Result<T, E>`, which belongs to the decoding work.
+
+RETIRED (2026-08-29, kantord/toylang#62): generic enums shipped with `Opt<T>` as the first
+customer, per the ratification above -- declarations take parameters, `Name<...>` resolves by
+substitution, and constructors infer the instantiation from their payload or take it from the
+position's expectation. `Result<T, E>` inherits the machinery instead of motivating it.
 
 ## Open questions
 

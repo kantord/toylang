@@ -42,3 +42,12 @@ optional call argument added just enough nesting to cross from absent to 11/10; 
 `call_args()` fixed it the same way, and is the general answer whenever a small new match
 pushes an otherwise-shape-1 dispatch over threshold -- try the tighten first, same as
 too-many-lines' identically-named playbook.
+
+The opt-as-enum session (issue #62) hit shape 2 four times, caused: the tagged-yield choice
+for partial chains landed inside `expr()`'s match arm in llvm, go, js, and lua. The llvm
+instance was extracted into `opt_lit()` in-session; the other three were wrongly recorded
+as inherited until the landing review measured them (go 14/10, js 16/10, lua 14/10 against
+baselines 12/15/13), and were extracted into `arm_yield`/`arm_return` helpers at review.
+After extraction js and lua sit at their baselines again; go carries one residual point
+(13/10 vs 12/10) from the same arm's Opt re-encoding, caused and recorded here rather than
+laundered into the inherited pile.

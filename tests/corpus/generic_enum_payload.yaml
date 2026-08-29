@@ -1,0 +1,14 @@
+# A generic enum's constructor infers the instantiation from its payload: `wrap(5)` alone is
+# enough to make a `Box<Int>`. Pinned for Go and Rust, the two targets whose nominal types
+# force each instantiation into its own emitted declaration (`tlE_Box_Int`, `TlE_Box_Int`).
+program: |
+  enum Box<T> { wrap(T), empty }
+
+  wrap(5)
+
+output: |
+  {"wrap":5}
+
+snapshot: [go, rust]
+
+node_types: [int, variant.payload]

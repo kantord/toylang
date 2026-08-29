@@ -541,7 +541,10 @@ impl<'i> Cursor<'i> {
         })
     }
 
-    /// `Str`, `Int`, `Bool`, `Vec<T>`, `Stream<T>`, or `Opt<T>`.
+    /// `Str`, `Int`, `Bool`, `Vec<T>`, `Stream<T>`, or any declared name -- with
+    /// `<...>` arguments when the name is a generic enum's. The parser accepts arguments on
+    /// every name and lets resolution hold the arity, so `Pair` and `Str<Int>` fail with an
+    /// error that knows what `Pair` and `Str` are rather than a parse error that does not.
     fn type_expr(&mut self) -> Result<TypeExpr, Error> {
         let (tok, span) = self.advance()?;
         if tok == Tok::LBrace {
@@ -551,18 +554,40 @@ impl<'i> Cursor<'i> {
             Tok::Ident(n) => n,
             other => return Err(Error::new(span, format!("expected a type, found {other}"))),
         };
-        if !ty::takes_type_arg(&name) {
-            return Ok(TypeExpr::Named { name, span });
+        if self.peek()?.0 != Tok::Lt {
+            return Ok(TypeExpr::Named {
+                name,
+                args: Vec::new(),
+                span,
+            });
         }
-        self.eat(Tok::Lt)?;
-        let elem = self.type_expr()?;
+        self.advance()?;
+        let mut args = Vec::new();
+        loop {
+            args.push(self.type_expr()?);
+            let (sep, _) = self.peek()?;
+            if sep != Tok::Comma {
+                break;
+            }
+            self.advance()?;
+        }
         let close = self.eat(Tok::Gt)?;
-        let (elem, span) = (Box::new(elem), span.to(close));
-        Ok(match name.as_str() {
-            "Vec" => TypeExpr::Vec { elem, span },
-            "Stream" => TypeExpr::Stream { elem, span },
-            _ => TypeExpr::Opt { elem, span },
-        })
+        let span = span.to(close);
+        // The two built-in constructors keep their own nodes; their arity is the grammar's.
+        if ty::takes_type_arg(&name) {
+            if args.len() != 1 {
+                return Err(Error::new(
+                    span,
+                    format!("`{name}` takes one type argument, found {}", args.len()),
+                ));
+            }
+            let elem = Box::new(args.remove(0));
+            return Ok(match name.as_str() {
+                "Vec" => TypeExpr::Vec { elem, span },
+                _ => TypeExpr::Stream { elem, span },
+            });
+        }
+        Ok(TypeExpr::Named { name, args, span })
     }
 
     /// A call's argument when it opens with `(` or `{`: a parenthesized expression, or a record
@@ -608,7 +633,8 @@ impl<'i> Cursor<'i> {
         })
     }
 
-    /// `enum Shape { point, circle{r: Int}, celsius(Int) }`
+    /// `enum Shape { point, circle{r: Int}, celsius(Int) }`, optionally with type
+    /// parameters: `enum Opt<T> { some(T), none }`.
     ///
     /// A variant is a name, optionally followed by its payload type. The payload rule is any
     /// single type, spelled the way a call spells its argument: a record type directly in
@@ -616,6 +642,19 @@ impl<'i> Cursor<'i> {
     fn enum_decl(&mut self, is_pub: bool) -> Result<EnumDecl, Error> {
         let start = self.eat(Tok::Enum)?;
         let (name, _) = self.eat_ident("an enum name")?;
+        let mut params = Vec::new();
+        if self.peek()?.0 == Tok::Lt {
+            self.advance()?;
+            loop {
+                params.push(self.eat_ident("a type parameter")?);
+                let (sep, _) = self.peek()?;
+                if sep != Tok::Comma {
+                    break;
+                }
+                self.advance()?;
+            }
+            self.eat(Tok::Gt)?;
+        }
         self.eat(Tok::LBrace)?;
         let mut variants = Vec::new();
         let (first, _) = self.peek()?;
@@ -650,6 +689,7 @@ impl<'i> Cursor<'i> {
         let close = self.eat(Tok::RBrace)?;
         Ok(EnumDecl {
             name,
+            params,
             variants,
             span: start.to(close),
             is_pub,

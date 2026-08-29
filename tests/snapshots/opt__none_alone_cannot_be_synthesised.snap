@@ -1,0 +1,5 @@
+---
+source: tests/opt.rs
+expression: "err(\"none\")"
+---
+cannot tell what `Opt<T>` a bare `none` builds; only a position that expects one can say (at byte 0)

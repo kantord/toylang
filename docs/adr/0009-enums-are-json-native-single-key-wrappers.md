@@ -31,6 +31,10 @@ unique within their enum.
   identical -- `enum Color { red, green, blue }` -- so it cannot be the general rule. It
   survives as exactly one special case: `Opt`'s value-or-`null` form predates this decision,
   which is also why `Opt` is provably not self-hostable as an enum and stays built-in.
+  *Amended 2026-08-29 (kantord/toylang#62): the self-hosting proof stood on the untagged
+  form being the value. The ratification recorded on kantord/toylang#29 moved that form to
+  the serialization boundary -- `Opt` is now the prelude's generic enum, tagged in memory
+  like every enum here, and value-or-`null` is only how it prints.*
 
 ## Consequences
 

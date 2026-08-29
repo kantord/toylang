@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum Weird<T> { w(Int), v(T) }\\n\\nw(1)\")"
+---
+`w`'s payload does not say what `Weird<T>`'s `T` is; only a position that expects one can (at byte 32)

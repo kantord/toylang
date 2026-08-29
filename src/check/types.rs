@@ -77,17 +77,60 @@ pub(super) fn enum_map(enums: &[EnumDecl]) -> Result<HashMap<String, &EnumDecl>,
 /// Resolve one enum declaration to its type. `seen` carries the names being expanded, exactly
 /// as for aliases, so an enum whose payload mentions itself is refused rather than expanded
 /// forever -- there is no indirection for a recursive payload to hide behind yet.
+///
+/// `args` instantiates a generic declaration: payloads resolve with each parameter bound to
+/// its argument, already resolved (an argument never re-enters this enum's `seen` chain, so
+/// `Opt<Opt<Int>>` is two honest levels, not a false cycle). `None` builds the registry
+/// template instead, each parameter standing for itself as `Type::Param` -- which is also the
+/// eager pass that validates a declaration nothing uses.
 pub(super) fn resolve_enum(
     decl: &EnumDecl,
     env: &TypeEnv,
     seen: &mut Vec<String>,
+    args: Option<&[Type]>,
 ) -> Result<Type, Error> {
+    for (i, (p, span)) in decl.params.iter().enumerate() {
+        if !p.chars().next().is_some_and(char::is_uppercase) {
+            return Err(Error::new(
+                *span,
+                format!(
+                    "a type parameter starts with a capital letter, and `{p}` reads as a value"
+                ),
+            ));
+        }
+        if ty::is_builtin_type_name(p) || env.aliases.contains_key(p) || env.enums.contains_key(p) {
+            return Err(Error::new(
+                *span,
+                format!("type parameter `{p}` takes the name of a type"),
+            ));
+        }
+        if decl.params[..i].iter().any(|(earlier, _)| earlier == p) {
+            return Err(Error::new(
+                *span,
+                format!("type parameter `{p}` is declared twice in `{}`", decl.name),
+            ));
+        }
+    }
+    let bound: Vec<Type> = match args {
+        Some(args) => args.to_vec(),
+        None => decl
+            .params
+            .iter()
+            .map(|(p, _)| Type::Param(p.clone()))
+            .collect(),
+    };
+    let params: HashMap<&str, &Type> = decl
+        .params
+        .iter()
+        .map(|(p, _)| p.as_str())
+        .zip(bound.iter())
+        .collect();
     seen.push(decl.name.clone());
     let mut variants = Vec::new();
     for v in &decl.variants {
         let payload = match &v.payload {
             Some(ty) => {
-                let resolved = resolve(ty, env, seen)?;
+                let resolved = resolve_bound(ty, env, seen, &params)?;
                 // The record and Vec spellings refuse a stream inside themselves, but the
                 // parens spelling can put one directly in payload position, so the ban has to
                 // be stated here too: an enum value is storable, and a stream is not.
@@ -109,6 +152,7 @@ pub(super) fn resolve_enum(
     seen.pop();
     Ok(Type::Enum {
         name: decl.name.clone(),
+        args: bound,
         variants,
     })
 }
@@ -187,41 +231,101 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
 /// `seen` is the chain of names currently being expanded -- aliases and enums share it -- so a
 /// type written in terms of itself is caught rather than expanded forever.
 pub(super) fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> Result<Type, Error> {
-    match ty {
-        TypeExpr::Named { name, span } => {
-            if let Some(built_in) = Type::from_name(name) {
-                return Ok(built_in);
-            }
-            if let Some(at) = seen.iter().position(|s| s == name) {
-                // The names expanded since this one last appeared are the cycle, and naming them
-                // is the difference between knowing there is one and finding it.
-                let through: Vec<String> =
-                    seen[at + 1..].iter().map(|s| format!("`{s}`")).collect();
-                let path = if through.is_empty() {
-                    String::new()
-                } else {
-                    format!(", through {}", through.join(" and "))
-                };
+    resolve_bound(ty, env, seen, &HashMap::new())
+}
+
+/// One named reference: a bound parameter, a built-in scalar, an alias, or an enum -- with
+/// the arity of its `<...>` arguments held here, where the declaration is in hand.
+fn resolve_named(
+    name: &str,
+    args: &[TypeExpr],
+    span: Span,
+    env: &TypeEnv,
+    seen: &mut Vec<String>,
+    params: &HashMap<&str, &Type>,
+) -> Result<Type, Error> {
+    if let Some(bound) = params.get(name) {
+        if !args.is_empty() {
+            return Err(Error::new(
+                span,
+                format!("`{name}` is a type parameter and takes no type argument"),
+            ));
+        }
+        return Ok((*bound).clone());
+    }
+    if let Some(built_in) = Type::from_name(name) {
+        if !args.is_empty() {
+            return Err(Error::new(span, format!("`{name}` takes no type argument")));
+        }
+        return Ok(built_in);
+    }
+    if let Some(at) = seen.iter().position(|s| s == name) {
+        // The names expanded since this one last appeared are the cycle, and naming them
+        // is the difference between knowing there is one and finding it.
+        let through: Vec<String> = seen[at + 1..].iter().map(|s| format!("`{s}`")).collect();
+        let path = if through.is_empty() {
+            String::new()
+        } else {
+            format!(", through {}", through.join(" and "))
+        };
+        return Err(Error::new(
+            span,
+            format!("type `{name}` is written in terms of itself{path}"),
+        ));
+    }
+    if let Some(written) = env.aliases.get(name) {
+        if !args.is_empty() {
+            return Err(Error::new(span, format!("`{name}` takes no type argument")));
+        }
+        seen.push(name.to_string());
+        let expanded = resolve_bound(written, env, seen, params)?;
+        seen.pop();
+        return Ok(expanded);
+    }
+    if let Some(decl) = env.enums.get(name) {
+        if args.len() != decl.params.len() {
+            let wants = match decl.params.len() {
+                0 => format!("`{name}` takes no type argument"),
+                1 => format!("`{name}` takes one type argument"),
+                n => format!("`{name}` takes {n} type arguments"),
+            };
+            let found = match args.len() {
+                0 => String::new(),
+                n => format!(", found {n}"),
+            };
+            return Err(Error::new(span, format!("{wants}{found}")));
+        }
+        let mut resolved_args = Vec::new();
+        for arg in args {
+            let resolved = resolve_bound(arg, env, seen, params)?;
+            if resolved.contains_stream() {
                 return Err(Error::new(
-                    *span,
-                    format!("type `{name}` is written in terms of itself{path}"),
+                    arg.span(),
+                    format!("`{name}` cannot hold a stream, which has nothing to store"),
                 ));
             }
-            if let Some(written) = env.aliases.get(name) {
-                seen.push(name.clone());
-                let expanded = resolve(written, env, seen)?;
-                seen.pop();
-                return Ok(expanded);
-            }
-            if let Some(decl) = env.enums.get(name) {
-                return resolve_enum(decl, env, seen);
-            }
-            Err(Error::new(*span, format!("unknown type `{name}`")))
+            resolved_args.push(resolved);
         }
+        return resolve_enum(decl, env, seen, Some(&resolved_args));
+    }
+    Err(Error::new(span, format!("unknown type `{name}`")))
+}
+
+/// `resolve` with a generic enum's parameters in scope: inside `enum Opt<T>`'s payloads,
+/// `T` names whatever the binding holds -- the argument at an instantiation, or the
+/// parameter itself in the registry template. Everywhere else the binding map is empty.
+fn resolve_bound(
+    ty: &TypeExpr,
+    env: &TypeEnv,
+    seen: &mut Vec<String>,
+    params: &HashMap<&str, &Type>,
+) -> Result<Type, Error> {
+    match ty {
+        TypeExpr::Named { name, args, span } => resolve_named(name, args, *span, env, seen, params),
         // The containment bans hold in the grammar itself, not just at value construction
         // sites: a stream is not a value, so no annotation may describe one as stored.
         TypeExpr::Vec { elem, .. } => {
-            let inner = resolve(elem, env, seen)?;
+            let inner = resolve_bound(elem, env, seen, params)?;
             if inner.contains_stream() {
                 return Err(Error::new(
                     elem.span(),
@@ -231,7 +335,7 @@ pub(super) fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> R
             Ok(Type::Vec(Box::new(inner)))
         }
         TypeExpr::Stream { elem, .. } => {
-            let inner = resolve(elem, env, seen)?;
+            let inner = resolve_bound(elem, env, seen, params)?;
             if inner.contains_stream() {
                 return Err(Error::new(
                     elem.span(),
@@ -240,16 +344,6 @@ pub(super) fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> R
                 ));
             }
             Ok(Type::Stream(Box::new(inner)))
-        }
-        TypeExpr::Opt { elem, .. } => {
-            let inner = resolve(elem, env, seen)?;
-            if inner.contains_stream() {
-                return Err(Error::new(
-                    elem.span(),
-                    "an Opt cannot hold a stream, which has nothing to store".to_string(),
-                ));
-            }
-            Ok(Type::Opt(Box::new(inner)))
         }
         TypeExpr::Record { fields, span } => {
             let mut out = Vec::new();
@@ -260,7 +354,7 @@ pub(super) fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> R
                         format!("field `{name}` is declared twice"),
                     ));
                 }
-                let field = resolve(ty, env, seen)?;
+                let field = resolve_bound(ty, env, seen, params)?;
                 if field.contains_stream() {
                     return Err(Error::new(
                         ty.span(),

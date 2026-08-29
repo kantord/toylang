@@ -95,7 +95,10 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     }
     let mut enums: HashMap<String, Type> = HashMap::new();
     for e in &file.enums {
-        enums.insert(e.name.clone(), resolve_enum(e, &env, &mut Vec::new())?);
+        enums.insert(
+            e.name.clone(),
+            resolve_enum(e, &env, &mut Vec::new(), None)?,
+        );
     }
     let mut variant_owners: HashMap<String, Vec<String>> = HashMap::new();
     for e in &file.enums {
@@ -492,16 +495,120 @@ fn call_named<'a>(expr: &'a Expr, name: &str) -> Option<&'a Expr> {
     arg.as_deref()
 }
 
+/// Replace every `Type::Param` in `t` with its binding. Together with `unify` below, this is
+/// the whole of generic instantiation at a constructor: nothing else in the checker ever sees
+/// a parameter.
+fn substitute(t: &Type, map: &HashMap<String, Type>) -> Type {
+    match t {
+        Type::Param(p) => map
+            .get(p)
+            .cloned()
+            .unwrap_or_else(|| unreachable!("substitute runs only once every param is bound")),
+        Type::Vec(e) => Type::Vec(Box::new(substitute(e, map))),
+        Type::Stream(e) => Type::Stream(Box::new(substitute(e, map))),
+        Type::Record(fields) => Type::Record(
+            fields
+                .iter()
+                .map(|(n, t)| (n.clone(), substitute(t, map)))
+                .collect(),
+        ),
+        Type::Enum {
+            name,
+            args,
+            variants,
+        } => Type::Enum {
+            name: name.clone(),
+            args: args.iter().map(|a| substitute(a, map)).collect(),
+            variants: variants
+                .iter()
+                .map(|(n, p)| (n.clone(), p.as_ref().map(|p| substitute(p, map))))
+                .collect(),
+        },
+        Type::Str | Type::Int | Type::Bool => t.clone(),
+    }
+}
+
+/// The prelude's `Opt<T>` at a concrete `T`: what every Opt-producing site -- the collapsing
+/// index, `tail`, a partial guard chain -- wraps its result in. Instantiated from the
+/// registry template rather than spelled out, so the checker never re-states the prelude's
+/// declaration.
+fn opt_of(ctx: &Ctx, inner: Type) -> Type {
+    let template = ctx.enums.get("Opt").expect("the prelude declares Opt");
+    let Type::Enum { args, .. } = template else {
+        unreachable!("the registry holds enum types")
+    };
+    let Type::Param(p) = &args[0] else {
+        unreachable!("Opt's template argument is its own parameter")
+    };
+    substitute(template, &HashMap::from([(p.clone(), inner)]))
+}
+
+/// Match a template type (parameters possibly inside) against a concrete one, binding each
+/// parameter to what it faces. Records match fields by name, not position, the same way type
+/// equality does (kantord/toylang#60); enums match on name and arguments, since the variants
+/// follow from those.
+fn unify(template: &Type, concrete: &Type, map: &mut HashMap<String, Type>) -> bool {
+    match (template, concrete) {
+        (Type::Param(p), c) => match map.get(p) {
+            Some(bound) => bound == c,
+            None => {
+                map.insert(p.clone(), c.clone());
+                true
+            }
+        },
+        (Type::Vec(a), Type::Vec(b)) | (Type::Stream(a), Type::Stream(b)) => unify(a, b, map),
+        (Type::Record(a), Type::Record(b)) => {
+            a.len() == b.len()
+                && a.iter().all(|(n, t)| {
+                    b.iter()
+                        .find(|(bn, _)| bn == n)
+                        .is_some_and(|(_, bt)| unify(t, bt, map))
+                })
+        }
+        (
+            Type::Enum {
+                name: n1, args: a1, ..
+            },
+            Type::Enum {
+                name: n2, args: a2, ..
+            },
+        ) => n1 == n2 && a1.len() == a2.len() && a1.iter().zip(a2).all(|(x, y)| unify(x, y, map)),
+        _ => template == concrete,
+    }
+}
+
 /// Build one variant of `enum_ty`, checking that the payload written matches the payload
 /// declared: a unit variant takes none, a payload variant requires one.
+///
+/// `enum_ty` is a registry template for a generic enum reached by name, or a concrete type
+/// when the position already knows one (an expectation, or a written annotation). A template
+/// instantiates from the expectation when `expected` names the same enum; otherwise the
+/// payload's synthesised type binds the parameters, and a variant that leaves any parameter
+/// open -- every unit variant of a generic enum does -- is refused, the `[]` answer.
 fn construct(
     ctx: &Ctx,
     enum_ty: &Type,
     variant: &str,
     variant_span: Span,
     payload: Option<&Expr>,
+    expected: Option<&Type>,
 ) -> Result<Tir, Error> {
-    let Type::Enum { name, variants } = enum_ty else {
+    let Type::Enum { name, args, .. } = enum_ty else {
+        unreachable!("construct is only called with an enum type")
+    };
+    let is_template = args.iter().any(|a| matches!(a, Type::Param(_)));
+    let instantiated;
+    let enum_ty = if !is_template {
+        enum_ty
+    } else if let Some(want @ Type::Enum { name: wanted, .. }) = expected
+        && wanted == name
+    {
+        want
+    } else {
+        instantiated = infer_instantiation(ctx, enum_ty, variant, variant_span, payload)?;
+        return Ok(instantiated);
+    };
+    let Type::Enum { name, variants, .. } = enum_ty else {
         unreachable!("construct is only called with an enum type")
     };
     let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
@@ -539,6 +646,86 @@ fn construct(
         Kind::EnumLit {
             variant: variant.to_string(),
             payload,
+        },
+    ))
+}
+
+/// A generic enum's constructor met with no expectation: the payload is synthesised and its
+/// type binds the parameters. The template's own display (`Pair<T>`) does the talking in the
+/// errors, since it shows the reader exactly which names are still open.
+fn infer_instantiation(
+    ctx: &Ctx,
+    template: &Type,
+    variant: &str,
+    variant_span: Span,
+    payload: Option<&Expr>,
+) -> Result<Tir, Error> {
+    let Type::Enum { name, variants, .. } = template else {
+        unreachable!("construct is only called with an enum type")
+    };
+    let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
+        return Err(Error::new(
+            variant_span,
+            format!("`{name}` has no variant `{variant}`"),
+        ));
+    };
+    let (declared, expr) = match (declared, payload) {
+        (Some(declared), Some(expr)) => (declared, expr),
+        (None, Some(expr)) => {
+            return Err(Error::new(
+                expr.span(),
+                format!("`{variant}` is a unit variant of `{name}` and takes no payload"),
+            ));
+        }
+        (Some(want), None) => {
+            let spelled = match want {
+                Type::Record(_) => format!("{variant}{{...}}"),
+                _ => format!("{variant}(...)"),
+            };
+            return Err(Error::new(
+                variant_span,
+                format!(
+                    "`{variant}` of `{name}` carries a payload of {want}, so it is written `{spelled}`"
+                ),
+            ));
+        }
+        (None, None) => {
+            return Err(Error::new(
+                variant_span,
+                format!(
+                    "cannot tell what `{template}` a bare `{variant}` builds; only a position \
+                     that expects one can say"
+                ),
+            ));
+        }
+    };
+    let built = synth(ctx, expr)?;
+    let mut bindings = HashMap::new();
+    if !unify(declared, &built.ty, &mut bindings) {
+        return Err(Error::new(
+            expr.span(),
+            format!("expected {declared}, found {}", built.ty),
+        ));
+    }
+    if let Type::Enum { args, .. } = template
+        && let Some(open) = args.iter().find_map(|a| match a {
+            Type::Param(p) if !bindings.contains_key(p) => Some(p),
+            _ => None,
+        })
+    {
+        return Err(Error::new(
+            variant_span,
+            format!(
+                "`{variant}`'s payload does not say what `{template}`'s `{open}` is; only a \
+                 position that expects one can"
+            ),
+        ));
+    }
+    Ok(Tir::new(
+        substitute(template, &bindings),
+        Kind::EnumLit {
+            variant: variant.to_string(),
+            payload: Some(Box::new(built)),
         },
     ))
 }
@@ -715,7 +902,7 @@ fn check_reachable(
                 .to_string(),
         ));
     }
-    if let Type::Enum { name, variants } = subject_ty
+    if let Type::Enum { name, variants, .. } = subject_ty
         && !covered.is_empty()
         && variants.iter().all(|(n, _)| covered.contains(n))
     {
@@ -735,6 +922,7 @@ fn check_coverage(subject_ty: &Type, covered: &[String], span: Span) -> Result<(
     let Type::Enum {
         name: enum_name,
         variants,
+        ..
     } = subject_ty
     else {
         unreachable!("a pattern arm was checked against an enum subject")
@@ -767,9 +955,23 @@ fn variant_arm<'a>(
     vspan: Span,
     fields: Option<&FieldsPattern>,
 ) -> Result<(Option<LocalId>, Ctx<'a>), Error> {
+    // Deliberately parameterized, not built: how `some`/`none` arms compose -- their
+    // totality, and whether they flow through first-class matchers -- is what the pending
+    // matcher-totality round decides (plans/opt-as-enum.md, "Open points, owned elsewhere").
+    // Until it runs, `!` and the producers' own combinators are Opt's consumption surface.
+    if subject_ty.as_opt().is_some() {
+        return Err(Error::new(
+            vspan,
+            format!(
+                "{subject_ty} cannot be matched by variant yet; how its arms compose is \
+                 still being decided, so insist with `!` or keep the value whole"
+            ),
+        ));
+    }
     let Type::Enum {
         name: enum_name,
         variants,
+        ..
     } = subject_ty
     else {
         return Err(Error::new(
@@ -935,26 +1137,13 @@ fn match_chain(
         check_coverage(&subject_ty, &covered, span)?;
     }
     let result = result.expect("the parser produces at least one arm");
-    // Open-world half: a pure guard chain with no default may decline every arm, so
-    // its result is `Opt` -- unless the bodies are already `Opt`-typed, where one
-    // `null` would mean both "no arm matched" and "matched, and found nothing" (our
-    // `Opt` is untagged), the exact conflation the field-access rule forbids.
+    // Open-world half: a pure guard chain with no default may decline every arm, so its
+    // result is `Opt` -- of whatever the arms yield, `Opt`-typed arms included. A declined
+    // chain is `none` and a matched-but-absent arm is `some(none)`, two different values now
+    // that absence is tagged (kantord/toylang#62); both still print `null`, which is
+    // serialization's documented lossiness, not a conflation to refuse.
     let partial = !has_pattern_arm && !default_seen;
-    let result = if partial {
-        if matches!(result, Type::Opt(_)) {
-            return Err(Error::new(
-                span,
-                format!(
-                    "this guard chain is partial, and its arms are already {result}: \
-                         a declined chain and a matched-but-absent value would both print \
-                         `null`; add a default arm"
-                ),
-            ));
-        }
-        Type::Opt(Box::new(result))
-    } else {
-        result
-    };
+    let result = if partial { opt_of(ctx, result) } else { result };
     let subject = Tir::new(subject_ty.clone(), Kind::Local(sid));
     Ok(Tir::new(
         result,
@@ -1032,7 +1221,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             }
             if let Some(owners) = ctx.variant_owners.get(name) {
                 let enum_ty = sole_owner(ctx, name, owners, *span)?.clone();
-                return construct(ctx, &enum_ty, name, *span, None);
+                return construct(ctx, &enum_ty, name, *span, None, None);
             }
             // A function is not a value, but "`f` is not defined" for a defined function is a
             // lie. This is where `f -1` lands: `-` cannot start a bare argument, so the parse
@@ -1175,6 +1364,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 variant,
                 *variant_span,
                 payload.as_deref(),
+                None,
             )
         }
 
@@ -1317,7 +1507,7 @@ fn call(
         // here; it resolves as a variant only after the function namespace declines.
         if let Some(owners) = ctx.variant_owners.get(func) {
             let enum_ty = sole_owner(ctx, func, owners, func_span)?.clone();
-            return construct(ctx, &enum_ty, func, func_span, arg.as_deref());
+            return construct(ctx, &enum_ty, func, func_span, arg.as_deref(), None);
         }
         return Err(Error::new(func_span, format!("`{func}` is not a function")));
     };
@@ -1435,7 +1625,7 @@ fn tail_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
         ));
     };
     Ok(Tir::new(
-        Type::Opt(Box::new(Type::Vec(Box::new(elem)))),
+        opt_of(ctx, Type::Vec(Box::new(elem))),
         Kind::Builtin {
             which: tir::Builtin::Tail,
             arg: Box::new(arg),
@@ -1531,20 +1721,20 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<Access, Error> {
         // The absence stops being carried and starts being asserted.
         Expr::Unwrap { base, span } => {
             let b = access(ctx, base)?;
-            let Type::Opt(inner) = b.elem else {
+            let Some(inner) = b.elem.as_opt() else {
                 return Err(Error::new(
                     *span,
                     format!("`!` needs an Opt, found {}", b.elem),
                 ));
             };
-            let ty = wrap((*inner).clone(), b.depth, b.stream);
+            let ty = wrap(inner.clone(), b.depth, b.stream);
             let tir = Tir::new(
                 ty,
                 Kind::Unwrap {
                     base: Box::new(b.tir),
                 },
             );
-            Ok(Access::new(tir, *inner, b.depth, b.stream))
+            Ok(Access::new(tir, inner.clone(), b.depth, b.stream))
         }
 
         // Collapsing a dimension. The entry may not be there, so what comes out is `Opt`.
@@ -1558,7 +1748,7 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<Access, Error> {
             };
             let index_tir = expect(ctx, index, &Type::Int)?;
             let elem_is_record = matches!(inner, Type::Record(_));
-            let out = Type::Opt(Box::new(inner));
+            let out = opt_of(ctx, inner);
             let ty = wrap(out.clone(), b.depth, b.stream);
             let kind = Kind::Index {
                 base: Box::new(b.tir),
@@ -1624,8 +1814,8 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
                 // element is specific enough to name the likely cause instead of just the
                 // type mismatch.
                 if op == BinOp::Ne
-                    && let Type::Opt(inner) = &left.ty
-                    && expect(ctx, rhs, inner).is_ok()
+                    && let Some(inner) = left.ty.as_opt().cloned()
+                    && expect(ctx, rhs, &inner).is_ok()
                 {
                     return Err(Error::new(
                         rhs.span(),
@@ -1853,6 +2043,15 @@ fn input_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
             format!("`input` is one value read from stdin, but {want} is wanted here"),
         ));
     }
+    // Absence has no ratified wire form: the tag is an in-memory fact, serialization emits
+    // `null` for it going out, and whether `null` coming in reads as `none` is codec design
+    // nobody has done. Refusing is the reversible direction.
+    if want.contains_opt() {
+        return Err(Error::new(
+            span,
+            format!("`input` cannot be read as {want}; absence has no wire form to read"),
+        ));
+    }
     let mut slot = ctx.input.borrow_mut();
     match slot.as_ref() {
         None => *slot = Some(want.clone()),
@@ -1889,6 +2088,13 @@ fn inputs_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
             ),
         ));
     };
+    // The same no-wire-form-for-absence rule `input` states above.
+    if elem.contains_opt() {
+        return Err(Error::new(
+            span,
+            format!("`inputs` cannot be read as {want}; absence has no wire form to read"),
+        ));
+    }
     let mut slot = ctx.inputs.borrow_mut();
     if slot.is_some() {
         return Err(Error::new(
@@ -1898,6 +2104,51 @@ fn inputs_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
     }
     *slot = Some((**elem).clone());
     Ok(Tir::new(want.clone(), Kind::Inputs))
+}
+
+/// A constructor in a position that wants its enum takes the wanted instantiation: this is
+/// how a generic enum's unit variant -- which alone says nothing about the arguments --
+/// gets built at all (`fn f() -> Pair<Int> = empty`). A bare name only counts when nothing
+/// closer claims it (an arm's field, a local); a call only when no function does. Anything
+/// that is not the wanted enum's variant returns `None` and falls through to synthesis,
+/// which owns the errors.
+fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Error>> {
+    let Type::Enum { variants, .. } = want else {
+        return None;
+    };
+    let owns = |n: &str| variants.iter().any(|(vn, _)| vn == n);
+    match expr {
+        Expr::Var { name, span }
+            if owns(name)
+                && !ctx.arm_fields.iter().any(|(n, ..)| n == name)
+                && !ctx.scope.iter().any(|(n, _)| n == name) =>
+        {
+            Some(construct(ctx, want, name, *span, None, None))
+        }
+        Expr::Call {
+            func,
+            func_span,
+            arg,
+            ..
+        } if owns(func) && !ctx.sigs.contains_key(func) => {
+            Some(construct(ctx, want, func, *func_span, arg.as_deref(), None))
+        }
+        Expr::Variant {
+            enum_name,
+            variant,
+            variant_span,
+            payload,
+            ..
+        } if matches!(want, Type::Enum { name, .. } if name == enum_name) => Some(construct(
+            ctx,
+            want,
+            variant,
+            *variant_span,
+            payload.as_deref(),
+            None,
+        )),
+        _ => None,
+    }
 }
 
 fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> {
@@ -1925,7 +2176,11 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     if let Expr::Str { text, span } = expr
         && matches!(want, Type::Enum { .. })
     {
-        return construct(ctx, want, text, *span, None).map(Expected::Checked);
+        return construct(ctx, want, text, *span, None, None).map(Expected::Checked);
+    }
+
+    if let Some(built) = wanted_variant(ctx, expr, want) {
+        return built.map(Expected::Checked);
     }
 
     // The pipe's value is the right side's, so the expectation flows into the right side --
@@ -1975,9 +2230,9 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     }
 
     // Every arm of a total match chain receives the expectation the same way. A partial
-    // chain -- all guards, no default -- keeps synthesising instead: its result is Opt of
-    // what the arms yield, and pushing a peeled expectation into the arms would turn the
-    // arms-are-already-Opt refusal, which explains the design, into a bare mismatch.
+    // chain -- all guards, no default -- keeps synthesising instead: whether a peeled Opt
+    // expectation should flow into its arms is the open half of kantord/toylang#48, and
+    // this is that issue's conservative cut, kept.
     if let Expr::Match { arms, span } = expr
         && !want.contains_stream()
         && arms.iter().any(|a| !matches!(a.pattern, Pattern::Guard(_)))

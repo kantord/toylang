@@ -1,0 +1,16 @@
+# Match over a generic enum needs no new machinery: the subject's type carries its variants
+# with the parameters already substituted, so the arms see `wrap`'s payload as `Int` and the
+# exhaustiveness proof runs unchanged.
+program: |
+  enum Box<T> { wrap(T), empty }
+
+  fn nothing() -> Box<Int> = empty
+
+  fn peek(b: Box<Int>) -> Int = b | wrap -> . or empty -> 0
+
+  peek(wrap(7)) + peek(nothing())
+
+output: |
+  7
+
+node_types: [application, arith.add, int, local, match, pipe, var, variant.payload, variant.unit]

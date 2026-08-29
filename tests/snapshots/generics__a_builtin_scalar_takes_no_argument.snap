@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"fn f(s: Str<Int>) -> Int = 1\\n\\nf(\\\"x\\\")\")"
+---
+`Str` takes no type argument (at byte 8)

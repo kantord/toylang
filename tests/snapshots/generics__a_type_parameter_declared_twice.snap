@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum Pair<T, T> { two{a: T, b: T} }\\n\\nstr(1)\")"
+---
+type parameter `T` is declared twice in `Pair` (at byte 13)

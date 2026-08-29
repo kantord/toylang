@@ -34,8 +34,9 @@
 kind = "file-too-long"
 path = "src/check/mod.rs"
 justification = """
-1832 lines against the 1000-line budget (.claude/checks/limits.toml), re-measured at the #51
-split's landing. check.rs is one of the
+Over the 1000-line budget (.claude/checks/limits.toml) by design -- around 2200 lines as of
+the #62 landing, and the exact count is not load-bearing: it has drifted stale twice, and
+what the exemption covers is the fused core's existence, not a number. check.rs is one of the
 three files that budget was set to name (clippy.toml's too-many-lines comment), and the survey
 run on it (plans/checker-structure.md, gh:32) settled the file's shape: extract the
 type-resolution pass and the stream-linearity/pruning passes (board row check-rs-split-build,

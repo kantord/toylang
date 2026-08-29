@@ -321,7 +321,7 @@
   soft: [matcher-totality-and-alt-design]
   model: fable
   prio: 2
-  status: delegated
+  status: done
 
 - id: record-docs-order-sweep
   issue: gh:65

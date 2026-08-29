@@ -1,11 +1,15 @@
 # A Vec payload: the single-type rule composes with the type grammar, so the payload can carry
-# a dimension, and the arm's `.` is the whole Vec, here handed straight to a reducer.
+# a dimension, and the arm's `.` is the whole Vec, here handed straight to a reducer. The
+# constructions qualify as `Batch.some` because the prelude's `Opt` also claims the bare name
+# now -- which is itself worth witnessing: the two-claimants rule covers a prelude claimant the
+# same as any other, and the arm's `some` needs no qualifying since the subject's type names
+# the enum.
 program: |
   enum Batch { empty, some(Vec<Int>) }
 
   fn size(b: Batch) -> Int = b | some -> extent(.) or empty -> 0
 
-  {n: size some([1, 2, 3]), raw: some([4, 5]), z: size Batch.empty}
+  {n: size Batch.some([1, 2, 3]), raw: Batch.some([4, 5]), z: size Batch.empty}
 
 output: |
   {"n":3,"raw":{"some":[4,5]},"z":0}

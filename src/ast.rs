@@ -68,6 +68,9 @@ impl std::fmt::Display for BinOp {
 pub enum TypeExpr {
     Named {
         name: String,
+        /// `Pair<Int>`: the arguments a declared generic enum is applied to. Empty for a
+        /// plain name. `Vec`/`Stream` keep their own variants below.
+        args: Vec<TypeExpr>,
         span: Span,
     },
     Vec {
@@ -77,10 +80,6 @@ pub enum TypeExpr {
     /// `Stream<T>`, legal only as the whole of a parameter or return annotation: a stream is
     /// not a value, so the checker refuses it anywhere a type would describe something stored.
     Stream {
-        elem: Box<TypeExpr>,
-        span: Span,
-    },
-    Opt {
         elem: Box<TypeExpr>,
         span: Span,
     },
@@ -96,7 +95,6 @@ impl TypeExpr {
             TypeExpr::Named { span, .. }
             | TypeExpr::Vec { span, .. }
             | TypeExpr::Stream { span, .. }
-            | TypeExpr::Opt { span, .. }
             | TypeExpr::Record { span, .. } => *span,
         }
     }
@@ -127,6 +125,9 @@ pub struct Def {
 #[derive(Debug)]
 pub struct EnumDecl {
     pub name: String,
+    /// Type parameters, in declaration order: `enum Opt<T> { ... }`. Capitalized names,
+    /// bound only inside this declaration's payloads.
+    pub params: Vec<(String, Span)>,
     pub variants: Vec<Variant>,
     pub span: Span,
     /// Same meaning as `Def::is_pub`: whether a module exports this declaration.

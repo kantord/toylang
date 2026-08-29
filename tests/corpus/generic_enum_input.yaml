@@ -1,0 +1,16 @@
+# Enum-typed input at a generic instantiation: the wire shape is the ordinary single-key
+# wrapper, validated against the instantiated variants, on every backend's own reader.
+program: |
+  enum Box<T> { wrap{v: T}, empty }
+
+  fn peek(b: Box<Int>) -> Int = b | wrap{v} -> v or empty -> 0
+
+  peek(input)
+
+input: |
+  {"wrap": {"v": 5}}
+
+output: |
+  5
+
+node_types: [application, input, int, local, match, pipe, projection, var]

@@ -25,28 +25,28 @@ function tl_field(v, k, depth) {
 ";
 
 const OPT_HELPER: &str = "\
-// Absence is a sentinel: toylang has no null value, so nothing else can produce one.
-const tl_none = Symbol(\"none\");
+// An Opt is its enum's own runtime shape (ADR 0009): `{some: v}` present, \"none\" absent.
+// Tagged, so two levels of absence stay two values; only the printer flattens to null.
 function tl_at(v, i, depth) {
   if (depth > 0) return v.map((e) => tl_at(e, i, depth - 1));
   const n = v.length;
   if (i < 0) i = n + i;
-  if (i < 0 || i >= n) return tl_none;
-  return v[i];
+  if (i < 0 || i >= n) return \"none\";
+  return { some: v[i] };
 }
 ";
 
 const TAIL_HELPER: &str = "\
 function tl_tail(v) {
-  if (v.length === 0) return tl_none;
-  return v.slice(1);
+  if (v.length === 0) return \"none\";
+  return { some: v.slice(1) };
 }
 ";
 
 const UNWRAP_HELPER: &str = r#"function tl_unwrap(v, depth) {
   if (depth > 0) return v.map((e) => tl_unwrap(e, depth - 1));
-  if (v === tl_none) { throw new Error("toylang: unwrapped a value that is not there"); }
-  return v;
+  if (v === "none") { throw new Error("toylang: unwrapped a value that is not there"); }
+  return v.some;
 }
 "#;
 
@@ -134,12 +134,7 @@ pub fn emit(program: &Program) -> String {
     if matches!(program.body.ty, Type::Vec(_)) || contains_vec(&program.body.ty) || used.jsonlines {
         out.push_str(JOIN_HELPER);
     }
-    if used.index
-        || used.unwrap
-        || used.tail
-        || used.partial_match
-        || contains_opt(&program.body.ty)
-    {
+    if used.index {
         out.push_str(OPT_HELPER);
     }
     if used.tail {
@@ -280,6 +275,7 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
 /// information at all.
 fn show(ty: &Type, value: &str, depth: usize) -> String {
     match ty {
+        Type::Param(_) => unreachable!("params are substituted before emit"),
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
@@ -289,11 +285,12 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
             let e = format!("e{depth}");
             format!("tl_join({value}, ({e}) => {})", show(elem, &e, depth + 1))
         }
-        Type::Opt(inner) => {
+        Type::Enum { .. } if ty.as_opt().is_some() => {
+            let inner = ty.as_opt().expect("guarded");
             let v = format!("o{depth}");
             format!(
-                "(({v}) => {v} === tl_none ? \"null\" : {})({value})",
-                show(inner, &v, depth + 1)
+                "(({v}) => {v} === \"none\" ? \"null\" : {})({value})",
+                show(inner, &format!("{v}.some"), depth + 1)
             )
         }
         // One type, two runtime shapes (ADR 0009): a unit variant is a bare string, a payload
@@ -345,22 +342,9 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
     }
 }
 
-fn contains_opt(ty: &Type) -> bool {
-    match ty {
-        Type::Opt(_) => true,
-        Type::Vec(t) => contains_opt(t),
-        Type::Record(fields) => fields.iter().any(|(_, t)| contains_opt(t)),
-        Type::Enum { variants, .. } => variants
-            .iter()
-            .any(|(_, p)| p.as_ref().is_some_and(contains_opt)),
-        _ => false,
-    }
-}
-
 fn contains_vec(ty: &Type) -> bool {
     match ty {
         Type::Vec(_) => true,
-        Type::Opt(t) => contains_vec(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_vec(t)),
         Type::Enum { variants, .. } => variants
             .iter()
@@ -387,7 +371,6 @@ struct Helpers {
     collect: bool,
     jsonlines: bool,
     tail: bool,
-    partial_match: bool,
     str_cmp: bool,
 }
 
@@ -471,13 +454,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
                 walk(index, used);
             }
-            Kind::Match {
-                subject,
-                arms,
-                partial,
-            } => {
-                // A partial chain's fall-through is `tl_none`, which lives in OPT_HELPER.
-                used.partial_match |= *partial;
+            Kind::Match { subject, arms, .. } => {
                 walk(subject, used);
                 for a in arms {
                     if let Some(g) = &a.guard {
@@ -492,6 +469,16 @@ fn used_helpers(program: &Program) -> Helpers {
     program.funcs.iter().for_each(|f| walk(&f.body, &mut used));
     walk(&program.body, &mut used);
     used
+}
+
+/// A partial chain's yield is an Opt, so a present arm is tagged; total chains return the
+/// body bare. Split out of `expr`'s match arm (kantord/toylang#62).
+fn arm_return(body: String, partial: bool) -> String {
+    if partial {
+        format!("return {{some: {body}}}; ")
+    } else {
+        format!("return {body}; ")
+    }
 }
 
 fn expr(t: &Tir) -> String {
@@ -649,8 +636,8 @@ fn expr(t: &Tir) -> String {
         // A chain of tests over the subject (a plain local, so re-reading it is free): string
         // equality for a unit variant, key presence for a payload variant, the guard's own
         // Bool for a guard arm. A total chain's last arm needs no test, the checker having
-        // proved nothing else can reach it; a partial chain tests every arm and falls through
-        // to `tl_none`.
+        // proved nothing else can reach it; a partial chain tags every present arm and falls
+        // through to the absent Opt.
         Kind::Match {
             subject,
             arms,
@@ -671,7 +658,7 @@ fn expr(t: &Tir) -> String {
                         js_string(variant)
                     ));
                 }
-                run.push_str(&format!("return {}; ", expr(&arm.body)));
+                run.push_str(&arm_return(expr(&arm.body), *partial));
                 let test = match (&arm.variant, &arm.guard) {
                     (Some(v), _) if arm.payload.is_some() => {
                         Some(format!("{subj}[{}] !== undefined", js_string(v)))
@@ -688,7 +675,7 @@ fn expr(t: &Tir) -> String {
                 }
             }
             if *partial {
-                body.push_str("return tl_none; ");
+                body.push_str("return \"none\"; ");
             }
             format!("(() => {{ {body}}})()")
         }

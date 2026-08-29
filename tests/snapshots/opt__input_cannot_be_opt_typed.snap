@@ -1,0 +1,5 @@
+---
+source: tests/opt.rs
+expression: "err(\"fn f(x: Opt<Int>) -> Int = x!\\n\\nf(input)\")"
+---
+`input` cannot be read as Opt<Int>; absence has no wire form to read (at byte 33)

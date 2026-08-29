@@ -1,0 +1,12 @@
+# The program the two-nulls rule used to exist to refuse (draft.md, the match-arms decision),
+# legal since absence became tagged (kantord/toylang#62): the first entry's chain declines
+# (none), the second matches but indexes past its readings (some(none)). Both print null --
+# serialization drops every level of tagging, lossy by design -- and the tag is still real,
+# which opt_unwrap_peels_one_level.yaml witnesses through `!`.
+program: |
+  [{valid: 1 == 2, readings: [5]}, {valid: 1 == 1, readings: [1]}] | map(.valid -> .readings[9])
+
+output: |
+  [null,null]
+
+node_types: [compare.eq, int, local, map-over, match, pipe, projection, record-literal, selection.collapse, vec-literal]
