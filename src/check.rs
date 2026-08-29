@@ -148,7 +148,9 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             return Err(Error::new(
                 def.param.span,
                 format!(
-                    "parameter `{}` is never used; delete it from `{}`'s definition and its call sites",
+                    // Every function takes exactly one parameter (kantord/toylang#53), so
+                    // "delete it" alone would send the reader into a parse error.
+                    "parameter `{}` is never used; give it a real use, or retire `{}` if nothing needs it",
                     def.param.name, def.name
                 ),
             ));

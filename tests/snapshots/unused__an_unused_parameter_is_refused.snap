@@ -2,4 +2,4 @@
 source: tests/unused.rs
 expression: "err(\"fn f(x: Int) -> Int = 1\\n\\nf(1)\")"
 ---
-parameter `x` is never used; delete it from `f`'s definition and its call sites (at byte 5)
+parameter `x` is never used; give it a real use, or retire `f` if nothing needs it (at byte 5)
