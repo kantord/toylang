@@ -321,7 +321,7 @@
   soft: [matcher-totality-and-alt-design]
   model: fable
   prio: 2
-  status: todo
+  status: delegated
 
 - id: record-docs-order-sweep
   issue: gh:65
@@ -329,6 +329,13 @@
   kind: build
   needs: [record-order-relaxation]
   status: done
+
+- id: euler-examples-11-20
+  issue: gh:67
+  title: Euler stream batch 2 -- problems 11-20 where the language suffices, gates annotated
+  kind: build
+  needs: [euler-examples-1-10]
+  status: delegated
 
 - id: field-names-accessor
   issue: gh:63
