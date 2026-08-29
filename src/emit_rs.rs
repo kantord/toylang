@@ -95,6 +95,14 @@ const RANGE_HELPER: &str = r#"fn tl_range(n: i32) -> Vec<i32> {
 }
 "#;
 
+/// Rust's own `char` already is a Unicode scalar value, and `str::chars` already decodes by
+/// codepoint rather than by byte or UTF-16 unit, so there is no decoding to get right here --
+/// only the cast down to the `i32` every other backend represents a `Char` as.
+const CHARS_HELPER: &str = r#"fn tl_chars(s: &str) -> Vec<i32> {
+    s.chars().map(|c| c as i32).collect()
+}
+"#;
+
 /// Read all of stdin, and every line of it, both by the one primitive read needs: reading to
 /// EOF is `lines`/`inputs`/`input` doing the exact same underlying thing three ways.
 const READ_HELPER: &str = r#"fn tl_read_all_stdin() -> Vec<u8> {
@@ -518,6 +526,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_tail("), TAIL_HELPER),
         (uses("tl_concat("), CONCAT_HELPER),
         (uses("tl_range("), RANGE_HELPER),
+        (uses("tl_chars("), CHARS_HELPER),
         (
             reads_value || uses("tl_read_all_stdin(") || uses("tl_read_lines("),
             READ_HELPER,
@@ -697,6 +706,9 @@ impl Emitter {
             Type::Str => "String".to_string(),
             Type::Int => "i32".to_string(),
             Type::Bool => "bool".to_string(),
+            // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
+            // the two, so nothing here needs to tell them apart.
+            Type::Char => "i32".to_string(),
             Type::Vec(e) => format!("Vec<{}>", self.rs_type(e)),
             Type::Enum { .. } if ty.as_opt().is_some() => {
                 format!("Option<{}>", self.rs_type(ty.as_opt().expect("guarded")))
@@ -720,6 +732,8 @@ impl Emitter {
             Type::Str => "tl_parse_str".to_string(),
             Type::Int => "tl_parse_i32".to_string(),
             Type::Bool => "tl_parse_bool".to_string(),
+            // The checker refuses Char anywhere in an input type: it has no wire form.
+            Type::Char => unreachable!("input cannot contain a Char, refused by the checker"),
             Type::Vec(e) => format!(
                 "(|p: &mut TlParser| tl_parse_vec(p, {}))",
                 self.parser_expr(e)
@@ -991,6 +1005,7 @@ impl Emitter {
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("({}).to_string()", self.expr(arg)),
                 Builtin::Range => format!("tl_range({})", self.expr(arg)),
+                Builtin::Chars => format!("tl_chars(&{})", self.expr(arg)),
                 Builtin::JsonLines => {
                     let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                     let e = "e0".to_string();
@@ -1165,6 +1180,8 @@ impl Emitter {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+            // The checker refuses a program whose result contains a Char: it has no wire form.
+            Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tl_quote(&{value})"),
             Type::Int => format!("({value}).to_string()"),
             Type::Bool => format!("({value}).to_string()"),

@@ -199,6 +199,11 @@ pub enum Builtin {
     /// `r`'s checked type, not its runtime value, so every backend can emit them as a literal;
     /// `r` is still evaluated for whatever it would otherwise do, the same as any other argument.
     Fields,
+    /// `chars(s)`, `Str -> Vec<Char>`: every Unicode scalar value in `s`, in order. Decoded by
+    /// codepoint on every backend, so a character outside the Basic Multilingual Plane is one
+    /// element here even on a target whose own strings need a surrogate pair to spell it
+    /// (kantord/toylang#75).
+    Chars,
 }
 
 pub struct Func {

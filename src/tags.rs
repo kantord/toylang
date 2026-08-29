@@ -161,5 +161,6 @@ fn builtin_tag(which: Builtin) -> &'static str {
         Builtin::Concat => "concat",
         Builtin::Tail => "tail",
         Builtin::Fields => "fields",
+        Builtin::Chars => "chars",
     }
 }

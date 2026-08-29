@@ -1,0 +1,5 @@
+---
+source: tests/char.rs
+expression: "err(\"fn f(c: Char) -> Bool = c == c\\n\\nf(input)\")"
+---
+`input` cannot be read as Char; Char has no wire form to read (at byte 34)

@@ -164,6 +164,17 @@ const RANGE_HELPER: &str = r#"func tlRange(n int32) []int32 {
 }
 "#;
 
+// Go's `for range` over a string already decodes UTF-8 into runes -- Unicode scalar values --
+// rather than bytes, so there is no decoding to get right here.
+const CHARS_HELPER: &str = r#"func tlChars(s string) []int32 {
+	out := []int32{}
+	for _, r := range s {
+		out = append(out, int32(r))
+	}
+	return out
+}
+"#;
+
 const JSONLINES_HELPER: &str = r#"func tlJsonlines[T any](v []T, f func(T) string) string {
 	parts := make([]string, len(v))
 	for i, e := range v {
@@ -351,6 +362,7 @@ pub fn emit(program: &Program) -> String {
         (unwrap, UNWRAP_HELPER),
         (arith, ARITH_HELPER),
         (uses("tlRange("), RANGE_HELPER),
+        (uses("tlChars("), CHARS_HELPER),
         (collect, COLLECT_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
         (join, JOIN_HELPER),
@@ -403,6 +415,8 @@ fn has_scalar(ty: &Type) -> bool {
         // Only ever called on the program's own result type, which the checker guarantees is
         // never a stream and never contains one.
         Type::Stream(_) => unreachable!("a stream cannot reach has_scalar"),
+        // The checker refuses a program whose result contains a Char, the same as a stream.
+        Type::Char => unreachable!("a Char cannot reach has_scalar"),
         Type::Int | Type::Bool => true,
         Type::Str => false,
         Type::Vec(t) => has_scalar(t),
@@ -546,7 +560,8 @@ impl Collect<'_> {
                     | Builtin::Extent
                     | Builtin::Concat
                     | Builtin::Tail
-                    | Builtin::Fields => {}
+                    | Builtin::Fields
+                    | Builtin::Chars => {}
                 }
                 self.walk(arg);
             }
@@ -574,6 +589,9 @@ impl Emitter {
             // The default Int is 32 bits and wraps, and Go's int32 does exactly that for free.
             Type::Int => "int32".to_string(),
             Type::Bool => "bool".to_string(),
+            // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
+            // the two.
+            Type::Char => "int32".to_string(),
             Type::Vec(e) => format!("[]{}", self.go_type(e)),
             Type::Enum { .. } if ty.as_opt().is_some() => {
                 format!("tlOpt[{}]", self.go_type(ty.as_opt().expect("guarded")))
@@ -853,6 +871,7 @@ impl Emitter {
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("strconv.FormatInt(int64({}), 10)", self.expr(arg)),
                 Builtin::Range => format!("tlRange({})", self.expr(arg)),
+                Builtin::Chars => format!("tlChars({})", self.expr(arg)),
                 Builtin::JsonLines => {
                     let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                     let e = "e0".to_string();
@@ -1028,6 +1047,7 @@ impl Emitter {
             // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+            Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tlQuote({value})"),
             Type::Int => format!("strconv.FormatInt(int64({value}), 10)"),
             Type::Bool => format!("strconv.FormatBool({value})"),

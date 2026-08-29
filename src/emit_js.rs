@@ -121,39 +121,36 @@ function tl_jsonlines(v, f) {
 }
 ";
 
+// The string iterator steps one codepoint at a time, surrogate pairs included (the same
+// iterator STR_CMP_HELPER uses above), so there is no decoding to get right here.
+const CHARS_HELPER: &str = "\
+function tl_chars(s) {
+  return Array.from(s, (c) => c.codePointAt(0));
+}
+";
+
 pub fn emit(program: &Program) -> String {
     let mut out = String::new();
 
     let used = used_helpers(program);
-    if used.select {
-        out.push_str(SELECT_HELPER);
-    }
-    if used.field {
-        out.push_str(FIELD_HELPER);
-    }
-    if matches!(program.body.ty, Type::Vec(_)) || contains_vec(&program.body.ty) || used.jsonlines {
-        out.push_str(JOIN_HELPER);
-    }
-    if used.index {
-        out.push_str(OPT_HELPER);
-    }
-    if used.tail {
-        out.push_str(TAIL_HELPER);
-    }
-    if used.unwrap {
-        out.push_str(UNWRAP_HELPER);
-    }
-    if used.arith {
-        out.push_str(ARITH_HELPER);
-    }
-    if used.collect {
-        out.push_str(COLLECT_HELPER);
-    }
-    if used.jsonlines {
-        out.push_str(JSONLINES_HELPER);
-    }
-    if used.str_cmp {
-        out.push_str(STR_CMP_HELPER);
+    let join =
+        matches!(program.body.ty, Type::Vec(_)) || contains_vec(&program.body.ty) || used.jsonlines;
+    for (on, text) in [
+        (used.select, SELECT_HELPER),
+        (used.field, FIELD_HELPER),
+        (join, JOIN_HELPER),
+        (used.index, OPT_HELPER),
+        (used.tail, TAIL_HELPER),
+        (used.unwrap, UNWRAP_HELPER),
+        (used.arith, ARITH_HELPER),
+        (used.collect, COLLECT_HELPER),
+        (used.jsonlines, JSONLINES_HELPER),
+        (used.str_cmp, STR_CMP_HELPER),
+        (used.chars, CHARS_HELPER),
+    ] {
+        if on {
+            out.push_str(text);
+        }
     }
 
     // Function declarations hoist, so a call to one defined further down resolves without the
@@ -279,6 +276,7 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+        Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("JSON.stringify({value})"),
         Type::Int | Type::Bool => format!("String({value})"),
         Type::Vec(elem) => {
@@ -372,6 +370,7 @@ struct Helpers {
     jsonlines: bool,
     tail: bool,
     str_cmp: bool,
+    chars: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -429,6 +428,7 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::Builtin { which, arg } => {
                 used.jsonlines |= *which == Builtin::JsonLines;
                 used.tail |= *which == Builtin::Tail;
+                used.chars |= *which == Builtin::Chars;
                 walk(arg, used);
             }
             Kind::Cond {
@@ -538,6 +538,7 @@ fn expr(t: &Tir) -> String {
         }
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("String({})", expr(arg)),
+            Builtin::Chars => format!("tl_chars({})", expr(arg)),
             Builtin::Range => {
                 format!(
                     "Array.from({{ length: Math.max(0, {}) }}, (_, i) => i)",

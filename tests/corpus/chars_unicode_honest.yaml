@@ -1,0 +1,13 @@
+# chars decodes by Unicode scalar value, not by byte and not by UTF-16 code unit: an astral
+# character (outside the Basic Multilingual Plane) is one element here even though it needs
+# four bytes in UTF-8 and a surrogate pair in UTF-16. A byte-counting or UTF-16-counting
+# implementation would disagree with the other backends on this case specifically. The literal
+# is unavoidable: string literals have no \u escape yet (src/parse.rs), so this is the only way
+# to write the character into the program at all.
+program: |
+  extent(chars("a😀b"))
+
+output: |
+  3
+
+node_types: [builtin.chars, builtin.extent, str]

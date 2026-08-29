@@ -2,3 +2,6 @@ pub enum Opt<T> { some(T), none }
 
 pub fn unlines(v: Vec<Str>) -> Str =
     "" if extent(v) == 0 else v[0]! if extent(v) == 1 else v[0]! + "\n" + unlines(tail(v)!)
+
+pub fn join(v: Vec<Str>) -> Str =
+    "" if extent(v) == 0 else v[0]! + join(tail(v)!)

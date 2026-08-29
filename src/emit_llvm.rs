@@ -70,6 +70,7 @@ struct Runtime<'ctx> {
     range: FunctionValue<'ctx>,
     vec_tail: FunctionValue<'ctx>,
     vec_concat: FunctionValue<'ctx>,
+    chars: FunctionValue<'ctx>,
 }
 
 /// What a compiler-introduced binding holds.
@@ -236,6 +237,7 @@ impl<'ctx> Emitter<'ctx> {
                 None,
             ),
             range: module.add_function("tl_range", ptr.fn_type(&[i64t.into()], false), None),
+            chars: module.add_function("tl_chars", ptr.fn_type(&[ptr.into()], false), None),
             vec_tail: module.add_function("tl_vec_tail", ptr.fn_type(&[ptr.into()], false), None),
             vec_concat: module.add_function(
                 "tl_vec_concat",
@@ -276,6 +278,9 @@ impl<'ctx> Emitter<'ctx> {
             Type::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Int => self.ctx.i64_type().into(),
             Type::Bool => self.ctx.bool_type().into(),
+            // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
+            // the two.
+            Type::Char => self.ctx.i64_type().into(),
             Type::Vec(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Record(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
             // A pointer to a two-slot box: the tag, then the payload. See `Kind::EnumLit`.
@@ -303,6 +308,8 @@ impl<'ctx> Emitter<'ctx> {
             Type::Str => "s".to_string(),
             Type::Int => "i".to_string(),
             Type::Bool => "b".to_string(),
+            // The checker refuses Char anywhere in an input type: it has no wire form.
+            Type::Char => unreachable!("input cannot contain a Char, refused by the checker"),
             Type::Vec(elem) => format!("[{}", Self::descriptor(elem)),
             // Opt has no spelling in the type syntax, so an input type can never contain one.
             // Declaration order, because the entry's position is the tag the compiled code
@@ -406,7 +413,7 @@ impl<'ctx> Emitter<'ctx> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
-            Type::Int => value.into_int_value(),
+            Type::Int | Type::Char => value.into_int_value(),
             Type::Bool => self
                 .builder
                 .build_int_z_extend(value.into_int_value(), i64t, "slot")
@@ -423,7 +430,7 @@ impl<'ctx> Emitter<'ctx> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
-            Type::Int => slot.into(),
+            Type::Int | Type::Char => slot.into(),
             Type::Bool => self
                 .builder
                 .build_int_truncate(slot, self.ctx.bool_type(), "elem")
@@ -938,6 +945,7 @@ impl<'ctx> Emitter<'ctx> {
             // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+            Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
             Type::Int => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
             Type::Bool => {
@@ -1418,6 +1426,7 @@ impl<'ctx> Emitter<'ctx> {
                 match which {
                     Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,
                     Builtin::Range => self.call_rt(self.rt.range, &[arg], "range")?,
+                    Builtin::Chars => self.call_rt(self.rt.chars, &[arg], "chars")?,
                     Builtin::JsonLines => {
                         let elem = elem_ty.expect("checked to be a Vec");
                         self.join_shown(arg, &elem, "", "\n", "")?
@@ -1451,7 +1460,7 @@ impl<'ctx> Emitter<'ctx> {
                         "unwrapped",
                     )?
                     .into_pointer_value();
-                if depth == 0 && matches!(inner, Type::Int | Type::Bool) {
+                if depth == 0 && matches!(inner, Type::Int | Type::Bool | Type::Char) {
                     let slot = self
                         .builder
                         .build_ptr_to_int(raw, self.ctx.i64_type(), "slot")
@@ -1826,8 +1835,7 @@ impl<'ctx> Emitter<'ctx> {
                     (call.into_int_value(), self.ctx.i64_type().const_zero())
                 }
             },
-            Type::Int => (l.into_int_value(), r.into_int_value()),
-            Type::Bool => (l.into_int_value(), r.into_int_value()),
+            Type::Int | Type::Bool | Type::Char => (l.into_int_value(), r.into_int_value()),
             other => return Err(unsupported(&format!("comparing {other}"))),
         };
 

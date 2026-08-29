@@ -86,3 +86,8 @@ The record-reorder-through-Opt session (issue #66) grew three already-over emitt
 `emit_go.rs` 1113->1129, `emit_llvm.rs` 1973->2046, `emit_rs.rs` 1247->1260 (verified against
 a merge-base worktree) -- the same one-new-Tir-node-per-backend shape as #62's, and the same
 rule: task-driven nudges to inherited debt, emitter-split conversation still undone.
+
+The parser-floor-part-1 session (issue #75) grew the same three emitters again --
+`emit_go.rs` 1129->1149, `emit_llvm.rs` 2046->2054, `emit_rs.rs` 1260->1277 -- the check's own
+message already names each as inherited ("already N lines at merge-base"), and the task was
+implementing #75, not the emitter-split conversation. Same rule, same outcome.

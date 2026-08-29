@@ -3,6 +3,15 @@ pub enum Type {
     Str,
     Int,
     Bool,
+    /// A single Unicode scalar value (kantord/toylang#75): never a surrogate half, so a
+    /// codepoint outside the Basic Multilingual Plane is one `Char`, on every backend, even
+    /// where a backend's own strings need a surrogate pair to spell it. Produced only by
+    /// `chars`, which is also the only way one is compared against a boundary -- there is no
+    /// literal syntax, so a program spells `'a'` as `chars("a")[0]!`. Barred from `input` (no
+    /// wire form to read one from) and from the program's own printed result (no wire form to
+    /// write one either); everywhere else -- function signatures, records, a `Vec<Char>` --
+    /// it is an ordinary type.
+    Char,
     Vec(Box<Type>),
     /// Fields in declaration order. Order is not part of the type's identity (kantord/toylang#60:
     /// `{a: Int, b: Int}` and `{b: Int, a: Int}` are one type, so `PartialEq` below compares the
@@ -60,6 +69,7 @@ impl Type {
             "Str" => Some(Type::Str),
             "Int" => Some(Type::Int),
             "Bool" => Some(Type::Bool),
+            "Char" => Some(Type::Char),
             _ => None,
         }
     }
@@ -124,6 +134,24 @@ impl Type {
         }
     }
 
+    /// Whether `Char` appears anywhere in this type. What the checker asks of both `input`'s
+    /// type and the program's own printed result: neither has a wire form for a bare Unicode
+    /// scalar value, so both refuse it, the same reasoning `contains_opt` states for absence.
+    pub fn contains_char(&self) -> bool {
+        match self {
+            Type::Char => true,
+            Type::Vec(t) | Type::Stream(t) => t.contains_char(),
+            Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_char()),
+            Type::Enum { args, variants, .. } => {
+                args.iter().any(Type::contains_char)
+                    || variants
+                        .iter()
+                        .any(|(_, p)| p.as_ref().is_some_and(Type::contains_char))
+            }
+            _ => false,
+        }
+    }
+
     /// A deterministic identifier fragment for this type, for backends whose targets are
     /// nominally typed: `Pair<Int>` and `Pair<Str>` must become distinct emitted types, so
     /// their names embed the arguments (`Pair_Int`). Record fields sort by name, because
@@ -135,6 +163,7 @@ impl Type {
             Type::Str => "Str".to_string(),
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
+            Type::Char => "Char".to_string(),
             Type::Vec(t) => format!("Vec_{}", t.ident()),
             Type::Stream(t) => format!("Stream_{}", t.ident()),
             Type::Record(fields) => {
@@ -165,6 +194,7 @@ impl std::fmt::Display for Type {
             Type::Str => write!(f, "Str"),
             Type::Int => write!(f, "Int"),
             Type::Bool => write!(f, "Bool"),
+            Type::Char => write!(f, "Char"),
             Type::Vec(t) => write!(f, "Vec<{t}>"),
             Type::Record(fields) => {
                 let parts: Vec<String> = fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();
@@ -192,7 +222,10 @@ impl PartialEq for Type {
     /// types the same type.
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Type::Str, Type::Str) | (Type::Int, Type::Int) | (Type::Bool, Type::Bool) => true,
+            (Type::Str, Type::Str)
+            | (Type::Int, Type::Int)
+            | (Type::Bool, Type::Bool)
+            | (Type::Char, Type::Char) => true,
             (Type::Vec(a), Type::Vec(b)) => a == b,
             (Type::Stream(a), Type::Stream(b)) => a == b,
             (Type::Record(a), Type::Record(b)) => {
