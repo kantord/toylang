@@ -152,21 +152,41 @@ for file in "${touched[@]}"; do
   fi
 done
 
-# Clippy compiles the whole workspace, so its findings are filtered down to
-# the touched files rather than narrowed up front. Warnings only: a tree that
-# does not compile is a different problem, reported elsewhere.
+# Clippy compiles the whole workspace, so its findings are gathered over all of it, not just
+# touched files, keeping `clippy_workspace` (kind, path, function, message) around for the
+# sinkhole's freeloader check below. Reporting still filters down to touched files. Warnings
+# only: a tree that does not compile is a different problem, reported elsewhere. The `function`
+# field is a best-effort read of the source line clippy points at (`fn NAME`, if that line has
+# one) -- empty when the span does not land on a signature line, which just means no
+# function-scoped sinkhole entry can match that finding.
+cargo_ran=0
+clippy_workspace=""
 if command -v cargo > /dev/null 2>&1; then
-  clippy=$(cargo clippy --workspace --all-targets --message-format=json -q 2>/dev/null \
+  cargo_ran=1
+  clippy_raw=$(cargo clippy --workspace --all-targets --message-format=json -q 2>/dev/null \
     | jq -r 'select(.reason == "compiler-message")
              | .message
              | select(.level == "warning")
              | select(.code.code != null)
              | [(.code.code | sub("^clippy::"; "") | gsub("_"; "-")),
                 (.spans[0].file_name // ""),
+                (.spans[0].line_start // 0),
                 .message]
              | @tsv' 2>/dev/null)
 
-  while IFS=$'\t' read -r kind path detail; do
+  while IFS=$'\t' read -r kind path lineno detail; do
+    [ -n "${path:-}" ] || continue
+    func=""
+    if [ -f "$path" ] && [ "${lineno:-0}" -gt 0 ] 2>/dev/null; then
+      func=$(sed -n "${lineno}p" "$path" | grep -oE '\bfn[[:space:]]+[A-Za-z_][A-Za-z0-9_]*' | awk '{print $2}' | head -n1)
+    fi
+    detail_out="$detail"
+    [ -n "$func" ] && detail_out="fn $func: $detail"
+    clippy_workspace+="$kind	$path	$func	$detail_out"$'\n'
+  done <<< "$clippy_raw"
+  clippy_workspace=$(printf '%s' "$clippy_workspace" | grep -v '^$')
+
+  while IFS=$'\t' read -r kind path func detail; do
     [ -n "${path:-}" ] || continue
     for file in "${touched[@]}"; do
       if [ "$file" = "$path" ]; then
@@ -174,12 +194,106 @@ if command -v cargo > /dev/null 2>&1; then
         break
       fi
     done
-  done <<< "$clippy"
+  done <<< "$clippy_workspace"
 fi
+
+# `#[allow]`/`#![allow]` beside the code it excuses is itself a finding -- the sinkhole
+# (.claude/checks/sinkhole.toml) is the only sanctioned home for a justified exemption. Anchored
+# at line start (after whitespace) so this does not fire on emit_rs.rs's two string literals,
+# which emit these tokens into *generated* Rust as `format!` arguments and never start a line
+# with them themselves.
+for file in "${touched[@]}"; do
+  case "$file" in
+    *.rs) ;;
+    *) continue ;;
+  esac
+  [ -f "$file" ] || continue
+  while IFS=: read -r lineno rest; do
+    [ -n "${lineno:-}" ] || continue
+    findings+="bare-allow	$file	line $lineno: $(printf '%s' "$rest" | sed -E 's/^[[:space:]]+//')"$'\n'
+  done < <(grep -nE '^[[:space:]]*#!?\[allow' "$file" 2>/dev/null)
+done
 
 # `--all-targets` compiles lib and test targets separately, so the same
 # warning arrives once per target.
 findings=$(printf '%s' "$findings" | grep -v '^$' | sort -u)
+
+# The sinkhole: structured, justified exemptions (.claude/checks/sinkhole.toml). Consulting it
+# means two things -- an entry suppresses the finding it excuses from blocking the agent, and
+# every entry is re-checked here, against the whole tree rather than just files this session
+# touched, so an exemption nobody needs any more (the function shrank, the file split) is itself
+# a finding instead of quietly outliving its reason.
+sinkhole_path=.claude/checks/sinkhole.toml
+if [ -f "$sinkhole_path" ] && command -v python3 > /dev/null 2>&1; then
+  entries=$(python3 - "$sinkhole_path" <<'PY' 2>/dev/null
+import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    data = tomllib.load(f)
+for e in data.get("exemption", []):
+    print("\t".join([e.get("kind", ""), e.get("path", ""), e.get("function", "")]))
+PY
+  )
+
+  # Whole-tree check runs for the two per-file/per-function kinds the sinkhole excuses today.
+  # A too-many-lines entry is matched by function name, read off the source line clippy points
+  # at (the span lands exactly on the `fn` line for this lint, not a wrapped signature line).
+  file_too_long_hit() {
+    local path=$1 lines body tests
+    [ -f "$path" ] || return 1
+    lines=$(wc -l < "$path" | tr -d ' ')
+    case "$path" in
+      *.rs) tests=$(inline_test_lines "$path") ;;
+      *) tests=0 ;;
+    esac
+    : "${tests:=0}"
+    body=$((lines - tests))
+    [ "$body" -gt "$limit" ] || [ "$tests" -gt "$limit" ]
+  }
+  too_many_lines_hit() {
+    local path=$1 func=$2
+    [ "$cargo_ran" -eq 1 ] || return 0 # cargo unavailable: cannot re-check, do not evict on faith
+    printf '%s\n' "$clippy_workspace" | awk -F'\t' -v p="$path" -v fn="$func" \
+      '$1 == "too-many-lines" && $2 == p && $3 == fn { found=1 } END { exit !found }'
+  }
+
+  remaining=""
+  if [ -n "$findings" ]; then
+    while IFS=$'\t' read -r kind path detail; do
+      matched=0
+      while IFS=$'\t' read -r ekind epath efunc; do
+        [ -n "${ekind:-}" ] || continue
+        [ "$kind" = "$ekind" ] && [ "$path" = "$epath" ] || continue
+        if [ -n "$efunc" ]; then
+          case "$detail" in
+            "fn $efunc: "*) ;;
+            *) continue ;;
+          esac
+        fi
+        matched=1
+        break
+      done <<< "$entries"
+      [ "$matched" -eq 0 ] && remaining+="$kind	$path	$detail"$'\n'
+    done <<< "$findings"
+  fi
+  findings=$(printf '%s' "$remaining" | grep -v '^$' | sort -u)
+
+  while IFS=$'\t' read -r ekind epath efunc; do
+    [ -n "${ekind:-}" ] || continue
+    live=0
+    case "$ekind" in
+      file-too-long) file_too_long_hit "$epath" && live=1 ;;
+      too-many-lines) too_many_lines_hit "$epath" "$efunc" && live=1 ;;
+      *) live=1 ;; # no independent re-check for this kind yet -- do not evict on faith
+    esac
+    if [ "$live" -eq 0 ]; then
+      target="$epath"
+      [ -n "$efunc" ] && target="$epath ($efunc)"
+      findings+="stale-sinkhole-entry	$sinkhole_path	entry for $ekind on $target no longer fires -- the exemption has nothing left to excuse, remove it"$'\n'
+    fi
+  done <<< "$entries"
+  findings=$(printf '%s' "$findings" | grep -v '^$' | sort -u)
+fi
+
 [ -z "$findings" ] && exit 0
 
 count=$(printf '%s\n' "$findings" | wc -l | tr -d ' ')

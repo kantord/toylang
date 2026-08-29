@@ -445,7 +445,7 @@
   title: Adopt the sinkhole rule -- the ratified check.rs exemption is the pressure
   kind: build
   needs: [quality-hooks-introduction]
-  status: delegated
+  status: done
 
 - id: okf-invalid-lesson
   issue: gh:42
