@@ -32,9 +32,10 @@ export interface RoundQuestion {
   thesis?: string
   question: string
   options?: RoundOption[]
-  /** `true` for a free-text box with a generic placeholder, a string to use as the placeholder,
-   *  or omitted for none. When a question has no `options`, free text is its only answer
-   *  mechanism and is required. */
+  /** A string to use as the free-text box's placeholder, or omitted for a generic one. The box
+   *  itself is always shown regardless of this field (kantord/toylang#52: "writing my own
+   *  option must always be available, not only where the round author added a free-text box") --
+   *  this only customizes it. */
   freeText?: boolean | string
 }
 
@@ -59,16 +60,24 @@ export function fetchRound(topic: string): Promise<Round> {
   return fetch(`/__grill/round?topic=${encodeURIComponent(topic)}`).then((r) => json<Round>(r))
 }
 
+/** The inbox page identity a round's answers are saved under -- shared by `submitAnswer` and the
+ *  mail app's read-state check (kantord/toylang#52), which needs to ask the same `page:block`
+ *  keys `/__annotations/inbox-all` already answers for ordinary annotations. */
+export function roundPagePath(topic: string): string {
+  return `docs/.grill/${topic}.round.yaml`
+}
+
 /** One question's answer, as the wizard state holds it before submit. */
 export interface Answer {
   optionLabel: string | null
   freeText: string
 }
 
-export function isAnswered(q: RoundQuestion, a: Answer | undefined): boolean {
+/** A question is answered by picking an option, or by writing a free-text answer -- the two
+ *  are always both available (kantord/toylang#52), so either satisfies it. */
+export function isAnswered(a: Answer | undefined): boolean {
   if (!a) return false
-  if (q.options?.length) return a.optionLabel !== null
-  return a.freeText.trim() !== ""
+  return a.optionLabel !== null || a.freeText.trim() !== ""
 }
 
 /** Delivers one question's answer through the #30 inbox machinery (kantord/toylang#34): the
@@ -80,7 +89,7 @@ export function submitAnswer(topic: string, index: number, q: RoundQuestion, a: 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      page: `docs/.grill/${topic}.round.yaml`,
+      page: roundPagePath(topic),
       block: index,
       original: q.title,
       edited: JSON.stringify({ option: a.optionLabel, notes: a.freeText || null }),

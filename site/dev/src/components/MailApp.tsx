@@ -1,13 +1,17 @@
-import { Archive, Check, Inbox as InboxIcon, Pencil, StickyNote, X } from "lucide-react"
+import { Archive, Check, Inbox as InboxIcon, LayoutDashboard, Pencil, StickyNote, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
-import { FLOW_FOR_TYPE, MessageCard, type FlowType } from "@dev/components/MessageCard"
+import { BoardPage } from "@dev/components/BoardPage"
+import { GrillRoundReader } from "@dev/components/GrillWizard"
+import { FLOW, FLOW_FOR_TYPE, MessageCard, type FlowType } from "@dev/components/MessageCard"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { pageAnnotations, type Annotation } from "@dev/lib/annotations"
+import { fetchRound, fetchRoundTopics, roundPagePath, type Round } from "@dev/lib/grill"
 import { annotateHref } from "@dev/lib/nav"
 import { splitBlocks } from "@/lib/blocks"
 import { PAGES } from "@/lib/docs"
@@ -15,13 +19,13 @@ import { fetchNotesAndComposed, sendCompose, type ComposeRecord, type NoteRecord
 import { cn } from "@/lib/utils"
 
 /**
- * The annotations area as a mail client (kantord/toylang#41), replacing AnnotationsSidebar's
- * cramped per-page nav list with a dedicated three-pane app: a folder rail, a message list, and
- * a reading pane, plus a floating Compose button for a message with no page or span behind it.
- * The actual answering mechanism (contenteditable reply, mark-as-read, span-note authoring)
- * stays where it was built, in AnnotateMode.tsx on the doc page itself -- this app is the
- * triage layer on top of it, matching how a mail client's list is a view over messages that
- * live, and get replied to, somewhere else.
+ * Everything is email (kantord/toylang#52): the annotations inbox, the maintainer's own notes
+ * and composed messages, grilling rounds, and the board all live in this one app now, gmail-
+ * style -- a folder rail, a table-ish message list stacked *over* the reading pane (not beside
+ * it), and a floating Compose button. A round arrives as mail and is answered right there in the
+ * reading pane; the board is a tab of the same rail rather than a route of its own. Replaces the
+ * three-pane side-by-side layout from kantord/toylang#41, which put the list and reading pane
+ * next to each other instead of stacked.
  */
 
 interface InboxRecord {
@@ -30,15 +34,24 @@ interface InboxRecord {
 }
 
 type Folder = "inbox" | "notes" | "archive"
+type Tab = Folder | "board"
 
-const FOLDERS: { key: Folder; label: string; icon: typeof InboxIcon }[] = [
+const TABS: { key: Tab; label: string; icon: typeof InboxIcon }[] = [
   { key: "inbox", label: "Inbox", icon: InboxIcon },
   { key: "notes", label: "Your notes & composed", icon: StickyNote },
   { key: "archive", label: "Archive", icon: Archive },
+  { key: "board", label: "Board", icon: LayoutDashboard },
 ]
 
-/** One row's worth of normalized display data, whichever of the three underlying records it
- *  came from -- so the list and reading pane render off one shape instead of branching three
+/** A snippet of an item's underlying page or span, for the "preview with highlights" the issue
+ *  asks for -- `anchor`, when present, is the exact quoted words to mark inside `text`. */
+interface Preview {
+  text: string
+  anchor?: string
+}
+
+/** One row's worth of normalized display data, whichever of the four underlying records it
+ *  came from -- so the list and reading pane render off one shape instead of branching four
  *  ways at every call site. */
 interface MailItem {
   key: string
@@ -47,7 +60,9 @@ interface MailItem {
   subject: string
   note: string
   flow: FlowType
+  preview: Preview | null
   annotation?: Annotation
+  round?: { topic: string; round: Round }
 }
 
 function annotationItem(a: Annotation, answered: boolean): MailItem {
@@ -58,6 +73,7 @@ function annotationItem(a: Annotation, answered: boolean): MailItem {
     subject: a.note.length > 60 ? `${a.note.slice(0, 60)}...` : a.note,
     note: a.note,
     flow: FLOW_FOR_TYPE[a.type],
+    preview: { text: a.original, anchor: a.anchor },
     annotation: a,
   }
 }
@@ -70,6 +86,7 @@ function noteItem(n: NoteRecord, index: number): MailItem {
     subject: `re: "${n.anchor.length > 40 ? `${n.anchor.slice(0, 40)}...` : n.anchor}"`,
     note: n.note,
     flow: "reply",
+    preview: { text: n.anchor, anchor: n.anchor },
   }
 }
 
@@ -81,12 +98,29 @@ function composeItem(c: ComposeRecord): MailItem {
     subject: c.subject.trim() || "(no subject)",
     note: c.note,
     flow: "reply",
+    preview: null,
   }
 }
 
-/** Every reply record, for sorting inbox items into Inbox vs. Archive -- same read/unread split
- *  AnnotationsSidebar used (kantord/toylang#30), tracked locally so mark-as-read moves an item
- *  the instant it's clicked rather than waiting on a refetch. */
+function grillItem(topic: string, round: Round, answered: boolean): MailItem {
+  return {
+    key: `grill:${topic}`,
+    folder: answered ? "archive" : "inbox",
+    sender: "Grilling round",
+    subject: topic,
+    note: round.intro ?? round.questions[0]?.question ?? "",
+    flow: "round",
+    preview: null,
+    round: { topic, round },
+  }
+}
+
+/** Every answered `page:block` key, for sorting inbox items into Inbox vs. Archive -- same
+ *  read/unread split AnnotationsSidebar used (kantord/toylang#30), and reused as-is for grilling
+ *  rounds (kantord/toylang#52): a round's answers land in this exact store, keyed by the round
+ *  file's path and each question's index, so one fetch and one local set covers both. Tracked
+ *  locally so answering an item moves it the instant it happens rather than waiting on a
+ *  refetch. */
 function useAnsweredKeys(): [Set<string>, (key: string) => void] {
   const [answered, setAnswered] = useState<Set<string>>(new Set())
   useEffect(() => {
@@ -94,7 +128,7 @@ function useAnsweredKeys(): [Set<string>, (key: string) => void] {
       .then((r) => (r.ok ? (r.json() as Promise<{ records: InboxRecord[] }>) : { records: [] }))
       .then(({ records }) => setAnswered(new Set(records.map((r) => `${r.page}:${r.block}`))))
       .catch(() => {
-        // No inbox endpoint reachable -- every annotation just reads as unanswered.
+        // No inbox endpoint reachable -- every item just reads as unanswered.
       })
   }, [])
   const markRead = (key: string) => setAnswered((prev) => new Set(prev).add(key))
@@ -110,12 +144,30 @@ function markAsRead(a: Annotation) {
   }).catch((e) => console.error("annotation mark-as-read failed", e))
 }
 
+/** Every grilling round waiting in `docs/.grill/` (kantord/toylang#34), fetched once up front so
+ *  the inbox list has each round's question count and content ready before the maintainer opens
+ *  one -- the reading pane never shows its own loading state. Soft-fails to no rounds, matching
+ *  every other list here: a dev server with no `/__grill` endpoint just means nothing to grill. */
+function useGrillRounds(): { topic: string; round: Round }[] {
+  const [rounds, setRounds] = useState<{ topic: string; round: Round }[]>([])
+  useEffect(() => {
+    fetchRoundTopics()
+      .then((topics) => Promise.all(topics.map((t) => fetchRound(t).then((round) => ({ topic: t, round })))))
+      .then(setRounds)
+      .catch(() => {
+        // No grill endpoint reachable -- the inbox just has no rounds.
+      })
+  }, [])
+  return rounds
+}
+
 export function MailApp() {
   const annotations = useMemo(() => PAGES.flatMap((p) => pageAnnotations(p, splitBlocks(p))), [])
+  const grillRounds = useGrillRounds()
   const [answeredKeys, markReadLocally] = useAnsweredKeys()
   const [notes, setNotes] = useState<NoteRecord[]>([])
   const [composed, setComposed] = useState<ComposeRecord[]>([])
-  const [folder, setFolder] = useState<Folder>("inbox")
+  const [tab, setTab] = useState<Tab>("inbox")
   const [focusIndex, setFocusIndex] = useState(0)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [composeOpen, setComposeOpen] = useState(false)
@@ -129,26 +181,31 @@ export function MailApp() {
 
   const items = useMemo<MailItem[]>(() => {
     const fromAnnotations = annotations.map((a) => annotationItem(a, answeredKeys.has(`${a.page.path}:${a.block}`)))
+    const fromGrill = grillRounds.map(({ topic, round }) => {
+      const page = roundPagePath(topic)
+      const answered = round.questions.every((_, i) => answeredKeys.has(`${page}:${i}`))
+      return grillItem(topic, round, answered)
+    })
     const fromComposed = [...composed]
       .sort((a, b) => b.created.localeCompare(a.created))
       .map(composeItem)
     const fromNotes = notes.map(noteItem)
-    return [...fromAnnotations, ...fromComposed, ...fromNotes]
-  }, [annotations, answeredKeys, notes, composed])
+    return [...fromAnnotations, ...fromGrill, ...fromComposed, ...fromNotes]
+  }, [annotations, grillRounds, answeredKeys, notes, composed])
 
-  const visible = items.filter((i) => i.folder === folder)
+  const visible = tab === "board" ? [] : items.filter((i) => i.folder === tab)
   const counts: Record<Folder, number> = {
     inbox: items.filter((i) => i.folder === "inbox").length,
     notes: items.filter((i) => i.folder === "notes").length,
     archive: items.filter((i) => i.folder === "archive").length,
   }
-  // Looked up from `items`, not `visible`: marking an inbox item read moves it into Archive
+  // Looked up from `items`, not `visible`: answering an inbox item moves it into Archive
   // mid-session, and the reading pane should keep showing it rather than going blank just
   // because it left the folder still on screen.
   const open = items.find((i) => i.key === openKey) ?? null
 
-  const selectFolder = (f: Folder) => {
-    setFolder(f)
+  const selectTab = (t: Tab) => {
+    setTab(t)
     setFocusIndex(0)
     setOpenKey(null)
   }
@@ -156,11 +213,13 @@ export function MailApp() {
   // j/k and the arrow keys move a cursor through the current folder's list, matching a mail
   // client's keyboard flow; Enter opens whatever the cursor is on into the reading pane. Ignored
   // while a text field (the compose panel, most likely) has focus, so typing "j" into a message
-  // body never gets eaten as a list-navigation key.
+  // body never gets eaten as a list-navigation key, and skipped entirely on the Board tab, which
+  // has no list to move a cursor through.
   useEffect(() => {
+    if (tab === "board") return
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName
-      if (tag === "INPUT" || tag === "TEXTAREA") return
+      const t = (e.target as HTMLElement | null)?.tagName
+      if (t === "INPUT" || t === "TEXTAREA") return
       if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault()
         setFocusIndex((i) => Math.min(i + 1, visible.length - 1))
@@ -174,66 +233,81 @@ export function MailApp() {
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [visible, focusIndex])
+  }, [tab, visible, focusIndex])
 
   const onMarkRead = (a: Annotation) => {
     markReadLocally(`${a.page.path}:${a.block}`)
     markAsRead(a)
   }
 
+  const onRoundAnswered = (topic: string, questionCount: number) => {
+    const page = roundPagePath(topic)
+    for (let i = 0; i < questionCount; i++) markReadLocally(`${page}:${i}`)
+  }
+
   const onSendCompose = async (subject: string, body: string) => {
     await sendCompose(subject, body)
     setComposed((prev) => [...prev, { id: crypto.randomUUID(), subject, note: body, created: new Date().toISOString() }])
     setComposeOpen(false)
-    selectFolder("notes")
+    selectTab("notes")
   }
 
   return (
-    <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[180px_280px_minmax(0,1fr)]">
+    <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[180px_minmax(0,1fr)]">
       <aside className="space-y-1">
-        {FOLDERS.map((f) => (
+        {TABS.map((t) => (
           <button
-            key={f.key}
+            key={t.key}
             type="button"
-            onClick={() => selectFolder(f.key)}
+            onClick={() => selectTab(t.key)}
             className={cn(
               "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
-              folder === f.key ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60",
+              tab === t.key ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60",
             )}
           >
-            <f.icon className="size-4 shrink-0" />
-            <span className="flex-1 truncate">{f.label}</span>
-            <span className="text-xs text-muted-foreground">{counts[f.key]}</span>
+            <t.icon className="size-4 shrink-0" />
+            <span className="flex-1 truncate">{t.label}</span>
+            {t.key !== "board" && <span className="text-xs text-muted-foreground">{counts[t.key]}</span>}
           </button>
         ))}
       </aside>
 
-      <div className="min-h-0 overflow-y-auto rounded-md border">
-        {visible.length === 0 ? (
-          <p className="p-3 text-sm text-muted-foreground">Nothing here.</p>
-        ) : (
-          visible.map((item, i) => (
-            <MailRow
-              key={item.key}
-              item={item}
-              focused={i === focusIndex}
-              open={item.key === openKey}
-              onClick={() => {
-                setFocusIndex(i)
-                setOpenKey(item.key)
-              }}
-            />
-          ))
-        )}
-      </div>
+      {tab === "board" ? (
+        <main className="min-h-0 overflow-y-auto rounded-md border p-4">
+          <BoardPage />
+        </main>
+      ) : (
+        // Gmail-like over-under (kantord/toylang#52), not the three-pane side-by-side #41 shipped:
+        // the list gets a fixed share of the height, the reading pane takes the rest.
+        <div className="grid min-h-0 grid-rows-[minmax(0,45%)_minmax(0,1fr)] gap-4">
+          <div className="min-h-0 overflow-y-auto rounded-md border">
+            {visible.length === 0 ? (
+              <p className="p-3 text-sm text-muted-foreground">Nothing here.</p>
+            ) : (
+              visible.map((item, i) => (
+                <MailRow
+                  key={item.key}
+                  item={item}
+                  focused={i === focusIndex}
+                  open={item.key === openKey}
+                  onClick={() => {
+                    setFocusIndex(i)
+                    setOpenKey(item.key)
+                  }}
+                />
+              ))
+            )}
+          </div>
 
-      <main className="min-h-0 overflow-y-auto rounded-md border p-4">
-        {open ? (
-          <ReadingPane item={open} onMarkRead={onMarkRead} />
-        ) : (
-          <p className="text-sm text-muted-foreground">Select a message.</p>
-        )}
-      </main>
+          <main className="min-h-0 overflow-y-auto rounded-md border p-4">
+            {open ? (
+              <ReadingPane item={open} onMarkRead={onMarkRead} onRoundAnswered={onRoundAnswered} />
+            ) : (
+              <p className="text-sm text-muted-foreground">Select a message.</p>
+            )}
+          </main>
+        </div>
+      )}
 
       <div className="fixed bottom-6 right-6">
         {composeOpen ? (
@@ -248,6 +322,40 @@ export function MailApp() {
   )
 }
 
+/** Splits `text` around `anchor` into a highlightable three-part snippet, capped at `maxLen` and
+ *  centered on the match -- the "preview with the important parts highlighted" the issue asks
+ *  for. With no anchor, or one that no longer occurs verbatim, it's just a plain truncation. */
+function buildSnippet(text: string, anchor: string | undefined, maxLen = 140): { pre: string; mark: string; post: string } {
+  const clean = text.replace(/\s+/g, " ").trim()
+  const cleanAnchor = anchor?.replace(/\s+/g, " ").trim()
+  const plain = { pre: clean.length > maxLen ? `${clean.slice(0, maxLen)}...` : clean, mark: "", post: "" }
+  if (!cleanAnchor) return plain
+  const idx = clean.indexOf(cleanAnchor)
+  if (idx === -1) return plain
+
+  const budget = Math.max(0, maxLen - cleanAnchor.length)
+  const before = Math.floor(budget / 2)
+  const after = budget - before
+  const start = Math.max(0, idx - before)
+  const end = Math.min(clean.length, idx + cleanAnchor.length + after)
+  return {
+    pre: (start > 0 ? "..." : "") + clean.slice(start, idx),
+    mark: cleanAnchor,
+    post: clean.slice(idx + cleanAnchor.length, end) + (end < clean.length ? "..." : ""),
+  }
+}
+
+function Snippet({ preview }: { preview: Preview }) {
+  const s = buildSnippet(preview.text, preview.anchor)
+  return (
+    <>
+      {s.pre}
+      {s.mark && <mark className="rounded-sm bg-primary/20 px-0.5 text-foreground">{s.mark}</mark>}
+      {s.post}
+    </>
+  )
+}
+
 function MailRow({
   item,
   focused,
@@ -259,20 +367,33 @@ function MailRow({
   open: boolean
   onClick: () => void
 }) {
+  const flow = FLOW[item.flow]
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "block w-full border-b px-3 py-2 text-left last:border-b-0",
+        "grid w-full grid-cols-[120px_1fr_14px] items-start gap-3 border-b px-3 py-2 text-left last:border-b-0",
         open ? "bg-muted" : focused ? "bg-muted/50" : "hover:bg-muted/30",
       )}
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-xs font-semibold">{item.sender}</span>
-        {item.folder === "inbox" && <span className="size-1.5 shrink-0 rounded-full bg-primary" />}
-      </div>
-      <div className="truncate text-xs text-muted-foreground">{item.subject}</div>
+      <span className="truncate pt-0.5 text-xs font-semibold">{item.sender}</span>
+      <span className="min-w-0">
+        <span className="flex items-center gap-1.5">
+          <Badge variant="outline" className={cn(flow.badge, "shrink-0 border-0 text-[10px]")}>
+            {flow.label}
+          </Badge>
+          <span className="truncate text-xs font-medium">{item.subject}</span>
+        </span>
+        {item.preview && (
+          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+            <Snippet preview={item.preview} />
+          </span>
+        )}
+      </span>
+      <span className="pt-1">
+        {item.folder === "inbox" && <span className="block size-1.5 rounded-full bg-primary" />}
+      </span>
     </button>
   )
 }
@@ -280,10 +401,31 @@ function MailRow({
 function ReadingPane({
   item,
   onMarkRead,
+  onRoundAnswered,
 }: {
   item: MailItem
   onMarkRead: (a: Annotation) => void
+  onRoundAnswered: (topic: string, questionCount: number) => void
 }) {
+  if (item.round) {
+    const { topic, round } = item.round
+    return (
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <div className="text-xs text-muted-foreground">From: {item.sender}</div>
+          <div className="text-sm font-semibold">{item.subject}</div>
+        </div>
+        <Separator />
+        <GrillRoundReader
+          key={topic}
+          topic={topic}
+          round={round}
+          onAllAnswered={() => onRoundAnswered(topic, round.questions.length)}
+        />
+      </div>
+    )
+  }
+
   const a = item.annotation
   return (
     <div className="max-w-2xl space-y-3">
@@ -292,6 +434,11 @@ function ReadingPane({
         <div className="text-sm font-semibold">{item.subject}</div>
       </div>
       <Separator />
+      {item.preview && (
+        <div className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
+          <Snippet preview={item.preview} />
+        </div>
+      )}
       <MessageCard flow={item.flow} note={item.note} />
       {a && (
         <div className="flex gap-2 pt-2">
