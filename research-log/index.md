@@ -111,3 +111,7 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
 - [A match evaluated its subject even when no arm read it](a-match-evaluated-its-subject-even-when-no-arm-read-it.md)
   -- Native's match codegen called self.expr(subject) unconditionally, forcing a whole-record read
   out of a struct-of-arrays cursor for a guard chain that never touches the subject value.
+- [Borrowing the host's null borrowed its conflations](borrowing-the-hosts-null-borrowed-its-conflations.md)
+  -- Making absence tagged (#62) required changing only the four backends that had mapped Opt
+  onto a host null-ish value; the three that had built their own representation were already
+  tagged and needed nothing.

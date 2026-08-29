@@ -252,14 +252,26 @@ fn a_default_arm_receives_the_expectation_too() {
 }
 
 /// A pure guard chain may decline every arm, so its arms synthesise and the chain yields Opt;
-/// the expectation is not peeled into the arms, which keeps the partial-chain refusals -- and
-/// means `[]` in a partial arm stays unknowable.
+/// the expectation is not peeled into the arms (kantord/toylang#48's conservative cut, kept),
+/// which means `[]` in a partial arm stays unknowable.
 #[test]
 fn a_partial_chain_still_synthesises_its_arms() {
     let src = "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> [1]\n\nf(1)";
     assert_eq!(body_ty(src).to_string(), "Opt<Vec<Int>>");
     insta::assert_snapshot!(err(
         "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> []\n\nf(1)"
+    ));
+}
+
+/// Since absence became tagged (kantord/toylang#62), a partial chain's Opt-bodied arms are
+/// legal and the chain honestly doubles the type. The single-Opt annotation is therefore a
+/// plain mismatch under no-peeling -- the live surface of #48's remaining question.
+#[test]
+fn a_partial_chain_over_opt_arms_wants_the_doubled_annotation() {
+    let doubled = "fn f(v: Vec<Int>) -> Opt<Opt<Int>> = v | extent(v) > 0 -> v[9]\n\nf([1])";
+    assert!(toylang::compile(doubled).is_ok());
+    insta::assert_snapshot!(err(
+        "fn f(v: Vec<Int>) -> Opt<Int> = v | extent(v) > 0 -> v[9]\n\nf([1])"
     ));
 }
 

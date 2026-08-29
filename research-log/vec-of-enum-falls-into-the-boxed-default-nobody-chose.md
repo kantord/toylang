@@ -45,3 +45,8 @@ and the day an operation wants a single variant's data across a whole Vec -- a v
 match, a per-variant projection -- is the day the dense union earns its construction sites.
 The corpus now pins the boxed behaviour (enum elements travel through `Vec` on all seven
 backends), so the choice is a decision with a witness rather than a default nobody looks at.
+
+The pile grew: `Opt`'s native layout after #62 is the same kind of unchosen default, held in
+place by a checker refusal rather than a corpus witness --
+[borrowing the host's null borrowed its conflations](borrowing-the-hosts-null-borrowed-its-conflations.md)
+records it and the reconciliation trigger.

@@ -1136,26 +1136,13 @@ fn match_chain(
         check_coverage(&subject_ty, &covered, span)?;
     }
     let result = result.expect("the parser produces at least one arm");
-    // Open-world half: a pure guard chain with no default may decline every arm, so
-    // its result is `Opt` -- unless the bodies are already `Opt`-typed, where one
-    // `null` would mean both "no arm matched" and "matched, and found nothing" (our
-    // `Opt` is untagged), the exact conflation the field-access rule forbids.
+    // Open-world half: a pure guard chain with no default may decline every arm, so its
+    // result is `Opt` -- of whatever the arms yield, `Opt`-typed arms included. A declined
+    // chain is `none` and a matched-but-absent arm is `some(none)`, two different values now
+    // that absence is tagged (kantord/toylang#62); both still print `null`, which is
+    // serialization's documented lossiness, not a conflation to refuse.
     let partial = !has_pattern_arm && !default_seen;
-    let result = if partial {
-        if result.as_opt().is_some() {
-            return Err(Error::new(
-                span,
-                format!(
-                    "this guard chain is partial, and its arms are already {result}: \
-                         a declined chain and a matched-but-absent value would both print \
-                         `null`; add a default arm"
-                ),
-            ));
-        }
-        opt_of(ctx, result)
-    } else {
-        result
-    };
+    let result = if partial { opt_of(ctx, result) } else { result };
     let subject = Tir::new(subject_ty.clone(), Kind::Local(sid));
     Ok(Tir::new(
         result,
@@ -2041,7 +2028,6 @@ fn inputs_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
     Ok(Tir::new(want.clone(), Kind::Inputs))
 }
 
-
 /// A constructor in a position that wants its enum takes the wanted instantiation: this is
 /// how a generic enum's unit variant -- which alone says nothing about the arguments --
 /// gets built at all (`fn f() -> Pair<Int> = empty`). A bare name only counts when nothing
@@ -2166,9 +2152,9 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     }
 
     // Every arm of a total match chain receives the expectation the same way. A partial
-    // chain -- all guards, no default -- keeps synthesising instead: its result is Opt of
-    // what the arms yield, and pushing a peeled expectation into the arms would turn the
-    // arms-are-already-Opt refusal, which explains the design, into a bare mismatch.
+    // chain -- all guards, no default -- keeps synthesising instead: whether a peeled Opt
+    // expectation should flow into its arms is the open half of kantord/toylang#48, and
+    // this is that issue's conservative cut, kept.
     if let Expr::Match { arms, span } = expr
         && !want.contains_stream()
         && arms.iter().any(|a| !matches!(a.pattern, Pattern::Guard(_)))

@@ -234,7 +234,6 @@ pub(super) fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> R
     resolve_bound(ty, env, seen, &HashMap::new())
 }
 
-
 /// One named reference: a bound parameter, a built-in scalar, an alias, or an enum -- with
 /// the arity of its `<...>` arguments held here, where the declaration is in hand.
 fn resolve_named(
@@ -256,18 +255,14 @@ fn resolve_named(
     }
     if let Some(built_in) = Type::from_name(name) {
         if !args.is_empty() {
-            return Err(Error::new(
-                span,
-                format!("`{name}` takes no type argument"),
-            ));
+            return Err(Error::new(span, format!("`{name}` takes no type argument")));
         }
         return Ok(built_in);
     }
     if let Some(at) = seen.iter().position(|s| s == name) {
         // The names expanded since this one last appeared are the cycle, and naming them
         // is the difference between knowing there is one and finding it.
-        let through: Vec<String> =
-            seen[at + 1..].iter().map(|s| format!("`{s}`")).collect();
+        let through: Vec<String> = seen[at + 1..].iter().map(|s| format!("`{s}`")).collect();
         let path = if through.is_empty() {
             String::new()
         } else {
@@ -280,10 +275,7 @@ fn resolve_named(
     }
     if let Some(written) = env.aliases.get(name) {
         if !args.is_empty() {
-            return Err(Error::new(
-                span,
-                format!("`{name}` takes no type argument"),
-            ));
+            return Err(Error::new(span, format!("`{name}` takes no type argument")));
         }
         seen.push(name.to_string());
         let expanded = resolve_bound(written, env, seen, params)?;

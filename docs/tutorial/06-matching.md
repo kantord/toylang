@@ -67,21 +67,23 @@ already gives, printed as `null`:
 match_partial_guards
 ```
 
-The one shape a partial chain can't take is arm bodies that are already `Opt`-typed: one
-`null` would then mean both "no arm matched" and "matched, and found nothing":
+When a partial chain's arms are themselves `Opt`-typed, the wrapping doubles: "no arm
+matched" and "matched, and found nothing" are two different values in memory (`none` and
+`some(none)`), even though both print `null` once serialization flattens the tags away.
+The return type says so honestly:
 
 ```toylang
-fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Int> =
-    entry | .valid -> entry.readings[0]
+fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Opt<Int>> =
+    entry | .valid -> entry.readings[9]
 
 first_reading({valid: 1 == 2, readings: [5]})
 ```
 
-```error
-this guard chain is partial, and its arms are already Opt<Int>: a declined chain and a matched-but-absent value would both print `null`; add a default arm (at byte 85)
+```output
+null
 ```
 
-A default arm settles which `null` is which, because the chain is no longer partial:
+A default arm collapses the doubling, because the chain is no longer partial:
 
 ```toylang
 fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Int> =
