@@ -19,7 +19,7 @@ export interface Task {
   unblocked: boolean
 }
 
-const raw = import.meta.glob("../../../plans/board.yaml", {
+const raw = import.meta.glob("../../../../plans/board.yaml", {
   query: "?raw",
   import: "default",
   eager: true,
