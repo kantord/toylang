@@ -1095,3 +1095,43 @@ tl_vec *tl_range(int64_t n) {
     }
     return v;
 }
+
+/* Every Unicode scalar value in s, decoded from UTF-8, one codepoint per element -- not one
+ * byte and not one UTF-16 unit, so a character outside the Basic Multilingual Plane is one
+ * element here even where a backend whose own strings are UTF-16 needs a surrogate pair to
+ * spell it. `s->len` is an overallocation (the ASCII-only case needs exactly that many, and
+ * every multi-byte codepoint needs fewer slots than the bytes it decodes from), trimmed to the
+ * real count once decoding is done, the same sizing tl_parse_string already relies on for the
+ * reverse direction. Malformed UTF-8 cannot occur: every tl_str this runtime builds is already
+ * valid UTF-8, whether from a literal or from tl_utf8_encode. */
+tl_vec *tl_chars(const tl_str *s) {
+    tl_vec *v = tl_vec_new(s->len, 1);
+    int64_t n = 0;
+    int64_t i = 0;
+    while (i < s->len) {
+        unsigned char b0 = (unsigned char)s->ptr[i];
+        uint32_t cp;
+        int extra;
+        if (b0 < 0x80) {
+            cp = b0;
+            extra = 0;
+        } else if ((b0 & 0xE0) == 0xC0) {
+            cp = b0 & 0x1F;
+            extra = 1;
+        } else if ((b0 & 0xF0) == 0xE0) {
+            cp = b0 & 0x0F;
+            extra = 2;
+        } else {
+            cp = b0 & 0x07;
+            extra = 3;
+        }
+        i++;
+        for (int k = 0; k < extra; k++) {
+            cp = (cp << 6) | ((unsigned char)s->ptr[i] & 0x3F);
+            i++;
+        }
+        v->cols[0][n++] = (int64_t)cp;
+    }
+    v->len = n;
+    return v;
+}

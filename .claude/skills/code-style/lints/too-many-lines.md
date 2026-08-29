@@ -169,3 +169,12 @@ functions' *cognitive-complexity* numbers came out exactly unchanged (27, 13, 14
 added no branching of its own, only a match case -- shape 1, by `cognitive-complexity.md`'s
 own test. Inherited by the same rule as every instance above; no tightening attempted, since
 nothing crossed a line here that was not already crossed at merge-base.
+
+The parser-floor-part-1 session (issue #75) is a twelfth instance: one new `Builtin::Chars`
+match arm (or, for `check/mod.rs`'s `check()`, one new `contains_char` guard) landed in each of
+`check/mod.rs`, `emit_go.rs`, `emit_jq.rs`, `emit_js.rs`, `emit_llvm.rs` (three separate
+functions), `emit_lua.rs`, `emit_py.rs`, and `emit_rs.rs` (two functions), nudging every one of
+them by 1-6 lines apiece, verified against a merge-base worktree; every one was already over
+budget beforehand and stayed the only caused thing about the diff. Inherited by the same rule as
+every instance above. See [cognitive-complexity.md](cognitive-complexity.md)'s matching entry
+for the one genuinely caused finding this session did fix.

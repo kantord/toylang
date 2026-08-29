@@ -149,51 +149,59 @@ local function tl_jsonlines(v, f)
 end
 ";
 
+// Lua strings are byte arrays with no Unicode awareness, so decoding by codepoint (rather than
+// by byte) has to be hand-rolled, the same as the native runtime's tl_chars does in C.
+const CHARS_HELPER: &str = r#"local function tl_chars(s)
+  local out = {}
+  local i = 1
+  local n = #s
+  while i <= n do
+    local b0 = s:byte(i)
+    local cp, extra
+    if b0 < 0x80 then cp, extra = b0, 0
+    elseif b0 & 0xE0 == 0xC0 then cp, extra = b0 & 0x1F, 1
+    elseif b0 & 0xF0 == 0xE0 then cp, extra = b0 & 0x0F, 2
+    else cp, extra = b0 & 0x07, 3
+    end
+    i = i + 1
+    for _ = 1, extra do
+      cp = (cp << 6) | (s:byte(i) & 0x3F)
+      i = i + 1
+    end
+    out[#out + 1] = cp
+  end
+  return out
+end
+"#;
+
 pub fn emit(program: &Program) -> String {
     let mut out = String::new();
 
     let used = used_helpers(program);
-    if used.select {
-        out.push_str(SELECT_HELPER);
-    }
-    if used.field {
-        out.push_str(FIELD_HELPER);
-    }
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON. So a
     // string inside a Vec is quoted while a bare string is not.
     let structured = program.body.ty != Type::Str;
-    if (structured && needs_quote(&program.body.ty)) || used.jsonlines {
-        out.push_str(QUOTE_HELPER);
-    }
-    if (structured && contains_vec(&program.body.ty)) || used.jsonlines {
-        out.push_str(JOIN_HELPER);
-    }
-    if used.index {
-        out.push_str(OPT_HELPER);
-    }
-    if used.unwrap {
-        out.push_str(UNWRAP_HELPER);
-    }
-    if used.tail {
-        out.push_str(TAIL_HELPER);
-    }
-    if used.concat {
-        out.push_str(VEC_CONCAT_HELPER);
-    }
-    if used.arith {
-        out.push_str(ARITH_HELPER);
-    }
-    if used.map {
-        out.push_str(MAP_HELPER);
-    }
-    if used.range {
-        out.push_str(RANGE_HELPER);
-    }
-    if used.collect {
-        out.push_str(COLLECT_HELPER);
-    }
-    if used.jsonlines {
-        out.push_str(JSONLINES_HELPER);
+    let quote = (structured && needs_quote(&program.body.ty)) || used.jsonlines;
+    let join = (structured && contains_vec(&program.body.ty)) || used.jsonlines;
+    for (on, text) in [
+        (used.select, SELECT_HELPER),
+        (used.field, FIELD_HELPER),
+        (quote, QUOTE_HELPER),
+        (join, JOIN_HELPER),
+        (used.index, OPT_HELPER),
+        (used.unwrap, UNWRAP_HELPER),
+        (used.tail, TAIL_HELPER),
+        (used.concat, VEC_CONCAT_HELPER),
+        (used.arith, ARITH_HELPER),
+        (used.map, MAP_HELPER),
+        (used.range, RANGE_HELPER),
+        (used.collect, COLLECT_HELPER),
+        (used.jsonlines, JSONLINES_HELPER),
+        (used.chars, CHARS_HELPER),
+    ] {
+        if on {
+            out.push_str(text);
+        }
     }
 
     // All names are declared before any body, because the checker collects signatures before
@@ -285,6 +293,7 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+        Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
         Type::Int | Type::Bool => format!("tostring({value})"),
         Type::Vec(elem) => {
@@ -402,6 +411,7 @@ struct Helpers {
     jsonlines: bool,
     tail: bool,
     concat: bool,
+    chars: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -461,6 +471,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.jsonlines |= *which == Builtin::JsonLines;
                 used.tail |= *which == Builtin::Tail;
                 used.concat |= *which == Builtin::Concat;
+                used.chars |= *which == Builtin::Chars;
                 walk(arg, used);
             }
             Kind::Cond {
@@ -574,6 +585,7 @@ fn expr(t: &Tir) -> String {
         ),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("tostring({})", expr(arg)),
+            Builtin::Chars => format!("tl_chars({})", expr(arg)),
             Builtin::Range => format!("tl_range({})", expr(arg)),
             Builtin::JsonLines => {
                 let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");

@@ -1,0 +1,5 @@
+---
+source: tests/char.rs
+expression: "err(\"jsonlines(chars(\\\"a\\\"))\")"
+---
+`jsonlines` cannot print Vec<Char>; Char has no wire form to write (at byte 10)

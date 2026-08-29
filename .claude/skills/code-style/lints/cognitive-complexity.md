@@ -61,3 +61,20 @@ brought `extract()` back to absent with no finding. `every_fragment_is_a_real_pr
 own 11/10 was verified unchanged from merge-base throughout (checked via `git show
 HEAD:tests/docs.rs` against a scratch copy) and stayed inherited by the same rule as
 too-many-lines' worked examples.
+
+The parser-floor-part-1 session (issue #75) is a fifth instance, and a variant of shape 1: a
+new `Kind::Builtin` match arm per backend (`Builtin::Chars`) left `expr()`'s cognitive-complexity
+unchanged in all seven backends, same as the record-reorder-through-Opt session. But two
+backends' `emit()` -- `emit_js.rs` and `emit_lua.rs` -- gate their optional helper text with a
+chain of separate `if used.X { out.push_str(HELPER) }` statements rather than the data-driven
+`for (on, text) in [...] { if on { ... } }` loop `emit_go.rs`, `emit_py.rs`, and `emit_rs.rs`
+already use for the same job; adding one more such `if` for `Builtin::Chars`'s helper pushed
+`emit_js.rs`'s `emit()` from 17/10 to 18/10 and `emit_lua.rs`'s from 18/10 to 19/10 -- a real
+move, not the exactly-unchanged shape-1 signature, because an `if`-chain costs the metric a
+point per case where a match or a loop over a literal array costs nothing. Settled by converting
+both functions' `if`-chains to the same loop pattern their three siblings already use (folding
+each compound guard, e.g. Lua's `quote`/`join` conditions, into a `let` before the loop): both
+functions dropped out of the findings entirely, below where they stood at merge-base, rather
+than merely back to baseline. Reach for this whenever a new optional-helper gate is being added
+to an `emit()` still spelled as an `if`-chain instead of the array-loop -- it is the same
+tighten-first move as a match arm, just for this function's own older shape.

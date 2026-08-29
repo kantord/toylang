@@ -96,6 +96,13 @@ const RANGE_HELPER: &str = r#"def tl_range(n):
     return list(range(max(0, n)))
 "#;
 
+/// Python 3 strings are already sequences of Unicode scalar values, so iterating one already
+/// decodes by codepoint; `ord` is the cast down to the number every other backend represents a
+/// `Char` as.
+const CHARS_HELPER: &str = r#"def tl_chars(s):
+    return [ord(c) for c in s]
+"#;
+
 const JOIN_HELPER: &str = r#"def tl_join(v, f):
     return "[" + ",".join(f(e) for e in v) + "]"
 "#;
@@ -194,6 +201,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_vec_concat("), VEC_CONCAT_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_range("), RANGE_HELPER),
+        (uses("tl_chars("), CHARS_HELPER),
         (uses("tl_collect_lines("), COLLECT_HELPER),
         (uses("tl_join("), JOIN_HELPER),
         (uses("tl_jsonlines("), JSONLINES_HELPER),
@@ -266,6 +274,7 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+        Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
         Type::Int => format!("str({value})"),
         Type::Bool => format!("(\"true\" if {value} else \"false\")"),
@@ -403,6 +412,7 @@ fn expr(t: &Tir) -> String {
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("str({})", expr(arg)),
             Builtin::Range => format!("tl_range({})", expr(arg)),
+            Builtin::Chars => format!("tl_chars({})", expr(arg)),
             Builtin::JsonLines => {
                 let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 let e = "e0".to_string();

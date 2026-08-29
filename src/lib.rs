@@ -7,6 +7,7 @@ pub mod emit_llvm;
 pub mod emit_lua;
 pub mod emit_py;
 pub mod emit_rs;
+pub mod emit_toylang;
 pub mod error;
 pub mod input;
 pub mod parse;
@@ -83,6 +84,13 @@ pub fn compile(src: &str) -> Result<Program, Error> {
     let mut file = parse::parse(src)?;
     prelude::inject(&mut file);
     check::check(&file)
+}
+
+/// Parses `src` and re-renders it in the canonical toylang style, without checking or injecting
+/// the prelude -- a formatter has to work on a program that does not type-check, and it must
+/// never print the prelude definitions `compile` splices in for its own purposes.
+pub fn fmt(src: &str) -> Result<String, Error> {
+    emit_toylang::format_source(src)
 }
 
 pub fn run(src: &str) -> Result<String> {

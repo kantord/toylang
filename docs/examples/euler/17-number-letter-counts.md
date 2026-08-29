@@ -13,26 +13,29 @@ keeps every backend's stack shallow, the same concern that shaped [the largest p
 product](04-largest-palindrome-product.md)'s search.
 
 ```toylang
-fn ones_letters(n: Int) -> Int = [0,3,3,5,4,4,3,5,5,4][n]!
-fn teens_letters(n: Int) -> Int = [3,6,6,8,8,7,7,9,8,8][n - 10]!
-fn tens_letters(n: Int) -> Int = [0,0,6,6,5,5,5,7,6,6][n / 10]!
+fn ones_letters(n: Int) -> Int = [0, 3, 3, 5, 4, 4, 3, 5, 5, 4][n]!
+
+fn teens_letters(n: Int) -> Int = [3, 6, 6, 8, 8, 7, 7, 9, 8, 8][n - 10]!
+
+fn tens_letters(n: Int) -> Int = [0, 0, 6, 6, 5, 5, 5, 7, 6, 6][n / 10]!
 
 fn under_hundred(n: Int) -> Int =
     0 if n == 0 else
-    (ones_letters(n) if n < 10 else
-    (teens_letters(n) if n < 20 else
-    tens_letters(n) + ones_letters(n % 10)))
+        ones_letters(n) if n < 10 else
+        teens_letters(n) if n < 20 else
+        tens_letters(n) + ones_letters(n % 10)
 
 fn letters(n: Int) -> Int =
     11 if n == 1000 else
-    ((ones_letters(n / 100) + 7 + (3 if n % 100 > 0 else 0) + under_hundred(n % 100)) if n / 100 > 0 else
-    under_hundred(n))
+        ones_letters(n / 100) + 7 + (3 if n % 100 > 0 else 0) + under_hundred(n % 100) if n / 100 > 0 else
+        under_hundred(n)
 
 fn inner_sum(p: {n: Int, last: Int}) -> Int =
     0 if p.n > p.last else letters(p.n) + inner_sum({n: p.n + 1, last: p.last})
 
 fn outer_sum(g: Int) -> Int =
-    0 if g > 9 else inner_sum({n: g * 100 + 1, last: g * 100 + 100}) + outer_sum(g + 1)
+    0 if g > 9 else
+        inner_sum({n: g * 100 + 1, last: g * 100 + 100}) + outer_sum(g + 1)
 
 outer_sum(0)
 ```

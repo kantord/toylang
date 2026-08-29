@@ -18,6 +18,11 @@ use crate::ast::Module;
 
 const PRELUDE_SRC: &str = include_str!("../prelude.toy");
 
+// Defines `checked()`, constructing prelude.toy's already-checked `pub` functions directly
+// rather than parsing or type-checking anything: build.rs runs that once, against this same
+// source, and writes the result here as plain Rust (kantord/toylang#73).
+include!(concat!(env!("OUT_DIR"), "/prelude_checked.rs"));
+
 /// Every `pub` declaration in `prelude.toy`.
 pub fn module() -> Module {
     let module = crate::parse::parse_module(PRELUDE_SRC).expect("prelude.toy is valid toylang");

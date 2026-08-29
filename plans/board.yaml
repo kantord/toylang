@@ -335,11 +335,26 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
 
 - id: jq-mutual-recursion
   issue: gh:79
   title: jq backend -- four-function cycles are unrepresentable; refuse cleanly or support
+  kind: build
+  needs: []
+  status: todo
+
+- id: char-literals-and-bools
+  issue: gh:80
+  title: Decide Char literals and and/or/not -- the floor escalation from gh:75
+  kind: decide
+  needs: []
+  prio: 3
+  status: todo
+
+- id: custom-build-clippy-scope
+  issue: gh:81
+  title: Scope the clippy pass past build.rs's duplicated target -- gh:73's escalation
   kind: build
   needs: []
   status: todo
@@ -359,7 +374,7 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
 
 - id: matcher-totality-and-alt-design
   title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test

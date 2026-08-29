@@ -16,6 +16,10 @@ insta = "1.48.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_norway = "0.9.42"
 
+# build.rs reuses the parser (winnow) to check prelude.toy at build time; see build.rs itself.
+[build-dependencies]
+winnow = "1.0.4"
+
 # The three lints the quality hooks forward; thresholds live in clippy.toml.
 # On in the manifest so plain `cargo clippy` sees them: the Stop hook adds
 # nothing of its own. See plans/quality-practices.md.

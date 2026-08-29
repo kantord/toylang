@@ -5,6 +5,7 @@ result, and its body is one expression. Named functions declare their types full
 about a signature is inferred.
 
 ```toylang
+# fmt: syntax-example
 fn double(x: Int) -> Int = x * 2
 
 double 21

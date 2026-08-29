@@ -1,0 +1,5 @@
+---
+source: tests/char.rs
+expression: "err(\"chars(\\\"a\\\")[0]!\")"
+---
+the program's result contains a Char, which has no wire form to print (at byte 0)

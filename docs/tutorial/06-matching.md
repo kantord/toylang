@@ -72,8 +72,7 @@ partiality is what supplies the `Opt`, so an arm that writes a bare `[]` resolve
 the declared element type instead of needing it spelled out some other way:
 
 ```toylang
-fn tags(n: Int) -> Opt<Vec<Int>> =
-    n | . > 0 -> []
+fn tags(n: Int) -> Opt<Vec<Int>> = n | . > 0 -> []
 
 {a: tags(1), b: tags(-1)}
 ```
@@ -104,7 +103,10 @@ A default arm collapses the doubling, because the chain is no longer partial:
 fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Int> =
     entry | .valid -> entry.readings[0] or entry.readings[9]
 
-{a: first_reading({valid: 1 == 2, readings: [5]}), b: first_reading({valid: 1 == 1, readings: [1]})}
+{
+    a: first_reading({valid: 1 == 2, readings: [5]}),
+    b: first_reading({valid: 1 == 1, readings: [1]})
+}
 ```
 
 ```output

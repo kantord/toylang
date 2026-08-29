@@ -7,7 +7,7 @@ one must handle every variant. As data an enum is plain JSON, never an opaque va
 ```toylang
 enum Shape { point, circle{r: Int} }
 
-{a: Shape.point, b: circle{r: 3}}
+{a: Shape.point, b: circle({r: 3})}
 ```
 
 ```output
