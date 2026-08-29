@@ -25,9 +25,21 @@ interface NoteRecord {
   note: string
 }
 
+/** A free-form compose message (kantord/toylang#41): the AUTHORING side's other entry point,
+ *  written from the mail app's Compose button rather than anchored to a page or span. Kept in
+ *  its own array rather than folded into `records` -- a compose message has no page/block/anchor
+ *  to dedup on, so it needs its own identity (`id`) instead. */
+interface ComposeRecord {
+  id: string
+  subject: string
+  note: string
+  created: string
+}
+
 interface Notes {
   last_note: string
   records: NoteRecord[]
+  composed: ComposeRecord[]
 }
 
 /**
@@ -46,10 +58,12 @@ async function readInbox(file: string): Promise<Inbox> {
 
 async function readNotes(file: string): Promise<Notes> {
   try {
-    return JSON.parse(await readFile(file, "utf8"))
+    const parsed = JSON.parse(await readFile(file, "utf8"))
+    // A file written before compose messages existed has no `composed` array yet.
+    return { composed: [], ...parsed }
   } catch {
     // No notes yet, or the coordinator just archived them -- start fresh either way.
-    return { last_note: "", records: [] }
+    return { last_note: "", records: [], composed: [] }
   }
 }
 
@@ -156,7 +170,7 @@ export function annotationsInbox(): Plugin {
           const notes = await readNotes(notesFile)
           const records = notes.records.filter((r) => !(r.page === page && r.block === block && r.anchor === anchor))
           records.push({ page, block, anchor, note })
-          const next: Notes = { last_note: new Date().toISOString(), records }
+          const next: Notes = { ...notes, last_note: new Date().toISOString(), records }
           await writeFile(notesFile, JSON.stringify(next, null, 2))
           res.statusCode = 204
           res.end()
@@ -166,7 +180,7 @@ export function annotationsInbox(): Plugin {
         }
       })
 
-      // Every note, for the sidebar's "your notes" section.
+      // Every note and compose message, for the mail app's "your notes and composed" folder.
       server.middlewares.use("/__annotations/notes-all", async (req, res) => {
         if (req.method !== "GET") {
           res.statusCode = 405
@@ -176,7 +190,35 @@ export function annotationsInbox(): Plugin {
         const notes = await readNotes(notesFile)
         res.statusCode = 200
         res.setHeader("Content-Type", "application/json")
-        res.end(JSON.stringify({ records: notes.records }))
+        res.end(JSON.stringify({ records: notes.records, composed: notes.composed }))
+      })
+
+      // Free-form compose (kantord/toylang#41): a message to the coordinator with no page or
+      // span behind it. Subject is optional; the mail app sends "" when left blank.
+      server.middlewares.use("/__annotations/compose", async (req, res) => {
+        if (req.method !== "POST") {
+          res.statusCode = 405
+          res.end()
+          return
+        }
+        try {
+          const { subject, note } = JSON.parse(await readBody(req)) as { subject: string; note: string }
+          await mkdir(dir, { recursive: true })
+          const notes = await readNotes(notesFile)
+          const record: ComposeRecord = {
+            id: crypto.randomUUID(),
+            subject,
+            note,
+            created: new Date().toISOString(),
+          }
+          const next: Notes = { ...notes, last_note: record.created, composed: [...notes.composed, record] }
+          await writeFile(notesFile, JSON.stringify(next, null, 2))
+          res.statusCode = 204
+          res.end()
+        } catch (e) {
+          res.statusCode = 400
+          res.end(e instanceof Error ? e.message : String(e))
+        }
       })
     },
   }

@@ -75,6 +75,10 @@ export default function App() {
     // below: that one renders free-form markdown rounds through the normal docs pipeline, this
     // one has its own screen-by-screen UI over a YAML round file with no page/prose model at all.
     body = <GrillWizardRoute topic={segments[1]} />
+  } else if (section === "mail") {
+    // The mail app (kantord/toylang#41): a dedicated route rather than the old embedded sidebar,
+    // since a three-pane mail client needs the whole area, not a 220px aside column.
+    body = <MailAppRoute onOpenPage={() => setAnnotate(true)} />
   } else if (section === "examples" && segments[1] === "euler") {
     // The Euler stress-test stream: markdown pages under docs/examples/euler, out of the
     // corpus browser's flat case-name routing (kantord/toylang#35).
@@ -152,6 +156,19 @@ export default function App() {
           </a>
         )}
         {import.meta.env.DEV && (
+          <a
+            href="#/mail"
+            className={cn(
+              "rounded-md border px-2 py-1 text-xs font-medium",
+              section === "mail"
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Mail
+          </a>
+        )}
+        {import.meta.env.DEV && (
           <button
             type="button"
             onClick={() => setAnnotate((v) => !v)}
@@ -172,19 +189,6 @@ export default function App() {
   )
 }
 
-/** Loads the annotations sidebar only when its mode is on, so `import.meta.env.DEV` guards a
- *  dynamic import rather than a static one: the dead-code check (`vite build` + grep of `dist/`)
- *  needs the module absent from the production bundle, not just unrendered (kantord/toylang#23). */
-function useAnnotationsSidebar(active: boolean): typeof import("@/components/AnnotationsSidebar") | null {
-  const [mod, setMod] = useState<typeof import("@/components/AnnotationsSidebar") | null>(null)
-  useEffect(() => {
-    if (active && import.meta.env.DEV) {
-      import("@/components/AnnotationsSidebar").then(setMod)
-    }
-  }, [active])
-  return active ? mod : null
-}
-
 function DocsSection({
   section,
   segments,
@@ -198,7 +202,6 @@ function DocsSection({
   annotate?: boolean
   scrollToBlock?: number
 }) {
-  const sidebarMod = useAnnotationsSidebar(annotate)
   const pages = PAGES.filter((p) => p.section === section)
   if (pages.length === 0) {
     return <p className="text-sm text-muted-foreground">Nothing here yet.</p>
@@ -217,33 +220,29 @@ function DocsSection({
   return (
     <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="lg:sticky lg:top-6 lg:self-start">
-        {annotate && sidebarMod ? (
-          <sidebarMod.AnnotationsSidebar current={current} />
-        ) : (
-          <nav className="space-y-4 text-sm">
-            {groups.map((g) => (
-              <div key={g.name} className="space-y-1">
-                {g.name && (
-                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {g.name}
-                  </div>
-                )}
-                {g.pages.map((p) => (
-                  <a
-                    key={p.path}
-                    href={href(p)}
-                    className={cn(
-                      "block rounded px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground",
-                      p === current && "bg-muted font-medium text-foreground",
-                    )}
-                  >
-                    {p.title}
-                  </a>
-                ))}
-              </div>
-            ))}
-          </nav>
-        )}
+        <nav className="space-y-4 text-sm">
+          {groups.map((g) => (
+            <div key={g.name} className="space-y-1">
+              {g.name && (
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {g.name}
+                </div>
+              )}
+              {g.pages.map((p) => (
+                <a
+                  key={p.path}
+                  href={href(p)}
+                  className={cn(
+                    "block rounded px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground",
+                    p === current && "bg-muted font-medium text-foreground",
+                  )}
+                >
+                  {p.title}
+                </a>
+              ))}
+            </div>
+          ))}
+        </nav>
       </aside>
 
       <main className="min-w-0">
@@ -255,7 +254,7 @@ function DocsSection({
 }
 
 /** The wizard's dev-only route (kantord/toylang#34): a dynamic import behind
- *  `import.meta.env.DEV`, exactly like `useAnnotationsSidebar` above, so `vite build` never puts
+ *  `import.meta.env.DEV`, exactly like `MailAppRoute` below, so `vite build` never puts
  *  GrillWizard.tsx (or the round-fetching it pulls in) in the production bundle. */
 function GrillWizardRoute({ topic }: { topic?: string }) {
   const [mod, setMod] = useState<typeof import("@/components/GrillWizard") | null>(null)
@@ -269,6 +268,22 @@ function GrillWizardRoute({ topic }: { topic?: string }) {
   // `key` remounts the wizard when the topic changes in place (back/forward between two
   // rounds), so a shorter round can never inherit a step index pointing past its end.
   return topic ? <mod.GrillWizardPage key={topic} topic={topic} /> : <mod.GrillIndexPage />
+}
+
+/** The mail app's dev-only route (kantord/toylang#41): same dynamic-import tree-shaking pattern
+ *  as the wizard above, so `vite build` never puts MailApp.tsx (or the annotation scan it pulls
+ *  in) in the production bundle. `onOpenPage` flips the docs page's own annotate toggle on, so a
+ *  "open on page" link lands with the block already editable rather than a plain read. */
+function MailAppRoute({ onOpenPage }: { onOpenPage: () => void }) {
+  const [mod, setMod] = useState<typeof import("@/components/MailApp") | null>(null)
+  useEffect(() => {
+    if (import.meta.env.DEV) import("@/components/MailApp").then(setMod)
+  }, [])
+  if (!import.meta.env.DEV) {
+    return <p className="text-sm text-muted-foreground">The mail app is dev-only.</p>
+  }
+  if (!mod) return <p className="text-sm text-muted-foreground">Loading...</p>
+  return <mod.MailApp onOpenPage={onOpenPage} />
 }
 
 /** Previous/next within the section, so the tutorial reads as the linear course it is. */

@@ -131,7 +131,7 @@
   title: Email-app comfort -- free-form compose, folders, list and reading panes
   kind: build
   needs: [grilling-wizard]
-  status: todo
+  status: done
 
 - id: board-page-v2
   issue: gh:33
