@@ -1,0 +1,79 @@
+# Structured exemptions for the check machinery.
+#
+# A finding a session cannot fix and should not chase -- a budget the codebase has decided, in
+# the open, to exceed on purpose -- moves here instead of staying an #[allow] beside the code or
+# a standing "read the lesson and move on" note in a lints/*.md file. Piece 7 of
+# plans/quality-practices.md is the design; this is its first tenant.
+#
+# What makes an exemption legitimate:
+#
+# - It is a decision, not a session's improvisation. See .claude/skills/code-style/SKILL.md's
+#   "Suppressing a finding" -- escalate, get it settled, then it lands here.
+# - `#[allow]`/`#![allow]` beside the code it excuses is itself a finding (kind `bare-allow`,
+#   enforced in .claude/checks/run.sh). This file is the only sanctioned home for a justified
+#   exemption.
+# - `.claude/checks/run.sh` re-derives every entry's underlying finding on each run, over the
+#   whole tree, not just the files a session touched -- an entry whose finding no longer fires
+#   is itself reported, as `stale-sinkhole-entry`. There is no manual review step keeping this
+#   honest; the check does.
+#
+# Fields:
+#
+#   kind            required. The finding kind this excuses: "file-too-long",
+#                   "too-many-lines", "bare-allow", or a bare clippy lint name
+#                   (e.g. "redundant-clone").
+#   path            required. Repo-relative path.
+#   function        optional. Scopes a per-function kind (today: "too-many-lines") to one
+#                   function by name. Omit for a whole-file kind like "file-too-long".
+#   line            optional, informational only. Where the exemption lived when this was
+#                   written; drifts as the file changes, never used for matching.
+#   justification   required. Why this stays over budget by design, not by neglect.
+
+[[exemption]]
+kind = "file-too-long"
+path = "src/check.rs"
+justification = """
+2291 lines against the 1000-line budget (.claude/checks/limits.toml). check.rs is one of the
+three files that budget was set to name (clippy.toml's too-many-lines comment), and the survey
+run on it (plans/checker-structure.md, gh:32) settled the file's shape: extract the
+type-resolution pass and the stream-linearity/pruning passes (board row check-rs-split-build,
+gh:51, not yet landed), and leave the fused synth/expect core -- Ctx, synth, expect, access,
+binary, construct, collect, the mapper helpers -- as a structured exemption rather than a shrink
+target. The core has no per-area seam to split along (one flat match over every construct, kept
+coherent on purpose), and the type-flow rework (#44) specifically wants each construct's synth
+side and expect side adjacent, which a topic-based split would pull apart. Until #51 lands this
+entry covers the whole file; once it does, re-measure against whatever the core actually is
+rather than renewing this unread.
+"""
+
+[[exemption]]
+kind = "too-many-lines"
+path = "src/check.rs"
+function = "check"
+line = 72
+justification = """
+Inherited, never caused: six sessions across issues #20, #21, #26, #27, #40, #44 grew or
+touched check.rs without pushing this finding further over budget, recorded case by case in
+.claude/skills/code-style/lints/too-many-lines.md. check() is the driver that sequences type
+resolution, body checking, stream linearity and dead-code pruning in the order
+plans/checker-structure.md's pass-ordering section requires, plus the cross-cutting checks
+(input/inputs/lines mutual exclusion) that only make sense once everything else is known --
+no seam inside it that isn't one of those phases, three of which stay adjacent by the same
+fused-pass argument as synth() below.
+"""
+
+[[exemption]]
+kind = "too-many-lines"
+path = "src/check.rs"
+function = "synth"
+line = 1384
+justification = """
+Inherited, never caused, by the same history as check() above --
+.claude/skills/code-style/lints/too-many-lines.md records synth() at every measurement from 560
+lines (its first appearance in the lesson) down to today's count, shrinking with every touch and
+never growing past what a session found. It is the one large match over every Expr variant
+(plans/checker-structure.md's bidirectional-checker axis): a type checker enumerates the
+language's grammar exactly once, with no per-area repetition to hang a split on the way the
+backends get one file per target for free. research-log/merging-passes-turns-redundant-traversals-into-bugs.md
+is why checking and lowering stay fused inside it rather than becoming two smaller passes.
+"""

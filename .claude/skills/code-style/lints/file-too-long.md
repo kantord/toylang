@@ -7,6 +7,11 @@ tags: [file-too-long, inherited-debt]
 
 # An inherited file-too-long finding is not this session's to fix
 
+`check.rs`'s finding, and the history below, is now recorded as a structured exemption in
+[the sinkhole](/.claude/checks/sinkhole.toml) (#54): the check script suppresses it rather than
+reporting it at Stop. This lesson stays as the record of how that was reached, and still applies
+as-is to any other file's inherited-vs-caused question.
+
 `check.rs` was 1851 lines at this branch's original merge-base, already over
 the 1000-line budget, before this session touched it. A run of style
 cleanups (naming a couple of tuple returns as structs, extracting a few

@@ -116,11 +116,18 @@ Suppression is settled the same way as anything else, and almost never comes
 back "yes". If you believe a check is measuring nothing here, look for the
 better pattern first and bring *that* back -- an exemption is what is left
 when the search failed, argued for in the open, never something a session
-decides on its own to get unblocked. (toy-browser moves settled exemptions
-into a "sinkhole" file that machinery keeps honest; that machinery is step 4
-of plans/quality-practices.md's introduction order and is deliberately not
-installed yet. Until it is, a settled exemption lives in the lesson that
-records it.)
+decides on its own to get unblocked.
+
+A settled exemption moves into `.claude/checks/sinkhole.toml`: one entry per
+finding it excuses, with a `justification` field, not a paragraph added to a
+lesson. `.claude/checks/run.sh` consults it -- an entry suppresses the
+finding it names, and every entry is re-checked against the whole tree on
+every run, so one that stops firing (the function shrank, the file split)
+is itself reported as `stale-sinkhole-entry` instead of quietly outliving
+its reason. `#[allow]`/`#![allow]` beside the code it would excuse is itself
+a finding (`bare-allow`); the sinkhole is the only sanctioned home. See the
+file's own header comment for the entry format, and `check.rs`'s three
+entries -- file length, `check()`, `synth()` -- as the worked example.
 
 ## The vocabulary
 

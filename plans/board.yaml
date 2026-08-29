@@ -434,10 +434,11 @@
   status: done
 
 - id: sinkhole-machinery
+  issue: gh:54
   title: Adopt the sinkhole rule once real exemption pressure exists
   kind: build
   needs: [quality-hooks-introduction]
-  status: todo
+  status: done
 
 - id: docs-site-design
   title: Grill the docs site generalization -- page types, navigation, content provenance

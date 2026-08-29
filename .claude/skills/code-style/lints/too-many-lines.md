@@ -7,6 +7,11 @@ tags: [too-many-lines, structure]
 
 # Naming a tuple return pushed a function over budget
 
+`check()` and `synth()`'s standing findings, and their whole history below, are now recorded as
+structured exemptions in [the sinkhole](/.claude/checks/sinkhole.toml) (#54): the check script
+suppresses them rather than reporting them at Stop. This lesson stays as the record of how that
+was reached, and still applies as-is to any other function's inherited-vs-caused question.
+
 `check.rs`'s `access()` returned `(Tir, Type, usize, bool)`. A review asked
 for the tuple to become a named `Access` struct (readability at call sites,
 not a line-count concern). Doing it the direct way -- a full `Access { .. }`
