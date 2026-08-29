@@ -105,3 +105,8 @@ export function resolveLink(from: Page, target: string): string | null {
   if (hit) return href(hit)
   return `https://github.com/kantord/toylang/blob/main/${path}`
 }
+
+/** Display labels for docs groups whose raw directory name is not presentable; both the docs
+ *  sidebar and the corpus browser's folder header read from here, so the label cannot fork
+ *  (kantord/toylang#70). */
+export const GROUP_LABELS: Record<string, string> = { euler: "Coding puzzles" }

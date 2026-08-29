@@ -1,6 +1,6 @@
 import { ExamplesPage } from "@/components/ExamplesPage"
 import { Markdown } from "@/components/Markdown"
-import { href, PAGES, type Page, type Section } from "@/lib/docs"
+import { GROUP_LABELS, href, PAGES, type Page, type Section } from "@/lib/docs"
 import type { AppRoute, EmbeddedCaseData } from "@/lib/pageData"
 import { withBase } from "@/lib/route"
 import { cn } from "@/lib/utils"
@@ -60,6 +60,10 @@ export function App({ route }: { route: AppRoute }) {
   )
 }
 
+/** How a docs group's raw directory name reads in the sidebar. Only the Euler stream needs a
+ *  friendlier label (kantord/toylang#70): everything else already spells its directory name
+ *  the way a reader would say it. */
+
 function DocsSection({
   section,
   current,
@@ -82,11 +86,24 @@ function DocsSection({
     <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="lg:sticky lg:top-6 lg:self-start">
         <nav className="space-y-4 text-sm">
+          {section === "examples" && (
+            <div className="space-y-1">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Test cases
+              </div>
+              <a
+                href={withBase("/examples/")}
+                className="block rounded px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                Browse the corpus
+              </a>
+            </div>
+          )}
           {groups.map((g) => (
             <div key={g.name} className="space-y-1">
               {g.name && (
                 <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {g.name}
+                  {GROUP_LABELS[g.name] ?? g.name}
                 </div>
               )}
               {g.pages.map((p) => (
