@@ -25,8 +25,8 @@ Never use `claude -p` for this: headless output is not navigable and cannot be t
 The github cookbook cuts the delegation worktree from **origin's** default branch. If local
 main is ahead and unpushed, the session builds against a stale base and its branch merges
 back with semantic drift the suite only catches on main (this reverted the anyhow work once
-before being caught). Before dispatching: local main must be pushed, or the user asked to
-push. Never dispatch onto a stale origin.
+before being caught). Before dispatching: push local main yourself (standing authorization,
+2026-08-29 -- ordinary pushes of main only, never force). Never dispatch onto a stale origin.
 
 ## 2. Activate, launch kitty with claude inside, then switch the user back
 

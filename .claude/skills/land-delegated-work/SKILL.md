@@ -30,7 +30,7 @@ Do not ping for intermediate progress or ask permission to review or merge.
   spec gaps: file follow-up GitHub issues rather than blocking the merge. Genuine design
   questions: stop and escalate -- that is the one case the user wants to hear about early.
 
-## 3. Merge locally, never push
+## 3. Merge locally, then push
 
 - `git merge <branch> --no-ff` from the main checkout, with a merge message naming what was
   reviewed and where follow-ups went, plus the trailer.
@@ -39,8 +39,11 @@ Do not ping for intermediate progress or ask permission to review or merge.
   (board.yaml especially) get validated AFTER resolution and BEFORE the commit, with the
   validation hard-gating the commit (`&&`, not a newline).
 - Re-run `just test` on main after the merge.
-- Pushing remains the user's call; do not push unless asked. Removing the enwiro env
-  (`enw rm`) is also theirs -- it is safe only after the merge, and never with unmerged work.
+- Push main after the green suite (standing authorization, 2026-08-29, "at least for now"):
+  ordinary pushes only, never force, never branch deletion. Keeping origin current is what
+  lets the next dispatch cut a fresh worktree without a human round-trip. Removing the
+  enwiro env (`enw rm`) stays the user's -- it is safe only after the merge, and never with
+  unmerged work.
 
 ## 3b. Update the board and the env
 
