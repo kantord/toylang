@@ -596,6 +596,17 @@ impl Emitter {
     }
 
     /// The declaration index of `variant`, which is its tag and its pointer field's suffix.
+    /// A partial chain's yield is an Opt, so a present arm wraps its value in the tag
+    /// struct; total chains return the body bare. Split out of `expr`'s match arm to keep
+    /// the tagging decision from deepening it (kantord/toylang#62).
+    fn arm_yield(go_ty: String, body: String, partial: bool) -> String {
+        if partial {
+            format!("{go_ty}{{true, {body}}}")
+        } else {
+            body
+        }
+    }
+
     fn variant_index(variants: &[(String, Option<Type>)], variant: &str) -> usize {
         variants
             .iter()
@@ -946,11 +957,8 @@ impl Emitter {
                             self.local(pid)
                         ));
                     }
-                    let produced = if *partial {
-                        format!("{}{{true, {}}}", self.go_type(&t.ty), self.expr(&arm.body))
-                    } else {
-                        self.expr(&arm.body)
-                    };
+                    let produced =
+                        Self::arm_yield(self.go_type(&t.ty), self.expr(&arm.body), *partial);
                     run.push_str(&format!("return {produced}"));
                     let test = match (&arm.variant, &arm.guard) {
                         (Some(v), _) => {

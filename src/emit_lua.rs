@@ -499,6 +499,16 @@ fn used_helpers(program: &Program) -> Helpers {
     used
 }
 
+/// A partial chain's yield is an Opt, so a present arm is tagged; total chains return the
+/// body bare. Split out of `expr`'s match arm (kantord/toylang#62).
+fn arm_return(body: String, partial: bool) -> String {
+    if partial {
+        format!("return {{some = {body}}} ")
+    } else {
+        format!("return {body} ")
+    }
+}
+
 fn expr(t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => lua_string(s),
@@ -657,12 +667,7 @@ fn expr(t: &Tir) -> String {
                         lua_string(variant)
                     ));
                 }
-                if *partial {
-                    // A partial chain's yield is an Opt, so a present arm is tagged.
-                    run.push_str(&format!("return {{some = {}}} ", expr(&arm.body)));
-                } else {
-                    run.push_str(&format!("return {} ", expr(&arm.body)));
-                }
+                run.push_str(&arm_return(expr(&arm.body), *partial));
                 let test = match (&arm.variant, &arm.guard) {
                     (Some(v), _) if arm.payload.is_some() => {
                         Some(format!("{subj}[{}] ~= nil", lua_string(v)))

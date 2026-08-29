@@ -220,3 +220,11 @@ Generic type aliases (nothing needs one; `parse_module` still refuses `type`, an
 stays), the `Matcher` type and everything downstream of the pending round, tag-field
 codecs, a native dense-union or any layout unification, and auto-wrapping (`5` where
 `Opt<Int>` is expected stays refused; presence is written `some(5)`).
+
+## A surface consequence found at landing
+
+The prelude now owns the bare names `some` and `none`: a user enum that also declares a
+variant with either name needs qualification (`Batch.some(...)`) where the bare spelling
+was previously unambiguous. One corpus case (`enum_vec_payload`) hit this; any program
+using those variant names will too. Deliberate cost of a prelude declaration over a
+built-in, recorded here because the plan missed it and the corpus diff found it.

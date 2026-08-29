@@ -76,6 +76,8 @@ changed (`check.rs` to `check/mod.rs`); it is the same fused core, not new
 debt. Nothing to do here until issue #54 lands and can record the formal
 exemption.
 
-The opt-as-enum session (issue #62) grew four already-over files by 20-40 lines each
+The opt-as-enum session (issue #62) grew five already-over files -- check/mod.rs by 177
+lines (the generics instantiation machinery), parse.rs by 40, and the go/rs/llvm emitters
+by 10, 7, and 6
 (emitter Opt re-encoding, parser type arguments) -- task-driven nudges to inherited debt, by
 the same rule as #40 and #45; the emitter-split conversation stays undone.
