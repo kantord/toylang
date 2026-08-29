@@ -454,6 +454,13 @@
   needs: [quality-hooks-introduction]
   status: done
 
+- id: sinkhole-hardening
+  issue: gh:56
+  title: Sinkhole hardening -- re-check every kind, catch cfg_attr allows, dedup the budget math
+  kind: build
+  needs: [sinkhole-machinery]
+  status: todo
+
 - id: okf-invalid-lesson
   issue: gh:42
   title: Settle the okf-invalid SKILL.md finding -- check scope or OKF adoption for skills
