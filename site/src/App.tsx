@@ -70,6 +70,11 @@ export default function App() {
   let body
   if (section === "board") {
     body = <BoardPage />
+  } else if (section === "grill-wizard") {
+    // The structured wizard (kantord/toylang#34), a different beast from the "grill" section
+    // below: that one renders free-form markdown rounds through the normal docs pipeline, this
+    // one has its own screen-by-screen UI over a YAML round file with no page/prose model at all.
+    body = <GrillWizardRoute topic={segments[1]} />
   } else if (section === "examples" && segments[1] === "euler") {
     // The Euler stress-test stream: markdown pages under docs/examples/euler, out of the
     // corpus browser's flat case-name routing (kantord/toylang#35).
@@ -134,11 +139,24 @@ export default function App() {
           ))}
         </nav>
         {import.meta.env.DEV && (
+          <a
+            href="#/grill-wizard"
+            className={cn(
+              "ml-auto rounded-md border px-2 py-1 text-xs font-medium",
+              section === "grill-wizard"
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Grill
+          </a>
+        )}
+        {import.meta.env.DEV && (
           <button
             type="button"
             onClick={() => setAnnotate((v) => !v)}
             className={cn(
-              "ml-auto rounded-md border px-2 py-1 text-xs font-medium",
+              "rounded-md border px-2 py-1 text-xs font-medium",
               annotate
                 ? "border-primary bg-primary/10 text-primary"
                 : "border-border text-muted-foreground hover:text-foreground",
@@ -234,6 +252,23 @@ function DocsSection({
       </main>
     </div>
   )
+}
+
+/** The wizard's dev-only route (kantord/toylang#34): a dynamic import behind
+ *  `import.meta.env.DEV`, exactly like `useAnnotationsSidebar` above, so `vite build` never puts
+ *  GrillWizard.tsx (or the round-fetching it pulls in) in the production bundle. */
+function GrillWizardRoute({ topic }: { topic?: string }) {
+  const [mod, setMod] = useState<typeof import("@/components/GrillWizard") | null>(null)
+  useEffect(() => {
+    if (import.meta.env.DEV) import("@/components/GrillWizard").then(setMod)
+  }, [])
+  if (!import.meta.env.DEV) {
+    return <p className="text-sm text-muted-foreground">The grilling wizard is dev-only.</p>
+  }
+  if (!mod) return <p className="text-sm text-muted-foreground">Loading...</p>
+  // `key` remounts the wizard when the topic changes in place (back/forward between two
+  // rounds), so a shorter round can never inherit a step index pointing past its end.
+  return topic ? <mod.GrillWizardPage key={topic} topic={topic} /> : <mod.GrillIndexPage />
 }
 
 /** Previous/next within the section, so the tutorial reads as the linear course it is. */
