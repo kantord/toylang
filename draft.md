@@ -2507,6 +2507,10 @@ for `parse`.
 
 First cut is monomorphic: no type parameters. The named motivations all work without them;
 generics' first real customer is `Result<T, E>`, which belongs to the decoding work.
+RETIRED (2026-08-29, kantord/toylang#62): generic enums shipped with `Opt<T>` as the first
+customer, per the ratification above -- declarations take parameters, `Name<...>` resolves by
+substitution, and constructors infer the instantiation from their payload or take it from the
+position's expectation. `Result<T, E>` inherits the machinery instead of motivating it.
 
 ## Open questions
 
