@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Type {
     Str,
     Int,
@@ -6,10 +6,14 @@ pub enum Type {
     Vec(Box<Type>),
     /// Zero or one. Produced by collapsing a dimension, since the entry may not be there.
     Opt(Box<Type>),
-    /// Fields in declaration order, which is part of the type's identity: values print in this
-    /// order on every backend, and the native/Go column layouts key on position in this list.
-    /// Two records written in different orders are therefore two types, and meet as a type
-    /// error rather than as columns that silently disagree about what position means.
+    /// Fields in declaration order. Order is not part of the type's identity (kantord/toylang#60:
+    /// `{a: Int, b: Int}` and `{b: Int, a: Int}` are one type, so `PartialEq` below compares the
+    /// field set, not the spelling), but it survives as metadata on every concrete value: a
+    /// literal's own written order is what it prints in on every backend and what the
+    /// native/Go column layouts key on. Whichever type a value is checked against is the order
+    /// it ends up carrying (`check::reorder_record` rebuilds a value that arrives shuffled), so
+    /// two differently-ordered values only coexist when nothing ever placed them in the same
+    /// checked position.
     Record(Vec<(String, Type)>),
     /// Effect-layer multiplicity: the entries arrive one at a time as evaluation proceeds, and
     /// no stream object ever exists as a value (ADR 0001). Spellable in function signatures,
@@ -98,6 +102,35 @@ impl std::fmt::Display for Type {
             // The name is the identity, so the name is the display: spelling the variants out
             // would print the definition where the reader wants the reference.
             Type::Enum { name, .. } => write!(f, "{name}"),
+        }
+    }
+}
+
+impl PartialEq for Type {
+    /// Structural equality, except `Record`: its fields compare as a set, keyed by name and
+    /// type, ignoring position (kantord/toylang#60). A record's own field order is real data --
+    /// it drives printing and backend column layout -- but it is not part of what makes two
+    /// types the same type.
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Type::Str, Type::Str) | (Type::Int, Type::Int) | (Type::Bool, Type::Bool) => true,
+            (Type::Vec(a), Type::Vec(b)) => a == b,
+            (Type::Opt(a), Type::Opt(b)) => a == b,
+            (Type::Stream(a), Type::Stream(b)) => a == b,
+            (Type::Record(a), Type::Record(b)) => {
+                a.len() == b.len() && a.iter().all(|field| b.contains(field))
+            }
+            (
+                Type::Enum {
+                    name: n1,
+                    variants: v1,
+                },
+                Type::Enum {
+                    name: n2,
+                    variants: v2,
+                },
+            ) => n1 == n2 && v1 == v2,
+            _ => false,
         }
     }
 }

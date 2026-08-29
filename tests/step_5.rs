@@ -34,18 +34,19 @@ fn emitted_lua() {
     ));
 }
 
-/// Field order is part of a record type: the same fields in a different order are a different
-/// type, because printing and the columnar layouts both key on position in the declared list.
-/// The error says so, since "expected X, found X-shuffled" is otherwise a riddle.
+/// A record's fields are a set, not a sequence (kantord/toylang#60): `g`'s parameter and `f`'s
+/// parameter are the same type with the fields spelled in the other order, so the call
+/// type-checks and the value reads back correctly on the other side.
 #[test]
-fn record_field_order_is_part_of_the_type() {
+fn reordered_fields_are_the_same_type() {
     let src = r#"
 fn f(r: {a: Str, b: Int}) -> Str = r.a
 fn g(r: {b: Int, a: Str}) -> Str = f(r)
 
 g(input)
 "#;
-    insta::assert_snapshot!(err(src));
+    let out = toylang::run_with_input(src, Some(r#"{"b": 1, "a": "hi"}"#)).unwrap();
+    assert_eq!(out, "hi\n");
 }
 
 #[test]

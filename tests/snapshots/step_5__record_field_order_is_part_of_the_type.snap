@@ -1,5 +1,0 @@
----
-source: tests/step_5.rs
-expression: err(src)
----
-expected {a: Str, b: Int}, found {b: Int, a: Str}; the fields agree, but field order is part of a record type (at byte 77)

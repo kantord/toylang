@@ -1,0 +1,16 @@
+# Reordered spellings are one type (kantord/toylang#60): `g`'s parameter and `f`'s parameter
+# are the same record type with the fields spelled in the other order, so `f(r)` type-checks
+# and the value crosses the call unchanged.
+program: |
+  fn f(r: {a: Str, b: Int}) -> Str = r.a
+  fn g(r: {b: Int, a: Str}) -> Str = f(r)
+
+  g(input)
+
+input: |
+  {"b": 1, "a": "hi"}
+
+output: |
+  hi
+
+node_types: [application, input, local, pipe, projection, record-literal, var]
