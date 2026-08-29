@@ -288,7 +288,7 @@
   kind: decide
   needs: [type-flow-rework]
   prio: 2
-  status: todo
+  status: delegated
 
 - id: matcher-totality-and-alt-design
   title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test
@@ -303,7 +303,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: nullary-functions
   issue: gh:61
