@@ -1720,45 +1720,95 @@ fn same_field_order(a: &Type, b: &Type) -> bool {
                     .zip(y)
                     .all(|((n1, t1), (n2, t2))| n1 == n2 && same_field_order(t1, t2))
         }
+        (Type::Vec(x), Type::Vec(y)) | (Type::Stream(x), Type::Stream(y)) => same_field_order(x, y),
         _ => true,
     }
 }
 
 /// Rebuilds `found` -- already known equal to `want` -- so it is physically laid out in
 /// `want`'s field order: a bound local read back out field by field into a fresh literal in
-/// that order, recursing into any field that is itself a differently-ordered record. Does not
-/// reach inside a Vec, Opt, or Stream, so an element whose own record fields are ordered
-/// differently from its container's declared element type is a known gap (kantord/toylang#64).
+/// that order, recursing into any field that is itself a differently-ordered record. Also
+/// recurses through a Vec or Stream wrapper, via a real `map` that rebuilds every element --
+/// unlike the record case this is a runtime loop, not a free relabelling, since a Vec's
+/// elements are not reachable one at a time the way a record's fields are (kantord/toylang#64).
+/// Does not reach inside an Opt: nothing in the language can build a "present" Opt value except
+/// the handful of forms that produce one directly (`Index`, `tail`, a partial match), so there
+/// is no literal to rebuild into. An element whose own record fields are ordered differently
+/// from its container's declared element type is a known gap there still (kantord/toylang#64).
 fn reorder_record(ctx: &Ctx, found: Tir, want: &Type) -> Tir {
     if same_field_order(&found.ty, want) {
         return found;
     }
-    let Type::Record(want_fields) = want else {
-        return found;
-    };
-    let local = ctx.fresh();
-    let found_ty = found.ty.clone();
-    let fields = want_fields
+    match want {
+        Type::Record(want_fields) => {
+            // A bare local can supply its own fields directly without being bound again: a
+            // Field read reaches through it (a struct-of-arrays cursor, when it is a Vec
+            // element, or an ordinary bound value otherwise) without ever asking for the whole
+            // local as a value, which is what a redundant rebind here would do -- and which
+            // the native backend refuses for a cursor, since a map body's element local is
+            // never materialised as one.
+            if let Kind::Local(local) = found.kind {
+                return Tir::new(
+                    want.clone(),
+                    Kind::RecordLit {
+                        fields: reorder_fields(ctx, local, &found.ty, want_fields),
+                    },
+                );
+            }
+            let local = ctx.fresh();
+            let found_ty = found.ty.clone();
+            let fields = reorder_fields(ctx, local, &found_ty, want_fields);
+            Tir::new(
+                want.clone(),
+                Kind::Bind {
+                    local,
+                    value: Box::new(found),
+                    body: Box::new(Tir::new(want.clone(), Kind::RecordLit { fields })),
+                },
+            )
+        }
+        Type::Vec(want_elem) | Type::Stream(want_elem) => {
+            // `found.ty == want` already (the caller's own guard), so its wrapper is the same
+            // kind as `want`'s and `runtime_elem` cannot miss.
+            let elem_ty = tir::runtime_elem(&found.ty)
+                .expect("want is Vec/Stream and found.ty == want")
+                .clone();
+            let param = ctx.fresh();
+            let body = reorder_record(ctx, Tir::new(elem_ty, Kind::Local(param)), want_elem);
+            Tir::new(
+                want.clone(),
+                Kind::Map {
+                    source: Box::new(found),
+                    param,
+                    body: Box::new(body),
+                },
+            )
+        }
+        _ => found,
+    }
+}
+
+/// `want_fields`, each read off `local` (of type `local_ty`) in `want_fields`'s order, recursing
+/// into any field that is itself a differently-ordered record.
+fn reorder_fields(
+    ctx: &Ctx,
+    local: LocalId,
+    local_ty: &Type,
+    want_fields: &[(String, Type)],
+) -> Vec<(String, Tir)> {
+    want_fields
         .iter()
         .map(|(name, field_ty)| {
             let access = Tir::new(
                 field_ty.clone(),
                 Kind::Field {
-                    base: Box::new(Tir::new(found_ty.clone(), Kind::Local(local))),
+                    base: Box::new(Tir::new(local_ty.clone(), Kind::Local(local))),
                     name: name.clone(),
                 },
             );
             (name.clone(), reorder_record(ctx, access, field_ty))
         })
-        .collect();
-    Tir::new(
-        want.clone(),
-        Kind::Bind {
-            local,
-            value: Box::new(found),
-            body: Box::new(Tir::new(want.clone(), Kind::RecordLit { fields })),
-        },
-    )
+        .collect()
 }
 
 /// `expect`, minus the final comparison. Each arm here is a form whose type can come from its

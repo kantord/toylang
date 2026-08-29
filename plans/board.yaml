@@ -335,6 +335,13 @@
   title: Record reorder reconciliation through Vec/Opt/Stream element boundaries
   kind: build
   needs: [record-order-relaxation]
+  status: done
+
+- id: opt-boundary-reorder
+  issue: gh:66
+  title: Record reorder reconciliation through Opt -- needs a new checker/backend primitive, not a mechanical extension of #64
+  kind: build
+  needs: [container-boundary-reorder]
   status: todo
 
 - id: variant-types-flip

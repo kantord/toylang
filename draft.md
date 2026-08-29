@@ -2253,10 +2253,14 @@ kantord/toylang#63) for serialization and friends, not implemented by this decis
 
 Implementation: whichever type a value is checked against becomes the order it is rebuilt in
 (`check::reorder_record`), so a value crossing a call, a return, a branch, or a Vec literal's
-own element always ends up laid out like its declared position expects. The gap this leaves --
-a Vec, Opt, or Stream whose element arrives already built with a different order than the
-container's declared element type -- needs an actual per-element transform, not a local
-rebuild, and is filed separately (kantord/toylang#64).
+own element always ends up laid out like its declared position expects. This originally reached
+only a record's own fields; a Vec or Stream whose element arrived already built with a
+different order than the container's declared element type stayed unreconciled, corrupting the
+native backend's struct-of-arrays reads silently rather than refusing. Closed for Vec and
+Stream by an actual per-element transform (a real `map` rebuilding every element, not a local
+relabelling) in kantord/toylang#64. Opt is still open: nothing in the language can build a
+"present" Opt value outside the handful of forms that produce one directly, so there is no
+literal for the checker to rebuild into yet.
 
 ## DECIDED: Stream is the effect layer, typed
 
