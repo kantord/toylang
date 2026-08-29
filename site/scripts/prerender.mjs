@@ -73,6 +73,19 @@ for (const page of PAGES) {
   await writeAt(href(page), doc)
 }
 
+// Bare section roots are what the header nav links to (`/tutorial/`, `/guides/`, ...), and
+// GitHub Pages has no SPA fallback to save an unwritten one from a real 404 -- each mirrors
+// its section's first page, the same trick the landing page uses.
+for (const [section, pages] of bySection) {
+  const route = docsRoute(pages[0], corpus)
+  const doc = shell({
+    title: pages[0].title,
+    bodyHtml: renderRoute(route),
+    headExtra: `<script>window.__EMBEDDED_CASES__=${embed(route.cases)}</script>`,
+  })
+  await writeAt(`/${section}/`, doc)
+}
+
 // The landing page mirrors the first tutorial chapter -- a real document at `/`, not a
 // client-side redirect to one.
 {

@@ -33,9 +33,7 @@ export function Markdown({ page, cases }: { page: Page; cases: Record<string, Em
   )
 }
 
-/** Exported for the dev-only annotations mode (kantord/toylang#23), which wraps this same
- *  block-by-block rendering with an editable overlay; see dev/src/components/AnnotatedDocs.tsx. */
-export function ProseBlock({ pieces }: { pieces: Piece[] }) {
+function ProseBlock({ pieces }: { pieces: Piece[] }) {
   const html = useMemo(() => pieces.map((p) => p.html).join(""), [pieces])
   return <div dangerouslySetInnerHTML={{ __html: html }} />
 }
