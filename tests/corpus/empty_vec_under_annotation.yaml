@@ -1,12 +1,13 @@
 # Goal program one of the type-flow rework (plans/type-flow.md): the declared return type
 # flows into the body, so `[]` takes its element type from the annotation instead of being
-# refused as unknowable.
+# refused as unknowable. `x` picks the branch (issue #45 requires every parameter to be
+# read); the true branch is still the bare, entry-less `[]` the annotation alone must type.
 program: |
-  fn nothing(x: Int) -> Vec<Int> = []
+  fn nothing(x: Int) -> Vec<Int> = [] if x < 0 else [x]
 
-  nothing(1)
+  nothing(-1)
 
 output: |
   []
 
-node_types: [application, int, vec-literal]
+node_types: [application, compare.lt, conditional, int, var, vec-literal]

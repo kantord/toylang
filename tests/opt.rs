@@ -16,7 +16,7 @@ fn a_function_can_return_an_opt() {
 
 #[test]
 fn a_function_can_take_an_opt() {
-    assert!(toylang::compile("fn f(x: Opt<Int>) -> Int = 0\n\nf([1][0])").is_ok());
+    assert!(toylang::compile("fn f(x: Opt<Int>) -> Int = x | 0\n\nf([1][0])").is_ok());
 }
 
 /// `Opt` nests the same way `Vec` does: nothing in the grammar or the checker singles out one
@@ -24,22 +24,22 @@ fn a_function_can_take_an_opt() {
 /// already produced before `Opt` had a spelling.
 #[test]
 fn opt_can_hold_an_opt() {
-    assert!(toylang::compile("fn f(x: Opt<Opt<Int>>) -> Int = 0\n\n1").is_ok());
+    assert!(toylang::compile("fn f(x: Opt<Opt<Int>>) -> Int = x | 0\n\n1").is_ok());
 }
 
 #[test]
 fn a_vec_can_hold_an_opt() {
-    assert!(toylang::compile("fn f(x: Vec<Opt<Int>>) -> Int = 0\n\n1").is_ok());
+    assert!(toylang::compile("fn f(x: Vec<Opt<Int>>) -> Int = x | 0\n\n1").is_ok());
 }
 
 #[test]
 fn an_opt_can_hold_a_vec() {
-    assert!(toylang::compile("fn f(x: Opt<Vec<Int>>) -> Int = 0\n\n1").is_ok());
+    assert!(toylang::compile("fn f(x: Opt<Vec<Int>>) -> Int = x | 0\n\n1").is_ok());
 }
 
 #[test]
 fn a_record_field_can_be_an_opt() {
-    assert!(toylang::compile("fn f(r: {a: Opt<Int>}) -> Int = 0\n\n1").is_ok());
+    assert!(toylang::compile("fn f(r: {a: Opt<Int>}) -> Int = r | 0\n\n1").is_ok());
 }
 
 #[test]
