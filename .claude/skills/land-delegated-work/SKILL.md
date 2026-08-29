@@ -25,6 +25,10 @@ Do not ping for intermediate progress or ask permission to review or merge.
 - `/style-review` on the branch's changed files.
 - Review subagents run on sonnet (`model: "sonnet"` on the Agent call); the coordinator's
   own judgment of their findings is where the big model earns its keep.
+- Review briefs that boot a dev server MUST say: kill YOUR server by PID only -- never
+  `pkill`/`killall` by process name. Name-based kills took down the coordinator's
+  annotations server (and once the maintainer's own) four times in one day, eating a
+  submitted grilling round each time the timing was wrong.
 - Judge the findings. Hard violations and small fixes: fix them on the branch, committing
   per AGENTS.md (provenance lines, `Co-Authored-By` trailer). Non-blocking findings and
   spec gaps: file follow-up GitHub issues rather than blocking the merge. Genuine design
