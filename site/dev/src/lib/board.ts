@@ -15,8 +15,12 @@ export interface Task {
   kind: Kind
   needs: string[]
   status: Status
-  /** True for a `todo` task whose needs are all `done` -- the kanban's unblocked frontier. */
+  /** True for a `todo` task whose needs are all `done` -- the unblocked frontier, shown by both views. */
   unblocked: boolean
+  /** True for a `todo` task with at least one need not yet `done` -- the graph's primary
+   *  highlight (kantord/toylang#33). Mutually exclusive with `unblocked`; both are false for
+   *  `delegated` and `done` tasks. */
+  blocked: boolean
 }
 
 const raw = import.meta.glob("../../../../plans/board.yaml", {
@@ -43,15 +47,19 @@ function load(): Task[] {
   }[]
 
   const statusOf = new Map(rows.map((r) => [r.id, r.status]))
-  return rows.map((r) => ({
-    id: r.id,
-    issue: parseIssue(r.issue),
-    title: r.title,
-    kind: r.kind,
-    needs: r.needs,
-    status: r.status,
-    unblocked: r.status === "todo" && r.needs.every((id) => statusOf.get(id) === "done"),
-  }))
+  return rows.map((r) => {
+    const needsAllDone = r.needs.every((id) => statusOf.get(id) === "done")
+    return {
+      id: r.id,
+      issue: parseIssue(r.issue),
+      title: r.title,
+      kind: r.kind,
+      needs: r.needs,
+      status: r.status,
+      unblocked: r.status === "todo" && needsAllDone,
+      blocked: r.status === "todo" && !needsAllDone,
+    }
+  })
 }
 
 export const BOARD: Task[] = load()
