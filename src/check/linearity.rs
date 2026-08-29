@@ -52,7 +52,7 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
         Kind::Concat(l, r) => both(l, r),
         Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => both(lhs, rhs),
         Kind::Bind { value, body, .. } => both(value, body),
-        Kind::Map { source, body, .. } => {
+        Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
             if stream_uses(body, binding)? > 0 {
                 return Err(LinearViolation::InMapper);
             }
@@ -174,7 +174,9 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
             any_node(lhs, pred) || any_node(rhs, pred)
         }
         Kind::Bind { value, body, .. } => any_node(value, pred) || any_node(body, pred),
-        Kind::Map { source, body, .. } => any_node(source, pred) || any_node(body, pred),
+        Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
+            any_node(source, pred) || any_node(body, pred)
+        }
         Kind::Select {
             source, pred: p, ..
         } => any_node(source, pred) || any_node(p, pred),
@@ -277,6 +279,11 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
         }
         Kind::Bind { value, body, .. }
         | Kind::Map {
+            source: value,
+            body,
+            ..
+        }
+        | Kind::OptMap {
             source: value,
             body,
             ..

@@ -413,7 +413,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(value, used);
                 walk(body, used);
             }
-            Kind::Map { source, body, .. } => {
+            Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
                 walk(source, used);
                 walk(body, used);
             }
@@ -615,6 +615,21 @@ fn expr(t: &Tir) -> String {
                 expr(source),
                 local(*param),
                 expr(pred)
+            )
+        }
+        // Opt's reorder pass (kantord/toylang#66): the tagged shape (`"none"` or `{some: v}`)
+        // is generic enough that this is the ordinary key-presence test every Match arm over
+        // an Opt subject would already use, just rebuilding the payload instead of a body.
+        Kind::OptMap {
+            source,
+            param,
+            body,
+        } => {
+            format!(
+                "(__opt => __opt === \"none\" ? \"none\" : (({}) => ({{some: {}}}))(__opt.some))({})",
+                local(*param),
+                expr(body),
+                expr(source)
             )
         }
         Kind::Unwrap { base } => {

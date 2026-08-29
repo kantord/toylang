@@ -621,7 +621,7 @@ impl Collect<'_> {
                 self.walk(value);
                 self.walk(body);
             }
-            Kind::Map { source, body, .. } => {
+            Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
                 self.walk(source);
                 self.walk(body);
             }
@@ -1050,6 +1050,19 @@ impl Emitter {
                 self.local(*param),
                 self.rs_type(tir::runtime_elem(&source.ty).expect("map runs over a dimension")),
                 self.rs_type(&body.ty),
+                self.expr(body)
+            ),
+            // Opt's reorder pass (kantord/toylang#66): `Option::map` is exactly the
+            // present-preserving, absent-preserving rebuild it needs, since Opt already is
+            // Rust's own `Option`.
+            Kind::OptMap {
+                source,
+                param,
+                body,
+            } => format!(
+                "({}.map(|{}| {}))",
+                self.expr(source),
+                self.local(*param),
                 self.expr(body)
             ),
             // `.cloned()` before `.filter()` keeps the closure's parameter at exactly one level
