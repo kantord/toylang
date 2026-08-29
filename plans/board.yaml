@@ -298,6 +298,14 @@
   prio: 2
   status: done
 
+- id: mini-parser-spike
+  issue: gh:77
+  title: Spike -- an arithmetic-expression parser over tokens, no invented syntax, runs on all seven backends
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
 - id: result-type-design
   issue: gh:72
   title: Grill Result<T, E> vs a matcher tri-state (MatchResult sketch) -- one session settles both
@@ -311,7 +319,7 @@
   title: Precompile the prelude into the binary at checked-TIR level
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: partial-chain-peel-build
   issue: gh:74
@@ -329,6 +337,13 @@
   prio: 2
   status: delegated
 
+- id: jq-mutual-recursion
+  issue: gh:79
+  title: jq backend -- four-function cycles are unrepresentable; refuse cleanly or support
+  kind: build
+  needs: []
+  status: todo
+
 - id: parser-floor-recursion
   issue: gh:76
   title: Parser floor 2 -- recursive enums, mutually recursive functions
@@ -337,14 +352,6 @@
   soft: [parser-floor-strings]
   prio: 2
   status: todo
-
-- id: mini-parser-spike
-  issue: gh:77
-  title: Mini-parser spike -- a simpler parser for a simpler language, unblocking the stream
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
 
 - id: toylang-fmt
   issue: gh:78
