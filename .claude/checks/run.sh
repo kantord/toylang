@@ -257,22 +257,24 @@ PY
   }
 
   remaining=""
-  while IFS=$'\t' read -r kind path detail; do
-    matched=0
-    while IFS=$'\t' read -r ekind epath efunc; do
-      [ -n "${ekind:-}" ] || continue
-      [ "$kind" = "$ekind" ] && [ "$path" = "$epath" ] || continue
-      if [ -n "$efunc" ]; then
-        case "$detail" in
-          "fn $efunc: "*) ;;
-          *) continue ;;
-        esac
-      fi
-      matched=1
-      break
-    done <<< "$entries"
-    [ "$matched" -eq 0 ] && remaining+="$kind	$path	$detail"$'\n'
-  done <<< "$findings"
+  if [ -n "$findings" ]; then
+    while IFS=$'\t' read -r kind path detail; do
+      matched=0
+      while IFS=$'\t' read -r ekind epath efunc; do
+        [ -n "${ekind:-}" ] || continue
+        [ "$kind" = "$ekind" ] && [ "$path" = "$epath" ] || continue
+        if [ -n "$efunc" ]; then
+          case "$detail" in
+            "fn $efunc: "*) ;;
+            *) continue ;;
+          esac
+        fi
+        matched=1
+        break
+      done <<< "$entries"
+      [ "$matched" -eq 0 ] && remaining+="$kind	$path	$detail"$'\n'
+    done <<< "$findings"
+  fi
   findings=$(printf '%s' "$remaining" | grep -v '^$' | sort -u)
 
   while IFS=$'\t' read -r ekind epath efunc; do
