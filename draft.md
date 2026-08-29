@@ -2402,6 +2402,15 @@ layer this decision deliberately does not build. And `Opt` is provably not self-
 an enum -- its canonical form has been value-or-`null` (untagged) since it existed, so Rust's
 "Option is just an enum" elegance is unavailable. `Opt` stays built-in.
 
+REVISED (2026-08-29, ratified in the quick-ratifications round, kantord/toylang#62): the
+self-hosting proof above stood on the premise that the canonical form IS the value; the
+maintainer knowingly dropped that premise. `Opt` becomes a prelude enum over generic enums
+(whose first customer it now is, taking the slot reserved for `Result`), tagged in memory,
+with `null` surviving only at the serialization boundary -- lossy there by design, the way
+serialization is already lossy about every type-level distinction. The two-nulls machinery
+relaxes wherever the tag genuinely distinguishes. Plan-first build; the monomorphic
+first-cut sentence below is what the plan retires.
+
 ### Nominal, closed, exhaustive
 
 The enum's name is an identity, not an alias: exhaustiveness checking has to know which
