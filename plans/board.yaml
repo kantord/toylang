@@ -350,6 +350,7 @@
   status: todo
 
 - id: void-functions-design
+  issue: gh:58
   title: Grill void functions -- formalize functions that map to nothing but may have side effects (maintainer idea, streams tutorial annotation)
   kind: decide
   needs: []
@@ -481,6 +482,13 @@
   kind: build
   needs: [mail-app-v2]
   status: delegated
+
+- id: board-graph-force-layout
+  issue: gh:59
+  title: Board graph goes force-directed -- the column layout is unusable for dependency reading
+  kind: build
+  needs: [board-page-v2]
+  status: todo
 
 - id: wizard-submit-resilience
   issue: gh:46
