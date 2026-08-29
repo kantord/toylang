@@ -236,6 +236,13 @@
   needs: []
   status: done
 
+- id: partial-chain-expectation-decision
+  issue: gh:48
+  title: Decide whether partial guard chains peel Opt expectations into arms (worker's conservative cut kept messages intact)
+  kind: decide
+  needs: [type-flow-rework]
+  status: todo
+
 - id: matcher-totality-and-alt-design
   title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test
   kind: decide
