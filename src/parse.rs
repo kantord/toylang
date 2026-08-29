@@ -541,7 +541,7 @@ impl<'i> Cursor<'i> {
         })
     }
 
-    /// `Str`, `Int`, `Bool`, `Vec<T>`, `Stream<T>`, `Opt<T>`, or any declared name -- with
+    /// `Str`, `Int`, `Bool`, `Vec<T>`, `Stream<T>`, or any declared name -- with
     /// `<...>` arguments when the name is a generic enum's. The parser accepts arguments on
     /// every name and lets resolution hold the arity, so `Pair` and `Str<Int>` fail with an
     /// error that knows what `Pair` and `Str` are rather than a parse error that does not.
@@ -573,7 +573,7 @@ impl<'i> Cursor<'i> {
         }
         let close = self.eat(Tok::Gt)?;
         let span = span.to(close);
-        // The three built-in constructors keep their own nodes; their arity is the grammar's.
+        // The two built-in constructors keep their own nodes; their arity is the grammar's.
         if ty::takes_type_arg(&name) {
             if args.len() != 1 {
                 return Err(Error::new(
@@ -584,8 +584,7 @@ impl<'i> Cursor<'i> {
             let elem = Box::new(args.remove(0));
             return Ok(match name.as_str() {
                 "Vec" => TypeExpr::Vec { elem, span },
-                "Stream" => TypeExpr::Stream { elem, span },
-                _ => TypeExpr::Opt { elem, span },
+                _ => TypeExpr::Stream { elem, span },
             });
         }
         Ok(TypeExpr::Named { name, args, span })

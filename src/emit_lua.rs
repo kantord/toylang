@@ -56,9 +56,9 @@ end
 ";
 
 const OPT_HELPER: &str = "\
--- Absence is a sentinel rather than nil, because nil inside a table breaks `#` and a Vec of Opt
--- has to keep its length.
-local tl_none = {}
+-- An Opt is its enum's own runtime shape (ADR 0009): `{some = v}` present, \"none\" absent.
+-- Tagged, so two levels of absence stay two values; only the printer flattens to null. A
+-- table rather than nil also keeps `#` honest for a Vec of Opt.
 local function tl_at(v, i, depth)
   if depth > 0 then
     local out = {}
@@ -67,17 +67,17 @@ local function tl_at(v, i, depth)
   end
   local n = #v
   if i < 0 then i = n + i end
-  if i < 0 or i >= n then return tl_none end
-  return v[i + 1]
+  if i < 0 or i >= n then return \"none\" end
+  return { some = v[i + 1] }
 end
 ";
 
 const TAIL_HELPER: &str = "\
 local function tl_tail(v)
-  if #v == 0 then return tl_none end
+  if #v == 0 then return \"none\" end
   local out = {}
   for i = 2, #v do out[i - 1] = v[i] end
-  return out
+  return { some = out }
 end
 ";
 
@@ -98,8 +98,8 @@ const UNWRAP_HELPER: &str = r#"local function tl_unwrap(v, depth)
     for k = 1, #v do out[k] = tl_unwrap(v[k], depth - 1) end
     return out
   end
-  if v == tl_none then error("toylang: unwrapped a value that is not there", 0) end
-  return v
+  if v == "none" then error("toylang: unwrapped a value that is not there", 0) end
+  return v.some
 end
 "#;
 
@@ -168,12 +168,7 @@ pub fn emit(program: &Program) -> String {
     if (structured && contains_vec(&program.body.ty)) || used.jsonlines {
         out.push_str(JOIN_HELPER);
     }
-    if used.index
-        || used.unwrap
-        || used.tail
-        || used.partial_match
-        || contains_opt(&program.body.ty)
-    {
+    if used.index {
         out.push_str(OPT_HELPER);
     }
     if used.unwrap {
@@ -299,11 +294,12 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
                 show(elem, &e, depth + 1)
             )
         }
-        Type::Opt(inner) => {
+        Type::Enum { .. } if ty.as_opt().is_some() => {
+            let inner = ty.as_opt().expect("guarded");
             let v = format!("o{depth}");
             format!(
-                "(function({v}) if {v} == tl_none then return \"null\" else return {} end end)({value})",
-                show(inner, &v, depth + 1)
+                "(function({v}) if {v} == \"none\" then return \"null\" else return {} end end)({value})",
+                show(inner, &format!("{v}.some"), depth + 1)
             )
         }
         // One type, two runtime shapes (ADR 0009): a unit variant is a bare string, a payload
@@ -360,22 +356,10 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
     }
 }
 
-fn contains_opt(ty: &Type) -> bool {
-    match ty {
-        Type::Opt(_) => true,
-        Type::Vec(t) => contains_opt(t),
-        Type::Record(fields) => fields.iter().any(|(_, t)| contains_opt(t)),
-        Type::Enum { variants, .. } => variants
-            .iter()
-            .any(|(_, p)| p.as_ref().is_some_and(contains_opt)),
-        _ => false,
-    }
-}
-
 fn needs_quote(ty: &Type) -> bool {
     match ty {
         Type::Str => true,
-        Type::Vec(elem) | Type::Opt(elem) => needs_quote(elem),
+        Type::Vec(elem) => needs_quote(elem),
         Type::Record(_) => true,
         // A unit variant prints as a quoted string, and a payload wrapper is a record.
         Type::Enum { .. } => true,
@@ -386,7 +370,6 @@ fn needs_quote(ty: &Type) -> bool {
 fn contains_vec(ty: &Type) -> bool {
     match ty {
         Type::Vec(_) => true,
-        Type::Opt(t) => contains_vec(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| contains_vec(t)),
         Type::Enum { variants, .. } => variants
             .iter()
@@ -419,7 +402,6 @@ struct Helpers {
     jsonlines: bool,
     tail: bool,
     concat: bool,
-    partial_match: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -500,13 +482,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
                 walk(index, used);
             }
-            Kind::Match {
-                subject,
-                arms,
-                partial,
-            } => {
-                // A partial chain's fall-through is `tl_none`, which lives in OPT_HELPER.
-                used.partial_match |= *partial;
+            Kind::Match { subject, arms, .. } => {
                 walk(subject, used);
                 for a in arms {
                     if let Some(g) = &a.guard {
@@ -681,7 +657,12 @@ fn expr(t: &Tir) -> String {
                         lua_string(variant)
                     ));
                 }
-                run.push_str(&format!("return {} ", expr(&arm.body)));
+                if *partial {
+                    // A partial chain's yield is an Opt, so a present arm is tagged.
+                    run.push_str(&format!("return {{some = {}}} ", expr(&arm.body)));
+                } else {
+                    run.push_str(&format!("return {} ", expr(&arm.body)));
+                }
                 let test = match (&arm.variant, &arm.guard) {
                     (Some(v), _) if arm.payload.is_some() => {
                         Some(format!("{subj}[{}] ~= nil", lua_string(v)))
@@ -698,7 +679,7 @@ fn expr(t: &Tir) -> String {
                 }
             }
             if *partial {
-                body.push_str("return tl_none ");
+                body.push_str("return \"none\" ");
             }
             format!("(function() {body}end)()")
         }

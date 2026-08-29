@@ -21,9 +21,10 @@ its own business:
 ```refuses
 ```
 
-`!` is the only consumer `Opt` has, and `Opt` cannot be spelled in a signature, so unwraps
-cluster near the indexing and `tail` calls that produce them. The alternative to `!` is
-leaving the `Opt` alone and letting absence flow to the output as `null`.
+`!` peels exactly one level: absence is tagged in memory, so unwrapping an `Opt<Opt<T>>`
+that holds `some(none)` succeeds and yields the inner absence, while unwrapping `none`
+itself refuses. The alternative to `!` is leaving the `Opt` alone and letting absence flow
+to the output as `null`.
 
 Watch the spacing against `==`: `x! == 1` unwraps then compares, while `x!= 1` lexes as
 `!=`.

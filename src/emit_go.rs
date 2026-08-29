@@ -405,7 +405,7 @@ fn has_scalar(ty: &Type) -> bool {
         Type::Stream(_) => unreachable!("a stream cannot reach has_scalar"),
         Type::Int | Type::Bool => true,
         Type::Str => false,
-        Type::Vec(t) | Type::Opt(t) => has_scalar(t),
+        Type::Vec(t) => has_scalar(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| has_scalar(t)),
         Type::Enum { variants, .. } => variants
             .iter()
@@ -436,7 +436,7 @@ struct Collect<'a> {
 impl Collect<'_> {
     fn ty(&mut self, t: &Type) {
         match t {
-            Type::Vec(e) | Type::Opt(e) | Type::Stream(e) => self.ty(e),
+            Type::Vec(e) | Type::Stream(e) => self.ty(e),
             Type::Record(fields) => {
                 if !self.records.contains(t) {
                     self.records.push(t.clone());
@@ -445,7 +445,13 @@ impl Collect<'_> {
                     self.ty(f);
                 }
             }
+            // Opt keeps the tlOpt[T] struct it always had (already tagged), so it is not
+            // harvested as a declared enum; only what it holds is.
             Type::Enum { variants, .. } => {
+                if let Some(inner) = t.as_opt() {
+                    self.ty(inner);
+                    return;
+                }
                 if !self.enums.contains(t) {
                     self.enums.push(t.clone());
                 }
@@ -568,7 +574,9 @@ impl Emitter {
             Type::Int => "int32".to_string(),
             Type::Bool => "bool".to_string(),
             Type::Vec(e) => format!("[]{}", self.go_type(e)),
-            Type::Opt(e) => format!("tlOpt[{}]", self.go_type(e)),
+            Type::Enum { .. } if ty.as_opt().is_some() => {
+                format!("tlOpt[{}]", self.go_type(ty.as_opt().expect("guarded")))
+            }
             // Materialized eagerly as the slice of its entries, so it is a slice here too.
             // Fusion is what will remove this materialization.
             Type::Stream(e) => format!("[]{}", self.go_type(e)),
@@ -772,6 +780,16 @@ impl Emitter {
             }
 
             Kind::EnumLit { variant, payload } => {
+                // Opt's constructors build its tlOpt encoding, not a tag struct: `some(x)`
+                // is presence, `none` is the zero value.
+                if t.ty.as_opt().is_some() {
+                    return match payload {
+                        Some(p) => {
+                            format!("{}{{true, {}}}", self.go_type(&t.ty), self.expr(p))
+                        }
+                        None => format!("{}{{}}", self.go_type(&t.ty)),
+                    };
+                }
                 let Type::Enum { variants, .. } = &t.ty else {
                     unreachable!("an EnumLit's type is its enum")
                 };
@@ -981,7 +999,8 @@ impl Emitter {
                     self.show(elem, &e, depth + 1)
                 )
             }
-            Type::Opt(inner) => {
+            Type::Enum { .. } if ty.as_opt().is_some() => {
+                let inner = ty.as_opt().expect("guarded");
                 let v = format!("o{depth}");
                 format!(
                     "func({v} {}) string {{ if !{v}.ok {{ return \"null\" }}; return {} }}({value})",

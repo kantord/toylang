@@ -234,6 +234,91 @@ pub(super) fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> R
     resolve_bound(ty, env, seen, &HashMap::new())
 }
 
+
+/// One named reference: a bound parameter, a built-in scalar, an alias, or an enum -- with
+/// the arity of its `<...>` arguments held here, where the declaration is in hand.
+fn resolve_named(
+    name: &str,
+    args: &[TypeExpr],
+    span: Span,
+    env: &TypeEnv,
+    seen: &mut Vec<String>,
+    params: &HashMap<&str, &Type>,
+) -> Result<Type, Error> {
+    if let Some(bound) = params.get(name) {
+        if !args.is_empty() {
+            return Err(Error::new(
+                span,
+                format!("`{name}` is a type parameter and takes no type argument"),
+            ));
+        }
+        return Ok((*bound).clone());
+    }
+    if let Some(built_in) = Type::from_name(name) {
+        if !args.is_empty() {
+            return Err(Error::new(
+                span,
+                format!("`{name}` takes no type argument"),
+            ));
+        }
+        return Ok(built_in);
+    }
+    if let Some(at) = seen.iter().position(|s| s == name) {
+        // The names expanded since this one last appeared are the cycle, and naming them
+        // is the difference between knowing there is one and finding it.
+        let through: Vec<String> =
+            seen[at + 1..].iter().map(|s| format!("`{s}`")).collect();
+        let path = if through.is_empty() {
+            String::new()
+        } else {
+            format!(", through {}", through.join(" and "))
+        };
+        return Err(Error::new(
+            span,
+            format!("type `{name}` is written in terms of itself{path}"),
+        ));
+    }
+    if let Some(written) = env.aliases.get(name) {
+        if !args.is_empty() {
+            return Err(Error::new(
+                span,
+                format!("`{name}` takes no type argument"),
+            ));
+        }
+        seen.push(name.to_string());
+        let expanded = resolve_bound(written, env, seen, params)?;
+        seen.pop();
+        return Ok(expanded);
+    }
+    if let Some(decl) = env.enums.get(name) {
+        if args.len() != decl.params.len() {
+            let wants = match decl.params.len() {
+                0 => format!("`{name}` takes no type argument"),
+                1 => format!("`{name}` takes one type argument"),
+                n => format!("`{name}` takes {n} type arguments"),
+            };
+            let found = match args.len() {
+                0 => String::new(),
+                n => format!(", found {n}"),
+            };
+            return Err(Error::new(span, format!("{wants}{found}")));
+        }
+        let mut resolved_args = Vec::new();
+        for arg in args {
+            let resolved = resolve_bound(arg, env, seen, params)?;
+            if resolved.contains_stream() {
+                return Err(Error::new(
+                    arg.span(),
+                    format!("`{name}` cannot hold a stream, which has nothing to store"),
+                ));
+            }
+            resolved_args.push(resolved);
+        }
+        return resolve_enum(decl, env, seen, Some(&resolved_args));
+    }
+    Err(Error::new(span, format!("unknown type `{name}`")))
+}
+
 /// `resolve` with a generic enum's parameters in scope: inside `enum Opt<T>`'s payloads,
 /// `T` names whatever the binding holds -- the argument at an instantiation, or the
 /// parameter itself in the registry template. Everywhere else the binding map is empty.
@@ -244,80 +329,7 @@ fn resolve_bound(
     params: &HashMap<&str, &Type>,
 ) -> Result<Type, Error> {
     match ty {
-        TypeExpr::Named { name, args, span } => {
-            if let Some(bound) = params.get(name.as_str()) {
-                if !args.is_empty() {
-                    return Err(Error::new(
-                        *span,
-                        format!("`{name}` is a type parameter and takes no type argument"),
-                    ));
-                }
-                return Ok((*bound).clone());
-            }
-            if let Some(built_in) = Type::from_name(name) {
-                if !args.is_empty() {
-                    return Err(Error::new(
-                        *span,
-                        format!("`{name}` takes no type argument"),
-                    ));
-                }
-                return Ok(built_in);
-            }
-            if let Some(at) = seen.iter().position(|s| s == name) {
-                // The names expanded since this one last appeared are the cycle, and naming them
-                // is the difference between knowing there is one and finding it.
-                let through: Vec<String> =
-                    seen[at + 1..].iter().map(|s| format!("`{s}`")).collect();
-                let path = if through.is_empty() {
-                    String::new()
-                } else {
-                    format!(", through {}", through.join(" and "))
-                };
-                return Err(Error::new(
-                    *span,
-                    format!("type `{name}` is written in terms of itself{path}"),
-                ));
-            }
-            if let Some(written) = env.aliases.get(name) {
-                if !args.is_empty() {
-                    return Err(Error::new(
-                        *span,
-                        format!("`{name}` takes no type argument"),
-                    ));
-                }
-                seen.push(name.clone());
-                let expanded = resolve_bound(written, env, seen, params)?;
-                seen.pop();
-                return Ok(expanded);
-            }
-            if let Some(decl) = env.enums.get(name) {
-                if args.len() != decl.params.len() {
-                    let wants = match decl.params.len() {
-                        0 => format!("`{name}` takes no type argument"),
-                        1 => format!("`{name}` takes one type argument"),
-                        n => format!("`{name}` takes {n} type arguments"),
-                    };
-                    let found = match args.len() {
-                        0 => String::new(),
-                        n => format!(", found {n}"),
-                    };
-                    return Err(Error::new(*span, format!("{wants}{found}")));
-                }
-                let mut resolved_args = Vec::new();
-                for arg in args {
-                    let resolved = resolve_bound(arg, env, seen, params)?;
-                    if resolved.contains_stream() {
-                        return Err(Error::new(
-                            arg.span(),
-                            format!("`{name}` cannot hold a stream, which has nothing to store"),
-                        ));
-                    }
-                    resolved_args.push(resolved);
-                }
-                return resolve_enum(decl, env, seen, Some(&resolved_args));
-            }
-            Err(Error::new(*span, format!("unknown type `{name}`")))
-        }
+        TypeExpr::Named { name, args, span } => resolve_named(name, args, *span, env, seen, params),
         // The containment bans hold in the grammar itself, not just at value construction
         // sites: a stream is not a value, so no annotation may describe one as stored.
         TypeExpr::Vec { elem, .. } => {
@@ -340,16 +352,6 @@ fn resolve_bound(
                 ));
             }
             Ok(Type::Stream(Box::new(inner)))
-        }
-        TypeExpr::Opt { elem, .. } => {
-            let inner = resolve_bound(elem, env, seen, params)?;
-            if inner.contains_stream() {
-                return Err(Error::new(
-                    elem.span(),
-                    "an Opt cannot hold a stream, which has nothing to store".to_string(),
-                ));
-            }
-            Ok(Type::Opt(Box::new(inner)))
         }
         TypeExpr::Record { fields, span } => {
             let mut out = Vec::new();

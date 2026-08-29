@@ -69,7 +69,7 @@ pub enum TypeExpr {
     Named {
         name: String,
         /// `Pair<Int>`: the arguments a declared generic enum is applied to. Empty for a
-        /// plain name. `Vec`/`Stream`/`Opt` keep their own variants below.
+        /// plain name. `Vec`/`Stream` keep their own variants below.
         args: Vec<TypeExpr>,
         span: Span,
     },
@@ -80,10 +80,6 @@ pub enum TypeExpr {
     /// `Stream<T>`, legal only as the whole of a parameter or return annotation: a stream is
     /// not a value, so the checker refuses it anywhere a type would describe something stored.
     Stream {
-        elem: Box<TypeExpr>,
-        span: Span,
-    },
-    Opt {
         elem: Box<TypeExpr>,
         span: Span,
     },
@@ -99,7 +95,6 @@ impl TypeExpr {
             TypeExpr::Named { span, .. }
             | TypeExpr::Vec { span, .. }
             | TypeExpr::Stream { span, .. }
-            | TypeExpr::Opt { span, .. }
             | TypeExpr::Record { span, .. } => *span,
         }
     }

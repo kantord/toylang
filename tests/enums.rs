@@ -157,8 +157,8 @@ fn the_subject_is_not_reachable_inside_a_unit_arm() {
     insta::assert_snapshot!(err("enum S { a }\n\nS.a | a -> ."));
 }
 
-/// The declaration parses in a module the same as in a program, `pub` and all; nothing in the
-/// prelude declares one yet, so the module form is witnessed here rather than by a corpus case.
+/// The declaration parses in a module the same as in a program, `pub` and all -- the form
+/// the prelude's own `Opt<T>` ships through.
 #[test]
 fn an_enum_parses_in_a_module() {
     let module = toylang::parse::parse_module(

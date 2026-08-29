@@ -1,0 +1,12 @@
+# Opt's constructors exist because the prelude's enum does -- nothing grants them specially.
+# The serialization rule is the one place Opt stays special: a present value prints as its
+# payload and an absent one as null, not as the enum's single-key wrapper.
+program: |
+  fn nothing() -> Opt<Int> = none
+
+  {a: some(5), b: nothing()}
+
+output: |
+  {"a":5,"b":null}
+
+node_types: [application, int, record-literal, variant.payload, variant.unit]

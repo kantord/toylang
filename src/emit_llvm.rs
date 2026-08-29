@@ -276,7 +276,7 @@ impl<'ctx> Emitter<'ctx> {
             Type::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Int => self.ctx.i64_type().into(),
             Type::Bool => self.ctx.bool_type().into(),
-            Type::Vec(_) | Type::Opt(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
+            Type::Vec(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Record(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
             // A pointer to a two-slot box: the tag, then the payload. See `Kind::EnumLit`.
             Type::Enum { .. } => self.ctx.ptr_type(AddressSpace::default()).into(),
@@ -305,7 +305,6 @@ impl<'ctx> Emitter<'ctx> {
             Type::Bool => "b".to_string(),
             Type::Vec(elem) => format!("[{}", Self::descriptor(elem)),
             // Opt has no spelling in the type syntax, so an input type can never contain one.
-            Type::Opt(_) => unreachable!("Opt cannot be declared, so input never has one"),
             // Declaration order, because the entry's position is the tag the compiled code
             // tests against. The name rides along only for the runtime's mismatch messages.
             Type::Enum { name, variants, .. } => {
@@ -412,7 +411,7 @@ impl<'ctx> Emitter<'ctx> {
                 .builder
                 .build_int_z_extend(value.into_int_value(), i64t, "slot")
                 .map_err(|e| e.to_string())?,
-            Type::Str | Type::Vec(_) | Type::Opt(_) | Type::Record(_) | Type::Enum { .. } => self
+            Type::Str | Type::Vec(_) | Type::Record(_) | Type::Enum { .. } => self
                 .builder
                 .build_ptr_to_int(value.into_pointer_value(), i64t, "slot")
                 .map_err(|e| e.to_string())?,
@@ -430,7 +429,7 @@ impl<'ctx> Emitter<'ctx> {
                 .build_int_truncate(slot, self.ctx.bool_type(), "elem")
                 .map_err(|e| e.to_string())?
                 .into(),
-            Type::Str | Type::Vec(_) | Type::Opt(_) | Type::Record(_) | Type::Enum { .. } => self
+            Type::Str | Type::Vec(_) | Type::Record(_) | Type::Enum { .. } => self
                 .builder
                 .build_int_to_ptr(slot, ptr, "elem")
                 .map_err(|e| e.to_string())?
@@ -937,7 +936,8 @@ impl<'ctx> Emitter<'ctx> {
             Type::Vec(elem) => self.join_shown(value, elem, "[", ",", "]")?,
             // Absence needs a branch rather than a select, because rendering what is present
             // may itself emit a loop, and a select would evaluate both sides.
-            Type::Opt(inner) => {
+            Type::Enum { .. } if ty.as_opt().is_some() => {
+                let inner = ty.as_opt().expect("guarded");
                 let function = self
                     .builder
                     .get_insert_block()
@@ -1151,6 +1151,23 @@ impl<'ctx> Emitter<'ctx> {
         }
     }
 
+    /// Opt's constructors keep the encoding Opt always had here: `none` is the null
+    /// pointer, `some(x)` the one-slot box `tl_opt_some` builds -- the same values `tl_at`
+    /// produces, and already tagged (a box holding null is not null).
+    fn opt_lit(&mut self, payload: Option<&Tir>) -> Result<BasicValueEnum<'ctx>, String> {
+        Ok(match payload {
+            None => {
+                let ptr = self.ctx.ptr_type(AddressSpace::default());
+                ptr.const_null().into()
+            }
+            Some(p) => {
+                let built = self.expr(p)?;
+                let slot = self.to_slot(built, &p.ty)?;
+                self.call_rt(self.rt.opt_some, &[slot.into()], "some")?
+            }
+        })
+    }
+
     fn expr(&mut self, t: &Tir) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match &t.kind {
             Kind::Str(text) => self.string_const(text).into(),
@@ -1234,6 +1251,9 @@ impl<'ctx> Emitter<'ctx> {
             // rather than immediate because an enum value has to fit the same 8-byte slot as
             // every other value while carrying two facts.
             Kind::EnumLit { variant, payload } => {
+                if t.ty.as_opt().is_some() {
+                    return self.opt_lit(payload.as_deref());
+                }
                 let Type::Enum { variants, .. } = &t.ty else {
                     return Err("an EnumLit whose type is not an enum".to_string());
                 };

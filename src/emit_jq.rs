@@ -6,9 +6,11 @@
 //! on has to be bridged here explicitly.
 //!
 //! Two mappings are worth naming. A dimension spec becomes `.[]` plus a reification, since
-//! keeping a dimension in a stream language means iterating and collecting. And `Opt` becomes
-//! null, which is lossless in this direction only: toylang has no null value, so an absent entry
-//! is the one thing null can mean.
+//! keeping a dimension in a stream language means iterating and collecting. And `Opt` carries
+//! its enum's own runtime shape even here -- `{"some": v}` present, `"none"` absent -- tagged
+//! in memory like every backend now, with `null` appearing only when the printer flattens the
+//! tags away. One consequence is load-bearing: no in-memory value is ever JSON null, so jq's
+//! own null (an out-of-range `.[i]`) still unambiguously means "was not there".
 
 use crate::ast::BinOp;
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
@@ -118,9 +120,10 @@ fn canonical(ty: &Type, value: &str) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Str | Type::Int | Type::Bool => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(elem, ".")),
-        Type::Opt(inner) => {
+        Type::Enum { .. } if ty.as_opt().is_some() => {
+            let inner = ty.as_opt().expect("guarded");
             format!(
-                "({value} | if . == null then null else {} end)",
+                "({value} | if . == \"none\" then null else (.some | {}) end)",
                 canonical(inner, ".")
             )
         }
@@ -421,9 +424,12 @@ fn expr(t: &Tir) -> String {
             Builtin::Collect => expr(arg),
             Builtin::Extent => format!("({} | length)", expr(arg)),
             // jq's own `.[1:]` on an empty array is `[]`, not null; toylang's tail needs the
-            // Opt convention instead, so the empty case is spelled out rather than borrowed.
+            // tagged Opt shape instead, so both cases are spelled out rather than borrowed.
             Builtin::Tail => {
-                format!("({} | if length == 0 then null else .[1:] end)", expr(arg))
+                format!(
+                    "({} | if length == 0 then \"none\" else {{some: .[1:]}} end)",
+                    expr(arg)
+                )
             }
             // Not jq's own `add`, which is `null` on an empty list rather than `[]` -- a reduce
             // starting from `[]` gives the right answer in both cases.
@@ -471,7 +477,7 @@ fn expr(t: &Tir) -> String {
         }
         Kind::Unwrap { base } => {
             let check = format!(
-                "if . == null then error({}) else . end",
+                "if . == \"none\" then error({}) else .some end",
                 jq_string("toylang: unwrapped a value that is not there")
             );
             format!(
@@ -480,18 +486,23 @@ fn expr(t: &Tir) -> String {
                 distribute(&check, tir::vec_depth(&base.ty))
             )
         }
-        // Out of range is null in jq, which is exactly what an absent Opt is here.
+        // Out of range is null in jq, and no in-memory toylang value is ever null (the
+        // module comment above), so the null test is exactly the was-not-there test; what
+        // comes out is the tagged Opt either way.
         Kind::Index {
             base, index, depth, ..
         } => {
-            let at = format!(".[{}]", expr(index));
+            let at = format!(
+                "(.[{}] as $e | if $e == null then \"none\" else {{some: $e}} end)",
+                expr(index)
+            );
             format!("({} | {})", expr(base), distribute(&at, *depth))
         }
         // Tests over the subject: equality for a unit variant, `type`-guarded `has` for a
         // payload one, since `has` on a string is an error rather than false, and the guard's
         // own Bool for a guard arm. A total chain's last arm is the `else`, the checker having
-        // proved nothing else can reach it; a partial chain tests every arm and its `else` is
-        // `null`, which is exactly what an absent Opt is in jq.
+        // proved nothing else can reach it; a partial chain tags every present arm and its
+        // `else` is the absent Opt.
         Kind::Match {
             subject,
             arms,
@@ -512,6 +523,14 @@ fn expr(t: &Tir) -> String {
                     )
                 }
                 None => expr(&arm.body),
+            };
+            let run = |arm: &tir::MatchArm| {
+                if *partial {
+                    // A partial chain's yield is an Opt, so a present arm is tagged.
+                    format!("{{some: {}}}", run(arm))
+                } else {
+                    run(arm)
+                }
             };
             if !*partial && arms.len() == 1 {
                 return format!("({})", run(&arms[0]));
@@ -536,7 +555,7 @@ fn expr(t: &Tir) -> String {
                 }
             }
             if *partial {
-                out.push_str("else null end");
+                out.push_str("else \"none\" end");
             }
             out.push(')');
             out

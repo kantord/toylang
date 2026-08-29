@@ -1,0 +1,12 @@
+# The witness that the tag is real where serialization cannot show it: `!` peels exactly one
+# level, so a matched-but-absent some(none) survives the unwrap and prints the inner null.
+# The absent counterpart is opt_unwrap_of_none_refuses.yaml.
+program: |
+  fn shallow() -> Opt<Opt<Int>> = some(none)
+
+  shallow()!
+
+output: |
+  null
+
+node_types: [application, unwrap, variant.payload, variant.unit]

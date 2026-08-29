@@ -257,10 +257,7 @@ fn a_default_arm_receives_the_expectation_too() {
 #[test]
 fn a_partial_chain_still_synthesises_its_arms() {
     let src = "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> [1]\n\nf(1)";
-    assert_eq!(
-        body_ty(src),
-        Type::Opt(Box::new(Type::Vec(Box::new(Type::Int))))
-    );
+    assert_eq!(body_ty(src).to_string(), "Opt<Vec<Int>>");
     insta::assert_snapshot!(err(
         "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> []\n\nf(1)"
     ));

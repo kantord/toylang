@@ -4,8 +4,6 @@ pub enum Type {
     Int,
     Bool,
     Vec(Box<Type>),
-    /// Zero or one. Produced by collapsing a dimension, since the entry may not be there.
-    Opt(Box<Type>),
     /// Fields in declaration order. Order is not part of the type's identity (kantord/toylang#60:
     /// `{a: Int, b: Int}` and `{b: Int, a: Int}` are one type, so `PartialEq` below compares the
     /// field set, not the spelling), but it survives as metadata on every concrete value: a
@@ -42,18 +40,18 @@ pub enum Type {
 
 /// Names reserved for the built-in type constructors, on top of `Str`/`Int`/`Bool`
 /// (`Type::from_name`): a program cannot declare an alias or enum under any of these.
-const RESERVED_TYPE_NAMES: [&str; 3] = ["Vec", "Opt", "Stream"];
+const RESERVED_TYPE_NAMES: [&str; 2] = ["Vec", "Stream"];
 
 /// Whether `name` is a built-in type and so cannot be redefined as an alias or an enum.
 pub fn is_builtin_type_name(name: &str) -> bool {
     Type::from_name(name).is_some() || RESERVED_TYPE_NAMES.contains(&name)
 }
 
-/// Whether `name` takes a `<...>` type argument in the grammar. All three reserved
-/// constructors do: `Opt` can be produced by the checker (collapsing a dimension) as well as
-/// spelled directly, which is what lets a function declare one as a parameter or return type.
+/// Whether `name` is one of the built-in type constructors with its own `TypeExpr` node.
+/// `Opt` is no longer here: it is the prelude's enum, reached through the ordinary generic
+/// path like any declared name.
 pub fn takes_type_arg(name: &str) -> bool {
-    matches!(name, "Vec" | "Stream" | "Opt")
+    matches!(name, "Vec" | "Stream")
 }
 
 impl Type {
@@ -66,13 +64,13 @@ impl Type {
         }
     }
 
-    /// Whether `ty` could hold a stream anywhere inside it -- through a Vec, an Opt, or a
-    /// record field. A stream cannot be printed, so this is what the checker asks before
-    /// letting a type become the program's final result.
+    /// Whether `ty` could hold a stream anywhere inside it -- through a Vec or a record
+    /// field. A stream cannot be printed, so this is what the checker asks before letting a
+    /// type become the program's final result.
     pub fn contains_stream(&self) -> bool {
         match self {
             Type::Stream(_) => true,
-            Type::Vec(t) | Type::Opt(t) => t.contains_stream(),
+            Type::Vec(t) => t.contains_stream(),
             Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_stream()),
             // An enum payload cannot hold a stream: resolve_enum refuses the declaration,
             // and instantiation refuses a stream as a type argument.
@@ -94,6 +92,38 @@ impl Type {
         }
     }
 
+    /// The prelude's `Opt<T>`, and what its `T` is. The name test is sound because `Opt` is
+    /// the prelude's declaration and a program redeclaring it is a duplicate-type error, so
+    /// no other enum can carry the name. This is what every place that used to match the
+    /// built-in `Type::Opt` keys on now: the unwrap operator, the producers' wrapping, and
+    /// the printers' bare-value-or-null serialization rule.
+    pub fn as_opt(&self) -> Option<&Type> {
+        match self {
+            Type::Enum { name, args, .. } if name == "Opt" && args.len() == 1 => Some(&args[0]),
+            _ => None,
+        }
+    }
+
+    /// Whether `Opt` appears anywhere in this type. What the checker asks of an input type:
+    /// absence has no ratified wire form (`null` reading as `none` is codec design nobody has
+    /// done), so an input cannot be Opt-typed anywhere in its shape.
+    pub fn contains_opt(&self) -> bool {
+        if self.as_opt().is_some() {
+            return true;
+        }
+        match self {
+            Type::Vec(t) | Type::Stream(t) => t.contains_opt(),
+            Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_opt()),
+            Type::Enum { args, variants, .. } => {
+                args.iter().any(Type::contains_opt)
+                    || variants
+                        .iter()
+                        .any(|(_, p)| p.as_ref().is_some_and(Type::contains_opt))
+            }
+            _ => false,
+        }
+    }
+
     /// A deterministic identifier fragment for this type, for backends whose targets are
     /// nominally typed: `Pair<Int>` and `Pair<Str>` must become distinct emitted types, so
     /// their names embed the arguments (`Pair_Int`). Record fields sort by name, because
@@ -106,7 +136,6 @@ impl Type {
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Vec(t) => format!("Vec_{}", t.ident()),
-            Type::Opt(t) => format!("Opt_{}", t.ident()),
             Type::Stream(t) => format!("Stream_{}", t.ident()),
             Type::Record(fields) => {
                 let mut parts: Vec<String> = fields
@@ -137,7 +166,6 @@ impl std::fmt::Display for Type {
             Type::Int => write!(f, "Int"),
             Type::Bool => write!(f, "Bool"),
             Type::Vec(t) => write!(f, "Vec<{t}>"),
-            Type::Opt(t) => write!(f, "Opt<{t}>"),
             Type::Record(fields) => {
                 let parts: Vec<String> = fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();
                 write!(f, "{{{}}}", parts.join(", "))
@@ -166,7 +194,6 @@ impl PartialEq for Type {
         match (self, other) {
             (Type::Str, Type::Str) | (Type::Int, Type::Int) | (Type::Bool, Type::Bool) => true,
             (Type::Vec(a), Type::Vec(b)) => a == b,
-            (Type::Opt(a), Type::Opt(b)) => a == b,
             (Type::Stream(a), Type::Stream(b)) => a == b,
             (Type::Record(a), Type::Record(b)) => {
                 a.len() == b.len() && a.iter().all(|field| b.contains(field))
