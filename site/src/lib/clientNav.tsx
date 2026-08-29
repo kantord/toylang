@@ -22,9 +22,31 @@ function internalUrl(a: HTMLAnchorElement): URL | null {
   return url.origin === location.origin ? url : null
 }
 
+// Scroll positions live in sessionStorage, not a module Map: `scrollRestoration = "manual"`
+// turns the browser's own restore off for REAL loads too, so the store has to survive a
+// reload or a fallback navigation, or Back after either lands at the top of a long page.
+const SCROLL_KEY = "toylang-scroll:"
+function saveScroll() {
+  try {
+    sessionStorage.setItem(SCROLL_KEY + location.pathname, String(window.scrollY))
+  } catch {
+    // Storage can be unavailable (private windows); losing restoration beats crashing a click.
+  }
+}
+function savedScroll(pathname: string): number {
+  try {
+    return Number(sessionStorage.getItem(SCROLL_KEY + pathname)) || 0
+  } catch {
+    return 0
+  }
+}
+
 export function installClientNav(root: Root) {
-  const scrollByPath = new Map<string, number>()
   history.scrollRestoration = "manual"
+
+  // A navigation sequence number makes the LAST REQUEST win: a slow fetch resolving after a
+  // newer click must not swap the page back to where the user no longer is.
+  let navSeq = 0
 
   let observer: IntersectionObserver | null = null
 
@@ -43,9 +65,11 @@ export function installClientNav(root: Root) {
     })
   }
 
-  async function render(pathname: string): Promise<boolean> {
+  async function render(pathname: string): Promise<"swapped" | "missed" | "superseded"> {
+    const seq = ++navSeq
     const result = await loadRoute(pathname)
-    if (!result) return false
+    if (seq !== navSeq) return "superseded"
+    if (!result) return "missed"
     document.title = result.title
     root.render(
       <StrictMode>
@@ -53,7 +77,7 @@ export function installClientNav(root: Root) {
       </StrictMode>,
     )
     requestAnimationFrame(watchLinksForPrefetch)
-    return true
+    return "swapped"
   }
 
   document.addEventListener("click", (e) => {
@@ -64,14 +88,19 @@ export function installClientNav(root: Root) {
     const url = internalUrl(a)
     if (!url || url.pathname === location.pathname) return
     e.preventDefault()
-    scrollByPath.set(location.pathname, window.scrollY)
-    render(url.pathname).then((ok) => {
-      if (!ok) {
+    saveScroll()
+    render(url.pathname).then((outcome) => {
+      if (outcome === "superseded") return
+      if (outcome === "missed") {
         location.href = url.href
         return
       }
       history.pushState(null, "", url.pathname + url.hash)
-      window.scrollTo(0, 0)
+      if (url.hash) {
+        document.getElementById(decodeURIComponent(url.hash.slice(1)))?.scrollIntoView()
+      } else {
+        window.scrollTo(0, 0)
+      }
     })
   })
 
@@ -83,12 +112,13 @@ export function installClientNav(root: Root) {
   })
 
   window.addEventListener("popstate", () => {
-    render(location.pathname).then((ok) => {
-      if (!ok) {
+    render(location.pathname).then((outcome) => {
+      if (outcome === "superseded") return
+      if (outcome === "missed") {
         location.reload()
         return
       }
-      window.scrollTo(0, scrollByPath.get(location.pathname) ?? 0)
+      window.scrollTo(0, savedScroll(location.pathname))
     })
   })
 
