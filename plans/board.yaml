@@ -145,7 +145,7 @@
   title: Dev-only routes into one folder; docs build becomes real static HTML for GitHub Pages, prefetch keeps the feel
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: grill-via-annotations
   title: A repo skill running grilling rounds through the annotations mode inbox
@@ -234,7 +234,7 @@
   title: Unused variables are compile errors, like Go -- param and destructured fields
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: auto-matchers-design
   issue: gh:47
