@@ -138,7 +138,7 @@
   title: Everything is email -- gmail layout, previews with highlights, grill rounds and board as tabs, own-option always
   kind: build
   needs: [static-site-split]
-  status: todo
+  status: delegated
 
 - id: board-page-v2
   issue: gh:33
@@ -159,7 +159,7 @@
   title: Client-side fetch-and-swap navigation across static docs pages, not just prefetch hints
   kind: build
   needs: [static-site-split]
-  status: todo
+  status: delegated
 
 - id: grill-via-annotations
   title: A repo skill running grilling rounds through the annotations mode inbox
