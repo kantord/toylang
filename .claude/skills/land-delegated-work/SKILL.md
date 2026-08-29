@@ -34,6 +34,19 @@ Do not ping for intermediate progress or ask permission to review or merge.
   spec gaps: file follow-up GitHub issues rather than blocking the merge. Genuine design
   questions: stop and escalate -- that is the one case the user wants to hear about early.
 
+## 2b. Batch landings cascade (maintainer flow, 2026-08-29)
+
+When THREE OR MORE reviewed-and-green branches are ready at once, do not merge them into
+main one by one. Build a tournament instead: pair the branches, merge each pair into an
+integration branch (`integration/<a>+<b>`, cut from main) in its own temp worktree -- the
+pairs are independent, so their merges, conflict resolutions, and suite runs all happen in
+parallel; then pair the winners, and only the final champion merges into main, taking ONE
+main suite and ONE push for the whole batch. Conflicts get resolved at the pair level,
+where they are smallest and main is never mid-merge; a suite failure at any node localizes
+to its subtree. Board flips and issue closes all happen with the final merge. Per-branch
+review stays a hard prerequisite -- the cascade accelerates merging, never judgment. With
+fewer than three ready, the serial flow below is simpler and just as fast.
+
 ## 3. Merge locally, then push
 
 - `git merge <branch> --no-ff` from the main checkout, with a merge message naming what was
