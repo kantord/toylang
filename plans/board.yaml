@@ -1,18 +1,34 @@
-# The task board: one ordered list, position is priority (top = next).
+# The task board (scheduler v2, maintainer-specified 2026-08-29): every unblocked task is by
+# definition ready to be picked up, and up to FIVE run at once.
 #
-# Fields: id (slug; gh:N when a GitHub issue carries the spec), title, kind, needs, status.
+# Fields: id (slug; gh:N when a GitHub issue carries the spec), title, kind, needs, soft,
+# prio, status.
 #   kind: build  = delegatable implementation work (enwiro-delegate out, land-delegated-work in)
 #         decide = needs a grilling/design session with the maintainer before anything builds
-#   needs: ids that must be done first (semantic dependencies only -- file-overlap conflicts
-#          are the drive skill's scheduling judgment, not edges here)
+#   needs: HARD blockers -- forced order; a task with an un-done need is not pickable at all.
+#   soft:  SOFT blockers -- convenient order that saves effort or time (file-footprint
+#          overlaps, avoid-rework sequencing). A task with un-done soft blockers is still
+#          pickable, just ranked below less-soft-blocked work.
+#   prio:  1 (highest) .. 5; omitted means 3. Sorts WITHIN a soft-blockedness category, so
+#          soft order outweighs raw priority -- but among fully unblocked tasks, prio alone
+#          decides. Efficiency/process improvements are prio tasks by standing rule.
 #   status: todo | delegated | done  ("blocked" is derived from needs, never stored)
 #   model: which model the delegated session runs -- omitted means sonnet (the default for
 #          regular build work); "fable" is reserved for design-heavy or cross-cutting builds
 #          the coordinator judges worth it. decide rows have no model; they are the human.
 #
-# The drive skill (.claude/skills/drive) reads this top to bottom: first todo whose needs are
-# all done is the next task of its kind. A needs-cycle, or no unblocked task while todo
-# entries remain, is a deadlock and gets reported rather than worked around.
+# Picking the ready set (drive skill executes this): drop done and hard-blocked rows; group
+# the rest by soft-blockedness (count of un-done soft blockers, in-flight ones included);
+# least soft-blocked category first, prio within each; take the top five across builds and
+# decides together. List position is a tiebreak only. A needs-cycle, or todo rows remaining
+# with nothing pickable and nothing in flight, is a deadlock and gets reported.
+- id: scheduler-v2
+  title: Scheduler v2 -- five lanes, hard vs soft blockers, prio codes (maintainer spec, applied same-day)
+  kind: build
+  needs: []
+  prio: 1
+  status: done
+
 - id: scalar-payloads
   issue: gh:2
   title: Enum payloads accept any single type, not only records
@@ -206,6 +222,7 @@
   title: Review the oddities inventory and settle each item
   kind: decide
   needs: [language-oddities-survey]
+  prio: 2
   status: todo
 
 - id: crate-adoption
@@ -262,6 +279,7 @@
   title: Decide nullary functions vs a discard convention -- the unused-param rule exposed the one-param grammar
   kind: decide
   needs: [unused-variables-error]
+  prio: 2
   status: todo
 
 - id: partial-chain-expectation-decision
@@ -269,18 +287,21 @@
   title: Decide whether partial guard chains peel Opt expectations into arms (worker's conservative cut kept messages intact)
   kind: decide
   needs: [type-flow-rework]
+  prio: 2
   status: todo
 
 - id: matcher-totality-and-alt-design
   title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test
   kind: decide
   needs: [auto-matchers-design]
+  prio: 1
   status: todo
 
 - id: variant-types-flip
   title: Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference)
   kind: build
   needs: [matcher-totality-and-alt-design]
+  prio: 2
   model: fable
   status: todo
 
@@ -326,6 +347,7 @@
   title: Grill privileged/shared references -- mutation as a static optimization, no borrow checker
   kind: decide
   needs: []
+  prio: 4
   status: todo
 
 - id: soa-map-field-bug
@@ -361,6 +383,7 @@
   title: Ratify Opt<Opt> -- refuse nesting, or document the collapse
   kind: decide
   needs: []
+  prio: 2
   status: todo
 
 - id: opt-docs-unpacking
@@ -374,12 +397,14 @@
   title: Ratify or relax -- are reordered record spellings distinct types?
   kind: decide
   needs: [precedent-survey]
+  prio: 2
   status: todo
 
 - id: draft-split-decision
   title: Decide whether and how draft.md gets split (it is excluded from the prose budget by name)
   kind: decide
   needs: []
+  prio: 4
   status: todo
 
 - id: q37-float-semantics
@@ -392,6 +417,7 @@
   title: Grill what workloads define the performance thesis, then plan the benchmark suite
   kind: decide
   needs: []
+  prio: 4
   status: todo
 
 - id: frontend-cleanups
@@ -495,6 +521,7 @@
   title: Wizard submit survives a dead dev server -- draft persistence, retry, honest failure
   kind: build
   needs: [static-site-split]
+  soft: [wizard-ui-polish]
   status: todo
 
 - id: mail-app-cleanups

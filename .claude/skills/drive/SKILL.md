@@ -42,25 +42,34 @@ done`, optionally `issue: gh:N`. The maintainer's role is decide-tasks and goal-
 everything else is yours to drive. Never invent tasks: new work enters the board through a
 grilling/planning session or an explicit user request, and gets a row before it gets a branch.
 
-## The loop
+## The loop (scheduler v2, maintainer-specified 2026-08-29)
 
-1. **Read the board.** Unblocked = `status: todo` and every id in `needs` is `done`, taken in
-   list order. Derive, never store, blockedness.
+1. **Read the board and compute the ready set.** Drop `done` rows and hard-blocked rows (any
+   id in `needs` not `done`). Group what remains by soft-blockedness: the count of ids in
+   `soft` that are not yet `done` (a `delegated` soft blocker still counts as un-done).
+   Least soft-blocked category ranks first; `prio` (1 highest, default 3) sorts within a
+   category; list position is only a tiebreak. The TOP FIVE of this ordering, builds and
+   decides together, is the ready set. Soft order outweighs prio by construction, but among
+   fully unblocked tasks prio alone decides.
 2. **Deadlock check, before anything else.** Two shapes, both reported to the user
    immediately rather than worked around: a cycle in `needs` (topological sort fails), and
-   exhaustion (todo entries remain but nothing is unblocked, and nothing is delegated or
-   awaiting review). A third, operational one: a delegated session with no commits and no
-   transcript activity for ~30 minutes -- go read its state (worktree diff, last transcript
-   entry) and either finish its work by hand, relaunch it, or escalate; do not just wait.
-3. **Dispatch the top unblocked task of each kind.**
-   - `decide`: queue it for the user. These are the only things worth interrupting them for
-     when no build work is ready; otherwise present them at the next natural report.
-   - `build`: make sure a GitHub issue carries the spec (file one if the row has none), then
-     delegate via the `enwiro-delegate` skill and set `status: delegated`. The session runs
-     on sonnet unless the row says `model: fable` (design-heavy or cross-cutting work only). More than one
-     build task may run concurrently ONLY if their likely file footprints do not overlap --
-     judge from the plans and the diff history; when in doubt, serialize. Priority order
-     breaks ties, not the other way around.
+   exhaustion (todo entries remain but nothing is pickable and nothing is in flight). A
+   third, operational one: a delegated session with no commits and no transcript activity
+   for ~30 minutes -- go read its state (worktree diff, last transcript entry) and either
+   finish its work by hand, relaunch it, or escalate; do not just wait.
+3. **Fill the lanes: up to FIVE concurrent.**
+   - `decide` entries in the ready set: queue for the user, batched into wizard/mail rounds
+     where they carry code; they occupy attention, not a lane.
+   - `build` entries: make sure a GitHub issue carries the spec (file one if the row has
+     none), then delegate via the `enwiro-delegate` skill and set `status: delegated`; run
+     on sonnet unless the row says `model: fable`. Footprint conflicts are SOFT BLOCKER
+     EDGES on the board (file-level -- a folder is not a footprint; that lesson cost a lane
+     of parallelism once), not ad-hoc judgment: when a conflict is discovered at dispatch
+     time, record the `soft` edge rather than just serializing silently. Picking a
+     soft-blocked task while its blocker is in flight is allowed only when no cleaner task
+     can fill the lane and the overlap is tolerable; otherwise leave the lane empty and say
+     so in the report. Efficiency/process improvements are prio work by standing rule --
+     schedule them ahead of ordinary rows so no time is spent working the old way.
 4. **Monitor and land.** Watch delegated work (a cron tick per active delegation is enough);
    when a session finishes, run the `land-delegated-work` skill: suite, code-review,
    style-review, fix-or-file, merge locally. Then set the row `done`, commit the board change
