@@ -356,6 +356,7 @@
   title: Record reorder reconciliation through Opt -- needs a new checker/backend primitive, not a mechanical extension of #64
   kind: build
   needs: [container-boundary-reorder]
+  soft: [opt-as-enum]
   status: todo
 
 - id: variant-types-flip
