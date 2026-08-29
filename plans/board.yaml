@@ -131,7 +131,7 @@
   title: Email-app comfort -- free-form compose, folders, list and reading panes
   kind: build
   needs: [grilling-wizard]
-  status: todo
+  status: delegated
 
 - id: board-page-v2
   issue: gh:33
@@ -215,10 +215,18 @@
   status: done
 
 - id: type-flow-rework
+  issue: gh:44
   title: Top-down type flow -- declared types resolve [] and literals in bodies
   kind: build
   needs: []
   model: fable
+  status: delegated
+
+- id: unused-variables-error
+  issue: gh:45
+  title: Unused variables are compile errors, like Go -- param and destructured fields
+  kind: build
+  needs: []
   status: todo
 
 - id: variant-types-flip
