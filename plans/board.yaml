@@ -288,7 +288,7 @@
   kind: decide
   needs: [type-flow-rework]
   prio: 2
-  status: todo
+  status: done
 
 - id: matcher-parser-spike
   issue: gh:71
@@ -300,7 +300,7 @@
 
 - id: result-type-design
   issue: gh:72
-  title: Grill Result<T, E> -- the prelude's second tagged enum, and what partial chains yield
+  title: Grill Result<T, E> vs a matcher tri-state (MatchResult sketch) -- one session settles both
   kind: decide
   needs: []
   prio: 2
@@ -312,6 +312,47 @@
   kind: build
   needs: []
   status: todo
+
+- id: partial-chain-peel-build
+  issue: gh:74
+  title: Partial chains peel the declared Opt element into their arms
+  kind: build
+  needs: [partial-chain-expectation-decision]
+  prio: 2
+  status: todo
+
+- id: parser-floor-strings
+  issue: gh:75
+  title: Parser floor 1 -- character classes, complement, join, unicode
+  kind: build
+  needs: []
+  prio: 2
+  status: delegated
+
+- id: parser-floor-recursion
+  issue: gh:76
+  title: Parser floor 2 -- recursive enums, mutually recursive functions
+  kind: build
+  needs: []
+  soft: [parser-floor-strings]
+  prio: 2
+  status: todo
+
+- id: mini-parser-spike
+  issue: gh:77
+  title: Mini-parser spike -- a simpler parser for a simpler language, unblocking the stream
+  kind: build
+  needs: []
+  prio: 3
+  status: delegated
+
+- id: toylang-fmt
+  issue: gh:78
+  title: toylang fmt -- pretty-print backend and binary, examples formatted by default
+  kind: build
+  needs: []
+  prio: 2
+  status: delegated
 
 - id: matcher-totality-and-alt-design
   title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test
