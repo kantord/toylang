@@ -1,9 +1,8 @@
 ---
 source: tests/backend_llvm.rs
-assertion_line: 46
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (135):
+compiles natively (136):
 adults
 arith_add
 arith_div_trunc
