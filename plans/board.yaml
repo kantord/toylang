@@ -351,6 +351,40 @@
   needs: [record-order-relaxation]
   status: done
 
+- id: int64-surface-design
+  title: Grill Int64's surface -- literal spelling, coercions, overflow semantics, with real code
+  kind: decide
+  needs: [second-int-type-design]
+  prio: 2
+  status: todo
+
+- id: int64-build
+  title: Build Int64 across the backends per the surface session
+  kind: build
+  needs: [int64-surface-design]
+  model: fable
+  status: todo
+
+- id: euler-data-problems
+  issue: gh:69
+  title: Euler data problems via runtime input fixtures -- 8, 11, 13, 18
+  kind: build
+  needs: [euler-given-data-rule]
+  status: delegated
+
+- id: examples-section-folders
+  issue: gh:70
+  title: Examples grows folders -- Test cases and Coding Puzzles, deep links stable
+  kind: build
+  needs: []
+  status: delegated
+
+- id: dev-section-roots-fix
+  title: Bare section roots resolve per-section in dev (maintainer bug report, fixed directly)
+  kind: build
+  needs: []
+  status: done
+
 - id: opt-boundary-reorder
   issue: gh:66
   title: Record reorder reconciliation through Opt -- needs a new checker/backend primitive, not a mechanical extension of #64
@@ -424,14 +458,14 @@
   title: Decide the second integer type -- two Euler problems overflow Int
   kind: decide
   needs: []
-  status: todo
+  status: done
 
 - id: euler-given-data-rule
   issue: gh:39
   title: Decide the clean-room boundary for problem-given data like Euler 8's digits
   kind: decide
   needs: []
-  status: todo
+  status: done
 
 - id: void-functions-design
   issue: gh:58
