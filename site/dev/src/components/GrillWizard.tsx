@@ -1,99 +1,45 @@
 import { Marked, type Tokens } from "marked"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 
 import { Code } from "@/components/Code"
 import { MessageCard } from "@dev/components/MessageCard"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  fetchRound,
-  fetchRoundTopics,
-  isAnswered,
-  submitAnswer,
-  type Answer,
-  type Round,
-  type RoundOption,
-  type RoundQuestion,
-} from "@dev/lib/grill"
+import { isAnswered, submitAnswer, type Answer, type Round, type RoundOption, type RoundQuestion } from "@dev/lib/grill"
 import { cn } from "@/lib/utils"
 
 const md = new Marked()
 
-/**
- * The wizard's dev-only entry points (kantord/toylang#34), reachable only from dev/src/DevApp.tsx
- * -- the production build (`vite build`, from ../index.html) never opens dev/ at all
- * (kantord/toylang#50), so this never reaches that bundle.
- */
-export function GrillIndexPage() {
-  const [topics, setTopics] = useState<string[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetchRoundTopics()
-      .then(setTopics)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-  }, [])
-
-  return (
-    <div className="max-w-lg space-y-3">
-      <h1 className="text-lg font-semibold">Grilling rounds</h1>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {!error && !topics && <p className="text-sm text-muted-foreground">Loading...</p>}
-      {topics?.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No rounds waiting in <code>docs/.grill/</code>.
-        </p>
-      )}
-      {topics && topics.length > 0 && (
-        <ul className="space-y-1">
-          {topics.map((t) => (
-            <li key={t}>
-              <a href={`#/grill-wizard/${encodeURIComponent(t)}`} className="text-sm underline">
-                {t}
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}
-
 type Screen = { kind: "intro" } | { kind: "question"; index: number } | { kind: "summary" }
 
-export function GrillWizardPage({ topic }: { topic: string }) {
-  const [round, setRound] = useState<Round | null>(null)
-  const [error, setError] = useState<string | null>(null)
+/**
+ * A grilling round's own reading-pane body (kantord/toylang#52): rounds are a type of mail now,
+ * not a route of their own -- the mail app fetches the round and opens this directly in place of
+ * MessageCard when the item is a round, same as any other message body. One question per screen,
+ * previews, a summary before an explicit submit, all unchanged from the original wizard
+ * (kantord/toylang#34); only the page chrome (its own route, its own "back to rounds" link) is
+ * gone, folded into the mail item it now is.
+ */
+export function GrillRoundReader({
+  topic,
+  round,
+  onAllAnswered,
+}: {
+  topic: string
+  round: Round
+  onAllAnswered: () => void
+}) {
   const [answers, setAnswers] = useState<Record<string, Answer>>({})
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
 
-  useEffect(() => {
-    fetchRound(topic)
-      .then(setRound)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-  }, [topic])
-
   const screens = useMemo<Screen[]>(() => {
-    if (!round) return []
     const qs: Screen[] = round.questions.map((_, index) => ({ kind: "question", index }))
     return [...(round.intro ? [{ kind: "intro" } as Screen] : []), ...qs, { kind: "summary" }]
   }, [round])
-
-  if (error) {
-    return (
-      <div className="max-w-lg space-y-2">
-        <p className="text-sm text-destructive">{error}</p>
-        <a href="#/grill-wizard" className="text-sm underline">
-          back to rounds
-        </a>
-      </div>
-    )
-  }
-  if (!round) return <p className="text-sm text-muted-foreground">Loading...</p>
 
   const screen = screens[step]
   const questionScreens = screens.filter((s) => s.kind === "question").length
@@ -113,6 +59,7 @@ export function GrillWizardPage({ topic }: { topic: string }) {
         await submitAnswer(topic, i, q, answers[q.id] ?? { optionLabel: null, freeText: "" })
       }
       setSubmitted(true)
+      onAllAnswered()
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -122,22 +69,19 @@ export function GrillWizardPage({ topic }: { topic: string }) {
 
   return (
     <div className="max-w-2xl space-y-4">
-      <header className="space-y-2">
-        <h1 className="text-lg font-semibold">{topic}</h1>
-        {screen.kind === "question" && (
-          <>
-            <p className="text-xs text-muted-foreground">
-              Question {screen.index + 1} of {questionScreens}
-            </p>
-            <div className="h-1 w-full rounded-full bg-muted">
-              <div
-                className="h-1 rounded-full bg-primary transition-all"
-                style={{ width: `${((screen.index + 1) / questionScreens) * 100}%` }}
-              />
-            </div>
-          </>
-        )}
-      </header>
+      {screen.kind === "question" && (
+        <header className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Question {screen.index + 1} of {questionScreens}
+          </p>
+          <div className="h-1 w-full rounded-full bg-muted">
+            <div
+              className="h-1 rounded-full bg-primary transition-all"
+              style={{ width: `${((screen.index + 1) / questionScreens) * 100}%` }}
+            />
+          </div>
+        </header>
+      )}
 
       {screen.kind === "intro" && (
         <IntroScreen round={round} onBegin={() => setStep(step + 1)} />
@@ -171,9 +115,6 @@ export function GrillWizardPage({ topic }: { topic: string }) {
             Every answer is in the coordinator's inbox, keyed to this round -- no quiet-period
             wait, this was an explicit submit.
           </p>
-          <a href="#/grill-wizard" className="underline">
-            back to rounds
-          </a>
         </div>
       )}
     </div>
@@ -222,7 +163,8 @@ function QuestionScreen({
 }) {
   const selected = answer?.optionLabel ?? null
   const freeText = answer?.freeText ?? ""
-  const ready = isAnswered(q, answer)
+  const ready = isAnswered(answer)
+  const hasOptions = !!q.options?.length
 
   return (
     <div className="space-y-4">
@@ -231,33 +173,31 @@ function QuestionScreen({
       {q.thesis && <Section label="Thesis" markdown={q.thesis} />}
       <Section label="Question" markdown={q.question} />
 
-      {(q.options?.length || q.freeText) && (
-        <div className="space-y-2">
-          <div className="text-sm font-bold">Your answer</div>
+      <div className="space-y-2">
+        <div className="text-sm font-bold">Your answer</div>
 
-          {q.options && q.options.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {q.options.map((o) => (
-                <OptionCard
-                  key={o.label}
-                  option={o}
-                  selected={selected === o.label}
-                  onSelect={() => onAnswer({ optionLabel: o.label })}
-                />
-              ))}
-            </div>
-          )}
+        {hasOptions && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {q.options?.map((o) => (
+              <OptionCard
+                key={o.label}
+                option={o}
+                selected={selected === o.label}
+                onSelect={() => onAnswer({ optionLabel: o.label })}
+              />
+            ))}
+          </div>
+        )}
 
-          {q.freeText && (
-            <Textarea
-              value={freeText}
-              onChange={(e) => onAnswer({ freeText: e.target.value })}
-              placeholder={typeof q.freeText === "string" ? q.freeText : "Type your answer..."}
-              className={cn(!q.options?.length && "border-fuchsia-500/60")}
-            />
-          )}
-        </div>
-      )}
+        {/* Writing your own option is always available, even when the round author didn't add
+            a free-text box (kantord/toylang#52) -- an option list is never the only door. */}
+        <Textarea
+          value={freeText}
+          onChange={(e) => onAnswer({ freeText: e.target.value })}
+          placeholder={typeof q.freeText === "string" ? q.freeText : hasOptions ? "Write your own option" : "Type your answer..."}
+          className={cn(!hasOptions && "border-fuchsia-500/60")}
+        />
+      </div>
 
       <div className="flex justify-between pt-2">
         <Button variant="outline" onClick={onBack} disabled={!onBack}>

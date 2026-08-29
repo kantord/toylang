@@ -88,17 +88,19 @@ questions:
         preview: |              # optional, real code as it would look under this option
           ...
         previewLang: toylang     # optional, defaults to toylang
-    freeText: true              # optional: true, or a string used as the placeholder.
-                                 # Required as the answer mechanism when a question has no
-                                 # options; otherwise it's an extra notes box next to them.
+    freeText: true               # optional: true, or a string used as the placeholder for the
+                                  # free-text box. The box is always shown, options or not --
+                                  # writing your own option is never gated on the round author
+                                  # having added one (kantord/toylang#52).
 ```
 
 The wizard renders each question's `background`/`thesis`/`question` as its own color-coded
 left-bordered section (the design-system comment on the issue), one question per screen, with
 a progress indicator, back/next, and a summary screen listing every answer before an explicit
-Submit. It lives at `#/grill-wizard/<topic>` in the dev server (`GrillWizard.tsx`, dev-only and
-tree-shaken out of `vite build` the same way `MailApp.tsx` is) and is written by the
-coordinator, read and answered by the maintainer -- no terminal round-trip in between.
+Submit. A round is a type of mail (kantord/toylang#52): it arrives as an inbox item in the dev
+server's mail app and is answered right there in the reading pane (`GrillWizard.tsx`, dev-only
+and tree-shaken out of `vite build` the same way `MailApp.tsx` is), written by the coordinator,
+read and answered by the maintainer -- no terminal round-trip in between.
 
 **Delivery**: Submit posts one `/__annotations/save` record per question, `page` set to
 `docs/.grill/<topic>.round.yaml` and `block` to the question's index, `edited` a small JSON blob
