@@ -167,7 +167,7 @@ pub fn emit(program: &Program) -> String {
         out.push_str(&format!(
             "function {}({}) {{\n  return {};\n}}\n",
             user(&f.name),
-            user(&f.param),
+            f.param.as_deref().map_or_else(String::new, user),
             expr(&f.body)
         ));
     }
@@ -411,7 +411,11 @@ fn used_helpers(program: &Program) -> Helpers {
                     walk(p, used);
                 }
             }
-            Kind::Call { arg, .. } => walk(arg, used),
+            Kind::Call { arg, .. } => {
+                if let Some(a) = arg {
+                    walk(a, used);
+                }
+            }
             Kind::Concat(l, r) => {
                 walk(l, used);
                 walk(r, used);
@@ -522,7 +526,11 @@ fn expr(t: &Tir) -> String {
             let parts: Vec<String> = items.iter().map(expr).collect();
             format!("[{}]", parts.join(", "))
         }
-        Kind::Call { func, arg } => format!("{}({})", user(func), expr(arg)),
+        Kind::Call { func, arg } => format!(
+            "{}({})",
+            user(func),
+            arg.as_deref().map_or_else(String::new, expr)
+        ),
         Kind::Concat(l, r) => format!("({} + {})", expr(l), expr(r)),
         Kind::Arith { op, lhs, rhs } => match op {
             BinOp::Div => format!("tl_div({}, {})", expr(lhs), expr(rhs)),

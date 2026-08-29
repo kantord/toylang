@@ -44,7 +44,11 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
                 walk(p, tags);
             }
         }
-        Kind::Call { arg, .. } => walk(arg, tags),
+        Kind::Call { arg, .. } => {
+            if let Some(a) = arg {
+                walk(a, tags);
+            }
+        }
         Kind::Concat(lhs, rhs) => {
             walk(lhs, tags);
             walk(rhs, tags);

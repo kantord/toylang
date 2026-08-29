@@ -51,13 +51,17 @@ pub fn emit(program: &Program) -> String {
     // accepts a call to a function defined further down, which is a rule this target does not
     // share. Lua needed forward declarations for the same reason; jq has no way to write one.
     for f in ordered(program) {
-        // Functions are unary, so the argument arrives as `.` and is bound before the body runs.
-        out.push_str(&format!(
-            "def {}: . as ${} | {};\n",
-            user(&f.name),
-            user(&f.param),
-            expr(&f.body)
-        ));
+        // A unary function's argument arrives as `.` and is bound before the body runs; a
+        // nullary one ignores `.` entirely, since it has nothing to bind.
+        out.push_str(&match &f.param {
+            Some(param) => format!(
+                "def {}: . as ${} | {};\n",
+                user(&f.name),
+                user(param),
+                expr(&f.body)
+            ),
+            None => format!("def {}: {};\n", user(&f.name), expr(&f.body)),
+        });
     }
 
     if let Some(fusion) = tir::fusion(program) {
@@ -200,7 +204,9 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
             }
             Kind::Call { func, arg } => {
                 out.push(func.clone());
-                callees(arg, out);
+                if let Some(a) = arg {
+                    callees(a, out);
+                }
             }
             Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
                 callees(l, out);
@@ -298,7 +304,8 @@ fn uses_arith(program: &Program) -> bool {
             Kind::VecLit(items) => items.iter().any(walk),
             Kind::RecordLit { fields } => fields.iter().any(|(_, v)| walk(v)),
             Kind::EnumLit { payload, .. } => payload.as_deref().is_some_and(walk),
-            Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => walk(arg),
+            Kind::Call { arg, .. } => arg.as_deref().is_some_and(walk),
+            Kind::Builtin { arg, .. } => walk(arg),
             Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => walk(l) || walk(r),
             Kind::Bind { value, body, .. } => walk(value) || walk(body),
             Kind::Select { source, pred, .. } => walk(source) || walk(pred),
@@ -370,7 +377,12 @@ fn expr(t: &Tir) -> String {
             let parts: Vec<String> = items.iter().map(expr).collect();
             format!("[{}]", parts.join(", "))
         }
-        Kind::Call { func, arg } => format!("({} | {})", expr(arg), user(func)),
+        // A nullary function ignores `.`, so its call is just its name, run against whatever
+        // is already flowing through the surrounding pipeline.
+        Kind::Call { func, arg } => match arg {
+            Some(arg) => format!("({} | {})", expr(arg), user(func)),
+            None => format!("({})", user(func)),
+        },
         Kind::Concat(l, r) => format!("({} + {})", expr(l), expr(r)),
         Kind::Arith { op, lhs, rhs } => match op {
             BinOp::Div => format!("tl_div({}; {})", expr(lhs), expr(rhs)),

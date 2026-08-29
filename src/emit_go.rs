@@ -223,7 +223,9 @@ pub fn emit(program: &Program) -> String {
         enums: &mut enums,
     };
     for f in &program.funcs {
-        ctx.ty(&f.param_ty);
+        if let Some(param_ty) = &f.param_ty {
+            ctx.ty(param_ty);
+        }
         ctx.walk(&f.body);
     }
     ctx.walk(&program.body);
@@ -275,11 +277,15 @@ pub fn emit(program: &Program) -> String {
     // Package-level functions are visible in any order, so the forward reference the checker
     // accepts needs nothing here. Lua wanted declarations and JavaScript relied on hoisting.
     for f in &program.funcs {
+        let param = match (&f.param, &f.param_ty) {
+            (Some(name), Some(ty)) => format!("{} {}", e.user(name), e.go_type(ty)),
+            (None, None) => String::new(),
+            _ => unreachable!("a function's param and param_ty agree"),
+        };
         decls.push_str(&format!(
-            "func {}({} {}) {} {{\n\treturn {}\n}}\n\n",
+            "func {}({}) {} {{\n\treturn {}\n}}\n\n",
             e.user(&f.name),
-            e.user(&f.param),
-            e.go_type(&f.param_ty),
+            param,
             e.go_type(&f.body.ty),
             e.expr(&f.body)
         ));
@@ -471,7 +477,11 @@ impl Collect<'_> {
                     self.walk(p);
                 }
             }
-            Kind::Call { arg, .. } => self.walk(arg),
+            Kind::Call { arg, .. } => {
+                if let Some(a) = arg {
+                    self.walk(a);
+                }
+            }
             Kind::Concat(l, r)
             | Kind::Compare { lhs: l, rhs: r, .. }
             | Kind::Arith { lhs: l, rhs: r, .. } => {
@@ -775,7 +785,11 @@ impl Emitter {
                 let parts: Vec<String> = items.iter().map(|i| self.expr(i)).collect();
                 format!("{}{{{}}}", self.go_type(&t.ty), parts.join(", "))
             }
-            Kind::Call { func, arg } => format!("{}({})", self.user(func), self.expr(arg)),
+            Kind::Call { func, arg } => format!(
+                "{}({})",
+                self.user(func),
+                arg.as_deref().map_or_else(String::new, |a| self.expr(a))
+            ),
             Kind::Concat(l, r) => format!("({} + {})", self.expr(l), self.expr(r)),
             Kind::Arith { op, lhs, rhs } => match op {
                 BinOp::Div => format!("tlDiv({}, {})", self.expr(lhs), self.expr(rhs)),

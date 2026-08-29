@@ -1,0 +1,6 @@
+---
+source: tests/step_3.rs
+assertion_line: 137
+expression: "err(r#\"fn greet(who: Str) -> Str = who\ngreet()\"#)"
+---
+`greet` needs an argument of Str, but was called with none (at byte 32)

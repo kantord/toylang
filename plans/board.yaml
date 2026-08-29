@@ -311,7 +311,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: done
 
 - id: opt-as-enum
   issue: gh:62

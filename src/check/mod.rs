@@ -116,11 +116,16 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     let mut funcs = Vec::new();
     for def in &file.defs {
         let sig = &sigs[&def.name];
+        let scope = match (&def.param, &sig.param) {
+            (Some(param), Some(param_ty)) => vec![(param.name.clone(), param_ty.clone())],
+            (None, None) => Vec::new(),
+            _ => unreachable!("a signature's param mirrors its definition's"),
+        };
         let ctx = Ctx {
             sigs: &sigs,
             enums: &enums,
             variant_owners: &variant_owners,
-            scope: vec![(def.param.name.clone(), sig.param.clone())],
+            scope,
             arm_fields: Vec::new(),
             subject: None,
             input: &input,
@@ -140,24 +145,24 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         // A signature may spell Stream now, which un-does the trick the Lines design leaned on
         // (a return annotation could never match a body holding a stream), so what that trick
         // guaranteed for free is checked for real here.
-        if matches!(sig.param, Type::Stream(_)) {
-            check_linear(
-                &body,
-                &StreamBinding::Param(&def.param.name),
-                &format!("`{}`", def.param.name),
-                def.body.span(),
-            )?;
-        }
-        if !param_used(&body, &def.param.name) {
-            return Err(Error::new(
-                def.param.span,
-                format!(
-                    // Every function takes exactly one parameter (kantord/toylang#53), so
-                    // "delete it" alone would send the reader into a parse error.
-                    "parameter `{}` is never used; give it a real use, or retire `{}` if nothing needs it",
-                    def.param.name, def.name
-                ),
-            ));
+        if let Some(param) = &def.param {
+            if matches!(sig.param, Some(Type::Stream(_))) {
+                check_linear(
+                    &body,
+                    &StreamBinding::Param(&param.name),
+                    &format!("`{}`", param.name),
+                    def.body.span(),
+                )?;
+            }
+            if !param_used(&body, &param.name) {
+                return Err(Error::new(
+                    param.span,
+                    format!(
+                        "parameter `{}` is never used; delete it from `{}`'s definition and its call sites",
+                        param.name, def.name
+                    ),
+                ));
+            }
         }
         if body.ty != sig.ret {
             return Err(Error::new(
@@ -173,7 +178,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         }
         funcs.push(tir::Func {
             name: def.name.clone(),
-            param: def.param.name.clone(),
+            param: def.param.as_ref().map(|p| p.name.clone()),
             param_ty: sig.param.clone(),
             body,
         });
@@ -255,6 +260,12 @@ fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
     if let Expr::Call { func, arg, .. } = body
         && func == "jsonlines"
     {
+        let Some(arg) = arg else {
+            return Err(Error::new(
+                body.span(),
+                "`jsonlines` needs a Vec or a stream, but was called with no argument".to_string(),
+            ));
+        };
         let arg_span = arg.span();
         let arg = synth(ctx, arg)?;
         if !matches!(arg.ty, Type::Vec(_) | Type::Stream(_)) {
@@ -299,14 +310,14 @@ fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
         "str" => (
             tir::Builtin::IntToStr,
             Sig {
-                param: Type::Int,
+                param: Some(Type::Int),
                 ret: Type::Str,
             },
         ),
         "range" => (
             tir::Builtin::Range,
             Sig {
-                param: Type::Int,
+                param: Some(Type::Int),
                 ret: vec_of(Type::Int),
             },
         ),
@@ -446,6 +457,15 @@ fn sole_owner<'a>(
         ));
     }
     Ok(&ctx.enums[&owners[0]])
+}
+
+/// Every builtin and special-cased call form (`select`, `map`, `extent`, ...) is unary; only a
+/// user-defined function can be nullary. This unwraps a call's optional argument for those
+/// forms, turning a bare `name()` at one of these names into the same "not a function" shape as
+/// any other arity mismatch would need, rather than a panic.
+fn need_arg<'a>(arg: &'a Option<Box<Expr>>, func: &str, span: Span) -> Result<&'a Expr, Error> {
+    arg.as_deref()
+        .ok_or_else(|| Error::new(span, format!("`{func}` needs an argument")))
 }
 
 /// Build one variant of `enum_ty`, checking that the payload written matches the payload
@@ -1130,7 +1150,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 };
                 let param = ctx.fresh();
                 let inner = mapper_ctx(ctx, elem, param);
-                let pred = expect(&inner, arg, &Type::Bool)?;
+                let pred = expect(&inner, need_arg(arg, func, *span)?, &Type::Bool)?;
                 let source = Tir::new(subject.clone(), Kind::Local(id));
                 return Ok(Tir::new(
                     subject,
@@ -1144,7 +1164,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             // The one way to produce a new element value. `select` removes elements and a field
             // access reads a field; neither can turn a Vec<Int> into a Vec<Str>.
             if func == "map" {
-                return map_call(ctx, arg, *span, None);
+                return map_call(ctx, need_arg(arg, func, *span)?, *span, None);
             }
             // A sink, not a function: `check` handles the one legal position (the program's
             // outermost expression) before `synth` ever runs, so reaching it here means it is
@@ -1161,6 +1181,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             // `extent`, `tail`, and `concat` are polymorphic over the element type, the same
             // reason `jsonlines` is checked here rather than through `builtin()`'s fixed table.
             if func == "extent" {
+                let arg = need_arg(arg, func, *span)?;
                 let arg_span = arg.span();
                 let arg = synth(ctx, arg)?;
                 if arg.ty.elem().is_none() {
@@ -1180,6 +1201,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             // `None` on an empty Vec, the same way `Index` turns reaching past what's there
             // into `Opt` rather than a runtime failure.
             if func == "tail" {
+                let arg = need_arg(arg, func, *span)?;
                 let arg_span = arg.span();
                 let arg = synth(ctx, arg)?;
                 let Some(elem) = arg.ty.elem().cloned() else {
@@ -1199,6 +1221,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             // Flattens a Vec<Vec<T>> into a Vec<T>, the way jq's `add` flattens a list of
             // arrays. A named function rather than `+` on Vec, so it does not decide Q2.
             if func == "concat" {
+                let arg = need_arg(arg, func, *span)?;
                 let arg_span = arg.span();
                 let arg = synth(ctx, arg)?;
                 let inner = arg.ty.elem().cloned();
@@ -1219,10 +1242,14 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             // The one exit a stream has: `Stream<T> -> Vec<T>`, polymorphic over the element
             // type like `extent` and the others above, so the argument is synthesised first.
             if func == "collect" {
-                return collect(ctx, arg, None);
+                return collect(ctx, need_arg(arg, func, *span)?, None);
             }
             if let Some((which, sig)) = builtin(func) {
-                let arg = expect(ctx, arg, &sig.param)?;
+                let param_ty = sig
+                    .param
+                    .as_ref()
+                    .expect("every builtin in the fixed table is unary");
+                let arg = expect(ctx, need_arg(arg, func, *span)?, param_ty)?;
                 return Ok(Tir::new(
                     sig.ret,
                     Kind::Builtin {
@@ -1236,19 +1263,36 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 // lands here; it resolves as a variant only after the function namespace declines.
                 if let Some(owners) = ctx.variant_owners.get(func) {
                     let enum_ty = sole_owner(ctx, func, owners, *func_span)?.clone();
-                    return construct(ctx, &enum_ty, func, *func_span, Some(arg));
+                    return construct(ctx, &enum_ty, func, *func_span, arg.as_deref());
                 }
                 return Err(Error::new(
                     *func_span,
                     format!("`{func}` is not a function"),
                 ));
             };
-            let arg = expect(ctx, arg, &sig.param)?;
+            let arg = match (&sig.param, arg) {
+                (Some(param_ty), Some(arg)) => Some(Box::new(expect(ctx, arg, param_ty)?)),
+                (None, None) => None,
+                (Some(param_ty), None) => {
+                    return Err(Error::new(
+                        *span,
+                        format!(
+                            "`{func}` needs an argument of {param_ty}, but was called with none"
+                        ),
+                    ));
+                }
+                (None, Some(arg)) => {
+                    return Err(Error::new(
+                        arg.span(),
+                        format!("`{func}` takes no argument"),
+                    ));
+                }
+            };
             Ok(Tir::new(
                 sig.ret.clone(),
                 Kind::Call {
                     func: func.clone(),
-                    arg: Box::new(arg),
+                    arg,
                 },
             ))
         }
@@ -1681,6 +1725,7 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     // its own until checked, so the wanted Vec<T> is pushed back through as Stream<T> here.
     if let Expr::Call { func, arg, .. } = expr
         && func == "collect"
+        && let Some(arg) = arg
         && let Some(elem) = want.elem()
     {
         return collect(ctx, arg, Some(elem)).map(Expected::Checked);
@@ -1708,6 +1753,7 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
         func, arg, span, ..
     } = expr
         && func == "map"
+        && let Some(arg) = arg
     {
         let want_elem = match (ctx.subject.as_ref().map(|(ty, _)| ty), want) {
             (Some(Type::Vec(_)), Type::Vec(elem)) => Some(elem.as_ref()),

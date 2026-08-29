@@ -145,7 +145,9 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
     let mut sigs = HashMap::new();
     for def in defs {
         value_name(&def.name, def.span, "function name")?;
-        value_name(&def.param.name, def.param.span, "parameter name")?;
+        if let Some(param) = &def.param {
+            value_name(&param.name, param.span, "parameter name")?;
+        }
         if BUILTIN_NAMES.contains(&def.name.as_str()) {
             return Err(Error::new(
                 def.span,
@@ -159,13 +161,16 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
             ));
         }
         let sig = Sig {
-            param: resolve(&def.param.ty, env, &mut Vec::new())?,
+            param: match &def.param {
+                Some(param) => Some(resolve(&param.ty, env, &mut Vec::new())?),
+                None => None,
+            },
             ret: resolve(&def.ret, env, &mut Vec::new())?,
         };
         // A stream is born only at a source, so a function cannot conjure one: a stream result
         // flows in through a stream parameter, and the pipeline stays one chain fusion can
         // read. Refusing is the reversible direction.
-        if matches!(sig.ret, Type::Stream(_)) && !matches!(sig.param, Type::Stream(_)) {
+        if matches!(sig.ret, Type::Stream(_)) && !matches!(sig.param, Some(Type::Stream(_))) {
             return Err(Error::new(
                 def.span,
                 format!(

@@ -114,3 +114,26 @@ fn parameter_does_not_leak() {
     insta::assert_snapshot!(err(r#"fn f(x: Str) -> Str = x
 x"#));
 }
+
+/// `fn name() -> T = body`, called `name()` (issue #61): a function may take no parameter.
+#[test]
+fn a_nullary_function() {
+    let src = r#"
+fn greeting() -> Str = "hello"
+
+greeting()
+"#;
+    insta::assert_snapshot!(toylang::run(src).unwrap());
+}
+
+#[test]
+fn a_nullary_function_called_with_an_argument() {
+    insta::assert_snapshot!(err(r#"fn greeting() -> Str = "hello"
+greeting("x")"#));
+}
+
+#[test]
+fn a_unary_function_called_with_no_argument() {
+    insta::assert_snapshot!(err(r#"fn greet(who: Str) -> Str = who
+greet()"#));
+}

@@ -355,9 +355,11 @@ impl<'ctx> Emitter<'ctx> {
     }
 
     fn declare(&mut self, func: &Func) -> Result<(), String> {
-        let param = self.llvm_type(&func.param_ty)?;
         let ret = self.llvm_type(&func.body.ty)?;
-        let args: [BasicMetadataTypeEnum; 1] = [param.into()];
+        let args: Vec<BasicMetadataTypeEnum> = match &func.param_ty {
+            Some(param_ty) => vec![self.llvm_type(param_ty)?.into()],
+            None => Vec::new(),
+        };
         let sig = match ret {
             BasicTypeEnum::IntType(t) => t.fn_type(&args, false),
             BasicTypeEnum::PointerType(t) => t.fn_type(&args, false),
@@ -379,8 +381,10 @@ impl<'ctx> Emitter<'ctx> {
 
         self.params.clear();
         self.locals.clear();
-        let arg = value.get_nth_param(0).expect("unary");
-        self.params.insert(func.param.clone(), arg);
+        if let Some(param) = &func.param {
+            let arg = value.get_nth_param(0).expect("declared with one param");
+            self.params.insert(param.clone(), arg);
+        }
 
         let body = self.expr(&func.body)?;
         self.builder
@@ -1143,13 +1147,16 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Kind::Call { func, arg } => {
-                let arg = self.expr(arg)?;
+                let args = match arg {
+                    Some(arg) => vec![self.expr(arg)?.into()],
+                    None => Vec::new(),
+                };
                 let callee = *self
                     .funcs
                     .get(func)
                     .ok_or_else(|| format!("`{func}` was never declared"))?;
                 self.builder
-                    .build_call(callee, &[arg.into()], "call")
+                    .build_call(callee, &args, "call")
                     .map_err(|e| e.to_string())?
                     .try_as_basic_value()
                     .basic()
