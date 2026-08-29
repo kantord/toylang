@@ -1,0 +1,15 @@
+# Goal program three of the type-flow rework (plans/type-flow.md), verbatim from the
+# oddities inventory: the first `input` is typed by `f`'s parameter, and the second use --
+# a record field nothing expects anything of -- borrows the type the first use fixed.
+program: |
+  fn f(v: Vec<Int>) -> Int = extent(v)
+
+  {a: f(input), b: input}
+
+input: |
+  [1, 2, 3]
+
+output: |
+  {"a":3,"b":[1,2,3]}
+
+node_types: [application, builtin.extent, input, record-literal, var]

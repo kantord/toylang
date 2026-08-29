@@ -1,0 +1,5 @@
+---
+source: tests/type_flow.rs
+expression: "err(\"fn f(x: Int) -> {a: Int, b: Str} = {a: 1}\\n\\nf(1)\")"
+---
+`f` declares it returns {a: Int, b: Str}, but its body is {a: Int} (at byte 35)

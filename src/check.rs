@@ -1220,9 +1220,14 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Ok(access.tir)
         }
 
-        // `input` is only ever checked, never synthesised, for the same reason a lambda is:
-        // nothing here says what it contains, and guessing is what the annotation rule avoids.
-        Expr::Input { span } => Err(Error::new(*span, "cannot tell what `input` contains")),
+        // `input` names one value, so its first checked use fixes the type for the whole
+        // program -- and a later use in a position that expects nothing can borrow what the
+        // first use fixed. With no use typed yet, nothing says what it contains, and guessing
+        // is what the annotation rule avoids.
+        Expr::Input { span } => match ctx.input.borrow().as_ref() {
+            Some(ty) => Ok(Tir::new(ty.clone(), Kind::Input)),
+            None => Err(Error::new(*span, "cannot tell what `input` contains")),
+        },
         Expr::Inputs { span } => match ctx.in_fn {
             Some(func) => Err(source_in_fn(*span, "inputs", func)),
             None => Err(Error::new(*span, "cannot tell what `inputs` contains")),
@@ -2065,6 +2070,29 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
         && matches!(want, Type::Enum { .. })
     {
         return construct(ctx, want, text, *span, None).map(Expected::Checked);
+    }
+
+    // A record literal checked against a record type pushes each field's expected type into
+    // its value -- but only when the written fields are the declared fields, in order: field
+    // order is part of a record type, so a shuffled or mis-fielded literal falls back to
+    // synthesis, where the existing errors (the reordered-fields hint included) say what is
+    // wrong.
+    if let Expr::RecordLit { fields, .. } = expr
+        && let Type::Record(want_fields) = want
+        && fields.len() == want_fields.len()
+        && fields
+            .iter()
+            .zip(want_fields)
+            .all(|((name, _, _), (wanted, _))| name == wanted)
+    {
+        let mut built = Vec::new();
+        for ((name, _, value), (_, field_ty)) in fields.iter().zip(want_fields) {
+            built.push((name.clone(), expect(ctx, value, field_ty)?));
+        }
+        return Ok(Expected::Checked(Tir::new(
+            want.clone(),
+            Kind::RecordLit { fields: built },
+        )));
     }
 
     // A Vec literal where a Vec is wanted takes its element type from the position, which is

@@ -1,0 +1,5 @@
+---
+source: tests/type_flow.rs
+expression: "err(\"fn f(x: Int) -> {a: Int, b: Str} = {b: \\\"x\\\", a: 1}\\n\\nf(1)\")"
+---
+`f` declares it returns {a: Int, b: Str}, but its body is {b: Str, a: Int}; the fields agree, but field order is part of a record type (at byte 35)

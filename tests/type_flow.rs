@@ -68,3 +68,55 @@ fn a_string_naming_no_variant_is_refused() {
 fn a_synthesised_mismatch_still_names_the_function() {
     insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Int> = \"a\"\n\nf(1)"));
 }
+
+// Step 2: a record literal checked against a record type pushes each field's expected type
+// into its value, and `input`'s first checked use fixes its type for every later one.
+
+#[test]
+fn record_fields_receive_the_declared_types() {
+    let src = "enum Status { active, inactive }\n\n\
+               fn f(x: Int) -> {v: Vec<Int>, s: Status} = {v: [], s: \"active\"}\n\nf(1)";
+    assert!(matches!(body_ty(src), Type::Record(_)));
+}
+
+#[test]
+fn input_in_a_field_checked_against_a_declared_record() {
+    let src = "fn f(x: Int) -> {n: Int} = {n: input}\n\nf(1)";
+    let program = toylang::compile(src).unwrap();
+    assert_eq!(program.input, Some(Type::Int));
+}
+
+#[test]
+fn a_later_input_borrows_the_type_the_first_use_fixed() {
+    let src = "fn f(v: Vec<Int>) -> Int = extent(v)\n\n{a: f(input), b: input}";
+    assert_eq!(
+        body_ty(src),
+        Type::Record(vec![
+            ("a".to_string(), Type::Int),
+            ("b".to_string(), Type::Vec(Box::new(Type::Int))),
+        ])
+    );
+}
+
+/// First use wins is an order, not a unification: an `input` ahead of every typed use has
+/// nothing to borrow.
+#[test]
+fn an_input_ahead_of_every_typed_use_is_still_refused() {
+    insta::assert_snapshot!(err(
+        "fn f(v: Vec<Int>) -> Int = extent(v)\n\n{a: input, b: f(input)}"
+    ));
+}
+
+/// Field order is part of a record type, so a shuffled literal is not checked field-by-field;
+/// it falls back to synthesis and the mismatch keeps the reordered-fields hint.
+#[test]
+fn reordered_fields_still_mismatch_with_the_hint() {
+    insta::assert_snapshot!(err(
+        "fn f(x: Int) -> {a: Int, b: Str} = {b: \"x\", a: 1}\n\nf(1)"
+    ));
+}
+
+#[test]
+fn a_missing_field_still_mismatches() {
+    insta::assert_snapshot!(err("fn f(x: Int) -> {a: Int, b: Str} = {a: 1}\n\nf(1)"));
+}
