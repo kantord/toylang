@@ -136,7 +136,9 @@ function IntroScreen({ round, onBegin }: { round: Round; onBegin: () => void }) 
 // itself. The block *shape* still diverges on purpose: MessageCard packs several labeled
 // sentences under one badge for a dense inbox row, while a wizard section is one full-page
 // prose block per label, so it keeps its own uppercase-label-then-markdown layout instead of
-// MessageCard's regex-driven sentence splitting.
+// MessageCard's regex-driven sentence splitting. Text colors stay hand-written: FLOW only
+// exports them fused into badge (bg plus text), and unbundling that for three labels would
+// cost more than the duplication it saves -- if they drift, this comment is the pointer.
 const SECTION: Record<"Background" | "Thesis" | "Question", { border: string; text: string }> = {
   Background: { border: FLOW.status.border, text: "text-sky-700 dark:text-sky-300" },
   Thesis: { border: FLOW.round.border, text: "text-violet-700 dark:text-violet-300" },
