@@ -71,9 +71,17 @@ export function grillRounds(): Plugin {
           res.end(`${file} is not valid YAML: ${e instanceof Error ? e.message : String(e)}`)
           return
         }
-        if (typeof round !== "object" || round === null || !Array.isArray((round as { questions?: unknown }).questions)) {
+        const questions = (round as { questions?: unknown } | null)?.questions
+        if (typeof round !== "object" || round === null || !Array.isArray(questions) || questions.length === 0) {
           res.statusCode = 400
-          res.end(`${file} needs a top-level "questions" list`)
+          res.end(`${file} needs a non-empty top-level "questions" list`)
+          return
+        }
+        // A question without its direct ask renders as an empty screen and "submits" nothing
+        // mappable -- reject it here rather than serving a silently broken round.
+        if (questions.some((q) => typeof (q as { question?: unknown })?.question !== "string")) {
+          res.statusCode = 400
+          res.end(`${file}: every question needs a "question" string`)
           return
         }
         res.statusCode = 200

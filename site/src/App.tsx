@@ -266,7 +266,9 @@ function GrillWizardRoute({ topic }: { topic?: string }) {
     return <p className="text-sm text-muted-foreground">The grilling wizard is dev-only.</p>
   }
   if (!mod) return <p className="text-sm text-muted-foreground">Loading...</p>
-  return topic ? <mod.GrillWizardPage topic={topic} /> : <mod.GrillIndexPage />
+  // `key` remounts the wizard when the topic changes in place (back/forward between two
+  // rounds), so a shorter round can never inherit a step index pointing past its end.
+  return topic ? <mod.GrillWizardPage key={topic} topic={topic} /> : <mod.GrillIndexPage />
 }
 
 /** Previous/next within the section, so the tutorial reads as the linear course it is. */

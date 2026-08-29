@@ -67,7 +67,9 @@ intro: |                    # optional, markdown, shown on a "Begin" screen befo
   # Round title
   Framing prose.
 questions:
-  - id: unique-slug          # required, becomes the inbox record's block index (not its key)
+  - id: unique-slug          # required, unique within the round; keys the wizard's answer
+                              # state only. The inbox record's `block` is the question's
+                              # array index -- `id` never reaches the inbox.
     title: Short label        # required, shown in the flow badge and the summary
     flow: question             # optional: question | escalation | status (default: question)
     background: |              # optional, markdown, full code blocks allowed
