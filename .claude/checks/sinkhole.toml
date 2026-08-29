@@ -14,9 +14,9 @@
 #   exemption.
 # - `.claude/checks/run.sh` re-derives an entry's underlying finding on each run, over the
 #   whole tree, not just the files a session touched -- an entry whose finding no longer fires
-#   is itself reported, as `stale-sinkhole-entry`. Today that re-check covers the
-#   `file-too-long` and `too-many-lines` kinds; every other kind is trusted as written until
-#   run.sh learns to re-derive it, so an entry of those kinds leans on its justification alone.
+#   is itself reported, as `stale-sinkhole-entry`. Every kind is re-checked: `file-too-long` and
+#   `bare-allow` re-run their own detection directly, and everything else (`too-many-lines` and
+#   any bare clippy lint name) is matched against the clippy run gathered for this pass.
 #
 # Fields:
 #
