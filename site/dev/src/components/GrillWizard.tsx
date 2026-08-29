@@ -1,5 +1,5 @@
 import { Marked, type Tokens } from "marked"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { Code } from "@/components/Code"
 import { FLOW, MessageCard } from "@dev/components/MessageCard"
@@ -10,6 +10,39 @@ import { isAnswered, submitAnswer, type Answer, type Round, type RoundOption, ty
 import { cn } from "@/lib/utils"
 
 const md = new Marked()
+
+/** localStorage draft of every answer given so far, keyed per topic (kantord/toylang#46): a
+ *  dead dev server or a failed submit must never cost the maintainer answers they already typed,
+ *  same idiom as AnnotateMode's per-block draft. Written on every change, cleared only once
+ *  `submit` below has gotten a 2xx for every question. */
+function draftKey(topic: string): string {
+  return `toylang-grill-draft:${topic}`
+}
+
+function loadDraft(topic: string): Record<string, Answer> {
+  try {
+    const raw = localStorage.getItem(draftKey(topic))
+    return raw ? (JSON.parse(raw) as Record<string, Answer>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveDraft(topic: string, answers: Record<string, Answer>) {
+  try {
+    localStorage.setItem(draftKey(topic), JSON.stringify(answers))
+  } catch {
+    // Private browsing or a full quota -- the wizard still works, just without reload survival.
+  }
+}
+
+function clearDraft(topic: string) {
+  try {
+    localStorage.removeItem(draftKey(topic))
+  } catch {
+    // Nothing to undo if the read/write above never worked either.
+  }
+}
 
 type Screen = { kind: "intro" } | { kind: "question"; index: number } | { kind: "summary" }
 
@@ -30,11 +63,15 @@ export function GrillRoundReader({
   round: Round
   onAllAnswered: () => void
 }) {
-  const [answers, setAnswers] = useState<Record<string, Answer>>({})
+  const [answers, setAnswers] = useState<Record<string, Answer>>(() => loadDraft(topic))
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
+
+  useEffect(() => {
+    saveDraft(topic, answers)
+  }, [topic, answers])
 
   const screens = useMemo<Screen[]>(() => {
     const qs: Screen[] = round.questions.map((_, index) => ({ kind: "question", index }))
@@ -58,6 +95,7 @@ export function GrillRoundReader({
         const q = round.questions[i]
         await submitAnswer(topic, i, q, answers[q.id] ?? { optionLabel: null, freeText: "" })
       }
+      clearDraft(topic)
       setSubmitted(true)
       onAllAnswered()
     } catch (e) {
@@ -284,7 +322,9 @@ function SummaryScreen({
           )
         })}
       </div>
-      {submitError && <p className="text-sm text-destructive">{submitError}</p>}
+      {submitError && (
+        <p className="text-sm text-destructive">Delivery failed: {submitError}. Your answers are kept -- retry.</p>
+      )}
       <div className="flex justify-between pt-2">
         <Button variant="outline" onClick={onBack} disabled={submitting}>
           Back
