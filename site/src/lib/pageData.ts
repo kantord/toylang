@@ -82,6 +82,13 @@ export function resolveRoute(pathname: string, corpus: Corpus): AppRoute {
     return examplesRoute(current, corpus)
   }
 
+  // A bare section root mirrors its section's first page, matching what prerender writes
+  // there -- without this, the dev server (which never prerenders) sent every section's
+  // root to the same tutorial fallback, and Guides and Reference looked like one page.
+  const section = /^\/([^/]+)\/?$/.exec(path)?.[1]
+  const sectionFirst = section && PAGES.find((p) => p.section === section)
+  if (sectionFirst) return docsRoute(sectionFirst, corpus)
+
   return docsRoute(firstPage(), corpus)
 }
 
