@@ -86,3 +86,13 @@ clearest yet: the fix rewrote `emit_llvm.rs`'s `Kind::Match` arm inside
 at 334/100 both before and after the change (verified the same way, via a
 merge-base worktree). The finding didn't just stay inherited, it was
 provably unaffected by lines added elsewhere in the same function.
+
+The type-flow session (issue #44) is the caused counterpart: promoting
+`expect` to a real dispatch (`expect_inner`) and moving the match arm out
+of `synth` into `match_chain` created two *new* functions over budget --
+caused, not inherited, since neither name existed at merge-base. Settled
+the tighten-first way: extract per-construct helpers along the seams the
+file already uses (`input_read`, `inputs_read`, `variant_arm`,
+`check_reachable`, `check_coverage` beside the existing `construct` and
+`collect`), which put both under 100 without splitting any typing rule in
+half. `check()` and `synth()` stayed flagged and stayed inherited.
