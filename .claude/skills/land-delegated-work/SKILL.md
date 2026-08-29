@@ -33,7 +33,11 @@ Do not ping for intermediate progress or ask permission to review or merge.
 ## 3. Merge locally, then push
 
 - `git merge <branch> --no-ff` from the main checkout, with a merge message naming what was
-  reviewed and where follow-ups went, plus the trailer.
+  reviewed and where follow-ups went, plus the trailer. NEVER in the same shell command as a
+  `cd` into the worktree: a compound "cd worktree && commit && merge" runs the merge INSIDE
+  the branch, silently merging nothing (it happened twice in one day -- both times the close
+  comment fired against a merge that had not reached main). Start the merge as its own
+  command from the repo root, and verify `git status -sb` says main first.
 - On conflicts: resolve each conflicted path explicitly and NEVER `git add -A` while a merge
   is in progress -- it once staged conflict markers into board.yaml unseen. Structured files
   (board.yaml especially) get validated AFTER resolution and BEFORE the commit, with the
