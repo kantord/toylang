@@ -2,7 +2,7 @@ import { Marked, type Tokens } from "marked"
 import { useMemo, useState } from "react"
 
 import { Code } from "@/components/Code"
-import { MessageCard } from "@dev/components/MessageCard"
+import { FLOW, MessageCard } from "@dev/components/MessageCard"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
@@ -130,12 +130,17 @@ function IntroScreen({ round, onBegin }: { round: Round; onBegin: () => void }) 
   )
 }
 
+// Borders come from MessageCard's FLOW palette (kantord/toylang#43) so the two color-block
+// renderers can't drift apart: Background borrows "status" (sky), Thesis borrows "round"
+// (violet -- a wizard question is grill mail, same as a round), Question borrows "question"
+// itself. The block *shape* still diverges on purpose: MessageCard packs several labeled
+// sentences under one badge for a dense inbox row, while a wizard section is one full-page
+// prose block per label, so it keeps its own uppercase-label-then-markdown layout instead of
+// MessageCard's regex-driven sentence splitting.
 const SECTION: Record<"Background" | "Thesis" | "Question", { border: string; text: string }> = {
-  Background: { border: "border-sky-500", text: "text-sky-700 dark:text-sky-300" },
-  Thesis: { border: "border-violet-500", text: "text-violet-700 dark:text-violet-300" },
-  // Reuses MessageCard's "question" flow color: the direct ask here is the same concept as an
-  // inbox annotation's `question` flow, just rendered full-page instead of as a compact row.
-  Question: { border: "border-fuchsia-500", text: "text-fuchsia-700 dark:text-fuchsia-300" },
+  Background: { border: FLOW.status.border, text: "text-sky-700 dark:text-sky-300" },
+  Thesis: { border: FLOW.round.border, text: "text-violet-700 dark:text-violet-300" },
+  Question: { border: FLOW.question.border, text: "text-fuchsia-700 dark:text-fuchsia-300" },
 }
 
 function Section({ label, markdown }: { label: keyof typeof SECTION; markdown: string }) {
@@ -225,13 +230,20 @@ function OptionCard({
       type="button"
       onClick={onSelect}
       className={cn(
-        "flex w-full min-w-0 flex-col space-y-2 rounded-lg border p-3 text-left transition-colors",
-        selected ? "border-primary ring-2 ring-primary/30 bg-primary/5" : "border-border hover:bg-muted/50",
+        "group flex w-full min-w-0 flex-col space-y-2 rounded-lg border p-3 text-left transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:focus-visible:col-span-2",
+        selected ? "border-primary ring-2 ring-primary/30 bg-primary/5 sm:col-span-2" : "border-border hover:bg-muted/50",
       )}
     >
       <div className={cn("text-sm", selected ? "font-bold" : "font-medium")}>{option.label}</div>
       <p className="text-xs text-muted-foreground">{option.description}</p>
-      {option.preview && <Code code={option.preview} lang={option.previewLang ?? "toylang"} className="text-[11px]" />}
+      {option.preview && (
+        <Code
+          code={option.preview}
+          lang={option.previewLang ?? "toylang"}
+          className={selected ? "text-sm" : "text-[11px] group-focus-visible:text-sm"}
+        />
+      )}
     </button>
   )
 }
