@@ -230,6 +230,7 @@
   status: todo
 
 - id: auto-matchers-design
+  issue: gh:47
   title: Grill auto-generated type matchers -- the capital namespace (matcher vs constructor), domain, first-classness
   kind: decide
   needs: []

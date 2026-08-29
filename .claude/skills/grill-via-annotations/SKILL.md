@@ -40,7 +40,11 @@ annotations mode and its annotations join the sidebar; it never appears in publi
 ## Running it
 
 1. Start the dev server if not running (`pnpm dev` in `site/`), tell the user in ONE line
-   that a round is up and where.
+   that a round is up and where. A port that answers is NOT proof: a delegated worker's own
+   dev server answers identically and dies with its worker mid-round (it lost round 1 of the
+   auto-matchers grill at submit). The server must be one the coordinator started from the
+   MAIN checkout, as a background task it owns -- if in doubt, check the listener's cwd or
+   just start your own on a verified-free port before announcing the round.
 2. Arm a poll: a cron tick every ~10 minutes reading `docs/.annotations/inbox.json`. The
    round is ready when the inbox's `last_edit` is at least five minutes old and covers the
    round's page. Do not process earlier -- partial answers are not answers.
