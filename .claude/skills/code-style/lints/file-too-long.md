@@ -53,3 +53,20 @@ at merge-base, 2378 after adding the unused-parameter and unused-field
 checks plus their tests. The task was implementing issue #45, not the
 `check.rs` split (that is issue #51's own conversation), so this stays
 inherited by the same rule.
+
+Issue #51 is that split conversation, and it is the other bullet above:
+the session was asked to address the file's size directly, so the
+inherited-debt reasoning does not apply here -- this is the decision, not a
+detour from one. `plans/checker-structure.md`'s survey recommended
+extracting exactly two passes that never touch the fused `synth`/`expect`
+engine (type resolution, and stream linearity plus dead-code pruning) into
+`check/types.rs` and `check/linearity.rs`, roughly 470 of `check.rs`'s 2380
+lines, while explicitly declining to split the remaining fused core: it has
+no per-area seam the way the backends do, and the survey names it as the
+sinkhole mechanism's first exemption (`sinkhole-machinery`, issue #54,
+`status: delegated`) instead of a further shrink target. The result,
+`check/mod.rs`, is 1832 lines -- still over budget, on purpose, until that
+exemption lands. The check reports it as a "new file" because the path
+changed (`check.rs` to `check/mod.rs`); it is the same fused core, not new
+debt. Nothing to do here until issue #54 lands and can record the formal
+exemption.
