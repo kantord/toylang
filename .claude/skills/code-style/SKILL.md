@@ -121,11 +121,11 @@ decides on its own to get unblocked.
 A settled exemption moves into `.claude/checks/sinkhole.toml`: one entry per
 finding it excuses, with a `justification` field, not a paragraph added to a
 lesson. `.claude/checks/run.sh` consults it -- an entry suppresses the
-finding it names, and a `file-too-long` or `too-many-lines` entry is
-re-checked against the whole tree on every run, so one that stops firing
-(the function shrank, the file split) is itself reported as
-`stale-sinkhole-entry` instead of quietly outliving its reason; other kinds
-have no automated re-check yet and stand on their justification. `#[allow]`/`#![allow]` beside the code it would excuse is itself
+finding it names, and every entry -- file length, per-function lints,
+bare-allow -- is re-checked against the whole tree on every run, so one
+that stops firing (the function shrank, the file split, the allow was
+deleted) is itself reported as `stale-sinkhole-entry` instead of quietly
+outliving its reason. `#[allow]`/`#![allow]` beside the code it would excuse is itself
 a finding (`bare-allow`); the sinkhole is the only sanctioned home. See the
 file's own header comment for the entry format, and `check.rs`'s three
 entries -- file length, `check()`, `synth()` -- as the worked example.

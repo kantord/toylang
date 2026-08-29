@@ -57,9 +57,8 @@ The #![allow(dead_code)] plans/quality-practices.md gated this machinery on reso
 integration-test binary compiles support/mod.rs and uses a different subset of its helpers, so
 per-binary dead_code warnings are structural to Rust's test layout, not debt. Resolving the
 gate by sinkholing it is the machinery applied to its own precondition -- the allow moves from
-an unexplained attribute to a justified entry. Note the bare-allow kind has no automated
-re-check yet (see the header); if support/mod.rs ever stops being shared across binaries,
-retire this by hand.
+an unexplained attribute to a justified entry. The re-check keeps this honest like any
+other kind now: if the allow is ever deleted, this entry reports itself stale.
 """
 
 [[exemption]]

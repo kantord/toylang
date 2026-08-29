@@ -214,7 +214,7 @@ fi
 # which emit these tokens into *generated* Rust as `format!` arguments and never start a line
 # with them themselves. Also matches an allow riding in on cfg_attr (`#[cfg_attr(..., allow(...))]`),
 # which is a bare allow wearing a condition, not an exemption.
-bare_allow_pattern='^[[:space:]]*#!?\[(allow|cfg_attr\(.*allow\()'
+bare_allow_pattern='^[[:space:]]*#!?\[(allow\(|cfg_attr\(.*[,( ]allow\()'
 for file in "${touched[@]}"; do
   case "$file" in
     *.rs) ;;
@@ -304,7 +304,7 @@ PY
     if [ "$live" -eq 0 ]; then
       target="$epath"
       [ -n "$efunc" ] && target="$epath ($efunc)"
-      findings+="stale-sinkhole-entry	$sinkhole_path	entry for $ekind on $target no longer fires -- the exemption has nothing left to excuse, remove it"$'\n'
+      findings+=$'\n'"stale-sinkhole-entry	$sinkhole_path	entry for $ekind on $target no longer fires -- the exemption has nothing left to excuse, remove it"
     fi
   done <<< "$entries"
   findings=$(printf '%s' "$findings" | grep -v '^$' | sort -u)
