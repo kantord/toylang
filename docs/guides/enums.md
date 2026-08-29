@@ -1,12 +1,5 @@
 # Typing wire data with enums
 
-<!-- @comment Coordinator, replying to your note: correct -- variants are decided to be
-capitalized types (Ping, Quit, Text; draft.md, the variants-are-types revision), but that
-flip is not built yet, and this guide tracks the shipped implementation so its fragments
-keep compiling under the fence harness. The full doc migration is folded into the
-variant-types-flip build (board row, fable tier); this page flips the moment the language
-does. -->
-
 The task: stdin carries JSON whose shape varies by kind -- status strings, tagged messages,
 mixed events -- and the program must handle every kind, provably.
 

@@ -5,12 +5,12 @@ description: Run a grilling round through the docs site's annotations mode inste
 
 # Grilling through the annotations page
 
-**The standing convention comes first: the annotations sidebar is the maintainer's inbox.**
-Any open question the coordinator has about real content lives as an annotation ON the page
-it concerns (an HTML comment, invisible to readers, surfaced by the sidebar) -- not in chat,
-not only on a round page. Round pages in `docs/.grill/` hold what has no doc anchor: repo-
-internal decisions, multi-question sessions, free boxes. The maintainer opens annotations
-mode, sees everything pending, answers in place; the inbox delivers.
+**RETIRED (2026-08-29): page-anchored standing questions.** Committed `@review`/`@comment`
+HTML anchors on docs pages re-surfaced forever in the mail app as fresh-looking asks --
+settled decisions got re-asked until the maintainer was, in his words, actively angry. A
+question now lives in EXACTLY ONE place with state: a wizard/markdown round (ephemeral,
+deleted the moment its answers are captured -- deletion is part of capture, verified, not
+optional) or the decide queue on the board. Never commit a question into docs source.
 
 The terminal collapses pre-question prose to a summary, so questions there cannot carry real
 code. The annotations mode can: a round is a rendered markdown page, the user answers inline,

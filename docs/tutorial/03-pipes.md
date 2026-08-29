@@ -1,14 +1,5 @@
 # Pipes, select, and map
 
-<!-- @comment Coordinator: this page teaches the language's two calling conventions without
-naming them -- map and select take their data from the pipe's left while every other
-function takes arguments, and which convention a name uses is a fact readers must memorize.
-The oddities inventory flags it as the deepest unsettled surface question (it touches
-fusion, records, and the bare-default decision). I recommend a dedicated annotations round
-with full program listings rather than a quick answer; @fill below if you want it scheduled
-now, or edit this comment to disagree. -->
-<!-- @fill Schedule the calling-conventions round? (now / after current builds / not yet) -->
-
 `x | f` feeds the left side to the right, and inside the right side `.` is what arrived.
 The two workhorses that follow a pipe are `select`, which keeps the entries a predicate
 approves, and `map`, which transforms each entry:

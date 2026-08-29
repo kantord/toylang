@@ -1,11 +1,5 @@
 # Streams and stdin
 
-<!-- @comment Coordinator: your two sketches here (a pipeline-first function body starting
-with | from a destructured record parameter, and select(...)[]|.name composition) are
-captured together with the fn total { a, b }: Pair sketch from the programs page into one
-decide row: function-signature ergonomics. It will run as a wizard round with real programs
-once the wizard lands -- the same family as the calling-conventions question. -->
-
 Programs so far carried their data in the source. Real ones read stdin, and there are three
 ways in, at most one per program:
 

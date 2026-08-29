@@ -1,14 +1,5 @@
 # concat
 
-<!-- @comment Coordinator, resolved per your answer: concat stays as-is. Your call was that
-renaming becomes unnecessary once proper function overloading and Rust-style traits land --
-that direction now has its own decide row (overloading-and-traits-design), and this name is
-one of its first customers. Read and settled. -->
-
-<!-- @comment Coordinator, re your follow-up: the precedent survey (Rust and others --
-flatten naming, operator overloading, traits) is dispatched and will feed the
-overloading-and-traits grilling. -->
-
 `concat(vv)`, of type `Vec<Vec<T>> -> Vec<T>`: flattens one level of nesting, keeping order.
 
 ```toylang

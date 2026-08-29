@@ -1,12 +1,5 @@
 # Opt
 
-<!-- @review Coordinator, needs your ratification (issue #29): the grammar now accepts
-Opt<Opt<Int>>, but the untagged encoding collapses nesting -- Some(None) and None are both
-null, so the type claims a level no value can carry (the same conflation the matcher rules
-refuse). Options: refuse nested Opt in the grammar (conservative, matches the matcher
-reasoning); keep it legal and document the collapse as semantics; or tagged absence someday
-(huge, every backend). Edit this note with your ruling. -->
-
 `Opt<T>`: a `T` that may be absent. Every `Opt` a value carries came from an operation that
 cannot promise an entry -- a collapsing index, [`tail`](../builtins/tail.md), a projection
 through a ragged dimension.

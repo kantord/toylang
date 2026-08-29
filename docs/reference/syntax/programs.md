@@ -1,8 +1,5 @@
 # A program
 
-<!-- @comment Coordinator: captured -- your destructuring-parameter sketches join the
-function-signature-ergonomics decide row, to be grilled with real code (wizard round). -->
-
 A program is declarations followed by one expression, and the expression's value is what
 prints. There are no statements, no `main`, and no print call: output needs no side effect,
 because the program is the expression.
