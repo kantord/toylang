@@ -43,6 +43,20 @@ const TABS: { key: Tab; label: string; icon: typeof InboxIcon }[] = [
   { key: "board", label: "Board", icon: LayoutDashboard },
 ]
 
+/** Subfolders inside Inbox (gh:57): "action" is the default view and isn't a flow of its own --
+ *  it's every flow except `status`, the wash of acknowledgements and FYIs that never need a
+ *  reply. The other four line up with the flows an inbox item can actually carry (never
+ *  `reply`, which only annotation items in the Notes folder use). */
+type InboxCategory = "action" | "escalation" | "question" | "round" | "status"
+
+const INBOX_CATEGORIES: { key: InboxCategory; label: string }[] = [
+  { key: "action", label: "Needs response" },
+  { key: "escalation", label: FLOW.escalation.label },
+  { key: "question", label: FLOW.question.label },
+  { key: "round", label: "Grill rounds" },
+  { key: "status", label: FLOW.status.label },
+]
+
 /** A snippet of an item's underlying page or span, for the "preview with highlights" the issue
  *  asks for -- `anchor`, when present, is the exact quoted words to mark inside `text`. */
 interface Preview {
@@ -168,6 +182,7 @@ export function MailApp() {
   const [notes, setNotes] = useState<NoteRecord[]>([])
   const [composed, setComposed] = useState<ComposeRecord[]>([])
   const [tab, setTab] = useState<Tab>("inbox")
+  const [inboxCategory, setInboxCategory] = useState<InboxCategory>("action")
   const [focusIndex, setFocusIndex] = useState(0)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [composeOpen, setComposeOpen] = useState(false)
@@ -193,9 +208,27 @@ export function MailApp() {
     return [...fromAnnotations, ...fromGrill, ...fromComposed, ...fromNotes]
   }, [annotations, grillRounds, answeredKeys, notes, composed])
 
-  const visible = tab === "board" ? [] : items.filter((i) => i.folder === tab)
+  const inboxItems = items.filter((i) => i.folder === "inbox")
+  const folderItems = tab === "board" ? [] : items.filter((i) => i.folder === tab)
+  // The action-first inbox (gh:57): the default "Needs response" subfolder drops every `status`
+  // item -- acknowledgements and FYIs -- so the list is only things that actually want the
+  // maintainer to do something. The other subfolders are one flow each, `status` included, for
+  // when the maintainer wants to see the noise on purpose.
+  const visible =
+    tab === "inbox"
+      ? folderItems.filter((i) => (inboxCategory === "action" ? i.flow !== "status" : i.flow === inboxCategory))
+      : folderItems
+  const categoryCounts: Record<InboxCategory, number> = {
+    action: inboxItems.filter((i) => i.flow !== "status").length,
+    escalation: inboxItems.filter((i) => i.flow === "escalation").length,
+    question: inboxItems.filter((i) => i.flow === "question").length,
+    round: inboxItems.filter((i) => i.flow === "round").length,
+    status: inboxItems.filter((i) => i.flow === "status").length,
+  }
+  // The Inbox tab's own badge counts the same "needs response" set as its default view, not
+  // every item sitting in the folder -- otherwise the number itself would be status noise.
   const counts: Record<Folder, number> = {
-    inbox: items.filter((i) => i.folder === "inbox").length,
+    inbox: categoryCounts.action,
     notes: items.filter((i) => i.folder === "notes").length,
     archive: items.filter((i) => i.folder === "archive").length,
   }
@@ -206,8 +239,14 @@ export function MailApp() {
 
   const selectTab = (t: Tab) => {
     setTab(t)
+    setInboxCategory("action")
     setFocusIndex(0)
     setOpenKey(null)
+  }
+
+  const selectCategory = (c: InboxCategory) => {
+    setInboxCategory(c)
+    setFocusIndex(0)
   }
 
   // j/k and the arrow keys move a cursor through the current folder's list, matching a mail
@@ -256,19 +295,42 @@ export function MailApp() {
     <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[180px_minmax(0,1fr)]">
       <aside className="space-y-1">
         {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => selectTab(t.key)}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
-              tab === t.key ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60",
+          <div key={t.key}>
+            <button
+              type="button"
+              onClick={() => selectTab(t.key)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+                tab === t.key ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60",
+              )}
+            >
+              <t.icon className="size-4 shrink-0" />
+              <span className="flex-1 truncate">{t.label}</span>
+              {t.key !== "board" && <span className="text-xs text-muted-foreground">{counts[t.key]}</span>}
+            </button>
+            {t.key === "inbox" && tab === "inbox" && (
+              <div className="ml-6 space-y-0.5 border-l pl-2">
+                {INBOX_CATEGORIES.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => selectCategory(c.key)}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs",
+                      inboxCategory === c.key
+                        ? "bg-muted font-medium text-foreground"
+                        : c.key === "status"
+                          ? "text-muted-foreground/60 hover:bg-muted/60"
+                          : "text-muted-foreground hover:bg-muted/60",
+                    )}
+                  >
+                    <span className="flex-1 truncate">{c.label}</span>
+                    <span>{categoryCounts[c.key]}</span>
+                  </button>
+                ))}
+              </div>
             )}
-          >
-            <t.icon className="size-4 shrink-0" />
-            <span className="flex-1 truncate">{t.label}</span>
-            {t.key !== "board" && <span className="text-xs text-muted-foreground">{counts[t.key]}</span>}
-          </button>
+          </div>
         ))}
       </aside>
 
@@ -368,6 +430,9 @@ function MailRow({
   onClick: () => void
 }) {
   const flow = FLOW[item.flow]
+  // An acknowledgement is never a request for engagement (gh:57): it sinks visually the same
+  // way an already-read item does, whether or not it's actually been read yet.
+  const ackMuted = item.flow === "status"
   return (
     <button
       type="button"
@@ -375,6 +440,7 @@ function MailRow({
       className={cn(
         "grid w-full grid-cols-[120px_1fr_14px] items-start gap-3 border-b px-3 py-2 text-left last:border-b-0",
         open ? "bg-muted" : focused ? "bg-muted/50" : "hover:bg-muted/30",
+        ackMuted && "opacity-60",
       )}
     >
       <span className="truncate pt-0.5 text-xs font-semibold">{item.sender}</span>
@@ -392,7 +458,9 @@ function MailRow({
         )}
       </span>
       <span className="pt-1">
-        {item.folder === "inbox" && <span className="block size-1.5 rounded-full bg-primary" />}
+        {item.folder === "inbox" && (
+          <span className={cn("block size-1.5 rounded-full", ackMuted ? "bg-muted-foreground/50" : "bg-primary")} />
+        )}
       </span>
     </button>
   )
@@ -439,7 +507,7 @@ function ReadingPane({
           <Snippet preview={item.preview} />
         </div>
       )}
-      <MessageCard flow={item.flow} note={item.note} />
+      <MessageCard flow={item.flow} note={item.note} muted={item.flow === "status"} />
       {a && (
         <div className="flex gap-2 pt-2">
           <a href={`${annotateHref(a.page)}?b=${a.block}`}>
