@@ -431,7 +431,7 @@
   title: Extract the two self-contained checker passes; the core becomes the sinkhole's first exemption
   kind: build
   needs: [check-rs-split-decision, type-flow-rework]
-  status: todo
+  status: delegated
 
 - id: quality-hooks-introduction
   issue: gh:12
