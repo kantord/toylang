@@ -10,12 +10,13 @@ permissions:
   contents: read
 
 jobs:
-  # The suite exercises every backend it finds a toolchain for. LLVM 22 stays uninstalled
-  # here for the same reason pages.yml gives: the native backend's tests state their support
-  # honestly ("where it compiles"), and an hour of runner setup buys no signal the other six
-  # backends don't already give. If that trade turns out wrong, this is the job to grow.
+  # LLVM 22 is not optional here: llvm-sys is a compile-time dependency of the workspace, so
+  # without the headers the build fails before a single test runs (first CI run proved it).
+  # apt.llvm.org carries the matching packages; the "where it compiles" grace is runtime-only.
   test:
     runs-on: ubuntu-latest
+    env:
+      LLVM_SYS_221_PREFIX: /usr/lib/llvm-22
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -26,7 +27,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: sudo apt-get update && sudo apt-get install -y lua5.4 python3 jq
+      - run: sudo apt-get update && sudo apt-get install -y lua5.4 python3 jq libzstd-dev
+      - run: |
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 22
+          sudo apt-get install -y libpolly-22-dev
       - uses: Swatinem/rust-cache@v2
       - run: cargo nextest run
 
