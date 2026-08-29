@@ -107,13 +107,21 @@ fn an_input_ahead_of_every_typed_use_is_still_refused() {
     ));
 }
 
-/// Field order is part of a record type, so a shuffled literal is not checked field-by-field;
-/// it falls back to synthesis and the mismatch keeps the reordered-fields hint.
+/// A shuffled literal is one type with the fields spelled in order (kantord/toylang#60), so it
+/// checks against a differently-ordered return type -- and comes out re-fielded to the
+/// signature's declared order, which is what a caller reading the value relies on.
 #[test]
-fn reordered_fields_still_mismatch_with_the_hint() {
-    insta::assert_snapshot!(err(
-        "fn f(x: Int) -> {a: Int, b: Str} = x | {b: \"x\", a: 1}\n\nf(1)"
-    ));
+fn reordered_fields_check_against_the_return_type() {
+    let program =
+        toylang::compile("fn f(x: Int) -> {a: Int, b: Str} = x | {b: \"x\", a: 1}\n\nf(1)")
+            .unwrap();
+    let Type::Record(fields) = &program.funcs[0].body.ty else {
+        panic!("expected a record type");
+    };
+    assert_eq!(
+        fields,
+        &vec![("a".to_string(), Type::Int), ("b".to_string(), Type::Str),]
+    );
 }
 
 #[test]

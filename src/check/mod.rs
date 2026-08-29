@@ -135,7 +135,8 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         // body that synthesises instead is compared below, where the error can name the
         // function rather than just the two types.
         let body = match expect_inner(&ctx, &def.body, &sig.ret)? {
-            Expected::Checked(body) | Expected::Synthesised(body) => body,
+            Expected::Checked(body) => body,
+            Expected::Synthesised(body) => conform(&ctx, body, &sig.ret),
         };
         // A signature may spell Stream now, which un-does the trick the Lines design leaned on
         // (a return annotation could never match a body holding a stream), so what that trick
@@ -163,11 +164,8 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             return Err(Error::new(
                 def.body.span(),
                 format!(
-                    "`{}` declares it returns {}, but its body is {}{}",
-                    def.name,
-                    sig.ret,
-                    body.ty,
-                    reordered_fields_hint(&sig.ret, &body.ty)
+                    "`{}` declares it returns {}, but its body is {}",
+                    def.name, sig.ret, body.ty
                 ),
             ));
         }
@@ -1590,16 +1588,79 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
             if &found.ty != want {
                 return Err(Error::new(
                     expr.span(),
-                    format!(
-                        "expected {want}, found {}{}",
-                        found.ty,
-                        reordered_fields_hint(want, &found.ty)
-                    ),
+                    format!("expected {want}, found {}", found.ty),
                 ));
             }
-            Ok(found)
+            Ok(reorder_record(ctx, found, want))
         }
     }
+}
+
+/// `found`, rebuilt to `want`'s field order when the two already agree (kantord/toylang#60) --
+/// a no-op when they don't, leaving a real mismatch for the caller's own comparison to catch
+/// and name.
+fn conform(ctx: &Ctx, found: Tir, want: &Type) -> Tir {
+    if &found.ty == want {
+        reorder_record(ctx, found, want)
+    } else {
+        found
+    }
+}
+
+/// Whether `a` and `b` are not just the same type (kantord/toylang#60: a record's fields are a
+/// set, not a sequence) but physically identical -- same fields, same order, all the way into
+/// any field that is itself a record. Every non-nominal backend reads a record by name and does
+/// not care; the native backend and the columnar Vec layout read it by position, off whichever
+/// type a value is currently checked against, so a value crossing into a differently-ordered
+/// but equal position needs rebuilding before those readers see it. This is what decides
+/// whether that rebuild is needed.
+fn same_field_order(a: &Type, b: &Type) -> bool {
+    match (a, b) {
+        (Type::Record(x), Type::Record(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .zip(y)
+                    .all(|((n1, t1), (n2, t2))| n1 == n2 && same_field_order(t1, t2))
+        }
+        _ => true,
+    }
+}
+
+/// Rebuilds `found` -- already known equal to `want` -- so it is physically laid out in
+/// `want`'s field order: a bound local read back out field by field into a fresh literal in
+/// that order, recursing into any field that is itself a differently-ordered record. Does not
+/// reach inside a Vec, Opt, or Stream, so an element whose own record fields are ordered
+/// differently from its container's declared element type is a known gap (kantord/toylang#64).
+fn reorder_record(ctx: &Ctx, found: Tir, want: &Type) -> Tir {
+    if same_field_order(&found.ty, want) {
+        return found;
+    }
+    let Type::Record(want_fields) = want else {
+        return found;
+    };
+    let local = ctx.fresh();
+    let found_ty = found.ty.clone();
+    let fields = want_fields
+        .iter()
+        .map(|(name, field_ty)| {
+            let access = Tir::new(
+                field_ty.clone(),
+                Kind::Field {
+                    base: Box::new(Tir::new(found_ty.clone(), Kind::Local(local))),
+                    name: name.clone(),
+                },
+            );
+            (name.clone(), reorder_record(ctx, access, field_ty))
+        })
+        .collect();
+    Tir::new(
+        want.clone(),
+        Kind::Bind {
+            local,
+            value: Box::new(found),
+            body: Box::new(Tir::new(want.clone(), Kind::RecordLit { fields })),
+        },
+    )
 }
 
 /// `expect`, minus the final comparison. Each arm here is a form whose type can come from its
@@ -1622,10 +1683,7 @@ fn input_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
         Some(prev) if prev != want => {
             return Err(Error::new(
                 span,
-                format!(
-                    "`input` is used as {prev} here and as {want} elsewhere{}",
-                    reordered_fields_hint(prev, want)
-                ),
+                format!("`input` is used as {prev} here and as {want} elsewhere"),
             ));
         }
         Some(_) => {}
@@ -1755,20 +1813,22 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     }
 
     // A record literal checked against a record type pushes each field's expected type into
-    // its value -- but only when the written fields are the declared fields, in order: field
-    // order is part of a record type, so a shuffled or mis-fielded literal falls back to
-    // synthesis, where the existing errors (the reordered-fields hint included) say what is
-    // wrong.
+    // its value. Matching is by name, not position (kantord/toylang#60: {a: Int, b: Int} and
+    // {b: Int, a: Int} are one type), so a mis-fielded literal -- wrong names, wrong count --
+    // falls back to synthesis, where the existing errors say what is wrong. The built fields
+    // are written in `want`'s order regardless of how the literal spelled them: declaration
+    // order is what the printer and the columnar layouts key on, and both read it off the
+    // type, not the source text.
     if let Expr::RecordLit { fields, .. } = expr
         && let Type::Record(want_fields) = want
         && fields.len() == want_fields.len()
-        && fields
+        && want_fields
             .iter()
-            .zip(want_fields)
-            .all(|((name, _, _), (wanted, _))| name == wanted)
+            .all(|(wanted, _)| fields.iter().any(|(name, _, _)| name == wanted))
     {
         let mut built = Vec::new();
-        for ((name, _, value), (_, field_ty)) in fields.iter().zip(want_fields) {
+        for (wanted, field_ty) in want_fields {
+            let (name, _, value) = fields.iter().find(|(name, _, _)| name == wanted).unwrap();
             let field = expect(ctx, value, field_ty).map_err(|e| {
                 stream_refusal(ctx, value, || {
                     format!("`{name}` cannot hold a stream, which has nothing to store")
@@ -1815,18 +1875,4 @@ fn stream_refusal(ctx: &Ctx, value: &Expr, msg: impl FnOnce() -> String) -> Opti
         .ty
         .contains_stream()
         .then(|| Error::new(value.span(), msg()))
-}
-
-/// The hint for the one mismatch that looks self-contradictory: both sides spell the same
-/// fields, so "expected X, found X-with-the-fields-shuffled" needs the reader told that order
-/// is the difference. Fires only when the field sets (names and types both) genuinely match.
-fn reordered_fields_hint(a: &Type, b: &Type) -> &'static str {
-    let (Type::Record(x), Type::Record(y)) = (a, b) else {
-        return "";
-    };
-    if x.len() == y.len() && x.iter().all(|f| y.contains(f)) {
-        "; the fields agree, but field order is part of a record type"
-    } else {
-        ""
-    }
 }

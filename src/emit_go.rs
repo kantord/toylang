@@ -562,11 +562,10 @@ impl Emitter {
             // Fusion is what will remove this materialization.
             Type::Stream(e) => format!("[]{}", self.go_type(e)),
             Type::Record(_) => {
-                let key = ty.to_string();
                 let i = self
                     .records
                     .iter()
-                    .position(|r| r.to_string() == key)
+                    .position(|r| r == ty)
                     .expect("every record reachable from the program was collected");
                 format!("tlRec{i}")
             }

@@ -661,10 +661,9 @@ impl Emitter {
     }
 
     fn record_index(&self, ty: &Type) -> usize {
-        let key = ty.to_string();
         self.records
             .iter()
-            .position(|r| r.to_string() == key)
+            .position(|r| r == ty)
             .expect("every record reachable from the program was collected")
     }
 

@@ -2,7 +2,7 @@
 source: tests/backend_rust.rs
 expression: "format!(\"compiles (rust) ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles (rust) (134):
+compiles (rust) (135):
 adults
 arith_add
 arith_div_trunc
@@ -98,6 +98,7 @@ range_empty
 range_index
 range_negative
 record_body_after_definition
+record_field_order_is_not_type_identity
 record_in_a_record
 record_in_a_record_two_deep
 record_literal

@@ -2239,6 +2239,25 @@ downstream diffing actually expect. Migration: the printers and the native/Go la
 column order was sorted position) move to declaration position, and the record-printing
 corpus expectations re-pin.
 
+## DECIDED: record field order is not type identity
+
+kantord/toylang#60, ratified in the #24 wizard round. `{a: Int, b: Int}` and `{b: Int, a: Int}`
+are one type: the checker compares a record's fields as a set. This amends the determinism claim
+above -- "every value of a type prints identically" now means every value ever checked against
+the same declared spelling; two literals of the same type that never meet at a checked position
+(a function argument, a return type, a Vec element) can still print in their own, different
+declared orders, since nothing forced them to agree. Declared order remains real: it is still
+what a value prints in and what the native/Go columnar layouts key on, and it is meant to become
+a runtime-queryable accessor (a field_names-style builtin, name and shape not yet decided --
+kantord/toylang#63) for serialization and friends, not implemented by this decision.
+
+Implementation: whichever type a value is checked against becomes the order it is rebuilt in
+(`check::reorder_record`), so a value crossing a call, a return, a branch, or a Vec literal's
+own element always ends up laid out like its declared position expects. The gap this leaves --
+a Vec, Opt, or Stream whose element arrives already built with a different order than the
+container's declared element type -- needs an actual per-element transform, not a local
+rebuild, and is filed separately (kantord/toylang#64).
+
 ## DECIDED: Stream is the effect layer, typed
 
 This settles [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity), and not by

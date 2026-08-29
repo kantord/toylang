@@ -303,7 +303,7 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
 
 - id: nullary-functions
   issue: gh:61
@@ -321,6 +321,20 @@
   soft: [matcher-totality-and-alt-design]
   model: fable
   prio: 2
+  status: todo
+
+- id: field-names-accessor
+  issue: gh:63
+  title: Runtime field-order metadata -- the field_names-style accessor (better name wanted)
+  kind: build
+  needs: [record-order-relaxation]
+  status: todo
+
+- id: container-boundary-reorder
+  issue: gh:64
+  title: Record reorder reconciliation through Vec/Opt/Stream element boundaries
+  kind: build
+  needs: [record-order-relaxation]
   status: todo
 
 - id: variant-types-flip

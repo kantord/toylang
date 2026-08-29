@@ -511,14 +511,28 @@ impl<'ctx> Emitter<'ctx> {
             // layout appears; writing the whole record into column 0 is the bug 363710f fixed
             // for field access, here at the other site that builds a Vec of records: a literal
             // never exercised it, since nothing in the corpus wrote `[{...}, {...}]` directly.
+            //
+            // `elem` is the Vec's own declared order (the first item's), but an item is only
+            // guaranteed to share its field set (kantord/toylang#60), not its spelling: `mk()`
+            // may hand back `{b, a}` where the Vec is `{a, b}`. So each column is read out of
+            // `value` by looking up its field's name in the item's own type, not by assuming
+            // column `col` means the same thing on both sides.
             if let Type::Record(fields) = elem {
-                for col in 0..fields.len() {
-                    let c = i64t.const_int(col as u64, false);
-                    let got = self.call_rt(self.rt.rec_get, &[value, c.into()], "field")?;
+                let Type::Record(item_fields) = &item.ty else {
+                    return Err(format!("a Vec<{elem}> element that is not a record"));
+                };
+                for (col, (name, _)) in fields.iter().enumerate() {
+                    let src = item_fields
+                        .iter()
+                        .position(|(n, _)| n == name)
+                        .ok_or_else(|| format!("no field `{name}` on {}", item.ty))?;
+                    let src = i64t.const_int(src as u64, false);
+                    let got = self.call_rt(self.rt.rec_get, &[value, src.into()], "field")?;
+                    let dst = i64t.const_int(col as u64, false);
                     self.builder
                         .build_call(
                             self.rt.vec_set,
-                            &[vec.into(), c.into(), i.into(), got.into()],
+                            &[vec.into(), dst.into(), i.into(), got.into()],
                             "",
                         )
                         .map_err(|e| e.to_string())?;
