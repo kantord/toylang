@@ -105,16 +105,22 @@ inline_test_lines() {
   ' "$1"
 }
 
-for file in "${touched[@]}"; do
-  [ -f "$file" ] || continue
-  lines=$(wc -l < "$file" | tr -d ' ')
-
-  case "$file" in
-    *.rs) tests=$(inline_test_lines "$file") ;;
+# Body/test line split for one file, per inline_test_lines above. Shared by the touched-file
+# loop and file_too_long_hit's whole-tree re-check below, so the budget math lives in one place.
+line_counts() {
+  local path=$1 lines tests
+  lines=$(wc -l < "$path" | tr -d ' ')
+  case "$path" in
+    *.rs) tests=$(inline_test_lines "$path") ;;
     *) tests=0 ;;
   esac
   : "${tests:=0}"
-  body=$((lines - tests))
+  printf '%s\t%s\n' "$((lines - tests))" "$tests"
+}
+
+for file in "${touched[@]}"; do
+  [ -f "$file" ] || continue
+  IFS=$'\t' read -r body tests < <(line_counts "$file")
 
   # Was it already over before this branch? Debt you inherited is reported
   # differently from debt you just created -- see the lesson.
@@ -206,7 +212,9 @@ fi
 # (.claude/checks/sinkhole.toml) is the only sanctioned home for a justified exemption. Anchored
 # at line start (after whitespace) so this does not fire on emit_rs.rs's two string literals,
 # which emit these tokens into *generated* Rust as `format!` arguments and never start a line
-# with them themselves.
+# with them themselves. Also matches an allow riding in on cfg_attr (`#[cfg_attr(..., allow(...))]`),
+# which is a bare allow wearing a condition, not an exemption.
+bare_allow_pattern='^[[:space:]]*#!?\[(allow\(|cfg_attr\(.*[,( ]allow\()'
 for file in "${touched[@]}"; do
   case "$file" in
     *.rs) ;;
@@ -216,7 +224,7 @@ for file in "${touched[@]}"; do
   while IFS=: read -r lineno rest; do
     [ -n "${lineno:-}" ] || continue
     findings+="bare-allow	$file	line $lineno: $(printf '%s' "$rest" | sed -E 's/^[[:space:]]+//')"$'\n'
-  done < <(grep -nE '^[[:space:]]*#!?\[allow' "$file" 2>/dev/null)
+  done < <(grep -nE "$bare_allow_pattern" "$file" 2>/dev/null)
 done
 
 # `--all-targets` compiles lib and test targets separately, so the same
@@ -239,26 +247,29 @@ for e in data.get("exemption", []):
 PY
   )
 
-  # Whole-tree check runs for the two per-file/per-function kinds the sinkhole excuses today.
-  # A too-many-lines entry is matched by function name, read off the source line clippy points
-  # at (the span lands exactly on the `fn` line for this lint, not a wrapped signature line).
+  # Whole-tree re-check, one function per entry kind. file-too-long re-derives via the same
+  # line_counts helper the touched-file loop uses. bare-allow re-runs the same pattern the
+  # finding loop above matched with, straight against the path -- no touched-file restriction.
+  # Everything else (too-many-lines and any bare clippy lint name) is matched against
+  # clippy_workspace by kind and path, scoped to a function when the entry names one; a
+  # too-many-lines entry is matched by function name, read off the source line clippy points at
+  # (the span lands exactly on the `fn` line for this lint, not a wrapped signature line).
   file_too_long_hit() {
-    local path=$1 lines body tests
+    local path=$1 body tests
     [ -f "$path" ] || return 1
-    lines=$(wc -l < "$path" | tr -d ' ')
-    case "$path" in
-      *.rs) tests=$(inline_test_lines "$path") ;;
-      *) tests=0 ;;
-    esac
-    : "${tests:=0}"
-    body=$((lines - tests))
+    IFS=$'\t' read -r body tests < <(line_counts "$path")
     [ "$body" -gt "$limit" ] || [ "$tests" -gt "$limit" ]
   }
-  too_many_lines_hit() {
-    local path=$1 func=$2
+  bare_allow_hit() {
+    local path=$1
+    [ -f "$path" ] || return 1
+    grep -qE "$bare_allow_pattern" "$path" 2>/dev/null
+  }
+  clippy_lint_hit() {
+    local kind=$1 path=$2 func=$3
     [ "$cargo_ran" -eq 1 ] || return 0 # cargo unavailable: cannot re-check, do not evict on faith
-    printf '%s\n' "$clippy_workspace" | awk -F'\t' -v p="$path" -v fn="$func" \
-      '$1 == "too-many-lines" && $2 == p && $3 == fn { found=1 } END { exit !found }'
+    printf '%s\n' "$clippy_workspace" | awk -F'\t' -v k="$kind" -v p="$path" -v fn="$func" \
+      '$1 == k && $2 == p && (fn == "" || $3 == fn) { found=1 } END { exit !found }'
   }
 
   remaining=""
@@ -287,13 +298,13 @@ PY
     live=0
     case "$ekind" in
       file-too-long) file_too_long_hit "$epath" && live=1 ;;
-      too-many-lines) too_many_lines_hit "$epath" "$efunc" && live=1 ;;
-      *) live=1 ;; # no independent re-check for this kind yet -- do not evict on faith
+      bare-allow) bare_allow_hit "$epath" && live=1 ;;
+      *) clippy_lint_hit "$ekind" "$epath" "$efunc" && live=1 ;;
     esac
     if [ "$live" -eq 0 ]; then
       target="$epath"
       [ -n "$efunc" ] && target="$epath ($efunc)"
-      findings+="stale-sinkhole-entry	$sinkhole_path	entry for $ekind on $target no longer fires -- the exemption has nothing left to excuse, remove it"$'\n'
+      findings+=$'\n'"stale-sinkhole-entry	$sinkhole_path	entry for $ekind on $target no longer fires -- the exemption has nothing left to excuse, remove it"
     fi
   done <<< "$entries"
   findings=$(printf '%s' "$findings" | grep -v '^$' | sort -u)

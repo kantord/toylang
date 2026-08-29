@@ -459,7 +459,7 @@
   title: Sinkhole hardening -- re-check every kind, catch cfg_attr allows, dedup the budget math
   kind: build
   needs: [sinkhole-machinery]
-  status: delegated
+  status: done
 
 - id: okf-invalid-lesson
   issue: gh:42
