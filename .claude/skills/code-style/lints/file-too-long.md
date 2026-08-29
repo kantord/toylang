@@ -60,7 +60,7 @@ inherited-debt reasoning does not apply here -- this is the decision, not a
 detour from one. `plans/checker-structure.md`'s survey recommended
 extracting exactly two passes that never touch the fused `synth`/`expect`
 engine (type resolution, and stream linearity plus dead-code pruning) into
-`check/types.rs` and `check/linearity.rs`, roughly 470 of `check.rs`'s 2380
+`check/types.rs` and `check/linearity.rs`, 548 of `check.rs`'s 2380
 lines, while explicitly declining to split the remaining fused core: it has
 no per-area seam the way the backends do, and the survey names it as the
 sinkhole mechanism's first exemption (`sinkhole-machinery`, issue #54,
