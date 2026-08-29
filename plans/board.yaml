@@ -250,6 +250,13 @@
   needs: []
   status: done
 
+- id: nullary-functions-decision
+  issue: gh:53
+  title: Decide nullary functions vs a discard convention -- the unused-param rule exposed the one-param grammar
+  kind: decide
+  needs: [unused-variables-error]
+  status: todo
+
 - id: partial-chain-expectation-decision
   issue: gh:48
   title: Decide whether partial guard chains peel Opt expectations into arms (worker's conservative cut kept messages intact)
@@ -434,9 +441,38 @@
   status: done
 
 - id: sinkhole-machinery
-  title: Adopt the sinkhole rule once real exemption pressure exists
+  issue: gh:54
+  title: Adopt the sinkhole rule -- the ratified check.rs exemption is the pressure
   kind: build
   needs: [quality-hooks-introduction]
+  status: delegated
+
+- id: okf-invalid-lesson
+  issue: gh:42
+  title: Settle the okf-invalid SKILL.md finding -- check scope or OKF adoption for skills
+  kind: build
+  needs: []
+  status: todo
+
+- id: wizard-ui-polish
+  issue: gh:43
+  title: Wizard UI polish -- previews get real room; unify the color-block renderer
+  kind: build
+  needs: [mail-app-v2]
+  status: todo
+
+- id: wizard-submit-resilience
+  issue: gh:46
+  title: Wizard submit survives a dead dev server -- draft persistence, retry, honest failure
+  kind: build
+  needs: [static-site-split]
+  status: todo
+
+- id: mail-app-cleanups
+  issue: gh:49
+  title: Mail app small cleanups from the landing review
+  kind: build
+  needs: [mail-app-v2]
   status: todo
 
 - id: docs-site-design

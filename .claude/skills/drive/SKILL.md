@@ -30,6 +30,12 @@ uncommitted half-done work gets a continuation dispatch into the same env whose 
 read ALL issue comments and assess the existing diff. File-write mtimes and commit times are
 the truth; transcript timestamps lie.
 
+Two bookkeeping rules the audits keep re-finding: a follow-up issue filed during a landing
+gets its board row IN THE SAME COMMIT (an issue without a row is invisible to this loop --
+four accumulated once); and an inbox record dismissed as stale gets that dismissal NAMED in
+the tick's report (a silent no-op clear is the one path where maintainer input can vanish
+without a trace).
+
 `plans/board.yaml` is the single source of truth: an ordered list where position is priority.
 Each entry: `id`, `title`, `kind: build | decide`, `needs: [ids]`, `status: todo | delegated |
 done`, optionally `issue: gh:N`. The maintainer's role is decide-tasks and goal-setting;
