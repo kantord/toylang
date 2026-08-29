@@ -20,8 +20,10 @@ export function TaskCard({ task, className }: { task: Task; className?: string }
       className={cn(
         "flex flex-col gap-1.5 rounded-lg border p-3 text-left transition-colors",
         STATUS_STYLE[task.status],
-        task.blocked && "border-destructive/50 ring-1 ring-destructive/40",
-        task.unblocked && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+        // Blocked is the PRIMARY signal (issue #33's wording), so it carries the heavier
+        // ring; next-up stays visible but quieter.
+        task.blocked && "border-destructive ring-2 ring-destructive ring-offset-2 ring-offset-background",
+        task.unblocked && "ring-1 ring-primary/70",
         task.issue && "hover:border-foreground/40",
         className,
       )}

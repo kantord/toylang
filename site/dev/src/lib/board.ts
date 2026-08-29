@@ -15,7 +15,7 @@ export interface Task {
   kind: Kind
   needs: string[]
   status: Status
-  /** True for a `todo` task whose needs are all `done` -- the graph's unblocked frontier. */
+  /** True for a `todo` task whose needs are all `done` -- the unblocked frontier, shown by both views. */
   unblocked: boolean
   /** True for a `todo` task with at least one need not yet `done` -- the graph's primary
    *  highlight (kantord/toylang#33). Mutually exclusive with `unblocked`; both are false for
