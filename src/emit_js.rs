@@ -133,38 +133,24 @@ pub fn emit(program: &Program) -> String {
     let mut out = String::new();
 
     let used = used_helpers(program);
-    if used.select {
-        out.push_str(SELECT_HELPER);
-    }
-    if used.field {
-        out.push_str(FIELD_HELPER);
-    }
-    if matches!(program.body.ty, Type::Vec(_)) || contains_vec(&program.body.ty) || used.jsonlines {
-        out.push_str(JOIN_HELPER);
-    }
-    if used.index {
-        out.push_str(OPT_HELPER);
-    }
-    if used.tail {
-        out.push_str(TAIL_HELPER);
-    }
-    if used.unwrap {
-        out.push_str(UNWRAP_HELPER);
-    }
-    if used.arith {
-        out.push_str(ARITH_HELPER);
-    }
-    if used.collect {
-        out.push_str(COLLECT_HELPER);
-    }
-    if used.jsonlines {
-        out.push_str(JSONLINES_HELPER);
-    }
-    if used.str_cmp {
-        out.push_str(STR_CMP_HELPER);
-    }
-    if used.chars {
-        out.push_str(CHARS_HELPER);
+    let join =
+        matches!(program.body.ty, Type::Vec(_)) || contains_vec(&program.body.ty) || used.jsonlines;
+    for (on, text) in [
+        (used.select, SELECT_HELPER),
+        (used.field, FIELD_HELPER),
+        (join, JOIN_HELPER),
+        (used.index, OPT_HELPER),
+        (used.tail, TAIL_HELPER),
+        (used.unwrap, UNWRAP_HELPER),
+        (used.arith, ARITH_HELPER),
+        (used.collect, COLLECT_HELPER),
+        (used.jsonlines, JSONLINES_HELPER),
+        (used.str_cmp, STR_CMP_HELPER),
+        (used.chars, CHARS_HELPER),
+    ] {
+        if on {
+            out.push_str(text);
+        }
     }
 
     // Function declarations hoist, so a call to one defined further down resolves without the
