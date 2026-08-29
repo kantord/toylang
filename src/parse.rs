@@ -488,7 +488,7 @@ impl<'i> Cursor<'i> {
         }
     }
 
-    /// `fn name(param: Type) -> Type = body`
+    /// `fn name(param: Type) -> Type = body` or `fn name() -> Type = body`.
     ///
     /// Both annotations are required by the grammar rather than by the checker, which is what
     /// makes the message point at the missing annotation instead of at an inference failure.
@@ -497,20 +497,25 @@ impl<'i> Cursor<'i> {
         let (name, _) = self.eat_ident("a name")?;
         self.eat(Tok::LParen)?;
 
-        let (param_name, param_span) = self.eat_ident("a name")?;
-        let (colon, _) = self.peek()?;
-        if colon != Tok::Colon {
-            return Err(Error::new(
-                param_span,
-                format!("parameter `{param_name}` needs a type annotation"),
-            ));
-        }
-        self.advance()?;
-        let param_ty = self.type_expr()?;
-        let param = Param {
-            span: param_span.to(param_ty.span()),
-            name: param_name,
-            ty: param_ty,
+        let (next, _) = self.peek()?;
+        let param = if next == Tok::RParen {
+            None
+        } else {
+            let (param_name, param_span) = self.eat_ident("a name")?;
+            let (colon, _) = self.peek()?;
+            if colon != Tok::Colon {
+                return Err(Error::new(
+                    param_span,
+                    format!("parameter `{param_name}` needs a type annotation"),
+                ));
+            }
+            self.advance()?;
+            let param_ty = self.type_expr()?;
+            Some(Param {
+                span: param_span.to(param_ty.span()),
+                name: param_name,
+                ty: param_ty,
+            })
         };
 
         let close = self.eat(Tok::RParen)?;
@@ -1039,8 +1044,23 @@ impl<'i> Cursor<'i> {
         if !argument_starts || !self.takes_argument(&name, span, next_span) {
             return Ok(Expr::Var { name, span });
         }
-        let (arg, close) = if next == Tok::LParen || next == Tok::LBrace {
-            self.argument()?
+        // `name()` is a nullary call, the one place a call's argument is optional: the empty
+        // parens are checked for before falling into the ordinary single-expression parse, so
+        // every other argument form (parenthesized, record, or bare) still names exactly one.
+        let (arg, close) = if next == Tok::LParen {
+            self.advance()?;
+            let (after, _) = self.peek()?;
+            if after == Tok::RParen {
+                let close = self.advance()?.1;
+                (None, close)
+            } else {
+                let inner = self.expr(0)?;
+                let close = self.eat(Tok::RParen)?;
+                (Some(inner), close)
+            }
+        } else if next == Tok::LBrace {
+            let (lit, close) = self.argument()?;
+            (Some(lit), close)
         } else {
             // A bare argument is a postfix chain, not an operand: an infix operator after it
             // belongs to the enclosing expression, so `f x + y` is `f(x) + y`. Chaining is
@@ -1048,12 +1068,12 @@ impl<'i> Cursor<'i> {
             // first-class functions, the only reading that could ever typecheck.
             let arg = self.postfix()?;
             let end = arg.span();
-            (arg, end)
+            (Some(arg), end)
         };
         Ok(Expr::Call {
             func: name,
             func_span: span,
-            arg: Box::new(arg),
+            arg: arg.map(Box::new),
             span: span.to(close),
         })
     }

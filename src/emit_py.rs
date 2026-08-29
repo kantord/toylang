@@ -138,7 +138,7 @@ pub fn emit(program: &Program) -> String {
         decls.push_str(&format!(
             "def {}({}):\n    return {}\n\n\n",
             user(&f.name),
-            user(&f.param),
+            f.param.as_deref().map_or_else(String::new, user),
             expr(&f.body)
         ));
     }
@@ -371,7 +371,11 @@ fn expr(t: &Tir) -> String {
             let parts: Vec<String> = items.iter().map(expr).collect();
             format!("[{}]", parts.join(", "))
         }
-        Kind::Call { func, arg } => format!("{}({})", user(func), expr(arg)),
+        Kind::Call { func, arg } => format!(
+            "{}({})",
+            user(func),
+            arg.as_deref().map_or_else(String::new, expr)
+        ),
         Kind::Concat(l, r) => format!("({} + {})", expr(l), expr(r)),
         Kind::Arith { op, lhs, rhs } => match op {
             BinOp::Div => format!("tl_div({}, {})", expr(lhs), expr(rhs)),

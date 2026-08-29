@@ -1,0 +1,10 @@
+# A zero-parameter function (issue #61): `fn name() -> T = body`, called `name()`.
+program: |
+  fn greeting() -> Str = "hello"
+
+  greeting()
+
+output: |
+  hello
+
+node_types: [application, str]

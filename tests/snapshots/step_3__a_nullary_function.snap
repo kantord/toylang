@@ -1,0 +1,6 @@
+---
+source: tests/step_3.rs
+assertion_line: 126
+expression: "toylang::run(src).unwrap()"
+---
+hello

@@ -47,7 +47,8 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
         Kind::EnumLit { payload, .. } => payload
             .as_deref()
             .map_or(Ok(0), |p| stream_uses(p, binding)),
-        Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => stream_uses(arg, binding),
+        Kind::Call { arg, .. } => arg.as_deref().map_or(Ok(0), |a| stream_uses(a, binding)),
+        Kind::Builtin { arg, .. } => stream_uses(arg, binding),
         Kind::Concat(l, r) => both(l, r),
         Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => both(lhs, rhs),
         Kind::Bind { value, body, .. } => both(value, body),
@@ -166,7 +167,8 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
         Kind::VecLit(items) => items.iter().any(|i| any_node(i, pred)),
         Kind::RecordLit { fields } => fields.iter().any(|(_, v)| any_node(v, pred)),
         Kind::EnumLit { payload, .. } => payload.as_deref().is_some_and(|p| any_node(p, pred)),
-        Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => any_node(arg, pred),
+        Kind::Call { arg, .. } => arg.as_deref().is_some_and(|a| any_node(a, pred)),
+        Kind::Builtin { arg, .. } => any_node(arg, pred),
         Kind::Concat(l, r) => any_node(l, pred) || any_node(r, pred),
         Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => {
             any_node(lhs, pred) || any_node(rhs, pred)
@@ -235,7 +237,9 @@ pub(super) fn prune_unreachable(funcs: Vec<tir::Func>, body: &Tir) -> Vec<tir::F
 fn calls_in(t: &Tir, out: &mut Vec<String>) {
     if let Kind::Call { func, arg } = &t.kind {
         out.push(func.clone());
-        calls_in(arg, out);
+        if let Some(arg) = arg {
+            calls_in(arg, out);
+        }
         return;
     }
     match &t.kind {

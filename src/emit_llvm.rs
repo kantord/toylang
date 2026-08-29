@@ -17,7 +17,9 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType};
-use inkwell::values::{BasicValueEnum, FunctionValue, IntValue, PointerValue};
+use inkwell::values::{
+    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue,
+};
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 
 use crate::ast::BinOp;
@@ -355,9 +357,11 @@ impl<'ctx> Emitter<'ctx> {
     }
 
     fn declare(&mut self, func: &Func) -> Result<(), String> {
-        let param = self.llvm_type(&func.param_ty)?;
         let ret = self.llvm_type(&func.body.ty)?;
-        let args: [BasicMetadataTypeEnum; 1] = [param.into()];
+        let args: Vec<BasicMetadataTypeEnum> = match &func.param_ty {
+            Some(param_ty) => vec![self.llvm_type(param_ty)?.into()],
+            None => Vec::new(),
+        };
         let sig = match ret {
             BasicTypeEnum::IntType(t) => t.fn_type(&args, false),
             BasicTypeEnum::PointerType(t) => t.fn_type(&args, false),
@@ -379,8 +383,10 @@ impl<'ctx> Emitter<'ctx> {
 
         self.params.clear();
         self.locals.clear();
-        let arg = value.get_nth_param(0).expect("unary");
-        self.params.insert(func.param.clone(), arg);
+        if let Some(param) = &func.param {
+            let arg = value.get_nth_param(0).expect("declared with one param");
+            self.params.insert(param.clone(), arg);
+        }
 
         let body = self.expr(&func.body)?;
         self.builder
@@ -1129,6 +1135,17 @@ impl<'ctx> Emitter<'ctx> {
         Ok(())
     }
 
+    /// A call's argument list: one value, or none for a nullary function.
+    fn call_args(
+        &mut self,
+        arg: &Option<Box<Tir>>,
+    ) -> Result<Vec<BasicMetadataValueEnum<'ctx>>, String> {
+        match arg {
+            Some(arg) => Ok(vec![self.expr(arg)?.into()]),
+            None => Ok(Vec::new()),
+        }
+    }
+
     fn expr(&mut self, t: &Tir) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match &t.kind {
             Kind::Str(text) => self.string_const(text).into(),
@@ -1157,13 +1174,13 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Kind::Call { func, arg } => {
-                let arg = self.expr(arg)?;
+                let args = self.call_args(arg)?;
                 let callee = *self
                     .funcs
                     .get(func)
                     .ok_or_else(|| format!("`{func}` was never declared"))?;
                 self.builder
-                    .build_call(callee, &[arg.into()], "call")
+                    .build_call(callee, &args, "call")
                     .map_err(|e| e.to_string())?
                     .try_as_basic_value()
                     .basic()

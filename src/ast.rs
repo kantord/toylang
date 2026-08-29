@@ -112,7 +112,8 @@ pub struct Param {
 #[derive(Debug)]
 pub struct Def {
     pub name: String,
-    pub param: Param,
+    /// `None` for a nullary function (`fn name() -> T = body`).
+    pub param: Option<Param>,
     pub ret: TypeExpr,
     pub body: Expr,
     pub span: Span,
@@ -199,7 +200,8 @@ pub enum Expr {
     Call {
         func: String,
         func_span: Span,
-        arg: Box<Expr>,
+        /// `None` for a nullary call (`name()`).
+        arg: Option<Box<Expr>>,
         span: Span,
     },
     /// `base[]`. A spec that keeps a dimension.

@@ -54,7 +54,8 @@ pub enum Kind {
     Lines,
     Call {
         func: String,
-        arg: Box<Tir>,
+        /// `None` for a call to a nullary function.
+        arg: Option<Box<Tir>>,
     },
     Concat(Box<Tir>, Box<Tir>),
     /// Wrapping 32-bit arithmetic. Division and remainder stop the program on a zero divisor,
@@ -185,8 +186,9 @@ pub enum Builtin {
 
 pub struct Func {
     pub name: String,
-    pub param: String,
-    pub param_ty: Type,
+    /// `None` for a nullary function.
+    pub param: Option<String>,
+    pub param_ty: Option<Type>,
     pub body: Tir,
 }
 
@@ -311,9 +313,18 @@ fn flatten<'a>(t: &'a Tir, program: &'a Program, stages: &mut Vec<Stage<'a>>) ->
                 .iter()
                 .find(|f| &f.name == func)
                 .expect("the checker resolved every call");
+            // A stream-returning function must take a stream (see `signatures`), so a call
+            // reaching here -- one whose result is stream-typed -- always carries an argument.
+            let arg = arg
+                .as_deref()
+                .expect("a stream-returning function is never nullary");
             let base = flatten(arg, program, stages);
+            let param = f
+                .param
+                .as_deref()
+                .expect("a stream-returning function is never nullary");
             match flatten(&f.body, program, stages) {
-                Base::Var(name) if name == &f.param => base,
+                Base::Var(name) if name == param => base,
                 _ => unreachable!("a stream-returning function's chain bottoms at its parameter"),
             }
         }

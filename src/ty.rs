@@ -135,9 +135,9 @@ impl PartialEq for Type {
     }
 }
 
-/// Functions are unary, so a signature is one parameter and one result.
+/// A function takes at most one parameter; `None` is a nullary function.
 #[derive(Debug, Clone)]
 pub struct Sig {
-    pub param: Type,
+    pub param: Option<Type>,
     pub ret: Type,
 }

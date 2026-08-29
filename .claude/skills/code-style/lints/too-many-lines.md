@@ -113,3 +113,19 @@ passes into `check/types.rs` and `check/linearity.rs` left `check()` and
 `synth()` themselves unedited, and both still report exactly 146 and 340 --
 the same counts issue #45 left them at. Moving a function's file does not
 reset what counts as inherited; both stay flagged, both stay inherited.
+
+The nullary-functions session (issue #61) is a ninth instance, and the first
+where "caused" was chased rather than left standing, because a *new*
+function crossing budget on day one is a shakier claim of "inherited" than a
+few-line nudge to a function already over. `expect_inner` went from 99
+(absent from the merge-base report) to 101 lines from two one-line optional-
+argument unwraps; tightened back under budget by pulling the shared
+`Expr::Call { func, arg, .. } = expr && func == "..."` guard both call sites
+repeated into a `call_named()` helper, which incidentally shortened the
+`map` call site enough to net a two-line saving. Separately, extracting
+`synth()`'s whole `Expr::Call` arm into `call()` (see the identically-named
+case in `cognitive-complexity.md`) dropped `check()` to 137 and `synth()` to
+220 lines -- both still over budget and still inherited, just less so -- and
+left the new `call()` itself, after its own further split into
+`select_call`/`extent_call`/`tail_call`/`concat_call`, under budget with no
+finding at all.
