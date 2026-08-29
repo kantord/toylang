@@ -129,3 +129,20 @@ case in `cognitive-complexity.md`) dropped `check()` to 137 and `synth()` to
 left the new `call()` itself, after its own further split into
 `select_call`/`extent_call`/`tail_call`/`concat_call`, under budget with no
 finding at all.
+
+The field-order-accessor session (issue #63) is a tenth instance, and the
+first to hit the same shape in all seven backends' `expr()` (or `emit()`)
+at once: adding one `Builtin::Fields` match arm per backend grew each of
+`emit_go.rs`, `emit_jq.rs`, `emit_js.rs`, `emit_lua.rs`, `emit_py.rs`, and
+`emit_rs.rs`'s already-over `expr()` by 5-15 lines apiece (verified against
+a merge-base copy via `git stash`, an equivalent to the scratch-worktree
+method above since this branch's only prior commit already was the
+merge-base). None of their *cognitive-complexity* numbers moved -- only
+line counts -- except `emit_llvm.rs`'s `expr()`, where the branch's own
+first attempt (an inline `match &arg.ty` to read the record's field names
+before the value shadowed it) pushed that function's complexity from
+unflagged to 11/10, a genuinely caused finding; extracting a `fields_lit()`
+helper (mirroring `vec_lit`'s own Record-branch shape) removed the arm's
+branching from `expr()` entirely and brought it back to matching its
+merge-base count with no finding. The other six backends' growth stayed
+inherited by the same rule as every instance above.

@@ -1,0 +1,7 @@
+program: |
+  fields({name: "ada", age: 36})
+
+output: |
+  ["name","age"]
+
+node_types: [builtin.fields, int, record-literal, str]

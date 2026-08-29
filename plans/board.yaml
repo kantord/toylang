@@ -342,7 +342,7 @@
   title: Runtime field-order metadata -- the field_names-style accessor (better name wanted)
   kind: build
   needs: [record-order-relaxation]
-  status: delegated
+  status: done
 
 - id: container-boundary-reorder
   issue: gh:64

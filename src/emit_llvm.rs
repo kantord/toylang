@@ -557,6 +557,20 @@ impl<'ctx> Emitter<'ctx> {
         Ok(vec.into())
     }
 
+    /// `fields(r)`'s literal: LLVM's record layout carries no field names at runtime at all
+    /// (`vec_lit`'s own Record branch above reads them off the type the same way), so the names
+    /// come from `record_ty` rather than any value.
+    fn fields_lit(&mut self, record_ty: &Type) -> Result<BasicValueEnum<'ctx>, String> {
+        let Type::Record(fields) = record_ty else {
+            unreachable!("checked to be a record")
+        };
+        let items: Vec<Tir> = fields
+            .iter()
+            .map(|(name, _)| Tir::new(Type::Str, Kind::Str(name.clone())))
+            .collect();
+        self.vec_lit(&items, &Type::Str)
+    }
+
     /// Every element replaced by the body.
     ///
     /// The result has one column whatever the source had, because the body produces a single
@@ -1372,6 +1386,9 @@ impl<'ctx> Emitter<'ctx> {
 
             Kind::Builtin { which, arg } => {
                 let elem_ty = crate::tir::runtime_elem(&arg.ty).cloned();
+                // Read before `arg` below shadows the node with its computed value: `Fields`
+                // wants the checked type, not the record value.
+                let record_ty = arg.ty.clone();
                 let arg = self.expr(arg)?;
                 match which {
                     Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,
@@ -1390,6 +1407,8 @@ impl<'ctx> Emitter<'ctx> {
                         let ncols = self.ctx.i64_type().const_int(Self::columns(elem), false);
                         self.call_rt(self.rt.vec_concat, &[arg, ncols.into()], "concat")?
                     }
+                    // `arg` above ran only for whatever else it does; its value is unused here.
+                    Builtin::Fields => self.fields_lit(&record_ty)?,
                 }
             }
 

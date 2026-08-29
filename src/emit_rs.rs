@@ -987,6 +987,20 @@ impl Emitter {
                 Builtin::Extent => format!("(({}).len() as i32)", self.expr(arg)),
                 Builtin::Tail => format!("tl_tail(&{})", self.expr(arg)),
                 Builtin::Concat => format!("tl_concat(&{})", self.expr(arg)),
+                // The names come from the checked type, not the struct value, so `arg` is
+                // evaluated only for whatever else it does (a division inside it must still
+                // trap) and its value discarded.
+                Builtin::Fields => {
+                    let Type::Record(fields) = &arg.ty else {
+                        unreachable!("checked to be a record")
+                    };
+                    let names: Vec<String> = fields.iter().map(|(n, _)| rs_string(n)).collect();
+                    format!(
+                        "{{ let _ = {}; vec![{}] }}",
+                        self.expr(arg),
+                        names.join(", ")
+                    )
+                }
             },
             Kind::Compare { op, lhs, rhs } => {
                 format!("({} {} {})", self.expr(lhs), rs_op(*op), self.expr(rhs))
