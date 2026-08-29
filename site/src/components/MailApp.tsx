@@ -322,16 +322,25 @@ function ComposePanel({
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
   const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     bodyRef.current?.focus()
   }, [])
 
+  // A failed delivery must never eat the message or wedge the button (kantord/toylang#46):
+  // the draft stays in the textarea, the button re-arms, and the failure is said out loud.
   const send = async () => {
     if (!body.trim()) return
     setSending(true)
-    await onSend(subject.trim(), body.trim())
+    setSendError(null)
+    try {
+      await onSend(subject.trim(), body.trim())
+    } catch (e) {
+      setSending(false)
+      setSendError(e instanceof Error ? e.message : String(e))
+    }
   }
 
   return (
@@ -353,6 +362,7 @@ function ComposePanel({
         />
       </CardContent>
       <CardFooter className="justify-end gap-2 border-t-0 bg-transparent pt-(--card-spacing)">
+        {sendError && <p className="mr-auto text-xs text-destructive">Delivery failed: {sendError}. Your draft is kept -- retry.</p>}
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>

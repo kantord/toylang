@@ -23,8 +23,8 @@ const md = new Marked()
 /**
  * The wizard's dev-only entry points (kantord/toylang#34). Neither `App.tsx` nor `Markdown.tsx`
  * imports this module statically -- it only reaches the bundle through the `import.meta.env.DEV`
- * dynamic import in App.tsx's `GrillWizardRoute`, matching AnnotationsSidebar's tree-shaking
- * pattern, so `vite build` never ships it.
+ * dynamic import in App.tsx's `GrillWizardRoute`, matching MailApp's tree-shaking pattern,
+ * so `vite build` never ships it.
  */
 export function GrillIndexPage() {
   const [topics, setTopics] = useState<string[] | null>(null)

@@ -93,7 +93,7 @@ The wizard renders each question's `background`/`thesis`/`question` as its own c
 left-bordered section (the design-system comment on the issue), one question per screen, with
 a progress indicator, back/next, and a summary screen listing every answer before an explicit
 Submit. It lives at `#/grill-wizard/<topic>` in the dev server (`GrillWizard.tsx`, dev-only and
-tree-shaken out of `vite build` the same way `AnnotationsSidebar.tsx` is) and is written by the
+tree-shaken out of `vite build` the same way `MailApp.tsx` is) and is written by the
 coordinator, read and answered by the maintainer -- no terminal round-trip in between.
 
 **Delivery**: Submit posts one `/__annotations/save` record per question, `page` set to
