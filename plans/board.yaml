@@ -335,7 +335,7 @@
   title: Euler stream batch 2 -- problems 11-20 where the language suffices, gates annotated
   kind: build
   needs: [euler-examples-1-10]
-  status: delegated
+  status: done
 
 - id: field-names-accessor
   issue: gh:63
