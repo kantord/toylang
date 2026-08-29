@@ -1,0 +1,15 @@
+# kantord/toylang#66, the follow-up #64 left open: `g`'s parameter and `first_b`'s parameter
+# are the same Opt<Record> type with the payload's fields spelled in the other order. #64 taught
+# reorder_record to recurse through a Vec/Stream wrapper but not an enum payload, so the value
+# crossing into `first_b` kept whichever field order `g` built it in -- reading `.b` at the
+# native backend's column 1 off a value laid out column 0 first, silently.
+program: |
+  fn first_b(v: Opt<{a: Str, b: Int}>) -> Int = v!.b
+  fn g(v: Opt<{b: Int, a: Str}>) -> Int = first_b(v)
+
+  g(some({b: 42, a: "hi"}))
+
+output: |
+  42
+
+node_types: [application, int, local, opt-map, projection, record-literal, str, unwrap, var, variant.payload]

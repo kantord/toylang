@@ -458,6 +458,20 @@ fn expr(t: &Tir) -> String {
         Kind::Unwrap { base } => {
             format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
         }
+        // Opt's reorder pass (kantord/toylang#66): the same `== "none"`/`["some"]` shape the
+        // printer and Match already read, generalised to rebuild the dict instead.
+        Kind::OptMap {
+            source,
+            param,
+            body,
+        } => {
+            format!(
+                "(lambda __opt: \"none\" if __opt == \"none\" else {{\"some\": (lambda {}: {})(__opt[\"some\"])}})({})",
+                local(*param),
+                expr(body),
+                expr(source)
+            )
+        }
         Kind::Index {
             base, index, depth, ..
         } => {

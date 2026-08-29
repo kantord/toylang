@@ -1,0 +1,17 @@
+# kantord/toylang#66: not just Opt. `get_b`'s parameter and `g`'s parameter are the same
+# Box<Record> type with the payload's fields spelled in the other order, so the value crossing
+# into `get_b` needs the same rebuild a bare record or a Vec element already gets. Reorders
+# through a Match/EnumLit reconstruction (every arm rebuilds its variant), which every backend
+# can already run since it is exactly how a user-written match over the enum compiles.
+program: |
+  enum Box<T> { full(T), empty }
+
+  fn get_b(x: Box<{a: Str, b: Int}>) -> Int = x | full -> .b or empty -> 0
+  fn g(x: Box<{b: Int, a: Str}>) -> Int = get_b(x)
+
+  g(full({b: 42, a: "hi"}))
+
+output: |
+  42
+
+node_types: [application, int, local, match, pipe, projection, record-literal, str, var, variant.payload, variant.unit]

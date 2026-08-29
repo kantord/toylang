@@ -442,6 +442,10 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(source, used);
                 walk(body, used);
             }
+            Kind::OptMap { source, body, .. } => {
+                walk(source, used);
+                walk(body, used);
+            }
             Kind::Select { source, pred, .. } => {
                 used.select = true;
                 walk(source, used);
@@ -641,6 +645,18 @@ fn expr(t: &Tir) -> String {
         Kind::Unwrap { base } => {
             format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
         }
+        // Opt's reorder pass (kantord/toylang#66): the same `== "none"`/`.some` shape the
+        // printer and Match already read, generalised to rebuild the table instead.
+        Kind::OptMap {
+            source,
+            param,
+            body,
+        } => format!(
+            "(function(__opt) if __opt == \"none\" then return \"none\" else local {} = __opt.some return {{some = {}}} end end)({})",
+            local(*param),
+            expr(body),
+            expr(source)
+        ),
         // A Lua table of records is a table of tables, so collapsing needs no gather here;
         // `elem_is_record` matters only where the columns are stored apart.
         Kind::Index {

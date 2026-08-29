@@ -81,3 +81,8 @@ lines (the generics instantiation machinery), parse.rs by 40, and the go/rs/llvm
 by 10, 7, and 6
 (emitter Opt re-encoding, parser type arguments) -- task-driven nudges to inherited debt, by
 the same rule as #40 and #45; the emitter-split conversation stays undone.
+
+The record-reorder-through-Opt session (issue #66) grew three already-over emitters --
+`emit_go.rs` 1113->1129, `emit_llvm.rs` 1973->2046, `emit_rs.rs` 1247->1260 (verified against
+a merge-base worktree) -- the same one-new-Tir-node-per-backend shape as #62's, and the same
+rule: task-driven nudges to inherited debt, emitter-split conversation still undone.

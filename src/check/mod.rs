@@ -1930,6 +1930,13 @@ fn conform(ctx: &Ctx, found: Tir, want: &Type) -> Tir {
 /// type a value is currently checked against, so a value crossing into a differently-ordered
 /// but equal position needs rebuilding before those readers see it. This is what decides
 /// whether that rebuild is needed.
+///
+/// Also recurses into an enum's variant payloads (kantord/toylang#66): two instantiations of
+/// the same generic enum are one `Type` (`Type::Enum`'s `PartialEq` compares payloads by
+/// `Type::Record`'s own order-insensitive equality), so a payload written in a different field
+/// order at each call site is exactly the same hazard a bare record or a Vec element is. The
+/// variant list itself is never out of order -- it comes from one declaration -- so zipping the
+/// two enums' variants positionally is safe.
 fn same_field_order(a: &Type, b: &Type) -> bool {
     match (a, b) {
         (Type::Record(x), Type::Record(y)) => {
@@ -1939,6 +1946,12 @@ fn same_field_order(a: &Type, b: &Type) -> bool {
                     .all(|((n1, t1), (n2, t2))| n1 == n2 && same_field_order(t1, t2))
         }
         (Type::Vec(x), Type::Vec(y)) | (Type::Stream(x), Type::Stream(y)) => same_field_order(x, y),
+        (Type::Enum { variants: vx, .. }, Type::Enum { variants: vy, .. }) => {
+            vx.iter().zip(vy).all(|((_, px), (_, py))| match (px, py) {
+                (Some(tx), Some(ty)) => same_field_order(tx, ty),
+                _ => true,
+            })
+        }
         _ => true,
     }
 }
@@ -1949,10 +1962,81 @@ fn same_field_order(a: &Type, b: &Type) -> bool {
 /// recurses through a Vec or Stream wrapper, via a real `map` that rebuilds every element --
 /// unlike the record case this is a runtime loop, not a free relabelling, since a Vec's
 /// elements are not reachable one at a time the way a record's fields are (kantord/toylang#64).
-/// Does not reach inside an Opt: nothing in the language can build a "present" Opt value except
-/// the handful of forms that produce one directly (`Index`, `tail`, a partial match), so there
-/// is no literal to rebuild into. An element whose own record fields are ordered differently
-/// from its container's declared element type is a known gap there still (kantord/toylang#64).
+///
+/// A general enum reorders through `Match`/`EnumLit`: every arm rebuilds its variant with a
+/// freshly reordered payload, which every backend can already run since it is exactly how a
+/// user-written match over that enum already compiles. Opt is the one enum this can't reach
+/// (kantord/toylang#66) -- three backends keep Opt in a representation of their own (`Option<T>`,
+/// `tlOpt[T]{ok,v}`, the null-or-boxed native encoding) rather than the general tagged shape, so
+/// `Match`'s tag-indexed codegen does not apply to it. `OptMap` is the dedicated node every
+/// backend already has the pieces to run: it is exactly the presence branch each one's unwrap
+/// and printer already take, generalised to rebuild the payload instead of rendering it.
+fn reorder_enum(ctx: &Ctx, found: Tir, want: &Type) -> Tir {
+    if let Some(want_inner) = want.as_opt() {
+        let found_inner = found
+            .ty
+            .as_opt()
+            .expect("found.ty == want: both Opt")
+            .clone();
+        let param = ctx.fresh();
+        let body = reorder_record(ctx, Tir::new(found_inner, Kind::Local(param)), want_inner);
+        return Tir::new(
+            want.clone(),
+            Kind::OptMap {
+                source: Box::new(found),
+                param,
+                body: Box::new(body),
+            },
+        );
+    }
+    let Type::Enum {
+        variants: want_variants,
+        ..
+    } = want
+    else {
+        unreachable!("reorder_enum is only called with an enum want")
+    };
+    let found_variants = match &found.ty {
+        Type::Enum { variants, .. } => variants.clone(),
+        _ => unreachable!("found.ty == want: both enums"),
+    };
+    let arms = want_variants
+        .iter()
+        .zip(&found_variants)
+        .map(|((vname, want_payload), (_, found_payload))| {
+            let payload = match (want_payload, found_payload) {
+                (Some(want_p), Some(found_p)) => {
+                    let pid = ctx.fresh();
+                    let rebuilt =
+                        reorder_record(ctx, Tir::new(found_p.clone(), Kind::Local(pid)), want_p);
+                    (Some(pid), Some(Box::new(rebuilt)))
+                }
+                (None, None) => (None, None),
+                _ => unreachable!("found.ty == want: variant shapes line up"),
+            };
+            tir::MatchArm {
+                variant: Some(vname.clone()),
+                guard: None,
+                payload: payload.0,
+                body: Tir::new(
+                    want.clone(),
+                    Kind::EnumLit {
+                        variant: vname.clone(),
+                        payload: payload.1,
+                    },
+                ),
+            }
+        })
+        .collect();
+    Tir::new(
+        want.clone(),
+        Kind::Match {
+            subject: Box::new(found),
+            arms,
+            partial: false,
+        },
+    )
+}
 fn reorder_record(ctx: &Ctx, found: Tir, want: &Type) -> Tir {
     if same_field_order(&found.ty, want) {
         return found;
@@ -2002,6 +2086,7 @@ fn reorder_record(ctx: &Ctx, found: Tir, want: &Type) -> Tir {
                 },
             )
         }
+        Type::Enum { .. } => reorder_enum(ctx, found, want),
         _ => found,
     }
 }

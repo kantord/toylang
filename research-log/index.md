@@ -115,3 +115,7 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
   -- Making absence tagged (#62) required changing only the four backends that had mapped Opt
   onto a host null-ish value; the three that had built their own representation were already
   tagged and needed nothing.
+- [Reorder found a route around the layout it did not reconcile](reorder-found-a-route-around-the-layout-it-did-not-reconcile.md)
+  -- Reaching inside an Opt payload for record-reorder (#66) needed a way to rebuild a present
+  value, not a way to match one, so it got its own node instead of waiting on the Match/Opt
+  layout reconciliation the previous note left open.

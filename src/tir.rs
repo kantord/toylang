@@ -43,6 +43,18 @@ pub enum Kind {
         variant: String,
         payload: Option<Box<Tir>>,
     },
+    /// Rebuilds an Opt: present-preserving, absent-preserving. `body` runs with `param` bound
+    /// to the unwrapped payload only when `source` is present; an absent `source` passes
+    /// through untouched. Never surface syntax -- Opt has no general map or match a program can
+    /// reach (kantord/toylang#47's totality round owns that) -- this is only how the checker's
+    /// own reorder pass reaches inside an Opt payload (kantord/toylang#66): every other enum
+    /// reorders through `Match`/`EnumLit`, but Opt keeps a representation of its own in three
+    /// backends, so those two general nodes cannot reach it.
+    OptMap {
+        source: Box<Tir>,
+        param: LocalId,
+        body: Box<Tir>,
+    },
     /// A name written in the source: today only a function parameter.
     Var(String),
     Local(LocalId),

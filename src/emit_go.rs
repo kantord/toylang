@@ -499,7 +499,7 @@ impl Collect<'_> {
                 self.walk(value);
                 self.walk(body);
             }
-            Kind::Map { source, body, .. } => {
+            Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
                 self.walk(source);
                 self.walk(body);
             }
@@ -921,6 +921,22 @@ impl Emitter {
                 self.local(*param),
                 self.go_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
                 self.expr(pred)
+            ),
+            // Opt's reorder pass (kantord/toylang#66): the same `!o.ok`/`.v` shape tlUnwrap and
+            // the printer already branch on, generalised to rebuild the tlOpt instead of
+            // reading through it. `__srcOpt` binds the source once, so evaluating it twice (the
+            // `.ok` test, then `.v`) costs nothing beyond a field read.
+            Kind::OptMap {
+                source,
+                param,
+                body,
+            } => format!(
+                "func(__srcOpt {}) {} {{ if !__srcOpt.ok {{ return {1}{{}} }}; {} := __srcOpt.v; _ = {2}; return {1}{{true, {}}} }}({})",
+                self.go_type(&source.ty),
+                self.go_type(&t.ty),
+                self.local(*param),
+                self.expr(body),
+                self.expr(source)
             ),
             Kind::Field { base, name } => {
                 let depth = tir::vec_depth(&base.ty);

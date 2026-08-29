@@ -42,3 +42,8 @@ another entry in the pile
 [vec-of-enum fell into](vec-of-enum-falls-into-the-boxed-default-nobody-chose.md): a layout
 nobody chose, held in place by a refusal. If the matcher-totality round gives Opt ordinary
 arms, either the match lowering special-cases Opt on native or the layouts reconcile.
+
+Still open after #66:
+[reorder found a route around the layout it did not reconcile](reorder-found-a-route-around-the-layout-it-did-not-reconcile.md)
+needed to reach inside an Opt payload before that round runs, and turned out not to need this
+resolved -- rebuilding a present value is a smaller question than matching on the variant.

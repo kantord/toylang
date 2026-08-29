@@ -1462,6 +1462,79 @@ impl<'ctx> Emitter<'ctx> {
                 }
             }
 
+            // Same presence branch `show`'s Opt arm takes, generalised to rebuild the payload
+            // (via `opt_some`) instead of rendering it. The reorder pass (kantord/toylang#66)
+            // is the only caller: it is how a value crossing into a differently-ordered
+            // `Opt<Record>` gets its payload rebuilt, since Opt's null-or-boxed encoding here
+            // is not the tagged box `Kind::Match` reads a tag off of.
+            Kind::OptMap {
+                source,
+                param,
+                body,
+            } => {
+                let function = self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_parent())
+                    .ok_or("no function to branch in")?;
+                let source_inner = source
+                    .ty
+                    .as_opt()
+                    .expect("an OptMap's source is Opt")
+                    .clone();
+                let src = self.expr(source)?;
+                let present = self.call_rt(self.rt.opt_is_some, &[src], "some")?;
+                let cond = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        present.into_int_value(),
+                        self.ctx.i64_type().const_zero(),
+                        "is_some",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let some_block = self.ctx.append_basic_block(function, "optmap.some");
+                let none_block = self.ctx.append_basic_block(function, "optmap.none");
+                let done = self.ctx.append_basic_block(function, "optmap.done");
+                let ptr_ty = self.ctx.ptr_type(AddressSpace::default());
+                let slot = self
+                    .builder
+                    .build_alloca(ptr_ty, "optmapped")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_conditional_branch(cond, some_block, none_block)
+                    .map_err(|e| e.to_string())?;
+
+                self.builder.position_at_end(some_block);
+                let raw = self
+                    .call_rt(self.rt.opt_get, &[src], "unwrapped")?
+                    .into_int_value();
+                let item = self.read_slot(raw, &source_inner)?;
+                self.locals.insert(*param, Slot::Value(item));
+                let mapped = self.expr(body)?;
+                let mapped_slot = self.to_slot(mapped, &body.ty)?;
+                let wrapped = self.call_rt(self.rt.opt_some, &[mapped_slot.into()], "some")?;
+                self.builder
+                    .build_store(slot, wrapped)
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
+
+                self.builder.position_at_end(none_block);
+                self.builder
+                    .build_store(slot, ptr_ty.const_null())
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
+
+                self.builder.position_at_end(done);
+                self.builder
+                    .build_load(ptr_ty, slot, "optmapped")
+                    .map_err(|e| e.to_string())?
+            }
+
             Kind::Index {
                 base,
                 index,

@@ -224,7 +224,7 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
                 callees(source, out);
                 callees(pred, out);
             }
-            Kind::Map { source, body, .. } => {
+            Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
                 callees(source, out);
                 callees(body, out);
             }
@@ -313,7 +313,9 @@ fn uses_arith(program: &Program) -> bool {
             Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => walk(l) || walk(r),
             Kind::Bind { value, body, .. } => walk(value) || walk(body),
             Kind::Select { source, pred, .. } => walk(source) || walk(pred),
-            Kind::Map { source, body, .. } => walk(source) || walk(body),
+            Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
+                walk(source) || walk(body)
+            }
             Kind::Field { base, .. } | Kind::Unwrap { base } => walk(base),
             Kind::Index { base, index, .. } => walk(base) || walk(index),
             Kind::Match { subject, arms, .. } => {
@@ -496,6 +498,18 @@ fn expr(t: &Tir) -> String {
                 distribute(&check, tir::vec_depth(&base.ty))
             )
         }
+        // Opt's reorder pass (kantord/toylang#66): the same `== "none"`/`.some` shape the
+        // printer and Match already read, generalised to rebuild the object instead.
+        Kind::OptMap {
+            source,
+            param,
+            body,
+        } => format!(
+            "({} | if . == \"none\" then \"none\" else (.some as {} | {{some: {}}}) end)",
+            expr(source),
+            local(*param),
+            expr(body)
+        ),
         // Out of range is null in jq, and no in-memory toylang value is ever null (the
         // module comment above), so the null test is exactly the was-not-there test; what
         // comes out is the tagged Opt either way.
