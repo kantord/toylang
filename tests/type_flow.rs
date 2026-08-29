@@ -120,3 +120,43 @@ fn reordered_fields_still_mismatch_with_the_hint() {
 fn a_missing_field_still_mismatches() {
     insta::assert_snapshot!(err("fn f(x: Int) -> {a: Int, b: Str} = {a: 1}\n\nf(1)"));
 }
+
+// Step 3: a call against a known signature pushes the parameter type into the argument. The
+// position pushed before this rework; these pin that the new checked forms resolve there.
+
+#[test]
+fn empty_vec_as_an_argument() {
+    let src = "fn f(v: Vec<Int>) -> Int = extent(v)\n\nf([])";
+    assert_eq!(body_ty(src), Type::Int);
+}
+
+#[test]
+fn a_string_names_a_variant_in_argument_position() {
+    let src = "enum Status { active, inactive }\n\n\
+               fn flip(s: Status) -> Status =\n    \
+               s | active -> Status.inactive or inactive -> Status.active\n\n\
+               flip(\"active\")";
+    assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Status"));
+}
+
+#[test]
+fn input_in_a_record_argument_field() {
+    let src = "fn g(r: {n: Int, tag: Str}) -> Int = r.n\n\ng({n: input, tag: \"x\"})";
+    let program = toylang::compile(src).unwrap();
+    assert_eq!(program.input, Some(Type::Int));
+}
+
+/// A constructor payload is checked against the declared payload type, so the checked forms
+/// resolve inside one too.
+#[test]
+fn empty_vec_in_a_constructor_payload() {
+    let src = "enum Box { of{items: Vec<Int>} }\n\nof{items: []}";
+    assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Box"));
+}
+
+/// `extent` is polymorphic over its element type, so its argument is synthesised: there is no
+/// declared parameter type to flow in, and `[]` stays unknowable there.
+#[test]
+fn a_polymorphic_builtin_still_synthesises_its_argument() {
+    insta::assert_snapshot!(err("extent([])"));
+}
