@@ -7,11 +7,14 @@ Solves [Project Euler 5](https://projecteuler.net/problem=5). See the
 range 1 to 20 from the top down.
 
 ```toylang
-fn gcd(p: {a: Int, b: Int}) -> Int = p.a if p.b == 0 else gcd({a: p.b, b: p.a % p.b})
+fn gcd(p: {a: Int, b: Int}) -> Int =
+    p.a if p.b == 0 else gcd({a: p.b, b: p.a % p.b})
+
 fn lcm(p: {a: Int, b: Int}) -> Int = p.a / gcd({a: p.a, b: p.b}) * p.b
 
 fn lcm_upto(p: {n: Int, limit: Int}) -> Int =
-    1 if p.n > p.limit else lcm({a: lcm_upto({n: p.n + 1, limit: p.limit}), b: p.n})
+    1 if p.n > p.limit else
+        lcm({a: lcm_upto({n: p.n + 1, limit: p.limit}), b: p.n})
 
 lcm_upto({n: 1, limit: 20})
 ```

@@ -21,30 +21,90 @@ generalized to a whole `Vec` since there is no `max` builtin.
 fn get(p: {g: Vec<Vec<Int>>, r: Int, c: Int}) -> Int = p.g[p.r]![p.c]!
 
 fn four(p: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int =
-    get({g: p.g, r: p.r, c: p.c}) *
-    get({g: p.g, r: p.r + p.dr, c: p.c + p.dc}) *
-    get({g: p.g, r: p.r + 2 * p.dr, c: p.c + 2 * p.dc}) *
-    get({g: p.g, r: p.r + 3 * p.dr, c: p.c + 3 * p.dc})
+    get({g: p.g, r: p.r, c: p.c}) * get({g: p.g, r: p.r + p.dr, c: p.c + p.dc}) *
+        get({g: p.g, r: p.r + 2 * p.dr, c: p.c + 2 * p.dc}) *
+        get({g: p.g, r: p.r + 3 * p.dr, c: p.c + 3 * p.dc})
 
 fn row_products(p: {g: Vec<Vec<Int>>, r: Int, dr: Int, dc: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
-    range(p.cmax) | select(. >= p.cmin) | map(four({g: p.g, r: p.r, c: ., dr: p.dr, dc: p.dc}))
+    range(p.cmax) | select(. >= p.cmin) |
+        map(four({g: p.g, r: p.r, c: ., dr: p.dr, dc: p.dc}))
 
 fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
-    concat(range(p.rmax) | map(row_products({g: p.g, r: ., dr: p.dr, dc: p.dc, cmin: p.cmin, cmax: p.cmax})))
+    concat(
+        range(p.rmax) |
+            map(
+                row_products(
+                    {
+                        g: p.g,
+                        r: .,
+                        dr: p.dr,
+                        dc: p.dc,
+                        cmin: p.cmin,
+                        cmax: p.cmax
+                    }
+                )
+            )
+    )
 
 fn maximum_of(p: {v: Vec<Int>, i: Int, best: Int}) -> Int =
     p.best if p.i >= extent(p.v) else
-    maximum_of({v: p.v, i: p.i + 1, best: p.v[p.i]! if p.v[p.i]! > p.best else p.best})
+        maximum_of(
+            {
+                v: p.v,
+                i: p.i + 1,
+                best: p.v[p.i]! if p.v[p.i]! > p.best else p.best
+            }
+        )
 
 fn maximum(v: Vec<Int>) -> Int = maximum_of({v: v, i: 1, best: v[0]!})
 
 fn largest_product(g: Vec<Vec<Int>>) -> Int =
-    maximum(concat([
-        direction({g: g, dr: 0, dc: 1, rmax: extent(g), cmin: 0, cmax: extent(g[0]!) - 3}),
-        direction({g: g, dr: 1, dc: 0, rmax: extent(g) - 3, cmin: 0, cmax: extent(g[0]!)}),
-        direction({g: g, dr: 1, dc: 1, rmax: extent(g) - 3, cmin: 0, cmax: extent(g[0]!) - 3}),
-        direction({g: g, dr: 1, dc: -1, rmax: extent(g) - 3, cmin: 3, cmax: extent(g[0]!)})
-    ]))
+    maximum(
+        concat(
+            [
+                direction(
+                    {
+                        g: g,
+                        dr: 0,
+                        dc: 1,
+                        rmax: extent(g),
+                        cmin: 0,
+                        cmax: extent(g[0]!) - 3
+                    }
+                ),
+                direction(
+                    {
+                        g: g,
+                        dr: 1,
+                        dc: 0,
+                        rmax: extent(g) - 3,
+                        cmin: 0,
+                        cmax: extent(g[0]!)
+                    }
+                ),
+                direction(
+                    {
+                        g: g,
+                        dr: 1,
+                        dc: 1,
+                        rmax: extent(g) - 3,
+                        cmin: 0,
+                        cmax: extent(g[0]!) - 3
+                    }
+                ),
+                direction(
+                    {
+                        g: g,
+                        dr: 1,
+                        dc: -1,
+                        rmax: extent(g) - 3,
+                        cmin: 3,
+                        cmax: extent(g[0]!)
+                    }
+                )
+            ]
+        )
+    )
 
 largest_product(input)
 ```

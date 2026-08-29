@@ -20,14 +20,24 @@ Fibonacci sum](02-even-fibonacci-sum.md).
 
 ```toylang
 fn combine(p: {row: Vec<Int>, below: Vec<Int>, i: Int}) -> Int =
-    p.row[p.i]! + (p.below[p.i]! if p.below[p.i]! > p.below[p.i + 1]! else p.below[p.i + 1]!)
+    p.row[p.i]! +
+        (
+            p.below[p.i]! if p.below[p.i]! > p.below[p.i + 1]! else
+                p.below[p.i + 1]!
+        )
 
 fn merge_row(p: {row: Vec<Int>, below: Vec<Int>}) -> Vec<Int> =
     range(extent(p.row)) | map(combine({row: p.row, below: p.below, i: .}))
 
 fn collapse(p: {rows: Vec<Vec<Int>>, i: Int, acc: Vec<Int>}) -> Int =
     p.acc[0]! if p.i < 0 else
-    collapse({rows: p.rows, i: p.i - 1, acc: merge_row({row: p.rows[p.i]!, below: p.acc})})
+        collapse(
+            {
+                rows: p.rows,
+                i: p.i - 1,
+                acc: merge_row({row: p.rows[p.i]!, below: p.acc})
+            }
+        )
 
 fn triangle_max(rows: Vec<Vec<Int>>) -> Int =
     collapse({rows: rows, i: extent(rows) - 2, acc: rows[extent(rows) - 1]!})
