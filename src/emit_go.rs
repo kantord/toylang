@@ -538,7 +538,8 @@ impl Collect<'_> {
                     | Builtin::Collect
                     | Builtin::Extent
                     | Builtin::Concat
-                    | Builtin::Tail => {}
+                    | Builtin::Tail
+                    | Builtin::Fields => {}
                 }
                 self.walk(arg);
             }
@@ -832,6 +833,21 @@ impl Emitter {
                 Builtin::Extent => format!("int32(len({}))", self.expr(arg)),
                 Builtin::Tail => format!("tlTail({})", self.expr(arg)),
                 Builtin::Concat => format!("tlConcat({})", self.expr(arg)),
+                // The names come from the checked type, not the struct value, so `arg` runs in
+                // an ignored parameter -- the same IIFE shape `Bind` uses -- purely for whatever
+                // else it does.
+                Builtin::Fields => {
+                    let Type::Record(fields) = &arg.ty else {
+                        unreachable!("checked to be a record")
+                    };
+                    let names: Vec<String> = fields.iter().map(|(n, _)| go_string(n)).collect();
+                    format!(
+                        "func(_ {}) []string {{ return []string{{{}}} }}({})",
+                        self.go_type(&arg.ty),
+                        names.join(", "),
+                        self.expr(arg)
+                    )
+                }
             },
             Kind::Compare { op, lhs, rhs } => {
                 format!("({} {} {})", self.expr(lhs), go_op(*op), self.expr(rhs))

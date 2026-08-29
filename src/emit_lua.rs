@@ -598,6 +598,20 @@ fn expr(t: &Tir) -> String {
             Builtin::Extent => format!("#{}", expr(arg)),
             Builtin::Tail => format!("tl_tail({})", expr(arg)),
             Builtin::Concat => format!("tl_vec_concat({})", expr(arg)),
+            // The names come from the checked type, not the table value, so `arg` runs as the
+            // function literal's ignored parameter -- the same IIFE shape `Bind` uses -- purely
+            // for whatever else it does.
+            Builtin::Fields => {
+                let Type::Record(fields) = &arg.ty else {
+                    unreachable!("checked to be a record")
+                };
+                let names: Vec<String> = fields.iter().map(|(n, _)| lua_string(n)).collect();
+                format!(
+                    "(function(_) return {{{}}} end)({})",
+                    names.join(", "),
+                    expr(arg)
+                )
+            }
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), lua_op(*op), expr(rhs))

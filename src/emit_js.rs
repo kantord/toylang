@@ -571,6 +571,16 @@ fn expr(t: &Tir) -> String {
             Builtin::Extent => format!("{}.length", expr(arg)),
             Builtin::Tail => format!("tl_tail({})", expr(arg)),
             Builtin::Concat => format!("{}.flat()", expr(arg)),
+            // The names come from the checked type, not the object value, so `arg` is evaluated
+            // only for whatever else it does (a division inside it must still throw) and its
+            // value discarded with the comma operator.
+            Builtin::Fields => {
+                let Type::Record(fields) = &arg.ty else {
+                    unreachable!("checked to be a record")
+                };
+                let names: Vec<String> = fields.iter().map(|(n, _)| js_string(n)).collect();
+                format!("({}, [{}])", expr(arg), names.join(", "))
+            }
         },
         Kind::Compare { op, lhs, rhs } => {
             // `<`/`<=`/`>`/`>=` on native JS strings compare UTF-16 code units, which disagrees

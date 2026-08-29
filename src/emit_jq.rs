@@ -427,6 +427,16 @@ fn expr(t: &Tir) -> String {
             // Not jq's own `add`, which is `null` on an empty list rather than `[]` -- a reduce
             // starting from `[]` gives the right answer in both cases.
             Builtin::Concat => format!("({} | reduce .[] as $x ([]; . + $x))", expr(arg)),
+            // The names come from the checked type, not the object value, so `arg` runs only to
+            // become the `.` a literal array then ignores -- the same discard the pipe already
+            // gives every other builtin here.
+            Builtin::Fields => {
+                let Type::Record(fields) = &arg.ty else {
+                    unreachable!("checked to be a record")
+                };
+                let names: Vec<String> = fields.iter().map(|(n, _)| jq_string(n)).collect();
+                format!("({} | [{}])", expr(arg), names.join(", "))
+            }
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), jq_op(*op), expr(rhs))

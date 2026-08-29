@@ -182,6 +182,11 @@ pub enum Builtin {
     /// `Index` already turns "reaching past what's there" into `Opt` rather than a runtime
     /// failure.
     Tail,
+    /// `fields(r)`, a record's field names in declaration order (kantord/toylang#63, the
+    /// accessor #60's ratification promised once order left type identity). The names come from
+    /// `r`'s checked type, not its runtime value, so every backend can emit them as a literal;
+    /// `r` is still evaluated for whatever it would otherwise do, the same as any other argument.
+    Fields,
 }
 
 pub struct Func {

@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (136):
+compiles natively (138):
 adults
 arith_add
 arith_div_trunc
@@ -44,6 +44,8 @@ enum_vec_payload
 escapes
 extent_of_vec
 field_key_case_is_significant
+fields_basic
+fields_reflects_checked_order
 filter
 filter_strings
 fizzbuzz

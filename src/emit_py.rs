@@ -416,6 +416,16 @@ fn expr(t: &Tir) -> String {
             Builtin::Extent => format!("len({})", expr(arg)),
             Builtin::Tail => format!("tl_tail({})", expr(arg)),
             Builtin::Concat => format!("tl_vec_concat({})", expr(arg)),
+            // The names come from the checked type, not the dict value, so `arg` runs as the
+            // lambda's ignored argument -- the same shape `Bind` uses -- purely for whatever
+            // else it does.
+            Builtin::Fields => {
+                let Type::Record(fields) = &arg.ty else {
+                    unreachable!("checked to be a record")
+                };
+                let names: Vec<String> = fields.iter().map(|(n, _)| py_string(n)).collect();
+                format!("(lambda _: [{}])({})", names.join(", "), expr(arg))
+            }
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), py_op(*op), expr(rhs))

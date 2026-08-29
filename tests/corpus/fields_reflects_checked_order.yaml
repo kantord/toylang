@@ -1,0 +1,14 @@
+# Reordered spellings are one type (kantord/toylang#60), and the order a value carries is
+# whichever type it was last checked against (`check::reorder_record`), not how its own literal
+# spelled it. `g`'s parameter reorders `f`'s, so `fields` inside `f` sees `f`'s order even though
+# the argument arrived spelled the other way.
+program: |
+  fn f(r: {a: Str, b: Int}) -> Vec<Str> = fields(r)
+  fn g(r: {b: Int, a: Str}) -> Vec<Str> = f(r)
+
+  g({b: 1, a: "hi"})
+
+output: |
+  ["a","b"]
+
+node_types: [application, builtin.fields, int, local, pipe, projection, record-literal, str, var]

@@ -296,14 +296,15 @@ fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
 }
 
 /// Every function name the language itself provides, and therefore reserves. `str` and `range`
-/// live in `builtin()`'s fixed table; `jsonlines`, `extent`, `concat`, `tail`, and `collect` are
-/// polymorphic and checked from `synth`'s own arms; `select` and `map` rebind `.`. All nine are
-/// reserved the same way, and the docs harness (tests/docs.rs) reads this list to insist each
-/// one has a reference page.
-pub const BUILTIN_NAMES: [&str; 9] = [
+/// live in `builtin()`'s fixed table; `jsonlines`, `extent`, `concat`, `tail`, `collect`, and
+/// `fields` are polymorphic and checked from `synth`'s own arms; `select` and `map` rebind `.`.
+/// All ten are reserved the same way, and the docs harness (tests/docs.rs) reads this list to
+/// insist each one has a reference page.
+pub const BUILTIN_NAMES: [&str; 10] = [
     "collect",
     "concat",
     "extent",
+    "fields",
     "jsonlines",
     "map",
     "range",
@@ -1292,6 +1293,11 @@ fn call(
     if func == "collect" {
         return collect(ctx, need_arg(arg, func, span)?, None);
     }
+    // Polymorphic over which record, the same reason `extent` is checked here: the return type
+    // (`Vec<Str>`) is fixed, but the argument's shape is not.
+    if func == "fields" {
+        return fields_call(ctx, need_arg(arg, func, span)?);
+    }
     if let Some((which, sig)) = builtin(func) {
         let param_ty = sig
             .param
@@ -1390,6 +1396,28 @@ fn extent_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
         Type::Int,
         Kind::Builtin {
             which: tir::Builtin::Extent,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// `fields(r)`, the declared names of `r`'s fields in the order its type carries them
+/// (kantord/toylang#60: that order is metadata, not part of the type's identity, but it is
+/// exactly the order this reads off). A record's field set is closed, so this needs no runtime
+/// support once checked: every backend can bake the names in as a literal.
+fn fields_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    if !matches!(arg.ty, Type::Record(_)) {
+        return Err(Error::new(
+            arg_span,
+            format!("`fields` needs a record, found {}", arg.ty),
+        ));
+    }
+    Ok(Tir::new(
+        Type::Vec(Box::new(Type::Str)),
+        Kind::Builtin {
+            which: tir::Builtin::Fields,
             arg: Box::new(arg),
         },
     ))
