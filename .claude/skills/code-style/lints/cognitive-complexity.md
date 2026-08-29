@@ -42,3 +42,7 @@ optional call argument added just enough nesting to cross from absent to 11/10; 
 `call_args()` fixed it the same way, and is the general answer whenever a small new match
 pushes an otherwise-shape-1 dispatch over threshold -- try the tighten first, same as
 too-many-lines' identically-named playbook.
+
+The opt-as-enum session (issue #62) hit shape 2 once, caused: a new Opt special case inside
+`emit_llvm.rs`'s `expr()` pushed it over threshold, and extracting the case into `opt_lit()`
+settled it before Stop; the seven standing shape-1 emitter findings stayed inherited.
