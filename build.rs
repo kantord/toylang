@@ -11,11 +11,9 @@
 //! one as the literal expression that builds it, so `prelude::checked` gets back a plain
 //! `Vec<tir::Func>`, no parsing, deserialization, or unsafe transmute involved.
 //!
-//! `&Box<Tir>` shows up deliberately in several signatures below, not as the usual pointless
-//! indirection: `Tir` and `Box<Tir>` render differently (the latter wraps in `Box::new(...)`),
-//! so which one a helper takes is what decides whether its caller's field needs boxing back.
-
-#![allow(clippy::borrowed_box)]
+//! A `Kind` field that is `Box<Tir>` in `tir.rs` still passes as plain `&Tir` to the helpers
+//! below (deref coercion) -- `boxed()` re-adds the `Box::new(...)` explicitly, at the one call
+//! site that field needs it, rather than a helper declaring `&Box<Tir>` to get it automatically.
 
 #[path = "src/ast.rs"]
 mod ast;
@@ -202,6 +200,14 @@ fn variant(name: &str, fields: &[(&str, String)]) -> String {
     format!("crate::tir::Kind::{name} {{ {} }}", rendered.join(", "))
 }
 
+/// `tir.rs` stores a `Tir` child as `Box<Tir>`; this is the `Box::new(...)` that reconstructs
+/// it, called explicitly at each field that needs it rather than a helper below taking `&Box<Tir>`
+/// to get the wrapping automatically -- a plain `&Tir` parameter is what a `Box<Tir>` field
+/// coerces to at the call site regardless, so declaring the box type would buy nothing.
+fn boxed(t: &tir::Tir) -> String {
+    format!("Box::new({})", t.to_rust())
+}
+
 fn record_lit(fields: &[(String, tir::Tir)]) -> String {
     variant("RecordLit", &[("fields", fields.to_rust())])
 }
@@ -214,112 +220,104 @@ fn enum_lit(variant_name: &String, payload: &Option<Box<tir::Tir>>) -> String {
         ],
     )
 }
-fn opt_map(source: &Box<tir::Tir>, param: &tir::LocalId, body: &Box<tir::Tir>) -> String {
+fn opt_map(source: &tir::Tir, param: &tir::LocalId, body: &tir::Tir) -> String {
     variant(
         "OptMap",
         &[
-            ("source", source.to_rust()),
+            ("source", boxed(source)),
             ("param", param.to_rust()),
-            ("body", body.to_rust()),
+            ("body", boxed(body)),
         ],
     )
 }
 fn call(func: &String, arg: &Option<Box<tir::Tir>>) -> String {
     variant("Call", &[("func", func.to_rust()), ("arg", arg.to_rust())])
 }
-fn arith(op: &ast::BinOp, lhs: &Box<tir::Tir>, rhs: &Box<tir::Tir>) -> String {
+fn arith(op: &ast::BinOp, lhs: &tir::Tir, rhs: &tir::Tir) -> String {
     variant(
         "Arith",
         &[
             ("op", op.to_rust()),
-            ("lhs", lhs.to_rust()),
-            ("rhs", rhs.to_rust()),
+            ("lhs", boxed(lhs)),
+            ("rhs", boxed(rhs)),
         ],
     )
 }
-fn cond(cond: &Box<tir::Tir>, then: &Box<tir::Tir>, otherwise: &Box<tir::Tir>) -> String {
+fn cond(cond: &tir::Tir, then: &tir::Tir, otherwise: &tir::Tir) -> String {
     variant(
         "Cond",
         &[
-            ("cond", cond.to_rust()),
-            ("then", then.to_rust()),
-            ("otherwise", otherwise.to_rust()),
+            ("cond", boxed(cond)),
+            ("then", boxed(then)),
+            ("otherwise", boxed(otherwise)),
         ],
     )
 }
-fn compare(op: &ast::BinOp, lhs: &Box<tir::Tir>, rhs: &Box<tir::Tir>) -> String {
+fn compare(op: &ast::BinOp, lhs: &tir::Tir, rhs: &tir::Tir) -> String {
     variant(
         "Compare",
         &[
             ("op", op.to_rust()),
-            ("lhs", lhs.to_rust()),
-            ("rhs", rhs.to_rust()),
+            ("lhs", boxed(lhs)),
+            ("rhs", boxed(rhs)),
         ],
     )
 }
-fn bind(local: &tir::LocalId, value: &Box<tir::Tir>, body: &Box<tir::Tir>) -> String {
+fn bind(local: &tir::LocalId, value: &tir::Tir, body: &tir::Tir) -> String {
     variant(
         "Bind",
         &[
             ("local", local.to_rust()),
-            ("value", value.to_rust()),
-            ("body", body.to_rust()),
+            ("value", boxed(value)),
+            ("body", boxed(body)),
         ],
     )
 }
-fn map(source: &Box<tir::Tir>, param: &tir::LocalId, body: &Box<tir::Tir>) -> String {
+fn map(source: &tir::Tir, param: &tir::LocalId, body: &tir::Tir) -> String {
     variant(
         "Map",
         &[
-            ("source", source.to_rust()),
+            ("source", boxed(source)),
             ("param", param.to_rust()),
-            ("body", body.to_rust()),
+            ("body", boxed(body)),
         ],
     )
 }
-fn select(source: &Box<tir::Tir>, param: &tir::LocalId, pred: &Box<tir::Tir>) -> String {
+fn select(source: &tir::Tir, param: &tir::LocalId, pred: &tir::Tir) -> String {
     variant(
         "Select",
         &[
-            ("source", source.to_rust()),
+            ("source", boxed(source)),
             ("param", param.to_rust()),
-            ("pred", pred.to_rust()),
+            ("pred", boxed(pred)),
         ],
     )
 }
-fn field(base: &Box<tir::Tir>, name: &String) -> String {
-    variant(
-        "Field",
-        &[("base", base.to_rust()), ("name", name.to_rust())],
-    )
+fn field(base: &tir::Tir, name: &String) -> String {
+    variant("Field", &[("base", boxed(base)), ("name", name.to_rust())])
 }
-fn builtin(which: &tir::Builtin, arg: &Box<tir::Tir>) -> String {
+fn builtin(which: &tir::Builtin, arg: &tir::Tir) -> String {
     variant(
         "Builtin",
-        &[("which", which.to_rust()), ("arg", arg.to_rust())],
+        &[("which", which.to_rust()), ("arg", boxed(arg))],
     )
 }
-fn index(
-    base: &Box<tir::Tir>,
-    index: &Box<tir::Tir>,
-    depth: &usize,
-    elem_is_record: &bool,
-) -> String {
+fn index(base: &tir::Tir, index: &tir::Tir, depth: &usize, elem_is_record: &bool) -> String {
     variant(
         "Index",
         &[
-            ("base", base.to_rust()),
-            ("index", index.to_rust()),
+            ("base", boxed(base)),
+            ("index", boxed(index)),
             ("depth", depth.to_rust()),
             ("elem_is_record", elem_is_record.to_rust()),
         ],
     )
 }
-fn match_(subject: &Box<tir::Tir>, arms: &[tir::MatchArm], partial: &bool) -> String {
+fn match_(subject: &tir::Tir, arms: &[tir::MatchArm], partial: &bool) -> String {
     variant(
         "Match",
         &[
-            ("subject", subject.to_rust()),
+            ("subject", boxed(subject)),
             ("arms", arms.to_rust()),
             ("partial", partial.to_rust()),
         ],

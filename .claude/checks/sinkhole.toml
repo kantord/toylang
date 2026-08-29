@@ -65,22 +65,6 @@ other kind now: if the allow is ever deleted, this entry reports itself stale.
 [[exemption]]
 kind = "too-many-lines"
 path = "src/check/mod.rs"
-function = "check"
-line = 76
-justification = """
-Inherited, never caused: six sessions across issues #20, #21, #26, #27, #40, #44 grew or
-touched check.rs without pushing this finding further over budget, recorded case by case in
-.claude/skills/code-style/lints/too-many-lines.md. check() is the driver that sequences type
-resolution, body checking, stream linearity and dead-code pruning in the order
-plans/checker-structure.md's pass-ordering section requires, plus the cross-cutting checks
-(input/inputs/lines mutual exclusion) that only make sense once everything else is known --
-no seam inside it that isn't one of those phases, three of which stay adjacent by the same
-fused-pass argument as synth() below.
-"""
-
-[[exemption]]
-kind = "too-many-lines"
-path = "src/check/mod.rs"
 function = "synth"
 line = 925
 justification = """
