@@ -296,7 +296,7 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
 
 - id: result-type-design
   issue: gh:72
