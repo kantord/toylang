@@ -1,0 +1,10 @@
+# join is unlines' sibling with no separator, both prelude.toy source rather than per-backend
+# codegen (unlines_one.yaml pins the same shape for that one). Same input as unlines_one, so
+# the missing "\n" is the whole visible difference between the two.
+program: |
+  join(["ada", "bo"])
+
+output: |
+  adabo
+
+node_types: [application, builtin.extent, builtin.tail, compare.eq, concat, conditional, int, selection.collapse, str, unwrap, var, vec-literal]

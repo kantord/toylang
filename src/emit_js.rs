@@ -121,6 +121,14 @@ function tl_jsonlines(v, f) {
 }
 ";
 
+// The string iterator steps one codepoint at a time, surrogate pairs included (the same
+// iterator STR_CMP_HELPER uses above), so there is no decoding to get right here.
+const CHARS_HELPER: &str = "\
+function tl_chars(s) {
+  return Array.from(s, (c) => c.codePointAt(0));
+}
+";
+
 pub fn emit(program: &Program) -> String {
     let mut out = String::new();
 
@@ -154,6 +162,9 @@ pub fn emit(program: &Program) -> String {
     }
     if used.str_cmp {
         out.push_str(STR_CMP_HELPER);
+    }
+    if used.chars {
+        out.push_str(CHARS_HELPER);
     }
 
     // Function declarations hoist, so a call to one defined further down resolves without the
@@ -279,6 +290,7 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+        Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("JSON.stringify({value})"),
         Type::Int | Type::Bool => format!("String({value})"),
         Type::Vec(elem) => {
@@ -372,6 +384,7 @@ struct Helpers {
     jsonlines: bool,
     tail: bool,
     str_cmp: bool,
+    chars: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -429,6 +442,7 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::Builtin { which, arg } => {
                 used.jsonlines |= *which == Builtin::JsonLines;
                 used.tail |= *which == Builtin::Tail;
+                used.chars |= *which == Builtin::Chars;
                 walk(arg, used);
             }
             Kind::Cond {
@@ -538,6 +552,7 @@ fn expr(t: &Tir) -> String {
         }
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("String({})", expr(arg)),
+            Builtin::Chars => format!("tl_chars({})", expr(arg)),
             Builtin::Range => {
                 format!(
                     "Array.from({{ length: Math.max(0, {}) }}, (_, i) => i)",

@@ -118,6 +118,7 @@ fn canonical(ty: &Type, value: &str) -> String {
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+        Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str | Type::Int | Type::Bool => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(elem, ".")),
         Type::Enum { .. } if ty.as_opt().is_some() => {
@@ -411,6 +412,9 @@ fn expr(t: &Tir) -> String {
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("({} | tostring)", expr(arg)),
             Builtin::Range => format!("[ range(0; {}) ]", expr(arg)),
+            // `explode` already decodes jq's UTF-8 string by codepoint, not by byte, so there
+            // is no decoding to get right here.
+            Builtin::Chars => format!("({} | explode)", expr(arg)),
             // `canonical` reorders a record's keys but leaves the *value*, not text; `tojson`
             // is what turns each element into the same compact JSON string `-c` would print for
             // it, matching every other backend's per-element encoding.

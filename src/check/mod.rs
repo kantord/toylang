@@ -193,6 +193,14 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 .to_string(),
         ));
     }
+    // A Char has no wire form (the reverse of `input`'s refusal above), so a program cannot
+    // hand one to the printer either -- it has to build a Str first.
+    if body.ty.contains_char() {
+        return Err(Error::new(
+            file.body.span(),
+            "the program's result contains a Char, which has no wire form to print".to_string(),
+        ));
+    }
     let input = input.into_inner();
     let inputs = inputs.into_inner();
     // Forced by the backends, not chosen: Python's `input` reads all of stdin to EOF before
@@ -287,6 +295,15 @@ fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
                 format!("`jsonlines` needs a Vec or a stream, found {}", arg.ty),
             ));
         }
+        if arg.ty.contains_char() {
+            return Err(Error::new(
+                arg_span,
+                format!(
+                    "`jsonlines` cannot print {}; Char has no wire form to write",
+                    arg.ty
+                ),
+            ));
+        }
         return Ok(Tir::new(
             Type::Str,
             Kind::Builtin {
@@ -298,12 +315,13 @@ fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
     synth(ctx, body)
 }
 
-/// Every function name the language itself provides, and therefore reserves. `str` and `range`
-/// live in `builtin()`'s fixed table; `jsonlines`, `extent`, `concat`, `tail`, `collect`, and
-/// `fields` are polymorphic and checked from `synth`'s own arms; `select` and `map` rebind `.`.
-/// All ten are reserved the same way, and the docs harness (tests/docs.rs) reads this list to
-/// insist each one has a reference page.
-pub const BUILTIN_NAMES: [&str; 10] = [
+/// Every function name the language itself provides, and therefore reserves. `str`, `range`,
+/// and `chars` live in `builtin()`'s fixed table; `jsonlines`, `extent`, `concat`, `tail`,
+/// `collect`, and `fields` are polymorphic and checked from `synth`'s own arms; `select` and
+/// `map` rebind `.`. All eleven are reserved the same way, and the docs harness (tests/docs.rs)
+/// reads this list to insist each one has a reference page.
+pub const BUILTIN_NAMES: [&str; 11] = [
+    "chars",
     "collect",
     "concat",
     "extent",
@@ -333,6 +351,13 @@ fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
             Sig {
                 param: Some(Type::Int),
                 ret: vec_of(Type::Int),
+            },
+        ),
+        "chars" => (
+            tir::Builtin::Chars,
+            Sig {
+                param: Some(Type::Str),
+                ret: vec_of(Type::Char),
             },
         ),
         _ => return None,
@@ -524,7 +549,7 @@ fn substitute(t: &Type, map: &HashMap<String, Type>) -> Type {
                 .map(|(n, p)| (n.clone(), p.as_ref().map(|p| substitute(p, map))))
                 .collect(),
         },
-        Type::Str | Type::Int | Type::Bool => t.clone(),
+        Type::Str | Type::Int | Type::Bool | Type::Char => t.clone(),
     }
 }
 
@@ -2137,6 +2162,14 @@ fn input_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
             format!("`input` cannot be read as {want}; absence has no wire form to read"),
         ));
     }
+    // A Char is never itself JSON; it only ever comes from decoding a Str already in hand
+    // (`chars`), so there is nothing for a wire value to decode into.
+    if want.contains_char() {
+        return Err(Error::new(
+            span,
+            format!("`input` cannot be read as {want}; Char has no wire form to read"),
+        ));
+    }
     let mut slot = ctx.input.borrow_mut();
     match slot.as_ref() {
         None => *slot = Some(want.clone()),
@@ -2178,6 +2211,12 @@ fn inputs_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
         return Err(Error::new(
             span,
             format!("`inputs` cannot be read as {want}; absence has no wire form to read"),
+        ));
+    }
+    if elem.contains_char() {
+        return Err(Error::new(
+            span,
+            format!("`inputs` cannot be read as {want}; Char has no wire form to read"),
         ));
     }
     let mut slot = ctx.inputs.borrow_mut();
