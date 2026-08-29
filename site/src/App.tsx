@@ -125,7 +125,7 @@ export default function App() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-[1500px] flex-col gap-6 p-6">
+    <div className={cn("mx-auto flex min-h-screen flex-col gap-6 p-6", section !== "mail" && "max-w-[1500px]")}>
       <header className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
         <h1 className="text-xl font-semibold tracking-tight">toylang</h1>
         <nav className="flex gap-4 text-sm">
