@@ -312,7 +312,7 @@
   kind: decide
   needs: []
   prio: 2
-  status: todo
+  status: done
 
 - id: prelude-precompile
   issue: gh:73
@@ -358,6 +358,28 @@
   kind: build
   needs: []
   status: todo
+
+- id: composite-equality
+  issue: gh:68
+  title: Decide composite == -- structural everywhere or refused; today the backends disagree
+  kind: decide
+  needs: []
+  prio: 2
+  status: todo
+
+- id: result-in-prelude
+  issue: gh:82
+  title: Result<T, E> joins the prelude -- declaration, docs, corpus
+  kind: build
+  needs: [result-type-design]
+  status: delegated
+
+- id: emuto-survey
+  issue: gh:84
+  title: Survey kantord/emuto -- the predecessor, adopt/avoid/superseded
+  kind: build
+  needs: []
+  status: delegated
 
 - id: parser-floor-recursion
   issue: gh:76
@@ -442,14 +464,15 @@
   kind: decide
   needs: [second-int-type-design]
   prio: 2
-  status: todo
+  status: done
 
 - id: int64-build
+  issue: gh:83
   title: Build Int64 across the backends per the surface session
   kind: build
   needs: [int64-surface-design]
   model: fable
-  status: todo
+  status: delegated
 
 - id: euler-data-problems
   issue: gh:69
