@@ -466,7 +466,7 @@
   title: Settle the okf-invalid SKILL.md finding -- check scope or OKF adoption for skills
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: wizard-ui-polish
   issue: gh:43
