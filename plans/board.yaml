@@ -298,6 +298,14 @@
   prio: 2
   status: done
 
+- id: mini-parser-spike
+  issue: gh:77
+  title: Spike -- an arithmetic-expression parser over tokens, no invented syntax, runs on all seven backends
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
 - id: result-type-design
   issue: gh:72
   title: Grill Result<T, E> -- the prelude's second tagged enum, and what partial chains yield
