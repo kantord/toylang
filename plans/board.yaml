@@ -529,7 +529,7 @@
   title: Mail app small cleanups from the landing review
   kind: build
   needs: [mail-app-v2]
-  status: delegated
+  status: done
 
 - id: docs-site-design
   title: Grill the docs site generalization -- page types, navigation, content provenance
