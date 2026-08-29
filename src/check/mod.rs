@@ -1,5 +1,5 @@
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Param, Pattern, Span};
 use crate::error::Error;
@@ -113,59 +113,6 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     let input = RefCell::new(None);
     let inputs = RefCell::new(None);
     let next_local = Cell::new(0);
-
-    // Signatures are collected before any body is checked, so a definition may call one that
-    // appears later in the file. This is also what recursion will need.
-    let mut funcs = Vec::new();
-    for def in &file.defs {
-        let sig = &sigs[&def.name];
-        let scope = match (&def.param, &sig.param) {
-            (Some(param), Some(param_ty)) => vec![(param.name.clone(), param_ty.clone())],
-            (None, None) => Vec::new(),
-            _ => unreachable!("a signature's param mirrors its definition's"),
-        };
-        let ctx = Ctx {
-            sigs: &sigs,
-            enums: &enums,
-            variant_owners: &variant_owners,
-            scope,
-            arm_fields: Vec::new(),
-            subject: None,
-            input: &input,
-            inputs: &inputs,
-            lines_used: &lines_used,
-            in_mapper: false,
-            in_fn: Some(&def.name),
-            next_local: &next_local,
-        };
-        // The declared return type flows into the body, so a form whose type comes from its
-        // position (`[]`, `input`, a variant-naming string) resolves against the annotation. A
-        // body that synthesises instead is compared below, where the error can name the
-        // function rather than just the two types.
-        let body = match expect_inner(&ctx, &def.body, &sig.ret)? {
-            Expected::Checked(body) => body,
-            Expected::Synthesised(body) => conform(&ctx, body, &sig.ret),
-        };
-        if let Some(param) = &def.param {
-            check_param(&body, param, &sig.param, &def.name, def.body.span())?;
-        }
-        if body.ty != sig.ret {
-            return Err(Error::new(
-                def.body.span(),
-                format!(
-                    "`{}` declares it returns {}, but its body is {}",
-                    def.name, sig.ret, body.ty
-                ),
-            ));
-        }
-        funcs.push(tir::Func {
-            name: def.name.clone(),
-            param: def.param.as_ref().map(|p| p.name.clone()),
-            param_ty: sig.param.clone(),
-            body,
-        });
-    }
-
     let ctx = Ctx {
         sigs: &sigs,
         enums: &enums,
@@ -180,6 +127,20 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         in_fn: None,
         next_local: &next_local,
     };
+
+    // `prelude::inject` prepended prelude.toy's own defs to `file.defs`, which is what let
+    // `sigs` above resolve calls into them and is what catches a program that redefines one --
+    // but their bodies were already checked once, at build time (`build.rs`, via
+    // `prelude::checked`), and prelude.toy cannot have changed since. Rechecking them here would
+    // only repeat that work on every single compile.
+    let mut funcs = crate::prelude::checked();
+    let precompiled_names: HashSet<String> = funcs.iter().map(|f| f.name.clone()).collect();
+    let own_defs = file
+        .defs
+        .iter()
+        .filter(|d| !precompiled_names.contains(&d.name));
+    funcs.extend(check_defs(own_defs, &ctx)?);
+
     let body = check_program_body(&ctx, &file.body)?;
     // A stream cannot be printed, having nothing to show: it is not a value, and collect() is
     // what turns it into one. A function body catches this for free, since its return
@@ -231,6 +192,115 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         inputs,
         uses_lines: lines_used.get(),
     })
+}
+
+/// Signatures are collected before any body is checked, so a definition may call one that
+/// appears later in `defs`. This is also what recursion needs. No reachability pruning happens
+/// here: that needs the whole program's body, which `check_module` never has and `check` only
+/// gets once this returns, so both call this and prune afterward, over the combined result.
+/// `ctx`'s own per-def fields (`scope`, `subject`, `in_fn`, ...) are ignored -- each def gets its
+/// own, built from its signature exactly as `check` always has.
+fn check_defs<'a>(
+    defs: impl IntoIterator<Item = &'a crate::ast::Def>,
+    ctx: &Ctx<'a>,
+) -> Result<Vec<tir::Func>, Error> {
+    let mut funcs = Vec::new();
+    for def in defs {
+        let sig = &ctx.sigs[&def.name];
+        let scope = match (&def.param, &sig.param) {
+            (Some(param), Some(param_ty)) => vec![(param.name.clone(), param_ty.clone())],
+            (None, None) => Vec::new(),
+            _ => unreachable!("a signature's param mirrors its definition's"),
+        };
+        let def_ctx = Ctx {
+            sigs: ctx.sigs,
+            enums: ctx.enums,
+            variant_owners: ctx.variant_owners,
+            scope,
+            arm_fields: Vec::new(),
+            subject: None,
+            input: ctx.input,
+            inputs: ctx.inputs,
+            lines_used: ctx.lines_used,
+            in_mapper: false,
+            in_fn: Some(&def.name),
+            next_local: ctx.next_local,
+        };
+        // The declared return type flows into the body, so a form whose type comes from its
+        // position (`[]`, `input`, a variant-naming string) resolves against the annotation. A
+        // body that synthesises instead is compared below, where the error can name the
+        // function rather than just the two types.
+        let body = match expect_inner(&def_ctx, &def.body, &sig.ret)? {
+            Expected::Checked(body) => body,
+            Expected::Synthesised(body) => conform(&def_ctx, body, &sig.ret),
+        };
+        if let Some(param) = &def.param {
+            check_param(&body, param, &sig.param, &def.name, def.body.span())?;
+        }
+        if body.ty != sig.ret {
+            return Err(Error::new(
+                def.body.span(),
+                format!(
+                    "`{}` declares it returns {}, but its body is {}",
+                    def.name, sig.ret, body.ty
+                ),
+            ));
+        }
+        funcs.push(tir::Func {
+            name: def.name.clone(),
+            param: def.param.as_ref().map(|p| p.name.clone()),
+            param_ty: sig.param.clone(),
+            body,
+        });
+    }
+    Ok(funcs)
+}
+
+/// Checks a module's own `pub` declarations in isolation -- `prelude.toy`'s, at build time
+/// (`build.rs`), before there is any file for them to be merged into and nothing yet calling any
+/// of it. Every declaration is kept: reachability is the calling file's question, decided once
+/// program and prelude are merged (`check` above, via `prune_unreachable`).
+pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error> {
+    let env = TypeEnv {
+        aliases: HashMap::new(),
+        enums: enum_map(&module.enums)?,
+    };
+    let mut enums: HashMap<String, Type> = HashMap::new();
+    for e in &module.enums {
+        enums.insert(
+            e.name.clone(),
+            resolve_enum(e, &env, &mut Vec::new(), None)?,
+        );
+    }
+    let mut variant_owners: HashMap<String, Vec<String>> = HashMap::new();
+    for e in &module.enums {
+        for v in &e.variants {
+            variant_owners
+                .entry(v.name.clone())
+                .or_default()
+                .push(e.name.clone());
+        }
+    }
+    let sigs = signatures(&module.defs, &env)?;
+    let input = RefCell::new(None);
+    let inputs = RefCell::new(None);
+    let lines_used = Cell::new(false);
+    let next_local = Cell::new(0);
+    let ctx = Ctx {
+        sigs: &sigs,
+        enums: &enums,
+        variant_owners: &variant_owners,
+        scope: Vec::new(),
+        arm_fields: Vec::new(),
+        subject: None,
+        input: &input,
+        inputs: &inputs,
+        lines_used: &lines_used,
+        in_mapper: false,
+        in_fn: None,
+        next_local: &next_local,
+    };
+    check_defs(module.defs.iter(), &ctx)
 }
 
 /// A signature may spell Stream now, which un-does the trick the Lines design leaned on (a

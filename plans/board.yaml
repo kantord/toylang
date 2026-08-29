@@ -311,7 +311,7 @@
   title: Precompile the prelude into the binary at checked-TIR level
   kind: build
   needs: []
-  status: todo
+  status: done
 
 - id: partial-chain-peel-build
   issue: gh:74
