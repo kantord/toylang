@@ -290,6 +290,29 @@
   prio: 2
   status: todo
 
+- id: matcher-parser-spike
+  issue: gh:71
+  title: Spike -- a JSON parser in the matcher algebra, syntax invented, alternatives weighed
+  kind: build
+  needs: []
+  prio: 2
+  status: delegated
+
+- id: result-type-design
+  issue: gh:72
+  title: Grill Result<T, E> -- the prelude's second tagged enum, and what partial chains yield
+  kind: decide
+  needs: []
+  prio: 2
+  status: todo
+
+- id: prelude-precompile
+  issue: gh:73
+  title: Precompile the prelude into the binary at checked-TIR level
+  kind: build
+  needs: []
+  status: todo
+
 - id: matcher-totality-and-alt-design
   title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test
   kind: decide
