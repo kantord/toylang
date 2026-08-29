@@ -140,6 +140,13 @@
   needs: [annotations-email-inbox]
   status: todo
 
+- id: static-site-split
+  issue: gh:50
+  title: Dev-only routes into one folder; docs build becomes real static HTML for GitHub Pages, prefetch keeps the feel
+  kind: build
+  needs: []
+  status: todo
+
 - id: grill-via-annotations
   title: A repo skill running grilling rounds through the annotations mode inbox
   kind: build
@@ -403,6 +410,13 @@
   title: "Decide how to split src/check.rs (1874 lines, budget 1000; synth() and check() also over the line/complexity limits) -- inherited debt, predates issue #14"
   kind: decide
   needs: [checker-structure-survey]
+  status: done
+
+- id: check-rs-split-build
+  issue: gh:51
+  title: Extract the two self-contained checker passes; the core becomes the sinkhole's first exemption
+  kind: build
+  needs: [check-rs-split-decision, type-flow-rework]
   status: todo
 
 - id: quality-hooks-introduction
