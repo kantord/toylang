@@ -241,7 +241,7 @@
   title: Unused variables are compile errors, like Go -- param and destructured fields
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: auto-matchers-design
   issue: gh:47

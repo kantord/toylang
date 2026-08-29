@@ -47,3 +47,9 @@ lines at merge-base, 1870 after a five-line comment-and-restructure fix
 inside one function. Same rule -- the diff didn't cause the file being over
 budget, it nudged an already-over file by a few lines while fixing an
 unrelated bug, and that stays inherited.
+
+The unused-variable session (issue #45) hit this on `check.rs`: 2291 lines
+at merge-base, 2378 after adding the unused-parameter and unused-field
+checks plus their tests. The task was implementing issue #45, not the
+`check.rs` split (that is issue #51's own conversation), so this stays
+inherited by the same rule.

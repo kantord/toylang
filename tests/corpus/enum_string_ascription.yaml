@@ -1,14 +1,15 @@
 # Goal program two of the type-flow rework (plans/type-flow.md), on a unary function: a
 # string literal checked against an enum type is the unit variant it names, the same spelling
-# the wire format already gives one.
+# the wire format already gives one. `x` picks the branch (issue #45 requires every
+# parameter to be read); both arms are still bare strings ascribed only by the return type.
 program: |
   enum Status { active, inactive }
 
-  fn initial(x: Int) -> Status = "active"
+  fn initial(x: Int) -> Status = "active" if x > 0 else "inactive"
 
   initial(1)
 
 output: |
   "active"
 
-node_types: [application, int, variant.unit]
+node_types: [application, compare.gt, conditional, int, var, variant.unit]

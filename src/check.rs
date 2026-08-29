@@ -144,6 +144,17 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 def.body.span(),
             )?;
         }
+        if !param_used(&body, &def.param.name) {
+            return Err(Error::new(
+                def.param.span,
+                format!(
+                    // Every function takes exactly one parameter (kantord/toylang#53), so
+                    // "delete it" alone would send the reader into a parse error.
+                    "parameter `{}` is never used; give it a real use, or retire `{}` if nothing needs it",
+                    def.param.name, def.name
+                ),
+            ));
+        }
         if body.ty != sig.ret {
             return Err(Error::new(
                 def.body.span(),
@@ -399,6 +410,66 @@ fn check_linear(
             format!("{subject} must be consumed exactly once, not {n} times"),
         )),
     }
+}
+
+/// Whether any node in `t` satisfies `pred`, walking every child a Tir node can hold. The same
+/// shape as `stream_uses`, but a plain OR rather than a count: unused-binding checks only need
+/// to know whether a name was read at all, not how many times or along which path.
+fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
+    if pred(t) {
+        return true;
+    }
+    match &t.kind {
+        Kind::Var(_)
+        | Kind::Local(_)
+        | Kind::Str(_)
+        | Kind::Int(_)
+        | Kind::Input
+        | Kind::Inputs
+        | Kind::Lines => false,
+        Kind::VecLit(items) => items.iter().any(|i| any_node(i, pred)),
+        Kind::RecordLit { fields } => fields.iter().any(|(_, v)| any_node(v, pred)),
+        Kind::EnumLit { payload, .. } => payload.as_deref().is_some_and(|p| any_node(p, pred)),
+        Kind::Call { arg, .. } | Kind::Builtin { arg, .. } => any_node(arg, pred),
+        Kind::Concat(l, r) => any_node(l, pred) || any_node(r, pred),
+        Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => {
+            any_node(lhs, pred) || any_node(rhs, pred)
+        }
+        Kind::Bind { value, body, .. } => any_node(value, pred) || any_node(body, pred),
+        Kind::Map { source, body, .. } => any_node(source, pred) || any_node(body, pred),
+        Kind::Select {
+            source, pred: p, ..
+        } => any_node(source, pred) || any_node(p, pred),
+        Kind::Field { base, .. } | Kind::Unwrap { base } => any_node(base, pred),
+        Kind::Index { base, index, .. } => any_node(base, pred) || any_node(index, pred),
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => any_node(cond, pred) || any_node(then, pred) || any_node(otherwise, pred),
+        Kind::Match { subject, arms, .. } => {
+            any_node(subject, pred)
+                || arms.iter().any(|a| {
+                    a.guard.as_ref().is_some_and(|g| any_node(g, pred)) || any_node(&a.body, pred)
+                })
+        }
+    }
+}
+
+/// Whether the function parameter `name` is read anywhere in its body. Go exempts parameters
+/// from its unused-binding rule; toylang does not, since a function here has exactly one, and
+/// declaring an input the body ignores is the same dead-code smell the rule exists for.
+fn param_used(body: &Tir, name: &str) -> bool {
+    any_node(body, &|t| matches!(&t.kind, Kind::Var(n) if n == name))
+}
+
+/// Whether a match arm's destructured field `name`, bound off payload local `pid`, is read
+/// anywhere in the arm's body.
+fn field_used(body: &Tir, pid: LocalId, name: &str) -> bool {
+    any_node(
+        body,
+        &|t| matches!(&t.kind, Kind::Field { base, name: n } if n == name && matches!(base.kind, Kind::Local(id) if id == pid)),
+    )
 }
 
 /// Every function the program's body can actually reach, directly or through calls a reached
@@ -1295,17 +1366,17 @@ fn match_chain(
     let mut out = Vec::new();
     for arm in arms {
         check_reachable(&subject_ty, &covered, default_seen, arm.span)?;
-        let (variant, guard, payload, arm_ctx) = match &arm.pattern {
+        let (variant, guard, payload, arm_ctx, fields) = match &arm.pattern {
             Pattern::Default { .. } => {
                 default_seen = true;
                 // A default matched the whole subject, so `.` stays the enum value.
-                (None, None, None, ctx.with(ctx.subject.clone()))
+                (None, None, None, ctx.with(ctx.subject.clone()), None)
             }
             // The guard is a Bool over the unrebound subject, so it is checked in the
             // enclosing context, and the body keeps `.` as the subject too.
             Pattern::Guard(g) => {
                 let cond = expect(ctx, g, &Type::Bool)?;
-                (None, Some(cond), None, ctx.with(ctx.subject.clone()))
+                (None, Some(cond), None, ctx.with(ctx.subject.clone()), None)
             }
             Pattern::Variant {
                 name: vname,
@@ -1316,7 +1387,7 @@ fn match_chain(
                 covered.push(vname.clone());
                 let (payload, arm_ctx) =
                     variant_arm(ctx, &subject_ty, vname, *vspan, fields.as_ref())?;
-                (Some(vname.clone()), None, payload, arm_ctx)
+                (Some(vname.clone()), None, payload, arm_ctx, fields.as_ref())
             }
         };
         let body = match &result {
@@ -1336,6 +1407,24 @@ fn match_chain(
             }
             Some(t) => expect(&arm_ctx, &arm.body, t)?,
         };
+        // A bound field the arm's body never reads is the same dead-code smell as an
+        // unused parameter; the fix is the same one the grammar already offers, naming
+        // only what is read and closing the rest with `..`.
+        if let (Some(fields), Some(pid)) = (fields, payload) {
+            for (fname, fspan) in &fields.names {
+                if !field_used(&body, pid, fname) {
+                    let hint = if fields.rest {
+                        "remove it from the pattern".to_string()
+                    } else {
+                        "remove it from the pattern and close it with `..`".to_string()
+                    };
+                    return Err(Error::new(
+                        *fspan,
+                        format!("`{fname}` is bound here but never used in the arm's body; {hint}"),
+                    ));
+                }
+            }
+        }
         out.push(tir::MatchArm {
             variant,
             guard,

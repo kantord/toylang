@@ -86,7 +86,7 @@ fn bare_input() {
 #[test]
 fn input_used_at_two_types() {
     insta::assert_snapshot!(err(r#"
-fn a(x: Int) -> Str = "n"
+fn a(x: Int) -> Str = x | "n"
 fn b(x: Str) -> Str = x
 
 a(input) + b(input)

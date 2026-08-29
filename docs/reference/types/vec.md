@@ -19,9 +19,9 @@ the `Vec` holds. A declared type flows into the expression it annotates, so unde
 annotation an empty `[]` takes its element type from the signature:
 
 ```toylang
-fn nothing(x: Int) -> Vec<Int> = []
+fn nothing(x: Int) -> Vec<Int> = [] if x < 0 else [x]
 
-nothing(1)
+nothing(-1)
 ```
 
 ```output

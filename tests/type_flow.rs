@@ -16,7 +16,7 @@ fn body_ty(src: &str) -> Type {
 
 #[test]
 fn empty_vec_resolves_against_the_return_type() {
-    let src = "fn nothing(x: Int) -> Vec<Int> = []\n\nnothing(1)";
+    let src = "fn nothing(x: Int) -> Vec<Int> = x | []\n\nnothing(1)";
     assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
 }
 
@@ -43,7 +43,7 @@ fn wrong_element_under_annotation() {
 
 #[test]
 fn a_string_names_a_unit_variant_in_return_position() {
-    let src = "enum Status { active, inactive }\n\nfn initial(x: Int) -> Status = \"active\"\n\ninitial(1)";
+    let src = "enum Status { active, inactive }\n\nfn initial(x: Int) -> Status = x | \"active\"\n\ninitial(1)";
     assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Status"));
 }
 
@@ -66,7 +66,7 @@ fn a_string_naming_no_variant_is_refused() {
 /// mismatch error still blames the function by name.
 #[test]
 fn a_synthesised_mismatch_still_names_the_function() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Int> = \"a\"\n\nf(1)"));
+    insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Int> = x | \"a\"\n\nf(1)"));
 }
 
 // Step 2: a record literal checked against a record type pushes each field's expected type
@@ -75,13 +75,13 @@ fn a_synthesised_mismatch_still_names_the_function() {
 #[test]
 fn record_fields_receive_the_declared_types() {
     let src = "enum Status { active, inactive }\n\n\
-               fn f(x: Int) -> {v: Vec<Int>, s: Status} = {v: [], s: \"active\"}\n\nf(1)";
+               fn f(x: Int) -> {v: Vec<Int>, s: Status} = x | {v: [], s: \"active\"}\n\nf(1)";
     assert!(matches!(body_ty(src), Type::Record(_)));
 }
 
 #[test]
 fn input_in_a_field_checked_against_a_declared_record() {
-    let src = "fn f(x: Int) -> {n: Int} = {n: input}\n\nf(1)";
+    let src = "fn f(x: Int) -> {n: Int} = x | {n: input}\n\nf(1)";
     let program = toylang::compile(src).unwrap();
     assert_eq!(program.input, Some(Type::Int));
 }
@@ -112,13 +112,13 @@ fn an_input_ahead_of_every_typed_use_is_still_refused() {
 #[test]
 fn reordered_fields_still_mismatch_with_the_hint() {
     insta::assert_snapshot!(err(
-        "fn f(x: Int) -> {a: Int, b: Str} = {b: \"x\", a: 1}\n\nf(1)"
+        "fn f(x: Int) -> {a: Int, b: Str} = x | {b: \"x\", a: 1}\n\nf(1)"
     ));
 }
 
 #[test]
 fn a_missing_field_still_mismatches() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> {a: Int, b: Str} = {a: 1}\n\nf(1)"));
+    insta::assert_snapshot!(err("fn f(x: Int) -> {a: Int, b: Str} = x | {a: 1}\n\nf(1)"));
 }
 
 // Step 3: a call against a known signature pushes the parameter type into the argument. The

@@ -1,0 +1,5 @@
+---
+source: tests/unused.rs
+expression: "err(\"enum Shape { point, circle{r: Int, color: Str} }\\n\\n\\\n         fn area(s: Shape) -> Int = s | circle{r, color} -> r * r or point -> 0\\n\\n\\\n         area(Shape.point)\")"
+---
+`color` is bound here but never used in the arm's body; remove it from the pattern and close it with `..` (at byte 91)
