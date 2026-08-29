@@ -67,6 +67,21 @@ already gives, printed as `null`:
 match_partial_guards
 ```
 
+A declared `Opt<T>` return reaches the arms as `T`, not `Opt<T>` -- the chain's own
+partiality is what supplies the `Opt`, so an arm that writes a bare `[]` resolves it against
+the declared element type instead of needing it spelled out some other way:
+
+```toylang
+fn tags(n: Int) -> Opt<Vec<Int>> =
+    n | . > 0 -> []
+
+{a: tags(1), b: tags(-1)}
+```
+
+```output
+{"a":[],"b":null}
+```
+
 When a partial chain's arms are themselves `Opt`-typed, the wrapping doubles: "no arm
 matched" and "matched, and found nothing" are two different values in memory (`none` and
 `some(none)`), even though both print `null` once serialization flattens the tags away.

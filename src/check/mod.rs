@@ -2236,6 +2236,19 @@ fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Err
     }
 }
 
+/// What a match chain's arms should be checked against. A chain with a pattern arm is checked
+/// against `want` itself; a partial guard chain -- all guards, no default -- wraps whatever the
+/// arms yield in `Opt` on its own (kantord/toylang#62), so `want` peels through `Opt` first
+/// (kantord/toylang#48). `None` when a partial chain's `want` isn't `Opt`, leaving synthesis to
+/// own that mismatch.
+fn match_arm_want<'a>(arms: &[MatchArm], want: &'a Type) -> Option<&'a Type> {
+    if arms.iter().all(|a| matches!(a.pattern, Pattern::Guard(_))) {
+        want.as_opt()
+    } else {
+        Some(want)
+    }
+}
+
 fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> {
     // The forms whose type comes from their position rather than their contents.
     if let Expr::Input { span } = expr {
@@ -2314,15 +2327,13 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
         )));
     }
 
-    // Every arm of a total match chain receives the expectation the same way. A partial
-    // chain -- all guards, no default -- keeps synthesising instead: whether a peeled Opt
-    // expectation should flow into its arms is the open half of kantord/toylang#48, and
-    // this is that issue's conservative cut, kept.
+    // Every arm of a total match chain receives the expectation the same way; a partial
+    // chain's peel is `match_arm_want`'s call.
     if let Expr::Match { arms, span } = expr
         && !want.contains_stream()
-        && arms.iter().any(|a| !matches!(a.pattern, Pattern::Guard(_)))
+        && let Some(push) = match_arm_want(arms, want)
     {
-        return match_chain(ctx, arms, *span, Some(want)).map(Expected::Checked);
+        return match_chain(ctx, arms, *span, Some(push)).map(Expected::Checked);
     }
 
     // A record literal checked against a record type pushes each field's expected type into

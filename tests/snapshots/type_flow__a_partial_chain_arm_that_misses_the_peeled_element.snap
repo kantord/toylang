@@ -1,0 +1,6 @@
+---
+source: tests/type_flow.rs
+assertion_line: 268
+expression: "err(\"fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> [\\\"a\\\"]\\n\\nf(1)\")"
+---
+expected Int, found Str (at byte 46)

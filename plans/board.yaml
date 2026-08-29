@@ -327,7 +327,7 @@
   kind: build
   needs: [partial-chain-expectation-decision]
   prio: 2
-  status: delegated
+  status: done
 
 - id: parser-floor-strings
   issue: gh:75

@@ -42,9 +42,10 @@ yields `Opt` -- the same answer indexing gives to reaching past what's there:
 match_partial_guards
 ```
 
-The one shape a partial chain may not take is arms whose bodies are already `Opt`-typed:
-one `null` would then mean both "no arm matched" and "matched, and found nothing", so the
-checker refuses it and asks for a default arm.
+A declared `Opt<T>` return reaches the arms as `T`: the chain's own partiality is what
+supplies the `Opt`, so an arm never has to spell it. An arm whose body is itself `Opt`-typed
+doubles the wrapping instead of colliding with it -- `none` (no arm matched) and `some(none)`
+(matched, and found nothing) stay distinct values, even though both print `null`.
 
 `or` exists only between match arms; there is no Bool `or` (spell it with `if`/`else`), and
 the keyword is reserved so that if one ever lands, arm-`or` keeps binding loosest. Matching
