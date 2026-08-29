@@ -229,10 +229,16 @@
   needs: []
   status: todo
 
+- id: auto-matchers-design
+  title: Grill auto-generated type matchers -- the capital namespace (matcher vs constructor), domain, first-classness
+  kind: decide
+  needs: []
+  status: todo
+
 - id: variant-types-flip
   title: Variants become capitalized types -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference)
   kind: build
-  needs: []
+  needs: [auto-matchers-design]
   model: fable
   status: todo
 
