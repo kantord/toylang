@@ -2,7 +2,7 @@ import { Marked, type Tokens } from "marked"
 import { useEffect, useMemo, useState } from "react"
 
 import { Code } from "@/components/Code"
-import { MessageCard } from "@/components/MessageCard"
+import { MessageCard } from "@dev/components/MessageCard"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
@@ -15,16 +15,15 @@ import {
   type Round,
   type RoundOption,
   type RoundQuestion,
-} from "@/lib/grill"
+} from "@dev/lib/grill"
 import { cn } from "@/lib/utils"
 
 const md = new Marked()
 
 /**
- * The wizard's dev-only entry points (kantord/toylang#34). Neither `App.tsx` nor `Markdown.tsx`
- * imports this module statically -- it only reaches the bundle through the `import.meta.env.DEV`
- * dynamic import in App.tsx's `GrillWizardRoute`, matching MailApp's tree-shaking pattern,
- * so `vite build` never ships it.
+ * The wizard's dev-only entry points (kantord/toylang#34), reachable only from dev/src/DevApp.tsx
+ * -- the production build (`vite build`, from ../index.html) never opens dev/ at all
+ * (kantord/toylang#50), so this never reaches that bundle.
  */
 export function GrillIndexPage() {
   const [topics, setTopics] = useState<string[] | null>(null)

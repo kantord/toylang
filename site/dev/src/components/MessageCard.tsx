@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge"
-import type { AnnotationType } from "@/lib/annotations"
+import type { AnnotationType } from "@dev/lib/annotations"
 import { cn } from "@/lib/utils"
 
 /**

@@ -1,16 +1,17 @@
 import { Archive, Check, Inbox as InboxIcon, Pencil, StickyNote, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
-import { FLOW_FOR_TYPE, MessageCard, type FlowType } from "@/components/MessageCard"
+import { FLOW_FOR_TYPE, MessageCard, type FlowType } from "@dev/components/MessageCard"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { pageAnnotations, type Annotation } from "@/lib/annotations"
+import { pageAnnotations, type Annotation } from "@dev/lib/annotations"
+import { annotateHref } from "@dev/lib/nav"
 import { splitBlocks } from "@/lib/blocks"
-import { href, PAGES } from "@/lib/docs"
-import { fetchNotesAndComposed, sendCompose, type ComposeRecord, type NoteRecord } from "@/lib/mail"
+import { PAGES } from "@/lib/docs"
+import { fetchNotesAndComposed, sendCompose, type ComposeRecord, type NoteRecord } from "@dev/lib/mail"
 import { cn } from "@/lib/utils"
 
 /**
@@ -109,7 +110,7 @@ function markAsRead(a: Annotation) {
   }).catch((e) => console.error("annotation mark-as-read failed", e))
 }
 
-export function MailApp({ onOpenPage }: { onOpenPage: () => void }) {
+export function MailApp() {
   const annotations = useMemo(() => PAGES.flatMap((p) => pageAnnotations(p, splitBlocks(p))), [])
   const [answeredKeys, markReadLocally] = useAnsweredKeys()
   const [notes, setNotes] = useState<NoteRecord[]>([])
@@ -228,7 +229,7 @@ export function MailApp({ onOpenPage }: { onOpenPage: () => void }) {
 
       <main className="min-h-0 overflow-y-auto rounded-md border p-4">
         {open ? (
-          <ReadingPane item={open} onMarkRead={onMarkRead} onOpenPage={onOpenPage} />
+          <ReadingPane item={open} onMarkRead={onMarkRead} />
         ) : (
           <p className="text-sm text-muted-foreground">Select a message.</p>
         )}
@@ -279,11 +280,9 @@ function MailRow({
 function ReadingPane({
   item,
   onMarkRead,
-  onOpenPage,
 }: {
   item: MailItem
   onMarkRead: (a: Annotation) => void
-  onOpenPage: () => void
 }) {
   const a = item.annotation
   return (
@@ -296,7 +295,7 @@ function ReadingPane({
       <MessageCard flow={item.flow} note={item.note} />
       {a && (
         <div className="flex gap-2 pt-2">
-          <a href={`${href(a.page)}?b=${a.block}`} onClick={onOpenPage}>
+          <a href={`${annotateHref(a.page)}?b=${a.block}`}>
             <Button type="button" variant="outline" size="sm">
               Open on page
             </Button>

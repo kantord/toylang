@@ -1,50 +1,53 @@
-import { useMemo } from "react"
-
 import { CaseTree } from "@/components/CaseTree"
 import { Code } from "@/components/Code"
 import { RunPanel } from "@/components/RunPanel"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BACKENDS, type Corpus } from "@/lib/corpus"
+import { BACKENDS, type Case, type CaseSummary } from "@/lib/corpus"
+import { PAGES } from "@/lib/docs"
+import { exampleHref } from "@/lib/pageData"
+import { withBase } from "@/lib/route"
 
 /**
  * The corpus browser: every program in the test corpus, and the code each backend compiles it
- * to. The whole site grew out of this page, which now lives under Examples.
+ * to. The whole site grew out of this page, which now lives under Examples. `current` and
+ * `index` come from lib/pageData.ts -- the full case being shown, and the name/type summary of
+ * every other case for the sidebar (kantord/toylang#50: not the whole corpus, which carries
+ * seven backends' worth of emitted code no single page shows).
  */
 export function ExamplesPage({
-  corpus,
-  selected,
-  onSelect,
-  backend,
-  onBackend,
+  current,
+  index,
+  backends,
 }: {
-  corpus: Corpus
-  selected: string
-  onSelect: (name: string) => void
-  backend: string
-  onBackend: (name: string) => void
+  current: Case
+  index: CaseSummary[]
+  backends: string[]
 }) {
-  const current = useMemo(
-    () => corpus.cases.find((c) => c.name === selected) ?? corpus.cases[0],
-    [corpus, selected],
-  )
+  const firstEuler = PAGES.find((p) => p.section === "examples")
 
   return (
     <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
       <aside className="lg:sticky lg:top-6 lg:h-[calc(100vh-11rem)]">
-        <CaseTree cases={corpus.cases} selected={current.name} onSelect={onSelect} />
+        <CaseTree cases={index} selected={current.name} hrefFor={(name) => withBase(exampleHref(name))} />
       </aside>
 
       <main className="min-w-0 space-y-6">
         <p className="max-w-2xl text-sm text-muted-foreground">
           Every program in the test corpus, and the code each of the seven backends compiles it
           to. The same programs run on all seven and have to agree; what you see here is what
-          that agreement is made of. Also here, off to the side:{" "}
-          <a href="#/examples/euler" className="underline">
-            Project Euler solutions
-          </a>{" "}
-          (spoiler warning).
+          that agreement is made of.
+          {firstEuler && (
+            <>
+              {" "}
+              Also here, off to the side:{" "}
+              <a href={withBase("/examples/euler/")} className="underline">
+                Project Euler solutions
+              </a>{" "}
+              (spoiler warning).
+            </>
+          )}
         </p>
 
         <section className="space-y-3">
@@ -91,15 +94,15 @@ export function ExamplesPage({
 
         <section className="space-y-3">
           <h3 className="text-sm font-medium">Compiled to</h3>
-          <Tabs value={backend} onValueChange={onBackend}>
+          <Tabs defaultValue={backends[0]}>
             <TabsList>
-              {corpus.backends.map((name) => (
+              {backends.map((name) => (
                 <TabsTrigger key={name} value={name}>
                   {BACKENDS[name]?.label ?? name}
                 </TabsTrigger>
               ))}
             </TabsList>
-            {corpus.backends.map((name) => (
+            {backends.map((name) => (
               <TabsContent key={name} value={name} className="space-y-3">
                 <p className="text-xs text-muted-foreground">{BACKENDS[name]?.note}</p>
                 <Code code={current.emitted[name]} lang={BACKENDS[name]?.lang ?? "text"} />

@@ -1,6 +1,7 @@
 import { Marked, type Token, type Tokens } from "marked"
 
 import { resolveLink, type Page } from "@/lib/docs"
+import { withBase } from "@/lib/route"
 
 /** The fence languages that belong to the fragment protocol; anything else is illustration. */
 export const FRAGMENT = new Set(["toylang", "input", "output", "refuses", "error", "case"])
@@ -26,9 +27,11 @@ function renderer(page: Page) {
       // Relative markdown links are written for the repository; rendered, they should lead to
       // the matching page here, or to GitHub for files this site does not show.
       link(token) {
-        const target = resolveLink(page, token.href) ?? token.href
-        const text = this.parser.parseInline(token.tokens)
+        const resolved = resolveLink(page, token.href)
+        const target =
+          resolved === null ? token.href : resolved.startsWith("http") ? resolved : withBase(resolved)
         const external = target.startsWith("http")
+        const text = this.parser.parseInline(token.tokens)
         return `<a href="${target}"${external ? ' target="_blank" rel="noreferrer"' : ""}>${text}</a>`
       },
     },

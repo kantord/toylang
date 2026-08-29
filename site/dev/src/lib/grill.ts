@@ -6,7 +6,7 @@
  * Split out of components so the fetch helpers stay testable without React.
  */
 
-import type { FlowType } from "@/components/MessageCard"
+import type { FlowType } from "@dev/components/MessageCard"
 
 export interface RoundOption {
   label: string

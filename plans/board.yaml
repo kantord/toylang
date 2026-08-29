@@ -145,6 +145,13 @@
   title: Dev-only routes into one folder; docs build becomes real static HTML for GitHub Pages, prefetch keeps the feel
   kind: build
   needs: []
+  status: done
+
+- id: docs-site-real-transitions
+  issue: gh:55
+  title: Client-side fetch-and-swap navigation across static docs pages, not just prefetch hints
+  kind: build
+  needs: [static-site-split]
   status: todo
 
 - id: grill-via-annotations

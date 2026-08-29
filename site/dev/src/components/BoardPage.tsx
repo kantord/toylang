@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 
 import { Badge } from "@/components/ui/badge"
-import { BOARD, rankOf, type Task } from "@/lib/board"
+import { BOARD, rankOf, type Task } from "@dev/lib/board"
 import { cn } from "@/lib/utils"
 
 const NODE_W = 236
