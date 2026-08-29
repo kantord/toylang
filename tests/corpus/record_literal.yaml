@@ -1,5 +1,5 @@
-# Components come out in the order the literal declares them, because field order is part
-# of the type and the printer reads the type.
+# Components come out in the order the literal declares them: order is per-value metadata
+# the printer reads off the type it was built with, never part of the type's identity.
 program: |
   {b: 2, a: 1}
 
