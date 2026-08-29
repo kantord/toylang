@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import { BoardPage } from "@dev/components/BoardPage"
 import { GrillRoundReader } from "@dev/components/GrillWizard"
-import { FLOW, FLOW_FOR_TYPE, MessageCard, type FlowType } from "@dev/components/MessageCard"
+import { FLOW, MessageCard } from "@dev/components/MessageCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,7 +15,19 @@ import { fetchRound, fetchRoundTopics, roundPagePath, type Round } from "@dev/li
 import { annotateHref } from "@dev/lib/nav"
 import { splitBlocks } from "@/lib/blocks"
 import { PAGES } from "@/lib/docs"
-import { fetchNotesAndComposed, sendCompose, type ComposeRecord, type NoteRecord } from "@dev/lib/mail"
+import {
+  annotationItem,
+  composeItem,
+  fetchNotesAndComposed,
+  grillItem,
+  noteItem,
+  sendCompose,
+  type ComposeRecord,
+  type Folder,
+  type MailItem,
+  type NoteRecord,
+  type Preview,
+} from "@dev/lib/mail"
 import { cn } from "@/lib/utils"
 
 /**
@@ -33,7 +45,6 @@ interface InboxRecord {
   block: number
 }
 
-type Folder = "inbox" | "notes" | "archive"
 type Tab = Folder | "board"
 
 const TABS: { key: Tab; label: string; icon: typeof InboxIcon }[] = [
@@ -56,78 +67,6 @@ const INBOX_CATEGORIES: { key: InboxCategory; label: string }[] = [
   { key: "round", label: "Grill rounds" },
   { key: "status", label: FLOW.status.label },
 ]
-
-/** A snippet of an item's underlying page or span, for the "preview with highlights" the issue
- *  asks for -- `anchor`, when present, is the exact quoted words to mark inside `text`. */
-interface Preview {
-  text: string
-  anchor?: string
-}
-
-/** One row's worth of normalized display data, whichever of the four underlying records it
- *  came from -- so the list and reading pane render off one shape instead of branching four
- *  ways at every call site. */
-interface MailItem {
-  key: string
-  folder: Folder
-  sender: string
-  subject: string
-  note: string
-  flow: FlowType
-  preview: Preview | null
-  annotation?: Annotation
-  round?: { topic: string; round: Round }
-}
-
-function annotationItem(a: Annotation, answered: boolean): MailItem {
-  return {
-    key: `annotation:${a.page.path}:${a.block}`,
-    folder: answered ? "archive" : "inbox",
-    sender: a.page.title,
-    subject: a.note.length > 60 ? `${a.note.slice(0, 60)}...` : a.note,
-    note: a.note,
-    flow: FLOW_FOR_TYPE[a.type],
-    preview: { text: a.original, anchor: a.anchor },
-    annotation: a,
-  }
-}
-
-function noteItem(n: NoteRecord, index: number): MailItem {
-  return {
-    key: `note:${n.page}:${n.block}:${index}`,
-    folder: "notes",
-    sender: "You",
-    subject: `re: "${n.anchor.length > 40 ? `${n.anchor.slice(0, 40)}...` : n.anchor}"`,
-    note: n.note,
-    flow: "reply",
-    preview: { text: n.anchor, anchor: n.anchor },
-  }
-}
-
-function composeItem(c: ComposeRecord): MailItem {
-  return {
-    key: `compose:${c.id}`,
-    folder: "notes",
-    sender: "You",
-    subject: c.subject.trim() || "(no subject)",
-    note: c.note,
-    flow: "reply",
-    preview: null,
-  }
-}
-
-function grillItem(topic: string, round: Round, answered: boolean): MailItem {
-  return {
-    key: `grill:${topic}`,
-    folder: answered ? "archive" : "inbox",
-    sender: "Grilling round",
-    subject: topic,
-    note: round.intro ?? round.questions[0]?.question ?? "",
-    flow: "round",
-    preview: null,
-    round: { topic, round },
-  }
-}
 
 /** Every answered `page:block` key, for sorting inbox items into Inbox vs. Archive -- same
  *  read/unread split AnnotationsSidebar used (kantord/toylang#30), and reused as-is for grilling
@@ -208,34 +147,53 @@ export function MailApp() {
     return [...fromAnnotations, ...fromGrill, ...fromComposed, ...fromNotes]
   }, [annotations, grillRounds, answeredKeys, notes, composed])
 
-  const inboxItems = items.filter((i) => i.folder === "inbox")
-  const folderItems = tab === "board" ? [] : items.filter((i) => i.folder === tab)
+  const inboxItems = useMemo(() => items.filter((i) => i.folder === "inbox"), [items])
+  const folderItems = useMemo(
+    () => (tab === "board" ? [] : items.filter((i) => i.folder === tab)),
+    [items, tab],
+  )
   // The action-first inbox (gh:57): the default "Needs response" subfolder drops every `status`
   // item -- acknowledgements and FYIs -- so the list is only things that actually want the
   // maintainer to do something. The other subfolders are one flow each, `status` included, for
   // when the maintainer wants to see the noise on purpose.
-  const visible =
-    tab === "inbox"
-      ? folderItems.filter((i) => (inboxCategory === "action" ? i.flow !== "status" : i.flow === inboxCategory))
-      : folderItems
-  const categoryCounts: Record<InboxCategory, number> = {
-    action: inboxItems.filter((i) => i.flow !== "status").length,
-    escalation: inboxItems.filter((i) => i.flow === "escalation").length,
-    question: inboxItems.filter((i) => i.flow === "question").length,
-    round: inboxItems.filter((i) => i.flow === "round").length,
-    status: inboxItems.filter((i) => i.flow === "status").length,
-  }
+  const visible = useMemo(
+    () =>
+      tab === "inbox"
+        ? folderItems.filter((i) => (inboxCategory === "action" ? i.flow !== "status" : i.flow === inboxCategory))
+        : folderItems,
+    [tab, folderItems, inboxCategory],
+  )
+  const categoryCounts = useMemo<Record<InboxCategory, number>>(
+    () => ({
+      action: inboxItems.filter((i) => i.flow !== "status").length,
+      escalation: inboxItems.filter((i) => i.flow === "escalation").length,
+      question: inboxItems.filter((i) => i.flow === "question").length,
+      round: inboxItems.filter((i) => i.flow === "round").length,
+      status: inboxItems.filter((i) => i.flow === "status").length,
+    }),
+    [inboxItems],
+  )
   // The Inbox tab's own badge counts the same "needs response" set as its default view, not
   // every item sitting in the folder -- otherwise the number itself would be status noise.
-  const counts: Record<Folder, number> = {
-    inbox: categoryCounts.action,
-    notes: items.filter((i) => i.folder === "notes").length,
-    archive: items.filter((i) => i.folder === "archive").length,
-  }
+  const counts = useMemo<Record<Folder, number>>(
+    () => ({
+      inbox: categoryCounts.action,
+      notes: items.filter((i) => i.folder === "notes").length,
+      archive: items.filter((i) => i.folder === "archive").length,
+    }),
+    [categoryCounts, items],
+  )
   // Looked up from `items`, not `visible`: answering an inbox item moves it into Archive
   // mid-session, and the reading pane should keep showing it rather than going blank just
   // because it left the folder still on screen.
   const open = items.find((i) => i.key === openKey) ?? null
+
+  // `visible` can shrink out from under a stale focusIndex -- an item answered mid-session
+  // leaves the folder without going through j/k or selectCategory/selectTab, so Enter would
+  // silently no-op against an out-of-range index until the next arrow key.
+  useEffect(() => {
+    setFocusIndex((i) => Math.min(i, Math.max(0, visible.length - 1)))
+  }, [visible.length])
 
   const selectTab = (t: Tab) => {
     setTab(t)
@@ -285,8 +243,8 @@ export function MailApp() {
   }
 
   const onSendCompose = async (subject: string, body: string) => {
-    await sendCompose(subject, body)
-    setComposed((prev) => [...prev, { id: crypto.randomUUID(), subject, note: body, created: new Date().toISOString() }])
+    const record = await sendCompose(subject, body)
+    setComposed((prev) => [...prev, record])
     setComposeOpen(false)
     selectTab("notes")
   }

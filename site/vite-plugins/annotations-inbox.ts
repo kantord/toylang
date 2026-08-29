@@ -80,6 +80,20 @@ export function annotationsInbox(): Plugin {
   const file = path.join(dir, "inbox.json")
   const notesFile = path.join(dir, "notes.json")
 
+  // `/__annotations/note` and `/__annotations/compose` both read-modify-write notes.json; two
+  // near-simultaneous POSTs would otherwise both read the old file and one write would clobber
+  // the other. Chaining every read-modify-write onto this promise serializes them within the
+  // one dev-server process, which is all a single writer needs to be cheap here.
+  let notesQueue: Promise<void> = Promise.resolve()
+  function withNotesLock<T>(fn: () => Promise<T>): Promise<T> {
+    const run = notesQueue.then(fn, fn)
+    notesQueue = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    return run
+  }
+
   return {
     name: "annotations-inbox",
     apply: "serve",
@@ -167,11 +181,13 @@ export function annotationsInbox(): Plugin {
         try {
           const { page, block, anchor, note } = JSON.parse(await readBody(req)) as NoteRecord
           await mkdir(dir, { recursive: true })
-          const notes = await readNotes(notesFile)
-          const records = notes.records.filter((r) => !(r.page === page && r.block === block && r.anchor === anchor))
-          records.push({ page, block, anchor, note })
-          const next: Notes = { ...notes, last_note: new Date().toISOString(), records }
-          await writeFile(notesFile, JSON.stringify(next, null, 2))
+          await withNotesLock(async () => {
+            const notes = await readNotes(notesFile)
+            const records = notes.records.filter((r) => !(r.page === page && r.block === block && r.anchor === anchor))
+            records.push({ page, block, anchor, note })
+            const next: Notes = { ...notes, last_note: new Date().toISOString(), records }
+            await writeFile(notesFile, JSON.stringify(next, null, 2))
+          })
           res.statusCode = 204
           res.end()
         } catch (e) {
@@ -204,17 +220,23 @@ export function annotationsInbox(): Plugin {
         try {
           const { subject, note } = JSON.parse(await readBody(req)) as { subject: string; note: string }
           await mkdir(dir, { recursive: true })
-          const notes = await readNotes(notesFile)
           const record: ComposeRecord = {
             id: crypto.randomUUID(),
             subject,
             note,
             created: new Date().toISOString(),
           }
-          const next: Notes = { ...notes, last_note: record.created, composed: [...notes.composed, record] }
-          await writeFile(notesFile, JSON.stringify(next, null, 2))
-          res.statusCode = 204
-          res.end()
+          await withNotesLock(async () => {
+            const notes = await readNotes(notesFile)
+            const next: Notes = { ...notes, last_note: record.created, composed: [...notes.composed, record] }
+            await writeFile(notesFile, JSON.stringify(next, null, 2))
+          })
+          // The mail app's own compose list must match notes.json exactly (kantord/toylang#49):
+          // returning the server-generated record, rather than 204, is what lets the client use
+          // it as-is instead of inventing its own id/created that could diverge.
+          res.statusCode = 200
+          res.setHeader("Content-Type", "application/json")
+          res.end(JSON.stringify({ record }))
         } catch (e) {
           res.statusCode = 400
           res.end(e instanceof Error ? e.message : String(e))
