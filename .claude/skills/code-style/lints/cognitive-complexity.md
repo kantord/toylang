@@ -51,3 +51,13 @@ baselines 12/15/13), and were extracted into `arm_yield`/`arm_return` helpers at
 After extraction js and lua sit at their baselines again; go carries one residual point
 (13/10 vs 12/10) from the same arm's Opt re-encoding, caused and recorded here rather than
 laundered into the inherited pile.
+
+The Euler-fixtures session (issue #69) is a fourth instance, in `tests/docs.rs` rather than an
+emitter: a new `fixture` fence, near-duplicating the existing `input` fence's `match &mut
+pending {}` and adding a `let-else`-and-`continue` for the gated case, pushed `extract()` from
+absent to 15/10. Case 2 applied the same way: the `input` and `fixture` arms' bodies (each a
+three-way match on the pending slot) moved into one shared `set_pending_input()` helper, which
+brought `extract()` back to absent with no finding. `every_fragment_is_a_real_program()`'s
+own 11/10 was verified unchanged from merge-base throughout (checked via `git show
+HEAD:tests/docs.rs` against a scratch copy) and stayed inherited by the same rule as
+too-many-lines' worked examples.

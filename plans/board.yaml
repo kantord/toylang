@@ -393,7 +393,7 @@
   title: Euler data problems via runtime input fixtures -- 8, 11, 13, 18
   kind: build
   needs: [euler-given-data-rule]
-  status: delegated
+  status: done
 
 - id: examples-section-folders
   issue: gh:70

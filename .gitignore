@@ -7,3 +7,4 @@ site/dist
 site/*.tsbuildinfo
 docs/.annotations/
 docs/.grill/
+docs/examples/euler/fixtures/
