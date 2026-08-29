@@ -280,7 +280,7 @@
   kind: decide
   needs: [unused-variables-error]
   prio: 2
-  status: todo
+  status: done
 
 - id: partial-chain-expectation-decision
   issue: gh:48
@@ -295,6 +295,32 @@
   kind: decide
   needs: [auto-matchers-design]
   prio: 1
+  status: todo
+
+- id: record-order-relaxation
+  issue: gh:60
+  title: Record field order leaves type identity -- reordered spellings are one type, order stays metadata
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
+
+- id: nullary-functions
+  issue: gh:61
+  title: Nullary functions -- fn name() -> T = body, and the three contrived fixtures go back to one-liners
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
+
+- id: opt-as-enum
+  issue: gh:62
+  title: Opt becomes a prelude enum -- generic enums, tagged absence, null only at serialization (plan first)
+  kind: build
+  needs: []
+  soft: [matcher-totality-and-alt-design]
+  model: fable
+  prio: 2
   status: todo
 
 - id: variant-types-flip
@@ -384,12 +410,12 @@
   kind: decide
   needs: []
   prio: 2
-  status: todo
+  status: done
 
 - id: opt-docs-unpacking
   title: Unpack the Opt reference -- why absence has no representation, with the Rust Option comparison
   kind: build
-  needs: [opt-nesting-semantics]
+  needs: [opt-as-enum]
   status: todo
 
 - id: record-order-strictness
@@ -398,7 +424,7 @@
   kind: decide
   needs: [precedent-survey]
   prio: 2
-  status: todo
+  status: done
 
 - id: draft-split-decision
   title: Decide whether and how draft.md gets split (it is excluded from the prose budget by name)
