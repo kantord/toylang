@@ -25,6 +25,8 @@ key. Nothing here needs a runtime, an index to rebuild, or a tool to read it.
 - [file-too-long](/.claude/skills/code-style/lints/file-too-long.md) -- an
   inherited file-too-long finding, not grown further by the session's own
   diff, is not that session's to fix.
+- [okf-invalid](/.claude/skills/code-style/lints/okf-invalid.md) -- the check
+  only covers the lints and research-log bundles, not skill files generally.
 
 Otherwise empty, deliberately. A lesson records a decision this repo
 actually made after a finding forced the question. toy-browser's eleven

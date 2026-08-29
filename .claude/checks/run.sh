@@ -139,9 +139,14 @@ done
 # only thing that makes a document conformant is YAML frontmatter carrying a
 # `type`. Checking it here is what keeps "valid OKF" automatic rather than
 # remembered.
+#
+# Scoped to the lints bundle itself, not every skill: a case pattern's `*`
+# matches `/`, so `.claude/skills/*.md` used to also catch every
+# SKILL.md (#42) -- those carry Claude Code's own name/description
+# frontmatter, a different schema, and were never meant to have a `type`.
 for file in "${touched[@]}"; do
   case "$file" in
-    .claude/skills/*.md | research-log/*.md) ;;
+    .claude/skills/code-style/lints/*.md | research-log/*.md) ;;
     *) continue ;;
   esac
   [ -f "$file" ] || continue

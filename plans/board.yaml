@@ -466,7 +466,7 @@
   title: Settle the okf-invalid SKILL.md finding -- check scope or OKF adoption for skills
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: mail-ack-vs-request
   issue: gh:57
