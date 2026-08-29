@@ -14,10 +14,9 @@ A `Vec` literal builds one from its entries:
 [1,2,3]
 ```
 
-The entries are where the element type comes from, which is why a bare `[]` is refused: an
-empty literal names no element type, and function bodies are synthesized rather than checked
-against their annotation, so not even a return type rescues it. An empty `Vec` is reached,
-not written -- `tail` of a one-entry `Vec`, `range(0)`, a `select` nothing survives.
+The entries are where the element type comes from -- unless the position already says what
+the `Vec` holds. A declared type flows into the expression it annotates, so under a return
+annotation an empty `[]` takes its element type from the signature:
 
 ```toylang
 fn nothing(x: Int) -> Vec<Int> = []
@@ -25,8 +24,18 @@ fn nothing(x: Int) -> Vec<Int> = []
 nothing(1)
 ```
 
+```output
+[]
+```
+
+Where nothing expects anything, an empty literal still names no element type and is refused:
+
+```toylang
+[]
+```
+
 ```error
-cannot tell what `[]` contains (at byte 33)
+cannot tell what `[]` contains (at byte 0)
 ```
 
 What applies to a `Vec`: the index specs (`[0]`, `[-1]`, `[]` mid-chain -- see

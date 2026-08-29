@@ -1,0 +1,5 @@
+---
+source: tests/type_flow.rs
+expression: "err(\"fn f(x: Int) -> Vec<Int> = \\\"a\\\"\\n\\nf(1)\")"
+---
+`f` declares it returns Vec<Int>, but its body is Str (at byte 27)

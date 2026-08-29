@@ -124,7 +124,13 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             in_fn: Some(&def.name),
             next_local: &next_local,
         };
-        let body = synth(&ctx, &def.body)?;
+        // The declared return type flows into the body, so a form whose type comes from its
+        // position (`[]`, `input`, a variant-naming string) resolves against the annotation. A
+        // body that synthesises instead is compared below, where the error can name the
+        // function rather than just the two types.
+        let body = match expect_inner(&ctx, &def.body, &sig.ret)? {
+            Expected::Checked(body) | Expected::Synthesised(body) => body,
+        };
         // A signature may spell Stream now, which un-does the trick the Lines design leaned on
         // (a return annotation could never match a body holding a stream), so what that trick
         // guaranteed for free is checked for real here.
@@ -1947,9 +1953,41 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     }
 }
 
+/// How an expression met an expectation. `Checked` consumed it: the expected type flowed into
+/// the form, and the result is `want`-typed by construction. `Synthesised` means the form
+/// answers for itself, so the expectation resolved nothing and the caller still owns the
+/// comparison -- which is what lets `check` blame a function's signature, by name, when a
+/// body's synthesised type misses its annotation.
+enum Expected {
+    Checked(Tir),
+    Synthesised(Tir),
+}
+
 /// The checking direction: an expected type goes in, and the expression is verified against it
 /// rather than asked what it is. Most forms answer both questions, but not all do.
 fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
+    match expect_inner(ctx, expr, want)? {
+        Expected::Checked(tir) => Ok(tir),
+        Expected::Synthesised(found) => {
+            if &found.ty != want {
+                return Err(Error::new(
+                    expr.span(),
+                    format!(
+                        "expected {want}, found {}{}",
+                        found.ty,
+                        reordered_fields_hint(want, &found.ty)
+                    ),
+                ));
+            }
+            Ok(found)
+        }
+    }
+}
+
+/// `expect`, minus the final comparison. Each arm here is a form whose type can come from its
+/// position rather than its contents; expectation only ever resolves what synthesis would have
+/// refused -- a form that can synthesise falls through and is compared, never coerced.
+fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> {
     // The forms whose type comes from their position rather than their contents.
     if let Expr::Input { span } = expr {
         // A signature can spell Stream now, so this position can ask for one; `input` is a
@@ -1974,7 +2012,7 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
             }
             Some(_) => {}
         }
-        return Ok(Tir::new(want.clone(), Kind::Input));
+        return Ok(Expected::Checked(Tir::new(want.clone(), Kind::Input)));
     }
 
     if let Expr::Inputs { span } = expr {
@@ -2007,7 +2045,7 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
             ));
         }
         *slot = Some((**elem).clone());
-        return Ok(Tir::new(want.clone(), Kind::Inputs));
+        return Ok(Expected::Checked(Tir::new(want.clone(), Kind::Inputs)));
     }
 
     // `collect(inputs)` in a Vec-wanted position: the honest eager spelling the decision
@@ -2017,21 +2055,32 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
         && func == "collect"
         && let Some(elem) = want.elem()
     {
-        return collect(ctx, arg, Some(elem));
+        return collect(ctx, arg, Some(elem)).map(Expected::Checked);
     }
 
-    let found = synth(ctx, expr)?;
-    if &found.ty != want {
-        return Err(Error::new(
-            expr.span(),
-            format!(
-                "expected {want}, found {}{}",
-                found.ty,
-                reordered_fields_hint(want, &found.ty)
-            ),
-        ));
+    // A string literal where an enum is wanted is the variant it names, the same spelling the
+    // wire format already gives a unit variant. `construct` owns the errors: a payload variant
+    // gets the how-to-write-it hint, and an unknown name is named against the enum.
+    if let Expr::Str { text, span } = expr
+        && matches!(want, Type::Enum { .. })
+    {
+        return construct(ctx, want, text, *span, None).map(Expected::Checked);
     }
-    Ok(found)
+
+    // A Vec literal where a Vec is wanted takes its element type from the position, which is
+    // what lets `[]` -- refused outright under synthesis -- resolve wherever something already
+    // says what it holds.
+    if let Expr::VecLit { items, .. } = expr
+        && let Type::Vec(elem) = want
+    {
+        let mut out = Vec::new();
+        for item in items {
+            out.push(expect(ctx, item, elem)?);
+        }
+        return Ok(Expected::Checked(Tir::new(want.clone(), Kind::VecLit(out))));
+    }
+
+    synth(ctx, expr).map(Expected::Synthesised)
 }
 
 /// The hint for the one mismatch that looks self-contradictory: both sides spell the same

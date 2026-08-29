@@ -1,0 +1,5 @@
+---
+source: tests/type_flow.rs
+expression: "err(\"enum Status { active, inactive }\\n\\nfn f(x: Int) -> Status = \\\"gone\\\"\\n\\nf(1)\")"
+---
+`Status` has no variant `gone` (at byte 59)
