@@ -488,7 +488,7 @@
   title: Board graph goes force-directed -- the column layout is unusable for dependency reading
   kind: build
   needs: [board-page-v2]
-  status: todo
+  status: delegated
 
 - id: wizard-submit-resilience
   issue: gh:46
@@ -502,7 +502,7 @@
   title: Mail app small cleanups from the landing review
   kind: build
   needs: [mail-app-v2]
-  status: todo
+  status: delegated
 
 - id: docs-site-design
   title: Grill the docs site generalization -- page types, navigation, content provenance
