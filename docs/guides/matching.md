@@ -57,8 +57,7 @@ A guard chain with no default is a legitimate way to say "some inputs don't clas
 declining every arm produces `Opt`, not a refusal:
 
 ```toylang
-fn discount(total: Int) -> Opt<Int> =
-    total | . >= 100 -> total / 10
+fn discount(total: Int) -> Opt<Int> = total | . >= 100 -> total / 10
 
 {a: discount(150), b: discount(50)}
 ```
@@ -86,8 +85,7 @@ error ([unwrap](../reference/operators/unwrap.md)), or fold a default into the c
 if it should not:
 
 ```toylang
-fn discount(total: Int) -> Int =
-    total | . >= 100 -> total / 10 or 0
+fn discount(total: Int) -> Int = total | . >= 100 -> total / 10 or 0
 
 {a: discount(150), b: discount(50)}
 ```
@@ -105,7 +103,10 @@ return type:
 fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Opt<Int>> =
     entry | .valid -> entry.readings[9]
 
-{a: first_reading({valid: 1 == 2, readings: [5]}), b: first_reading({valid: 1 == 1, readings: [5]})}
+{
+    a: first_reading({valid: 1 == 2, readings: [5]}),
+    b: first_reading({valid: 1 == 1, readings: [5]})
+}
 ```
 
 ```output
@@ -124,7 +125,10 @@ come back absent -- because the chain is no longer partial; every input now hits
 fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Int> =
     entry | .valid -> entry.readings[0] or entry.readings[9]
 
-{a: first_reading({valid: 1 == 2, readings: [5]}), b: first_reading({valid: 1 == 1, readings: [1]})}
+{
+    a: first_reading({valid: 1 == 2, readings: [5]}),
+    b: first_reading({valid: 1 == 1, readings: [1]})
+}
 ```
 
 ```output

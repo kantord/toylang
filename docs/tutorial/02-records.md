@@ -34,6 +34,7 @@ the same call with its argument grouped. On a record literal the bare form reads
 arguments:
 
 ```toylang
+# fmt: syntax-example
 fn area(r: {w: Int, h: Int}) -> Int = r.w * r.h
 
 area {w: 3, h: 4}

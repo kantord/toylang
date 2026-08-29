@@ -16,7 +16,7 @@ The body is any expression, so mapping into a record literal builds one per entr
 literal argument may drop its parentheses, the way any application of a record may:
 
 ```toylang
-[1, 2] | map {n: ., squared: . * .}
+[1, 2] | map({n: ., squared: . * .})
 ```
 
 ```output

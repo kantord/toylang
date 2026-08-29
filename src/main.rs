@@ -5,8 +5,7 @@ use std::process::ExitCode;
 use anyhow::{Context, Result};
 use toylang::Backend;
 
-const USAGE: &str =
-    "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE";
+const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE\n       toylang fmt FILE";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -41,6 +40,7 @@ fn main() -> ExitCode {
             Ok(p) => backend.emit(&p).map_err(anyhow::Error::msg),
         },
         "build" => build(&src, path).map(|out| format!("{}\n", out.display())),
+        "fmt" => toylang::fmt(&src).map_err(anyhow::Error::from),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::FAILURE;

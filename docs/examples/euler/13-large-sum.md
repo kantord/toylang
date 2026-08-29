@@ -26,28 +26,42 @@ fn empty() -> Vec<Int> = []
 
 fn col_sum(p: {nums: Vec<Vec<Int>>, i: Int, k: Int}) -> Int =
     0 if p.i >= extent(p.nums) else
-    p.nums[p.i]![p.k]! + col_sum({nums: p.nums, i: p.i + 1, k: p.k})
+        p.nums[p.i]![p.k]! + col_sum({nums: p.nums, i: p.i + 1, k: p.k})
 
 fn column_total(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int}) -> Int =
     col_sum({nums: p.nums, i: 0, k: p.k}) + p.carry
 
 fn emit_carry(p: {carry: Int, acc: Vec<Int>}) -> Vec<Int> =
     p.acc if p.carry == 0 else
-    emit_carry({carry: p.carry / 10, acc: concat([[p.carry % 10], p.acc])})
+        emit_carry({carry: p.carry / 10, acc: concat([[p.carry % 10], p.acc])})
 
 fn add_digits(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int, acc: Vec<Int>}) -> Vec<Int> =
     emit_carry({carry: p.carry, acc: p.acc}) if p.k < 0 else
-    add_digits({
-        nums: p.nums,
-        k: p.k - 1,
-        carry: column_total({nums: p.nums, k: p.k, carry: p.carry}) / 10,
-        acc: concat([[column_total({nums: p.nums, k: p.k, carry: p.carry}) % 10], p.acc])
-    })
+        add_digits(
+            {
+                nums: p.nums,
+                k: p.k - 1,
+                carry: column_total({nums: p.nums, k: p.k, carry: p.carry}) / 10,
+                acc: concat(
+                    [
+                        [
+                            column_total({nums: p.nums, k: p.k, carry: p.carry}) %
+                                10
+                        ],
+                        p.acc
+                    ]
+                )
+            }
+        )
 
 fn first_ten(v: Vec<Int>) -> Vec<Int> = range(10) | map(v[.]!)
 
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
-    first_ten(add_digits({nums: nums, k: extent(nums[0]!) - 1, carry: 0, acc: empty()}))
+    first_ten(
+        add_digits(
+            {nums: nums, k: extent(nums[0]!) - 1, carry: 0, acc: empty()}
+        )
+    )
 
 leading_digits(input)
 ```

@@ -104,7 +104,10 @@ A default arm collapses the doubling, because the chain is no longer partial:
 fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Int> =
     entry | .valid -> entry.readings[0] or entry.readings[9]
 
-{a: first_reading({valid: 1 == 2, readings: [5]}), b: first_reading({valid: 1 == 1, readings: [1]})}
+{
+    a: first_reading({valid: 1 == 2, readings: [5]}),
+    b: first_reading({valid: 1 == 1, readings: [1]})
+}
 ```
 
 ```output

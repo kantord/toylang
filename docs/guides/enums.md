@@ -13,9 +13,10 @@ are wrappers.
 ```toylang
 enum Msg { ping, quit, text{body: Str} }
 
-fn render(m: Msg) -> Str = m | ping -> "*ping*" or quit -> "*quit*" or text -> .body
+fn render(m: Msg) -> Str =
+    m | ping -> "*ping*" or quit -> "*quit*" or text -> .body
 
-render text{body: "hi"}
+render(text({body: "hi"}))
 ```
 
 ```output
