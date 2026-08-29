@@ -67,6 +67,20 @@ fn discount(total: Int) -> Opt<Int> =
 {"a":15,"b":null}
 ```
 
+The declared `Opt<T>` return reaches each arm as `T`, the same as any other declared type,
+so a bare `[]` resolves inside a partial arm without needing a variable to infer it from:
+
+```toylang
+fn tags(n: Int) -> Opt<Vec<Int>> =
+    n | . > 0 -> []
+
+{a: tags(1), b: tags(-1)}
+```
+
+```output
+{"a":[],"b":null}
+```
+
 Consume the result the way any `Opt` is consumed: `!` if absence should become a runtime
 error ([unwrap](../reference/operators/unwrap.md)), or fold a default into the chain itself
 if it should not:

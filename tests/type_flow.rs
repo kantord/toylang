@@ -213,8 +213,8 @@ fn a_map_body_that_misses_the_element_type() {
 }
 
 // Step 5: both branches of a conditional and every arm of a total match chain receive the
-// expectation. Partial guard chains keep synthesising, so their hybrid-totality rules -- the
-// Opt wrapping and the arms-already-Opt refusal -- read exactly as before.
+// expectation. A partial guard chain receives it too, peeled: a declared Opt<T> return pushes
+// T into the arms, since the chain's own partiality is what supplies the Opt (kantord/toylang#48).
 
 #[test]
 fn both_conditional_branches_receive_the_expectation() {
@@ -251,23 +251,30 @@ fn a_default_arm_receives_the_expectation_too() {
     assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
 }
 
-/// A pure guard chain may decline every arm, so its arms synthesise and the chain yields Opt;
-/// the expectation is not peeled into the arms (kantord/toylang#48's conservative cut, kept),
-/// which means `[]` in a partial arm stays unknowable.
+/// A pure guard chain may decline every arm, so its own result is `Opt` of whatever the arms
+/// yield (kantord/toylang#62). A declared `Opt<T>` return therefore peels to `T` before it
+/// reaches the arms (kantord/toylang#48, closing the conservative cut #62 left open), which is
+/// what lets `[]` resolve inside a partial arm the same way it does anywhere else `T` is wanted.
 #[test]
-fn a_partial_chain_still_synthesises_its_arms() {
-    let src = "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> [1]\n\nf(1)";
+fn a_partial_chain_peels_the_declared_opt_into_its_arms() {
+    let src = "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> []\n\nf(1)";
     assert_eq!(body_ty(src).to_string(), "Opt<Vec<Int>>");
+}
+
+/// The peeled expectation still blames the arm that misses it, by name, the same as any other
+/// checked position.
+#[test]
+fn a_partial_chain_arm_that_misses_the_peeled_element() {
     insta::assert_snapshot!(err(
-        "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> []\n\nf(1)"
+        "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> [\"a\"]\n\nf(1)"
     ));
 }
 
-/// Since absence became tagged (kantord/toylang#62), a partial chain's Opt-bodied arms are
-/// legal and the chain honestly doubles the type. The single-Opt annotation is therefore a
-/// plain mismatch under no-peeling -- the live surface of #48's remaining question.
+/// An arm whose body is naturally `Opt`-typed (an index into a `Vec`) is not auto-unwrapped by
+/// the peel: it is checked against the peeled `T`, so it still needs the doubled annotation to
+/// carry its own `Opt` on top of the chain's.
 #[test]
-fn a_partial_chain_over_opt_arms_wants_the_doubled_annotation() {
+fn a_partial_chain_over_opt_arms_still_wants_the_doubled_annotation() {
     let doubled = "fn f(v: Vec<Int>) -> Opt<Opt<Int>> = v | extent(v) > 0 -> v[9]\n\nf([1])";
     assert!(toylang::compile(doubled).is_ok());
     insta::assert_snapshot!(err(

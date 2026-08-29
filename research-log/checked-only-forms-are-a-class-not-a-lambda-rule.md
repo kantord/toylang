@@ -65,3 +65,12 @@ that can answer for itself is compared, never coerced -- and a partial guard cha
 synthesise, because the arms-are-already-Opt refusal depends on asking the arms what they are
 (issue #48 records the fork). The map-body half of the story closes in
 [a map body cannot infer from what consumes it](a-map-body-cannot-infer-from-what-consumes-it.md).
+
+## The second boundary moved (2026-08-30)
+
+The arms-are-already-Opt refusal was the reason the second boundary held, and #62 (tagged
+absence, `Opt` an ordinary generic enum) deleted that refusal: an arm that is itself
+`Opt`-typed just doubles the wrapping now, so nothing was left asking the arms what they are
+before the expectation could reach them. #74 pushes a declared `Opt<T>` return through the
+peel, `T`, the same way every other position pushes its expectation down. The class this note
+opened stayed a class; the boundary was downstream of a rule that already fell.
