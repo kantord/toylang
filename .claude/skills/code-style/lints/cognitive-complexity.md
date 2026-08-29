@@ -24,3 +24,21 @@ accepted when the lint was adopted (plans/quality-practices.md, piece 4).
 The seven standing emitter findings at threshold 10 are all shape 1, inherited, and stay
 until an emitter-split grilling decides the shared structure -- that decision is deliberately
 NOT one session's improvisation, because whatever shape wins applies seven times.
+
+The nullary-functions session (issue #61) hit shape 2 twice, both genuinely caused (absent at
+merge-base): wrapping two existing top-level `if`s in `check()` inside one new `if let Some(param)
+= &def.param` added a nesting level neither had before, and `synth()`'s already-large
+`Expr::Call` arm -- already doing several jobs (`select`/`map`/builtins/user-function dispatch)
+-- picked up several new `?`-early-returns for the new optional-argument checks, pushing it from
+absent to 58/10. Both settled the case-2 way: `check()`'s two checks moved into `check_param()`,
+called from one `if let` instead of two nested `if`s; `synth()`'s whole `Call` arm moved into its
+own `call()` function (further split into `select_call`/`extent_call`/`tail_call`/`concat_call`,
+alongside the pre-existing `map_call`/`collect`), which also cut `synth()`'s too-many-lines count
+from 340 to 220 lines as a side effect. `call()` itself lands under both budgets after the split,
+the same as `map_call` and `collect` already did -- one helper per builtin form is this file's
+existing shape, not a new one invented to dodge the score. A third instance, `emit_llvm.rs`'s
+`expr()`, is the same pattern in a shape-1 function: a new two-armed `match arg {}` for the
+optional call argument added just enough nesting to cross from absent to 11/10; moving it into
+`call_args()` fixed it the same way, and is the general answer whenever a small new match
+pushes an otherwise-shape-1 dispatch over threshold -- try the tighten first, same as
+too-many-lines' identically-named playbook.

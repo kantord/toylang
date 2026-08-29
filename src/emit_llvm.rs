@@ -17,7 +17,9 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType};
-use inkwell::values::{BasicValueEnum, FunctionValue, IntValue, PointerValue};
+use inkwell::values::{
+    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue,
+};
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 
 use crate::ast::BinOp;
@@ -1119,6 +1121,17 @@ impl<'ctx> Emitter<'ctx> {
         Ok(())
     }
 
+    /// A call's argument list: one value, or none for a nullary function.
+    fn call_args(
+        &mut self,
+        arg: &Option<Box<Tir>>,
+    ) -> Result<Vec<BasicMetadataValueEnum<'ctx>>, String> {
+        match arg {
+            Some(arg) => Ok(vec![self.expr(arg)?.into()]),
+            None => Ok(Vec::new()),
+        }
+    }
+
     fn expr(&mut self, t: &Tir) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match &t.kind {
             Kind::Str(text) => self.string_const(text).into(),
@@ -1147,10 +1160,7 @@ impl<'ctx> Emitter<'ctx> {
             }
 
             Kind::Call { func, arg } => {
-                let args = match arg {
-                    Some(arg) => vec![self.expr(arg)?.into()],
-                    None => Vec::new(),
-                };
+                let args = self.call_args(arg)?;
                 let callee = *self
                     .funcs
                     .get(func)
