@@ -3,6 +3,7 @@ type: Note
 calendar:
   - 2026-08-10
   - 2026-08-29
+  - 2026-08-30
 title: Checked-only forms are a class, not a lambda rule
 description: The draft states the annotation rule as being about lambdas, but prototype 1 found two more forms that can only be checked and never synthesised, so the rule is about a class of expression.
 tags:
