@@ -133,6 +133,7 @@ impl ToRust for ty::Type {
             ty::Type::Str => "crate::ty::Type::Str".to_string(),
             ty::Type::Int => "crate::ty::Type::Int".to_string(),
             ty::Type::Bool => "crate::ty::Type::Bool".to_string(),
+            ty::Type::Char => "crate::ty::Type::Char".to_string(),
             ty::Type::Vec(elem) => format!("crate::ty::Type::Vec({})", elem.to_rust()),
             ty::Type::Stream(elem) => format!("crate::ty::Type::Stream({})", elem.to_rust()),
             ty::Type::Record(fields) => {
@@ -164,6 +165,7 @@ impl ToRust for tir::Builtin {
             tir::Builtin::Concat => "Concat",
             tir::Builtin::Tail => "Tail",
             tir::Builtin::Fields => "Fields",
+            tir::Builtin::Chars => "Chars",
         };
         format!("crate::tir::Builtin::{variant}")
     }

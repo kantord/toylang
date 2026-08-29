@@ -70,8 +70,7 @@ The declared `Opt<T>` return reaches each arm as `T`, the same as any other decl
 so a bare `[]` resolves inside a partial arm without needing a variable to infer it from:
 
 ```toylang
-fn tags(n: Int) -> Opt<Vec<Int>> =
-    n | . > 0 -> []
+fn tags(n: Int) -> Opt<Vec<Int>> = n | . > 0 -> []
 
 {a: tags(1), b: tags(-1)}
 ```

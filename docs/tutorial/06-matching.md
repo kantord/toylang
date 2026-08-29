@@ -72,8 +72,7 @@ partiality is what supplies the `Opt`, so an arm that writes a bare `[]` resolve
 the declared element type instead of needing it spelled out some other way:
 
 ```toylang
-fn tags(n: Int) -> Opt<Vec<Int>> =
-    n | . > 0 -> []
+fn tags(n: Int) -> Opt<Vec<Int>> = n | . > 0 -> []
 
 {a: tags(1), b: tags(-1)}
 ```
