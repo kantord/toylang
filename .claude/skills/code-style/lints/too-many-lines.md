@@ -155,3 +155,17 @@ did cause -- `resolve_bound` and `expect_inner` crossing the line budget, `emit_
 `expr` picking up a cognitive-complexity score from a new Opt arm -- were tightened back
 under budget before Stop by the extract-a-named-helper move (`resolve_named`,
 `wanted_variant`, `opt_lit`), the same answer as the caused cases above.
+
+The record-reorder-through-Opt session (issue #66) is an eleventh instance, and the closest
+yet to the field-order-accessor session's shape: one new `Kind::OptMap` match arm per backend
+grew each of `emit_go.rs`, `emit_jq.rs`, `emit_js.rs`, `emit_llvm.rs`, `emit_lua.rs`,
+`emit_py.rs`, and `emit_rs.rs`'s already-over `expr()` (`emit_llvm.rs`'s native codegen needed
+the biggest arm, 65 lines, since it hand-builds LLVM IR branches rather than formatting a
+string) by 10-64 lines apiece, verified against a merge-base worktree
+(`emit_go.rs` 207->219, `emit_jq.rs` 189->199, `emit_js.rs` 174->186, `emit_llvm.rs` 343->407,
+`emit_lua.rs` 168->178, `emit_py.rs` 167->179, `emit_rs.rs` 186->196). Every one of these
+functions' *cognitive-complexity* numbers came out exactly unchanged (27, 13, 14, 17, 15, 18,
+13, 14, 20 -- the same nine scores, same functions, before and after), confirming the new arm
+added no branching of its own, only a match case -- shape 1, by `cognitive-complexity.md`'s
+own test. Inherited by the same rule as every instance above; no tightening attempted, since
+nothing crossed a line here that was not already crossed at merge-base.
