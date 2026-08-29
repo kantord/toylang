@@ -480,7 +480,7 @@
   title: Wizard UI polish -- previews get real room; unify the color-block renderer
   kind: build
   needs: [mail-app-v2]
-  status: todo
+  status: delegated
 
 - id: wizard-submit-resilience
   issue: gh:46
