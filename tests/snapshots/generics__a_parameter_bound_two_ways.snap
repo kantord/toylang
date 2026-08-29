@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum Pair<T> { two{a: T, b: T} }\\n\\ntwo{a: 1, b: \\\"x\\\"}\")"
+---
+expected {a: T, b: T}, found {a: Int, b: Str} (at byte 37)

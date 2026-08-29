@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum Pair<T> { two{a: T, b: T} }\\n\\nfn f(p: Pair) -> Int = 1\\n\\nf(two{a: 1, b: 2})\")"
+---
+`Pair` takes one type argument (at byte 42)

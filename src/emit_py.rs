@@ -263,6 +263,7 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
 /// two JSON words have to be written out.
 fn show(ty: &Type, value: &str, depth: usize) -> String {
     match ty {
+        Type::Param(_) => unreachable!("params are substituted before emit"),
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),

@@ -112,6 +112,7 @@ pub fn emit(program: &Program) -> String {
 /// backends rather than the input's key order.
 fn canonical(ty: &Type, value: &str) -> String {
     match ty {
+        Type::Param(_) => unreachable!("params are substituted before emit"),
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),

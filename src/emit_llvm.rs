@@ -269,6 +269,7 @@ impl<'ctx> Emitter<'ctx> {
 
     fn llvm_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, String> {
         Ok(match ty {
+            Type::Param(_) => unreachable!("params are substituted before emit"),
             // Materialized eagerly as the Vec of its entries, so it is the same pointer a Vec
             // is. Fusion is what will remove this materialization.
             Type::Stream(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
@@ -295,6 +296,7 @@ impl<'ctx> Emitter<'ctx> {
     /// the program declared. See the grammar in runtime/toylang.c.
     fn descriptor(ty: &Type) -> String {
         match ty {
+            Type::Param(_) => unreachable!("params are substituted before emit"),
             // Stream is unspellable in a type annotation, so `input`'s declared type -- the only
             // thing this function is ever called on -- can never contain one.
             Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
@@ -306,7 +308,7 @@ impl<'ctx> Emitter<'ctx> {
             Type::Opt(_) => unreachable!("Opt cannot be declared, so input never has one"),
             // Declaration order, because the entry's position is the tag the compiled code
             // tests against. The name rides along only for the runtime's mismatch messages.
-            Type::Enum { name, variants } => {
+            Type::Enum { name, variants, .. } => {
                 let body: Vec<String> = variants
                     .iter()
                     .map(|(v, payload)| match payload {
@@ -403,6 +405,7 @@ impl<'ctx> Emitter<'ctx> {
     fn to_slot(&self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<IntValue<'ctx>, String> {
         let i64t = self.ctx.i64_type();
         Ok(match ty {
+            Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Int => value.into_int_value(),
             Type::Bool => self
@@ -419,6 +422,7 @@ impl<'ctx> Emitter<'ctx> {
     fn read_slot(&self, slot: IntValue<'ctx>, ty: &Type) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr = self.ctx.ptr_type(AddressSpace::default());
         Ok(match ty {
+            Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Int => slot.into(),
             Type::Bool => self
@@ -917,6 +921,7 @@ impl<'ctx> Emitter<'ctx> {
         ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match ty {
+            Type::Param(_) => unreachable!("params are substituted before emit"),
             // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),

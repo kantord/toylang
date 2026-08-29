@@ -257,7 +257,7 @@ pub fn emit(program: &Program) -> String {
     // Go has no sum type, so an enum is a tag (the variant's declaration index) plus one
     // pointer per payload variant, nil except for the one the tag names.
     for en in &e.enums {
-        let Type::Enum { name, variants } = en else {
+        let Type::Enum { name, variants, .. } = en else {
             unreachable!("only enums are collected")
         };
         decls.push_str(&format!("type {} struct {{\n\ttag int32\n", e.go_type(en)));
@@ -270,7 +270,7 @@ pub fn emit(program: &Program) -> String {
         // encoding/json cannot guess which of the enum's two wire shapes (ADR 0009) it is
         // looking at, so decoding is spelled out. Only a program that reads input decodes.
         if program.input.is_some() || program.inputs.is_some() {
-            decls.push_str(&e.enum_unmarshal(name, variants));
+            decls.push_str(&e.enum_unmarshal(en, name));
         }
     }
 
@@ -410,6 +410,7 @@ fn has_scalar(ty: &Type) -> bool {
         Type::Enum { variants, .. } => variants
             .iter()
             .any(|(_, p)| p.as_ref().is_some_and(has_scalar)),
+        Type::Param(_) => unreachable!("params are substituted before emit"),
     }
 }
 
@@ -579,8 +580,10 @@ impl Emitter {
                     .expect("every record reachable from the program was collected");
                 format!("tlRec{i}")
             }
-            // The enum's own name is the identity and is unique, so it names the struct too.
-            Type::Enum { name, .. } => format!("tlE_{name}"),
+            // The enum's identity -- name plus arguments -- names the struct: `ident()`
+            // embeds the arguments so each instantiation gets its own.
+            Type::Enum { .. } => format!("tlE_{}", ty.ident()),
+            Type::Param(_) => unreachable!("params are substituted before emit"),
         }
     }
 
@@ -594,8 +597,11 @@ impl Emitter {
 
     /// The decoder for one enum: a bare string resolves among the unit variants, a single-key
     /// object among the payload ones, and a near miss is refused naming the enum.
-    fn enum_unmarshal(&self, name: &str, variants: &[(String, Option<Type>)]) -> String {
-        let ename = format!("tlE_{name}");
+    fn enum_unmarshal(&self, en: &Type, name: &str) -> String {
+        let Type::Enum { variants, .. } = en else {
+            unreachable!("only enums are collected")
+        };
+        let ename = self.go_type(en);
         let mut out = String::new();
         out.push_str(&format!(
             "func (e *{ename}) UnmarshalJSON(b []byte) error {{\n"
@@ -960,6 +966,7 @@ impl Emitter {
     /// backend. Here there is no choice at all: a Go value cannot be asked what it is.
     fn show(&self, ty: &Type, value: &str, depth: usize) -> String {
         match ty {
+            Type::Param(_) => unreachable!("params are substituted before emit"),
             // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),

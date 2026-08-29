@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum Box<T> { wrap(T), empty }\\n\\nempty\")"
+---
+cannot tell what `Box<T>` a bare `empty` builds; only a position that expects one can say (at byte 32)

@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum List<T> { nil, cons{head: T, tail: List<T>} }\\n\\nstr(1)\")"
+---
+type `List` is written in terms of itself (at byte 40)

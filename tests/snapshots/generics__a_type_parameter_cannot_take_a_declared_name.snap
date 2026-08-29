@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum Shape { point }\\nenum Box<Shape> { wrap(Shape) }\\n\\nstr(1)\")"
+---
+type parameter `Shape` takes the name of a type (at byte 30)

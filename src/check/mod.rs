@@ -95,7 +95,10 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     }
     let mut enums: HashMap<String, Type> = HashMap::new();
     for e in &file.enums {
-        enums.insert(e.name.clone(), resolve_enum(e, &env, &mut Vec::new())?);
+        enums.insert(
+            e.name.clone(),
+            resolve_enum(e, &env, &mut Vec::new(), None)?,
+        );
     }
     let mut variant_owners: HashMap<String, Vec<String>> = HashMap::new();
     for e in &file.enums {
@@ -491,16 +494,108 @@ fn call_named<'a>(expr: &'a Expr, name: &str) -> Option<&'a Expr> {
     arg.as_deref()
 }
 
+/// Replace every `Type::Param` in `t` with its binding. Together with `unify` below, this is
+/// the whole of generic instantiation at a constructor: nothing else in the checker ever sees
+/// a parameter.
+fn substitute(t: &Type, map: &HashMap<String, Type>) -> Type {
+    match t {
+        Type::Param(p) => map
+            .get(p)
+            .cloned()
+            .unwrap_or_else(|| unreachable!("substitute runs only once every param is bound")),
+        Type::Vec(e) => Type::Vec(Box::new(substitute(e, map))),
+        Type::Opt(e) => Type::Opt(Box::new(substitute(e, map))),
+        Type::Stream(e) => Type::Stream(Box::new(substitute(e, map))),
+        Type::Record(fields) => Type::Record(
+            fields
+                .iter()
+                .map(|(n, t)| (n.clone(), substitute(t, map)))
+                .collect(),
+        ),
+        Type::Enum {
+            name,
+            args,
+            variants,
+        } => Type::Enum {
+            name: name.clone(),
+            args: args.iter().map(|a| substitute(a, map)).collect(),
+            variants: variants
+                .iter()
+                .map(|(n, p)| (n.clone(), p.as_ref().map(|p| substitute(p, map))))
+                .collect(),
+        },
+        Type::Str | Type::Int | Type::Bool => t.clone(),
+    }
+}
+
+/// Match a template type (parameters possibly inside) against a concrete one, binding each
+/// parameter to what it faces. Records match fields by name, not position, the same way type
+/// equality does (kantord/toylang#60); enums match on name and arguments, since the variants
+/// follow from those.
+fn unify(template: &Type, concrete: &Type, map: &mut HashMap<String, Type>) -> bool {
+    match (template, concrete) {
+        (Type::Param(p), c) => match map.get(p) {
+            Some(bound) => bound == c,
+            None => {
+                map.insert(p.clone(), c.clone());
+                true
+            }
+        },
+        (Type::Vec(a), Type::Vec(b))
+        | (Type::Opt(a), Type::Opt(b))
+        | (Type::Stream(a), Type::Stream(b)) => unify(a, b, map),
+        (Type::Record(a), Type::Record(b)) => {
+            a.len() == b.len()
+                && a.iter().all(|(n, t)| {
+                    b.iter()
+                        .find(|(bn, _)| bn == n)
+                        .is_some_and(|(_, bt)| unify(t, bt, map))
+                })
+        }
+        (
+            Type::Enum {
+                name: n1, args: a1, ..
+            },
+            Type::Enum {
+                name: n2, args: a2, ..
+            },
+        ) => n1 == n2 && a1.len() == a2.len() && a1.iter().zip(a2).all(|(x, y)| unify(x, y, map)),
+        _ => template == concrete,
+    }
+}
+
 /// Build one variant of `enum_ty`, checking that the payload written matches the payload
 /// declared: a unit variant takes none, a payload variant requires one.
+///
+/// `enum_ty` is a registry template for a generic enum reached by name, or a concrete type
+/// when the position already knows one (an expectation, or a written annotation). A template
+/// instantiates from the expectation when `expected` names the same enum; otherwise the
+/// payload's synthesised type binds the parameters, and a variant that leaves any parameter
+/// open -- every unit variant of a generic enum does -- is refused, the `[]` answer.
 fn construct(
     ctx: &Ctx,
     enum_ty: &Type,
     variant: &str,
     variant_span: Span,
     payload: Option<&Expr>,
+    expected: Option<&Type>,
 ) -> Result<Tir, Error> {
-    let Type::Enum { name, variants } = enum_ty else {
+    let Type::Enum { name, args, .. } = enum_ty else {
+        unreachable!("construct is only called with an enum type")
+    };
+    let is_template = args.iter().any(|a| matches!(a, Type::Param(_)));
+    let instantiated;
+    let enum_ty = if !is_template {
+        enum_ty
+    } else if let Some(want @ Type::Enum { name: wanted, .. }) = expected
+        && wanted == name
+    {
+        want
+    } else {
+        instantiated = infer_instantiation(ctx, enum_ty, variant, variant_span, payload)?;
+        return Ok(instantiated);
+    };
+    let Type::Enum { name, variants, .. } = enum_ty else {
         unreachable!("construct is only called with an enum type")
     };
     let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
@@ -538,6 +633,86 @@ fn construct(
         Kind::EnumLit {
             variant: variant.to_string(),
             payload,
+        },
+    ))
+}
+
+/// A generic enum's constructor met with no expectation: the payload is synthesised and its
+/// type binds the parameters. The template's own display (`Pair<T>`) does the talking in the
+/// errors, since it shows the reader exactly which names are still open.
+fn infer_instantiation(
+    ctx: &Ctx,
+    template: &Type,
+    variant: &str,
+    variant_span: Span,
+    payload: Option<&Expr>,
+) -> Result<Tir, Error> {
+    let Type::Enum { name, variants, .. } = template else {
+        unreachable!("construct is only called with an enum type")
+    };
+    let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
+        return Err(Error::new(
+            variant_span,
+            format!("`{name}` has no variant `{variant}`"),
+        ));
+    };
+    let (declared, expr) = match (declared, payload) {
+        (Some(declared), Some(expr)) => (declared, expr),
+        (None, Some(expr)) => {
+            return Err(Error::new(
+                expr.span(),
+                format!("`{variant}` is a unit variant of `{name}` and takes no payload"),
+            ));
+        }
+        (Some(want), None) => {
+            let spelled = match want {
+                Type::Record(_) => format!("{variant}{{...}}"),
+                _ => format!("{variant}(...)"),
+            };
+            return Err(Error::new(
+                variant_span,
+                format!(
+                    "`{variant}` of `{name}` carries a payload of {want}, so it is written `{spelled}`"
+                ),
+            ));
+        }
+        (None, None) => {
+            return Err(Error::new(
+                variant_span,
+                format!(
+                    "cannot tell what `{template}` a bare `{variant}` builds; only a position \
+                     that expects one can say"
+                ),
+            ));
+        }
+    };
+    let built = synth(ctx, expr)?;
+    let mut bindings = HashMap::new();
+    if !unify(declared, &built.ty, &mut bindings) {
+        return Err(Error::new(
+            expr.span(),
+            format!("expected {declared}, found {}", built.ty),
+        ));
+    }
+    if let Type::Enum { args, .. } = template
+        && let Some(open) = args.iter().find_map(|a| match a {
+            Type::Param(p) if !bindings.contains_key(p) => Some(p),
+            _ => None,
+        })
+    {
+        return Err(Error::new(
+            variant_span,
+            format!(
+                "`{variant}`'s payload does not say what `{template}`'s `{open}` is; only a \
+                 position that expects one can"
+            ),
+        ));
+    }
+    Ok(Tir::new(
+        substitute(template, &bindings),
+        Kind::EnumLit {
+            variant: variant.to_string(),
+            payload: Some(Box::new(built)),
         },
     ))
 }
@@ -714,7 +889,7 @@ fn check_reachable(
                 .to_string(),
         ));
     }
-    if let Type::Enum { name, variants } = subject_ty
+    if let Type::Enum { name, variants, .. } = subject_ty
         && !covered.is_empty()
         && variants.iter().all(|(n, _)| covered.contains(n))
     {
@@ -734,6 +909,7 @@ fn check_coverage(subject_ty: &Type, covered: &[String], span: Span) -> Result<(
     let Type::Enum {
         name: enum_name,
         variants,
+        ..
     } = subject_ty
     else {
         unreachable!("a pattern arm was checked against an enum subject")
@@ -769,6 +945,7 @@ fn variant_arm<'a>(
     let Type::Enum {
         name: enum_name,
         variants,
+        ..
     } = subject_ty
     else {
         return Err(Error::new(
@@ -1031,7 +1208,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             }
             if let Some(owners) = ctx.variant_owners.get(name) {
                 let enum_ty = sole_owner(ctx, name, owners, *span)?.clone();
-                return construct(ctx, &enum_ty, name, *span, None);
+                return construct(ctx, &enum_ty, name, *span, None, None);
             }
             // A function is not a value, but "`f` is not defined" for a defined function is a
             // lie. This is where `f -1` lands: `-` cannot start a bare argument, so the parse
@@ -1174,6 +1351,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 variant,
                 *variant_span,
                 payload.as_deref(),
+                None,
             )
         }
 
@@ -1311,7 +1489,7 @@ fn call(
         // here; it resolves as a variant only after the function namespace declines.
         if let Some(owners) = ctx.variant_owners.get(func) {
             let enum_ty = sole_owner(ctx, func, owners, func_span)?.clone();
-            return construct(ctx, &enum_ty, func, func_span, arg.as_deref());
+            return construct(ctx, &enum_ty, func, func_span, arg.as_deref(), None);
         }
         return Err(Error::new(func_span, format!("`{func}` is not a function")));
     };
@@ -1847,7 +2025,45 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     if let Expr::Str { text, span } = expr
         && matches!(want, Type::Enum { .. })
     {
-        return construct(ctx, want, text, *span, None).map(Expected::Checked);
+        return construct(ctx, want, text, *span, None, None).map(Expected::Checked);
+    }
+
+    // A constructor in a position that wants its enum takes the wanted instantiation: this is
+    // how a generic enum's unit variant -- which alone says nothing about the arguments --
+    // gets built at all (`fn f() -> Pair<Int> = empty`). A bare name only counts when nothing
+    // closer claims it (an arm's field, a local); a call only when no function does. Anything
+    // that is not the wanted enum's variant falls through to synthesis, which owns the errors.
+    if let Type::Enum { variants, .. } = want {
+        let owns = |n: &str| variants.iter().any(|(vn, _)| vn == n);
+        match expr {
+            Expr::Var { name, span }
+                if owns(name)
+                    && !ctx.arm_fields.iter().any(|(n, ..)| n == name)
+                    && !ctx.scope.iter().any(|(n, _)| n == name) =>
+            {
+                return construct(ctx, want, name, *span, None, None).map(Expected::Checked);
+            }
+            Expr::Call {
+                func,
+                func_span,
+                arg,
+                ..
+            } if owns(func) && !ctx.sigs.contains_key(func) => {
+                return construct(ctx, want, func, *func_span, arg.as_deref(), None)
+                    .map(Expected::Checked);
+            }
+            Expr::Variant {
+                enum_name,
+                variant,
+                variant_span,
+                payload,
+                ..
+            } if matches!(want, Type::Enum { name, .. } if name == enum_name) => {
+                return construct(ctx, want, variant, *variant_span, payload.as_deref(), None)
+                    .map(Expected::Checked);
+            }
+            _ => {}
+        }
     }
 
     // The pipe's value is the right side's, so the expectation flows into the right side --

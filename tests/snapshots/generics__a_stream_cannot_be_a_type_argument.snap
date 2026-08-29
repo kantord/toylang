@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum Box<T> { wrap(T), empty }\\n\\nfn f(b: Box<Stream<Str>>) -> Int = 1\\n\\nf(empty)\")"
+---
+`Box` cannot hold a stream, which has nothing to store (at byte 44)

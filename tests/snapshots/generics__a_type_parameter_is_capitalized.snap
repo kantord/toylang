@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum Box<t> { wrap(t) }\\n\\nstr(1)\")"
+---
+a type parameter starts with a capital letter, and `t` reads as a value (at byte 9)

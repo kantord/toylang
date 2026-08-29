@@ -28,8 +28,16 @@ pub enum Type {
     /// for a unit variant, in declaration order.
     Enum {
         name: String,
+        /// The type arguments this instantiation was built with, in declaration order; empty
+        /// for an enum declared without parameters. Part of the identity: `Pair<Int>` and
+        /// `Pair<Str>` are different types even though both are `Pair`.
+        args: Vec<Type>,
         variants: Vec<(String, Option<Type>)>,
     },
+    /// A type parameter inside a generic enum's registry template, standing for whatever a
+    /// use site will supply. Never the type of any checked expression: instantiation
+    /// substitutes every one away before a type leaves resolution.
+    Param(String),
 }
 
 /// Names reserved for the built-in type constructors, on top of `Str`/`Int`/`Bool`
@@ -66,7 +74,8 @@ impl Type {
             Type::Stream(_) => true,
             Type::Vec(t) | Type::Opt(t) => t.contains_stream(),
             Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_stream()),
-            // An enum payload cannot hold a stream: resolve_enum refuses the declaration.
+            // An enum payload cannot hold a stream: resolve_enum refuses the declaration,
+            // and instantiation refuses a stream as a type argument.
             _ => false,
         }
     }
@@ -82,6 +91,40 @@ impl Type {
         match self {
             Type::Record(fields) => fields.iter().find(|(n, _)| n == name).map(|(_, t)| t),
             _ => None,
+        }
+    }
+
+    /// A deterministic identifier fragment for this type, for backends whose targets are
+    /// nominally typed: `Pair<Int>` and `Pair<Str>` must become distinct emitted types, so
+    /// their names embed the arguments (`Pair_Int`). Record fields sort by name, because
+    /// field order is not part of a record type's identity (kantord/toylang#60). An enum
+    /// declared without parameters keeps its bare name, which is what every existing
+    /// snapshot pins.
+    pub fn ident(&self) -> String {
+        match self {
+            Type::Str => "Str".to_string(),
+            Type::Int => "Int".to_string(),
+            Type::Bool => "Bool".to_string(),
+            Type::Vec(t) => format!("Vec_{}", t.ident()),
+            Type::Opt(t) => format!("Opt_{}", t.ident()),
+            Type::Stream(t) => format!("Stream_{}", t.ident()),
+            Type::Record(fields) => {
+                let mut parts: Vec<String> = fields
+                    .iter()
+                    .map(|(n, t)| format!("{n}_{}", t.ident()))
+                    .collect();
+                parts.sort();
+                format!("R_{}", parts.join("_"))
+            }
+            Type::Enum { name, args, .. } => {
+                if args.is_empty() {
+                    name.clone()
+                } else {
+                    let parts: Vec<String> = args.iter().map(Type::ident).collect();
+                    format!("{name}_{}", parts.join("_"))
+                }
+            }
+            Type::Param(_) => unreachable!("params are substituted before any backend runs"),
         }
     }
 }
@@ -101,7 +144,15 @@ impl std::fmt::Display for Type {
             }
             // The name is the identity, so the name is the display: spelling the variants out
             // would print the definition where the reader wants the reference.
-            Type::Enum { name, .. } => write!(f, "{name}"),
+            Type::Enum { name, args, .. } => {
+                write!(f, "{name}")?;
+                if !args.is_empty() {
+                    let parts: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+                    write!(f, "<{}>", parts.join(", "))?;
+                }
+                Ok(())
+            }
+            Type::Param(name) => write!(f, "{name}"),
         }
     }
 }
@@ -123,13 +174,16 @@ impl PartialEq for Type {
             (
                 Type::Enum {
                     name: n1,
+                    args: a1,
                     variants: v1,
                 },
                 Type::Enum {
                     name: n2,
+                    args: a2,
                     variants: v2,
                 },
-            ) => n1 == n2 && v1 == v2,
+            ) => n1 == n2 && a1 == a2 && v1 == v2,
+            (Type::Param(a), Type::Param(b)) => a == b,
             _ => false,
         }
     }
