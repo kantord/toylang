@@ -96,3 +96,8 @@ file already uses (`input_read`, `inputs_read`, `variant_arm`,
 `check_reachable`, `check_coverage` beside the existing `construct` and
 `collect`), which put both under 100 without splitting any typing rule in
 half. `check()` and `synth()` stayed flagged and stayed inherited.
+
+The unused-variable session (issue #45) is a seventh instance: a nine-line
+early-return checking the function parameter got read grew `check()` from
+137 (verified via a merge-base worktree) to 146; `synth()` was untouched by
+the diff and stayed at 340 both sides. Same rule, same outcome.
