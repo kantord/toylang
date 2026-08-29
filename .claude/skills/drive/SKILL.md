@@ -19,6 +19,11 @@ Cron jobs die with their session, so a new driving session re-arms them first:
    span notes), applying answers when 5+ minutes quiet or marked read.
 3. **Arm the audit cron**: every ~5 hours (23 */5 * * *), running "The periodic audit" below.
 4. Verify push distance before any dispatch (worktrees branch from origin).
+5. **Start the lane watcher** (`bash .claude/scripts/lane-watch.sh` as a background task):
+   it exits the moment any delegated lane is committed, clean, and eight minutes quiet, so
+   finished workers become push notifications instead of next-tick discoveries. Restart it
+   after every landing (it exits per event) and after every dispatch if it reported "no
+   delegated lanes remain".
 
 ## Stall diagnosis, learned the hard way
 
