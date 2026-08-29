@@ -32,9 +32,10 @@
 
 [[exemption]]
 kind = "file-too-long"
-path = "src/check.rs"
+path = "src/check/mod.rs"
 justification = """
-2291 lines against the 1000-line budget (.claude/checks/limits.toml). check.rs is one of the
+1832 lines against the 1000-line budget (.claude/checks/limits.toml), re-measured at the #51
+split's landing. check.rs is one of the
 three files that budget was set to name (clippy.toml's too-many-lines comment), and the survey
 run on it (plans/checker-structure.md, gh:32) settled the file's shape: extract the
 type-resolution pass and the stream-linearity/pruning passes (board row check-rs-split-build,
@@ -42,9 +43,9 @@ gh:51, not yet landed), and leave the fused synth/expect core -- Ctx, synth, exp
 binary, construct, collect, the mapper helpers -- as a structured exemption rather than a shrink
 target. The core has no per-area seam to split along (one flat match over every construct, kept
 coherent on purpose), and the type-flow rework (#44) specifically wants each construct's synth
-side and expect side adjacent, which a topic-based split would pull apart. Until #51 lands this
-entry covers the whole file; once it does, re-measure against whatever the core actually is
-rather than renewing this unread.
+side and expect side adjacent, which a topic-based split would pull apart. #51 landed: the two
+passes left for check/types.rs and check/linearity.rs, and what remains here is the fused core
+this entry was always going to cover.
 """
 
 [[exemption]]
@@ -63,9 +64,9 @@ retire this by hand.
 
 [[exemption]]
 kind = "too-many-lines"
-path = "src/check.rs"
+path = "src/check/mod.rs"
 function = "check"
-line = 72
+line = 76
 justification = """
 Inherited, never caused: six sessions across issues #20, #21, #26, #27, #40, #44 grew or
 touched check.rs without pushing this finding further over budget, recorded case by case in
@@ -79,9 +80,9 @@ fused-pass argument as synth() below.
 
 [[exemption]]
 kind = "too-many-lines"
-path = "src/check.rs"
+path = "src/check/mod.rs"
 function = "synth"
-line = 1384
+line = 925
 justification = """
 Inherited, never caused, by the same history as check() above --
 .claude/skills/code-style/lints/too-many-lines.md records synth() at every measurement from 560

@@ -106,3 +106,10 @@ The unused-variable session (issue #45) is a seventh instance: a nine-line
 early-return checking the function parameter got read grew `check()` from
 137 (verified via a merge-base worktree) to 146; `synth()` was untouched by
 the diff and stayed at 340 both sides. Same rule, same outcome.
+
+The check-rs-split session (issue #51) is an eighth instance, and confirms
+the previous one held: extracting the type-resolution and stream-linearity
+passes into `check/types.rs` and `check/linearity.rs` left `check()` and
+`synth()` themselves unedited, and both still report exactly 146 and 340 --
+the same counts issue #45 left them at. Moving a function's file does not
+reset what counts as inherited; both stay flagged, both stay inherited.
