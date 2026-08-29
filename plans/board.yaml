@@ -470,7 +470,7 @@
 
 - id: mail-ack-vs-request
   issue: gh:57
-  title: Acknowledgement mails look different from requests for engagement -- flow type, muted weight
+  title: Action-first inbox -- category subfolders, default view hides status noise, acks visually muted
   kind: build
   needs: [mail-app-v2]
   status: todo
