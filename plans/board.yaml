@@ -234,12 +234,18 @@
   title: Grill auto-generated type matchers -- the capital namespace (matcher vs constructor), domain, first-classness
   kind: decide
   needs: []
+  status: done
+
+- id: matcher-totality-and-alt-design
+  title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test
+  kind: decide
+  needs: [auto-matchers-design]
   status: todo
 
 - id: variant-types-flip
-  title: Variants become capitalized types -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference)
+  title: Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference)
   kind: build
-  needs: [auto-matchers-design]
+  needs: [matcher-totality-and-alt-design]
   model: fable
   status: todo
 

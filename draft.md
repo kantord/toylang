@@ -2420,6 +2420,23 @@ is untouched.
 
 ### Construction and naming
 
+REVISED AGAIN (2026-08-29, the auto-matchers grilling, kantord/toylang#47): the Aug-28
+revision below stands on casing and on variant-names-as-types, but its expression-position
+reading flips. **A capital name in expression position is the type's derived matcher, not a
+constructor.** The type is `Active`; its matcher function is also `Active` (the two roles
+never collide, one lives in type position, one in expression position); its raw constructor
+is lowercase -- for a unit variant that constructor is `active`, a plain constant, no call
+(nothing is consumed, so nothing signals application), and for a payload variant it is the
+unary function `circle{r: 1}` exactly as before, lowercased. Only derived matchers may start
+with a capital letter; they are not human-definable. So the Aug-28 example's body spelling
+`= Active` becomes `= active`. The matcher's domain is variants now, designed so untagged
+unions can join later (the #29 thread); matchers are first-class and tagged -- Q27's
+`Matcher` type is SETTLED by this grilling, not just leaning -- so a non-match is a value
+`or` composes, never a bare `null`. Still open, queued as the next decide row: measuring or
+enforcing full-coverage matches through first-class matchers, one arm serving several
+patterns (`alt`-composition), and whether the same algebra genuinely builds parser
+combinators (Q30's claim, now with a concrete surface to test against).
+
 REVISED (2026-08-28, superseding the lowercase rule below): **variants are capitalized, and
 a variant name is a type** -- each variant is a subtype of its enum, so a signature can
 promise one specific variant:
@@ -2494,7 +2511,7 @@ checked for completeness, and the settled entries are what stop a decision being
 | [Q24](#q24-are-compile-time-macros-a-first-class-concept) | Are compile-time macros a first-class concept? | OPEN, not yet evaluated |
 | [Q25](#q25-does-the-language-have-union-types) | Does the language have union types? | PARTLY SETTLED: closed nominal sums exist (enums); anonymous structural unions remain an absence |
 | [Q26](#q26-is-jsxs-children-slot-a-closed-per-site-union-or-an-open-one) | Is JSX's children slot a closed per-site union, or an open one? | OPEN, deliberately deferred to last |
-| [Q27](#q27-does-pattern-matching-need-a-separate-matcher-type-distinct-from-result) | Does pattern matching need a separate `Matcher` type, distinct from `Result`? | LEANING yes |
+| [Q27](#q27-does-pattern-matching-need-a-separate-matcher-type-distinct-from-result) | Does pattern matching need a separate `Matcher` type, distinct from `Result`? | SETTLED |
 | [Q28](#q28-does-deep-matching-need-cross-match-unification-of-logic-variables) | Does deep matching need cross-match unification of logic variables? | OPEN |
 | [Q29](#q29-what-is-the-default-discriminant-convention-for-a-derived-enum-codec) | What is the default discriminant convention for a derived enum codec? | SUPERSEDED: the enum decision made the single-key wrapper the value itself, not a codec default |
 | [Q30](#q30-do-the-base-functor-generics-double-as-parser-combinators-across-trees-strings-and-streams) | Do the base-functor generics double as parser combinators, across trees, strings, and streams? | LEANING yes, implementation split still open |
@@ -2769,6 +2786,10 @@ Deliberately last: the right answer depends on the rest of the design (how this 
 between functions in practice), not on this slot in isolation.
 
 ### Q27. Does pattern matching need a separate `Matcher` type, distinct from `Result`?
+
+SETTLED yes, by [the auto-matchers grilling](#construction-and-naming) (2026-08-29,
+kantord/toylang#47): matchers are first-class, tagged, and or-composable, derived per type
+with the capital name. The reasoning below is the argument that held.
 
 LEANING yes. Giving `Result` itself boolean-algebra traits (`and`/`or`) would let a value read as
 "successful" while still carrying an unread error, the same missing/error conflation [Q12](#q12-on-a-type-mismatch-does-field-access-error-yield-null-or-something-third) was
