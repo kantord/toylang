@@ -1,0 +1,14 @@
+# The composed shape kantord/toylang#66's landing review verified by hand: the reorder
+# recursion has to pass through a Vec wrapper AND an Opt payload before reaching the record,
+# so this pins that Map, OptMap, and the record rebuild compose (and the index adds its own Opt layer, so the doubled unwrap here is itself post-#62 behavior) -- the exact nesting a
+# wrong-column native read would corrupt silently.
+program: |
+  fn first_b(v: Vec<Opt<{a: Str, b: Int}>>) -> Int = ((v[0]!)!).b
+  fn g(v: Vec<Opt<{b: Int, a: Str}>>) -> Int = first_b(v)
+
+  g([some({b: 42, a: "hi"})])
+
+output: |
+  42
+
+node_types: [application, int, local, map-over, opt-map, projection, record-literal, selection.collapse, str, unwrap, var, variant.payload, vec-literal]
