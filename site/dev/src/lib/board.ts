@@ -64,26 +64,3 @@ function load(): Task[] {
 
 export const BOARD: Task[] = load()
 
-/** Longest-path layer from a root (a task with no needs), for a left-to-right DAG layout. */
-export function rankOf(tasks: Task[]): Map<string, number> {
-  const byId = new Map(tasks.map((t) => [t.id, t]))
-  const rank = new Map<string, number>()
-  function resolve(id: string, path: Set<string>): number {
-    const cached = rank.get(id)
-    if (cached !== undefined) return cached
-    if (path.has(id)) {
-      // A needs-cycle is a board bug (plans/board.yaml's own header calls this a deadlock);
-      // breaking it at 0 keeps the page rendering instead of recursing forever.
-      rank.set(id, 0)
-      return 0
-    }
-    const task = byId.get(id)
-    const r = !task || task.needs.length === 0
-      ? 0
-      : 1 + Math.max(...task.needs.map((n) => resolve(n, new Set(path).add(id))))
-    rank.set(id, r)
-    return r
-  }
-  for (const t of tasks) resolve(t.id, new Set())
-  return rank
-}

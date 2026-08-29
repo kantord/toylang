@@ -514,7 +514,7 @@
   title: Board graph goes force-directed -- the column layout is unusable for dependency reading
   kind: build
   needs: [board-page-v2]
-  status: delegated
+  status: done
 
 - id: wizard-submit-resilience
   issue: gh:46
