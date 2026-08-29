@@ -1,0 +1,16 @@
+# kantord/toylang#64: `g`'s parameter and `first_b`'s parameter are the same Vec<Record> type
+# with the element's fields spelled in the other order. Reconciliation used to stop at a
+# record's own fields (kantord/toylang#60) and never look inside the Vec wrapping it, so the
+# native backend's struct-of-arrays layout stayed keyed to whichever order the value was built
+# in -- reading `.b` at column 1 (`first_b`'s declared order) off a value laid out column 0
+# first (`g`'s), which is `a` there.
+program: |
+  fn first_b(v: Vec<{a: Str, b: Int}>) -> Int = v[0]!.b
+  fn g(v: Vec<{b: Int, a: Str}>) -> Int = first_b(v)
+
+  g([{b: 42, a: "hi"}])
+
+output: |
+  42
+
+node_types: [application, int, local, map-over, projection, record-literal, selection.collapse, str, unwrap, var, vec-literal]
