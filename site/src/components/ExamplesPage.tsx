@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BACKENDS, type Case, type CaseSummary } from "@/lib/corpus"
-import { href, PAGES } from "@/lib/docs"
+import { GROUP_LABELS, href, PAGES } from "@/lib/docs"
 import { exampleHref } from "@/lib/pageData"
 import { withBase } from "@/lib/route"
 
@@ -51,7 +51,7 @@ export function ExamplesPage({
         {eulerPages.length > 0 && (
           <div className="shrink-0 space-y-1 border-t pt-3">
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Coding puzzles
+              {GROUP_LABELS["euler"]}
             </div>
             <nav className="max-h-40 space-y-0.5 overflow-y-auto">
               {eulerPages.map((p) => (

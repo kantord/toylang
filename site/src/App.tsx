@@ -1,6 +1,6 @@
 import { ExamplesPage } from "@/components/ExamplesPage"
 import { Markdown } from "@/components/Markdown"
-import { href, PAGES, type Page, type Section } from "@/lib/docs"
+import { GROUP_LABELS, href, PAGES, type Page, type Section } from "@/lib/docs"
 import type { AppRoute, EmbeddedCaseData } from "@/lib/pageData"
 import { withBase } from "@/lib/route"
 import { cn } from "@/lib/utils"
@@ -63,7 +63,6 @@ export function App({ route }: { route: AppRoute }) {
 /** How a docs group's raw directory name reads in the sidebar. Only the Euler stream needs a
  *  friendlier label (kantord/toylang#70): everything else already spells its directory name
  *  the way a reader would say it. */
-const GROUP_LABELS: Record<string, string> = { euler: "Coding puzzles" }
 
 function DocsSection({
   section,
