@@ -459,7 +459,7 @@
   title: Sinkhole hardening -- re-check every kind, catch cfg_attr allows, dedup the budget math
   kind: build
   needs: [sinkhole-machinery]
-  status: todo
+  status: delegated
 
 - id: okf-invalid-lesson
   issue: gh:42
@@ -473,7 +473,7 @@
   title: Action-first inbox -- category subfolders, default view hides status noise, acks visually muted
   kind: build
   needs: [mail-app-v2]
-  status: todo
+  status: delegated
 
 - id: wizard-ui-polish
   issue: gh:43
