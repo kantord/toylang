@@ -51,14 +51,28 @@ export function exampleHref(name: string): string {
   return `/examples/${encodeURIComponent(name)}/`
 }
 
+/** Which `Page` a site-relative path names: `/` for the tutorial's first chapter, otherwise an
+ *  exact match on `href`. Shared with fetchRoute.ts's fetch-based resolution
+ *  (kantord/toylang#55), which never has a `Corpus` to call `resolveRoute` with. A bare section
+ *  root (`/guides/`, the top nav's own links) doesn't match here even though
+ *  scripts/prerender.mjs writes a file there too, mirroring that section's first page under a
+ *  different URL -- fetchRoute.ts falls back to a real navigation for it rather than
+ *  special-casing a path no page's `href` actually produces. */
+export function pageForPath(path: string): Page | null {
+  if (path === "/") return firstPage()
+  return PAGES.find((p) => href(p) === path) ?? null
+}
+
 /**
- * A real URL back to the route it names -- used once, at client hydration boot, to find which
- * `Page` (or example case) the browser is actually looking at. Production never calls this a
- * second time: there is no in-page navigation, only real links to other real files.
+ * A real URL back to the route it names, given the full corpus -- only ever called once, at
+ * client hydration boot, for a `pnpm dev` load that has no prerendered globals to read instead.
+ * A production load already has them embedded and skips this entirely; a client-side navigation
+ * after boot (kantord/toylang#55) resolves through fetchRoute.ts instead, which never has a
+ * `Corpus` to call this with.
  */
 export function resolveRoute(pathname: string, corpus: Corpus): AppRoute {
   const path = stripBase(pathname)
-  const page = path === "/" ? firstPage() : PAGES.find((p) => href(p) === path)
+  const page = pageForPath(path)
   if (page) return docsRoute(page, corpus)
 
   const m = /^\/examples\/([^/]*)\/?$/.exec(path)

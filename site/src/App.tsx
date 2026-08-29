@@ -17,10 +17,13 @@ const SECTIONS: { key: Section | "examples"; label: string }[] = [
 ]
 
 /**
- * One production page, given exactly what it needs to render (lib/pageData.ts computes
- * `route`): no client-side routing, no data fetching. A real navigation to another page is a
- * real browser navigation to another real file (kantord/toylang#50) -- there is nothing here
- * to keep in sync across an in-page transition, because there is no in-page transition.
+ * One page, given exactly what it needs to render (lib/pageData.ts computes `route`): no
+ * routing, no data fetching, no knowledge of how it got here. A first load reaches it through
+ * entry-client.tsx reading the page's own prerendered globals (kantord/toylang#50); a click on
+ * one of the links below reaches it again through clientNav.tsx fetching the target page's
+ * globals the same way and swapping `route` in place (kantord/toylang#55), without a real
+ * navigation. Either way, remounting on every route is what keeps this component from needing
+ * to reconcile one page's local state with the next.
  */
 export function App({ route }: { route: AppRoute }) {
   const activeSection = route.kind === "examples" ? "examples" : route.page.section
