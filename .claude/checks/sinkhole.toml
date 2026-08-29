@@ -12,10 +12,11 @@
 # - `#[allow]`/`#![allow]` beside the code it excuses is itself a finding (kind `bare-allow`,
 #   enforced in .claude/checks/run.sh). This file is the only sanctioned home for a justified
 #   exemption.
-# - `.claude/checks/run.sh` re-derives every entry's underlying finding on each run, over the
+# - `.claude/checks/run.sh` re-derives an entry's underlying finding on each run, over the
 #   whole tree, not just the files a session touched -- an entry whose finding no longer fires
-#   is itself reported, as `stale-sinkhole-entry`. There is no manual review step keeping this
-#   honest; the check does.
+#   is itself reported, as `stale-sinkhole-entry`. Today that re-check covers the
+#   `file-too-long` and `too-many-lines` kinds; every other kind is trusted as written until
+#   run.sh learns to re-derive it, so an entry of those kinds leans on its justification alone.
 #
 # Fields:
 #
@@ -47,6 +48,20 @@ rather than renewing this unread.
 """
 
 [[exemption]]
+kind = "bare-allow"
+path = "tests/support/mod.rs"
+line = 11
+justification = """
+The #![allow(dead_code)] plans/quality-practices.md gated this machinery on resolving: every
+integration-test binary compiles support/mod.rs and uses a different subset of its helpers, so
+per-binary dead_code warnings are structural to Rust's test layout, not debt. Resolving the
+gate by sinkholing it is the machinery applied to its own precondition -- the allow moves from
+an unexplained attribute to a justified entry. Note the bare-allow kind has no automated
+re-check yet (see the header); if support/mod.rs ever stops being shared across binaries,
+retire this by hand.
+"""
+
+[[exemption]]
 kind = "too-many-lines"
 path = "src/check.rs"
 function = "check"
@@ -70,8 +85,8 @@ line = 1384
 justification = """
 Inherited, never caused, by the same history as check() above --
 .claude/skills/code-style/lints/too-many-lines.md records synth() at every measurement from 560
-lines (its first appearance in the lesson) down to today's count, shrinking with every touch and
-never growing past what a session found. It is the one large match over every Expr variant
+lines (its first appearance in the lesson) down to today's count -- net downward, with the
+recorded upticks belonging to sessions the lesson classifies as inheriting, not causing. It is the one large match over every Expr variant
 (plans/checker-structure.md's bidirectional-checker axis): a type checker enumerates the
 language's grammar exactly once, with no per-area repetition to hang a split on the way the
 backends get one file per target for free. research-log/merging-passes-turns-redundant-traversals-into-bugs.md
