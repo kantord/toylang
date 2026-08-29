@@ -54,6 +54,21 @@ enum PendingInput {
     Gated,
 }
 
+/// Fills in a pending fragment's stdin source, from an `input` or `fixture` fence: refuses a
+/// second source, and a fence with no fragment open to receive it.
+fn set_pending_input(
+    pending: &mut Option<(String, String, PendingInput)>,
+    at: &str,
+    kind: &str,
+    value: PendingInput,
+) {
+    match pending {
+        Some((_, _, slot @ PendingInput::None)) => *slot = value,
+        Some((prev, ..)) => panic!("{at}: fragment at {prev} already has an input"),
+        None => panic!("{at}: `{kind}` fence with no `toylang` fence before it"),
+    }
+}
+
 /// Reads a `fixture` fence's named path, relative to the repo root, into stdin content.
 fn resolve_fixture(path: &str) -> PendingInput {
     match std::fs::read_to_string(repo_root().join(path)) {
@@ -252,23 +267,15 @@ fn extract(
                 }
                 pending = Some((at, body, PendingInput::None));
             }
-            "input" => match &mut pending {
-                Some((_, _, slot @ PendingInput::None)) => *slot = PendingInput::Inline(body),
-                Some((prev, ..)) => panic!("{at}: fragment at {prev} already has an input"),
-                None => panic!("{at}: `input` fence with no `toylang` fence before it"),
-            },
-            "fixture" => match &mut pending {
-                Some((_, _, slot @ PendingInput::None)) => {
-                    let path = body.trim();
-                    assert!(
-                        !path.is_empty() && !path.contains(char::is_whitespace),
-                        "{at}: a `fixture` fence holds one path, relative to the repo root"
-                    );
-                    *slot = resolve_fixture(path);
-                }
-                Some((prev, ..)) => panic!("{at}: fragment at {prev} already has an input"),
-                None => panic!("{at}: `fixture` fence with no `toylang` fence before it"),
-            },
+            "input" => set_pending_input(&mut pending, &at, "input", PendingInput::Inline(body)),
+            "fixture" => {
+                let path = body.trim();
+                assert!(
+                    !path.is_empty() && !path.contains(char::is_whitespace),
+                    "{at}: a `fixture` fence holds one path, relative to the repo root"
+                );
+                set_pending_input(&mut pending, &at, "fixture", resolve_fixture(path));
+            }
             "output" | "refuses" | "error" => {
                 let Some((frag_at, program, input)) = pending.take() else {
                     panic!(

@@ -42,3 +42,13 @@ optional call argument added just enough nesting to cross from absent to 11/10; 
 `call_args()` fixed it the same way, and is the general answer whenever a small new match
 pushes an otherwise-shape-1 dispatch over threshold -- try the tighten first, same as
 too-many-lines' identically-named playbook.
+
+The Euler-fixtures session (issue #69) is a fourth instance, in `tests/docs.rs` rather than an
+emitter: a new `fixture` fence, near-duplicating the existing `input` fence's `match &mut
+pending {}` and adding a `let-else`-and-`continue` for the gated case, pushed `extract()` from
+absent to 15/10. Case 2 applied the same way: the `input` and `fixture` arms' bodies (each a
+three-way match on the pending slot) moved into one shared `set_pending_input()` helper, which
+brought `extract()` back to absent with no finding. `every_fragment_is_a_real_program()`'s
+own 11/10 was verified unchanged from merge-base throughout (checked via `git show
+HEAD:tests/docs.rs` against a scratch copy) and stayed inherited by the same rule as
+too-many-lines' worked examples.
