@@ -548,7 +548,7 @@
   kind: build
   needs: [static-site-split]
   soft: [wizard-ui-polish]
-  status: delegated
+  status: done
 
 - id: mail-app-cleanups
   issue: gh:49
