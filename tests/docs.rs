@@ -42,7 +42,10 @@ fn every_fragment_is_a_real_program() {
     for (page, text) in pages() {
         extract(&page, &text, &mut fragments, &mut embedded);
     }
-    assert!(!fragments.is_empty(), "the docs have no fragments, so this test proves nothing");
+    assert!(
+        !fragments.is_empty(),
+        "the docs have no fragments, so this test proves nothing"
+    );
 
     let mut failures = Vec::new();
 
@@ -85,7 +88,9 @@ fn every_fragment_is_a_real_program() {
 
     for (at, id) in &embedded {
         if !support::dir().join(format!("{id}.yaml")).is_file() {
-            failures.push(format!("MISSING {at}: embeds corpus case `{id}`, which does not exist"));
+            failures.push(format!(
+                "MISSING {at}: embeds corpus case `{id}`, which does not exist"
+            ));
         }
     }
 
@@ -104,7 +109,12 @@ fn every_fragment_is_a_real_program() {
 fn every_builtin_has_a_reference_page() {
     let missing: Vec<&str> = toylang::check::BUILTIN_NAMES
         .into_iter()
-        .filter(|name| !docs_dir().join("reference/builtins").join(format!("{name}.md")).is_file())
+        .filter(|name| {
+            !docs_dir()
+                .join("reference/builtins")
+                .join(format!("{name}.md"))
+                .is_file()
+        })
         .collect();
     assert!(
         missing.is_empty(),
@@ -126,7 +136,8 @@ fn pages() -> Vec<(String, String)> {
     paths
         .into_iter()
         .map(|p| {
-            let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+            let text =
+                std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
             let rel = p
                 .strip_prefix(Path::new(env!("CARGO_MANIFEST_DIR")))
                 .expect("under the repo")
@@ -138,7 +149,9 @@ fn pages() -> Vec<(String, String)> {
 }
 
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display())) {
+    for entry in
+        std::fs::read_dir(dir).unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()))
+    {
         let path = entry.expect("readable entry").path();
         if path.is_dir() {
             walk(&path, out);
@@ -162,7 +175,9 @@ fn extract(
     let mut lines = text.lines().enumerate().peekable();
 
     while let Some((i, line)) = lines.next() {
-        let Some(info) = line.strip_prefix("```") else { continue };
+        let Some(info) = line.strip_prefix("```") else {
+            continue;
+        };
         let at = format!("{page}:{}", i + 1);
         let mut body = String::new();
         loop {
@@ -189,7 +204,10 @@ fn extract(
             },
             "output" | "refuses" | "error" => {
                 let Some((frag_at, program, input)) = pending.take() else {
-                    panic!("{at}: `{}` fence with no `toylang` fence before it", info.trim())
+                    panic!(
+                        "{at}: `{}` fence with no `toylang` fence before it",
+                        info.trim()
+                    )
                 };
                 let outcome = match info.trim() {
                     "output" => Outcome::Output(body),
@@ -203,7 +221,12 @@ fn extract(
                         Outcome::Refusal
                     }
                 };
-                fragments.push(Fragment { at: frag_at, program, input, outcome });
+                fragments.push(Fragment {
+                    at: frag_at,
+                    program,
+                    input,
+                    outcome,
+                });
             }
             "case" => {
                 let id = body.trim();

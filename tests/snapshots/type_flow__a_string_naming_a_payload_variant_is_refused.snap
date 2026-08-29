@@ -1,0 +1,5 @@
+---
+source: tests/type_flow.rs
+expression: "err(\"enum Shape { point, circle{r: Int} }\\n\\nfn f(x: Int) -> Shape = \\\"circle\\\"\\n\\nf(1)\")"
+---
+`circle` of `Shape` carries a payload of {r: Int}, so it is written `circle{...}` (at byte 62)

@@ -2,6 +2,7 @@
 type: Lesson
 calendar:
   - 2026-08-26
+  - 2026-08-29
 title: A map body cannot infer from what consumes it
 description: expect() threads an expected type into exactly one form, Expr::Input; a map body is always synth'd bottom-up, so a polymorphic builtin like a hypothetical parse(s) -> T has nothing to resolve T against inside map(parse(.)), the same hole an empty [] literal falls into.
 tags:
@@ -51,3 +52,12 @@ Open: whether the fix is "thread `want` through `Map`/`Select`/`Cond` specifical
 more general (full bidirectional inference, à la Hindley-Milner with expected-type propagation).
 The narrower fix is smaller and answers the case actually hit; the general one would stop this
 from being rediscovered a third time.
+
+Closed 2026-08-29: the answer was the narrower fix, and it was enough. The type-flow rework
+(`plans/type-flow.md`) made `expect` recursive over the forms that denote shapes -- pipes,
+record and Vec literals, `map` bodies, conditionals, total match chains -- with no unification
+variables anywhere; the position's declared type is the only source. `map(parse(.))`-shaped
+bodies now check against the expected element, which is what the `parse` design was waiting on.
+The class this wall guarded is
+[checked-only forms are a class, not a lambda rule](checked-only-forms-are-a-class-not-a-lambda-rule.md),
+whose closing section lists what pushed where.

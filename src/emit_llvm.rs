@@ -92,6 +92,11 @@ struct Emitter<'ctx> {
     funcs: HashMap<String, FunctionValue<'ctx>>,
     locals: HashMap<LocalId, Slot<'ctx>>,
     params: HashMap<String, BasicValueEnum<'ctx>>,
+    /// The one parsed stdin value, as the raw slot tl_read_input returns, stored in a global
+    /// that main fills before anything else runs. Every other backend binds `input` to a name
+    /// read once in its preamble; a call per `Input` node would re-read an already-drained
+    /// stdin now that a program can spell `input` more than once.
+    input_slot: Option<PointerValue<'ctx>>,
     next_global: usize,
 }
 
@@ -245,6 +250,7 @@ impl<'ctx> Emitter<'ctx> {
             funcs: HashMap::new(),
             locals: HashMap::new(),
             params: HashMap::new(),
+            input_slot: None,
             next_global: 0,
         }
     }
@@ -1253,9 +1259,13 @@ impl<'ctx> Emitter<'ctx> {
             Kind::Lines => self.call_rt(self.rt.collect_lines, &[], "lines")?,
 
             Kind::Input => {
-                let descriptor = self.string_const(&Self::descriptor(&t.ty));
+                let global = self
+                    .input_slot
+                    .ok_or_else(|| "an `input` node the module never read stdin for".to_string())?;
                 let slot = self
-                    .call_rt(self.rt.read_input, &[descriptor.into()], "input")?
+                    .builder
+                    .build_load(self.ctx.i64_type(), global, "input_slot")
+                    .map_err(|e| e.to_string())?
                     .into_int_value();
                 self.read_slot(slot, &t.ty)?
             }
@@ -1804,6 +1814,15 @@ impl<'ctx> Emitter<'ctx> {
 fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'ctx>, String> {
     let mut e = Emitter::new(ctx);
 
+    // The global exists before any body is emitted, since a function body may hold an `Input`
+    // node; main stores into it below, before anything can run.
+    if program.input.is_some() {
+        let i64t = ctx.i64_type();
+        let global = e.module.add_global(i64t, None, "tl_input_slot");
+        global.set_initializer(&i64t.const_zero());
+        e.input_slot = Some(global.as_pointer_value());
+    }
+
     // Declared before any body, so a call to a function defined further down resolves. The
     // checker allows that, and it is where the Lua backend was wrong at prototype 1 step 3.
     for func in &program.funcs {
@@ -1821,6 +1840,15 @@ fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'c
         .position_at_end(ctx.append_basic_block(main, "entry"));
     e.params.clear();
     e.locals.clear();
+
+    if let Some(ty) = &program.input {
+        let global = e.input_slot.expect("created above whenever input is Some");
+        let descriptor = e.string_const(&Emitter::descriptor(ty));
+        let slot = e.call_rt(e.rt.read_input, &[descriptor.into()], "input")?;
+        e.builder
+            .build_store(global, slot.into_int_value())
+            .map_err(|err| err.to_string())?;
+    }
 
     if let Some(fusion) = tir::fusion(program) {
         e.fused_main(program, &fusion)?;

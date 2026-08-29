@@ -2,6 +2,7 @@
 type: Note
 calendar:
   - 2026-08-10
+  - 2026-08-29
 title: Checked-only forms are a class, not a lambda rule
 description: The draft states the annotation rule as being about lambdas, but prototype 1 found two more forms that can only be checked and never synthesised, so the rule is about a class of expression.
 tags:
@@ -48,3 +49,19 @@ cannot state its type, is
 Related, because the machinery is shared:
 [the lowering needs types the checker already computed](the-lowering-needs-types-the-checker-already-computed.md)
 is about the same checker handing what it learned to the backend.
+
+## Closed by the type-flow rework (2026-08-29)
+
+The rework `plans/type-flow.md` planned has landed, and the class held up. The positions that push
+an expectation grew from one (`input`'s) to the whole surface: a declared return type flows
+into the function body, a record type into its fields, a parameter type into its argument, an
+expected element through a `map` body, and the expectation into both conditional branches and
+every arm of a total match chain. `[]` resolves in all of them, and the prediction about future
+members came true on schedule: a string literal against an enum type joined the class (the unit
+variant it names), needing an `expect` arm and no new rule.
+
+Two boundaries were worth keeping. Expectation only resolves what synthesis refused -- a form
+that can answer for itself is compared, never coerced -- and a partial guard chain's arms still
+synthesise, because the arms-are-already-Opt refusal depends on asking the arms what they are
+(issue #48 records the fork). The map-body half of the story closes in
+[a map body cannot infer from what consumes it](a-map-body-cannot-infer-from-what-consumes-it.md).

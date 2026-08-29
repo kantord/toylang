@@ -1,0 +1,5 @@
+---
+source: tests/type_flow.rs
+expression: "err(\"fn f(v: Stream<Int>) -> Vec<Int> = [v]\\n\\n1\")"
+---
+a Vec cannot hold a stream, which has nothing to store (at byte 36)

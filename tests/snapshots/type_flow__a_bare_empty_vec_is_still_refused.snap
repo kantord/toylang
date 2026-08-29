@@ -1,0 +1,5 @@
+---
+source: tests/type_flow.rs
+expression: "err(\"[]\")"
+---
+cannot tell what `[]` contains (at byte 0)

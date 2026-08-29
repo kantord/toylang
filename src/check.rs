@@ -1,7 +1,9 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use crate::ast::{Alias, BinOp, Def, EnumDecl, Expr, File, Pattern, Span, TypeExpr};
+use crate::ast::{
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, MatchArm, Pattern, Span, TypeExpr,
+};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{self, Sig, Type};
@@ -124,7 +126,13 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             in_fn: Some(&def.name),
             next_local: &next_local,
         };
-        let body = synth(&ctx, &def.body)?;
+        // The declared return type flows into the body, so a form whose type comes from its
+        // position (`[]`, `input`, a variant-naming string) resolves against the annotation. A
+        // body that synthesises instead is compared below, where the error can name the
+        // function rather than just the two types.
+        let body = match expect_inner(&ctx, &def.body, &sig.ret)? {
+            Expected::Checked(body) | Expected::Synthesised(body) => body,
+        };
         // A signature may spell Stream now, which un-does the trick the Lines design leaned on
         // (a return annotation could never match a body holding a stream), so what that trick
         // guaranteed for free is checked for real here.
@@ -1014,6 +1022,365 @@ fn collect(ctx: &Ctx, arg: &Expr, want_elem: Option<&Type>) -> Result<Tir, Error
     ))
 }
 
+/// A `map` call over the subject. `want_elem` is the element type the position expects of the
+/// result, when it expects one whose cardinality matches the subject's; the body is checked
+/// against it, which is what lets a mapper body hold `[]`, a variant-naming string, or the
+/// other checked-only forms. With `None` the body synthesises, as it always has.
+fn map_call(ctx: &Ctx, arg: &Expr, span: Span, want_elem: Option<&Type>) -> Result<Tir, Error> {
+    let Some((subject, id)) = ctx.subject.clone() else {
+        return Err(Error::new(
+            span,
+            "`map` needs a subject, so it must follow `|`",
+        ));
+    };
+    let Some(elem) = mapper_elem(&subject) else {
+        return Err(Error::new(
+            span,
+            format!("`map` needs a Vec or a stream, found {subject}"),
+        ));
+    };
+    let param = ctx.fresh();
+    let inner = mapper_ctx(ctx, elem, param);
+    let body = match want_elem {
+        Some(want) => expect(&inner, arg, want)?,
+        None => synth(&inner, arg)?,
+    };
+    // The elements of the result are stored, and a stream is not storable: this is the same
+    // containment ban a Vec literal enforces, met here before the Vec or Stream of them could
+    // exist.
+    if body.ty.contains_stream() {
+        return Err(Error::new(
+            arg.span(),
+            "a `map` body cannot be a stream, which has nothing to store".to_string(),
+        ));
+    }
+    let out = match &subject {
+        Type::Stream(_) => Type::Stream(Box::new(body.ty.clone())),
+        _ => Type::Vec(Box::new(body.ty.clone())),
+    };
+    let source = Tir::new(subject, Kind::Local(id));
+    Ok(Tir::new(
+        out,
+        Kind::Map {
+            source: Box::new(source),
+            param,
+            body: Box::new(body),
+        },
+    ))
+}
+
+/// `|` binds `.` in the right side to the value of the left. It is composition, not a map:
+/// the operators that distribute over a Vec do so themselves. The pipe's value is the right
+/// side's, so an expectation flows into the right side whole -- which is how one reaches the
+/// subject-fed forms (`map`, `select`, a match chain), since they only exist after `|`.
+fn pipe(ctx: &Ctx, lhs: &Expr, rhs: &Expr, want: Option<&Type>) -> Result<Expected, Error> {
+    let value = synth(ctx, lhs)?;
+    let local = ctx.fresh();
+    let inner = ctx.with(Some((value.ty.clone(), local)));
+    let body = match want {
+        Some(want) => expect_inner(&inner, rhs, want)?,
+        None => Expected::Synthesised(synth(&inner, rhs)?),
+    };
+    let (checked, body) = match body {
+        Expected::Checked(tir) => (true, tir),
+        Expected::Synthesised(tir) => (false, tir),
+    };
+    // A stream on the right of `|` must have flowed in from the left: a source read beside an
+    // unrelated piped value is not one chain, and one chain from source to sink is the shape
+    // the whole effect layer keeps.
+    if matches!(body.ty, Type::Stream(_)) && !matches!(value.ty, Type::Stream(_)) {
+        return Err(Error::new(
+            rhs.span(),
+            "this stream does not flow in from the left of `|`; write the pipeline as \
+             one chain from its source"
+                .to_string(),
+        ));
+    }
+    // The same linearity a stream-typed parameter gets: `|` is the one construct that can
+    // silently drop its left side, so a stream piped in must be consumed here.
+    if matches!(value.ty, Type::Stream(_)) {
+        check_linear(
+            &body,
+            &StreamBinding::Local(local),
+            "the stream piped in here",
+            rhs.span(),
+        )?;
+    }
+    let tir = Tir::new(
+        body.ty.clone(),
+        Kind::Bind {
+            local,
+            value: Box::new(value),
+            body: Box::new(body),
+        },
+    );
+    Ok(if checked {
+        Expected::Checked(tir)
+    } else {
+        Expected::Synthesised(tir)
+    })
+}
+
+/// The hybrid totality the match-arms decision fixed. A chain with variant patterns is
+/// closed-world: the subject is a declared enum, and the arms are proved to cover every
+/// variant (or end in a default); guards do not count toward that coverage. A pure guard
+/// chain is open-world and may be honestly partial, yielding `Opt` -- except when the arm
+/// bodies are themselves `Opt`-typed, refused below. `.` narrows per arm: to the payload in
+/// a payload arm, to nothing in a unit arm, and it stays the subject in a guard or default
+/// arm.
+///
+/// `body_want` is what every arm's body must be -- for a partial chain, the expectation with
+/// its Opt layer already peeled by the caller. With `None` the first arm's body decides, as
+/// it always has.
+/// The dead-arm rule, both ways a chain can already be finished: a default above matches
+/// everything, and arms covering every variant leave nothing for a later arm to see. (The
+/// second is also what lets every backend take a total chain's last arm without a test.)
+fn check_reachable(
+    subject_ty: &Type,
+    covered: &[String],
+    default_seen: bool,
+    arm_span: Span,
+) -> Result<(), Error> {
+    if default_seen {
+        return Err(Error::new(
+            arm_span,
+            "this arm can never match; the `any()` arm above it already matches everything"
+                .to_string(),
+        ));
+    }
+    if let Type::Enum { name, variants } = subject_ty
+        && !covered.is_empty()
+        && variants.iter().all(|(n, _)| covered.contains(n))
+    {
+        return Err(Error::new(
+            arm_span,
+            format!(
+                "this arm can never match; the arms above it already cover every variant of `{name}`"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// The closed-world proof: every variant of the subject's enum is either covered by a pattern
+/// arm or the chain ends in a default, which the caller has already ruled out.
+fn check_coverage(subject_ty: &Type, covered: &[String], span: Span) -> Result<(), Error> {
+    let Type::Enum {
+        name: enum_name,
+        variants,
+    } = subject_ty
+    else {
+        unreachable!("a pattern arm was checked against an enum subject")
+    };
+    let missing: Vec<String> = variants
+        .iter()
+        .filter(|(n, _)| !covered.contains(n))
+        .map(|(n, _)| format!("`{n}`"))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(Error::new(
+        span,
+        format!(
+            "a match over `{enum_name}` must cover every variant or end in a default; missing {}",
+            missing.join(" and ")
+        ),
+    ))
+}
+
+/// One variant pattern against the subject: the variant must exist on the subject's enum, a
+/// unit variant takes no field pattern, and a payload variant rebinds `.` to a fresh payload
+/// local, with any destructured fields proved against the payload's record type. Returns the
+/// payload local (`None` for a unit variant) and the context the arm's body checks in.
+fn variant_arm<'a>(
+    ctx: &'a Ctx,
+    subject_ty: &Type,
+    vname: &str,
+    vspan: Span,
+    fields: Option<&FieldsPattern>,
+) -> Result<(Option<LocalId>, Ctx<'a>), Error> {
+    let Type::Enum {
+        name: enum_name,
+        variants,
+    } = subject_ty
+    else {
+        return Err(Error::new(
+            vspan,
+            format!("a match needs an enum subject, found {subject_ty}"),
+        ));
+    };
+    let Some((_, payload_ty)) = variants.iter().find(|(n, _)| n == vname) else {
+        return Err(Error::new(
+            vspan,
+            format!("`{enum_name}` has no variant `{vname}`"),
+        ));
+    };
+    match payload_ty {
+        None => {
+            if let Some(f) = fields {
+                return Err(Error::new(
+                    f.span,
+                    format!(
+                        "`{vname}` is a unit variant of `{enum_name}` and has no payload to destructure"
+                    ),
+                ));
+            }
+            Ok((None, ctx.with(None)))
+        }
+        Some(pty) => {
+            let pid = ctx.fresh();
+            let mut arm_ctx = ctx.with(Some((pty.clone(), pid)));
+            if let Some(f) = fields {
+                let Type::Record(pfields) = pty else {
+                    return Err(Error::new(
+                        f.span,
+                        format!(
+                            "the payload of `{vname}` is {pty}, not a record, so there are no fields to destructure; the arm's `.` is the payload"
+                        ),
+                    ));
+                };
+                for (i, (fname, fspan)) in f.names.iter().enumerate() {
+                    if f.names[..i].iter().any(|(seen, _)| seen == fname) {
+                        return Err(Error::new(
+                            *fspan,
+                            format!("`{fname}` is bound twice in this pattern"),
+                        ));
+                    }
+                    if !pfields.iter().any(|(n, _)| n == fname) {
+                        return Err(Error::new(*fspan, format!("no field `{fname}` on {pty}")));
+                    }
+                    arm_ctx.arm_fields.push((fname.clone(), pty.clone(), pid));
+                }
+                // Leaving fields out of a match against a closed type is a forgotten field
+                // until `..` says it was meant.
+                if !f.rest {
+                    let missing: Vec<String> = pfields
+                        .iter()
+                        .filter(|(n, _)| !f.names.iter().any(|(m, _)| m == n))
+                        .map(|(n, _)| format!("`{n}`"))
+                        .collect();
+                    if !missing.is_empty() {
+                        return Err(Error::new(
+                            f.span,
+                            format!(
+                                "a `{vname}` pattern must name every payload field or end in `..`; missing {}",
+                                missing.join(" and ")
+                            ),
+                        ));
+                    }
+                }
+            }
+            Ok((Some(pid), arm_ctx))
+        }
+    }
+}
+
+fn match_chain(
+    ctx: &Ctx,
+    arms: &[MatchArm],
+    span: Span,
+    body_want: Option<&Type>,
+) -> Result<Tir, Error> {
+    let Some((subject_ty, sid)) = ctx.subject.clone() else {
+        return Err(Error::new(
+            span,
+            "a match needs a subject, so it must follow `|`".to_string(),
+        ));
+    };
+    let mut covered: Vec<String> = Vec::new();
+    let mut default_seen = false;
+    let mut has_pattern_arm = false;
+    let mut result: Option<Type> = body_want.cloned();
+    let mut out = Vec::new();
+    for arm in arms {
+        check_reachable(&subject_ty, &covered, default_seen, arm.span)?;
+        let (variant, guard, payload, arm_ctx) = match &arm.pattern {
+            Pattern::Default { .. } => {
+                default_seen = true;
+                // A default matched the whole subject, so `.` stays the enum value.
+                (None, None, None, ctx.with(ctx.subject.clone()))
+            }
+            // The guard is a Bool over the unrebound subject, so it is checked in the
+            // enclosing context, and the body keeps `.` as the subject too.
+            Pattern::Guard(g) => {
+                let cond = expect(ctx, g, &Type::Bool)?;
+                (None, Some(cond), None, ctx.with(ctx.subject.clone()))
+            }
+            Pattern::Variant {
+                name: vname,
+                span: vspan,
+                fields,
+            } => {
+                has_pattern_arm = true;
+                covered.push(vname.clone());
+                let (payload, arm_ctx) =
+                    variant_arm(ctx, &subject_ty, vname, *vspan, fields.as_ref())?;
+                (Some(vname.clone()), None, payload, arm_ctx)
+            }
+        };
+        let body = match &result {
+            None => {
+                let body = synth(&arm_ctx, &arm.body)?;
+                // The same rule a conditional has: which arm runs is decided at
+                // runtime, and a pipeline's shape must not be.
+                if body.ty.contains_stream() {
+                    return Err(Error::new(
+                        arm.body.span(),
+                        "a match cannot yield a stream; pass each arm to `collect` first"
+                            .to_string(),
+                    ));
+                }
+                result = Some(body.ty.clone());
+                body
+            }
+            Some(t) => expect(&arm_ctx, &arm.body, t)?,
+        };
+        out.push(tir::MatchArm {
+            variant,
+            guard,
+            payload,
+            body,
+        });
+    }
+    // Closed-world half: a chain with variant patterns keeps exhaustiveness, and only
+    // patterns count toward it -- a guard is a runtime Bool the checker cannot see
+    // through.
+    if has_pattern_arm && !default_seen {
+        check_coverage(&subject_ty, &covered, span)?;
+    }
+    let result = result.expect("the parser produces at least one arm");
+    // Open-world half: a pure guard chain with no default may decline every arm, so
+    // its result is `Opt` -- unless the bodies are already `Opt`-typed, where one
+    // `null` would mean both "no arm matched" and "matched, and found nothing" (our
+    // `Opt` is untagged), the exact conflation the field-access rule forbids.
+    let partial = !has_pattern_arm && !default_seen;
+    let result = if partial {
+        if matches!(result, Type::Opt(_)) {
+            return Err(Error::new(
+                span,
+                format!(
+                    "this guard chain is partial, and its arms are already {result}: \
+                         a declined chain and a matched-but-absent value would both print \
+                         `null`; add a default arm"
+                ),
+            ));
+        }
+        Type::Opt(Box::new(result))
+    } else {
+        result
+    };
+    let subject = Tir::new(subject_ty.clone(), Kind::Local(sid));
+    Ok(Tir::new(
+        result,
+        Kind::Match {
+            subject: Box::new(subject),
+            arms: out,
+            partial,
+        },
+    ))
+}
+
 fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     match expr {
         Expr::Str { text, .. } => Ok(Tir::new(Type::Str, Kind::Str(text.clone()))),
@@ -1150,42 +1517,9 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Ok(Tir::new(Type::Vec(Box::new(elem)), Kind::VecLit(out)))
         }
 
-        // `|` binds `.` in the right side to the value of the left. It is composition, not a
-        // map: the operators that distribute over a Vec do so themselves.
-        Expr::Pipe { lhs, rhs, .. } => {
-            let value = synth(ctx, lhs)?;
-            let local = ctx.fresh();
-            let body = synth(&ctx.with(Some((value.ty.clone(), local))), rhs)?;
-            // A stream on the right of `|` must have flowed in from the left: a source read
-            // beside an unrelated piped value is not one chain, and one chain from source to
-            // sink is the shape the whole effect layer keeps.
-            if matches!(body.ty, Type::Stream(_)) && !matches!(value.ty, Type::Stream(_)) {
-                return Err(Error::new(
-                    rhs.span(),
-                    "this stream does not flow in from the left of `|`; write the pipeline as \
-                     one chain from its source"
-                        .to_string(),
-                ));
-            }
-            // The same linearity a stream-typed parameter gets: `|` is the one construct that
-            // can silently drop its left side, so a stream piped in must be consumed here.
-            if matches!(value.ty, Type::Stream(_)) {
-                check_linear(
-                    &body,
-                    &StreamBinding::Local(local),
-                    "the stream piped in here",
-                    rhs.span(),
-                )?;
-            }
-            Ok(Tir::new(
-                body.ty.clone(),
-                Kind::Bind {
-                    local,
-                    value: Box::new(value),
-                    body: Box::new(body),
-                },
-            ))
-        }
+        Expr::Pipe { lhs, rhs, .. } => match pipe(ctx, lhs, rhs, None)? {
+            Expected::Checked(tir) | Expected::Synthesised(tir) => Ok(tir),
+        },
 
         Expr::Field { .. } | Expr::Index { .. } | Expr::Unwrap { .. } => {
             let Access { tir, stream, .. } = access(ctx, expr)?;
@@ -1214,9 +1548,14 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Ok(access.tir)
         }
 
-        // `input` is only ever checked, never synthesised, for the same reason a lambda is:
-        // nothing here says what it contains, and guessing is what the annotation rule avoids.
-        Expr::Input { span } => Err(Error::new(*span, "cannot tell what `input` contains")),
+        // `input` names one value, so its first checked use fixes the type for the whole
+        // program -- and a later use in a position that expects nothing can borrow what the
+        // first use fixed. With no use typed yet, nothing says what it contains, and guessing
+        // is what the annotation rule avoids.
+        Expr::Input { span } => match ctx.input.borrow().as_ref() {
+            Some(ty) => Ok(Tir::new(ty.clone(), Kind::Input)),
+            None => Err(Error::new(*span, "cannot tell what `input` contains")),
+        },
         Expr::Inputs { span } => match ctx.in_fn {
             Some(func) => Err(source_in_fn(*span, "inputs", func)),
             None => Err(Error::new(*span, "cannot tell what `inputs` contains")),
@@ -1264,43 +1603,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             // The one way to produce a new element value. `select` removes elements and a field
             // access reads a field; neither can turn a Vec<Int> into a Vec<Str>.
             if func == "map" {
-                let Some((subject, id)) = ctx.subject.clone() else {
-                    return Err(Error::new(
-                        *span,
-                        "`map` needs a subject, so it must follow `|`",
-                    ));
-                };
-                let Some(elem) = mapper_elem(&subject) else {
-                    return Err(Error::new(
-                        *span,
-                        format!("`map` needs a Vec or a stream, found {subject}"),
-                    ));
-                };
-                let param = ctx.fresh();
-                let inner = mapper_ctx(ctx, elem, param);
-                let body = synth(&inner, arg)?;
-                // The elements of the result are stored, and a stream is not storable: this is
-                // the same containment ban a Vec literal enforces, met here before the Vec or
-                // Stream of them could exist.
-                if body.ty.contains_stream() {
-                    return Err(Error::new(
-                        arg.span(),
-                        "a `map` body cannot be a stream, which has nothing to store".to_string(),
-                    ));
-                }
-                let out = match &subject {
-                    Type::Stream(_) => Type::Stream(Box::new(body.ty.clone())),
-                    _ => Type::Vec(Box::new(body.ty.clone())),
-                };
-                let source = Tir::new(subject, Kind::Local(id));
-                return Ok(Tir::new(
-                    out,
-                    Kind::Map {
-                        source: Box::new(source),
-                        param,
-                        body: Box::new(body),
-                    },
-                ));
+                return map_call(ctx, arg, *span, None);
             }
             // A sink, not a function: `check` handles the one legal position (the program's
             // outermost expression) before `synth` ever runs, so reaching it here means it is
@@ -1409,227 +1712,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             ))
         }
 
-        // The hybrid totality the match-arms decision fixed. A chain with variant patterns is
-        // closed-world: the subject is a declared enum, and the arms are proved to cover every
-        // variant (or end in a default); guards do not count toward that coverage. A pure guard
-        // chain is open-world and may be honestly partial, yielding `Opt` -- except when the
-        // arm bodies are themselves `Opt`-typed, refused below. `.` narrows per arm: to the
-        // payload in a payload arm, to nothing in a unit arm, and it stays the subject in a
-        // guard or default arm.
-        Expr::Match { arms, span } => {
-            let Some((subject_ty, sid)) = ctx.subject.clone() else {
-                return Err(Error::new(
-                    *span,
-                    "a match needs a subject, so it must follow `|`".to_string(),
-                ));
-            };
-            let mut covered: Vec<String> = Vec::new();
-            let mut default_seen = false;
-            let mut has_pattern_arm = false;
-            let mut result: Option<Type> = None;
-            let mut out = Vec::new();
-            for arm in arms {
-                if default_seen {
-                    return Err(Error::new(
-                        arm.span,
-                        "this arm can never match; the `any()` arm above it already matches everything"
-                            .to_string(),
-                    ));
-                }
-                // The same dead-arm rule for the other way a chain can be finished: once every
-                // variant is covered, nothing is left for a later arm to see. (This is also
-                // what lets every backend take a total chain's last arm without a test.)
-                if let Type::Enum { name, variants } = &subject_ty
-                    && !covered.is_empty()
-                    && variants.iter().all(|(n, _)| covered.contains(n))
-                {
-                    return Err(Error::new(
-                        arm.span,
-                        format!(
-                            "this arm can never match; the arms above it already cover every variant of `{name}`"
-                        ),
-                    ));
-                }
-                let (variant, guard, payload, arm_ctx) = match &arm.pattern {
-                    Pattern::Default { .. } => {
-                        default_seen = true;
-                        // A default matched the whole subject, so `.` stays the enum value.
-                        (None, None, None, ctx.with(ctx.subject.clone()))
-                    }
-                    // The guard is a Bool over the unrebound subject, so it is checked in the
-                    // enclosing context, and the body keeps `.` as the subject too.
-                    Pattern::Guard(g) => {
-                        let cond = expect(ctx, g, &Type::Bool)?;
-                        (None, Some(cond), None, ctx.with(ctx.subject.clone()))
-                    }
-                    Pattern::Variant {
-                        name: vname,
-                        span: vspan,
-                        fields,
-                    } => {
-                        let Type::Enum {
-                            name: enum_name,
-                            variants,
-                        } = &subject_ty
-                        else {
-                            return Err(Error::new(
-                                *vspan,
-                                format!("a match needs an enum subject, found {subject_ty}"),
-                            ));
-                        };
-                        has_pattern_arm = true;
-                        let Some((_, payload_ty)) = variants.iter().find(|(n, _)| n == vname)
-                        else {
-                            return Err(Error::new(
-                                *vspan,
-                                format!("`{enum_name}` has no variant `{vname}`"),
-                            ));
-                        };
-                        covered.push(vname.clone());
-                        match payload_ty {
-                            None => {
-                                if let Some(f) = fields {
-                                    return Err(Error::new(
-                                        f.span,
-                                        format!(
-                                            "`{vname}` is a unit variant of `{enum_name}` and has no payload to destructure"
-                                        ),
-                                    ));
-                                }
-                                (Some(vname.clone()), None, None, ctx.with(None))
-                            }
-                            Some(pty) => {
-                                let pid = ctx.fresh();
-                                let mut arm_ctx = ctx.with(Some((pty.clone(), pid)));
-                                if let Some(f) = fields {
-                                    let Type::Record(pfields) = pty else {
-                                        return Err(Error::new(
-                                            f.span,
-                                            format!(
-                                                "the payload of `{vname}` is {pty}, not a record, so there are no fields to destructure; the arm's `.` is the payload"
-                                            ),
-                                        ));
-                                    };
-                                    for (i, (fname, fspan)) in f.names.iter().enumerate() {
-                                        if f.names[..i].iter().any(|(seen, _)| seen == fname) {
-                                            return Err(Error::new(
-                                                *fspan,
-                                                format!("`{fname}` is bound twice in this pattern"),
-                                            ));
-                                        }
-                                        if !pfields.iter().any(|(n, _)| n == fname) {
-                                            return Err(Error::new(
-                                                *fspan,
-                                                format!("no field `{fname}` on {pty}"),
-                                            ));
-                                        }
-                                        arm_ctx.arm_fields.push((fname.clone(), pty.clone(), pid));
-                                    }
-                                    // Leaving fields out of a match against a closed type is a
-                                    // forgotten field until `..` says it was meant.
-                                    if !f.rest {
-                                        let missing: Vec<String> = pfields
-                                            .iter()
-                                            .filter(|(n, _)| !f.names.iter().any(|(m, _)| m == n))
-                                            .map(|(n, _)| format!("`{n}`"))
-                                            .collect();
-                                        if !missing.is_empty() {
-                                            return Err(Error::new(
-                                                f.span,
-                                                format!(
-                                                    "a `{vname}` pattern must name every payload field or end in `..`; missing {}",
-                                                    missing.join(" and ")
-                                                ),
-                                            ));
-                                        }
-                                    }
-                                }
-                                (Some(vname.clone()), None, Some(pid), arm_ctx)
-                            }
-                        }
-                    }
-                };
-                let body = match &result {
-                    None => {
-                        let body = synth(&arm_ctx, &arm.body)?;
-                        // The same rule a conditional has: which arm runs is decided at
-                        // runtime, and a pipeline's shape must not be.
-                        if body.ty.contains_stream() {
-                            return Err(Error::new(
-                                arm.body.span(),
-                                "a match cannot yield a stream; pass each arm to `collect` first"
-                                    .to_string(),
-                            ));
-                        }
-                        result = Some(body.ty.clone());
-                        body
-                    }
-                    Some(t) => expect(&arm_ctx, &arm.body, t)?,
-                };
-                out.push(tir::MatchArm {
-                    variant,
-                    guard,
-                    payload,
-                    body,
-                });
-            }
-            // Closed-world half: a chain with variant patterns keeps exhaustiveness, and only
-            // patterns count toward it -- a guard is a runtime Bool the checker cannot see
-            // through.
-            if has_pattern_arm && !default_seen {
-                let Type::Enum {
-                    name: enum_name,
-                    variants,
-                } = &subject_ty
-                else {
-                    unreachable!("a pattern arm was checked against an enum subject")
-                };
-                let missing: Vec<String> = variants
-                    .iter()
-                    .filter(|(n, _)| !covered.contains(n))
-                    .map(|(n, _)| format!("`{n}`"))
-                    .collect();
-                if !missing.is_empty() {
-                    return Err(Error::new(
-                        *span,
-                        format!(
-                            "a match over `{enum_name}` must cover every variant or end in a default; missing {}",
-                            missing.join(" and ")
-                        ),
-                    ));
-                }
-            }
-            let result = result.expect("the parser produces at least one arm");
-            // Open-world half: a pure guard chain with no default may decline every arm, so
-            // its result is `Opt` -- unless the bodies are already `Opt`-typed, where one
-            // `null` would mean both "no arm matched" and "matched, and found nothing" (our
-            // `Opt` is untagged), the exact conflation the field-access rule forbids.
-            let partial = !has_pattern_arm && !default_seen;
-            let result = if partial {
-                if matches!(result, Type::Opt(_)) {
-                    return Err(Error::new(
-                        *span,
-                        format!(
-                            "this guard chain is partial, and its arms are already {result}: \
-                             a declined chain and a matched-but-absent value would both print \
-                             `null`; add a default arm"
-                        ),
-                    ));
-                }
-                Type::Opt(Box::new(result))
-            } else {
-                result
-            };
-            let subject = Tir::new(subject_ty.clone(), Kind::Local(sid));
-            Ok(Tir::new(
-                result,
-                Kind::Match {
-                    subject: Box::new(subject),
-                    arms: out,
-                    partial,
-                },
-            ))
-        }
+        Expr::Match { arms, span } => match_chain(ctx, arms, *span, None),
 
         Expr::Variant {
             enum_name,
@@ -1947,67 +2030,109 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     }
 }
 
+/// How an expression met an expectation. `Checked` consumed it: the expected type flowed into
+/// the form, and the result is `want`-typed by construction. `Synthesised` means the form
+/// answers for itself, so the expectation resolved nothing and the caller still owns the
+/// comparison -- which is what lets `check` blame a function's signature, by name, when a
+/// body's synthesised type misses its annotation.
+enum Expected {
+    Checked(Tir),
+    Synthesised(Tir),
+}
+
 /// The checking direction: an expected type goes in, and the expression is verified against it
 /// rather than asked what it is. Most forms answer both questions, but not all do.
 fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
-    // The forms whose type comes from their position rather than their contents.
-    if let Expr::Input { span } = expr {
-        // A signature can spell Stream now, so this position can ask for one; `input` is a
-        // whole value already in hand, which is exactly what a stream is not.
-        if want.contains_stream() {
-            return Err(Error::new(
-                *span,
-                format!("`input` is one value read from stdin, but {want} is wanted here"),
-            ));
-        }
-        let mut slot = ctx.input.borrow_mut();
-        match slot.as_ref() {
-            None => *slot = Some(want.clone()),
-            Some(prev) if prev != want => {
+    match expect_inner(ctx, expr, want)? {
+        Expected::Checked(tir) => Ok(tir),
+        Expected::Synthesised(found) => {
+            if &found.ty != want {
                 return Err(Error::new(
-                    *span,
+                    expr.span(),
                     format!(
-                        "`input` is used as {prev} here and as {want} elsewhere{}",
-                        reordered_fields_hint(prev, want)
+                        "expected {want}, found {}{}",
+                        found.ty,
+                        reordered_fields_hint(want, &found.ty)
                     ),
                 ));
             }
-            Some(_) => {}
+            Ok(found)
         }
-        return Ok(Tir::new(want.clone(), Kind::Input));
+    }
+}
+
+/// `expect`, minus the final comparison. Each arm here is a form whose type can come from its
+/// position rather than its contents; expectation only ever resolves what synthesis would have
+/// refused -- a form that can synthesise falls through and is compared, never coerced.
+/// `input` against the type its position wants: the first use fills the program-wide slot,
+/// and every later use must agree with it. A signature can spell Stream now, so this position
+/// can ask for one; `input` is a whole value already in hand, which is exactly what a stream
+/// is not.
+fn input_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
+    if want.contains_stream() {
+        return Err(Error::new(
+            span,
+            format!("`input` is one value read from stdin, but {want} is wanted here"),
+        ));
+    }
+    let mut slot = ctx.input.borrow_mut();
+    match slot.as_ref() {
+        None => *slot = Some(want.clone()),
+        Some(prev) if prev != want => {
+            return Err(Error::new(
+                span,
+                format!(
+                    "`input` is used as {prev} here and as {want} elsewhere{}",
+                    reordered_fields_hint(prev, want)
+                ),
+            ));
+        }
+        Some(_) => {}
+    }
+    Ok(Tir::new(want.clone(), Kind::Input))
+}
+
+/// `inputs` against the type its position wants, which must be a Stream. The filled slot
+/// doubles as the single-use flag: a second `inputs` would be a second stream claiming the
+/// same real stdin, the same mistake a second `lines` is.
+fn inputs_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
+    if let Some(func) = ctx.in_fn {
+        return Err(source_in_fn(span, "inputs", func));
+    }
+    if ctx.in_mapper {
+        return Err(Error::new(
+            span,
+            "`inputs` cannot be read inside a mapper body, which runs once per element".to_string(),
+        ));
+    }
+    let Type::Stream(elem) = want else {
+        return Err(Error::new(
+            span,
+            format!(
+                "`inputs` is a stream, but {want} is wanted here; eager use is spelled \
+                 `collect(inputs)`"
+            ),
+        ));
+    };
+    let mut slot = ctx.inputs.borrow_mut();
+    if slot.is_some() {
+        return Err(Error::new(
+            span,
+            "`inputs` has already been read; there is only one stdin".to_string(),
+        ));
+    }
+    *slot = Some((**elem).clone());
+    Ok(Tir::new(want.clone(), Kind::Inputs))
+}
+
+fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> {
+    // The forms whose type comes from their position rather than their contents.
+    if let Expr::Input { span } = expr {
+        return input_read(ctx, *span, want).map(Expected::Checked);
     }
 
     if let Expr::Inputs { span } = expr {
-        if let Some(func) = ctx.in_fn {
-            return Err(source_in_fn(*span, "inputs", func));
-        }
-        if ctx.in_mapper {
-            return Err(Error::new(
-                *span,
-                "`inputs` cannot be read inside a mapper body, which runs once per element"
-                    .to_string(),
-            ));
-        }
-        let Type::Stream(elem) = want else {
-            return Err(Error::new(
-                *span,
-                format!(
-                    "`inputs` is a stream, but {want} is wanted here; eager use is spelled \
-                     `collect(inputs)`"
-                ),
-            ));
-        };
-        // The filled slot doubles as the single-use flag: a second `inputs` would be a second
-        // stream claiming the same real stdin, the same mistake a second `lines` is.
-        let mut slot = ctx.inputs.borrow_mut();
-        if slot.is_some() {
-            return Err(Error::new(
-                *span,
-                "`inputs` has already been read; there is only one stdin".to_string(),
-            ));
-        }
-        *slot = Some((**elem).clone());
-        return Ok(Tir::new(want.clone(), Kind::Inputs));
+        return inputs_read(ctx, *span, want).map(Expected::Checked);
     }
 
     // `collect(inputs)` in a Vec-wanted position: the honest eager spelling the decision
@@ -2017,21 +2142,138 @@ fn expect(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Tir, Error> {
         && func == "collect"
         && let Some(elem) = want.elem()
     {
-        return collect(ctx, arg, Some(elem));
+        return collect(ctx, arg, Some(elem)).map(Expected::Checked);
     }
 
-    let found = synth(ctx, expr)?;
-    if &found.ty != want {
-        return Err(Error::new(
-            expr.span(),
-            format!(
-                "expected {want}, found {}{}",
-                found.ty,
-                reordered_fields_hint(want, &found.ty)
-            ),
-        ));
+    // A string literal where an enum is wanted is the variant it names, the same spelling the
+    // wire format already gives a unit variant. `construct` owns the errors: a payload variant
+    // gets the how-to-write-it hint, and an unknown name is named against the enum.
+    if let Expr::Str { text, span } = expr
+        && matches!(want, Type::Enum { .. })
+    {
+        return construct(ctx, want, text, *span, None).map(Expected::Checked);
     }
-    Ok(found)
+
+    // The pipe's value is the right side's, so the expectation flows into the right side --
+    // the only road into the subject-fed forms, which exist only after `|`.
+    if let Expr::Pipe { lhs, rhs, .. } = expr {
+        return pipe(ctx, lhs, rhs, Some(want));
+    }
+
+    // A `map` whose position expects a Vec (over a Vec subject) or a Stream (over a Stream
+    // subject) pushes the expected element type into its body. Any other want, or no subject
+    // at all, falls through to synthesis, which owns those errors.
+    if let Expr::Call {
+        func, arg, span, ..
+    } = expr
+        && func == "map"
+    {
+        let want_elem = match (ctx.subject.as_ref().map(|(ty, _)| ty), want) {
+            (Some(Type::Vec(_)), Type::Vec(elem)) => Some(elem.as_ref()),
+            (Some(Type::Stream(_)), Type::Stream(elem)) => Some(elem.as_ref()),
+            _ => None,
+        };
+        if let Some(elem) = want_elem {
+            return map_call(ctx, arg, *span, Some(elem)).map(Expected::Checked);
+        }
+    }
+
+    // Both branches of a conditional receive the expectation: which one runs is a runtime
+    // fact, so each must meet the position on its own. A want containing a stream falls
+    // through to synthesis instead, which owns the runtime-chosen-pipeline refusal.
+    if let Expr::Cond {
+        then,
+        cond,
+        otherwise,
+        ..
+    } = expr
+        && !want.contains_stream()
+    {
+        let cond = expect(ctx, cond, &Type::Bool)?;
+        let then = expect(ctx, then, want)?;
+        let otherwise = expect(ctx, otherwise, want)?;
+        return Ok(Expected::Checked(Tir::new(
+            want.clone(),
+            Kind::Cond {
+                cond: Box::new(cond),
+                then: Box::new(then),
+                otherwise: Box::new(otherwise),
+            },
+        )));
+    }
+
+    // Every arm of a total match chain receives the expectation the same way. A partial
+    // chain -- all guards, no default -- keeps synthesising instead: its result is Opt of
+    // what the arms yield, and pushing a peeled expectation into the arms would turn the
+    // arms-are-already-Opt refusal, which explains the design, into a bare mismatch.
+    if let Expr::Match { arms, span } = expr
+        && !want.contains_stream()
+        && arms.iter().any(|a| !matches!(a.pattern, Pattern::Guard(_)))
+    {
+        return match_chain(ctx, arms, *span, Some(want)).map(Expected::Checked);
+    }
+
+    // A record literal checked against a record type pushes each field's expected type into
+    // its value -- but only when the written fields are the declared fields, in order: field
+    // order is part of a record type, so a shuffled or mis-fielded literal falls back to
+    // synthesis, where the existing errors (the reordered-fields hint included) say what is
+    // wrong.
+    if let Expr::RecordLit { fields, .. } = expr
+        && let Type::Record(want_fields) = want
+        && fields.len() == want_fields.len()
+        && fields
+            .iter()
+            .zip(want_fields)
+            .all(|((name, _, _), (wanted, _))| name == wanted)
+    {
+        let mut built = Vec::new();
+        for ((name, _, value), (_, field_ty)) in fields.iter().zip(want_fields) {
+            let field = expect(ctx, value, field_ty).map_err(|e| {
+                stream_refusal(ctx, value, || {
+                    format!("`{name}` cannot hold a stream, which has nothing to store")
+                })
+                .unwrap_or(e)
+            })?;
+            built.push((name.clone(), field));
+        }
+        return Ok(Expected::Checked(Tir::new(
+            want.clone(),
+            Kind::RecordLit { fields: built },
+        )));
+    }
+
+    // A Vec literal where a Vec is wanted takes its element type from the position, which is
+    // what lets `[]` -- refused outright under synthesis -- resolve wherever something already
+    // says what it holds.
+    if let Expr::VecLit { items, .. } = expr
+        && let Type::Vec(elem) = want
+    {
+        let mut out = Vec::new();
+        for item in items {
+            let item = expect(ctx, item, elem).map_err(|e| {
+                stream_refusal(ctx, item, || {
+                    "a Vec cannot hold a stream, which has nothing to store".to_string()
+                })
+                .unwrap_or(e)
+            })?;
+            out.push(item);
+        }
+        return Ok(Expected::Checked(Tir::new(want.clone(), Kind::VecLit(out))));
+    }
+
+    synth(ctx, expr).map(Expected::Synthesised)
+}
+
+/// The synth arms refuse a stream inside a record or Vec with a message that teaches why
+/// (nothing can store or re-read one); the checked fast paths above would otherwise demote
+/// that refusal to a bare "expected T, found Stream<T>" mismatch. When a pushed field or
+/// element fails, ask synthesis whether a stream was the reason and keep the lesson.
+fn stream_refusal(ctx: &Ctx, value: &Expr, msg: impl FnOnce() -> String) -> Option<Error> {
+    let found = synth(ctx, value).ok()?;
+    found
+        .ty
+        .contains_stream()
+        .then(|| Error::new(value.span(), msg()))
 }
 
 /// The hint for the one mismatch that looks self-contradictory: both sides spell the same

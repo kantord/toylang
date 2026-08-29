@@ -1,0 +1,5 @@
+---
+source: tests/type_flow.rs
+expression: "err(\"enum Status { active, inactive }\\n\\n\\\n         fn f(s: Status) -> Vec<Int> = s | active -> []\\n\\nf(\\\"active\\\")\")"
+---
+a match over `Status` must cover every variant or end in a default; missing `inactive` (at byte 68)

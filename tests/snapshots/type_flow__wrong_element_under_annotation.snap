@@ -1,0 +1,5 @@
+---
+source: tests/type_flow.rs
+expression: "err(\"fn f(x: Int) -> Vec<Int> = [\\\"a\\\"]\\n\\nf(1)\")"
+---
+expected Int, found Str (at byte 28)

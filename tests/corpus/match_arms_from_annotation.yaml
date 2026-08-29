@@ -1,0 +1,14 @@
+# Step five of the type-flow rework (plans/type-flow.md): every arm of a total match chain
+# receives the declared return type, which is what lets one arm hold `[]`; the argument is a
+# variant-naming string, riding on step three.
+program: |
+  enum Status { active, inactive }
+
+  fn work(s: Status) -> Vec<Int> = s | active -> [1, 2] or inactive -> []
+
+  work("inactive")
+
+output: |
+  []
+
+node_types: [application, int, local, match, pipe, var, variant.unit, vec-literal]

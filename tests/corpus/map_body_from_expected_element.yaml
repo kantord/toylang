@@ -1,0 +1,12 @@
+# Step four of the type-flow rework (plans/type-flow.md): the expected element type flows
+# through a mapper body, so `[]` -- unknowable on its own -- resolves against the declared
+# Vec<Vec<Int>> the map must produce.
+program: |
+  fn pad(v: Vec<Int>) -> Vec<Vec<Int>> = v | map([])
+
+  pad([1, 2])
+
+output: |
+  [[],[]]
+
+node_types: [application, int, local, map-over, pipe, var, vec-literal]

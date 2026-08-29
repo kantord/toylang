@@ -227,7 +227,7 @@
   kind: build
   needs: []
   model: fable
-  status: delegated
+  status: done
 
 - id: unused-variables-error
   issue: gh:45

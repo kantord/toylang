@@ -81,7 +81,9 @@ pub fn agreement_failures(
         }
         return failures;
     }
-    let Expect::Output(want) = expect else { unreachable!("refusal handled above") };
+    let Expect::Output(want) = expect else {
+        unreachable!("refusal handled above")
+    };
 
     let mut outputs: Vec<(&str, String)> = Vec::new();
     for backend in toylang::Backend::ALL {
@@ -89,9 +91,10 @@ pub fn agreement_failures(
         // agreed when only one of them ran is worse than no report.
         match toylang::run_on(program, input, backend) {
             Ok(out) => outputs.push((backend.name(), out)),
-            Err(e) => {
-                failures.push(format!("BROKEN  {name}: {} could not run: {e}", backend.name()))
-            }
+            Err(e) => failures.push(format!(
+                "BROKEN  {name}: {} could not run: {e}",
+                backend.name()
+            )),
         }
     }
 

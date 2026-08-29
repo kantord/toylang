@@ -2,7 +2,7 @@
 source: tests/backend_rust.rs
 expression: "format!(\"compiles (rust) ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles (rust) (128):
+compiles (rust) (134):
 adults
 arith_add
 arith_div_trunc
@@ -18,6 +18,7 @@ concat_chain
 concat_empty
 concat_flattens
 concat_records
+cond_branches_from_annotation
 cond_chain
 cond_false
 cond_in_map
@@ -26,6 +27,7 @@ control_char_escapes
 div_by_zero
 empty_keep_is_identity
 empty_result
+empty_vec_under_annotation
 enum_input
 enum_inputs
 enum_inputs_reject
@@ -35,6 +37,7 @@ enum_payload_variant
 enum_scalar_input
 enum_scalar_input_reject
 enum_scalar_payload
+enum_string_ascription
 enum_unit_variant
 enum_variant_at_runtime
 enum_vec_payload
@@ -55,6 +58,7 @@ index_positive
 index_ragged_inner
 index_ragged_present
 index_strings
+input_typed_by_first_use
 inputs_records
 inputs_scalars
 int_result
@@ -70,6 +74,7 @@ lines_preserve_crlf
 lines_stream_signature
 lines_unterminated_final_line
 map_after_select
+map_body_from_expected_element
 map_double
 map_empty
 map_guard_chain_over_vec_field
@@ -78,6 +83,7 @@ map_to_bool
 map_to_nested_record
 map_to_record
 map_to_str
+match_arms_from_annotation
 match_partial_guards
 nested_field_access
 opt_holds_an_empty_vec
