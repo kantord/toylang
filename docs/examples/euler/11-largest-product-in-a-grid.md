@@ -1,4 +1,4 @@
-# The best product in a number grid (skipped)
+# Four in a row, multiplied (skipped)
 
 Skipped. [Project Euler 11](https://projecteuler.net/problem=11) hands the solver a specific
 20x20 grid of numbers with no source but Project Euler itself -- the same open question as

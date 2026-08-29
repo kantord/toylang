@@ -1,4 +1,4 @@
-# Maximum path sum down a number triangle (skipped)
+# The richest way down a triangle (skipped)
 
 Skipped. [Project Euler 18](https://projecteuler.net/problem=18) gives a specific 15-row
 triangle of numbers with no source but Project Euler itself -- the same open question as
