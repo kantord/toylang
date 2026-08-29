@@ -1,11 +1,12 @@
 import { StrictMode } from "react"
-import { createRoot, hydrateRoot } from "react-dom/client"
+import { createRoot, hydrateRoot, type Root } from "react-dom/client"
 
 import { App } from "./App"
 import "./index.css"
 import type { Case, CaseSummary } from "@/lib/corpus"
 import { loadCorpus } from "@/lib/corpus"
 import { href, PAGES } from "@/lib/docs"
+import { installClientNav } from "@/lib/clientNav"
 import { firstPage, resolveRoute, type AppRoute, type EmbeddedCaseData } from "@/lib/pageData"
 import { stripBase } from "@/lib/route"
 
@@ -40,7 +41,7 @@ async function resolvePrerenderedOrDev(): Promise<AppRoute> {
   return resolveRoute(location.pathname, corpus)
 }
 
-const root = document.getElementById("root")!
+const rootEl = document.getElementById("root")!
 
 resolvePrerenderedOrDev().then((route) => {
   const app = (
@@ -48,9 +49,12 @@ resolvePrerenderedOrDev().then((route) => {
       <App route={route} />
     </StrictMode>
   )
-  if (root.hasChildNodes()) {
-    hydrateRoot(root, app)
+  let root: Root
+  if (rootEl.hasChildNodes()) {
+    root = hydrateRoot(rootEl, app)
   } else {
-    createRoot(root).render(app)
+    root = createRoot(rootEl)
+    root.render(app)
   }
+  installClientNav(root)
 })

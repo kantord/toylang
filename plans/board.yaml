@@ -159,7 +159,7 @@
   title: Client-side fetch-and-swap navigation across static docs pages, not just prefetch hints
   kind: build
   needs: [static-site-split]
-  status: delegated
+  status: done
 
 - id: grill-via-annotations
   title: A repo skill running grilling rounds through the annotations mode inbox
