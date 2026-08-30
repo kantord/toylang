@@ -80,19 +80,28 @@ export function annotationsInbox(): Plugin {
   const file = path.join(dir, "inbox.json")
   const notesFile = path.join(dir, "notes.json")
 
-  // `/__annotations/note` and `/__annotations/compose` both read-modify-write notes.json; two
-  // near-simultaneous POSTs would otherwise both read the old file and one write would clobber
-  // the other. Chaining every read-modify-write onto this promise serializes them within the
-  // one dev-server process, which is all a single writer needs to be cheap here.
-  let notesQueue: Promise<void> = Promise.resolve()
-  function withNotesLock<T>(fn: () => Promise<T>): Promise<T> {
-    const run = notesQueue.then(fn, fn)
-    notesQueue = run.then(
-      () => undefined,
-      () => undefined,
-    )
-    return run
+  // Serializes read-modify-write calls within this one dev-server process: chaining every call
+  // onto the same promise means a near-simultaneous second call waits for the first's write
+  // instead of reading the file before it lands and clobbering it.
+  function createLock() {
+    let queue: Promise<void> = Promise.resolve()
+    return function withLock<T>(fn: () => Promise<T>): Promise<T> {
+      const run = queue.then(fn, fn)
+      queue = run.then(
+        () => undefined,
+        () => undefined,
+      )
+      return run
+    }
   }
+
+  // `/__annotations/note` and `/__annotations/compose` both read-modify-write notes.json.
+  const withNotesLock = createLock()
+
+  // `/__annotations/save` now has three writers -- grill answers, annotation mark-as-read, and
+  // plan decisions (kantord/toylang#110) -- so it needs the same serialization as notes.json
+  // above, for the same reason (kantord/toylang#115).
+  const withInboxLock = createLock()
 
   return {
     name: "annotations-inbox",
@@ -110,11 +119,13 @@ export function annotationsInbox(): Plugin {
           try {
             const { page, block, original, edited } = JSON.parse(body) as AnnotationRecord
             await mkdir(dir, { recursive: true })
-            const inbox = await readInbox(file)
-            const records = inbox.records.filter((r) => !(r.page === page && r.block === block))
-            records.push({ page, block, original, edited })
-            const next: Inbox = { last_edit: new Date().toISOString(), records }
-            await writeFile(file, JSON.stringify(next, null, 2))
+            await withInboxLock(async () => {
+              const inbox = await readInbox(file)
+              const records = inbox.records.filter((r) => !(r.page === page && r.block === block))
+              records.push({ page, block, original, edited })
+              const next: Inbox = { last_edit: new Date().toISOString(), records }
+              await writeFile(file, JSON.stringify(next, null, 2))
+            })
             res.statusCode = 204
             res.end()
           } catch (e) {
