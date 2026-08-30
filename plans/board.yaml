@@ -42,6 +42,14 @@
 # top ready builds fill the free lanes up to the cap. List position is a tiebreak only. A
 # needs-cycle, or todo rows remaining with nothing pickable and nothing in flight, is a
 # deadlock and gets reported.
+- id: vec-literal-user-fn-call-bug
+  issue: gh:148
+  title: Vec literal elements can't call a user-defined function -- parser bug found during syntax-ergonomics research
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
+
 - id: local-binding-design
   issue: gh:87
   title: Grill local bindings inside an expression -- the where/as shaped gap (emuto survey adopt)
