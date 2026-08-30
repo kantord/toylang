@@ -1062,3 +1062,10 @@
   needs: []
   prio: 2
   status: todo
+
+- id: js-node-web-split-design
+  issue: gh:118
+  title: Grill the JS Node/Web target split, optional TS type generation, the web-incompatible-builtin escape hatch, and a compiler config file (maintainer compose note)
+  kind: decide
+  needs: []
+  status: todo
