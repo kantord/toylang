@@ -11,3 +11,5 @@ program: |
 
 output: |
   5 / error: division by zero
+
+node_types: [application, arith.div, builtin.str, compare.ne, concat, conditional, int, local, match, pipe, str, var, variant.payload]
