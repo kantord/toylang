@@ -117,6 +117,15 @@
   prio: 1
   status: todo
 
+- id: matcher-model-clarification
+  issue: gh:122
+  title: Grill the matching system's conceptual model -- base matcher kinds, how conditions enter, composition with type matchers (maintainer compose note)
+  kind: decide
+  needs: []
+  soft: [matcher-totality-and-alt-design]
+  prio: 2
+  status: todo
+
 - id: variant-types-flip
   title: Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference)
   kind: build

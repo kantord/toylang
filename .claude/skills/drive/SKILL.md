@@ -28,7 +28,10 @@ wake-ups -- scheduling belongs to the loop script. Every tick:
    and span notes), applying entries 5+ minutes quiet or marked read; wizard rounds in
    `docs/.grill/` process immediately. A record whose `page` is a `plans/*.md` file is a
    plan decision: an explicit click, applied at once, no quiet period ("Plan approval"
-   below).
+   below). Clearing at capture is RE-READ, FILTER BY ID, WRITE -- one atomic step, printing
+   what is removed. Never empty an array wholesale from a stale read: the maintainer keeps
+   composing while a tick works, and a blanket `composed = []` deleted an unread 14:17 note
+   on 2026-08-30 with no recovery path (the endpoint keeps no log).
 3. Verify push distance before any dispatch (worktrees branch from origin).
 
 ## Stall diagnosis, learned the hard way
