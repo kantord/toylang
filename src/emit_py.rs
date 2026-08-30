@@ -166,12 +166,26 @@ pub fn emit(program: &Program) -> String {
     // reference the checker accepts costs nothing here. Lua needed declarations, JavaScript
     // relied on hoisting, and jq could not express it at all.
     for f in &program.funcs {
-        decls.push_str(&format!(
-            "def {}({}):\n    return {}\n\n\n",
-            user(&f.name),
-            f.param.as_deref().map_or_else(String::new, user),
-            expr(enums, &f.body)
-        ));
+        let param = f.param.as_deref().map(user);
+        if tir::has_tail_call(&f.name, &f.body) {
+            // The contract: a self-tail-call runs in constant stack. A tail call becomes
+            // `param = arg` then `continue` in a loop, so 100k-deep self-recursion cannot hit
+            // Python's recursion limit the way a real call would (kantord/toylang#141).
+            let mut fresh = 0;
+            decls.push_str(&format!(
+                "def {}({}):\n    while True:\n{}\n\n\n",
+                user(&f.name),
+                param.as_deref().unwrap_or_default(),
+                tail_stmts(enums, &f.name, param.as_deref(), &mut fresh, &f.body, 8)
+            ));
+        } else {
+            decls.push_str(&format!(
+                "def {}({}):\n    return {}\n\n\n",
+                user(&f.name),
+                param.as_deref().unwrap_or_default(),
+                expr(enums, &f.body)
+            ));
+        }
     }
 
     if let Some(fusion) = tir::fusion(program) {
@@ -591,6 +605,104 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             out.push_str(&")".repeat(closing));
             format!("({out})")
         }
+    }
+}
+
+/// `t` as statements in the tail position, each line already padded to `level` columns:
+/// `return <expr>` for a base case, and for a tail call `param = <arg>` followed by `continue`
+/// so the emitted `while True` rewinds instead of recursing against Python's interpreter
+/// recursion limit. A `Cond`'s branches and a total `Match`'s arm bodies nest one indent
+/// deeper, the way Python needs.
+fn tail_stmts(
+    enums: &Enums,
+    name: &str,
+    param: Option<&str>,
+    fresh: &mut usize,
+    t: &Tir,
+    level: usize,
+) -> String {
+    let pad = " ".repeat(level);
+    match &t.kind {
+        Kind::Call { func, arg } if func == name => {
+            let assign = param.map_or_else(String::new, |p| {
+                format!(
+                    "{pad}{p} = {}\n",
+                    arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
+                )
+            });
+            format!("{assign}{pad}continue\n")
+        }
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => format!(
+            "{pad}if {}:\n{}\n{pad}else:\n{}\n",
+            expr(enums, cond),
+            tail_stmts(enums, name, param, fresh, then, level + 4),
+            tail_stmts(enums, name, param, fresh, otherwise, level + 4),
+        ),
+        Kind::Bind {
+            local: id,
+            value,
+            body,
+        } => format!(
+            "{pad}{} = {}\n{}",
+            local(*id),
+            expr(enums, value),
+            tail_stmts(enums, name, param, fresh, body, level),
+        ),
+        Kind::Match {
+            subject,
+            arms,
+            partial,
+        } if !partial => {
+            // The subject is read into a temp the way `expr`'s lambda chain reads it, but there
+            // is no lambda to contain it here, so the name has to be fresh rather than the
+            // fixed `subj`.
+            let subj = format!("tl_sub{}", *fresh);
+            *fresh += 1;
+            let mut out = format!("{pad}{subj} = {}\n", expr(enums, subject));
+            for (i, arm) in arms.iter().enumerate() {
+                let test = match (&arm.variant, &arm.guard) {
+                    (Some(v), _) if arm.payload.is_some() => Some(format!(
+                        "(isinstance({subj}, dict) and {} in {subj})",
+                        py_string(v)
+                    )),
+                    (Some(v), _) => Some(format!("{subj} == {}", py_string(v))),
+                    (None, Some(g)) => Some(expr(enums, g)),
+                    (None, None) => None,
+                };
+                // A total chain's last arm carries no test, the checker having proved nothing
+                // else can reach it -- the same rule `expr`'s match arm follows. Its statements
+                // sit at the block level, not nested under a test.
+                let unconditional = i + 1 == arms.len();
+                let arm_level = if unconditional { level } else { level + 4 };
+                let arm_pad = " ".repeat(arm_level);
+                let mut run = String::new();
+                if let Some(pid) = arm.payload {
+                    let variant = arm
+                        .variant
+                        .as_ref()
+                        .expect("only a variant arm has a payload");
+                    run.push_str(&format!(
+                        "{arm_pad}{} = {subj}[{}]\n",
+                        local(pid),
+                        py_string(variant)
+                    ));
+                }
+                run.push_str(&tail_stmts(enums, name, param, fresh, &arm.body, arm_level));
+                match (test, unconditional) {
+                    (Some(test), false) => out.push_str(&format!("{pad}if {test}:\n{run}")),
+                    _ => out.push_str(&run),
+                }
+            }
+            out
+        }
+        // A partial match wraps every arm body, so no arm body is a tail position; the whole
+        // match stays an expression, exactly as it would outside tail position.
+        Kind::Match { .. } => format!("{pad}return {}\n", expr(enums, t)),
+        _ => format!("{pad}return {}\n", expr(enums, t)),
     }
 }
 
