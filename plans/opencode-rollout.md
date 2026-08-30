@@ -28,6 +28,18 @@ of entries over many lanes is itself the finding.
 | date | lane | what happened | cost | claude-proof? |
 |------|------|---------------|------|---------------|
 
+## Speedups shipped with the rollout (2026-08-30, same day)
+
+- **Event-driven landing**: the worker wrapper fires a drive tick on exit; the tick
+  gate lands worker-gone + ahead + clean immediately (no 8-minute quiet window --
+  that heuristic existed because a claude turn-end was indistinguishable from a
+  crash; an opencode exit is unambiguous).
+- **Enwiro-free lanes**: `dispatch-worker.sh` = worktree under
+  `~/.local/share/toylang-lanes` + background worker; the gh:124 worker pool and
+  per-issue enwiro envs are legacy, kept only until their in-flight lanes land.
+- **sccache** as RUSTC_WRAPPER in the worker env: cold worktrees share compiled
+  crates; landed lane worktrees are removed at landing, so disk stays flat.
+
 ## Baseline, for the eventual comparison
 
 - Trial lane (gh:114, 2026-08-30, pre-rollout): mid-tier emit_llvm refactor, landed

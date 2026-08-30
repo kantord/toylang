@@ -94,16 +94,18 @@ landing no longer flips status in place (issue #113). Match the row by its id te
 add rows for any follow-up issues the review filed -- `build` rows usually, or a `decide` +
 `build` pair when a finding needs a design call first.
 
-The env's fate depends on which kind it is (`lane:` on the row says pool):
+The worktree's fate depends on which kind it is:
 
-- **Pool lane** (gh:124): the env is not done, its task is. Return it to the pool
-  instead: `enw mark ready --env 'toylang@lane-<N>'` and
-  `enw goal set --env 'toylang@lane-<N>' 'idle (pool); last: gh:<N>'`. Run
-  `.claude/scripts/lane-context.py` on the worktree and record context/eligibility in
-  the report, so the next dispatch knows whether the lane is reusable or due a recycle
-  (the reuse rules live in the enwiro-delegate skill, section 0). Never `enw rm` a lane.
-- **Per-issue env** (classic flow): `enw mark done --env '<name>'`; removing it
-  (`enw rm`) stays the user's call.
+- **toylang-lanes worktree** (`~/.local/share/toylang-lanes/issue-<N>`, the enwiro-free
+  default since 2026-08-30): the coordinator removes it right after the merge is pushed --
+  `git worktree remove <path>` from the repo root. The branch ref and commits live in the
+  main repo's .git, so nothing is lost and disk stays flat. Never remove one that is
+  ahead of the merge or dirty.
+- **Pool lane** (gh:124, legacy; `lane:` on the row): return it to the pool:
+  `enw mark ready --env 'toylang@lane-<N>'`. The pool takes no new dispatches; once its
+  in-flight lanes land it is inert.
+- **Per-issue enwiro env** (legacy claude flow): `enw mark done --env '<name>'`; removing
+  it (`enw rm`) stays the user's call.
 
 Closing the GitHub issue (with a landing comment naming the merge commit) belongs here
 too, once the merge is pushed or the user has said pushing is theirs.

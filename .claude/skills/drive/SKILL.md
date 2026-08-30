@@ -107,9 +107,10 @@ row before it gets a branch.
    - `decide` entries in the ready set: queue for the user, batched into wizard/mail rounds
      where they carry code; they occupy attention, not a lane.
    - `build` entries: make sure a GitHub issue carries the spec (file one if the row has
-     none), then delegate via the `enwiro-delegate` skill -- worker-pool lane first
-     (its section 0; gh:124), fresh env only for one-offs -- and set `status: delegated`
-     plus `lane: lane-<N>` when a pool lane took it. ALL delegated builds run
+     none), then dispatch with `.claude/scripts/dispatch-worker.sh <N> '<brief>'` (the
+     enwiro-free default -- brief shape in the enwiro-delegate skill, section 2) and set
+     `status: delegated`; the worker-pool and per-issue enwiro flows are legacy, kept
+     only for their in-flight lanes. ALL delegated builds run
      opencode + DeepSeek V4 Flash through `.claude/scripts/opencode-worker.sh`
      (maintainer ruling, 2026-08-30: claude-code delegation is retired -- no new
      delegated work on claude code, no exceptions for tier or size, until the

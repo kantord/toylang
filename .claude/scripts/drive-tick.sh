@@ -13,6 +13,7 @@
 set -uo pipefail
 REPO=/home/kantord/repos/toylang
 WORKTREES=/home/kantord/.local/share/enwiro/worktrees/pr/toylang-1234138d
+LANES="$HOME/.local/share/toylang-lanes"  # enwiro-free lanes (dispatch-worker.sh)
 LOG_DIR="$HOME/.cache/toylang-drive"
 SID_FILE="$LOG_DIR/session-id"
 MAX_CONTEXT="${MAX_CONTEXT:-90000}"
@@ -54,7 +55,7 @@ for r in yaml.safe_load(open('plans/board.yaml')):
 for wt in $DELEGATED; do
   case "$wt" in
     lane:*) d="$HOME/.enwiro_envs/toylang@${wt#lane:}/toylang@${wt#lane:}" ;;
-    *) d="$WORKTREES/$wt" ;;
+    *) d="$LANES/$wt"; [ -d "$d" ] || d="$WORKTREES/$wt" ;;
   esac
   [ -d "$d" ] || { TRIGGER="lane $wt has no worktree"; continue; }
   ahead=$(git -C "$d" rev-list --count main..HEAD 2>/dev/null || echo 0)
@@ -71,12 +72,15 @@ for wt in $DELEGATED; do
     # claude matches cover in-flight pre-ruling lanes until they land.
     case "$(readlink /proc/$p/cwd 2>/dev/null)" in "$d_real"*) live=1 ;; esac
   done
-  if [ "$ahead" -gt 0 ] && [ "$dirty" -eq 0 ] && [ -z "$recent8" ] && [ "$commit_age" -ge 480 ]; then
-    # Both quiet signals matter: committing touches no working-tree mtimes, so a
-    # lane that edits, tests for ten minutes, then commits looks file-quiet.
-    # The tick stays sonnet even when landing (maintainer rule, 2026-08-30):
-    # landing is mostly plumbing; the land skill escalates judgment to a single
-    # fable subagent only on fable-tier branches.
+  if [ "$ahead" -gt 0 ] && [ "$dirty" -eq 0 ] && [ "$live" -eq 0 ]; then
+    # A gone worker with committed clean work is done NOW -- opencode workers
+    # exit on finish (event-driven landing, 2026-08-30), so no quiet window.
+    TRIGGER="lane $wt looks landable (worker exited)"
+  elif [ "$ahead" -gt 0 ] && [ "$dirty" -eq 0 ] && [ -z "$recent8" ] && [ "$commit_age" -ge 480 ]; then
+    # A LIVE session that has gone quiet still needs the 8-minute window (a
+    # claude-era lane may idle after finishing). Both quiet signals matter:
+    # committing touches no working-tree mtimes, so a lane that edits, tests
+    # for ten minutes, then commits looks file-quiet.
     TRIGGER="lane $wt looks landable"
   elif [ "$live" -eq 0 ]; then
     TRIGGER="${TRIGGER:-lane $wt has no live worker}"
@@ -89,7 +93,7 @@ done
 # worktrees (gh:124) live under a different base and are cooked as
 # <lane>-<8 hex>, so both trees get swept.
 POOL_WORKTREES="$HOME/.local/share/enwiro/worktrees/toylang-1234138d"
-for d in "$WORKTREES"/*/ "$POOL_WORKTREES"/*/; do
+for d in "$WORKTREES"/*/ "$POOL_WORKTREES"/*/ "$LANES"/*/; do
   [ -d "$d" ] || continue
   wt=$(basename "$d")
   lane=$(printf '%s' "$wt" | sed -E 's/-[0-9a-f]{8}$//')
@@ -129,7 +133,7 @@ fi
 if [ "${1:-tick}" = "audit" ]; then
   PROMPT='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has a live or accounted-for lane; no worktree holds unmerged commits the board thinks landed; no falsely-stuck lanes. Fix what is mechanical, file issues for the rest. End quietly if clean.'
 else
-  PROMPT='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. Reconstruct state from disk -- plans/board.yaml, the worktrees, the annotation stores -- and trust disk over anything remembered from earlier ticks. Read board rows with status: delegated and check each lane worktree (commits vs main, dirty files, live worker via pgrep cwd). Poll BOTH annotation stores: docs/.annotations/inbox.json AND docs/.annotations/notes.json -- apply entries older than 5 minutes and clear them at capture; wizard submissions in docs/.grill/ process immediately (delete round files at capture). If a lane is finished (ahead of main, clean, 8+ minutes quiet or worker gone), run the land-delegated-work skill -- cascade if 3+ are ready. After landings, dispatch ready board rows into free lanes (cap 5) via the enwiro-delegate skill: ALL builds run opencode workers through .claude/scripts/opencode-worker.sh (claude delegation retired 2026-08-30 -- see plans/opencode-rollout.md; record every rollout incident in its table), pool lanes reused for the worktree only, always a fresh opencode session. If nothing changed, end quietly without writing anything.'
+  PROMPT='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. Reconstruct state from disk -- plans/board.yaml, the worktrees, the annotation stores -- and trust disk over anything remembered from earlier ticks. Read board rows with status: delegated and check each lane worktree (commits vs main, dirty files, live worker via pgrep cwd). Poll BOTH annotation stores: docs/.annotations/inbox.json AND docs/.annotations/notes.json -- apply entries older than 5 minutes and clear them at capture; wizard submissions in docs/.grill/ process immediately (delete round files at capture). If a lane is finished (ahead of main, clean, 8+ minutes quiet or worker gone), run the land-delegated-work skill -- cascade if 3+ are ready. After landings, dispatch ready board rows into free lanes (cap 5) with .claude/scripts/dispatch-worker.sh <N> '<brief>' -- the enwiro-free opencode default (claude delegation retired 2026-08-30; brief shape in the enwiro-delegate skill; record every rollout incident in plans/opencode-rollout.md). If nothing changed, end quietly without writing anything.'
 fi
 
 TS=$(date +%Y%m%d-%H%M%S)

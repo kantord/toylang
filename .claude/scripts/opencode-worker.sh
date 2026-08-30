@@ -17,6 +17,9 @@ LANE=$(basename "$PWD")
 TS=$(date +%Y%m%d-%H%M%S)
 LOG="$LOG_DIR/$TS-$LANE.jsonl"
 SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
+# Cold worktrees share compiled crates across lanes (a shared CARGO_TARGET_DIR
+# would race between parallel workers; sccache does not).
+command -v sccache >/dev/null && export RUSTC_WRAPPER=sccache
 
 echo "[opencode-worker] $LANE on $MODEL (events: $LOG)"
 START=$(date +%s)
@@ -62,4 +65,10 @@ with open(out, "a", newline="") as f:
                 steps, out_tok, peak_ctx, end - start])
 print(f"[opencode-worker] done: {steps} steps, ${cost:.4f}, telemetry row appended")
 EOF
+
+# Event-driven landing: a worker exit is an unambiguous finish signal, so fire a
+# tick immediately instead of waiting out the loop interval. The tick's flock
+# makes this safe; if one is already running, the periodic loop is the fallback.
+echo "[opencode-worker] firing landing tick"
+(nohup "$SCRIPTS/drive-tick.sh" >>"$HOME/.cache/toylang-drive/event-ticks.log" 2>&1 &)
 exit $RC

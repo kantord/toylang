@@ -18,38 +18,26 @@ recorded in the rollout log -- that observability is part of this ruling, not op
 The kitty window shows the live colorized event stream (opencode-peek.py), so lanes
 stay visually navigable in the window manager exactly as before.
 
-## 0. Board rows go to the worker pool first (gh:124, reshaped for opencode)
+## 0. The default dispatch: no enwiro at all (maintainer simplification, 2026-08-30)
 
-Board dispatches reuse the pool lanes -- enwiro envs `toylang@lane-1` .. `toylang@lane-5`,
-cooked lazily with `enw prep`. The claude-era rationale (30-50k boot tokens) is moot at
-DeepSeek prices; what still matters is the **worktree**: a reused lane keeps its cargo
-`target/` cache, so compiles are minutes faster and disk stops multiplying per task.
+A lane is just a git worktree plus a background worker process:
 
-Sessions are NOT reused across tasks: every dispatch is a fresh opencode session (a
-lane's context ceiling, model matching, and `lane-context.py` eligibility checks were
-claude-session machinery and no longer apply). A lane is **free** when its worktree is
-clean, its last task's board row is archived, and no worker process is alive there
-(`pgrep -x opencode` -- and during the transition `pgrep -x claude` -- with cwd under
-the worktree). Never launch into a worktree with a live worker: the
-two-sessions-one-worktree race predates this flow and survives it.
+    .claude/scripts/dispatch-worker.sh <issue-number> '<the brief, shaped per section 2>'
 
-### Prepare the worktree (the coordinator does this before any pool dispatch)
+That creates (or continues) `~/.local/share/toylang-lanes/issue-<N>` on branch
+`issue-<N>` cut from origin/main, refuses if a live worker already owns the worktree
+(the two-sessions-one-worktree race predates this flow and survives it), launches the
+worker detached, and prints the `tail -f` line for watching the live colorized stream.
+No env, no workspace, no focus dance. The worker-pool machinery (gh:124: `enw prep`
+lanes, `lane-context.py`, the board's `lane:` field) is retired for new dispatches --
+sccache makes cold worktrees cheap, so worktree reuse stopped paying for its
+complexity. Every dispatch is a fresh opencode session on a fresh-or-continued
+worktree.
 
-    wt=$(enw prep 'toylang@lane-1')
-    git -C "$wt" fetch origin
-    git -C "$wt" switch -C issue-<N> origin/main
-
-Only on a clean tree -- a dirty pool lane is not free, it is unlanded work. If branch
-`issue-<N>` is already checked out in another worktree, that task already has an env;
-a continuation dispatch there is what's wanted, not a pool lane.
-
-## 1. Environment naming, for one-off delegations outside the pool
-
-- `repo#<issue>` (github recipe) -- preferred; the worktree lands on branch issue-<N>.
-  If no issue exists yet, create one first (`gh issue create`); public repo issues must
-  be sanitized per the data-privacy rules.
-- `repo@<branch-name>` (git recipe) -- for work with no issue; the brief must name the
-  in-repo source-of-truth file explicitly.
+The full enwiro flow below (env + workspace + kitty window) remains available for the
+rare one-off the user explicitly wants visually navigable in the window manager; a
+`gh issue create` first if the task has no issue (public repo issues sanitized per the
+data-privacy rules).
 
 ## 1b. Push first -- worktrees branch from origin, not local main
 
@@ -58,22 +46,26 @@ branch merges back with semantic drift the suite only catches on main (this reve
 the anyhow work once). Before dispatching: push local main (standing authorization,
 2026-08-29 -- ordinary pushes only, never force). Never dispatch onto a stale origin.
 
-## 2. Launch the worker in kitty, then switch the user back
+## 2. Launch
+
+Default: `dispatch-worker.sh` (section 0). One model for all lanes during the rollout
+(the board's `model:` field is dormant for builds; `OPENCODE_MODEL` overrides
+per-dispatch if a ruling ever asks). On worker exit the wrapper fires a drive tick
+itself -- event-driven landing, no quiet window -- so a finished lane lands within
+minutes, not tick-intervals.
+
+For the explicitly-requested enwiro variant only:
 
 ```sh
 prev=$(i3-msg -t get_workspaces | jq -r '.[] | select(.focused).name')
-enw activate 'toylang#12'    # or the pool lane env
+enw activate 'toylang#12'
 enw wrap kitty 'toylang#12' -- --detach \
   /home/kantord/repos/toylang/.claude/scripts/opencode-worker.sh '<the brief>'
 sleep 4   # let the window map on the env workspace; verify the worker is live
 i3-msg "workspace \"$prev\"" >/dev/null
 ```
 
-- `enw activate` yanks focus: capture the workspace BEFORE and switch back last. The
-  sleep doubles as the moment to verify the opencode process is live (pgrep, cwd under
-  the worktree).
-- One model for all lanes during the rollout (the board's `model:` field is dormant for
-  builds; `OPENCODE_MODEL` on the wrapper overrides per-dispatch if a ruling ever asks).
+(`enw activate` yanks focus: capture the workspace BEFORE and switch back last.)
 
 ### The brief (opencode workers need more of it than claude workers did)
 
@@ -99,13 +91,10 @@ memory. The brief carries everything, in this shape:
 
 ## 2b. Update the board
 
-Set the row's `status: delegated` (plus `lane: lane-<N>` for a pool dispatch -- the tick
-scripts resolve the worktree through it), and keep the env navigable:
-
-    enw goal set --env 'toylang@lane-1' 'gh:<N> <short title>'
-    enw mark active --env 'toylang@lane-1'
-
-A delegation without a board row means the task skipped planning -- add the row.
+Set the row's `status: delegated`. The tick scripts resolve the worktree from the
+issue number (`~/.local/share/toylang-lanes/issue-<N>` first, the legacy enwiro base as
+fallback); the `lane:` field is legacy and set on no new row. A delegation without a
+board row means the task skipped planning -- add the row.
 
 ## 3. Steering a running worker
 
@@ -121,6 +110,7 @@ events say what it was doing and whether a resume or a fresh dispatch is right.
 
 ## Cleanup
 
-After the branch is reviewed and merged, `enw rm '<name>'` removes one-off envs (the
-user's call). Pool lanes are never removed, only freed. Never remove an env with
-unmerged work without explicit instruction.
+A landed `toylang-lanes` worktree is removed by the coordinator at landing
+(`git worktree remove`, from the land skill) -- the branch and commits live in the main
+repo's .git, so nothing is lost and disk stays flat. Enwiro envs stay the user's to
+remove (`enw rm`), never with unmerged work without explicit instruction.
