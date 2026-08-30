@@ -732,9 +732,19 @@
   status: done
 
 - id: draft-split-decision
-  title: Decide whether and how draft.md gets split (it is excluded from the prose budget by name)
+  issue: gh:120
+  title: "Decided (maintainer compose note): split into per-section migration tasks, each removes its own part; final review task blocked on all of them"
   kind: decide
   needs: []
+  prio: 4
+  status: done
+
+- id: draft-md-split-inventory
+  issue: gh:120
+  title: Inventory draft.md's remaining sections against the docs site; file one migration row per section/cluster plus a final draft-md-cleanup-review row blocked on all of them
+  kind: build
+  needs: [draft-split-decision]
+  model: fable
   prio: 4
   status: todo
 
