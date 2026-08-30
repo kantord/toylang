@@ -18,8 +18,8 @@ pipe stage, a `map` or `select` body, or a bare-payload match arm:
 nested_field_access
 ```
 
-Over a dimension of records there are two spellings, verified identical: distribute the
-projection over a kept dimension, or map it.
+Over a dimension of records, `[].field` is the projection spelling: it distributes the
+projection over a kept dimension:
 
 ```toylang
 [{n: 1}, {n: 2}][].n
@@ -29,13 +29,7 @@ projection over a kept dimension, or map it.
 [1,2]
 ```
 
-```toylang
-[{n: 1}, {n: 2}] | map(.n)
-```
-
-```output
-[1,2]
-```
-
-Both are current style; jq has the same pair (`.[].name` versus `map(.name)`). Field names
-come from data, so a field spelled with a capital letter projects like any other.
+`map(.n)` is the same transformation and stays legal, but for a pure projection it is
+demoted: `map` is for transforming each entry, not for reading a field out of it. jq has
+the same pair (`.[].name` versus `map(.name)`). Field names come from data, so a field
+spelled with a capital letter projects like any other.
