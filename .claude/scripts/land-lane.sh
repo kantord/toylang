@@ -105,6 +105,7 @@ promote)
   touch "$LOG_DIR/promoting-$B"
   trap 'rm -f "$LOG_DIR/promoting-$B"' EXIT
   TIP=$(git -C "$REPO" rev-parse "$B")
+  MSG="Land $B: promote $(git -C "$REPO" rev-list --count "main..$TIP") commits ($(changed_lines "$B") changed lines)"
   TMP="promote-$(date +%s)"
   PDIR="$LANES/.promote"
   git -C "$REPO" worktree remove --force "$PDIR" 2>/dev/null || true
@@ -114,8 +115,7 @@ promote)
     git -C "$REPO" branch -D "$TMP" 2>/dev/null || true
   }
   # Gate in the throwaway worktree: main stays untouched until green.
-  if ! { git -C "$PDIR" merge "$TIP" --no-ff \
-           -m "Land $B: promote $(git -C "$REPO" rev-list --count main..$TIP) commits ($(changed_lines "$B") changed lines)" \
+  if ! { git -C "$PDIR" merge "$TIP" --no-ff -m "$MSG" \
          && (cd "$PDIR" && just test); }; then
     cleanup_tmp
     echo "[promote] RED: $B failed the full gate; main untouched" | tee "$LOG_DIR/promote-failed-$B"
@@ -127,7 +127,7 @@ promote)
   for _ in $(seq 24); do
     if [ "$(git -C "$REPO" status --porcelain | wc -l)" -eq 0 ] \
        && [ ! -f "$REPO/.git/MERGE_HEAD" ] \
-       && git -C "$REPO" merge "$TMP" --no-edit; then ok=1; break; fi
+       && git -C "$REPO" merge "$TMP" -m "$MSG"; then ok=1; break; fi
     git -C "$REPO" merge --abort 2>/dev/null || true
     sleep 5
   done
