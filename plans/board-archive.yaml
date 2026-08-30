@@ -978,3 +978,57 @@
   prio: 3
   soft: [concat-retirement]
   status: done
+
+- id: q37-float-semantics
+  title: "Grill Q37 -- ruled: admit NaN/Infinity, division by zero returns Infinity, matches IEEE (gh:145)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: benchmark-float-tasks-scope
+  issue: gh:108
+  title: "Decide n-body/spectral-norm scope -- ruled: defer to a second wave (gh:146)"
+  kind: decide
+  needs: []
+  soft: [q37-float-semantics]
+  prio: 4
+  status: done
+
+- id: benchmark-goals
+  title: "Grill the benchmark performance thesis -- ruled: general cross-language competitiveness claim (gh:147)"
+  kind: decide
+  needs: []
+  prio: 4
+  status: done
+
+- id: sum-max-reductions
+  title: "sum and max as builtin reductions (euler-ergonomics row 1) -- ruled: sum and max only, Opt on empty max (gh:140)"
+  kind: decide
+  needs: []
+  prio: 2
+  status: done
+
+- id: tail-call-contract
+  title: "Self-tail-calls run in constant stack, as contract (euler-ergonomics row 2) -- ruled: contract, self-calls only (gh:141)"
+  kind: decide
+  needs: []
+  prio: 2
+  status: done
+
+- id: first-search-cut
+  title: "first as a search cut (euler-ergonomics row 5) -- ruled: full search-layer first, any, all (gh:142)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: slices-decide
+  title: "Slices as index specs (euler-ergonomics row 6) -- ruled: clamp, jq-like (gh:143)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: param-destructuring
+  title: "Record parameters destructure the way match arms already do (euler-ergonomics row 8) -- ruled: match-arm-style, annotation stays explicit (gh:144)"
+  kind: decide
+  needs: []
+  status: done
