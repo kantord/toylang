@@ -26,9 +26,7 @@ fmt-write:
 checks:
     bash .claude/checks/run.sh
 
-# The autonomous drive loop: a coordinator tick every DRIVE_INTERVAL (600s),
-# live colorized output. Ctrl-C (or kill) to stop. Run ONE at a time -- the
-# tick flock makes a second loop harmless but pointless.
+# The autonomous drive loop: a tick every 600s, live colorized output, Ctrl-C to stop. Run ONE.
 drive:
     .claude/scripts/drive-loop.sh
 
