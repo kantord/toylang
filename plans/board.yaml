@@ -803,3 +803,18 @@
   kind: build
   needs: [docs-site-design]
   status: done
+
+- id: string-type-spike
+  issue: gh:100
+  title: Spike -- the ideal Str, JSON-compliant contract and per-backend internals surveyed
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: lines-utf8-edge
+  issue: gh:102
+  title: Pin what a non-UTF-8 byte arriving via lines does, on every backend
+  kind: decide
+  needs: []
+  status: todo
