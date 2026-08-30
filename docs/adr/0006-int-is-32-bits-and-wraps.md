@@ -17,7 +17,8 @@ native and Lua, and is exactly emulable on jq; wrapping rather than trapping bec
 is a side effect and blocks vectorization. Division truncates; a zero divisor is the only
 arithmetic failure; `MIN / -1` wraps like everything else. The named cost: millisecond
 timestamps do not fit, accepted as a loud validator failure rather than silent corruption,
-with a second integer type left as an open question.
+with a second integer type left as an open question -- since answered:
+[ADR 0010](0010-int64-is-a-second-integer-type.md).
 
 Sources with the measurements and the process:
 [each target constrains the design differently](../../research-log/each-target-constrains-the-design-differently.md),

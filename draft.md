@@ -1501,6 +1501,13 @@ keys are past 2^53 and are not covered, and reaching them means JavaScript uses 
 carries a second numeric representation. Which of those two the second type is for is still
 open.
 
+**Settled since (the int64-surface round, 2026-08-29; ADR 0010):** the second type is `Int64`,
+a real 64-bit integer that wraps -- JavaScript pays the BigInt representation, and jq, which
+cannot follow past 2^53, carries a documented precision boundary instead of an emulation.
+Literals are position-resolved (the `[]` rule applied to numbers), widening is explicit
+`i64(x)`, and `input` refuses the type until its wire codec is designed
+(kantord/toylang#89).
+
 A timestamp type is a separate question again, and a better answer than an integer either way.
 
 ### The operators, and the one way they fail

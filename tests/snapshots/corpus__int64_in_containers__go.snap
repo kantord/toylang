@@ -1,0 +1,36 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+package main
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+func tlInt(n int32) int32 { return n }
+
+func tlInt64(n int64) int64 { return n }
+
+func tlJoin[T any](v []T, f func(T) string) string {
+	parts := make([]string, len(v))
+	for i, e := range v {
+		parts[i] = f(e)
+	}
+	return "[" + strings.Join(parts, ",") + "]"
+}
+
+type tlRec0 struct {
+	Fwhen int64 `json:"when"`
+	Fdeltas []int64 `json:"deltas"`
+}
+
+func v_ts() int64 {
+	return tlInt64(1756500000000)
+}
+
+func main() {
+	fmt.Println(("{" + "\"when\":" + strconv.FormatInt((tlRec0{Fwhen: v_ts(), Fdeltas: []int64{(v_ts() + tlInt64(1)), (v_ts() - tlInt64(1)), int64(tlInt(0))}}).Fwhen, 10) + "," + "\"deltas\":" + tlJoin((tlRec0{Fwhen: v_ts(), Fdeltas: []int64{(v_ts() + tlInt64(1)), (v_ts() - tlInt64(1)), int64(tlInt(0))}}).Fdeltas, func(e1 int64) string { return strconv.FormatInt(e1, 10) }) + "}"))
+}

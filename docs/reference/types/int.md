@@ -14,14 +14,16 @@ str(2147483647 + 1)
 ```
 
 A literal must fit. `2147483648` is refused at compile time, on every backend, because a
-value the type cannot hold should not exist long enough to disagree about:
+value the type cannot hold should not exist long enough to disagree about -- unless the
+position it sits in expects an [Int64](int64.md), which is the only way a wider literal
+enters:
 
 ```toylang
 str(2147483648)
 ```
 
 ```error
-integer `2147483648` does not fit in Int, which is 32 bits (at byte 4)
+integer `2147483648` does not fit in Int, which is 32 bits; only a position that expects Int64 can hold it (at byte 4)
 ```
 
 Input is the other place an `Int` enters, and the rule holds there too: a JSON number that

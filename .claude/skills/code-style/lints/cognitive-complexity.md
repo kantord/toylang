@@ -78,3 +78,13 @@ functions dropped out of the findings entirely, below where they stood at merge-
 than merely back to baseline. Reach for this whenever a new optional-helper gate is being added
 to an `emit()` still spelled as an `if`-chain instead of the array-loop -- it is the same
 tighten-first move as a match arm, just for this function's own older shape.
+
+The Int64 session (issue #83) is a sixth instance, and names the mechanism directly: a
+width-guarded *duplicate* match arm (`Kind::Arith { .. } if t.ty == Type::Int64 => ...` beside
+the plain one) costs the metric per guard where a plain extra arm costs nothing, so adding one
+per backend moved every emitter's `expr()` by 2-3 points (llvm and rs newly crossing). Settled
+case-2 style: one unguarded arm calling a width-dispatching helper (`arith(&t.ty, op, l, r)`,
+plus `int_lit` where the literal was also guarded), which put every `expr()` at or *below* its
+merge-base score. One residual point stands honestly: `emit_rs.rs`'s `emit()` at 21/10 against
+a 20/10 baseline, from the `wire.contains` guards that scope parser generation to
+input-reachable types -- caused and recorded here, the same way go's issue-62 residual was.

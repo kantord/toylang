@@ -1,0 +1,10 @@
+# Comparison at 64 bits, both directions, at values a 32-bit Int cannot hold.
+program: |
+  fn big() -> Int64 = 4000000000
+
+  "wide" if big() > i64(2147483647) else "narrow"
+
+output: |
+  wide
+
+node_types: [application, builtin.i64, compare.gt, conditional, int, int64, str]
