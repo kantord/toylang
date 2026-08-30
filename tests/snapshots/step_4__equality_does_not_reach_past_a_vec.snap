@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(\"{a: [1, 2]} == {a: [1, 2]}\")"
+---
+`==` does not apply to {a: Vec<Int>} (at byte 0)

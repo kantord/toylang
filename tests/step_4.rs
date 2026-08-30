@@ -61,6 +61,13 @@ fn an_operator_does_not_apply_to_a_vec() {
     insta::assert_snapshot!(err(r#"[1, 2] + "a""#));
 }
 
+/// And a Vec one level down is the same open question: structural equality would otherwise
+/// have to say whether the field compares as a whole value, which is what Q2 asks.
+#[test]
+fn equality_does_not_reach_past_a_vec() {
+    insta::assert_snapshot!(err("{a: [1, 2]} == {a: [1, 2]}"));
+}
+
 #[test]
 fn subject_outside_a_pipeline() {
     insta::assert_snapshot!(err("."));

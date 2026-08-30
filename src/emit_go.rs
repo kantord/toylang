@@ -148,6 +148,13 @@ func tlRem64(a, b int64) int64 {
 }
 "#;
 
+// An enum value carries its payload behind a pointer (tlPtr below), so Go's own `==` on two
+// of them compares addresses: `circle{r: 1} == circle{r: 1}` was false here and true on
+// Python (kantord/toylang#68). reflect.DeepEqual is the structural walk, following the
+// pointer and comparing what it points at.
+const EQ_HELPER: &str = r#"func tlEq[T any](a, b T) bool { return reflect.DeepEqual(a, b) }
+"#;
+
 /// Ad-hoc address-of: `&expr` only works on composite literals, and a payload is whatever
 /// expression the program wrote. The call inlines away.
 const PTR_HELPER: &str = r#"func tlPtr[T any](v T) *T { return &v }
@@ -394,6 +401,7 @@ pub fn emit(program: &Program) -> String {
     for (on, text) in [
         (fail, FAIL_HELPER),
         (uses("tlPtr("), PTR_HELPER),
+        (uses("tlEq("), EQ_HELPER),
         (uses("tlInt("), INT_HELPER),
         (uses("tlInt64("), INT64_HELPER),
         (uses("tlMap("), MAP_HELPER),
@@ -440,6 +448,9 @@ pub fn emit(program: &Program) -> String {
     if uses("tlSort(") {
         imports.insert("cmp");
         imports.insert("slices");
+    }
+    if uses("tlEq(") {
+        imports.insert("reflect");
     }
     if used.itoa
         || used.jsonlines_has_scalar
@@ -952,6 +963,16 @@ impl Emitter {
                 }
             },
             Kind::Compare { op, lhs, rhs } => {
+                // Ordering on a composite is a separate open question and keeps whatever Go
+                // does with it; only `==` and `!=` are pinned (kantord/toylang#68).
+                if lhs.ty.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne) {
+                    let call = format!("tlEq({}, {})", self.expr(lhs), self.expr(rhs));
+                    return if *op == BinOp::Ne {
+                        format!("(!{call})")
+                    } else {
+                        call
+                    };
+                }
                 format!("({} {} {})", self.expr(lhs), go_op(*op), self.expr(rhs))
             }
             Kind::Bind {

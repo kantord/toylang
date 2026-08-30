@@ -2106,6 +2106,18 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     }
 
     if op.is_comparison() {
+        // A Vec one level down is the same open question a bare one is. `==` on a record whose
+        // field is a Vec would have to answer whether that field compares as a whole value or
+        // broadcasts, which is Q2, so structural equality stops at the first Vec rather than
+        // settling it silently (kantord/toylang#95). The bare case is already gone above; this
+        // catches the composite that carries one.
+        if left.ty.contains_vec() {
+            return Err(Error::new(
+                lhs.span(),
+                format!("`{op}` does not apply to {}", left.ty),
+            ));
+        }
+
         // Comparison never crosses the integer widths either: the sides must already agree,
         // and the mismatch names `i64` the same way arithmetic's does.
         if matches!(left.ty, Type::Int | Type::Int64) {

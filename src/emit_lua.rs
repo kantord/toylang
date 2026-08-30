@@ -124,6 +124,24 @@ const UNWRAP_HELPER: &str = r#"local function tl_unwrap(v, depth)
 end
 "#;
 
+// A record and a payload-carrying variant are both tables, and Lua's `==` on two tables is
+// identity, so `{a = 1} == {a = 1}` was false here and true on Python (kantord/toylang#68).
+// Structural equality is the ratified answer, so composites walk. Keyed rather than ordered:
+// two spellings of one record type may reach here in different field orders.
+const EQ_HELPER: &str = "\
+local function tl_eq(a, b)
+  if a == b then return true end
+  if type(a) ~= \"table\" or type(b) ~= \"table\" then return false end
+  local extra = 0
+  for k, v in pairs(a) do
+    extra = extra + 1
+    if not tl_eq(v, b[k]) then return false end
+  end
+  for _ in pairs(b) do extra = extra - 1 end
+  return extra == 0
+end
+";
+
 const ARITH_HELPER: &str = r#"local TL_2_31 <const> = 2147483648
 local TL_2_32 <const> = 4294967296
 -- Lua integers are 64-bit, so an Int has to be brought back into 32 bits after every operation.
@@ -237,6 +255,7 @@ pub fn emit(program: &Program) -> String {
         (used.collect, COLLECT_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
         (used.chars, CHARS_HELPER),
+        (used.eq, EQ_HELPER),
     ] {
         if on {
             out.push_str(text);
@@ -454,6 +473,7 @@ struct Helpers {
     chars: bool,
     sort: bool,
     reverse: bool,
+    eq: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -481,9 +501,14 @@ fn used_helpers(program: &Program) -> Helpers {
                     walk(a, used);
                 }
             }
-            Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
+            Kind::Concat(l, r) => {
                 walk(l, used);
                 walk(r, used);
+            }
+            Kind::Compare { op, lhs, rhs } => {
+                used.eq |= lhs.ty.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne);
+                walk(lhs, used);
+                walk(rhs, used);
             }
             Kind::Bind { value, body, .. } => {
                 walk(value, used);
@@ -662,6 +687,15 @@ fn expr(t: &Tir) -> String {
             }
         },
         Kind::Compare { op, lhs, rhs } => {
+            // Ordering on a composite is a separate open question and keeps whatever the
+            // target does with it; only `==` and `!=` are pinned (kantord/toylang#68).
+            if lhs.ty.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne) {
+                let call = format!("tl_eq({}, {})", expr(lhs), expr(rhs));
+                return match op {
+                    BinOp::Ne => format!("(not {call})"),
+                    _ => call,
+                };
+            }
             format!("({} {} {})", expr(lhs), lua_op(*op), expr(rhs))
         }
         // Lua has no expression-level `let`, so the binding becomes a call.

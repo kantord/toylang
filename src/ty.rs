@@ -185,6 +185,32 @@ impl Type {
         }
     }
 
+    /// Whether a `Vec` appears anywhere in this type. What the checker asks of a comparison's
+    /// operands: an operator applied to a Vec is Q2 -- broadcast, zip, or whole-value -- and Q2
+    /// is open, so a Vec reached through a record field or an enum payload is refused for the
+    /// same reason a bare one is, rather than being handed whole-value equality by the back
+    /// door (kantord/toylang#95).
+    pub fn contains_vec(&self) -> bool {
+        match self {
+            Type::Vec(_) | Type::Stream(_) => true,
+            Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_vec()),
+            Type::Enum { args, variants, .. } => {
+                args.iter().any(Type::contains_vec)
+                    || variants
+                        .iter()
+                        .any(|(_, p)| p.as_ref().is_some_and(Type::contains_vec))
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether a value of this type has an interior to walk. Equality on one is structural on
+    /// every backend (kantord/toylang#68), which four of them need spelled out because their
+    /// native `==` on the runtime shape means identity or compares a payload pointer.
+    pub fn is_composite(&self) -> bool {
+        matches!(self, Type::Record(_) | Type::Enum { .. })
+    }
+
     /// A deterministic identifier fragment for this type, for backends whose targets are
     /// nominally typed: `Pair<Int>` and `Pair<Str>` must become distinct emitted types, so
     /// their names embed the arguments (`Pair_Int`). Record fields sort by name, because

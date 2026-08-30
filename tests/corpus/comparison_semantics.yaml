@@ -1,0 +1,30 @@
+# `==` and `!=` on a composite compare structure, not identity (kantord/toylang#68). Four
+# backends had to grow that: Lua tables and JS objects compare by reference natively, a Go enum
+# holds its payload behind a pointer, and the native backend refused a composite comparison
+# outright. This case is what stops any of them sliding back, because identity equality answers
+# `false` to every claim below that is `true`.
+#
+# `reordered` is the #60 claim in equality's terms: `{a: Int, b: Int}` and `{b: Int, a: Int}` are
+# one type, so two spellings of it are one value and compare equal.
+#
+# Ordering is not here. `<` on a Str is pinned by str_ordering_codepoint.yaml, and `<` on a
+# composite is a question nobody has answered.
+program: |
+  enum Shape { point, circle{r: Int}, box{w: Int, h: Int} }
+
+  {
+    same: {a: 1, b: 2} == {a: 1, b: 2},
+    reordered: {a: 1, b: 2} == {b: 2, a: 1},
+    differing: {a: 1, b: 2} == {a: 1, b: 3},
+    payload: circle{r: 1} == circle{r: 1},
+    payload_differing: circle{r: 1} == circle{r: 2},
+    variants: circle{r: 1} == box{w: 1, h: 2},
+    unit: point == point,
+    nested: {s: some({a: 1})} == {s: some({a: 1})},
+    absent: some({a: 1}) != none
+  }
+
+output: |
+  {"same":true,"reordered":true,"differing":false,"payload":true,"payload_differing":false,"variants":false,"unit":true,"nested":true,"absent":true}
+
+node_types: [compare.eq, compare.ne, int, record-literal, variant.payload, variant.unit]
