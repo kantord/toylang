@@ -321,16 +321,6 @@
   prio: 4
   status: todo
 
-- id: draft-questions-home
-  issue: gh:131
-  title: Move the open-questions tracker out of draft.md -- open entries keep detail, settled ones collapse to ADR pointers (draft-split keystone row)
-  kind: build
-  model: fable
-  needs: []
-  prio: 2
-  lane: lane-1
-  status: delegated
-
 - id: draft-intro-migration
   title: Migrate draft.md's identity sections (what this is, principles, values, worked programs, non-goals) to a docs overview page, then delete them
   kind: build
