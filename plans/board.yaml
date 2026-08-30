@@ -271,15 +271,6 @@
 
 
 
-- id: draft-intro-migration
-  issue: gh:134
-  title: Migrate draft.md's identity sections (what this is, principles, values, worked programs, non-goals) to a docs overview page, then delete them
-  kind: build
-  needs: []
-  soft: [draft-questions-home]
-  prio: 4
-  status: delegated
-
 - id: draft-core-model-migration
   title: Migrate the two-layer/cardinality core model to a concepts guide; embedded open threads go to the tracker (draft-split)
   kind: build

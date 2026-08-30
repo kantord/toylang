@@ -1032,3 +1032,12 @@
   kind: decide
   needs: []
   status: done
+
+- id: draft-intro-migration
+  issue: gh:134
+  title: Migrate draft.md's identity sections (what this is, principles, values, worked programs, non-goals) to a docs overview page, then delete them
+  kind: build
+  needs: []
+  soft: [draft-questions-home]
+  prio: 4
+  status: done
