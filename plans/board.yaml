@@ -326,3 +326,11 @@
   needs: [draft-questions-home, draft-intro-migration, draft-core-model-migration, draft-access-model-migration, draft-numbers-operators-migration, draft-records-migration, draft-streams-migration, draft-calls-modules-migration, draft-matching-migration, draft-prototype-findings-migration, draft-str-adr, draft-mutation-migration, binary-op-multiplicity-design, search-and-fold-design, offload-boundary-design]
   prio: 4
   status: todo
+
+- id: mail-rounds-isolation
+  issue: gh:164
+  title: Mail tab must not blank on one invalid round file -- per-round fetch isolation + visible error row
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
