@@ -583,7 +583,10 @@ fn expr(t: &Tir) -> String {
                 if *elem == Type::Str {
                     format!("[...{}].sort(tl_str_cmp)", expr(arg))
                 } else {
-                    format!("[...{}].sort((a, b) => a - b)", expr(arg))
+                    // `a - b` would coerce the comparator's result with ToNumber, which
+                    // throws on BigInt -- and Int64 is BigInt here. The three-way compare
+                    // returns plain -1/0/1 for Number and BigInt alike.
+                    format!("[...{}].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)", expr(arg))
                 }
             }
             // `.reverse()` mutates in place, so the spread copy is what keeps this an ordinary

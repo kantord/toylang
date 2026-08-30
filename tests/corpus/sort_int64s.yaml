@@ -1,0 +1,12 @@
+# Pins sort over Vec<Int64> on every backend -- the case the JS comparator crashed on
+# (Array.sort coerces the comparator result with ToNumber, which throws on BigInt) until
+# the three-way compare replaced `a - b` (kantord/toylang#86).
+program: |
+  fn wide(x: Int) -> Int64 = i64(x)
+
+  sort([wide(3), wide(1), wide(2)])
+
+output: |
+  [1,2,3]
+
+node_types: [application, builtin.i64, builtin.sort, int, var, vec-literal]

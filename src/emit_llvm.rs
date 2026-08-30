@@ -1474,11 +1474,7 @@ impl<'ctx> Emitter<'ctx> {
                     // comparator, so those three collapse into the same int64 sort.
                     Builtin::Sort => {
                         let elem = elem_ty.expect("checked to be a Vec");
-                        let rt = if elem == Type::Str {
-                            self.rt.vec_sort_str
-                        } else {
-                            self.rt.vec_sort_int
-                        };
+                        let rt = Self::sort_runtime(&self.rt, &elem);
                         self.call_rt(rt, &[arg], "sort")?
                     }
                     Builtin::Reverse => {
@@ -1758,6 +1754,18 @@ impl<'ctx> Emitter<'ctx> {
             .build_store(slot, v)
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    /// Which runtime sorter a Vec element needs: only Str's raw slot is a pointer wanting
+    /// its own comparator; Int, Int64, and Char share the int64 sort. Split out of `expr`'s
+    /// match arm to keep the selection from deepening it (kantord/toylang#86), the
+    /// `fields_lit` precedent.
+    fn sort_runtime<'r>(rt: &Runtime<'r>, elem: &Type) -> FunctionValue<'r> {
+        if *elem == Type::Str {
+            rt.vec_sort_str
+        } else {
+            rt.vec_sort_int
+        }
     }
 
     fn call_rt(
