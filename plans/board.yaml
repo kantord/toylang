@@ -426,7 +426,7 @@
   kind: build
   needs: [composite-equality]
   prio: 2
-  status: todo
+  status: delegated
 
 - id: bool-keywords-build
   issue: gh:96
@@ -434,7 +434,7 @@
   kind: build
   needs: [char-literals-and-bools]
   prio: 2
-  status: todo
+  status: delegated
 
 - id: concat-retirement
   issue: gh:97
@@ -873,7 +873,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: fmt-project-wide
   issue: gh:103
@@ -881,7 +881,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: euler-ergonomics-review
   issue: gh:104
@@ -890,7 +890,7 @@
   model: fable
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: prelude-inventory
   issue: gh:105
