@@ -22,6 +22,10 @@
 #          decides. Efficiency/process improvements are prio tasks by standing rule.
 #   status: todo | delegated  (done rows move to board-archive.yaml; "blocked" is derived from
 #           needs, never stored)
+#   lane:  which worker-pool lane a delegated row runs in (lane-1 .. lane-5, gh:124); the
+#          tick scripts resolve its worktree through the env symlink. Absent means the
+#          classic per-issue env (worktree issue-<N>). Set at dispatch, travels to the
+#          archive with the row.
 #   model: which model the delegated session runs -- omitted means sonnet (the default for
 #          regular build work); "fable" is reserved for design-heavy or cross-cutting builds
 #          the coordinator judges worth it; "haiku" is for mechanical work with an obvious

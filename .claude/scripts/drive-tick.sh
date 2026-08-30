@@ -38,14 +38,24 @@ fi
 # and a non-delegated worktree sitting ahead of main both force a run.
 MODEL=sonnet
 TRIGGER=""
+# A delegated row names its worktree either by pool lane (lane: lane-N, the
+# gh:124 worker pool -- resolved through the stable enwiro env symlink) or by
+# issue number (the classic one-env-per-issue flow).
 DELEGATED=$(python3 -c "
 import yaml
 for r in yaml.safe_load(open('plans/board.yaml')):
-    if r.get('status') == 'delegated' and str(r.get('issue', '')).startswith('gh:'):
+    if r.get('status') != 'delegated':
+        continue
+    if r.get('lane'):
+        print('lane:' + r['lane'])
+    elif str(r.get('issue', '')).startswith('gh:'):
         print('issue-' + r['issue'][3:])
 " | tr '\n' ' ')
 for wt in $DELEGATED; do
-  d="$WORKTREES/$wt"
+  case "$wt" in
+    lane:*) d="$HOME/.enwiro_envs/toylang@${wt#lane:}/toylang@${wt#lane:}" ;;
+    *) d="$WORKTREES/$wt" ;;
+  esac
   [ -d "$d" ] || { TRIGGER="lane $wt has no worktree"; continue; }
   ahead=$(git -C "$d" rev-list --count main..HEAD 2>/dev/null || echo 0)
   dirty=$(git -C "$d" status --porcelain 2>/dev/null | wc -l)
@@ -55,8 +65,9 @@ for wt in $DELEGATED; do
     -newermt '-30 minutes' -print -quit 2>/dev/null)
   commit_age=$(( $(date +%s) - $(git -C "$d" log -1 --format=%ct 2>/dev/null || echo 0) ))
   live=0
+  d_real=$(readlink -f "$d")  # /proc cwd is resolved; $d may be the env symlink
   for p in $(pgrep claude 2>/dev/null); do
-    case "$(readlink /proc/$p/cwd 2>/dev/null)" in "$d"*) live=1 ;; esac
+    case "$(readlink /proc/$p/cwd 2>/dev/null)" in "$d_real"*) live=1 ;; esac
   done
   if [ "$ahead" -gt 0 ] && [ "$dirty" -eq 0 ] && [ -z "$recent8" ] && [ "$commit_age" -ge 480 ]; then
     # Both quiet signals matter: committing touches no working-tree mtimes, so a
@@ -72,10 +83,15 @@ for wt in $DELEGATED; do
   fi
 done
 # Orphaned commits: a worktree ahead of main whose row is NOT delegated is
-# forgotten work (post-landing hook growth is the known producer).
-for d in "$WORKTREES"/*/; do
+# forgotten work (post-landing hook growth is the known producer). Pool lane
+# worktrees (gh:124) live under a different base and are cooked as
+# <lane>-<8 hex>, so both trees get swept.
+POOL_WORKTREES="$HOME/.local/share/enwiro/worktrees/toylang-1234138d"
+for d in "$WORKTREES"/*/ "$POOL_WORKTREES"/*/; do
+  [ -d "$d" ] || continue
   wt=$(basename "$d")
-  case " $DELEGATED " in *" $wt "*) continue ;; esac
+  lane=$(printf '%s' "$wt" | sed -E 's/-[0-9a-f]{8}$//')
+  case " $DELEGATED " in *" $wt "* | *" lane:$lane "*) continue ;; esac
   ahead=$(git -C "$d" rev-list --count main..HEAD 2>/dev/null || echo 0)
   [ "$ahead" -gt 0 ] && TRIGGER="${TRIGGER:-non-delegated worktree $wt is $ahead ahead of main}"
 done
@@ -111,7 +127,7 @@ fi
 if [ "${1:-tick}" = "audit" ]; then
   PROMPT='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has a live or accounted-for lane; no worktree holds unmerged commits the board thinks landed; no falsely-stuck lanes. Fix what is mechanical, file issues for the rest. End quietly if clean.'
 else
-  PROMPT='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. Reconstruct state from disk -- plans/board.yaml, the worktrees, the annotation stores -- and trust disk over anything remembered from earlier ticks. Read board rows with status: delegated and check each lane worktree (commits vs main, dirty files, live worker via pgrep cwd). Poll BOTH annotation stores: docs/.annotations/inbox.json AND docs/.annotations/notes.json -- apply entries older than 5 minutes and clear them at capture; wizard submissions in docs/.grill/ process immediately (delete round files at capture). If a lane is finished (ahead of main, clean, 8+ minutes quiet or worker gone), run the land-delegated-work skill -- cascade if 3+ are ready. After landings, dispatch ready board rows into free lanes (cap 5, model per row: haiku/sonnet/fable). If nothing changed, end quietly without writing anything.'
+  PROMPT='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. Reconstruct state from disk -- plans/board.yaml, the worktrees, the annotation stores -- and trust disk over anything remembered from earlier ticks. Read board rows with status: delegated and check each lane worktree (commits vs main, dirty files, live worker via pgrep cwd). Poll BOTH annotation stores: docs/.annotations/inbox.json AND docs/.annotations/notes.json -- apply entries older than 5 minutes and clear them at capture; wizard submissions in docs/.grill/ process immediately (delete round files at capture). If a lane is finished (ahead of main, clean, 8+ minutes quiet or worker gone), run the land-delegated-work skill -- cascade if 3+ are ready. After landings, dispatch ready board rows into free lanes (cap 5, model per row: haiku/sonnet/fable), preferring a warm pool lane per the enwiro-delegate skill worker-pool flow (check reuse eligibility with .claude/scripts/lane-context.py first). If nothing changed, end quietly without writing anything.'
 fi
 
 TS=$(date +%Y%m%d-%H%M%S)
