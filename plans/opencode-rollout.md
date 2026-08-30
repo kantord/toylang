@@ -47,6 +47,27 @@ Four of the five incidents above share one shape: a worker's OWN verification or
 - **sccache** as RUSTC_WRAPPER in the worker env: cold worktrees share compiled
   crates; landed lane worktrees are removed at landing, so disk stays flat.
 
+## Model ladder candidates for the re-evaluation (maintainer research, 2026-08-30)
+
+The rollout deliberately runs ONE model (DeepSeek V4 Flash) so the 30-lane comparison
+stays clean. The maintainer's OpenRouter survey (ZDR-only guardrail active -- routing
+is limited to zero-retention providers, DeepInfra/Baseten being the reliable coding
+route) named the candidates for a post-review tier ladder:
+
+- **GLM 5.2** (~$0.49-0.76 in / $1.56-2.42 out per 1M, 1M context, built for
+  project-level software engineering and long-horizon agent work): the candidate for
+  research dispatches and design-heavy lanes -- an order cheaper than sonnet, an order
+  stronger than flash. `OPENCODE_MODEL` already carries per-dispatch overrides.
+- **Ling-3.0-flash** (~$0.06/$0.18, 5.1B active params, single ZDR provider at ~96%
+  uptime): possible ultra-cheap tier for trivial mechanical rows; an optimization,
+  never a dependency.
+- Skip per the same survey: Kimi K3 (half of Opus price, not Opus class), MiMo-V2.5
+  and Qwen3.7 Flash (unreachable or too slow under ZDR).
+- The radical option the review should price out: the COORDINATOR tick itself on GLM
+  5.2 via opencode. Sonnet ticks are now the dominant cost of the whole loop; the
+  blocker is that the tick contract is deep in claude-code machinery (skills, resume,
+  stream-json, hooks), so this is a real port, not a model swap.
+
 ## Baseline, for the eventual comparison
 
 - Trial lane (gh:114, 2026-08-30, pre-rollout): mid-tier emit_llvm refactor, landed
