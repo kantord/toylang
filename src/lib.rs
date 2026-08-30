@@ -68,15 +68,15 @@ impl Backend {
     }
 
     pub fn emit(self, program: &Program) -> Result<String, String> {
-        Ok(match self {
-            Backend::Lua => emit_lua::emit(program),
-            Backend::Js => emit_js::emit(program),
-            Backend::Native => return emit_llvm::to_ir(program),
+        match self {
+            Backend::Lua => Ok(emit_lua::emit(program)),
+            Backend::Js => Ok(emit_js::emit(program)),
+            Backend::Native => emit_llvm::to_ir(program),
             Backend::Jq => emit_jq::emit(program),
-            Backend::Go => emit_go::emit(program),
-            Backend::Py => emit_py::emit(program),
-            Backend::Rust => emit_rs::emit(program),
-        })
+            Backend::Go => Ok(emit_go::emit(program)),
+            Backend::Py => Ok(emit_py::emit(program)),
+            Backend::Rust => Ok(emit_rs::emit(program)),
+        }
     }
 }
 
@@ -222,7 +222,7 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
         ),
         Backend::Js => run_node(&emit_js::emit(&program), &feed),
         Backend::Jq => run_jq(
-            &emit_jq::emit(&program),
+            &emit_jq::emit(&program).map_err(anyhow::Error::msg)?,
             JqInvocation {
                 has_value: value.is_some(),
                 raw: program.body.ty == ty::Type::Str,

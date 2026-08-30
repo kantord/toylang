@@ -42,6 +42,11 @@ checked:
 forward_reference
 ```
 
+A real cycle between two or more named functions runs on six of the seven backends. jq is the
+exception: its `def` sees only itself and whatever is already defined above it, with no forward
+declaration to bridge a cycle, so `toylang build`/`emit` refuses cleanly for that target rather
+than emitting jq source that would fail to compile.
+
 What a signature cannot say: a `Stream` result without a `Stream` parameter (a stream is
 born only at a source; see [Stream](../types/stream.md)). A function is not a value -- it
 cannot be stored, passed, or returned -- and the nine [builtin names](../builtins/str.md)
