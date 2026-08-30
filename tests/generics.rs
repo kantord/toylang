@@ -109,6 +109,18 @@ fn a_recursive_generic_payload_is_still_a_cycle() {
     ));
 }
 
+/// A boxed self-reference that re-parameterizes rather than repeating its own arguments names
+/// an infinite family of instantiations -- `Nest<T>`, `Nest<Vec<T>>`, `Nest<Vec<Vec<T>>>`, ...
+/// none of which ever recur -- so every walk that dedupes by full type equality (variant
+/// listing, recursion detection, codegen) diverges the moment something forces one open
+/// (kantord/toylang#117). Refused here, before any of those walks run.
+#[test]
+fn a_reparameterized_self_reference_is_refused() {
+    insta::assert_snapshot!(err(
+        "enum Nest<T> { one, wrap(Vec<Nest<Vec<T>>>) }\n\nstr(1)"
+    ));
+}
+
 /// The declaration parses in a module with its parameters, `pub` and all -- the form the
 /// prelude's `Opt<T>` will use (plans/opt-as-enum.md step 2).
 #[test]

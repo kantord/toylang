@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"enum Nest<T> { one, wrap(Vec<Nest<Vec<T>>>) }\\n\\nstr(1)\")"
+---
+`Nest` refers to itself with different type arguments; a self-reference must repeat `Nest<T>` unchanged (at byte 29)

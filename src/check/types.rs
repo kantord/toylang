@@ -74,10 +74,15 @@ pub(super) fn enum_map(enums: &[EnumDecl]) -> Result<HashMap<String, &EnumDecl>,
     Ok(map)
 }
 
-/// Resolve one enum declaration to its type. `seen` carries the names being expanded, exactly
-/// as for aliases, so an enum whose payload mentions itself is refused rather than expanded
-/// forever -- unless it does so behind a `Vec`, which `resolve_named` treats as legal
-/// (kantord/toylang#76) and stops expanding at, rather than looping.
+/// Resolve one enum declaration to its type. `seen` carries the names being expanded and the
+/// arguments each was expanded with, exactly as for aliases (whose entry carries no arguments),
+/// so an enum whose payload mentions itself is refused rather than expanded forever -- unless it
+/// does so behind a `Vec`, which `resolve_named` treats as legal (kantord/toylang#76) and stops
+/// expanding at, rather than looping. The arguments travel alongside the name so that a boxed
+/// self-reference can be checked against the instantiation it reappears inside
+/// (kantord/toylang#117): reusing them is the only way `resolve_named` avoids expanding one
+/// forever, so a self-reference that reappears with different arguments -- `Nest<Vec<T>>` inside
+/// `Nest<T>` -- has no honest placeholder to return and is refused instead.
 ///
 /// `args` instantiates a generic declaration: payloads resolve with each parameter bound to
 /// its argument, already resolved (an argument never re-enters this enum's `seen` chain, so
@@ -87,7 +92,7 @@ pub(super) fn enum_map(enums: &[EnumDecl]) -> Result<HashMap<String, &EnumDecl>,
 pub(super) fn resolve_enum(
     decl: &EnumDecl,
     env: &TypeEnv,
-    seen: &mut Vec<String>,
+    seen: &mut Vec<(String, Vec<Type>)>,
     args: Option<&[Type]>,
 ) -> Result<Type, Error> {
     for (i, (p, span)) in decl.params.iter().enumerate() {
@@ -132,7 +137,7 @@ pub(super) fn resolve_enum(
         .map(|(p, _)| p.as_str())
         .zip(bound.iter())
         .collect();
-    seen.push(decl.name.clone());
+    seen.push((decl.name.clone(), bound.clone()));
     let mut variants = Vec::new();
     for v in &decl.variants {
         let payload = match &v.payload {
@@ -238,9 +243,14 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
     Ok(sigs)
 }
 
-/// `seen` is the chain of names currently being expanded -- aliases and enums share it -- so a
-/// type written in terms of itself is caught rather than expanded forever.
-pub(super) fn resolve(ty: &TypeExpr, env: &TypeEnv, seen: &mut Vec<String>) -> Result<Type, Error> {
+/// `seen` is the chain of names currently being expanded, each with the arguments it was
+/// expanded with -- aliases and enums share it -- so a type written in terms of itself is
+/// caught rather than expanded forever.
+pub(super) fn resolve(
+    ty: &TypeExpr,
+    env: &TypeEnv,
+    seen: &mut Vec<(String, Vec<Type>)>,
+) -> Result<Type, Error> {
     resolve_bound(ty, env, seen, &HashMap::new(), false)
 }
 
@@ -256,7 +266,7 @@ fn resolve_args(
     decl_params: usize,
     span: Span,
     env: &TypeEnv,
-    seen: &mut Vec<String>,
+    seen: &mut Vec<(String, Vec<Type>)>,
     params: &HashMap<&str, &Type>,
 ) -> Result<Vec<Type>, Error> {
     if args.len() != decl_params {
@@ -298,7 +308,7 @@ fn resolve_named(
     args: &[TypeExpr],
     span: Span,
     env: &TypeEnv,
-    seen: &mut Vec<String>,
+    seen: &mut Vec<(String, Vec<Type>)>,
     params: &HashMap<&str, &Type>,
     boxed: bool,
 ) -> Result<Type, Error> {
@@ -317,7 +327,7 @@ fn resolve_named(
         }
         return Ok(built_in);
     }
-    if let Some(at) = seen.iter().position(|s| s == name) {
+    if let Some(at) = seen.iter().position(|(s, _)| s == name) {
         // Behind a `Vec`, a self-reference is a heap indirection rather than an infinite
         // layout, the same reason `Vec<Json>` is an ordinary field and not a contradiction
         // (kantord/toylang#76: Json's array case). Nothing downstream can expand `name`'s own
@@ -328,6 +338,28 @@ fn resolve_named(
         if boxed {
             let decl_params = env.enums.get(name).map_or(0, |d| d.params.len());
             let resolved_args = resolve_args(name, args, decl_params, span, env, seen, params)?;
+            // The placeholder above stands in for `name`'s own variant list, re-derived later
+            // from the registry at whatever arguments this occurrence carries. That only works
+            // if those arguments are the ones already being expanded: `Nest<T>` referring to
+            // itself as `Nest<Vec<T>>` names a second, larger instantiation the registry never
+            // builds, and re-deriving from it recurses one `Vec` deeper every time -- forever,
+            // since no two of `Nest<T>`, `Nest<Vec<T>>`, `Nest<Vec<Vec<T>>>`, ... ever coincide
+            // (kantord/toylang#117). Requiring an exact repeat closes that off: a self-reference
+            // is a cycle back to the instantiation already in progress, not a new one.
+            if resolved_args != seen[at].1 {
+                let expected = Type::Enum {
+                    name: name.to_string(),
+                    args: seen[at].1.clone(),
+                    variants: Vec::new(),
+                };
+                return Err(Error::new(
+                    span,
+                    format!(
+                        "`{name}` refers to itself with different type arguments; a \
+                         self-reference must repeat `{expected}` unchanged"
+                    ),
+                ));
+            }
             return Ok(Type::Enum {
                 name: name.to_string(),
                 args: resolved_args,
@@ -336,7 +368,10 @@ fn resolve_named(
         }
         // The names expanded since this one last appeared are the cycle, and naming them
         // is the difference between knowing there is one and finding it.
-        let through: Vec<String> = seen[at + 1..].iter().map(|s| format!("`{s}`")).collect();
+        let through: Vec<String> = seen[at + 1..]
+            .iter()
+            .map(|(s, _)| format!("`{s}`"))
+            .collect();
         let path = if through.is_empty() {
             String::new()
         } else {
@@ -351,7 +386,7 @@ fn resolve_named(
         if !args.is_empty() {
             return Err(Error::new(span, format!("`{name}` takes no type argument")));
         }
-        seen.push(name.to_string());
+        seen.push((name.to_string(), Vec::new()));
         let expanded = resolve_bound(written, env, seen, params, boxed);
         seen.pop();
         return expanded;
@@ -369,7 +404,7 @@ fn resolve_named(
 fn resolve_bound(
     ty: &TypeExpr,
     env: &TypeEnv,
-    seen: &mut Vec<String>,
+    seen: &mut Vec<(String, Vec<Type>)>,
     params: &HashMap<&str, &Type>,
     boxed: bool,
 ) -> Result<Type, Error> {

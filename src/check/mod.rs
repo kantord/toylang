@@ -91,7 +91,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     // Resolved eagerly so a broken declaration is an error even when nothing uses it, and so a
     // cycle is found here rather than wherever it happened to be reached from.
     for a in &file.aliases {
-        resolve(&a.ty, &env, &mut vec![a.name.clone()])?;
+        resolve(&a.ty, &env, &mut vec![(a.name.clone(), Vec::new())])?;
     }
     let mut enums: HashMap<String, Type> = HashMap::new();
     for e in &file.enums {
