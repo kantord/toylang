@@ -1,4 +1,4 @@
-# Digit fifth powers
+# Numbers that equal their digits raised to the fifth
 
 Solves [Project Euler 30](https://projecteuler.net/problem=30). See the
 [spoiler warning](00-spoiler-warning.md).

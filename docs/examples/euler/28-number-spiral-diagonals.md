@@ -1,4 +1,4 @@
-# Number spiral diagonals
+# Summing the corners of a number spiral
 
 Solves [Project Euler 28](https://projecteuler.net/problem=28). See the
 [spoiler warning](00-spoiler-warning.md).

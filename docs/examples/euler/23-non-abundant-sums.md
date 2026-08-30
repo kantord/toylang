@@ -1,4 +1,4 @@
-# Non-abundant sums (skipped)
+# What two abundant numbers cannot reach (skipped)
 
 Skipped. [Project Euler 23](https://projecteuler.net/problem=23) asks for every number under
 28123 that is not the sum of two abundant numbers, and the search for whether `k` is such a

@@ -1,4 +1,4 @@
-# The first 1000-digit Fibonacci number (skipped)
+# When Fibonacci reaches a thousand digits (skipped)
 
 Skipped. [Project Euler 25](https://projecteuler.net/problem=25) asks for the index of the
 first Fibonacci term with 1000 digits, and that term is nowhere near `Int64`'s reach either --

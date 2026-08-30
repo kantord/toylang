@@ -1,4 +1,4 @@
-# Names scores (skipped)
+# Scoring a sorted list of names (skipped)
 
 Skipped. [Project Euler 22](https://projecteuler.net/problem=22) scores a text file of over
 five thousand names by alphabetical rank, and the data half is ordinary: `Str` already orders

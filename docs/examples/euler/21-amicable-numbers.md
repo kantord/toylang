@@ -1,4 +1,4 @@
-# Amicable numbers under 10000
+# The pairs that sum to each other
 
 Solves [Project Euler 21](https://projecteuler.net/problem=21). See the
 [spoiler warning](00-spoiler-warning.md).

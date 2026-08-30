@@ -1,4 +1,4 @@
-# Distinct powers
+# How many powers are truly distinct
 
 Solves [Project Euler 29](https://projecteuler.net/problem=29). See the
 [spoiler warning](00-spoiler-warning.md).

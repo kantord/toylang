@@ -1,4 +1,4 @@
-# Quadratic primes (skipped)
+# The quadratic that mints the longest prime run (skipped)
 
 Skipped. [Project Euler 27](https://projecteuler.net/problem=27) asks which coefficients
 `a, b` (with `|a| < 1000`, `|b| <= 1000`) make `n*n + a*n + b` prime for the longest run of
