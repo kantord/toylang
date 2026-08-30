@@ -78,20 +78,6 @@
   prio: 2
   status: delegated
 
-# COORDINATOR: hands off this lane. It is the maintainer's one-off opencode/DeepSeek
-# experiment (gh:130), driven by the interactive session in a throwaway worktree OUTSIDE
-# the enwiro tree -- so ticks will see "no worktree" / "no live worker" for it. That is
-# expected: do NOT redispatch, do NOT land, do NOT flip this row. The interactive session
-# reviews, lands, and archives it itself when the experiment concludes.
-- id: llvm-tag-dispatch-dedup
-  issue: gh:114
-  title: emit_llvm -- one tag-dispatch helper under equal_enum and show (issue-95 review)
-  kind: build
-  needs: []
-  soft: [concat-retirement]
-  prio: 3
-  status: delegated
-
 - id: builtin-renames
   issue: gh:98
   title: extent -> length, unlines -> join_lines
