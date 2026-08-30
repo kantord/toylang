@@ -98,6 +98,18 @@ fn the_maintainer_sample_formats_to_itself() {
     assert_eq!(toylang::fmt(sample).unwrap(), sample);
 }
 
+/// A pipeline that overflows the width breaks one stage per line, `|` leading each continuation
+/// line so the pipes draw a vertical column (issue #101) -- the opposite of `Binary`'s trailing
+/// rule, which pipelines used to follow by analogy before the maintainer pinned this shape.
+#[test]
+fn a_pipeline_that_does_not_fit_breaks_one_stage_per_line_pipe_first() {
+    let src = "range(1000)\n\
+               \x20   | select(. > 5)\n\
+               \x20   | select(. < 1000 - somewhatlongvariablename)\n\
+               \x20   | map(. * 2)\n";
+    assert_eq!(toylang::fmt(src).unwrap(), src);
+}
+
 /// The one piece of source text `emit_toylang::emit` cannot reconstruct from the parsed tree --
 /// see its module doc -- is a leading comment banner, which `fmt` reattaches from the raw text
 /// instead. Pinned directly since nothing else here exercises it: every corpus program is

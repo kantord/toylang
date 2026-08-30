@@ -53,10 +53,39 @@ fn a_scalar_payload_of_the_wrong_type() {
 }
 
 /// Expanding this would not terminate: there is no indirection for a recursive payload to hide
-/// behind, so it is refused the way a recursive alias is.
+/// behind, so it is refused the way a recursive alias is. A `Vec`-wrapped self-reference is a
+/// different claim (`a_vec_wrapped_self_reference_typechecks`, below) -- this is the one that
+/// stays refused (kantord/toylang#76).
 #[test]
 fn an_enum_whose_payload_mentions_itself() {
     insta::assert_snapshot!(err("enum E { leaf, node{next: E} }\n\nleaf"));
+}
+
+/// `Json`'s array case (kantord/toylang#76, `plans/mini-parser-spike.md`'s open question):
+/// behind a `Vec`, a self-reference is a heap indirection rather than an infinite layout, so
+/// this rules the other way from the bare-field case above. Construction and matching both
+/// have to type-check, not just the declaration -- `describe`'s nested `Json.num(1)` is exactly
+/// where a stub standing in for the recursive occurrence's own variant list would otherwise
+/// come apart. Whether every backend can already run this program is a separate question this
+/// pins nothing about; see kantord/toylang#94.
+#[test]
+fn a_vec_wrapped_self_reference_typechecks() {
+    assert!(
+        toylang::compile(
+            "enum Json { arr(Vec<Json>), num(Int) }\n\n\
+             fn describe(j: Json) -> Str = j | arr -> \"arr\" or num -> \"num\"\n\n\
+             describe(Json.arr([Json.num(1)]))"
+        )
+        .is_ok()
+    );
+}
+
+/// The same refusal from `an_enum_whose_payload_mentions_itself`, still standing on a specific
+/// variant even when a different variant of the same enum is legally `Vec`-boxed: whether a
+/// self-reference is behind a `Vec` is judged per occurrence, not per declaration.
+#[test]
+fn only_the_boxed_variant_of_a_mixed_enum_is_legal() {
+    insta::assert_snapshot!(err("enum E { safe(Vec<E>), bad(E) }\n\n0"));
 }
 
 /// Aliases and enums share the type namespace, so the same name twice is the same error either

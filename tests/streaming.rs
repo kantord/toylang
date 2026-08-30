@@ -166,7 +166,7 @@ fn spawn_js(program: &str) -> Child {
 
 fn spawn_jq(program: &str) -> Child {
     let program = toylang::compile(program).expect("compiles");
-    let source = toylang::emit_jq::emit(&program);
+    let source = toylang::emit_jq::emit(&program).expect("compiles for jq");
 
     let mut cmd = Command::new("jq");
     cmd.arg("--unbuffered").arg("-c").arg("-n").arg("-r");

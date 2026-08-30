@@ -342,7 +342,7 @@
   title: jq backend -- four-function cycles are unrepresentable; refuse cleanly or support
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: char-literals-and-bools
   issue: gh:80
@@ -466,7 +466,7 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
 
 - id: fmt-pipeline-column
   issue: gh:101
@@ -474,7 +474,7 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
 
 - id: euler-slow-fragments
   issue: gh:90
@@ -498,7 +498,7 @@
   needs: []
   soft: [parser-floor-strings]
   prio: 2
-  status: delegated
+  status: done
 
 - id: toylang-fmt
   issue: gh:78
@@ -859,3 +859,18 @@
   kind: build
   needs: [docs-site-design]
   status: done
+
+- id: lines-utf8-edge
+  issue: gh:102
+  title: Pin what a non-UTF-8 byte arriving via lines does, on every backend
+  kind: decide
+  needs: []
+  status: todo
+
+- id: recursive-enum-codegen
+  issue: gh:94
+  title: Recursive enum values -- backends must learn the checker's self-reference stub
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
