@@ -37,9 +37,11 @@
 #
 # Picking the ready set (drive skill executes this): drop hard-blocked rows (done rows are
 # already gone); group the rest by soft-blockedness (count of un-done soft blockers, in-flight
-# ones included); least soft-blocked category first, prio within each; take the top five across
-# builds and decides together. List position is a tiebreak only. A needs-cycle, or todo rows
-# remaining with nothing pickable and nothing in flight, is a deadlock and gets reported.
+# ones included); least soft-blocked category first, prio within each. TWO queues from that
+# ordering (2026-08-30): every ready decide goes to the maintainer's grill/mail queue, and the
+# top ready builds fill the free lanes up to the cap. List position is a tiebreak only. A
+# needs-cycle, or todo rows remaining with nothing pickable and nothing in flight, is a
+# deadlock and gets reported.
 - id: local-binding-design
   issue: gh:87
   title: Grill local bindings inside an expression -- the where/as shaped gap (emuto survey adopt)
