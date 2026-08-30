@@ -72,7 +72,12 @@ grilling/planning session or an explicit user request, and gets a row before it 
      where they carry code; they occupy attention, not a lane.
    - `build` entries: make sure a GitHub issue carries the spec (file one if the row has
      none), then delegate via the `enwiro-delegate` skill and set `status: delegated`; run
-     on sonnet unless the row says `model: fable`. Footprint conflicts are SOFT BLOCKER
+     on sonnet unless the row says otherwise. Three tiers (maintainer rule, 2026-08-30):
+     `model: haiku` for mechanical work with an obvious done-state (renames, sweeps, small
+     config/UI tweaks -- cheaper and faster beats smarter there), sonnet for regular build
+     work, `model: fable` for design-heavy or cross-cutting builds. When boarding a row,
+     assign the cheapest tier the task plausibly survives review on; the landing review is
+     the safety net either way. Footprint conflicts are SOFT BLOCKER
      EDGES on the board (file-level -- a folder is not a footprint; that lesson cost a lane
      of parallelism once), not ad-hoc judgment: when a conflict is discovered at dispatch
      time, record the `soft` edge rather than just serializing silently. Picking a

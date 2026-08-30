@@ -15,7 +15,10 @@
 #   status: todo | delegated | done  ("blocked" is derived from needs, never stored)
 #   model: which model the delegated session runs -- omitted means sonnet (the default for
 #          regular build work); "fable" is reserved for design-heavy or cross-cutting builds
-#          the coordinator judges worth it. decide rows have no model; they are the human.
+#          the coordinator judges worth it; "haiku" is for mechanical work with an obvious
+#          done-state (renames, sweeps, small config/UI tweaks) where cheaper and faster
+#          beats smarter (maintainer rule, 2026-08-30). decide rows have no model; they are
+#          the human.
 #
 # Picking the ready set (drive skill executes this): drop done and hard-blocked rows; group
 # the rest by soft-blockedness (count of un-done soft blockers, in-flight ones included);
@@ -448,6 +451,7 @@
   issue: gh:98
   title: extent -> length, unlines -> join_lines
   kind: build
+  model: haiku
   needs: []
   prio: 3
   status: todo
@@ -928,6 +932,7 @@
   issue: gh:109
   title: Board graph hides done tasks by default -- the live-work view
   kind: build
+  model: haiku
   needs: []
   prio: 2
   status: todo
