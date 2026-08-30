@@ -66,6 +66,14 @@
   prio: 3
   status: todo
 
+- id: euler-unverified-outputs-audit
+  issue: gh:128
+  title: Audit euler examples with unverified "commonly published" outputs -- verify or turn each blocker into a tracked task (maintainer policy note)
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
+
 - id: llvm-tag-dispatch-dedup
   issue: gh:114
   title: emit_llvm -- one tag-dispatch helper under equal_enum and show (issue-95 review)
