@@ -86,7 +86,10 @@ memory. The brief carries everything, in this shape:
 > committed on this branch per AGENTS.md with the
 > provenance line "Written by DeepSeek V4 Flash via opencode."]. Hard constraints: work
 > ONLY inside this worktree; do NOT push; do not touch plans/. If a command is denied,
-> adapt with an allowed alternative rather than retrying. If something needs deciding
+> adapt with an allowed alternative rather than retrying. KNOWN DENIALS: shell loop
+> constructs (while/for) and other compound scripts are always denied -- get the file
+> list with one grep/rg/ls call and handle files one per tool call, or write a python3
+> script into the worktree and run it. If something needs deciding
 > that this brief does not settle, write ESCALATION.md at the worktree root -- the
 > question, the alternatives, their costs -- COMMIT it on this branch, take the most
 > conservative continuation, and keep going; never stop to wait for a human. If you
