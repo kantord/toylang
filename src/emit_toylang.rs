@@ -560,7 +560,10 @@ fn wrap_pipe(e: &Expr, indent: usize) -> String {
     let stages = flatten_pipe(e);
     let mut out = print_expr_wrapped(stages[0], Ctx::Expr(0), indent);
     for stage in &stages[1..] {
-        let stage_str = print_expr_wrapped(stage, Ctx::Expr(PIPE_RIGHT), indent + INDENT);
+        // The stage's budget must include the two columns "| " occupies, or a stage that
+        // just fits alone overruns the line by exactly that prefix -- and a stage that
+        // wraps internally hangs its closing bracket left of its own opener.
+        let stage_str = print_expr_wrapped(stage, Ctx::Expr(PIPE_RIGHT), indent + INDENT + 2);
         out.push('\n');
         out.push_str(&pad(indent + INDENT));
         out.push_str("| ");

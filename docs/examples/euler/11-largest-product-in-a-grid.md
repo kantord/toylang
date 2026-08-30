@@ -34,17 +34,17 @@ fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax:
     concat(
         range(p.rmax)
             | map(
-                row_products(
-                    {
-                        g: p.g,
-                        r: .,
-                        dr: p.dr,
-                        dc: p.dc,
-                        cmin: p.cmin,
-                        cmax: p.cmax
-                    }
-                )
-            )
+                  row_products(
+                      {
+                          g: p.g,
+                          r: .,
+                          dr: p.dr,
+                          dc: p.dc,
+                          cmin: p.cmin,
+                          cmax: p.cmax
+                      }
+                  )
+              )
     )
 
 fn maximum_of(p: {v: Vec<Int>, i: Int, best: Int}) -> Int =
