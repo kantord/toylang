@@ -2,14 +2,15 @@
  * The mail app's data (kantord/toylang#41): the maintainer's span notes and free-form compose
  * messages, both served by the `/__annotations/note` and `/__annotations/compose` endpoints
  * (vite-plugins/annotations-inbox.ts), plus the `MailItem` shape and the pure mappers that turn
- * annotations, notes, compose messages, and grill rounds into it. Split out of the component so
- * this stays testable without React, matching lib/grill.ts.
+ * annotations, notes, compose messages, grill rounds, and plans awaiting approval into it.
+ * Split out of the component so this stays testable without React, matching lib/grill.ts.
  */
 
 import type { FlowType } from "@dev/components/MessageCard"
 import { FLOW_FOR_TYPE } from "@dev/components/MessageCard"
 import type { Annotation } from "@dev/lib/annotations"
 import type { Round } from "@dev/lib/grill"
+import type { Plan } from "@dev/lib/plans"
 
 export interface NoteRecord {
   page: string
@@ -35,8 +36,8 @@ export interface Preview {
   anchor?: string
 }
 
-/** One row's worth of normalized display data, whichever of the four underlying records it
- *  came from -- so the list and reading pane render off one shape instead of branching four
+/** One row's worth of normalized display data, whichever of the five underlying records it
+ *  came from -- so the list and reading pane render off one shape instead of branching five
  *  ways at every call site. */
 export interface MailItem {
   key: string
@@ -48,6 +49,7 @@ export interface MailItem {
   preview: Preview | null
   annotation?: Annotation
   round?: { topic: string; round: Round }
+  plan?: Plan
 }
 
 const SUBJECT_MAX_LEN = 60
@@ -105,6 +107,33 @@ export function grillItem(topic: string, round: Round, answered: boolean): MailI
     preview: null,
     round: { topic, round },
   }
+}
+
+/** A plan is inbox mail only while it is `proposed` and undecided (kantord/toylang#110). The two
+ *  conditions are separate on purpose: `answered` covers the gap between the maintainer clicking
+ *  and the coordinator rewriting the frontmatter, and the frontmatter covers the case where the
+ *  coordinator has since cleared the inbox record the click left behind. */
+export function planItem(plan: Plan, answered: boolean): MailItem {
+  const pending = plan.status === "proposed" && !answered
+  return {
+    key: `plan:${plan.path}`,
+    folder: pending ? "inbox" : "archive",
+    sender: "Plan",
+    subject: plan.title,
+    note: pending
+      ? "Read it, then approve it or send it back for another planning phase."
+      : `Already decided: ${plan.status}.`,
+    flow: "plan",
+    preview: { text: firstProse(plan.markdown) },
+    plan,
+  }
+}
+
+/** A plan's opening prose, for the list row's one-line preview: the first paragraph that isn't
+ *  a heading, since the title is already the row's subject. */
+function firstProse(markdown: string): string {
+  const para = markdown.split(/\n\s*\n/).find((p) => p.trim() && !p.trim().startsWith("#"))
+  return (para ?? "").replace(/\s+/g, " ").trim()
 }
 
 export function fetchNotesAndComposed(): Promise<{ notes: NoteRecord[]; composed: ComposeRecord[] }> {

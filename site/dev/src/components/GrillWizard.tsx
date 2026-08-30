@@ -1,47 +1,18 @@
-import { Marked, type Tokens } from "marked"
 import { useEffect, useMemo, useState } from "react"
 
 import { Code } from "@/components/Code"
+import { DevMarkdown } from "@dev/components/DevMarkdown"
 import { FLOW, MessageCard } from "@dev/components/MessageCard"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
+import { clearDraft, loadDraft, saveDraft } from "@dev/lib/draft"
 import { isAnswered, submitAnswer, type Answer, type Round, type RoundOption, type RoundQuestion } from "@dev/lib/grill"
 import { cn } from "@/lib/utils"
 
-const md = new Marked()
-
-/** localStorage draft of every answer given so far, keyed per topic (kantord/toylang#46): a
- *  dead dev server or a failed submit must never cost the maintainer answers they already typed,
- *  same idiom as AnnotateMode's per-block draft. Written on every change, cleared only once
- *  `submit` below has gotten a 2xx for every question. */
+/** Where a round's answers-so-far are drafted, keyed per topic (kantord/toylang#46). */
 function draftKey(topic: string): string {
   return `toylang-grill-draft:${topic}`
-}
-
-function loadDraft(topic: string): Record<string, Answer> {
-  try {
-    const raw = localStorage.getItem(draftKey(topic))
-    return raw ? (JSON.parse(raw) as Record<string, Answer>) : {}
-  } catch {
-    return {}
-  }
-}
-
-function saveDraft(topic: string, answers: Record<string, Answer>) {
-  try {
-    localStorage.setItem(draftKey(topic), JSON.stringify(answers))
-  } catch {
-    // Private browsing or a full quota -- the wizard still works, just without reload survival.
-  }
-}
-
-function clearDraft(topic: string) {
-  try {
-    localStorage.removeItem(draftKey(topic))
-  } catch {
-    // Nothing to undo if the read/write above never worked either.
-  }
 }
 
 type Screen = { kind: "intro" } | { kind: "question"; index: number } | { kind: "summary" }
@@ -63,14 +34,16 @@ export function GrillRoundReader({
   round: Round
   onAllAnswered: () => void
 }) {
-  const [answers, setAnswers] = useState<Record<string, Answer>>(() => loadDraft(topic))
+  const [answers, setAnswers] = useState<Record<string, Answer>>(() =>
+    loadDraft<Record<string, Answer>>(draftKey(topic), {}),
+  )
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
 
   useEffect(() => {
-    saveDraft(topic, answers)
+    saveDraft(draftKey(topic), answers)
   }, [topic, answers])
 
   const screens = useMemo<Screen[]>(() => {
@@ -95,7 +68,7 @@ export function GrillRoundReader({
         const q = round.questions[i]
         await submitAnswer(topic, i, q, answers[q.id] ?? { optionLabel: null, freeText: "" })
       }
-      clearDraft(topic)
+      clearDraft(draftKey(topic))
       setSubmitted(true)
       onAllAnswered()
     } catch (e) {
@@ -162,7 +135,7 @@ export function GrillRoundReader({
 function IntroScreen({ round, onBegin }: { round: Round; onBegin: () => void }) {
   return (
     <div className="space-y-4">
-      {round.intro && <GrillMarkdown text={round.intro} />}
+      {round.intro && <DevMarkdown text={round.intro} />}
       <Button onClick={onBegin}>Begin ({round.questions.length} question{round.questions.length === 1 ? "" : "s"})</Button>
     </div>
   )
@@ -188,7 +161,7 @@ function Section({ label, markdown }: { label: keyof typeof SECTION; markdown: s
   return (
     <div className={cn("space-y-2 rounded-sm border-l-4 py-1 pl-3", s.border)}>
       <div className={cn("text-xs font-semibold uppercase tracking-wide", s.text)}>{label}</div>
-      <GrillMarkdown text={markdown} className={label === "Question" ? "font-semibold" : undefined} />
+      <DevMarkdown text={markdown} className={label === "Question" ? "font-semibold" : undefined} />
     </div>
   )
 }
@@ -333,26 +306,6 @@ function SummaryScreen({
           {submitting ? "Submitting..." : "Submit"}
         </Button>
       </div>
-    </div>
-  )
-}
-
-/** Markdown with real code fences (kantord/toylang#34: "full code blocks"), split the same way
- *  `lib/blocks.ts` splits a docs page -- a fence gets `Code`'s shiki highlighting, everything
- *  else goes through marked's own HTML. No fragment protocol here: round files are ephemeral and
- *  the fence harness does not check them (grill-via-annotations skill), so any language tag is
- *  just illustration. */
-function GrillMarkdown({ text, className }: { text: string; className?: string }) {
-  const tokens = useMemo(() => md.lexer(text), [text])
-  return (
-    <div className={cn("docs-prose", className)}>
-      {tokens.map((t, i) =>
-        t.type === "code" ? (
-          <Code key={i} code={(t as Tokens.Code).text} lang={(t as Tokens.Code).lang || "text"} />
-        ) : (
-          <div key={i} dangerouslySetInnerHTML={{ __html: md.parser([t]) }} />
-        ),
-      )}
     </div>
   )
 }
