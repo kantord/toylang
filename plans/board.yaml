@@ -293,14 +293,6 @@
   needs: []
   status: todo
 
-- id: delegation-telemetry
-  issue: gh:123
-  title: Per-lane token totals recorded at landing, before transcripts vanish
-  kind: build
-  needs: []
-  prio: 1
-  status: done
-
 - id: worker-pool-reuse
   issue: gh:124
   title: Persistent worker lanes -- sessions reused across tasks under a token ceiling
@@ -308,6 +300,24 @@
   needs: []
   soft: [delegation-telemetry]
   prio: 1
+  status: todo
+
+- id: benchmark-spike-citations
+  issue: gh:125
+  title: Cite TechEmpower/SPEC license claims in benchmark-suite-spike.md (gh:106 review follow-up)
+  kind: build
+  model: haiku
+  needs: []
+  prio: 4
+  status: todo
+
+- id: emit-rs-concat-helper
+  issue: gh:126
+  title: Extract emit_rs.rs's Concat dispatch arm into a named helper, matching sibling backends (gh:97 review follow-up)
+  kind: build
+  model: haiku
+  needs: []
+  prio: 4
   status: todo
 
 - id: draft-questions-home

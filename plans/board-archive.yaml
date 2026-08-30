@@ -825,3 +825,11 @@
   needs: []
   prio: 3
   status: done
+
+- id: delegation-telemetry
+  issue: gh:123
+  title: Per-lane token totals recorded at landing, before transcripts vanish
+  kind: build
+  needs: []
+  prio: 1
+  status: done
