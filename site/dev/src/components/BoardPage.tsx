@@ -1,11 +1,14 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GraphView } from "@dev/components/board/GraphView"
 import { KanbanView } from "@dev/components/board/KanbanView"
+import { PlansPanel } from "@dev/components/board/PlansPanel"
 
 /**
  * The Board tab (kantord/toylang#33): two switchable views onto the same plans/board.yaml data --
  * a React Flow dependency graph and a plain status kanban, replacing the single mixed view v1
- * shipped. Both stay read-only, click-through to issues, and public-build safe.
+ * shipped. Both stay read-only, click-through to issues, and public-build safe. Above them sits
+ * where each plan document stands (kantord/toylang#110), which the board rows themselves cannot
+ * carry: a plan is often proposed before the work it would authorize has a row at all.
  */
 export function BoardPage() {
   return (
@@ -15,6 +18,7 @@ export function BoardPage() {
         dependency graph or a kanban: what is done, what is being worked on, and what is next in
         line.
       </p>
+      <PlansPanel />
       <Tabs defaultValue="graph">
         <TabsList>
           <TabsTrigger value="graph">Graph</TabsTrigger>
