@@ -307,14 +307,6 @@
   status: todo
 
 
-- id: emit-rs-concat-helper
-  issue: gh:126
-  title: Extract emit_rs.rs's Concat dispatch arm into a named helper, matching sibling backends (gh:97 review follow-up)
-  kind: build
-  model: haiku
-  needs: []
-  prio: 4
-  status: delegated
 
 - id: draft-intro-migration
   issue: gh:134
