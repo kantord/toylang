@@ -92,6 +92,6 @@ The parser-floor-part-1 session (issue #75) grew the same three emitters again -
 message already names each as inherited ("already N lines at merge-base"), and the task was
 implementing #75, not the emitter-split conversation. Same rule, same outcome.
 
-The Int64 session (issue #83) grew the same three emitters again (go 1149->1189, llvm
-2054->2114, rs 1277->1355, per the check's own inherited labels) -- the one-new-width-per-
+The Int64 session (issue #83) grew the same three emitters again (go 1149->1206, llvm
+2054->2126, rs 1277->1358, per the check's own inherited labels) -- the one-new-width-per-
 backend shape of #62/#66/#75, with the emitter-split conversation still undone.

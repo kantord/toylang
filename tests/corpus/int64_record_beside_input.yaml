@@ -1,0 +1,18 @@
+# Pins the emit_rs wire-scoping fix (kantord/toylang#83): a program that reads input AND
+# builds an Int64-carrying record internally. Before collect_wire, the Rust backend generated
+# a JSON parser for every record type whenever input existed -- including this output record,
+# whose Int64 field hit the deliberate no-wire-form unreachable and panicked at generation.
+program: |
+  fn wide() -> Int64 = 600851475143
+
+  fn double(x: Int) -> Int = x * 2
+
+  {a: wide(), b: double(input)}
+
+input: |
+  5
+
+output: |
+  {"a":600851475143,"b":10}
+
+node_types: [application, arith.mul, input, int, int64, record-literal, var]
