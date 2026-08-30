@@ -115,7 +115,8 @@
   status: todo
 
 - id: matcher-totality-and-alt-design
-  title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test
+  issue: gh:156
+  title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test -- round 1 drew pushback on the circle{r} vs Circle(r) naming convention (gh:156), needs a round 2
   kind: decide
   needs: [auto-matchers-design]
   prio: 1
@@ -123,7 +124,7 @@
 
 - id: matcher-model-clarification
   issue: gh:122
-  title: Grill the matching system's conceptual model -- base matcher kinds, how conditions enter, composition with type matchers (maintainer compose note)
+  title: Grill the matching system's conceptual model -- round 1 drew a "." as wrapping match-type strawman (gh:122 comment), needs a round 2 before it's buildable
   kind: decide
   needs: []
   soft: [matcher-totality-and-alt-design]
@@ -199,9 +200,10 @@
   needs: []
   status: todo
 
-- id: ternary-vs-match
-  title: Is the ternary redundant now that match covers it? Retire, keep, or demote
-  kind: decide
+- id: retire-ternary-build
+  issue: gh:155
+  title: Remove the ternary, replace every corpus/example/doc use with the equivalent match form (ternary-vs-match ruling)
+  kind: build
   needs: []
   prio: 2
   status: todo

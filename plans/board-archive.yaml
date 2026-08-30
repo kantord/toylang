@@ -1093,3 +1093,10 @@
   needs: []
   prio: 1
   status: done
+
+- id: ternary-vs-match
+  title: "Is the ternary redundant now that match covers it? -- ruled: retire it (gh:155)"
+  kind: decide
+  needs: []
+  prio: 2
+  status: done
