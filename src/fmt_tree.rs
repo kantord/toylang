@@ -72,10 +72,14 @@ fn format_one(path: &Path, mode: Mode, report: &mut Report) {
     report.changed.push(path.to_path_buf());
 }
 
+/// `target` and `node_modules` are build and cache trees; `site` is this project's own docs
+/// app, which holds no toylang source of its own. Skipped by exact name at any depth.
+const SKIP_DIRS: &[&str] = &["target", "node_modules", "site"];
+
 /// Hidden entries are skipped: a walk from the current folder would otherwise descend into
 /// `.git`, and a leading dot is the usual way a folder says it is not the project's own source.
 /// Symlinks are skipped as well, both kinds: a link cycle would hang the walk, and rewriting
-/// through a link edits a file outside the tree that was walked.
+/// through a link edits a file outside the tree that was walked. `SKIP_DIRS` names the rest.
 fn collect(dir: &Path, out: &mut Vec<PathBuf>, report: &mut Report) {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
@@ -92,7 +96,12 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>, report: &mut Report) {
                 continue;
             }
         };
-        if entry.file_name().to_string_lossy().starts_with('.') {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with('.') {
+            continue;
+        }
+        if SKIP_DIRS.contains(&name_str.as_ref()) {
             continue;
         }
         let path = entry.path();
