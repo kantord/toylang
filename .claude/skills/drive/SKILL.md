@@ -44,7 +44,9 @@ the truth; transcript timestamps lie.
 Board-editing scripts match a row id ONLY with its terminator -- `'- id: <slug>\n'`, never a
 bare prefix: `- id: nullary-functions` also matches `nullary-functions-decision`, and the
 falls-through `index('status: todo')` then flips whatever row comes next (it silently marked
-a decide row delegated once; the audit caught it, not the edit).
+a decide row delegated once; the audit caught it, not the edit). That rule still governs a
+landing flip (issue #113): the matched row is cut from `plans/board.yaml` and appended, whole,
+to `plans/board-archive.yaml` with `status: done` -- never edited to `done` in place.
 
 A research task with big results gets SPLIT into per-item follow-up rows at capture time --
 never one mega review row that sits unfinished (maintainer rule, 2026-08-30; the oddities
@@ -58,21 +60,27 @@ four accumulated once); and an inbox record dismissed as stale gets that dismiss
 the tick's report (a silent no-op clear is the one path where maintainer input can vanish
 without a trace).
 
-`plans/board.yaml` is the single source of truth: an ordered list where position is priority.
-Each entry: `id`, `title`, `kind: build | decide`, `needs: [ids]`, `status: todo | delegated |
-done`, optionally `issue: gh:N`. The maintainer's role is decide-tasks and goal-setting;
-everything else is yours to drive. Never invent tasks: new work enters the board through a
-grilling/planning session or an explicit user request, and gets a row before it gets a branch.
+`plans/board.yaml` is the single source of truth for live work: an ordered list where position
+is priority. Each entry: `id`, `title`, `kind: build | decide`, `needs: [ids]`, `status: todo |
+delegated`, optionally `issue: gh:N`. Landed rows do not stay here (issue #113): they move to
+`plans/board-archive.yaml`, same schema, `status: done`, append-only, kept for provenance only.
+A `needs`/`soft` id not found in the live board is satisfied -- it landed and was archived; the
+archive is never consulted to decide whether something is blocked. The maintainer's role is
+decide-tasks and goal-setting; everything else is yours to drive. Never invent tasks: new work
+enters the board through a grilling/planning session or an explicit user request, and gets a
+row before it gets a branch.
 
 ## The loop (scheduler v2, maintainer-specified 2026-08-29)
 
-1. **Read the board and compute the ready set.** Drop `done` rows and hard-blocked rows (any
-   id in `needs` not `done`). Group what remains by soft-blockedness: the count of ids in
-   `soft` that are not yet `done` (a `delegated` soft blocker still counts as un-done).
-   Least soft-blocked category ranks first; `prio` (1 highest, default 3) sorts within a
-   category; list position is only a tiebreak. The TOP FIVE of this ordering, builds and
-   decides together, is the ready set. Soft order outweighs prio by construction, but among
-   fully unblocked tasks prio alone decides.
+1. **Read the board and compute the ready set.** No `done` rows to drop -- they live in
+   `plans/board-archive.yaml` (issue #113). Drop hard-blocked rows instead (any id in `needs`
+   that is still present in the live board, i.e. still `todo` or `delegated`; an id absent from
+   the live board is satisfied). Group what remains by soft-blockedness: the count of ids in
+   `soft` still present on the live board (a `delegated` soft blocker still counts as un-done;
+   an absent one does not). Least soft-blocked category ranks first; `prio` (1 highest, default
+   3) sorts within a category; list position is only a tiebreak. The TOP FIVE of this ordering,
+   builds and decides together, is the ready set. Soft order outweighs prio by construction, but
+   among fully unblocked tasks prio alone decides.
 2. **Deadlock check, before anything else.** Two shapes, both reported to the user
    immediately rather than worked around: a cycle in `needs` (topological sort fails), and
    exhaustion (todo entries remain but nothing is pickable and nothing is in flight). A
@@ -99,8 +107,9 @@ grilling/planning session or an explicit user request, and gets a row before it 
      schedule them ahead of ordinary rows so no time is spent working the old way.
 4. **Monitor and land.** Watch delegated work (a cron tick per active delegation is enough);
    when a session finishes, run the `land-delegated-work` skill: suite, code-review,
-   style-review, fix-or-file, merge locally. Then set the row `done`, commit the board change
-   with the merge, and go to step 1.
+   style-review, fix-or-file, merge locally. Then move the row to `plans/board-archive.yaml`
+   with `status: done` (issue #113: never flip it in place), commit the board change with the
+   merge, and go to step 1.
 5. **Report once per landing or decision-point,** per the standing protocol: what landed,
    what the reviews found, what is now unblocked, and which decide-tasks are waiting.
    No play-by-play.

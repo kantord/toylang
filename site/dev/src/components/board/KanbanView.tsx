@@ -1,4 +1,4 @@
-import { BOARD, type Status, type Task } from "@dev/lib/board"
+import { ALL_TASKS, type Status, type Task } from "@dev/lib/board"
 import { TaskCard } from "@dev/components/board/TaskCard"
 
 const COLUMNS: { status: Status; label: string }[] = [
@@ -9,12 +9,13 @@ const COLUMNS: { status: Status; label: string }[] = [
 
 /**
  * The board as a plain kanban: one column per status, no edges -- todo, delegated, done, each in
- * plans/board.yaml's own order (the file's priority ordering). The dependency graph lives on the
- * Graph tab instead.
+ * its source file's own order (the file's priority ordering). Done pulls from board-archive.yaml
+ * (issue #113): the live board never holds a done row. The dependency graph lives on the Graph
+ * tab instead.
  */
 export function KanbanView() {
   const byStatus = new Map<Status, Task[]>(COLUMNS.map((c) => [c.status, []]))
-  for (const t of BOARD) byStatus.get(t.status)?.push(t)
+  for (const t of ALL_TASKS) byStatus.get(t.status)?.push(t)
 
   return (
     <div className="grid gap-4 sm:grid-cols-3">

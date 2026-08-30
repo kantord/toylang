@@ -1,0 +1,786 @@
+# Archive of landed plans/board.yaml rows (issue #113): append-only, same schema as the live
+# board. A row moves here in full, unedited, the moment it lands -- never back to board.yaml.
+# All rows here are status: done; that field is kept only so the schema matches.
+#
+# This file is provenance, never a blocking source: plans/board.yaml resolves a needs/soft id
+# it can't find by treating it as satisfied, so nothing here gates picking a task. Read this
+# file to find out when and how something landed, not whether something is ready.
+
+- id: scheduler-v2
+  title: Scheduler v2 -- five lanes, hard vs soft blockers, prio codes (maintainer spec, applied same-day)
+  kind: build
+  needs: []
+  prio: 1
+  status: done
+
+- id: scalar-payloads
+  issue: gh:2
+  title: Enum payloads accept any single type, not only records
+  kind: build
+  needs: []
+  status: done
+
+- id: stdin-rule-decision
+  issue: gh:7
+  title: Decide the rule for a source-consuming function called from a mapper body
+  kind: decide
+  needs: []
+  status: done
+
+- id: live-inputs-validation
+  issue: gh:15
+  title: Validate input on the live fused-inputs path, matching fixture runs
+  kind: build
+  needs: []
+  status: done
+
+- id: stdin-rule-build
+  issue: gh:7
+  title: Implement the decided mapper-body source rule, with its rejection test
+  kind: build
+  needs: [stdin-rule-decision]
+  status: done
+
+- id: quality-practices-survey
+  issue: gh:8
+  title: Evaluate toy-browser's quality skills/hooks/practices; propose what toylang adopts
+  kind: build
+  needs: []
+  status: done
+
+- id: quality-practices-adoption
+  title: Review the proposal and decide what gets introduced
+  kind: decide
+  needs: [quality-practices-survey]
+  status: done
+
+- id: language-oddities-survey
+  issue: gh:9
+  title: Inventory duplications, cryptic syntax, and ill-fitting jq inheritances
+  kind: build
+  needs: []
+  status: done
+
+- id: stop-hook-commit-check
+  issue: gh:18
+  title: Stop-hook finding for uncommitted work at turn end, closing the politeness stall mechanically
+  kind: build
+  needs: []
+  status: done
+
+- id: bare-default-build
+  issue: gh:20
+  title: Bare application becomes the default call form (same-line rule, sugar unified, style migration)
+  kind: build
+  needs: []
+  model: fable
+  status: done
+
+- id: field-order-build
+  issue: gh:21
+  title: Record fields print in declared order across all backends
+  kind: build
+  needs: []
+  model: fable
+  status: done
+
+- id: oddities-quick-fixes
+  issue: gh:14
+  title: Empty keep is identity; != failure suggests bang-space-equals
+  kind: build
+  needs: []
+  status: done
+
+- id: docs-annotations-mode
+  issue: gh:23
+  title: Dev-only annotations mode -- marker-pen highlights, contenteditable, quiet-period inbox
+  kind: build
+  needs: []
+  status: done
+
+- id: annotations-edit-persistence
+  issue: gh:28
+  title: Annotations mode must never lose or hide the maintainer's edits
+  kind: build
+  needs: []
+  status: done
+
+- id: annotations-email-inbox
+  issue: gh:30
+  title: Inbox becomes email-like -- two areas, span highlights, read status
+  kind: build
+  needs: [annotations-edit-persistence]
+  status: done
+
+- id: board-graph-page
+  issue: gh:31
+  title: The board as a dependency graph page -- status, live lanes, unblocked frontier
+  kind: build
+  needs: []
+  status: done
+
+- id: grilling-wizard
+  issue: gh:34
+  title: Wizard rounds -- one question per screen, previews, summary-and-submit
+  kind: build
+  needs: [annotations-email-inbox]
+  status: done
+
+- id: annotations-mail-app
+  issue: gh:41
+  title: Email-app comfort -- free-form compose, folders, list and reading panes
+  kind: build
+  needs: [grilling-wizard]
+  status: done
+
+- id: mail-app-v2
+  issue: gh:52
+  title: Everything is email -- gmail layout, previews with highlights, grill rounds and board as tabs, own-option always
+  kind: build
+  needs: [static-site-split]
+  status: done
+
+- id: board-page-v2
+  issue: gh:33
+  title: Board v2 -- React Flow graph-only and kanban-only views, as tabs inside the mail app
+  kind: build
+  needs: [mail-app-v2]
+  status: done
+
+- id: static-site-split
+  issue: gh:50
+  title: Dev-only routes into one folder; docs build becomes real static HTML for GitHub Pages, prefetch keeps the feel
+  kind: build
+  needs: []
+  status: done
+
+- id: docs-site-real-transitions
+  issue: gh:55
+  title: Client-side fetch-and-swap navigation across static docs pages, not just prefetch hints
+  kind: build
+  needs: [static-site-split]
+  status: done
+
+- id: grill-via-annotations
+  title: A repo skill running grilling rounds through the annotations mode inbox
+  kind: build
+  needs: [docs-annotations-mode]
+  status: done
+
+- id: euler-examples-1-10
+  issue: gh:35
+  title: Euler stress-test stream -- scaffolding plus problems 1-10, findings filed
+  kind: build
+  needs: []
+  status: done
+
+- id: matching-tutorial-chapter
+  issue: gh:37
+  title: Tutorial chapter and guide for matching -- guard arms, chains, partial-to-Opt
+  kind: build
+  needs: []
+  status: done
+
+- id: json-string-conformance
+  issue: gh:26
+  title: Prove full JSON-string support across backends, pinning codepoint ordering
+  kind: build
+  needs: []
+  status: done
+
+- id: matcher-first-cut-design
+  title: Grill the matcher surface first cut -- guard arms with or-composition, FizzBuzz the case study, reconcile with the enum arms token
+  kind: decide
+  needs: []
+  status: done
+
+- id: matcher-first-cut-build
+  model: fable
+  issue: gh:16
+  title: Implement or-composed arms, guard arms, hybrid totality; retire //
+  kind: build
+  needs: [matcher-first-cut-design]
+  status: done
+
+- id: language-oddities-review
+  title: Review the oddities inventory -- SPLIT 2026-08-30 into per-item rows; most items settled piecemeal by gh:14/20/21/60/97/98/99, matcher and Opt work
+  kind: decide
+  needs: [language-oddities-survey]
+  prio: 2
+  status: done
+
+- id: crate-adoption
+  title: Review the crate proposal and decide what gets adopted
+  kind: decide
+  needs: [crate-simplification-survey]
+  status: done
+
+- id: anyhow-install
+  issue: gh:17
+  title: Install anyhow for the harness error plumbing
+  kind: build
+  needs: [crate-adoption]
+  status: done
+
+- id: run-jq-bools-decision
+  issue: gh:22
+  title: "run_jq's fn-params-excessive-bools finding (src/lib.rs): fix, exempt, or write the lesson"
+  kind: decide
+  needs: []
+  status: done
+
+- id: opt-in-signatures
+  issue: gh:27
+  title: Opt<T> accepted in the type grammar -- head(v) -> Opt<Int> compiles as written
+  kind: build
+  needs: []
+  status: done
+
+- id: type-flow-rework
+  issue: gh:44
+  title: Top-down type flow -- declared types resolve [] and literals in bodies
+  kind: build
+  needs: []
+  model: fable
+  status: done
+
+- id: unused-variables-error
+  issue: gh:45
+  title: Unused variables are compile errors, like Go -- param and destructured fields
+  kind: build
+  needs: []
+  status: done
+
+- id: auto-matchers-design
+  issue: gh:47
+  title: Grill auto-generated type matchers -- the capital namespace (matcher vs constructor), domain, first-classness
+  kind: decide
+  needs: []
+  status: done
+
+- id: nullary-functions-decision
+  issue: gh:53
+  title: Decide nullary functions vs a discard convention -- the unused-param rule exposed the one-param grammar
+  kind: decide
+  needs: [unused-variables-error]
+  prio: 2
+  status: done
+
+- id: partial-chain-expectation-decision
+  issue: gh:48
+  title: Decide whether partial guard chains peel Opt expectations into arms (worker's conservative cut kept messages intact)
+  kind: decide
+  needs: [type-flow-rework]
+  prio: 2
+  status: done
+
+- id: matcher-parser-spike
+  issue: gh:71
+  title: Spike -- a JSON parser in the matcher algebra, syntax invented, alternatives weighed
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: mini-parser-spike
+  issue: gh:77
+  title: Spike -- an arithmetic-expression parser over tokens, no invented syntax, runs on all seven backends
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: result-type-design
+  issue: gh:72
+  title: Grill Result<T, E> vs a matcher tri-state (MatchResult sketch) -- one session settles both
+  kind: decide
+  needs: []
+  prio: 2
+  status: done
+
+- id: prelude-precompile
+  issue: gh:73
+  title: Precompile the prelude into the binary at checked-TIR level
+  kind: build
+  needs: []
+  status: done
+
+- id: partial-chain-peel-build
+  issue: gh:74
+  title: Partial chains peel the declared Opt element into their arms
+  kind: build
+  needs: [partial-chain-expectation-decision]
+  prio: 2
+  status: done
+
+- id: parser-floor-strings
+  issue: gh:75
+  title: Parser floor 1 -- character classes, complement, join, unicode
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: jq-mutual-recursion
+  issue: gh:79
+  title: jq backend -- four-function cycles are unrepresentable; refuse cleanly or support
+  kind: build
+  needs: []
+  status: done
+
+- id: char-literals-and-bools
+  issue: gh:80
+  title: Decide Char literals and and/or/not -- the floor escalation from gh:75
+  kind: decide
+  needs: []
+  prio: 3
+  status: done
+
+- id: custom-build-clippy-scope
+  issue: gh:81
+  title: Scope the clippy pass past build.rs's duplicated target -- gh:73's escalation
+  kind: build
+  needs: []
+  status: done
+
+- id: composite-equality
+  issue: gh:68
+  title: Decide composite == -- structural everywhere or refused; today the backends disagree
+  kind: decide
+  needs: []
+  prio: 2
+  status: done
+
+- id: result-in-prelude
+  issue: gh:82
+  title: Result<T, E> joins the prelude -- declaration, docs, corpus
+  kind: build
+  needs: [result-type-design]
+  status: done
+
+- id: emuto-survey
+  issue: gh:84
+  title: Survey kantord/emuto -- the predecessor, adopt/avoid/superseded
+  kind: build
+  needs: []
+  status: done
+
+- id: vec-sort-reverse
+  issue: gh:86
+  title: sort and reverse as Vec builtins -- settled design, unimplemented (emuto survey adopt)
+  kind: build
+  needs: []
+  status: done
+
+- id: structural-equality-build
+  issue: gh:95
+  title: Structural equality on composites everywhere, with the ordering pin
+  kind: build
+  needs: [composite-equality]
+  prio: 2
+  status: done
+
+- id: bool-keywords-build
+  issue: gh:96
+  title: and/or/not keywords, or context-splitting between arms and booleans
+  kind: build
+  needs: [char-literals-and-bools]
+  prio: 2
+  status: done
+
+- id: string-type-spike
+  issue: gh:100
+  title: Spike the ideal Str -- JSON-compliant, simple internals, per-backend realities
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: fmt-pipeline-column
+  issue: gh:101
+  title: fmt -- one pipeline stage per line, pipe-first vertical column, resweep
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: euler-examples-21-30
+  issue: gh:92
+  title: Euler stream batch 3 -- problems 21-30, gates annotated
+  kind: build
+  needs: [euler-examples-11-20]
+  status: done
+
+- id: parser-floor-recursion
+  issue: gh:76
+  title: Parser floor 2 -- recursive enums, mutually recursive functions
+  kind: build
+  needs: []
+  soft: [parser-floor-strings]
+  prio: 2
+  status: done
+
+- id: toylang-fmt
+  issue: gh:78
+  title: toylang fmt -- pretty-print backend and binary, examples formatted by default
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: record-order-relaxation
+  issue: gh:60
+  title: Record field order leaves type identity -- reordered spellings are one type, order stays metadata
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: nullary-functions
+  issue: gh:61
+  title: Nullary functions -- fn name() -> T = body, and the three contrived fixtures go back to one-liners
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: opt-as-enum
+  issue: gh:62
+  title: Opt becomes a prelude enum -- generic enums, tagged absence, null only at serialization (plan first)
+  kind: build
+  needs: []
+  soft: [matcher-totality-and-alt-design]
+  model: fable
+  prio: 2
+  status: done
+
+- id: record-docs-order-sweep
+  issue: gh:65
+  title: Two doc pages stop claiming order is type identity (#60 prose follow-up)
+  kind: build
+  needs: [record-order-relaxation]
+  status: done
+
+- id: euler-examples-11-20
+  issue: gh:67
+  title: Euler stream batch 2 -- problems 11-20 where the language suffices, gates annotated
+  kind: build
+  needs: [euler-examples-1-10]
+  status: done
+
+- id: field-names-accessor
+  issue: gh:63
+  title: Runtime field-order metadata -- the field_names-style accessor (better name wanted)
+  kind: build
+  needs: [record-order-relaxation]
+  status: done
+
+- id: container-boundary-reorder
+  issue: gh:64
+  title: Record reorder reconciliation through Vec/Opt/Stream element boundaries
+  kind: build
+  needs: [record-order-relaxation]
+  status: done
+
+- id: int64-surface-design
+  title: Grill Int64's surface -- literal spelling, coercions, overflow semantics, with real code
+  kind: decide
+  needs: [second-int-type-design]
+  prio: 2
+  status: done
+
+- id: int64-build
+  issue: gh:83
+  title: Build Int64 across the backends per the surface session
+  kind: build
+  needs: [int64-surface-design]
+  model: fable
+  status: done
+
+- id: euler-data-problems
+  issue: gh:69
+  title: Euler data problems via runtime input fixtures -- 8, 11, 13, 18
+  kind: build
+  needs: [euler-given-data-rule]
+  status: done
+
+- id: examples-section-folders
+  issue: gh:70
+  title: Examples grows folders -- Test cases and Coding Puzzles, deep links stable
+  kind: build
+  needs: []
+  status: done
+
+- id: dev-section-roots-fix
+  title: Bare section roots resolve per-section in dev (maintainer bug report, fixed directly)
+  kind: build
+  needs: []
+  status: done
+
+- id: opt-boundary-reorder
+  issue: gh:66
+  title: Record reorder reconciliation through Opt -- needs a new checker/backend primitive, not a mechanical extension of #64
+  kind: build
+  needs: [container-boundary-reorder]
+  soft: [opt-as-enum]
+  status: done
+
+- id: precedent-survey
+  issue: gh:36
+  title: Survey how Rust and others treat field order, flatten naming, overloading, traits
+  kind: build
+  needs: []
+  status: done
+
+- id: soa-map-field-bug
+  issue: gh:40
+  title: Native cannot lower a Vec-typed record field read inside map
+  kind: build
+  needs: []
+  status: done
+
+- id: second-int-type-design
+  issue: gh:38
+  title: Decide the second integer type -- two Euler problems overflow Int
+  kind: decide
+  needs: []
+  status: done
+
+- id: euler-given-data-rule
+  issue: gh:39
+  title: Decide the clean-room boundary for problem-given data like Euler 8's digits
+  kind: decide
+  needs: []
+  status: done
+
+- id: opt-nesting-semantics
+  issue: gh:29
+  title: Ratify Opt<Opt> -- refuse nesting, or document the collapse
+  kind: decide
+  needs: []
+  prio: 2
+  status: done
+
+- id: opt-docs-unpacking
+  issue: gh:91
+  title: Unpack the Opt reference -- why absence has no representation, with the Rust Option comparison
+  kind: build
+  needs: [opt-as-enum]
+  status: done
+
+- id: record-order-strictness
+  issue: gh:24
+  title: Ratify or relax -- are reordered record spellings distinct types?
+  kind: decide
+  needs: [precedent-survey]
+  prio: 2
+  status: done
+
+- id: draft-split-decision
+  issue: gh:120
+  title: "Decided (maintainer compose note): split into per-section migration tasks, each removes its own part; final review task blocked on all of them"
+  kind: decide
+  needs: []
+  prio: 4
+  status: done
+
+- id: frontend-cleanups
+  issue: gh:6
+  title: Front-end cleanups from the typed-streams review
+  kind: build
+  needs: []
+  status: done
+
+- id: crate-simplification-survey
+  issue: gh:13
+  title: Survey crates that would reduce hand-rolled compiler complexity
+  kind: build
+  needs: []
+  status: done
+
+- id: checker-structure-survey
+  issue: gh:32
+  title: Survey how compilers structure the checker layer -- strategies, pitfalls, crates
+  kind: build
+  needs: []
+  status: done
+
+- id: cognitive-complexity-lesson
+  issue: gh:25
+  title: Write the cognitive-complexity lesson (look at the shape, not the number)
+  kind: build
+  needs: []
+  status: done
+
+- id: check-rs-split-decision
+  title: "Decide how to split src/check.rs (1874 lines, budget 1000; synth() and check() also over the line/complexity limits) -- inherited debt, predates issue #14"
+  kind: decide
+  needs: [checker-structure-survey]
+  status: done
+
+- id: check-rs-split-build
+  issue: gh:51
+  title: Extract the two self-contained checker passes; the core becomes the sinkhole's first exemption
+  kind: build
+  needs: [check-rs-split-decision, type-flow-rework]
+  status: done
+
+- id: quality-hooks-introduction
+  issue: gh:12
+  title: Introduce the hooks per the adopted proposal, steps 1-3
+  kind: build
+  needs: [quality-practices-adoption]
+  status: done
+
+- id: sinkhole-machinery
+  issue: gh:54
+  title: Adopt the sinkhole rule -- the ratified check.rs exemption is the pressure
+  kind: build
+  needs: [quality-hooks-introduction]
+  status: done
+
+- id: sinkhole-hardening
+  issue: gh:56
+  title: Sinkhole hardening -- re-check every kind, catch cfg_attr allows, dedup the budget math
+  kind: build
+  needs: [sinkhole-machinery]
+  status: done
+
+- id: okf-invalid-lesson
+  issue: gh:42
+  title: Settle the okf-invalid SKILL.md finding -- check scope or OKF adoption for skills
+  kind: build
+  needs: []
+  status: done
+
+- id: mail-ack-vs-request
+  issue: gh:57
+  title: Action-first inbox -- category subfolders, default view hides status noise, acks visually muted
+  kind: build
+  needs: [mail-app-v2]
+  status: done
+
+- id: wizard-ui-polish
+  issue: gh:43
+  title: Wizard UI polish -- previews get real room; unify the color-block renderer
+  kind: build
+  needs: [mail-app-v2]
+  status: done
+
+- id: board-graph-force-layout
+  issue: gh:59
+  title: Board graph goes force-directed -- the column layout is unusable for dependency reading
+  kind: build
+  needs: [board-page-v2]
+  status: done
+
+- id: wizard-submit-resilience
+  issue: gh:46
+  title: Wizard submit survives a dead dev server -- draft persistence, retry, honest failure
+  kind: build
+  needs: [static-site-split]
+  soft: [wizard-ui-polish]
+  status: done
+
+- id: mail-app-cleanups
+  issue: gh:49
+  title: Mail app small cleanups from the landing review
+  kind: build
+  needs: [mail-app-v2]
+  status: done
+
+- id: docs-site-design
+  title: Grill the docs site generalization -- page types, navigation, content provenance
+  kind: decide
+  needs: []
+  status: done
+
+- id: docs-site-build
+  issue: gh:11
+  title: Generalize the site per plans/docs-site.md -- fence harness, Diataxis nav, complete reference
+  kind: build
+  needs: [docs-site-design]
+  status: done
+
+- id: recursive-enum-codegen
+  issue: gh:94
+  title: Recursive enum values -- backends must learn the checker's self-reference stub
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: reparameterized-self-reference
+  issue: gh:117
+  title: Re-parameterized generic self-reference must terminate or be refused (issue-94 review)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: fmt-project-wide
+  issue: gh:103
+  title: fmt -- recursive project-wide check mode, --write to rewrite, filter form kept
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: euler-ergonomics-review
+  issue: gh:104
+  title: Review the Euler solutions against other languages; propose ergonomics improvements
+  kind: build
+  model: fable
+  needs: []
+  prio: 2
+  status: done
+
+- id: prelude-inventory
+  issue: gh:105
+  title: Inventory -- what could move to the prelude, feasibility and payoff per item
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: board-graph-hide-done
+  issue: gh:109
+  title: Board graph hides done tasks by default -- the live-work view
+  kind: build
+  model: haiku
+  needs: []
+  soft: [plan-approval-flow]
+  prio: 2
+  status: done
+
+- id: plan-approval-flow
+  issue: gh:110
+  title: Plans gain a proposed status with web approve / needs-changes, grill-flow style
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: annotations-save-lock
+  issue: gh:115
+  title: The save endpoint serializes writes like its note/compose siblings (issue-110 review)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: fmt-walk-hardening
+  issue: gh:111
+  title: fmt walk skips target/-like dirs by name; pin the unreadable-file case
+  kind: build
+  model: haiku
+  needs: []
+  status: done
+
+- id: board-archive
+  issue: gh:113
+  title: Done rows move to plans/board-archive.yaml; an absent needs id reads as satisfied
+  kind: build
+  needs: []
+  prio: 2
+  status: done

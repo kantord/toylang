@@ -12,7 +12,7 @@ import {
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 
-import { BOARD, type Task } from "@dev/lib/board"
+import { ALL_TASKS, BOARD, type Task } from "@dev/lib/board"
 import { TaskCard, TaskLegend } from "@dev/components/board/TaskCard"
 import { Button } from "@/components/ui/button"
 
@@ -206,19 +206,17 @@ function TaskNodeView({ data }: NodeProps<TaskNode>) {
 const NODE_TYPES = { task: TaskNodeView }
 
 /**
- * The board as a dependency graph: one node per plans/board.yaml row, edges from `needs`, color
- * by status, blocked todo tasks (a need not yet done) as the primary highlight, the unblocked
- * frontier picked out with a ring. Read-only -- panning/zooming aside, the only interaction is
- * following a node's issue link. By default hides done tasks to show only active work and its
- * blocking relationships; a toggle reveals the full history.
+ * The board as a dependency graph: one node per row, edges from `needs`, color by status,
+ * blocked todo tasks (a need not yet done) as the primary highlight, the unblocked frontier
+ * picked out with a ring. Read-only -- panning/zooming aside, the only interaction is following
+ * a node's issue link. By default shows only the live board (plans/board.yaml), which is
+ * already the not-done view (issue #113: done rows live in board-archive.yaml); a toggle adds
+ * the archive back in for the full history.
  */
 export function GraphView() {
   const [showDone, setShowDone] = useState(false)
 
-  const filteredTasks = useMemo(
-    () => (showDone ? BOARD : BOARD.filter((t) => t.status !== "done")),
-    [showDone],
-  )
+  const filteredTasks = useMemo(() => (showDone ? ALL_TASKS : BOARD), [showDone])
 
   const edges = useMemo(() => edgesFrom(filteredTasks), [filteredTasks])
   const nodes = useMemo(() => layout(filteredTasks, edges), [edges, filteredTasks])

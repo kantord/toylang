@@ -1,11 +1,12 @@
 # Checker structure survey
 
-Issue #32, feeding [`check-rs-split-decision`](board.yaml). `src/check.rs` is 2049 lines today
-(`wc -l`, 2026-08-28), already the largest file in the crate and one of the three files
+Issue #32, feeding [`check-rs-split-decision`](board-archive.yaml). `src/check.rs` is 2049 lines
+today (`wc -l`, 2026-08-28), already the largest file in the crate and one of the three files
 `max_file_lines = 1000` was set to name (`.claude/checks/limits.toml`'s comment lists
 `emit_llvm.rs`, `check.rs`, `emit_rs.rs`). It has grown since the split decision was filed: the
-board item recorded 1874 lines (`plans/board.yaml:293`), so 175 more have landed without the
-[type-flow rework](type-flow.md) even starting (`status: todo`, `plans/board.yaml:187`). That
+board item recorded 1874 lines (`plans/board-archive.yaml:616`), so 175 more have landed without
+the [type-flow rework](type-flow.md) even starting (`status: todo` when written,
+`plans/board-archive.yaml:239`). That
 rework is not a one-off addition; it grows exactly the part of the file most under discussion
 here, so any split has to survive the file's current trajectory, not just its current size.
 
@@ -211,8 +212,9 @@ split would pull apart.
 sinkhole mechanism ([plans/quality-practices.md, piece 7](quality-practices.md#7-the-sinkhole-rule-adopt-in-principle-last-in-order))
 is the vocabulary for exactly this: an exemption that costs a deliberate move and carries a
 written argument, rather than a budget nobody expects the file to meet. It has not been built yet
-(`sinkhole-machinery`, `plans/board.yaml:305-309`, `status: todo`, blocked only on the already-
-`done` `quality-hooks-introduction`). Recommending exemption for the fused core makes this
+(`sinkhole-machinery`, `plans/board-archive.yaml:635-640`, `status: todo` when written, blocked
+only on the already-`done` `quality-hooks-introduction`; both rows have since landed). Recommending
+exemption for the fused core makes this
 checker the mechanism's first real case, which the quality-practices survey said explicitly it
 was waiting for (`plans/quality-practices.md:217-220`: "a sinkhole rule with no lints that tempt
 anyone is machinery without a purpose"). The phase split above is still worth doing regardless of
