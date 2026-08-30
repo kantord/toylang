@@ -65,8 +65,12 @@ OUT="$LOG_DIR/$TS-${1:-tick}-$MODEL.json"
 echo "[drive-tick] $(date '+%H:%M:%S') ${1:-tick} starting on $MODEL (log: $OUT)"
 
 run_tick() { # $@: extra claude args (--resume <id> or nothing)
-  claude -p --model "$MODEL" --permission-mode auto --output-format json \
-    "$@" "$PROMPT" >"$OUT" 2>>"$LOG_DIR/errors.log"
+  # stream-json + the colorizer keeps the loop terminal a live, readable trace;
+  # the colorizer writes the final result event to $OUT for the context watch.
+  claude -p --model "$MODEL" --permission-mode auto \
+    --output-format stream-json --verbose \
+    "$@" "$PROMPT" 2>>"$LOG_DIR/errors.log" \
+    | python3 "$REPO/.claude/scripts/tick-stream.py" "$OUT"
 }
 
 SID=""
@@ -84,12 +88,9 @@ python3 - "$OUT" "$SID_FILE" "$MAX_CONTEXT" <<'EOF'
 import json, sys, os, glob
 out, sid_file, max_ctx = sys.argv[1], sys.argv[2], int(sys.argv[3])
 try:
-    r = json.load(open(out))
-    sid = r.get("session_id")
+    sid = json.load(open(out)).get("session_id")
 except Exception:
     sys.exit(0)
-verdict = " ".join((r.get("result") or "").split())
-print(f"[drive-tick] {verdict[:300]}" if verdict else "[drive-tick] (no result text)")
 ctx = 0
 paths = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sid}.jsonl"))
 for line in open(paths[0]) if paths else []:
