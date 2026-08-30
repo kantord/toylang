@@ -117,6 +117,16 @@ promote)
   touch "$LOG_DIR/promoting-$B"
   trap 'rm -f "$LOG_DIR/promoting-$B"' EXIT
   TIP=$(git -C "$REPO" rev-parse "$B")
+  # Racing promotes serialize on the flock; the loser must notice the work
+  # already landed instead of re-merging it (two identical merge commits on
+  # main, twice on 2026-08-30).
+  if git -C "$REPO" merge-base --is-ancestor "$TIP" main; then
+    echo "[promote] $B is already contained in main -- nothing to do"
+    git -C "$REPO" branch -d "$B" 2>/dev/null \
+      && git -C "$REPO" worktree remove --force "$LANES/.acc-$B" 2>/dev/null
+    git -C "$REPO" push origin --delete "$B" 2>/dev/null || true
+    exit 0
+  fi
   MSG="Land $B: promote $(git -C "$REPO" rev-list --count "main..$TIP") commits ($(changed_lines "$B") changed lines)"
   TMP="promote-$(date +%s)"
   PDIR="$LANES/.promote"
