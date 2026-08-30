@@ -340,7 +340,7 @@
   kind: build
   needs: []
   prio: 1
-  status: todo
+  status: done
 
 - id: worker-pool-reuse
   issue: gh:124
