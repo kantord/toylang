@@ -30,7 +30,7 @@ workloads. Ruled out on the license constraint alone.
 of licenses it does not itself clear, and it is a test-runner, not a set of small programs meant
 to be rewritten in a new language. Wrong shape as well as unclear license on the payload.
 
-**TechEmpower Web Framework Benchmarks.** Clean license (repo is Apache-2.0), but the whole suite
+**TechEmpower Web Framework Benchmarks.** Clean license (repo is BSD-3-Clause), but the whole suite
 is HTTP round-trip / JSON serialization / DB-query shaped, aimed at comparing web frameworks.
 toylang has no HTTP or database story; nothing in this suite exercises what the language does.
 
