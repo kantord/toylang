@@ -12,9 +12,13 @@ Do not ping for intermediate progress or ask permission to review or merge.
 
 ## 1. Confirm the work is actually finished
 
-- The session's process has exited (check for a `claude` process whose cwd is the worktree),
-  or the tree is clean with every planned commit present. A live session with a clean tree
-  may still be verifying -- prefer waiting for exit over racing it for the cargo lock.
+- The session's process has exited (check for a `claude` or `opencode` process whose cwd is
+  the worktree -- opencode is the delegation default since 2026-08-30, claude covers
+  in-flight pre-ruling lanes), or the tree is clean with every planned commit present. A
+  live session with a clean tree may still be verifying -- prefer waiting for exit over
+  racing it for the cargo lock. An opencode worker's quality problems found during landing
+  (review findings traceable to the worker, red suites, half-done work) additionally get a
+  row in plans/opencode-rollout.md's incident table.
 - Run `just test` in the worktree. A red suite goes back to the session (or gets fixed here
   if the session is gone and the fix is small); never review a red branch as if it were done.
 

@@ -41,13 +41,21 @@ wake-ups -- scheduling belongs to the loop script. Every tick:
 
 ## Stall diagnosis, learned the hard way
 
-The dead-worker signature: the newest file in the session's tool-results dir is its own
-session-start hook message -- the worker died (usually machine suspend) and a fresh idle
-session auto-spawned. A worktree whose tree is fully STAGED by a dead worker may be verified
-(suite + build) and committed by the coordinator directly, with the commit message saying so;
-uncommitted half-done work gets a continuation dispatch into the same env whose brief says to
-read ALL issue comments and assess the existing diff. File-write mtimes and commit times are
-the truth; transcript timestamps lie.
+The dead-worker signature (claude-era lanes, still live during the rollout transition):
+the newest file in the session's tool-results dir is its own session-start hook message --
+the worker died (usually machine suspend) and a fresh idle session auto-spawned. A worktree
+whose tree is fully STAGED by a dead worker may be verified (suite + build) and committed by
+the coordinator directly, with the commit message saying so; uncommitted half-done work gets
+a continuation dispatch into the same env whose brief says to read ALL issue comments and
+assess the existing diff. File-write mtimes and commit times are the truth; transcript
+timestamps lie.
+
+An opencode worker's process exiting IS its turn ending -- there is no idle session left
+behind. Diagnose from its event log (`~/.cache/toylang-drive/opencode/*-<lane>.jsonl`): the
+last events say what it was doing. Uncommitted work continues via
+`opencode run --session <sessionID>` with a correction message (full context retained);
+anything that smells like a worker-quality problem gets a row in
+plans/opencode-rollout.md's incident table -- that log is the rollout's evidence base.
 
 Board-editing scripts match a row id ONLY with its terminator -- `'- id: <slug>\n'`, never a
 bare prefix: `- id: nullary-functions` also matches `nullary-functions-decision`, and the
@@ -101,12 +109,16 @@ row before it gets a branch.
    - `build` entries: make sure a GitHub issue carries the spec (file one if the row has
      none), then delegate via the `enwiro-delegate` skill -- worker-pool lane first
      (its section 0; gh:124), fresh env only for one-offs -- and set `status: delegated`
-     plus `lane: lane-<N>` when a pool lane took it; run
-     on sonnet unless the row says otherwise. Three tiers (maintainer rule, 2026-08-30):
-     `model: haiku` for mechanical work with an obvious done-state (renames, sweeps, small
-     config/UI tweaks -- cheaper and faster beats smarter there), sonnet for regular build
-     work, `model: fable` for design-heavy or cross-cutting builds. When boarding a row,
-     assign the cheapest tier the task plausibly survives review on; the landing review is
+     plus `lane: lane-<N>` when a pool lane took it. ALL delegated builds run
+     opencode + DeepSeek V4 Flash through `.claude/scripts/opencode-worker.sh`
+     (maintainer ruling, 2026-08-30: claude-code delegation is retired -- no new
+     delegated work on claude code, no exceptions for tier or size, until the
+     re-evaluation gate in plans/opencode-rollout.md at ~30 landed opencode lanes).
+     The board's model tiers are dormant for builds during the rollout. Two standing
+     obligations travel with the ruling: EVERY rollout incident (retry, stall, review
+     finding traceable to the worker, abandoned lane) gets a row in the rollout log's
+     incident table, and when the landed-lane count reaches ~30 the coordinator boards
+     the `opencode-rollout-review` decide row. The landing review is
      the safety net either way. Footprint conflicts are SOFT BLOCKER
      EDGES on the board (file-level -- a folder is not a footprint; that lesson cost a lane
      of parallelism once), not ad-hoc judgment: when a conflict is discovered at dispatch
