@@ -44,9 +44,12 @@ for r in yaml.safe_load(open('plans/board.yaml')):
   dirty=$(git -C "$d" status --porcelain 2>/dev/null | wc -l)
   if [ "$ahead" -gt 0 ] && [ "$dirty" -eq 0 ]; then
     # Quiet for 8 minutes (lane-watch's old threshold) means done, not pausing.
+    # Both signals matter: committing touches no working-tree mtimes, so a lane
+    # that edits, tests for ten minutes, then commits looks file-quiet already.
     recent=$(find "$d" -name .git -prune -o -name target -prune -o -type f \
       -newermt '-8 minutes' -print -quit 2>/dev/null)
-    [ -z "$recent" ] && MODEL=fable
+    commit_age=$(( $(date +%s) - $(git -C "$d" log -1 --format=%ct 2>/dev/null || echo 0) ))
+    [ -z "$recent" ] && [ "$commit_age" -ge 480 ] && MODEL=fable
   fi
 done
 
@@ -73,22 +76,32 @@ fi
 [ -n "$SID" ] || run_tick
 
 # Observe the context from outside: keep the session while it is small, drop it
-# (fresh session next tick) once the last request's context crossed MAX_CONTEXT.
+# (fresh session next tick) once it crosses MAX_CONTEXT. The result JSON's usage
+# is cumulative across turns, so the real context size is the LAST usage entry in
+# the session transcript: what the final request actually carried.
 python3 - "$OUT" "$SID_FILE" "$MAX_CONTEXT" <<'EOF'
-import json, sys, os
+import json, sys, os, glob
 out, sid_file, max_ctx = sys.argv[1], sys.argv[2], int(sys.argv[3])
 try:
-    r = json.load(open(out))
+    sid = json.load(open(out)).get("session_id")
 except Exception:
     sys.exit(0)
-sid = r.get("session_id")
-u = r.get("usage", {}) or {}
-ctx = sum(u.get(k, 0) for k in
-          ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
-if sid and ctx < max_ctx:
+ctx = 0
+paths = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sid}.jsonl"))
+for line in open(paths[0]) if paths else []:
+    try:
+        u = json.loads(line).get("message", {}).get("usage")
+    except Exception:
+        continue
+    if u:
+        ctx = sum(u.get(k, 0) for k in
+                  ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+if sid and 0 < ctx < max_ctx:
     open(sid_file, "w").write(sid)
+    keep = True
 else:
     try: os.remove(sid_file)
     except FileNotFoundError: pass
-print(f"session {sid} context~{ctx} keep={bool(sid and ctx < max_ctx)}")
+    keep = False
+print(f"session {sid} context~{ctx} keep={keep}")
 EOF
