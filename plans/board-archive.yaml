@@ -969,3 +969,12 @@
   kind: decide
   needs: []
   status: done
+
+- id: jq-printer-cycle-refusal
+  issue: gh:116
+  title: jq -- recursive-enum printers refuse a mutual cycle the way ordered() refuses one (issue-94 review)
+  kind: build
+  needs: []
+  prio: 3
+  soft: [concat-retirement]
+  status: done
