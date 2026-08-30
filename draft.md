@@ -3,58 +3,6 @@
 **Status: exploratory. Everything here is provisional.** This is a thinking document, not a
 specification. Syntax is illustrative; several core decisions are still open (see the end).
 
-## What this is
-
-A compiled, statically typed language derived from the jq family -- a jq dialect that keeps
-jq's semantics as its reference while extending and generalizing them, aspiring to be a real
-language rather than a study.
-
-- **Data-oriented.** JSON is the native value model, not a library, and data orientation is
-  the organizing principle: transformation, selection, and querying of data are how programs
-  are structured, not one feature among many.
-- **Compiled**, with seven backends (native/LLVM, JavaScript, Lua, jq, Go, Python, Rust) --
-  kept as falsifiers of the design rather than as a compatibility promise (ADR 0002).
-- **Rust-like syntax**, aiming at a version of Go's simplicity without following it into the
-  absurd: where Go's refusals cost too much, ideas come from Rust instead. Enums are the
-  first such import.
-- **The ambition is general-purpose** -- eventually HTTP servers, GUIs, web frontends, shell
-  scripts -- but through a deliberate sequence. The beachhead is CLI data transformation,
-  where the dogfood test is concrete: it replaces jq in its author's own shell. Shell
-  scripting is the first area to expand into after that. Result-set-oriented tooling (an
-  editor whose buffer is a query result) stays on the long horizon, and nearer-term design
-  decisions must not foreclose it.
-
-Aspiring to be real puts weight on claims that a study could leave as prose: the performance
-thesis (columnar, vectorized, faster than jq's boxed-iterator-per-step ceiling) is a
-commitment that will eventually owe benchmarks, and positioning worries like
-[recursive descent's cost](plans/questions.md#q7-does--promise-depth-first-order-or-only-the-set-of-nodes) are
-real product concerns, not rhetorical ones.
-
-The front end is written from scratch. See `plans/prototype_1.md`.
-
-This reverses an earlier plan to fork jaq's front end and replace only its interpreter. That
-plan rested on two things and both failed once the design settled. The ~640-assertion test
-corpus only mattered while jq compatibility was a target, and it is now a non-goal, so it is a
-suite nobody is trying to pass. And jaq's parser and 28-node `Term` IR encode jq's *surface
-syntax*, while this language's syntax is Rust-like, so almost nothing survives the translation.
-
-What remains true from that analysis is the diagnosis rather than the remedy. jaq's interpreter
-allocates a boxed iterator per evaluation step, and that allocation is the performance ceiling a
-compiler removes. jq stays a reference for semantics, not a conformance target.
-
-## Two guiding principles
-
-**1. Do not erase boundaries.** When a structural distinction exists, keep it in the type
-rather than flattening it away. If a computation crosses a boundary, the crossing is written
-down. Corollaries appear throughout: `[...]` is an explicit operator rather than an implicit
-coercion, a tuple of streams beats a concatenated stream with a phantom type parameter, and
-`Json` is a named type rather than a permissive escape hatch.
-
-**2. Symmetry.** The type-level guarantee and the runtime guarantee must be the *same*
-guarantee. If the type system claims two things are distinguishable, the runtime must be able
-to distinguish them, and vice versa. A guarantee that exists only at one level is a bug in
-the design.
-
 ## The core idea: two layers
 
 ### Vocabulary
@@ -125,14 +73,6 @@ of this document read as contradicting each other here. The alternative, streams
 first-class values, would have meant three things to track (`Vec`, a `Stream` value, and
 effect multiplicity) and a held value of genuinely unknown extent. See
 [the decision](#decided-stream-is-the-effect-layer-typed) for the full rules.
-
-## Values
-
-```
-null   true   42   3.14   "text"   [1, 2, 3]   {name: "ada", age: 36}
-```
-
-The JSON value forms, with `Str` a real string type rather than an untyped blob.
 
 ## Cardinality is part of the type
 
@@ -1277,35 +1217,6 @@ itself resolve the cardinality question.
 Leaning towards B, because it makes the hazard a type error rather than a naming problem, and
 the explicit form already exists and reads better. But this interacts with open question 2,
 whether binary operators are cartesian, zipped, or explicit, so it should not be settled alone.
-
-## Two worked programs
-
-Shell, counting errors per service, streaming, in constant memory:
-
-```
-#!/usr/bin/env toylang
-stdin.lines
-  | parse_json?                              # skip malformed lines
-  | select(.level == "ERROR")
-  | fold {} with (acc, e) -> acc[e.service] += 1
-  | to_entries | sort_by(-.value) | .[]
-  | "\(.key)\t\(.value)"
-```
-
-Editor, where the buffer is a query result:
-
-```
-fn view(project: Project) -> Vec<Row> =
-    [ project.files[]
-      | .diagnostics[]
-      | select(.severity >= WARN)
-      | {file: ^.path, line: .line, text: .msg} ]
-
-on "]q" -> cursor.next()
-on "gf" -> open(cursor.get().file, cursor.get().line)
-```
-
-There is no buffer, only a reified search.
 
 ## Why cardinality-in-the-type is the safety mechanism
 
@@ -2567,10 +2478,3 @@ Ordering is untouched, and still disagrees. `<` on a record typechecks today; th
 then refuse to compile it, two fail at runtime, and two answer -- jq by its own document order,
 JS by comparing the string `[object Object]` against itself. Whether composites are ordered at
 all is a question nobody has been asked, and this decision does not answer it.
-
-## Non-goals
-
-- JavaScript semantic compatibility. Prototype chains, `this` binding, coercion, and array
-  holes are explicitly not wanted.
-- Being jq. Compatibility with a subset of jq's *semantics* is a starting point and a test
-  corpus, not a constraint on the finished language.

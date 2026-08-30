@@ -9,7 +9,7 @@ import { PAGES, type Page, type Section } from "@/lib/docs"
 import { embeddedCasesFor } from "@/lib/pageData"
 import { cn } from "@/lib/utils"
 
-const SECTIONS: Section[] = ["tutorial", "guides", "reference", "grill", "examples"]
+const SECTIONS: Section[] = ["overview", "tutorial", "guides", "reference", "grill", "examples"]
 
 /**
  * The dev-only annotations mode (kantord/toylang#23), now its own page rather than a toggle on
