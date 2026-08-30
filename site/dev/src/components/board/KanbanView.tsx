@@ -1,4 +1,4 @@
-import { ARCHIVE, BOARD, type Status, type Task } from "@dev/lib/board"
+import { ALL_TASKS, type Status, type Task } from "@dev/lib/board"
 import { TaskCard } from "@dev/components/board/TaskCard"
 
 const COLUMNS: { status: Status; label: string }[] = [
@@ -15,7 +15,7 @@ const COLUMNS: { status: Status; label: string }[] = [
  */
 export function KanbanView() {
   const byStatus = new Map<Status, Task[]>(COLUMNS.map((c) => [c.status, []]))
-  for (const t of [...BOARD, ...ARCHIVE]) byStatus.get(t.status)?.push(t)
+  for (const t of ALL_TASKS) byStatus.get(t.status)?.push(t)
 
   return (
     <div className="grid gap-4 sm:grid-cols-3">

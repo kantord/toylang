@@ -12,7 +12,7 @@ import {
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 
-import { ARCHIVE, BOARD, type Task } from "@dev/lib/board"
+import { ALL_TASKS, BOARD, type Task } from "@dev/lib/board"
 import { TaskCard, TaskLegend } from "@dev/components/board/TaskCard"
 import { Button } from "@/components/ui/button"
 
@@ -216,7 +216,7 @@ const NODE_TYPES = { task: TaskNodeView }
 export function GraphView() {
   const [showDone, setShowDone] = useState(false)
 
-  const filteredTasks = useMemo(() => (showDone ? [...BOARD, ...ARCHIVE] : BOARD), [showDone])
+  const filteredTasks = useMemo(() => (showDone ? ALL_TASKS : BOARD), [showDone])
 
   const edges = useMemo(() => edgesFrom(filteredTasks), [filteredTasks])
   const nodes = useMemo(() => layout(filteredTasks, edges), [edges, filteredTasks])

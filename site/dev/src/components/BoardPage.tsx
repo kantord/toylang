@@ -14,8 +14,10 @@ export function BoardPage() {
   return (
     <div className="space-y-4">
       <p className="max-w-2xl text-sm text-muted-foreground">
-        <code className="rounded bg-muted px-1 py-0.5 text-xs">plans/board.yaml</code> as a
-        dependency graph or a kanban: what is done, what is being worked on, and what is next in
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">plans/board.yaml</code> (live
+        work, with landed rows from{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">plans/board-archive.yaml</code>) as
+        a dependency graph or a kanban: what is done, what is being worked on, and what is next in
         line.
       </p>
       <PlansPanel />
