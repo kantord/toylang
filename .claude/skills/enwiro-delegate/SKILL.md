@@ -68,35 +68,23 @@ i3-msg "workspace \"$prev\"" >/dev/null
 
 (`enw activate` yanks focus: capture the workspace BEFORE and switch back last.)
 
-### The brief (opencode workers need more of it than claude workers did)
+### The brief: dispatch-worker.sh wraps the boilerplate (2026-08-30)
 
-An opencode session reads AGENTS.md natively but gets NONE of the claude-side context:
-no global CLAUDE.md rules (the issue-linked-branches rule does not fire), no hooks, no
-memory. The brief carries everything, in this shape:
+An opencode session reads AGENTS.md natively but gets NONE of the claude-side context;
+the standard build boilerplate (role, AGENTS.md, gates, hard constraints, KNOWN
+DENIALS, ESCALATION.md protocol) lives IN dispatch-worker.sh and is wrapped around
+whatever you pass. So the dispatcher writes ONLY the task-specific middle:
 
-> You are a delegated worker for the toylang repository, in this git worktree on branch
-> issue-<N>. FIRST read AGENTS.md at the worktree root and follow it throughout,
-> including its commit rules. Your task is GitHub issue #<N>: run `gh issue view <N>`
-> and read every comment before touching anything. [One or two sentences locating any
-> in-repo source of truth.] While iterating, test with `just check` (the fast loop);
-> `just --list` names every repo task. Definition of done: [the concrete gates --
-> typically: implementation complete; `just check` green from the worktree root (a cold
-> worktree compiles first -- give it time, never abort it; the full `just test` runs at
-> promotion, not per lane); `just fmt` and `just clippy` clean on code you touched; work
-> committed on this branch per AGENTS.md with the
-> provenance line "Written by DeepSeek V4 Flash via opencode."]. Hard constraints: work
-> ONLY inside this worktree; do NOT push; do not touch plans/. If a command is denied,
-> adapt with an allowed alternative rather than retrying. KNOWN DENIALS: shell loop
-> constructs (while/for), heredocs, bash file writes (`>`/`>>` redirection), writes
-> under /tmp, and multi-command bash lines are always denied -- CREATE AND EDIT FILES
-> ONLY WITH YOUR write/edit TOOLS, one simple command per bash call, get file lists
-> with one grep/rg/ls call and handle files one per tool call, and run scripts
-> as `python3 script.py` after writing them with the write tool. If something needs deciding
-> that this brief does not settle, write ESCALATION.md at the worktree root -- the
-> question, the alternatives, their costs -- COMMIT it on this branch, take the most
-> conservative continuation, and keep going; never stop to wait for a human. If you
-> genuinely cannot continue at all, ESCALATION.md plus exiting IS the correct
-> done-state -- never commit broken work to look finished.
+- pointers to the in-repo source of truth (files, the ruling issue, existing patterns
+  to read first);
+- for a continuation after a failed run: what killed the last run (from its event
+  log) and the concrete adaptation, stated plainly at the top;
+- any extra done-gates beyond the standard ones.
+
+Two to five sentences. Do not restate the boilerplate -- it is added verbatim by the
+script (read it there when editing it; new denial classes are added there once, not
+per-brief). `BRIEF_RAW=1 dispatch-worker.sh ...` passes the brief through unwrapped
+for shapes the boilerplate does not fit (research dispatches below).
 
 (Escalation is a committed file, not a GitHub issue: workers have no `gh issue create`
 permission by design -- rollout incident #1, 2026-08-30 -- and a file on the branch is
@@ -109,8 +97,9 @@ main.)
 A deep dive -- why a backend misbehaves, why a lane died mid-task, what an odd test
 failure means -- is DELEGATED, never done by the coordinator in its own session:
 coordinator time is the expensive tier now, and reading a codebase is exactly what a
-cheap worker does well. Same `dispatch-worker.sh`, usually as a continuation into the
-lane that raised the question; only the brief changes:
+cheap worker does well. Same `dispatch-worker.sh` with `BRIEF_RAW=1` (the build
+boilerplate does not fit), usually as a continuation into the lane that raised the
+question; the brief is this shape in full:
 
 > You are a research worker for the toylang repository, in this git worktree. FIRST
 > read AGENTS.md. Your task is to ANSWER A QUESTION, not to fix anything: [the precise

@@ -195,10 +195,13 @@ if [ -z "$TRIGGER" ]; then
   exit 0
 fi
 
+# The POLICY is sent once per SESSION (ticks resume a cached session until it
+# crosses MAX_CONTEXT); resumed ticks send only the trigger + snapshot. Keep it
+# apostrophe-free -- it sits in single quotes.
 if [ "${1:-tick}" = "audit" ]; then
-  PROMPT='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has a live or accounted-for lane; no worktree holds unmerged commits the board thinks landed; no falsely-stuck lanes. Fix what is mechanical, file issues for the rest. End quietly if clean.'
+  POLICY='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has a live or accounted-for lane; no worktree holds unmerged commits the board thinks landed; no falsely-stuck lanes. Fix what is mechanical, file issues for the rest. End quietly if clean.'
 else
-  PROMPT='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. Reconstruct state from disk -- plans/board.yaml, the worktrees, the annotation stores -- and trust disk over anything remembered from earlier ticks. FIRST, before any landing or dispatch: poll BOTH annotation stores: docs/.annotations/inbox.json AND docs/.annotations/notes.json -- apply entries older than 5 minutes and clear them at capture, EXCEPT records whose page is a docs/.grill/*.round.yaml file: those are wizard submissions, explicit clicks, applied IMMEDIATELY with no quiet period; wizard submissions in docs/.grill/ process immediately (delete round files at capture). Maintainer input outranks every landing. THEN read board rows with status: delegated and check each lane worktree (commits, dirty files, live worker via pgrep cwd). Finished lanes (ahead, clean, worker gone) land via the land-delegated-work skill size-driven flow: diff read, then .claude/scripts/land-lane.sh fold <msgfile> <issues...> (fast gate; a full accumulator fires its own detached promotion) with board-archive.py for the row moves; run land-lane.sh promote <branch> yourself, DETACHED with nohup, only when the trigger names a stale accumulator. After landings, dispatch ready board rows into free lanes (cap 8; decide rows never consume a lane or a ready-set slot) with .claude/scripts/dispatch-worker.sh <N> "<brief>" -- the enwiro-free opencode default (claude delegation retired 2026-08-30; brief shape in the enwiro-delegate skill; record every rollout incident in plans/opencode-rollout.md). If the trigger says the round buffer is under-filled: compose the next wizard round BEFORE any landing -- an empty maintainer inbox outranks lane plumbing (landings and dispatches self-heal on later ticks; the maintainer grilling NOW does not). Read any already-pending round first and never re-ask its questions; keep two rounds buffered so the maintainer can grill back-to-back. Write docs/.grill/<topic>.round.yaml -- 3-5 ready decide rows batched by theme, each option carrying real verified code examples (the maintainer standing rule; delegate substantial example-preparation to a research worker rather than writing it all in-tick). NEVER edit a lane worktree source file, test, or snapshot yourself -- a dead or half-done lane gets a continuation or research dispatch (enwiro-delegate skill), no matter how small the fix looks (three coordinators hand-fixed issue-116 in one evening and each left it messier). FAILURE-STREAK POLICY (the snapshot carries runs= per lane): a lane at 2-3 commitless runs never gets a repeat of a failed brief -- read the LAST event log tail in ~/.cache/toylang-drive/opencode/ for the actual death (usually a permission auto-reject), and redispatch with that root cause spelled out in the brief. At 4+ commitless runs STOP: do not redispatch; write an escalation the maintainer will see in their mail -- a docs/.grill/ escalation-flow round question naming the lane, the repeated root cause, and the options (stronger OPENCODE_MODEL, reshape the task, drop it) -- then touch ~/.cache/toylang-drive/escalated-issue-<N> so the gate stays quiet; rm that marker when acting on the maintainer ruling. BOUND THE TICK: at most one round composition plus one landing, or up to three landings (a cascade counts as one) when no composition is due, then END the session even if more work is visible -- the loop and event ticks continue with fresh sessions; one session serially working a whole backlog blows far past the context ceiling, which is only enforced between ticks. If nothing changed, end quietly without writing anything.'
+  POLICY='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. This policy stands for every tick of this session; later ticks send only their trigger and snapshot. Trust disk over memory. ORDER: (1) Maintainer input first: poll docs/.annotations/inbox.json AND notes.json -- apply entries older than 5 minutes, clear at capture; records whose page is a docs/.grill/*.round.yaml are wizard submissions: apply IMMEDIATELY, delete the round file at capture. (2) If the trigger names an under-filled round buffer, compose the next wizard round BEFORE any landing (an empty maintainer inbox outranks lane plumbing): read pending rounds first and never re-ask them; keep two buffered; write docs/.grill/<topic>.round.yaml -- 3-5 ready decide rows batched by theme, every option carrying real verified code examples (delegate heavy example prep to a research worker). (3) Land finished lanes (ahead, clean, no live worker): diff read, then .claude/scripts/land-lane.sh fold <msgfile> <issues...>, board-archive.py for the row moves; run land-lane.sh promote <branch> DETACHED with nohup only when the trigger names a stale accumulator. (4) Dispatch ready build rows into free lanes (cap 8; decide rows use no lane): .claude/scripts/dispatch-worker.sh <N> "<brief>" -- brief shape per the enwiro-delegate skill; record every rollout incident in plans/opencode-rollout.md. RULES: never edit a lane worktree file yourself -- a dead or half-done lane gets a continuation or research dispatch, however small the fix looks. FAILURE STREAKS (snapshot carries runs= per lane): at 2-3 commitless runs read the last event log in ~/.cache/toylang-drive/opencode/ and rebrief with the actual root cause, never a repeat of a failed brief; at 4+ STOP -- no redispatch; write one escalation question into a docs/.grill/ round (the lane, the repeated root cause, options: stronger OPENCODE_MODEL, reshape, drop), touch ~/.cache/toylang-drive/escalated-issue-<N>, rm the marker when acting on the ruling. BOUND: one round composition plus one landing, or up to three landings (a cascade is one), then END the session even if more work is visible. Nothing changed: end quietly.'
 fi
 
 TS=$(date +%Y%m%d-%H%M%S)
@@ -209,23 +212,29 @@ import json
 d=json.load(open('docs/.annotations/inbox.json'))
 print(len(d.get('records',[])))" 2>/dev/null || echo '?')
 ROUNDS=$(ls docs/.grill/*.round.yaml 2>/dev/null | xargs -rn1 basename | tr '\n' ' ')
-PROMPT="$PROMPT Trigger for this tick: $TRIGGER. Pre-computed state snapshot (gathered from disk this second by the gate script -- ACT ON IT instead of re-running board reads, lane checks, and store polls; re-verify only what you are about to modify):${STATE:- no delegated lanes} [inbox_records=$INBOX_N pending_rounds=${ROUNDS:-none}]. You are a ROUTER: your turns are for decisions and the four scripts (dispatch-worker.sh, land-lane.sh, board-archive.py, round files), never for exploration."
+CORE="Trigger: $TRIGGER. Snapshot (from disk this second -- act on it, re-verify only what you modify):${STATE:- no delegated lanes} [inbox_records=$INBOX_N pending_rounds=${ROUNDS:-none}]. You are a ROUTER: turns are for decisions and the four scripts (dispatch-worker.sh, land-lane.sh, board-archive.py, round files), never exploration."
 
-run_tick() { # $@: extra claude args (--resume <id> or nothing)
+run_tick() { # $1: prompt; rest: extra claude args (--resume <id> or nothing)
   # stream-json + the colorizer keeps the loop terminal a live, readable trace;
   # the colorizer writes the final result event to $OUT for the context watch.
+  local prompt=$1; shift
   claude -p --model "$MODEL" --permission-mode auto \
     --output-format stream-json --verbose \
-    "$@" "$PROMPT" 2>>"$LOG_DIR/errors.log" \
+    "$@" "$prompt" 2>>"$LOG_DIR/errors.log" \
     | python3 "$REPO/.claude/scripts/tick-stream.py" "$OUT"
 }
 
+# Resumed sessions already hold the tick policy; send trigger + snapshot only.
+# Audits always carry their (short) full policy -- the resumed session holds
+# the tick policy, not the audit one.
+SHORT="Next tick under the standing policy. $CORE"
+[ "${1:-tick}" = "audit" ] && SHORT="$POLICY $CORE"
 SID=""
 [ -f "$SID_FILE" ] && SID=$(cat "$SID_FILE")
 if [ -n "$SID" ]; then
-  run_tick --resume "$SID" || { rm -f "$SID_FILE"; SID=""; }
+  run_tick "$SHORT" --resume "$SID" || { rm -f "$SID_FILE"; SID=""; }
 fi
-[ -n "$SID" ] || run_tick
+[ -n "$SID" ] || run_tick "$POLICY $CORE"
 
 # Observe the context from outside: keep the session while it is small, drop it
 # (fresh session next tick) once it crosses MAX_CONTEXT. The result JSON's usage
