@@ -630,10 +630,11 @@
   status: done
 
 - id: opt-docs-unpacking
+  issue: gh:91
   title: Unpack the Opt reference -- why absence has no representation, with the Rust Option comparison
   kind: build
   needs: [opt-as-enum]
-  status: todo
+  status: delegated
 
 - id: record-order-strictness
   issue: gh:24
