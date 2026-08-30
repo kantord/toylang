@@ -65,7 +65,7 @@
   kind: build
   needs: []
   prio: 1
-  status: todo
+  status: delegated
 
 - id: docs-slow-fragment-tier
   issue: gh:135
@@ -201,18 +201,20 @@
   status: todo
 
 - id: sum-max-builtins-build
+  issue: gh:140
   title: Implement sum and max builtins over Vec<Int>/Vec<Int64>, empty sum is 0, empty max is Opt<T> (gh:140 ruling)
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: tail-call-jspy-build
+  issue: gh:141
   title: Fix js and py codegen so self-tail-recursion runs in constant stack (lua/native/jq/go/rust already comply) (gh:141 ruling)
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: search-layer-build
   title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
@@ -221,10 +223,11 @@
   status: todo
 
 - id: slices-build
+  issue: gh:143
   title: Implement v[a:b] slice syntax with clamping out-of-range bounds (gh:143 ruling)
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: sort-by-max-by
   title: sort_by and max_by -- ordering through a scalar projection (euler-ergonomics row 7)

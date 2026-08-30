@@ -121,7 +121,7 @@ done
 # promotes itself at fold time, so the tick only has to catch STALENESS
 # (untouched 30+ min -> promote as-is, straight to main) and red promotions.
 for b in $(git for-each-ref --format='%(refname:short)' 'refs/heads/to-merge-*'); do
-  lines=$(git diff --shortstat "main...$b" 2>/dev/null | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | grep -oE '[0-9]+' | paste -sd+ | bc 2>/dev/null || echo 0)
+  lines=$(git diff --shortstat "main...$b" 2>/dev/null | grep -oE '[0-9]+ (insertion|deletion)' | awk '{s+=$1} END {print s+0}')  # awk not bc: bc absent here
   age=$(( $(date +%s) - $(git log -1 --format=%ct "$b" 2>/dev/null || date +%s) ))
   promoting=""; [ -f "$LOG_DIR/promoting-$b" ] && promoting=" promoting"
   STATE="$STATE [$b: lines=${lines:-0} age=${age}s$promoting]"
@@ -162,9 +162,10 @@ if ready:
     print(f'round buffer under-filled with {len(ready)} decide rows ready -- compose a grill round')" 2>/dev/null)
   [ -n "$STARVE" ] && TRIGGER="${TRIGGER:+$TRIGGER; }$STARVE"
 fi
-# A free lane with a ready row means dispatch is due.
-if [ -z "$TRIGGER" ]; then
-  TRIGGER=$(python3 -c "
+# A free lane with a ready row means dispatch is due. This JOINS the trigger
+# instead of being a fallback: as a fallback it starved 2h behind the
+# streak/starvation triggers while 7 lanes sat idle (2026-08-30).
+DISPATCH=$(python3 -c "
 import yaml
 rows = yaml.safe_load(open('plans/board.yaml'))
 live = {r['id'] for r in rows}  # a needs id absent here landed and archived (issue #113)
@@ -174,7 +175,7 @@ ready = [r['id'] for r in rows
          and all(n not in live for n in r.get('needs', []))]
 if lanes < 8 and ready:
     print(f'{8 - lanes} free lanes, ready: {\" \".join(ready[:3])}')" 2>/dev/null)
-fi
+[ -n "$DISPATCH" ] && TRIGGER="${TRIGGER:+$TRIGGER; }$DISPATCH"
 # Exhaustion: nothing delegated, nothing ready to build -- the idle exception
 # (drive skill) lets the tick self-originate one or two exploration rows.
 if [ -z "$TRIGGER" ]; then

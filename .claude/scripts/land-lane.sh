@@ -39,9 +39,10 @@ worker_free() { # $1: dir that must have no live worker
 }
 
 changed_lines() { # $1: branch; insertions+deletions vs the merge base with main
+  # awk, not bc: bc is not installed here, and its silent 127 made this
+  # return 0 for every branch -- size-based promotion never fired (2026-08-30)
   git -C "$REPO" diff --shortstat "main...$1" 2>/dev/null \
-    | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | grep -oE '[0-9]+' \
-    | paste -sd+ | bc 2>/dev/null || echo 0
+    | grep -oE '[0-9]+ (insertion|deletion)' | awk '{s+=$1} END {print s+0}'
 }
 
 case "$MODE" in
