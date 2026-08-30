@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Param, Pattern, Span};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
-use crate::ty::{Sig, Type};
+use crate::ty::{self, Sig, Type};
 
 mod linearity;
 mod types;
@@ -199,6 +199,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         input,
         inputs,
         uses_lines: lines_used.get(),
+        enums,
     })
 }
 
@@ -604,69 +605,14 @@ fn call_named<'a>(expr: &'a Expr, name: &str) -> Option<&'a Expr> {
     arg.as_deref()
 }
 
-/// Replace every `Type::Param` in `t` with its binding. Together with `unify` below, this is
-/// the whole of generic instantiation at a constructor: nothing else in the checker ever sees
-/// a parameter.
-fn substitute(t: &Type, map: &HashMap<String, Type>) -> Type {
-    match t {
-        Type::Param(p) => map
-            .get(p)
-            .cloned()
-            .unwrap_or_else(|| unreachable!("substitute runs only once every param is bound")),
-        Type::Vec(e) => Type::Vec(Box::new(substitute(e, map))),
-        Type::Stream(e) => Type::Stream(Box::new(substitute(e, map))),
-        Type::Record(fields) => Type::Record(
-            fields
-                .iter()
-                .map(|(n, t)| (n.clone(), substitute(t, map)))
-                .collect(),
-        ),
-        Type::Enum {
-            name,
-            args,
-            variants,
-        } => Type::Enum {
-            name: name.clone(),
-            args: args.iter().map(|a| substitute(a, map)).collect(),
-            variants: variants
-                .iter()
-                .map(|(n, p)| (n.clone(), p.as_ref().map(|p| substitute(p, map))))
-                .collect(),
-        },
-        Type::Str | Type::Int | Type::Int64 | Type::Bool | Type::Char => t.clone(),
-    }
-}
-
-/// `name`'s variant list at `args`, re-derived from the registry template rather than trusted
-/// from wherever a caller's `Type::Enum` happened to carry one. A self-referential enum's own
-/// payload can hold a placeholder in `name`'s own place (`types::resolve_named` cannot expand a
-/// `Vec`-boxed self-reference without looping forever, kantord/toylang#76) -- every consumer
-/// that actually needs the variants comes through here instead, one layer at a time, exactly as
-/// deep as the program itself ever navigates into the value.
+/// `name`'s variant list at `args`. A thin wrapper over the shared re-derivation
+/// (`ty::variants_of`), which the backends reach for too: the checker's own `Type::Enum` in
+/// hand carries a placeholder wherever a self-reference sits behind a `Vec`
+/// (`types::resolve_named`, kantord/toylang#76), so every consumer that actually needs the
+/// variants comes through here instead, one layer at a time, exactly as deep as the program
+/// itself ever navigates into the value.
 fn enum_variants(ctx: &Ctx, name: &str, args: &[Type]) -> Vec<(String, Option<Type>)> {
-    let Type::Enum {
-        args: template_args,
-        variants,
-        ..
-    } = &ctx.enums[name]
-    else {
-        unreachable!("the registry holds enum types")
-    };
-    if template_args.is_empty() {
-        return variants.clone();
-    }
-    let bindings: HashMap<String, Type> = template_args
-        .iter()
-        .zip(args)
-        .filter_map(|(p, a)| match p {
-            Type::Param(p) => Some((p.clone(), a.clone())),
-            _ => None,
-        })
-        .collect();
-    variants
-        .iter()
-        .map(|(n, p)| (n.clone(), p.as_ref().map(|t| substitute(t, &bindings))))
-        .collect()
+    ty::variants_of(ctx.enums, name, args)
 }
 
 /// The prelude's `Opt<T>` at a concrete `T`: what every Opt-producing site -- the collapsing
@@ -681,7 +627,7 @@ fn opt_of(ctx: &Ctx, inner: Type) -> Type {
     let Type::Param(p) = &args[0] else {
         unreachable!("Opt's template argument is its own parameter")
     };
-    substitute(template, &HashMap::from([(p.clone(), inner)]))
+    ty::substitute(template, &HashMap::from([(p.clone(), inner)]))
 }
 
 /// Match a template type (parameters possibly inside) against a concrete one, binding each
@@ -865,7 +811,7 @@ fn infer_instantiation(
         ));
     }
     Ok(Tir::new(
-        substitute(template, &bindings),
+        ty::substitute(template, &bindings),
         Kind::EnumLit {
             variant: variant.to_string(),
             payload: Some(Box::new(built)),

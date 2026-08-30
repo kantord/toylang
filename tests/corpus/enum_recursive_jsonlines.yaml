@@ -1,0 +1,13 @@
+# `jsonlines` prints the element type rather than the program's own result, which is `Str`. So
+# the printers a program needs are collected from both, and a backend that read only the result
+# type would emit a call to a printer it never wrote.
+program: |
+  enum Json { arr(Vec<Json>), num(Int) }
+
+  jsonlines([Json.arr([Json.num(1)]), Json.num(2)])
+
+output: |
+  {"arr":[{"num":1}]}
+  {"num":2}
+
+node_types: [builtin.jsonlines, int, variant.payload, vec-literal]

@@ -60,3 +60,20 @@ export function annotationsIn(raw: string): { type: AnnotationType; anchor?: str
     note: m[3].trim(),
   }))
 }
+
+/** POSTs one record through the #30 inbox door (`/__annotations/save`) -- the shared shape under
+ *  a grilling round's answers (lib/grill.ts) and a plan decision (lib/plans.ts). `label` names
+ *  the record in the failure message, since the two callers' users are looking at different
+ *  things when a submit fails. */
+export function saveToInbox(
+  record: { page: string; block: number; original: string; edited: string },
+  label: string,
+): Promise<void> {
+  return fetch("/__annotations/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(record),
+  }).then((res) => {
+    if (!res.ok) throw new Error(`${label}: ${res.status} ${res.statusText}`)
+  })
+}

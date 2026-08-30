@@ -204,7 +204,7 @@ derive made the format string too long to fit on one line -- naming the whole de
 live outside the function. Reach for the named constant whenever a string literal growing by a
 word is what wrapped a call across three lines.
 
-The Bool-keywords session (issue #96) is a fourteenth instance, and the cleanest read of the
+The Bool-keywords session (issue #96) is a fifteenth instance, and the cleanest read of the
 caused/inherited split yet, because it was measured as a set rather than per function: the whole
 clippy site list, gathered before and after via `git stash` (the equivalent the field-order
 session used), differed by exactly one entry. Fifteen too-many-lines findings and seven
@@ -219,3 +219,15 @@ one optional child recursed into and nothing else, so they became one or-pattern
 shared `child`. That is the file's own idiom (its `Kind::Concat | Kind::Logic` arm is the same
 move), not a shape invented to dodge the number, and it put the site list back to matching
 merge-base exactly.
+
+The recursive-enum-codegen session (issue #94) is a sixteenth instance, and the same shape as
+the twelfth: threading an enum registry through every backend's printer nudged each already-over
+`expr()`/`emit()` by 5-27 lines (`check/mod.rs` 106->107, `emit_go.rs` 165->171 and 216->206,
+`emit_jq.rs` 196->201, `emit_js.rs` 190->217, `emit_lua.rs` 175->194, `emit_py.rs` 176->204,
+`emit_rs.rs` 144->151 and 193->190), verified by running the same clippy query at the merge-base
+commit checked out in place. Every one was already over budget and stayed inherited; two of
+`emit_llvm.rs`'s went the other way, `show()` 165->113 and `expr()` 420->387, because extracting
+the enum printer and the enum literal into `show_enum()` and `enum_lit()` took more out of those
+functions than the registry put in. The one caused finding was a cognitive-complexity crossing
+in `emit_llvm.rs`'s `expr()`; see
+[cognitive-complexity.md](cognitive-complexity.md)'s matching entry.

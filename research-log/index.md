@@ -119,3 +119,7 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
   -- Reaching inside an Opt payload for record-reorder (#66) needed a way to rebuild a present
   value, not a way to match one, so it got its own node instead of waiting on the Match/Opt
   layout reconciliation the previous note left open.
+- [A recursive type is where inline codegen needs a name](a-recursive-type-is-where-inline-codegen-needs-a-name.md)
+  -- Every backend writes its printers and parsers by expanding a type inline, which works until
+  the type contains itself; the fix is the same in all seven, and the placeholder standing in for
+  the recursion had let each of them answer wrongly rather than fail.

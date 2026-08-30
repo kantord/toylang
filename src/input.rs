@@ -1,14 +1,14 @@
 use mlua::Lua;
 use serde_json::Value;
 
-use crate::ty::Type;
+use crate::ty::{self, Enums, Type};
 
 /// Check the input against the type the program declared, before anything runs.
 ///
 /// This is a parse, not a coercion. `{"age": "36"}` where `Int` was declared is an error, not a
 /// conversion: the moment input is coerced, the type stops describing the value and the runtime
 /// and the type system have stopped making the same guarantee.
-pub fn validate(value: &Value, ty: &Type, path: &str) -> Result<(), String> {
+pub fn validate(enums: &Enums, value: &Value, ty: &Type, path: &str) -> Result<(), String> {
     let found = match (ty, value) {
         (Type::Str, Value::String(_)) | (Type::Bool, Value::Bool(_)) => return Ok(()),
 
@@ -32,7 +32,7 @@ pub fn validate(value: &Value, ty: &Type, path: &str) -> Result<(), String> {
 
         (Type::Vec(elem), Value::Array(items)) => {
             for (i, item) in items.iter().enumerate() {
-                validate(item, elem, &format!("{path}[{i}]"))?;
+                validate(enums, item, elem, &format!("{path}[{i}]"))?;
             }
             return Ok(());
         }
@@ -42,7 +42,7 @@ pub fn validate(value: &Value, ty: &Type, path: &str) -> Result<(), String> {
                 let Some(v) = map.get(name) else {
                     return Err(format!("{path}: missing field `{name}`"));
                 };
-                validate(v, field_ty, &format!("{path}.{name}"))?;
+                validate(enums, v, field_ty, &format!("{path}.{name}"))?;
             }
             // Undeclared fields are ignored rather than rejected, so a program can read two
             // fields out of a log line without describing the whole line. Open: whether that
@@ -54,7 +54,10 @@ pub fn validate(value: &Value, ty: &Type, path: &str) -> Result<(), String> {
         // variant, or a single-key object whose key names a payload variant. Everything else
         // is refused with the enum's name, since "found a string" alone would not say which
         // closed set the string missed.
-        (Type::Enum { name, variants, .. }, v) => {
+        (Type::Enum { name, .. }, v) => {
+            // Read from the registry, not off `ty`: a recursive enum's nested occurrence of
+            // itself carries a placeholder in place of its variants (kantord/toylang#94).
+            let variants = ty::variants(enums, ty);
             return match v {
                 Value::String(s) => match variants.iter().find(|(n, _)| n == s) {
                     Some((_, None)) => Ok(()),
@@ -67,7 +70,7 @@ pub fn validate(value: &Value, ty: &Type, path: &str) -> Result<(), String> {
                     let (key, inner) = map.iter().next().expect("exactly one entry");
                     match variants.iter().find(|(n, _)| n == key) {
                         Some((_, Some(payload))) => {
-                            validate(inner, payload, &format!("{path}.{key}"))
+                            validate(enums, inner, payload, &format!("{path}.{key}"))
                         }
                         Some((_, None)) => Err(format!(
                             "{path}: `{key}` is a unit variant of {name}, written \"{key}\""

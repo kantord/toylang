@@ -29,7 +29,9 @@ const raw = import.meta.glob("../../../../plans/board.yaml", {
   eager: true,
 }) as Record<string, string>
 
-function parseIssue(issue: unknown): number | null {
+/** A `gh:N` reference to its issue number. Exported for lib/plans.ts, whose frontmatter uses
+ *  the same spelling as a board row's `issue` field. */
+export function parseIssue(issue: unknown): number | null {
   if (typeof issue !== "string") return null
   const m = /^gh:(\d+)$/.exec(issue)
   return m ? Number(m[1]) : null

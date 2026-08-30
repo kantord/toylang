@@ -26,7 +26,9 @@ wake-ups -- scheduling belongs to the loop script. Every tick:
    below), land finished ones.
 2. Poll `docs/.annotations/inbox.json` AND `docs/.annotations/notes.json` (compose messages
    and span notes), applying entries 5+ minutes quiet or marked read; wizard rounds in
-   `docs/.grill/` process immediately.
+   `docs/.grill/` process immediately. A record whose `page` is a `plans/*.md` file is a
+   plan decision: an explicit click, applied at once, no quiet period ("Plan approval"
+   below).
 3. Verify push distance before any dispatch (worktrees branch from origin).
 
 ## Stall diagnosis, learned the hard way
@@ -47,7 +49,8 @@ a decide row delegated once; the audit caught it, not the edit).
 A research task with big results gets SPLIT into per-item follow-up rows at capture time --
 never one mega review row that sits unfinished (maintainer rule, 2026-08-30; the oddities
 inventory proved it: most of its 16 items got settled piecemeal while the mega row aged).
-Related: plans are headed for a proposed/approve/needs-changes flow (gh:110).
+That split happens when the plan is APPROVED, not when it is written -- see "Plan approval"
+below.
 
 Two bookkeeping rules the audits keep re-finding: a follow-up issue filed during a landing
 gets its board row IN THE SAME COMMIT (an issue without a row is invisible to this loop --
@@ -120,6 +123,39 @@ the drift it catches is the kind each individual tick is blind to:
 
 Report only the discrepancies and their root causes, and fix the mechanism (a skill edit, a
 new check) rather than only the instance -- every audit finding so far became a rule.
+
+## Plan approval
+
+Research and planning output lands as `plans/<name>.md` carrying YAML frontmatter, and the
+maintainer rules on it in the mail app rather than in the terminal (kantord/toylang#110):
+
+```yaml
+---
+status: proposed        # proposed | approved | needs-changes
+issue: gh:104           # the issue that commissioned it, when one did
+---
+```
+
+A `proposed` plan is an inbox item in the mail app's "Plan approvals" folder, rendered in full,
+with Approve and Needs changes under it and a notes box; the board's plans panel shows where
+every statused plan stands. The maintainer's other channel is the file itself -- a plan is a
+committed markdown document, so changes they want made are written straight into it, and the
+notes box carries what an edit cannot say.
+
+The click posts ONE record to `docs/.annotations/inbox.json`: `page` is the plan's path, `block`
+is 0, and `edited` is `{"decision": "approve" | "needs-changes", "notes": ...}`. Applying it:
+
+- Re-read the plan first. The maintainer may have edited it, and their edits outrank the notes.
+- Rewrite the frontmatter `status`, commit that with whatever the decision produced, and clear
+  the record.
+- **Approve** means the plan is ready to become build work, not that it is one row. Split it
+  into per-item rows the same way a big research result is split, and link each to its issue.
+- **Needs changes** means another planning phase: a follow-up row or a re-brief into the same
+  environment, carrying the notes and the maintainer's edits.
+
+Only a plan that declares a status is in the flow at all. Most of `plans/` predates this and is
+historical record; back-filling a status onto a document nobody actually ruled on would be
+inventing the ruling.
 
 ## Board hygiene
 

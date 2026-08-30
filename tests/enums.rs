@@ -66,8 +66,8 @@ fn an_enum_whose_payload_mentions_itself() {
 /// this rules the other way from the bare-field case above. Construction and matching both
 /// have to type-check, not just the declaration -- `describe`'s nested `Json.num(1)` is exactly
 /// where a stub standing in for the recursive occurrence's own variant list would otherwise
-/// come apart. Whether every backend can already run this program is a separate question this
-/// pins nothing about; see kantord/toylang#94.
+/// come apart. Running the value that stub describes is the backends' half, settled in
+/// kantord/toylang#94 and pinned by the corpus's `enum_recursive_*` cases.
 #[test]
 fn a_vec_wrapped_self_reference_typechecks() {
     assert!(

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { BoardPage } from "@dev/components/BoardPage"
 import { GrillRoundReader } from "@dev/components/GrillWizard"
 import { FLOW, MessageCard } from "@dev/components/MessageCard"
+import { PlanReader } from "@dev/components/PlanReader"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { pageAnnotations, type Annotation } from "@dev/lib/annotations"
 import { fetchRound, fetchRoundTopics, roundPagePath, type Round } from "@dev/lib/grill"
 import { annotateHref } from "@dev/lib/nav"
+import { planKey, PLANS, type Plan } from "@dev/lib/plans"
 import { splitBlocks } from "@/lib/blocks"
 import { PAGES } from "@/lib/docs"
 import {
@@ -21,6 +23,7 @@ import {
   fetchNotesAndComposed,
   grillItem,
   noteItem,
+  planItem,
   sendCompose,
   type ComposeRecord,
   type Folder,
@@ -32,12 +35,13 @@ import { cn } from "@/lib/utils"
 
 /**
  * Everything is email (kantord/toylang#52): the annotations inbox, the maintainer's own notes
- * and composed messages, grilling rounds, and the board all live in this one app now, gmail-
- * style -- a folder rail, a table-ish message list stacked *over* the reading pane (not beside
- * it), and a floating Compose button. A round arrives as mail and is answered right there in the
- * reading pane; the board is a tab of the same rail rather than a route of its own. Replaces the
- * three-pane side-by-side layout from kantord/toylang#41, which put the list and reading pane
- * next to each other instead of stacked.
+ * and composed messages, grilling rounds, plans awaiting approval (kantord/toylang#110), and the
+ * board all live in this one app now, gmail-style -- a folder rail, a table-ish message list
+ * stacked *over* the reading pane (not beside it), and a floating Compose button. A round or a
+ * plan arrives as mail and is answered right there in the reading pane; the board is a tab of
+ * the same rail rather than a route of its own. Replaces the three-pane side-by-side layout
+ * from kantord/toylang#41, which put the list and reading pane next to each other instead of
+ * stacked.
  */
 
 interface InboxRecord {
@@ -56,24 +60,25 @@ const TABS: { key: Tab; label: string; icon: typeof InboxIcon }[] = [
 
 /** Subfolders inside Inbox (gh:57): "action" is the default view and isn't a flow of its own --
  *  it's every flow except `status`, the wash of acknowledgements and FYIs that never need a
- *  reply. The other four line up with the flows an inbox item can actually carry (never
- *  `reply`, which only annotation items in the Notes folder use). */
-type InboxCategory = "action" | "escalation" | "question" | "round" | "status"
+ *  reply. The others line up with the flows an inbox item can actually carry (never `reply`,
+ *  which only annotation items in the Notes folder use). */
+type InboxCategory = "action" | "escalation" | "question" | "round" | "plan" | "status"
 
 const INBOX_CATEGORIES: { key: InboxCategory; label: string }[] = [
   { key: "action", label: "Needs response" },
   { key: "escalation", label: FLOW.escalation.label },
   { key: "question", label: FLOW.question.label },
   { key: "round", label: "Grill rounds" },
+  { key: "plan", label: "Plan approvals" },
   { key: "status", label: FLOW.status.label },
 ]
 
 /** Every answered `page:block` key, for sorting inbox items into Inbox vs. Archive -- same
  *  read/unread split AnnotationsSidebar used (kantord/toylang#30), and reused as-is for grilling
- *  rounds (kantord/toylang#52): a round's answers land in this exact store, keyed by the round
- *  file's path and each question's index, so one fetch and one local set covers both. Tracked
- *  locally so answering an item moves it the instant it happens rather than waiting on a
- *  refetch. */
+ *  rounds (kantord/toylang#52) and plan decisions (kantord/toylang#110): both land in this exact
+ *  store, a round keyed by its file's path and each question's index, a plan by its own path and
+ *  block 0, so one fetch and one local set covers all three. Tracked locally so answering an item
+ *  moves it the instant it happens rather than waiting on a refetch. */
 function useAnsweredKeys(): [Set<string>, (key: string) => void] {
   const [answered, setAnswered] = useState<Set<string>>(new Set())
   useEffect(() => {
@@ -144,7 +149,8 @@ export function MailApp() {
       .sort((a, b) => b.created.localeCompare(a.created))
       .map(composeItem)
     const fromNotes = notes.map(noteItem)
-    return [...fromAnnotations, ...fromGrill, ...fromComposed, ...fromNotes]
+    const fromPlans = PLANS.map((p) => planItem(p, answeredKeys.has(planKey(p))))
+    return [...fromAnnotations, ...fromGrill, ...fromPlans, ...fromComposed, ...fromNotes]
   }, [annotations, grillRounds, answeredKeys, notes, composed])
 
   const inboxItems = useMemo(() => items.filter((i) => i.folder === "inbox"), [items])
@@ -169,6 +175,7 @@ export function MailApp() {
       escalation: inboxItems.filter((i) => i.flow === "escalation").length,
       question: inboxItems.filter((i) => i.flow === "question").length,
       round: inboxItems.filter((i) => i.flow === "round").length,
+      plan: inboxItems.filter((i) => i.flow === "plan").length,
       status: inboxItems.filter((i) => i.flow === "status").length,
     }),
     [inboxItems],
@@ -241,6 +248,8 @@ export function MailApp() {
     const page = roundPagePath(topic)
     for (let i = 0; i < questionCount; i++) markReadLocally(`${page}:${i}`)
   }
+
+  const onPlanDecided = (plan: Plan) => markReadLocally(planKey(plan))
 
   const onSendCompose = async (subject: string, body: string) => {
     const record = await sendCompose(subject, body)
@@ -321,7 +330,12 @@ export function MailApp() {
 
           <main className="min-h-0 overflow-y-auto rounded-md border p-4">
             {open ? (
-              <ReadingPane item={open} onMarkRead={onMarkRead} onRoundAnswered={onRoundAnswered} />
+              <ReadingPane
+                item={open}
+                onMarkRead={onMarkRead}
+                onRoundAnswered={onRoundAnswered}
+                onPlanDecided={onPlanDecided}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">Select a message.</p>
             )}
@@ -424,23 +438,31 @@ function MailRow({
   )
 }
 
+function MessageHeader({ item }: { item: MailItem }) {
+  return (
+    <div className="space-y-1">
+      <div className="text-xs text-muted-foreground">From: {item.sender}</div>
+      <div className="text-sm font-semibold">{item.subject}</div>
+    </div>
+  )
+}
+
 function ReadingPane({
   item,
   onMarkRead,
   onRoundAnswered,
+  onPlanDecided,
 }: {
   item: MailItem
   onMarkRead: (a: Annotation) => void
   onRoundAnswered: (topic: string, questionCount: number) => void
+  onPlanDecided: (plan: Plan) => void
 }) {
   if (item.round) {
     const { topic, round } = item.round
     return (
       <div className="space-y-3">
-        <div className="space-y-1">
-          <div className="text-xs text-muted-foreground">From: {item.sender}</div>
-          <div className="text-sm font-semibold">{item.subject}</div>
-        </div>
+        <MessageHeader item={item} />
         <Separator />
         <GrillRoundReader
           key={topic}
@@ -452,13 +474,26 @@ function ReadingPane({
     )
   }
 
+  const plan = item.plan
+  if (plan) {
+    return (
+      <div className="space-y-3">
+        <MessageHeader item={item} />
+        <Separator />
+        <PlanReader
+          key={plan.path}
+          plan={plan}
+          answered={item.folder !== "inbox"}
+          onDecided={() => onPlanDecided(plan)}
+        />
+      </div>
+    )
+  }
+
   const a = item.annotation
   return (
     <div className="max-w-2xl space-y-3">
-      <div className="space-y-1">
-        <div className="text-xs text-muted-foreground">From: {item.sender}</div>
-        <div className="text-sm font-semibold">{item.subject}</div>
-      </div>
+      <MessageHeader item={item} />
       <Separator />
       {item.preview && (
         <div className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
