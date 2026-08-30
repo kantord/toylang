@@ -39,6 +39,7 @@ fi
 # and a non-delegated worktree sitting ahead of main both force a run.
 MODEL=sonnet
 TRIGGER=""
+STATE=""
 # A delegated row names its worktree either by pool lane (lane: lane-N, the
 # gh:124 worker pool -- resolved through the stable enwiro env symlink) or by
 # issue number (the classic one-env-per-issue flow).
@@ -72,6 +73,13 @@ for wt in $DELEGATED; do
     # claude matches cover in-flight pre-ruling lanes until they land.
     case "$(readlink /proc/$p/cwd 2>/dev/null)" in "$d_real"*) live=1 ;; esac
   done
+  esc=""; [ -f "$d/ESCALATION.md" ] && esc=" ESCALATION.md"; [ -f "$d/RESEARCH.md" ] && esc="$esc RESEARCH.md"
+  # Failure streak: every run leaves a timestamped event log, so N logs with
+  # zero commits ahead IS an N-failure streak -- crash-proof, no state file.
+  # (issue-133 died five times on one sandbox edge, 2026-08-30, and every tick
+  # saw only "dead lane" with no memory that this was death #5.)
+  runs=$(ls "$LOG_DIR/opencode/"*"-$wt.jsonl" 2>/dev/null | wc -l)
+  STATE="$STATE [$wt: ahead=$ahead dirty=$dirty live=$live commit_age=${commit_age}s runs=$runs$esc]"
   if [ "$ahead" -gt 0 ] && [ "$dirty" -eq 0 ] && [ "$live" -eq 0 ]; then
     # A gone worker with committed clean work is done NOW -- opencode workers
     # exit on finish (event-driven landing, 2026-08-30), so no quiet window.
@@ -82,6 +90,14 @@ for wt in $DELEGATED; do
     # committing touches no working-tree mtimes, so a lane that edits, tests
     # for ten minutes, then commits looks file-quiet.
     TRIGGER="lane $wt looks landable"
+  elif [ "$live" -eq 0 ] && [ "$ahead" -eq 0 ] && [ "$runs" -ge 4 ]; then
+    # Streak cap: stop feeding the lane. Escalate to the maintainer's mail ONCE
+    # (the marker suppresses re-noise); their answer or a landing clears it.
+    if [ ! -f "$LOG_DIR/escalated-$wt" ]; then
+      TRIGGER="lane $wt: $runs commitless runs -- STOP redispatching; escalate to the maintainer inbox"
+    fi
+  elif [ "$live" -eq 0 ] && [ "$ahead" -eq 0 ] && [ "$runs" -ge 2 ]; then
+    TRIGGER="${TRIGGER:-lane $wt: $runs commitless runs -- diagnose the last event log and REBRIEF; never repeat a failed brief}"
   elif [ "$live" -eq 0 ]; then
     TRIGGER="${TRIGGER:-lane $wt has no live worker}"
   elif [ -z "$recent30" ] && [ "$commit_age" -ge 1800 ]; then
@@ -101,6 +117,20 @@ for d in "$WORKTREES"/*/ "$POOL_WORKTREES"/*/ "$LANES"/*/; do
   ahead=$(git -C "$d" rev-list --count main..HEAD 2>/dev/null || echo 0)
   [ "$ahead" -gt 0 ] && TRIGGER="${TRIGGER:-non-delegated worktree $wt is $ahead ahead of main}"
 done
+# Accumulators (to-merge-* branches, the size-driven pipeline): a full one
+# promotes itself at fold time, so the tick only has to catch STALENESS
+# (untouched 30+ min -> promote as-is, straight to main) and red promotions.
+for b in $(git for-each-ref --format='%(refname:short)' 'refs/heads/to-merge-*'); do
+  lines=$(git diff --shortstat "main...$b" 2>/dev/null | grep -oE '[0-9]+ (insertion|deletion)' | awk '{s+=$1} END {print s+0}')  # awk not bc: bc absent here
+  age=$(( $(date +%s) - $(git log -1 --format=%ct "$b" 2>/dev/null || date +%s) ))
+  promoting=""; [ -f "$LOG_DIR/promoting-$b" ] && promoting=" promoting"
+  STATE="$STATE [$b: lines=${lines:-0} age=${age}s$promoting]"
+  if [ -f "$LOG_DIR/promote-failed-$b" ]; then
+    TRIGGER="${TRIGGER:-promotion of $b went RED (main untouched) -- route the repair}"
+  elif [ -z "$promoting" ] && [ "$age" -ge 1800 ]; then
+    TRIGGER="${TRIGGER:-$b untouched ${age}s -- stale, promote it as-is (land-lane.sh promote, detached)}"
+  fi
+done
 # Maintainer input always runs the tick (the 5-minute quiet rule is judged inside).
 if python3 -c "
 import json, sys
@@ -114,10 +144,14 @@ sys.exit(1)" 2>/dev/null || [ -n "$(ls docs/.grill/ 2>/dev/null | grep -v '\.rou
   TRIGGER="${TRIGGER:-maintainer input pending}"
 fi
 # Decide starvation: the maintainer keeps checking an empty inbox while decide
-# rows sit ready. If nothing is pending for them and ready decides exist,
-# composing the next grill round IS the tick's job.
-if [ -z "$TRIGGER" ] && [ -z "$(ls docs/.grill/*.round.yaml 2>/dev/null)" ]; then
-  TRIGGER=$(python3 -c "
+# rows sit ready. NOT a fallback (it starved twice, 2026-08-30: as a fallback it
+# lost to every landing and dead-lane trigger, and the maintainer drained both
+# buffered rounds in ten minutes with nothing refilling) -- an under-filled round
+# buffer ALWAYS joins the trigger, alongside whatever else the tick has.
+if [ "$(ls docs/.grill/*.round.yaml 2>/dev/null | wc -l)" -lt 2 ]; then
+  # Keep TWO rounds buffered (maintainer flow, 2026-08-30): grilling happens WHILE
+  # workers grind, so finishing one round must always reveal the next, not a wait.
+  STARVE=$(python3 -c "
 import yaml
 rows = yaml.safe_load(open('plans/board.yaml'))
 live = {r['id'] for r in rows}
@@ -125,11 +159,13 @@ ready = [r['id'] for r in rows
          if r.get('status') == 'todo' and r.get('kind') == 'decide'
          and all(n not in live for n in r.get('needs', []))]
 if ready:
-    print(f'{len(ready)} decide rows ready but the maintainer inbox is empty -- compose a grill round')" 2>/dev/null)
+    print(f'round buffer under-filled with {len(ready)} decide rows ready -- compose a grill round')" 2>/dev/null)
+  [ -n "$STARVE" ] && TRIGGER="${TRIGGER:+$TRIGGER; }$STARVE"
 fi
-# A free lane with a ready row means dispatch is due.
-if [ -z "$TRIGGER" ]; then
-  TRIGGER=$(python3 -c "
+# A free lane with a ready row means dispatch is due. This JOINS the trigger
+# instead of being a fallback: as a fallback it starved 2h behind the
+# streak/starvation triggers while 7 lanes sat idle (2026-08-30).
+DISPATCH=$(python3 -c "
 import yaml
 rows = yaml.safe_load(open('plans/board.yaml'))
 live = {r['id'] for r in rows}  # a needs id absent here landed and archived (issue #113)
@@ -139,6 +175,19 @@ ready = [r['id'] for r in rows
          and all(n not in live for n in r.get('needs', []))]
 if lanes < 8 and ready:
     print(f'{8 - lanes} free lanes, ready: {\" \".join(ready[:3])}')" 2>/dev/null)
+[ -n "$DISPATCH" ] && TRIGGER="${TRIGGER:+$TRIGGER; }$DISPATCH"
+# Exhaustion: nothing delegated, nothing ready to build -- the idle exception
+# (drive skill) lets the tick self-originate one or two exploration rows.
+if [ -z "$TRIGGER" ]; then
+  TRIGGER=$(python3 -c "
+import yaml
+rows = yaml.safe_load(open('plans/board.yaml'))
+live = {r['id'] for r in rows}
+lanes = sum(1 for r in rows if r.get('status') == 'delegated')
+ready = sum(1 for r in rows if r.get('status') == 'todo' and r.get('kind') == 'build'
+            and all(n not in live for n in r.get('needs', [])))
+if lanes == 0 and ready == 0:
+    print('board exhausted -- idle exception: self-originate 1-2 exploration rows (drive skill)')" 2>/dev/null)
 fi
 [ "${1:-tick}" = "audit" ] && TRIGGER="scheduled audit"
 if [ -z "$TRIGGER" ]; then
@@ -146,32 +195,46 @@ if [ -z "$TRIGGER" ]; then
   exit 0
 fi
 
+# The POLICY is sent once per SESSION (ticks resume a cached session until it
+# crosses MAX_CONTEXT); resumed ticks send only the trigger + snapshot. Keep it
+# apostrophe-free -- it sits in single quotes.
 if [ "${1:-tick}" = "audit" ]; then
-  PROMPT='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has a live or accounted-for lane; no worktree holds unmerged commits the board thinks landed; no falsely-stuck lanes. Fix what is mechanical, file issues for the rest. End quietly if clean.'
+  POLICY='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has a live or accounted-for lane; no worktree holds unmerged commits the board thinks landed; no falsely-stuck lanes. Fix what is mechanical, file issues for the rest. End quietly if clean.'
 else
-  PROMPT='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. Reconstruct state from disk -- plans/board.yaml, the worktrees, the annotation stores -- and trust disk over anything remembered from earlier ticks. Read board rows with status: delegated and check each lane worktree (commits vs main, dirty files, live worker via pgrep cwd). Poll BOTH annotation stores: docs/.annotations/inbox.json AND docs/.annotations/notes.json -- apply entries older than 5 minutes and clear them at capture; wizard submissions in docs/.grill/ process immediately (delete round files at capture). If a lane is finished (ahead of main, clean, 8+ minutes quiet or worker gone), run the land-delegated-work skill -- cascade if 3+ are ready. After landings, dispatch ready board rows into free lanes (cap 8; decide rows never consume a lane or a ready-set slot) with .claude/scripts/dispatch-worker.sh <N> "<brief>" -- the enwiro-free opencode default (claude delegation retired 2026-08-30; brief shape in the enwiro-delegate skill; record every rollout incident in plans/opencode-rollout.md). If the trigger names decide starvation: compose the next wizard round at docs/.grill/<topic>.round.yaml -- 3-5 ready decide rows batched by theme, each option carrying real verified code examples (the maintainer standing rule; delegate substantial example-preparation to a research worker rather than writing it all in-tick). If nothing changed, end quietly without writing anything.'
+  POLICY='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. This policy stands for every tick of this session; later ticks send only their trigger and snapshot. Trust disk over memory. ORDER: (1) Maintainer input first: poll docs/.annotations/inbox.json AND notes.json -- apply entries older than 5 minutes, clear at capture; records whose page is a docs/.grill/*.round.yaml are wizard submissions: apply IMMEDIATELY, delete the round file at capture. (2) If the trigger names an under-filled round buffer, compose the next wizard round BEFORE any landing (an empty maintainer inbox outranks lane plumbing): read pending rounds first and never re-ask them; keep two buffered; write docs/.grill/<topic>.round.yaml -- 3-5 ready decide rows batched by theme, every option carrying real verified code examples (delegate heavy example prep to a research worker). (3) Land finished lanes (ahead, clean, no live worker): diff read, then .claude/scripts/land-lane.sh fold <msgfile> <issues...>, board-archive.py for the row moves; run land-lane.sh promote <branch> DETACHED with nohup only when the trigger names a stale accumulator. (4) Dispatch ready build rows into free lanes (cap 8; decide rows use no lane): .claude/scripts/dispatch-worker.sh <N> "<brief>" -- brief shape per the enwiro-delegate skill; record every rollout incident in plans/opencode-rollout.md. RULES: never edit a lane worktree file yourself -- a dead or half-done lane gets a continuation or research dispatch, however small the fix looks. FAILURE STREAKS (snapshot carries runs= per lane): at 2-3 commitless runs read the last event log in ~/.cache/toylang-drive/opencode/ and rebrief with the actual root cause, never a repeat of a failed brief; at 4+ STOP -- no redispatch; write one escalation question into a docs/.grill/ round (the lane, the repeated root cause, options: stronger OPENCODE_MODEL, reshape, drop), touch ~/.cache/toylang-drive/escalated-issue-<N>, rm the marker when acting on the ruling. BOUND: one round composition plus one landing, or up to three landings (a cascade is one), then END the session even if more work is visible. Nothing changed: end quietly.'
 fi
 
 TS=$(date +%Y%m%d-%H%M%S)
 OUT="$LOG_DIR/$TS-${1:-tick}-$MODEL.json"
 echo "[drive-tick] $(date '+%H:%M:%S') ${1:-tick} starting on $MODEL -- $TRIGGER (log: $OUT)"
-PROMPT="$PROMPT Trigger for this tick: $TRIGGER."
+INBOX_N=$(python3 -c "
+import json
+d=json.load(open('docs/.annotations/inbox.json'))
+print(len(d.get('records',[])))" 2>/dev/null || echo '?')
+ROUNDS=$(ls docs/.grill/*.round.yaml 2>/dev/null | xargs -rn1 basename | tr '\n' ' ')
+CORE="Trigger: $TRIGGER. Snapshot (from disk this second -- act on it, re-verify only what you modify):${STATE:- no delegated lanes} [inbox_records=$INBOX_N pending_rounds=${ROUNDS:-none}]. You are a ROUTER: turns are for decisions and the four scripts (dispatch-worker.sh, land-lane.sh, board-archive.py, round files), never exploration."
 
-run_tick() { # $@: extra claude args (--resume <id> or nothing)
+run_tick() { # $1: prompt; rest: extra claude args (--resume <id> or nothing)
   # stream-json + the colorizer keeps the loop terminal a live, readable trace;
   # the colorizer writes the final result event to $OUT for the context watch.
+  local prompt=$1; shift
   claude -p --model "$MODEL" --permission-mode auto \
     --output-format stream-json --verbose \
-    "$@" "$PROMPT" 2>>"$LOG_DIR/errors.log" \
+    "$@" "$prompt" 2>>"$LOG_DIR/errors.log" \
     | python3 "$REPO/.claude/scripts/tick-stream.py" "$OUT"
 }
 
+# Resumed sessions already hold the tick policy; send trigger + snapshot only.
+# Audits always carry their (short) full policy -- the resumed session holds
+# the tick policy, not the audit one.
+SHORT="Next tick under the standing policy. $CORE"
+[ "${1:-tick}" = "audit" ] && SHORT="$POLICY $CORE"
 SID=""
 [ -f "$SID_FILE" ] && SID=$(cat "$SID_FILE")
 if [ -n "$SID" ]; then
-  run_tick --resume "$SID" || { rm -f "$SID_FILE"; SID=""; }
+  run_tick "$SHORT" --resume "$SID" || { rm -f "$SID_FILE"; SID=""; }
 fi
-[ -n "$SID" ] || run_tick
+[ -n "$SID" ] || run_tick "$POLICY $CORE"
 
 # Observe the context from outside: keep the session while it is small, drop it
 # (fresh session next tick) once it crosses MAX_CONTEXT. The result JSON's usage

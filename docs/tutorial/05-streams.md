@@ -14,7 +14,7 @@ stdin must be:
 
 ```toylang
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users | select(.age >= 18) | map(.name)
+    db.users | select(.age >= 18) | .[].name
 
 adults(input)
 ```

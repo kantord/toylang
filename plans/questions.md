@@ -54,7 +54,7 @@ its detail, because collapsing it would delete the only copy.
 | [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN for records; enums decided identity for themselves, and enum declarations are the first declaration form |
 | [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | OPEN; `jsonlines` is now a top-level-only sink with no result type, which removes a placeholder answer without deciding the question |
 | [Q36](#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy) | Does a real module system need imports, multiple files, and enforced privacy? | OPEN, one always-on prelude file exists; nothing beyond it does |
-| [Q37](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model) | How do floats print, and what are NaN and Infinity in a JSON-shaped value model? | OPEN, blocks implementing `Float`; the representation itself is decided |
+| [Q37](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model) | How do floats print, and what are NaN and Infinity in a JSON-shaped value model? | RULED (gh:145): admit NaN/Infinity, division by zero returns Infinity (matches IEEE). Printing format is still open per-backend conformance work; tracked at board row `float-build` |
 
 [Multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) is the one
 question still capable of changing [the two-layer

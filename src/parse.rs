@@ -1078,6 +1078,13 @@ impl<'i> Cursor<'i> {
             let (tok, _) = self.peek()?;
             match tok {
                 Tok::LBracket => {
+                    let (_, bspan) = self.peek()?;
+                    // Indexing owns `[` on the same line only, the same rule call arguments
+                    // follow: a definition's body and the program's body sit adjacent, and the
+                    // line break keeps one from swallowing the other.
+                    if !self.same_line(e.span().end, bspan.start) {
+                        return Ok(e);
+                    }
                     let (_, lspan) = self.advance()?;
                     let (next, _) = self.peek()?;
                     if next == Tok::RBracket {

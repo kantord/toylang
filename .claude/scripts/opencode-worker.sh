@@ -23,6 +23,16 @@ SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 export PATH="$HOME/.cargo/bin:$PATH"
 command -v sccache >/dev/null && export RUSTC_WRAPPER=sccache
 
+# The exit tick fires from a trap, not the last line: a wrapper death mid-run
+# (one process-group kill ate a worker AND its tick on 2026-08-30, leaving the
+# maintainer's answers waiting on the 600s loop backstop) still lands the wake-up.
+# Only SIGKILL skips a trap; the loop tick remains the backstop for that.
+fire_tick() {
+  echo "[opencode-worker] firing landing tick"
+  (nohup "$SCRIPTS/drive-tick.sh" >>"$HOME/.cache/toylang-drive/event-ticks.log" 2>&1 &)
+}
+trap fire_tick EXIT
+
 echo "[opencode-worker] $LANE on $MODEL (events: $LOG)"
 START=$(date +%s)
 opencode run -m "$MODEL" --format json "$BRIEF" 2>>"$LOG_DIR/errors.log" \
@@ -68,9 +78,7 @@ with open(out, "a", newline="") as f:
 print(f"[opencode-worker] done: {steps} steps, ${cost:.4f}, telemetry row appended")
 EOF
 
-# Event-driven landing: a worker exit is an unambiguous finish signal, so fire a
-# tick immediately instead of waiting out the loop interval. The tick's flock
+# Event-driven landing: a worker exit is an unambiguous finish signal; the EXIT
+# trap above fires the tick on every path out of this script. The tick's flock
 # makes this safe; if one is already running, the periodic loop is the fallback.
-echo "[opencode-worker] firing landing tick"
-(nohup "$SCRIPTS/drive-tick.sh" >>"$HOME/.cache/toylang-drive/event-ticks.log" 2>&1 &)
 exit $RC

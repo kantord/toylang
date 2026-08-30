@@ -1,16 +1,67 @@
-# Summing a hundred large numbers (skipped)
+# Summing a hundred large numbers
 
-Skipped. The hundred 50-digit numbers are problem-given data
-([kantord/toylang#39](https://github.com/kantord/toylang/issues/39)), so the leading ten digits of
-their sum have never been computed here. [Problem 8](08-largest-product-in-a-series.md) has the
-account of how these pages came to publish an answer anyway; the program is in
-[kantord/toylang#129](https://github.com/kantord/toylang/issues/129).
+Solves [Project Euler 13](https://projecteuler.net/problem=13). See the
+[spoiler warning](00-spoiler-warning.md).
 
-One thing from it outlives the page. Neither the input nor the sum fits `Int`, which is 32 bits
-([kantord/toylang#38](https://github.com/kantord/toylang/issues/38)), and the way around that was
-not a wider type but adding one column of digits at a time from the right, the way it is done on
-paper. Every column total -- at most a hundred nines plus a small carry -- stays far inside `Int`
-even though the sum as a whole does not, and only the leading ten digits the problem asks for are
-kept, a `Vec<Int>` of digits rather than a number nothing here could hold.
+The hundred 50-digit numbers are problem-given data
+([kantord/toylang#39](https://github.com/kantord/toylang/issues/39)); the fragment below sums a
+synthetic set of three ten-digit numbers, and the real-sized check lives in
+`tests/euler_real_data.rs`, opt-in via `just euler-data DIR`.
+
+Neither the input nor the sum fits `Int`, which is 32 bits
+([kantord/toylang#38](https://github.com/kantord/toylang/issues/38)), so `add_digits` adds one
+column of digits at a time from the right, the way it is done on paper. Every column total -- at
+most a hundred nines plus a small carry -- stays far inside `Int` even though the sum as a whole
+does not, and only the leading ten digits the problem asks for are kept, a `Vec<Int>` of digits
+rather than a number nothing here could hold.
 [Problem 24](24-lexicographic-permutations.md) reaches for the same digits-in-a-`Vec`
-representation. See the [spoiler warning](00-spoiler-warning.md).
+representation.
+
+The example's three numbers, two of them all nines, ripple a carry all the way up, so the sum is
+20000000000 and the answer is its first ten digits.
+
+```toylang
+fn empty() -> Vec<Int> = []
+
+fn col_sum(p: {nums: Vec<Vec<Int>>, i: Int, k: Int}) -> Int =
+    0 if p.i >= length(p.nums) else
+        p.nums[p.i]![p.k]! + col_sum({nums: p.nums, i: p.i + 1, k: p.k})
+
+fn column_total(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int}) -> Int =
+    col_sum({nums: p.nums, i: 0, k: p.k}) + p.carry
+
+fn emit_carry(p: {carry: Int, acc: Vec<Int>}) -> Vec<Int> =
+    p.acc if p.carry == 0 else
+        emit_carry({carry: p.carry / 10, acc: [p.carry % 10] + p.acc})
+
+fn add_digits(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int, acc: Vec<Int>}) -> Vec<Int> =
+    emit_carry({carry: p.carry, acc: p.acc}) if p.k < 0 else
+        add_digits(
+            {
+                nums: p.nums,
+                k: p.k - 1,
+                carry: column_total({nums: p.nums, k: p.k, carry: p.carry}) / 10,
+                acc: [column_total({nums: p.nums, k: p.k, carry: p.carry}) % 10] +
+                    p.acc
+            }
+        )
+
+fn first_ten(v: Vec<Int>) -> Vec<Int> = range(10) | map(v[.]!)
+
+fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
+    first_ten(
+        add_digits(
+            {nums: nums, k: length(nums[0]!) - 1, carry: 0, acc: empty()}
+        )
+    )
+
+leading_digits(input)
+```
+
+```input
+[[9,9,9,9,9,9,9,9,9,9],[9,9,9,9,9,9,9,9,9,9],[0,0,0,0,0,0,0,0,0,2]]
+```
+
+```output
+[2,0,0,0,0,0,0,0,0,0]
+```

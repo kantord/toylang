@@ -42,6 +42,14 @@
 # top ready builds fill the free lanes up to the cap. List position is a tiebreak only. A
 # needs-cycle, or todo rows remaining with nothing pickable and nothing in flight, is a
 # deadlock and gets reported.
+- id: vec-literal-user-fn-call-bug
+  issue: gh:148
+  title: Vec literal elements can't call a user-defined function -- parser bug found during syntax-ergonomics research
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
+
 - id: local-binding-design
   issue: gh:87
   title: Grill local bindings inside an expression -- the where/as shaped gap (emuto survey adopt)
@@ -49,62 +57,37 @@
   needs: []
   status: todo
 
-- id: csv-inputs-idea
-  issue: gh:88
-  title: Grill the DSV source shape -- delimiter vs nullary sources (worker analysis, gh:88 comment)
-  kind: decide
-  needs: []
+- id: dsv-parameterized-source
+  issue: gh:136
+  title: Build the parameterized dsv(delim) source, plus prelude csv/tsv partials (gh:88 ruling)
+  kind: build
+  needs: [stdin-syntax-design]
   prio: 4
   status: todo
 
-- id: int64-wire-form
-  issue: gh:89
-  title: Decide the Int64 wire form -- input refuses it pending the codec call (gh:83 escalation)
-  kind: decide
+# Latency-analysis lever (2026-08-30): the corpus mega-test is the pole of `just
+# check`, which every lane pays 2-4x and every fold pays once.
+- id: corpus-test-split
+  issue: gh:139
+  title: Split the corpus mega-test into parallel per-backend tests so `just check` drops from ~67s to ~20s
+  kind: build
+  needs: []
+  prio: 1
+  status: delegated
+
+- id: docs-slow-fragment-tier
+  issue: gh:135
+  title: Build the opt-in slow-fragment tier for the docs harness; land Euler 10/14 under it (gh:90 ruling)
+  kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: euler-slow-fragments-2
   issue: gh:93
-  title: Batch 3's correct-but-slow problems, parked with the same tier question as gh:90
-  kind: decide
-  needs: []
-  soft: [euler-slow-fragments]
-  prio: 3
-  status: todo
-
-- id: python-recursion-limit
-  issue: gh:132
-  title: Python backend never raises sys' default recursion limit -- breaks real-sized recursive programs (found via euler-11)
+  title: Apply the slow-fragment tier to batch 3's correct-but-slow problems (gh:90 ruling)
   kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
-- id: euler-pages-restore
-  issue: gh:133
-  title: Restore the Euler 8/11/13/18 docs pages now that tests/euler_real_data.rs verifies them (gh:129 follow-up)
-  kind: build
-  needs: []
-  soft: [python-recursion-limit]
-  prio: 3
-  status: delegated
-
-- id: projection-style-demotion
-  issue: gh:99
-  title: Demote map(.field) for pure projection -- style and sweep, not a refusal
-  kind: build
-  needs: []
-  prio: 3
-  soft: [concat-retirement]
-  status: delegated
-
-- id: euler-slow-fragments
-  issue: gh:90
-  title: Decide the slow-fragment tier -- Euler 10 and 14 solve correctly but cost minutes on the weak backends
-  kind: decide
-  needs: []
+  needs: [docs-slow-fragment-tier]
   prio: 3
   status: todo
 
@@ -170,31 +153,20 @@
   prio: 4
   status: todo
 
-- id: void-functions-design
-  issue: gh:58
-  title: Grill void functions -- formalize functions that map to nothing but may have side effects (maintainer idea, streams tutorial annotation)
-  kind: decide
+- id: range-stream-source-build
+  issue: gh:137
+  title: Amend ADR 0001 (Q1/Q13) for range as a Stream source; implement across backends (gh:127 ruling)
+  kind: build
   needs: []
-  status: todo
+  prio: 3
+  status: delegated
 
-- id: range-stream-source-design
-  issue: gh:127
-  title: Grill whether range should become a Stream source -- Q1/Q13 amendment to ADR 0001 (prelude-inventory approved finding, gh:105/gh:121)
+- id: void-sink-syntax-design
+  issue: gh:138
+  title: Grill the void/sink function syntax -- spelling candidates with research-prepped code (gh:58 ruling)
   kind: decide
   needs: []
-  status: todo
-
-- id: q37-float-semantics
-  title: Grill Q37 -- float printing agreement, NaN/Infinity, division by zero
-  kind: decide
-  needs: []
-  status: todo
-
-- id: benchmark-goals
-  title: Grill what workloads define the performance thesis, then plan the benchmark suite
-  kind: decide
-  needs: []
-  prio: 4
+  prio: 3
   status: todo
 
 - id: float-build
@@ -203,29 +175,19 @@
   needs: [q37-float-semantics]
   status: todo
 
+- id: benchmark-suite-build
+  title: Build the initial benchmark suite -- 8 non-float CLBG tasks, hyperfine harness per benchmark-plan.md, framed as a general cross-language competitiveness claim (gh:147 ruling); n-body/spectral-norm deferred to a second wave (gh:146 ruling)
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
+
 - id: lines-utf8-edge
   issue: gh:102
   title: Pin what a non-UTF-8 byte arriving via lines does, on every backend
   kind: decide
   needs: []
   status: todo
-
-- id: jq-printer-cycle-refusal
-  issue: gh:116
-  title: jq -- recursive-enum printers refuse a mutual cycle the way ordered() refuses one (issue-94 review)
-  kind: build
-  needs: []
-  prio: 3
-  soft: [concat-retirement]
-  status: delegated
-
-- id: benchmark-synthesis
-  issue: gh:108
-  title: Combine the benchmark set and tooling spikes into the actual benchmark plan
-  kind: build
-  needs: [benchmark-set-spike, benchmark-tooling-spike]
-  prio: 3
-  status: delegated
 
 - id: record-argument-boundary
   title: Oddity -- the paren-free record argument reaches across the definition boundary; settle it
@@ -246,41 +208,44 @@
   prio: 2
   status: todo
 
-- id: sum-max-reductions
-  title: sum and max as builtin reductions -- shape, element types, Opt on empty (euler-ergonomics row 1)
-  kind: decide
+- id: sum-max-builtins-build
+  issue: gh:140
+  title: Implement sum and max builtins over Vec<Int>/Vec<Int64>, empty sum is 0, empty max is Opt<T> (gh:140 ruling)
+  kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
-- id: tail-call-contract
-  title: Self-tail-calls run in constant stack, as contract -- every backend (euler-ergonomics row 2)
-  kind: decide
+- id: tail-call-jspy-build
+  issue: gh:141
+  title: Fix js and py codegen so self-tail-recursion runs in constant stack (lua/native/jq/go/rust already comply) (gh:141 ruling)
+  kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
-- id: first-search-cut
-  title: first as a value-layer search cut vs the draft's full story (euler-ergonomics row 5)
-  kind: decide
+- id: search-layer-build
+  title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
+  kind: build
   needs: []
   status: todo
 
-- id: slices-decide
-  title: Slices as index specs -- clamp vs Opt at the boundary (euler-ergonomics row 6)
-  kind: decide
+- id: slices-build
+  issue: gh:143
+  title: Implement v[a:b] slice syntax with clamping out-of-range bounds (gh:143 ruling)
+  kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: sort-by-max-by
   title: sort_by and max_by -- ordering through a scalar projection (euler-ergonomics row 7)
   kind: build
-  needs: [sum-max-reductions]
+  needs: [sum-max-builtins-build]
   status: todo
 
-- id: param-destructuring
-  title: Record parameters destructure the way match arms already do -- spelling (euler-ergonomics row 8)
-  kind: decide
+- id: param-destructure-build
+  title: Implement match-arm-style parameter destructuring, e.g. fn gcd({a, b}:{a:Int,b:Int}) (gh:144 ruling)
+  kind: build
   needs: []
   status: todo
 
@@ -306,32 +271,7 @@
   needs: []
   status: todo
 
-- id: benchmark-spike-citations
-  issue: gh:125
-  title: Cite TechEmpower/SPEC license claims in benchmark-suite-spike.md (gh:106 review follow-up)
-  kind: build
-  model: haiku
-  needs: []
-  prio: 4
-  status: delegated
 
-- id: emit-rs-concat-helper
-  issue: gh:126
-  title: Extract emit_rs.rs's Concat dispatch arm into a named helper, matching sibling backends (gh:97 review follow-up)
-  kind: build
-  model: haiku
-  needs: []
-  prio: 4
-  status: delegated
-
-- id: draft-intro-migration
-  issue: gh:134
-  title: Migrate draft.md's identity sections (what this is, principles, values, worked programs, non-goals) to a docs overview page, then delete them
-  kind: build
-  needs: []
-  soft: [draft-questions-home]
-  prio: 4
-  status: delegated
 
 - id: draft-core-model-migration
   title: Migrate the two-layer/cardinality core model to a concepts guide; embedded open threads go to the tracker (draft-split)

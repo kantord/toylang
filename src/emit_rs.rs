@@ -1108,12 +1108,7 @@ impl Emitter<'_> {
                 self.user(func),
                 arg.as_deref().map_or_else(String::new, |a| self.expr(a))
             ),
-            // `Vec<T>` has no `Add` impl, but the standard library's slice `concat` is exactly
-            // this operation for an owned pair.
-            Kind::Concat(l, r) => match &t.ty {
-                Type::Vec(_) => format!("[{}, {}].concat()", self.expr(l), self.expr(r)),
-                _ => format!("({} + &{})", self.expr(l), self.expr(r)),
-            },
+            Kind::Concat(l, r) => concat(&t.ty, self.expr(l), self.expr(r)),
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             // A genuine expression, unlike Go: both branches stay unevaluated except the taken
             // one, which is what `if`/`else` already guarantees.
@@ -1427,6 +1422,15 @@ fn int_lit(ty: &Type, n: i64) -> String {
         format!("{n}i64")
     } else {
         format!("tl_int({n})")
+    }
+}
+
+/// `Vec<T>` has no `Add` impl, but the standard library's slice `concat` is exactly
+/// this operation for an owned pair.
+fn concat(ty: &Type, l: String, r: String) -> String {
+    match ty {
+        Type::Vec(_) => format!("[{l}, {r}].concat()"),
+        _ => format!("({l} + &{r})"),
     }
 }
 

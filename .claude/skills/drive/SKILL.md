@@ -36,7 +36,13 @@ Every tick:
    below), land finished ones.
 2. Poll `docs/.annotations/inbox.json` AND `docs/.annotations/notes.json` (compose messages
    and span notes), applying entries 5+ minutes quiet or marked read; wizard rounds in
-   `docs/.grill/` process immediately. A record whose `page` is a `plans/*.md` file is a
+   `docs/.grill/` process immediately. An inbox record whose `page` is a
+   `docs/.grill/*.round.yaml` is a wizard SUBMISSION -- an explicit click, applied at once,
+   no quiet period (the quiet rule protects half-typed compose notes, not button presses).
+   Grilling runs CONCURRENTLY with build work: keep TWO rounds buffered in `docs/.grill/`
+   whenever ready decides remain (compose the second before the first is answered, never
+   duplicating a pending round's questions), so the maintainer can answer back-to-back
+   while workers grind. A record whose `page` is a `plans/*.md` file is a
    plan decision: an explicit click, applied at once, no quiet period ("Plan approval"
    below). Clearing at capture is RE-READ, FILTER BY ID, WRITE -- one atomic step, printing
    what is removed. Never empty an array wholesale from a stale read: the maintainer keeps
@@ -65,6 +71,16 @@ last events say what it was doing. Uncommitted work continues via
 `opencode run --session <sessionID>` with a correction message (full context retained);
 anything that smells like a worker-quality problem gets a row in
 plans/opencode-rollout.md's incident table -- that log is the rollout's evidence base.
+
+**The coordinator is a router (maintainer direction, 2026-08-30).** The asymptote every
+change moves toward: a tick spends its turns on DECISIONS -- what to dispatch, what to
+land, what to surface to the maintainer -- executed through the four mechanical
+surfaces (dispatch-worker.sh, land-lane.sh, board-archive.py, round files), and reads
+results rather than exploring. The gate script hands each tick a pre-computed state
+snapshot in the prompt: act on it instead of re-reading the board, re-checking lanes,
+and re-polling stores; re-verify only what you are about to modify. The deliberate
+exception, for now, is the landing diff read -- that judgment stays in-tick until the
+rollout review prices a cheap-model alternative.
 
 The tick's diagnosis budget is the event log, git state, and the suite output --
 ROUTING evidence. The moment understanding requires reading source files or
@@ -99,9 +115,23 @@ delegated`, optionally `issue: gh:N`. Landed rows do not stay here (issue #113):
 `plans/board-archive.yaml`, same schema, `status: done`, append-only, kept for provenance only.
 A `needs`/`soft` id not found in the live board is satisfied -- it landed and was archived; the
 archive is never consulted to decide whether something is blocked. The maintainer's role is
-decide-tasks and goal-setting; everything else is yours to drive. Never invent tasks: new work
-enters the board through a grilling/planning session or an explicit user request, and gets a
-row before it gets a branch.
+decide-tasks and goal-setting; everything else is yours to drive. Never invent tasks while
+real work remains: new work enters the board through a grilling/planning session or an
+explicit user request, and gets a row before it gets a branch.
+
+**The idle exception (maintainer ruling, 2026-08-30).** When the board runs dry -- no ready
+builds, lanes empty -- the coordinator MAY self-originate, two ways, both with visible
+provenance ("self-originated, idle board" on the row/issue):
+
+- Board ONE OR TWO exploration ideas and work them: research-shaped rows (spikes, audits,
+  benchmarks, tooling probes) that are cheap and reversible. Anything touching language
+  design or user-facing semantics is NOT self-buildable -- it becomes a decide row and a
+  round question instead.
+- Problems the coordinator discovered itself (a flaky test, a doc contradiction, a cost
+  anomaly in lanes.csv, a suspicious pattern in a backend) go to the maintainer's inbox:
+  a decide row plus an `escalation`-flow question in the next wizard round, with the
+  evidence attached. Discovery is welcome any time; SURFACING it always beats silently
+  acting on it.
 
 ## The loop (scheduler v2, maintainer-specified 2026-08-29)
 

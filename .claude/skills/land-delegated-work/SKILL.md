@@ -19,7 +19,7 @@ Do not ping for intermediate progress or ask permission to review or merge.
   racing it for the cargo lock. An opencode worker's quality problems found during landing
   (review findings traceable to the worker, red suites, half-done work) additionally get a
   row in plans/opencode-rollout.md's incident table.
-- Run `just test` in the worktree. A red suite goes back to the session (or gets fixed here
+- Run `just check` in the worktree (the full `just test` runs once per accumulator promotion). A red check goes back to the session (or gets fixed here
   if the session is gone and the fix is small); never review a red branch as if it were done.
 
 ## 2. Review: the coordinator reads the diff itself. No review agents. (maintainer rule, 2026-08-30)
@@ -50,45 +50,42 @@ What review IS now:
   `pkill`/`killall` by process name. Name-based kills took down the coordinator's
   annotations server (and once the maintainer's own) four times in one day.
 
-## 2b. Batch landings cascade (maintainer flow, 2026-08-29)
+## 2b + 3. The size-driven pipeline: lane -> to-merge-* -> main (maintainer design, 2026-08-30, superseding the same-day single-wip flow)
 
-When THREE OR MORE reviewed-and-green branches are ready at once, do not merge them into
-main one by one. Build a tournament instead: pair the branches, merge each pair into an
-integration branch (`integration/<a>+<b>`, cut from main) in its own temp worktree -- the
-pairs are independent, so their merges, conflict resolutions, and suite runs all happen in
-parallel; then pair the winners, and only the final champion merges into main, taking ONE
-main suite and ONE push for the whole batch. Conflicts get resolved at the pair level,
-where they are smallest and main is never mid-merge; a suite failure at any node localizes
-to its subtree. Board flips and issue closes all happen with the final merge. Per-branch
-review stays a hard prerequisite -- the cascade accelerates merging, never judgment. With
-fewer than three ready, the serial flow below is simpler and just as fast.
+Merging never blocks work, and the SIZE of a branch tells you its role: small
+accumulators take lanes in, a full or stale one goes to main. All plumbing (verify
+clean/ahead/no live worker, merge --no-ff, gate, push, worktree removal) lives in
+`.claude/scripts/land-lane.sh` so the coordinator spends its turns on judgment:
 
-## 3. Merge locally, then push
-
-- `git merge <branch> --no-ff` from the main checkout, with a merge message naming what was
-  reviewed and where follow-ups went, plus the trailer. NEVER in the same shell command as a
-  `cd` into the worktree: a compound "cd worktree && commit && merge" runs the merge INSIDE
-  the branch, silently merging nothing (it happened twice in one day -- both times the close
-  comment fired against a merge that had not reached main). Start the merge as its own
-  command from the repo root, and verify `git status -sb` says main first.
-- On conflicts: resolve each conflicted path explicitly and NEVER `git add -A` while a merge
-  is in progress -- it once staged conflict markers into board.yaml unseen. Structured files
-  (board.yaml and board-archive.yaml especially) get validated AFTER resolution and BEFORE the
-  commit, with the validation hard-gating the commit (`&&`, not a newline).
-- Re-run `just test` on main after the merge.
-- Push main after the green suite (standing authorization, 2026-08-29, "at least for now"):
-  ordinary pushes only, never force, never branch deletion. Keeping origin current is what
-  lets the next dispatch cut a fresh worktree without a human round-trip. Removing the
-  enwiro env (`enw rm`) stays the user's -- it is safe only after the merge, and never with
-  unmerged work.
+- **Fold finished lanes** (after the diff read passes):
+  `.claude/scripts/land-lane.sh fold <merge-msg-file> <issue>...` -- gate is `just
+  check`. Several ready lanes go in ONE call; lane worktrees are removed by the
+  script. The first lane seeds a `to-merge-<epoch>` accumulator (its own commits,
+  aliased); later lanes fold into the LARGEST accumulator not mid-promotion.
+- **Promotion is automatic and DETACHED.** A fold that crosses 600 changed lines
+  (insertions + deletions vs main; typical lanes 50-700, measured 2026-08-30) fires
+  `land-lane.sh promote <branch>` itself, in the background. The full `just test`
+  runs in a throwaway worktree; main is touched only after green, then pushed. The
+  coordinator never waits on it.
+- **A stale accumulator promotes as-is**: untouched 30+ minutes (the tick trigger
+  names it) means nothing more is coming -- run the promote yourself, detached with
+  nohup. Under light load this IS the common promotion.
+- **A red promotion leaves main untouched** and drops a `promote-failed-<branch>`
+  marker the tick gate reports. Route a research/continuation dispatch (nextest
+  names the breaking test, which usually names the lane); the accumulator keeps
+  taking folds only after the repair -- never promote around a red suite.
+- Workers cut their branches from the largest live accumulator (dispatch-worker.sh
+  does this), so landed-but-unpromoted work is buildable-upon.
+- On merge conflicts inside an accumulator: resolve each conflicted path explicitly,
+  NEVER `git add -A` mid-merge (it once staged conflict markers into board.yaml
+  unseen); structured files get validated after resolution, hard-gating the commit.
 
 ## 3b. Update the board and the env
 
-If `plans/board.yaml` exists: MOVE the landed task's row out of `plans/board.yaml` into
-`plans/board-archive.yaml`, appended with `status: done` (committed together with the merge) --
-landing no longer flips status in place (issue #113). Match the row by its id terminator
-(`'- id: <slug>\n'`, never a bare prefix -- see the drive skill's stall-diagnosis section) and
-add rows for any follow-up issues the review filed -- `build` rows usually, or a `decide` +
+If `plans/board.yaml` exists: run `.claude/scripts/board-archive.py <row-id>...` -- it does the
+issue-#113 move (terminator-anchored cut from `plans/board.yaml`, append to
+`plans/board-archive.yaml` with `status: done`, both files validated) in one deterministic
+step; commit its result together with the wip merge. Add rows for any follow-up issues the review filed -- `build` rows usually, or a `decide` +
 `build` pair when a finding needs a design call first.
 
 The worktree's fate depends on which kind it is:
