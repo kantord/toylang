@@ -1,0 +1,14 @@
+# Composite equality over an Int64 field. The JS backend carries Int64 as BigInt, and its
+# structural walk must compare values with strict equality rather than any arithmetic trick
+# (a - b truncates); this pins that path on every backend so it cannot regress unwitnessed.
+program: |
+  fn a() -> {v: Int64} = {v: 600851475143}
+  fn b() -> {v: Int64} = {v: 600851475143}
+  fn c() -> {v: Int64} = {v: 600851475142}
+
+  {same: a() == b(), differing: a() == c()}
+
+output: |
+  {"same":true,"differing":false}
+
+node_types: [application, compare.eq, int64, record-literal]

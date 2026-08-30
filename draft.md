@@ -2524,6 +2524,42 @@ customer, per the ratification above -- declarations take parameters, `Name<...>
 substitution, and constructors infer the instantiation from their payload or take it from the
 position's expectation. `Result<T, E>` inherits the machinery instead of motivating it.
 
+## DECIDED: equality on a composite is structural, and stops at a Vec
+
+kantord/toylang#68, ratified in the equality-and-chars round. Two records are equal when their
+fields are, two enum values when they are the same variant carrying equal payloads, and `!=` is
+its negation. This was less a new rule than the discovery that the language had never had one:
+`{a: 1} == {a: 1}` answered `false` on Lua and JS, `true` on Python, jq and Go, and would not
+compile at all on the native or Rust backends. The corpus never witnessed the disagreement,
+because no case compared a composite.
+
+Structural is the answer the agreement invariant admits and the other two options do not. The
+alternative on the table was refusing `==` on anything composite -- cheap, and what native
+already did by accident -- but it takes away an answer three backends were giving correctly,
+and identity is not a notion the language has anywhere else: nothing in it observes where a
+value came from, and there is no operator that could tell you.
+
+Four backends had to grow the walk. Lua tables and JS objects compare by reference, so both get
+a recursive `tl_eq` that compares by key rather than by position, since two spellings of one
+record type may still be laid out differently ([record field order is not type
+identity](#decided-record-field-order-is-not-type-identity)). A Go enum holds its payload behind
+a pointer, so `==` on two of them was comparing addresses; `reflect.DeepEqual` is the walk
+there. The native backend's refusal lifts into a comparison emitted from the static type: a
+record's fields folded together with `and`, an enum's tags compared and then the payload of the
+variant they turn out to share. Rust needed one more word in a derive; Python and jq were
+already structural and needed nothing.
+
+The boundary is `Vec`. `[1, 2] == [1, 2]` was already refused for
+[Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit)'s sake,
+and the refusal now extends to a Vec reached through a record field or an enum payload, which
+used to compile and mean whatever the target's own `==` happened to mean. A record field is no
+better a place to answer Q2 by accident than the top level is.
+
+Ordering is untouched, and still disagrees. `<` on a record typechecks today; three backends
+then refuse to compile it, two fail at runtime, and two answer -- jq by its own document order,
+JS by comparing the string `[object Object]` against itself. Whether composites are ordered at
+all is a question nobody has been asked, and this decision does not answer it.
+
 ## Open questions
 
 Tracked here rather than scattered through the document. Status is one of OPEN (no preferred
@@ -2602,6 +2638,11 @@ Vec concatenation specifically is decided, without touching the rest of this que
 (see [named functions kept an open question open](research-log/named-functions-kept-an-open-question-open.md)).
 The general question -- what `+`, or any other operator, means when both operands are Vecs --
 is still open.
+
+Composite equality is settled without touching it. `==` on a record or an enum compares
+structurally, and is refused outright when the type carries a Vec anywhere inside it, so a
+`Vec`-typed record field never quietly acquires whole-value semantics
+([the equality decision](#decided-equality-on-a-composite-is-structural-and-stops-at-a-vec)).
 
 ### Q3. What symbol replaces `=` for the record-forming update?
 

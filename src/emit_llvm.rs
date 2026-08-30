@@ -1913,10 +1913,274 @@ impl<'ctx> Emitter<'ctx> {
         Ok(())
     }
 
+    /// Structural equality on a composite, walked at compile time because the type is known:
+    /// a record compares field by field, an enum compares tags and then the payload of the
+    /// variant they share (kantord/toylang#68). Every case is one i1 in the block the builder
+    /// is left positioned at, so a caller can `and` the result straight into another.
+    ///
+    /// A Vec cannot appear anywhere inside `ty` -- the checker refuses a comparison whose
+    /// operand carries one, since whether a Vec compares as a whole value is Q2 -- so nothing
+    /// here has to loop.
+    fn equal(
+        &mut self,
+        l: BasicValueEnum<'ctx>,
+        r: BasicValueEnum<'ctx>,
+        ty: &Type,
+    ) -> Result<IntValue<'ctx>, String> {
+        let i64t = self.ctx.i64_type();
+        match ty {
+            Type::Str => {
+                let same = self.call_rt(self.rt.str_eq, &[l, r], "streq")?;
+                self.builder
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        same.into_int_value(),
+                        i64t.const_zero(),
+                        "streq",
+                    )
+                    .map_err(|e| e.to_string())
+            }
+            Type::Int | Type::Int64 | Type::Bool | Type::Char => self
+                .builder
+                .build_int_compare(
+                    IntPredicate::EQ,
+                    l.into_int_value(),
+                    r.into_int_value(),
+                    "eq",
+                )
+                .map_err(|e| e.to_string()),
+            Type::Record(fields) => {
+                let mut acc = self.ctx.bool_type().const_int(1, false);
+                for (name, fty) in fields {
+                    let lf = self.field_of(l, ty, name, fty)?;
+                    let rf = self.field_of(r, ty, name, fty)?;
+                    let same = self.equal(lf, rf, fty)?;
+                    acc = self
+                        .builder
+                        .build_and(acc, same, "eq.field")
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(acc)
+            }
+            Type::Enum { .. } if ty.as_opt().is_some() => {
+                let inner = ty.as_opt().expect("guarded").clone();
+                self.equal_opt(l, r, &inner)
+            }
+            Type::Enum { variants, .. } => self.equal_enum(l, r, variants),
+            other => Err(unsupported(&format!("comparing {other}"))),
+        }
+    }
+
+    /// The Opt case of `equal`. Absence is the null pointer here, so two Opts agree when they
+    /// agree about being present, and, when both are, about what they hold.
+    fn equal_opt(
+        &mut self,
+        l: BasicValueEnum<'ctx>,
+        r: BasicValueEnum<'ctx>,
+        inner: &Type,
+    ) -> Result<IntValue<'ctx>, String> {
+        let i64t = self.ctx.i64_type();
+        let function = self.enclosing_function()?;
+        let boolt = self.ctx.bool_type();
+        let slot = self
+            .builder
+            .build_alloca(boolt, "eq")
+            .map_err(|e| e.to_string())?;
+
+        let mut present = Vec::new();
+        for (v, name) in [(l, "l.some"), (r, "r.some")] {
+            let some = self.call_rt(self.rt.opt_is_some, &[v], name)?;
+            present.push(
+                self.builder
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        some.into_int_value(),
+                        i64t.const_zero(),
+                        name,
+                    )
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        let agree = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, present[0], present[1], "eq.presence")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(slot, agree)
+            .map_err(|e| e.to_string())?;
+        let both = self
+            .builder
+            .build_and(present[0], present[1], "eq.both")
+            .map_err(|e| e.to_string())?;
+
+        let inside = self.ctx.append_basic_block(function, "eq.some");
+        let done = self.ctx.append_basic_block(function, "eq.done");
+        self.builder
+            .build_conditional_branch(both, inside, done)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(inside);
+        let lp = self
+            .call_rt(self.rt.opt_get, &[l], "l.payload")?
+            .into_int_value();
+        let rp = self
+            .call_rt(self.rt.opt_get, &[r], "r.payload")?
+            .into_int_value();
+        let lp = self.read_slot(lp, inner)?;
+        let rp = self.read_slot(rp, inner)?;
+        let same = self.equal(lp, rp, inner)?;
+        self.builder
+            .build_store(slot, same)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(done)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(done);
+        Ok(self
+            .builder
+            .build_load(boolt, slot, "eq")
+            .map_err(|e| e.to_string())?
+            .into_int_value())
+    }
+
+    /// The declared-enum case of `equal`. Different tags settle it; equal tags leave one variant
+    /// to compare, so the payload walk is a chain of tag tests over the same two-slot box `show`
+    /// reads, and the last variant needs no test because the type says nothing else is left.
+    fn equal_enum(
+        &mut self,
+        l: BasicValueEnum<'ctx>,
+        r: BasicValueEnum<'ctx>,
+        variants: &[(String, Option<Type>)],
+    ) -> Result<IntValue<'ctx>, String> {
+        if variants.is_empty() {
+            return Err(unsupported("comparing an enum with no variants"));
+        }
+        let i64t = self.ctx.i64_type();
+        let boolt = self.ctx.bool_type();
+
+        let lt = self
+            .call_rt(self.rt.rec_get, &[l, i64t.const_zero().into()], "l.tag")?
+            .into_int_value();
+        let rt = self
+            .call_rt(self.rt.rec_get, &[r, i64t.const_zero().into()], "r.tag")?
+            .into_int_value();
+        let same_tag = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, lt, rt, "eq.tag")
+            .map_err(|e| e.to_string())?;
+        // An enum whose variants all stand for themselves is settled by the tag, with no second
+        // slot to look at.
+        if variants.iter().all(|(_, payload)| payload.is_none()) {
+            return Ok(same_tag);
+        }
+
+        let function = self.enclosing_function()?;
+        let slot = self
+            .builder
+            .build_alloca(boolt, "eq")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(slot, same_tag)
+            .map_err(|e| e.to_string())?;
+
+        let payloads = self.ctx.append_basic_block(function, "eq.payload");
+        let done = self.ctx.append_basic_block(function, "eq.done");
+        self.builder
+            .build_conditional_branch(same_tag, payloads, done)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(payloads);
+        for (i, (_, payload)) in variants.iter().enumerate() {
+            let arm = self.ctx.append_basic_block(function, "eq.arm");
+            if i + 1 < variants.len() {
+                let next = self.ctx.append_basic_block(function, "eq.next");
+                let is = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, lt, i64t.const_int(i as u64, false), "is")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_conditional_branch(is, arm, next)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(arm);
+                self.equal_payload(l, r, payload.as_ref(), slot)?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(next);
+            } else {
+                self.builder
+                    .build_unconditional_branch(arm)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(arm);
+                self.equal_payload(l, r, payload.as_ref(), slot)?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        self.builder.position_at_end(done);
+        Ok(self
+            .builder
+            .build_load(boolt, slot, "eq")
+            .map_err(|e| e.to_string())?
+            .into_int_value())
+    }
+
+    /// One arm of the enum walk above: a unit variant is settled by its tag alone, so the
+    /// `true` already in `slot` stands; a payload variant compares what the second slot holds.
+    fn equal_payload(
+        &mut self,
+        l: BasicValueEnum<'ctx>,
+        r: BasicValueEnum<'ctx>,
+        payload: Option<&Type>,
+        slot: PointerValue<'ctx>,
+    ) -> Result<(), String> {
+        let Some(pty) = payload else {
+            return Ok(());
+        };
+        let payload_slot = self.ctx.i64_type().const_int(1, false);
+        let lp = self
+            .call_rt(self.rt.rec_get, &[l, payload_slot.into()], "l.payload")?
+            .into_int_value();
+        let rp = self
+            .call_rt(self.rt.rec_get, &[r, payload_slot.into()], "r.payload")?
+            .into_int_value();
+        let lp = self.read_slot(lp, pty)?;
+        let rp = self.read_slot(rp, pty)?;
+        let same = self.equal(lp, rp, pty)?;
+        self.builder
+            .build_store(slot, same)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn enclosing_function(&self) -> Result<FunctionValue<'ctx>, String> {
+        self.builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or_else(|| "no function to branch in".to_string())
+    }
+
     fn compare(&mut self, op: BinOp, lhs: &Tir, rhs: &Tir) -> Result<BasicValueEnum<'ctx>, String> {
         let operand_ty = lhs.ty.clone();
         let l = self.expr(lhs)?;
         let r = self.expr(rhs)?;
+
+        // Ordering on a composite is a separate open question, and falls through to the
+        // refusal below; only `==` and `!=` walk the structure.
+        if operand_ty.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne) {
+            let same = self.equal(l, r, &operand_ty)?;
+            return Ok(match op {
+                BinOp::Ne => self
+                    .builder
+                    .build_not(same, "ne")
+                    .map_err(|e| e.to_string())?,
+                _ => same,
+            }
+            .into());
+        }
 
         let predicate = match op {
             BinOp::Eq => IntPredicate::EQ,

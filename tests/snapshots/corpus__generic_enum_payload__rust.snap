@@ -8,7 +8,7 @@ fn tl_int(n: i32) -> i32 {
     n
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 #[allow(non_camel_case_types)]
 enum TlE_Box_Int {
     V_wrap(i32),

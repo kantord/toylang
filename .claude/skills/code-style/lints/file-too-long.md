@@ -95,3 +95,10 @@ implementing #75, not the emitter-split conversation. Same rule, same outcome.
 The Int64 session (issue #83) grew the same three emitters again (go 1149->1206, llvm
 2054->2126, rs 1277->1358, per the check's own inherited labels) -- the one-new-width-per-
 backend shape of #62/#66/#75, with the emitter-split conversation still undone.
+
+The structural-equality session (issue #95) grew the same three emitters again -- `emit_go.rs`
+1234->1250, `emit_llvm.rs` 2169->2433, `emit_rs.rs` 1378->1384, per the check's own inherited
+labels. `emit_llvm.rs`'s 264 lines are the largest single nudge in this list and worth naming:
+the native backend is the only one with no polymorphic `==` to reach for, so where the other six
+got a helper of a few lines it got a recursive compare emitted from the static type. Same rule
+as every instance above -- the task was implementing #95, not the emitter-split conversation.

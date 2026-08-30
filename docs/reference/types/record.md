@@ -21,7 +21,8 @@ whose type is its empty field set.
 Order never separates types: `{a: Str, b: Int}` and `{b: Int, a: Str}` are one type, and a
 value spelled either way checks wherever that type is wanted. The declared order still
 matters -- it is the order every value of the type prints in, carried as metadata rather
-than identity.
+than identity. Two spellings are two ways of writing one value, so they are also
+[equal](../operators/comparison.md): `{a: 1, b: 2} == {b: 2, a: 1}` is true.
 
 A field is read by [projection](../operators/projection.md): `.name` on a record,
 `[].name` distributed over a dimension of records.
