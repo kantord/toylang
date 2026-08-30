@@ -339,13 +339,14 @@
   title: Per-lane token totals recorded at landing, before transcripts vanish
   kind: build
   needs: []
-  prio: 2
+  prio: 1
   status: todo
 
 - id: worker-pool-reuse
   issue: gh:124
   title: Persistent worker lanes -- sessions reused across tasks under a token ceiling
   kind: build
-  needs: [delegation-telemetry]
-  prio: 2
+  needs: []
+  soft: [delegation-telemetry]
+  prio: 1
   status: todo
