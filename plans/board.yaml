@@ -317,15 +317,6 @@
   needs: []
   status: todo
 
-- id: alt-agent-experiment
-  issue: gh:130
-  title: Experiment -- delegate haiku-tier lanes to opencode + cheap OpenRouter models (DeepSeek V4 Flash confirmed working)
-  kind: build
-  needs: []
-  soft: [worker-pool-reuse]
-  prio: 1
-  status: todo
-
 - id: benchmark-spike-citations
   issue: gh:125
   title: Cite TechEmpower/SPEC license claims in benchmark-suite-spike.md (gh:106 review follow-up)
