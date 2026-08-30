@@ -6,24 +6,28 @@ description: Drive development autonomously from plans/board.yaml - the ordered 
 
 # Drive the board
 
-## Session bootstrap (a fresh session starts here)
+## How ticks arrive (since 2026-08-30: the drive loop, not session crons)
 
-Cron jobs die with their session, so a new driving session re-arms them first:
+Orchestration is externally scheduled: the maintainer starts
+`.claude/scripts/drive-loop.sh` by hand (and stops it by killing the process). The loop
+fires `.claude/scripts/drive-tick.sh` every DRIVE_INTERVAL seconds -- each tick a
+`claude -p` request in auto permission mode that resumes ONE coordinator session; the
+script watches that session's context from outside and starts a fresh one past
+MAX_CONTEXT. The script also picks the model (sonnet routinely, fable when a lane looks
+landable) and revives the dev server after a reboot.
 
-1. **Reconstruct in-flight reality before dispatching anything**: for every `delegated` board
-   row, check its worktree (commits vs main, dirty files, live worker via pgrep cwd). Adopt
-   healthy lanes, intervene on dead ones (see the stall guidance below), land finished ones.
-2. **Arm the drive tick**: a recurring cron at off-minutes (9,39 * * * *) whose prompt names
-   the current lanes and both annotation stores -- poll
-   `docs/.annotations/inbox.json` AND `docs/.annotations/notes.json` (compose messages and
-   span notes), applying answers when 5+ minutes quiet or marked read.
-3. **Arm the audit cron**: every ~5 hours (23 */5 * * *), running "The periodic audit" below.
-4. Verify push distance before any dispatch (worktrees branch from origin).
-5. **Start the lane watcher** (`bash .claude/scripts/lane-watch.sh` as a background task):
-   it exits the moment any delegated lane is committed, clean, and eight minutes quiet, so
-   finished workers become push notifications instead of next-tick discoveries. Restart it
-   after every landing (it exits per event) and after every dispatch if it reported "no
-   delegated lanes remain".
+A tick session therefore NEVER arms crons, background watchers, or its own follow-up
+wake-ups -- scheduling belongs to the loop script. Every tick:
+
+1. **Reconstruct in-flight reality before acting**: for every `delegated` board row, check
+   its worktree (commits vs main, dirty files, live worker via pgrep cwd). Trust disk over
+   anything remembered from earlier ticks -- the maintainer or another session may have
+   acted in between. Adopt healthy lanes, intervene on dead ones (see the stall guidance
+   below), land finished ones.
+2. Poll `docs/.annotations/inbox.json` AND `docs/.annotations/notes.json` (compose messages
+   and span notes), applying entries 5+ minutes quiet or marked read; wizard rounds in
+   `docs/.grill/` process immediately.
+3. Verify push distance before any dispatch (worktrees branch from origin).
 
 ## Stall diagnosis, learned the hard way
 
