@@ -880,3 +880,11 @@
   prio: 3
   soft: [concat-retirement]
   status: done
+
+- id: euler-data-problems-unblock
+  issue: gh:129
+  title: Euler 8, 11, 13 and 18 -- run the programs against real data once it can be sourced, then restore the pages (gh:128 follow-up)
+  kind: build
+  needs: []
+  prio: 3
+  status: done
