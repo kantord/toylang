@@ -411,6 +411,15 @@
   prio: 3
   status: todo
 
+- id: euler-slow-fragments-2
+  issue: gh:93
+  title: Batch 3's correct-but-slow problems, parked with the same tier question as gh:90
+  kind: decide
+  needs: []
+  soft: [euler-slow-fragments]
+  prio: 3
+  status: todo
+
 - id: euler-slow-fragments
   issue: gh:90
   title: Decide the slow-fragment tier -- Euler 10 and 14 solve correctly but cost minutes on the weak backends
@@ -424,7 +433,7 @@
   title: Euler stream batch 3 -- problems 21-30, gates annotated
   kind: build
   needs: [euler-examples-11-20]
-  status: delegated
+  status: done
 
 - id: parser-floor-recursion
   issue: gh:76
