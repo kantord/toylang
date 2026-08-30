@@ -19,7 +19,7 @@ Do not ping for intermediate progress or ask permission to review or merge.
   racing it for the cargo lock. An opencode worker's quality problems found during landing
   (review findings traceable to the worker, red suites, half-done work) additionally get a
   row in plans/opencode-rollout.md's incident table.
-- Run `just test` in the worktree. A red suite goes back to the session (or gets fixed here
+- Run `just check` in the worktree (the full `just test` runs once per wip->main promotion). A red check goes back to the session (or gets fixed here
   if the session is gone and the fix is small); never review a red branch as if it were done.
 
 ## 2. Review: the coordinator reads the diff itself. No review agents. (maintainer rule, 2026-08-30)
@@ -50,45 +50,39 @@ What review IS now:
   `pkill`/`killall` by process name. Name-based kills took down the coordinator's
   annotations server (and once the maintainer's own) four times in one day.
 
-## 2b. Batch landings cascade (maintainer flow, 2026-08-29)
+## 2b + 3. The two-stage pipeline: lane -> wip -> main (maintainer design, 2026-08-30)
 
-When THREE OR MORE reviewed-and-green branches are ready at once, do not merge them into
-main one by one. Build a tournament instead: pair the branches, merge each pair into an
-integration branch (`integration/<a>+<b>`, cut from main) in its own temp worktree -- the
-pairs are independent, so their merges, conflict resolutions, and suite runs all happen in
-parallel; then pair the winners, and only the final champion merges into main, taking ONE
-main suite and ONE push for the whole batch. Conflicts get resolved at the pair level,
-where they are smallest and main is never mid-merge; a suite failure at any node localizes
-to its subtree. Board flips and issue closes all happen with the final merge. Per-branch
-review stays a hard prerequisite -- the cascade accelerates merging, never judgment. With
-fewer than three ready, the serial flow below is simpler and just as fast.
+Merging never blocks work. Finished lanes merge into the running `wip` branch on a fast
+gate, and wip promotes to main in batches on the full gate -- both via
+`.claude/scripts/land-lane.sh`, which does ALL the plumbing (verify clean/ahead/no live
+worker, merge --no-ff, gate, push, worktree removal) in one call so the coordinator
+spends its turns on judgment, not on git:
 
-## 3. Merge locally, then push
-
-- `git merge <branch> --no-ff` from the main checkout, with a merge message naming what was
-  reviewed and where follow-ups went, plus the trailer. NEVER in the same shell command as a
-  `cd` into the worktree: a compound "cd worktree && commit && merge" runs the merge INSIDE
-  the branch, silently merging nothing (it happened twice in one day -- both times the close
-  comment fired against a merge that had not reached main). Start the merge as its own
-  command from the repo root, and verify `git status -sb` says main first.
-- On conflicts: resolve each conflicted path explicitly and NEVER `git add -A` while a merge
-  is in progress -- it once staged conflict markers into board.yaml unseen. Structured files
-  (board.yaml and board-archive.yaml especially) get validated AFTER resolution and BEFORE the
-  commit, with the validation hard-gating the commit (`&&`, not a newline).
-- Re-run `just test` on main after the merge.
-- Push main after the green suite (standing authorization, 2026-08-29, "at least for now"):
-  ordinary pushes only, never force, never branch deletion. Keeping origin current is what
-  lets the next dispatch cut a fresh worktree without a human round-trip. Removing the
-  enwiro env (`enw rm`) stays the user's -- it is safe only after the merge, and never with
-  unmerged work.
+- **Lane into wip** (after the diff read passes):
+  `.claude/scripts/land-lane.sh wip <merge-msg-file> <issue>...` -- gate is `just check`.
+  Several ready lanes go in ONE call. Landed lane worktrees are removed by the script.
+- **Promote wip to main** when the tick trigger says promotion is due (>=3 lanes
+  batched, >=600 changed lines, or the oldest batched lane older than ~30 minutes --
+  thresholds from the measured lane sizes, 50-700 lines typical):
+  `.claude/scripts/land-lane.sh promote <merge-msg-file>` -- gate is the FULL `just
+  test`, one heavy suite for the whole batch, then the push.
+- **A red promotion FREEZES wip**: no further lane merges into wip until it is repaired
+  (a research/continuation dispatch diagnoses; nextest names the breaking test, which
+  usually names the lane). Never promote around a red suite.
+- Workers cut their branches from origin/wip while it exists (dispatch-worker.sh does
+  this), so landed-but-unpromoted work is buildable-upon; keep origin/wip pushed.
+- The old >=3-branch tournament cascade is superseded by this flow; its principle
+  (batch the expensive gate) lives on in the promotion stage.
+- On merge conflicts inside `wip`: resolve each conflicted path explicitly, NEVER
+  `git add -A` mid-merge (it once staged conflict markers into board.yaml unseen);
+  structured files get validated after resolution, hard-gating the commit.
 
 ## 3b. Update the board and the env
 
-If `plans/board.yaml` exists: MOVE the landed task's row out of `plans/board.yaml` into
-`plans/board-archive.yaml`, appended with `status: done` (committed together with the merge) --
-landing no longer flips status in place (issue #113). Match the row by its id terminator
-(`'- id: <slug>\n'`, never a bare prefix -- see the drive skill's stall-diagnosis section) and
-add rows for any follow-up issues the review filed -- `build` rows usually, or a `decide` +
+If `plans/board.yaml` exists: run `.claude/scripts/board-archive.py <row-id>...` -- it does the
+issue-#113 move (terminator-anchored cut from `plans/board.yaml`, append to
+`plans/board-archive.yaml` with `status: done`, both files validated) in one deterministic
+step; commit its result together with the wip merge. Add rows for any follow-up issues the review filed -- `build` rows usually, or a `decide` +
 `build` pair when a finding needs a design call first.
 
 The worktree's fate depends on which kind it is:

@@ -21,12 +21,16 @@ for p in $(pgrep -x opencode 2>/dev/null; pgrep -x claude 2>/dev/null); do
 done
 
 git -C "$REPO" fetch -q origin
+# Lanes cut from wip when the two-stage pipeline is running (landed-but-unpromoted
+# work must be buildable-upon), from main otherwise.
+BASE=origin/main
+git -C "$REPO" rev-parse -q --verify origin/wip >/dev/null 2>&1 && BASE=origin/wip
 if [ -d "$d" ]; then
   echo "[dispatch] continuing in existing lane $d"
 else
   # -B would steal a branch checked out elsewhere; add fails loudly instead,
   # which is the guard we want (that task already has a worktree).
-  git -C "$REPO" worktree add -b "issue-$N" "$d" origin/main -q 2>/dev/null \
+  git -C "$REPO" worktree add -b "issue-$N" "$d" "$BASE" -q 2>/dev/null \
     || git -C "$REPO" worktree add "$d" "issue-$N" -q
 fi
 

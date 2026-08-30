@@ -79,9 +79,9 @@ memory. The brief carries everything, in this shape:
 > and read every comment before touching anything. [One or two sentences locating any
 > in-repo source of truth.] While iterating, test with `just check` (the fast loop);
 > `just --list` names every repo task. Definition of done: [the concrete gates --
-> typically: implementation complete; `just test` green from the worktree root (the
-> full suite, slower than `just check`; a cold worktree also compiles first -- give it
-> time, never abort it); `just fmt` and `just clippy` clean on code you touched; work
+> typically: implementation complete; `just check` green from the worktree root (a cold
+> worktree compiles first -- give it time, never abort it; the full `just test` runs at
+> promotion, not per lane); `just fmt` and `just clippy` clean on code you touched; work
 > committed on this branch per AGENTS.md with the
 > provenance line "Written by DeepSeek V4 Flash via opencode."]. Hard constraints: work
 > ONLY inside this worktree; do NOT push; do not touch plans/. If a command is denied,
