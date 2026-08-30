@@ -419,6 +419,13 @@
   prio: 3
   status: todo
 
+- id: euler-examples-21-30
+  issue: gh:92
+  title: Euler stream batch 3 -- problems 21-30, gates annotated
+  kind: build
+  needs: [euler-examples-11-20]
+  status: delegated
+
 - id: parser-floor-recursion
   issue: gh:76
   title: Parser floor 2 -- recursive enums, mutually recursive functions
