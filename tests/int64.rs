@@ -13,7 +13,7 @@ use toylang::Backend;
 /// bits: everything but jq.
 #[test]
 fn int64_wraps_at_the_2_63_boundary() {
-    let src = "fn max() -> Int64 = 9223372036854775807\n\nmax() + 1\n";
+    let src = "fn big() -> Int64 = 9223372036854775807\n\nbig() + 1\n";
     for backend in Backend::ALL {
         if backend == Backend::Jq {
             continue;
@@ -58,7 +58,7 @@ fn int64_min_over_minus_one_wraps() {
 /// this snapshot ever changes, jq's Int64 story changed with it.
 #[test]
 fn jq_int64_is_inexact_past_2_53() {
-    let src = "fn max() -> Int64 = 9223372036854775807\n\nmax() + 1\n";
+    let src = "fn big() -> Int64 = 9223372036854775807\n\nbig() + 1\n";
     let out = toylang::run_on(src, None, Backend::Jq).unwrap();
     assert_eq!(out, "9223372036854776000\n");
 }

@@ -1,0 +1,9 @@
+# Negatives participate in the sum as themselves, which is the case a fold that special-cased
+# the identity or the sign would get wrong.
+program: |
+  sum([1, -2, 3, -4])
+
+output: |
+  -2
+
+node_types: [builtin.sum, int, vec-literal]

@@ -156,6 +156,32 @@ function tl_chars(s) {
 }
 ";
 
+// Int and Int64 are different runtime types here -- Number and BigInt -- so `+` cannot mix
+// them and each width needs its own fold. `|0` is the 32-bit wrap (the same ToInt32 ARITH_HELPER
+// relies on); `BigInt.asIntN(64, ...)` is the 64-bit one ARITH64_HELPER uses.
+const SUM_HELPER: &str = "\
+function tl_sum(v) {
+  let acc = 0;
+  for (let i = 0; i < v.length; i++) acc = (acc + v[i]) | 0;
+  return acc;
+}
+function tl_sum64(v) {
+  let acc = 0n;
+  for (let i = 0; i < v.length; i++) acc = BigInt.asIntN(64, acc + v[i]);
+  return acc;
+}
+";
+
+// `>` orders Number and BigInt alike, so one maximum serves both widths.
+const MAX_HELPER: &str = "\
+function tl_max(v) {
+  if (v.length === 0) return \"none\";
+  let m = v[0];
+  for (let i = 1; i < v.length; i++) if (v[i] > m) m = v[i];
+  return { some: m };
+}
+";
+
 pub fn emit(program: &Program) -> String {
     let enums = &program.enums;
     let mut out = String::new();
@@ -177,6 +203,8 @@ pub fn emit(program: &Program) -> String {
         (used.jsonlines, JSONLINES_HELPER),
         (used.str_cmp, STR_CMP_HELPER),
         (used.chars, CHARS_HELPER),
+        (used.sum || used.sum64, SUM_HELPER),
+        (used.max, MAX_HELPER),
         (used.eq, EQ_HELPER),
     ] {
         if on {
@@ -446,6 +474,9 @@ struct Helpers {
     tail: bool,
     str_cmp: bool,
     chars: bool,
+    sum: bool,
+    sum64: bool,
+    max: bool,
     eq: bool,
 }
 
@@ -546,6 +577,10 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.chars |= *which == Builtin::Chars;
                 used.str_cmp |=
                     *which == Builtin::Sort && tir::runtime_elem(&arg.ty) == Some(&Type::Str);
+                used.sum |= *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int);
+                used.sum64 |=
+                    *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int64);
+                used.max |= *which == Builtin::Max;
                 walk(arg, used);
             }
             Kind::Cond {
@@ -810,6 +845,15 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // `.reverse()` mutates in place, so the spread copy is what keeps this an ordinary
             // expression rather than a statement with a visible side effect on `arg`.
             Builtin::Reverse => format!("[...{}].reverse()", expr(enums, arg)),
+            // One fold per width, since the element type picks the runtime integer type.
+            Builtin::Sum => {
+                if tir::runtime_elem(&arg.ty) == Some(&Type::Int) {
+                    format!("tl_sum({})", expr(enums, arg))
+                } else {
+                    format!("tl_sum64({})", expr(enums, arg))
+                }
+            }
+            Builtin::Max => format!("tl_max({})", expr(enums, arg)),
             // The names come from the checked type, not the object value, so `arg` is evaluated
             // only for whatever else it does (a division inside it must still throw) and its
             // value discarded with the comma operator.

@@ -172,5 +172,7 @@ fn builtin_tag(which: Builtin) -> &'static str {
         Builtin::Chars => "chars",
         Builtin::Sort => "sort",
         Builtin::Reverse => "reverse",
+        Builtin::Sum => "sum",
+        Builtin::Max => "max",
     }
 }
