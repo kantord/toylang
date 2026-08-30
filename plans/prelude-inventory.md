@@ -1,5 +1,5 @@
 ---
-status: needs-changes
+status: proposed
 issue: gh:105
 ---
 
@@ -35,17 +35,69 @@ express. These stay builtins; they are not the kind of thing prelude expressiven
 to reach.
 
 **`range`, `tail`, `concat`, `extent`.** These four are the actual Vec primitives everything else,
-including the prelude's own `unlines`/`join`, is built from. `tail` and `extent` are the base case
-of every recursive prelude function that exists today (`prelude.toy`'s `unlines`: `"" if
-extent(v) == 0 else ... tail(v)!`) -- `extent`'s doc comment is explicit that it is meant to cost
-nothing ("a dense Vec already tracks this at runtime... there is no fold or scan hiding behind the
-name"), so recomputing it recursively would trade an O(1) read for an O(n) walk to save nothing.
-`concat` is the language's only Vec-append: nothing else turns two `Vec<T>`s into one, which is
-also why it's the thing `reverse` below would build on rather than something reverse could help
-retire. `range` generates a Vec by counting, which needs the same append primitive `concat` is,
-recursively, to build up -- so building `range` from `concat` only relocates the problem, it
-doesn't remove a builtin. None of these four decompose into each other; they're the floor, not
-candidates standing on it.
+including the prelude's own `unlines`/`join`, is built from; that conclusion survives a
+streams-first pass, but the reasons now differ per item, and one of the four turns out to have a
+harder blocker than "hasn't been tried" (kantord/toylang#121: the maintainer's review of this
+plan asked that every Vec-shaped candidate be re-examined for whether it should default to
+`Stream`, falling back to `Vec` only for a concrete reason).
+
+The design already has a stated position on this, not just a per-builtin one: `Stream` is second-
+class and its lifecycle is fixed by
+[ADR 0001](../docs/adr/0001-stream-is-the-effect-layer-typed.md) -- born only at `inputs` and
+`lines`, dying only at `collect` or the `jsonlines` sink, never stored in a record, a `Vec`, or
+another `Stream`. draft.md's admissible-input-set section states the memory argument directly:
+"reification is where allocation becomes visible in the source, so the one operator that costs
+memory is the one you have to write down" (draft.md:933-934). Every one of `tail`/`concat`/
+`extent`/`sort`/`reverse` already sits downstream of an explicit `collect` today -- their memory
+cost is already visible at the call site, not hidden -- so "default to streams" reads here as
+"don't materialize before `collect` without a reason," which is what the per-item findings below
+check for, rather than "prefer Stream wherever a retype is technically possible."
+
+- **`range`** produces `Vec<Int>` (`src/check/mod.rs:424-430`). Making it a Stream source is not a
+  mechanical retype: it would add a third stream-birth point beyond `inputs`/`lines`, which
+  reopens [Q13](../draft.md#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator)
+  ("no value-to-effect operator is needed, because degrading a `Vec` forgets its extent and buys
+  nothing") and, with it, [Q1](../draft.md#q1-streams-first-class-values-or-evaluation-level-multiplicity),
+  which ADR 0001 already settled the other way -- first-class, non-source-born stream values were
+  considered and rejected ("a held value of genuinely unknown extent is exactly what Q13's lean
+  rules out, and it is the one irreversible option"). `range` is the one item in this bullet where
+  streams-first changes the finding: it is not "the floor, nothing to build it from" the way
+  `tail`/`concat`/`extent` are, it is blocked on a named, already-settled design decision that a
+  prelude-inventory survey has no standing to reopen on its own.
+- **`tail`** (`Opt<Vec<T>>`, `tail_call` at `src/check/mod.rs:1768-1783`) is conceptually
+  streamable -- peek one element, yield the rest is ordinary pull semantics -- but a
+  Stream-returning version would have to return `Opt<Stream<T>>`, and `Opt` is the prelude's own
+  enum (plans/opt-as-enum.md). `Type::contains_stream`'s enum arm is explicit that this is refused,
+  not merely undecided: "An enum payload cannot hold a stream: resolve_enum refuses the
+  declaration, and instantiation refuses a stream as a type argument" (`src/ty.rs:114-115`). That
+  is a concrete, checked reason, on the same footing as `extent`'s below, not a gap this survey
+  leaves open.
+- **`concat`** (`Vec<Vec<T>> -> Vec<T>`, `concat_call` at `src/check/mod.rs:1788-1804`) has the
+  same shape of blocker: a stream-shaped `concat` needs its argument to carry multiple streams,
+  either `Vec<Stream<T>>` or `Stream<Stream<T>>`, and both are the containment ADR 0001 names
+  directly ("never stored in a record, a `Vec`, or another `Stream`") -- `Type::contains_stream`'s
+  `Vec` arm recurses into the element type for exactly this check (`src/ty.rs:112`). `concat`
+  cannot be restated in stream form without relaxing that containment ban first, which is a
+  separate, larger design question than this survey's scope.
+- **`extent`** is not an open question at all here: ADR 0001's Consequences section already says,
+  verbatim, "`extent` stays `Vec`-only, keeping its no-fold promise; stream reducers are future
+  work." Its own doc comment gives the reason ("a dense Vec already tracks this at runtime, so
+  reading it out costs nothing -- there is no fold or scan hiding behind the name",
+  `src/tir.rs:203-205`): a Stream has no length until exhausted, so a Stream-typed `extent` would
+  have to consume its argument to answer, trading the O(1) read for the one thing `extent`
+  promises not to do. Recomputing it recursively in the prelude, over either representation, would
+  still trade that O(1) read for an O(n) walk to save nothing -- unchanged from the earlier
+  finding, now with the Vec-only half of it independently confirmed by the ADR rather than only
+  inferred from the doc comment.
+
+None of these four decompose into each other under either reading: `concat` is still the
+language's only Vec-append (why `reverse` below builds on it rather than the other way around),
+and `range` generating a Vec by counting still needs that same append, recursively, to build up --
+building `range` from `concat` only relocates the problem. They stay the floor. What changed is
+that three of the four (`tail`, `concat`, `extent`) have that status for a stream-containment or
+no-fold reason that is now cited rather than assumed, and the fourth (`range`) has it for a
+different, heavier reason: not "nothing to build it from" but "becoming a stream source is a
+design decision this survey cannot make unilaterally."
 
 **`collect`, `jsonlines`.** Not value-layer operations at all. `collect` is the one place a
 `Stream` (effect layer, ADR 0001) becomes a `Vec` (value layer) -- it's wired into
@@ -86,7 +138,11 @@ survey:
   `Vec<Str>`, not a type parameter), and `reverse` needs to work over `Vec<T>` for any `T`.
   Generic *functions* don't exist -- only generic *enums* do (`enum Opt<T>`, `src/ast.rs:147`;
   nothing analogous for `fn`, confirmed against `src/parse.rs`). Moving `reverse` to the prelude is
-  otherwise a one-line change, gated entirely on that feature landing first.
+  otherwise a one-line change, gated entirely on that feature landing first. Streams-first doesn't
+  change this conclusion, only sharpens why: `reverse`'s doc comment already gives the reason,
+  "blocking for the same reason `sort` is (the whole Vec has to be there before the first output
+  element is)" (`src/tir.rs:232-234`) -- the same one-value-in-one-value-out cardinality Q20
+  describes, which has nothing to do with which collection type holds the input.
 - `sort` is blocked harder, and not only on generic functions. It needs a per-element comparator,
   and today's checker doesn't express "any orderable type" as a real bound -- `orderable()`
   (`src/check/mod.rs:1810`) is a hardcoded allowlist (`Int`, `Int64`, `Str`, `Char`), not a trait a
@@ -152,6 +208,10 @@ and the combinator-library duplication noted in plans/matcher-parser-spike.md ar
 pulling in that direction), `reverse`-to-prelude becomes a same-day follow-up worth a row at that
 point. `sort` should wait on the same feature plus a real orderable bound, and probably longer
 given draft.md's standing preference for a parallel-basis implementation over a recursive one.
-Everything else in this inventory (`str`, `i64`, `range`, `tail`, `concat`, `extent`, `collect`,
+Everything else in this inventory (`str`, `i64`, `tail`, `concat`, `extent`, `collect`,
 `jsonlines`, `fields`, `chars`) has a specific, load-bearing reason to stay exactly where it is,
-not merely "hasn't been tried yet."
+not merely "hasn't been tried yet." `range` is the one item whose reason is a different kind of
+thing: not a closed design fact like `extent`'s no-fold promise, but an open question (Q1/Q13)
+this survey found and does not have standing to answer. Whether `range` should become a Stream
+source is a decision for the maintainer, not a follow-up row -- it would mean amending ADR 0001,
+not just landing a feature it already depends on.
