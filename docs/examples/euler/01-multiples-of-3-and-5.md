@@ -4,7 +4,9 @@ Solves [Project Euler 1](https://projecteuler.net/problem=1). See the
 [spoiler warning](00-spoiler-warning.md).
 
 No fold or loop needed: the sum of the multiples of `k` below `limit` is a triangular number,
-scaled, and inclusion-exclusion handles the double-counted multiples of 15.
+scaled, and inclusion-exclusion handles the double-counted multiples of 15. The obvious
+filter -- `select(. % 3 == 0 or . % 5 == 0)` over the whole range -- works too, but the
+closed form never scans at all.
 
 ```toylang
 fn triangle(m: Int) -> Int = m * (m + 1) / 2
