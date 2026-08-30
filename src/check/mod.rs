@@ -387,7 +387,7 @@ fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
 }
 
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
-/// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `extent`, `concat`,
+/// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `extent`, `flatten`,
 /// `tail`, `collect`, `fields`, `sort`, and `reverse` are polymorphic and checked from
 /// `synth`'s own arms; `select` and `map` rebind `.`. All fourteen are reserved the same way,
 /// and the docs harness (tests/docs.rs) reads this list to insist each one has a reference
@@ -395,9 +395,9 @@ fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
 pub const BUILTIN_NAMES: [&str; 14] = [
     "chars",
     "collect",
-    "concat",
     "extent",
     "fields",
+    "flatten",
     "i64",
     "jsonlines",
     "map",
@@ -1604,7 +1604,7 @@ fn call(
             "`jsonlines` is a sink, legal only as the program's outermost expression".to_string(),
         ));
     }
-    // `extent`, `tail`, and `concat` are polymorphic over the element type, the same reason
+    // `extent`, `tail`, and `flatten` are polymorphic over the element type, the same reason
     // `jsonlines` is checked here rather than through `builtin()`'s fixed table.
     if func == "extent" {
         return extent_call(ctx, need_arg(arg, func, span)?);
@@ -1614,10 +1614,11 @@ fn call(
     if func == "tail" {
         return tail_call(ctx, need_arg(arg, func, span)?);
     }
-    // Flattens a Vec<Vec<T>> into a Vec<T>, the way jq's `add` flattens a list of arrays. A
-    // named function rather than `+` on Vec, so it does not decide Q2.
-    if func == "concat" {
-        return concat_call(ctx, need_arg(arg, func, span)?);
+    // Flattens a Vec<Vec<T>> into a Vec<T>, the way jq's `add` flattens a list of arrays.
+    // Joining a fixed, known count of Vecs is `+` (kantord/toylang#97); this is for when the
+    // outer Vec's length is not known at the call site.
+    if func == "flatten" {
+        return flatten_call(ctx, need_arg(arg, func, span)?);
     }
     // The one exit a stream has: `Stream<T> -> Vec<T>`, polymorphic over the element type like
     // `extent` and the others above, so the argument is synthesised first.
@@ -1783,22 +1784,21 @@ fn tail_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
     ))
 }
 
-/// Flattens a Vec<Vec<T>> into a Vec<T>, the way jq's `add` flattens a list of arrays. A named
-/// function rather than `+` on Vec, so it does not decide Q2.
-fn concat_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+/// Flattens a Vec<Vec<T>> into a Vec<T>, the way jq's `add` flattens a list of arrays.
+fn flatten_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
     let arg_span = arg.span();
     let arg = synth(ctx, arg)?;
     let inner = arg.ty.elem().cloned();
     let Some(elem) = inner.as_ref().and_then(Type::elem).cloned() else {
         return Err(Error::new(
             arg_span,
-            format!("`concat` needs a Vec of Vecs, found {}", arg.ty),
+            format!("`flatten` needs a Vec of Vecs, found {}", arg.ty),
         ));
     };
     Ok(Tir::new(
         Type::Vec(Box::new(elem)),
         Kind::Builtin {
-            which: tir::Builtin::Concat,
+            which: tir::Builtin::Flatten,
             arg: Box::new(arg),
         },
     ))
@@ -2065,8 +2065,11 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
 
     // Q2 is open, so an operator over a Vec is rejected rather than being silently given
     // broadcast or zip semantics. Under C1 that restriction is ordinary typing: there is no
-    // separate cardinality to check, because a Vec is just a type.
-    if left.ty.elem().is_some() {
+    // separate cardinality to check, because a Vec is just a type. `+` is the one exception:
+    // it concatenates two Vecs of the same type now (kantord/toylang#97, the add-trait
+    // reading), which settles that half of Q2 without deciding what any other operator means
+    // over two Vecs.
+    if left.ty.elem().is_some() && op != BinOp::Add {
         return Err(Error::new(
             lhs.span(),
             format!("`{op}` does not apply to {}", left.ty),
@@ -2155,20 +2158,24 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
         ));
     }
 
-    // `+` is the one operator whose meaning depends on its operands: addition on Int or Int64
-    // and concatenation on Str. Both sides must agree, since nothing is coerced.
-    match left.ty {
+    plus(ctx, lhs, left, rhs)
+}
+
+/// `+` is the one operator whose meaning depends on its operands: addition on Int or Int64,
+/// concatenation on Str, and concatenation on Vec (kantord/toylang#97, the add-trait reading)
+/// when both sides are the same Vec type. Nothing is coerced, so all three still require both
+/// sides to agree.
+fn plus(ctx: &Ctx, lhs: &Expr, left: Tir, rhs: &Expr) -> Result<Tir, Error> {
+    match &left.ty {
         Type::Int | Type::Int64 => {
             let width = left.ty.clone();
             let right = expect_int_width(ctx, rhs, &width, BinOp::Add)?;
-            Ok(Tir::new(
-                width,
-                Kind::Arith {
-                    op: BinOp::Add,
-                    lhs: Box::new(left),
-                    rhs: Box::new(right),
-                },
-            ))
+            let kind = Kind::Arith {
+                op: BinOp::Add,
+                lhs: Box::new(left),
+                rhs: Box::new(right),
+            };
+            Ok(Tir::new(width, kind))
         }
         Type::Str => {
             let right = expect(ctx, rhs, &Type::Str)?;
@@ -2177,9 +2184,17 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
                 Kind::Concat(Box::new(left), Box::new(right)),
             ))
         }
+        Type::Vec(_) => {
+            let want = left.ty.clone();
+            let right = expect(ctx, rhs, &want)?;
+            Ok(Tir::new(
+                want,
+                Kind::Concat(Box::new(left), Box::new(right)),
+            ))
+        }
         other => Err(Error::new(
             lhs.span(),
-            format!("`+` needs Int or Str, found {other}"),
+            format!("`+` needs Int, Str, or Vec, found {other}"),
         )),
     }
 }

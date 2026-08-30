@@ -1,7 +1,0 @@
-program: |
-  concat([[1, 2], [3], [4, 5]])
-
-output: |
-  [1,2,3,4,5]
-
-node_types: [builtin.concat, int, vec-literal]

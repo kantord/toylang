@@ -33,7 +33,7 @@ fn column_total(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int}) -> Int =
 
 fn emit_carry(p: {carry: Int, acc: Vec<Int>}) -> Vec<Int> =
     p.acc if p.carry == 0 else
-        emit_carry({carry: p.carry / 10, acc: concat([[p.carry % 10], p.acc])})
+        emit_carry({carry: p.carry / 10, acc: [p.carry % 10] + p.acc})
 
 fn add_digits(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int, acc: Vec<Int>}) -> Vec<Int> =
     emit_carry({carry: p.carry, acc: p.acc}) if p.k < 0 else
@@ -42,15 +42,8 @@ fn add_digits(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int, acc: Vec<Int>}) -> Ve
                 nums: p.nums,
                 k: p.k - 1,
                 carry: column_total({nums: p.nums, k: p.k, carry: p.carry}) / 10,
-                acc: concat(
-                    [
-                        [
-                            column_total({nums: p.nums, k: p.k, carry: p.carry}) %
-                                10
-                        ],
-                        p.acc
-                    ]
-                )
+                acc: [column_total({nums: p.nums, k: p.k, carry: p.carry}) % 10] +
+                    p.acc
             }
         )
 

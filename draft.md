@@ -2641,10 +2641,15 @@ needed, lifting a restriction is additive in a way that imposing one is not.
 Cartesian (jq today), zip
 (vectorized, with broadcast), or neither by default with explicit `cross` and `zip`?
 
-Vec concatenation specifically is decided, without touching the rest of this question:
-`concat(vv: Vec<Vec<T>>) -> Vec<T>` flattens, as a named builtin rather than an overload of `+`
-(see [named functions kept an open question open](research-log/named-functions-kept-an-open-question-open.md)).
-The general question -- what `+`, or any other operator, means when both operands are Vecs --
+Vec concatenation specifically is decided, without touching the rest of this question. Revised
+2026-08-30 (oddities round, kantord/toylang#97): `+` on two `Vec`s of the same element type now
+concatenates them -- the add-trait reading -- so `[1, 2] + [3]` is `[1, 2, 3]`, settling this
+half of Q2 in favor of concatenation over cartesian or zip. The named builtin this superseded,
+`concat(vv: Vec<Vec<T>>) -> Vec<T>`, existed specifically so adding it would not decide this
+question (see [named functions kept an open question
+open](research-log/named-functions-kept-an-open-question-open.md)); it survives under the name
+`flatten` for the case `+` cannot cover, an outer `Vec` whose length is not known at the call
+site. The general question -- what any *other* operator means when both operands are Vecs --
 is still open.
 
 Composite equality is settled without touching it. `==` on a record or an enum compares

@@ -103,7 +103,7 @@ const TAIL_HELPER: &str = r#"def tl_tail(v):
     return {"some": v[1:]}
 "#;
 
-const VEC_CONCAT_HELPER: &str = r#"def tl_vec_concat(vv):
+const FLATTEN_HELPER: &str = r#"def tl_flatten(vv):
     return [e for sub in vv for e in sub]
 "#;
 
@@ -226,7 +226,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_field("), FIELD_HELPER),
         (uses("tl_at("), AT_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
-        (uses("tl_vec_concat("), VEC_CONCAT_HELPER),
+        (uses("tl_flatten("), FLATTEN_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
@@ -391,6 +391,8 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             user(func),
             arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
         ),
+        // Python's own `+` already concatenates two lists the way it concatenates two strings,
+        // so a Vec needs no different spelling here than Str does.
         Kind::Concat(l, r) => format!("({} + {})", expr(enums, l), expr(enums, r)),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
         // The one construct this target spells exactly as toylang does, because toylang took the
@@ -426,7 +428,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Collect => expr(enums, arg),
             Builtin::Extent => format!("len({})", expr(enums, arg)),
             Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
-            Builtin::Concat => format!("tl_vec_concat({})", expr(enums, arg)),
+            Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
             // Python compares both numbers and strings (by codepoint) with `<` natively, so
             // `sorted` needs no key or comparator.
             Builtin::Sort => format!("sorted({})", expr(enums, arg)),
@@ -660,7 +662,6 @@ fn show_enum(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
     }
     format!("(lambda {n}: {body})({value})")
 }
-
 
 /// A named printer for every recursive enum the program prints. The call in `show` above is
 /// what a nested occurrence renders as, so the recursion in the type becomes recursion in the

@@ -35,7 +35,18 @@ str(1 / 0)
 
 Unary minus negates, and the most negative `Int` is writable directly.
 
-`+` is also `Str` concatenation, and that is the whole overload: `+` does not apply to
-`Vec`s (joining those is spelled [`concat`](../builtins/concat.md), while the open
-question of what element-wise arithmetic should mean stays open) and does not mix types, so
-`"n=" + 3` is refused rather than coerced -- write `"n=" + str(3)`.
+`+` is also `Str` concatenation, and `Vec` concatenation of two `Vec`s of the same element
+type:
+
+```toylang
+[1, 2] + [3]
+```
+
+```output
+[1,2,3]
+```
+
+That is the whole overload. It does not mix types, so `"n=" + 3` is refused rather than
+coerced -- write `"n=" + str(3)`. Joining an unknown number of `Vec`s, such as one built by
+`map`, is [`flatten`](../builtins/flatten.md) instead; the open question of what other
+element-wise arithmetic over two `Vec`s should mean stays open.

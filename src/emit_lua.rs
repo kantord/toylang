@@ -81,8 +81,8 @@ local function tl_tail(v)
 end
 ";
 
-const VEC_CONCAT_HELPER: &str = "\
-local function tl_vec_concat(vv)
+const FLATTEN_HELPER: &str = "\
+local function tl_flatten(vv)
   local out = {}
   for i = 1, #vv do
     local inner = vv[i]
@@ -246,7 +246,7 @@ pub fn emit(program: &Program) -> String {
         (used.index, OPT_HELPER),
         (used.unwrap, UNWRAP_HELPER),
         (used.tail, TAIL_HELPER),
-        (used.concat, VEC_CONCAT_HELPER),
+        (used.flatten, FLATTEN_HELPER),
         (used.sort, SORT_HELPER),
         (used.reverse, REVERSE_HELPER),
         (used.arith, ARITH_HELPER),
@@ -437,7 +437,6 @@ fn show_enum(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
     format!("(function({n}) {body}end)({value})")
 }
 
-
 /// A named printer for every recursive enum the program prints. The call in `show` above is
 /// what a nested occurrence renders as, so the recursion in the type becomes recursion in the
 /// emitted function rather than in this compiler (kantord/toylang#94).
@@ -501,7 +500,7 @@ struct Helpers {
     collect: bool,
     jsonlines: bool,
     tail: bool,
-    concat: bool,
+    flatten: bool,
     chars: bool,
     sort: bool,
     reverse: bool,
@@ -522,6 +521,16 @@ fn compare(enums: &Enums, op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
     }
 }
 
+/// Parenthesised because there is more than one operator, and Lua's precedence is not toylang's
+/// to rely on. `..` is string-only, so a Vec reaches for the same helper `flatten` uses,
+/// wrapped around a two-entry outer table rather than through a second helper.
+fn concat(enums: &Enums, ty: &Type, l: &Tir, r: &Tir) -> String {
+    match ty {
+        Type::Vec(_) => format!("tl_flatten({{{}, {}}})", expr(enums, l), expr(enums, r)),
+        _ => format!("({} .. {})", expr(enums, l), expr(enums, r)),
+    }
+}
+
 /// Which helper a comparison reaches for, which is a question about the operator and the
 /// operand type rather than about the tree below it: Lua's `==` on two tables compares
 /// references, so equality on a composite walks the structure instead (kantord/toylang#68).
@@ -534,7 +543,7 @@ fn builtin_helpers(which: Builtin, used: &mut Helpers) {
     used.range |= which == Builtin::Range;
     used.jsonlines |= which == Builtin::JsonLines;
     used.tail |= which == Builtin::Tail;
-    used.concat |= which == Builtin::Concat;
+    used.flatten |= which == Builtin::Flatten;
     used.chars |= which == Builtin::Chars;
     used.sort |= which == Builtin::Sort;
     used.reverse |= which == Builtin::Reverse;
@@ -565,7 +574,14 @@ fn used_helpers(program: &Program) -> Helpers {
                     walk(a, used);
                 }
             }
-            Kind::Concat(l, r) | Kind::Logic { lhs: l, rhs: r, .. } => {
+            // Lua's `..` is string-only, so a Vec reaches for the same helper `flatten` uses,
+            // wrapped around a two-entry outer table rather than through a second helper.
+            Kind::Concat(l, r) => {
+                used.flatten |= matches!(t.ty, Type::Vec(_));
+                walk(l, used);
+                walk(r, used);
+            }
+            Kind::Logic { lhs: l, rhs: r, .. } => {
                 walk(l, used);
                 walk(r, used);
             }
@@ -694,9 +710,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             user(func),
             arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
         ),
-        // Parenthesised because there is more than one operator, and Lua's precedence is not
-        // toylang's to rely on.
-        Kind::Concat(l, r) => format!("({} .. {})", expr(enums, l), expr(enums, r)),
+        Kind::Concat(l, r) => concat(enums, &t.ty, l, r),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
         Kind::Cond {
             cond,
@@ -731,7 +745,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Collect => expr(enums, arg),
             Builtin::Extent => format!("#{}", expr(enums, arg)),
             Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
-            Builtin::Concat => format!("tl_vec_concat({})", expr(enums, arg)),
+            Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
             Builtin::Sort => format!("tl_sort({})", expr(enums, arg)),
             Builtin::Reverse => format!("tl_reverse({})", expr(enums, arg)),
             // The names come from the checked type, not the table value, so `arg` runs as the
