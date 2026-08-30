@@ -466,7 +466,7 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
 
 - id: fmt-pipeline-column
   issue: gh:101
@@ -859,3 +859,10 @@
   kind: build
   needs: [docs-site-design]
   status: done
+
+- id: lines-utf8-edge
+  issue: gh:102
+  title: Pin what a non-UTF-8 byte arriving via lines does, on every backend
+  kind: decide
+  needs: []
+  status: todo
