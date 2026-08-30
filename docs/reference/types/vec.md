@@ -40,10 +40,10 @@ cannot tell what `[]` contains (at byte 0)
 
 What applies to a `Vec`: the index specs (`[0]`, `[-1]`, `[]` mid-chain -- see
 [specs](../operators/specs.md)), [`extent`](../builtins/extent.md),
-[`concat`](../builtins/concat.md), [`tail`](../builtins/tail.md),
-[`sort`](../builtins/sort.md), [`reverse`](../builtins/reverse.md), and the subject-fed
-[`select`](../builtins/select.md) and [`map`](../builtins/map.md). `+` does not join two
-`Vec`s; spell that `concat([a, b])`.
+[`flatten`](../builtins/flatten.md), [`tail`](../builtins/tail.md),
+[`sort`](../builtins/sort.md), [`reverse`](../builtins/reverse.md), the subject-fed
+[`select`](../builtins/select.md) and [`map`](../builtins/map.md), and `+`, which joins two
+`Vec`s of the same element type (see [arithmetic](../operators/arithmetic.md)).
 
 Entries of a dimension need not have equal extents one dimension down; the glossary calls
 such a value ragged, and collapsing an inner dimension of one yields `Opt` where entries are

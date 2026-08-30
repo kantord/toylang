@@ -31,7 +31,7 @@ fn row_products(p: {g: Vec<Vec<Int>>, r: Int, dr: Int, dc: Int, cmin: Int, cmax:
         | map(four({g: p.g, r: p.r, c: ., dr: p.dr, dc: p.dc}))
 
 fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
-    concat(
+    flatten(
         range(p.rmax)
             | map(
                   row_products(
@@ -61,50 +61,46 @@ fn maximum(v: Vec<Int>) -> Int = maximum_of({v: v, i: 1, best: v[0]!})
 
 fn largest_product(g: Vec<Vec<Int>>) -> Int =
     maximum(
-        concat(
-            [
-                direction(
-                    {
-                        g: g,
-                        dr: 0,
-                        dc: 1,
-                        rmax: extent(g),
-                        cmin: 0,
-                        cmax: extent(g[0]!) - 3
-                    }
-                ),
-                direction(
-                    {
-                        g: g,
-                        dr: 1,
-                        dc: 0,
-                        rmax: extent(g) - 3,
-                        cmin: 0,
-                        cmax: extent(g[0]!)
-                    }
-                ),
-                direction(
-                    {
-                        g: g,
-                        dr: 1,
-                        dc: 1,
-                        rmax: extent(g) - 3,
-                        cmin: 0,
-                        cmax: extent(g[0]!) - 3
-                    }
-                ),
-                direction(
-                    {
-                        g: g,
-                        dr: 1,
-                        dc: -1,
-                        rmax: extent(g) - 3,
-                        cmin: 3,
-                        cmax: extent(g[0]!)
-                    }
-                )
-            ]
-        )
+        direction(
+            {
+                g: g,
+                dr: 0,
+                dc: 1,
+                rmax: extent(g),
+                cmin: 0,
+                cmax: extent(g[0]!) - 3
+            }
+        ) +
+            direction(
+                {
+                    g: g,
+                    dr: 1,
+                    dc: 0,
+                    rmax: extent(g) - 3,
+                    cmin: 0,
+                    cmax: extent(g[0]!)
+                }
+            ) +
+            direction(
+                {
+                    g: g,
+                    dr: 1,
+                    dc: 1,
+                    rmax: extent(g) - 3,
+                    cmin: 0,
+                    cmax: extent(g[0]!) - 3
+                }
+            ) +
+            direction(
+                {
+                    g: g,
+                    dr: 1,
+                    dc: -1,
+                    rmax: extent(g) - 3,
+                    cmin: 3,
+                    cmax: extent(g[0]!)
+                }
+            )
     )
 
 largest_product(input)

@@ -51,12 +51,7 @@ fn distinct_count(v: Vec<Int>) -> Int =
 
 fn powers_from(p: {r: Int, val: Int, j: Int, top: Int}) -> Vec<Int> =
     [] if p.val > p.top else
-        concat(
-            [
-                [p.j],
-                powers_from({r: p.r, val: p.val * p.r, j: p.j + 1, top: p.top})
-            ]
-        )
+        [p.j] + powers_from({r: p.r, val: p.val * p.r, j: p.j + 1, top: p.top})
 
 fn powers_of(p: {r: Int, top: Int}) -> Vec<Int> =
     powers_from({r: p.r, val: p.r, j: 1, top: p.top})
@@ -65,7 +60,9 @@ fn row_for_j(p: {j: Int, top: Int}) -> Vec<Int> =
     range(p.top - 1) | map(. + 2) | map(p.j * .)
 
 fn exponents_for_root(p: {r: Int, top: Int}) -> Vec<Int> =
-    concat(powers_of({r: p.r, top: p.top}) | map(row_for_j({j: ., top: p.top})))
+    flatten(
+        powers_of({r: p.r, top: p.top}) | map(row_for_j({j: ., top: p.top}))
+    )
 
 fn multi_root_contribution(p: {r: Int, top: Int}) -> Int =
     distinct_count(exponents_for_root(p))

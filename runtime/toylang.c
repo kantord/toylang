@@ -1054,7 +1054,7 @@ int64_t *tl_vec_tail(const tl_vec *v) {
 
 /* Flatten a Vec<Vec<T>> into a Vec<T>. `ncols` is T's column count: passed in rather than read
  * off an inner Vec, since an empty outer Vec has no inner Vec to read it from. */
-tl_vec *tl_vec_concat(const tl_vec *vv, int64_t ncols) {
+tl_vec *tl_vec_flatten(const tl_vec *vv, int64_t ncols) {
     int64_t total = 0;
     for (int64_t i = 0; i < vv->len; i++) {
         total += ((const tl_vec *)vv->cols[0][i])->len;
@@ -1069,6 +1069,22 @@ tl_vec *tl_vec_concat(const tl_vec *vv, int64_t ncols) {
             }
         }
         at += inner->len;
+    }
+    return out;
+}
+
+/* `a + b` on two Vecs (kantord/toylang#97, the add-trait reading): join them without going
+ * through the one-level-of-nesting `tl_vec_flatten` does. `ncols` is T's column count, the same
+ * reason `tl_vec_flatten` takes it rather than reading it off either Vec. */
+tl_vec *tl_vec_concat(const tl_vec *a, const tl_vec *b, int64_t ncols) {
+    tl_vec *out = tl_vec_new(a->len + b->len, ncols);
+    for (int64_t c = 0; c < ncols; c++) {
+        if (a->len > 0) {
+            memcpy(out->cols[c], a->cols[c], (size_t)a->len * sizeof(int64_t));
+        }
+        if (b->len > 0) {
+            memcpy(out->cols[c] + a->len, b->cols[c], (size_t)b->len * sizeof(int64_t));
+        }
     }
     return out;
 }

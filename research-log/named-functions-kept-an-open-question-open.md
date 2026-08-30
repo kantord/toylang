@@ -54,3 +54,10 @@ Open: `tail`'s Opt-wrapping and `concat`'s flatten shape are one reasonable desi
 one. A version of this language that eventually answers Q2 in favor of zip or cartesian semantics
 might make `tail`/`concat`/`extent` feel like the wrong primitives to have hand-picked -- the
 point made here is only that picking them this way did not foreclose that later answer.
+
+Resolved, 2026-08-30 (kantord/toylang#97): that later answer arrived, for `+` specifically --
+the maintainer ratified the add-trait reading, so `[1, 2] + [3]` concatenates now. `concat`
+renamed to `flatten` and kept for the case `+` cannot cover, an outer Vec of unknown length; its
+runtime implementation (`tl_vec_concat` in `runtime/toylang.c`) is `tl_vec_flatten` under the new
+name, and a second, genuinely new function took the freed `tl_vec_concat` name for the pairwise
+case `+` compiles to on native.

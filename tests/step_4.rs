@@ -54,11 +54,19 @@ fn select_needs_a_bool() {
     insta::assert_snapshot!(err("[1, 2, 3] | select(.)"));
 }
 
-/// Q2 is open, so an operator over a Vec is rejected rather than silently given broadcast or
-/// zip semantics.
+/// `+` on a Vec now means concatenation (kantord/toylang#97), but only against another Vec of
+/// the same element type -- against a Str this is an ordinary type mismatch, the same as any
+/// other operand pair that disagrees.
 #[test]
 fn an_operator_does_not_apply_to_a_vec() {
     insta::assert_snapshot!(err(r#"[1, 2] + "a""#));
+}
+
+/// `+`'s carve-out does not extend to the rest of Q2: every other operator over two Vecs is
+/// still refused.
+#[test]
+fn a_non_add_operator_still_does_not_apply_to_a_vec() {
+    insta::assert_snapshot!(err("[1, 2] - [3, 4]"));
 }
 
 /// And a Vec one level down is the same open question: structural equality would otherwise

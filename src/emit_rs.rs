@@ -98,7 +98,7 @@ const TAIL_HELPER: &str = r#"fn tl_tail<T: Clone>(v: &[T]) -> Option<Vec<T>> {
 }
 "#;
 
-const CONCAT_HELPER: &str = r#"fn tl_concat<T: Clone>(vv: &[Vec<T>]) -> Vec<T> {
+const FLATTEN_HELPER: &str = r#"fn tl_flatten<T: Clone>(vv: &[Vec<T>]) -> Vec<T> {
     let mut out = Vec::new();
     for v in vv {
         out.extend(v.iter().cloned());
@@ -583,7 +583,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_at("), AT_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
-        (uses("tl_concat("), CONCAT_HELPER),
+        (uses("tl_flatten("), FLATTEN_HELPER),
         (uses("tl_sort("), SORT_HELPER),
         (uses("tl_reverse("), REVERSE_HELPER),
         (uses("tl_range("), RANGE_HELPER),
@@ -1083,7 +1083,12 @@ impl Emitter<'_> {
                 self.user(func),
                 arg.as_deref().map_or_else(String::new, |a| self.expr(a))
             ),
-            Kind::Concat(l, r) => format!("({} + &{})", self.expr(l), self.expr(r)),
+            // `Vec<T>` has no `Add` impl, but the standard library's slice `concat` is exactly
+            // this operation for an owned pair.
+            Kind::Concat(l, r) => match &t.ty {
+                Type::Vec(_) => format!("[{}, {}].concat()", self.expr(l), self.expr(r)),
+                _ => format!("({} + &{})", self.expr(l), self.expr(r)),
+            },
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             // A genuine expression, unlike Go: both branches stay unevaluated except the taken
             // one, which is what `if`/`else` already guarantees.
@@ -1116,7 +1121,7 @@ impl Emitter<'_> {
                 Builtin::Collect => self.expr(arg),
                 Builtin::Extent => format!("(({}).len() as i32)", self.expr(arg)),
                 Builtin::Tail => format!("tl_tail(&{})", self.expr(arg)),
-                Builtin::Concat => format!("tl_concat(&{})", self.expr(arg)),
+                Builtin::Flatten => format!("tl_flatten(&{})", self.expr(arg)),
                 Builtin::Sort => format!("tl_sort(&{})", self.expr(arg)),
                 Builtin::Reverse => format!("tl_reverse(&{})", self.expr(arg)),
                 // The names come from the checked type, not the struct value, so `arg` is
@@ -1372,7 +1377,6 @@ impl Emitter<'_> {
         format!("(match {value} {{ {} }})", arms.join(", "))
     }
 }
-
 
 /// The node's type picks the literal's spelling (kantord/toylang#83). The `i64` suffix types
 /// the wide literal directly; `tl_int`'s constant-folding escape is not needed at 64 bits,

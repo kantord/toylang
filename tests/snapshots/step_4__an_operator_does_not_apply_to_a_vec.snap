@@ -1,5 +1,6 @@
 ---
 source: tests/step_4.rs
+assertion_line: 61
 expression: "err(r#\"[1, 2] + \"a\"\"#)"
 ---
-`+` does not apply to Vec<Int> (at byte 0)
+expected Vec<Int>, found Str (at byte 9)
