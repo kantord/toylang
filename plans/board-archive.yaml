@@ -833,3 +833,13 @@
   needs: []
   prio: 1
   status: done
+
+- id: worker-pool-reuse
+  issue: gh:124
+  title: Persistent worker lanes -- sessions reused across tasks under a token ceiling
+  kind: build
+  model: fable
+  needs: []
+  soft: [delegation-telemetry]
+  prio: 1
+  status: done

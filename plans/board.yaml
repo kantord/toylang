@@ -317,16 +317,6 @@
   needs: []
   status: todo
 
-- id: worker-pool-reuse
-  issue: gh:124
-  title: Persistent worker lanes -- sessions reused across tasks under a token ceiling
-  kind: build
-  model: fable
-  needs: []
-  soft: [delegation-telemetry]
-  prio: 1
-  status: delegated
-
 - id: alt-agent-experiment
   issue: gh:130
   title: Experiment -- delegate haiku-tier lanes to opencode + cheap OpenRouter models (DeepSeek V4 Flash confirmed working)
