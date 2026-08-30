@@ -63,14 +63,14 @@ def last_session(worktree):
     sessions win over bare session dirs of the same age class, because an
     idle auto-spawned session (a workspace visit is enough to create one)
     leaves a dir with no real turns."""
-    candidates = []  # (has_transcript, mtime, sid)
+    candidates = []  # (mtime, has_transcript, sid)
     for d in project_dirs(worktree):
         for t in glob.glob(os.path.join(d, "*.jsonl")):
             sid = os.path.splitext(os.path.basename(t))[0]
-            candidates.append((1, os.path.getmtime(t), sid))
+            candidates.append((os.path.getmtime(t), 1, sid))
         for s in glob.glob(os.path.join(d, "*-*-*-*-*")):
             if os.path.isdir(s):
-                candidates.append((0, os.path.getmtime(s), os.path.basename(s)))
+                candidates.append((os.path.getmtime(s), 0, os.path.basename(s)))
     if not candidates:
         return None
     candidates.sort(reverse=True)
