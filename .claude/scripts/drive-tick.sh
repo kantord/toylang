@@ -118,8 +118,10 @@ for d in "$WORKTREES"/*/ "$POOL_WORKTREES"/*/ "$LANES"/*/; do
   [ "$ahead" -gt 0 ] && TRIGGER="${TRIGGER:-non-delegated worktree $wt is $ahead ahead of main}"
 done
 # Accumulators (to-merge-* branches, the size-driven pipeline): a full one
-# promotes itself at fold time, so the tick only has to catch STALENESS
-# (untouched 30+ min -> promote as-is, straight to main) and red promotions.
+# promotes itself at fold time -- unless that fold hit a merge conflict and
+# died before its size check (twice on 2026-08-30), so the tick also catches
+# over-limit accumulators, plus STALENESS (untouched 30+ min -> promote
+# as-is, straight to main) and red promotions.
 for b in $(git for-each-ref --format='%(refname:short)' 'refs/heads/to-merge-*'); do
   lines=$(git diff --shortstat "main...$b" 2>/dev/null | grep -oE '[0-9]+ (insertion|deletion)' | awk '{s+=$1} END {print s+0}')  # awk not bc: bc absent here
   age=$(( $(date +%s) - $(git log -1 --format=%ct "$b" 2>/dev/null || date +%s) ))
@@ -127,6 +129,8 @@ for b in $(git for-each-ref --format='%(refname:short)' 'refs/heads/to-merge-*')
   STATE="$STATE [$b: lines=${lines:-0} age=${age}s$promoting]"
   if [ -f "$LOG_DIR/promote-failed-$b" ]; then
     TRIGGER="${TRIGGER:-promotion of $b went RED (main untouched) -- route the repair}"
+  elif [ -z "$promoting" ] && [ "${lines:-0}" -ge 600 ]; then
+    TRIGGER="${TRIGGER:-$b is over the size limit (${lines} lines) -- promote it (land-lane.sh promote, detached)}"
   elif [ -z "$promoting" ] && [ "$age" -ge 1800 ]; then
     TRIGGER="${TRIGGER:-$b untouched ${age}s -- stale, promote it as-is (land-lane.sh promote, detached)}"
   fi
