@@ -1,5 +1,6 @@
 import { parse } from "yaml"
 
+import { saveToInbox } from "@dev/lib/annotations"
 import { parseIssue } from "@dev/lib/board"
 
 /**
@@ -56,7 +57,15 @@ function load(): Loaded {
     const path = file.replace(/^(\.\.\/)+/, "")
     const m = FRONTMATTER.exec(text)
     if (!m) continue
-    const front = parse(m[1]) as { status?: unknown; issue?: unknown } | null
+    let front: { status?: unknown; issue?: unknown } | null
+    try {
+      front = parse(m[1]) as { status?: unknown; issue?: unknown } | null
+    } catch (e) {
+      // One typo'd frontmatter must not throw at module init and blank every plan with it --
+      // the same no-silent-drop rule the unknown-status branch below enforces.
+      errors.push(`${path}: frontmatter does not parse: ${String(e)}`)
+      continue
+    }
     const status = front?.status
     if (status === undefined) continue
     if (typeof status !== "string" || !STATUSES.includes(status as PlanStatus)) {
@@ -90,18 +99,15 @@ export type Decision = "approve" | "needs-changes"
  *  the same reason a round's is: the coordinator maps it mechanically rather than reading prose.
  */
 export function submitPlanDecision(plan: Plan, decision: Decision, notes: string): Promise<void> {
-  return fetch("/__annotations/save", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  return saveToInbox(
+    {
       page: plan.path,
       block: 0,
       original: plan.title,
       edited: JSON.stringify({ decision, notes: notes.trim() || null }),
-    }),
-  }).then((res) => {
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  })
+    },
+    "plan decision failed",
+  )
 }
 
 /** The `page:block` key a plan's decision is stored under, shared by the submit above and the

@@ -60,7 +60,10 @@ function repoLinkRenderer(basePath: string): Marked {
         const target = resolveRepoLink(basePath, token.href) ?? token.href
         const external = target.startsWith("http")
         const text = this.parser.parseInline(token.tokens)
-        return `<a href="${target}"${external ? ' target="_blank" rel="noreferrer"' : ""}>${text}</a>`
+        // Attribute-escaped by hand because this template bypasses marked's own link renderer,
+        // which would have done it; without it a quote in an href breaks out of the attribute.
+        const href = target.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+        return `<a href="${href}"${external ? ' target="_blank" rel="noreferrer"' : ""}>${text}</a>`
       },
     },
   })

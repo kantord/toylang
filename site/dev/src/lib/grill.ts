@@ -7,6 +7,7 @@
  */
 
 import type { FlowType } from "@dev/components/MessageCard"
+import { saveToInbox } from "@dev/lib/annotations"
 
 export interface RoundOption {
   label: string
@@ -85,16 +86,13 @@ export function isAnswered(a: Answer | undefined): boolean {
  *  which question a block index names. `edited` is JSON, not prose, because the issue asks for
  *  answers "shaped so the coordinator can map answers to questions mechanically." */
 export function submitAnswer(topic: string, index: number, q: RoundQuestion, a: Answer): Promise<void> {
-  return fetch("/__annotations/save", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  return saveToInbox(
+    {
       page: roundPagePath(topic),
       block: index,
       original: q.title,
       edited: JSON.stringify({ option: a.optionLabel, notes: a.freeText || null }),
-    }),
-  }).then((res) => {
-    if (!res.ok) throw new Error(`submit failed for question ${index + 1}: ${res.statusText}`)
-  })
+    },
+    `submit failed for question ${index + 1}`,
+  )
 }
