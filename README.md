@@ -9,7 +9,8 @@ The ambition is general-purpose, but through a deliberate sequence. The beachhea
 transformation, where the dogfood test is concrete: it replaces jq in its author's own shell.
 
 **Status: exploratory.** No releases, no stability promise. This page shows what runs today;
-the design record, including everything still open, is [draft.md](draft.md).
+the design record is [draft.md](draft.md), and what is still open is tracked in
+[plans/questions.md](plans/questions.md).
 
 ## What it looks like
 
@@ -103,8 +104,9 @@ given backend needs that toolchain installed. Lua is the default.
 
 ## Where things live
 
-- [draft.md](draft.md): the design record, including the open questions. Long on purpose;
-  it is the document of record, not this page.
+- [draft.md](draft.md): the design record. Long on purpose; it is the document of record, not
+  this page.
+- [plans/questions.md](plans/questions.md): the numbered design questions, open and settled.
 - [CONTEXT.md](CONTEXT.md): the glossary. Words like record, dimension, and projection are
   used precisely, and this is where they are pinned.
 - [docs/adr/](docs/adr): decisions, one file each.

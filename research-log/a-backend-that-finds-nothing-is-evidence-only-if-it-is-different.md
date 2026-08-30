@@ -46,7 +46,7 @@ not whether it would be useful to have, but which axis it is unlike the others o
 
 By that test a seventh imperative dynamic language earns nothing. What is still unrepresented is
 a target with a foreign string model, which is
-[the string representation question](../draft.md#q16-string-representation-given-wtf-16-on-the-js-target)
+[the string representation question](../plans/questions.md#q16-string-representation-given-wtf-16-on-the-js-target)
 waiting for a target that forces it, and a streaming target, which is the one that would reshape
 the design rather than extend it.
 

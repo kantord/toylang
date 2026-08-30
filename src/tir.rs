@@ -206,7 +206,7 @@ pub enum Builtin {
     Extent,
     /// `flatten(vv)`, flattening a `Vec<Vec<T>>` into one `Vec<T>`, for the case where the
     /// number of inner Vecs is not known at the call site. Joining a fixed, known count of Vecs
-    /// is `+` instead (kantord/toylang#97, the add-trait reading of Q2 in draft.md); this
+    /// is `+` instead (kantord/toylang#97, the add-trait reading of Q2 in plans/questions.md); this
     /// builtin used to be named `concat` and cover both cases before that split.
     Flatten,
     /// `tail(v)`, every element but the first, `None` when `v` is empty. Consistent with how
@@ -225,7 +225,7 @@ pub enum Builtin {
     Chars,
     /// `sort(v)`, `Vec<T> -> Vec<T>`: `v`'s elements in ascending order by the same total order
     /// `<` already gives `T`. One value in, one value out with no lawful Stream instance
-    /// (kantord/toylang#86, Q20 in draft.md), so it is checked as a Vec-only builtin the way
+    /// (kantord/toylang#86, Q20 in plans/questions.md), so it is checked as a Vec-only builtin the way
     /// `extent`/`tail`/`flatten` are rather than through `select`/`map`'s cardinality
     /// polymorphism. Restricted to the element types ordering already typechecks on --
     /// Int, Int64, Str, Char -- so every backend can reach for its native ordering.

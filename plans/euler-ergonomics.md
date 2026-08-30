@@ -257,7 +257,7 @@ covers `any`/`all` short-circuiting. So the decide question is not whether the c
 belongs -- the draft says yes -- but how much of it to take early and whether it can be
 value-layer only: `first` over a `Vec` pipeline whose short-circuit is observable purely
 as speed would fit the language's stance that vectorizability stays silent
-([Q8](../draft.md#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization)),
+([Q8](questions.md#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization)),
 and it removes the magic-bound genre without touching the Stream rules.
 
 ### Slices as index specs

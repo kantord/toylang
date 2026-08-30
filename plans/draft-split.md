@@ -11,7 +11,8 @@ Ground rules for every migration row:
 
 - The docs site is the destination of record. Verify the claimed coverage before deleting
   anything: a section is deletable when its decisions are recorded (ADR or reference page)
-  and its still-open threads have moved to the question tracker (`draft-questions-home`).
+  and its still-open threads have moved to the question tracker, which now lives in
+  [plans/questions.md](questions.md).
 - Not all prose deserves to survive. Superseded reasoning, agent/user TODO dialogues, and
   duplicated argument can die with the section; what must survive is decisions, their
   load-bearing rationale, and open questions.
@@ -24,12 +25,15 @@ Ground rules for every migration row:
 Sections: "Open questions", "Question detail".
 
 The keystone row, and why every other migration soft-blocks on it: sections push their
-embedded open threads *somewhere*, and this row decides where. The tracker's own rule --
-settled entries stay so decisions are not relitigated -- must survive the move; the settled
-entries can collapse to one-line pointers at their ADRs/decision records. Open entries
-(Q2, Q3, Q6-Q10, Q14, Q16-Q19, Q21-Q26, Q28, Q30-Q37) keep their detail. Plausible home:
-`plans/questions.md`, or per-question GitHub issues with an index; the executor picks, the
-board and existing cross-references adapt.
+embedded open threads *somewhere*, and this row decides where.
+
+Landed: the tracker is [plans/questions.md](questions.md), one file, table and per-question
+detail, numbering unchanged. Per-question GitHub issues lost on the tracker's own rule --
+settled entries stay so decisions are not relitigated -- because a closed issue is not
+something the next reader checks a table against for completeness. A later row that wants a
+question worked on can still open an issue for it; the tracker entry stays the record. Push
+open threads there by adding a numbered question at the bottom; link to it as
+`plans/questions.md#q<N>-<slugged-heading>` from wherever the thread came from.
 
 ### draft-intro-migration
 

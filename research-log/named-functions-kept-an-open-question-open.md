@@ -16,7 +16,7 @@ a Vec's length, a way to grow one, and a way to drop its first element. jq's own
 the last two are `+` on two arrays and `.[1:]` slicing. Neither was used.
 
 `src/check.rs`'s `binary()` already refuses any operator on a Vec, with a comment naming the
-reason: [Q2](../draft.md#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit)
+reason: [Q2](../plans/questions.md#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit)
 is open, so an operator over a Vec is rejected rather than being silently given broadcast or zip
 semantics. Overloading `+` for Vec concatenation would have been a real answer to a real question
 -- jq's answer, specifically -- shipped as a side effect of an unrelated feature, in the same
