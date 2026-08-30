@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useMemo, useState } from "react"
 import {
   Background,
   Controls,
@@ -227,11 +227,7 @@ export function GraphView() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <TaskLegend />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowDone(!showDone)}
-        >
+        <Button variant="outline" size="sm" onClick={() => setShowDone((v) => !v)}>
           {showDone ? "Hide done" : "Show done"}
         </Button>
       </div>
