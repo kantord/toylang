@@ -36,6 +36,16 @@ function tl_at(v, i, depth) {
 }
 ";
 
+// `Array.prototype.slice` already clamps out-of-range bounds and counts negatives from the
+// end, so jq's boundary behaviour is the target's native one; `undefined` is a bound left
+// out, which `.slice` reads as the array's own boundary.
+const SLICE_HELPER: &str = "\
+function tl_slice(v, lo, hi, depth) {
+  if (depth > 0) return v.map((e) => tl_slice(e, lo, hi, depth - 1));
+  return v.slice(lo, hi);
+}
+";
+
 const TAIL_HELPER: &str = "\
 function tl_tail(v) {
   if (v.length === 0) return \"none\";
@@ -169,6 +179,7 @@ pub fn emit(program: &Program) -> String {
         (used.field, FIELD_HELPER),
         (join, JOIN_HELPER),
         (used.index, OPT_HELPER),
+        (used.slice, SLICE_HELPER),
         (used.tail, TAIL_HELPER),
         (used.unwrap, UNWRAP_HELPER),
         (used.arith, ARITH_HELPER),
@@ -424,6 +435,7 @@ struct Helpers {
     select: bool,
     field: bool,
     index: bool,
+    slice: bool,
     unwrap: bool,
     arith: bool,
     arith64: bool,
@@ -561,6 +573,16 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.index = true;
                 walk(base, used);
                 walk(index, used);
+            }
+            Kind::Slice { base, start, end, .. } => {
+                used.slice = true;
+                walk(base, used);
+                if let Some(s) = start {
+                    walk(s, used);
+                }
+                if let Some(e) = end {
+                    walk(e, used);
+                }
             }
             Kind::Match { subject, arms, .. } => {
                 walk(subject, used);
@@ -772,6 +794,25 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 "tl_at({}, {}, {})",
                 expr(enums, base),
                 expr(enums, index),
+                depth
+            )
+        }
+        Kind::Slice {
+            base, start, end, depth,
+        } => {
+            let lo = match start {
+                Some(s) => expr(enums, s),
+                None => "undefined".to_string(),
+            };
+            let hi = match end {
+                Some(e) => expr(enums, e),
+                None => "undefined".to_string(),
+            };
+            format!(
+                "tl_slice({}, {}, {}, {})",
+                expr(enums, base),
+                lo,
+                hi,
                 depth
             )
         }

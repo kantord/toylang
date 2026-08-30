@@ -72,6 +72,16 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
         }
         Kind::Field { base, .. } | Kind::Unwrap { base } => stream_uses(base, binding),
         Kind::Index { base, index, .. } => both(base, index),
+        Kind::Slice { base, start, end, .. } => {
+            let mut acc = stream_uses(base, binding)?;
+            if let Some(s) = start {
+                acc += stream_uses(s, binding)?;
+            }
+            if let Some(e) = end {
+                acc += stream_uses(e, binding)?;
+            }
+            Ok(acc)
+        }
         Kind::Cond {
             cond,
             then,
@@ -189,6 +199,11 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
         } => any_node(source, pred) || any_node(p, pred),
         Kind::Field { base, .. } | Kind::Unwrap { base } => any_node(base, pred),
         Kind::Index { base, index, .. } => any_node(base, pred) || any_node(index, pred),
+        Kind::Slice { base, start, end, .. } => {
+            any_node(base, pred)
+                || start.as_deref().is_some_and(|s| any_node(s, pred))
+                || end.as_deref().is_some_and(|e| any_node(e, pred))
+        }
         Kind::Cond {
             cond,
             then,
@@ -310,6 +325,15 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
         Kind::Index { base, index, .. } => {
             calls_in(base, out);
             calls_in(index, out);
+        }
+        Kind::Slice { base, start, end, .. } => {
+            calls_in(base, out);
+            if let Some(s) = start {
+                calls_in(s, out);
+            }
+            if let Some(e) = end {
+                calls_in(e, out);
+            }
         }
         Kind::Match { subject, arms, .. } => {
             calls_in(subject, out);

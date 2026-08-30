@@ -1,0 +1,13 @@
+# Regression guard for the struct-of-arrays layout: slicing a Vec<Record> has to copy every
+# column, not just column 0, the same invariant vec_lit and `+`/tail were each already caught
+# missing (363710f, a4b2198) at their own construction sites.
+program: |
+  fn names(users: Vec<{name: Str, age: Int}>) -> Vec<{name: Str, age: Int}> =
+      users[1:]
+
+  names([{name: "ada", age: 36}, {name: "bo", age: 9}, {name: "cy", age: 21}])
+
+output: |
+  [{"name":"bo","age":9},{"name":"cy","age":21}]
+
+node_types: [application, int, record-literal, selection.narrow, str, var, vec-literal]

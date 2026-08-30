@@ -89,6 +89,14 @@ const AT_HELPER: &str = r#"def tl_at(v, i, depth):
     return {"some": v[i]}
 "#;
 
+/// Python's own slicing already clamps out-of-range bounds and counts negatives from the end,
+/// so jq's boundary behaviour is the target's native one; `None` is a bound left out.
+const SLICE_HELPER: &str = r#"def tl_slice(v, lo, hi, depth):
+    if depth > 0:
+        return [tl_slice(e, lo, hi, depth - 1) for e in v]
+    return v[lo:hi]
+"#;
+
 const UNWRAP_HELPER: &str = r#"def tl_unwrap(v, depth):
     if depth > 0:
         return [tl_unwrap(e, depth - 1) for e in v]
@@ -229,6 +237,7 @@ pub fn emit(program: &Program) -> String {
         (arith64, ARITH64_HELPER),
         (uses("tl_field("), FIELD_HELPER),
         (uses("tl_at("), AT_HELPER),
+        (uses("tl_slice("), SLICE_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
         (unwrap, UNWRAP_HELPER),
@@ -520,6 +529,25 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 "tl_at({}, {}, {})",
                 expr(enums, base),
                 expr(enums, index),
+                depth
+            )
+        }
+        Kind::Slice {
+            base, start, end, depth,
+        } => {
+            let lo = match start {
+                Some(s) => expr(enums, s),
+                None => "None".to_string(),
+            };
+            let hi = match end {
+                Some(e) => expr(enums, e),
+                None => "None".to_string(),
+            };
+            format!(
+                "tl_slice({}, {}, {}, {})",
+                expr(enums, base),
+                lo,
+                hi,
                 depth
             )
         }
