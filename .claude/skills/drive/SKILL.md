@@ -16,6 +16,11 @@ script watches that session's context from outside and starts a fresh one past
 MAX_CONTEXT. The script also picks the model (sonnet routinely, fable when a lane looks
 landable) and revives the dev server after a reboot.
 
+After editing this skill, any other skill, or the tick scripts: `rm ~/.cache/toylang-drive/session-id`
+so the NEXT tick boots a fresh session that reads the updated files -- a resumed session keeps
+serving its stale cached copy. Never kill a mid-tick process for this; the drop takes effect at
+the next tick boundary on its own.
+
 A tick session therefore NEVER arms crons, background watchers, or its own follow-up
 wake-ups -- scheduling belongs to the loop script. Every tick:
 
