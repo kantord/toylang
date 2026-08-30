@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
@@ -1073,7 +1074,7 @@ impl<'ctx> Emitter<'ctx, '_> {
     /// The printer for one enum, inline. The tag picks between the two JSON shapes (ADR 0009):
     /// a unit variant renders as its quoted name, a payload variant as the single-key wrapper.
     /// A chain of branches rather than a select, because rendering a payload allocates and
-    /// loops; the last variant needs no test, since the type says nothing else is left.
+    /// loops.
     fn show_enum(
         &mut self,
         value: BasicValueEnum<'ctx>,
@@ -1083,11 +1084,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         if variants.is_empty() {
             return Err(unsupported("printing an enum with no variants"));
         }
-        let function = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("no function to branch in")?;
+        let function = self.enclosing_function()?;
         let i64t = self.ctx.i64_type();
         let ptr_ty = self.ctx.ptr_type(AddressSpace::default());
         let slot = self
@@ -1099,34 +1096,9 @@ impl<'ctx> Emitter<'ctx, '_> {
             .into_int_value();
         let done = self.ctx.append_basic_block(function, "enum.done");
 
-        for (i, (vname, payload)) in variants.iter().enumerate() {
-            let arm = self.ctx.append_basic_block(function, "enum.arm");
-            if i + 1 < variants.len() {
-                let next = self.ctx.append_basic_block(function, "enum.next");
-                let is = self
-                    .builder
-                    .build_int_compare(IntPredicate::EQ, tag, i64t.const_int(i as u64, false), "is")
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_conditional_branch(is, arm, next)
-                    .map_err(|e| e.to_string())?;
-                self.builder.position_at_end(arm);
-                self.enum_arm(value, vname, payload, slot)?;
-                self.builder
-                    .build_unconditional_branch(done)
-                    .map_err(|e| e.to_string())?;
-                self.builder.position_at_end(next);
-            } else {
-                self.builder
-                    .build_unconditional_branch(arm)
-                    .map_err(|e| e.to_string())?;
-                self.builder.position_at_end(arm);
-                self.enum_arm(value, vname, payload, slot)?;
-                self.builder
-                    .build_unconditional_branch(done)
-                    .map_err(|e| e.to_string())?;
-            }
-        }
+        self.dispatch_on_tag("enum", tag, &variants, done, slot, |e, vname, payload, slot| {
+            e.enum_arm(value, vname, payload, slot)
+        })?;
 
         self.builder.position_at_end(done);
         self.builder
@@ -2039,8 +2011,7 @@ impl<'ctx> Emitter<'ctx, '_> {
     }
 
     /// The declared-enum case of `equal`. Different tags settle it; equal tags leave one variant
-    /// to compare, so the payload walk is a chain of tag tests over the same two-slot box `show`
-    /// reads, and the last variant needs no test because the type says nothing else is left.
+    /// to compare, so the payload walk runs only over the same two-slot box `show` reads.
     fn equal_enum(
         &mut self,
         l: BasicValueEnum<'ctx>,
@@ -2085,34 +2056,9 @@ impl<'ctx> Emitter<'ctx, '_> {
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(payloads);
-        for (i, (_, payload)) in variants.iter().enumerate() {
-            let arm = self.ctx.append_basic_block(function, "eq.arm");
-            if i + 1 < variants.len() {
-                let next = self.ctx.append_basic_block(function, "eq.next");
-                let is = self
-                    .builder
-                    .build_int_compare(IntPredicate::EQ, lt, i64t.const_int(i as u64, false), "is")
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_conditional_branch(is, arm, next)
-                    .map_err(|e| e.to_string())?;
-                self.builder.position_at_end(arm);
-                self.equal_payload(l, r, payload.as_ref(), slot)?;
-                self.builder
-                    .build_unconditional_branch(done)
-                    .map_err(|e| e.to_string())?;
-                self.builder.position_at_end(next);
-            } else {
-                self.builder
-                    .build_unconditional_branch(arm)
-                    .map_err(|e| e.to_string())?;
-                self.builder.position_at_end(arm);
-                self.equal_payload(l, r, payload.as_ref(), slot)?;
-                self.builder
-                    .build_unconditional_branch(done)
-                    .map_err(|e| e.to_string())?;
-            }
-        }
+        self.dispatch_on_tag("eq", lt, variants, done, slot, |e, _, payload, slot| {
+            e.equal_payload(l, r, payload.as_ref(), slot)
+        })?;
 
         self.builder.position_at_end(done);
         Ok(self
@@ -2155,6 +2101,55 @@ impl<'ctx> Emitter<'ctx, '_> {
             .get_insert_block()
             .and_then(|b| b.get_parent())
             .ok_or_else(|| "no function to branch in".to_string())
+    }
+
+    /// The tag walk shared by `show_enum` and `equal_enum`: one arm block per variant running
+    /// `arm`, each arm reached by testing the tag against the variant's index and joined at
+    /// `done`. The last variant needs no test, since the type says nothing else is left; only
+    /// the block-name prefix and the arm body tell the two walks apart.
+    fn dispatch_on_tag<F>(
+        &mut self,
+        prefix: &str,
+        tag: IntValue<'ctx>,
+        variants: &[(String, Option<Type>)],
+        done: BasicBlock<'ctx>,
+        slot: PointerValue<'ctx>,
+        mut arm: F,
+    ) -> Result<(), String>
+    where
+        F: FnMut(&mut Self, &str, &Option<Type>, PointerValue<'ctx>) -> Result<(), String>,
+    {
+        let function = self.enclosing_function()?;
+        let i64t = self.ctx.i64_type();
+        for (i, (vname, payload)) in variants.iter().enumerate() {
+            let arm_block = self.ctx.append_basic_block(function, &format!("{prefix}.arm"));
+            if i + 1 < variants.len() {
+                let next = self.ctx.append_basic_block(function, &format!("{prefix}.next"));
+                let is = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, tag, i64t.const_int(i as u64, false), "is")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_conditional_branch(is, arm_block, next)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(arm_block);
+                arm(self, vname, payload, slot)?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(next);
+            } else {
+                self.builder
+                    .build_unconditional_branch(arm_block)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(arm_block);
+                arm(self, vname, payload, slot)?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
     }
 
     /// `+`, whether it means Str concatenation (`tl_concat`) or Vec concatenation
