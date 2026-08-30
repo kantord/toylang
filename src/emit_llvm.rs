@@ -2062,7 +2062,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let printed = tir::printed_recursive_enums(program);
         for ty in &printed {
             let f = self.module.add_function(
-                &format!("tl_show_{}", ty.ident()),
+                &ty.show_fn(),
                 ptr.fn_type(&[ptr.into()], false),
                 None,
             );

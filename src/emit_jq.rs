@@ -159,7 +159,7 @@ fn canonical(enums: &Enums, ty: &Type, value: &str) -> String {
         // A recursive enum is rebuilt by a filter of its own (`printers`), because expanding one
         // here has no bottom: its payload leads back to the same type.
         Type::Enum { .. } if ty::is_recursive(enums, ty) => {
-            format!("({value} | {})", show_fn(ty))
+            format!("({value} | {})", ty.show_fn())
         }
         Type::Enum { .. } => canonical_enum(enums, ty, value),
         Type::Record(fields) => {
@@ -748,10 +748,6 @@ fn canonical_enum(enums: &Enums, ty: &Type, value: &str) -> String {
     format!("({value} | {} else {last} end)", tests.join(" "))
 }
 
-/// The name of `ty`'s own rebuilding filter.
-fn show_fn(ty: &Type) -> String {
-    format!("tl_show_{}", ty.ident())
-}
 
 /// A named filter for every recursive enum the program prints. The call in `canonical` above
 /// is what a nested occurrence rebuilds through, so the recursion in the type becomes recursion
@@ -761,7 +757,7 @@ fn printers(program: &Program) -> String {
     for ty in tir::printed_recursive_enums(program) {
         out.push_str(&format!(
             "def {}: {};\n",
-            show_fn(&ty),
+            ty.show_fn(),
             canonical_enum(&program.enums, &ty, ".")
         ));
     }

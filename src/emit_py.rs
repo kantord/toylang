@@ -327,7 +327,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         }
         // A recursive enum prints through a function of its own (`printers`), because expanding
         // one here has no bottom: its payload leads back to the same type.
-        Type::Enum { .. } if ty::is_recursive(enums, ty) => format!("{}({value})", show_fn(ty)),
+        Type::Enum { .. } if ty::is_recursive(enums, ty) => format!("{}({value})", ty.show_fn()),
         Type::Enum { .. } => show_enum(enums, ty, value, depth),
         Type::Record(fields) => {
             if fields.is_empty() {
@@ -658,10 +658,6 @@ fn show_enum(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
     format!("(lambda {n}: {body})({value})")
 }
 
-/// The name of `ty`'s own printer function.
-fn show_fn(ty: &Type) -> String {
-    format!("tl_show_{}", ty.ident())
-}
 
 /// A named printer for every recursive enum the program prints. The call in `show` above is
 /// what a nested occurrence renders as, so the recursion in the type becomes recursion in the
@@ -671,7 +667,7 @@ fn printers(program: &Program) -> String {
     for ty in tir::printed_recursive_enums(program) {
         out.push_str(&format!(
             "def {}(v):\n    return {}\n\n\n",
-            show_fn(&ty),
+            ty.show_fn(),
             show_enum(&program.enums, &ty, "v", 0)
         ));
     }

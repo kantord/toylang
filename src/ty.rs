@@ -235,6 +235,12 @@ impl Type {
             Type::Param(_) => unreachable!("params are substituted before any backend runs"),
         }
     }
+
+    /// The name of `self`'s own printer function, shared by every backend that emits one
+    /// (kantord/toylang#94). Go camel-cases its own variant at the call site.
+    pub fn show_fn(&self) -> String {
+        format!("tl_show_{}", self.ident())
+    }
 }
 
 impl std::fmt::Display for Type {

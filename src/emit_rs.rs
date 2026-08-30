@@ -1292,7 +1292,7 @@ impl Emitter<'_> {
             // A recursive enum prints through a function of its own (`printers`), because
             // expanding one here has no bottom: its payload leads back to the same type.
             Type::Enum { .. } if ty::is_recursive(self.registry, ty) => {
-                format!("{}({value})", show_fn(ty))
+                format!("{}({value})", ty.show_fn())
             }
             Type::Enum { .. } => self.show_enum(ty, value, depth),
             Type::Record(fields) => {
@@ -1324,7 +1324,7 @@ impl Emitter<'_> {
         for ty in tir::printed_recursive_enums(program) {
             out.push_str(&format!(
                 "#[allow(non_snake_case)]\nfn {}(v: {}) -> String {{\n    {}\n}}\n\n",
-                show_fn(&ty),
+                ty.show_fn(),
                 self.rs_type(&ty),
                 self.show_enum(&ty, "v", 0)
             ));
@@ -1358,10 +1358,6 @@ impl Emitter<'_> {
     }
 }
 
-/// The name of `ty`'s own printer function.
-fn show_fn(ty: &Type) -> String {
-    format!("tl_show_{}", ty.ident())
-}
 
 /// The node's type picks the literal's spelling (kantord/toylang#83). The `i64` suffix types
 /// the wide literal directly; `tl_int`'s constant-folding escape is not needed at 64 bits,
