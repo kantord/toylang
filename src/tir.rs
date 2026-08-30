@@ -233,6 +233,16 @@ pub enum Builtin {
     /// same reason `sort` is (the whole Vec has to be there before the first output element
     /// is), but unrestricted in element type, since reversing needs no comparison.
     Reverse,
+    /// `sum(v)`, the reduction of `+` over `v`'s elements, at the element type's own width: a
+    /// `Vec<Int>` sums to `Int`, a `Vec<Int64>` to `Int64`, and an empty Vec sums to 0. Each
+    /// addition wraps the way the language's `+` does, so a sum that leaves the width is the
+    /// same number a hand-written fold would produce (kantord/toylang#140).
+    Sum,
+    /// `max(v)`, the greatest of `v`'s elements, `Opt<T>` because an empty Vec has no maximum
+    /// -- the same answer indexing gives to absence (kantord/toylang#140). Restricted to the
+    /// same two integer element types `sum` takes, so a backend can reach for its native
+    /// maximum.
+    Max,
 }
 
 pub struct Func {

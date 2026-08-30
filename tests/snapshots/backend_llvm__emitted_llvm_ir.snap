@@ -1,6 +1,5 @@
 ---
 source: tests/backend_llvm.rs
-assertion_line: 58
 expression: "toylang::emit_llvm::to_ir(&program).unwrap()"
 ---
 ; ModuleID = 'toylang'
@@ -84,6 +83,10 @@ declare ptr @tl_vec_sort_int(ptr)
 declare ptr @tl_vec_sort_str(ptr)
 
 declare ptr @tl_vec_reverse(ptr, i64)
+
+declare i64 @tl_vec_sum(ptr, i32)
+
+declare ptr @tl_vec_max(ptr)
 
 define i32 @main() {
 entry:

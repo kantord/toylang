@@ -1,0 +1,10 @@
+# Unwrapping the absent Opt `max` yields refuses at runtime, the same way unwrapping an
+# out-of-range index does -- the honest shape behind "empty Vec has no maximum".
+program: |
+  fn nothing() -> Vec<Int> = []
+
+  max(nothing())!
+
+refuses: true
+
+node_types: [application, builtin.max, unwrap, vec-literal]

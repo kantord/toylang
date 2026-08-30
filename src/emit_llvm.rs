@@ -76,6 +76,8 @@ struct Runtime<'ctx> {
     vec_sort_int: FunctionValue<'ctx>,
     vec_sort_str: FunctionValue<'ctx>,
     vec_reverse: FunctionValue<'ctx>,
+    vec_sum: FunctionValue<'ctx>,
+    vec_max: FunctionValue<'ctx>,
 }
 
 /// What a compiler-introduced binding holds.
@@ -272,6 +274,16 @@ impl<'ctx> Emitter<'ctx, '_> {
             vec_reverse: module.add_function(
                 "tl_vec_reverse",
                 ptr.fn_type(&[ptr.into(), i64t.into()], false),
+                None,
+            ),
+            vec_sum: module.add_function(
+                "tl_vec_sum",
+                i64t.fn_type(&[ptr.into(), i32t.into()], false),
+                None,
+            ),
+            vec_max: module.add_function(
+                "tl_vec_max",
+                ptr.fn_type(&[ptr.into()], false),
                 None,
             ),
         };
@@ -1448,6 +1460,18 @@ impl<'ctx> Emitter<'ctx, '_> {
                         let ncols = self.ctx.i64_type().const_int(Self::columns(&elem), false);
                         self.call_rt(self.rt.vec_reverse, &[arg, ncols.into()], "reverse")?
                     }
+                    // Both widths live in the same i64 slot, so the C function's `narrow` flag
+                    // is what tells Int (32-bit wrap per addition) from Int64. An `i32` like
+                    // `tl_at`'s `is_record` flag, since C's `int` is 32 bits.
+                    Builtin::Sum => {
+                        let narrow = self.ctx.i32_type().const_int(
+                            (elem_ty.as_ref() == Some(&Type::Int)) as u64,
+                            false,
+                        );
+                        self.call_rt(self.rt.vec_sum, &[arg, narrow.into()], "sum")?
+                    }
+                    // NULL on an empty Vec is exactly the absent Opt a partial Index yields.
+                    Builtin::Max => self.call_rt(self.rt.vec_max, &[arg], "max")?,
                     // `arg` above ran only for whatever else it does; its value is unused here.
                     Builtin::Fields => self.fields_lit(&record_ty)?,
                 }

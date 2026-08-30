@@ -1,0 +1,10 @@
+# A sum that leaves the 32-bit width wraps per addition, the way `+` does: `2147483647 + 1`
+# is `-2147483648`, not 2147483648. Every backend has to agree on the wrapped answer, which is
+# the case a fold that widened first would fail.
+program: |
+  sum([2147483647, 1])
+
+output: |
+  -2147483648
+
+node_types: [builtin.sum, int, vec-literal]

@@ -133,6 +133,28 @@ const JSONLINES_HELPER: &str = r#"def tl_jsonlines(v, f):
     return "\n".join(f(e) for e in v)
 "#;
 
+/// Python's integers are unbounded, so both widths wrap by emulation -- `tl_i32` for Int and
+/// `tl_i64` for Int64, the same two helpers arithmetic already uses.
+const SUM_HELPER: &str = r#"def tl_sum(v):
+    acc = 0
+    for x in v:
+        acc = tl_i32(acc + x)
+    return acc
+
+
+def tl_sum64(v):
+    acc = 0
+    for x in v:
+        acc = tl_i64(acc + x)
+    return acc
+"#;
+
+const MAX_HELPER: &str = r#"def tl_max(v):
+    if len(v) == 0:
+        return "none"
+    return {"some": max(v)}
+"#;
+
 /// Iterating characters rather than bytes, which agrees with the C runtime's byte loop because
 /// the two differ only above U+007F, where both pass the value through unchanged.
 const QUOTE_HELPER: &str = r#"def tl_quote(s):
@@ -219,8 +241,8 @@ pub fn emit(program: &Program) -> String {
     out.push('\n');
     for (on, text) in [
         (unwrap || arith || arith64, FAIL_HELPER),
-        (arith || uses("tl_i32("), I32_HELPER),
-        (arith64 || uses("tl_i64("), I64_HELPER),
+        (arith || uses("tl_i32(") || uses("tl_sum("), I32_HELPER),
+        (arith64 || uses("tl_i64(") || uses("tl_sum64("), I64_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
         (uses("tl_field("), FIELD_HELPER),
@@ -230,6 +252,8 @@ pub fn emit(program: &Program) -> String {
         (unwrap, UNWRAP_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
+        (uses("tl_sum(") || uses("tl_sum64("), SUM_HELPER),
+        (uses("tl_max("), MAX_HELPER),
         (uses("tl_collect_lines("), COLLECT_HELPER),
         (uses("tl_join("), JOIN_HELPER),
         (uses("tl_jsonlines("), JSONLINES_HELPER),
@@ -433,6 +457,16 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // `sorted` needs no key or comparator.
             Builtin::Sort => format!("sorted({})", expr(enums, arg)),
             Builtin::Reverse => format!("({})[::-1]", expr(enums, arg)),
+            // Which fold depends on the element width only for the wrap: Python has one integer
+            // type, so the two differ in which modulo they apply, not in the value type.
+            Builtin::Sum => {
+                if tir::runtime_elem(&arg.ty) == Some(&Type::Int) {
+                    format!("tl_sum({})", expr(enums, arg))
+                } else {
+                    format!("tl_sum64({})", expr(enums, arg))
+                }
+            }
+            Builtin::Max => format!("tl_max({})", expr(enums, arg)),
             // The names come from the checked type, not the dict value, so `arg` runs as the
             // lambda's ignored argument -- the same shape `Bind` uses -- purely for whatever
             // else it does.

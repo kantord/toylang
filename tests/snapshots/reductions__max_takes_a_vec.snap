@@ -1,0 +1,5 @@
+---
+source: tests/reductions.rs
+expression: "toylang::compile(r#\"max(1)\"#).map(|_| ()).unwrap_err().to_string()"
+---
+`max` needs a Vec of Int or Int64, found Int (at byte 4)
