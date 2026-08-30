@@ -1018,3 +1018,11 @@
   needs: []
   prio: 5
   status: todo
+
+- id: board-archive
+  issue: gh:113
+  title: Done rows move to plans/board-archive.yaml; an absent needs id reads as satisfied
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
