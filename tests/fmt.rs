@@ -119,3 +119,22 @@ fn a_leading_comment_survives_formatting() {
     let src = "# Keep the elements that are at least 2.\n[1, 2, 3] | select(. >= 2)\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
 }
+
+/// A module -- declarations with no trailing expression -- is a file shape the program parser
+/// rejects outright, so a formatter that only knew programs could not format `prelude.toy`, the
+/// one module in this repository and the first file a project-wide walk from the root reaches.
+/// Pinned against the real file rather than a fixture: it is the file the feature exists for.
+#[test]
+fn the_prelude_is_a_module_and_is_already_formatted() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("prelude.toy");
+    let src = std::fs::read_to_string(&path).expect("prelude.toy is readable");
+    let formatted = toylang::fmt(&src).expect("prelude.toy formats");
+    assert_eq!(
+        formatted, src,
+        "prelude.toy is not in canonical form -- run `toylang fmt --write`"
+    );
+    // A module has nothing to run: the formatter must not invent a body for one, and
+    // `parse_module` is what proves the output is still a module rather than only looking like
+    // one.
+    toylang::parse::parse_module(&formatted).expect("the formatted prelude is still a module");
+}

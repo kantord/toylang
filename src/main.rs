@@ -1,23 +1,57 @@
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Context, Result};
 use toylang::Backend;
+use toylang::fmt_tree::{self, Mode};
 
-const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE\n       toylang fmt FILE";
+const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE\n       toylang fmt FILE\n       toylang fmt [--write]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (cmd, path, backend) = match args.as_slice() {
-        [cmd, path] => (cmd.as_str(), path, Backend::Lua),
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    // The project-wide forms take no file, so they are read off first; everything else, `fmt
+    // FILE` included, needs one file read before it can dispatch.
+    match args.as_slice() {
+        ["fmt"] => fmt_project(Mode::Check),
+        ["fmt", "--write"] => fmt_project(Mode::Write),
+        _ => on_file(&args),
+    }
+}
+
+/// The project-wide `fmt`: bare, it reports and writes nothing; with `--write`, it rewrites what
+/// it reports. Both exit nonzero when the tree was not already formatted, so either can gate a
+/// commit, and the report is one path per line so a caller can pipe it somewhere.
+fn fmt_project(mode: Mode) -> ExitCode {
+    let root = Path::new(".");
+    let report = fmt_tree::run(root, mode);
+    // `./` on the front of every line is noise: the walk started here, and the reader knows.
+    let show = |p: &'_ Path| p.strip_prefix(root).unwrap_or(p).display().to_string();
+    for path in &report.changed {
+        println!("{}", show(path));
+    }
+    for (path, e) in &report.failed {
+        eprintln!("toylang: {}: {e}", show(path));
+    }
+    if report.is_clean() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
+/// Every command that names one file to read: `run`, `emit`, `build`, and `fmt`'s filter form.
+fn on_file(args: &[&str]) -> ExitCode {
+    let (cmd, path, backend) = match args {
+        [cmd, path] => (*cmd, *path, Backend::Lua),
         [cmd, path, name] => {
-            let name = if name == "llvm" { "native" } else { name };
+            let name = if *name == "llvm" { "native" } else { name };
             let Some(backend) = Backend::from_name(name) else {
                 eprintln!("{USAGE}");
                 return ExitCode::FAILURE;
             };
-            (cmd.as_str(), path, backend)
+            (*cmd, *path, backend)
         }
         _ => {
             eprintln!("{USAGE}");

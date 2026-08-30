@@ -119,3 +119,9 @@ given backend needs that toolchain installed. Lua is the default.
 and the backend toolchains). `toylang run FILE [backend]` compiles and runs a program,
 `toylang emit FILE backend` prints the emitted source, and `toylang build FILE` links a
 standalone native binary.
+
+`toylang fmt` is the formatter, in two forms. Given a file it prints that file formatted and
+changes nothing on disk. Given nothing it walks down from the current folder instead, listing
+every `.toy` file that is not in canonical form and exiting nonzero if any is; `toylang fmt
+--write` makes the same walk and rewrites them, exiting nonzero if it changed anything. Either
+form of the walk can gate a commit.

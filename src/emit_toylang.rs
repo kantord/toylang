@@ -31,8 +31,8 @@
 //! marked a syntax-spelling exception rather than swept.
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, MatchArm, Param, Pattern, TypeExpr,
-    Variant,
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, MatchArm, Module, Param, Pattern,
+    TypeExpr, Variant,
 };
 
 const WIDTH: usize = 80;
@@ -123,35 +123,9 @@ fn pad(n: usize) -> String {
 }
 
 pub fn emit(file: &File) -> String {
-    enum Item<'a> {
-        Alias(&'a Alias),
-        Enum(&'a EnumDecl),
-        Def(&'a Def),
-    }
-
-    // The AST groups declarations by kind, losing their interleaving in the source; sorting by
-    // span start puts them back in source order, which is what makes the output idempotent --
-    // reformatting an already-sorted file is a no-op re-sort.
-    let mut items: Vec<(usize, Item)> = Vec::new();
-    for a in &file.aliases {
-        items.push((a.span.start, Item::Alias(a)));
-    }
-    for e in &file.enums {
-        items.push((e.span.start, Item::Enum(e)));
-    }
-    for d in &file.defs {
-        items.push((d.span.start, Item::Def(d)));
-    }
-    items.sort_by_key(|(start, _)| *start);
-
     let mut out = String::new();
-    for (_, item) in &items {
-        let rendered = match item {
-            Item::Alias(a) => print_alias(a),
-            Item::Enum(e) => print_enum(e),
-            Item::Def(d) => print_def(d),
-        };
-        out.push_str(&rendered);
+    for decl in decls_in_source_order(&file.aliases, &file.enums, &file.defs) {
+        out.push_str(&decl);
         out.push_str("\n\n");
     }
     out.push_str(&print_expr_wrapped(&file.body, Ctx::Expr(0), 0));
@@ -159,12 +133,70 @@ pub fn emit(file: &File) -> String {
     out
 }
 
+/// A module is the declarations alone: no trailing expression to separate them from, so they end
+/// the file rather than each being followed by a blank line the way `emit` writes them.
+pub fn emit_module(module: &Module) -> String {
+    let decls = decls_in_source_order(&[], &module.enums, &module.defs);
+    if decls.is_empty() {
+        return String::new();
+    }
+    format!("{}\n", decls.join("\n\n"))
+}
+
+/// Every declaration rendered, back in the order it was written.
+///
+/// The AST groups declarations by kind, losing their interleaving in the source; sorting by span
+/// start puts them back, which is what makes the output idempotent -- reformatting an
+/// already-sorted file is a no-op re-sort.
+fn decls_in_source_order(aliases: &[Alias], enums: &[EnumDecl], defs: &[Def]) -> Vec<String> {
+    enum Item<'a> {
+        Alias(&'a Alias),
+        Enum(&'a EnumDecl),
+        Def(&'a Def),
+    }
+
+    let mut items: Vec<(usize, Item)> = Vec::new();
+    for a in aliases {
+        items.push((a.span.start, Item::Alias(a)));
+    }
+    for e in enums {
+        items.push((e.span.start, Item::Enum(e)));
+    }
+    for d in defs {
+        items.push((d.span.start, Item::Def(d)));
+    }
+    items.sort_by_key(|(start, _)| *start);
+
+    items
+        .iter()
+        .map(|(_, item)| match item {
+            Item::Alias(a) => print_alias(a),
+            Item::Enum(e) => print_enum(e),
+            Item::Def(d) => print_def(d),
+        })
+        .collect()
+}
+
 /// Parses `src` and formats it, then reattaches the one piece of source text `emit` cannot
 /// reconstruct from the tree: a leading run of `#` comment (and blank) lines, copied back
 /// verbatim ahead of the formatted body.
+///
+/// Two file shapes reach a formatter that walks a project: a program, and a module --
+/// declarations with no trailing expression, which `parse` rejects outright and which
+/// `prelude.toy` is the one instance of here. Which one a file is only shows up in the parsing,
+/// so both are tried. When neither parse succeeds, the error reported is whichever got further
+/// into the file, so a typo halfway down a module is not reported as a missing program body.
 pub fn format_source(src: &str) -> Result<String, crate::error::Error> {
-    let file = crate::parse::parse(src)?;
-    Ok(format!("{}{}", leading_comment(src), emit(&file)))
+    let banner = leading_comment(src);
+    let as_program = match crate::parse::parse(src) {
+        Ok(file) => return Ok(format!("{banner}{}", emit(&file))),
+        Err(e) => e,
+    };
+    match crate::parse::parse_module(src) {
+        Ok(module) => Ok(format!("{banner}{}", emit_module(&module))),
+        Err(as_module) if as_module.span.start > as_program.span.start => Err(as_module),
+        Err(_) => Err(as_program),
+    }
 }
 
 fn leading_comment(src: &str) -> String {
