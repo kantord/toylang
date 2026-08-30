@@ -4,7 +4,7 @@
  * the site is only a renderer of files something else already verified.
  */
 
-export type Section = "tutorial" | "guides" | "reference" | "grill" | "examples"
+export type Section = "overview" | "tutorial" | "guides" | "reference" | "grill" | "examples"
 
 export interface Page {
   section: Section
@@ -48,6 +48,7 @@ function parse(): Page[] {
     // ADRs are decision records, not presentation content; the drafts directory does not exist
     // yet but the same reasoning would apply.
     if (
+      section !== "overview" &&
       section !== "tutorial" &&
       section !== "guides" &&
       section !== "reference" &&

@@ -83,6 +83,32 @@ fn a_genuine_cycle_between_named_functions_is_refused_cleanly() {
     insta::assert_snapshot!(err);
 }
 
+/// Two enums that reach each other only through `Vec` type-check legally (kantord/toylang#94),
+/// but their printers form the same genuine cycle named functions can: `tl_show_A` calls
+/// `tl_show_B` calls `tl_show_A`, and jq's `def` has no forward declaration for that any more
+/// than it does for `a`/`b`/`c` above (kantord/toylang#116).
+const PRINTER_CYCLE: &str = r#"
+enum A { a(Vec<B>) }
+enum B { b(Vec<A>) }
+
+{x: A.a([]), y: B.b([])}
+"#;
+
+/// The printer-side counterpart to `a_genuine_cycle_between_named_functions_is_refused_cleanly`:
+/// before kantord/toylang#116, `printers()` emitted defs in DFS-discovery order with no cycle
+/// check, so this program would have failed with jq's own raw error naming a mangled internal
+/// name instead of toylang's clean refusal.
+#[test]
+fn a_genuine_cycle_between_printers_is_refused_cleanly() {
+    let p = toylang::compile(PRINTER_CYCLE).unwrap();
+    let err = toylang::emit_jq::emit(&p).unwrap_err();
+    assert!(
+        err.contains("tl_show_A") && err.contains("tl_show_B"),
+        "{err}"
+    );
+    insta::assert_snapshot!(err);
+}
+
 /// Direct self-recursion is not a cycle `ordered` ever gets stuck on: a function calling only
 /// itself is always immediately ready, so jq keeps running every corpus program that recurses
 /// this way (`join_lines`, `join`, and every self-recursive corpus case already do).

@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
  *  wizard are dev-only tooling (kantord/toylang#50) and live entirely under dev/, which this
  *  file never imports. */
 const SECTIONS: { key: Section | "examples"; label: string }[] = [
+  { key: "overview", label: "Overview" },
   { key: "tutorial", label: "Tutorial" },
   { key: "guides", label: "Guides" },
   { key: "reference", label: "Reference" },
