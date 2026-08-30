@@ -1,9 +1,8 @@
 ---
 source: tests/backend_llvm.rs
-assertion_line: 46
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (186):
+compiles natively (187):
 adults
 arith_add
 arith_div_trunc
@@ -176,6 +175,7 @@ unwrap_int
 unwrap_negative
 unwrap_nested
 unwrap_str
+vec_body_after_definition
 vec_concat
 vec_concat_chain
 vec_concat_empty

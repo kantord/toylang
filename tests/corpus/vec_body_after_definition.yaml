@@ -1,0 +1,12 @@
+# The vec-literal program body used to be swallowed across the definition boundary as an
+# index on the definition's trailing expression (issue #148). An index must start on the same
+# line as its base, and this `[` does not.
+program: |
+  fn user_fn(x: Int) -> Int = x * 2
+
+  [user_fn(1), user_fn(2)]
+ 
+output: |
+  [2,4]
+
+node_types: [application, arith.mul, int, var, vec-literal]
