@@ -25,8 +25,10 @@ fn row_max(a: Int) -> Int =
         concat(
             [
                 [0],
-                range(1000) | select(. >= a) | map(a * .) |
-                    select(. == reverse_num({n: ., acc: 0}))
+                range(1000)
+                    | select(. >= a)
+                    | map(a * .)
+                    | select(. == reverse_num({n: ., acc: 0}))
             ]
         )
     )
