@@ -1069,3 +1069,10 @@
   kind: decide
   needs: []
   status: todo
+
+- id: method-call-syntax-design
+  issue: gh:119
+  title: Grill method-like call syntax -- functions that target a type with extra params (maintainer compose note)
+  kind: decide
+  needs: []
+  status: todo
