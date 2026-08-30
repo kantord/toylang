@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 issue: gh:105
 ---
 

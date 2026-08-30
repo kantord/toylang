@@ -171,6 +171,13 @@
   needs: []
   status: todo
 
+- id: range-stream-source-design
+  issue: gh:127
+  title: Grill whether range should become a Stream source -- Q1/Q13 amendment to ADR 0001 (prelude-inventory approved finding, gh:105/gh:121)
+  kind: decide
+  needs: []
+  status: todo
+
 - id: q37-float-semantics
   title: Grill Q37 -- float printing agreement, NaN/Infinity, division by zero
   kind: decide
