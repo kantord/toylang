@@ -92,11 +92,11 @@ if [ -z "$TRIGGER" ]; then
   TRIGGER=$(python3 -c "
 import yaml
 rows = yaml.safe_load(open('plans/board.yaml'))
-done = {r['id'] for r in rows if r.get('status') == 'done'}
+live = {r['id'] for r in rows}  # a needs id absent here landed and archived (issue #113)
 lanes = sum(1 for r in rows if r.get('status') == 'delegated' and r.get('kind') == 'build')
 ready = [r['id'] for r in rows
          if r.get('status') == 'todo' and r.get('kind') == 'build'
-         and all(n in done for n in r.get('needs', []))]
+         and all(n not in live for n in r.get('needs', []))]
 if lanes < 5 and ready:
     print(f'{5 - lanes} free lanes, ready: {\" \".join(ready[:3])}')" 2>/dev/null)
 fi

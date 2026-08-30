@@ -2,7 +2,7 @@
 
 Issue #36, from two maintainer questions ("what does Rust do here? how do other languages deal
 with this?"). Two unrelated halves, feeding two different decide sessions:
-[`record-order-strictness`](board.yaml) (issue #24) and
+[`record-order-strictness`](board-archive.yaml) (issue #24) and
 [`overloading-and-traits-design`](board.yaml). Framings for those sessions to weigh, not designs
 for either.
 

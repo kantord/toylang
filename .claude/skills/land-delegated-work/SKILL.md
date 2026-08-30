@@ -57,8 +57,8 @@ fewer than three ready, the serial flow below is simpler and just as fast.
   command from the repo root, and verify `git status -sb` says main first.
 - On conflicts: resolve each conflicted path explicitly and NEVER `git add -A` while a merge
   is in progress -- it once staged conflict markers into board.yaml unseen. Structured files
-  (board.yaml especially) get validated AFTER resolution and BEFORE the commit, with the
-  validation hard-gating the commit (`&&`, not a newline).
+  (board.yaml and board-archive.yaml especially) get validated AFTER resolution and BEFORE the
+  commit, with the validation hard-gating the commit (`&&`, not a newline).
 - Re-run `just test` on main after the merge.
 - Push main after the green suite (standing authorization, 2026-08-29, "at least for now"):
   ordinary pushes only, never force, never branch deletion. Keeping origin current is what
@@ -68,9 +68,12 @@ fewer than three ready, the serial flow below is simpler and just as fast.
 
 ## 3b. Update the board and the env
 
-If `plans/board.yaml` exists: set the landed task's row to `status: done` (committed together
-with the merge), and add rows for any follow-up issues the review filed -- `build` rows
-usually, or a `decide` + `build` pair when a finding needs a design call first.
+If `plans/board.yaml` exists: MOVE the landed task's row out of `plans/board.yaml` into
+`plans/board-archive.yaml`, appended with `status: done` (committed together with the merge) --
+landing no longer flips status in place (issue #113). Match the row by its id terminator
+(`'- id: <slug>\n'`, never a bare prefix -- see the drive skill's stall-diagnosis section) and
+add rows for any follow-up issues the review filed -- `build` rows usually, or a `decide` +
+`build` pair when a finding needs a design call first.
 
 Mark the enwiro environment done as part of landing: `enw mark done --env '<name>'`. Closing
 the GitHub issue (with a landing comment naming the merge commit) belongs here too, once the

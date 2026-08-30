@@ -1,8 +1,11 @@
 import { parse } from "yaml"
 
 /**
- * `plans/board.yaml`, loaded at build/dev time (docs.ts loads the docs tree the same way): the
- * board is committed data, so the graph page ships in the public build with no server behind it.
+ * `plans/board.yaml` and `plans/board-archive.yaml`, loaded at build/dev time (docs.ts loads
+ * the docs tree the same way): the board is committed data, so the graph page ships in the
+ * public build with no server behind it. Done rows live only in the archive (issue #113); a
+ * `needs`/`soft` id absent from the live board is satisfied by that same rule, so `BOARD` alone
+ * is already the not-done view.
  */
 export type Kind = "build" | "decide"
 export type Status = "todo" | "delegated" | "done"
@@ -23,7 +26,13 @@ export interface Task {
   blocked: boolean
 }
 
-const raw = import.meta.glob("../../../../plans/board.yaml", {
+const rawBoard = import.meta.glob("../../../../plans/board.yaml", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>
+
+const rawArchive = import.meta.glob("../../../../plans/board-archive.yaml", {
   query: "?raw",
   import: "default",
   eager: true,
@@ -37,20 +46,32 @@ export function parseIssue(issue: unknown): number | null {
   return m ? Number(m[1]) : null
 }
 
-function load(): Task[] {
-  const [text] = Object.values(raw)
-  const rows = parse(text) as {
-    id: string
-    issue?: string
-    title: string
-    kind: Kind
-    needs: string[]
-    status: Status
-  }[]
+interface RawRow {
+  id: string
+  issue?: string
+  title: string
+  kind: Kind
+  needs: string[]
+  status: Status
+}
 
-  const statusOf = new Map(rows.map((r) => [r.id, r.status]))
-  return rows.map((r) => {
-    const needsAllDone = r.needs.every((id) => statusOf.get(id) === "done")
+function parseRows(raw: Record<string, string>): RawRow[] {
+  const [text] = Object.values(raw)
+  return parse(text) as RawRow[]
+}
+
+function load(): { board: Task[]; archive: Task[] } {
+  const boardRows = parseRows(rawBoard)
+  const archiveRows = parseRows(rawArchive)
+
+  // Only the live board can gate anything; an id missing from it is satisfied -- it landed
+  // and moved to the archive (issue #113).
+  const statusOf = new Map(boardRows.map((r) => [r.id, r.status]))
+  const toTask = (r: RawRow): Task => {
+    const needsAllDone = r.needs.every((id) => {
+      const s = statusOf.get(id)
+      return s === undefined || s === "done"
+    })
     return {
       id: r.id,
       issue: parseIssue(r.issue),
@@ -61,8 +82,17 @@ function load(): Task[] {
       unblocked: r.status === "todo" && needsAllDone,
       blocked: r.status === "todo" && !needsAllDone,
     }
-  })
+  }
+
+  return { board: boardRows.map(toTask), archive: archiveRows.map(toTask) }
 }
 
-export const BOARD: Task[] = load()
+const { board, archive } = load()
+
+/** The live board: never contains a `done` row (issue #113). */
+export const BOARD: Task[] = board
+
+/** Landed rows, for history views only -- never consulted to decide whether something is
+ *  blocked. */
+export const ARCHIVE: Task[] = archive
 
