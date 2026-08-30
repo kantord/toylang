@@ -852,3 +852,11 @@
   soft: [concat-retirement]
   prio: 3
   status: done
+
+- id: euler-unverified-outputs-audit
+  issue: gh:128
+  title: Audit euler examples with unverified "commonly published" outputs -- verify or turn each blocker into a tracked task (maintainer policy note)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
