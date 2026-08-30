@@ -182,7 +182,7 @@ if command -v cargo > /dev/null 2>&1; then
   cargo_ran=1
   clippy_raw=$(cargo clippy --workspace --all-targets --message-format=json -q 2>/dev/null \
     | jq -r 'select(.reason == "compiler-message")
-# The trade this buys: any REAL finding in build.rs's own generator code (not just the
+# The trade this buys: any REAL finding in build.rs own generator code (not just the
 # duplicated modules) is also invisible to this pass forever -- none exists today, and
 # the finer file-scoped filter was priced higher than that latent risk (gh:81).
              | select((.target.kind // []) | index("custom-build") | not)
