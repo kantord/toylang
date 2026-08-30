@@ -350,7 +350,7 @@
   kind: decide
   needs: []
   prio: 3
-  status: todo
+  status: done
 
 - id: custom-build-clippy-scope
   issue: gh:81
@@ -365,7 +365,7 @@
   kind: decide
   needs: []
   prio: 2
-  status: todo
+  status: done
 
 - id: result-in-prelude
   issue: gh:82
@@ -419,6 +419,62 @@
   soft: [euler-slow-fragments]
   prio: 3
   status: todo
+
+- id: structural-equality-build
+  issue: gh:95
+  title: Structural equality on composites everywhere, with the ordering pin
+  kind: build
+  needs: [composite-equality]
+  prio: 2
+  status: todo
+
+- id: bool-keywords-build
+  issue: gh:96
+  title: and/or/not keywords, or context-splitting between arms and booleans
+  kind: build
+  needs: [char-literals-and-bools]
+  prio: 2
+  status: todo
+
+- id: concat-retirement
+  issue: gh:97
+  title: Retire concat -- + concatenates Vecs, the add-trait ruling
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: builtin-renames
+  issue: gh:98
+  title: extent -> length, unlines -> join_lines
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: projection-style-demotion
+  issue: gh:99
+  title: Demote map(.field) for pure projection -- style and sweep, not a refusal
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: string-type-spike
+  issue: gh:100
+  title: Spike the ideal Str -- JSON-compliant, simple internals, per-backend realities
+  kind: build
+  needs: []
+  prio: 2
+  status: delegated
+
+- id: fmt-pipeline-column
+  issue: gh:101
+  title: fmt -- one pipeline stage per line, pipe-first vertical column, resweep
+  kind: build
+  needs: []
+  prio: 2
+  status: delegated
 
 - id: euler-slow-fragments
   issue: gh:90
