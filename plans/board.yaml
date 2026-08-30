@@ -225,7 +225,7 @@
   kind: build
   needs: [benchmark-set-spike, benchmark-tooling-spike]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: record-argument-boundary
   title: Oddity -- the paren-free record argument reaches across the definition boundary; settle it
