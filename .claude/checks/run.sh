@@ -170,12 +170,19 @@ done
 # field is a best-effort read of the source line clippy points at (`fn NAME`, if that line has
 # one) -- empty when the span does not land on a signature line, which just means no
 # function-scoped sinkhole entry can match that finding.
+#
+# custom-build messages are dropped before anything else sees them: build.rs's #[path]-declared
+# modules (#73's prelude precompile) recompile ast.rs/error.rs/ty.rs/tir.rs/parse.rs/check/mod.rs
+# as a second, separate target, and a function build.rs's copy never calls is dead there even
+# though the lib target (compiled separately, in its own compiler-message block) uses it fine.
+# See issue #81.
 cargo_ran=0
 clippy_workspace=""
 if command -v cargo > /dev/null 2>&1; then
   cargo_ran=1
   clippy_raw=$(cargo clippy --workspace --all-targets --message-format=json -q 2>/dev/null \
     | jq -r 'select(.reason == "compiler-message")
+             | select((.target.kind // []) | index("custom-build") | not)
              | .message
              | select(.level == "warning")
              | select(.code.code != null)
