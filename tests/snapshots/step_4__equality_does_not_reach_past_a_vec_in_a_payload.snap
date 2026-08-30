@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(r#\"\nenum Holder { empty, full{items: Vec<Int>} }\n\nfull{items: [1]} == full{items: [1]}\n\"#)"
+---
+`==` does not apply to Holder (at byte 47)

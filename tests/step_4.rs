@@ -68,6 +68,16 @@ fn equality_does_not_reach_past_a_vec() {
     insta::assert_snapshot!(err("{a: [1, 2]} == {a: [1, 2]}"));
 }
 
+/// The refusal walks enum payloads too, not only record fields.
+#[test]
+fn equality_does_not_reach_past_a_vec_in_a_payload() {
+    insta::assert_snapshot!(err(r#"
+enum Holder { empty, full{items: Vec<Int>} }
+
+full{items: [1]} == full{items: [1]}
+"#));
+}
+
 #[test]
 fn subject_outside_a_pipeline() {
     insta::assert_snapshot!(err("."));
