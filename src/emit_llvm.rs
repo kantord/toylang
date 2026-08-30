@@ -1421,11 +1421,7 @@ impl<'ctx> Emitter<'ctx> {
             Kind::Arith { op, lhs, rhs } => {
                 let l = self.expr(lhs)?.into_int_value();
                 let r = self.expr(rhs)?.into_int_value();
-                if t.ty == Type::Int64 {
-                    self.arith64(*op, l, r)?
-                } else {
-                    self.arith(*op, l, r)?
-                }
+                self.arith_at(&t.ty, *op, l, r)?
             }
 
             Kind::Builtin { which, arg } => {
@@ -1769,6 +1765,22 @@ impl<'ctx> Emitter<'ctx> {
         }
         .map_err(|e| e.to_string())?;
         Ok(self.narrow_to_i32(wide)?.into())
+    }
+
+    /// One arithmetic operation at the width `ty` names: `arith`'s narrowing 32-bit path, or
+    /// `arith64`'s native one.
+    fn arith_at(
+        &mut self,
+        ty: &Type,
+        op: BinOp,
+        lhs: IntValue<'ctx>,
+        rhs: IntValue<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        if *ty == Type::Int64 {
+            self.arith64(op, lhs, rhs)
+        } else {
+            self.arith(op, lhs, rhs)
+        }
     }
 
     /// Wrapping 64-bit arithmetic, the width `arith` computes in with the narrowing left off.

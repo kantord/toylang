@@ -1919,6 +1919,41 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<Access, Error> {
     }
 }
 
+/// A literal (or a minus on one, or a negation) met by an Int64 expectation: literals carry
+/// no suffix, so the position is the only thing that can say which width one has
+/// (kantord/toylang#83), the `[]` rule applied to numbers. A minus directly on a literal is
+/// part of the literal, as for Int, so the whole written range short of
+/// `-9223372036854775808` is reachable (the parser refuses `9223372036854775808` before the
+/// minus could claim it, the same edge Rust's own i64 literals have). `None` for any other
+/// form -- or any other `want` -- which falls through to `expect_inner`'s remaining arms.
+fn int64_resolved(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Error>> {
+    if *want != Type::Int64 {
+        return None;
+    }
+    match expr {
+        Expr::Int { value, .. } => Some(Ok(Tir::new(Type::Int64, Kind::Int(*value)))),
+        Expr::Neg { base, .. } => {
+            if let Expr::Int { value, .. } = base.as_ref() {
+                return Some(Ok(Tir::new(Type::Int64, Kind::Int(-value))));
+            }
+            let inner = match expect(ctx, base, &Type::Int64) {
+                Ok(inner) => inner,
+                Err(e) => return Some(Err(e)),
+            };
+            let zero = Tir::new(Type::Int64, Kind::Int(0));
+            Some(Ok(Tir::new(
+                Type::Int64,
+                Kind::Arith {
+                    op: BinOp::Sub,
+                    lhs: Box::new(zero),
+                    rhs: Box::new(inner),
+                },
+            )))
+        }
+        _ => None,
+    }
+}
+
 /// An arithmetic operand checked at the width the other side fixed, with the type mismatch
 /// upgraded to name the bridge when the two integer types met: "expected Int, found Int64" is
 /// true but leaves the reader to discover `i64` on their own. The re-synthesis in the error
@@ -2452,33 +2487,6 @@ fn match_arm_want<'a>(arms: &[MatchArm], want: &'a Type) -> Option<&'a Type> {
 }
 
 fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> {
-    // A literal where an Int64 is expected is an Int64: literals carry no suffix, so the
-    // position is the only thing that can say which width one has (kantord/toylang#83), the
-    // `[]` rule applied to numbers. A minus directly on a literal is part of the literal, as
-    // for Int, so the whole written range short of `-9223372036854775808` is reachable (the
-    // parser refuses `9223372036854775808` before the minus could claim it, the same edge
-    // Rust's own i64 literals have).
-    if *want == Type::Int64 {
-        if let Expr::Int { value, .. } = expr {
-            return Ok(Expected::Checked(Tir::new(Type::Int64, Kind::Int(*value))));
-        }
-        if let Expr::Neg { base, .. } = expr {
-            if let Expr::Int { value, .. } = base.as_ref() {
-                return Ok(Expected::Checked(Tir::new(Type::Int64, Kind::Int(-value))));
-            }
-            let inner = expect(ctx, base, &Type::Int64)?;
-            let zero = Tir::new(Type::Int64, Kind::Int(0));
-            return Ok(Expected::Checked(Tir::new(
-                Type::Int64,
-                Kind::Arith {
-                    op: BinOp::Sub,
-                    lhs: Box::new(zero),
-                    rhs: Box::new(inner),
-                },
-            )));
-        }
-    }
-
     // The forms whose type comes from their position rather than their contents.
     if let Expr::Input { span } = expr {
         return input_read(ctx, *span, want).map(Expected::Checked);
@@ -2506,7 +2514,10 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
         return construct(ctx, want, text, *span, None, None).map(Expected::Checked);
     }
 
-    if let Some(built) = wanted_variant(ctx, expr, want) {
+    // An Int64-expected literal and a wanted enum's variant are the same kind of arm: a form
+    // resolved by its position, built by its own helper, `None` falling through.
+    if let Some(built) = int64_resolved(ctx, expr, want).or_else(|| wanted_variant(ctx, expr, want))
+    {
         return built.map(Expected::Checked);
     }
 

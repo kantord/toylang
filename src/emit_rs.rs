@@ -443,10 +443,7 @@ pub fn emit(program: &Program) -> String {
     // also passes an `{a: Int64, ...}` record between its own functions must not force a
     // parser for a shape the checker already promised can never cross the wire.
     let mut wire: Vec<Type> = Vec::new();
-    if let Some(ty) = &program.input {
-        collect_wire(ty, &mut wire);
-    }
-    if let Some(ty) = &program.inputs {
+    for ty in [&program.input, &program.inputs].into_iter().flatten() {
         collect_wire(ty, &mut wire);
     }
 
@@ -1011,11 +1008,7 @@ impl Emitter {
     fn expr(&self, t: &Tir) -> String {
         match &t.kind {
             Kind::Str(s) => rs_string(s),
-            // The suffix types the literal directly; `tl_int`'s constant-folding escape is not
-            // needed at 64 bits, since every arithmetic spelling here is a `wrapping_*` call
-            // the compiler never folds into an overflow error.
-            Kind::Int(n) if t.ty == Type::Int64 => format!("{n}i64"),
-            Kind::Int(n) => format!("tl_int({n})"),
+            Kind::Int(n) => int_lit(&t.ty, *n),
             Kind::Var(name) => format!("{}.clone()", self.user(name)),
             Kind::Local(id) => format!("{}.clone()", self.local(*id)),
             Kind::Input => format!("{INPUT}.clone()"),
@@ -1049,24 +1042,7 @@ impl Emitter {
                 arg.as_deref().map_or_else(String::new, |a| self.expr(a))
             ),
             Kind::Concat(l, r) => format!("({} + &{})", self.expr(l), self.expr(r)),
-            // `wrapping_*` are width-generic method names, so only the div/rem helpers change
-            // at 64 bits.
-            Kind::Arith { op, lhs, rhs } if t.ty == Type::Int64 => match op {
-                BinOp::Div => format!("tl_div64({}, {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Rem => format!("tl_rem64({}, {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Add => format!("({}).wrapping_add({})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Sub => format!("({}).wrapping_sub({})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Mul => format!("({}).wrapping_mul({})", self.expr(lhs), self.expr(rhs)),
-                other => unreachable!("{other} is not arithmetic"),
-            },
-            Kind::Arith { op, lhs, rhs } => match op {
-                BinOp::Div => format!("tl_div({}, {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Rem => format!("tl_rem({}, {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Add => format!("({}).wrapping_add({})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Sub => format!("({}).wrapping_sub({})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Mul => format!("({}).wrapping_mul({})", self.expr(lhs), self.expr(rhs)),
-                other => unreachable!("{other} is not arithmetic"),
-            },
+            Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             // A genuine expression, unlike Go: both branches stay unevaluated except the taken
             // one, which is what `if`/`else` already guarantees.
             Kind::Cond {
@@ -1320,6 +1296,33 @@ impl Emitter {
                 )
             }
         }
+    }
+}
+
+/// The node's type picks the literal's spelling (kantord/toylang#83). The `i64` suffix types
+/// the wide literal directly; `tl_int`'s constant-folding escape is not needed at 64 bits,
+/// since every arithmetic spelling here is a `wrapping_*` call the compiler never folds into
+/// an overflow error.
+fn int_lit(ty: &Type, n: i64) -> String {
+    if *ty == Type::Int64 {
+        format!("{n}i64")
+    } else {
+        format!("tl_int({n})")
+    }
+}
+
+/// One arithmetic expression at the width the node's type names. `wrapping_*` are
+/// width-generic method names, so only the div/rem helpers change at 64 bits.
+fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
+    match op {
+        BinOp::Div if *ty == Type::Int64 => format!("tl_div64({l}, {r})"),
+        BinOp::Rem if *ty == Type::Int64 => format!("tl_rem64({l}, {r})"),
+        BinOp::Div => format!("tl_div({l}, {r})"),
+        BinOp::Rem => format!("tl_rem({l}, {r})"),
+        BinOp::Add => format!("({l}).wrapping_add({r})"),
+        BinOp::Sub => format!("({l}).wrapping_sub({r})"),
+        BinOp::Mul => format!("({l}).wrapping_mul({r})"),
+        other => unreachable!("{other} is not arithmetic"),
     }
 }
 

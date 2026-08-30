@@ -586,24 +586,7 @@ fn expr(t: &Tir) -> String {
         // Parenthesised because there is more than one operator, and Lua's precedence is not
         // toylang's to rely on.
         Kind::Concat(l, r) => format!("({} .. {})", expr(l), expr(r)),
-        // At 64 bits Lua's own integers are the semantics (kantord/toylang#83): `+`, `-` and
-        // `*` wrap natively, so only division and remainder go through a helper.
-        Kind::Arith { op, lhs, rhs } if t.ty == Type::Int64 => match op {
-            BinOp::Div => format!("tl_div64({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Rem => format!("tl_rem64({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Add => format!("({} + {})", expr(lhs), expr(rhs)),
-            BinOp::Sub => format!("({} - {})", expr(lhs), expr(rhs)),
-            BinOp::Mul => format!("({} * {})", expr(lhs), expr(rhs)),
-            other => unreachable!("{other} is not arithmetic"),
-        },
-        Kind::Arith { op, lhs, rhs } => match op {
-            BinOp::Div => format!("tl_div({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Rem => format!("tl_rem({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Add => format!("tl_i32({} + {})", expr(lhs), expr(rhs)),
-            BinOp::Sub => format!("tl_i32({} - {})", expr(lhs), expr(rhs)),
-            BinOp::Mul => format!("tl_i32({} * {})", expr(lhs), expr(rhs)),
-            other => unreachable!("{other} is not arithmetic"),
-        },
+        Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(lhs), expr(rhs)),
         Kind::Cond {
             cond,
             then,
@@ -762,6 +745,31 @@ fn expr(t: &Tir) -> String {
                 body.push_str("return \"none\" ");
             }
             format!("(function() {body}end)()")
+        }
+    }
+}
+
+/// One arithmetic expression at the width the node's type names. At 64 bits Lua's own
+/// integers are the semantics (kantord/toylang#83): `+`, `-` and `*` wrap natively, so only
+/// division and remainder go through a helper.
+fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
+    if *ty == Type::Int64 {
+        match op {
+            BinOp::Div => format!("tl_div64({l}, {r})"),
+            BinOp::Rem => format!("tl_rem64({l}, {r})"),
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else {
+        match op {
+            BinOp::Div => format!("tl_div({l}, {r})"),
+            BinOp::Rem => format!("tl_rem({l}, {r})"),
+            BinOp::Add => format!("tl_i32({l} + {r})"),
+            BinOp::Sub => format!("tl_i32({l} - {r})"),
+            BinOp::Mul => format!("tl_i32({l} * {r})"),
+            other => unreachable!("{other} is not arithmetic"),
         }
     }
 }

@@ -819,8 +819,7 @@ impl Emitter {
     fn expr(&self, t: &Tir) -> String {
         match &t.kind {
             Kind::Str(s) => go_string(s),
-            Kind::Int(n) if t.ty == Type::Int64 => format!("tlInt64({n})"),
-            Kind::Int(n) => format!("tlInt({n})"),
+            Kind::Int(n) => int_lit(&t.ty, *n),
             Kind::Var(name) => self.user(name),
             Kind::Local(id) => self.local(*id),
             Kind::Input => INPUT.to_string(),
@@ -873,25 +872,7 @@ impl Emitter {
                 arg.as_deref().map_or_else(String::new, |a| self.expr(a))
             ),
             Kind::Concat(l, r) => format!("({} + {})", self.expr(l), self.expr(r)),
-            // int64 wraps by definition too, so the width changes nothing but the helper names.
-            Kind::Arith { op, lhs, rhs } if t.ty == Type::Int64 => match op {
-                BinOp::Div => format!("tlDiv64({}, {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Rem => format!("tlRem64({}, {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Add => format!("({} + {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Sub => format!("({} - {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Mul => format!("({} * {})", self.expr(lhs), self.expr(rhs)),
-                other => unreachable!("{other} is not arithmetic"),
-            },
-            Kind::Arith { op, lhs, rhs } => match op {
-                BinOp::Div => format!("tlDiv({}, {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Rem => format!("tlRem({}, {})", self.expr(lhs), self.expr(rhs)),
-                // int32 wraps by definition in Go, so +, - and * need no guard at all. This is
-                // the only backend where the wrapping rule costs nothing to state.
-                BinOp::Add => format!("({} + {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Sub => format!("({} - {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Mul => format!("({} * {})", self.expr(lhs), self.expr(rhs)),
-                other => unreachable!("{other} is not arithmetic"),
-            },
+            Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             // Go has no conditional expression, so this is a call to a function literal rather
             // than an operator. Both branches stay unevaluated, which a `tlCond(c, a, b)` helper
             // could not manage: its arguments would both run, and one of them may divide by zero.
@@ -1152,6 +1133,42 @@ impl Emitter {
                     .collect();
                 format!("(\"{{\" + {} + \"}}\")", parts.join(" + \",\" + "))
             }
+        }
+    }
+}
+
+/// The node's type picks which constant-folding escape a literal goes through
+/// (kantord/toylang#83): tlInt for an Int, tlInt64 for an Int64.
+fn int_lit(ty: &Type, n: i64) -> String {
+    if *ty == Type::Int64 {
+        format!("tlInt64({n})")
+    } else {
+        format!("tlInt({n})")
+    }
+}
+
+/// One arithmetic expression at the width the node's type names. Both of Go's fixed-width
+/// integers wrap by definition, so +, - and * need no guard at either width -- the only
+/// backend where the wrapping rule costs nothing to state -- and the width changes nothing
+/// but the div/rem helper names.
+fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
+    if *ty == Type::Int64 {
+        match op {
+            BinOp::Div => format!("tlDiv64({l}, {r})"),
+            BinOp::Rem => format!("tlRem64({l}, {r})"),
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else {
+        match op {
+            BinOp::Div => format!("tlDiv({l}, {r})"),
+            BinOp::Rem => format!("tlRem({l}, {r})"),
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            other => unreachable!("{other} is not arithmetic"),
         }
     }
 }

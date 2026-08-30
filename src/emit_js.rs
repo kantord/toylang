@@ -504,11 +504,7 @@ fn arm_return(body: String, partial: bool) -> String {
 fn expr(t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => js_string(s),
-        // The node's type picks the representation (kantord/toylang#83): an Int64 literal is
-        // a BigInt literal, exact at every written value where a bare number would already
-        // have rounded past 2^53.
-        Kind::Int(n) if t.ty == Type::Int64 => format!("{n}n"),
-        Kind::Int(n) => n.to_string(),
+        Kind::Int(n) => int_lit(&t.ty, *n),
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
@@ -543,26 +539,7 @@ fn expr(t: &Tir) -> String {
             arg.as_deref().map_or_else(String::new, expr)
         ),
         Kind::Concat(l, r) => format!("({} + {})", expr(l), expr(r)),
-        // BigInt operators are exact at any width, so only the wrap needs spelling; Math.imul
-        // has no 64-bit sibling and none is needed.
-        Kind::Arith { op, lhs, rhs } if t.ty == Type::Int64 => match op {
-            BinOp::Div => format!("tl_div64({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Rem => format!("tl_rem64({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Mul => format!("BigInt.asIntN(64, {} * {})", expr(lhs), expr(rhs)),
-            BinOp::Add => format!("BigInt.asIntN(64, {} + {})", expr(lhs), expr(rhs)),
-            BinOp::Sub => format!("BigInt.asIntN(64, {} - {})", expr(lhs), expr(rhs)),
-            other => unreachable!("{other} is not arithmetic"),
-        },
-        Kind::Arith { op, lhs, rhs } => match op {
-            BinOp::Div => format!("tl_div({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Rem => format!("tl_rem({}, {})", expr(lhs), expr(rhs)),
-            // Math.imul is the only exact 32-bit multiply here: a plain `*` loses the low bits
-            // once the true product passes 2^53.
-            BinOp::Mul => format!("Math.imul({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Add => format!("(({} + {}) | 0)", expr(lhs), expr(rhs)),
-            BinOp::Sub => format!("(({} - {}) | 0)", expr(lhs), expr(rhs)),
-            other => unreachable!("{other} is not arithmetic"),
-        },
+        Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(lhs), expr(rhs)),
         Kind::Cond {
             cond,
             then,
@@ -731,6 +708,44 @@ fn expr(t: &Tir) -> String {
                 body.push_str("return \"none\"; ");
             }
             format!("(() => {{ {body}}})()")
+        }
+    }
+}
+
+/// The node's type picks the literal's representation (kantord/toylang#83): an Int64 literal
+/// is a BigInt literal, exact at every written value where a bare number would already have
+/// rounded past 2^53.
+fn int_lit(ty: &Type, n: i64) -> String {
+    if *ty == Type::Int64 {
+        format!("{n}n")
+    } else {
+        n.to_string()
+    }
+}
+
+/// One arithmetic expression at the width the node's type names. BigInt operators are exact
+/// at any width, so on the 64-bit side only the wrap needs spelling -- Math.imul has no
+/// 64-bit sibling and none is needed.
+fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
+    if *ty == Type::Int64 {
+        match op {
+            BinOp::Div => format!("tl_div64({l}, {r})"),
+            BinOp::Rem => format!("tl_rem64({l}, {r})"),
+            BinOp::Mul => format!("BigInt.asIntN(64, {l} * {r})"),
+            BinOp::Add => format!("BigInt.asIntN(64, {l} + {r})"),
+            BinOp::Sub => format!("BigInt.asIntN(64, {l} - {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else {
+        match op {
+            BinOp::Div => format!("tl_div({l}, {r})"),
+            BinOp::Rem => format!("tl_rem({l}, {r})"),
+            // Math.imul is the only exact 32-bit multiply here: a plain `*` loses the low
+            // bits once the true product passes 2^53.
+            BinOp::Mul => format!("Math.imul({l}, {r})"),
+            BinOp::Add => format!("(({l} + {r}) | 0)"),
+            BinOp::Sub => format!("(({l} - {r}) | 0)"),
+            other => unreachable!("{other} is not arithmetic"),
         }
     }
 }
