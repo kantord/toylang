@@ -80,7 +80,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: euler-pages-restore
   issue: gh:133
@@ -89,7 +89,7 @@
   needs: []
   soft: [python-recursion-limit]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: projection-style-demotion
   issue: gh:99
@@ -98,7 +98,7 @@
   needs: []
   prio: 3
   soft: [concat-retirement]
-  status: todo
+  status: delegated
 
 - id: euler-slow-fragments
   issue: gh:90
@@ -217,7 +217,7 @@
   needs: []
   prio: 3
   soft: [concat-retirement]
-  status: todo
+  status: delegated
 
 - id: benchmark-synthesis
   issue: gh:108
@@ -225,7 +225,7 @@
   kind: build
   needs: [benchmark-set-spike, benchmark-tooling-spike]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: record-argument-boundary
   title: Oddity -- the paren-free record argument reaches across the definition boundary; settle it
@@ -313,7 +313,7 @@
   model: haiku
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: emit-rs-concat-helper
   issue: gh:126
@@ -322,15 +322,16 @@
   model: haiku
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: draft-intro-migration
+  issue: gh:134
   title: Migrate draft.md's identity sections (what this is, principles, values, worked programs, non-goals) to a docs overview page, then delete them
   kind: build
   needs: []
   soft: [draft-questions-home]
   prio: 4
-  status: todo
+  status: delegated
 
 - id: draft-core-model-migration
   title: Migrate the two-layer/cardinality core model to a concepts guide; embedded open threads go to the tracker (draft-split)
