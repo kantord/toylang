@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import {
   Background,
   Controls,
@@ -14,6 +14,7 @@ import "@xyflow/react/dist/style.css"
 
 import { BOARD, type Task } from "@dev/lib/board"
 import { TaskCard, TaskLegend } from "@dev/components/board/TaskCard"
+import { Button } from "@/components/ui/button"
 
 const NODE_W = 236
 const NODE_H = 112
@@ -208,15 +209,28 @@ const NODE_TYPES = { task: TaskNodeView }
  * The board as a dependency graph: one node per plans/board.yaml row, edges from `needs`, color
  * by status, blocked todo tasks (a need not yet done) as the primary highlight, the unblocked
  * frontier picked out with a ring. Read-only -- panning/zooming aside, the only interaction is
- * following a node's issue link.
+ * following a node's issue link. By default hides done tasks to show only active work and its
+ * blocking relationships; a toggle reveals the full history.
  */
 export function GraphView() {
-  const edges = useMemo(() => edgesFrom(BOARD), [])
-  const nodes = useMemo(() => layout(BOARD, edges), [edges])
+  const [showDone, setShowDone] = useState(false)
+
+  const filteredTasks = useMemo(
+    () => (showDone ? BOARD : BOARD.filter((t) => t.status !== "done")),
+    [showDone],
+  )
+
+  const edges = useMemo(() => edgesFrom(filteredTasks), [filteredTasks])
+  const nodes = useMemo(() => layout(filteredTasks, edges), [edges, filteredTasks])
 
   return (
     <div className="space-y-3">
-      <TaskLegend />
+      <div className="flex items-center justify-between">
+        <TaskLegend />
+        <Button variant="outline" size="sm" onClick={() => setShowDone((v) => !v)}>
+          {showDone ? "Hide done" : "Show done"}
+        </Button>
+      </div>
       <div className="h-[70vh] rounded-lg border border-border">
         <ReactFlow
           nodes={nodes}
