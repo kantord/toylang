@@ -521,6 +521,16 @@ fn compare(enums: &Enums, op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
     }
 }
 
+/// Parenthesised because there is more than one operator, and Lua's precedence is not toylang's
+/// to rely on. `..` is string-only, so a Vec reaches for the same helper `flatten` uses,
+/// wrapped around a two-entry outer table rather than through a second helper.
+fn concat(enums: &Enums, ty: &Type, l: &Tir, r: &Tir) -> String {
+    match ty {
+        Type::Vec(_) => format!("tl_flatten({{{}, {}}})", expr(enums, l), expr(enums, r)),
+        _ => format!("({} .. {})", expr(enums, l), expr(enums, r)),
+    }
+}
+
 /// Which helper a comparison reaches for, which is a question about the operator and the
 /// operand type rather than about the tree below it: Lua's `==` on two tables compares
 /// references, so equality on a composite walks the structure instead (kantord/toylang#68).
@@ -700,12 +710,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             user(func),
             arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
         ),
-        // Parenthesised because there is more than one operator, and Lua's precedence is not
-        // toylang's to rely on.
-        Kind::Concat(l, r) => match &t.ty {
-            Type::Vec(_) => format!("tl_flatten({{{}, {}}})", expr(enums, l), expr(enums, r)),
-            _ => format!("({} .. {})", expr(enums, l), expr(enums, r)),
-        },
+        Kind::Concat(l, r) => concat(enums, &t.ty, l, r),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
         Kind::Cond {
             cond,

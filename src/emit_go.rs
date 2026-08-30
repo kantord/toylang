@@ -924,16 +924,7 @@ impl Emitter<'_> {
                 self.user(func),
                 arg.as_deref().map_or_else(String::new, |a| self.expr(a))
             ),
-            // Go has no `+` for slices, so a Vec joins through the same helper `flatten` uses,
-            // wrapped around a two-entry outer literal rather than through a second helper.
-            Kind::Concat(l, r) => match &t.ty {
-                Type::Vec(_) => {
-                    let go_ty = self.go_type(&t.ty);
-                    let (l, r) = (self.expr(l), self.expr(r));
-                    format!("tlFlatten([]{go_ty}{{{l}, {r}}})")
-                }
-                _ => format!("({} + {})", self.expr(l), self.expr(r)),
-            },
+            Kind::Concat(l, r) => self.concat(&t.ty, l, r),
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             // Go has no conditional expression, so this is a call to a function literal rather
             // than an operator. Both branches stay unevaluated, which a `tlCond(c, a, b)` helper
@@ -1121,6 +1112,19 @@ impl Emitter<'_> {
                 }
                 format!("func() {} {{ {body} }}()", self.go_type(&t.ty))
             }
+        }
+    }
+
+    /// Go has no `+` for slices, so a Vec joins through the same helper `flatten` uses, wrapped
+    /// around a two-entry outer literal rather than through a second helper.
+    fn concat(&self, ty: &Type, l: &Tir, r: &Tir) -> String {
+        match ty {
+            Type::Vec(_) => {
+                let go_ty = self.go_type(ty);
+                let (l, r) = (self.expr(l), self.expr(r));
+                format!("tlFlatten([]{go_ty}{{{l}, {r}}})")
+            }
+            _ => format!("({} + {})", self.expr(l), self.expr(r)),
         }
     }
 

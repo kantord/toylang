@@ -470,6 +470,14 @@ fn compare(enums: &Enums, op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
     format!("({} {} {})", expr(enums, lhs), js_op(op), expr(enums, rhs))
 }
 
+/// `+` on two arrays stringifies and joins them, so a Vec reaches for `.concat` instead.
+fn concat(enums: &Enums, ty: &Type, l: &Tir, r: &Tir) -> String {
+    match ty {
+        Type::Vec(_) => format!("{}.concat({})", expr(enums, l), expr(enums, r)),
+        _ => format!("({} + {})", expr(enums, l), expr(enums, r)),
+    }
+}
+
 fn used_helpers(program: &Program) -> Helpers {
     fn walk(t: &Tir, used: &mut Helpers) {
         match &t.kind {
@@ -618,11 +626,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             user(func),
             arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
         ),
-        // `+` on two arrays stringifies and joins them, so a Vec reaches for `.concat` instead.
-        Kind::Concat(l, r) => match &t.ty {
-            Type::Vec(_) => format!("{}.concat({})", expr(enums, l), expr(enums, r)),
-            _ => format!("({} + {})", expr(enums, l), expr(enums, r)),
-        },
+        Kind::Concat(l, r) => concat(enums, &t.ty, l, r),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
         Kind::Cond {
             cond,

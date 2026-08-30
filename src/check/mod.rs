@@ -2158,22 +2158,24 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
         ));
     }
 
-    // `+` is the one operator whose meaning depends on its operands: addition on Int or Int64,
-    // concatenation on Str, and concatenation on Vec (kantord/toylang#97, the add-trait
-    // reading) when both sides are the same Vec type. Nothing is coerced, so all three still
-    // require both sides to agree.
+    plus(ctx, lhs, left, rhs)
+}
+
+/// `+` is the one operator whose meaning depends on its operands: addition on Int or Int64,
+/// concatenation on Str, and concatenation on Vec (kantord/toylang#97, the add-trait reading)
+/// when both sides are the same Vec type. Nothing is coerced, so all three still require both
+/// sides to agree.
+fn plus(ctx: &Ctx, lhs: &Expr, left: Tir, rhs: &Expr) -> Result<Tir, Error> {
     match &left.ty {
         Type::Int | Type::Int64 => {
             let width = left.ty.clone();
             let right = expect_int_width(ctx, rhs, &width, BinOp::Add)?;
-            Ok(Tir::new(
-                width,
-                Kind::Arith {
-                    op: BinOp::Add,
-                    lhs: Box::new(left),
-                    rhs: Box::new(right),
-                },
-            ))
+            let kind = Kind::Arith {
+                op: BinOp::Add,
+                lhs: Box::new(left),
+                rhs: Box::new(right),
+            };
+            Ok(Tir::new(width, kind))
         }
         Type::Str => {
             let right = expect(ctx, rhs, &Type::Str)?;

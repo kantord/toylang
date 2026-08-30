@@ -1280,18 +1280,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     .ok_or_else(|| "a toylang function returned nothing".to_string())?
             }
 
-            Kind::Concat(l, r) => {
-                let elem = t.ty.elem().cloned();
-                let l = self.expr(l)?;
-                let r = self.expr(r)?;
-                match elem {
-                    Some(elem) => {
-                        let ncols = self.ctx.i64_type().const_int(Self::columns(&elem), false);
-                        self.call_rt(self.rt.vec_concat, &[l, r, ncols.into()], "concat")?
-                    }
-                    None => self.call_rt(self.rt.concat, &[l, r], "concat")?,
-                }
-            }
+            Kind::Concat(l, r) => self.concat(&t.ty, l, r)?,
 
             Kind::Compare { op, lhs, rhs } => self.compare(*op, lhs, rhs)?,
 
@@ -2166,6 +2155,21 @@ impl<'ctx> Emitter<'ctx, '_> {
             .get_insert_block()
             .and_then(|b| b.get_parent())
             .ok_or_else(|| "no function to branch in".to_string())
+    }
+
+    /// `+`, whether it means Str concatenation (`tl_concat`) or Vec concatenation
+    /// (`tl_vec_concat`, needing the element's column count the way `Flatten` does).
+    fn concat(&mut self, ty: &Type, l: &Tir, r: &Tir) -> Result<BasicValueEnum<'ctx>, String> {
+        let elem = ty.elem().cloned();
+        let l = self.expr(l)?;
+        let r = self.expr(r)?;
+        match elem {
+            Some(elem) => {
+                let ncols = self.ctx.i64_type().const_int(Self::columns(&elem), false);
+                self.call_rt(self.rt.vec_concat, &[l, r, ncols.into()], "concat")
+            }
+            None => self.call_rt(self.rt.concat, &[l, r], "concat"),
+        }
     }
 
     /// `and` / `or`, as real blocks rather than LLVM's own `and`/`or`, which are bitwise and
