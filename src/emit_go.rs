@@ -234,6 +234,18 @@ func tlCollectLines() []string {
 }
 "#;
 
+// `dsv` splits each collected line on the delimiter, the same raw lines `tlCollectLines`
+// returns. `strings.Split` on an empty separator would panic, which the checker refuses, so
+// no empty case is guarded here.
+const SPLIT_LINES_HELPER: &str = r#"func tlSplitLines(lines []string, sep string) [][]string {
+	out := make([][]string, len(lines))
+	for i, l := range lines {
+		out[i] = strings.Split(l, sep)
+	}
+	return out
+}
+"#;
+
 const RANGE_HELPER: &str = r#"func tlRange(n int32) []int32 {
 	if n < 0 {
 		n = 0
@@ -461,6 +473,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tlRange("), RANGE_HELPER),
         (uses("tlChars("), CHARS_HELPER),
         (collect, COLLECT_HELPER),
+        (uses("tlSplitLines("), SPLIT_LINES_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
         (join, JOIN_HELPER),
         (quote, QUOTE_HELPER),
@@ -481,7 +494,7 @@ pub fn emit(program: &Program) -> String {
         (collect, &["bufio", "bytes"]),
         (reads_stdin, &["encoding/json"]),
         (program.inputs.is_some(), &["io"]),
-        (join || quote || used.jsonlines, &["strings"]),
+        (join || quote || used.jsonlines || uses("tlSplitLines("), &["strings"]),
         (uses("tlSort("), &["cmp", "slices"]),
         (uses("tlMax("), &["cmp"]),
         (uses("tlEq("), &["reflect"]),
@@ -603,7 +616,8 @@ impl Collect<'_> {
             | Kind::Local(_)
             | Kind::Input
             | Kind::Inputs
-            | Kind::Lines => {}
+            | Kind::Lines
+            | Kind::Dsv { .. } => {}
             Kind::VecLit(items) => items.iter().for_each(|i| self.walk(i)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| self.walk(v));
@@ -923,6 +937,10 @@ impl Emitter<'_> {
             // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
             // works on the slice of its entries.
             Kind::Lines => "tlCollectLines()".to_string(),
+            Kind::Dsv { delim } => format!(
+                "tlSplitLines(tlCollectLines(), {})",
+                go_string(delim)
+            ),
             // go_type resolves the struct name, and the collector registered it because a
             // record literal carries its own record type.
             Kind::RecordLit { fields } => {

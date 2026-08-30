@@ -589,6 +589,7 @@ pub fn emit(program: &Program) -> String {
         || uses("tl_tail(")
         || uses("tl_range(")
         || uses("tl_read_all_stdin(")
+        || uses("tl_read_lines(")
         || uses("tl_fail(");
 
     let mut helpers = String::new();
@@ -723,7 +724,8 @@ impl Collect<'_> {
             | Kind::Local(_)
             | Kind::Input
             | Kind::Inputs
-            | Kind::Lines => {}
+            | Kind::Lines
+            | Kind::Dsv { .. } => {}
             Kind::VecLit(items) => items.iter().for_each(|i| self.walk(i)),
             Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| self.walk(v)),
             Kind::EnumLit { payload, .. } => {
@@ -1077,6 +1079,11 @@ impl Emitter<'_> {
             // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
             // works on the Vec of its entries.
             Kind::Lines => "tl_read_lines()".to_string(),
+            // Same raw lines as `lines`, split on the delimiter into one row per line.
+            Kind::Dsv { delim } => format!(
+                "tl_read_lines().iter().map(|l| l.split({}.as_str()).map(|f| f.to_string()).collect::<Vec<_>>()).collect::<Vec<_>>()",
+                rs_string(delim)
+            ),
             Kind::RecordLit { fields } => {
                 let parts: Vec<String> = fields
                     .iter()

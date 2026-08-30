@@ -26,6 +26,6 @@ input_typed_by_first_use
 A program whose only use of `input` sits where nothing expects anything is still refused
 with "cannot tell what `input` contains": there is no first use to borrow from.
 
-`input` reads the same real stdin as [`inputs`](inputs.md) and [`lines`](lines.md), so a
-program uses at most one of the three: any two together are refused, because they would
-read one resource two different ways.
+`input` reads the same real stdin as [`inputs`](inputs.md), [`lines`](lines.md), and
+[`dsv`](dsv.md), so a program uses at most one of the four: any two together are
+refused, because they would read one resource two different ways.

@@ -36,7 +36,8 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
         | Kind::Local(_)
         | Kind::Input
         | Kind::Inputs
-        | Kind::Lines => {}
+        | Kind::Lines
+        | Kind::Dsv { .. } => {}
         Kind::VecLit(items) => items.iter().for_each(|i| walk(i, tags)),
         Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| walk(v, tags)),
         Kind::EnumLit { payload, .. } => {
@@ -122,6 +123,7 @@ fn tag(tir: &Tir) -> String {
         Kind::Local(_) => "local".into(),
         Kind::Input => "input".into(),
         Kind::Lines => "lines".into(),
+        Kind::Dsv { .. } => "dsv".into(),
         Kind::Call { .. } => "application".into(),
         Kind::Concat(..) => "concat".into(),
         Kind::Arith { op, .. } => format!("arith.{}", binop_tag(*op)),

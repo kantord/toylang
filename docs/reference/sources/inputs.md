@@ -24,4 +24,5 @@ that misses it -- a string that names no variant of a declared enum, a number wh
 record was declared -- is refused rather than coerced.
 
 Blank lines are skipped. Being a stream, `inputs` obeys the stream rules: consumed exactly
-once, and never alongside `input` or [`lines`](lines.md), which read the same stdin.
+once, and never alongside `input`, [`lines`](lines.md), or
+[`dsv`](dsv.md), which read the same stdin.

@@ -44,6 +44,8 @@ declare ptr @tl_rec_new(i64)
 
 declare ptr @tl_collect_lines()
 
+declare ptr @tl_split_lines(ptr, ptr)
+
 declare void @tl_rec_set(ptr, i64, i64)
 
 declare i64 @tl_read_input(ptr)

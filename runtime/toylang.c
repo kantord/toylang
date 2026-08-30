@@ -1002,6 +1002,51 @@ tl_vec *tl_collect_lines(void) {
     return v;
 }
 
+/* Split one Str on a literal delimiter: every occurrence, in order, with the empty string one
+ * empty field and a trailing delimiter a trailing empty field, the same shape `str.split` gives
+ * on every other backend. The delimiter is searched literally, never as a pattern. */
+static tl_vec *tl_split(const tl_str *s, const tl_str *sep) {
+    tl_list items = {NULL, 0, 0};
+    int64_t pos = 0;
+    while (pos <= s->len) {
+        int64_t found = -1;
+        for (int64_t i = pos; i + sep->len <= s->len; i++) {
+            if (memcmp(s->ptr + i, sep->ptr, (size_t)sep->len) == 0) {
+                found = i;
+                break;
+            }
+        }
+        int64_t n;
+        if (found == -1) {
+            n = s->len - pos;
+        } else {
+            n = found - pos;
+        }
+        char *bytes = tl_alloc((size_t)n);
+        memcpy(bytes, s->ptr + pos, (size_t)n);
+        tl_list_push(&items, (int64_t)tl_str_new(bytes, n));
+        if (found == -1) {
+            break;
+        }
+        pos = found + sep->len;
+    }
+    tl_vec *v = tl_vec_new(items.len, 1);
+    for (int64_t i = 0; i < items.len; i++) {
+        v->cols[0][i] = items.data[i];
+    }
+    return v;
+}
+
+/* Split every line of a Vec<Str> on the delimiter, one row per line: `dsv(delim)`. The outer
+ * Vec is a single column of inner Vecs, the struct-of-arrays spelling of Vec<Vec<Str>>. */
+tl_vec *tl_split_lines(tl_vec *lines, tl_str *sep) {
+    tl_vec *out = tl_vec_new(lines->len, 1);
+    for (int64_t i = 0; i < lines->len; i++) {
+        out->cols[0][i] = (int64_t)tl_split((tl_str *)lines->cols[0][i], sep);
+    }
+    return out;
+}
+
 /* Gather one element of a Vec of records back into a record.
  *
  * The struct-of-arrays layout means an element is spread across columns, and almost nothing in

@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (197):
+compiles natively (203):
 adults
 arith_add
 arith_div_trunc
@@ -29,7 +29,11 @@ cond_false
 cond_in_map
 cond_true
 control_char_escapes
+csv_partial
 div_by_zero
+dsv_blank_line_is_an_empty_field
+dsv_rows
+dsv_trailing_delimiter
 empty_keep_is_identity
 empty_result
 empty_vec_under_annotation
@@ -96,6 +100,7 @@ join_lines_one
 jq_tutorial
 jq_tutorial_step4
 jsonlines_enum_stream
+jsonlines_of_dsv
 jsonlines_of_inputs
 jsonlines_of_lines
 jsonlines_record_with_vec_field
@@ -176,6 +181,7 @@ sum_wrap
 tail_drops_first
 tail_of_empty_refuses
 tail_recursion_deep
+tsv_partial
 type_alias
 undeclared_input_fields
 unicode_input
