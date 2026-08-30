@@ -56,7 +56,11 @@ assess the existing diff. File-write mtimes and commit times are the truth; tran
 timestamps lie.
 
 An opencode worker's process exiting IS its turn ending -- there is no idle session left
-behind. Diagnose from its event log (`~/.cache/toylang-drive/opencode/*-<lane>.jsonl`): the
+behind. FIRST check the worktree for a committed `ESCALATION.md`: that is the worker's
+designed channel for decisions its brief did not settle (workers cannot file GitHub
+issues by permission design) -- turn it into the real issue/board row/decide entry, and
+remove the file from the branch before any merge; it never lands on main. Otherwise
+diagnose from the event log (`~/.cache/toylang-drive/opencode/*-<lane>.jsonl`): the
 last events say what it was doing. Uncommitted work continues via
 `opencode run --session <sessionID>` with a correction message (full context retained);
 anything that smells like a worker-quality problem gets a row in

@@ -86,10 +86,17 @@ memory. The brief carries everything, in this shape:
 > provenance line "Written by DeepSeek V4 Flash via opencode."]. Hard constraints: work
 > ONLY inside this worktree; do NOT push; do not touch plans/. If a command is denied,
 > adapt with an allowed alternative rather than retrying. If something needs deciding
-> that this brief does not settle, file a GitHub issue for the coordinator with the
-> alternatives, take the most conservative continuation, and keep going -- never stop
-> to wait for a human. If you genuinely cannot complete the task, say exactly what
-> blocked you instead of committing broken work.
+> that this brief does not settle, write ESCALATION.md at the worktree root -- the
+> question, the alternatives, their costs -- COMMIT it on this branch, take the most
+> conservative continuation, and keep going; never stop to wait for a human. If you
+> genuinely cannot continue at all, ESCALATION.md plus exiting IS the correct
+> done-state -- never commit broken work to look finished.
+
+(Escalation is a committed file, not a GitHub issue: workers have no `gh issue create`
+permission by design -- rollout incident #1, 2026-08-30 -- and a file on the branch is
+what the coordinator's event-driven tick reads anyway. The coordinator turns it into
+the real issue/board row and removes it before merging; ESCALATION.md never lands on
+main.)
 
 ## 2b. Update the board
 
