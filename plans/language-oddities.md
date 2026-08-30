@@ -248,6 +248,11 @@ hostage to an open question, not an accident. But it reads as one until you know
 Changing `+`-on-Vec in any direction decides Q2, which is the review session's biggest lever
 here. Renaming or re-arifying `concat` is cheap: three corpus files.
 
+Resolved by the add-trait ruling (issue #97): `+` now concatenates two Vecs of the same type,
+and the old `concat` builtin -- which was a unary flatten, not the binary join its name
+suggested -- is retired in favor of the honestly-named `flatten`, kept for the one case a
+`+`-chain can't cover: an outer Vec whose length isn't known at the call site.
+
 ## `<` on `Str` typechecks, and no two backends promise the same answer
 
 ```
