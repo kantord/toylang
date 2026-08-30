@@ -235,6 +235,15 @@ pub enum Expr {
         index: Box<Expr>,
         span: Span,
     },
+    /// `base[lo:hi]`, bounds optional. A spec that narrows a dimension by position, jq's
+    /// `.[2:5]`; out-of-range bounds clamp to the valid range rather than answering `Opt` the
+    /// way a collapsing index does (kantord/toylang#143).
+    Slice {
+        base: Box<Expr>,
+        start: Option<Box<Expr>>,
+        end: Option<Box<Expr>>,
+        span: Span,
+    },
     /// `base!`. Insist the value is there, and stop the program if it is not.
     Unwrap {
         base: Box<Expr>,
@@ -371,6 +380,7 @@ impl Expr {
             | Expr::Call { span, .. }
             | Expr::Project { span, .. }
             | Expr::Index { span, .. }
+            | Expr::Slice { span, .. }
             | Expr::Unwrap { span, .. }
             | Expr::RecordLit { span, .. }
             | Expr::Neg { span, .. }

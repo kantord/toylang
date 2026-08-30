@@ -34,3 +34,10 @@ fn trailing_garbage() {
 fn empty_program() {
     insta::assert_snapshot!(err("   "));
 }
+
+/// Both edges at the dimension's own boundaries is the identity `[]` already is, so the
+/// both-omitted slice is refused rather than carried as a spelling for it.
+#[test]
+fn slice_with_no_bounds_is_refused() {
+    insta::assert_snapshot!(err("[1, 2, 3][:]"));
+}

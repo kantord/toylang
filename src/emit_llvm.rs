@@ -71,6 +71,7 @@ struct Runtime<'ctx> {
     range: FunctionValue<'ctx>,
     vec_tail: FunctionValue<'ctx>,
     vec_flatten: FunctionValue<'ctx>,
+    vec_slice: FunctionValue<'ctx>,
     vec_concat: FunctionValue<'ctx>,
     chars: FunctionValue<'ctx>,
     vec_sort_int: FunctionValue<'ctx>,
@@ -252,6 +253,11 @@ impl<'ctx> Emitter<'ctx, '_> {
             vec_flatten: module.add_function(
                 "tl_vec_flatten",
                 ptr.fn_type(&[ptr.into(), i64t.into()], false),
+                None,
+            ),
+            vec_slice: module.add_function(
+                "tl_vec_slice",
+                ptr.fn_type(&[ptr.into(), i64t.into(), i64t.into(), i64t.into()], false),
                 None,
             ),
             vec_concat: module.add_function(
@@ -1573,6 +1579,35 @@ impl<'ctx> Emitter<'ctx, '_> {
                             .into(),
                     ],
                     "at",
+                )?
+            }
+
+            Kind::Slice {
+                base,
+                start,
+                end,
+                depth,
+            } => {
+                let i64t = self.ctx.i64_type();
+                let base = self.expr(base)?;
+                let lo = match start {
+                    Some(s) => self.expr(s)?,
+                    // A bound left out folds to the array's own boundary inside the clamp.
+                    None => i64t.const_int(i64::MIN as u64, true).into(),
+                };
+                let hi = match end {
+                    Some(e) => self.expr(e)?,
+                    None => i64t.const_int(i64::MAX as u64, true).into(),
+                };
+                self.call_rt(
+                    self.rt.vec_slice,
+                    &[
+                        base,
+                        lo,
+                        hi,
+                        i64t.const_int(*depth as u64, false).into(),
+                    ],
+                    "slice",
                 )?
             }
 

@@ -81,6 +81,21 @@ const AT_HELPER: &str = r#"fn tl_at<T: Clone>(v: &[T], i: i32) -> Option<T> {
 }
 "#;
 
+// Out-of-range bounds clamp jq-style rather than answering absence, so this never fails.
+// A `None` bound is passed as its sentinel: `i32::MIN` for the start (clamps to 0) and
+// `i32::MAX` for the end (clamps to the length).
+const SLICE_HELPER: &str = r#"fn tl_slice<T: Clone>(v: &[T], lo: i32, hi: i32) -> Vec<T> {
+    let n = v.len() as i32;
+    let lo = (if lo < 0 { n + lo } else { lo }).clamp(0, n);
+    let hi = (if hi < 0 { n + hi } else { hi }).clamp(0, n);
+    if lo >= hi {
+        Vec::new()
+    } else {
+        v[lo as usize..hi as usize].to_vec()
+    }
+}
+"#;
+
 const UNWRAP_HELPER: &str = r#"fn tl_unwrap<T>(o: Option<T>) -> T {
     match o {
         Some(v) => v,
@@ -581,6 +596,7 @@ pub fn emit(program: &Program) -> String {
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
         (uses("tl_at("), AT_HELPER),
+        (uses("tl_slice("), SLICE_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
@@ -749,6 +765,15 @@ impl Collect<'_> {
             Kind::Index { base, index, .. } => {
                 self.walk(base);
                 self.walk(index);
+            }
+            Kind::Slice { base, start, end, .. } => {
+                self.walk(base);
+                if let Some(s) = start {
+                    self.walk(s);
+                }
+                if let Some(e) = end {
+                    self.walk(e);
+                }
             }
             Kind::Match { subject, arms, .. } => {
                 self.walk(subject);
@@ -1224,6 +1249,21 @@ impl Emitter<'_> {
                 let i = self.expr(index);
                 self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
                     format!("tl_at(&{v}, {i})")
+                })
+            }
+            Kind::Slice {
+                base, start, end, depth,
+            } => {
+                let lo = match start {
+                    Some(s) => self.expr(s),
+                    None => "i32::MIN".to_string(),
+                };
+                let hi = match end {
+                    Some(e) => self.expr(e),
+                    None => "i32::MAX".to_string(),
+                };
+                self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
+                    format!("tl_slice(&{v}, {lo}, {hi})")
                 })
             }
             // The one target with the construct itself: a toylang match is a Rust match, and
