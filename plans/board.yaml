@@ -52,7 +52,7 @@
   kind: build
   needs: [docs-slow-fragment-tier]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: matcher-totality-and-alt-design
   issue: gh:156
@@ -84,7 +84,7 @@
   title: Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect (shell-out-design ruling, gh:158, depends on Q35's stdout/stderr effect model)
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: template-strings-design
   issue: gh:161
