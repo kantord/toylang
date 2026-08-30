@@ -98,10 +98,16 @@ pub(super) fn resolve_enum(
                 ),
             ));
         }
-        if ty::is_builtin_type_name(p) || env.aliases.contains_key(p) || env.enums.contains_key(p) {
+        // A parameter may shadow a declared enum or alias -- resolve_named consults the
+        // parameter bindings first, so inside the declaration the name means the parameter,
+        // unambiguously, the same scoping Rust gives struct Foo<E> beside an enum E. Refusing
+        // the collision instead broke every program declaring enum E the moment the prelude
+        // gained Result<T, E> (kantord/toylang#85). Builtins stay off limits: Vec-the-parameter
+        // would make every Vec<...> in the payload mean the wrong thing at a distance.
+        if ty::is_builtin_type_name(p) {
             return Err(Error::new(
                 *span,
-                format!("type parameter `{p}` takes the name of a type"),
+                format!("type parameter `{p}` takes the name of a built-in type"),
             ));
         }
         if decl.params[..i].iter().any(|(earlier, _)| earlier == p) {

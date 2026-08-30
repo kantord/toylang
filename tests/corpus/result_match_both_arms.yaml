@@ -1,0 +1,15 @@
+# Result gets no special-cased match sugar the way Opt's `!` does: both arms are ordinary
+# payload arms, and the closed-world check treats `ok`/`err` like any other two-variant enum.
+program: |
+  fn safe(b: Int) -> Result<Int, Str> =
+      ok(10 / b) if b != 0 else err("division by zero")
+
+  fn describe(r: Result<Int, Str>) -> Str =
+      r | err -> "error: " + . or ok -> str(.)
+
+  describe(safe(2)) + " / " + describe(safe(0))
+
+output: |
+  5 / error: division by zero
+
+node_types: [application, arith.div, builtin.str, compare.ne, concat, conditional, int, local, match, pipe, str, var, variant.payload]

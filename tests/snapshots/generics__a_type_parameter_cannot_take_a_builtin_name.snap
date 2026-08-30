@@ -2,4 +2,4 @@
 source: tests/generics.rs
 expression: "err(\"enum Box<Int> { wrap(Int) }\\n\\nstr(1)\")"
 ---
-type parameter `Int` takes the name of a type (at byte 9)
+type parameter `Int` takes the name of a built-in type (at byte 9)
