@@ -72,14 +72,19 @@ fn multi_root_contribution(p: {r: Int, top: Int}) -> Int =
 
 fn single_contrib(top: Int) -> Int =
     extent(
-        range(top - 1) | map(. + 2) | select(is_primitive(.)) |
-            select(. * . > top)
+        range(top - 1)
+            | map(. + 2)
+            | select(is_primitive(.))
+            | select(. * . > top)
     ) *
         (top - 1)
 
 fn multi_contribs(top: Int) -> Vec<Int> =
-    range(top - 1) | map(. + 2) | select(. * . <= top) | select(is_primitive(.)) |
-        map(multi_root_contribution({r: ., top: top}))
+    range(top - 1)
+        | map(. + 2)
+        | select(. * . <= top)
+        | select(is_primitive(.))
+        | map(multi_root_contribution({r: ., top: top}))
 
 fn sum_ints(v: Vec<Int>) -> Int =
     0 if extent(v) == 0 else v[0]! + sum_ints(tail(v)!)

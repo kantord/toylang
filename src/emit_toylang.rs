@@ -10,9 +10,12 @@
 //! Second, the maintainer's own sample (docs/examples/euler/01-multiples-of-3-and-5.md) is the
 //! only ground truth for layout: a function whose signature-plus-body fits on one line stays on
 //! one line; otherwise the body moves to its own indented line, and a binary chain that still
-//! does not fit breaks at its outermost operator, trailing the operator on the first line. Pipe
-//! chains, match-arm chains, and conditional chains extend that same "trailing operator, one
-//! extra indent" rule by analogy, since nothing in the sample pins their layout directly.
+//! does not fit breaks at its outermost operator, trailing the operator on the first line.
+//! Match-arm and conditional chains extend that same "trailing operator, one extra indent" rule
+//! by analogy, since nothing in the sample pins their layout directly. A pipeline that does not
+//! fit is the one exception: it breaks one stage per line, with `|` leading each continuation
+//! line so the pipes form a vertical column (maintainer directive, issue #101), rather than
+//! trailing like the other chains.
 //!
 //! Two style choices worth naming since nothing in the grammar forces them: calls are always
 //! written with explicit parens (`f(x)`, never the bare `f x` or brace-shorthand `f{...}`),
@@ -489,11 +492,7 @@ fn print_expr_wrapped(e: &Expr, ctx: Ctx, indent: usize) -> String {
             let rhs_str = print_expr_wrapped(rhs, Ctx::Operand(right), indent + INDENT);
             format!("{lhs_str} {op}\n{}{rhs_str}", pad(indent + INDENT))
         }
-        Expr::Pipe { lhs, rhs, .. } => {
-            let lhs_str = print_expr_wrapped(lhs, Ctx::Expr(0), indent);
-            let rhs_str = print_expr_wrapped(rhs, Ctx::Expr(PIPE_RIGHT), indent + INDENT);
-            format!("{lhs_str} |\n{}{rhs_str}", pad(indent + INDENT))
-        }
+        Expr::Pipe { .. } => wrap_pipe(e, indent),
         Expr::Match { arms, .. } => wrap_match(arms, indent),
         Expr::Cond { .. } => wrap_cond(e, outer_m(ctx), indent),
         Expr::VecLit { items, .. } => {
@@ -538,6 +537,39 @@ fn print_expr_wrapped(e: &Expr, ctx: Ctx, indent: usize) -> String {
         // field chain, and so on): the compact form already computed above is the best available.
         _ => compact,
     }
+}
+
+/// Flattens a left-recursive `Pipe` chain (`a | b | c` parses as `(a | b) | c`, the same fold
+/// `Binary` chains use) into its stages in source order.
+fn flatten_pipe(e: &Expr) -> Vec<&Expr> {
+    let mut stages = Vec::new();
+    let mut cur = e;
+    while let Expr::Pipe { lhs, rhs, .. } = cur {
+        stages.push(rhs.as_ref());
+        cur = lhs.as_ref();
+    }
+    stages.push(cur);
+    stages.reverse();
+    stages
+}
+
+/// A pipeline that does not fit breaks one stage per line, with `|` as the first character of
+/// every continuation line so the pipes line up in a vertical column (issue #101) -- unlike
+/// `Binary`'s trailing-operator rule, which a bare two-operand `Pipe` no longer follows.
+fn wrap_pipe(e: &Expr, indent: usize) -> String {
+    let stages = flatten_pipe(e);
+    let mut out = print_expr_wrapped(stages[0], Ctx::Expr(0), indent);
+    for stage in &stages[1..] {
+        // The stage's budget must include the two columns "| " occupies, or a stage that
+        // just fits alone overruns the line by exactly that prefix -- and a stage that
+        // wraps internally hangs its closing bracket left of its own opener.
+        let stage_str = print_expr_wrapped(stage, Ctx::Expr(PIPE_RIGHT), indent + INDENT + 2);
+        out.push('\n');
+        out.push_str(&pad(indent + INDENT));
+        out.push_str("| ");
+        out.push_str(&stage_str);
+    }
+    out
 }
 
 fn wrap_match(arms: &[MatchArm], indent: usize) -> String {

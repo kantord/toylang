@@ -1,10 +1,11 @@
 # FizzBuzz to 100: one transformation, one string, printed as lines.
 unlines(
-    range(100) | map(. + 1) |
-        map(
-            "FizzBuzz" if . % 15 == 0 else
-                "Fizz" if . % 3 == 0 else
-                "Buzz" if . % 5 == 0 else
-                str(.)
-        )
+    range(100)
+        | map(. + 1)
+        | map(
+              "FizzBuzz" if . % 15 == 0 else
+                  "Fizz" if . % 3 == 0 else
+                  "Buzz" if . % 5 == 0 else
+                  str(.)
+          )
 )

@@ -11,9 +11,11 @@ fold needed here, since the triplet turns out to be unique.
 fn abc(p: {a: Int, b: Int}) -> Int = p.a * p.b * (1000 - p.a - p.b)
 
 fn row(a: Int) -> Vec<Int> =
-    range(1000) | select(. > a) | select(. < 1000 - a) |
-        select(a * a + . * . == (1000 - a - .) * (1000 - a - .)) |
-        map(abc({a: a, b: .}))
+    range(1000)
+        | select(. > a)
+        | select(. < 1000 - a)
+        | select(a * a + . * . == (1000 - a - .) * (1000 - a - .))
+        | map(abc({a: a, b: .}))
 
 concat(range(1000) | select(. >= 1) | map(row(.)))[0]!
 ```
