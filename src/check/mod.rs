@@ -20,8 +20,11 @@ struct Ctx<'a> {
     /// through this while exactly one enum claims the name; two claimants are a loud error
     /// naming both, with `Shape.circle` as the qualified way out.
     variant_owners: &'a HashMap<String, Vec<String>>,
-    /// Named bindings. At most one, since functions are unary and there is no `let`.
-    scope: Vec<(String, Type)>,
+    /// Named bindings, innermost last. A function parameter carries `None` for its local (the
+    /// backends render a param by name); a `let` binding carries the `LocalId` it was bound to,
+    /// so reading the name is reading that local. `let` can stack many of these, and a later one
+    /// shadows an earlier, which is what the reverse search in `synth` is for.
+    scope: Vec<(String, Type, Option<LocalId>)>,
     /// Names a match arm's record pattern bound, innermost last: reading one reads that field
     /// off the arm's payload local, so nothing beyond ordinary `Field` nodes reaches the
     /// backends. Each entry is the bound name, the payload's record type, and its local.
@@ -50,11 +53,19 @@ struct Ctx<'a> {
 
 impl Ctx<'_> {
     fn with(&self, subject: Option<(Type, LocalId)>) -> Ctx<'_> {
+        self.rebuild(self.scope.clone(), subject)
+    }
+
+    fn rebuild(
+        &self,
+        scope: Vec<(String, Type, Option<LocalId>)>,
+        subject: Option<(Type, LocalId)>,
+    ) -> Ctx<'_> {
         Ctx {
             sigs: self.sigs,
             enums: self.enums,
             variant_owners: self.variant_owners,
-            scope: self.scope.clone(),
+            scope,
             arm_fields: self.arm_fields.clone(),
             subject,
             input: self.input,
@@ -111,6 +122,25 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     }
     let sigs = signatures(&file.defs, &env)?;
     let input = RefCell::new(None);
+    // A program's `input <type>` declaration types stdin up front, before the body is read,
+    // instead of borrowing the type from the first use of `input`. Resolving it into the same
+    // cell the uses read is what lets the annotation and the uses agree on one type, and the
+    // wire rules `input_read` applies to a use are applied to a declared type here too: a
+    // stream has nothing to decode, absence and Char and Int64 have no ratified wire form.
+    if let Some(declared) = &file.input {
+        let ty = resolve(declared, &env, &mut Vec::new())?;
+        if ty.contains_stream()
+            || ty.contains_opt()
+            || ty.contains_char()
+            || ty.contains_int64()
+        {
+            return Err(Error::new(
+                declared.span(),
+                format!("`input` cannot be declared as {ty}; it has no wire form to read"),
+            ));
+        }
+        *input.borrow_mut() = Some(ty);
+    }
     let inputs = RefCell::new(None);
     let next_local = Cell::new(0);
     let ctx = Ctx {
@@ -217,7 +247,7 @@ fn check_defs<'a>(
     for def in defs {
         let sig = &ctx.sigs[&def.name];
         let scope = match (&def.param, &sig.param) {
-            (Some(param), Some(param_ty)) => vec![(param.name.clone(), param_ty.clone())],
+            (Some(param), Some(param_ty)) => vec![(param.name.clone(), param_ty.clone(), None)],
             (None, None) => Vec::new(),
             _ => unreachable!("a signature's param mirrors its definition's"),
         };
@@ -964,6 +994,54 @@ fn pipe(ctx: &Ctx, lhs: &Expr, rhs: &Expr, want: Option<&Type>) -> Result<Expect
     })
 }
 
+/// `let <name> = <expr>` bindings stacked one per line, then the value expression that ends
+/// the block (kantord/toylang#150): no `in` keyword to pair, just the sequence and the result.
+/// The one place a `let` block appears is a function body, so this is reached only through
+/// `check_defs`'s `expect_inner`, and the body's type is whatever the block's value expression is.
+///
+/// Later bindings see earlier ones: each value is checked in the scope built so far, and the name
+/// is bound after, so `let a = a` reads the older `a`, the way any shadowing works. Every
+/// binding gets a fresh `LocalId` and lowers to the same `Kind::Bind` a pipe does, so all seven
+/// backends already know how to run one.
+fn let_bind(
+    ctx: &Ctx,
+    bindings: &[(String, Expr)],
+    body: &Expr,
+    want: Option<&Type>,
+) -> Result<Expected, Error> {
+    let locals: Vec<LocalId> = bindings.iter().map(|_| ctx.fresh()).collect();
+    let mut values: Vec<Tir> = Vec::new();
+    let mut scope = ctx.scope.clone();
+    for ((name, value), local) in bindings.iter().zip(&locals) {
+        let inner = ctx.rebuild(scope.clone(), ctx.subject.clone());
+        let value = synth(&inner, value)?;
+        scope.push((name.clone(), value.ty.clone(), Some(*local)));
+        values.push(value);
+    }
+    let body_ctx = ctx.rebuild(scope, ctx.subject.clone());
+    let body = match want {
+        Some(want) => expect_inner(&body_ctx, body, want)?,
+        None => Expected::Synthesised(synth(&body_ctx, body)?),
+    };
+    let (checked, mut tir) = match body {
+        Expected::Checked(tir) => (true, tir),
+        Expected::Synthesised(tir) => (false, tir),
+    };
+    for (local, value) in locals.into_iter().zip(values).into_iter().rev() {
+        let body_ty = tir.ty.clone();
+        tir = Tir::new(body_ty, Kind::Bind {
+            local,
+            value: Box::new(value),
+            body: Box::new(tir),
+        });
+    }
+    Ok(if checked {
+        Expected::Checked(tir)
+    } else {
+        Expected::Synthesised(tir)
+    })
+}
+
 /// The hybrid totality the match-arms decision fixed. A chain with variant patterns is
 /// closed-world: the subject is a declared enum, and the arms are proved to cover every
 /// variant (or end in a default); guards do not count toward that coverage. A pure guard
@@ -1319,8 +1397,14 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     },
                 ));
             }
-            if let Some((_, t)) = ctx.scope.iter().find(|(n, _)| n == name) {
-                return Ok(Tir::new(t.clone(), Kind::Var(name.clone())));
+            if let Some((_, t, local)) = ctx.scope.iter().rev().find(|(n, _, _)| n == name) {
+                return match local {
+                    // A `let`-bound name reads the local it was bound to, not a `Var`: the
+                    // backends' `Bind` only ever binds locals, so a bare name reference would dangle.
+
+                    Some(id) => Ok(Tir::new(t.clone(), Kind::Local(*id))),
+                    None => Ok(Tir::new(t.clone(), Kind::Var(name.clone()))),
+                };
             }
             if let Some(owners) = ctx.variant_owners.get(name) {
                 let enum_ty = sole_owner(ctx, name, owners, *span)?.clone();
@@ -1567,6 +1651,14 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         Expr::Not { base, .. } => {
             let base = expect(ctx, base, &Type::Bool)?;
             Ok(Tir::new(Type::Bool, Kind::Not(Box::new(base))))
+        }
+
+        // A `let` block is only reachable as a function body, which is always checked against an
+        // expected return type, so `expect_inner` owns it. `synth` has no want to hand the block's
+        // value, so this arm is unreachable in practice but must exist for the match to be total.
+        Expr::Let { bindings, body, .. } => match let_bind(ctx, bindings, body, None)? {
+            Expected::Checked(_) => unreachable!("synth has no want, so nothing is Checked"),
+            Expected::Synthesised(tir) => Ok(tir),
         }
     }
 }
@@ -2558,7 +2650,7 @@ fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Err
         Expr::Var { name, span }
             if owns(name)
                 && !ctx.arm_fields.iter().any(|(n, ..)| n == name)
-                && !ctx.scope.iter().any(|(n, _)| n == name) =>
+                && !ctx.scope.iter().any(|(n, _, _)| n == name) =>
         {
             Some(construct(ctx, want, name, *span, None, None))
         }
@@ -2640,6 +2732,12 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     // the only road into the subject-fed forms, which exist only after `|`.
     if let Expr::Pipe { lhs, rhs, .. } = expr {
         return pipe(ctx, lhs, rhs, Some(want));
+    }
+
+    // A `let` block's value is its final expression, so the expectation flows into that. The
+    // bindings themselves synthesise, since a local binding has no position to resolve one from.
+    if let Expr::Let { bindings, body, .. } = expr {
+        return let_bind(ctx, bindings, body, Some(want));
     }
 
     // A `map` whose position expects a Vec (over a Vec subject) or a Stream (over a Stream
