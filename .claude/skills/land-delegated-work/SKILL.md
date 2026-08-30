@@ -18,11 +18,22 @@ Do not ping for intermediate progress or ask permission to review or merge.
 - Run `just test` in the worktree. A red suite goes back to the session (or gets fixed here
   if the session is gone and the fix is small); never review a red branch as if it were done.
 
-## 2. Review on both axes, plus style
+## 2. Review, sized to the branch (maintainer rule, 2026-08-30)
 
-- `/code-review` against `main`, with the spec sources named explicitly: the GitHub issue,
-  the relevant `plans/*.md` steps, the draft.md DECIDED section, and any governing ADR.
-- `/style-review` on the branch's changed files.
+The review effort matches the branch, not a fixed panel -- a two-agent panel on a
+two-file mechanical diff once cost more than the work it reviewed:
+
+- **haiku-tier rows and mechanical diffs** (renames, sweeps, config/UI tweaks, roughly
+  under ~150 changed lines of non-generated code): NO review agents. The landing
+  coordinator reads the diff itself against the issue; the suite, `toylang fmt`, and
+  `.claude/checks/run.sh` are the mechanical gates and they already ran.
+- **regular sonnet-tier branches**: ONE review agent (sonnet), briefed on spec
+  correctness against the named sources -- the GitHub issue, the relevant `plans/*.md`
+  steps, the draft.md DECIDED section, any governing ADR -- with style folded into the
+  same brief as a secondary axis. Style is mostly machine-enforced now (fmt canonical
+  form, the checks script); a dedicated style agent rarely finds blockers.
+- **fable-tier, cross-cutting, or semantics-touching branches** (checker, backends,
+  prelude contracts): the full two-agent panel, spec + style, as before.
 - Review subagents run on sonnet (`model: "sonnet"` on the Agent call); the coordinator's
   own judgment of their findings is where the big model earns its keep.
 - Review briefs that boot a dev server MUST say: kill YOUR server by PID only -- never
