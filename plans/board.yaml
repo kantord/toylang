@@ -342,7 +342,7 @@
   title: jq backend -- four-function cycles are unrepresentable; refuse cleanly or support
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: char-literals-and-bools
   issue: gh:80
@@ -386,7 +386,7 @@
   title: sort and reverse as Vec builtins -- settled design, unimplemented (emuto survey adopt)
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: local-binding-design
   issue: gh:87
@@ -433,7 +433,7 @@
   needs: []
   soft: [parser-floor-strings]
   prio: 2
-  status: todo
+  status: delegated
 
 - id: toylang-fmt
   issue: gh:78
