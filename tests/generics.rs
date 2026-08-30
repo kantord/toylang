@@ -57,11 +57,13 @@ fn a_type_parameter_cannot_take_a_builtin_name() {
     insta::assert_snapshot!(err("enum Box<Int> { wrap(Int) }\n\nstr(1)"));
 }
 
+/// A parameter shadows a declared name inside its own declaration -- resolve_named consults
+/// the bindings first, so `Shape` in the payload means the parameter (kantord/toylang#85:
+/// the old refusal broke every `enum E` program when the prelude gained Result<T, E>).
 #[test]
-fn a_type_parameter_cannot_take_a_declared_name() {
-    insta::assert_snapshot!(err(
-        "enum Shape { point }\nenum Box<Shape> { wrap(Shape) }\n\nstr(1)"
-    ));
+fn a_type_parameter_shadows_a_declared_name() {
+    let src = "enum Shape { point }\nenum Box<Shape> { wrap(Shape) }\n\nstr(1)";
+    assert!(toylang::compile(src).is_ok());
 }
 
 #[test]
