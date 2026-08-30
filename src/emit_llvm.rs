@@ -71,6 +71,9 @@ struct Runtime<'ctx> {
     vec_tail: FunctionValue<'ctx>,
     vec_concat: FunctionValue<'ctx>,
     chars: FunctionValue<'ctx>,
+    vec_sort_int: FunctionValue<'ctx>,
+    vec_sort_str: FunctionValue<'ctx>,
+    vec_reverse: FunctionValue<'ctx>,
 }
 
 /// What a compiler-introduced binding holds.
@@ -241,6 +244,21 @@ impl<'ctx> Emitter<'ctx> {
             vec_tail: module.add_function("tl_vec_tail", ptr.fn_type(&[ptr.into()], false), None),
             vec_concat: module.add_function(
                 "tl_vec_concat",
+                ptr.fn_type(&[ptr.into(), i64t.into()], false),
+                None,
+            ),
+            vec_sort_int: module.add_function(
+                "tl_vec_sort_int",
+                ptr.fn_type(&[ptr.into()], false),
+                None,
+            ),
+            vec_sort_str: module.add_function(
+                "tl_vec_sort_str",
+                ptr.fn_type(&[ptr.into()], false),
+                None,
+            ),
+            vec_reverse: module.add_function(
+                "tl_vec_reverse",
                 ptr.fn_type(&[ptr.into(), i64t.into()], false),
                 None,
             ),
@@ -1451,6 +1469,19 @@ impl<'ctx> Emitter<'ctx> {
                         let ncols = self.ctx.i64_type().const_int(Self::columns(elem), false);
                         self.call_rt(self.rt.vec_concat, &[arg, ncols.into()], "concat")?
                     }
+                    // The checker's `orderable` already narrowed the element type to Int,
+                    // Int64, Str, or Char; only Str's raw slot is a pointer needing its own
+                    // comparator, so those three collapse into the same int64 sort.
+                    Builtin::Sort => {
+                        let elem = elem_ty.expect("checked to be a Vec");
+                        let rt = Self::sort_runtime(&self.rt, &elem);
+                        self.call_rt(rt, &[arg], "sort")?
+                    }
+                    Builtin::Reverse => {
+                        let elem = elem_ty.expect("checked to be a Vec");
+                        let ncols = self.ctx.i64_type().const_int(Self::columns(&elem), false);
+                        self.call_rt(self.rt.vec_reverse, &[arg, ncols.into()], "reverse")?
+                    }
                     // `arg` above ran only for whatever else it does; its value is unused here.
                     Builtin::Fields => self.fields_lit(&record_ty)?,
                 }
@@ -1723,6 +1754,18 @@ impl<'ctx> Emitter<'ctx> {
             .build_store(slot, v)
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    /// Which runtime sorter a Vec element needs: only Str's raw slot is a pointer wanting
+    /// its own comparator; Int, Int64, and Char share the int64 sort. Split out of `expr`'s
+    /// match arm to keep the selection from deepening it (kantord/toylang#86), the
+    /// `fields_lit` precedent.
+    fn sort_runtime<'r>(rt: &Runtime<'r>, elem: &Type) -> FunctionValue<'r> {
+        if *elem == Type::Str {
+            rt.vec_sort_str
+        } else {
+            rt.vec_sort_int
+        }
     }
 
     fn call_rt(

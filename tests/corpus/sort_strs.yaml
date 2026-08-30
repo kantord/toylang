@@ -1,0 +1,7 @@
+program: |
+  sort(["cherry", "apple", "banana"])
+
+output: |
+  ["apple","banana","cherry"]
+
+node_types: [builtin.sort, str, vec-literal]

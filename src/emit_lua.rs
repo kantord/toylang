@@ -92,6 +92,27 @@ local function tl_vec_concat(vv)
 end
 ";
 
+// `table.sort`'s default comparator is Lua's own `<`, which already agrees with every other
+// backend's ordering on both numbers and (byte-wise, so codepoint-wise for valid UTF-8) strings,
+// so nothing here has to branch on the element type.
+const SORT_HELPER: &str = "\
+local function tl_sort(v)
+  local out = {}
+  for i = 1, #v do out[i] = v[i] end
+  table.sort(out)
+  return out
+end
+";
+
+const REVERSE_HELPER: &str = "\
+local function tl_reverse(v)
+  local out = {}
+  local n = #v
+  for i = 1, n do out[i] = v[n - i + 1] end
+  return out
+end
+";
+
 const UNWRAP_HELPER: &str = r#"local function tl_unwrap(v, depth)
   if depth > 0 then
     local out = {}
@@ -207,6 +228,8 @@ pub fn emit(program: &Program) -> String {
         (used.unwrap, UNWRAP_HELPER),
         (used.tail, TAIL_HELPER),
         (used.concat, VEC_CONCAT_HELPER),
+        (used.sort, SORT_HELPER),
+        (used.reverse, REVERSE_HELPER),
         (used.arith, ARITH_HELPER),
         (used.arith64, ARITH64_HELPER),
         (used.map, MAP_HELPER),
@@ -429,6 +452,8 @@ struct Helpers {
     tail: bool,
     concat: bool,
     chars: bool,
+    sort: bool,
+    reverse: bool,
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -489,6 +514,8 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.tail |= *which == Builtin::Tail;
                 used.concat |= *which == Builtin::Concat;
                 used.chars |= *which == Builtin::Chars;
+                used.sort |= *which == Builtin::Sort;
+                used.reverse |= *which == Builtin::Reverse;
                 walk(arg, used);
             }
             Kind::Cond {
@@ -617,6 +644,8 @@ fn expr(t: &Tir) -> String {
             Builtin::Extent => format!("#{}", expr(arg)),
             Builtin::Tail => format!("tl_tail({})", expr(arg)),
             Builtin::Concat => format!("tl_vec_concat({})", expr(arg)),
+            Builtin::Sort => format!("tl_sort({})", expr(arg)),
+            Builtin::Reverse => format!("tl_reverse({})", expr(arg)),
             // The names come from the checked type, not the table value, so `arg` runs as the
             // function literal's ignored parameter -- the same IIFE shape `Bind` uses -- purely
             // for whatever else it does.

@@ -387,10 +387,11 @@ fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
 
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
 /// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `extent`, `concat`,
-/// `tail`, `collect`, and `fields` are polymorphic and checked from `synth`'s own arms;
-/// `select` and `map` rebind `.`. All twelve are reserved the same way, and the docs harness
-/// (tests/docs.rs) reads this list to insist each one has a reference page.
-pub const BUILTIN_NAMES: [&str; 12] = [
+/// `tail`, `collect`, `fields`, `sort`, and `reverse` are polymorphic and checked from
+/// `synth`'s own arms; `select` and `map` rebind `.`. All fourteen are reserved the same way,
+/// and the docs harness (tests/docs.rs) reads this list to insist each one has a reference
+/// page.
+pub const BUILTIN_NAMES: [&str; 14] = [
     "chars",
     "collect",
     "concat",
@@ -400,7 +401,9 @@ pub const BUILTIN_NAMES: [&str; 12] = [
     "jsonlines",
     "map",
     "range",
+    "reverse",
     "select",
+    "sort",
     "str",
     "tail",
 ];
@@ -1615,6 +1618,15 @@ fn call(
     if func == "fields" {
         return fields_call(ctx, need_arg(arg, func, span)?);
     }
+    // Blocking, one Vec in and one Vec out with no Stream instance (kantord/toylang#86, Q20 in
+    // draft.md), so both are checked here rather than through `select`'s subject-context
+    // mechanism.
+    if func == "sort" {
+        return sort_call(ctx, need_arg(arg, func, span)?);
+    }
+    if func == "reverse" {
+        return reverse_call(ctx, need_arg(arg, func, span)?);
+    }
     if let Some((which, sig)) = builtin(func) {
         let param_ty = sig
             .param
@@ -1776,6 +1788,66 @@ fn concat_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
         Type::Vec(Box::new(elem)),
         Kind::Builtin {
             which: tir::Builtin::Concat,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// The element types ordering comparisons (`<`, `<=`, `>`, `>=`) already typecheck on --
+/// documented on each of their own reference pages, and what `sort` restricts itself to rather
+/// than reaching past what every backend can already order natively.
+fn orderable(ty: &Type) -> bool {
+    matches!(ty, Type::Int | Type::Int64 | Type::Str | Type::Char)
+}
+
+/// `sort(v)`, ascending by the total order `<` already gives `v`'s element type
+/// (kantord/toylang#86). Restricted to `orderable` element types rather than the same
+/// `expect(ctx, rhs, &left.ty)` equality `binary`'s comparison branch accepts more broadly, so
+/// this never asks a backend to order a Record or an Enum.
+fn sort_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(elem) = arg.ty.elem() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`sort` needs a Vec, found {}", arg.ty),
+        ));
+    };
+    if !orderable(elem) {
+        return Err(Error::new(
+            arg_span,
+            format!(
+                "`sort` needs a Vec of Int, Int64, Str, or Char, found {}",
+                arg.ty
+            ),
+        ));
+    }
+    let ty = arg.ty.clone();
+    Ok(Tir::new(
+        ty,
+        Kind::Builtin {
+            which: tir::Builtin::Sort,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// `reverse(v)`, `v`'s elements in the opposite order. Unlike `sort`, no comparison is needed,
+/// so every element type is accepted.
+fn reverse_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    if arg.ty.elem().is_none() {
+        return Err(Error::new(
+            arg_span,
+            format!("`reverse` needs a Vec, found {}", arg.ty),
+        ));
+    }
+    let ty = arg.ty.clone();
+    Ok(Tir::new(
+        ty,
+        Kind::Builtin {
+            which: tir::Builtin::Reverse,
             arg: Box::new(arg),
         },
     ))

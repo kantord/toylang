@@ -386,7 +386,7 @@
   title: sort and reverse as Vec builtins -- settled design, unimplemented (emuto survey adopt)
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: local-binding-design
   issue: gh:87

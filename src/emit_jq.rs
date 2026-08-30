@@ -499,6 +499,10 @@ fn expr(t: &Tir) -> String {
             // Not jq's own `add`, which is `null` on an empty list rather than `[]` -- a reduce
             // starting from `[]` gives the right answer in both cases.
             Builtin::Concat => format!("({} | reduce .[] as $x ([]; . + $x))", expr(arg)),
+            // jq's own `sort`/`reverse` already are this, restricted the same way the checker
+            // restricts `sort` to Int, Int64, Str, and Char.
+            Builtin::Sort => format!("({} | sort)", expr(arg)),
+            Builtin::Reverse => format!("({} | reverse)", expr(arg)),
             // The names come from the checked type, not the object value, so `arg` runs only to
             // become the `.` a literal array then ignores -- the same discard the pipe already
             // gives every other builtin here.

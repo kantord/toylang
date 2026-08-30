@@ -40,7 +40,8 @@ cannot tell what `[]` contains (at byte 0)
 
 What applies to a `Vec`: the index specs (`[0]`, `[-1]`, `[]` mid-chain -- see
 [specs](../operators/specs.md)), [`extent`](../builtins/extent.md),
-[`concat`](../builtins/concat.md), [`tail`](../builtins/tail.md), and the subject-fed
+[`concat`](../builtins/concat.md), [`tail`](../builtins/tail.md),
+[`sort`](../builtins/sort.md), [`reverse`](../builtins/reverse.md), and the subject-fed
 [`select`](../builtins/select.md) and [`map`](../builtins/map.md). `+` does not join two
 `Vec`s; spell that `concat([a, b])`.
 

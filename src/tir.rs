@@ -211,6 +211,17 @@ pub enum Builtin {
     /// element here even on a target whose own strings need a surrogate pair to spell it
     /// (kantord/toylang#75).
     Chars,
+    /// `sort(v)`, `Vec<T> -> Vec<T>`: `v`'s elements in ascending order by the same total order
+    /// `<` already gives `T`. One value in, one value out with no lawful Stream instance
+    /// (kantord/toylang#86, Q20 in draft.md), so it is checked as a Vec-only builtin the way
+    /// `extent`/`tail`/`concat` are rather than through `select`/`map`'s cardinality
+    /// polymorphism. Restricted to the element types ordering already typechecks on --
+    /// Int, Int64, Str, Char -- so every backend can reach for its native ordering.
+    Sort,
+    /// `reverse(v)`, `Vec<T> -> Vec<T>`: `v`'s elements in the opposite order. Blocking for the
+    /// same reason `sort` is (the whole Vec has to be there before the first output element
+    /// is), but unrestricted in element type, since reversing needs no comparison.
+    Reverse,
 }
 
 pub struct Func {

@@ -166,5 +166,7 @@ fn builtin_tag(which: Builtin) -> &'static str {
         Builtin::Tail => "tail",
         Builtin::Fields => "fields",
         Builtin::Chars => "chars",
+        Builtin::Sort => "sort",
+        Builtin::Reverse => "reverse",
     }
 }

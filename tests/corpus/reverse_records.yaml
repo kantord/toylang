@@ -1,0 +1,10 @@
+# reverse needs no comparison, so it also has to work on a Vec whose entries are not one of
+# sort's orderable types -- here a record, which on the native backend is several columns that
+# all have to flip together.
+program: |
+  reverse([{n: 1}, {n: 2}, {n: 3}])
+
+output: |
+  [{"n":3},{"n":2},{"n":1}]
+
+node_types: [builtin.reverse, int, record-literal, vec-literal]

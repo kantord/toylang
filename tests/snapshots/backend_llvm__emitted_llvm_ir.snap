@@ -76,6 +76,12 @@ declare ptr @tl_vec_tail(ptr)
 
 declare ptr @tl_vec_concat(ptr, i64)
 
+declare ptr @tl_vec_sort_int(ptr)
+
+declare ptr @tl_vec_sort_str(ptr)
+
+declare ptr @tl_vec_reverse(ptr, i64)
+
 define i32 @main() {
 entry:
   call void @tl_print(ptr @str.0)

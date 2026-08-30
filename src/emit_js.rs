@@ -445,6 +445,8 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.jsonlines |= *which == Builtin::JsonLines;
                 used.tail |= *which == Builtin::Tail;
                 used.chars |= *which == Builtin::Chars;
+                used.str_cmp |=
+                    *which == Builtin::Sort && tir::runtime_elem(&arg.ty) == Some(&Type::Str);
                 walk(arg, used);
             }
             Kind::Cond {
@@ -573,6 +575,23 @@ fn expr(t: &Tir) -> String {
             Builtin::Extent => format!("{}.length", expr(arg)),
             Builtin::Tail => format!("tl_tail({})", expr(arg)),
             Builtin::Concat => format!("{}.flat()", expr(arg)),
+            // `Array.prototype.sort`'s default comparator stringifies, which is wrong for
+            // numbers; `tl_str_cmp` already returns the -1/0/1 a comparator wants, so it can be
+            // passed straight through for Str.
+            Builtin::Sort => {
+                let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec");
+                if *elem == Type::Str {
+                    format!("[...{}].sort(tl_str_cmp)", expr(arg))
+                } else {
+                    // `a - b` would coerce the comparator's result with ToNumber, which
+                    // throws on BigInt -- and Int64 is BigInt here. The three-way compare
+                    // returns plain -1/0/1 for Number and BigInt alike.
+                    format!("[...{}].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)", expr(arg))
+                }
+            }
+            // `.reverse()` mutates in place, so the spread copy is what keeps this an ordinary
+            // expression rather than a statement with a visible side effect on `arg`.
+            Builtin::Reverse => format!("[...{}].reverse()", expr(arg)),
             // The names come from the checked type, not the object value, so `arg` is evaluated
             // only for whatever else it does (a division inside it must still throw) and its
             // value discarded with the comma operator.
