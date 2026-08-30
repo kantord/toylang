@@ -18,7 +18,9 @@ TS=$(date +%Y%m%d-%H%M%S)
 LOG="$LOG_DIR/$TS-$LANE.jsonl"
 SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 # Cold worktrees share compiled crates across lanes (a shared CARGO_TARGET_DIR
-# would race between parallel workers; sccache does not).
+# would race between parallel workers; sccache does not). cargo's bin dir is
+# pinned because dispatch paths differ in what PATH they carry.
+export PATH="$HOME/.cargo/bin:$PATH"
 command -v sccache >/dev/null && export RUSTC_WRAPPER=sccache
 
 echo "[opencode-worker] $LANE on $MODEL (events: $LOG)"
