@@ -17,7 +17,7 @@ use std::collections::BTreeSet;
 
 use crate::ast::BinOp;
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
-use crate::ty::Type;
+use crate::ty::{self, Enums, Type};
 
 /// The binding the input value is read into. Unspellable in source, since every source name is
 /// prefixed.
@@ -272,6 +272,7 @@ pub fn emit(program: &Program) -> String {
         used: &mut used,
         records: &mut records,
         enums: &mut enums,
+        registry: &program.enums,
     };
     for f in &program.funcs {
         if let Some(param_ty) = &f.param_ty {
@@ -289,7 +290,11 @@ pub fn emit(program: &Program) -> String {
     records.sort_by_key(|t| t.to_string());
     enums.sort_by_key(|t| t.to_string());
 
-    let e = Emitter { records, enums };
+    let e = Emitter {
+        records,
+        enums,
+        registry: &program.enums,
+    };
 
     let mut decls = String::new();
     for (i, rec) in e.records.iter().enumerate() {
@@ -308,11 +313,11 @@ pub fn emit(program: &Program) -> String {
     // Go has no sum type, so an enum is a tag (the variant's declaration index) plus one
     // pointer per payload variant, nil except for the one the tag names.
     for en in &e.enums {
-        let Type::Enum { name, variants, .. } = en else {
+        let Type::Enum { name, .. } = en else {
             unreachable!("only enums are collected")
         };
         decls.push_str(&format!("type {} struct {{\n\ttag int32\n", e.go_type(en)));
-        for (i, (_, payload)) in variants.iter().enumerate() {
+        for (i, (_, payload)) in ty::variants(&program.enums, en).iter().enumerate() {
             if let Some(p) = payload {
                 decls.push_str(&format!("\tp{i} *{}\n", e.go_type(p)));
             }
@@ -324,6 +329,8 @@ pub fn emit(program: &Program) -> String {
             decls.push_str(&e.enum_unmarshal(en, name));
         }
     }
+
+    decls.push_str(&e.printers(program));
 
     // Package-level functions are visible in any order, so the forward reference the checker
     // accepts needs nothing here. Lua wanted declarations and JavaScript relied on hoisting.
@@ -443,7 +450,7 @@ pub fn emit(program: &Program) -> String {
     }
     if used.itoa
         || used.jsonlines_has_scalar
-        || (program.body.ty != Type::Str && has_scalar(&program.body.ty))
+        || (program.body.ty != Type::Str && has_scalar(&program.enums, &program.body.ty))
     {
         imports.insert("strconv");
     }
@@ -459,22 +466,33 @@ pub fn emit(program: &Program) -> String {
 }
 
 /// Whether printing this type reaches an Int or a Bool, which are the two `strconv` needs.
-fn has_scalar(ty: &Type) -> bool {
-    match ty {
-        // Only ever called on the program's own result type, which the checker guarantees is
-        // never a stream and never contains one.
-        Type::Stream(_) => unreachable!("a stream cannot reach has_scalar"),
-        // The checker refuses a program whose result contains a Char, the same as a stream.
-        Type::Char => unreachable!("a Char cannot reach has_scalar"),
-        Type::Int | Type::Int64 | Type::Bool => true,
-        Type::Str => false,
-        Type::Vec(t) => has_scalar(t),
-        Type::Record(fields) => fields.iter().any(|(_, t)| has_scalar(t)),
-        Type::Enum { variants, .. } => variants
-            .iter()
-            .any(|(_, p)| p.as_ref().is_some_and(has_scalar)),
-        Type::Param(_) => unreachable!("params are substituted before emit"),
+fn has_scalar(enums: &Enums, ty: &Type) -> bool {
+    /// `seen` is what a recursive enum needs: its own payload leads back to it, and an enum
+    /// already under consideration answers nothing new.
+    fn reaches(enums: &Enums, ty: &Type, seen: &mut Vec<Type>) -> bool {
+        match ty {
+            // Only ever called on the program's own result type, which the checker guarantees is
+            // never a stream and never contains one.
+            Type::Stream(_) => unreachable!("a stream cannot reach has_scalar"),
+            // The checker refuses a program whose result contains a Char, the same as a stream.
+            Type::Char => unreachable!("a Char cannot reach has_scalar"),
+            Type::Int | Type::Int64 | Type::Bool => true,
+            Type::Str => false,
+            Type::Vec(t) => reaches(enums, t, seen),
+            Type::Record(fields) => fields.iter().any(|(_, t)| reaches(enums, t, seen)),
+            Type::Enum { .. } => {
+                if seen.contains(ty) {
+                    return false;
+                }
+                seen.push(ty.clone());
+                ty::variants(enums, ty)
+                    .iter()
+                    .any(|(_, p)| p.as_ref().is_some_and(|p| reaches(enums, p, seen)))
+            }
+            Type::Param(_) => unreachable!("params are substituted before emit"),
+        }
     }
+    reaches(enums, ty, &mut Vec::new())
 }
 
 #[derive(Default)]
@@ -483,8 +501,8 @@ struct Used {
     /// Whether `jsonlines` was called at all, which decides whether `strings` needs importing.
     jsonlines: bool,
     /// Whether `strconv` is needed for a scalar inside a `jsonlines` element type, which the
-    /// ordinary `has_scalar(&program.body.ty)` check misses whenever the top-level result is
-    /// exactly `Str` -- true for every `jsonlines` call, since that is what it returns.
+    /// ordinary `has_scalar` check on the program's own result type misses whenever that result
+    /// is exactly `Str` -- true for every `jsonlines` call, since that is what it returns.
     jsonlines_has_scalar: bool,
 }
 
@@ -494,6 +512,9 @@ struct Collect<'a> {
     used: &'a mut Used,
     records: &'a mut Vec<Type>,
     enums: &'a mut Vec<Type>,
+    /// Every enum the program declared. The variant list on a `Type::Enum` in hand may be a
+    /// placeholder, so the payloads to descend into are read from here (`ty::variants`).
+    registry: &'a Enums,
 }
 
 impl Collect<'_> {
@@ -510,17 +531,20 @@ impl Collect<'_> {
             }
             // Opt keeps the tlOpt[T] struct it always had (already tagged), so it is not
             // harvested as a declared enum; only what it holds is.
-            Type::Enum { variants, .. } => {
+            Type::Enum { .. } => {
                 if let Some(inner) = t.as_opt() {
                     self.ty(inner);
                     return;
                 }
-                if !self.enums.contains(t) {
-                    self.enums.push(t.clone());
+                // Having it already is what stops a recursive enum here: its own payload leads
+                // back to a type this list holds.
+                if self.enums.contains(t) {
+                    return;
                 }
-                for (_, p) in variants {
+                self.enums.push(t.clone());
+                for (_, p) in ty::variants(self.registry, t) {
                     if let Some(p) = p {
-                        self.ty(p);
+                        self.ty(&p);
                     }
                 }
             }
@@ -600,7 +624,7 @@ impl Collect<'_> {
                         self.used.jsonlines = true;
                         let elem =
                             tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
-                        self.used.jsonlines_has_scalar |= has_scalar(elem);
+                        self.used.jsonlines_has_scalar |= has_scalar(self.registry, elem);
                     }
                     // Purely textually gated below, like tlAt and tlRange: nothing here needs
                     // the element type, so there is nothing to record on the walk.
@@ -621,12 +645,15 @@ impl Collect<'_> {
     }
 }
 
-struct Emitter {
+struct Emitter<'a> {
     records: Vec<Type>,
     enums: Vec<Type>,
+    /// Every enum the program declared, for `ty::variants`: what a `Type::Enum` carries is a
+    /// placeholder wherever a recursive enum's payload reaches back to itself.
+    registry: &'a Enums,
 }
 
-impl Emitter {
+impl Emitter<'_> {
     fn user(&self, name: &str) -> String {
         format!("v_{name}")
     }
@@ -690,9 +717,7 @@ impl Emitter {
     /// The decoder for one enum: a bare string resolves among the unit variants, a single-key
     /// object among the payload ones, and a near miss is refused naming the enum.
     fn enum_unmarshal(&self, en: &Type, name: &str) -> String {
-        let Type::Enum { variants, .. } = en else {
-            unreachable!("only enums are collected")
-        };
+        let variants = ty::variants(self.registry, en);
         let ename = self.go_type(en);
         let mut out = String::new();
         out.push_str(&format!(
@@ -874,10 +899,7 @@ impl Emitter {
                         None => format!("{}{{}}", self.go_type(&t.ty)),
                     };
                 }
-                let Type::Enum { variants, .. } = &t.ty else {
-                    unreachable!("an EnumLit's type is its enum")
-                };
-                let i = Self::variant_index(variants, variant);
+                let i = Self::variant_index(&ty::variants(self.registry, &t.ty), variant);
                 match payload {
                     None => format!("{}{{tag: {i}}}", self.go_type(&t.ty)),
                     Some(p) => format!(
@@ -1046,10 +1068,8 @@ impl Emitter {
                             .variant
                             .as_ref()
                             .expect("only a variant arm has a payload");
-                        let Type::Enum { variants, .. } = &subject.ty else {
-                            unreachable!("a variant arm's subject is an enum")
-                        };
-                        let vi = Self::variant_index(variants, variant);
+                        let vi =
+                            Self::variant_index(&ty::variants(self.registry, &subject.ty), variant);
                         run.push_str(&format!(
                             "{} := *{subj}.p{vi}; _ = {}; ",
                             self.local(pid),
@@ -1060,15 +1080,10 @@ impl Emitter {
                         Self::arm_yield(self.go_type(&t.ty), self.expr(&arm.body), *partial);
                     run.push_str(&format!("return {produced}"));
                     let test = match (&arm.variant, &arm.guard) {
-                        (Some(v), _) => {
-                            let Type::Enum { variants, .. } = &subject.ty else {
-                                unreachable!("a variant arm's subject is an enum")
-                            };
-                            Some(format!(
-                                "{subj}.tag == {}",
-                                Self::variant_index(variants, v)
-                            ))
-                        }
+                        (Some(v), _) => Some(format!(
+                            "{subj}.tag == {}",
+                            Self::variant_index(&ty::variants(self.registry, &subject.ty), v)
+                        )),
                         (None, Some(g)) => Some(self.expr(g)),
                         (None, None) => None,
                     };
@@ -1117,33 +1132,12 @@ impl Emitter {
                     self.show(inner, &format!("{v}.v"), depth + 1)
                 )
             }
-            // The tag says which of the two JSON shapes (ADR 0009) this value is: a unit
-            // variant renders as its quoted name, a payload variant as the single-key wrapper.
-            // The last variant needs no test, since the type says nothing else is left.
-            Type::Enum { variants, .. } => {
-                let n = format!("n{depth}");
-                let render = |i: usize, vname: &str, payload: &Option<Type>| match payload {
-                    None => go_string(&format!("\"{vname}\"")),
-                    Some(p) => format!(
-                        "({} + {} + \"}}\")",
-                        go_string(&format!("{{\"{vname}\":")),
-                        self.show(p, &format!("(*{n}.p{i})"), depth + 1)
-                    ),
-                };
-                let mut body = String::new();
-                for (i, (vname, payload)) in variants.iter().enumerate() {
-                    let rendered = render(i, vname, payload);
-                    if i + 1 < variants.len() {
-                        body.push_str(&format!("if {n}.tag == {i} {{ return {rendered} }}; "));
-                    } else {
-                        body.push_str(&format!("return {rendered}"));
-                    }
-                }
-                format!(
-                    "func({n} {}) string {{ {body} }}({value})",
-                    self.go_type(ty)
-                )
+            // A recursive enum prints through a function of its own (`printers`), because
+            // expanding one here has no bottom: its payload leads back to the same type.
+            Type::Enum { .. } if ty::is_recursive(self.registry, ty) => {
+                format!("{}({value})", show_fn(ty))
             }
+            Type::Enum { .. } => self.show_enum(ty, value, depth),
             Type::Record(fields) => {
                 if fields.is_empty() {
                     return "\"{}\"".to_string();
@@ -1163,6 +1157,57 @@ impl Emitter {
             }
         }
     }
+
+    /// A named printer for every recursive enum the program prints. The call in `show` is what a
+    /// nested occurrence renders as, so the recursion in the type becomes recursion in the
+    /// emitted function rather than in this compiler (kantord/toylang#94).
+    fn printers(&self, program: &Program) -> String {
+        let mut out = String::new();
+        for ty in tir::printed_recursive_enums(program) {
+            out.push_str(&format!(
+                "func {}(v {}) string {{\n\treturn {}\n}}\n\n",
+                show_fn(&ty),
+                self.go_type(&ty),
+                self.show_enum(&ty, "v", 0)
+            ));
+        }
+        out
+    }
+
+    /// The printer for one enum, inline. The tag says which of the two JSON shapes (ADR 0009)
+    /// this value is: a unit variant renders as its quoted name, a payload variant as the
+    /// single-key wrapper. The last variant needs no test, since the type says nothing else is
+    /// left.
+    fn show_enum(&self, ty: &Type, value: &str, depth: usize) -> String {
+        let variants = ty::variants(self.registry, ty);
+        let n = format!("n{depth}");
+        let render = |i: usize, vname: &str, payload: &Option<Type>| match payload {
+            None => go_string(&format!("\"{vname}\"")),
+            Some(p) => format!(
+                "({} + {} + \"}}\")",
+                go_string(&format!("{{\"{vname}\":")),
+                self.show(p, &format!("(*{n}.p{i})"), depth + 1)
+            ),
+        };
+        let mut body = String::new();
+        for (i, (vname, payload)) in variants.iter().enumerate() {
+            let rendered = render(i, vname, payload);
+            if i + 1 < variants.len() {
+                body.push_str(&format!("if {n}.tag == {i} {{ return {rendered} }}; "));
+            } else {
+                body.push_str(&format!("return {rendered}"));
+            }
+        }
+        format!(
+            "func({n} {}) string {{ {body} }}({value})",
+            self.go_type(ty)
+        )
+    }
+}
+
+/// The name of `ty`'s own printer function.
+fn show_fn(ty: &Type) -> String {
+    format!("tlShow_{}", ty.ident())
 }
 
 /// The node's type picks which constant-folding escape a literal goes through

@@ -18,7 +18,7 @@
 
 use crate::ast::BinOp;
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
-use crate::ty::Type;
+use crate::ty::{self, Enums, Type};
 
 const INPUT: &str = "t_input";
 const INPUTS: &str = "t_inputs";
@@ -437,6 +437,7 @@ pub fn emit(program: &Program) -> String {
         used: &mut used,
         records: &mut records,
         enums: &mut enums,
+        registry: &program.enums,
     };
     for f in &program.funcs {
         if let Some(param_ty) = &f.param_ty {
@@ -460,10 +461,14 @@ pub fn emit(program: &Program) -> String {
     // parser for a shape the checker already promised can never cross the wire.
     let mut wire: Vec<Type> = Vec::new();
     for ty in [&program.input, &program.inputs].into_iter().flatten() {
-        collect_wire(ty, &mut wire);
+        collect_wire(&program.enums, ty, &mut wire);
     }
 
-    let e = Emitter { records, enums };
+    let e = Emitter {
+        records,
+        enums,
+        registry: &program.enums,
+    };
 
     let mut decls = String::new();
     for (i, rec) in e.records.iter().enumerate() {
@@ -484,14 +489,15 @@ pub fn emit(program: &Program) -> String {
     // enum. `allow(non_camel_case_types)` because variant names are data and keep their source
     // spelling rather than being case-mangled.
     for (i, en) in e.enums.iter().enumerate() {
-        let Type::Enum { name, variants, .. } = en else {
+        let Type::Enum { name, .. } = en else {
             unreachable!("only enums are collected")
         };
+        let variants = ty::variants(&program.enums, en);
         decls.push_str(&format!(
             "#[derive(Clone)]\n#[allow(non_camel_case_types)]\nenum {} {{\n",
             e.rs_type(en)
         ));
-        for (vname, payload) in variants {
+        for (vname, payload) in &variants {
             match payload {
                 None => decls.push_str(&format!("    V_{vname},\n")),
                 Some(p) => decls.push_str(&format!("    V_{vname}({}),\n", e.rs_type(p))),
@@ -502,6 +508,8 @@ pub fn emit(program: &Program) -> String {
             decls.push_str(&e.enum_parser(i, en, name));
         }
     }
+
+    decls.push_str(&e.printers(program));
 
     for f in &program.funcs {
         let param = match (&f.param, &f.param_ty) {
@@ -603,24 +611,26 @@ fn rs_field(name: &str) -> String {
 /// Every record and enum type nested anywhere in `ty`, which is an input's declared type: the
 /// set of shapes that need a JSON parser. An Opt cannot appear (the checker refuses one in an
 /// input), so the prelude's special case needs no carve-out here.
-fn collect_wire(ty: &Type, out: &mut Vec<Type>) {
+fn collect_wire(enums: &Enums, ty: &Type, out: &mut Vec<Type>) {
     match ty {
-        Type::Vec(e) | Type::Stream(e) => collect_wire(e, out),
+        Type::Vec(e) | Type::Stream(e) => collect_wire(enums, e, out),
         Type::Record(fields) => {
             if !out.contains(ty) {
                 out.push(ty.clone());
             }
             for (_, f) in fields {
-                collect_wire(f, out);
+                collect_wire(enums, f, out);
             }
         }
-        Type::Enum { variants, .. } => {
-            if !out.contains(ty) {
-                out.push(ty.clone());
+        Type::Enum { .. } => {
+            // Having it already is what stops a recursive enum here, as in `Collect::ty`.
+            if out.contains(ty) {
+                return;
             }
-            for (_, p) in variants {
+            out.push(ty.clone());
+            for (_, p) in ty::variants(enums, ty) {
                 if let Some(p) = p {
-                    collect_wire(p, out);
+                    collect_wire(enums, &p, out);
                 }
             }
         }
@@ -639,6 +649,9 @@ struct Collect<'a> {
     used: &'a mut Used,
     records: &'a mut Vec<Type>,
     enums: &'a mut Vec<Type>,
+    /// Every enum the program declared. The variant list on a `Type::Enum` in hand may be a
+    /// placeholder, so the payloads to descend into are read from here (`ty::variants`).
+    registry: &'a Enums,
 }
 
 impl Collect<'_> {
@@ -655,17 +668,20 @@ impl Collect<'_> {
             }
             // Opt keeps the Option<T> it always had (already tagged), so it is not
             // harvested as a declared enum; only what it holds is.
-            Type::Enum { variants, .. } => {
+            Type::Enum { .. } => {
                 if let Some(inner) = t.as_opt() {
                     self.ty(inner);
                     return;
                 }
-                if !self.enums.contains(t) {
-                    self.enums.push(t.clone());
+                // Having it already is what stops a recursive enum here: its own payload leads
+                // back to a type this list holds.
+                if self.enums.contains(t) {
+                    return;
                 }
-                for (_, p) in variants {
+                self.enums.push(t.clone());
+                for (_, p) in ty::variants(self.registry, t) {
                     if let Some(p) = p {
-                        self.ty(p);
+                        self.ty(&p);
                     }
                 }
             }
@@ -746,12 +762,15 @@ impl Collect<'_> {
     }
 }
 
-struct Emitter {
+struct Emitter<'a> {
     records: Vec<Type>,
     enums: Vec<Type>,
+    /// Every enum the program declared, for `ty::variants`: what a `Type::Enum` carries is a
+    /// placeholder wherever a recursive enum's payload reaches back to itself.
+    registry: &'a Enums,
 }
 
-impl Emitter {
+impl Emitter<'_> {
     fn user(&self, name: &str) -> String {
         format!("v_{name}")
     }
@@ -827,9 +846,7 @@ impl Emitter {
     /// (ADR 0009) arrived: a bare string resolves among the unit variants, a single-key object
     /// among the payload ones, and a near miss is refused naming the enum.
     fn enum_parser(&self, i: usize, en: &Type, name: &str) -> String {
-        let Type::Enum { variants, .. } = en else {
-            unreachable!("only enums are collected")
-        };
+        let variants = ty::variants(self.registry, en);
         let ename = self.rs_type(en);
         let mut out = String::new();
         out.push_str(&format!(
@@ -838,7 +855,7 @@ impl Emitter {
         out.push_str("    if p.peek() == b'\"' {\n");
         out.push_str("        let s = p.parse_str();\n");
         out.push_str("        match s.as_str() {\n");
-        for (vname, payload) in variants {
+        for (vname, payload) in &variants {
             if payload.is_none() {
                 out.push_str(&format!("            \"{vname}\" => {ename}::V_{vname},\n"));
             }
@@ -851,7 +868,7 @@ impl Emitter {
         out.push_str("        let key = tl_parse_str(p);\n");
         out.push_str("        p.expect(b':');\n");
         out.push_str("        let v = match key.as_str() {\n");
-        for (vname, payload) in variants {
+        for (vname, payload) in &variants {
             if let Some(pty) = payload {
                 out.push_str(&format!(
                     "            \"{vname}\" => {ename}::V_{vname}(({})(p)),\n",
@@ -1214,10 +1231,7 @@ impl Emitter {
                             (None, Some(g)) => format!("_ if {} => {body}", self.expr(g)),
                             (None, None) => format!("_ => {body}"),
                             (Some(v), _) => {
-                                let Type::Enum { variants, .. } = &subject.ty else {
-                                    unreachable!("a variant arm's subject is an enum")
-                                };
-                                let has_payload = variants
+                                let has_payload = ty::variants(self.registry, &subject.ty)
                                     .iter()
                                     .find(|(n, _)| n == v)
                                     .expect("the checker resolved the variant")
@@ -1275,29 +1289,12 @@ impl Emitter {
                     self.show(inner, &v, depth + 1)
                 )
             }
-            // The match is the shape dispatch ADR 0009 asks of every printer, native here: a
-            // unit variant renders as its quoted name, a payload variant as the single-key
-            // wrapper.
-            Type::Enum { variants, .. } => {
-                let n = format!("n{depth}");
-                let arms: Vec<String> = variants
-                    .iter()
-                    .map(|(vname, payload)| match payload {
-                        None => format!(
-                            "{}::V_{vname} => {}",
-                            self.rs_type(ty),
-                            rs_string(&format!("\"{vname}\""))
-                        ),
-                        Some(p) => format!(
-                            "{}::V_{vname}({n}) => ({} + &{} + \"}}\")",
-                            self.rs_type(ty),
-                            rs_string(&format!("{{\"{vname}\":")),
-                            self.show(p, &n, depth + 1)
-                        ),
-                    })
-                    .collect();
-                format!("(match {value} {{ {} }})", arms.join(", "))
+            // A recursive enum prints through a function of its own (`printers`), because
+            // expanding one here has no bottom: its payload leads back to the same type.
+            Type::Enum { .. } if ty::is_recursive(self.registry, ty) => {
+                format!("{}({value})", show_fn(ty))
             }
+            Type::Enum { .. } => self.show_enum(ty, value, depth),
             Type::Record(fields) => {
                 if fields.is_empty() {
                     return "\"{}\".to_string()".to_string();
@@ -1317,6 +1314,53 @@ impl Emitter {
             }
         }
     }
+
+    /// A named printer for every recursive enum the program prints. The call in `show` is what a
+    /// nested occurrence renders as, so the recursion in the type becomes recursion in the
+    /// emitted function rather than in this compiler (kantord/toylang#94). `non_snake_case`
+    /// because the name embeds the enum's own, which is capitalised.
+    fn printers(&self, program: &Program) -> String {
+        let mut out = String::new();
+        for ty in tir::printed_recursive_enums(program) {
+            out.push_str(&format!(
+                "#[allow(non_snake_case)]\nfn {}(v: {}) -> String {{\n    {}\n}}\n\n",
+                show_fn(&ty),
+                self.rs_type(&ty),
+                self.show_enum(&ty, "v", 0)
+            ));
+        }
+        out
+    }
+
+    /// The printer for one enum, inline. The match is the shape dispatch ADR 0009 asks of every
+    /// printer, native here: a unit variant renders as its quoted name, a payload variant as the
+    /// single-key wrapper.
+    fn show_enum(&self, ty: &Type, value: &str, depth: usize) -> String {
+        let variants = ty::variants(self.registry, ty);
+        let n = format!("n{depth}");
+        let arms: Vec<String> = variants
+            .iter()
+            .map(|(vname, payload)| match payload {
+                None => format!(
+                    "{}::V_{vname} => {}",
+                    self.rs_type(ty),
+                    rs_string(&format!("\"{vname}\""))
+                ),
+                Some(p) => format!(
+                    "{}::V_{vname}({n}) => ({} + &{} + \"}}\")",
+                    self.rs_type(ty),
+                    rs_string(&format!("{{\"{vname}\":")),
+                    self.show(p, &n, depth + 1)
+                ),
+            })
+            .collect();
+        format!("(match {value} {{ {} }})", arms.join(", "))
+    }
+}
+
+/// The name of `ty`'s own printer function.
+fn show_fn(ty: &Type) -> String {
+    format!("tl_show_{}", ty.ident())
 }
 
 /// The node's type picks the literal's spelling (kantord/toylang#83). The `i64` suffix types

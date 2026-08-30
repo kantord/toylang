@@ -1,0 +1,15 @@
+# A recursive enum with a type parameter. The printers are keyed by `Type::ident`, so `Tree<Str>`
+# and `Tree<Int>` would be two functions rather than one -- what makes that necessary is that the
+# variant list is re-derived per instantiation, the parameter substituted, and the payload of
+# `leaf` differs between them.
+program: |
+  enum Tree<T> { node(Vec<Tree<T>>), leaf(T) }
+
+  fn label(t: Tree<Str>) -> Str = t | node -> "node" or leaf -> .
+
+  {shape: Tree.node([Tree.leaf("a"), Tree.node([Tree.leaf("b")])]), top: label(Tree.leaf("x"))}
+
+output: |
+  {"shape":{"node":[{"leaf":"a"},{"node":[{"leaf":"b"}]}]},"top":"x"}
+
+node_types: [application, local, match, pipe, record-literal, str, var, variant.payload, vec-literal]

@@ -8,7 +8,7 @@
 //! the target, not of toylang, so each backend renders these as it needs to.
 
 use crate::ast::BinOp;
-use crate::ty::Type;
+use crate::ty::{Enums, Type};
 
 pub struct Tir {
     pub ty: Type,
@@ -34,11 +34,11 @@ pub enum Kind {
     RecordLit {
         fields: Vec<(String, Tir)>,
     },
-    /// A constructed enum value. The node's type is the enum, which carries the variant list,
-    /// so a backend finds the variant's position (its tag, where one is needed) and its payload
-    /// type there rather than in the node. `payload` is `None` for a unit variant, which every
-    /// backend renders as the bare variant-name string; a payload variant is the single-key
-    /// wrapper (ADR 0009).
+    /// A constructed enum value. The node's type is the enum, so a backend finds the variant's
+    /// position (its tag, where one is needed) and its payload type by asking `ty::variants`
+    /// for that type's list rather than by carrying either here. `payload` is `None` for a unit
+    /// variant, which every backend renders as the bare variant-name string; a payload variant
+    /// is the single-key wrapper (ADR 0009).
     EnumLit {
         variant: String,
         payload: Option<Box<Tir>>,
@@ -243,6 +243,11 @@ pub struct Program {
     /// unrelated readers of the same real stdin and a program using `lines` alone still needs
     /// it connected, even though `input` is `None`.
     pub uses_lines: bool,
+    /// Every enum the program declared, the prelude's included. A backend has no checker `Ctx`
+    /// to hand, and the variant list on a `Type::Enum` is a placeholder wherever a recursive
+    /// enum's payload reaches back to itself, so this travels with the tree: it is what
+    /// `ty::variants` re-derives from (kantord/toylang#94).
+    pub enums: Enums,
 }
 
 /// The element type a backend iterates over. Under eager lowering a stream is materialized as
@@ -395,4 +400,141 @@ pub fn fusion(program: &Program) -> Option<Fusion<'_>> {
         }
     };
     Some(Fusion { source, stages })
+}
+
+/// Every enum type the program prints that can hold another of its own type, deduplicated and
+/// in the order the walk meets them.
+///
+/// A backend writes its printer by expanding a type inline, which is exactly what does not
+/// terminate on one of these. So each gets a named function the expansion can call back into
+/// instead, and this is the list of functions to write (kantord/toylang#94). Only what is
+/// printed: a program can hold a recursive value, match on it and print an Int, and a printer
+/// nobody calls is dead code that Go, at least, would then demand an import for.
+pub fn printed_recursive_enums(program: &Program) -> Vec<Type> {
+    let mut printed = vec![program.body.ty.clone()];
+    let mut collect_printed = |t: &Tir| {
+        if let Kind::Builtin {
+            which: Builtin::JsonLines,
+            arg,
+        } = &t.kind
+        {
+            printed.push(
+                runtime_elem(&arg.ty)
+                    .expect("jsonlines takes a Vec or a stream")
+                    .clone(),
+            );
+        }
+    };
+    for f in &program.funcs {
+        each_node(&f.body, &mut collect_printed);
+    }
+    each_node(&program.body, &mut collect_printed);
+
+    let mut found = Vec::new();
+    let mut seen = Vec::new();
+    for ty in &printed {
+        reachable_enums(&program.enums, ty, &mut seen, &mut found);
+    }
+    found.retain(|ty| crate::ty::is_recursive(&program.enums, ty));
+    found
+}
+
+/// Append every enum type nested anywhere in `ty` to `found`, descending through payloads read
+/// from the registry rather than off the type. `seen` is what stops a recursive one: its own
+/// payload leads back to a type already visited.
+fn reachable_enums(enums: &Enums, ty: &Type, seen: &mut Vec<Type>, found: &mut Vec<Type>) {
+    match ty {
+        Type::Vec(e) | Type::Stream(e) => reachable_enums(enums, e, seen, found),
+        Type::Record(fields) => {
+            for (_, f) in fields {
+                reachable_enums(enums, f, seen, found);
+            }
+        }
+        Type::Enum { name, args, .. } => {
+            if seen.contains(ty) {
+                return;
+            }
+            seen.push(ty.clone());
+            found.push(ty.clone());
+            for arg in args {
+                reachable_enums(enums, arg, seen, found);
+            }
+            for (_, payload) in crate::ty::variants_of(enums, name, args) {
+                if let Some(p) = payload {
+                    reachable_enums(enums, &p, seen, found);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Every node in the tree, `t` itself included, in no particular order. The backends each walk
+/// the tree their own way, gathering what their own target needs; this is for the questions
+/// that are the same on every target.
+fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
+    f(t);
+    match &t.kind {
+        Kind::Str(_)
+        | Kind::Int(_)
+        | Kind::Var(_)
+        | Kind::Local(_)
+        | Kind::Input
+        | Kind::Inputs
+        | Kind::Lines => {}
+        Kind::VecLit(items) => items.iter().for_each(|i| each_node(i, f)),
+        Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| each_node(v, f)),
+        Kind::EnumLit { payload, .. } => {
+            if let Some(p) = payload {
+                each_node(p, f);
+            }
+        }
+        Kind::Call { arg, .. } => {
+            if let Some(a) = arg {
+                each_node(a, f);
+            }
+        }
+        Kind::Concat(l, r)
+        | Kind::Compare { lhs: l, rhs: r, .. }
+        | Kind::Arith { lhs: l, rhs: r, .. } => {
+            each_node(l, f);
+            each_node(r, f);
+        }
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => {
+            each_node(cond, f);
+            each_node(then, f);
+            each_node(otherwise, f);
+        }
+        Kind::Bind { value, body, .. } => {
+            each_node(value, f);
+            each_node(body, f);
+        }
+        Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
+            each_node(source, f);
+            each_node(body, f);
+        }
+        Kind::Select { source, pred, .. } => {
+            each_node(source, f);
+            each_node(pred, f);
+        }
+        Kind::Field { base, .. } | Kind::Unwrap { base } => each_node(base, f),
+        Kind::Builtin { arg, .. } => each_node(arg, f),
+        Kind::Index { base, index, .. } => {
+            each_node(base, f);
+            each_node(index, f);
+        }
+        Kind::Match { subject, arms, .. } => {
+            each_node(subject, f);
+            for arm in arms {
+                if let Some(g) = &arm.guard {
+                    each_node(g, f);
+                }
+                each_node(&arm.body, f);
+            }
+        }
+    }
 }

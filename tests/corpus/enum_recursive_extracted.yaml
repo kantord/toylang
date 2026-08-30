@@ -1,0 +1,15 @@
+# The result's own type is the placeholder. Pulling a value out of `arr`'s payload gives it the
+# type the payload declared -- `Vec<Json>`'s element, which is where `Json` stands in for itself
+# -- so this is a program whose printed type carries no variant list at all, rather than one that
+# reaches a placeholder only somewhere inside. Every question a backend asks of a printed type
+# has to survive that: Lua decided from it whether to emit its join helper at all, and emitted a
+# printer that called a function it had left out.
+program: |
+  enum Json { arr(Vec<Json>), num(Int) }
+
+  Json.arr([Json.arr([Json.num(1)]), Json.num(2)]) | arr -> .[0]! or num -> Json.num(0)
+
+output: |
+  {"arr":[{"num":1}]}
+
+node_types: [int, local, match, pipe, selection.collapse, unwrap, variant.payload, vec-literal]

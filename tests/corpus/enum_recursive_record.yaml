@@ -1,0 +1,12 @@
+# The self-reference reached through a record field rather than sitting directly under the `Vec`.
+# Whether an enum is recursive is a question about the whole path, not the payload's outermost
+# constructor, and a printer that stopped asking at the record would expand forever.
+program: |
+  enum Doc { section({title: Str, parts: Vec<Doc>}), text(Str) }
+
+  Doc.section({title: "top", parts: [Doc.text("hi"), Doc.section({title: "inner", parts: []})]})
+
+output: |
+  {"section":{"title":"top","parts":[{"text":"hi"},{"section":{"title":"inner","parts":[]}}]}}
+
+node_types: [record-literal, str, variant.payload, vec-literal]

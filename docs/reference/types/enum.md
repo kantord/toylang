@@ -50,3 +50,26 @@ payload misses the declared type, is refused before the program runs.
 ```case
 enum_input
 ```
+
+## An enum that contains itself
+
+A payload may name the enum being declared, as long as it does so through a `Vec`. That is
+what makes JSON's own shape expressible: an array case holds a `Vec` of the same type, which
+is a heap indirection rather than a value with no end.
+
+```case
+enum_recursive_value
+```
+
+The rule is per occurrence, not per declaration, so `enum E { safe(Vec<E>), bad(E) }` accepts
+`safe` and still refuses `bad`: a bare self-reference is a layout that contains itself.
+
+```toylang
+enum Json { arr(Vec<Json>), num(Int), node{next: Json} }
+
+Json.num(1)
+```
+
+```error
+type `Json` is written in terms of itself (at byte 49)
+```

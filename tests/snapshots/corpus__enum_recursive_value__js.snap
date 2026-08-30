@@ -1,0 +1,13 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+function tl_join(v, f) {
+  const parts = [];
+  for (let i = 0; i < v.length; i++) parts.push(f(v[i]));
+  return "[" + parts.join(",") + "]";
+}
+function tl_show_Json(v) {
+  return ((n0) => n0["arr"] !== undefined ? ("{\"arr\":" + tl_join(n0["arr"], (e1) => tl_show_Json(e1)) + "}") : ("{\"num\":" + String(n0["num"]) + "}"))(v);
+}
+console.log(tl_show_Json(({"arr": [({"num": 1}), ({"arr": [({"num": 2})]}), ({"num": 3})]})));

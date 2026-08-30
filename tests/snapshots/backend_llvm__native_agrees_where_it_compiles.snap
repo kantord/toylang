@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (169):
+compiles natively (176):
 adults
 arith_add
 arith_div_trunc
@@ -36,6 +36,13 @@ enum_inputs_reject
 enum_match
 enum_match_default
 enum_payload_variant
+enum_recursive_extracted
+enum_recursive_generic
+enum_recursive_input
+enum_recursive_jsonlines
+enum_recursive_record
+enum_recursive_value
+enum_recursive_walk
 enum_scalar_input
 enum_scalar_input_reject
 enum_scalar_payload

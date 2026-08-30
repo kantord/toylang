@@ -1,0 +1,17 @@
+# A nested recursive value, printed. The self-reference behind a `Vec` typechecks
+# (kantord/toylang#76), but the value it describes is what no backend could render: every printer
+# was written by expanding the type inline, and the nested occurrence of `Json` inside `arr`'s
+# payload carries a placeholder in place of its variants rather than a list that would have no
+# end. So each backend prints a recursive enum through a named function that calls itself
+# (kantord/toylang#94), which is what the snapshot below shows and the output cannot.
+program: |
+  enum Json { arr(Vec<Json>), num(Int) }
+
+  Json.arr([Json.num(1), Json.arr([Json.num(2)]), Json.num(3)])
+
+output: |
+  {"arr":[{"num":1},{"arr":[{"num":2}]},{"num":3}]}
+
+snapshot: [js]
+
+node_types: [int, variant.payload, vec-literal]
