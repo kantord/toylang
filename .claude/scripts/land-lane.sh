@@ -89,6 +89,7 @@ fold)
     git -C "$REPO" worktree remove "$LANES/issue-$n"
     git -C "$REPO" branch -d "issue-$n" 2>/dev/null || true
   done
+  for n in "$@"; do rm -f "$LOG_DIR/escalated-issue-$n"; done
   SIZE=$(changed_lines "$ACC")
   echo "[land-lane] $ACC took: $* (now ${SIZE} changed lines, limit $SIZE_LIMIT)"
   if [ "$SIZE" -ge "$SIZE_LIMIT" ]; then
