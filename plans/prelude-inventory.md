@@ -55,9 +55,9 @@ check for, rather than "prefer Stream wherever a retype is technically possible.
 
 - **`range`** produces `Vec<Int>` (`src/check/mod.rs:424-430`). Making it a Stream source is not a
   mechanical retype: it would add a third stream-birth point beyond `inputs`/`lines`, which
-  reopens [Q13](../draft.md#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator)
+  reopens [Q13](questions.md#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator)
   ("no value-to-effect operator is needed, because degrading a `Vec` forgets its extent and buys
-  nothing") and, with it, [Q1](../draft.md#q1-streams-first-class-values-or-evaluation-level-multiplicity),
+  nothing") and, with it, [Q1](questions.md#q1-streams-first-class-values-or-evaluation-level-multiplicity),
   which ADR 0001 already settled the other way -- first-class, non-source-born stream values were
   considered and rejected ("a held value of genuinely unknown extent is exactly what Q13's lean
   rules out, and it is the one irreversible option"). `range` is the one item in this bullet where

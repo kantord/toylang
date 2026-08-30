@@ -21,4 +21,4 @@ agree byte for byte, and default float formatting differs across them), what `Na
 and reduction semantics -- draft.md's vectorization sections already lean on `fold` declaring
 associativity to make reassociation legitimate, and on keeping floating-point contraction off,
 but those are operation questions, not representation ones. These are tracked as
-[draft.md's Q37](../../draft.md#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model).
+[draft.md's Q37](../../plans/questions.md#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model).
