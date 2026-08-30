@@ -870,3 +870,13 @@
   prio: 2
   lane: lane-1
   status: done
+
+- id: builtin-renames
+  issue: gh:98
+  title: extent -> length, unlines -> join_lines
+  kind: build
+  model: haiku
+  needs: []
+  prio: 3
+  soft: [concat-retirement]
+  status: done
