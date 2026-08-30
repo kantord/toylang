@@ -379,7 +379,29 @@
   title: Survey kantord/emuto -- the predecessor, adopt/avoid/superseded
   kind: build
   needs: []
-  status: delegated
+  status: done
+
+- id: vec-sort-reverse
+  issue: gh:86
+  title: sort and reverse as Vec builtins -- settled design, unimplemented (emuto survey adopt)
+  kind: build
+  needs: []
+  status: todo
+
+- id: local-binding-design
+  issue: gh:87
+  title: Grill local bindings inside an expression -- the where/as shaped gap (emuto survey adopt)
+  kind: decide
+  needs: []
+  status: todo
+
+- id: csv-inputs-idea
+  issue: gh:88
+  title: CSV/TSV stdin formats, someday (emuto survey, deferred)
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
 
 - id: parser-floor-recursion
   issue: gh:76
