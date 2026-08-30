@@ -1,9 +1,10 @@
-//! The opt-in check that unblocks Euler 8, 11, 13 and 18.
+//! The opt-in check that verifies Euler 8, 11, 13 and 18 against real puzzle data.
 //!
-//! Those four pages are skips because each reads a blob of problem-given data that cannot live
-//! in this repo (#39) and the fixture protocol that let a page skip when its data was absent was
-//! removed (#69). The data is the only reason the published answers were never checked, so the
-//! answer lives here, with a check that runs it, not in a page presenting it as verified.
+//! Each problem reads a blob of problem-given data that cannot live in this repo (#39), so the
+//! docs pages run the programs below on small synthetic data instead and point here for the
+//! real-sized check. This is where the published answers are actually confirmed: the same
+//! programs, run against a contributor's own copies of the real texts, failing loudly on a wrong
+//! answer rather than skipping.
 //!
 //! `#[ignore]` keeps it out of `just test`; `just euler-data DIR` runs it with DIR holding your
 //! own copies of the four raw data texts, copied from projecteuler.net:
@@ -36,7 +37,7 @@ fn best(p: {v: Vec<Int>, lo: Int, hi: Int}) -> Int64 =
             }
         )
 
-best({v: input, lo: 0, hi: extent(input) - 12})
+best({v: input, lo: 0, hi: length(input) - 12})
 "#;
 
 const PROGRAM_11: &str = r#"
@@ -70,7 +71,7 @@ fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax:
     )
 
 fn maximum_of(p: {v: Vec<Int>, i: Int, best: Int}) -> Int =
-    p.best if p.i >= extent(p.v) else
+    p.best if p.i >= length(p.v) else
         maximum_of(
             {
                 v: p.v,
@@ -88,9 +89,9 @@ fn largest_product(g: Vec<Vec<Int>>) -> Int =
                 g: g,
                 dr: 0,
                 dc: 1,
-                rmax: extent(g),
+                rmax: length(g),
                 cmin: 0,
-                cmax: extent(g[0]!) - 3
+                cmax: length(g[0]!) - 3
             }
         ) +
             direction(
@@ -98,9 +99,9 @@ fn largest_product(g: Vec<Vec<Int>>) -> Int =
                     g: g,
                     dr: 1,
                     dc: 0,
-                    rmax: extent(g) - 3,
+                    rmax: length(g) - 3,
                     cmin: 0,
-                    cmax: extent(g[0]!)
+                    cmax: length(g[0]!)
                 }
             ) +
             direction(
@@ -108,9 +109,9 @@ fn largest_product(g: Vec<Vec<Int>>) -> Int =
                     g: g,
                     dr: 1,
                     dc: 1,
-                    rmax: extent(g) - 3,
+                    rmax: length(g) - 3,
                     cmin: 0,
-                    cmax: extent(g[0]!) - 3
+                    cmax: length(g[0]!) - 3
                 }
             ) +
             direction(
@@ -118,9 +119,9 @@ fn largest_product(g: Vec<Vec<Int>>) -> Int =
                     g: g,
                     dr: 1,
                     dc: -1,
-                    rmax: extent(g) - 3,
+                    rmax: length(g) - 3,
                     cmin: 3,
-                    cmax: extent(g[0]!)
+                    cmax: length(g[0]!)
                 }
             )
     )
@@ -132,7 +133,7 @@ const PROGRAM_13: &str = r#"
 fn empty() -> Vec<Int> = []
 
 fn col_sum(p: {nums: Vec<Vec<Int>>, i: Int, k: Int}) -> Int =
-    0 if p.i >= extent(p.nums) else
+    0 if p.i >= length(p.nums) else
         p.nums[p.i]![p.k]! + col_sum({nums: p.nums, i: p.i + 1, k: p.k})
 
 fn column_total(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int}) -> Int =
@@ -159,7 +160,7 @@ fn first_ten(v: Vec<Int>) -> Vec<Int> = range(10) | map(v[.]!)
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
     first_ten(
         add_digits(
-            {nums: nums, k: extent(nums[0]!) - 1, carry: 0, acc: empty()}
+            {nums: nums, k: length(nums[0]!) - 1, carry: 0, acc: empty()}
         )
     )
 
@@ -175,7 +176,7 @@ fn combine(p: {row: Vec<Int>, below: Vec<Int>, i: Int}) -> Int =
         )
 
 fn merge_row(p: {row: Vec<Int>, below: Vec<Int>}) -> Vec<Int> =
-    range(extent(p.row)) | map(combine({row: p.row, below: p.below, i: .}))
+    range(length(p.row)) | map(combine({row: p.row, below: p.below, i: .}))
 
 fn collapse(p: {rows: Vec<Vec<Int>>, i: Int, acc: Vec<Int>}) -> Int =
     p.acc[0]! if p.i < 0 else
@@ -188,7 +189,7 @@ fn collapse(p: {rows: Vec<Vec<Int>>, i: Int, acc: Vec<Int>}) -> Int =
         )
 
 fn triangle_max(rows: Vec<Vec<Int>>) -> Int =
-    collapse({rows: rows, i: extent(rows) - 2, acc: rows[extent(rows) - 1]!})
+    collapse({rows: rows, i: length(rows) - 2, acc: rows[length(rows) - 1]!})
 
 triangle_max(input)
 "#;
