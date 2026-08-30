@@ -48,7 +48,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: local-binding-design
   issue: gh:87
@@ -170,10 +170,11 @@
   status: todo
 
 - id: float-build
+  issue: gh:149
   title: Implement Float (IEEE binary64 per ADR 0007) across the backends
   kind: build
-  needs: [q37-float-semantics]
-  status: todo
+  needs: []
+  status: delegated
 
 - id: benchmark-suite-build
   title: Build the initial benchmark suite -- 8 non-float CLBG tasks, hyperfine harness per benchmark-plan.md, framed as a general cross-language competitiveness claim (gh:147 ruling); n-body/spectral-norm deferred to a second wave (gh:146 ruling)
