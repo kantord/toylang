@@ -95,6 +95,24 @@ const CONCAT_HELPER: &str = r#"func tlConcat[T any](vv [][]T) []T {
 }
 "#;
 
+// `cmp.Ordered` is exactly the constraint the checker's own `orderable` restricts `sort`'s
+// element type to, so nothing here has to name Int, Int64, Str, or Char individually.
+const SORT_HELPER: &str = r#"func tlSort[T cmp.Ordered](v []T) []T {
+	out := append([]T{}, v...)
+	slices.Sort(out)
+	return out
+}
+"#;
+
+const REVERSE_HELPER: &str = r#"func tlReverse[T any](v []T) []T {
+	out := make([]T, len(v))
+	for i, x := range v {
+		out[len(v)-1-i] = x
+	}
+	return out
+}
+"#;
+
 /// Go's `int32` wraps on overflow by definition, and its `/` and `%` truncate toward zero, so
 /// only the zero divisor needs a guard. `MIN / -1` is defined to be `MIN` here, which is the
 /// wrapping answer the other backends were made to give.
@@ -383,6 +401,8 @@ pub fn emit(program: &Program) -> String {
         (uses("tlAt("), AT_HELPER),
         (uses("tlTail("), TAIL_HELPER),
         (uses("tlConcat("), CONCAT_HELPER),
+        (uses("tlSort("), SORT_HELPER),
+        (uses("tlReverse("), REVERSE_HELPER),
         (unwrap, UNWRAP_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
@@ -416,6 +436,10 @@ pub fn emit(program: &Program) -> String {
     }
     if join || quote || used.jsonlines {
         imports.insert("strings");
+    }
+    if uses("tlSort(") {
+        imports.insert("cmp");
+        imports.insert("slices");
     }
     if used.itoa
         || used.jsonlines_has_scalar
@@ -587,7 +611,9 @@ impl Collect<'_> {
                     | Builtin::Concat
                     | Builtin::Tail
                     | Builtin::Fields
-                    | Builtin::Chars => {}
+                    | Builtin::Chars
+                    | Builtin::Sort
+                    | Builtin::Reverse => {}
                 }
                 self.walk(arg);
             }
@@ -907,6 +933,8 @@ impl Emitter {
                 Builtin::Extent => format!("int32(len({}))", self.expr(arg)),
                 Builtin::Tail => format!("tlTail({})", self.expr(arg)),
                 Builtin::Concat => format!("tlConcat({})", self.expr(arg)),
+                Builtin::Sort => format!("tlSort({})", self.expr(arg)),
+                Builtin::Reverse => format!("tlReverse({})", self.expr(arg)),
                 // The names come from the checked type, not the struct value, so `arg` runs in
                 // an ignored parameter -- the same IIFE shape `Bind` uses -- purely for whatever
                 // else it does.

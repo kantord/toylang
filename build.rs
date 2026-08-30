@@ -168,6 +168,8 @@ impl ToRust for tir::Builtin {
             tir::Builtin::Tail => "Tail",
             tir::Builtin::Fields => "Fields",
             tir::Builtin::Chars => "Chars",
+            tir::Builtin::Sort => "Sort",
+            tir::Builtin::Reverse => "Reverse",
         };
         format!("crate::tir::Builtin::{variant}")
     }

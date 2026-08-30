@@ -107,6 +107,22 @@ const CONCAT_HELPER: &str = r#"fn tl_concat<T: Clone>(vv: &[Vec<T>]) -> Vec<T> {
 }
 "#;
 
+// `Ord` is exactly the constraint the checker's own `orderable` restricts `sort`'s element
+// type to (Int, Int64, Str, Char all implement it natively), so nothing here has to name them.
+const SORT_HELPER: &str = r#"fn tl_sort<T: Clone + Ord>(v: &[T]) -> Vec<T> {
+    let mut out = v.to_vec();
+    out.sort();
+    out
+}
+"#;
+
+const REVERSE_HELPER: &str = r#"fn tl_reverse<T: Clone>(v: &[T]) -> Vec<T> {
+    let mut out = v.to_vec();
+    out.reverse();
+    out
+}
+"#;
+
 const RANGE_HELPER: &str = r#"fn tl_range(n: i32) -> Vec<i32> {
     (0..n.max(0)).collect()
 }
@@ -554,6 +570,8 @@ pub fn emit(program: &Program) -> String {
         (unwrap, UNWRAP_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
         (uses("tl_concat("), CONCAT_HELPER),
+        (uses("tl_sort("), SORT_HELPER),
+        (uses("tl_reverse("), REVERSE_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
         (
@@ -1075,6 +1093,8 @@ impl Emitter {
                 Builtin::Extent => format!("(({}).len() as i32)", self.expr(arg)),
                 Builtin::Tail => format!("tl_tail(&{})", self.expr(arg)),
                 Builtin::Concat => format!("tl_concat(&{})", self.expr(arg)),
+                Builtin::Sort => format!("tl_sort(&{})", self.expr(arg)),
+                Builtin::Reverse => format!("tl_reverse(&{})", self.expr(arg)),
                 // The names come from the checked type, not the struct value, so `arg` is
                 // evaluated only for whatever else it does (a division inside it must still
                 // trap) and its value discarded.

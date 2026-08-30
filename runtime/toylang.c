@@ -1028,6 +1028,57 @@ tl_vec *tl_vec_concat(const tl_vec *vv, int64_t ncols) {
     return out;
 }
 
+/* Ascending by raw int64 value: what backs Int, Int64, and Char, since all three live in the
+ * slot unnarrowed (a Char is a codepoint, and the checker already keeps it from mixing with the
+ * others). qsort's comparator returns the sign of the difference rather than subtracting, since
+ * an int64 difference can itself overflow the int qsort wants back. */
+static int tl_cmp_int64(const void *a, const void *b) {
+    int64_t x = *(const int64_t *)a;
+    int64_t y = *(const int64_t *)b;
+    return x < y ? -1 : (x > y ? 1 : 0);
+}
+
+static int tl_cmp_str_slot(const void *a, const void *b) {
+    const tl_str *x = (const tl_str *)*(const int64_t *)a;
+    const tl_str *y = (const tl_str *)*(const int64_t *)b;
+    return (int)tl_str_cmp(x, y);
+}
+
+/* `sort` over a Vec whose element is Int, Int64, or Char: one column of raw int64 slots, sorted
+ * in place on a copy. Restricted to these by the checker (`orderable`), so there is no column
+ * beyond the one holding the elements themselves to carry along. */
+tl_vec *tl_vec_sort_int(const tl_vec *v) {
+    tl_vec *out = tl_vec_new(v->len, 1);
+    if (v->len > 0) {
+        memcpy(out->cols[0], v->cols[0], (size_t)v->len * sizeof(int64_t));
+        qsort(out->cols[0], (size_t)v->len, sizeof(int64_t), tl_cmp_int64);
+    }
+    return out;
+}
+
+/* The same shape for `Vec<Str>`, whose slots are `tl_str *` rather than raw integers. */
+tl_vec *tl_vec_sort_str(const tl_vec *v) {
+    tl_vec *out = tl_vec_new(v->len, 1);
+    if (v->len > 0) {
+        memcpy(out->cols[0], v->cols[0], (size_t)v->len * sizeof(int64_t));
+        qsort(out->cols[0], (size_t)v->len, sizeof(int64_t), tl_cmp_str_slot);
+    }
+    return out;
+}
+
+/* `reverse`, generic over the element type the way `tl_vec_tail` is: every column's row order
+ * flips together, so a Vec of records or of nested Vecs reverses correctly with no type-specific
+ * code. */
+tl_vec *tl_vec_reverse(const tl_vec *v, int64_t ncols) {
+    tl_vec *out = tl_vec_new(v->len, ncols);
+    for (int64_t c = 0; c < ncols; c++) {
+        for (int64_t i = 0; i < v->len; i++) {
+            out->cols[c][i] = v->cols[c][v->len - 1 - i];
+        }
+    }
+    return out;
+}
+
 /* Collapse one dimension at `i`, `depth` layers down, counting from the end when negative.
  *
  * `is_record` decides whether an entry has to be gathered out of the columns. The column count

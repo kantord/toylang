@@ -447,6 +447,10 @@ fn expr(t: &Tir) -> String {
             Builtin::Extent => format!("len({})", expr(arg)),
             Builtin::Tail => format!("tl_tail({})", expr(arg)),
             Builtin::Concat => format!("tl_vec_concat({})", expr(arg)),
+            // Python compares both numbers and strings (by codepoint) with `<` natively, so
+            // `sorted` needs no key or comparator.
+            Builtin::Sort => format!("sorted({})", expr(arg)),
+            Builtin::Reverse => format!("({})[::-1]", expr(arg)),
             // The names come from the checked type, not the dict value, so `arg` runs as the
             // lambda's ignored argument -- the same shape `Bind` uses -- purely for whatever
             // else it does.
