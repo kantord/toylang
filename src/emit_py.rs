@@ -216,6 +216,10 @@ pub fn emit(program: &Program) -> String {
     if program.input.is_some() || program.inputs.is_some() {
         out.push_str("import json\n");
     }
+    // Python's default ceiling (1000) is far below what a compiled-style recursive program
+    // needs: Euler 11's self-tail-recursive fold alone is ~1300 frames deep. Raise it before
+    // any program code runs; 100000 is comfortably above the thousands real programs reach.
+    out.push_str("sys.setrecursionlimit(100000)\n");
     out.push('\n');
     for (on, text) in [
         (unwrap || arith || arith64, FAIL_HELPER),
