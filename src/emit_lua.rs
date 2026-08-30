@@ -476,6 +476,38 @@ struct Helpers {
     eq: bool,
 }
 
+/// Equality on a composite is structural, which Lua's `==` on two tables is not -- it compares
+/// references (kantord/toylang#68). Ordering on a composite is a separate open question and
+/// keeps whatever Lua does with it.
+fn compare(op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
+    if !lhs.ty.is_composite() || !matches!(op, BinOp::Eq | BinOp::Ne) {
+        return format!("({} {} {})", expr(lhs), lua_op(op), expr(rhs));
+    }
+    let call = format!("tl_eq({}, {})", expr(lhs), expr(rhs));
+    match op {
+        BinOp::Ne => format!("(not {call})"),
+        _ => call,
+    }
+}
+
+/// Which helper a comparison reaches for, which is a question about the operator and the
+/// operand type rather than about the tree below it: Lua's `==` on two tables compares
+/// references, so equality on a composite walks the structure instead (kantord/toylang#68).
+fn compare_helpers(op: BinOp, operand: &Type, used: &mut Helpers) {
+    used.eq |= operand.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne);
+}
+
+/// One helper per builtin whose Lua spelling is a function rather than an operator.
+fn builtin_helpers(which: Builtin, used: &mut Helpers) {
+    used.range |= which == Builtin::Range;
+    used.jsonlines |= which == Builtin::JsonLines;
+    used.tail |= which == Builtin::Tail;
+    used.concat |= which == Builtin::Concat;
+    used.chars |= which == Builtin::Chars;
+    used.sort |= which == Builtin::Sort;
+    used.reverse |= which == Builtin::Reverse;
+}
+
 fn used_helpers(program: &Program) -> Helpers {
     fn walk(t: &Tir, used: &mut Helpers) {
         match &t.kind {
@@ -506,7 +538,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(r, used);
             }
             Kind::Compare { op, lhs, rhs } => {
-                used.eq |= lhs.ty.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne);
+                compare_helpers(*op, &lhs.ty, used);
                 walk(lhs, used);
                 walk(rhs, used);
             }
@@ -534,13 +566,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
             }
             Kind::Builtin { which, arg } => {
-                used.range |= *which == Builtin::Range;
-                used.jsonlines |= *which == Builtin::JsonLines;
-                used.tail |= *which == Builtin::Tail;
-                used.concat |= *which == Builtin::Concat;
-                used.chars |= *which == Builtin::Chars;
-                used.sort |= *which == Builtin::Sort;
-                used.reverse |= *which == Builtin::Reverse;
+                builtin_helpers(*which, used);
                 walk(arg, used);
             }
             Kind::Cond {
@@ -686,18 +712,7 @@ fn expr(t: &Tir) -> String {
                 )
             }
         },
-        Kind::Compare { op, lhs, rhs } => {
-            // Ordering on a composite is a separate open question and keeps whatever the
-            // target does with it; only `==` and `!=` are pinned (kantord/toylang#68).
-            if lhs.ty.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne) {
-                let call = format!("tl_eq({}, {})", expr(lhs), expr(rhs));
-                return match op {
-                    BinOp::Ne => format!("(not {call})"),
-                    _ => call,
-                };
-            }
-            format!("({} {} {})", expr(lhs), lua_op(*op), expr(rhs))
-        }
+        Kind::Compare { op, lhs, rhs } => compare(*op, lhs, rhs),
         // Lua has no expression-level `let`, so the binding becomes a call.
         Kind::Bind {
             local: id,

@@ -429,6 +429,12 @@ const JSONLINES_HELPER: &str = r#"fn tl_jsonlines<T>(v: &[T], f: fn(&T) -> Strin
 }
 "#;
 
+/// The derive line every emitted record and enum carries. `PartialEq` is unconditional: it is
+/// the structural equality the other backends have to hand-write (kantord/toylang#68), and
+/// gating it on the program actually comparing something would cost a traversal to save a line
+/// of output nobody reads.
+const DERIVE: &str = "#[derive(Clone, PartialEq)]";
+
 pub fn emit(program: &Program) -> String {
     let mut used = Used::default();
     let mut records = Vec::new();
@@ -465,18 +471,12 @@ pub fn emit(program: &Program) -> String {
 
     let e = Emitter { records, enums };
 
-    // Every record and enum derives PartialEq whether or not the program compares one: the
-    // derive is the structural equality four other backends have to hand-write, and gating it
-    // on a comparison appearing somewhere in the program would be a second traversal for a
-    // line of output nobody reads (kantord/toylang#95).
     let mut decls = String::new();
     for (i, rec) in e.records.iter().enumerate() {
         let Type::Record(fields) = rec else {
             unreachable!("only records are collected")
         };
-        decls.push_str(&format!(
-            "#[derive(Clone, PartialEq)]\nstruct TlRec{i} {{\n"
-        ));
+        decls.push_str(&format!("{DERIVE}\nstruct TlRec{i} {{\n"));
         for (name, ty) in fields {
             decls.push_str(&format!("    {}: {},\n", rs_field(name), e.rs_type(ty)));
         }
@@ -494,7 +494,7 @@ pub fn emit(program: &Program) -> String {
             unreachable!("only enums are collected")
         };
         decls.push_str(&format!(
-            "#[derive(Clone, PartialEq)]\n#[allow(non_camel_case_types)]\nenum {} {{\n",
+            "{DERIVE}\n#[allow(non_camel_case_types)]\nenum {} {{\n",
             e.rs_type(en)
         ));
         for (vname, payload) in variants {

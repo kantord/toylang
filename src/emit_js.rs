@@ -414,6 +414,27 @@ fn compare_helpers(op: BinOp, operand: &Type, used: &mut Helpers) {
     used.eq |= operand.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne);
 }
 
+/// Two of the six comparison operators cannot be handed to JS as they are written.
+/// `<`/`<=`/`>`/`>=` on native strings compare UTF-16 code units, which disagrees with codepoint
+/// order across a surrogate pair, so `tl_str_cmp` steps by codepoint instead; equality is
+/// unaffected there (the same codepoints give the same units either way). `===` on two objects
+/// is identity, so equality on a composite walks the structure through `tl_eq`
+/// (kantord/toylang#68). Ordering on a composite is a separate open question and keeps whatever
+/// JS does with it.
+fn compare(op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
+    if lhs.ty.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne) {
+        let call = format!("tl_eq({}, {})", expr(lhs), expr(rhs));
+        return match op {
+            BinOp::Ne => format!("(!{call})"),
+            _ => call,
+        };
+    }
+    if lhs.ty == Type::Str && matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge) {
+        return format!("(tl_str_cmp({}, {}) {} 0)", expr(lhs), expr(rhs), js_op(op));
+    }
+    format!("({} {} {})", expr(lhs), js_op(op), expr(rhs))
+}
+
 fn used_helpers(program: &Program) -> Helpers {
     fn walk(t: &Tir, used: &mut Helpers) {
         match &t.kind {
@@ -627,33 +648,7 @@ fn expr(t: &Tir) -> String {
                 format!("({}, [{}])", expr(arg), names.join(", "))
             }
         },
-        Kind::Compare { op, lhs, rhs } => {
-            // Ordering on a composite is a separate open question and keeps whatever JS does
-            // with it; only `==` and `!=` are pinned (kantord/toylang#68).
-            if lhs.ty.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne) {
-                let call = format!("tl_eq({}, {})", expr(lhs), expr(rhs));
-                if *op == BinOp::Ne {
-                    format!("(!{call})")
-                } else {
-                    call
-                }
-            // `<`/`<=`/`>`/`>=` on native JS strings compare UTF-16 code units, which disagrees
-            // with codepoint order across a surrogate pair; `tl_str_cmp` steps by codepoint
-            // instead. Equality is unaffected (the same codepoint sequence gives the same UTF-16
-            // units either way), so `===`/`!==` stay as they are.
-            } else if lhs.ty == Type::Str
-                && matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge)
-            {
-                format!(
-                    "(tl_str_cmp({}, {}) {} 0)",
-                    expr(lhs),
-                    expr(rhs),
-                    js_op(*op)
-                )
-            } else {
-                format!("({} {} {})", expr(lhs), js_op(*op), expr(rhs))
-            }
-        }
+        Kind::Compare { op, lhs, rhs } => compare(*op, lhs, rhs),
         Kind::Bind {
             local: id,
             value,

@@ -189,3 +189,17 @@ emitters' `expr()` *below* their merge-base counts -- plus, for the last two lin
 via `Option::or_else` (both are position-resolved forms with the same
 `return built.map(Expected::Checked)` shape). `synth`'s 221->237 growth (the Neg width
 dispatch) stays under the standing sinkhole exemption.
+
+The structural-equality session (issue #95) is a fourteenth instance, and needed no new
+reasoning: the four functions whose counts moved (`emit_go.rs`'s `emit` 165->169 and `expr`
+216->224, `emit_js.rs`'s `expr` 190->199, `emit_lua.rs`'s `expr` 175->182 and `used_helpers`
+101->106, `emit_rs.rs`'s `emit` 144->146, all verified against a merge-base worktree) were
+fixed by the same extractions [cognitive-complexity.md](cognitive-complexity.md)'s matching
+entry describes, which were done for the complexity score and brought every line count below
+its merge-base value as a side effect. Two needed one move of their own: `used_helpers`, whose
+per-node-kind helper rules moved out into `compare_helpers` and `builtin_helpers` (js already
+had the first; lua now has both), and `emit_rs.rs`'s `emit`, where the new `PartialEq` in the
+derive made the format string too long to fit on one line -- naming the whole derive line as a
+`const DERIVE` put it back on one line *and* gave the "why unconditional" comment somewhere to
+live outside the function. Reach for the named constant whenever a string literal growing by a
+word is what wrapped a call across three lines.

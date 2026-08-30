@@ -88,3 +88,20 @@ plus `int_lit` where the literal was also guarded), which put every `expr()` at 
 merge-base score. One residual point stands honestly: `emit_rs.rs`'s `emit()` at 21/10 against
 a 20/10 baseline, from the `wire.contains` guards that scope parser generation to
 input-reachable types -- caused and recorded here, the same way go's issue-62 residual was.
+
+The structural-equality session (issue #95) is a seventh instance, and the same mechanism the
+Int64 entry names, from the other side: a *guard on the arm's body* rather than on the arm.
+Adding `if lhs.ty.is_composite() && matches!(op, Eq | Ne) { ... }` inside `expr()`'s existing
+`Kind::Compare` arm cost go 2 points (12->14), js 3 (15->18), and lua 3 (12->15). Settled the
+case-2 way in all three: the arm's whole body moved into a named `compare()` beside the file's
+other per-construct helpers, leaving one line in the match. Every one came out at or below its
+merge-base score, and lua's finding went away entirely -- js's `compare()` was the clearest win,
+since the arm already held the codepoint-ordering branch, so pulling both out gave one function
+whose whole job is "which of the three spellings does this operator get".
+
+The same session hit the #75 entry's `emit()` if-chain shape in a place that entry does not
+name: `emit_go.rs`'s *imports* block, not its helper text, is a chain of eight `if`s, and one
+more (`reflect`, for the new `tlEq` helper) took it from 28/10 to 29/10. Converting that block
+to the same `for (on, names) in [...]` table the helper text above it already uses dropped it to
+23/10, five points below merge-base. Read the #75 entry as covering any `if`-chain in an
+`emit()` that a sibling backend already spells as a table, whatever the chain decides.

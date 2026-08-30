@@ -427,36 +427,29 @@ pub fn emit(program: &Program) -> String {
         }
     }
 
+    // Go rejects an unused import, so each one is gated on the thing that spells it. Written as
+    // a table rather than a chain of `if`s, the same shape the helper text above already uses.
+    let reads_stdin = program.input.is_some() || program.inputs.is_some();
     let mut imports = BTreeSet::new();
     imports.insert("fmt");
-    if fail || program.input.is_some() || program.inputs.is_some() || collect {
-        imports.insert("os");
-    }
-    if collect {
-        imports.insert("bufio");
-        imports.insert("bytes");
-    }
-    if program.input.is_some() || program.inputs.is_some() {
-        imports.insert("encoding/json");
-    }
-    if program.inputs.is_some() {
-        imports.insert("io");
-    }
-    if join || quote || used.jsonlines {
-        imports.insert("strings");
-    }
-    if uses("tlSort(") {
-        imports.insert("cmp");
-        imports.insert("slices");
-    }
-    if uses("tlEq(") {
-        imports.insert("reflect");
-    }
-    if used.itoa
-        || used.jsonlines_has_scalar
-        || (program.body.ty != Type::Str && has_scalar(&program.body.ty))
-    {
-        imports.insert("strconv");
+    for (on, names) in [
+        (fail || reads_stdin || collect, &["os"][..]),
+        (collect, &["bufio", "bytes"]),
+        (reads_stdin, &["encoding/json"]),
+        (program.inputs.is_some(), &["io"]),
+        (join || quote || used.jsonlines, &["strings"]),
+        (uses("tlSort("), &["cmp", "slices"]),
+        (uses("tlEq("), &["reflect"]),
+        (
+            used.itoa
+                || used.jsonlines_has_scalar
+                || (program.body.ty != Type::Str && has_scalar(&program.body.ty)),
+            &["strconv"],
+        ),
+    ] {
+        if on {
+            imports.extend(names);
+        }
     }
 
     let mut out = String::from("package main\n\nimport (\n");
@@ -962,19 +955,7 @@ impl Emitter {
                     )
                 }
             },
-            Kind::Compare { op, lhs, rhs } => {
-                // Ordering on a composite is a separate open question and keeps whatever Go
-                // does with it; only `==` and `!=` are pinned (kantord/toylang#68).
-                if lhs.ty.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne) {
-                    let call = format!("tlEq({}, {})", self.expr(lhs), self.expr(rhs));
-                    return if *op == BinOp::Ne {
-                        format!("(!{call})")
-                    } else {
-                        call
-                    };
-                }
-                format!("({} {} {})", self.expr(lhs), go_op(*op), self.expr(rhs))
-            }
+            Kind::Compare { op, lhs, rhs } => self.compare(*op, lhs, rhs),
             Kind::Bind {
                 local: id,
                 value,
@@ -1110,6 +1091,20 @@ impl Emitter {
 
     /// The printer is built from the type rather than by inspecting the value, as on every other
     /// backend. Here there is no choice at all: a Go value cannot be asked what it is.
+    /// Equality on a composite is structural, which Go's own `==` is not: it compares an enum's
+    /// payload pointer by address (kantord/toylang#68). Ordering on a composite is a separate
+    /// open question and keeps whatever Go does with it.
+    fn compare(&self, op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
+        if !lhs.ty.is_composite() || !matches!(op, BinOp::Eq | BinOp::Ne) {
+            return format!("({} {} {})", self.expr(lhs), go_op(op), self.expr(rhs));
+        }
+        let call = format!("tlEq({}, {})", self.expr(lhs), self.expr(rhs));
+        match op {
+            BinOp::Ne => format!("(!{call})"),
+            _ => call,
+        }
+    }
+
     fn show(&self, ty: &Type, value: &str, depth: usize) -> String {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
