@@ -444,7 +444,7 @@
   title: emit_llvm -- one tag-dispatch helper under equal_enum and show (issue-95 review)
   kind: build
   needs: []
-  soft: [recursive-enum-codegen]
+  soft: [concat-retirement]
   prio: 3
   status: todo
 
@@ -454,7 +454,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: builtin-renames
   issue: gh:98
@@ -463,6 +463,7 @@
   model: haiku
   needs: []
   prio: 3
+  soft: [concat-retirement]
   status: todo
 
 - id: projection-style-demotion
@@ -471,6 +472,7 @@
   kind: build
   needs: []
   prio: 3
+  soft: [concat-retirement]
   status: todo
 
 - id: string-type-spike
@@ -894,6 +896,7 @@
   kind: build
   needs: []
   prio: 3
+  soft: [concat-retirement]
   status: todo
 
 - id: reparameterized-self-reference
@@ -902,7 +905,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: fmt-project-wide
   issue: gh:103
@@ -927,7 +930,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: benchmark-set-spike
   issue: gh:106
@@ -961,7 +964,7 @@
   needs: []
   soft: [plan-approval-flow]
   prio: 2
-  status: todo
+  status: delegated
 
 - id: record-argument-boundary
   title: Oddity -- the paren-free record argument reaches across the definition boundary; settle it
@@ -996,7 +999,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: fmt-walk-hardening
   issue: gh:111
