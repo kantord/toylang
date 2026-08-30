@@ -1050,3 +1050,46 @@
   soft: [python-recursion-limit]
   prio: 3
   status: done
+
+- id: local-binding-design
+  issue: gh:87
+  title: "Grill local bindings inside an expression -- ruled: multi-line let, no in keyword (gh:150)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: function-signature-ergonomics
+  title: "Grill destructuring params and pipeline-first bodies -- ruled: direction only, implicit . + matching syntax, spelling deferred (gh:152)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: void-sink-syntax-design
+  issue: gh:138
+  title: "Grill the void/sink function syntax -- ruled: dedicated Sink kind (gh:151)"
+  kind: decide
+  needs: []
+  prio: 3
+  status: done
+
+- id: record-argument-boundary
+  issue: gh:153
+  title: "Oddity -- the paren-free record argument reaches across the definition boundary -- ruled: delimit declarations explicitly (gh:153)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: jsonlines-statement-shape
+  issue: gh:154
+  title: "Oddity -- jsonlines is a call-shaped statement -- ruled: explicit tail-pipeline marker |> (gh:154)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: corpus-test-split
+  issue: gh:139
+  title: Split the corpus mega-test into parallel per-backend tests so `just check` drops from ~67s to ~20s
+  kind: build
+  needs: []
+  prio: 1
+  status: done

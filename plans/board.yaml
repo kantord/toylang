@@ -50,11 +50,44 @@
   prio: 2
   status: delegated
 
-- id: local-binding-design
-  issue: gh:87
-  title: Grill local bindings inside an expression -- the where/as shaped gap (emuto survey adopt)
+- id: let-bindings-build
+  issue: gh:150
+  title: Implement multi-line let bindings, no in keyword (gh:87 ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: sink-kind-build
+  issue: gh:151
+  title: Implement a dedicated Sink kind, retire jsonlines' hand-special-cased position check (gh:138 ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: function-signature-matching-syntax
+  issue: gh:152
+  title: Grill the concrete spelling for implicit-. params via matching syntax (direction ratified, gh:152)
   kind: decide
   needs: []
+  prio: 3
+  status: todo
+
+- id: declare-terminator-build
+  issue: gh:153
+  title: Require an explicit terminator after fn/type declarations, retire the same-line heuristic (issue #9 oddity ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: jsonlines-tail-marker-build
+  issue: gh:154
+  title: Implement the |> tail-pipeline marker for sink calls, restricted to outermost position (issue #9 oddity ruling)
+  kind: build
+  needs: [sink-kind-build]
+  prio: 3
   status: todo
 
 - id: dsv-parameterized-source
@@ -64,16 +97,6 @@
   needs: [stdin-syntax-design]
   prio: 4
   status: todo
-
-# Latency-analysis lever (2026-08-30): the corpus mega-test is the pole of `just
-# check`, which every lane pays 2-4x and every fold pays once.
-- id: corpus-test-split
-  issue: gh:139
-  title: Split the corpus mega-test into parallel per-backend tests so `just check` drops from ~67s to ~20s
-  kind: build
-  needs: []
-  prio: 1
-  status: delegated
 
 - id: docs-slow-fragment-tier
   issue: gh:135
@@ -134,12 +157,6 @@
   model: fable
   status: todo
 
-- id: function-signature-ergonomics
-  title: Grill destructuring params and pipeline-first bodies -- wizard round with real code
-  kind: decide
-  needs: []
-  status: todo
-
 - id: overloading-and-traits-design
   title: Grill function overloading and Rust-style traits -- the direction that dissolves concat and kin
   kind: decide
@@ -161,14 +178,6 @@
   prio: 3
   status: delegated
 
-- id: void-sink-syntax-design
-  issue: gh:138
-  title: Grill the void/sink function syntax -- spelling candidates with research-prepped code (gh:58 ruling)
-  kind: decide
-  needs: []
-  prio: 3
-  status: todo
-
 - id: float-build
   issue: gh:149
   title: Implement Float (IEEE binary64 per ADR 0007) across the backends
@@ -186,18 +195,6 @@
 - id: lines-utf8-edge
   issue: gh:102
   title: Pin what a non-UTF-8 byte arriving via lines does, on every backend
-  kind: decide
-  needs: []
-  status: todo
-
-- id: record-argument-boundary
-  title: Oddity -- the paren-free record argument reaches across the definition boundary; settle it
-  kind: decide
-  needs: []
-  status: todo
-
-- id: jsonlines-statement-shape
-  title: Oddity -- jsonlines is a call-shaped statement; settle its shape
   kind: decide
   needs: []
   status: todo
