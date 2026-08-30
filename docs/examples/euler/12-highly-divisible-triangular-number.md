@@ -32,7 +32,7 @@ fn triangle_divisors(n: Int) -> Int =
 fn triangle(n: Int) -> Int = n * (n + 1) / 2
 
 triangle(
-    (range(12376) | select(. >= 1) | select(triangle_divisors(.) > 500))[0]!
+    (collect(range(12376)) | select(. >= 1) | select(triangle_divisors(.) > 500))[0]!
 )
 ```
 

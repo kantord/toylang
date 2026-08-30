@@ -7,6 +7,12 @@ ways in, at most one per program:
 - `inputs`: a stream of JSON values, one per line.
 - `lines`: a stream of raw text lines.
 
+A fourth source has no stdin behind it at all: [`range`](../reference/builtins/range.md) is
+a stream of integers, counted one at a time -- how the [Euler examples](../examples/euler/00-spoiler-warning.md)
+say "try every value in this range" without building the range first. It follows the same
+rules as the stdin sources: born at the source, single-use, dying at `collect` or the
+`jsonlines` sink.
+
 ## One value: input
 
 `input` is typed by where it is used, so hand it to a function whose signature says what

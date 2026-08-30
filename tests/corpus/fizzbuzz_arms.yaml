@@ -4,7 +4,7 @@
 # line for line.
 program: |
   join_lines(
-      range(100) | map(. + 1) | map(
+      collect(range(100)) | map(. + 1) | map(
           . % 15 == 0 -> "FizzBuzz" or
           . % 3 == 0  -> "Fizz"     or
           . % 5 == 0  -> "Buzz"     or
@@ -114,4 +114,4 @@ output: |
   Fizz
   Buzz
 
-node_types: [application, arith.add, arith.rem, builtin.length, builtin.range, builtin.str, builtin.tail, compare.eq, concat, conditional, int, local, map-over, match, pipe, selection.collapse, str, unwrap, var]
+node_types: [application, arith.add, arith.rem, builtin.collect, builtin.length, builtin.range, builtin.str, builtin.tail, compare.eq, concat, conditional, int, local, map-over, match, pipe, selection.collapse, str, unwrap, var]

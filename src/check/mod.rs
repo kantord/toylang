@@ -425,7 +425,7 @@ fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
             tir::Builtin::Range,
             Sig {
                 param: Some(Type::Int),
-                ret: vec_of(Type::Int),
+                ret: Type::Stream(Box::new(Type::Int)),
             },
         ),
         "chars" => (

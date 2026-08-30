@@ -44,10 +44,10 @@ fn root_and_mult(a: Int) -> {root: Int, mult: Int} = best_mult({a: a, m: 6})
 fn is_primitive(a: Int) -> Bool = root_and_mult(a).mult == 1
 
 fn is_dup(p: {v: Vec<Int>, i: Int}) -> Bool =
-    length(range(p.i) | select(p.v[.]! == p.v[p.i]!)) > 0
+    length(collect(range(p.i)) | select(p.v[.]! == p.v[p.i]!)) > 0
 
 fn distinct_count(v: Vec<Int>) -> Int =
-    length(range(length(v)) | select(not is_dup({v: v, i: .})))
+    length(collect(range(length(v))) | select(not is_dup({v: v, i: .})))
 
 fn powers_from(p: {r: Int, val: Int, j: Int, top: Int}) -> Vec<Int> =
     [] if p.val > p.top else
@@ -57,7 +57,7 @@ fn powers_of(p: {r: Int, top: Int}) -> Vec<Int> =
     powers_from({r: p.r, val: p.r, j: 1, top: p.top})
 
 fn row_for_j(p: {j: Int, top: Int}) -> Vec<Int> =
-    range(p.top - 1) | map(. + 2) | map(p.j * .)
+    collect(range(p.top - 1)) | map(. + 2) | map(p.j * .)
 
 fn exponents_for_root(p: {r: Int, top: Int}) -> Vec<Int> =
     flatten(
@@ -69,12 +69,14 @@ fn multi_root_contribution(p: {r: Int, top: Int}) -> Int =
 
 fn single_contrib(top: Int) -> Int =
     length(
-        range(top - 1) | map(. + 2) | select(is_primitive(.) and . * . > top)
+        collect(range(top - 1))
+            | map(. + 2)
+            | select(is_primitive(.) and . * . > top)
     ) *
         (top - 1)
 
 fn multi_contribs(top: Int) -> Vec<Int> =
-    range(top - 1)
+    collect(range(top - 1))
         | map(. + 2)
         | select(. * . <= top and is_primitive(.))
         | map(multi_root_contribution({r: ., top: top}))

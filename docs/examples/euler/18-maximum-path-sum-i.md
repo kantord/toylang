@@ -22,7 +22,8 @@ fn combine(p: {row: Vec<Int>, below: Vec<Int>, i: Int}) -> Int =
         )
 
 fn merge_row(p: {row: Vec<Int>, below: Vec<Int>}) -> Vec<Int> =
-    range(length(p.row)) | map(combine({row: p.row, below: p.below, i: .}))
+    collect(range(length(p.row)))
+        | map(combine({row: p.row, below: p.below, i: .}))
 
 fn collapse(p: {rows: Vec<Vec<Int>>, i: Int, acc: Vec<Int>}) -> Int =
     p.acc[0]! if p.i < 0 else

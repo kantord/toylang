@@ -24,13 +24,13 @@ fn four(p: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int =
         get({g: p.g, r: p.r + 3 * p.dr, c: p.c + 3 * p.dc})
 
 fn row_products(p: {g: Vec<Vec<Int>>, r: Int, dr: Int, dc: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
-    range(p.cmax)
+    collect(range(p.cmax))
         | select(. >= p.cmin)
         | map(four({g: p.g, r: p.r, c: ., dr: p.dr, dc: p.dc}))
 
 fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
     flatten(
-        range(p.rmax)
+        collect(range(p.rmax))
             | map(
                   row_products(
                       {

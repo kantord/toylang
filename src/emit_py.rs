@@ -257,10 +257,10 @@ pub fn emit(program: &Program) -> String {
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     let enums = &program.enums;
     let mut out = String::new();
-    out.push_str("for _line in sys.stdin:\n");
-    out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
     let (mut current, mut current_ty) = match fusion.source {
         tir::Source::Inputs => {
+            out.push_str("for _line in sys.stdin:\n");
+            out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
             out.push_str("    if _line.strip() == \"\":\n        continue\n");
             out.push_str("    t_line = json.loads(_line)\n");
             let elem = program
@@ -270,7 +270,17 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
             ("t_line".to_string(), elem.clone())
         }
         // A raw line is already the element, blank ones included: `lines` keeps them.
-        tir::Source::Lines => ("_line".to_string(), Type::Str),
+        tir::Source::Lines => {
+            out.push_str("for _line in sys.stdin:\n");
+            out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
+            ("_line".to_string(), Type::Str)
+        }
+        // The bound is evaluated once; the loop counter is the element. A negative bound makes
+        // Python's own range empty, the same answer `tl_range` gives eagerly.
+        tir::Source::Range(bound) => {
+            out.push_str(&format!("for t_i in range({}):\n", expr(enums, bound)));
+            ("t_i".to_string(), Type::Int)
+        }
     };
     for stage in &fusion.stages {
         match stage {
