@@ -139,7 +139,7 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
     let value = match (&program.input, stdin) {
         (Some(ty), Some(text)) => {
             let value: serde_json::Value = serde_json::from_str(text)?;
-            input::validate(&value, ty, "input").map_err(anyhow::Error::msg)?;
+            input::validate(&program.enums, &value, ty, "input").map_err(anyhow::Error::msg)?;
             Some(value)
         }
         (Some(ty), None) => anyhow::bail!("this program reads input, of type {ty}"),
@@ -163,7 +163,8 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
                 let mut values = Vec::new();
                 for line in text.lines().filter(|l| !l.trim().is_empty()) {
                     let value: serde_json::Value = serde_json::from_str(line)?;
-                    input::validate(&value, elem_ty, "inputs").map_err(anyhow::Error::msg)?;
+                    input::validate(&program.enums, &value, elem_ty, "inputs")
+                        .map_err(anyhow::Error::msg)?;
                     values.push(value);
                 }
                 Some(values)
@@ -216,6 +217,7 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
     match backend {
         Backend::Lua => run_lua(
             &emit_lua::emit(&program),
+            &program.enums,
             value.as_ref(),
             inputs_values.as_ref(),
             program.inputs.as_ref(),
@@ -260,6 +262,7 @@ fn live_inputs_feed(program: &Program, backend: Backend) -> Feed {
                 .inputs
                 .clone()
                 .expect("live_inputs implies an inputs type"),
+            program.enums.clone(),
         )
     }
 }
@@ -277,13 +280,13 @@ enum Feed {
     /// inherited directly, which is what lets `input::validate` see every record before a
     /// subprocess backend's own, untrusted parse of it does. Reachable only for a live, fused
     /// `inputs` program on a backend other than Lua (see `write_to`).
-    LiveInputs(ty::Type),
+    LiveInputs(ty::Type, ty::Enums),
 }
 
 impl Feed {
     fn stdio(&self) -> std::process::Stdio {
         match self {
-            Feed::Text(_) | Feed::LiveInputs(_) => std::process::Stdio::piped(),
+            Feed::Text(_) | Feed::LiveInputs(..) => std::process::Stdio::piped(),
             Feed::Live => std::process::Stdio::inherit(),
         }
     }
@@ -298,7 +301,7 @@ impl Feed {
                     .write_all(text.as_bytes())?;
             }
             Feed::Live => {}
-            Feed::LiveInputs(elem_ty) => {
+            Feed::LiveInputs(elem_ty, enums) => {
                 let mut stdin = child.stdin.take().expect("piped");
                 for line in std::io::stdin().lock().lines() {
                     let line = line?;
@@ -306,7 +309,7 @@ impl Feed {
                         continue;
                     }
                     let value: serde_json::Value = serde_json::from_str(&line)?;
-                    if let Err(msg) = input::validate(&value, elem_ty, "inputs") {
+                    if let Err(msg) = input::validate(enums, &value, elem_ty, "inputs") {
                         // Close the pipe so the child sees EOF and can finish printing whatever
                         // it already validly received, then wait for it before reporting the
                         // refusal -- otherwise this leaves an unreaped child behind.
@@ -389,7 +392,7 @@ pub fn link_rust(source: &str, out: &std::path::Path) -> Result<()> {
 /// refusal for `Feed::LiveInputs` as an `Err` before this function's own `child.wait()` runs, so
 /// that path never reaches here at all.
 fn run_subprocess(mut cmd: std::process::Command, label: &str, feed: &Feed) -> Result<String> {
-    let live = matches!(feed, Feed::Live | Feed::LiveInputs(_));
+    let live = matches!(feed, Feed::Live | Feed::LiveInputs(..));
     let mut child = cmd
         .stdin(feed.stdio())
         .stdout(if live {
@@ -479,6 +482,7 @@ fn run_jq(source: &str, inv: JqInvocation, feed: &Feed) -> Result<String> {
 
 fn run_lua(
     source: &str,
+    enums: &ty::Enums,
     value: Option<&serde_json::Value>,
     inputs_values: Option<&Vec<serde_json::Value>>,
     inputs_elem_ty: Option<&ty::Type>,
@@ -504,12 +508,13 @@ fn run_lua(
         // this correct for a fixture-tested fused program too: `feed` is `Feed::Text` there, the
         // same raw bytes a subprocess backend would have been piped.
         let elem_ty = elem_ty.clone();
+        let enums = enums.clone();
         let reader: RefCell<Box<dyn std::io::BufRead>> = RefCell::new(match feed {
             Feed::Live => Box::new(std::io::BufReader::new(std::io::stdin())),
             Feed::Text(text) => Box::new(std::io::Cursor::new(text.clone().into_bytes())),
             // `run_on` never builds this feed for the Lua backend: `live_inputs` there stays
             // `Feed::Live`, since this function's own reader validates each record itself.
-            Feed::LiveInputs(_) => unreachable!("run_on keeps the Lua backend on Feed::Live"),
+            Feed::LiveInputs(..) => unreachable!("run_on keeps the Lua backend on Feed::Live"),
         });
         let next_input = lua.create_function(move |lua, ()| {
             use std::io::BufRead;
@@ -528,7 +533,8 @@ fn run_lua(
                 }
                 let value: serde_json::Value =
                     serde_json::from_str(line).map_err(mlua::Error::external)?;
-                input::validate(&value, &elem_ty, "inputs").map_err(mlua::Error::RuntimeError)?;
+                input::validate(&enums, &value, &elem_ty, "inputs")
+                    .map_err(mlua::Error::RuntimeError)?;
                 return input::to_lua(lua, &value);
             }
         })?;

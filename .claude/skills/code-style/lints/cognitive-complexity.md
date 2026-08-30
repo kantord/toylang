@@ -115,3 +115,19 @@ otherwise-shape-1 dispatch from absent to 11/10. Extracting it to a `logic()` me
 `Kind::Logic { op, lhs, rhs } => self.logic(*op, lhs, rhs)?` now, exactly parallel to its
 neighbour. The other six backends spell the same node as one `format!`, added no branching, and
 their scores came out unchanged -- shape 1, inherited, same as every instance above.
+
+The recursive-enum-codegen session (issue #94) is a seventh instance, and names a second
+mechanism the metric has: clippy *subtracts* early returns, so deleting one raises the score.
+Replacing `emit_llvm.rs`'s `Kind::EnumLit` `let Type::Enum { variants, .. } = &t.ty else {
+return Err(..) }` with a registry lookup that cannot fail removed a return and pushed `expr()`
+from absent to 11/10 -- no branch was added anywhere. Settled the same case-2 way as every
+instance above, by extracting the arm's body into `enum_lit()` beside the `opt_lit()` the
+issue-62 session left there. Watch for this whenever a change *removes* a guard: the count can
+go up while the function gets simpler, and the fix is the same extraction either way.
+
+The same session's `emit()` in `emit_go.rs` (28 -> 29) and `emit_rs.rs` (21 -> 22) took one
+point each from a new `for` loop emitting the recursive printers -- a loop costs the metric a
+point the way #75's `if`-chain does. Both went back to their merge-base scores by moving the
+loop into a `printers()` method, which is also what the four dynamic backends already spell as
+a function of their own. Reach for it whenever `emit()` grows a loop: this file's siblings
+already say where such a loop lives.

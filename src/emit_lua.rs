@@ -1,6 +1,6 @@
 use crate::ast::BinOp;
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
-use crate::ty::Type;
+use crate::ty::{self, Enums, Type};
 
 /// The global the input value is bound to before the chunk runs. Unspellable in source, since
 /// every source name is prefixed.
@@ -229,6 +229,7 @@ end
 "#;
 
 pub fn emit(program: &Program) -> String {
+    let enums = &program.enums;
     let mut out = String::new();
 
     let used = used_helpers(program);
@@ -236,7 +237,7 @@ pub fn emit(program: &Program) -> String {
     // string inside a Vec is quoted while a bare string is not.
     let structured = program.body.ty != Type::Str;
     let quote = (structured && needs_quote(&program.body.ty)) || used.jsonlines;
-    let join = (structured && contains_vec(&program.body.ty)) || used.jsonlines;
+    let join = (structured && contains_vec(enums, &program.body.ty)) || used.jsonlines;
     for (on, text) in [
         (used.select, SELECT_HELPER),
         (used.field, FIELD_HELPER),
@@ -262,6 +263,8 @@ pub fn emit(program: &Program) -> String {
         }
     }
 
+    out.push_str(&printers(program));
+
     // All names are declared before any body, because the checker collects signatures before
     // checking bodies and so accepts a call to a function defined further down. Emitting
     // `local function` in source order would leave that call resolving to a nil global.
@@ -275,16 +278,19 @@ pub fn emit(program: &Program) -> String {
             "function {}({})\n  return {}\nend\n",
             user(&f.name),
             f.param.as_deref().map_or_else(String::new, user),
-            expr(&f.body)
+            expr(enums, &f.body)
         ));
     }
 
     if let Some(fusion) = tir::fusion(program) {
         out.push_str(&fused_main(program, &fusion));
     } else {
-        let body = expr(&program.body);
+        let body = expr(enums, &program.body);
         if structured {
-            out.push_str(&format!("print({})\n", show(&program.body.ty, &body, 0)));
+            out.push_str(&format!(
+                "print({})\n",
+                show(enums, &program.body.ty, &body, 0)
+            ));
         } else {
             out.push_str(&format!("print({body})\n"));
         }
@@ -297,6 +303,7 @@ pub fn emit(program: &Program) -> String {
 /// doc comment for why the parsing itself is not written here); for `lines`, `io.lines()`
 /// itself, exactly as the eager collect helper reads it.
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
+    let enums = &program.enums;
     let mut out = String::new();
     let (mut current, mut current_ty) = match fusion.source {
         tir::Source::Inputs => {
@@ -318,14 +325,14 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
         match stage {
             tir::Stage::Map { param, body } => {
                 out.push_str(&format!("  local {} = {}\n", local(*param), current));
-                current = expr(body);
+                current = expr(enums, body);
                 current_ty = body.ty.clone();
             }
             tir::Stage::Select { param, pred } => {
                 out.push_str(&format!("  local {} = {}\n", local(*param), current));
                 out.push_str(&format!(
                     "  if not ({}) then goto tl_continue end\n",
-                    expr(pred)
+                    expr(enums, pred)
                 ));
                 current = local(*param);
             }
@@ -334,7 +341,7 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     // Always the JSON rendering, never the top-level raw-Str rule: each line is one JSON value
     // (that is what jsonlines promises), so a Str element prints quoted here exactly as the
     // eager path's per-element `show` prints it. Only whole-program results print raw.
-    let printed = show(&current_ty, &current, 0);
+    let printed = show(enums, &current_ty, &current, 0);
     out.push_str(&format!("  print({printed})\n"));
     out.push_str("  ::tl_continue::\n");
     out.push_str("end\n");
@@ -345,7 +352,7 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
 /// say whether it is an array or a record -- an empty one is indistinguishable either way -- so
 /// asking it was always going to disagree with a backend that knows. See emit_js for the same
 /// function, and step 4 onwards, where a native target has nothing to ask.
-fn show(ty: &Type, value: &str, depth: usize) -> String {
+fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
     match ty {
         Type::Param(_) => unreachable!("params are substituted before emit"),
         // The checker refuses a program whose result contains a stream, since there is nothing to
@@ -358,7 +365,7 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
             let e = format!("e{depth}");
             format!(
                 "tl_join({value}, function({e}) return {} end)",
-                show(elem, &e, depth + 1)
+                show(enums, elem, &e, depth + 1)
             )
         }
         Type::Enum { .. } if ty.as_opt().is_some() => {
@@ -366,42 +373,13 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
             let v = format!("o{depth}");
             format!(
                 "(function({v}) if {v} == \"none\" then return \"null\" else return {} end end)({value})",
-                show(inner, &format!("{v}.some"), depth + 1)
+                show(enums, inner, &format!("{v}.some"), depth + 1)
             )
         }
-        // One type, two runtime shapes (ADR 0009): a unit variant is a bare string, a payload
-        // variant a single-key table, so this is the one printer that has to look before it
-        // renders. Only the shape is inspected; which payload follows which key is the type's.
-        Type::Enum { variants, .. } => {
-            let n = format!("n{depth}");
-            let payloads: Vec<&(String, Option<Type>)> =
-                variants.iter().filter(|(_, p)| p.is_some()).collect();
-            if payloads.is_empty() {
-                return format!("tl_quote({value})");
-            }
-            let mut body = String::new();
-            if payloads.len() < variants.len() {
-                body.push_str(&format!(
-                    "if type({n}) == \"string\" then return tl_quote({n}) end "
-                ));
-            }
-            for (i, (vname, pty)) in payloads.iter().enumerate() {
-                let pty = pty.as_ref().expect("filtered to payload variants");
-                let read = format!("{n}[{}]", lua_string(vname));
-                let wrapped = format!(
-                    "({} .. {} .. \"}}\")",
-                    lua_string(&format!("{{\"{vname}\":")),
-                    show(pty, &read, depth + 1)
-                );
-                if i + 1 < payloads.len() {
-                    body.push_str(&format!("if {read} ~= nil then return {wrapped} end "));
-                } else {
-                    // The last payload variant needs no test: the type says nothing else is left.
-                    body.push_str(&format!("return {wrapped} "));
-                }
-            }
-            format!("(function({n}) {body}end)({value})")
-        }
+        // A recursive enum prints through a function of its own (`printers`), because expanding
+        // one here has no bottom: its payload leads back to the same type.
+        Type::Enum { .. } if ty::is_recursive(enums, ty) => format!("{}({value})", ty.show_fn()),
+        Type::Enum { .. } => show_enum(enums, ty, value, depth),
         Type::Record(fields) => {
             // `..` needs an operand on each side, so a record with no fields cannot be
             // built by joining nothing. The other backends survive this by construction.
@@ -415,12 +393,64 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
                 .map(|(name, fty)| {
                     let read = format!("{value}[{}]", lua_string(name));
                     let key = lua_string(&format!("\"{name}\":"));
-                    format!("{key} .. {}", show(fty, &read, depth + 1))
+                    format!("{key} .. {}", show(enums, fty, &read, depth + 1))
                 })
                 .collect();
             format!("(\"{{\" .. {} .. \"}}\")", parts.join(" .. \",\" .. "))
         }
     }
+}
+
+/// The printer for one enum, inline. One type, two runtime shapes (ADR 0009): a unit variant is
+/// a bare string, a payload variant a single-key table, so this is the one printer that has to
+/// look before it renders. Only the shape is inspected; which payload follows which key is the
+/// type's.
+fn show_enum(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
+    let variants = ty::variants(enums, ty);
+    let n = format!("n{depth}");
+    let payloads: Vec<&(String, Option<Type>)> =
+        variants.iter().filter(|(_, p)| p.is_some()).collect();
+    if payloads.is_empty() {
+        return format!("tl_quote({value})");
+    }
+    let mut body = String::new();
+    if payloads.len() < variants.len() {
+        body.push_str(&format!(
+            "if type({n}) == \"string\" then return tl_quote({n}) end "
+        ));
+    }
+    for (i, (vname, pty)) in payloads.iter().enumerate() {
+        let pty = pty.as_ref().expect("filtered to payload variants");
+        let read = format!("{n}[{}]", lua_string(vname));
+        let wrapped = format!(
+            "({} .. {} .. \"}}\")",
+            lua_string(&format!("{{\"{vname}\":")),
+            show(enums, pty, &read, depth + 1)
+        );
+        if i + 1 < payloads.len() {
+            body.push_str(&format!("if {read} ~= nil then return {wrapped} end "));
+        } else {
+            // The last payload variant needs no test: the type says nothing else is left.
+            body.push_str(&format!("return {wrapped} "));
+        }
+    }
+    format!("(function({n}) {body}end)({value})")
+}
+
+
+/// A named printer for every recursive enum the program prints. The call in `show` above is
+/// what a nested occurrence renders as, so the recursion in the type becomes recursion in the
+/// emitted function rather than in this compiler (kantord/toylang#94).
+fn printers(program: &Program) -> String {
+    let mut out = String::new();
+    for ty in tir::printed_recursive_enums(program) {
+        out.push_str(&format!(
+            "function {}(v)\n  return {}\nend\n",
+            ty.show_fn(),
+            show_enum(&program.enums, &ty, "v", 0)
+        ));
+    }
+    out
 }
 
 fn needs_quote(ty: &Type) -> bool {
@@ -434,13 +464,15 @@ fn needs_quote(ty: &Type) -> bool {
     }
 }
 
-fn contains_vec(ty: &Type) -> bool {
+fn contains_vec(enums: &Enums, ty: &Type) -> bool {
     match ty {
         Type::Vec(_) => true,
-        Type::Record(fields) => fields.iter().any(|(_, t)| contains_vec(t)),
-        Type::Enum { variants, .. } => variants
+        Type::Record(fields) => fields.iter().any(|(_, t)| contains_vec(enums, t)),
+        // The Vec arm answers before this one can loop: a self-reference is legal only behind
+        // a Vec, so a recursive enum's first payload hop is one.
+        Type::Enum { .. } => ty::variants(enums, ty)
             .iter()
-            .any(|(_, p)| p.as_ref().is_some_and(contains_vec)),
+            .any(|(_, p)| p.as_ref().is_some_and(|p| contains_vec(enums, p))),
         _ => false,
     }
 }
@@ -479,11 +511,11 @@ struct Helpers {
 /// Equality on a composite is structural, which Lua's `==` on two tables is not -- it compares
 /// references (kantord/toylang#68). Ordering on a composite is a separate open question and
 /// keeps whatever Lua does with it.
-fn compare(op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
+fn compare(enums: &Enums, op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
     if !lhs.ty.is_composite() || !matches!(op, BinOp::Eq | BinOp::Ne) {
-        return format!("({} {} {})", expr(lhs), lua_op(op), expr(rhs));
+        return format!("({} {} {})", expr(enums, lhs), lua_op(op), expr(enums, rhs));
     }
-    let call = format!("tl_eq({}, {})", expr(lhs), expr(rhs));
+    let call = format!("tl_eq({}, {})", expr(enums, lhs), expr(enums, rhs));
     match op {
         BinOp::Ne => format!("(not {call})"),
         _ => call,
@@ -624,7 +656,7 @@ fn arm_return(body: String, partial: bool) -> String {
     }
 }
 
-fn expr(t: &Tir) -> String {
+fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => lua_string(s),
         Kind::Int(n) => n.to_string(),
@@ -639,7 +671,7 @@ fn expr(t: &Tir) -> String {
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
-                .map(|(name, value)| format!("[{}] = {}", lua_string(name), expr(value)))
+                .map(|(name, value)| format!("[{}] = {}", lua_string(name), expr(enums, value)))
                 .collect();
             // Parenthesised because Lua will not index a table constructor: `{...}["a"]` does
             // not parse, and the printer reads every field straight off the value.
@@ -650,58 +682,58 @@ fn expr(t: &Tir) -> String {
         // variant the single-key table a record already is.
         Kind::EnumLit { variant, payload } => match payload {
             None => lua_string(variant),
-            Some(p) => format!("({{[{}] = {}}})", lua_string(variant), expr(p)),
+            Some(p) => format!("({{[{}] = {}}})", lua_string(variant), expr(enums, p)),
         },
 
         Kind::VecLit(items) => {
-            let parts: Vec<String> = items.iter().map(expr).collect();
+            let parts: Vec<String> = items.iter().map(|i| expr(enums, i)).collect();
             format!("{{{}}}", parts.join(", "))
         }
         Kind::Call { func, arg } => format!(
             "{}({})",
             user(func),
-            arg.as_deref().map_or_else(String::new, expr)
+            arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
         ),
         // Parenthesised because there is more than one operator, and Lua's precedence is not
         // toylang's to rely on.
-        Kind::Concat(l, r) => format!("({} .. {})", expr(l), expr(r)),
-        Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(lhs), expr(rhs)),
+        Kind::Concat(l, r) => format!("({} .. {})", expr(enums, l), expr(enums, r)),
+        Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
         Kind::Cond {
             cond,
             then,
             otherwise,
         } => format!(
             "(function() if {} then return {} else return {} end end)()",
-            expr(cond),
-            expr(then),
-            expr(otherwise)
+            expr(enums, cond),
+            expr(enums, then),
+            expr(enums, otherwise)
         ),
         // Lua's `and`/`or` yield an operand rather than a boolean, which is the same thing here:
         // both operands are already booleans, so whichever one comes back is one.
-        Kind::Logic { op, lhs, rhs } => format!("({} {op} {})", expr(lhs), expr(rhs)),
-        Kind::Not(base) => format!("(not {})", expr(base)),
+        Kind::Logic { op, lhs, rhs } => format!("({} {op} {})", expr(enums, lhs), expr(enums, rhs)),
+        Kind::Not(base) => format!("(not {})", expr(enums, base)),
         Kind::Builtin { which, arg } => match which {
-            Builtin::IntToStr => format!("tostring({})", expr(arg)),
+            Builtin::IntToStr => format!("tostring({})", expr(enums, arg)),
             // Lua's integers are 64-bit already; an Int just lives in the low half.
-            Builtin::IntToI64 => expr(arg),
-            Builtin::Chars => format!("tl_chars({})", expr(arg)),
-            Builtin::Range => format!("tl_range({})", expr(arg)),
+            Builtin::IntToI64 => expr(enums, arg),
+            Builtin::Chars => format!("tl_chars({})", expr(enums, arg)),
+            Builtin::Range => format!("tl_range({})", expr(enums, arg)),
             Builtin::JsonLines => {
                 let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 let e = "e0".to_string();
                 format!(
                     "tl_jsonlines({}, function({e}) return {} end)",
-                    expr(arg),
-                    show(elem, &e, 1)
+                    expr(enums, arg),
+                    show(enums, elem, &e, 1)
                 )
             }
             // The source already materialized, so the exit has nothing left to do.
-            Builtin::Collect => expr(arg),
-            Builtin::Extent => format!("#{}", expr(arg)),
-            Builtin::Tail => format!("tl_tail({})", expr(arg)),
-            Builtin::Concat => format!("tl_vec_concat({})", expr(arg)),
-            Builtin::Sort => format!("tl_sort({})", expr(arg)),
-            Builtin::Reverse => format!("tl_reverse({})", expr(arg)),
+            Builtin::Collect => expr(enums, arg),
+            Builtin::Extent => format!("#{}", expr(enums, arg)),
+            Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
+            Builtin::Concat => format!("tl_vec_concat({})", expr(enums, arg)),
+            Builtin::Sort => format!("tl_sort({})", expr(enums, arg)),
+            Builtin::Reverse => format!("tl_reverse({})", expr(enums, arg)),
             // The names come from the checked type, not the table value, so `arg` runs as the
             // function literal's ignored parameter -- the same IIFE shape `Bind` uses -- purely
             // for whatever else it does.
@@ -713,11 +745,11 @@ fn expr(t: &Tir) -> String {
                 format!(
                     "(function(_) return {{{}}} end)({})",
                     names.join(", "),
-                    expr(arg)
+                    expr(enums, arg)
                 )
             }
         },
-        Kind::Compare { op, lhs, rhs } => compare(*op, lhs, rhs),
+        Kind::Compare { op, lhs, rhs } => compare(enums, *op, lhs, rhs),
         // Lua has no expression-level `let`, so the binding becomes a call.
         Kind::Bind {
             local: id,
@@ -727,8 +759,8 @@ fn expr(t: &Tir) -> String {
             format!(
                 "(function({}) return {} end)({})",
                 local(*id),
-                expr(body),
-                expr(value)
+                expr(enums, body),
+                expr(enums, value)
             )
         }
         Kind::Map {
@@ -737,9 +769,9 @@ fn expr(t: &Tir) -> String {
             body,
         } => format!(
             "tl_map({}, function({}) return {} end)",
-            expr(source),
+            expr(enums, source),
             local(*param),
-            expr(body)
+            expr(enums, body)
         ),
         Kind::Select {
             source,
@@ -747,14 +779,18 @@ fn expr(t: &Tir) -> String {
             pred,
         } => format!(
             "tl_select({}, function({}) return {} end)",
-            expr(source),
+            expr(enums, source),
             local(*param),
-            expr(pred)
+            expr(enums, pred)
         ),
         // The depth comes from the type on the node below, so it cannot disagree with it, and
         // the emitted helper is told the answer rather than inspecting the value for it.
         Kind::Unwrap { base } => {
-            format!("tl_unwrap({}, {})", expr(base), tir::vec_depth(&base.ty))
+            format!(
+                "tl_unwrap({}, {})",
+                expr(enums, base),
+                tir::vec_depth(&base.ty)
+            )
         }
         // Opt's reorder pass (kantord/toylang#66): the same `== "none"`/`.some` shape the
         // printer and Match already read, generalised to rebuild the table instead.
@@ -765,22 +801,32 @@ fn expr(t: &Tir) -> String {
         } => format!(
             "(function(__opt) if __opt == \"none\" then return \"none\" else local {} = __opt.some return {{some = {}}} end end)({})",
             local(*param),
-            expr(body),
-            expr(source)
+            expr(enums, body),
+            expr(enums, source)
         ),
         // A Lua table of records is a table of tables, so collapsing needs no gather here;
         // `elem_is_record` matters only where the columns are stored apart.
         Kind::Index {
             base, index, depth, ..
         } => {
-            format!("tl_at({}, {}, {})", expr(base), expr(index), depth)
+            format!(
+                "tl_at({}, {}, {})",
+                expr(enums, base),
+                expr(enums, index),
+                depth
+            )
         }
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);
             if depth == 0 {
-                format!("{}[{}]", expr(base), lua_string(name))
+                format!("{}[{}]", expr(enums, base), lua_string(name))
             } else {
-                format!("tl_field({}, {}, {})", expr(base), lua_string(name), depth)
+                format!(
+                    "tl_field({}, {}, {})",
+                    expr(enums, base),
+                    lua_string(name),
+                    depth
+                )
             }
         }
         // A chain of tests over the subject (a plain local, so re-reading it is free): string
@@ -793,7 +839,7 @@ fn expr(t: &Tir) -> String {
             arms,
             partial,
         } => {
-            let subj = expr(subject);
+            let subj = expr(enums, subject);
             let mut body = String::new();
             for (i, arm) in arms.iter().enumerate() {
                 let mut run = String::new();
@@ -808,13 +854,13 @@ fn expr(t: &Tir) -> String {
                         lua_string(variant)
                     ));
                 }
-                run.push_str(&arm_return(expr(&arm.body), *partial));
+                run.push_str(&arm_return(expr(enums, &arm.body), *partial));
                 let test = match (&arm.variant, &arm.guard) {
                     (Some(v), _) if arm.payload.is_some() => {
                         Some(format!("{subj}[{}] ~= nil", lua_string(v)))
                     }
                     (Some(v), _) => Some(format!("{subj} == {}", lua_string(v))),
-                    (None, Some(g)) => Some(expr(g)),
+                    (None, Some(g)) => Some(expr(enums, g)),
                     (None, None) => None,
                 };
                 match test {

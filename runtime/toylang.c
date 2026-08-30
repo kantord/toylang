@@ -249,7 +249,10 @@ tl_str *tl_str_join(const tl_vec *parts, const tl_str *open, const tl_str *sep,
  *   {n,name:T,...}   record with n fields, in the type's declared order
  *   e{n,Name,variant,variant:T,...}   enum with n variants, in declaration order (the
  *                variant's position is its tag); a variant with no `:T` is a unit variant.
- *                Name is carried only so a mismatch can say which enum it expected.
+ *                Name is what a mismatch says it expected, and what `@` names.
+ *   @Name        the enum called Name, whose descriptor is still open around this one. A
+ *                recursive enum's payload names itself back rather than spelling itself out
+ *                again, which would have no end (kantord/toylang#94).
  *
  * It re-validates rather than trusting a pre-checked shape, so a built binary works on its own
  * with `./adults < data.json` and not only under the test harness. A mismatch names the path
@@ -260,6 +263,18 @@ typedef struct {
     const char *p;
     const char *end;
 } tl_json;
+
+/* The enums whose descriptors are open around the type being parsed, innermost first. `@Name`
+ * resolves by walking up this chain, so a name is always the nearest enclosing enum of that
+ * name -- which is what makes two instantiations of one generic enum, nested inside each other,
+ * resolve to the right one. */
+typedef struct tl_open_enum {
+    const char *name;
+    int64_t name_len;
+    /* The `e{...}` this name was opened at, which is what `@Name` parses as. */
+    const char *desc;
+    const struct tl_open_enum *up;
+} tl_open_enum;
 
 static void tl_fail(const char *what, const char *path) {
     char buf[512];
@@ -310,6 +325,13 @@ static const char *tl_type_skip(const char *t) {
             return t + 1;
         case '[':
             return tl_type_skip(t + 1);
+        case '@':
+            /* A back-reference is one token: the name runs to whatever delimits the type. */
+            t++;
+            while (*t != ',' && *t != '}') {
+                t++;
+            }
+            return t;
         case '{': {
             t++;
             int64_t n = 0;
@@ -355,7 +377,8 @@ static const char *tl_type_skip(const char *t) {
     }
 }
 
-static int64_t tl_parse(tl_json *j, const char *t, const char *path);
+static int64_t tl_parse(tl_json *j, const char *t, const char *path,
+                        const tl_open_enum *scope);
 
 /* Consumes exactly 4 hex digits at j->p and returns them as a UTF-16 code unit. */
 static uint32_t tl_hex4(tl_json *j, const char *path) {
@@ -492,7 +515,8 @@ static void tl_skip_value(tl_json *j, const char *path) {
     }
 }
 
-static int64_t tl_parse_record(tl_json *j, const char *t, const char *path) {
+static int64_t tl_parse_record(tl_json *j, const char *t, const char *path,
+                               const tl_open_enum *scope) {
     /* Field names and types, read off the descriptor once. */
     t++;
     int64_t n = 0;
@@ -546,7 +570,7 @@ static int64_t tl_parse_record(tl_json *j, const char *t, const char *path) {
             } else {
                 char sub[256];
                 snprintf(sub, sizeof sub, "%s.%.*s", path, (int)key->len, key->ptr);
-                rec[match] = tl_parse(j, types[match], sub);
+                rec[match] = tl_parse(j, types[match], sub, scope);
                 seen[match] = 1;
             }
 
@@ -573,7 +597,9 @@ static int64_t tl_parse_record(tl_json *j, const char *t, const char *path) {
 /* One enum value spans two JSON shapes (ADR 0009): a bare string for a unit variant, a
  * single-key object for a payload one. What comes back is the same two-slot box the compiler
  * builds for a constructed enum: slot 0 the variant's declaration index, slot 1 the payload. */
-static int64_t tl_parse_enum(tl_json *j, const char *t, const char *path) {
+static int64_t tl_parse_enum(tl_json *j, const char *t, const char *path,
+                             const tl_open_enum *scope) {
+    const char *self = t;
     t += 2; /* past "e{" */
     int64_t n = 0;
     while (*t != ',') {
@@ -634,7 +660,9 @@ static int64_t tl_parse_enum(tl_json *j, const char *t, const char *path) {
                 snprintf(sub, sizeof sub, "%s.%.*s", path, (int)key->len, key->ptr);
                 int64_t *box = tl_rec_new(2);
                 box[0] = v;
-                box[1] = tl_parse(j, types[v], sub);
+                /* Open around the payload, so a `@` inside it names this enum. */
+                tl_open_enum open = {ename, ename_len, self, scope};
+                box[1] = tl_parse(j, types[v], sub, &open);
                 /* One key is the whole shape, so the wrapper closes right here. */
                 tl_expect(j, '}', path);
                 return (int64_t)box;
@@ -654,7 +682,8 @@ static int64_t tl_parse_enum(tl_json *j, const char *t, const char *path) {
 /* A Vec of records is parsed element by element and then transposed into columns. Filling the
  * columns directly would avoid materialising each record, and is worth doing when the parser
  * stops being the cheapest part of reading input. */
-static int64_t tl_parse_vec(tl_json *j, const char *t, const char *path) {
+static int64_t tl_parse_vec(tl_json *j, const char *t, const char *path,
+                            const tl_open_enum *scope) {
     const char *elem = t + 1;
     /* Whether the element is a record is a separate question from how many columns it has: a
      * record with one field also has one column, so the count cannot stand in for the test. */
@@ -677,7 +706,7 @@ static int64_t tl_parse_vec(tl_json *j, const char *t, const char *path) {
         for (;;) {
             char sub[256];
             snprintf(sub, sizeof sub, "%s[%lld]", path, (long long)items.len);
-            tl_list_push(&items, tl_parse(j, elem, sub));
+            tl_list_push(&items, tl_parse(j, elem, sub, scope));
             tl_skip_ws(j);
             if (j->p < j->end && *j->p == ',') {
                 j->p++;
@@ -702,7 +731,8 @@ static int64_t tl_parse_vec(tl_json *j, const char *t, const char *path) {
     return (int64_t)v;
 }
 
-static int64_t tl_parse(tl_json *j, const char *t, const char *path) {
+static int64_t tl_parse(tl_json *j, const char *t, const char *path,
+                        const tl_open_enum *scope) {
     tl_skip_ws(j);
     if (j->p >= j->end) {
         tl_fail("unexpected end of input", path);
@@ -754,15 +784,30 @@ static int64_t tl_parse(tl_json *j, const char *t, const char *path) {
             if (*j->p != '[') {
                 tl_fail("expected an array", path);
             }
-            return tl_parse_vec(j, t, path);
+            return tl_parse_vec(j, t, path, scope);
         case '{':
             if (*j->p != '{') {
                 tl_fail("expected an object", path);
             }
-            return tl_parse_record(j, t, path);
+            return tl_parse_record(j, t, path, scope);
         case 'e':
             /* Which of its two shapes arrived is tl_parse_enum's own question. */
-            return tl_parse_enum(j, t, path);
+            return tl_parse_enum(j, t, path, scope);
+        case '@': {
+            /* The enum this names is open around here, and its descriptor is where to resume. */
+            const char *name = t + 1;
+            int64_t len = 0;
+            while (name[len] != ',' && name[len] != '}') {
+                len++;
+            }
+            for (const tl_open_enum *e = scope; e != NULL; e = e->up) {
+                if (e->name_len == len && memcmp(e->name, name, (size_t)len) == 0) {
+                    return tl_parse(j, e->desc, path, scope);
+                }
+            }
+            tl_fail("bad type descriptor", path);
+            return 0;
+        }
         default:
             tl_fail("bad type descriptor", path);
             return 0;
@@ -797,7 +842,7 @@ int64_t tl_read_input(const tl_str *descriptor) {
     t[descriptor->len] = 0;
 
     tl_json j = {buf, buf + len};
-    int64_t value = tl_parse(&j, t, "input");
+    int64_t value = tl_parse(&j, t, "input", NULL);
     tl_skip_ws(&j);
     if (j.p != j.end) {
         tl_fail("trailing content after the value", "input");
@@ -838,7 +883,7 @@ tl_vec *tl_read_inputs(const tl_str *descriptor) {
             continue;
         }
         j.p = line;
-        int64_t value = tl_parse(&j, t, "inputs");
+        int64_t value = tl_parse(&j, t, "inputs", NULL);
         tl_skip_ws(&j);
         if (j.p != j.end) {
             tl_fail("trailing content after the value", "inputs");
@@ -893,7 +938,7 @@ int tl_read_one_input(const tl_str *descriptor, int64_t *out) {
             continue;
         }
         j.p = line;
-        int64_t value = tl_parse(&j, t, "inputs");
+        int64_t value = tl_parse(&j, t, "inputs", NULL);
         tl_skip_ws(&j);
         if (j.p != j.end) {
             tl_fail("trailing content after the value", "inputs");

@@ -24,7 +24,7 @@ use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 
 use crate::ast::{BinOp, LogicOp};
 use crate::tir::{self, Builtin, Func, Fusion, Kind, LocalId, Program, Stage, Tir};
-use crate::ty::Type;
+use crate::ty::{self, Enums, Type};
 
 /// The C source linked into every native binary.
 ///
@@ -90,7 +90,7 @@ enum Slot<'ctx> {
     },
 }
 
-struct Emitter<'ctx> {
+struct Emitter<'ctx, 'p> {
     ctx: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
@@ -104,10 +104,15 @@ struct Emitter<'ctx> {
     /// stdin now that a program can spell `input` more than once.
     input_slot: Option<PointerValue<'ctx>>,
     next_global: usize,
+    /// Every enum the program declared, for `ty::variants`: what a `Type::Enum` carries is a
+    /// placeholder wherever a recursive enum's payload reaches back to itself.
+    enums: &'p Enums,
+    /// The printer each recursive enum has of its own, by `Type::ident`. See `declare_printers`.
+    printers: HashMap<String, FunctionValue<'ctx>>,
 }
 
-impl<'ctx> Emitter<'ctx> {
-    fn new(ctx: &'ctx Context) -> Emitter<'ctx> {
+impl<'ctx> Emitter<'ctx, '_> {
+    fn new<'p>(ctx: &'ctx Context, enums: &'p Enums) -> Emitter<'ctx, 'p> {
         let module = ctx.create_module("toylang");
         let ptr = ctx.ptr_type(AddressSpace::default());
         let i64t = ctx.i64_type();
@@ -274,6 +279,8 @@ impl<'ctx> Emitter<'ctx> {
             params: HashMap::new(),
             input_slot: None,
             next_global: 0,
+            enums,
+            printers: HashMap::new(),
         }
     }
 
@@ -316,45 +323,6 @@ impl<'ctx> Emitter<'ctx> {
         match elem {
             Type::Record(fields) => fields.len() as u64,
             _ => 1,
-        }
-    }
-
-    /// The type descriptor the runtime's JSON parser reads, so it only ever looks for the shape
-    /// the program declared. See the grammar in runtime/toylang.c.
-    fn descriptor(ty: &Type) -> String {
-        match ty {
-            Type::Param(_) => unreachable!("params are substituted before emit"),
-            // Stream is unspellable in a type annotation, so `input`'s declared type -- the only
-            // thing this function is ever called on -- can never contain one.
-            Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
-            Type::Str => "s".to_string(),
-            Type::Int => "i".to_string(),
-            // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.
-            Type::Int64 => unreachable!("input cannot contain an Int64, refused by the checker"),
-            Type::Bool => "b".to_string(),
-            // The checker refuses Char anywhere in an input type: it has no wire form.
-            Type::Char => unreachable!("input cannot contain a Char, refused by the checker"),
-            Type::Vec(elem) => format!("[{}", Self::descriptor(elem)),
-            // Opt has no spelling in the type syntax, so an input type can never contain one.
-            // Declaration order, because the entry's position is the tag the compiled code
-            // tests against. The name rides along only for the runtime's mismatch messages.
-            Type::Enum { name, variants, .. } => {
-                let body: Vec<String> = variants
-                    .iter()
-                    .map(|(v, payload)| match payload {
-                        None => v.clone(),
-                        Some(p) => format!("{v}:{}", Self::descriptor(p)),
-                    })
-                    .collect();
-                format!("e{{{},{name},{}}}", variants.len(), body.join(","))
-            }
-            Type::Record(fields) => {
-                let body: Vec<String> = fields
-                    .iter()
-                    .map(|(name, t)| format!("{name}:{}", Self::descriptor(t)))
-                    .collect();
-                format!("{{{},{}}}", fields.len(), body.join(","))
-            }
         }
     }
 
@@ -1042,70 +1010,13 @@ impl<'ctx> Emitter<'ctx> {
                     .map_err(|e| e.to_string())?
             }
 
-            // The tag picks between the two JSON shapes (ADR 0009): a unit variant renders as
-            // its quoted name, a payload variant as the single-key wrapper. A chain of branches
-            // rather than a select, because rendering a payload allocates and loops; the last
-            // variant needs no test, since the type says nothing else is left.
-            Type::Enum { variants, .. } => {
-                if variants.is_empty() {
-                    return Err(unsupported("printing an enum with no variants"));
-                }
-                let function = self
-                    .builder
-                    .get_insert_block()
-                    .and_then(|b| b.get_parent())
-                    .ok_or("no function to branch in")?;
-                let i64t = self.ctx.i64_type();
-                let ptr_ty = self.ctx.ptr_type(AddressSpace::default());
-                let slot = self
-                    .builder
-                    .build_alloca(ptr_ty, "shown")
-                    .map_err(|e| e.to_string())?;
-                let tag = self
-                    .call_rt(self.rt.rec_get, &[value, i64t.const_zero().into()], "tag")?
-                    .into_int_value();
-                let done = self.ctx.append_basic_block(function, "enum.done");
-
-                for (i, (vname, payload)) in variants.iter().enumerate() {
-                    let arm = self.ctx.append_basic_block(function, "enum.arm");
-                    if i + 1 < variants.len() {
-                        let next = self.ctx.append_basic_block(function, "enum.next");
-                        let is = self
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::EQ,
-                                tag,
-                                i64t.const_int(i as u64, false),
-                                "is",
-                            )
-                            .map_err(|e| e.to_string())?;
-                        self.builder
-                            .build_conditional_branch(is, arm, next)
-                            .map_err(|e| e.to_string())?;
-                        self.builder.position_at_end(arm);
-                        self.enum_arm(value, vname, payload, slot)?;
-                        self.builder
-                            .build_unconditional_branch(done)
-                            .map_err(|e| e.to_string())?;
-                        self.builder.position_at_end(next);
-                    } else {
-                        self.builder
-                            .build_unconditional_branch(arm)
-                            .map_err(|e| e.to_string())?;
-                        self.builder.position_at_end(arm);
-                        self.enum_arm(value, vname, payload, slot)?;
-                        self.builder
-                            .build_unconditional_branch(done)
-                            .map_err(|e| e.to_string())?;
-                    }
-                }
-
-                self.builder.position_at_end(done);
-                self.builder
-                    .build_load(ptr_ty, slot, "shown")
-                    .map_err(|e| e.to_string())?
+            // A recursive enum prints through a function of its own (`declare_printers`),
+            // because expanding one here has no bottom: its payload leads back to the same type.
+            Type::Enum { .. } if self.printers.contains_key(&ty.ident()) => {
+                let f = self.printers[&ty.ident()];
+                self.call_rt(f, &[value], "shown")?
             }
-
+            Type::Enum { .. } => self.show_enum(value, ty)?,
             // Keys are known and ordered at compile time, exactly as on the other two
             // backends, so nothing enumerates fields at runtime.
             Type::Record(fields) => {
@@ -1151,6 +1062,70 @@ impl<'ctx> Emitter<'ctx> {
                 )?
             }
         })
+    }
+
+    /// The printer for one enum, inline. The tag picks between the two JSON shapes (ADR 0009):
+    /// a unit variant renders as its quoted name, a payload variant as the single-key wrapper.
+    /// A chain of branches rather than a select, because rendering a payload allocates and
+    /// loops; the last variant needs no test, since the type says nothing else is left.
+    fn show_enum(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let variants = ty::variants(self.enums, ty);
+        if variants.is_empty() {
+            return Err(unsupported("printing an enum with no variants"));
+        }
+        let function = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function to branch in")?;
+        let i64t = self.ctx.i64_type();
+        let ptr_ty = self.ctx.ptr_type(AddressSpace::default());
+        let slot = self
+            .builder
+            .build_alloca(ptr_ty, "shown")
+            .map_err(|e| e.to_string())?;
+        let tag = self
+            .call_rt(self.rt.rec_get, &[value, i64t.const_zero().into()], "tag")?
+            .into_int_value();
+        let done = self.ctx.append_basic_block(function, "enum.done");
+
+        for (i, (vname, payload)) in variants.iter().enumerate() {
+            let arm = self.ctx.append_basic_block(function, "enum.arm");
+            if i + 1 < variants.len() {
+                let next = self.ctx.append_basic_block(function, "enum.next");
+                let is = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, tag, i64t.const_int(i as u64, false), "is")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_conditional_branch(is, arm, next)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(arm);
+                self.enum_arm(value, vname, payload, slot)?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(next);
+            } else {
+                self.builder
+                    .build_unconditional_branch(arm)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(arm);
+                self.enum_arm(value, vname, payload, slot)?;
+                self.builder
+                    .build_unconditional_branch(done)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        self.builder.position_at_end(done);
+        self.builder
+            .build_load(ptr_ty, slot, "shown")
+            .map_err(|e| e.to_string())
     }
 
     /// Render one variant's string into `slot`: the quoted name for a unit variant, the
@@ -1213,6 +1188,49 @@ impl<'ctx> Emitter<'ctx> {
                 self.call_rt(self.rt.opt_some, &[slot.into()], "some")?
             }
         })
+    }
+
+    /// A two-slot box built with the record runtime: slot 0 the tag (the variant's declaration
+    /// index), slot 1 the payload, written only when one exists. Boxed rather than immediate
+    /// because an enum value has to fit the same 8-byte slot as every other value while
+    /// carrying two facts.
+    fn enum_lit(
+        &mut self,
+        ty: &Type,
+        variant: &str,
+        payload: Option<&Tir>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let tag = ty::variants(self.enums, ty)
+            .iter()
+            .position(|(n, _)| n == variant)
+            .ok_or_else(|| format!("`{variant}` is not a variant of {ty}"))?;
+        let i64t = self.ctx.i64_type();
+        let rec = self
+            .call_rt(self.rt.rec_new, &[i64t.const_int(2, false).into()], "enum")?
+            .into_pointer_value();
+        self.builder
+            .build_call(
+                self.rt.rec_set,
+                &[
+                    rec.into(),
+                    i64t.const_zero().into(),
+                    i64t.const_int(tag as u64, false).into(),
+                ],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
+        if let Some(p) = payload {
+            let built = self.expr(p)?;
+            let slot = self.to_slot(built, &p.ty)?;
+            self.builder
+                .build_call(
+                    self.rt.rec_set,
+                    &[rec.into(), i64t.const_int(1, false).into(), slot.into()],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(rec.into())
     }
 
     fn expr(&mut self, t: &Tir) -> Result<BasicValueEnum<'ctx>, String> {
@@ -1304,48 +1322,11 @@ impl<'ctx> Emitter<'ctx> {
                 rec.into()
             }
 
-            // A two-slot box built with the record runtime: slot 0 the tag (the variant's
-            // declaration index), slot 1 the payload, written only when one exists. Boxed
-            // rather than immediate because an enum value has to fit the same 8-byte slot as
-            // every other value while carrying two facts.
             Kind::EnumLit { variant, payload } => {
                 if t.ty.as_opt().is_some() {
                     return self.opt_lit(payload.as_deref());
                 }
-                let Type::Enum { variants, .. } = &t.ty else {
-                    return Err("an EnumLit whose type is not an enum".to_string());
-                };
-                let tag = variants
-                    .iter()
-                    .position(|(n, _)| n == variant)
-                    .ok_or_else(|| format!("`{variant}` is not a variant of {}", t.ty))?;
-                let i64t = self.ctx.i64_type();
-                let rec = self
-                    .call_rt(self.rt.rec_new, &[i64t.const_int(2, false).into()], "enum")?
-                    .into_pointer_value();
-                self.builder
-                    .build_call(
-                        self.rt.rec_set,
-                        &[
-                            rec.into(),
-                            i64t.const_zero().into(),
-                            i64t.const_int(tag as u64, false).into(),
-                        ],
-                        "",
-                    )
-                    .map_err(|e| e.to_string())?;
-                if let Some(p) = payload {
-                    let built = self.expr(p)?;
-                    let slot = self.to_slot(built, &p.ty)?;
-                    self.builder
-                        .build_call(
-                            self.rt.rec_set,
-                            &[rec.into(), i64t.const_int(1, false).into(), slot.into()],
-                            "",
-                        )
-                        .map_err(|e| e.to_string())?;
-                }
-                rec.into()
+                self.enum_lit(&t.ty, variant, payload.as_deref())?
             }
 
             Kind::VecLit(items) => {
@@ -1389,7 +1370,7 @@ impl<'ctx> Emitter<'ctx> {
             Kind::Inputs => {
                 let elem =
                     crate::tir::runtime_elem(&t.ty).expect("checked to be Vec<T> or Stream<T>");
-                let descriptor = self.string_const(&Self::descriptor(elem));
+                let descriptor = self.string_const(&descriptor(self.enums, elem));
                 self.call_rt(self.rt.read_inputs, &[descriptor.into()], "inputs")?
             }
 
@@ -1632,8 +1613,8 @@ impl<'ctx> Emitter<'ctx> {
                 arms,
                 partial,
             } => {
-                let variants = match subject.ty.clone() {
-                    Type::Enum { variants, .. } => variants,
+                let variants = match &subject.ty {
+                    Type::Enum { .. } => ty::variants(self.enums, &subject.ty),
                     // A pure guard chain needs no variant table; nothing below looks one up.
                     _ => Vec::new(),
                 };
@@ -2321,7 +2302,7 @@ impl<'ctx> Emitter<'ctx> {
         self.builder.position_at_end(cond);
         let got = match fusion.source {
             crate::tir::Source::Inputs => {
-                let descriptor = self.string_const(&Self::descriptor(&elem_ty));
+                let descriptor = self.string_const(&descriptor(self.enums, &elem_ty));
                 self.call_rt(
                     self.rt.read_one_input,
                     &[descriptor.into(), out_slot.into()],
@@ -2386,6 +2367,37 @@ impl<'ctx> Emitter<'ctx> {
         Ok(())
     }
 
+    /// One printer function per recursive enum the program prints, declared before any body is
+    /// emitted so that a body -- a printer's own included -- can call one.
+    ///
+    /// The recursion in the type becomes recursion in the emitted program rather than in this
+    /// compiler (kantord/toylang#94): expanding a recursive enum inline, the way `show` expands
+    /// every other type, has no bottom. Every value here is a pointer, so one signature covers
+    /// all of them: the enum's box in, the rendered string out.
+    fn declare_printers(&mut self, program: &Program) -> Result<(), String> {
+        let ptr = self.ctx.ptr_type(AddressSpace::default());
+        let printed = tir::printed_recursive_enums(program);
+        for ty in &printed {
+            let f = self.module.add_function(
+                &ty.show_fn(),
+                ptr.fn_type(&[ptr.into()], false),
+                None,
+            );
+            self.printers.insert(ty.ident(), f);
+        }
+        for ty in &printed {
+            let f = self.printers[&ty.ident()];
+            let entry = self.ctx.append_basic_block(f, "entry");
+            self.builder.position_at_end(entry);
+            let value = f.get_nth_param(0).expect("declared with one parameter");
+            let shown = self.show_enum(value, ty)?;
+            self.builder
+                .build_return(Some(&shown))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
     /// A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
     fn print(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<(), String> {
         let as_str = match ty {
@@ -2399,8 +2411,61 @@ impl<'ctx> Emitter<'ctx> {
     }
 }
 
+/// The type descriptor the runtime's JSON parser reads, so it only ever looks for the shape the
+/// program declared. See the grammar in runtime/toylang.c.
+fn descriptor(enums: &Enums, ty: &Type) -> String {
+    /// `open` is the enums whose descriptors this one is already inside. A recursive enum names
+    /// itself back as `@Name` rather than being spelled out again, which is what the runtime's
+    /// own back-reference resolves (kantord/toylang#94) -- and what keeps this from writing a
+    /// string that has no end.
+    fn walk(enums: &Enums, ty: &Type, open: &mut Vec<Type>) -> String {
+        match ty {
+            Type::Param(_) => unreachable!("params are substituted before emit"),
+            // Stream is unspellable in a type annotation, so `input`'s declared type -- the only
+            // thing this function is ever called on -- can never contain one.
+            Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
+            Type::Str => "s".to_string(),
+            Type::Int => "i".to_string(),
+            // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.
+            Type::Int64 => unreachable!("input cannot contain an Int64, refused by the checker"),
+            Type::Bool => "b".to_string(),
+            // The checker refuses Char anywhere in an input type: it has no wire form.
+            Type::Char => unreachable!("input cannot contain a Char, refused by the checker"),
+            Type::Vec(elem) => format!("[{}", walk(enums, elem, open)),
+            // Opt has no spelling in the type syntax, so an input type can never contain one.
+            // Declaration order, because the entry's position is the tag the compiled code
+            // tests against. The name rides along for the runtime's mismatch messages, and is
+            // what a back-reference to this enum names.
+            Type::Enum { name, .. } => {
+                if open.contains(ty) {
+                    return format!("@{name}");
+                }
+                open.push(ty.clone());
+                let variants = ty::variants(enums, ty);
+                let body: Vec<String> = variants
+                    .iter()
+                    .map(|(v, payload)| match payload {
+                        None => v.clone(),
+                        Some(p) => format!("{v}:{}", walk(enums, p, open)),
+                    })
+                    .collect();
+                open.pop();
+                format!("e{{{},{name},{}}}", variants.len(), body.join(","))
+            }
+            Type::Record(fields) => {
+                let body: Vec<String> = fields
+                    .iter()
+                    .map(|(name, t)| format!("{name}:{}", walk(enums, t, open)))
+                    .collect();
+                format!("{{{},{}}}", fields.len(), body.join(","))
+            }
+        }
+    }
+    walk(enums, ty, &mut Vec::new())
+}
+
 fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'ctx>, String> {
-    let mut e = Emitter::new(ctx);
+    let mut e = Emitter::new(ctx, &program.enums);
 
     // The global exists before any body is emitted, since a function body may hold an `Input`
     // node; main stores into it below, before anything can run.
@@ -2416,6 +2481,7 @@ fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'c
     for func in &program.funcs {
         e.declare(func)?;
     }
+    e.declare_printers(program)?;
     for func in &program.funcs {
         e.define(func)?;
     }
@@ -2431,7 +2497,7 @@ fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'c
 
     if let Some(ty) = &program.input {
         let global = e.input_slot.expect("created above whenever input is Some");
-        let descriptor = e.string_const(&Emitter::descriptor(ty));
+        let descriptor = e.string_const(&descriptor(&program.enums, ty));
         let slot = e.call_rt(e.rt.read_input, &[descriptor.into()], "input")?;
         e.builder
             .build_store(global, slot.into_int_value())

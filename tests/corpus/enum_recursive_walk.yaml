@@ -1,0 +1,20 @@
+# Descending through the recursion rather than printing it: the arm's `.` is the nested
+# `Vec<Json>`, handed back to the same function. A variant arm compiles to the variant's
+# declaration index on the tagged backends, and that index was read off the placeholder before
+# kantord/toylang#94 -- Go panicked outright, Rust emitted a match over an empty arm list.
+#
+# Self-recursion rather than a `total`/`sum` pair, because jq's `def` has no forward declaration
+# and refuses a cycle between two named functions.
+program: |
+  enum Json { arr(Vec<Json>), num(Int) }
+
+  fn total(v: Vec<Json>) -> Int =
+      0 if extent(v) == 0
+      else (v[0]! | arr -> total(.) or num -> .) + total(tail(v)!)
+
+  total([Json.arr([Json.num(1), Json.arr([Json.num(2), Json.num(3)])]), Json.num(4)])
+
+output: |
+  10
+
+node_types: [application, arith.add, builtin.extent, builtin.tail, compare.eq, conditional, int, local, match, pipe, selection.collapse, unwrap, var, variant.payload, vec-literal]

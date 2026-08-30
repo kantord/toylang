@@ -64,3 +64,6 @@ A sixth instance of the same shape, found by testing a carriage return that noth
 had exercised: [a sixth instance of the backend having rules the checker does not](a-sixth-backend-rule-the-checker-did-not-know.md).
 
 The same shape one level down, inside a single backend rather than across six: [one invariant, three independent construction sites](one-invariant-three-independent-construction-sites.md).
+
+Two backends printing the right answer while five failed, for want of a variant list none of them
+had: [a recursive type is where inline codegen needs a name](a-recursive-type-is-where-inline-codegen-needs-a-name.md).

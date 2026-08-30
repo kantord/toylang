@@ -1,0 +1,24 @@
+# The same shape off the wire and back out again. Reading one exercises three things printing
+# does not: the host's own validator, which walks the value against the declared type; the
+# decoders Go and Rust generate per enum; and the native backend's type descriptor, a string the
+# C runtime parses -- so a recursive type needs a spelling for itself there, `@Json`, rather than
+# an expansion with no end (runtime/toylang.c).
+#
+# `json` exists to give `input` a type: the annotation on a function's parameter is where an
+# input's shape is declared, as in enum_input.yaml. `null` rides along as the unit variant, so
+# both of an enum's wire shapes (ADR 0009) appear inside the recursion rather than only the
+# single-key one.
+program: |
+  enum Json { arr(Vec<Json>), num(Int), null }
+
+  fn json(j: Json) -> Json = j
+
+  json(input)
+
+input: |
+  {"arr": [{"num": 1}, {"arr": [{"num": 2}, "null"]}]}
+
+output: |
+  {"arr":[{"num":1},{"arr":[{"num":2},"null"]}]}
+
+node_types: [application, input, var]

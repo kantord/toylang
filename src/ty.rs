@@ -1,3 +1,15 @@
+use std::collections::HashMap;
+
+/// Every enum a program declares, resolved once and keyed by name, which is an enum's identity.
+///
+/// A `Type::Enum` in hand is not always enough to work from. Where an enum's payload reaches
+/// back to itself through a `Vec`, that occurrence carries a placeholder in place of the real
+/// variant list (`check::types::resolve_named`, kantord/toylang#76), since expanding it is what
+/// has no end. So nothing reads `variants` off a type directly: everything that needs the list
+/// asks `variants` below, which re-derives it here, one layer at a time and exactly as deep as
+/// the program itself navigates (kantord/toylang#94).
+pub type Enums = HashMap<String, Type>;
+
 #[derive(Debug, Clone)]
 pub enum Type {
     Str,
@@ -37,14 +49,18 @@ pub enum Type {
     /// -- born at a source (`lines` is `Stream<Str>`), consumed exactly once per binding, and
     /// exiting only through `collect`.
     Stream(Box<Type>),
-    /// A declared enum: nominal, so the name is the identity. The variants ride along so that
-    /// every consumer of a `Type` -- printers, backends, input validation -- has them in hand
-    /// without a registry beside the tree; a name (and, for a generic enum, its arguments)
-    /// determines its variants within a program, so `PartialEq` below compares only those and
-    /// not `variants` itself -- which matters now that a self-referential enum's own payload
-    /// can carry a placeholder there in place of the real list (`check::types::resolve_named`,
-    /// kantord/toylang#76) rather than the list every other occurrence of the same name carries.
-    /// A variant's payload is `None` for a unit variant, in declaration order.
+    /// A declared enum: nominal, so the name is the identity. A name (and, for a generic enum,
+    /// its arguments) determines the variants within a program, so `PartialEq` below compares
+    /// only those and not `variants` itself -- which matters because a self-referential enum's
+    /// own payload carries a placeholder here in place of the real list
+    /// (`check::types::resolve_named`, kantord/toylang#76) rather than the list every other
+    /// occurrence of the same name carries. A variant's payload is `None` for a unit variant,
+    /// in declaration order.
+    ///
+    /// The list riding along is a convenience, not the source of truth: read it and a
+    /// placeholder reads as an enum with no variants at all, which is how a nested recursive
+    /// value used to reach every backend's printer as something it could not render
+    /// (kantord/toylang#94). Ask `variants` instead.
     Enum {
         name: String,
         /// The type arguments this instantiation was built with, in declaration order; empty
@@ -245,6 +261,12 @@ impl Type {
             Type::Param(_) => unreachable!("params are substituted before any backend runs"),
         }
     }
+
+    /// The name of `self`'s own printer function, shared by every backend that emits one
+    /// (kantord/toylang#94). Go camel-cases its own variant at the call site.
+    pub fn show_fn(&self) -> String {
+        format!("tl_show_{}", self.ident())
+    }
 }
 
 impl std::fmt::Display for Type {
@@ -319,4 +341,111 @@ impl PartialEq for Type {
 pub struct Sig {
     pub param: Option<Type>,
     pub ret: Type,
+}
+
+/// Replace every `Type::Param` in `t` with its binding. Together with the checker's `unify`,
+/// this is the whole of generic instantiation: nothing else ever sees a parameter.
+pub fn substitute(t: &Type, map: &HashMap<String, Type>) -> Type {
+    match t {
+        Type::Param(p) => map
+            .get(p)
+            .cloned()
+            .unwrap_or_else(|| unreachable!("substitute runs only once every param is bound")),
+        Type::Vec(e) => Type::Vec(Box::new(substitute(e, map))),
+        Type::Stream(e) => Type::Stream(Box::new(substitute(e, map))),
+        Type::Record(fields) => Type::Record(
+            fields
+                .iter()
+                .map(|(n, t)| (n.clone(), substitute(t, map)))
+                .collect(),
+        ),
+        Type::Enum {
+            name,
+            args,
+            variants,
+        } => Type::Enum {
+            name: name.clone(),
+            args: args.iter().map(|a| substitute(a, map)).collect(),
+            variants: variants
+                .iter()
+                .map(|(n, p)| (n.clone(), p.as_ref().map(|p| substitute(p, map))))
+                .collect(),
+        },
+        Type::Str | Type::Int | Type::Int64 | Type::Bool | Type::Char => t.clone(),
+    }
+}
+
+/// `name`'s variant list at `args`, re-derived from the registry rather than trusted from
+/// whichever `Type::Enum` a caller happened to be holding. One layer deep: a payload that is
+/// itself the same enum comes back carrying the placeholder in turn, so asking again is what
+/// descends, and nothing tries to build a list that has no bottom.
+pub fn variants_of(enums: &Enums, name: &str, args: &[Type]) -> Vec<(String, Option<Type>)> {
+    let Type::Enum {
+        args: template_args,
+        variants,
+        ..
+    } = &enums[name]
+    else {
+        unreachable!("the registry holds enum types")
+    };
+    if template_args.is_empty() {
+        return variants.clone();
+    }
+    let bindings: HashMap<String, Type> = template_args
+        .iter()
+        .zip(args)
+        .filter_map(|(p, a)| match p {
+            Type::Param(p) => Some((p.clone(), a.clone())),
+            _ => None,
+        })
+        .collect();
+    variants
+        .iter()
+        .map(|(n, p)| (n.clone(), p.as_ref().map(|t| substitute(t, &bindings))))
+        .collect()
+}
+
+/// `variants_of` for an enum type in hand.
+pub fn variants(enums: &Enums, ty: &Type) -> Vec<(String, Option<Type>)> {
+    let Type::Enum { name, args, .. } = ty else {
+        unreachable!("only an enum has variants")
+    };
+    variants_of(enums, name, args)
+}
+
+/// Whether a value of this enum type can hold another of the same type, however deep.
+///
+/// Always through a `Vec`, since that is the only self-reference the checker allows, but not
+/// always directly: the path can run through a record field or a second enum. What it decides
+/// is whether a backend may expand this type inline -- a printer, a parser, a declaration
+/// written by walking the payloads -- or has to emit a named function it can call back into.
+/// Expanding a recursive one inline does not terminate.
+pub fn is_recursive(enums: &Enums, ty: &Type) -> bool {
+    fn reaches(enums: &Enums, from: &Type, target: &Type, seen: &mut Vec<Type>) -> bool {
+        match from {
+            Type::Vec(e) | Type::Stream(e) => reaches(enums, e, target, seen),
+            Type::Record(fields) => fields.iter().any(|(_, t)| reaches(enums, t, target, seen)),
+            Type::Enum { name, args, .. } => {
+                if from == target {
+                    return true;
+                }
+                if seen.contains(from) {
+                    return false;
+                }
+                seen.push(from.clone());
+                args.iter().any(|a| reaches(enums, a, target, seen))
+                    || variants_of(enums, name, args)
+                        .iter()
+                        .any(|(_, p)| p.as_ref().is_some_and(|p| reaches(enums, p, target, seen)))
+            }
+            _ => false,
+        }
+    }
+    if !matches!(ty, Type::Enum { .. }) {
+        return false;
+    }
+    let mut seen = vec![ty.clone()];
+    variants(enums, ty)
+        .iter()
+        .any(|(_, p)| p.as_ref().is_some_and(|p| reaches(enums, p, ty, &mut seen)))
 }

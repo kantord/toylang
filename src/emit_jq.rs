@@ -14,7 +14,7 @@
 
 use crate::ast::BinOp;
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
-use crate::ty::Type;
+use crate::ty::{self, Enums, Type};
 
 /// The binding stdin is read into. jq puts the input in `.`, which this backend needs for the
 /// subject, so it is bound away before the program starts.
@@ -56,6 +56,7 @@ def tl_rem64($a; $b):
 "#;
 
 pub fn emit(program: &Program) -> Result<String, String> {
+    let enums = &program.enums;
     let mut out = String::new();
     let (arith, arith64) = uses_arith(program);
     if arith {
@@ -64,6 +65,8 @@ pub fn emit(program: &Program) -> Result<String, String> {
     if arith64 {
         out.push_str(ARITH64_HELPER);
     }
+
+    out.push_str(&printers(program));
 
     // jq resolves a `def` only against what is already defined, so definitions have to come out
     // callee-first. The checker collects every signature before checking any body and therefore
@@ -77,9 +80,9 @@ pub fn emit(program: &Program) -> Result<String, String> {
                 "def {}: . as ${} | {};\n",
                 user(&f.name),
                 user(param),
-                expr(&f.body)
+                expr(enums, &f.body)
             ),
-            None => format!("def {}: {};\n", user(&f.name), expr(&f.body)),
+            None => format!("def {}: {};\n", user(&f.name), expr(enums, &f.body)),
         });
     }
 
@@ -93,13 +96,17 @@ pub fn emit(program: &Program) -> Result<String, String> {
         for stage in &fusion.stages {
             match stage {
                 tir::Stage::Map { param, body } => {
-                    out.push_str(&format!(" | . as {} | {}", local(*param), expr(body)));
+                    out.push_str(&format!(
+                        " | . as {} | {}",
+                        local(*param),
+                        expr(enums, body)
+                    ));
                 }
                 tir::Stage::Select { param, pred } => {
                     out.push_str(&format!(
                         " | . as {} | select({})",
                         local(*param),
-                        expr(pred)
+                        expr(enums, pred)
                     ));
                 }
             }
@@ -108,7 +115,7 @@ pub fn emit(program: &Program) -> Result<String, String> {
             unreachable!("fusion only matches a jsonlines body")
         };
         let elem = tir::runtime_elem(&arg.ty).expect("jsonlines's argument has an element");
-        out.push_str(&format!(" | ({} | tojson)\n", canonical(elem, ".")));
+        out.push_str(&format!(" | ({} | tojson)\n", canonical(enums, elem, ".")));
         return Ok(out);
     }
 
@@ -122,14 +129,18 @@ pub fn emit(program: &Program) -> Result<String, String> {
     }
     // Records are rebuilt in the type's field order, because jq preserves insertion order and
     // an object read from input carries whatever order the input had.
-    out.push_str(&canonical(&program.body.ty, &expr(&program.body)));
+    out.push_str(&canonical(
+        enums,
+        &program.body.ty,
+        &expr(enums, &program.body),
+    ));
     out.push('\n');
     Ok(out)
 }
 
 /// Reconstruct a value with keys in the type's order, so the printed form matches the other
 /// backends rather than the input's key order.
-fn canonical(ty: &Type, value: &str) -> String {
+fn canonical(enums: &Enums, ty: &Type, value: &str) -> String {
     match ty {
         Type::Param(_) => unreachable!("params are substituted before emit"),
         // The checker refuses a program whose result contains a stream, since there is nothing to
@@ -137,53 +148,20 @@ fn canonical(ty: &Type, value: &str) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str | Type::Int | Type::Int64 | Type::Bool => value.to_string(),
-        Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(elem, ".")),
+        Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(enums, elem, ".")),
         Type::Enum { .. } if ty.as_opt().is_some() => {
             let inner = ty.as_opt().expect("guarded");
             format!(
                 "({value} | if . == \"none\" then null else (.some | {}) end)",
-                canonical(inner, ".")
+                canonical(enums, inner, ".")
             )
         }
-        // One type, two runtime shapes (ADR 0009). A unit variant is already canonical, being a
-        // bare string; a payload wrapper is rebuilt so the payload's own keys come out in the
-        // type's order, the same reason records are rebuilt.
-        Type::Enum { variants, .. } => {
-            let payloads: Vec<(&String, &Type)> = variants
-                .iter()
-                .filter_map(|(n, p)| p.as_ref().map(|p| (n, p)))
-                .collect();
-            if payloads.is_empty() {
-                return value.to_string();
-            }
-            let wrap = |vname: &String, pty: &Type| {
-                format!(
-                    "{{{}: {}}}",
-                    jq_string(vname),
-                    canonical(pty, &field_of(".", vname))
-                )
-            };
-            // The conditions cover everything but the last shape, which needs no test: the type
-            // says nothing else is left. A unit variant, if any exists, is the string shape.
-            let mut tests: Vec<String> = Vec::new();
-            if payloads.len() < variants.len() {
-                tests.push("if type == \"string\" then .".to_string());
-            }
-            for (vname, pty) in &payloads[..payloads.len() - 1] {
-                let word = if tests.is_empty() { "if" } else { "elif" };
-                tests.push(format!(
-                    "{word} has({}) then {}",
-                    jq_string(vname),
-                    wrap(vname, pty)
-                ));
-            }
-            let (last_name, last_ty) = payloads[payloads.len() - 1];
-            let last = wrap(last_name, last_ty);
-            if tests.is_empty() {
-                return format!("({value} | {last})");
-            }
-            format!("({value} | {} else {last} end)", tests.join(" "))
+        // A recursive enum is rebuilt by a filter of its own (`printers`), because expanding one
+        // here has no bottom: its payload leads back to the same type.
+        Type::Enum { .. } if ty::is_recursive(enums, ty) => {
+            format!("({value} | {})", ty.show_fn())
         }
+        Type::Enum { .. } => canonical_enum(enums, ty, value),
         Type::Record(fields) => {
             let parts: Vec<String> = fields
                 .iter()
@@ -191,7 +169,7 @@ fn canonical(ty: &Type, value: &str) -> String {
                     format!(
                         "{}: {}",
                         jq_string(name),
-                        canonical(fty, &field_of(".", name))
+                        canonical(enums, fty, &field_of(".", name))
                     )
                 })
                 .collect();
@@ -453,7 +431,7 @@ fn distribute(inner: &str, depth: usize) -> String {
     }
 }
 
-fn expr(t: &Tir) -> String {
+fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => jq_string(s),
         Kind::Int(n) => n.to_string(),
@@ -470,7 +448,7 @@ fn expr(t: &Tir) -> String {
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
-                .map(|(name, value)| format!("{}: ({})", jq_string(name), expr(value)))
+                .map(|(name, value)| format!("{}: ({})", jq_string(name), expr(enums, value)))
                 .collect();
             format!("{{{}}}", parts.join(", "))
         }
@@ -478,39 +456,39 @@ fn expr(t: &Tir) -> String {
         // The value is its JSON shape, which jq spells directly.
         Kind::EnumLit { variant, payload } => match payload {
             None => jq_string(variant),
-            Some(p) => format!("{{{}: ({})}}", jq_string(variant), expr(p)),
+            Some(p) => format!("{{{}: ({})}}", jq_string(variant), expr(enums, p)),
         },
 
         Kind::VecLit(items) => {
-            let parts: Vec<String> = items.iter().map(expr).collect();
+            let parts: Vec<String> = items.iter().map(|i| expr(enums, i)).collect();
             format!("[{}]", parts.join(", "))
         }
         // A nullary function ignores `.`, so its call is just its name, run against whatever
         // is already flowing through the surrounding pipeline.
         Kind::Call { func, arg } => match arg {
-            Some(arg) => format!("({} | {})", expr(arg), user(func)),
+            Some(arg) => format!("({} | {})", expr(enums, arg), user(func)),
             None => format!("({})", user(func)),
         },
-        Kind::Concat(l, r) => format!("({} + {})", expr(l), expr(r)),
-        Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(lhs), expr(rhs)),
+        Kind::Concat(l, r) => format!("({} + {})", expr(enums, l), expr(enums, r)),
+        Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
         Kind::Cond {
             cond,
             then,
             otherwise,
         } => format!(
             "(if {} then {} else {} end)",
-            expr(cond),
-            expr(then),
-            expr(otherwise)
+            expr(enums, cond),
+            expr(enums, then),
+            expr(enums, otherwise)
         ),
         Kind::Builtin { which, arg } => match which {
-            Builtin::IntToStr => format!("({} | tostring)", expr(arg)),
+            Builtin::IntToStr => format!("({} | tostring)", expr(enums, arg)),
             // jq has one number type at every width, so the bridge has nothing to do.
-            Builtin::IntToI64 => format!("({})", expr(arg)),
-            Builtin::Range => format!("[ range(0; {}) ]", expr(arg)),
+            Builtin::IntToI64 => format!("({})", expr(enums, arg)),
+            Builtin::Range => format!("[ range(0; {}) ]", expr(enums, arg)),
             // `explode` already decodes jq's UTF-8 string by codepoint, not by byte, so there
             // is no decoding to get right here.
-            Builtin::Chars => format!("({} | explode)", expr(arg)),
+            Builtin::Chars => format!("({} | explode)", expr(enums, arg)),
             // `canonical` reorders a record's keys but leaves the *value*, not text; `tojson`
             // is what turns each element into the same compact JSON string `-c` would print for
             // it, matching every other backend's per-element encoding.
@@ -518,28 +496,28 @@ fn expr(t: &Tir) -> String {
                 let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 format!(
                     "({} | [.[] | ({} | tojson)] | join(\"\\n\"))",
-                    expr(arg),
-                    canonical(elem, ".")
+                    expr(enums, arg),
+                    canonical(enums, elem, ".")
                 )
             }
             // The source already materialized, so the exit has nothing left to do.
-            Builtin::Collect => expr(arg),
-            Builtin::Extent => format!("({} | length)", expr(arg)),
+            Builtin::Collect => expr(enums, arg),
+            Builtin::Extent => format!("({} | length)", expr(enums, arg)),
             // jq's own `.[1:]` on an empty array is `[]`, not null; toylang's tail needs the
             // tagged Opt shape instead, so both cases are spelled out rather than borrowed.
             Builtin::Tail => {
                 format!(
                     "({} | if length == 0 then \"none\" else {{some: .[1:]}} end)",
-                    expr(arg)
+                    expr(enums, arg)
                 )
             }
             // Not jq's own `add`, which is `null` on an empty list rather than `[]` -- a reduce
             // starting from `[]` gives the right answer in both cases.
-            Builtin::Concat => format!("({} | reduce .[] as $x ([]; . + $x))", expr(arg)),
+            Builtin::Concat => format!("({} | reduce .[] as $x ([]; . + $x))", expr(enums, arg)),
             // jq's own `sort`/`reverse` already are this, restricted the same way the checker
             // restricts `sort` to Int, Int64, Str, and Char.
-            Builtin::Sort => format!("({} | sort)", expr(arg)),
-            Builtin::Reverse => format!("({} | reverse)", expr(arg)),
+            Builtin::Sort => format!("({} | sort)", expr(enums, arg)),
+            Builtin::Reverse => format!("({} | reverse)", expr(enums, arg)),
             // The names come from the checked type, not the object value, so `arg` runs only to
             // become the `.` a literal array then ignores -- the same discard the pipe already
             // gives every other builtin here.
@@ -548,21 +526,26 @@ fn expr(t: &Tir) -> String {
                     unreachable!("checked to be a record")
                 };
                 let names: Vec<String> = fields.iter().map(|(n, _)| jq_string(n)).collect();
-                format!("({} | [{}])", expr(arg), names.join(", "))
+                format!("({} | [{}])", expr(enums, arg), names.join(", "))
             }
         },
         Kind::Compare { op, lhs, rhs } => {
-            format!("({} {} {})", expr(lhs), jq_op(*op), expr(rhs))
+            format!("({} {} {})", expr(enums, lhs), jq_op(*op), expr(enums, rhs))
         }
         // jq spells them the same way toylang does, and short-circuits them the same way too.
-        Kind::Logic { op, lhs, rhs } => format!("({} {op} {})", expr(lhs), expr(rhs)),
-        Kind::Not(base) => format!("({} | not)", expr(base)),
+        Kind::Logic { op, lhs, rhs } => format!("({} {op} {})", expr(enums, lhs), expr(enums, rhs)),
+        Kind::Not(base) => format!("({} | not)", expr(enums, base)),
         Kind::Bind {
             local: id,
             value,
             body,
         } => {
-            format!("({} as {} | {})", expr(value), local(*id), expr(body))
+            format!(
+                "({} as {} | {})",
+                expr(enums, value),
+                local(*id),
+                expr(enums, body)
+            )
         }
         // The one operator that is derived in jq and primitive here: `map(f)` is `[ .[] | f ]`
         // there, and neither half of that exists in a language with no effect layer.
@@ -572,9 +555,9 @@ fn expr(t: &Tir) -> String {
             body,
         } => format!(
             "[ {}[] | . as {} | {} ]",
-            expr(source),
+            expr(enums, source),
             local(*param),
-            expr(body)
+            expr(enums, body)
         ),
         Kind::Select {
             source,
@@ -582,15 +565,15 @@ fn expr(t: &Tir) -> String {
             pred,
         } => format!(
             "[ {}[] | . as {} | select({}) ]",
-            expr(source),
+            expr(enums, source),
             local(*param),
-            expr(pred)
+            expr(enums, pred)
         ),
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);
             format!(
                 "({} | {})",
-                expr(base),
+                expr(enums, base),
                 distribute(&field_of(".", name), depth)
             )
         }
@@ -601,7 +584,7 @@ fn expr(t: &Tir) -> String {
             );
             format!(
                 "({} | {})",
-                expr(base),
+                expr(enums, base),
                 distribute(&check, tir::vec_depth(&base.ty))
             )
         }
@@ -613,9 +596,9 @@ fn expr(t: &Tir) -> String {
             body,
         } => format!(
             "({} | if . == \"none\" then \"none\" else (.some as {} | {{some: {}}}) end)",
-            expr(source),
+            expr(enums, source),
             local(*param),
-            expr(body)
+            expr(enums, body)
         ),
         // Out of range is null in jq, and no in-memory toylang value is ever null (the
         // module comment above), so the null test is exactly the was-not-there test; what
@@ -625,9 +608,9 @@ fn expr(t: &Tir) -> String {
         } => {
             let at = format!(
                 "(.[{}] as $e | if $e == null then \"none\" else {{some: $e}} end)",
-                expr(index)
+                expr(enums, index)
             );
-            format!("({} | {})", expr(base), distribute(&at, *depth))
+            format!("({} | {})", expr(enums, base), distribute(&at, *depth))
         }
         // Tests over the subject: equality for a unit variant, `type`-guarded `has` for a
         // payload one, since `has` on a string is an error rather than false, and the guard's
@@ -639,7 +622,7 @@ fn expr(t: &Tir) -> String {
             arms,
             partial,
         } => {
-            let subj = expr(subject);
+            let subj = expr(enums, subject);
             let run = |arm: &tir::MatchArm| match arm.payload {
                 Some(pid) => {
                     let variant = arm
@@ -650,10 +633,10 @@ fn expr(t: &Tir) -> String {
                         "({subj}[{}] as {} | {})",
                         jq_string(variant),
                         local(pid),
-                        expr(&arm.body)
+                        expr(enums, &arm.body)
                     )
                 }
-                None => expr(&arm.body),
+                None => expr(enums, &arm.body),
             };
             let run = |arm: &tir::MatchArm| {
                 if *partial {
@@ -674,7 +657,7 @@ fn expr(t: &Tir) -> String {
                         jq_string(v)
                     )),
                     (Some(v), _) => Some(format!("{subj} == {}", jq_string(v))),
-                    (None, Some(g)) => Some(expr(g)),
+                    (None, Some(g)) => Some(expr(enums, g)),
                     (None, None) => None,
                 };
                 match test {
@@ -729,6 +712,63 @@ fn jq_op(op: BinOp) -> &'static str {
         BinOp::Ge => ">=",
         other => unreachable!("{other} is not a comparison"),
     }
+}
+
+/// One enum rebuilt in place. One type, two runtime shapes (ADR 0009): a unit variant is already
+/// canonical, being a bare string; a payload wrapper is rebuilt so the payload's own keys come
+/// out in the type's order, the same reason records are rebuilt.
+fn canonical_enum(enums: &Enums, ty: &Type, value: &str) -> String {
+    let variants = ty::variants(enums, ty);
+    let payloads: Vec<(&String, &Type)> = variants
+        .iter()
+        .filter_map(|(n, p)| p.as_ref().map(|p| (n, p)))
+        .collect();
+    if payloads.is_empty() {
+        return value.to_string();
+    }
+    let wrap = |vname: &String, pty: &Type| {
+        format!(
+            "{{{}: {}}}",
+            jq_string(vname),
+            canonical(enums, pty, &field_of(".", vname))
+        )
+    };
+    // The conditions cover everything but the last shape, which needs no test: the type
+    // says nothing else is left. A unit variant, if any exists, is the string shape.
+    let mut tests: Vec<String> = Vec::new();
+    if payloads.len() < variants.len() {
+        tests.push("if type == \"string\" then .".to_string());
+    }
+    for (vname, pty) in &payloads[..payloads.len() - 1] {
+        let word = if tests.is_empty() { "if" } else { "elif" };
+        tests.push(format!(
+            "{word} has({}) then {}",
+            jq_string(vname),
+            wrap(vname, pty)
+        ));
+    }
+    let (last_name, last_ty) = payloads[payloads.len() - 1];
+    let last = wrap(last_name, last_ty);
+    if tests.is_empty() {
+        return format!("({value} | {last})");
+    }
+    format!("({value} | {} else {last} end)", tests.join(" "))
+}
+
+
+/// A named filter for every recursive enum the program prints. The call in `canonical` above
+/// is what a nested occurrence rebuilds through, so the recursion in the type becomes recursion
+/// in the emitted filter rather than in this compiler (kantord/toylang#94).
+fn printers(program: &Program) -> String {
+    let mut out = String::new();
+    for ty in tir::printed_recursive_enums(program) {
+        out.push_str(&format!(
+            "def {}: {};\n",
+            ty.show_fn(),
+            canonical_enum(&program.enums, &ty, ".")
+        ));
+    }
+    out
 }
 
 fn jq_string(s: &str) -> String {
