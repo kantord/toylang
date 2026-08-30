@@ -10,6 +10,11 @@ test:
 check:
     cargo nextest run -E 'not test(every_fragment_is_a_real_program)'
 
+# Opt-in: run the skipped Euler 8/11/13/18 programs against real puzzle data in DIR, outside
+# `just test`. DIR holds your own copies of the raw data texts; fails loudly, never skips.
+euler-data DIR:
+    EULER_DATA={{DIR}} cargo nextest run --run-ignored ignored-only -E 'test(euler_real_data)'
+
 # Run clippy with the repo's lint set, the same surface the Stop hook checks.
 clippy:
     cargo clippy --workspace --all-targets
