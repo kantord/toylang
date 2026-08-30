@@ -31,7 +31,7 @@ jsonlines_of_inputs
 Because a sink has no result, `jsonlines` cannot appear inside a larger expression:
 
 ```toylang
-extent(jsonlines([1, 2]))
+length(jsonlines([1, 2]))
 ```
 
 ```error

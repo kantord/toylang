@@ -85,7 +85,7 @@ fn a_genuine_cycle_between_named_functions_is_refused_cleanly() {
 
 /// Direct self-recursion is not a cycle `ordered` ever gets stuck on: a function calling only
 /// itself is always immediately ready, so jq keeps running every corpus program that recurses
-/// this way (`unlines`, `join`, and every self-recursive corpus case already do).
+/// this way (`join_lines`, `join`, and every self-recursive corpus case already do).
 #[test]
 fn self_recursion_alone_still_compiles() {
     let p =

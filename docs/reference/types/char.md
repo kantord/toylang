@@ -6,7 +6,7 @@ every backend, so a character outside the Basic Multilingual Plane is one `Char`
 target whose own strings need a surrogate pair to spell it:
 
 ```toylang
-extent(chars("a😀b"))
+length(chars("a😀b"))
 ```
 
 ```output

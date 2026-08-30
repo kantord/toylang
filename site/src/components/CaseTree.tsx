@@ -162,7 +162,7 @@ export function CaseTree({
   const q = query.trim().toLowerCase()
   const shown = useMemo(() => {
     if (!q) return cases
-    // Searching the program too, so "select" or "unlines" finds the cases that use it rather
+    // Searching the program too, so "select" or "join_lines" finds the cases that use it rather
     // than only the ones named after it.
     return cases.filter((c) => c.name.includes(q) || c.program.toLowerCase().includes(q))
   }, [cases, q])

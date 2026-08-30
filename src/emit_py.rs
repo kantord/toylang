@@ -426,7 +426,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             }
             // The source already materialized, so the exit has nothing left to do.
             Builtin::Collect => expr(enums, arg),
-            Builtin::Extent => format!("len({})", expr(enums, arg)),
+            Builtin::Length => format!("len({})", expr(enums, arg)),
             Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
             Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
             // Python compares both numbers and strings (by codepoint) with `<` natively, so

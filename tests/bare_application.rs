@@ -36,11 +36,11 @@ fn composes_with_operators() {
     assert_eq!(toylang::run(src).unwrap(), "8\n");
 }
 
-/// The definition-body suspension is gone: `= extent v` is a call, and the same-line rule is
+/// The definition-body suspension is gone: `= length v` is a call, and the same-line rule is
 /// what keeps the definition boundary safe instead.
 #[test]
 fn a_definition_body_may_end_in_a_bare_call() {
-    let src = "fn size(v: Vec<Int>) -> Int = extent v\n\nsize([1, 2, 3])";
+    let src = "fn size(v: Vec<Int>) -> Int = length v\n\nsize([1, 2, 3])";
     assert_eq!(toylang::run(src).unwrap(), "3\n");
 }
 

@@ -165,7 +165,7 @@ fn builtin_tag(which: Builtin) -> &'static str {
         Builtin::Range => "range",
         Builtin::Collect => "collect",
         Builtin::JsonLines => "jsonlines",
-        Builtin::Extent => "extent",
+        Builtin::Length => "length",
         Builtin::Flatten => "flatten",
         Builtin::Tail => "tail",
         Builtin::Fields => "fields",

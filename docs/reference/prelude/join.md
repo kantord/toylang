@@ -1,7 +1,7 @@
 # join
 
 `join(v)`, of type `Vec<Str> -> Str`: concatenates the entries with no separator between
-them, unlike [`unlines`](unlines.md), which inserts `"\n"`.
+them, unlike [`join_lines`](join_lines.md), which inserts `"\n"`.
 
 ```toylang
 join(["ada", "bo"])

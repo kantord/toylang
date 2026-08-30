@@ -200,10 +200,9 @@ pub enum Builtin {
     /// signature table `builtin()` reads from; `synth` checks it directly, the way `map` and
     /// `select` are checked from their own arm rather than through a table.
     JsonLines,
-    /// `extent(v)`, a Vec's length. Named for CONTEXT.md's glossary term rather than `length`,
-    /// which the glossary lists under Avoid. A dense Vec already tracks this at runtime, so
-    /// reading it out costs nothing -- there is no fold or scan hiding behind the name.
-    Extent,
+    /// `length(v)`, a Vec's length. A dense Vec already tracks this at runtime, so reading it out
+    /// costs nothing -- there is no fold or scan hiding behind the name.
+    Length,
     /// `flatten(vv)`, flattening a `Vec<Vec<T>>` into one `Vec<T>`, for the case where the
     /// number of inner Vecs is not known at the call site. Joining a fixed, known count of Vecs
     /// is `+` instead (kantord/toylang#97, the add-trait reading of Q2 in plans/questions.md); this
@@ -226,7 +225,7 @@ pub enum Builtin {
     /// `sort(v)`, `Vec<T> -> Vec<T>`: `v`'s elements in ascending order by the same total order
     /// `<` already gives `T`. One value in, one value out with no lawful Stream instance
     /// (kantord/toylang#86, Q20 in plans/questions.md), so it is checked as a Vec-only builtin the way
-    /// `extent`/`tail`/`flatten` are rather than through `select`/`map`'s cardinality
+    /// `length`/`tail`/`flatten` are rather than through `select`/`map`'s cardinality
     /// polymorphism. Restricted to the element types ordering already typechecks on --
     /// Int, Int64, Str, Char -- so every backend can reach for its native ordering.
     Sort,

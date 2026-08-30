@@ -21,17 +21,17 @@ fn remove_at(p: {v: Vec<Int>, i: Int}) -> Vec<Int> =
         [p.v[0]!] + remove_at({v: tail(p.v)!, i: p.i - 1})
 
 fn nth_perm(p: {remaining: Vec<Int>, idx: Int}) -> Vec<Int> =
-    [] if extent(p.remaining) == 0 else
-        [p.remaining[p.idx / factorial(extent(p.remaining) - 1)]!] +
+    [] if length(p.remaining) == 0 else
+        [p.remaining[p.idx / factorial(length(p.remaining) - 1)]!] +
             nth_perm(
                 {
                     remaining: remove_at(
                         {
                             v: p.remaining,
-                            i: p.idx / factorial(extent(p.remaining) - 1)
+                            i: p.idx / factorial(length(p.remaining) - 1)
                         }
                     ),
-                    idx: p.idx % factorial(extent(p.remaining) - 1)
+                    idx: p.idx % factorial(length(p.remaining) - 1)
                 }
             )
 

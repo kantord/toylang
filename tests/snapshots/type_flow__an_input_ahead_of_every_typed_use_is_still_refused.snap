@@ -1,5 +1,5 @@
 ---
 source: tests/type_flow.rs
-expression: "err(\"fn f(v: Vec<Int>) -> Int = extent(v)\\n\\n{a: input, b: f(input)}\")"
+expression: "err(\"fn f(v: Vec<Int>) -> Int = length(v)\\n\\n{a: input, b: f(input)}\")"
 ---
 cannot tell what `input` contains (at byte 42)

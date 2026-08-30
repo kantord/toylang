@@ -25,7 +25,7 @@ _Avoid_: axis, rank, column
 
 **Extent**:
 How many entries a dimension has. A number, not a type.
-_Avoid_: length, size, cardinality
+_Avoid_: size, cardinality
 
 **Field**:
 One named part of a record. `name` is a field of `{name: Str, age: Int}`.

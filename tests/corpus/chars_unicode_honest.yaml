@@ -5,9 +5,9 @@
 # is unavoidable: string literals have no \u escape yet (src/parse.rs), so this is the only way
 # to write the character into the program at all.
 program: |
-  extent(chars("a😀b"))
+  length(chars("a😀b"))
 
 output: |
   3
 
-node_types: [builtin.chars, builtin.extent, str]
+node_types: [builtin.chars, builtin.length, str]

@@ -1,6 +1,6 @@
 ---
 source: tests/streams.rs
 assertion_line: 216
-expression: "err(\"fn f(s: Stream<Int>) -> Vec<Int> = collect(s)\\n\\nextent(f(inputs)) + extent(f(inputs))\")"
+expression: "err(\"fn f(s: Stream<Int>) -> Vec<Int> = collect(s)\\n\\nlength(f(inputs)) + length(f(inputs))\")"
 ---
 `inputs` has already been read; there is only one stdin (at byte 76)

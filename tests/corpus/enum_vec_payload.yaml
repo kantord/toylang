@@ -7,11 +7,11 @@
 program: |
   enum Batch { empty, some(Vec<Int>) }
 
-  fn size(b: Batch) -> Int = b | some -> extent(.) or empty -> 0
+  fn size(b: Batch) -> Int = b | some -> length(.) or empty -> 0
 
   {n: size Batch.some([1, 2, 3]), raw: Batch.some([4, 5]), z: size Batch.empty}
 
 output: |
   {"n":3,"raw":{"some":[4,5]},"z":0}
 
-node_types: [application, builtin.extent, int, local, match, pipe, record-literal, var, variant.payload, variant.unit, vec-literal]
+node_types: [application, builtin.length, int, local, match, pipe, record-literal, var, variant.payload, variant.unit, vec-literal]

@@ -14,7 +14,7 @@ happens:
 
 Three forms take their subject from the pipe rather than from an argument:
 [`select`](../builtins/select.md), [`map`](../builtins/map.md), and the
-[match](match.md)'s arm chain. Everything else -- `extent`, `str`, a user function -- takes
+[match](match.md)'s arm chain. Everything else -- `length`, `str`, a user function -- takes
 its data as an ordinary argument, and inside a pipe stage is applied to whatever expression
 mentions `.`:
 

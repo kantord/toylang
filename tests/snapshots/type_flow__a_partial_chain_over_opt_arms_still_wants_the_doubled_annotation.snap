@@ -1,6 +1,6 @@
 ---
 source: tests/type_flow.rs
 assertion_line: 280
-expression: "err(\"fn f(v: Vec<Int>) -> Opt<Int> = v | extent(v) > 0 -> v[9]\\n\\nf([1])\")"
+expression: "err(\"fn f(v: Vec<Int>) -> Opt<Int> = v | length(v) > 0 -> v[9]\\n\\nf([1])\")"
 ---
 expected Int, found Opt<Int> (at byte 53)

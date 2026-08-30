@@ -636,7 +636,7 @@ impl Collect<'_> {
                     Builtin::IntToI64
                     | Builtin::Range
                     | Builtin::Collect
-                    | Builtin::Extent
+                    | Builtin::Length
                     | Builtin::Flatten
                     | Builtin::Tail
                     | Builtin::Fields
@@ -967,7 +967,7 @@ impl Emitter<'_> {
                 }
                 // The source already materialized, so the exit has nothing left to do.
                 Builtin::Collect => self.expr(arg),
-                Builtin::Extent => format!("int32(len({}))", self.expr(arg)),
+                Builtin::Length => format!("int32(len({}))", self.expr(arg)),
                 Builtin::Tail => format!("tlTail({})", self.expr(arg)),
                 Builtin::Flatten => format!("tlFlatten({})", self.expr(arg)),
                 Builtin::Sort => format!("tlSort({})", self.expr(arg)),

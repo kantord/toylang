@@ -14,7 +14,7 @@ range(4)
 A zero or negative argument yields the empty `Vec`, not an error:
 
 ```toylang
-extent(range(-3))
+length(range(-3))
 ```
 
 ```output

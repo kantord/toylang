@@ -46,10 +46,10 @@ func tlUnwrap[T any](o tlOpt[T]) T {
 	return o.v
 }
 
-func v_unlines(v_v []string) string {
-	return func() string { if (int32(len(v_v)) == tlInt(0)) { return "" }; return func() string { if (int32(len(v_v)) == tlInt(1)) { return tlUnwrap(tlAt(v_v, tlInt(0))) }; return ((tlUnwrap(tlAt(v_v, tlInt(0))) + "\n") + v_unlines(tlUnwrap(tlTail(v_v)))) }() }()
+func v_join_lines(v_v []string) string {
+	return func() string { if (int32(len(v_v)) == tlInt(0)) { return "" }; return func() string { if (int32(len(v_v)) == tlInt(1)) { return tlUnwrap(tlAt(v_v, tlInt(0))) }; return ((tlUnwrap(tlAt(v_v, tlInt(0))) + "\n") + v_join_lines(tlUnwrap(tlTail(v_v)))) }() }()
 }
 
 func main() {
-	fmt.Println(v_unlines([]string{"only"}))
+	fmt.Println(v_join_lines([]string{"only"}))
 }

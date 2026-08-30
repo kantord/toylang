@@ -39,7 +39,7 @@ stdin is still open.
 
 ## Collect only what must be whole
 
-Counting, indexing, `extent`, putting results in a record -- anything that needs the whole
+Counting, indexing, `length`, putting results in a record -- anything that needs the whole
 extent -- goes through `collect`, which waits for everything:
 
 ```case

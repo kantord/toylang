@@ -1,5 +1,5 @@
 ---
 source: tests/char.rs
-expression: "err(\"fn f(v: Vec<Char>) -> Int = extent(v)\\n\\nf(collect(inputs))\")"
+expression: "err(\"fn f(v: Vec<Char>) -> Int = length(v)\\n\\nf(collect(inputs))\")"
 ---
 `inputs` cannot be read as Stream<Char>; Char has no wire form to read (at byte 49)

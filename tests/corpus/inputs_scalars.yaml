@@ -1,7 +1,7 @@
 # `inputs` is a stream, so eager use has a visible spelling: `collect inputs` reads every
 # remaining JSON value on stdin, one per line, into a Vec<T> before the program body runs.
 program: |
-  fn total(nums: Vec<Int>) -> Int = extent(nums)
+  fn total(nums: Vec<Int>) -> Int = length(nums)
 
   total collect inputs
 
@@ -14,4 +14,4 @@ input: |
 output: |
   4
 
-node_types: [application, builtin.collect, builtin.extent, inputs, var]
+node_types: [application, builtin.collect, builtin.length, inputs, var]

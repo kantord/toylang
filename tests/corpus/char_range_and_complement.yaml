@@ -8,11 +8,11 @@ program: |
   fn is_not_digit(c: Char) -> Bool = not is_digit(c)
 
   {
-    digits: extent(chars("a1b2c3") | select(is_digit(.))),
-    rest: extent(chars("a1b2c3") | select(is_not_digit(.)))
+    digits: length(chars("a1b2c3") | select(is_digit(.))),
+    rest: length(chars("a1b2c3") | select(is_not_digit(.)))
   }
 
 output: |
   {"digits":3,"rest":3}
 
-node_types: [application, builtin.chars, builtin.extent, compare.ge, compare.le, int, local, logic.and, logic.not, pipe, record-literal, selection.collapse, selection.narrow, str, unwrap, var]
+node_types: [application, builtin.chars, builtin.length, compare.ge, compare.le, int, local, logic.and, logic.not, pipe, record-literal, selection.collapse, selection.narrow, str, unwrap, var]
