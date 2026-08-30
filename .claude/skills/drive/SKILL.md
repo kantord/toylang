@@ -22,7 +22,12 @@ serving its stale cached copy. Never kill a mid-tick process for this; the drop 
 the next tick boundary on its own.
 
 A tick session therefore NEVER arms crons, background watchers, or its own follow-up
-wake-ups -- scheduling belongs to the loop script. Every tick:
+wake-ups -- scheduling belongs to the loop script. And a tick NEVER backgrounds work it
+must act on before ending: a `-p` session that ends its turn is OVER -- no notification
+ever reaches it. The post-merge main suite runs FOREGROUND, and the push happens in the
+same tick as the merge (a tick that exited with main ahead of origin dropped a landing
+once, 2026-08-30: the backgrounded suite died with the session and the push never fired).
+Every tick:
 
 1. **Reconstruct in-flight reality before acting**: for every `delegated` board row, check
    its worktree (commits vs main, dirty files, live worker via pgrep cwd). Trust disk over
