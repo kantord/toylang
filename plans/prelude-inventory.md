@@ -102,7 +102,7 @@ survey:
 ## Checker-special-cased type formers (`src/ty.rs`)
 
 `Type` has ten variants; two of them, `Opt` and `Result`, already left this list and are why this
-survey exists at all (`is_builtin_type_name`'s comment: "`Opt` is no longer here: it is the
+survey exists at all (`takes_type_arg`'s comment: "`Opt` is no longer here: it is the
 prelude's enum"). What's left -- `Str`, `Int`, `Int64`, `Bool`, `Char`, `Vec`, `Stream`, `Record`,
 `Enum`, `Param` -- has no member shaped like Opt/Result was. `Vec` and `Stream` are type
 *formers* with dedicated grammar (`<...>` in type position is special-cased to exactly these two
