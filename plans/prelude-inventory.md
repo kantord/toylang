@@ -22,7 +22,7 @@ failure to find candidates.
 
 ## `tir::Builtin`, one item at a time
 
-Eleven variants (`src/tir.rs:182-236`), every one implemented identically across all seven
+Twelve variants (`src/tir.rs:182-236`), every one implemented identically across all seven
 backends (Go, JS, Python, Lua, jq, Rust, native/LLVM -- confirmed by grep, no partial coverage
 anywhere in this enum). For each: what would have to exist for it to become a `pub fn` instead.
 
