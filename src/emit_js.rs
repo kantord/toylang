@@ -404,14 +404,11 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
             }
-            Kind::EnumLit { payload, .. } => {
-                if let Some(p) = payload {
-                    walk(p, used);
-                }
-            }
-            Kind::Call { arg, .. } => {
-                if let Some(a) = arg {
-                    walk(a, used);
+            // A variant's payload and a call's argument are the same shape here -- one optional
+            // child, recursed into and nothing else -- so they share the arm.
+            Kind::EnumLit { payload: child, .. } | Kind::Call { arg: child, .. } => {
+                if let Some(c) = child {
+                    walk(c, used);
                 }
             }
             Kind::Concat(l, r) | Kind::Logic { lhs: l, rhs: r, .. } => {

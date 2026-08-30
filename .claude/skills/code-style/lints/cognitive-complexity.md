@@ -88,3 +88,13 @@ plus `int_lit` where the literal was also guarded), which put every `expr()` at 
 merge-base score. One residual point stands honestly: `emit_rs.rs`'s `emit()` at 21/10 against
 a 20/10 baseline, from the `wire.contains` guards that scope parser generation to
 input-reachable types -- caused and recorded here, the same way go's issue-62 residual was.
+
+The Bool-keywords session (issue #96) is a seventh instance of the same shape-1-with-one-caused
+-crossing pattern, and the third time the fix was the one named above for `emit_llvm.rs`: adding
+`and`/`or` as a TIR node put a forty-five-line short-circuit sequence -- an alloca, two basic
+blocks and a conditional branch -- directly inside `expr()`'s new match arm, pushing that
+otherwise-shape-1 dispatch from absent to 11/10. Extracting it to a `logic()` method beside the
+`compare()` the arm above it already delegates to removed the finding entirely. The arm reads
+`Kind::Logic { op, lhs, rhs } => self.logic(*op, lhs, rhs)?` now, exactly parallel to its
+neighbour. The other six backends spell the same node as one `format!`, added no branching, and
+their scores came out unchanged -- shape 1, inherited, same as every instance above.

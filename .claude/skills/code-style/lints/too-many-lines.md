@@ -189,3 +189,19 @@ emitters' `expr()` *below* their merge-base counts -- plus, for the last two lin
 via `Option::or_else` (both are position-resolved forms with the same
 `return built.map(Expected::Checked)` shape). `synth`'s 221->237 growth (the Neg width
 dispatch) stays under the standing sinkhole exemption.
+
+The Bool-keywords session (issue #96) is a fourteenth instance, and the cleanest read of the
+caused/inherited split yet, because it was measured as a set rather than per function: the whole
+clippy site list, gathered before and after via `git stash` (the equivalent the field-order
+session used), differed by exactly one entry. Fifteen too-many-lines findings and seven
+cognitive-complexity ones -- every emitter `emit`/`expr`/`show`, `check()`, the two
+`used_helpers` -- were already there at merge-base and stayed inherited, grown by the
+one-new-Tir-node-per-backend shape #62/#66/#75/#83 all record. The one caused entry was
+`emit_js.rs`'s `used_helpers` crossing 100 to 101 from a single added `Kind::Not` arm -- the
+same day-one crossing shape as #61's `expect_inner` (99 to 101), and chased the same way rather
+than laundered into the inherited pile. Tightened by merging the two arms that were already
+duplicates of each other: `Kind::EnumLit { payload, .. }` and `Kind::Call { arg, .. }` both held
+one optional child recursed into and nothing else, so they became one or-pattern arm binding a
+shared `child`. That is the file's own idiom (its `Kind::Concat | Kind::Logic` arm is the same
+move), not a shape invented to dodge the number, and it put the site list back to matching
+merge-base exactly.

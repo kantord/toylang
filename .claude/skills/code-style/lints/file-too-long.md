@@ -95,3 +95,11 @@ implementing #75, not the emitter-split conversation. Same rule, same outcome.
 The Int64 session (issue #83) grew the same three emitters again (go 1149->1206, llvm
 2054->2126, rs 1277->1358, per the check's own inherited labels) -- the one-new-width-per-
 backend shape of #62/#66/#75, with the emitter-split conversation still undone.
+
+The Bool-keywords session (issue #96) grew the same three emitters once more (go 1234->1245,
+llvm 2169->2226, rs 1378->1387) and, for the first time in this list, `parse.rs` as well
+(1191->1280): `and`/`or`/`not` are the first feature since the match chain to need real parser
+work -- two tokens, a prefix form, and the flag that splits `or`'s two readings -- rather than
+one more node threaded through the backends. Every one carries the check's own inherited label,
+and the task was implementing #96, not the emitter split; `parse.rs` has no split conversation
+of its own yet either. Same rule, same outcome.
