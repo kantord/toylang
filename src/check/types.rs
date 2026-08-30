@@ -347,17 +347,16 @@ fn resolve_named(
             // (kantord/toylang#117). Requiring an exact repeat closes that off: a self-reference
             // is a cycle back to the instantiation already in progress, not a new one.
             if resolved_args != seen[at].1 {
-                let with = seen[at]
-                    .1
-                    .iter()
-                    .map(|t| t.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                let expected = Type::Enum {
+                    name: name.to_string(),
+                    args: seen[at].1.clone(),
+                    variants: Vec::new(),
+                };
                 return Err(Error::new(
                     span,
                     format!(
                         "`{name}` refers to itself with different type arguments; a \
-                         self-reference must repeat `{name}<{with}>` unchanged"
+                         self-reference must repeat `{expected}` unchanged"
                     ),
                 ));
             }
