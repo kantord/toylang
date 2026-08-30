@@ -53,7 +53,17 @@ fold)
   for n in "$@"; do
     d="$LANES/issue-$n"
     [ -d "$d" ] || { echo "refusing: no worktree $d" >&2; exit 2; }
-    [ "$(git -C "$d" status --porcelain | wc -l)" -eq 0 ] || { echo "refusing: issue-$n dirty" >&2; exit 2; }
+    # Dirty means TRACKED changes. Untracked leftovers are sanctioned scratch --
+    # workers cannot rm (denied) and are briefed to commit around them -- so the
+    # fold drops them here instead of refusing (2026-08-30).
+    if [ -n "$(git -C "$d" status --porcelain | grep -v '^??')" ]; then
+      echo "refusing: issue-$n has uncommitted tracked changes" >&2; exit 2
+    fi
+    UNTRACKED=$(git -C "$d" status --porcelain | grep -c '^??' || true)
+    if [ "$UNTRACKED" -gt 0 ]; then
+      echo "[land-lane] issue-$n: dropping $UNTRACKED untracked scratch file(s)"
+      git -C "$d" clean -fdq
+    fi
     worker_free "$d" || { echo "refusing: live worker in issue-$n" >&2; exit 2; }
   done
 
