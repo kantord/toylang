@@ -1100,3 +1100,18 @@
   needs: []
   prio: 2
   status: done
+
+- id: slices-build
+  issue: gh:143
+  title: Implement v[a:b] slice syntax with clamping out-of-range bounds (gh:143 ruling)
+  kind: build
+  needs: []
+  status: done
+
+- id: vec-literal-user-fn-call-bug
+  issue: gh:148
+  title: Vec literal elements can't call a user-defined function -- parser bug found during syntax-ergonomics research
+  kind: build
+  needs: []
+  prio: 2
+  status: done

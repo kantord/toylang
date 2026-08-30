@@ -1,55 +1,3 @@
-# The task board (scheduler v2, maintainer-specified 2026-08-29): every unblocked task is by
-# definition ready to be picked up, and up to EIGHT build lanes run at once
-# (raised from five 2026-08-30; decide rows queue for the maintainer separately
-# and never consume a lane or a ready-set slot).
-#
-# Done rows do not live here (issue #113): landing a task MOVES its row to
-# plans/board-archive.yaml (same schema, append-only) instead of flipping status in place, so
-# this file stays the ~quarter of the board that is still live -- the loop's single most-read
-# file, and every tick pays for its length. A needs/soft id not found on this live board is
-# satisfied: it must have landed and been archived. Consult the archive only for provenance,
-# never to decide whether something is blocking.
-#
-# Fields: id (slug; gh:N when a GitHub issue carries the spec), title, kind, needs, soft,
-# prio, status.
-#   kind: build  = delegatable implementation work (enwiro-delegate out, land-delegated-work in)
-#         decide = needs a grilling/design session with the maintainer before anything builds
-#   needs: HARD blockers -- forced order; a task with an un-done need is not pickable at all.
-#          An id absent from this file is satisfied, not missing.
-#   soft:  SOFT blockers -- convenient order that saves effort or time (file-footprint
-#          overlaps, avoid-rework sequencing). A task with un-done soft blockers is still
-#          pickable, just ranked below less-soft-blocked work. Same absent-is-satisfied rule.
-#   prio:  1 (highest) .. 5; omitted means 3. Sorts WITHIN a soft-blockedness category, so
-#          soft order outweighs raw priority -- but among fully unblocked tasks, prio alone
-#          decides. Efficiency/process improvements are prio tasks by standing rule.
-#   status: todo | delegated  (done rows move to board-archive.yaml; "blocked" is derived from
-#           needs, never stored)
-#   lane:  which worker-pool lane a delegated row runs in (lane-1 .. lane-5, gh:124); the
-#          tick scripts resolve its worktree through the env symlink. Absent means the
-#          classic per-issue env (worktree issue-<N>). Set at dispatch, travels to the
-#          archive with the row.
-#   model: which model the delegated session runs -- omitted means sonnet (the default for
-#          regular build work); "fable" is reserved for design-heavy or cross-cutting builds
-#          the coordinator judges worth it; "haiku" is for mechanical work with an obvious
-#          done-state (renames, sweeps, small config/UI tweaks) where cheaper and faster
-#          beats smarter (maintainer rule, 2026-08-30). decide rows have no model; they are
-#          the human.
-#
-# Picking the ready set (drive skill executes this): drop hard-blocked rows (done rows are
-# already gone); group the rest by soft-blockedness (count of un-done soft blockers, in-flight
-# ones included); least soft-blocked category first, prio within each. TWO queues from that
-# ordering (2026-08-30): every ready decide goes to the maintainer's grill/mail queue, and the
-# top ready builds fill the free lanes up to the cap. List position is a tiebreak only. A
-# needs-cycle, or todo rows remaining with nothing pickable and nothing in flight, is a
-# deadlock and gets reported.
-- id: vec-literal-user-fn-call-bug
-  issue: gh:148
-  title: Vec literal elements can't call a user-defined function -- parser bug found during syntax-ergonomics research
-  kind: build
-  needs: []
-  prio: 2
-  status: delegated
-
 - id: let-bindings-build
   issue: gh:150
   title: Implement multi-line let bindings, no in keyword (gh:87 ruling)
@@ -237,13 +185,6 @@
   kind: build
   needs: []
   status: todo
-
-- id: slices-build
-  issue: gh:143
-  title: Implement v[a:b] slice syntax with clamping out-of-range bounds (gh:143 ruling)
-  kind: build
-  needs: []
-  status: delegated
 
 - id: sort-by-max-by
   title: sort_by and max_by -- ordering through a scalar projection (euler-ergonomics row 7)
