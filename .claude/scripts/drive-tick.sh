@@ -21,7 +21,7 @@ mkdir -p "$LOG_DIR"
 
 # Never two ticks at once: a landing tick can outlive several loop intervals.
 exec 9>/tmp/toylang-drive-tick.lock
-flock -n 9 || exit 0
+flock -n 9 || { echo "[drive-tick] $(date '+%H:%M:%S') another tick holds the lock (event-driven landing, most likely) -- yielded"; exit 0; }
 
 export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin"
 cd "$REPO"
