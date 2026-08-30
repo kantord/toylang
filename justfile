@@ -25,3 +25,17 @@ fmt-write:
 # The repo's mechanical checks, the same surface the Stop hook runs.
 checks:
     bash .claude/checks/run.sh
+
+# The autonomous drive loop: a coordinator tick every DRIVE_INTERVAL (600s),
+# live colorized output. Ctrl-C (or kill) to stop. Run ONE at a time -- the
+# tick flock makes a second loop harmless but pointless.
+drive:
+    .claude/scripts/drive-loop.sh
+
+# Fire one coordinator tick right now (zero tokens if there is nothing to do).
+tick:
+    .claude/scripts/drive-tick.sh
+
+# Watch the current coordinator tick live (detaches with Ctrl-C, tick untouched).
+peek:
+    .claude/scripts/tick-peek.sh
