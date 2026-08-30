@@ -75,14 +75,6 @@
   prio: 3
   status: todo
 
-- id: concat-retirement
-  issue: gh:97
-  title: Retire concat -- + concatenates Vecs, the add-trait ruling
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
 - id: builtin-renames
   issue: gh:98
   title: extent -> length, unlines -> join_lines
@@ -179,15 +171,6 @@
   needs: []
   status: todo
 
-- id: draft-md-split-inventory
-  issue: gh:120
-  title: Inventory draft.md's remaining sections against the docs site; file one migration row per section/cluster plus a final draft-md-cleanup-review row blocked on all of them
-  kind: build
-  needs: [draft-split-decision]
-  model: fable
-  prio: 4
-  status: delegated
-
 - id: q37-float-semantics
   title: Grill Q37 -- float printing agreement, NaN/Infinity, division by zero
   kind: decide
@@ -222,30 +205,6 @@
   prio: 3
   soft: [concat-retirement]
   status: todo
-
-- id: prelude-inventory-streams-revision
-  issue: gh:121
-  title: Revise the prelude-inventory plan with a streams-first default (needs-changes review, gh:105)
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
-- id: benchmark-set-spike
-  issue: gh:106
-  title: Spike -- which license-clean standard benchmark program set to adopt
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
-- id: benchmark-tooling-spike
-  issue: gh:107
-  title: Spike -- the best Rust system for running our benchmarks
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
 
 - id: benchmark-synthesis
   issue: gh:108
