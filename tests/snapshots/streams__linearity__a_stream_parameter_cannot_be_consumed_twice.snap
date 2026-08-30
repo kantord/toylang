@@ -1,6 +1,6 @@
 ---
 source: tests/streams.rs
 assertion_line: 98
-expression: "err(\"fn f(s: Stream<Str>) -> Int = extent(collect(s)) + extent(collect(s))\\n\\n1\")"
+expression: "err(\"fn f(s: Stream<Str>) -> Int = length(collect(s)) + length(collect(s))\\n\\n1\")"
 ---
 `s` must be consumed exactly once, not 2 times (at byte 30)

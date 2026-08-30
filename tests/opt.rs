@@ -93,7 +93,7 @@ fn input_cannot_be_opt_typed() {
 #[test]
 fn inputs_cannot_carry_an_opt_element() {
     insta::assert_snapshot!(err(
-        "fn f(v: Vec<Opt<Int>>) -> Int = extent(v)\n\nf(collect(inputs))"
+        "fn f(v: Vec<Opt<Int>>) -> Int = length(v)\n\nf(collect(inputs))"
     ));
 }
 

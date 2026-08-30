@@ -49,7 +49,7 @@ at runtime. Chapter 1's `Vec` pages in the reference cover the whole spec story:
 
 ## Putting it together
 
-`range(n)` makes `[0 .. n-1]`, and `unlines` joins a `Vec<Str>` into printable lines.
+`range(n)` makes `[0 .. n-1]`, and `join_lines` joins a `Vec<Str>` into printable lines.
 FizzBuzz is one pipeline:
 
 ```case

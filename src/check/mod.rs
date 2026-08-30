@@ -387,7 +387,7 @@ fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
 }
 
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
-/// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `extent`, `flatten`,
+/// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `length`, `flatten`,
 /// `tail`, `collect`, `fields`, `sort`, and `reverse` are polymorphic and checked from
 /// `synth`'s own arms; `select` and `map` rebind `.`. All fourteen are reserved the same way,
 /// and the docs harness (tests/docs.rs) reads this list to insist each one has a reference
@@ -395,7 +395,7 @@ fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
 pub const BUILTIN_NAMES: [&str; 14] = [
     "chars",
     "collect",
-    "extent",
+    "length",
     "fields",
     "flatten",
     "i64",
@@ -542,7 +542,7 @@ fn rebase(t: Tir, param: LocalId) -> Rebased {
 }
 
 /// The element `select` and `map` rebind `.` to: a Vec's, or a Stream's. Deliberately not
-/// `Type::elem`, which stays Vec-only so the reducers (`extent`, `jsonlines` today) keep
+/// `Type::elem`, which stays Vec-only so the reducers (`length`, `jsonlines` today) keep
 /// refusing a stream.
 fn mapper_elem(subject: &Type) -> Option<Type> {
     match subject {
@@ -583,7 +583,7 @@ fn sole_owner<'a>(
     Ok(&ctx.enums[&owners[0]])
 }
 
-/// Every builtin and special-cased call form (`select`, `map`, `extent`, ...) is unary; only a
+/// Every builtin and special-cased call form (`select`, `map`, `length`, ...) is unary; only a
 /// user-defined function can be nullary. This unwraps a call's optional argument for those
 /// forms, turning a bare `name()` at one of these names into the same "not a function" shape as
 /// any other arity mismatch would need, rather than a panic.
@@ -1604,10 +1604,10 @@ fn call(
             "`jsonlines` is a sink, legal only as the program's outermost expression".to_string(),
         ));
     }
-    // `extent`, `tail`, and `flatten` are polymorphic over the element type, the same reason
+    // `length`, `tail`, and `flatten` are polymorphic over the element type, the same reason
     // `jsonlines` is checked here rather than through `builtin()`'s fixed table.
-    if func == "extent" {
-        return extent_call(ctx, need_arg(arg, func, span)?);
+    if func == "length" {
+        return length_call(ctx, need_arg(arg, func, span)?);
     }
     // `None` on an empty Vec, the same way `Index` turns reaching past what's there into `Opt`
     // rather than a runtime failure.
@@ -1621,11 +1621,11 @@ fn call(
         return flatten_call(ctx, need_arg(arg, func, span)?);
     }
     // The one exit a stream has: `Stream<T> -> Vec<T>`, polymorphic over the element type like
-    // `extent` and the others above, so the argument is synthesised first.
+    // `length` and the others above, so the argument is synthesised first.
     if func == "collect" {
         return collect(ctx, need_arg(arg, func, span)?, None);
     }
-    // Polymorphic over which record, the same reason `extent` is checked here: the return type
+    // Polymorphic over which record, the same reason `length` is checked here: the return type
     // (`Vec<Str>`) is fixed, but the argument's shape is not.
     if func == "fields" {
         return fields_call(ctx, need_arg(arg, func, span)?);
@@ -1724,19 +1724,19 @@ fn select_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
     ))
 }
 
-fn extent_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+fn length_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
     let arg_span = arg.span();
     let arg = synth(ctx, arg)?;
     if arg.ty.elem().is_none() {
         return Err(Error::new(
             arg_span,
-            format!("`extent` needs a Vec, found {}", arg.ty),
+            format!("`length` needs a Vec, found {}", arg.ty),
         ));
     }
     Ok(Tir::new(
         Type::Int,
         Kind::Builtin {
-            which: tir::Builtin::Extent,
+            which: tir::Builtin::Length,
             arg: Box::new(arg),
         },
     ))

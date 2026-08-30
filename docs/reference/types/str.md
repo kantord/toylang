@@ -23,7 +23,7 @@ of a `Vec`, a field of a record -- prints as JSON, quoted and escaped:
 ["say \"hi\"","a\\b"]
 ```
 
-There is no string length, splitting, or indexing: a `Str` has no dimensions, so `extent` and
+There is no string length, splitting, or indexing: a `Str` has no dimensions, so `length` and
 the index specs do not apply. What exists today is concatenation, equality, and ordering.
 Ordering (`<` and friends) compares by Unicode codepoint, pinned across every backend including
 past the astral plane:

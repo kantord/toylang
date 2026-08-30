@@ -1428,7 +1428,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     // The source already materialized, so the exit has nothing left to do.
                     Builtin::Collect => arg,
                     // Already tracked on the Vec header; nothing to compute.
-                    Builtin::Extent => self.call_rt(self.rt.vec_len, &[arg], "extent")?,
+                    Builtin::Length => self.call_rt(self.rt.vec_len, &[arg], "length")?,
                     Builtin::Tail => self.call_rt(self.rt.vec_tail, &[arg], "tail")?,
                     Builtin::Flatten => {
                         let elem = t.ty.elem().expect("checked to be Vec<Vec<T>> -> Vec<T>");

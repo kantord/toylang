@@ -1,6 +1,6 @@
 ---
 source: tests/streams.rs
 assertion_line: 260
-expression: "err(\"fn g(x: Vec<Int>) -> Int = extent(x)\\n\\nextent([1] | map(g(collect(inputs))))\")"
+expression: "err(\"fn g(x: Vec<Int>) -> Int = length(x)\\n\\nlength([1] | map(g(collect(inputs))))\")"
 ---
 `inputs` cannot be read inside a mapper body, which runs once per element (at byte 65)

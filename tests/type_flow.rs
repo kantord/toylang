@@ -88,7 +88,7 @@ fn input_in_a_field_checked_against_a_declared_record() {
 
 #[test]
 fn a_later_input_borrows_the_type_the_first_use_fixed() {
-    let src = "fn f(v: Vec<Int>) -> Int = extent(v)\n\n{a: f(input), b: input}";
+    let src = "fn f(v: Vec<Int>) -> Int = length(v)\n\n{a: f(input), b: input}";
     assert_eq!(
         body_ty(src),
         Type::Record(vec![
@@ -103,7 +103,7 @@ fn a_later_input_borrows_the_type_the_first_use_fixed() {
 #[test]
 fn an_input_ahead_of_every_typed_use_is_still_refused() {
     insta::assert_snapshot!(err(
-        "fn f(v: Vec<Int>) -> Int = extent(v)\n\n{a: input, b: f(input)}"
+        "fn f(v: Vec<Int>) -> Int = length(v)\n\n{a: input, b: f(input)}"
     ));
 }
 
@@ -134,7 +134,7 @@ fn a_missing_field_still_mismatches() {
 
 #[test]
 fn empty_vec_as_an_argument() {
-    let src = "fn f(v: Vec<Int>) -> Int = extent(v)\n\nf([])";
+    let src = "fn f(v: Vec<Int>) -> Int = length(v)\n\nf([])";
     assert_eq!(body_ty(src), Type::Int);
 }
 
@@ -162,11 +162,11 @@ fn empty_vec_in_a_constructor_payload() {
     assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Box"));
 }
 
-/// `extent` is polymorphic over its element type, so its argument is synthesised: there is no
+/// `length` is polymorphic over its element type, so its argument is synthesised: there is no
 /// declared parameter type to flow in, and `[]` stays unknowable there.
 #[test]
 fn a_polymorphic_builtin_still_synthesises_its_argument() {
-    insta::assert_snapshot!(err("extent([])"));
+    insta::assert_snapshot!(err("length([])"));
 }
 
 // Step 4: the expectation flows through `|` into the right side, and a `map` whose position
@@ -275,10 +275,10 @@ fn a_partial_chain_arm_that_misses_the_peeled_element() {
 /// carry its own `Opt` on top of the chain's.
 #[test]
 fn a_partial_chain_over_opt_arms_still_wants_the_doubled_annotation() {
-    let doubled = "fn f(v: Vec<Int>) -> Opt<Opt<Int>> = v | extent(v) > 0 -> v[9]\n\nf([1])";
+    let doubled = "fn f(v: Vec<Int>) -> Opt<Opt<Int>> = v | length(v) > 0 -> v[9]\n\nf([1])";
     assert!(toylang::compile(doubled).is_ok());
     insta::assert_snapshot!(err(
-        "fn f(v: Vec<Int>) -> Opt<Int> = v | extent(v) > 0 -> v[9]\n\nf([1])"
+        "fn f(v: Vec<Int>) -> Opt<Int> = v | length(v) > 0 -> v[9]\n\nf([1])"
     ));
 }
 

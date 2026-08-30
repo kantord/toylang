@@ -1,5 +1,5 @@
 program: |
-  unlines(range 4 | map(str(.)))
+  join_lines(range 4 | map(str(.)))
 
 output: |
   0
@@ -7,4 +7,4 @@ output: |
   2
   3
 
-node_types: [application, builtin.extent, builtin.range, builtin.str, builtin.tail, compare.eq, concat, conditional, int, local, map-over, pipe, selection.collapse, str, unwrap, var]
+node_types: [application, builtin.length, builtin.range, builtin.str, builtin.tail, compare.eq, concat, conditional, int, local, map-over, pipe, selection.collapse, str, unwrap, var]

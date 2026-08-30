@@ -3,10 +3,10 @@
 # is still yielded here, matching jq -R and every backend's own line-splitting rather
 # than that mistake. Quoted so the missing trailing newline in `input` is unambiguous
 # rather than something a block scalar's own conventions could paper over.
-program: "unlines collect lines\n"
+program: "join_lines collect lines\n"
 
 input: "ada\nbo"
 
 output: "ada\nbo\n"
 
-node_types: [application, builtin.collect, builtin.extent, builtin.tail, compare.eq, concat, conditional, int, lines, selection.collapse, str, unwrap, var]
+node_types: [application, builtin.collect, builtin.length, builtin.tail, compare.eq, concat, conditional, int, lines, selection.collapse, str, unwrap, var]

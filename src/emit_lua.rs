@@ -743,7 +743,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             }
             // The source already materialized, so the exit has nothing left to do.
             Builtin::Collect => expr(enums, arg),
-            Builtin::Extent => format!("#{}", expr(enums, arg)),
+            Builtin::Length => format!("#{}", expr(enums, arg)),
             Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
             Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
             Builtin::Sort => format!("tl_sort({})", expr(enums, arg)),

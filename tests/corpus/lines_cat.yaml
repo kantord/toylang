@@ -1,8 +1,8 @@
 # The forcing program for this cut: reading stdin incrementally, line by line, on all six
 # backends, none of which pre-materializes it in Rust first. `collect` is the one place a
-# stream becomes an ordinary Vec; `unlines` and printing are unchanged from every other program.
+# stream becomes an ordinary Vec; `join_lines` and printing are unchanged from every other program.
 program: |
-  unlines collect lines
+  join_lines collect lines
 
 input: |
   ada
@@ -14,4 +14,4 @@ output: |
   bo
   cy
 
-node_types: [application, builtin.collect, builtin.extent, builtin.tail, compare.eq, concat, conditional, int, lines, selection.collapse, str, unwrap, var]
+node_types: [application, builtin.collect, builtin.length, builtin.tail, compare.eq, concat, conditional, int, lines, selection.collapse, str, unwrap, var]

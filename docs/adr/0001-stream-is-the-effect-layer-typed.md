@@ -34,7 +34,7 @@ a checked property, and eager consumption of stdin gets a visible spelling, `col
 - The linearity and containment rules generalize machinery the monomorphic `Lines` type
   already had (single use, banned from records and Vecs, unprintable); `Lines` itself becomes
   `Stream<Str>`.
-- `extent` stays `Vec`-only, keeping its no-fold promise; stream reducers are future work.
+- `length` stays `Vec`-only, keeping its no-fold promise; stream reducers are future work.
 - `recognize_fusion`'s job shifts from guessing program shapes to reading types; an eager
   fallback for a stream-typed program becomes a compiler bug rather than a silent behavior.
 - New rejection tests are required (nested `jsonlines`, twice-consumed stream, `Stream` in a

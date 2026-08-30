@@ -96,7 +96,7 @@ mod linearity {
     #[test]
     fn a_stream_parameter_cannot_be_consumed_twice() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Str>) -> Int = extent(collect(s)) + extent(collect(s))\n\n1"
+            "fn f(s: Stream<Str>) -> Int = length(collect(s)) + length(collect(s))\n\n1"
         ));
     }
 
@@ -138,7 +138,7 @@ mod linearity {
     #[test]
     fn a_map_body_cannot_be_a_stream() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Str>) -> Int = extent([1] | map(s))\n\n1"
+            "fn f(s: Stream<Str>) -> Int = length([1] | map(s))\n\n1"
         ));
     }
 
@@ -148,7 +148,7 @@ mod linearity {
     #[test]
     fn a_stream_cannot_be_consumed_inside_a_mapper() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Str>) -> Vec<Int> = [1] | map(extent(collect(s)))\n\n1"
+            "fn f(s: Stream<Str>) -> Vec<Int> = [1] | map(length(collect(s)))\n\n1"
         ));
     }
 
@@ -188,7 +188,7 @@ mod sources {
     #[test]
     fn input_and_inputs_cannot_both_be_used() {
         insta::assert_snapshot!(err(
-            "fn f(x: Int) -> Int = x\nfn g(x: Vec<Int>) -> Int = extent(x)\n\nf(input) + g(collect(inputs))"
+            "fn f(x: Int) -> Int = x\nfn g(x: Vec<Int>) -> Int = length(x)\n\nf(input) + g(collect(inputs))"
         ));
     }
 
@@ -198,7 +198,7 @@ mod sources {
     #[test]
     fn lines_and_inputs_cannot_both_be_used() {
         insta::assert_snapshot!(err(
-            "fn g(x: Vec<Int>) -> Int = extent(x)\n\n(collect(lines) | 0) + g(collect(inputs))"
+            "fn g(x: Vec<Int>) -> Int = length(x)\n\n(collect(lines) | 0) + g(collect(inputs))"
         ));
     }
 
@@ -214,7 +214,7 @@ mod sources {
     #[test]
     fn inputs_cannot_be_read_twice() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Int>) -> Vec<Int> = collect(s)\n\nextent(f(inputs)) + extent(f(inputs))"
+            "fn f(s: Stream<Int>) -> Vec<Int> = collect(s)\n\nlength(f(inputs)) + length(f(inputs))"
         ));
     }
 
@@ -237,7 +237,7 @@ mod sources {
     /// of silently materializing.
     #[test]
     fn inputs_wanted_as_a_vec_names_the_eager_spelling() {
-        insta::assert_snapshot!(err("fn g(x: Vec<Int>) -> Int = extent(x)\n\ng(inputs)"));
+        insta::assert_snapshot!(err("fn g(x: Vec<Int>) -> Int = length(x)\n\ng(inputs)"));
     }
 
     /// `input` is one whole value already in hand, which is exactly what a stream is not, so a
@@ -252,13 +252,13 @@ mod sources {
     /// The same once-per-element problem for the sources themselves.
     #[test]
     fn lines_cannot_be_read_inside_a_mapper() {
-        insta::assert_snapshot!(err("extent([1] | map(extent(collect(lines))))"));
+        insta::assert_snapshot!(err("length([1] | map(length(collect(lines))))"));
     }
 
     #[test]
     fn inputs_cannot_be_read_inside_a_mapper() {
         insta::assert_snapshot!(err(
-            "fn g(x: Vec<Int>) -> Int = extent(x)\n\nextent([1] | map(g(collect(inputs))))"
+            "fn g(x: Vec<Int>) -> Int = length(x)\n\nlength([1] | map(g(collect(inputs))))"
         ));
     }
 
@@ -282,7 +282,7 @@ mod sources {
     #[test]
     fn a_function_reading_a_source_cannot_be_called_from_a_mapper() {
         insta::assert_snapshot!(err(
-            "fn f(x: Int) -> Int = extent(collect(lines)) + x\n\nextent([1, 2] | map(f(.)))"
+            "fn f(x: Int) -> Int = length(collect(lines)) + x\n\nlength([1, 2] | map(f(.)))"
         ));
     }
 

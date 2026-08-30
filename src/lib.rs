@@ -105,7 +105,7 @@ pub fn run_with_input(src: &str, stdin: Option<&str>) -> Result<String> {
 /// Whether the generated code for `program` reads `inputs` for itself, one record at a time,
 /// rather than needing the whole thing parsed and handed over up front. A type question now,
 /// not a shape guess: exactly the programs `tir::fusion` reads from `inputs` -- every backend
-/// has a fused loop to emit. An aggregate like `extent(collect(inputs))` still has no way to
+/// has a fused loop to emit. An aggregate like `length(collect(inputs))` still has no way to
 /// stream no matter which backend runs it. Public so `main.rs` can decide, before it has read
 /// anything, whether to drain real stdin itself or hand it to `run_on` untouched.
 pub fn streams_inputs(program: &tir::Program) -> bool {
@@ -116,7 +116,7 @@ pub fn streams_inputs(program: &tir::Program) -> bool {
 /// `streams_inputs` says the backend reads `inputs` for itself, in which case the real stdin and
 /// stdout are connected straight through (`Feed::Live`) and there is nothing left to capture.
 /// Capturing otherwise keeps the tests to one call: it also means output is held in memory, which
-/// is fine for every program whose result has statically known extent, and is exactly the case
+/// is fine for every program whose result has statically known length, and is exactly the case
 /// `Feed::Live` exists for on the ones that no longer do.
 pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String> {
     let program = compile(src)?;

@@ -10,7 +10,7 @@ fn err(src: &str) -> String {
 
 #[test]
 fn a_function_can_take_and_return_a_char() {
-    assert!(toylang::compile("fn id(c: Char) -> Char = c\n\nextent(chars(\"a\"))").is_ok());
+    assert!(toylang::compile("fn id(c: Char) -> Char = c\n\nlength(chars(\"a\"))").is_ok());
 }
 
 #[test]
@@ -20,7 +20,7 @@ fn a_record_field_can_be_a_char() {
 
 #[test]
 fn a_vec_can_hold_a_char() {
-    assert!(toylang::compile("fn f(v: Vec<Char>) -> Int = extent(v)\n\n1").is_ok());
+    assert!(toylang::compile("fn f(v: Vec<Char>) -> Int = length(v)\n\n1").is_ok());
 }
 
 #[test]
@@ -31,7 +31,7 @@ fn input_cannot_be_char_typed() {
 #[test]
 fn inputs_cannot_carry_a_char_element() {
     insta::assert_snapshot!(err(
-        "fn f(v: Vec<Char>) -> Int = extent(v)\n\nf(collect(inputs))"
+        "fn f(v: Vec<Char>) -> Int = length(v)\n\nf(collect(inputs))"
     ));
 }
 

@@ -1119,7 +1119,7 @@ impl Emitter<'_> {
                 }
                 // The source already materialized, so the exit has nothing left to do.
                 Builtin::Collect => self.expr(arg),
-                Builtin::Extent => format!("(({}).len() as i32)", self.expr(arg)),
+                Builtin::Length => format!("(({}).len() as i32)", self.expr(arg)),
                 Builtin::Tail => format!("tl_tail(&{})", self.expr(arg)),
                 Builtin::Flatten => format!("tl_flatten(&{})", self.expr(arg)),
                 Builtin::Sort => format!("tl_sort(&{})", self.expr(arg)),

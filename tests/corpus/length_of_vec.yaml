@@ -1,0 +1,7 @@
+program: |
+  length([10, 20, 30])
+
+output: |
+  3
+
+node_types: [builtin.length, int, vec-literal]

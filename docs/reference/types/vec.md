@@ -39,7 +39,7 @@ cannot tell what `[]` contains (at byte 0)
 ```
 
 What applies to a `Vec`: the index specs (`[0]`, `[-1]`, `[]` mid-chain -- see
-[specs](../operators/specs.md)), [`extent`](../builtins/extent.md),
+[specs](../operators/specs.md)), [`length`](../builtins/length.md),
 [`flatten`](../builtins/flatten.md), [`tail`](../builtins/tail.md),
 [`sort`](../builtins/sort.md), [`reverse`](../builtins/reverse.md), the subject-fed
 [`select`](../builtins/select.md) and [`map`](../builtins/map.md), and `+`, which joins two

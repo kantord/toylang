@@ -671,7 +671,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             }
             // The source already materialized, so the exit has nothing left to do.
             Builtin::Collect => expr(enums, arg),
-            Builtin::Extent => format!("{}.length", expr(enums, arg)),
+            Builtin::Length => format!("{}.length", expr(enums, arg)),
             Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
             Builtin::Flatten => format!("{}.flat()", expr(enums, arg)),
             // `Array.prototype.sort`'s default comparator stringifies, which is wrong for

@@ -44,10 +44,10 @@ fn root_and_mult(a: Int) -> {root: Int, mult: Int} = best_mult({a: a, m: 6})
 fn is_primitive(a: Int) -> Bool = root_and_mult(a).mult == 1
 
 fn is_dup(p: {v: Vec<Int>, i: Int}) -> Bool =
-    extent(range(p.i) | select(p.v[.]! == p.v[p.i]!)) > 0
+    length(range(p.i) | select(p.v[.]! == p.v[p.i]!)) > 0
 
 fn distinct_count(v: Vec<Int>) -> Int =
-    extent(range(extent(v)) | select(not is_dup({v: v, i: .})))
+    length(range(length(v)) | select(not is_dup({v: v, i: .})))
 
 fn powers_from(p: {r: Int, val: Int, j: Int, top: Int}) -> Vec<Int> =
     [] if p.val > p.top else
@@ -68,7 +68,7 @@ fn multi_root_contribution(p: {r: Int, top: Int}) -> Int =
     distinct_count(exponents_for_root(p))
 
 fn single_contrib(top: Int) -> Int =
-    extent(
+    length(
         range(top - 1) | map(. + 2) | select(is_primitive(.) and . * . > top)
     ) *
         (top - 1)
@@ -80,7 +80,7 @@ fn multi_contribs(top: Int) -> Vec<Int> =
         | map(multi_root_contribution({r: ., top: top}))
 
 fn sum_ints(v: Vec<Int>) -> Int =
-    0 if extent(v) == 0 else v[0]! + sum_ints(tail(v)!)
+    0 if length(v) == 0 else v[0]! + sum_ints(tail(v)!)
 
 fn solve(top: Int) -> Int = single_contrib(top) + sum_ints(multi_contribs(top))
 

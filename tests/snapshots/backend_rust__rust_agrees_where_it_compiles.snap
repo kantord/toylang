@@ -55,7 +55,6 @@ enum_unit_variant
 enum_variant_at_runtime
 enum_vec_payload
 escapes
-extent_of_vec
 field_key_case_is_significant
 fields_basic
 fields_reflects_checked_order
@@ -94,6 +93,7 @@ int64_record_beside_input
 int64_widening
 int_result
 join_basic
+join_lines_one
 jq_tutorial
 jq_tutorial_step4
 jsonlines_enum_stream
@@ -101,6 +101,7 @@ jsonlines_of_inputs
 jsonlines_of_lines
 jsonlines_record_with_vec_field
 jsonlines_scalars
+length_of_vec
 lines_cat
 lines_preserve_crlf
 lines_stream_signature
@@ -169,7 +170,6 @@ type_alias
 undeclared_input_fields
 unicode_input
 unicode_quote
-unlines_one
 unpaired_surrogate_input
 unwrap_absent
 unwrap_int

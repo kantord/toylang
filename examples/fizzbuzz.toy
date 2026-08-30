@@ -1,5 +1,5 @@
 # FizzBuzz to 100: one transformation, one string, printed as lines.
-unlines(
+join_lines(
     range(100)
         | map(. + 1)
         | map(

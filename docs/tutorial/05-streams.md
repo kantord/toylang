@@ -68,7 +68,7 @@ A stream is not a value: it cannot be printed, stored, or indexed. `collect` is 
 exit, turning `Stream<T>` into an ordinary `Vec<T>` by reading everything:
 
 ```toylang
-fn count(xs: Vec<Int>) -> Int = extent(xs)
+fn count(xs: Vec<Int>) -> Int = length(xs)
 
 count(collect(inputs))
 ```

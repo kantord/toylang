@@ -18,7 +18,7 @@ fn reverse_num(p: {n: Int, acc: Int}) -> Int =
 fn max2(p: {a: Int, b: Int}) -> Int = p.a if p.a > p.b else p.b
 
 fn max_vec(xs: Vec<Int>) -> Int =
-    xs[0]! if extent(xs) == 1 else max2({a: xs[0]!, b: max_vec(tail(xs)!)})
+    xs[0]! if length(xs) == 1 else max2({a: xs[0]!, b: max_vec(tail(xs)!)})
 
 fn row_max(a: Int) -> Int =
     max_vec(

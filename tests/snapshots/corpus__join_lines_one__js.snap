@@ -20,7 +20,7 @@ function tl_unwrap(v, depth) {
   if (v === "none") { throw new Error("toylang: unwrapped a value that is not there"); }
   return v.some;
 }
-function v_unlines(v_v) {
-  return ((v_v.length === 0) ? "" : ((v_v.length === 1) ? tl_unwrap(tl_at(v_v, 0, 0), 0) : ((tl_unwrap(tl_at(v_v, 0, 0), 0) + "\n") + v_unlines(tl_unwrap(tl_tail(v_v), 0)))));
+function v_join_lines(v_v) {
+  return ((v_v.length === 0) ? "" : ((v_v.length === 1) ? tl_unwrap(tl_at(v_v, 0, 0), 0) : ((tl_unwrap(tl_at(v_v, 0, 0), 0) + "\n") + v_join_lines(tl_unwrap(tl_tail(v_v), 0)))));
 }
-console.log(v_unlines(["only"]));
+console.log(v_join_lines(["only"]));

@@ -5,7 +5,7 @@
 //! that always-available set; a non-`pub` one is parsed but never included in any compiled
 //! program, so it cannot yet serve as a private helper for a `pub` one either.
 //!
-//! `unlines` used to be a `tir::Builtin`, needing its own codegen in all six backends. Written as
+//! `join_lines` used to be a `tir::Builtin`, needing its own codegen in all six backends. Written as
 //! ordinary toylang source instead, it is checked and compiled exactly the way a program's own
 //! functions are, so getting it right once in the checker is getting it right everywhere.
 //!

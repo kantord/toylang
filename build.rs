@@ -173,7 +173,7 @@ impl ToRust for tir::Builtin {
             tir::Builtin::Range => "Range",
             tir::Builtin::Collect => "Collect",
             tir::Builtin::JsonLines => "JsonLines",
-            tir::Builtin::Extent => "Extent",
+            tir::Builtin::Length => "Length",
             tir::Builtin::Flatten => "Flatten",
             tir::Builtin::Tail => "Tail",
             tir::Builtin::Fields => "Fields",

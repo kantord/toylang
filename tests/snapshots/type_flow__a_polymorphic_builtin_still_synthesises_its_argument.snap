@@ -1,5 +1,5 @@
 ---
 source: tests/type_flow.rs
-expression: "err(\"extent([])\")"
+expression: "err(\"length([])\")"
 ---
 cannot tell what `[]` contains (at byte 7)

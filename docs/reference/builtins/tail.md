@@ -15,7 +15,7 @@ tail([1, 2, 3])!
 The tail of a one-entry `Vec` is present, and empty:
 
 ```toylang
-extent(tail([1])!)
+length(tail([1])!)
 ```
 
 ```output
