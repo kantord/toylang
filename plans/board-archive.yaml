@@ -1150,3 +1150,11 @@
   needs: []
   prio: 2
   status: done
+
+- id: sum-max-builtins-build
+  issue: gh:140
+  title: Implement sum and max builtins over Vec<Int>/Vec<Int64>, empty sum is 0, empty max is Opt<T> (gh:140 ruling)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
