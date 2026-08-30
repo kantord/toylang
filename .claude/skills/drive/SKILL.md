@@ -36,7 +36,13 @@ Every tick:
    below), land finished ones.
 2. Poll `docs/.annotations/inbox.json` AND `docs/.annotations/notes.json` (compose messages
    and span notes), applying entries 5+ minutes quiet or marked read; wizard rounds in
-   `docs/.grill/` process immediately. A record whose `page` is a `plans/*.md` file is a
+   `docs/.grill/` process immediately. An inbox record whose `page` is a
+   `docs/.grill/*.round.yaml` is a wizard SUBMISSION -- an explicit click, applied at once,
+   no quiet period (the quiet rule protects half-typed compose notes, not button presses).
+   Grilling runs CONCURRENTLY with build work: keep TWO rounds buffered in `docs/.grill/`
+   whenever ready decides remain (compose the second before the first is answered, never
+   duplicating a pending round's questions), so the maintainer can answer back-to-back
+   while workers grind. A record whose `page` is a `plans/*.md` file is a
    plan decision: an explicit click, applied at once, no quiet period ("Plan approval"
    below). Clearing at capture is RE-READ, FILTER BY ID, WRITE -- one atomic step, printing
    what is removed. Never empty an array wholesale from a stale read: the maintainer keeps
