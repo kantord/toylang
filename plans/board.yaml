@@ -1071,7 +1071,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: js-node-web-split-design
   issue: gh:118
