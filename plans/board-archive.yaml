@@ -1158,3 +1158,11 @@
   needs: []
   prio: 2
   status: done
+
+- id: range-stream-source-build
+  issue: gh:137
+  title: Amend ADR 0001 (Q1/Q13) for range as a Stream source; implement across backends (gh:127 ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: done

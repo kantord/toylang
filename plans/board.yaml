@@ -114,14 +114,6 @@
   prio: 4
   status: todo
 
-- id: range-stream-source-build
-  issue: gh:137
-  title: Amend ADR 0001 (Q1/Q13) for range as a Stream source; implement across backends (gh:127 ruling)
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
 - id: float-build
   issue: gh:149
   title: Implement Float (IEEE binary64 per ADR 0007) across the backends
