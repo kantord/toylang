@@ -8,8 +8,8 @@
 #
 # Runs in auto permission mode -- the same classifier guardrail interactive sessions
 # get. Every tick runs sonnet (maintainer rule, 2026-08-30): landing is mostly
-# plumbing, and the land skill escalates judgment to one fable subagent only on
-# fable-tier branches. `audit` as $1 runs the audit prompt.
+# plumbing, and review panels/subagents are retired outright (same-day ruling) --
+# the coordinator reads diffs itself. `audit` as $1 runs the audit prompt.
 set -uo pipefail
 REPO=/home/kantord/repos/toylang
 WORKTREES=/home/kantord/.local/share/enwiro/worktrees/pr/toylang-1234138d

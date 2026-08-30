@@ -77,10 +77,12 @@ memory. The brief carries everything, in this shape:
 > issue-<N>. FIRST read AGENTS.md at the worktree root and follow it throughout,
 > including its commit rules. Your task is GitHub issue #<N>: run `gh issue view <N>`
 > and read every comment before touching anything. [One or two sentences locating any
-> in-repo source of truth.] Definition of done: [the concrete gates -- typically:
-> implementation complete; `just test` green from the worktree root (a cold worktree
-> compiles from scratch and is slow -- give it time, never abort it); no new clippy
-> warnings in code you touched; work committed on this branch per AGENTS.md with the
+> in-repo source of truth.] While iterating, test with `just check` (the fast loop);
+> `just --list` names every repo task. Definition of done: [the concrete gates --
+> typically: implementation complete; `just test` green from the worktree root (the
+> full suite, slower than `just check`; a cold worktree also compiles first -- give it
+> time, never abort it); `just fmt` and `just clippy` clean on code you touched; work
+> committed on this branch per AGENTS.md with the
 > provenance line "Written by DeepSeek V4 Flash via opencode."]. Hard constraints: work
 > ONLY inside this worktree; do NOT push; do not touch plans/. If a command is denied,
 > adapt with an allowed alternative rather than retrying. If something needs deciding

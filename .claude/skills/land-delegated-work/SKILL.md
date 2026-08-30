@@ -22,36 +22,33 @@ Do not ping for intermediate progress or ask permission to review or merge.
 - Run `just test` in the worktree. A red suite goes back to the session (or gets fixed here
   if the session is gone and the fix is small); never review a red branch as if it were done.
 
-## 2. Review, sized to the branch (maintainer rule, 2026-08-30)
+## 2. Review: the coordinator reads the diff itself. No review agents. (maintainer rule, 2026-08-30)
 
-The review effort matches the branch, not a fixed panel -- a two-agent panel on a
-two-file mechanical diff once cost more than the work it reviewed:
+Review subagents and panels are RETIRED -- no single-agent reviews, no two-agent
+panels, no fable adjudicators, for any branch on any tier. With workers this cheap,
+review agents were becoming the dominant cost of a landing, and the tiered-panel
+history (a panel once cost more than the work it reviewed) ends here.
 
-- **haiku-tier rows and mechanical diffs** (renames, sweeps, config/UI tweaks, roughly
-  under ~150 changed lines of non-generated code): NO review agents. The landing
-  coordinator reads the diff itself against the issue; the suite, `toylang fmt`, and
-  `.claude/checks/run.sh` are the mechanical gates and they already ran.
-- **regular sonnet-tier branches**: ONE review agent (sonnet), briefed on spec
-  correctness against the named sources -- the GitHub issue, the relevant `plans/*.md`
-  steps, the draft.md DECIDED section, any governing ADR -- with style folded into the
-  same brief as a secondary axis. Style is mostly machine-enforced now (fmt canonical
-  form, the checks script); a dedicated style agent rarely finds blockers.
-- **fable-tier, cross-cutting, or semantics-touching branches** (checker, backends,
-  prelude contracts): the full two-agent panel, spec + style, as before.
-- Review subagents run on sonnet (`model: "sonnet"` on the Agent call). The landing
-  coordinator itself runs sonnet (maintainer rule, 2026-08-30) -- landing is mostly
-  plumbing. ONLY on panel-tier branches, judgment escalates: spawn ONE fable subagent
-  (`model: "fable"`) handed the panel's findings, the diff, and any semantic merge
-  conflict, to adjudicate what blocks, what gets fixed on the branch, and how conflicts
-  resolve; the sonnet coordinator executes its verdicts.
-- Review briefs that boot a dev server MUST say: kill YOUR server by PID only -- never
+What review IS now:
+
+- The mechanical gates: the suite, `toylang fmt`, `.claude/checks/run.sh`, clippy on
+  touched code. Non-negotiable floor, and they already ran or run here.
+- The landing coordinator reads the FULL diff itself against the spec sources -- the
+  GitHub issue, the relevant `plans/*.md`, any governing ADR -- with effort scaled by
+  judgment, not by procedure: a rename sweep gets a skim, a backend-semantics diff
+  gets a careful read. The reading happens in this session, not in a spawned one.
+- Judge what you find. Hard violations and small fixes: fix them on the branch,
+  committing per AGENTS.md (provenance lines, `Co-Authored-By` trailer). Non-blocking
+  findings and spec gaps: file follow-up GitHub issues rather than blocking the merge.
+  Genuine design questions: stop and escalate -- that is the one case the user wants
+  to hear about early. Worker-quality findings on opencode lanes also go in
+  plans/opencode-rollout.md's incident table.
+- If a landing genuinely feels beyond a solo read (rare; cross-backend semantics with
+  a conflicted merge, say), the escalation is TO THE MAINTAINER in the report -- not
+  to a review agent.
+- Anything that boots a dev server: kill YOUR server by PID only -- never
   `pkill`/`killall` by process name. Name-based kills took down the coordinator's
-  annotations server (and once the maintainer's own) four times in one day, eating a
-  submitted grilling round each time the timing was wrong.
-- Judge the findings. Hard violations and small fixes: fix them on the branch, committing
-  per AGENTS.md (provenance lines, `Co-Authored-By` trailer). Non-blocking findings and
-  spec gaps: file follow-up GitHub issues rather than blocking the merge. Genuine design
-  questions: stop and escalate -- that is the one case the user wants to hear about early.
+  annotations server (and once the maintainer's own) four times in one day.
 
 ## 2b. Batch landings cascade (maintainer flow, 2026-08-29)
 
