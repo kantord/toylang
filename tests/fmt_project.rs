@@ -139,6 +139,36 @@ fn unreadable_directory_is_reported_and_walk_continues() {
     );
 }
 
+/// A file the walk cannot read (permission denied) hits `format_one`'s read branch -- the
+/// sibling of the parse-error case pinned above -- and is likewise recorded, skipped, and
+/// nonzero at exit while the rest of the tree still formats.
+#[test]
+#[cfg(unix)]
+fn unreadable_file_is_reported_and_walk_continues() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("a temp dir");
+    write(dir.path(), "readable.toy", CROOKED);
+    write(dir.path(), "sealed.toy", CROOKED);
+
+    let sealed = dir.path().join("sealed.toy");
+    let perms = std::fs::Permissions::from_mode(0o000);
+    std::fs::set_permissions(&sealed, perms).expect("remove permissions");
+
+    let out = fmt(dir.path(), &[]);
+
+    let perms = std::fs::Permissions::from_mode(0o644);
+    std::fs::set_permissions(&sealed, perms).expect("restore permissions");
+
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert_eq!(stdout(&out), "readable.toy\n");
+    assert!(
+        stderr(&out).contains("sealed.toy") && stderr(&out).contains("Permission denied"),
+        "expected permission error, got: {}",
+        stderr(&out)
+    );
+}
+
 fn fmt(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_toylang"))
         .arg("fmt")
