@@ -34,8 +34,12 @@ two-file mechanical diff once cost more than the work it reviewed:
   form, the checks script); a dedicated style agent rarely finds blockers.
 - **fable-tier, cross-cutting, or semantics-touching branches** (checker, backends,
   prelude contracts): the full two-agent panel, spec + style, as before.
-- Review subagents run on sonnet (`model: "sonnet"` on the Agent call); the coordinator's
-  own judgment of their findings is where the big model earns its keep.
+- Review subagents run on sonnet (`model: "sonnet"` on the Agent call). The landing
+  coordinator itself runs sonnet (maintainer rule, 2026-08-30) -- landing is mostly
+  plumbing. ONLY on panel-tier branches, judgment escalates: spawn ONE fable subagent
+  (`model: "fable"`) handed the panel's findings, the diff, and any semantic merge
+  conflict, to adjudicate what blocks, what gets fixed on the branch, and how conflicts
+  resolve; the sonnet coordinator executes its verdicts.
 - Review briefs that boot a dev server MUST say: kill YOUR server by PID only -- never
   `pkill`/`killall` by process name. Name-based kills took down the coordinator's
   annotations server (and once the maintainer's own) four times in one day, eating a

@@ -333,3 +333,19 @@
   kind: decide
   needs: []
   status: todo
+
+- id: delegation-telemetry
+  issue: gh:123
+  title: Per-lane token totals recorded at landing, before transcripts vanish
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
+
+- id: worker-pool-reuse
+  issue: gh:124
+  title: Persistent worker lanes -- sessions reused across tasks under a token ceiling
+  kind: build
+  needs: [delegation-telemetry]
+  prio: 2
+  status: todo

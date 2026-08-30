@@ -7,9 +7,9 @@
 # trust disk over memory, so a reset never loses state.
 #
 # Runs in auto permission mode -- the same classifier guardrail interactive sessions
-# get. Model per tick: sonnet for routine monitoring/dispatch, fable when a lane looks
-# landable (landing is where review-finding judgment happens); `audit` as $1 always
-# runs fable.
+# get. Every tick runs sonnet (maintainer rule, 2026-08-30): landing is mostly
+# plumbing, and the land skill escalates judgment to one fable subagent only on
+# fable-tier branches. `audit` as $1 runs the audit prompt.
 set -uo pipefail
 REPO=/home/kantord/repos/toylang
 WORKTREES=/home/kantord/.local/share/enwiro/worktrees/pr/toylang-1234138d
@@ -61,8 +61,10 @@ for wt in $DELEGATED; do
   if [ "$ahead" -gt 0 ] && [ "$dirty" -eq 0 ] && [ -z "$recent8" ] && [ "$commit_age" -ge 480 ]; then
     # Both quiet signals matter: committing touches no working-tree mtimes, so a
     # lane that edits, tests for ten minutes, then commits looks file-quiet.
+    # The tick stays sonnet even when landing (maintainer rule, 2026-08-30):
+    # landing is mostly plumbing; the land skill escalates judgment to a single
+    # fable subagent only on fable-tier branches.
     TRIGGER="lane $wt looks landable"
-    MODEL=fable
   elif [ "$live" -eq 0 ]; then
     TRIGGER="${TRIGGER:-lane $wt has no live worker}"
   elif [ -z "$recent30" ] && [ "$commit_age" -ge 1800 ]; then
@@ -107,7 +109,6 @@ if [ -z "$TRIGGER" ]; then
 fi
 
 if [ "${1:-tick}" = "audit" ]; then
-  MODEL=fable
   PROMPT='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has a live or accounted-for lane; no worktree holds unmerged commits the board thinks landed; no falsely-stuck lanes. Fix what is mechanical, file issues for the rest. End quietly if clean.'
 else
   PROMPT='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. Reconstruct state from disk -- plans/board.yaml, the worktrees, the annotation stores -- and trust disk over anything remembered from earlier ticks. Read board rows with status: delegated and check each lane worktree (commits vs main, dirty files, live worker via pgrep cwd). Poll BOTH annotation stores: docs/.annotations/inbox.json AND docs/.annotations/notes.json -- apply entries older than 5 minutes and clear them at capture; wizard submissions in docs/.grill/ process immediately (delete round files at capture). If a lane is finished (ahead of main, clean, 8+ minutes quiet or worker gone), run the land-delegated-work skill -- cascade if 3+ are ready. After landings, dispatch ready board rows into free lanes (cap 5, model per row: haiku/sonnet/fable). If nothing changed, end quietly without writing anything.'
