@@ -1,0 +1,5 @@
+---
+source: tests/int64.rs
+expression: "toylang::compile(\"i64(9000000000)\").map(|_| ()).unwrap_err().to_string()"
+---
+integer `9000000000` does not fit in Int, which is 32 bits; only a position that expects Int64 can hold it (at byte 4)

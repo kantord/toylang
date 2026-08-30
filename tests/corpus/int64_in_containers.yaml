@@ -1,0 +1,13 @@
+# An Int64 is an ordinary value: record fields and Vec elements hold one, and printing walks
+# them like any other scalar. This is the case that exercises each backend's representation
+# choice (BigInt in JS, int64 in Go) through the printers rather than at top level.
+snapshot: [js, go]
+program: |
+  fn ts() -> Int64 = 1756500000000
+
+  {when: ts(), deltas: [ts() + 1, ts() - 1, i64(0)]}
+
+output: |
+  {"when":1756500000000,"deltas":[1756500000001,1756499999999,0]}
+
+node_types: [application, arith.add, arith.sub, builtin.i64, int, int64, record-literal, vec-literal]

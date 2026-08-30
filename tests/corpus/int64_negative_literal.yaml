@@ -1,0 +1,11 @@
+# A minus directly on a literal is part of the literal at this width too, so a negative that
+# no Int could hold is writable wherever an Int64 is expected.
+program: |
+  fn owed() -> Int64 = -1800000000000
+
+  owed() - 43
+
+output: |
+  -1800000000043
+
+node_types: [application, arith.sub, int64]

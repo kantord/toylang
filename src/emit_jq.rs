@@ -42,10 +42,27 @@ def tl_rem($a; $b):
   if $b == 0 then error("toylang: divided by zero") else ($a % $b) | tl_i32 end;
 "#;
 
+/// Int64 arithmetic on doubles, exact only within +/-2^53 (kantord/toylang#83). That boundary
+/// is documented rather than papered over: 32-bit wrapping could be emulated exactly through
+/// 16-bit halves because every partial product fit a double, and no such split reassembles a
+/// 64-bit product or a mod-2^64 wrap from pieces a double can hold. So `+`, `-` and `*` are
+/// jq's own, `%` casts through C's 64-bit integers inside jq itself, and a program whose
+/// Int64 values stay within 2^53 -- every corpus case does -- agrees with the other six
+/// backends; one that leaves it diverges here, and docs/reference/types/int64.md says so.
+const ARITH64_HELPER: &str = r#"def tl_div64($a; $b):
+  if $b == 0 then error("toylang: divided by zero") else ($a / $b | trunc) end;
+def tl_rem64($a; $b):
+  if $b == 0 then error("toylang: divided by zero") else ($a % $b) end;
+"#;
+
 pub fn emit(program: &Program) -> String {
     let mut out = String::new();
-    if uses_arith(program) {
+    let (arith, arith64) = uses_arith(program);
+    if arith {
         out.push_str(ARITH_HELPER);
+    }
+    if arith64 {
+        out.push_str(ARITH64_HELPER);
     }
 
     // jq resolves a `def` only against what is already defined, so definitions have to come out
@@ -119,7 +136,7 @@ fn canonical(ty: &Type, value: &str) -> String {
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
-        Type::Str | Type::Int | Type::Bool => value.to_string(),
+        Type::Str | Type::Int | Type::Int64 | Type::Bool => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(elem, ".")),
         Type::Enum { .. } if ty.as_opt().is_some() => {
             let inner = ty.as_opt().expect("guarded");
@@ -290,44 +307,91 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
     done
 }
 
-fn uses_arith(program: &Program) -> bool {
-    fn walk(t: &Tir) -> bool {
+/// Whether the program does 32-bit arithmetic, 64-bit arithmetic, or both: the node's type
+/// says which width each `Arith` is, so the two helper blocks are included independently.
+fn uses_arith(program: &Program) -> (bool, bool) {
+    fn walk(t: &Tir, found: &mut (bool, bool)) {
         match &t.kind {
-            Kind::Arith { .. } => true,
+            Kind::Arith { lhs, rhs, .. } => {
+                if t.ty == Type::Int64 {
+                    found.1 = true;
+                } else {
+                    found.0 = true;
+                }
+                walk(lhs, found);
+                walk(rhs, found);
+            }
             Kind::Cond {
                 cond,
                 then,
                 otherwise,
-            } => walk(cond) || walk(then) || walk(otherwise),
+            } => {
+                walk(cond, found);
+                walk(then, found);
+                walk(otherwise, found);
+            }
             Kind::Str(_)
             | Kind::Int(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
             | Kind::Inputs
-            | Kind::Lines => false,
-            Kind::VecLit(items) => items.iter().any(walk),
-            Kind::RecordLit { fields } => fields.iter().any(|(_, v)| walk(v)),
-            Kind::EnumLit { payload, .. } => payload.as_deref().is_some_and(walk),
-            Kind::Call { arg, .. } => arg.as_deref().is_some_and(walk),
-            Kind::Builtin { arg, .. } => walk(arg),
-            Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => walk(l) || walk(r),
-            Kind::Bind { value, body, .. } => walk(value) || walk(body),
-            Kind::Select { source, pred, .. } => walk(source) || walk(pred),
-            Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
-                walk(source) || walk(body)
+            | Kind::Lines => {}
+            Kind::VecLit(items) => items.iter().for_each(|i| walk(i, found)),
+            Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| walk(v, found)),
+            Kind::EnumLit { payload, .. } => {
+                if let Some(p) = payload {
+                    walk(p, found);
+                }
             }
-            Kind::Field { base, .. } | Kind::Unwrap { base } => walk(base),
-            Kind::Index { base, index, .. } => walk(base) || walk(index),
+            Kind::Call { arg, .. } => {
+                if let Some(a) = arg {
+                    walk(a, found);
+                }
+            }
+            Kind::Builtin { arg, .. } => walk(arg, found),
+            Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
+                walk(l, found);
+                walk(r, found);
+            }
+            Kind::Bind { value, body, .. }
+            | Kind::Map {
+                source: value,
+                body,
+                ..
+            }
+            | Kind::OptMap {
+                source: value,
+                body,
+                ..
+            } => {
+                walk(value, found);
+                walk(body, found);
+            }
+            Kind::Select { source, pred, .. } => {
+                walk(source, found);
+                walk(pred, found);
+            }
+            Kind::Field { base, .. } | Kind::Unwrap { base } => walk(base, found),
+            Kind::Index { base, index, .. } => {
+                walk(base, found);
+                walk(index, found);
+            }
             Kind::Match { subject, arms, .. } => {
-                walk(subject)
-                    || arms
-                        .iter()
-                        .any(|a| a.guard.as_ref().is_some_and(walk) || walk(&a.body))
+                walk(subject, found);
+                for a in arms {
+                    if let Some(g) = &a.guard {
+                        walk(g, found);
+                    }
+                    walk(&a.body, found);
+                }
             }
         }
     }
-    program.funcs.iter().any(|f| walk(&f.body)) || walk(&program.body)
+    let mut found = (false, false);
+    program.funcs.iter().for_each(|f| walk(&f.body, &mut found));
+    walk(&program.body, &mut found);
+    found
 }
 
 fn user(name: &str) -> String {
@@ -391,6 +455,17 @@ fn expr(t: &Tir) -> String {
             None => format!("({})", user(func)),
         },
         Kind::Concat(l, r) => format!("({} + {})", expr(l), expr(r)),
+        // 64-bit arithmetic stays in jq's doubles, exact within +/-2^53 and honestly not past
+        // it (the ARITH64_HELPER comment); nothing wraps, since no double could carry the
+        // wrapped value back.
+        Kind::Arith { op, lhs, rhs } if t.ty == Type::Int64 => match op {
+            BinOp::Div => format!("tl_div64({}; {})", expr(lhs), expr(rhs)),
+            BinOp::Rem => format!("tl_rem64({}; {})", expr(lhs), expr(rhs)),
+            BinOp::Mul => format!("({} * {})", expr(lhs), expr(rhs)),
+            BinOp::Add => format!("({} + {})", expr(lhs), expr(rhs)),
+            BinOp::Sub => format!("({} - {})", expr(lhs), expr(rhs)),
+            other => unreachable!("{other} is not arithmetic"),
+        },
         Kind::Arith { op, lhs, rhs } => match op {
             BinOp::Div => format!("tl_div({}; {})", expr(lhs), expr(rhs)),
             BinOp::Rem => format!("tl_rem({}; {})", expr(lhs), expr(rhs)),
@@ -411,6 +486,8 @@ fn expr(t: &Tir) -> String {
         ),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("({} | tostring)", expr(arg)),
+            // jq has one number type at every width, so the bridge has nothing to do.
+            Builtin::IntToI64 => format!("({})", expr(arg)),
             Builtin::Range => format!("[ range(0; {}) ]", expr(arg)),
             // `explode` already decodes jq's UTF-8 string by codepoint, not by byte, so there
             // is no decoding to get right here.

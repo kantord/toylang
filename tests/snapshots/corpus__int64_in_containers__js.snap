@@ -1,0 +1,21 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+function tl_join(v, f) {
+  const parts = [];
+  for (let i = 0; i < v.length; i++) parts.push(f(v[i]));
+  return "[" + parts.join(",") + "]";
+}
+function tl_div64(a, b) {
+  if (b === 0n) { throw new Error("toylang: divided by zero"); }
+  return BigInt.asIntN(64, a / b);
+}
+function tl_rem64(a, b) {
+  if (b === 0n) { throw new Error("toylang: divided by zero"); }
+  return BigInt.asIntN(64, a % b);
+}
+function v_ts() {
+  return 1756500000000n;
+}
+console.log(("{" + ["\"when\":" + String(({"when": v_ts(), "deltas": [BigInt.asIntN(64, v_ts() + 1n), BigInt.asIntN(64, v_ts() - 1n), BigInt(0)]})["when"]), "\"deltas\":" + tl_join(({"when": v_ts(), "deltas": [BigInt.asIntN(64, v_ts() + 1n), BigInt.asIntN(64, v_ts() - 1n), BigInt(0)]})["deltas"], (e1) => String(e1))].join(",") + "}"));

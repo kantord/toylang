@@ -28,7 +28,7 @@ pub fn node_types(program: &Program) -> Vec<String> {
 }
 
 fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
-    tags.insert(tag(&tir.kind));
+    tags.insert(tag(tir));
     match &tir.kind {
         Kind::Str(_)
         | Kind::Int(_)
@@ -102,9 +102,12 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
     }
 }
 
-fn tag(kind: &Kind) -> String {
-    match kind {
+fn tag(tir: &Tir) -> String {
+    match &tir.kind {
         Kind::Str(_) => "str".into(),
+        // One literal kind, two widths: which one this literal has is the node's type's to
+        // say (kantord/toylang#83), so the tag reads it rather than the kind.
+        Kind::Int(_) if tir.ty == crate::ty::Type::Int64 => "int64".into(),
         Kind::Int(_) => "int".into(),
         Kind::VecLit(_) => "vec-literal".into(),
         Kind::RecordLit { .. } => "record-literal".into(),
@@ -154,6 +157,7 @@ fn binop_tag(op: BinOp) -> &'static str {
 fn builtin_tag(which: Builtin) -> &'static str {
     match which {
         Builtin::IntToStr => "str",
+        Builtin::IntToI64 => "i64",
         Builtin::Range => "range",
         Builtin::Collect => "collect",
         Builtin::JsonLines => "jsonlines",

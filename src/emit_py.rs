@@ -32,6 +32,12 @@ const I32_HELPER: &str = r#"def tl_i32(n):
     return ((n + 2147483648) % 4294967296) - 2147483648
 "#;
 
+/// The same one-modulo emulation at 64 bits, for `Int64` (kantord/toylang#83). Exact for the
+/// same reason `tl_i32` is: Python's integers never lose bits on the way to the modulo.
+const I64_HELPER: &str = r#"def tl_i64(n):
+    return ((n + 9223372036854775808) % 18446744073709551616) - 9223372036854775808
+"#;
+
 /// Python floors, and `int(a / b)` would truncate through a float and lose bits on the way. The
 /// remainder takes its sign from the dividend, so `a == tl_div(a, b) * b + tl_rem(a, b)` holds.
 const ARITH_HELPER: &str = r#"def tl_div(a, b):
@@ -42,6 +48,22 @@ const ARITH_HELPER: &str = r#"def tl_div(a, b):
 
 
 def tl_rem(a, b):
+    if b == 0:
+        tl_fail("divided by zero")
+    r = abs(a) % abs(b)
+    return -r if a < 0 else r
+"#;
+
+/// `tl_div`/`tl_rem` at 64 bits. Only the quotient can leave the range (`MIN / -1`), so the
+/// remainder needs no wrap: its magnitude is strictly below the divisor's.
+const ARITH64_HELPER: &str = r#"def tl_div64(a, b):
+    if b == 0:
+        tl_fail("divided by zero")
+    q = abs(a) // abs(b)
+    return tl_i64(-q if (a < 0) != (b < 0) else q)
+
+
+def tl_rem64(a, b):
     if b == 0:
         tl_fail("divided by zero")
     r = abs(a) % abs(b)
@@ -184,6 +206,7 @@ pub fn emit(program: &Program) -> String {
     let uses = |name: &str| decls.contains(name);
     let unwrap = uses("tl_unwrap(");
     let arith = uses("tl_div(") || uses("tl_rem(");
+    let arith64 = uses("tl_div64(") || uses("tl_rem64(");
 
     let mut helpers = false;
     let mut out = String::from("import sys\n");
@@ -192,9 +215,11 @@ pub fn emit(program: &Program) -> String {
     }
     out.push('\n');
     for (on, text) in [
-        (unwrap || arith, FAIL_HELPER),
+        (unwrap || arith || arith64, FAIL_HELPER),
         (arith || uses("tl_i32("), I32_HELPER),
+        (arith64 || uses("tl_i64("), I64_HELPER),
         (arith, ARITH_HELPER),
+        (arith64, ARITH64_HELPER),
         (uses("tl_field("), FIELD_HELPER),
         (uses("tl_at("), AT_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
@@ -276,7 +301,7 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
-        Type::Int => format!("str({value})"),
+        Type::Int | Type::Int64 => format!("str({value})"),
         Type::Bool => format!("(\"true\" if {value} else \"false\")"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
@@ -387,6 +412,16 @@ fn expr(t: &Tir) -> String {
             arg.as_deref().map_or_else(String::new, expr)
         ),
         Kind::Concat(l, r) => format!("({} + {})", expr(l), expr(r)),
+        // The node's type picks the width (kantord/toylang#83): the same emulation, through
+        // the 64-bit helpers.
+        Kind::Arith { op, lhs, rhs } if t.ty == Type::Int64 => match op {
+            BinOp::Div => format!("tl_div64({}, {})", expr(lhs), expr(rhs)),
+            BinOp::Rem => format!("tl_rem64({}, {})", expr(lhs), expr(rhs)),
+            BinOp::Add => format!("tl_i64({} + {})", expr(lhs), expr(rhs)),
+            BinOp::Sub => format!("tl_i64({} - {})", expr(lhs), expr(rhs)),
+            BinOp::Mul => format!("tl_i64({} * {})", expr(lhs), expr(rhs)),
+            other => unreachable!("{other} is not arithmetic"),
+        },
         Kind::Arith { op, lhs, rhs } => match op {
             BinOp::Div => format!("tl_div({}, {})", expr(lhs), expr(rhs)),
             BinOp::Rem => format!("tl_rem({}, {})", expr(lhs), expr(rhs)),
@@ -411,6 +446,8 @@ fn expr(t: &Tir) -> String {
         }
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("str({})", expr(arg)),
+            // Python's integers are one type at every width, so the bridge has nothing to do.
+            Builtin::IntToI64 => expr(arg),
             Builtin::Range => format!("tl_range({})", expr(arg)),
             Builtin::Chars => format!("tl_chars({})", expr(arg)),
             Builtin::JsonLines => {

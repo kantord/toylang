@@ -132,6 +132,7 @@ impl ToRust for ty::Type {
         match self {
             ty::Type::Str => "crate::ty::Type::Str".to_string(),
             ty::Type::Int => "crate::ty::Type::Int".to_string(),
+            ty::Type::Int64 => "crate::ty::Type::Int64".to_string(),
             ty::Type::Bool => "crate::ty::Type::Bool".to_string(),
             ty::Type::Char => "crate::ty::Type::Char".to_string(),
             ty::Type::Vec(elem) => format!("crate::ty::Type::Vec({})", elem.to_rust()),
@@ -158,6 +159,7 @@ impl ToRust for tir::Builtin {
     fn to_rust(&self) -> String {
         let variant = match self {
             tir::Builtin::IntToStr => "IntToStr",
+            tir::Builtin::IntToI64 => "IntToI64",
             tir::Builtin::Range => "Range",
             tir::Builtin::Collect => "Collect",
             tir::Builtin::JsonLines => "JsonLines",

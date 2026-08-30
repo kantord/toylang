@@ -277,6 +277,10 @@ impl<'ctx> Emitter<'ctx> {
             Type::Stream(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Int => self.ctx.i64_type().into(),
+            // The same i64 an Int already lives in: an Int is computed wide and narrowed after
+            // every operation, and an Int64 is that representation with the narrowing left off
+            // (kantord/toylang#83).
+            Type::Int64 => self.ctx.i64_type().into(),
             Type::Bool => self.ctx.bool_type().into(),
             // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
             // the two.
@@ -307,6 +311,8 @@ impl<'ctx> Emitter<'ctx> {
             Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
             Type::Str => "s".to_string(),
             Type::Int => "i".to_string(),
+            // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.
+            Type::Int64 => unreachable!("input cannot contain an Int64, refused by the checker"),
             Type::Bool => "b".to_string(),
             // The checker refuses Char anywhere in an input type: it has no wire form.
             Type::Char => unreachable!("input cannot contain a Char, refused by the checker"),
@@ -413,7 +419,7 @@ impl<'ctx> Emitter<'ctx> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
-            Type::Int | Type::Char => value.into_int_value(),
+            Type::Int | Type::Int64 | Type::Char => value.into_int_value(),
             Type::Bool => self
                 .builder
                 .build_int_z_extend(value.into_int_value(), i64t, "slot")
@@ -430,7 +436,7 @@ impl<'ctx> Emitter<'ctx> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
-            Type::Int | Type::Char => slot.into(),
+            Type::Int | Type::Int64 | Type::Char => slot.into(),
             Type::Bool => self
                 .builder
                 .build_int_truncate(slot, self.ctx.bool_type(), "elem")
@@ -947,7 +953,8 @@ impl<'ctx> Emitter<'ctx> {
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
-            Type::Int => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
+            // tl_int_to_str already takes the full i64, so both widths print through it.
+            Type::Int | Type::Int64 => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
             Type::Bool => {
                 let t = self.string_const("true");
                 let f = self.string_const("false");
@@ -1414,7 +1421,11 @@ impl<'ctx> Emitter<'ctx> {
             Kind::Arith { op, lhs, rhs } => {
                 let l = self.expr(lhs)?.into_int_value();
                 let r = self.expr(rhs)?.into_int_value();
-                self.arith(*op, l, r)?
+                if t.ty == Type::Int64 {
+                    self.arith64(*op, l, r)?
+                } else {
+                    self.arith(*op, l, r)?
+                }
             }
 
             Kind::Builtin { which, arg } => {
@@ -1425,6 +1436,9 @@ impl<'ctx> Emitter<'ctx> {
                 let arg = self.expr(arg)?;
                 match which {
                     Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,
+                    // An Int already lives in an i64 here (see `llvm_type`), so the bridge
+                    // is the identity: the value is its own widening.
+                    Builtin::IntToI64 => arg,
                     Builtin::Range => self.call_rt(self.rt.range, &[arg], "range")?,
                     Builtin::Chars => self.call_rt(self.rt.chars, &[arg], "chars")?,
                     Builtin::JsonLines => {
@@ -1460,7 +1474,8 @@ impl<'ctx> Emitter<'ctx> {
                         "unwrapped",
                     )?
                     .into_pointer_value();
-                if depth == 0 && matches!(inner, Type::Int | Type::Bool | Type::Char) {
+                if depth == 0 && matches!(inner, Type::Int | Type::Int64 | Type::Bool | Type::Char)
+                {
                     let slot = self
                         .builder
                         .build_ptr_to_int(raw, self.ctx.i64_type(), "slot")
@@ -1756,6 +1771,49 @@ impl<'ctx> Emitter<'ctx> {
         Ok(self.narrow_to_i32(wide)?.into())
     }
 
+    /// Wrapping 64-bit arithmetic, the width `arith` computes in with the narrowing left off.
+    ///
+    /// `+`, `-` and `*` wrap on their own: an LLVM add without the nsw flag is defined to.
+    /// Division cannot borrow `arith`'s compute-wide trick at this width -- there is no wider
+    /// register to hide `MIN / -1` in, and `sdiv` on exactly that pair is undefined (a
+    /// hardware trap on x86) -- so the pair is computed in i128 and truncated, the same
+    /// "computing wide and narrowing is what makes this total" argument one level up. LLVM
+    /// lowers i128 division to a compiler-rt call `cc` already links.
+    fn arith64(
+        &mut self,
+        op: BinOp,
+        lhs: IntValue<'ctx>,
+        rhs: IntValue<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let done = match op {
+            BinOp::Add => self.builder.build_int_add(lhs, rhs, "add"),
+            BinOp::Sub => self.builder.build_int_sub(lhs, rhs, "sub"),
+            BinOp::Mul => self.builder.build_int_mul(lhs, rhs, "mul"),
+            BinOp::Div | BinOp::Rem => {
+                self.trap_if_zero(rhs)?;
+                let i128t = self.ctx.i128_type();
+                let lw = self
+                    .builder
+                    .build_int_s_extend(lhs, i128t, "lw")
+                    .map_err(|e| e.to_string())?;
+                let rw = self
+                    .builder
+                    .build_int_s_extend(rhs, i128t, "rw")
+                    .map_err(|e| e.to_string())?;
+                let wide = match op {
+                    BinOp::Div => self.builder.build_int_signed_div(lw, rw, "div"),
+                    _ => self.builder.build_int_signed_rem(lw, rw, "rem"),
+                }
+                .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_int_truncate(wide, self.ctx.i64_type(), "narrow")
+            }
+            other => return Err(format!("{other} is not arithmetic")),
+        }
+        .map_err(|e| e.to_string())?;
+        Ok(done.into())
+    }
+
     /// Sign-extend the low 32 bits, which is the wrap.
     fn narrow_to_i32(&self, wide: IntValue<'ctx>) -> Result<IntValue<'ctx>, String> {
         let narrow = self
@@ -1835,7 +1893,9 @@ impl<'ctx> Emitter<'ctx> {
                     (call.into_int_value(), self.ctx.i64_type().const_zero())
                 }
             },
-            Type::Int | Type::Bool | Type::Char => (l.into_int_value(), r.into_int_value()),
+            Type::Int | Type::Int64 | Type::Bool | Type::Char => {
+                (l.into_int_value(), r.into_int_value())
+            }
             other => return Err(unsupported(&format!("comparing {other}"))),
         };
 

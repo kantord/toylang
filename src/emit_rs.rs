@@ -53,6 +53,23 @@ fn tl_rem(a: i32, b: i32) -> i32 {
 }
 "#;
 
+/// The same shape at 64 bits (kantord/toylang#83): `wrapping_div`/`wrapping_rem` already give
+/// `MIN / -1` the wrapping answer, so only the zero divisor needs the guard.
+const ARITH64_HELPER: &str = r#"fn tl_div64(a: i64, b: i64) -> i64 {
+    if b == 0 {
+        tl_fail("divided by zero");
+    }
+    a.wrapping_div(b)
+}
+
+fn tl_rem64(a: i64, b: i64) -> i64 {
+    if b == 0 {
+        tl_fail("divided by zero");
+    }
+    a.wrapping_rem(b)
+}
+"#;
+
 const AT_HELPER: &str = r#"fn tl_at<T: Clone>(v: &[T], i: i32) -> Option<T> {
     let n = v.len() as i32;
     let i = if i < 0 { n + i } else { i };
@@ -421,6 +438,18 @@ pub fn emit(program: &Program) -> String {
     records.sort_by_key(|t| t.to_string());
     enums.sort_by_key(|t| t.to_string());
 
+    // Only the types stdin can actually deliver get a parser. Every collected record used to,
+    // harmlessly, until a type became unparseable on purpose: a program that reads input and
+    // also passes an `{a: Int64, ...}` record between its own functions must not force a
+    // parser for a shape the checker already promised can never cross the wire.
+    let mut wire: Vec<Type> = Vec::new();
+    if let Some(ty) = &program.input {
+        collect_wire(ty, &mut wire);
+    }
+    if let Some(ty) = &program.inputs {
+        collect_wire(ty, &mut wire);
+    }
+
     let e = Emitter { records, enums };
 
     let mut decls = String::new();
@@ -433,7 +462,7 @@ pub fn emit(program: &Program) -> String {
             decls.push_str(&format!("    {}: {},\n", rs_field(name), e.rs_type(ty)));
         }
         decls.push_str("}\n\n");
-        if program.input.is_some() || program.inputs.is_some() {
+        if wire.contains(rec) {
             decls.push_str(&e.record_parser(i, fields));
         }
     }
@@ -456,7 +485,7 @@ pub fn emit(program: &Program) -> String {
             }
         }
         decls.push_str("}\n\n");
-        if program.input.is_some() || program.inputs.is_some() {
+        if wire.contains(en) {
             decls.push_str(&e.enum_parser(i, en, name));
         }
     }
@@ -506,9 +535,11 @@ pub fn emit(program: &Program) -> String {
     let uses = |name: &str| decls.contains(name);
     let unwrap = uses("tl_unwrap(");
     let arith = uses("tl_div(") || uses("tl_rem(");
+    let arith64 = uses("tl_div64(") || uses("tl_rem64(");
     let reads_value = program.input.is_some() || program.inputs.is_some();
     let fail = unwrap
         || arith
+        || arith64
         || reads_value
         || uses("tl_at(")
         || uses("tl_tail(")
@@ -521,6 +552,7 @@ pub fn emit(program: &Program) -> String {
         (fail, FAIL_HELPER),
         (uses("tl_int("), INT_HELPER),
         (arith, ARITH_HELPER),
+        (arith64, ARITH64_HELPER),
         (uses("tl_at("), AT_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
@@ -551,6 +583,34 @@ pub fn emit(program: &Program) -> String {
 
 fn rs_field(name: &str) -> String {
     format!("f_{name}")
+}
+
+/// Every record and enum type nested anywhere in `ty`, which is an input's declared type: the
+/// set of shapes that need a JSON parser. An Opt cannot appear (the checker refuses one in an
+/// input), so the prelude's special case needs no carve-out here.
+fn collect_wire(ty: &Type, out: &mut Vec<Type>) {
+    match ty {
+        Type::Vec(e) | Type::Stream(e) => collect_wire(e, out),
+        Type::Record(fields) => {
+            if !out.contains(ty) {
+                out.push(ty.clone());
+            }
+            for (_, f) in fields {
+                collect_wire(f, out);
+            }
+        }
+        Type::Enum { variants, .. } => {
+            if !out.contains(ty) {
+                out.push(ty.clone());
+            }
+            for (_, p) in variants {
+                if let Some(p) = p {
+                    collect_wire(p, out);
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 #[derive(Default)]
@@ -705,6 +765,7 @@ impl Emitter {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Str => "String".to_string(),
             Type::Int => "i32".to_string(),
+            Type::Int64 => "i64".to_string(),
             Type::Bool => "bool".to_string(),
             // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
             // the two, so nothing here needs to tell them apart.
@@ -731,6 +792,8 @@ impl Emitter {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Str => "tl_parse_str".to_string(),
             Type::Int => "tl_parse_i32".to_string(),
+            // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.
+            Type::Int64 => unreachable!("input cannot contain an Int64, refused by the checker"),
             Type::Bool => "tl_parse_bool".to_string(),
             // The checker refuses Char anywhere in an input type: it has no wire form.
             Type::Char => unreachable!("input cannot contain a Char, refused by the checker"),
@@ -948,6 +1011,10 @@ impl Emitter {
     fn expr(&self, t: &Tir) -> String {
         match &t.kind {
             Kind::Str(s) => rs_string(s),
+            // The suffix types the literal directly; `tl_int`'s constant-folding escape is not
+            // needed at 64 bits, since every arithmetic spelling here is a `wrapping_*` call
+            // the compiler never folds into an overflow error.
+            Kind::Int(n) if t.ty == Type::Int64 => format!("{n}i64"),
             Kind::Int(n) => format!("tl_int({n})"),
             Kind::Var(name) => format!("{}.clone()", self.user(name)),
             Kind::Local(id) => format!("{}.clone()", self.local(*id)),
@@ -982,6 +1049,16 @@ impl Emitter {
                 arg.as_deref().map_or_else(String::new, |a| self.expr(a))
             ),
             Kind::Concat(l, r) => format!("({} + &{})", self.expr(l), self.expr(r)),
+            // `wrapping_*` are width-generic method names, so only the div/rem helpers change
+            // at 64 bits.
+            Kind::Arith { op, lhs, rhs } if t.ty == Type::Int64 => match op {
+                BinOp::Div => format!("tl_div64({}, {})", self.expr(lhs), self.expr(rhs)),
+                BinOp::Rem => format!("tl_rem64({}, {})", self.expr(lhs), self.expr(rhs)),
+                BinOp::Add => format!("({}).wrapping_add({})", self.expr(lhs), self.expr(rhs)),
+                BinOp::Sub => format!("({}).wrapping_sub({})", self.expr(lhs), self.expr(rhs)),
+                BinOp::Mul => format!("({}).wrapping_mul({})", self.expr(lhs), self.expr(rhs)),
+                other => unreachable!("{other} is not arithmetic"),
+            },
             Kind::Arith { op, lhs, rhs } => match op {
                 BinOp::Div => format!("tl_div({}, {})", self.expr(lhs), self.expr(rhs)),
                 BinOp::Rem => format!("tl_rem({}, {})", self.expr(lhs), self.expr(rhs)),
@@ -1004,6 +1081,7 @@ impl Emitter {
             ),
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("({}).to_string()", self.expr(arg)),
+                Builtin::IntToI64 => format!("(({}) as i64)", self.expr(arg)),
                 Builtin::Range => format!("tl_range({})", self.expr(arg)),
                 Builtin::Chars => format!("tl_chars(&{})", self.expr(arg)),
                 Builtin::JsonLines => {
@@ -1183,7 +1261,7 @@ impl Emitter {
             // The checker refuses a program whose result contains a Char: it has no wire form.
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tl_quote(&{value})"),
-            Type::Int => format!("({value}).to_string()"),
+            Type::Int | Type::Int64 => format!("({value}).to_string()"),
             Type::Bool => format!("({value}).to_string()"),
             Type::Vec(elem) => {
                 let e = format!("e{depth}");

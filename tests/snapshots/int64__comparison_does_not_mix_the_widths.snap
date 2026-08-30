@@ -1,0 +1,5 @@
+---
+source: tests/int64.rs
+expression: "toylang::compile(\"fn big() -> Int64 = 5\\n\\nbig() < 2 + 2\").map(|_|\n()).unwrap_err().to_string()"
+---
+`<` cannot mix Int64 and Int; widen the Int side with `i64(...)` (at byte 31)
