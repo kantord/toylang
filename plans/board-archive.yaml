@@ -923,3 +923,27 @@
   prio: 3
   soft: [concat-retirement]
   status: done
+
+- id: int64-wire-form
+  issue: gh:89
+  title: "Decide the Int64 wire form -- ruled: keep the refusal (status quo, ADR 0010)"
+  kind: decide
+  needs: []
+  prio: 3
+  status: done
+
+- id: euler-slow-fragments
+  issue: gh:90
+  title: "Decide the slow-fragment tier -- ruled: opt-in slow tier, only measured-slow fragments marked (gh:135)"
+  kind: decide
+  needs: []
+  prio: 3
+  status: done
+
+- id: csv-inputs-idea
+  issue: gh:88
+  title: "Grill the DSV source shape -- ruled: parameterized dsv() source + prelude csv/tsv partials (gh:136)"
+  kind: decide
+  needs: []
+  prio: 4
+  status: done
