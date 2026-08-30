@@ -383,7 +383,6 @@ fn show_enum(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
     format!("(({n}) => {body})({value})")
 }
 
-
 /// A named printer for every recursive enum the program prints. The call in `show` above is
 /// what a nested occurrence renders as, so the recursion in the type becomes recursion in the
 /// emitted function rather than in this compiler (kantord/toylang#94).
@@ -461,7 +460,12 @@ fn compare(enums: &Enums, op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
         };
     }
     if lhs.ty == Type::Str && matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge) {
-        return format!("(tl_str_cmp({}, {}) {} 0)", expr(enums, lhs), expr(enums, rhs), js_op(op));
+        return format!(
+            "(tl_str_cmp({}, {}) {} 0)",
+            expr(enums, lhs),
+            expr(enums, rhs),
+            js_op(op)
+        );
     }
     format!("({} {} {})", expr(enums, lhs), js_op(op), expr(enums, rhs))
 }
@@ -614,7 +618,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             user(func),
             arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
         ),
-        Kind::Concat(l, r) => format!("({} + {})", expr(enums, l), expr(enums, r)),
+        // `+` on two arrays stringifies and joins them, so a Vec reaches for `.concat` instead.
+        Kind::Concat(l, r) => match &t.ty {
+            Type::Vec(_) => format!("{}.concat({})", expr(enums, l), expr(enums, r)),
+            _ => format!("({} + {})", expr(enums, l), expr(enums, r)),
+        },
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
         Kind::Cond {
             cond,
@@ -661,7 +669,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Collect => expr(enums, arg),
             Builtin::Extent => format!("{}.length", expr(enums, arg)),
             Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
-            Builtin::Concat => format!("{}.flat()", expr(enums, arg)),
+            Builtin::Flatten => format!("{}.flat()", expr(enums, arg)),
             // `Array.prototype.sort`'s default comparator stringifies, which is wrong for
             // numbers; `tl_str_cmp` already returns the -1/0/1 a comparator wants, so it can be
             // passed straight through for Str.

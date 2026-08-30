@@ -1,0 +1,9 @@
+# `[]` alone cannot be typed, so the empty side comes from tail of a one-element Vec instead
+# of a literal (the same trick flatten_empty.yaml uses).
+program: |
+  tail([1])! + [2, 3]
+
+output: |
+  [2,3]
+
+node_types: [builtin.tail, concat, int, unwrap, vec-literal]

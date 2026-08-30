@@ -22,15 +22,13 @@ fn max_vec(xs: Vec<Int>) -> Int =
 
 fn row_max(a: Int) -> Int =
     max_vec(
-        concat(
-            [
-                [0],
+        [0] +
+            (
                 range(1000)
                     | select(. >= a)
                     | map(a * .)
                     | select(. == reverse_num({n: ., acc: 0}))
-            ]
-        )
+            )
     )
 
 max_vec(range(1000) | select(. >= 100) | map(row_max(.)))

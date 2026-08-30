@@ -69,6 +69,7 @@ struct Runtime<'ctx> {
     div_by_zero: FunctionValue<'ctx>,
     range: FunctionValue<'ctx>,
     vec_tail: FunctionValue<'ctx>,
+    vec_flatten: FunctionValue<'ctx>,
     vec_concat: FunctionValue<'ctx>,
     chars: FunctionValue<'ctx>,
     vec_sort_int: FunctionValue<'ctx>,
@@ -247,9 +248,14 @@ impl<'ctx> Emitter<'ctx, '_> {
             range: module.add_function("tl_range", ptr.fn_type(&[i64t.into()], false), None),
             chars: module.add_function("tl_chars", ptr.fn_type(&[ptr.into()], false), None),
             vec_tail: module.add_function("tl_vec_tail", ptr.fn_type(&[ptr.into()], false), None),
+            vec_flatten: module.add_function(
+                "tl_vec_flatten",
+                ptr.fn_type(&[ptr.into(), i64t.into()], false),
+                None,
+            ),
             vec_concat: module.add_function(
                 "tl_vec_concat",
-                ptr.fn_type(&[ptr.into(), i64t.into()], false),
+                ptr.fn_type(&[ptr.into(), ptr.into(), i64t.into()], false),
                 None,
             ),
             vec_sort_int: module.add_function(
@@ -1275,9 +1281,16 @@ impl<'ctx> Emitter<'ctx, '_> {
             }
 
             Kind::Concat(l, r) => {
+                let elem = t.ty.elem().cloned();
                 let l = self.expr(l)?;
                 let r = self.expr(r)?;
-                self.call_rt(self.rt.concat, &[l, r], "concat")?
+                match elem {
+                    Some(elem) => {
+                        let ncols = self.ctx.i64_type().const_int(Self::columns(&elem), false);
+                        self.call_rt(self.rt.vec_concat, &[l, r, ncols.into()], "concat")?
+                    }
+                    None => self.call_rt(self.rt.concat, &[l, r], "concat")?,
+                }
             }
 
             Kind::Compare { op, lhs, rhs } => self.compare(*op, lhs, rhs)?,
@@ -1456,10 +1469,10 @@ impl<'ctx> Emitter<'ctx, '_> {
                     // Already tracked on the Vec header; nothing to compute.
                     Builtin::Extent => self.call_rt(self.rt.vec_len, &[arg], "extent")?,
                     Builtin::Tail => self.call_rt(self.rt.vec_tail, &[arg], "tail")?,
-                    Builtin::Concat => {
+                    Builtin::Flatten => {
                         let elem = t.ty.elem().expect("checked to be Vec<Vec<T>> -> Vec<T>");
                         let ncols = self.ctx.i64_type().const_int(Self::columns(elem), false);
-                        self.call_rt(self.rt.vec_concat, &[arg, ncols.into()], "concat")?
+                        self.call_rt(self.rt.vec_flatten, &[arg, ncols.into()], "flatten")?
                     }
                     // The checker's `orderable` already narrowed the element type to Int,
                     // Int64, Str, or Char; only Str's raw slot is a pointer needing its own
@@ -2378,11 +2391,9 @@ impl<'ctx> Emitter<'ctx, '_> {
         let ptr = self.ctx.ptr_type(AddressSpace::default());
         let printed = tir::printed_recursive_enums(program);
         for ty in &printed {
-            let f = self.module.add_function(
-                &ty.show_fn(),
-                ptr.fn_type(&[ptr.into()], false),
-                None,
-            );
+            let f =
+                self.module
+                    .add_function(&ty.show_fn(), ptr.fn_type(&[ptr.into()], false), None);
             self.printers.insert(ty.ident(), f);
         }
         for ty in &printed {

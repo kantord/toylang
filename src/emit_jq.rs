@@ -469,6 +469,8 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Some(arg) => format!("({} | {})", expr(enums, arg), user(func)),
             None => format!("({})", user(func)),
         },
+        // jq's own `+` already joins two arrays the way it joins two strings, so a Vec needs
+        // no different spelling here than Str does.
         Kind::Concat(l, r) => format!("({} + {})", expr(enums, l), expr(enums, r)),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
         Kind::Cond {
@@ -513,7 +515,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             }
             // Not jq's own `add`, which is `null` on an empty list rather than `[]` -- a reduce
             // starting from `[]` gives the right answer in both cases.
-            Builtin::Concat => format!("({} | reduce .[] as $x ([]; . + $x))", expr(enums, arg)),
+            Builtin::Flatten => format!("({} | reduce .[] as $x ([]; . + $x))", expr(enums, arg)),
             // jq's own `sort`/`reverse` already are this, restricted the same way the checker
             // restricts `sort` to Int, Int64, Str, and Char.
             Builtin::Sort => format!("({} | sort)", expr(enums, arg)),
@@ -754,7 +756,6 @@ fn canonical_enum(enums: &Enums, ty: &Type, value: &str) -> String {
     }
     format!("({value} | {} else {last} end)", tests.join(" "))
 }
-
 
 /// A named filter for every recursive enum the program prints. The call in `canonical` above
 /// is what a nested occurrence rebuilds through, so the recursion in the type becomes recursion

@@ -18,26 +18,22 @@ fn factorial(n: Int) -> Int = 1 if n <= 1 else n * factorial(n - 1)
 
 fn remove_at(p: {v: Vec<Int>, i: Int}) -> Vec<Int> =
     tail(p.v)! if p.i == 0 else
-        concat([[p.v[0]!], remove_at({v: tail(p.v)!, i: p.i - 1})])
+        [p.v[0]!] + remove_at({v: tail(p.v)!, i: p.i - 1})
 
 fn nth_perm(p: {remaining: Vec<Int>, idx: Int}) -> Vec<Int> =
     [] if extent(p.remaining) == 0 else
-        concat(
-            [
-                [p.remaining[p.idx / factorial(extent(p.remaining) - 1)]!],
-                nth_perm(
-                    {
-                        remaining: remove_at(
-                            {
-                                v: p.remaining,
-                                i: p.idx / factorial(extent(p.remaining) - 1)
-                            }
-                        ),
-                        idx: p.idx % factorial(extent(p.remaining) - 1)
-                    }
-                )
-            ]
-        )
+        [p.remaining[p.idx / factorial(extent(p.remaining) - 1)]!] +
+            nth_perm(
+                {
+                    remaining: remove_at(
+                        {
+                            v: p.remaining,
+                            i: p.idx / factorial(extent(p.remaining) - 1)
+                        }
+                    ),
+                    idx: p.idx % factorial(extent(p.remaining) - 1)
+                }
+            )
 
 nth_perm({remaining: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], idx: 999999})
 ```

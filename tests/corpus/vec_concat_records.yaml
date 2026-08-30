@@ -1,13 +1,13 @@
-# Regression guard for the struct-of-arrays layout: concat and tail over a Vec<Record> have to
+# Regression guard for the struct-of-arrays layout: `+` and tail over a Vec<Record> have to
 # copy every column, not just column 0, the same invariant vec_lit and map were each already
 # caught missing (363710f, a4b2198) at their own construction sites.
 program: |
   fn names(users: Vec<{name: Str, age: Int}>) -> Vec<Str> =
-      concat([users, tail(users)!]) | .[].name
+      (users + tail(users)!) | .[].name
 
   names([{name: "ada", age: 36}, {name: "bo", age: 9}])
 
 output: |
   ["ada","bo","bo"]
 
-node_types: [application, builtin.concat, builtin.tail, int, local, pipe, projection, record-literal, str, unwrap, var, vec-literal]
+node_types: [application, builtin.tail, concat, int, local, pipe, projection, record-literal, str, unwrap, var, vec-literal]

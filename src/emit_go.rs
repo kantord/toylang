@@ -86,7 +86,7 @@ const TAIL_HELPER: &str = r#"func tlTail[T any](v []T) tlOpt[[]T] {
 }
 "#;
 
-const CONCAT_HELPER: &str = r#"func tlConcat[T any](vv [][]T) []T {
+const FLATTEN_HELPER: &str = r#"func tlFlatten[T any](vv [][]T) []T {
 	out := []T{}
 	for _, v := range vv {
 		out = append(out, v...)
@@ -415,7 +415,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tlSelect("), SELECT_HELPER),
         (uses("tlAt("), AT_HELPER),
         (uses("tlTail("), TAIL_HELPER),
-        (uses("tlConcat("), CONCAT_HELPER),
+        (uses("tlFlatten("), FLATTEN_HELPER),
         (uses("tlSort("), SORT_HELPER),
         (uses("tlReverse("), REVERSE_HELPER),
         (unwrap, UNWRAP_HELPER),
@@ -637,7 +637,7 @@ impl Collect<'_> {
                     | Builtin::Range
                     | Builtin::Collect
                     | Builtin::Extent
-                    | Builtin::Concat
+                    | Builtin::Flatten
                     | Builtin::Tail
                     | Builtin::Fields
                     | Builtin::Chars
@@ -924,7 +924,16 @@ impl Emitter<'_> {
                 self.user(func),
                 arg.as_deref().map_or_else(String::new, |a| self.expr(a))
             ),
-            Kind::Concat(l, r) => format!("({} + {})", self.expr(l), self.expr(r)),
+            // Go has no `+` for slices, so a Vec joins through the same helper `flatten` uses,
+            // wrapped around a two-entry outer literal rather than through a second helper.
+            Kind::Concat(l, r) => match &t.ty {
+                Type::Vec(_) => {
+                    let go_ty = self.go_type(&t.ty);
+                    let (l, r) = (self.expr(l), self.expr(r));
+                    format!("tlFlatten([]{go_ty}{{{l}, {r}}})")
+                }
+                _ => format!("({} + {})", self.expr(l), self.expr(r)),
+            },
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             // Go has no conditional expression, so this is a call to a function literal rather
             // than an operator. Both branches stay unevaluated, which a `tlCond(c, a, b)` helper
@@ -969,7 +978,7 @@ impl Emitter<'_> {
                 Builtin::Collect => self.expr(arg),
                 Builtin::Extent => format!("int32(len({}))", self.expr(arg)),
                 Builtin::Tail => format!("tlTail({})", self.expr(arg)),
-                Builtin::Concat => format!("tlConcat({})", self.expr(arg)),
+                Builtin::Flatten => format!("tlFlatten({})", self.expr(arg)),
                 Builtin::Sort => format!("tlSort({})", self.expr(arg)),
                 Builtin::Reverse => format!("tlReverse({})", self.expr(arg)),
                 // The names come from the checked type, not the struct value, so `arg` runs in

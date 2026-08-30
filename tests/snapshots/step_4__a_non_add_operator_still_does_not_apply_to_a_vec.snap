@@ -1,0 +1,6 @@
+---
+source: tests/step_4.rs
+assertion_line: 69
+expression: "err(\"[1, 2] - [3, 4]\")"
+---
+`-` does not apply to Vec<Int> (at byte 0)
