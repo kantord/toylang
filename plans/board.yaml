@@ -874,3 +874,60 @@
   needs: []
   prio: 2
   status: todo
+
+- id: fmt-project-wide
+  issue: gh:103
+  title: fmt -- recursive project-wide check mode, --write to rewrite, filter form kept
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
+
+- id: euler-ergonomics-review
+  issue: gh:104
+  title: Review the Euler solutions against other languages; propose ergonomics improvements
+  kind: build
+  model: fable
+  needs: []
+  prio: 2
+  status: todo
+
+- id: prelude-inventory
+  issue: gh:105
+  title: Inventory -- what could move to the prelude, feasibility and payoff per item
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: benchmark-set-spike
+  issue: gh:106
+  title: Spike -- which license-clean standard benchmark program set to adopt
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: benchmark-tooling-spike
+  issue: gh:107
+  title: Spike -- the best Rust system for running our benchmarks
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: benchmark-synthesis
+  issue: gh:108
+  title: Combine the benchmark set and tooling spikes into the actual benchmark plan
+  kind: build
+  needs: [benchmark-set-spike, benchmark-tooling-spike]
+  prio: 3
+  status: todo
+
+- id: board-graph-hide-done
+  issue: gh:109
+  title: Board graph hides done tasks by default -- the live-work view
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
