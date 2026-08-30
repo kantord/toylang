@@ -190,6 +190,15 @@
   needs: []
   status: todo
 
+- id: benchmark-float-tasks-scope
+  issue: gh:108
+  title: Decide whether n-body/spectral-norm stay in the initial benchmark set (float-loop shape) or defer to a second wave (gh:108 escalation)
+  kind: decide
+  needs: []
+  soft: [q37-float-semantics]
+  prio: 4
+  status: todo
+
 - id: benchmark-goals
   title: Grill what workloads define the performance thesis, then plan the benchmark suite
   kind: decide
@@ -217,14 +226,6 @@
   needs: []
   prio: 3
   soft: [concat-retirement]
-  status: delegated
-
-- id: benchmark-synthesis
-  issue: gh:108
-  title: Combine the benchmark set and tooling spikes into the actual benchmark plan
-  kind: build
-  needs: [benchmark-set-spike, benchmark-tooling-spike]
-  prio: 3
   status: delegated
 
 - id: record-argument-boundary

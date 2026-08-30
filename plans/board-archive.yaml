@@ -906,3 +906,11 @@
   needs: []
   prio: 4
   status: done
+
+- id: benchmark-synthesis
+  issue: gh:108
+  title: Combine the benchmark set and tooling spikes into the actual benchmark plan
+  kind: build
+  needs: [benchmark-set-spike, benchmark-tooling-spike]
+  prio: 3
+  status: done
