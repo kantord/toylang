@@ -27,6 +27,7 @@ of entries over many lanes is itself the finding.
 
 | date | lane | what happened | cost | claude-proof? |
 |------|------|---------------|------|---------------|
+| 2026-08-30 | issue-88 (csv-inputs-idea, gh:88) | Worker correctly diagnosed the task as a design decision (DSV delimiter vs. nullary sources) rather than a build, but its own bash call to file the follow-up issue got auto-rejected by the permission gate, so it exited after 14 steps with zero commits and no issue filed -- a dead lane with no visible trace besides its event log. Coordinator posted the analysis to gh:88 and reclassified the board row to `decide` by hand. | $0.01, 14 steps, one coordinator intervention (comment + reclassify) | No -- the permission auto-reject would block a claude worker's `gh issue create` too; not opencode-specific. The board row was simply mis-scoped as `build` when it should have started as `decide`. |
 
 ## Speedups shipped with the rollout (2026-08-30, same day)
 

@@ -47,11 +47,11 @@
 
 - id: csv-inputs-idea
   issue: gh:88
-  title: CSV/TSV stdin formats, someday (emuto survey, deferred)
-  kind: build
+  title: Grill the DSV source shape -- delimiter vs nullary sources (worker analysis, gh:88 comment)
+  kind: decide
   needs: []
   prio: 4
-  status: delegated
+  status: todo
 
 - id: int64-wire-form
   issue: gh:89
