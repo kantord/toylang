@@ -73,7 +73,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: euler-slow-fragments-2
   issue: gh:93
@@ -151,7 +151,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: void-sink-syntax-design
   issue: gh:138

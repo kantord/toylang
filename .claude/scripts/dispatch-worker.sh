@@ -28,7 +28,7 @@ BASE=origin/main
 BEST=-1
 for b in $(git -C "$REPO" for-each-ref --format='%(refname:short)' 'refs/heads/to-merge-*'); do
   s=$(git -C "$REPO" diff --shortstat "main...$b" 2>/dev/null \
-    | grep -oE '[0-9]+ (insertion|deletion)' | awk '{s+=$1} END {print s+0}')  # awk not bc: bc absent here
+    | { grep -oE '[0-9]+ (insertion|deletion)' || true; } | awk '{s+=$1} END {print s+0}')  # awk not bc: bc absent here
   [ "${s:-0}" -gt "$BEST" ] && { BASE="$b"; BEST=$s; }
 done
 if [ -d "$d" ]; then
