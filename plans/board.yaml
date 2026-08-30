@@ -57,6 +57,16 @@
   prio: 4
   status: todo
 
+# Latency-analysis lever (2026-08-30): the corpus mega-test is the pole of `just
+# check`, which every lane pays 2-4x and every fold pays once.
+- id: corpus-test-split
+  issue: gh:139
+  title: Split the corpus mega-test into parallel per-backend tests so `just check` drops from ~67s to ~20s
+  kind: build
+  needs: []
+  prio: 1
+  status: todo
+
 - id: docs-slow-fragment-tier
   issue: gh:135
   title: Build the opt-in slow-fragment tier for the docs harness; land Euler 10/14 under it (gh:90 ruling)

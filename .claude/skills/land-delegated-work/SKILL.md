@@ -19,7 +19,7 @@ Do not ping for intermediate progress or ask permission to review or merge.
   racing it for the cargo lock. An opencode worker's quality problems found during landing
   (review findings traceable to the worker, red suites, half-done work) additionally get a
   row in plans/opencode-rollout.md's incident table.
-- Run `just check` in the worktree (the full `just test` runs once per wip->main promotion). A red check goes back to the session (or gets fixed here
+- Run `just check` in the worktree (the full `just test` runs once per accumulator promotion). A red check goes back to the session (or gets fixed here
   if the session is gone and the fix is small); never review a red branch as if it were done.
 
 ## 2. Review: the coordinator reads the diff itself. No review agents. (maintainer rule, 2026-08-30)
@@ -50,32 +50,35 @@ What review IS now:
   `pkill`/`killall` by process name. Name-based kills took down the coordinator's
   annotations server (and once the maintainer's own) four times in one day.
 
-## 2b + 3. The two-stage pipeline: lane -> wip -> main (maintainer design, 2026-08-30)
+## 2b + 3. The size-driven pipeline: lane -> to-merge-* -> main (maintainer design, 2026-08-30, superseding the same-day single-wip flow)
 
-Merging never blocks work. Finished lanes merge into the running `wip` branch on a fast
-gate, and wip promotes to main in batches on the full gate -- both via
-`.claude/scripts/land-lane.sh`, which does ALL the plumbing (verify clean/ahead/no live
-worker, merge --no-ff, gate, push, worktree removal) in one call so the coordinator
-spends its turns on judgment, not on git:
+Merging never blocks work, and the SIZE of a branch tells you its role: small
+accumulators take lanes in, a full or stale one goes to main. All plumbing (verify
+clean/ahead/no live worker, merge --no-ff, gate, push, worktree removal) lives in
+`.claude/scripts/land-lane.sh` so the coordinator spends its turns on judgment:
 
-- **Lane into wip** (after the diff read passes):
-  `.claude/scripts/land-lane.sh wip <merge-msg-file> <issue>...` -- gate is `just check`.
-  Several ready lanes go in ONE call. Landed lane worktrees are removed by the script.
-- **Promote wip to main** when the tick trigger says promotion is due (>=3 lanes
-  batched, >=600 changed lines, or the oldest batched lane older than ~30 minutes --
-  thresholds from the measured lane sizes, 50-700 lines typical):
-  `.claude/scripts/land-lane.sh promote <merge-msg-file>` -- gate is the FULL `just
-  test`, one heavy suite for the whole batch, then the push.
-- **A red promotion FREEZES wip**: no further lane merges into wip until it is repaired
-  (a research/continuation dispatch diagnoses; nextest names the breaking test, which
-  usually names the lane). Never promote around a red suite.
-- Workers cut their branches from origin/wip while it exists (dispatch-worker.sh does
-  this), so landed-but-unpromoted work is buildable-upon; keep origin/wip pushed.
-- The old >=3-branch tournament cascade is superseded by this flow; its principle
-  (batch the expensive gate) lives on in the promotion stage.
-- On merge conflicts inside `wip`: resolve each conflicted path explicitly, NEVER
-  `git add -A` mid-merge (it once staged conflict markers into board.yaml unseen);
-  structured files get validated after resolution, hard-gating the commit.
+- **Fold finished lanes** (after the diff read passes):
+  `.claude/scripts/land-lane.sh fold <merge-msg-file> <issue>...` -- gate is `just
+  check`. Several ready lanes go in ONE call; lane worktrees are removed by the
+  script. The first lane seeds a `to-merge-<epoch>` accumulator (its own commits,
+  aliased); later lanes fold into the LARGEST accumulator not mid-promotion.
+- **Promotion is automatic and DETACHED.** A fold that crosses 600 changed lines
+  (insertions + deletions vs main; typical lanes 50-700, measured 2026-08-30) fires
+  `land-lane.sh promote <branch>` itself, in the background. The full `just test`
+  runs in a throwaway worktree; main is touched only after green, then pushed. The
+  coordinator never waits on it.
+- **A stale accumulator promotes as-is**: untouched 30+ minutes (the tick trigger
+  names it) means nothing more is coming -- run the promote yourself, detached with
+  nohup. Under light load this IS the common promotion.
+- **A red promotion leaves main untouched** and drops a `promote-failed-<branch>`
+  marker the tick gate reports. Route a research/continuation dispatch (nextest
+  names the breaking test, which usually names the lane); the accumulator keeps
+  taking folds only after the repair -- never promote around a red suite.
+- Workers cut their branches from the largest live accumulator (dispatch-worker.sh
+  does this), so landed-but-unpromoted work is buildable-upon.
+- On merge conflicts inside an accumulator: resolve each conflicted path explicitly,
+  NEVER `git add -A` mid-merge (it once staged conflict markers into board.yaml
+  unseen); structured files get validated after resolution, hard-gating the commit.
 
 ## 3b. Update the board and the env
 

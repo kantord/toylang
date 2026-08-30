@@ -21,10 +21,17 @@ for p in $(pgrep -x opencode 2>/dev/null; pgrep -x claude 2>/dev/null); do
 done
 
 git -C "$REPO" fetch -q origin
-# Lanes cut from wip when the two-stage pipeline is running (landed-but-unpromoted
-# work must be buildable-upon), from main otherwise.
+# Lanes cut from the LARGEST live accumulator when one exists (landed-but-
+# unpromoted work must be buildable-upon; size-driven pipeline, 2026-08-30),
+# from origin/main otherwise.
 BASE=origin/main
-git -C "$REPO" rev-parse -q --verify origin/wip >/dev/null 2>&1 && BASE=origin/wip
+BEST=-1
+for b in $(git -C "$REPO" for-each-ref --format='%(refname:short)' 'refs/heads/to-merge-*'); do
+  s=$(git -C "$REPO" diff --shortstat "main...$b" 2>/dev/null \
+    | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | grep -oE '[0-9]+' \
+    | paste -sd+ | bc 2>/dev/null || echo 0)
+  [ "${s:-0}" -gt "$BEST" ] && { BASE="$b"; BEST=$s; }
+done
 if [ -d "$d" ]; then
   echo "[dispatch] continuing in existing lane $d"
 else
