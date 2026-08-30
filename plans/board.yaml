@@ -974,7 +974,7 @@
   needs: []
   soft: [plan-approval-flow]
   prio: 2
-  status: delegated
+  status: done
 
 - id: record-argument-boundary
   title: Oddity -- the paren-free record argument reaches across the definition boundary; settle it
@@ -1009,7 +1009,7 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
 
 - id: fmt-walk-hardening
   issue: gh:111
