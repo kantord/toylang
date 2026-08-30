@@ -885,7 +885,7 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
 
 - id: euler-ergonomics-review
   issue: gh:104
@@ -894,7 +894,7 @@
   model: fable
   needs: []
   prio: 2
-  status: delegated
+  status: done
 
 - id: prelude-inventory
   issue: gh:105
@@ -962,4 +962,58 @@
   kind: build
   needs: []
   prio: 2
+  status: todo
+
+- id: fmt-walk-hardening
+  issue: gh:111
+  title: fmt walk skips target/-like dirs by name; pin the unreadable-file case
+  kind: build
+  model: haiku
+  needs: []
+  status: todo
+
+- id: sum-max-reductions
+  title: sum and max as builtin reductions -- shape, element types, Opt on empty (euler-ergonomics row 1)
+  kind: decide
+  needs: []
+  prio: 2
+  status: todo
+
+- id: tail-call-contract
+  title: Self-tail-calls run in constant stack, as contract -- every backend (euler-ergonomics row 2)
+  kind: decide
+  needs: []
+  prio: 2
+  status: todo
+
+- id: first-search-cut
+  title: first as a value-layer search cut vs the draft's full story (euler-ergonomics row 5)
+  kind: decide
+  needs: []
+  status: todo
+
+- id: slices-decide
+  title: Slices as index specs -- clamp vs Opt at the boundary (euler-ergonomics row 6)
+  kind: decide
+  needs: []
+  status: todo
+
+- id: sort-by-max-by
+  title: sort_by and max_by -- ordering through a scalar projection (euler-ergonomics row 7)
+  kind: build
+  needs: [sum-max-reductions]
+  status: todo
+
+- id: param-destructuring
+  title: Record parameters destructure the way match arms already do -- spelling (euler-ergonomics row 8)
+  kind: decide
+  needs: []
+  status: todo
+
+- id: bigint-tracking
+  issue: gh:112
+  title: Arbitrary-precision integers -- tracked, deliberately unscheduled
+  kind: build
+  needs: []
+  prio: 5
   status: todo
