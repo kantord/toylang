@@ -176,15 +176,16 @@ done
 # as a second, separate target, and a function build.rs's copy never calls is dead there even
 # though the lib target (compiled separately, in its own compiler-message block) uses it fine.
 # See issue #81.
+#
+# The trade the custom-build filter buys: any REAL finding in build.rs's own generator code
+# (not just the duplicated modules) is also invisible to this pass forever -- none exists
+# today, and the finer file-scoped filter was priced higher than that latent risk (gh:81).
 cargo_ran=0
 clippy_workspace=""
 if command -v cargo > /dev/null 2>&1; then
   cargo_ran=1
   clippy_raw=$(cargo clippy --workspace --all-targets --message-format=json -q 2>/dev/null \
     | jq -r 'select(.reason == "compiler-message")
-# The trade this buys: any REAL finding in build.rs's own generator code (not just the
-# duplicated modules) is also invisible to this pass forever -- none exists today, and
-# the finer file-scoped filter was priced higher than that latent risk (gh:81).
              | select((.target.kind // []) | index("custom-build") | not)
              | .message
              | select(.level == "warning")
