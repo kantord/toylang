@@ -251,6 +251,15 @@ fn int_rows(text: &str, what: &str) -> Value {
     )
 }
 
+/// One problem's fixed program, data file name, parser, and published answer.
+type Case = (
+    &'static str,
+    &'static str,
+    &'static str,
+    fn(&str, &str) -> Value,
+    &'static str,
+);
+
 /// Runs the four Euler programs against the contributor's own copies of the real puzzle data and
 /// checks every backend against the published answer. It fails loudly rather than skipping: an
 /// unset `EULER_DATA`, a missing or unparseable data file, or a wrong answer all turn red.
@@ -265,7 +274,7 @@ fn euler_real_data() {
     });
     let dir = Path::new(&dir);
 
-    let cases: [(&str, &str, &str, fn(&str, &str) -> Value, &str); 4] = [
+    let cases: [Case; 4] = [
         ("8", PROGRAM_8, "euler08.txt", digits, "23514624000"),
         ("11", PROGRAM_11, "euler11.txt", int_rows, "70600674"),
         (
