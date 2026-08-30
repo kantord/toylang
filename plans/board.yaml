@@ -357,7 +357,7 @@
   title: Scope the clippy pass past build.rs's duplicated target -- gh:73's escalation
   kind: build
   needs: []
-  status: delegated
+  status: done
 
 - id: composite-equality
   issue: gh:68
@@ -517,7 +517,7 @@
   kind: build
   needs: [int64-surface-design]
   model: fable
-  status: delegated
+  status: done
 
 - id: euler-data-problems
   issue: gh:69
@@ -641,7 +641,7 @@
   title: Unpack the Opt reference -- why absence has no representation, with the Rust Option comparison
   kind: build
   needs: [opt-as-enum]
-  status: delegated
+  status: done
 
 - id: record-order-strictness
   issue: gh:24
