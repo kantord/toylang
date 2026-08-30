@@ -886,7 +886,23 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
+
+- id: jq-printer-cycle-refusal
+  issue: gh:116
+  title: jq -- recursive-enum printers refuse a mutual cycle the way ordered() refuses one (issue-94 review)
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: reparameterized-self-reference
+  issue: gh:117
+  title: Re-parameterized generic self-reference must terminate or be refused (issue-94 review)
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
 
 - id: fmt-project-wide
   issue: gh:103
@@ -972,7 +988,15 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
+
+- id: annotations-save-lock
+  issue: gh:115
+  title: The save endpoint serializes writes like its note/compose siblings (issue-110 review)
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
 
 - id: fmt-walk-hardening
   issue: gh:111
@@ -980,7 +1004,7 @@
   kind: build
   model: haiku
   needs: []
-  status: delegated
+  status: done
 
 - id: sum-max-reductions
   title: sum and max as builtin reductions -- shape, element types, Opt on empty (euler-ergonomics row 1)
