@@ -51,7 +51,7 @@
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: int64-wire-form
   issue: gh:89
@@ -76,7 +76,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: builtin-renames
   issue: gh:98
@@ -86,7 +86,7 @@
   needs: []
   prio: 3
   soft: [concat-retirement]
-  status: todo
+  status: delegated
 
 - id: projection-style-demotion
   issue: gh:99
