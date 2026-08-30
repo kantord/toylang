@@ -50,9 +50,9 @@ async function writeAt(routePath, html) {
   await writeFile(path.join(dir, "index.html"), html)
 }
 
-// Docs pages: tutorial, guides, reference, grill, and the euler stream under examples/.
-// Prev/next within a section (App.tsx's PagerLinks) are also the prefetch hint, since they are
-// the two places a reader most likely goes next.
+// Docs pages: overview, tutorial, guides, reference, grill, and the euler stream under
+// examples/. Prev/next within a section (App.tsx's PagerLinks) are also the prefetch hint,
+// since they are the two places a reader most likely goes next.
 const bySection = new Map()
 for (const p of PAGES) {
   if (!bySection.has(p.section)) bySection.set(p.section, [])
