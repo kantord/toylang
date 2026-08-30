@@ -53,7 +53,9 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
             walk(lhs, tags);
             walk(rhs, tags);
         }
-        Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => {
+        Kind::Arith { lhs, rhs, .. }
+        | Kind::Compare { lhs, rhs, .. }
+        | Kind::Logic { lhs, rhs, .. } => {
             walk(lhs, tags);
             walk(rhs, tags);
         }
@@ -84,7 +86,7 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
             walk(source, tags);
             walk(pred, tags);
         }
-        Kind::Field { base, .. } | Kind::Unwrap { base } => walk(base, tags),
+        Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => walk(base, tags),
         Kind::Builtin { arg, .. } => walk(arg, tags),
         Kind::Index { base, index, .. } => {
             walk(base, tags);
@@ -125,6 +127,8 @@ fn tag(tir: &Tir) -> String {
         Kind::Arith { op, .. } => format!("arith.{}", binop_tag(*op)),
         Kind::Cond { .. } => "conditional".into(),
         Kind::Compare { op, .. } => format!("compare.{}", binop_tag(*op)),
+        Kind::Logic { op, .. } => format!("logic.{op}"),
+        Kind::Not(_) => "logic.not".into(),
         Kind::Bind { .. } => "pipe".into(),
         Kind::Map { .. } => "map-over".into(),
         Kind::OptMap { .. } => "opt-map".into(),

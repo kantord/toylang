@@ -1600,6 +1600,28 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         }
 
         Expr::Binary { op, lhs, rhs, .. } => binary(ctx, *op, lhs, rhs),
+
+        // The connectives are the one place a subexpression may go unevaluated: `and` runs its
+        // right side only when the left is true, `or` only when it is false. Nothing here has
+        // to say so -- every backend emits its own short-circuiting operator -- but it is why
+        // `x != 0 and 10 / x > 1` is a program and not a division by zero.
+        Expr::Logic { op, lhs, rhs, .. } => {
+            let lhs = expect(ctx, lhs, &Type::Bool)?;
+            let rhs = expect(ctx, rhs, &Type::Bool)?;
+            Ok(Tir::new(
+                Type::Bool,
+                Kind::Logic {
+                    op: *op,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                },
+            ))
+        }
+
+        Expr::Not { base, .. } => {
+            let base = expect(ctx, base, &Type::Bool)?;
+            Ok(Tir::new(Type::Bool, Kind::Not(Box::new(base))))
+        }
     }
 }
 

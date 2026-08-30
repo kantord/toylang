@@ -2388,6 +2388,14 @@ element may be a bare expression, the default. Reserved now rather than discover
 the language has no Bool `or` yet, and if one ever lands, arm-`or` binds loosest and a bare
 `or` inside an arm body needs parens.
 
+That reservation was cashed in by the Bool keywords (kantord/toylang#96), and it held: an arm
+body's `or` is the separator, and a Bool `or` written there needs parens. What the reservation
+did not cover is the other side of an arm. An arm's *left* is still being read when its `or`
+arrives, so there the `or` is disjunction (`. == 4 or . == 7 -> "middle"` is one guard), which
+costs nothing: an element ending at a bare `or` could only ever have been a bare default in a
+non-final position, and that was already an error. The split is by position, not a rule about
+which `or` wins.
+
 Totality is a hybrid, and the failure mode that shaped it is worth keeping. An enum pattern
 chain is closed-world: it must cover every variant or end in a default, keeping the shipped
 named-missing-variant error. A guard chain is open-world and may be partial, yielding `Opt`

@@ -1,12 +1,11 @@
-# A character class as a range over Char, and its complement, both spelled with machinery the
-# language already has: the conditional combines the two bounds (there is no `and`), and
-# complement is a comparison against a Bool that is one (there is no `not` and no true/false
-# literal, matching Bool's own doc). No new operator or syntax was added for either.
+# A character class as a range over Char, and its complement, now that the Bool keywords exist
+# (kantord/toylang#96): `and` joins the two bounds and `not` is the complement. Both used to be
+# spelled around the language's absence -- a conditional for the range, a comparison against a
+# Bool that is one (`!= (1 == 1)`) for the complement -- which is what those keywords retired.
 program: |
-  fn is_digit(c: Char) -> Bool =
-    c <= chars("9")[0]! if c >= chars("0")[0]! else 1 == 0
+  fn is_digit(c: Char) -> Bool = c >= chars("0")[0]! and c <= chars("9")[0]!
 
-  fn is_not_digit(c: Char) -> Bool = is_digit(c) != (1 == 1)
+  fn is_not_digit(c: Char) -> Bool = not is_digit(c)
 
   {
     digits: extent(chars("a1b2c3") | select(is_digit(.))),
@@ -16,4 +15,4 @@ program: |
 output: |
   {"digits":3,"rest":3}
 
-node_types: [application, builtin.chars, builtin.extent, compare.eq, compare.ge, compare.le, compare.ne, conditional, int, local, pipe, record-literal, selection.collapse, selection.narrow, str, unwrap, var]
+node_types: [application, builtin.chars, builtin.extent, compare.ge, compare.le, int, local, logic.and, logic.not, pipe, record-literal, selection.collapse, selection.narrow, str, unwrap, var]

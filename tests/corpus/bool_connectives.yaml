@@ -1,0 +1,13 @@
+# The three Bool keywords (kantord/toylang#96). `and` and `or` are infix, `not` is prefix and
+# binds below every comparison, so its operand is the whole `1 == 2` rather than the `1`.
+program: |
+  {
+    both: 1 == 1 and 2 == 2,
+    either: 1 == 2 or 2 == 2,
+    neither: not (1 == 2 or 2 == 3)
+  }
+
+output: |
+  {"both":true,"either":true,"neither":true}
+
+node_types: [compare.eq, int, logic.and, logic.not, logic.or, record-literal]

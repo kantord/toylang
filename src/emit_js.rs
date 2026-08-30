@@ -1,4 +1,4 @@
-use crate::ast::BinOp;
+use crate::ast::{BinOp, LogicOp};
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
 use crate::ty::Type;
 
@@ -414,7 +414,7 @@ fn used_helpers(program: &Program) -> Helpers {
                     walk(a, used);
                 }
             }
-            Kind::Concat(l, r) => {
+            Kind::Concat(l, r) | Kind::Logic { lhs: l, rhs: r, .. } => {
                 walk(l, used);
                 walk(r, used);
             }
@@ -467,6 +467,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(lhs, used);
                 walk(rhs, used);
             }
+            Kind::Not(base) => walk(base, used),
             Kind::Unwrap { base } => {
                 used.unwrap = true;
                 walk(base, used);
@@ -549,6 +550,14 @@ fn expr(t: &Tir) -> String {
         } => {
             format!("({} ? {} : {})", expr(cond), expr(then), expr(otherwise))
         }
+        Kind::Logic { op, lhs, rhs } => {
+            let op = match op {
+                LogicOp::And => "&&",
+                LogicOp::Or => "||",
+            };
+            format!("({} {op} {})", expr(lhs), expr(rhs))
+        }
+        Kind::Not(base) => format!("(!{})", expr(base)),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("String({})", expr(arg)),
             // The one real conversion among the backends: an Int is a number and an Int64 is

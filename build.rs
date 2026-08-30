@@ -127,6 +127,16 @@ impl ToRust for ast::BinOp {
     }
 }
 
+impl ToRust for ast::LogicOp {
+    fn to_rust(&self) -> String {
+        let variant = match self {
+            ast::LogicOp::And => "And",
+            ast::LogicOp::Or => "Or",
+        };
+        format!("crate::ast::LogicOp::{variant}")
+    }
+}
+
 impl ToRust for ty::Type {
     fn to_rust(&self) -> String {
         match self {
@@ -269,6 +279,16 @@ fn compare(op: &ast::BinOp, lhs: &tir::Tir, rhs: &tir::Tir) -> String {
         ],
     )
 }
+fn logic(op: &ast::LogicOp, lhs: &tir::Tir, rhs: &tir::Tir) -> String {
+    variant(
+        "Logic",
+        &[
+            ("op", op.to_rust()),
+            ("lhs", boxed(lhs)),
+            ("rhs", boxed(rhs)),
+        ],
+    )
+}
 fn bind(local: &tir::LocalId, value: &tir::Tir, body: &tir::Tir) -> String {
     variant(
         "Bind",
@@ -362,6 +382,8 @@ impl ToRust for tir::Kind {
                 otherwise,
             } => cond(c, then, otherwise),
             Compare { op, lhs, rhs } => compare(op, lhs, rhs),
+            Logic { op, lhs, rhs } => logic(op, lhs, rhs),
+            Not(base) => format!("crate::tir::Kind::Not({})", boxed(base)),
             Bind { local, value, body } => bind(local, value, body),
             Map {
                 source,

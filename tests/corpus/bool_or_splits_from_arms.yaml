@@ -1,0 +1,11 @@
+# Both readings of `or` in one chain (kantord/toylang#96): inside an arm's left side it is Bool
+# disjunction, so `. == 4 or . == 7` is one guard, and between arms it is the separator that
+# ends the previous body. What tells them apart is only position -- an arm's guard is still
+# being read, an arm's body is finished.
+program: |
+  [1, 4, 7, 12] | map(. == 4 or . == 7 -> "middle" or . < 4 -> "low" or "high")
+
+output: |
+  ["low","middle","middle","high"]
+
+node_types: [compare.eq, compare.lt, int, local, logic.or, map-over, match, pipe, str, vec-literal]

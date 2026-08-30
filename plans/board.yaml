@@ -434,7 +434,7 @@
   kind: build
   needs: [char-literals-and-bools]
   prio: 2
-  status: todo
+  status: done
 
 - id: concat-retirement
   issue: gh:97

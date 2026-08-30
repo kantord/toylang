@@ -2,4 +2,4 @@
 source: tests/matcher.rs
 expression: "err(\"1 | . == 1 -> \\\"one\\\" or \\\"other\\\" or . == 2 -> \\\"two\\\"\")"
 ---
-a bare expression is the chain's default and must come last (at byte 23)
+expected Bool, found Str (at byte 23)

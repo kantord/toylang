@@ -7,7 +7,7 @@
 //! Names are deliberately *not* mangled here. Which identifiers are reserved is a property of
 //! the target, not of toylang, so each backend renders these as it needs to.
 
-use crate::ast::BinOp;
+use crate::ast::{BinOp, LogicOp};
 use crate::ty::Type;
 
 pub struct Tir {
@@ -91,6 +91,17 @@ pub enum Kind {
         lhs: Box<Tir>,
         rhs: Box<Tir>,
     },
+    /// `and` / `or` over two Bools, short-circuiting: `rhs` is evaluated only when `lhs` leaves
+    /// the answer open. That is not a nicety here -- division and `!` can stop the program, so
+    /// whether the right side runs is observable -- which is why every backend emits its own
+    /// short-circuiting operator rather than two evaluated operands combined afterwards.
+    Logic {
+        op: LogicOp,
+        lhs: Box<Tir>,
+        rhs: Box<Tir>,
+    },
+    /// `not b`.
+    Not(Box<Tir>),
     /// `let local = value in body`, which is what `|` becomes once `.` has a name.
     Bind {
         local: LocalId,

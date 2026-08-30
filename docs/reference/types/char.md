@@ -15,7 +15,8 @@ extent(chars("a😀b"))
 
 There is no `Char` literal. A program spells one by decoding a one-character `Str`:
 `chars("0")[0]!` is the character `0`. `Char` supports the same comparisons `Int` does
-(`==`, `!=`, `<`, `<=`, `>`, `>=`), which is what a character class is built from.
+(`==`, `!=`, `<`, `<=`, `>`, `>=`), and those plus
+[`and`/`or`/`not`](../operators/boolean.md) are what a character class is built from.
 
 A `Char` has no wire form: it is refused both as `input`'s type and as the program's own
 printed result, since neither JSON nor either refusal has anything to decode or encode one
