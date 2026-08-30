@@ -947,3 +947,11 @@
   needs: []
   prio: 4
   status: done
+
+- id: python-recursion-limit
+  issue: gh:132
+  title: Python backend never raises sys' default recursion limit -- breaks real-sized recursive programs (found via euler-11)
+  kind: build
+  needs: []
+  prio: 3
+  status: done
