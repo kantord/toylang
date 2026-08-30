@@ -66,6 +66,14 @@ last events say what it was doing. Uncommitted work continues via
 anything that smells like a worker-quality problem gets a row in
 plans/opencode-rollout.md's incident table -- that log is the rollout's evidence base.
 
+The tick's diagnosis budget is the event log, git state, and the suite output --
+ROUTING evidence. The moment understanding requires reading source files or
+experimenting (why a backend misbehaves, what a generated program actually does), the
+tick STOPS and dispatches a research worker instead (enwiro-delegate skill, "Research
+dispatches"): coordinator minutes cost more than whole worker lanes now, and the
+research worker's exit brings the answer back through the normal event tick. A tick
+that catches itself grepping src/ has already gone too far.
+
 Board-editing scripts match a row id ONLY with its terminator -- `'- id: <slug>\n'`, never a
 bare prefix: `- id: nullary-functions` also matches `nullary-functions-decision`, and the
 falls-through `index('status: todo')` then flips whatever row comes next (it silently marked

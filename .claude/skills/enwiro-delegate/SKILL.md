@@ -98,6 +98,28 @@ what the coordinator's event-driven tick reads anyway. The coordinator turns it 
 the real issue/board row and removes it before merging; ESCALATION.md never lands on
 main.)
 
+### Research dispatches (2026-08-30): diagnosis is worker work too
+
+A deep dive -- why a backend misbehaves, why a lane died mid-task, what an odd test
+failure means -- is DELEGATED, never done by the coordinator in its own session:
+coordinator time is the expensive tier now, and reading a codebase is exactly what a
+cheap worker does well. Same `dispatch-worker.sh`, usually as a continuation into the
+lane that raised the question; only the brief changes:
+
+> You are a research worker for the toylang repository, in this git worktree. FIRST
+> read AGENTS.md. Your task is to ANSWER A QUESTION, not to fix anything: [the precise
+> question, with every symptom the dispatcher already has -- failing command, error
+> text, suspect files]. Investigate freely (read code, run `just check`, reproduce);
+> do NOT change or discard existing working-tree edits beyond reverting your own
+> experiments. Deliverable: RESEARCH.md at the worktree root -- the answer, the
+> evidence, and a recommendation (fix shape, or what to escalate) -- COMMITTED on this
+> branch. That commit is your entire output; never stop to wait for a human.
+
+The worker's exit fires the event tick as always; that tick reads RESEARCH.md, acts on
+it (follow-up issue, informed continuation brief, board row), and strips the file
+before any merge -- like ESCALATION.md, it never lands on main. `OPENCODE_MODEL` can
+lift a hard question to a stronger cheap model per-dispatch.
+
 ## 2b. Update the board
 
 Set the row's `status: delegated`. The tick scripts resolve the worktree from the
