@@ -111,16 +111,23 @@ row before it gets a branch.
    the live board is satisfied). Group what remains by soft-blockedness: the count of ids in
    `soft` still present on the live board (a `delegated` soft blocker still counts as un-done;
    an absent one does not). Least soft-blocked category ranks first; `prio` (1 highest, default
-   3) sorts within a category; list position is only a tiebreak. The TOP FIVE of this ordering,
-   builds and decides together, is the ready set. Soft order outweighs prio by construction, but
-   among fully unblocked tasks prio alone decides.
+   3) sorts within a category; list position is only a tiebreak. The ready set is TWO
+   queues, not one (maintainer fix, 2026-08-30 -- decides were crowding builds out of a
+   shared top-five, leaving lanes empty): ALL ready `decide` rows queue for the
+   maintainer's grill/mail rounds, and the top ready `build` rows fill the free lanes
+   up to the cap. Soft order outweighs prio by construction, but among fully unblocked
+   tasks prio alone decides.
 2. **Deadlock check, before anything else.** Two shapes, both reported to the user
    immediately rather than worked around: a cycle in `needs` (topological sort fails), and
    exhaustion (todo entries remain but nothing is pickable and nothing is in flight). A
    third, operational one: a delegated session with no commits and no transcript activity
    for ~30 minutes -- go read its state (worktree diff, last transcript entry) and either
    finish its work by hand, relaunch it, or escalate; do not just wait.
-3. **Fill the lanes: up to FIVE concurrent.**
+3. **Fill the lanes: up to EIGHT concurrent** (raised from five 2026-08-30; cheap
+   workers moved the constraint to landing throughput, disjoint footprints, and local
+   CPU). When several ready rows share a file footprint (the draft.md migration family,
+   say), dispatch ONE of the family per cycle and record the `soft` edges between the
+   rest -- parallel same-file lanes just manufacture merge conflicts.
    - `decide` entries in the ready set: queue for the user, batched into wizard/mail rounds
      where they carry code; they occupy attention, not a lane.
    - `build` entries: make sure a GitHub issue carries the spec (file one if the row has

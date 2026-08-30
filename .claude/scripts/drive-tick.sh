@@ -121,8 +121,8 @@ lanes = sum(1 for r in rows if r.get('status') == 'delegated' and r.get('kind') 
 ready = [r['id'] for r in rows
          if r.get('status') == 'todo' and r.get('kind') == 'build'
          and all(n not in live for n in r.get('needs', []))]
-if lanes < 5 and ready:
-    print(f'{5 - lanes} free lanes, ready: {\" \".join(ready[:3])}')" 2>/dev/null)
+if lanes < 8 and ready:
+    print(f'{8 - lanes} free lanes, ready: {\" \".join(ready[:3])}')" 2>/dev/null)
 fi
 [ "${1:-tick}" = "audit" ] && TRIGGER="scheduled audit"
 if [ -z "$TRIGGER" ]; then
@@ -133,7 +133,7 @@ fi
 if [ "${1:-tick}" = "audit" ]; then
   PROMPT='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has a live or accounted-for lane; no worktree holds unmerged commits the board thinks landed; no falsely-stuck lanes. Fix what is mechanical, file issues for the rest. End quietly if clean.'
 else
-  PROMPT='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. Reconstruct state from disk -- plans/board.yaml, the worktrees, the annotation stores -- and trust disk over anything remembered from earlier ticks. Read board rows with status: delegated and check each lane worktree (commits vs main, dirty files, live worker via pgrep cwd). Poll BOTH annotation stores: docs/.annotations/inbox.json AND docs/.annotations/notes.json -- apply entries older than 5 minutes and clear them at capture; wizard submissions in docs/.grill/ process immediately (delete round files at capture). If a lane is finished (ahead of main, clean, 8+ minutes quiet or worker gone), run the land-delegated-work skill -- cascade if 3+ are ready. After landings, dispatch ready board rows into free lanes (cap 5) with .claude/scripts/dispatch-worker.sh <N> "<brief>" -- the enwiro-free opencode default (claude delegation retired 2026-08-30; brief shape in the enwiro-delegate skill; record every rollout incident in plans/opencode-rollout.md). If nothing changed, end quietly without writing anything.'
+  PROMPT='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. Reconstruct state from disk -- plans/board.yaml, the worktrees, the annotation stores -- and trust disk over anything remembered from earlier ticks. Read board rows with status: delegated and check each lane worktree (commits vs main, dirty files, live worker via pgrep cwd). Poll BOTH annotation stores: docs/.annotations/inbox.json AND docs/.annotations/notes.json -- apply entries older than 5 minutes and clear them at capture; wizard submissions in docs/.grill/ process immediately (delete round files at capture). If a lane is finished (ahead of main, clean, 8+ minutes quiet or worker gone), run the land-delegated-work skill -- cascade if 3+ are ready. After landings, dispatch ready board rows into free lanes (cap 8; decide rows never consume a lane or a ready-set slot) with .claude/scripts/dispatch-worker.sh <N> "<brief>" -- the enwiro-free opencode default (claude delegation retired 2026-08-30; brief shape in the enwiro-delegate skill; record every rollout incident in plans/opencode-rollout.md). If nothing changed, end quietly without writing anything.'
 fi
 
 TS=$(date +%Y%m%d-%H%M%S)

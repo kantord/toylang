@@ -1,5 +1,7 @@
 # The task board (scheduler v2, maintainer-specified 2026-08-29): every unblocked task is by
-# definition ready to be picked up, and up to FIVE run at once.
+# definition ready to be picked up, and up to EIGHT build lanes run at once
+# (raised from five 2026-08-30; decide rows queue for the maintainer separately
+# and never consume a lane or a ready-set slot).
 #
 # Done rows do not live here (issue #113): landing a task MOVES its row to
 # plans/board-archive.yaml (same schema, append-only) instead of flipping status in place, so
