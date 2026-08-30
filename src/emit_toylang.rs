@@ -424,6 +424,17 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
         Expr::Index { base, index, .. } => {
             format!("{}[{}]", print_atom_base(base), print_paren_arg(index))
         }
+        Expr::Slice { base, start, end, .. } => {
+            let lo = match start {
+                Some(s) => print_paren_arg(s),
+                None => String::new(),
+            };
+            let hi = match end {
+                Some(e) => print_paren_arg(e),
+                None => String::new(),
+            };
+            format!("{}[{lo}:{hi}]", print_atom_base(base))
+        }
         Expr::Unwrap { base, .. } => format!("{}!", print_atom_base(base)),
         Expr::Neg { base, .. } => format!("-{}", print_expr_compact(base, Ctx::Unary)),
         // `not x`, not `not(x)`: this is an operator, and the parens spelling would read as the

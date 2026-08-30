@@ -242,6 +242,15 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
             callees(base, out);
             callees(index, out);
         }
+        Kind::Slice { base, start, end, .. } => {
+            callees(base, out);
+            if let Some(s) = start {
+                callees(s, out);
+            }
+            if let Some(e) = end {
+                callees(e, out);
+            }
+        }
         Kind::Match { subject, arms, .. } => {
             callees(subject, out);
             for a in arms {
@@ -416,6 +425,15 @@ fn uses_arith(program: &Program) -> (bool, bool) {
             Kind::Index { base, index, .. } => {
                 walk(base, found);
                 walk(index, found);
+            }
+            Kind::Slice { base, start, end, .. } => {
+                walk(base, found);
+                if let Some(s) = start {
+                    walk(s, found);
+                }
+                if let Some(e) = end {
+                    walk(e, found);
+                }
             }
             Kind::Match { subject, arms, .. } => {
                 walk(subject, found);
@@ -638,6 +656,22 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 expr(enums, index)
             );
             format!("({} | {})", expr(enums, base), distribute(&at, *depth))
+        }
+        // jq's own slice clamps out-of-range bounds and counts negatives from the end, so the
+        // ruled behaviour is the target's native one; a `None` bound is just left out.
+        Kind::Slice {
+            base, start, end, depth,
+        } => {
+            let lo = match start {
+                Some(s) => expr(enums, s),
+                None => String::new(),
+            };
+            let hi = match end {
+                Some(e) => expr(enums, e),
+                None => String::new(),
+            };
+            let sl = format!(".[{lo}:{hi}]");
+            format!("({} | {})", expr(enums, base), distribute(&sl, *depth))
         }
         // Tests over the subject: equality for a unit variant, `type`-guarded `has` for a
         // payload one, since `has` on a string is an error rather than false, and the guard's

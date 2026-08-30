@@ -70,6 +70,37 @@ const AT_HELPER: &str = r#"func tlAt[T any](v []T, i int32) tlOpt[T] {
 }
 "#;
 
+// Go's own slicing panics out of range, so the jq clamp has to be explicit: negatives count
+// from the end, then both bounds clamp to [0, n], and a crossed window is empty. A bound left
+// out is passed as its sentinel (`MinInt32` for the start, `MaxInt32` for the end), each of
+// which the clamp folds to the array's own boundary.
+const SLICE_HELPER: &str = r#"func tlSlice[T any](v []T, lo int32, hi int32) []T {
+	n := int32(len(v))
+	if lo < 0 {
+		lo += n
+	}
+	if hi < 0 {
+		hi += n
+	}
+	if lo < 0 {
+		lo = 0
+	}
+	if lo > n {
+		lo = n
+	}
+	if hi < 0 {
+		hi = 0
+	}
+	if hi > n {
+		hi = n
+	}
+	if lo >= hi {
+		return []T{}
+	}
+	return v[lo:hi]
+}
+"#;
+
 const UNWRAP_HELPER: &str = r#"func tlUnwrap[T any](o tlOpt[T]) T {
 	if !o.ok {
 		tlFail("unwrapped a value that is not there")
@@ -414,6 +445,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tlMap("), MAP_HELPER),
         (uses("tlSelect("), SELECT_HELPER),
         (uses("tlAt("), AT_HELPER),
+        (uses("tlSlice("), SLICE_HELPER),
         (uses("tlTail("), TAIL_HELPER),
         (uses("tlFlatten("), FLATTEN_HELPER),
         (uses("tlSort("), SORT_HELPER),
@@ -612,6 +644,15 @@ impl Collect<'_> {
             Kind::Index { base, index, .. } => {
                 self.walk(base);
                 self.walk(index);
+            }
+            Kind::Slice { base, start, end, .. } => {
+                self.walk(base);
+                if let Some(s) = start {
+                    self.walk(s);
+                }
+                if let Some(e) = end {
+                    self.walk(e);
+                }
             }
             Kind::Match { subject, arms, .. } => {
                 self.walk(subject);
@@ -1058,6 +1099,21 @@ impl Emitter<'_> {
                 let i = self.expr(index);
                 self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
                     format!("tlAt({v}, {i})")
+                })
+            }
+            Kind::Slice {
+                base, start, end, depth,
+            } => {
+                let lo = match start {
+                    Some(s) => self.expr(s),
+                    None => "-2147483648".to_string(),
+                };
+                let hi = match end {
+                    Some(e) => self.expr(e),
+                    None => "2147483647".to_string(),
+                };
+                self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
+                    format!("tlSlice({v}, {lo}, {hi})")
                 })
             }
             // Tests over the subject (a plain local, so re-reading it is free): a tag test for
