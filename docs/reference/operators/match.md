@@ -47,7 +47,11 @@ supplies the `Opt`, so an arm never has to spell it. An arm whose body is itself
 doubles the wrapping instead of colliding with it -- `none` (no arm matched) and `some(none)`
 (matched, and found nothing) stay distinct values, even though both print `null`.
 
-`or` exists only between match arms; there is no Bool `or` (spell it with `if`/`else`), and
-the keyword is reserved so that if one ever lands, arm-`or` keeps binding loosest. Matching
-is decoding, not control flow bolted on: a match is how a value whose shape is unknowable
-until runtime becomes typed data again.
+`or` is also Bool disjunction, and which one a given `or` is depends on where it sits: an
+arm's left side is still being read, so `or` there joins guard clauses, while an arm's body is
+finished, so `or` there ends it and starts the next arm. The
+[boolean operators page](boolean.md) has both readings side by side; the only rule that costs
+anything is that a Bool `or` written directly in an arm body needs parens.
+
+Matching is decoding, not control flow bolted on: a match is how a value whose shape is
+unknowable until runtime becomes typed data again.

@@ -26,34 +26,11 @@ extent(chars("a😀b"))
 
 There is no `Char` literal, so a program spells a boundary to compare against by decoding a
 one-character `Str`: `chars("0")[0]!` is the character `0`. `Char` supports the same comparisons
-`Int` does, which is what lets a character class be written as a range -- there is no `and`
-either, so two bounds combine through the conditional, the same way any two-part test does:
+`Int` does, which is what lets a character class be written as a range: two bounds joined with
+[`and`](../operators/boolean.md), and its complement with `not`.
 
-```toylang
-fn is_digit(c: Char) -> Bool =
-    c <= chars("9")[0]! if c >= chars("0")[0]! else 1 == 0
-
-extent(chars("a1b2c3") | select(is_digit(.)))
-```
-
-```output
-3
-```
-
-Complement is ordinary `Bool` negation -- there are no `true`/`false` literals either, so it is
-spelled against a comparison that is one, the way any boolean constant is:
-
-```toylang
-fn is_digit(c: Char) -> Bool =
-    c <= chars("9")[0]! if c >= chars("0")[0]! else 1 == 0
-
-fn is_not_digit(c: Char) -> Bool = is_digit(c) != (1 == 1)
-
-extent(chars("a1b2c3") | select(is_not_digit(.)))
-```
-
-```output
-3
+```case
+char_range_and_complement
 ```
 
 A `Char` has no wire form: it never comes from JSON, and it cannot be handed to the printer.

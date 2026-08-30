@@ -1,0 +1,13 @@
+# `and` and `or` evaluate their right side only when the left leaves the answer open. That is
+# observable rather than an optimization: `1 / 0` stops the program (div_by_zero pins it), so a
+# program that prints at all is a program whose right sides never ran.
+program: |
+  {
+    or_stops_at_true: 1 == 1 or 1 / 0 == 1,
+    and_stops_at_false: not 1 == 1 and 1 / 0 == 1
+  }
+
+output: |
+  {"or_stops_at_true":true,"and_stops_at_false":false}
+
+node_types: [arith.div, compare.eq, int, logic.and, logic.not, logic.or, record-literal]

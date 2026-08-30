@@ -47,7 +47,7 @@ fn is_dup(p: {v: Vec<Int>, i: Int}) -> Bool =
     extent(range(p.i) | select(p.v[.]! == p.v[p.i]!)) > 0
 
 fn distinct_count(v: Vec<Int>) -> Int =
-    extent(range(extent(v)) | select(is_dup({v: v, i: .}) != (1 == 1)))
+    extent(range(extent(v)) | select(not is_dup({v: v, i: .})))
 
 fn powers_from(p: {r: Int, val: Int, j: Int, top: Int}) -> Vec<Int> =
     [] if p.val > p.top else
@@ -72,18 +72,14 @@ fn multi_root_contribution(p: {r: Int, top: Int}) -> Int =
 
 fn single_contrib(top: Int) -> Int =
     extent(
-        range(top - 1)
-            | map(. + 2)
-            | select(is_primitive(.))
-            | select(. * . > top)
+        range(top - 1) | map(. + 2) | select(is_primitive(.) and . * . > top)
     ) *
         (top - 1)
 
 fn multi_contribs(top: Int) -> Vec<Int> =
     range(top - 1)
         | map(. + 2)
-        | select(. * . <= top)
-        | select(is_primitive(.))
+        | select(. * . <= top and is_primitive(.))
         | map(multi_root_contribution({r: ., top: top}))
 
 fn sum_ints(v: Vec<Int>) -> Int =

@@ -105,3 +105,13 @@ more (`reflect`, for the new `tlEq` helper) took it from 28/10 to 29/10. Convert
 to the same `for (on, names) in [...]` table the helper text above it already uses dropped it to
 23/10, five points below merge-base. Read the #75 entry as covering any `if`-chain in an
 `emit()` that a sibling backend already spells as a table, whatever the chain decides.
+
+The Bool-keywords session (issue #96) is a seventh instance of the same shape-1-with-one-caused
+-crossing pattern, and the third time the fix was the one named above for `emit_llvm.rs`: adding
+`and`/`or` as a TIR node put a forty-five-line short-circuit sequence -- an alloca, two basic
+blocks and a conditional branch -- directly inside `expr()`'s new match arm, pushing that
+otherwise-shape-1 dispatch from absent to 11/10. Extracting it to a `logic()` method beside the
+`compare()` the arm above it already delegates to removed the finding entirely. The arm reads
+`Kind::Logic { op, lhs, rhs } => self.logic(*op, lhs, rhs)?` now, exactly parallel to its
+neighbour. The other six backends spell the same node as one `format!`, added no branching, and
+their scores came out unchanged -- shape 1, inherited, same as every instance above.

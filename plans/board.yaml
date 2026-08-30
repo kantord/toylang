@@ -429,7 +429,7 @@
   kind: build
   needs: [composite-equality]
   prio: 2
-  status: delegated
+  status: done
 
 - id: bool-keywords-build
   issue: gh:96
@@ -437,7 +437,16 @@
   kind: build
   needs: [char-literals-and-bools]
   prio: 2
-  status: delegated
+  status: done
+
+- id: llvm-tag-dispatch-dedup
+  issue: gh:114
+  title: emit_llvm -- one tag-dispatch helper under equal_enum and show (issue-95 review)
+  kind: build
+  needs: []
+  soft: [recursive-enum-codegen]
+  prio: 3
+  status: todo
 
 - id: concat-retirement
   issue: gh:97

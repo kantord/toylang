@@ -4,8 +4,8 @@ use winnow::stream::{LocatingSlice, Location, Stream};
 use winnow::token::take_while;
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, MatchArm, Module, Param, Pattern, Span,
-    TypeExpr, Variant,
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, LogicOp, MatchArm, Module, Param,
+    Pattern, Span, TypeExpr, Variant,
 };
 use crate::error::Error;
 use crate::ty;
@@ -47,7 +47,9 @@ enum Tok {
     Input,
     Inputs,
     Lines,
+    And,
     Or,
+    Not,
     Plus,
     Minus,
     Star,
@@ -90,7 +92,9 @@ impl std::fmt::Display for Tok {
             Tok::Input => "`input`",
             Tok::Inputs => "`inputs`",
             Tok::Lines => "`lines`",
+            Tok::And => "`and`",
             Tok::Or => "`or`",
+            Tok::Not => "`not`",
             Tok::Plus => "`+`",
             Tok::Minus => "`-`",
             Tok::Star => "`*`",
@@ -178,10 +182,12 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "input" => Tok::Input,
                 "inputs" => Tok::Inputs,
                 "lines" => Tok::Lines,
-                // Reserved for arm composition now rather than discovered later: there is no
-                // Bool `or`, and if one ever lands, arm-`or` binds loosest (draft.md, the
-                // match-arms decision).
+                "and" => Tok::And,
+                // Two operators sharing one spelling, told apart by position: the arm separator
+                // at a chain's top level, Bool disjunction everywhere else. `Cursor::or_separates`
+                // is which one is being read (kantord/toylang#96).
                 "or" => Tok::Or,
+                "not" => Tok::Not,
                 name => Tok::Ident(name.to_string()),
             }
         }
@@ -301,23 +307,32 @@ fn read_string(input: &mut Input) -> Result<String, Error> {
     }
 }
 
+/// Which node an infix token builds. `and` and `or` are `ast::LogicOp`, not `BinOp`, so the
+/// table has to name the kind as well as the binding power.
+enum Infix {
+    Bin(BinOp),
+    Logic(LogicOp),
+}
+
 /// Left and right binding power. Left below right makes the operator left-associative.
 ///
 /// `|` sits below comparison so that `a | select(. >= 2)` splits at the pipe, which is the
 /// ordering jq uses and the reason this table exists rather than a nest of functions.
-fn infix_power(tok: &Tok) -> Option<(BinOp, u8, u8)> {
+fn infix_power(tok: &Tok) -> Option<(Infix, u8, u8)> {
     let (op, left, right) = match tok {
-        Tok::EqEq => (BinOp::Eq, 5, 6),
-        Tok::Ne => (BinOp::Ne, 5, 6),
-        Tok::Lt => (BinOp::Lt, 5, 6),
-        Tok::Le => (BinOp::Le, 5, 6),
-        Tok::Gt => (BinOp::Gt, 5, 6),
-        Tok::Ge => (BinOp::Ge, 5, 6),
-        Tok::Plus => (BinOp::Add, 7, 8),
-        Tok::Minus => (BinOp::Sub, 7, 8),
-        Tok::Star => (BinOp::Mul, 9, 10),
-        Tok::Slash => (BinOp::Div, 9, 10),
-        Tok::Percent => (BinOp::Rem, 9, 10),
+        Tok::Or => (Infix::Logic(LogicOp::Or), OR_LEFT, OR_RIGHT),
+        Tok::And => (Infix::Logic(LogicOp::And), 6, 7),
+        Tok::EqEq => (Infix::Bin(BinOp::Eq), 8, 9),
+        Tok::Ne => (Infix::Bin(BinOp::Ne), 8, 9),
+        Tok::Lt => (Infix::Bin(BinOp::Lt), 8, 9),
+        Tok::Le => (Infix::Bin(BinOp::Le), 8, 9),
+        Tok::Gt => (Infix::Bin(BinOp::Gt), 8, 9),
+        Tok::Ge => (Infix::Bin(BinOp::Ge), 8, 9),
+        Tok::Plus => (Infix::Bin(BinOp::Add), 10, 11),
+        Tok::Minus => (Infix::Bin(BinOp::Sub), 10, 11),
+        Tok::Star => (Infix::Bin(BinOp::Mul), 12, 13),
+        Tok::Slash => (Infix::Bin(BinOp::Div), 12, 13),
+        Tok::Percent => (Infix::Bin(BinOp::Rem), 12, 13),
         _ => return None,
     };
     Some((op, left, right))
@@ -326,17 +341,31 @@ fn infix_power(tok: &Tok) -> Option<(BinOp, u8, u8)> {
 const PIPE_LEFT: u8 = 1;
 const PIPE_RIGHT: u8 = 2;
 
-/// The conditional sits between `|` and comparison, so `a if c else b | f` groups as
+/// The conditional sits between `|` and the Bool connectives, so `a if c else b | f` groups as
 /// `(a if c else b) | f` and `x | a if c else b` groups as `x | (a if c else b)`. Python puts
 /// its ternary below `|` because there `|` is bitwise or; ours is the pipe, so the better
 /// grouping comes for free.
 const COND_POWER: u8 = 3;
+
+/// Bool `or`, the loosest operator a Bool expression is built from: `a == 1 or b == 2` is one
+/// disjunction of two comparisons. Its *other* reading, the match-arm separator, has no power
+/// at all -- it is not an operator there but the chain's own punctuation, and it binds looser
+/// than everything including the conditional, which is exactly why it cannot be one table entry
+/// with this (draft.md, the match-arms decision).
+const OR_LEFT: u8 = 4;
+const OR_RIGHT: u8 = 5;
+
+/// `not` sits directly below comparison, so `not a == b` negates the comparison rather than
+/// `a`, and above `and`, so `not a and b` negates only `a`. Python's ordering; the alternative,
+/// binding it as tight as unary `-`, makes every use of it against a comparison need parens.
+const NOT_POWER: u8 = 8;
 
 pub fn parse(src: &str) -> Result<File, Error> {
     let mut p = Cursor {
         input: LocatingSlice::new(src),
         src,
         declined_cross_line: None,
+        or_separates: false,
     };
 
     // Declarations in any order and any mix, since no kind can refer to another's position:
@@ -381,6 +410,7 @@ pub fn parse_module(src: &str) -> Result<Module, Error> {
         input: LocatingSlice::new(src),
         src,
         declined_cross_line: None,
+        or_separates: false,
     };
     let mut defs = Vec::new();
     let mut enums = Vec::new();
@@ -420,6 +450,13 @@ struct Cursor<'i> {
     /// declined token, the intended reading was probably the call, and the error can name the
     /// parens spelling that works across lines.
     declined_cross_line: Option<(usize, String)>,
+    /// Which of `or`'s two readings is in force here: the match-arm separator (true), or Bool
+    /// disjunction (false). True only inside an arm's body, where the separator has to win so
+    /// that `a -> b or c` is two arms; every fresh expression position below that -- a
+    /// parenthesized group, a call argument, an arm's own guard -- puts it back to false, since
+    /// nothing there is a chain's top level. This is the split kantord/toylang#96 set out to
+    /// prove clean, and the one place a token's meaning depends on where it is read.
+    or_separates: bool,
 }
 
 impl<'i> Cursor<'i> {
@@ -479,6 +516,18 @@ impl<'i> Cursor<'i> {
         }
         self.declined_cross_line = Some((arg_span.start, callee.to_string()));
         false
+    }
+
+    /// Runs `f` with `or` reading as `separates` says, restoring the caller's reading after.
+    fn with_or<T>(
+        &mut self,
+        separates: bool,
+        f: impl FnOnce(&mut Self) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        let outer = std::mem::replace(&mut self.or_separates, separates);
+        let out = f(self);
+        self.or_separates = outer;
+        out
     }
 
     fn eat_ident(&mut self, what: &str) -> Result<(String, Span), Error> {
@@ -764,44 +813,40 @@ impl<'i> Cursor<'i> {
     /// as its subject, so it usually sits to the right of a `|`; each body stops at `|` and
     /// `or`, which is what lets the chain be one pipe stage.
     ///
-    /// `lead` is an expression `expr` had already read when the `->` or `or` after it revealed
-    /// a chain; the first element continues from it instead of parsing fresh.
+    /// The two `or`s meet here and nowhere else. A body is read with the separator reading, so
+    /// it ends at the next `or`; an element's own left side is read with the disjunction one, so
+    /// `a -> 1 or b == 2 or c == 3 -> 4` is two arms whose second has a two-clause guard. What
+    /// makes that split decidable is that an element ending at a bare `or` could only ever have
+    /// been a bare default in a non-final position, which was already an error.
+    ///
+    /// `lead` is an expression `expr` had already read when the `->` after it revealed a chain;
+    /// the first element continues from it instead of parsing fresh.
     fn match_expr(&mut self, lead: Option<Expr>) -> Result<Expr, Error> {
         let mut arms = Vec::new();
         let mut lead = lead;
         loop {
-            let (arm, bare) = match lead.take() {
+            let arm = match lead.take() {
                 Some(e) => self.guard_or_default_arm(e)?,
                 None if self.arm_starts_here() => {
                     let pattern = self.pattern()?;
                     self.eat(Tok::Arrow)?;
-                    let body = self.expr(COND_POWER)?;
+                    let body = self.arm_body()?;
                     let span = pattern.span().to(body.span());
-                    (
-                        MatchArm {
-                            pattern,
-                            body,
-                            span,
-                        },
-                        false,
-                    )
+                    MatchArm {
+                        pattern,
+                        body,
+                        span,
+                    }
                 }
                 None => {
-                    let e = self.operand(COND_POWER)?;
+                    let e = self.with_or(false, |p| p.operand(COND_POWER))?;
                     self.guard_or_default_arm(e)?
                 }
             };
-            let arm_span = arm.span;
             arms.push(arm);
             let (sep, _) = self.peek()?;
             if sep != Tok::Or {
                 break;
-            }
-            if bare {
-                return Err(Error::new(
-                    arm_span,
-                    "a bare expression is the chain's default and must come last".to_string(),
-                ));
             }
             self.advance()?;
         }
@@ -809,32 +854,32 @@ impl<'i> Cursor<'i> {
         Ok(Expr::Match { arms, span })
     }
 
+    /// An arm's right side: the one position where a bare `or` is the chain's separator rather
+    /// than disjunction, so a Bool `or` written here needs parens (draft.md, the match-arms
+    /// decision).
+    fn arm_body(&mut self) -> Result<Expr, Error> {
+        self.with_or(true, |p| p.expr(COND_POWER))
+    }
+
     /// The element `left` opens: `left -> body` makes `left` a guard, and a bare `left` is the
-    /// default, desugared to a `Default` arm whose body is `left` itself. Returns the arm and
-    /// whether it was bare, which only the chain's last element may be.
-    fn guard_or_default_arm(&mut self, left: Expr) -> Result<(MatchArm, bool), Error> {
+    /// default, desugared to a `Default` arm whose body is `left` itself.
+    fn guard_or_default_arm(&mut self, left: Expr) -> Result<MatchArm, Error> {
         if self.peek()?.0 == Tok::Arrow {
             self.advance()?;
-            let body = self.expr(COND_POWER)?;
+            let body = self.arm_body()?;
             let span = left.span().to(body.span());
-            return Ok((
-                MatchArm {
-                    pattern: Pattern::Guard(left),
-                    body,
-                    span,
-                },
-                false,
-            ));
+            return Ok(MatchArm {
+                pattern: Pattern::Guard(left),
+                body,
+                span,
+            });
         }
         let span = left.span();
-        Ok((
-            MatchArm {
-                pattern: Pattern::Default { span },
-                body: left,
-                span,
-            },
-            true,
-        ))
+        Ok(MatchArm {
+            pattern: Pattern::Default { span },
+            body: left,
+            span,
+        })
     }
 
     fn pattern(&mut self) -> Result<Pattern, Error> {
@@ -889,18 +934,29 @@ impl<'i> Cursor<'i> {
         })
     }
 
+    /// Arm chains begin only where an expression begins fresh (a pipe stage, a delimited
+    /// position), and a fresh position is also where `or` goes back to reading as disjunction:
+    /// whatever chain the enclosing arm body belonged to, this expression is not part of it. An
+    /// arm body or a conditional branch enters at COND_POWER instead and leaves any `->` or
+    /// separator `or` it meets for the chain that owns it, rather than opening a nested chain
+    /// that would swallow the rest of the outer one.
     fn expr(&mut self, min_power: u8) -> Result<Expr, Error> {
-        // Arm chains begin only where an expression begins fresh (a pipe stage, a delimited
-        // position). An arm body or a conditional branch enters at COND_POWER and leaves any
-        // `->` or `or` it meets for the chain that owns it, instead of opening a nested chain
-        // that would swallow the rest of the outer one.
-        let fresh = min_power <= PIPE_RIGHT;
+        if min_power <= PIPE_RIGHT {
+            return self.with_or(false, |p| p.expr_at(min_power, true));
+        }
+        self.expr_at(min_power, false)
+    }
+
+    fn expr_at(&mut self, min_power: u8, fresh: bool) -> Result<Expr, Error> {
         let mut lhs = if fresh && self.arm_starts_here() {
             self.match_expr(None)?
         } else {
             let e = self.operand(min_power)?;
             let (tok, _) = self.peek()?;
-            if fresh && (tok == Tok::Arrow || tok == Tok::Or) {
+            // No `Tok::Or` here: a fresh position reads `or` as disjunction, so `operand` has
+            // already taken any that were there, and an arm chain is revealed by the `->` that
+            // follows the whole disjunction (`a == 1 or b == 2 -> ...` is one guard).
+            if fresh && tok == Tok::Arrow {
                 self.match_expr(Some(e))?
             } else {
                 e
@@ -911,7 +967,9 @@ impl<'i> Cursor<'i> {
         let (tok, _) = self.peek()?;
         if tok == Tok::If && COND_POWER >= min_power {
             self.advance()?;
-            let cond = self.operand(COND_POWER + 1)?;
+            // `else` closes the condition, so a bare `or` inside it can only be disjunction --
+            // even in an arm body, where the separator reading is otherwise in force.
+            let cond = self.with_or(false, |p| p.operand(COND_POWER + 1))?;
             self.eat(Tok::Else)?;
             let otherwise = self.expr(COND_POWER)?;
             let span = lhs.span().to(otherwise.span());
@@ -942,10 +1000,15 @@ impl<'i> Cursor<'i> {
     }
 
     fn operand(&mut self, min_power: u8) -> Result<Expr, Error> {
-        let mut lhs = self.unary()?;
+        let mut lhs = self.complement(min_power)?;
 
         loop {
             let (tok, _) = self.peek()?;
+            // Where `or` is the arm separator it is not an operator at all, so the table is not
+            // even consulted: the chain the arm belongs to takes the token.
+            if tok == Tok::Or && self.or_separates {
+                break;
+            }
             let Some((op, left, right)) = infix_power(&tok) else {
                 break;
             };
@@ -955,15 +1018,41 @@ impl<'i> Cursor<'i> {
             self.advance()?;
             let rhs = self.operand(right)?;
             let span = lhs.span().to(rhs.span());
-            lhs = Expr::Binary {
-                op,
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
-                span,
+            lhs = match op {
+                Infix::Bin(op) => Expr::Binary {
+                    op,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                    span,
+                },
+                Infix::Logic(op) => Expr::Logic {
+                    op,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                    span,
+                },
             };
         }
 
         Ok(lhs)
+    }
+
+    /// `not`, which is prefix but not unary in `-`'s sense: it binds looser than every operator
+    /// in the infix table above comparison, so it reads its own operand at its own power rather
+    /// than taking whatever `unary` returns. A position that binds tighter than `not` (a
+    /// comparison's right side, say) declines it, and parens are what reach in there.
+    fn complement(&mut self, min_power: u8) -> Result<Expr, Error> {
+        let (tok, span) = self.peek()?;
+        if tok == Tok::Not && min_power <= NOT_POWER {
+            self.advance()?;
+            let base = self.operand(NOT_POWER)?;
+            let full = span.to(base.span());
+            return Ok(Expr::Not {
+                base: Box::new(base),
+                span: full,
+            });
+        }
+        self.unary()
     }
 
     /// Negation binds tighter than any infix operator and looser than any postfix one, so

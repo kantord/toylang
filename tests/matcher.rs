@@ -7,7 +7,11 @@ fn err(src: &str) -> String {
     toylang::compile(src).map(|_| ()).unwrap_err().to_string()
 }
 
-/// A bare expression is the chain's default, and only the last element may be one.
+/// A bare expression is the chain's default, and only the last element may be one -- which
+/// since the Bool keywords landed (kantord/toylang#96) the grammar enforces rather than a check:
+/// an element's own left side reads `or` as disjunction, so the mid-chain `"other" or . == 2`
+/// is one guard, and what refuses it is that a `Str` is not a disjunct. The program is turned
+/// away either way; only the reason moved.
 #[test]
 fn a_bare_expression_mid_chain() {
     insta::assert_snapshot!(err(

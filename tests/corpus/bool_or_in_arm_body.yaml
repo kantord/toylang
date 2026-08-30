@@ -1,0 +1,11 @@
+# The other side of the split: an arm's body is a chain's top level, where `or` separates, so a
+# Bool `or` written there needs parens (draft.md, the match-arms decision, which reserved
+# exactly this rule before there was a Bool `or` to apply it to). Both spellings sit here -- the
+# parenthesized disjunction is the first arm's body, the bare `or` after it starts the next arm.
+program: |
+  [1, 5] | map(. > 3 -> (. == 5 or . == 6) or . == 1)
+
+output: |
+  [true,true]
+
+node_types: [compare.eq, compare.gt, int, local, logic.or, map-over, match, pipe, vec-literal]

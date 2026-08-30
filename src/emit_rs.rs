@@ -16,7 +16,7 @@
 //! `Kind::Var`/`Kind::Local` reference clones, unconditionally, the same "do not bother, it is
 //! cheap enough and always correct" choice the other five backends make by simply copying.
 
-use crate::ast::BinOp;
+use crate::ast::{BinOp, LogicOp};
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
 use crate::ty::Type;
 
@@ -703,6 +703,7 @@ impl Collect<'_> {
             }
             Kind::Concat(l, r)
             | Kind::Compare { lhs: l, rhs: r, .. }
+            | Kind::Logic { lhs: l, rhs: r, .. }
             | Kind::Arith { lhs: l, rhs: r, .. } => {
                 self.walk(l);
                 self.walk(r);
@@ -728,7 +729,7 @@ impl Collect<'_> {
                 self.walk(then);
                 self.walk(otherwise);
             }
-            Kind::Field { base, .. } | Kind::Unwrap { base } => self.walk(base),
+            Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => self.walk(base),
             Kind::Index { base, index, .. } => {
                 self.walk(base);
                 self.walk(index);
@@ -1119,6 +1120,14 @@ impl Emitter {
             Kind::Compare { op, lhs, rhs } => {
                 format!("({} {} {})", self.expr(lhs), rs_op(*op), self.expr(rhs))
             }
+            Kind::Logic { op, lhs, rhs } => {
+                let op = match op {
+                    LogicOp::And => "&&",
+                    LogicOp::Or => "||",
+                };
+                format!("({} {op} {})", self.expr(lhs), self.expr(rhs))
+            }
+            Kind::Not(base) => format!("(!{})", self.expr(base)),
             // A block expression, not a closure: Rust has expression-level `let`, so the pipe
             // needs no IIFE the way Go's does. Wrapped in an extra `(...)` so a later `.field`
             // or binary operator chains onto it safely -- a bare `{ ... }` at the start of a

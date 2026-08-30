@@ -22,6 +22,28 @@ fn shipping(kg: Int) -> Int =
 {"a":5,"b":12,"c":25,"d":40}
 ```
 
+## Testing two things at once
+
+A guard is an ordinary Bool expression, so [`and`, `or`, and
+`not`](../reference/operators/boolean.md) compose one out of several tests. `or` inside a
+guard is disjunction rather than the arm separator -- an arm's left side is still being read,
+so the chain has not reached the point where an `or` could end it:
+
+```toylang
+fn band(n: Int) -> Str =
+    n | . < 0 or . > 100 -> "out" or . >= 50 and . <= 60 -> "mid" or "in"
+
+{a: band(-1), b: band(55), c: band(20)}
+```
+
+```output
+{"a":"out","b":"mid","c":"in"}
+```
+
+An arm's *body* is the one place the separator wins, so a Bool `or` written there needs
+parens: `. > 3 -> (. == 5 or . == 6)`. Nothing else about the connectives changes inside a
+chain.
+
 ## Matching enums
 
 The [enums guide](enums.md) covers typing wire data and matching by variant end to end. One

@@ -22,8 +22,8 @@ fn sigma(p: {n: Int, d: Int}) -> Int =
 fn proper_divisor_sum(n: Int) -> Int = sigma({n: n, d: 1}) - n
 
 fn is_amicable(n: Int) -> Bool =
-    proper_divisor_sum(proper_divisor_sum(n)) == n if proper_divisor_sum(n) != n else
-        1 == 0
+    proper_divisor_sum(n) != n and
+        proper_divisor_sum(proper_divisor_sum(n)) == n
 
 fn amicable_value(n: Int) -> Int = n if is_amicable(n) else 0
 

@@ -16,16 +16,38 @@ fn grade(score: Int) -> Str =
 ```
 
 `.` stays the subject through a guard arm, in both the test and the body -- unlike a bare
-payload arm, which rebinds it. The trailing `"F"` is a bare expression, the chain's default;
-it must be the last element, and only the last:
+payload arm, which rebinds it. The trailing `"F"` is a bare expression, the chain's default,
+and only the last element can be one. Nothing checks that: an `or` following something that
+is not a finished arm is read as Bool disjunction, so a bare expression in the middle becomes
+a disjunct of whatever follows it, and is refused for not being a `Bool`:
 
 ```toylang
 1 | . == 1 -> "one" or "other" or . == 2 -> "two"
 ```
 
 ```error
-a bare expression is the chain's default and must come last (at byte 23)
+expected Bool, found Str (at byte 23)
 ```
+
+## `or`, twice
+
+That is the same `or` doing both jobs. A guard is still being read when its `or` arrives, so
+the `or` joins clauses into one test; a body is finished, so the `or` after it ends the arm:
+
+```toylang
+fn size(n: Int) -> Str =
+    n | . == 0 or . == 1 -> "tiny" or . < 10 -> "small" or "big"
+
+{a: size(0), b: size(4), c: size(40)}
+```
+
+```output
+{"a":"tiny","b":"small","c":"big"}
+```
+
+The one thing this costs: a Bool `or` written directly in an arm's body needs parens, since
+the bare spelling there is the separator. `and` and `not` have no such wrinkle --
+[the boolean operators reference](../reference/operators/boolean.md) covers all three.
 
 ## Guards read like if/else
 

@@ -533,7 +533,7 @@ fn used_helpers(program: &Program) -> Helpers {
                     walk(a, used);
                 }
             }
-            Kind::Concat(l, r) => {
+            Kind::Concat(l, r) | Kind::Logic { lhs: l, rhs: r, .. } => {
                 walk(l, used);
                 walk(r, used);
             }
@@ -587,6 +587,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(lhs, used);
                 walk(rhs, used);
             }
+            Kind::Not(base) => walk(base, used),
             Kind::Unwrap { base } => {
                 used.unwrap = true;
                 walk(base, used);
@@ -675,6 +676,10 @@ fn expr(t: &Tir) -> String {
             expr(then),
             expr(otherwise)
         ),
+        // Lua's `and`/`or` yield an operand rather than a boolean, which is the same thing here:
+        // both operands are already booleans, so whichever one comes back is one.
+        Kind::Logic { op, lhs, rhs } => format!("({} {op} {})", expr(lhs), expr(rhs)),
+        Kind::Not(base) => format!("(not {})", expr(base)),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("tostring({})", expr(arg)),
             // Lua's integers are 64-bit already; an Int just lives in the low half.

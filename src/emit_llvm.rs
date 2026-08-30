@@ -22,7 +22,7 @@ use inkwell::values::{
 };
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 
-use crate::ast::BinOp;
+use crate::ast::{BinOp, LogicOp};
 use crate::tir::{self, Builtin, Func, Fusion, Kind, LocalId, Program, Stage, Tir};
 use crate::ty::Type;
 
@@ -1264,6 +1264,17 @@ impl<'ctx> Emitter<'ctx> {
 
             Kind::Compare { op, lhs, rhs } => self.compare(*op, lhs, rhs)?,
 
+            Kind::Logic { op, lhs, rhs } => self.logic(*op, lhs, rhs)?,
+
+            // A Bool is an i1 here, so a bitwise complement is the whole of it.
+            Kind::Not(base) => {
+                let v = self.expr(base)?.into_int_value();
+                self.builder
+                    .build_not(v, "not")
+                    .map_err(|e| e.to_string())?
+                    .into()
+            }
+
             // Fields are in declaration order, so field `i` here is field `i` of the type,
             // which is what every reader of the record relies on.
             Kind::RecordLit { fields } => {
@@ -2161,6 +2172,48 @@ impl<'ctx> Emitter<'ctx> {
             .get_insert_block()
             .and_then(|b| b.get_parent())
             .ok_or_else(|| "no function to branch in".to_string())
+    }
+
+    /// `and` / `or`, as real blocks rather than LLVM's own `and`/`or`, which are bitwise and
+    /// take both operands already evaluated: the right side of `x != 0 and 10 / x > 1` must not
+    /// run when the left is false, and only a branch can promise that.
+    fn logic(&mut self, op: LogicOp, lhs: &Tir, rhs: &Tir) -> Result<BasicValueEnum<'ctx>, String> {
+        let function = self.enclosing_function()?;
+        let slot_ty = self.llvm_type(&Type::Bool)?;
+        let slot = self
+            .builder
+            .build_alloca(slot_ty, "logic")
+            .map_err(|e| e.to_string())?;
+
+        let left = self.expr(lhs)?;
+        self.builder
+            .build_store(slot, left)
+            .map_err(|e| e.to_string())?;
+        let rest = self.ctx.append_basic_block(function, "logic.rhs");
+        let done = self.ctx.append_basic_block(function, "logic.done");
+        // `and` reaches its right side only when the left is true, `or` only when it is false;
+        // either way the left value is already in the slot for the path that skips it.
+        let (yes, no) = match op {
+            LogicOp::And => (rest, done),
+            LogicOp::Or => (done, rest),
+        };
+        self.builder
+            .build_conditional_branch(left.into_int_value(), yes, no)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(rest);
+        let right = self.expr(rhs)?;
+        self.builder
+            .build_store(slot, right)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(done)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(done);
+        self.builder
+            .build_load(slot_ty, slot, "logic")
+            .map_err(|e| e.to_string())
     }
 
     fn compare(&mut self, op: BinOp, lhs: &Tir, rhs: &Tir) -> Result<BasicValueEnum<'ctx>, String> {

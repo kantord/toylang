@@ -1,4 +1,4 @@
-use crate::ast::BinOp;
+use crate::ast::{BinOp, LogicOp};
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
 use crate::ty::Type;
 
@@ -450,17 +450,14 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
             }
-            Kind::EnumLit { payload, .. } => {
-                if let Some(p) = payload {
-                    walk(p, used);
+            // A variant's payload and a call's argument are the same shape here -- one optional
+            // child, recursed into and nothing else -- so they share the arm.
+            Kind::EnumLit { payload: child, .. } | Kind::Call { arg: child, .. } => {
+                if let Some(c) = child {
+                    walk(c, used);
                 }
             }
-            Kind::Call { arg, .. } => {
-                if let Some(a) = arg {
-                    walk(a, used);
-                }
-            }
-            Kind::Concat(l, r) => {
+            Kind::Concat(l, r) | Kind::Logic { lhs: l, rhs: r, .. } => {
                 walk(l, used);
                 walk(r, used);
             }
@@ -512,6 +509,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(lhs, used);
                 walk(rhs, used);
             }
+            Kind::Not(base) => walk(base, used),
             Kind::Unwrap { base } => {
                 used.unwrap = true;
                 walk(base, used);
@@ -594,6 +592,14 @@ fn expr(t: &Tir) -> String {
         } => {
             format!("({} ? {} : {})", expr(cond), expr(then), expr(otherwise))
         }
+        Kind::Logic { op, lhs, rhs } => {
+            let op = match op {
+                LogicOp::And => "&&",
+                LogicOp::Or => "||",
+            };
+            format!("({} {op} {})", expr(lhs), expr(rhs))
+        }
+        Kind::Not(base) => format!("(!{})", expr(base)),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("String({})", expr(arg)),
             // The one real conversion among the backends: an Int is a number and an Int64 is

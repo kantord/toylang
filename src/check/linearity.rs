@@ -51,6 +51,12 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
         Kind::Builtin { arg, .. } => stream_uses(arg, binding),
         Kind::Concat(l, r) => both(l, r),
         Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => both(lhs, rhs),
+        // Summed rather than reconciled the way a conditional's branches are: `and`/`or` may
+        // skip their right side, so a binding consumed on both sides is consumed once or twice
+        // depending on the left operand's value, and "sometimes twice" is exactly what the
+        // exactly-once rule refuses.
+        Kind::Logic { lhs, rhs, .. } => both(lhs, rhs),
+        Kind::Not(base) => stream_uses(base, binding),
         Kind::Bind { value, body, .. } => both(value, body),
         Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
             if stream_uses(body, binding)? > 0 {
@@ -170,9 +176,10 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
         Kind::Call { arg, .. } => arg.as_deref().is_some_and(|a| any_node(a, pred)),
         Kind::Builtin { arg, .. } => any_node(arg, pred),
         Kind::Concat(l, r) => any_node(l, pred) || any_node(r, pred),
-        Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => {
-            any_node(lhs, pred) || any_node(rhs, pred)
-        }
+        Kind::Not(base) => any_node(base, pred),
+        Kind::Arith { lhs, rhs, .. }
+        | Kind::Compare { lhs, rhs, .. }
+        | Kind::Logic { lhs, rhs, .. } => any_node(lhs, pred) || any_node(rhs, pred),
         Kind::Bind { value, body, .. } => any_node(value, pred) || any_node(body, pred),
         Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
             any_node(source, pred) || any_node(body, pred)
@@ -264,7 +271,10 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
             calls_in(l, out);
             calls_in(r, out);
         }
-        Kind::Arith { lhs, rhs, .. } | Kind::Compare { lhs, rhs, .. } => {
+        Kind::Not(base) => calls_in(base, out),
+        Kind::Arith { lhs, rhs, .. }
+        | Kind::Compare { lhs, rhs, .. }
+        | Kind::Logic { lhs, rhs, .. } => {
             calls_in(lhs, out);
             calls_in(rhs, out);
         }

@@ -63,6 +63,25 @@ impl std::fmt::Display for BinOp {
     }
 }
 
+/// The two Bool connectives. Kept out of `BinOp` because they share none of its rules: their
+/// operands are Bool rather than a matched pair of anything, and they are the only operators
+/// that may leave their right side unevaluated.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LogicOp {
+    And,
+    Or,
+}
+
+impl std::fmt::Display for LogicOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            LogicOp::And => "and",
+            LogicOp::Or => "or",
+        };
+        write!(f, "{s}")
+    }
+}
+
 /// A type as written in source, before it is resolved to a `Type`.
 #[derive(Debug)]
 pub enum TypeExpr {
@@ -226,6 +245,12 @@ pub enum Expr {
         base: Box<Expr>,
         span: Span,
     },
+    /// `not base`. Looser than every comparison, so `not a == b` negates the comparison, and
+    /// tighter than `and`/`or`, so `not a and b` negates only `a`.
+    Not {
+        base: Box<Expr>,
+        span: Span,
+    },
     /// `then if cond else otherwise`. An expression, in a language that has only those.
     Cond {
         then: Box<Expr>,
@@ -280,6 +305,15 @@ pub enum Expr {
     },
     Binary {
         op: BinOp,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+        span: Span,
+    },
+    /// `lhs and rhs`, `lhs or rhs`. A separate node from `Binary` for the same reason `LogicOp`
+    /// is a separate enum: nothing about how these are typed or evaluated follows `Binary`'s
+    /// rules.
+    Logic {
+        op: LogicOp,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
         span: Span,
@@ -340,6 +374,7 @@ impl Expr {
             | Expr::Unwrap { span, .. }
             | Expr::RecordLit { span, .. }
             | Expr::Neg { span, .. }
+            | Expr::Not { span, .. }
             | Expr::Cond { span, .. }
             | Expr::Field { span, .. }
             | Expr::Input { span }
@@ -348,7 +383,8 @@ impl Expr {
             | Expr::Variant { span, .. }
             | Expr::Match { span, .. }
             | Expr::Pipe { span, .. }
-            | Expr::Binary { span, .. } => *span,
+            | Expr::Binary { span, .. }
+            | Expr::Logic { span, .. } => *span,
         }
     }
 }

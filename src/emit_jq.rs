@@ -227,7 +227,9 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
                 callees(a, out);
             }
         }
-        Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
+        Kind::Concat(l, r)
+        | Kind::Compare { lhs: l, rhs: r, .. }
+        | Kind::Logic { lhs: l, rhs: r, .. } => {
             callees(l, out);
             callees(r, out);
         }
@@ -257,7 +259,7 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
             callees(lhs, out);
             callees(rhs, out);
         }
-        Kind::Field { base, .. } | Kind::Unwrap { base } => callees(base, out),
+        Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => callees(base, out),
         Kind::Index { base, index, .. } => {
             callees(base, out);
             callees(index, out);
@@ -383,7 +385,9 @@ fn uses_arith(program: &Program) -> (bool, bool) {
                 }
             }
             Kind::Builtin { arg, .. } => walk(arg, found),
-            Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
+            Kind::Concat(l, r)
+            | Kind::Compare { lhs: l, rhs: r, .. }
+            | Kind::Logic { lhs: l, rhs: r, .. } => {
                 walk(l, found);
                 walk(r, found);
             }
@@ -405,7 +409,7 @@ fn uses_arith(program: &Program) -> (bool, bool) {
                 walk(source, found);
                 walk(pred, found);
             }
-            Kind::Field { base, .. } | Kind::Unwrap { base } => walk(base, found),
+            Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => walk(base, found),
             Kind::Index { base, index, .. } => {
                 walk(base, found);
                 walk(index, found);
@@ -550,6 +554,9 @@ fn expr(t: &Tir) -> String {
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), jq_op(*op), expr(rhs))
         }
+        // jq spells them the same way toylang does, and short-circuits them the same way too.
+        Kind::Logic { op, lhs, rhs } => format!("({} {op} {})", expr(lhs), expr(rhs)),
+        Kind::Not(base) => format!("({} | not)", expr(base)),
         Kind::Bind {
             local: id,
             value,

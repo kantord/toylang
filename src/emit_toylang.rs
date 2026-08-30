@@ -31,26 +31,47 @@
 //! marked a syntax-spelling exception rather than swept.
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, MatchArm, Module, Param, Pattern,
-    TypeExpr, Variant,
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, LogicOp, MatchArm, Module, Param,
+    Pattern, TypeExpr, Variant,
 };
 
 const WIDTH: usize = 80;
 const INDENT: usize = 4;
 
 // Mirrors parse.rs's precedence table exactly (`infix_power`, `PIPE_LEFT`/`PIPE_RIGHT`,
-// `COND_POWER`): the numbers a paren decision here has to answer to are the parser's, not this
-// module's own invention.
+// `COND_POWER`, `OR_LEFT`/`OR_RIGHT`, `NOT_POWER`): the numbers a paren decision here has to
+// answer to are the parser's, not this module's own invention.
 const PIPE_LEFT: u8 = 1;
 const PIPE_RIGHT: u8 = 2;
 const COND_POWER: u8 = 3;
+const NOT_POWER: u8 = 8;
+
+/// A match arm's body is printed at a power just above `or`'s, which is how the parser's second
+/// reading of `or` -- the arm separator, which has no power at all -- reaches this table: a bare
+/// disjunction in an arm body is the one expression whose parens the powers alone would not ask
+/// for, and the one the parser would otherwise read as two arms.
+const ARM_BODY: u8 = 5;
 
 fn bin_power(op: BinOp) -> (u8, u8) {
     match op {
-        BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => (5, 6),
-        BinOp::Add | BinOp::Sub => (7, 8),
-        BinOp::Mul | BinOp::Div | BinOp::Rem => (9, 10),
+        BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => (8, 9),
+        BinOp::Add | BinOp::Sub => (10, 11),
+        BinOp::Mul | BinOp::Div | BinOp::Rem => (12, 13),
     }
+}
+
+fn logic_power(op: LogicOp) -> (u8, u8) {
+    match op {
+        LogicOp::Or => (4, 5),
+        LogicOp::And => (6, 7),
+    }
+}
+
+/// Where a conditional's `else` tail is printed: the same position the conditional itself sits
+/// in when that is an arm body (so `or` keeps reading as the separator all the way down the
+/// chain), and an ordinary `expr(COND_POWER)` position otherwise.
+fn cond_tail(m: u8) -> u8 {
+    if m == ARM_BODY { ARM_BODY } else { COND_POWER }
 }
 
 /// Where a child expression sits, in terms of what the parser would have accepted bare at that
@@ -78,11 +99,24 @@ enum Ctx {
     Unary,
 }
 
+/// The left binding power of whatever operator `e` is, for the three contexts that decide by
+/// power alone. `None` for everything else, which each context rules on by kind.
+fn left_power(e: &Expr) -> Option<u8> {
+    match e {
+        Expr::Binary { op, .. } => Some(bin_power(*op).0),
+        Expr::Logic { op, .. } => Some(logic_power(*op).0),
+        Expr::Not { .. } => Some(NOT_POWER),
+        _ => None,
+    }
+}
+
 fn needs_parens(e: &Expr, ctx: Ctx) -> bool {
     match ctx {
         Ctx::Atom => matches!(
             e,
             Expr::Binary { .. }
+                | Expr::Logic { .. }
+                | Expr::Not { .. }
                 | Expr::Pipe { .. }
                 | Expr::Cond { .. }
                 | Expr::Match { .. }
@@ -91,25 +125,27 @@ fn needs_parens(e: &Expr, ctx: Ctx) -> bool {
         Ctx::Unary => {
             matches!(
                 e,
-                Expr::Binary { .. } | Expr::Pipe { .. } | Expr::Cond { .. } | Expr::Match { .. }
+                Expr::Binary { .. }
+                    | Expr::Logic { .. }
+                    | Expr::Not { .. }
+                    | Expr::Pipe { .. }
+                    | Expr::Cond { .. }
+                    | Expr::Match { .. }
             )
         }
         Ctx::Operand(m) => match e {
-            Expr::Binary { op, .. } => bin_power(*op).0 < m,
             Expr::Pipe { .. } | Expr::Cond { .. } | Expr::Match { .. } => true,
-            _ => false,
+            _ => left_power(e).is_some_and(|p| p < m),
         },
         Ctx::CondThen(m) => match e {
-            Expr::Binary { op, .. } => bin_power(*op).0 < m,
             Expr::Match { .. } => m > PIPE_RIGHT,
             Expr::Pipe { .. } | Expr::Cond { .. } => true,
-            _ => false,
+            _ => left_power(e).is_some_and(|p| p < m),
         },
         Ctx::Expr(m) => match e {
-            Expr::Binary { op, .. } => bin_power(*op).0 < m,
             Expr::Pipe { .. } => PIPE_LEFT < m,
             Expr::Match { .. } => m > PIPE_RIGHT,
-            _ => false,
+            _ => left_power(e).is_some_and(|p| p < m),
         },
     }
 }
@@ -390,6 +426,12 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
         }
         Expr::Unwrap { base, .. } => format!("{}!", print_atom_base(base)),
         Expr::Neg { base, .. } => format!("-{}", print_expr_compact(base, Ctx::Unary)),
+        // `not x`, not `not(x)`: this is an operator, and the parens spelling would read as the
+        // call it is not. What follows is printed at `not`'s own power, so `not a == b` keeps
+        // the parens off the comparison the parser would give it back.
+        Expr::Not { base, .. } => {
+            format!("not {}", print_expr_compact(base, Ctx::Operand(NOT_POWER)))
+        }
         Expr::Cond {
             then,
             cond,
@@ -401,7 +443,7 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
                 "{} if {} else {}",
                 print_expr_compact(then, Ctx::CondThen(m)),
                 print_expr_compact(cond, Ctx::Operand(COND_POWER + 1)),
-                print_expr_compact(otherwise, Ctx::Expr(COND_POWER))
+                print_expr_compact(otherwise, Ctx::Expr(cond_tail(m)))
             )
         }
         Expr::Field { base, name, .. } => {
@@ -449,6 +491,14 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
                 print_expr_compact(rhs, Ctx::Operand(right))
             )
         }
+        Expr::Logic { op, lhs, rhs, .. } => {
+            let (left, right) = logic_power(*op);
+            format!(
+                "{} {op} {}",
+                print_expr_compact(lhs, Ctx::Operand(left)),
+                print_expr_compact(rhs, Ctx::Operand(right))
+            )
+        }
     }
 }
 
@@ -486,7 +536,7 @@ fn print_fields_pattern(f: &FieldsPattern) -> String {
 /// (the only place a bare default is legal) reproduces the shorter, and by construction always
 /// idempotent, spelling; every other `Default` prints the explicit `any()` it must have been.
 fn print_match_arm(arm: &MatchArm, is_last: bool) -> String {
-    let body = print_expr_compact(&arm.body, Ctx::Expr(COND_POWER));
+    let body = print_expr_compact(&arm.body, Ctx::Expr(ARM_BODY));
     match &arm.pattern {
         Pattern::Default { span } if is_last && *span == arm.body.span() => body,
         Pattern::Default { .. } => format!("any() -> {body}"),
@@ -524,6 +574,16 @@ fn print_expr_wrapped(e: &Expr, ctx: Ctx, indent: usize) -> String {
             let rhs_str = print_expr_wrapped(rhs, Ctx::Operand(right), indent + INDENT);
             format!("{lhs_str} {op}\n{}{rhs_str}", pad(indent + INDENT))
         }
+        Expr::Logic { op, lhs, rhs, .. } => {
+            let (left, right) = logic_power(*op);
+            let lhs_str = print_expr_wrapped(lhs, Ctx::Operand(left), indent);
+            let rhs_str = print_expr_wrapped(rhs, Ctx::Operand(right), indent + INDENT);
+            format!("{lhs_str} {op}\n{}{rhs_str}", pad(indent + INDENT))
+        }
+        Expr::Not { base, .. } => format!(
+            "not {}",
+            print_expr_wrapped(base, Ctx::Operand(NOT_POWER), indent)
+        ),
         Expr::Pipe { .. } => wrap_pipe(e, indent),
         Expr::Match { arms, .. } => wrap_match(arms, indent),
         Expr::Cond { .. } => wrap_cond(e, outer_m(ctx), indent),
@@ -645,9 +705,9 @@ fn wrap_cond(e: &Expr, m: u8, indent: usize) -> String {
         .enumerate()
         .map(|(i, (then, cond))| {
             // The first branch's `then` sits wherever the whole `Cond` sits; every later branch
-            // is reached only through `Cond::otherwise`, which is always an `Expr(COND_POWER)`
-            // position, so its own `then` is always `CondThen(COND_POWER)`.
-            let then_m = if i == 0 { m } else { COND_POWER };
+            // is reached only through `Cond::otherwise`, so its own `then` sits wherever that
+            // tail does.
+            let then_m = if i == 0 { m } else { cond_tail(m) };
             format!(
                 "{} if {} else",
                 print_expr_compact(then, Ctx::CondThen(then_m)),
@@ -657,7 +717,7 @@ fn wrap_cond(e: &Expr, m: u8, indent: usize) -> String {
         .collect();
     lines.push(print_expr_wrapped(
         final_otherwise,
-        Ctx::Expr(COND_POWER),
+        Ctx::Expr(cond_tail(m)),
         indent + INDENT,
     ));
 

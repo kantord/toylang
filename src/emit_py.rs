@@ -465,6 +465,9 @@ fn expr(t: &Tir) -> String {
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(lhs), py_op(*op), expr(rhs))
         }
+        // Python spells and short-circuits both of these the way toylang does.
+        Kind::Logic { op, lhs, rhs } => format!("({} {op} {})", expr(lhs), expr(rhs)),
+        Kind::Not(base) => format!("(not {})", expr(base)),
         Kind::Bind {
             local: id,
             value,

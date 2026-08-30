@@ -1,0 +1,14 @@
+# The one thing precedence has to get right for these to be usable without parens: `and` binds
+# tighter than `or`, and `not` tighter than both but looser than comparison. Every field here is
+# a program that reads wrong under any other ordering.
+program: |
+  {
+    and_before_or: 1 == 2 and 1 == 3 or 2 == 2,
+    not_before_and: not 1 == 2 and 2 == 3,
+    not_takes_the_comparison: not 1 == 2
+  }
+
+output: |
+  {"and_before_or":true,"not_before_and":false,"not_takes_the_comparison":true}
+
+node_types: [compare.eq, int, logic.and, logic.not, logic.or, record-literal]
