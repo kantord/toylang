@@ -1134,3 +1134,19 @@
   kind: decide
   needs: []
   status: done
+
+- id: docs-slow-fragment-tier
+  issue: gh:135
+  title: Build the opt-in slow-fragment tier for the docs harness; land Euler 10/14 under it (gh:90 ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: tail-call-jspy-build
+  issue: gh:141
+  title: Fix js and py codegen so self-tail-recursion runs in constant stack (lua/native/jq/go/rust already comply) (gh:141 ruling)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
