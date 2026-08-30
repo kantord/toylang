@@ -66,7 +66,7 @@ pub fn emit(program: &Program) -> Result<String, String> {
         out.push_str(ARITH64_HELPER);
     }
 
-    out.push_str(&printers(program));
+    out.push_str(&printers(program)?);
 
     // jq resolves a `def` only against what is already defined, so definitions have to come out
     // callee-first. The checker collects every signature before checking any body and therefore
@@ -260,63 +260,88 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
 /// gets stuck here -- a function calling only itself is always immediately ready -- so reaching
 /// the stuck state below means the remaining functions have a genuine cycle among them.
 fn ordered(program: &Program) -> Result<Vec<&tir::Func>, String> {
-    let mut done: Vec<&tir::Func> = Vec::new();
-    let mut placed: Vec<String> = Vec::new();
-    let mut remaining: Vec<&tir::Func> = program.funcs.iter().collect();
+    topsort(
+        program.funcs.iter().collect(),
+        |f| f.name.clone(),
+        |f| {
+            let mut calls = Vec::new();
+            callees(&f.body, &mut calls);
+            calls
+        },
+        "named functions",
+    )
+}
 
+/// Callee-before-caller order over a list of named things, or the cycle blocking one. `name`
+/// yields each item's `def` name and `deps` the names it calls; `kind` names what `remaining`
+/// holds, for the refusal message alone. Both the named functions (`ordered`) and the
+/// recursive-enum printers (`printers`) go through here, because jq's `def` has the same reach on
+/// each: only itself and what is already defined above it, with no forward declaration
+/// (kantord/toylang#79, kantord/toylang#116).
+fn topsort<T>(
+    mut remaining: Vec<T>,
+    name: impl Fn(&T) -> String,
+    deps: impl Fn(&T) -> Vec<String>,
+    kind: &str,
+) -> Result<Vec<T>, String> {
+    let mut done: Vec<T> = Vec::new();
+    let mut placed: Vec<String> = Vec::new();
     while !remaining.is_empty() {
         let ready: Vec<usize> = remaining
             .iter()
             .enumerate()
-            .filter(|(_, f)| {
-                let mut calls = Vec::new();
-                callees(&f.body, &mut calls);
-                calls.iter().all(|c| c == &f.name || placed.contains(c))
+            .filter(|(_, item)| {
+                let n = name(item);
+                deps(item).iter().all(|c| c == &n || placed.contains(c))
             })
             .map(|(i, _)| i)
             .collect();
         if ready.is_empty() {
-            return Err(cycle_message(&remaining));
+            return Err(cycle_message(&remaining, &name, &deps, kind));
         }
         for i in ready.into_iter().rev() {
-            let f = remaining.remove(i);
-            placed.push(f.name.clone());
-            done.push(f);
+            let item = remaining.remove(i);
+            placed.push(name(&item));
+            done.push(item);
         }
     }
     Ok(done)
 }
 
-/// A concrete cycle among `remaining`'s functions, walked by following one unresolved call from
-/// each function to the next: every function still in `remaining` has at least one such call
-/// (otherwise it would have been ready), so the walk is finite and must revisit a name.
-fn cycle_message(remaining: &[&tir::Func]) -> String {
-    let names: Vec<&str> = remaining.iter().map(|f| f.name.as_str()).collect();
+/// A concrete cycle among `remaining`'s items, walked by following one unresolved call from
+/// each to the next: every item still in `remaining` has at least one such call (otherwise it
+/// would have been ready), so the walk is finite and must revisit a name. `kind` is `topsort`'s
+/// own, unchanged, naming `remaining`'s contents in the message.
+fn cycle_message<T>(
+    remaining: &[T],
+    name: &impl Fn(&T) -> String,
+    deps: &impl Fn(&T) -> Vec<String>,
+    kind: &str,
+) -> String {
+    let names: Vec<String> = remaining.iter().map(name).collect();
     let mut path: Vec<String> = Vec::new();
-    let mut current = remaining[0].name.clone();
+    let mut current = name(&remaining[0]);
     loop {
         if let Some(at) = path.iter().position(|n| *n == current) {
             let cycle = &path[at..];
             let chain: Vec<String> = cycle.iter().map(|n| format!("`{n}`")).collect();
             return format!(
-                "jq cannot compile this: {} -> `{}` is a cycle between named functions, and \
-                 jq's `def` has no forward declaration -- only self-recursion and a call to \
-                 something already defined above it are representable here",
+                "jq cannot compile this: {} -> `{}` is a cycle between {kind}, and jq's `def` \
+                 has no forward declaration -- only self-recursion and a call to something \
+                 already defined above it are representable here",
                 chain.join(" -> "),
                 cycle[0],
             );
         }
         path.push(current.clone());
-        let f = remaining
+        let item = remaining
             .iter()
-            .find(|f| f.name == current)
+            .find(|f| name(f) == current)
             .expect("current is a name drawn from remaining");
-        let mut calls = Vec::new();
-        callees(&f.body, &mut calls);
-        current = calls
+        current = deps(item)
             .into_iter()
-            .find(|c| c != &f.name && names.contains(&c.as_str()))
-            .expect("a stuck function has at least one unresolved call within remaining");
+            .find(|c| c != &name(item) && names.contains(c))
+            .expect("a stuck item has at least one unresolved call within remaining");
     }
 }
 
@@ -757,19 +782,74 @@ fn canonical_enum(enums: &Enums, ty: &Type, value: &str) -> String {
     format!("({value} | {} else {last} end)", tests.join(" "))
 }
 
-/// A named filter for every recursive enum the program prints. The call in `canonical` above
-/// is what a nested occurrence rebuilds through, so the recursion in the type becomes recursion
-/// in the emitted filter rather than in this compiler (kantord/toylang#94).
-fn printers(program: &Program) -> String {
+/// A named filter for every recursive enum the program prints, in callee-before-caller order.
+/// The call in `canonical` above is what a nested occurrence rebuilds through, so the recursion
+/// in the type becomes recursion in the emitted filter rather than in this compiler
+/// (kantord/toylang#94). jq's `def` has no forward declaration, so the same topsort `ordered`
+/// uses applies here: one printer can call another only when the callee is already defined above
+/// it. Two enums that reach each other through `Vec` typecheck legally, but their printers form a
+/// genuine cycle jq cannot take, so it is refused rather than emitting source that fails with
+/// jq's own raw error (kantord/toylang#116).
+fn printers(program: &Program) -> Result<String, String> {
+    let ordered = topsort(
+        tir::printed_recursive_enums(program),
+        |ty| ty.show_fn(),
+        |ty| printer_deps(&program.enums, ty),
+        "recursive-enum printers",
+    )?;
     let mut out = String::new();
-    for ty in tir::printed_recursive_enums(program) {
+    for ty in ordered {
         out.push_str(&format!(
             "def {}: {};\n",
             ty.show_fn(),
             canonical_enum(&program.enums, &ty, ".")
         ));
     }
-    out
+    Ok(out)
+}
+
+/// The `tl_show_*` names a printer for `ty` calls: every recursive enum nested inside it, `ty`
+/// itself excluded, since self-recursion is the one back-edge jq's `def` can express. `seen`
+/// stops a recursive type from being walked forever; the first time each enum is met it is
+/// recorded and its payloads descended, so every distinct reachable enum shows up exactly once.
+fn printer_deps(enums: &Enums, ty: &Type) -> Vec<String> {
+    fn collect(
+        enums: &Enums,
+        ty: &Type,
+        root: &Type,
+        seen: &mut Vec<Type>,
+        deps: &mut Vec<String>,
+    ) {
+        match ty {
+            Type::Vec(e) | Type::Stream(e) => collect(enums, e, root, seen, deps),
+            Type::Record(fields) => {
+                for (_, f) in fields {
+                    collect(enums, f, root, seen, deps);
+                }
+            }
+            Type::Enum { name, args, .. } => {
+                if seen.contains(ty) {
+                    return;
+                }
+                seen.push(ty.clone());
+                if ty != root && crate::ty::is_recursive(enums, ty) {
+                    deps.push(ty.show_fn());
+                }
+                for arg in args {
+                    collect(enums, arg, root, seen, deps);
+                }
+                for (_, payload) in ty::variants_of(enums, name, args) {
+                    if let Some(p) = payload {
+                        collect(enums, &p, root, seen, deps);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut deps = Vec::new();
+    collect(enums, ty, ty, &mut Vec::new(), &mut deps);
+    deps
 }
 
 fn jq_string(s: &str) -> String {

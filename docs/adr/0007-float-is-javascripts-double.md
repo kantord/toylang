@@ -5,7 +5,7 @@ status: accepted
 # Float is JavaScript's number: an IEEE 754 binary64 double
 
 Decided 2026-08-27, ahead of implementation: no `Float` exists in the checker yet, and `3.14`
-appears only in draft.md's values list.
+appears only in the overview page's [values list](../overview/vision.md#values).
 
 The float type is exactly the standard double every JavaScript engine carries -- IEEE 754
 binary64 -- with no alternative width and no decimal type. The supporting facts are already in
