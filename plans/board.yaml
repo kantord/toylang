@@ -186,7 +186,7 @@
   needs: [draft-split-decision]
   model: fable
   prio: 4
-  status: todo
+  status: delegated
 
 - id: q37-float-semantics
   title: Grill Q37 -- float printing agreement, NaN/Infinity, division by zero
@@ -229,7 +229,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: benchmark-set-spike
   issue: gh:106
@@ -237,7 +237,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: benchmark-tooling-spike
   issue: gh:107
@@ -245,7 +245,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: benchmark-synthesis
   issue: gh:108
