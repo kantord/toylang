@@ -72,7 +72,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: llvm-tag-dispatch-dedup
   issue: gh:114
