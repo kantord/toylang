@@ -39,9 +39,12 @@ pub enum Type {
     Stream(Box<Type>),
     /// A declared enum: nominal, so the name is the identity. The variants ride along so that
     /// every consumer of a `Type` -- printers, backends, input validation -- has them in hand
-    /// without a registry beside the tree; a name determines its variants within a program, so
-    /// the derived equality is still name equality in practice. A variant's payload is `None`
-    /// for a unit variant, in declaration order.
+    /// without a registry beside the tree; a name (and, for a generic enum, its arguments)
+    /// determines its variants within a program, so `PartialEq` below compares only those and
+    /// not `variants` itself -- which matters now that a self-referential enum's own payload
+    /// can carry a placeholder there in place of the real list (`check::types::resolve_named`,
+    /// kantord/toylang#76) rather than the list every other occurrence of the same name carries.
+    /// A variant's payload is `None` for a unit variant, in declaration order.
     Enum {
         name: String,
         /// The type arguments this instantiation was built with, in declaration order; empty
@@ -252,6 +255,13 @@ impl PartialEq for Type {
     /// type, ignoring position (kantord/toylang#60). A record's own field order is real data --
     /// it drives printing and backend column layout -- but it is not part of what makes two
     /// types the same type.
+    ///
+    /// `Enum` compares `name` and `args` only, not `variants`: those two already determine the
+    /// variant list within one program (a redeclaration is refused, and an instantiation's
+    /// payloads are `args` substituted into the one declaration), so comparing `variants` too
+    /// would be redundant on every ordinary type and actively wrong on a self-referential one,
+    /// whose nested occurrence of itself carries a placeholder rather than the list every other
+    /// occurrence of the same name carries (kantord/toylang#76).
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Type::Str, Type::Str)
@@ -266,16 +276,12 @@ impl PartialEq for Type {
             }
             (
                 Type::Enum {
-                    name: n1,
-                    args: a1,
-                    variants: v1,
+                    name: n1, args: a1, ..
                 },
                 Type::Enum {
-                    name: n2,
-                    args: a2,
-                    variants: v2,
+                    name: n2, args: a2, ..
                 },
-            ) => n1 == n2 && a1 == a2 && v1 == v2,
+            ) => n1 == n2 && a1 == a2,
             (Type::Param(a), Type::Param(b)) => a == b,
             _ => false,
         }

@@ -55,7 +55,7 @@ def tl_rem64($a; $b):
   if $b == 0 then error("toylang: divided by zero") else ($a % $b) end;
 "#;
 
-pub fn emit(program: &Program) -> String {
+pub fn emit(program: &Program) -> Result<String, String> {
     let mut out = String::new();
     let (arith, arith64) = uses_arith(program);
     if arith {
@@ -69,7 +69,7 @@ pub fn emit(program: &Program) -> String {
     // callee-first. The checker collects every signature before checking any body and therefore
     // accepts a call to a function defined further down, which is a rule this target does not
     // share. Lua needed forward declarations for the same reason; jq has no way to write one.
-    for f in ordered(program) {
+    for f in ordered(program)? {
         // A unary function's argument arrives as `.` and is bound before the body runs; a
         // nullary one ignores `.` entirely, since it has nothing to bind.
         out.push_str(&match &f.param {
@@ -109,7 +109,7 @@ pub fn emit(program: &Program) -> String {
         };
         let elem = tir::runtime_elem(&arg.ty).expect("jsonlines's argument has an element");
         out.push_str(&format!(" | ({} | tojson)\n", canonical(elem, ".")));
-        return out;
+        return Ok(out);
     }
 
     if program.input.is_some() {
@@ -124,7 +124,7 @@ pub fn emit(program: &Program) -> String {
     // an object read from input carries whatever order the input had.
     out.push_str(&canonical(&program.body.ty, &expr(&program.body)));
     out.push('\n');
-    out
+    Ok(out)
 }
 
 /// Reconstruct a value with keys in the type's order, so the printed form matches the other
@@ -200,83 +200,86 @@ fn canonical(ty: &Type, value: &str) -> String {
     }
 }
 
-/// Definitions in callee-before-caller order.
-///
-/// Mutual recursion has no ordering that works and no forward declaration to fall back on, so it
-/// is unrepresentable here rather than merely awkward. Nothing in the language can express it
-/// yet, and this returns definitions unsorted rather than looping if that changes.
-fn ordered(program: &Program) -> Vec<&tir::Func> {
-    fn callees(t: &Tir, out: &mut Vec<String>) {
-        match &t.kind {
-            Kind::Str(_)
-            | Kind::Int(_)
-            | Kind::Var(_)
-            | Kind::Local(_)
-            | Kind::Input
-            | Kind::Inputs
-            | Kind::Lines => {}
-            Kind::VecLit(items) => items.iter().for_each(|i| callees(i, out)),
-            Kind::RecordLit { fields } => {
-                fields.iter().for_each(|(_, v)| callees(v, out));
+/// Every function name a `Kind::Call` inside `t` names, in the order encountered, duplicates and
+/// all -- `ordered` only ever asks whether a name is present, and a cycle's error message reads
+/// better walking a real call rather than a deduplicated set.
+fn callees(t: &Tir, out: &mut Vec<String>) {
+    match &t.kind {
+        Kind::Str(_)
+        | Kind::Int(_)
+        | Kind::Var(_)
+        | Kind::Local(_)
+        | Kind::Input
+        | Kind::Inputs
+        | Kind::Lines => {}
+        Kind::VecLit(items) => items.iter().for_each(|i| callees(i, out)),
+        Kind::RecordLit { fields } => {
+            fields.iter().for_each(|(_, v)| callees(v, out));
+        }
+        Kind::EnumLit { payload, .. } => {
+            if let Some(p) = payload {
+                callees(p, out);
             }
-            Kind::EnumLit { payload, .. } => {
-                if let Some(p) = payload {
-                    callees(p, out);
+        }
+        Kind::Call { func, arg } => {
+            out.push(func.clone());
+            if let Some(a) = arg {
+                callees(a, out);
+            }
+        }
+        Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
+            callees(l, out);
+            callees(r, out);
+        }
+        Kind::Bind { value, body, .. } => {
+            callees(value, out);
+            callees(body, out);
+        }
+        Kind::Select { source, pred, .. } => {
+            callees(source, out);
+            callees(pred, out);
+        }
+        Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
+            callees(source, out);
+            callees(body, out);
+        }
+        Kind::Builtin { arg, .. } => callees(arg, out),
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => {
+            callees(cond, out);
+            callees(then, out);
+            callees(otherwise, out);
+        }
+        Kind::Arith { lhs, rhs, .. } => {
+            callees(lhs, out);
+            callees(rhs, out);
+        }
+        Kind::Field { base, .. } | Kind::Unwrap { base } => callees(base, out),
+        Kind::Index { base, index, .. } => {
+            callees(base, out);
+            callees(index, out);
+        }
+        Kind::Match { subject, arms, .. } => {
+            callees(subject, out);
+            for a in arms {
+                if let Some(g) = &a.guard {
+                    callees(g, out);
                 }
-            }
-            Kind::Call { func, arg } => {
-                out.push(func.clone());
-                if let Some(a) = arg {
-                    callees(a, out);
-                }
-            }
-            Kind::Concat(l, r) | Kind::Compare { lhs: l, rhs: r, .. } => {
-                callees(l, out);
-                callees(r, out);
-            }
-            Kind::Bind { value, body, .. } => {
-                callees(value, out);
-                callees(body, out);
-            }
-            Kind::Select { source, pred, .. } => {
-                callees(source, out);
-                callees(pred, out);
-            }
-            Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
-                callees(source, out);
-                callees(body, out);
-            }
-            Kind::Builtin { arg, .. } => callees(arg, out),
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                callees(cond, out);
-                callees(then, out);
-                callees(otherwise, out);
-            }
-            Kind::Arith { lhs, rhs, .. } => {
-                callees(lhs, out);
-                callees(rhs, out);
-            }
-            Kind::Field { base, .. } | Kind::Unwrap { base } => callees(base, out),
-            Kind::Index { base, index, .. } => {
-                callees(base, out);
-                callees(index, out);
-            }
-            Kind::Match { subject, arms, .. } => {
-                callees(subject, out);
-                for a in arms {
-                    if let Some(g) = &a.guard {
-                        callees(g, out);
-                    }
-                    callees(&a.body, out);
-                }
+                callees(&a.body, out);
             }
         }
     }
+}
 
+/// Definitions in callee-before-caller order, or the cycle blocking one: jq's `def` sees only
+/// itself and whatever is already defined above it, with no forward declaration to bridge a
+/// real cycle between two or more named functions (kantord/toylang#79). Self-recursion never
+/// gets stuck here -- a function calling only itself is always immediately ready -- so reaching
+/// the stuck state below means the remaining functions have a genuine cycle among them.
+fn ordered(program: &Program) -> Result<Vec<&tir::Func>, String> {
     let mut done: Vec<&tir::Func> = Vec::new();
     let mut placed: Vec<String> = Vec::new();
     let mut remaining: Vec<&tir::Func> = program.funcs.iter().collect();
@@ -293,10 +296,7 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
             .map(|(i, _)| i)
             .collect();
         if ready.is_empty() {
-            // A cycle. Emitting them in source order at least produces a jq error naming the
-            // function rather than looping here.
-            done.append(&mut remaining);
-            break;
+            return Err(cycle_message(&remaining));
         }
         for i in ready.into_iter().rev() {
             let f = remaining.remove(i);
@@ -304,7 +304,40 @@ fn ordered(program: &Program) -> Vec<&tir::Func> {
             done.push(f);
         }
     }
-    done
+    Ok(done)
+}
+
+/// A concrete cycle among `remaining`'s functions, walked by following one unresolved call from
+/// each function to the next: every function still in `remaining` has at least one such call
+/// (otherwise it would have been ready), so the walk is finite and must revisit a name.
+fn cycle_message(remaining: &[&tir::Func]) -> String {
+    let names: Vec<&str> = remaining.iter().map(|f| f.name.as_str()).collect();
+    let mut path: Vec<String> = Vec::new();
+    let mut current = remaining[0].name.clone();
+    loop {
+        if let Some(at) = path.iter().position(|n| *n == current) {
+            let cycle = &path[at..];
+            let chain: Vec<String> = cycle.iter().map(|n| format!("`{n}`")).collect();
+            return format!(
+                "jq cannot compile this: {} -> `{}` is a cycle between named functions, and \
+                 jq's `def` has no forward declaration -- only self-recursion and a call to \
+                 something already defined above it are representable here",
+                chain.join(" -> "),
+                cycle[0],
+            );
+        }
+        path.push(current.clone());
+        let f = remaining
+            .iter()
+            .find(|f| f.name == current)
+            .expect("current is a name drawn from remaining");
+        let mut calls = Vec::new();
+        callees(&f.body, &mut calls);
+        current = calls
+            .into_iter()
+            .find(|c| c != &f.name && names.contains(&c.as_str()))
+            .expect("a stuck function has at least one unresolved call within remaining");
+    }
 }
 
 /// Whether the program does 32-bit arithmetic, 64-bit arithmetic, or both: the node's type

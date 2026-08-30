@@ -1,0 +1,5 @@
+---
+source: tests/enums.rs
+expression: "err(\"enum E { safe(Vec<E>), bad(E) }\\n\\n0\")"
+---
+type `E` is written in terms of itself (at byte 27)

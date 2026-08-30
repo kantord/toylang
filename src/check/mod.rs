@@ -634,6 +634,38 @@ fn substitute(t: &Type, map: &HashMap<String, Type>) -> Type {
     }
 }
 
+/// `name`'s variant list at `args`, re-derived from the registry template rather than trusted
+/// from wherever a caller's `Type::Enum` happened to carry one. A self-referential enum's own
+/// payload can hold a placeholder in `name`'s own place (`types::resolve_named` cannot expand a
+/// `Vec`-boxed self-reference without looping forever, kantord/toylang#76) -- every consumer
+/// that actually needs the variants comes through here instead, one layer at a time, exactly as
+/// deep as the program itself ever navigates into the value.
+fn enum_variants(ctx: &Ctx, name: &str, args: &[Type]) -> Vec<(String, Option<Type>)> {
+    let Type::Enum {
+        args: template_args,
+        variants,
+        ..
+    } = &ctx.enums[name]
+    else {
+        unreachable!("the registry holds enum types")
+    };
+    if template_args.is_empty() {
+        return variants.clone();
+    }
+    let bindings: HashMap<String, Type> = template_args
+        .iter()
+        .zip(args)
+        .filter_map(|(p, a)| match p {
+            Type::Param(p) => Some((p.clone(), a.clone())),
+            _ => None,
+        })
+        .collect();
+    variants
+        .iter()
+        .map(|(n, p)| (n.clone(), p.as_ref().map(|t| substitute(t, &bindings))))
+        .collect()
+}
+
 /// The prelude's `Opt<T>` at a concrete `T`: what every Opt-producing site -- the collapsing
 /// index, `tail`, a partial guard chain -- wraps its result in. Instantiated from the
 /// registry template rather than spelled out, so the checker never re-states the prelude's
@@ -714,9 +746,10 @@ fn construct(
         instantiated = infer_instantiation(ctx, enum_ty, variant, variant_span, payload)?;
         return Ok(instantiated);
     };
-    let Type::Enum { name, variants, .. } = enum_ty else {
+    let Type::Enum { name, args, .. } = enum_ty else {
         unreachable!("construct is only called with an enum type")
     };
+    let variants = enum_variants(ctx, name, args);
     let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
         return Err(Error::new(
             variant_span,
@@ -766,9 +799,10 @@ fn infer_instantiation(
     variant_span: Span,
     payload: Option<&Expr>,
 ) -> Result<Tir, Error> {
-    let Type::Enum { name, variants, .. } = template else {
+    let Type::Enum { name, args, .. } = template else {
         unreachable!("construct is only called with an enum type")
     };
+    let variants = enum_variants(ctx, name, args);
     let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
         return Err(Error::new(
             variant_span,
@@ -996,6 +1030,7 @@ fn pipe(ctx: &Ctx, lhs: &Expr, rhs: &Expr, want: Option<&Type>) -> Result<Expect
 /// everything, and arms covering every variant leave nothing for a later arm to see. (The
 /// second is also what lets every backend take a total chain's last arm without a test.)
 fn check_reachable(
+    ctx: &Ctx,
     subject_ty: &Type,
     covered: &[String],
     default_seen: bool,
@@ -1008,9 +1043,11 @@ fn check_reachable(
                 .to_string(),
         ));
     }
-    if let Type::Enum { name, variants, .. } = subject_ty
+    if let Type::Enum { name, args, .. } = subject_ty
         && !covered.is_empty()
-        && variants.iter().all(|(n, _)| covered.contains(n))
+        && enum_variants(ctx, name, args)
+            .iter()
+            .all(|(n, _)| covered.contains(n))
     {
         return Err(Error::new(
             arm_span,
@@ -1024,16 +1061,21 @@ fn check_reachable(
 
 /// The closed-world proof: every variant of the subject's enum is either covered by a pattern
 /// arm or the chain ends in a default, which the caller has already ruled out.
-fn check_coverage(subject_ty: &Type, covered: &[String], span: Span) -> Result<(), Error> {
+fn check_coverage(
+    ctx: &Ctx,
+    subject_ty: &Type,
+    covered: &[String],
+    span: Span,
+) -> Result<(), Error> {
     let Type::Enum {
         name: enum_name,
-        variants,
+        args,
         ..
     } = subject_ty
     else {
         unreachable!("a pattern arm was checked against an enum subject")
     };
-    let missing: Vec<String> = variants
+    let missing: Vec<String> = enum_variants(ctx, enum_name, args)
         .iter()
         .filter(|(n, _)| !covered.contains(n))
         .map(|(n, _)| format!("`{n}`"))
@@ -1076,7 +1118,7 @@ fn variant_arm<'a>(
     }
     let Type::Enum {
         name: enum_name,
-        variants,
+        args,
         ..
     } = subject_ty
     else {
@@ -1085,6 +1127,7 @@ fn variant_arm<'a>(
             format!("a match needs an enum subject, found {subject_ty}"),
         ));
     };
+    let variants = enum_variants(ctx, enum_name, args);
     let Some((_, payload_ty)) = variants.iter().find(|(n, _)| n == vname) else {
         return Err(Error::new(
             vspan,
@@ -1169,7 +1212,7 @@ fn match_chain(
     let mut result: Option<Type> = body_want.cloned();
     let mut out = Vec::new();
     for arm in arms {
-        check_reachable(&subject_ty, &covered, default_seen, arm.span)?;
+        check_reachable(ctx, &subject_ty, &covered, default_seen, arm.span)?;
         let (variant, guard, payload, arm_ctx, fields) = match &arm.pattern {
             Pattern::Default { .. } => {
                 default_seen = true;
@@ -1240,7 +1283,7 @@ fn match_chain(
     // patterns count toward it -- a guard is a runtime Bool the checker cannot see
     // through.
     if has_pattern_arm && !default_seen {
-        check_coverage(&subject_ty, &covered, span)?;
+        check_coverage(ctx, &subject_ty, &covered, span)?;
     }
     let result = result.expect("the parser produces at least one arm");
     // Open-world half: a pure guard chain with no default may decline every arm, so its
@@ -2135,12 +2178,16 @@ fn conform(ctx: &Ctx, found: Tir, want: &Type) -> Tir {
 /// but equal position needs rebuilding before those readers see it. This is what decides
 /// whether that rebuild is needed.
 ///
-/// Also recurses into an enum's variant payloads (kantord/toylang#66): two instantiations of
-/// the same generic enum are one `Type` (`Type::Enum`'s `PartialEq` compares payloads by
-/// `Type::Record`'s own order-insensitive equality), so a payload written in a different field
-/// order at each call site is exactly the same hazard a bare record or a Vec element is. The
-/// variant list itself is never out of order -- it comes from one declaration -- so zipping the
-/// two enums' variants positionally is safe.
+/// Also recurses into an enum's variant payloads (kantord/toylang#66): two instantiations of the
+/// same generic enum are one `Type` (`Type::Enum`'s `PartialEq` compares `name` and `args`
+/// only, and a generic argument's own order-insensitivity comes from `Type::Record`'s), so a
+/// payload written in a different field order at each call site is exactly the same hazard a
+/// bare record or a Vec element is. The variant list itself is never out of order -- it comes
+/// from one declaration -- so zipping the two enums' variants positionally is safe, *except*
+/// when one side's list is a recursive self-reference's placeholder (kantord/toylang#76): the
+/// zip then runs zero pairs and this reports "no reorder needed" rather than crashing, which is
+/// conservatively correct (nothing gets left mis-ordered that this function could have fixed)
+/// though not necessarily complete (a reorder a full expansion would have found stays undone).
 fn same_field_order(a: &Type, b: &Type) -> bool {
     match (a, b) {
         (Type::Record(x), Type::Record(y)) => {
@@ -2435,9 +2482,10 @@ fn inputs_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
 /// that is not the wanted enum's variant returns `None` and falls through to synthesis,
 /// which owns the errors.
 fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Error>> {
-    let Type::Enum { variants, .. } = want else {
+    let Type::Enum { name, args, .. } = want else {
         return None;
     };
+    let variants = enum_variants(ctx, name, args);
     let owns = |n: &str| variants.iter().any(|(vn, _)| vn == n);
     match expr {
         Expr::Var { name, span }
