@@ -1041,3 +1041,12 @@
   soft: [draft-questions-home]
   prio: 4
   status: done
+
+- id: euler-pages-restore
+  issue: gh:133
+  title: Restore the Euler 8/11/13/18 docs pages now that tests/euler_real_data.rs verifies them (gh:129 follow-up)
+  kind: build
+  needs: []
+  soft: [python-recursion-limit]
+  prio: 3
+  status: done

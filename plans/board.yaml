@@ -83,15 +83,6 @@
   prio: 3
   status: todo
 
-- id: euler-pages-restore
-  issue: gh:133
-  title: Restore the Euler 8/11/13/18 docs pages now that tests/euler_real_data.rs verifies them (gh:129 follow-up)
-  kind: build
-  needs: []
-  soft: [python-recursion-limit]
-  prio: 3
-  status: delegated
-
 - id: matcher-totality-and-alt-design
   title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test
   kind: decide
