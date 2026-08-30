@@ -955,3 +955,17 @@
   needs: []
   prio: 3
   status: done
+
+- id: void-functions-design
+  issue: gh:58
+  title: Grill void functions -- formalize functions that map to nothing but may have side effects (maintainer idea, streams tutorial annotation)
+  kind: decide
+  needs: []
+  status: done
+
+- id: range-stream-source-design
+  issue: gh:127
+  title: Grill whether range should become a Stream source -- Q1/Q13 amendment to ADR 0001 (prelude-inventory approved finding, gh:105/gh:121)
+  kind: decide
+  needs: []
+  status: done

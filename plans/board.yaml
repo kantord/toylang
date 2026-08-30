@@ -144,18 +144,20 @@
   prio: 4
   status: todo
 
-- id: void-functions-design
-  issue: gh:58
-  title: Grill void functions -- formalize functions that map to nothing but may have side effects (maintainer idea, streams tutorial annotation)
-  kind: decide
+- id: range-stream-source-build
+  issue: gh:137
+  title: Amend ADR 0001 (Q1/Q13) for range as a Stream source; implement across backends (gh:127 ruling)
+  kind: build
   needs: []
+  prio: 3
   status: todo
 
-- id: range-stream-source-design
-  issue: gh:127
-  title: Grill whether range should become a Stream source -- Q1/Q13 amendment to ADR 0001 (prelude-inventory approved finding, gh:105/gh:121)
+- id: void-sink-syntax-design
+  issue: gh:138
+  title: Grill the void/sink function syntax -- spelling candidates with research-prepped code (gh:58 ruling)
   kind: decide
   needs: []
+  prio: 3
   status: todo
 
 - id: q37-float-semantics
