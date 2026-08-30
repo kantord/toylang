@@ -40,6 +40,11 @@ bare prefix: `- id: nullary-functions` also matches `nullary-functions-decision`
 falls-through `index('status: todo')` then flips whatever row comes next (it silently marked
 a decide row delegated once; the audit caught it, not the edit).
 
+A research task with big results gets SPLIT into per-item follow-up rows at capture time --
+never one mega review row that sits unfinished (maintainer rule, 2026-08-30; the oddities
+inventory proved it: most of its 16 items got settled piecemeal while the mega row aged).
+Related: plans are headed for a proposed/approve/needs-changes flow (gh:110).
+
 Two bookkeeping rules the audits keep re-finding: a follow-up issue filed during a landing
 gets its board row IN THE SAME COMMIT (an issue without a row is invisible to this loop --
 four accumulated once); and an inbox record dismissed as stale gets that dismissal NAMED in

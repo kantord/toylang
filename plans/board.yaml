@@ -222,11 +222,11 @@
   status: done
 
 - id: language-oddities-review
-  title: Review the oddities inventory and settle each item
+  title: Review the oddities inventory -- SPLIT 2026-08-30 into per-item rows; most items settled piecemeal by gh:14/20/21/60/97/98/99, matcher and Opt work
   kind: decide
   needs: [language-oddities-survey]
   prio: 2
-  status: todo
+  status: done
 
 - id: crate-adoption
   title: Review the crate proposal and decide what gets adopted
@@ -933,6 +933,33 @@
   title: Board graph hides done tasks by default -- the live-work view
   kind: build
   model: haiku
+  needs: []
+  prio: 2
+  status: todo
+
+- id: record-argument-boundary
+  title: Oddity -- the paren-free record argument reaches across the definition boundary; settle it
+  kind: decide
+  needs: []
+  status: todo
+
+- id: jsonlines-statement-shape
+  title: Oddity -- jsonlines is a call-shaped statement; settle its shape
+  kind: decide
+  needs: []
+  status: todo
+
+- id: ternary-vs-match
+  title: Is the ternary redundant now that match covers it? Retire, keep, or demote
+  kind: decide
+  needs: []
+  prio: 2
+  status: todo
+
+- id: plan-approval-flow
+  issue: gh:110
+  title: Plans gain a proposed status with web approve / needs-changes, grill-flow style
+  kind: build
   needs: []
   prio: 2
   status: todo
