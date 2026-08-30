@@ -337,7 +337,7 @@
   kind: build
   model: fable
   needs: []
-  soft: [draft-questions-home]
+  soft: [draft-intro-migration, draft-questions-home]
   prio: 4
   status: todo
 
@@ -345,7 +345,7 @@
   title: Verify unary functions, lens access, and the dimension-spec model against the reference pages; salvage rationale, delete sections (draft-split)
   kind: build
   needs: []
-  soft: [draft-questions-home]
+  soft: [draft-intro-migration, draft-questions-home]
   prio: 4
   status: todo
 
@@ -353,7 +353,7 @@
   title: Verify the Int/Float/equality sections against ADRs 0006/0007/0010 and the reference; move what's missing, delete (draft-split)
   kind: build
   needs: []
-  soft: [draft-questions-home]
+  soft: [draft-intro-migration, draft-questions-home]
   prio: 4
   status: todo
 
@@ -361,7 +361,7 @@
   title: Migrate the three record decisions (literals-and-arguments, declared order, order-not-identity) into the record reference, delete (draft-split)
   kind: build
   needs: []
-  soft: [draft-questions-home]
+  soft: [draft-intro-migration, draft-questions-home]
   prio: 4
   status: todo
 
@@ -369,7 +369,7 @@
   title: Migrate the five stream/stdin decision sections against ADR 0001, the streams guide, and the sources reference; delete (draft-split)
   kind: build
   needs: []
-  soft: [draft-questions-home]
+  soft: [draft-intro-migration, draft-questions-home]
   prio: 4
   status: todo
 
@@ -377,7 +377,7 @@
   title: Migrate bare application and the prelude module system into the syntax/prelude reference, delete (draft-split)
   kind: build
   needs: []
-  soft: [draft-questions-home]
+  soft: [draft-intro-migration, draft-questions-home]
   prio: 4
   status: todo
 
@@ -385,7 +385,7 @@
   title: Migrate the matching/enums sections -- ratified parts to guides and ADR 0009, codec threads to the tracker (draft-split)
   kind: build
   needs: []
-  soft: [draft-questions-home, matcher-model-clarification, matcher-totality-and-alt-design]
+  soft: [draft-intro-migration, draft-questions-home, matcher-model-clarification, matcher-totality-and-alt-design]
   prio: 4
   status: todo
 
@@ -393,7 +393,7 @@
   title: Verify every prototype-showed finding lives in research-log or is superseded, then delete the section (draft-split)
   kind: build
   needs: []
-  soft: [draft-questions-home]
+  soft: [draft-intro-migration, draft-questions-home]
   prio: 4
   status: todo
 
@@ -401,7 +401,7 @@
   title: Record the Str contract as an ADR per the string spike's recommendation, then delete the draft's strings section (draft-split)
   kind: build
   needs: []
-  soft: [lines-utf8-edge]
+  soft: [draft-intro-migration, lines-utf8-edge]
   prio: 3
   status: todo
 
