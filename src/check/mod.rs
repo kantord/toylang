@@ -1398,7 +1398,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Expected::Checked(tir) | Expected::Synthesised(tir) => Ok(tir),
         },
 
-        Expr::Field { .. } | Expr::Index { .. } | Expr::Unwrap { .. } => {
+        Expr::Field { .. } | Expr::Index { .. } | Expr::Slice { .. } | Expr::Unwrap { .. } => {
             let Access { tir, stream, .. } = access(ctx, expr)?;
             // Projection over a stream is a mapper, and it is normalized to one here: the chain
             // is rebased onto a fresh per-element param, so neither the backends nor fusion
@@ -1967,6 +1967,36 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<Access, Error> {
                 elem_is_record,
             };
             Ok(Access::new(Tir::new(ty, kind), out, b.depth, b.stream))
+        }
+
+        // Narrowing a dimension by position. Unlike a collapsing `[i]` the entry can never be
+        // absent, so the answer is the dimension itself, not an `Opt`: out-of-range bounds
+        // clamp jq-style rather than going missing (kantord/toylang#143). A `None` bound means
+        // the dimension's own boundary.
+        Expr::Slice { base, start, end, span } => {
+            let b = access(ctx, base)?;
+            let Some(_) = b.elem.elem().cloned() else {
+                return Err(Error::new(
+                    *span,
+                    format!("`[a:b]` needs a dimension, found {}", b.elem),
+                ));
+            };
+            let start = match start {
+                Some(s) => Some(Box::new(expect(ctx, s, &Type::Int)?)),
+                None => None,
+            };
+            let end = match end {
+                Some(e) => Some(Box::new(expect(ctx, e, &Type::Int)?)),
+                None => None,
+            };
+            let kind = Kind::Slice {
+                base: Box::new(b.tir),
+                start,
+                end,
+                depth: b.depth,
+            };
+            let ty = wrap(b.elem.clone(), b.depth, b.stream);
+            Ok(Access::new(Tir::new(ty, kind), b.elem, b.depth, b.stream))
         }
 
         Expr::Field { base, name, span } => {

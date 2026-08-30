@@ -1078,7 +1078,7 @@ impl<'i> Cursor<'i> {
             let (tok, _) = self.peek()?;
             match tok {
                 Tok::LBracket => {
-                    self.advance()?;
+                    let (_, lspan) = self.advance()?;
                     let (next, _) = self.peek()?;
                     if next == Tok::RBracket {
                         let close = self.advance()?.1;
@@ -1088,14 +1088,50 @@ impl<'i> Cursor<'i> {
                             span,
                         };
                     } else {
-                        let index = self.expr(0)?;
-                        let close = self.eat(Tok::RBracket)?;
-                        let span = e.span().to(close);
-                        e = Expr::Index {
-                            base: Box::new(e),
-                            index: Box::new(index),
-                            span,
+                        // `[a]` collapses; `[a:b]` narrows, with either bound optional. A `:`
+                        // is never an expression token, so peeking past the first operand (or
+                        // past the `[`, for `[:b]`) tells the two apart unambiguously.
+                        let start = if next == Tok::Colon {
+                            None
+                        } else {
+                            Some(Box::new(self.expr(0)?))
                         };
+                        if self.peek()?.0 == Tok::Colon {
+                            self.advance()?;
+                            let (next, _) = self.peek()?;
+                            let end = if next == Tok::RBracket {
+                                None
+                            } else {
+                                Some(Box::new(self.expr(0)?))
+                            };
+                            let close = self.eat(Tok::RBracket)?;
+                            // Both edges at the dimension's own boundaries is the identity
+                            // `[]` already is, and jq itself rejects the both-omitted form,
+                            // so there is no reason to carry a spelling for it.
+                            if start.is_none() && end.is_none() {
+                                return Err(Error::new(
+                                    lspan.to(close),
+                                    "a slice needs at least one bound",
+                                ));
+                            }
+                            let span = e.span().to(close);
+                            e = Expr::Slice {
+                                base: Box::new(e),
+                                start,
+                                end,
+                                span,
+                            };
+                        } else {
+                            // No colon after the first operand: a plain collapsing index,
+                            // whose `start` is the index.
+                            let close = self.eat(Tok::RBracket)?;
+                            let span = e.span().to(close);
+                            e = Expr::Index {
+                                base: Box::new(e),
+                                index: start.expect("no colon means start was parsed"),
+                                span,
+                            };
+                        }
                     }
                 }
                 Tok::Bang => {

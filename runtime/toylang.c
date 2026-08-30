@@ -1164,6 +1164,53 @@ int64_t *tl_at(const tl_vec *v, int64_t i, int64_t depth, int is_record) {
     return tl_opt_some(is_record ? (int64_t)tl_rec_from_vec(v, i) : v->cols[0][i]);
 }
 
+/* Narrow a Vec to the [lo, hi) window, clamping out-of-range bounds jq-style rather than
+ * answering absence the way tl_at does: negatives count from the end, both bounds clamp to
+ * [0, len], and a crossed window is empty (kantord/toylang#143). A bound left out is passed
+ * as INT64_MIN for the start or INT64_MAX for the end, each folding to the Vec's own boundary
+ * under the clamp. `depth` is the same layers-down the collapse uses, recursing into each
+ * element when the slice lands below the outermost dimension. */
+tl_vec *tl_vec_slice(const tl_vec *v, int64_t lo, int64_t hi, int64_t depth) {
+    if (depth > 0) {
+        tl_vec *out = tl_vec_new(v->len, 1);
+        for (int64_t k = 0; k < v->len; k++) {
+            const tl_vec *inner = (const tl_vec *)v->cols[0][k];
+            out->cols[0][k] = (int64_t)tl_vec_slice(inner, lo, hi, depth - 1);
+        }
+        return out;
+    }
+    int64_t n = v->len;
+    if (lo < 0) {
+        lo += n;
+    }
+    if (hi < 0) {
+        hi += n;
+    }
+    if (lo < 0) {
+        lo = 0;
+    }
+    if (hi < 0) {
+        hi = 0;
+    }
+    if (lo > n) {
+        lo = n;
+    }
+    if (hi > n) {
+        hi = n;
+    }
+    int64_t len = hi - lo;
+    if (len < 0) {
+        len = 0;
+    }
+    tl_vec *out = tl_vec_new(len, v->ncols);
+    for (int64_t c = 0; c < v->ncols; c++) {
+        if (len > 0) {
+            memcpy(out->cols[c], v->cols[c] + lo, (size_t)len * sizeof(int64_t));
+        }
+    }
+    return out;
+}
+
 /* Insist an Opt is present, `depth` layers down.
  *
  * Unlike an index this needs no is_record flag: an Opt already holds a gathered value, so there

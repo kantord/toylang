@@ -92,6 +92,15 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
             walk(base, tags);
             walk(index, tags);
         }
+        Kind::Slice { base, start, end, .. } => {
+            walk(base, tags);
+            if let Some(s) = start {
+                walk(s, tags);
+            }
+            if let Some(e) = end {
+                walk(e, tags);
+            }
+        }
         Kind::Match { subject, arms, .. } => {
             walk(subject, tags);
             for a in arms {
@@ -137,6 +146,9 @@ fn tag(tir: &Tir) -> String {
         Kind::Builtin { which, .. } => format!("builtin.{}", builtin_tag(*which)),
         Kind::Unwrap { .. } => "unwrap".into(),
         Kind::Index { .. } => "selection.collapse".into(),
+        // A slice narrows by position where `select` narrows by predicate, so both are
+        // the same kind of spec (CONTEXT.md's narrow), and share the tag.
+        Kind::Slice { .. } => "selection.narrow".into(),
         Kind::Inputs => "inputs".into(),
         Kind::Match { .. } => "match".into(),
     }

@@ -148,6 +148,17 @@ pub enum Kind {
         /// Whether an entry is a record, which decides if collapsing has to gather columns.
         elem_is_record: bool,
     },
+    /// Narrow a dimension to the `[start, end)` window, `depth` layers down, counting negative
+    /// bounds from the end. Out-of-range bounds clamp to the valid range rather than answering
+    /// `Opt` the way a collapsing `Index` does (kantord/toylang#143), jq's `.[a:b]`; `None`
+    /// means the dimension's own boundary (0 and its length), and `start >= end` after
+    /// clamping yields empty.
+    Slice {
+        base: Box<Tir>,
+        start: Option<Box<Tir>>,
+        end: Option<Box<Tir>>,
+        depth: usize,
+    },
     /// First-match-wins dispatch over the subject: variant arms test its shape, guard arms
     /// evaluate a Bool of their own. The checker has already resolved every name a pattern
     /// bound, so an arm is only a test, a payload local to bind, and a body.
@@ -539,6 +550,15 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
         Kind::Index { base, index, .. } => {
             each_node(base, f);
             each_node(index, f);
+        }
+        Kind::Slice { base, start, end, .. } => {
+            each_node(base, f);
+            if let Some(s) = start {
+                each_node(s, f);
+            }
+            if let Some(e) = end {
+                each_node(e, f);
+            }
         }
         Kind::Match { subject, arms, .. } => {
             each_node(subject, f);

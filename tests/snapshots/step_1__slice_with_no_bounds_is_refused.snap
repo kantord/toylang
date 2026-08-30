@@ -1,0 +1,6 @@
+---
+source: tests/step_1.rs
+assertion_line: 42
+expression: "err(\"[1, 2, 3][:]\")"
+---
+a slice needs at least one bound (at byte 9)
