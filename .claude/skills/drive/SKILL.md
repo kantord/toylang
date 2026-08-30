@@ -105,9 +105,23 @@ delegated`, optionally `issue: gh:N`. Landed rows do not stay here (issue #113):
 `plans/board-archive.yaml`, same schema, `status: done`, append-only, kept for provenance only.
 A `needs`/`soft` id not found in the live board is satisfied -- it landed and was archived; the
 archive is never consulted to decide whether something is blocked. The maintainer's role is
-decide-tasks and goal-setting; everything else is yours to drive. Never invent tasks: new work
-enters the board through a grilling/planning session or an explicit user request, and gets a
-row before it gets a branch.
+decide-tasks and goal-setting; everything else is yours to drive. Never invent tasks while
+real work remains: new work enters the board through a grilling/planning session or an
+explicit user request, and gets a row before it gets a branch.
+
+**The idle exception (maintainer ruling, 2026-08-30).** When the board runs dry -- no ready
+builds, lanes empty -- the coordinator MAY self-originate, two ways, both with visible
+provenance ("self-originated, idle board" on the row/issue):
+
+- Board ONE OR TWO exploration ideas and work them: research-shaped rows (spikes, audits,
+  benchmarks, tooling probes) that are cheap and reversible. Anything touching language
+  design or user-facing semantics is NOT self-buildable -- it becomes a decide row and a
+  round question instead.
+- Problems the coordinator discovered itself (a flaky test, a doc contradiction, a cost
+  anomaly in lanes.csv, a suspicious pattern in a backend) go to the maintainer's inbox:
+  a decide row plus an `escalation`-flow question in the next wizard round, with the
+  evidence attached. Discovery is welcome any time; SURFACING it always beats silently
+  acting on it.
 
 ## The loop (scheduler v2, maintainer-specified 2026-08-29)
 

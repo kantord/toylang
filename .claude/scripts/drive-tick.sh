@@ -142,6 +142,19 @@ ready = [r['id'] for r in rows
 if lanes < 8 and ready:
     print(f'{8 - lanes} free lanes, ready: {\" \".join(ready[:3])}')" 2>/dev/null)
 fi
+# Exhaustion: nothing delegated, nothing ready to build -- the idle exception
+# (drive skill) lets the tick self-originate one or two exploration rows.
+if [ -z "$TRIGGER" ]; then
+  TRIGGER=$(python3 -c "
+import yaml
+rows = yaml.safe_load(open('plans/board.yaml'))
+live = {r['id'] for r in rows}
+lanes = sum(1 for r in rows if r.get('status') == 'delegated')
+ready = sum(1 for r in rows if r.get('status') == 'todo' and r.get('kind') == 'build'
+            and all(n not in live for n in r.get('needs', [])))
+if lanes == 0 and ready == 0:
+    print('board exhausted -- idle exception: self-originate 1-2 exploration rows (drive skill)')" 2>/dev/null)
+fi
 [ "${1:-tick}" = "audit" ] && TRIGGER="scheduled audit"
 if [ -z "$TRIGGER" ]; then
   echo "[drive-tick] $(date '+%H:%M:%S') nothing to do (workers grinding, no input) -- skipped, zero tokens"
