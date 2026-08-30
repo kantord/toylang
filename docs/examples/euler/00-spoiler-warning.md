@@ -54,3 +54,26 @@ Skipped for [kantord/toylang#38](https://github.com/kantord/toylang/issues/38) (
 than 32 bits): [**Problem 14**](14-longest-collatz-sequence.md),
 [**Problem 15**](15-lattice-paths.md), [**Problem 16**](16-power-digit-sum.md), and
 [**Problem 20**](20-factorial-digit-sum.md).
+
+## Problems 21-30
+
+Continuing the stream ([kantord/toylang#92](https://github.com/kantord/toylang/issues/92)):
+six solved, four skipped, none of them for width this time.
+
+Solved: [amicable numbers](21-amicable-numbers.md),
+[the millionth lexicographic permutation](24-lexicographic-permutations.md),
+[the longest reciprocal cycle](26-reciprocal-cycles.md),
+[number spiral diagonals](28-number-spiral-diagonals.md),
+[distinct powers](29-distinct-powers.md) -- solved without `BigInt` by rewriting each power as
+a `(root, exponent)` pair instead of computing it -- and
+[digit fifth powers](30-digit-fifth-powers.md).
+
+Skipped: [**Problem 22**](22-names-scores.md) and, within it,
+[**Problem 23**](23-non-abundant-sums.md) need a `Vec` sort that does not exist yet
+([kantord/toylang#86](https://github.com/kantord/toylang/issues/86)); problem 23's brute-force
+substitute also turned out too slow for routine runs.
+[**Problem 25**](25-1000-digit-fibonacci-number.md) needs the arbitrary-precision half of
+[kantord/toylang#38](https://github.com/kantord/toylang/issues/38), the one problem 29's trick
+could not also dodge. [**Problem 27**](27-quadratic-primes.md) is correct but, like problem
+23, too slow to re-verify on every `just test`
+([kantord/toylang#93](https://github.com/kantord/toylang/issues/93)).
