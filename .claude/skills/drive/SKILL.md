@@ -94,7 +94,9 @@ row before it gets a branch.
    - `decide` entries in the ready set: queue for the user, batched into wizard/mail rounds
      where they carry code; they occupy attention, not a lane.
    - `build` entries: make sure a GitHub issue carries the spec (file one if the row has
-     none), then delegate via the `enwiro-delegate` skill and set `status: delegated`; run
+     none), then delegate via the `enwiro-delegate` skill -- worker-pool lane first
+     (its section 0; gh:124), fresh env only for one-offs -- and set `status: delegated`
+     plus `lane: lane-<N>` when a pool lane took it; run
      on sonnet unless the row says otherwise. Three tiers (maintainer rule, 2026-08-30):
      `model: haiku` for mechanical work with an obvious done-state (renames, sweeps, small
      config/UI tweaks -- cheaper and faster beats smarter there), sonnet for regular build

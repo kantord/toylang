@@ -10,18 +10,23 @@ WT_BASE="$HOME/.local/share/enwiro/worktrees/pr/toylang-1234138d"
 QUIET_SECS="${QUIET_SECS:-480}"
 
 while true; do
+  # Rows name their worktree by pool lane (lane: lane-N, gh:124) or by issue.
   lanes=$(python3 -c "
 import yaml
 b=yaml.safe_load(open('$ROOT/plans/board.yaml'))
 for r in b:
-    if r['status']=='delegated' and r.get('issue'):
-        print(str(r['issue']).split(':')[1])" 2>/dev/null)
+    if r['status']!='delegated': continue
+    if r.get('lane'): print('lane:'+r['lane'])
+    elif r.get('issue'): print('issue-'+str(r['issue']).split(':')[1])" 2>/dev/null)
   [ -z "$lanes" ] && { echo "no delegated lanes remain"; exit 0; }
   now=$(date +%s)
   for n in $lanes; do
-    wt="$WT_BASE/issue-$n"
+    case "$n" in
+      lane:*) wt="$HOME/.enwiro_envs/toylang@${n#lane:}/toylang@${n#lane:}" ;;
+      *) wt="$WT_BASE/$n" ;;
+    esac
     [ -d "$wt" ] || continue
-    commits=$(git -C "$wt" log --oneline "main..issue-$n" 2>/dev/null | wc -l)
+    commits=$(git -C "$wt" log --oneline main..HEAD 2>/dev/null | wc -l)
     dirty=$(git -C "$wt" status --short 2>/dev/null | wc -l)
     [ "$commits" -gt 0 ] && [ "$dirty" -eq 0 ] || continue
     last_commit=$(git -C "$wt" log -1 --format=%ct 2>/dev/null || echo "$now")

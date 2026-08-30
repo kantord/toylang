@@ -90,15 +90,28 @@ landing no longer flips status in place (issue #113). Match the row by its id te
 add rows for any follow-up issues the review filed -- `build` rows usually, or a `decide` +
 `build` pair when a finding needs a design call first.
 
-Mark the enwiro environment done as part of landing: `enw mark done --env '<name>'`. Closing
-the GitHub issue (with a landing comment naming the merge commit) belongs here too, once the
-merge is pushed or the user has said pushing is theirs. Removing the env (`enw rm`) stays the
-user's call.
+The env's fate depends on which kind it is (`lane:` on the row says pool):
+
+- **Pool lane** (gh:124): the env is not done, its task is. Return it to the pool
+  instead: `enw mark ready --env 'toylang@lane-<N>'` and
+  `enw goal set --env 'toylang@lane-<N>' 'idle (pool); last: gh:<N>'`. Run
+  `.claude/scripts/lane-context.py` on the worktree and record context/eligibility in
+  the report, so the next dispatch knows whether the lane is reusable or due a recycle
+  (the reuse rules live in the enwiro-delegate skill, section 0). Never `enw rm` a lane.
+- **Per-issue env** (classic flow): `enw mark done --env '<name>'`; removing it
+  (`enw rm`) stays the user's call.
+
+Closing the GitHub issue (with a landing comment naming the merge commit) belongs here
+too, once the merge is pushed or the user has said pushing is theirs.
 
 Marking done does not end sessions: check for claude processes whose cwd is under the landed
 worktree (a fresh idle one can even appear later, spawned by a workspace visit) and name any
 lingerers in the report so the user knows the window is safe to close. Never kill an
-interactive session yourself; it is the user's window.
+interactive session yourself; it is the user's window. A pool lane's idle session is the
+exception in spirit only: it is the warm-reuse asset, so report it as such -- still never
+kill it, and never launch a second session into its worktree while it lives (the known
+two-sessions-one-worktree race): a live lane that fails the reuse rules is simply not
+dispatched to until its process is gone.
 
 **A landed branch can keep growing.** If the session is still alive at landing, its next stop
 fires the hooks, which can drive lesson-writing and cleanup commits AFTER the merge (it has

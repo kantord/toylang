@@ -14,6 +14,7 @@ fails the session: any error exits 0 silently.
 import csv
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -61,7 +62,10 @@ try:
             pass
 
     if "/enwiro/worktrees/" in cwd:
-        kind, lane = "worker", os.path.basename(cwd)
+        # Pool lane worktrees (gh:124) are cooked as <lane>-<8 hex>; strip the
+        # suffix so rows for one lane share a name across recycles.
+        kind = "worker"
+        lane = re.sub(r"-[0-9a-f]{8}$", "", os.path.basename(cwd))
     elif cwd.rstrip("/").endswith("repos/toylang"):
         kind, lane = "tick", "coordinator"
     else:

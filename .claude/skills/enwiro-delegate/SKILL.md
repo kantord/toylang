@@ -10,7 +10,95 @@ Launch a fresh, *interactive* Claude Code session in its own enwiro environment 
 can switch to it visually (window-manager workspace), take it over, or leave it running.
 Never use `claude -p` for this: headless output is not navigable and cannot be taken over.
 
+## 0. Board rows go to the worker pool first (gh:124)
+
+Board dispatches reuse a small pool of persistent lanes -- enwiro envs named
+`toylang@lane-1` .. `toylang@lane-5`, cooked lazily with `enw prep` -- instead of a fresh
+env per issue. A cold session spends roughly 30-50k tokens booting (system prompt,
+CLAUDE.md, AGENTS.md, repo orientation; a bare session in an empty directory measured
+29k) before doing any work; a reused session has already paid that. Even a recycled lane
+keeps its worktree, so the cargo `target/` cache and the disk it occupies stop
+multiplying per task. One-off delegations the user asks for by hand still use the
+fresh-env flow below; design rationale and open questions live in
+[plans/worker-pool.md](../../../plans/worker-pool.md).
+
+A lane is **free** when its worktree is clean and its last task's board row has been
+archived. A free lane with no session yet is **cold**: dispatch into it with the normal
+launch below, just inside the lane env. A **warm** lane gets an eligibility check:
+
+    wt=$(enw prep 'toylang@lane-1')
+    python3 .claude/scripts/lane-context.py "$wt"
+    # sid=<id> model=<model> context=<tokens|unknown> source=<transcript|telemetry|none>
+
+Reuse the session only when ALL of these hold; otherwise recycle (fresh session, same
+worktree):
+
+- context is a number under MAX_LANE_CONTEXT (90000, the same ceiling drive-tick.sh
+  enforces on the coordinator session; provisional until lanes.csv holds worker rows).
+- if context is `unknown` (interactive sessions on the newer harness expose no
+  transcript, and telemetry only lands when a session ends), the backstop is the task
+  count: fewer than 3 dispatches logged for this sid in
+  `~/.cache/toylang-drive/dispatches.csv`.
+- the session's model matches the row's tier exactly. A haiku row must not run in a
+  fable session's lane or the reverse: the tier judgment on the board row and the
+  accumulated context both leak across otherwise.
+- the previous task landed without a stall intervention. A lane that needed rescuing
+  is confused; recycle it.
+
+Recycling requires the old worker process to be gone: never launch a second session
+into a worktree with a live one (the known two-sessions-one-worktree race). A live lane
+that fails the reuse rules is not dispatched to at all; pick another lane or cook the
+next one.
+
+### Prepare the worktree (the coordinator does this before any pool dispatch)
+
+    git -C "$wt" fetch origin
+    git -C "$wt" switch -C issue-<N> origin/main
+
+Only on a clean tree -- a dirty pool lane is not free, it is unlanded work. If branch
+`issue-<N>` is already checked out in another worktree this fails; that task already has
+an env, and a continuation dispatch there is what's wanted, not a pool lane.
+
+### Dispatch into the lane
+
+Log it first (this also feeds the per-task cost numbers the ceiling will be tuned on):
+
+    python3 .claude/scripts/lane-context.py "$wt" --log-dispatch gh:<N>
+
+Then reach the session, one of three ways:
+
+- **Worker process alive** (pgrep claude, cwd under the resolved worktree): SendMessage
+  to it -- ListAgents shows it named after the worktree basename (`lane-1-3c0...`).
+  Verified 2026-08-30: an idle interactive session processes the message as a new turn.
+- **Process gone, session reusable**: relaunch with the same kitty dance as step 2
+  below, but `claude --resume <sid> '<brief>'` in place of the bare prompt. Verified
+  2026-08-30: a resumed session retains its prior context.
+- **Recycling, or a cold lane**: the normal launch of step 2, inside the lane env.
+
+A reused session needs in its brief what a fresh boot gets for free (the issue-branch
+rule only fires at session start), plus the context-hygiene line:
+
+> Next task for this lane: gh issue #<N>. The worktree is on a fresh branch issue-<N>
+> cut from origin/main. Your previous task is landed history: do not carry its
+> decisions or context into this one; re-derive everything from the issue and the
+> repo. Run `gh issue view <N>` before touching anything.
+
+followed by the same closing instruction every kickoff prompt gets (step 2). Provenance
+stays per-commit and per-branch, so one session spanning tasks changes nothing there;
+the hygiene line exists because residual context is the one channel through which task
+A could silently author task B.
+
+Bookkeeping: set `lane: lane-<N>` on the board row next to `status: delegated` (the
+tick scripts resolve the worktree through it), and keep the env navigable despite its
+generic name:
+
+    enw goal set --env 'toylang@lane-1' 'gh:<N> <short title>'
+    enw mark active --env 'toylang@lane-1'
+
 ## 1. Pick the environment name (this decides how the new session gets briefed)
+
+For a board dispatch the name is decided already: the pool lane (section 0). The choice
+below is for one-off delegations outside the pool.
 
 - `repo#<issue>` (github recipe) -- **preferred**. The env's branch name carries the issue
   number, so the global issue-linked-branches rule makes the new session fetch its own brief
