@@ -357,7 +357,7 @@
   title: Scope the clippy pass past build.rs's duplicated target -- gh:73's escalation
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: composite-equality
   issue: gh:68
@@ -401,6 +401,22 @@
   kind: build
   needs: []
   prio: 4
+  status: todo
+
+- id: int64-wire-form
+  issue: gh:89
+  title: Decide the Int64 wire form -- input refuses it pending the codec call (gh:83 escalation)
+  kind: decide
+  needs: []
+  prio: 3
+  status: todo
+
+- id: euler-slow-fragments
+  issue: gh:90
+  title: Decide the slow-fragment tier -- Euler 10 and 14 solve correctly but cost minutes on the weak backends
+  kind: decide
+  needs: []
+  prio: 3
   status: todo
 
 - id: parser-floor-recursion
