@@ -905,7 +905,7 @@
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: done
 
 - id: fmt-project-wide
   issue: gh:103
