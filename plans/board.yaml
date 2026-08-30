@@ -225,7 +225,7 @@
   kind: build
   needs: [benchmark-set-spike, benchmark-tooling-spike]
   prio: 3
-  status: delegated
+  status: todo
 
 - id: record-argument-boundary
   title: Oddity -- the paren-free record argument reaches across the definition boundary; settle it
@@ -306,14 +306,6 @@
   needs: []
   status: todo
 
-- id: benchmark-spike-citations
-  issue: gh:125
-  title: Cite TechEmpower/SPEC license claims in benchmark-suite-spike.md (gh:106 review follow-up)
-  kind: build
-  model: haiku
-  needs: []
-  prio: 4
-  status: delegated
 
 - id: emit-rs-concat-helper
   issue: gh:126

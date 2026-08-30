@@ -888,3 +888,12 @@
   needs: []
   prio: 3
   status: done
+
+- id: benchmark-spike-citations
+  issue: gh:125
+  title: Cite TechEmpower/SPEC license claims in benchmark-suite-spike.md (gh:106 review follow-up)
+  kind: build
+  model: haiku
+  needs: []
+  prio: 4
+  status: done
