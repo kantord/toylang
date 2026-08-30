@@ -107,6 +107,38 @@ fn naming_a_file_still_formats_it_to_stdout() {
     assert_eq!(read(dir.path(), "crooked.toy"), CROOKED);
 }
 
+/// A directory the walk cannot read (permission denied) is recorded as failed, the walk continues
+/// with other entries, and the run exits nonzero.
+#[test]
+#[cfg(unix)]
+fn unreadable_directory_is_reported_and_walk_continues() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("a temp dir");
+    write(dir.path(), "readable.toy", CROOKED);
+    std::fs::create_dir(dir.path().join("unreadable")).expect("create dir");
+    write(dir.path(), "unreadable/inaccessible.toy", CROOKED);
+
+    // Remove read permission so read_dir() will fail on that directory.
+    let unreadable = dir.path().join("unreadable");
+    let perms = std::fs::Permissions::from_mode(0o000);
+    std::fs::set_permissions(&unreadable, perms).expect("remove permissions");
+
+    let out = fmt(dir.path(), &[]);
+
+    // Restore permissions so tempdir cleanup can succeed.
+    let perms = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(&unreadable, perms).expect("restore permissions");
+
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert_eq!(stdout(&out), "readable.toy\n");
+    assert!(
+        stderr(&out).contains("unreadable") && stderr(&out).contains("Permission denied"),
+        "expected permission error, got: {}",
+        stderr(&out)
+    );
+}
+
 fn fmt(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_toylang"))
         .arg("fmt")

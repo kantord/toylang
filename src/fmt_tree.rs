@@ -75,7 +75,8 @@ fn format_one(path: &Path, mode: Mode, report: &mut Report) {
 /// Hidden entries are skipped: a walk from the current folder would otherwise descend into
 /// `.git`, and a leading dot is the usual way a folder says it is not the project's own source.
 /// Symlinks are skipped as well, both kinds: a link cycle would hang the walk, and rewriting
-/// through a link edits a file outside the tree that was walked.
+/// through a link edits a file outside the tree that was walked. Build and cache directories
+/// (target, node_modules, site) are also skipped by name.
 fn collect(dir: &Path, out: &mut Vec<PathBuf>, report: &mut Report) {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
@@ -92,7 +93,12 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>, report: &mut Report) {
                 continue;
             }
         };
-        if entry.file_name().to_string_lossy().starts_with('.') {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with('.') {
+            continue;
+        }
+        if matches!(name_str.as_ref(), "target" | "node_modules" | "site") {
             continue;
         }
         let path = entry.path();
