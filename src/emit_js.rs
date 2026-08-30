@@ -62,6 +62,19 @@ function tl_rem(a, b) {
 }
 "#;
 
+// An Int64 is a BigInt (kantord/toylang#83): a double is off past 2^53, and BigInt's own `/`
+// and `%` already truncate with the dividend's sign. `BigInt.asIntN(64, ...)` is the wrap,
+// including `MIN / -1` back to `MIN`.
+const ARITH64_HELPER: &str = r#"function tl_div64(a, b) {
+  if (b === 0n) { throw new Error("toylang: divided by zero"); }
+  return BigInt.asIntN(64, a / b);
+}
+function tl_rem64(a, b) {
+  if (b === 0n) { throw new Error("toylang: divided by zero"); }
+  return BigInt.asIntN(64, a % b);
+}
+"#;
+
 const COLLECT_HELPER: &str = r#"// Synchronous, because a toylang expression evaluates to completion and node has no
 // synchronous line reader built in. Reads in fixed chunks off the real fd rather than
 // `readFileSync(0)`, so a line is available to the rest of the program as soon as it arrives
@@ -143,6 +156,7 @@ pub fn emit(program: &Program) -> String {
         (used.tail, TAIL_HELPER),
         (used.unwrap, UNWRAP_HELPER),
         (used.arith, ARITH_HELPER),
+        (used.arith64, ARITH64_HELPER),
         (used.collect, COLLECT_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
         (used.str_cmp, STR_CMP_HELPER),
@@ -278,7 +292,8 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("JSON.stringify({value})"),
-        Type::Int | Type::Bool => format!("String({value})"),
+        // String() on a BigInt is the bare digits, no `n` suffix, so Int64 rides the same arm.
+        Type::Int | Type::Int64 | Type::Bool => format!("String({value})"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
             format!("tl_join({value}, ({e}) => {})", show(elem, &e, depth + 1))
@@ -366,6 +381,7 @@ struct Helpers {
     index: bool,
     unwrap: bool,
     arith: bool,
+    arith64: bool,
     collect: bool,
     jsonlines: bool,
     tail: bool,
@@ -441,7 +457,11 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(otherwise, used);
             }
             Kind::Arith { lhs, rhs, .. } => {
-                used.arith = true;
+                if t.ty == Type::Int64 {
+                    used.arith64 = true;
+                } else {
+                    used.arith = true;
+                }
                 walk(lhs, used);
                 walk(rhs, used);
             }
@@ -484,7 +504,7 @@ fn arm_return(body: String, partial: bool) -> String {
 fn expr(t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => js_string(s),
-        Kind::Int(n) => n.to_string(),
+        Kind::Int(n) => int_lit(&t.ty, *n),
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
@@ -519,16 +539,7 @@ fn expr(t: &Tir) -> String {
             arg.as_deref().map_or_else(String::new, expr)
         ),
         Kind::Concat(l, r) => format!("({} + {})", expr(l), expr(r)),
-        Kind::Arith { op, lhs, rhs } => match op {
-            BinOp::Div => format!("tl_div({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Rem => format!("tl_rem({}, {})", expr(lhs), expr(rhs)),
-            // Math.imul is the only exact 32-bit multiply here: a plain `*` loses the low bits
-            // once the true product passes 2^53.
-            BinOp::Mul => format!("Math.imul({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Add => format!("(({} + {}) | 0)", expr(lhs), expr(rhs)),
-            BinOp::Sub => format!("(({} - {}) | 0)", expr(lhs), expr(rhs)),
-            other => unreachable!("{other} is not arithmetic"),
-        },
+        Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(lhs), expr(rhs)),
         Kind::Cond {
             cond,
             then,
@@ -538,6 +549,9 @@ fn expr(t: &Tir) -> String {
         }
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("String({})", expr(arg)),
+            // The one real conversion among the backends: an Int is a number and an Int64 is
+            // a BigInt, and BigInt() of a 32-bit integer is always exact.
+            Builtin::IntToI64 => format!("BigInt({})", expr(arg)),
             Builtin::Chars => format!("tl_chars({})", expr(arg)),
             Builtin::Range => {
                 format!(
@@ -694,6 +708,44 @@ fn expr(t: &Tir) -> String {
                 body.push_str("return \"none\"; ");
             }
             format!("(() => {{ {body}}})()")
+        }
+    }
+}
+
+/// The node's type picks the literal's representation (kantord/toylang#83): an Int64 literal
+/// is a BigInt literal, exact at every written value where a bare number would already have
+/// rounded past 2^53.
+fn int_lit(ty: &Type, n: i64) -> String {
+    if *ty == Type::Int64 {
+        format!("{n}n")
+    } else {
+        n.to_string()
+    }
+}
+
+/// One arithmetic expression at the width the node's type names. BigInt operators are exact
+/// at any width, so on the 64-bit side only the wrap needs spelling -- Math.imul has no
+/// 64-bit sibling and none is needed.
+fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
+    if *ty == Type::Int64 {
+        match op {
+            BinOp::Div => format!("tl_div64({l}, {r})"),
+            BinOp::Rem => format!("tl_rem64({l}, {r})"),
+            BinOp::Mul => format!("BigInt.asIntN(64, {l} * {r})"),
+            BinOp::Add => format!("BigInt.asIntN(64, {l} + {r})"),
+            BinOp::Sub => format!("BigInt.asIntN(64, {l} - {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else {
+        match op {
+            BinOp::Div => format!("tl_div({l}, {r})"),
+            BinOp::Rem => format!("tl_rem({l}, {r})"),
+            // Math.imul is the only exact 32-bit multiply here: a plain `*` loses the low
+            // bits once the true product passes 2^53.
+            BinOp::Mul => format!("Math.imul({l}, {r})"),
+            BinOp::Add => format!("(({l} + {r}) | 0)"),
+            BinOp::Sub => format!("(({l} - {r}) | 0)"),
+            other => unreachable!("{other} is not arithmetic"),
         }
     }
 }

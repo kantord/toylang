@@ -70,8 +70,10 @@ pub enum Kind {
         arg: Option<Box<Tir>>,
     },
     Concat(Box<Tir>, Box<Tir>),
-    /// Wrapping 32-bit arithmetic. Division and remainder stop the program on a zero divisor,
-    /// which is the only way arithmetic can fail.
+    /// Wrapping integer arithmetic, at the width the node's own type names: 32 bits for `Int`,
+    /// 64 for `Int64` (kantord/toylang#83) -- both operands always share it, since nothing
+    /// converts implicitly. Division and remainder stop the program on a zero divisor, which
+    /// is the only way arithmetic can fail.
     Arith {
         op: BinOp,
         lhs: Box<Tir>,
@@ -169,6 +171,11 @@ pub struct MatchArm {
 pub enum Builtin {
     /// `str(n)`, rendering an Int the way the printer does but reachable from a program.
     IntToStr,
+    /// `i64(n)`, `Int -> Int64`: the one bridge between the two integer types, explicit
+    /// because nothing widens implicitly (kantord/toylang#83). A no-op on every backend whose
+    /// runtime integers are already 64 bits wide; JS builds a BigInt, and Go and Rust spell
+    /// the cast.
+    IntToI64,
     /// `range(n)`, the integers from zero up to but not including n. Zero-based, matching jq,
     /// Python, and this language's own indices.
     Range,

@@ -1,0 +1,12 @@
+# The type-flow half of kantord/toylang#83: a literal carries no suffix, so only its position
+# says it is an Int64 -- the same rule that resolves `[]`. 600851475143 is Euler 3's number,
+# the class of value the type exists for.
+program: |
+  fn big() -> Int64 = 600851475143
+
+  big()
+
+output: |
+  600851475143
+
+node_types: [application, int64]

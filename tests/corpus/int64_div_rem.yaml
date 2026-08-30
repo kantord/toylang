@@ -1,0 +1,14 @@
+# Division truncates and the remainder takes the dividend's sign at 64 bits exactly as at 32.
+# A bare literal on the right of an Int64 operator resolves as Int64, so no `i64(...)` is
+# needed around `71`.
+program: |
+  fn big() -> Int64 = 600851475143
+
+  fn nbig() -> Int64 = -600851475143
+
+  {q: big() / 71, r: big() % 71, nq: nbig() / 71, nr: nbig() % 71}
+
+output: |
+  {"q":8462696833,"r":0,"nq":-8462696833,"nr":0}
+
+node_types: [application, arith.div, arith.rem, int64, record-literal]

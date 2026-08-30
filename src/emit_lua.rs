@@ -121,6 +121,21 @@ local function tl_rem(a, b)
 end
 "#;
 
+// Lua's integers already are 64-bit and wrap (kantord/toylang#83), so an Int64's `+`, `-` and
+// `*` need nothing at all -- the one backend where the wider type is cheaper than the narrow
+// one. Only division needs spelling: `//` floors where toylang truncates, and `math.fmod` is
+// already truncated, so the same fmod-then-divide `tl_div` uses works with the `tl_i32` taken
+// off. `MIN // -1` wraps back to `MIN` on its own, Lua's documented overflow rule.
+const ARITH64_HELPER: &str = r#"local function tl_div64(a, b)
+  if b == 0 then error("toylang: divided by zero", 0) end
+  return (a - math.fmod(a, b)) // b
+end
+local function tl_rem64(a, b)
+  if b == 0 then error("toylang: divided by zero", 0) end
+  return math.fmod(a, b)
+end
+"#;
+
 const QUOTE_HELPER: &str = r#"local function tl_quote(s)
   return '"' .. s:gsub('[%c"\\]', function(c)
     if c == '"' then return '\\"' end
@@ -193,6 +208,7 @@ pub fn emit(program: &Program) -> String {
         (used.tail, TAIL_HELPER),
         (used.concat, VEC_CONCAT_HELPER),
         (used.arith, ARITH_HELPER),
+        (used.arith64, ARITH64_HELPER),
         (used.map, MAP_HELPER),
         (used.range, RANGE_HELPER),
         (used.collect, COLLECT_HELPER),
@@ -295,7 +311,7 @@ fn show(ty: &Type, value: &str, depth: usize) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
-        Type::Int | Type::Bool => format!("tostring({value})"),
+        Type::Int | Type::Int64 | Type::Bool => format!("tostring({value})"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
             format!(
@@ -405,6 +421,7 @@ struct Helpers {
     index: bool,
     unwrap: bool,
     arith: bool,
+    arith64: bool,
     map: bool,
     range: bool,
     collect: bool,
@@ -483,8 +500,12 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(then, used);
                 walk(otherwise, used);
             }
-            Kind::Arith { lhs, rhs, .. } => {
-                used.arith = true;
+            Kind::Arith { op, lhs, rhs } => {
+                if t.ty == Type::Int64 {
+                    used.arith64 |= matches!(op, BinOp::Div | BinOp::Rem);
+                } else {
+                    used.arith = true;
+                }
                 walk(lhs, used);
                 walk(rhs, used);
             }
@@ -565,14 +586,7 @@ fn expr(t: &Tir) -> String {
         // Parenthesised because there is more than one operator, and Lua's precedence is not
         // toylang's to rely on.
         Kind::Concat(l, r) => format!("({} .. {})", expr(l), expr(r)),
-        Kind::Arith { op, lhs, rhs } => match op {
-            BinOp::Div => format!("tl_div({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Rem => format!("tl_rem({}, {})", expr(lhs), expr(rhs)),
-            BinOp::Add => format!("tl_i32({} + {})", expr(lhs), expr(rhs)),
-            BinOp::Sub => format!("tl_i32({} - {})", expr(lhs), expr(rhs)),
-            BinOp::Mul => format!("tl_i32({} * {})", expr(lhs), expr(rhs)),
-            other => unreachable!("{other} is not arithmetic"),
-        },
+        Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(lhs), expr(rhs)),
         Kind::Cond {
             cond,
             then,
@@ -585,6 +599,8 @@ fn expr(t: &Tir) -> String {
         ),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("tostring({})", expr(arg)),
+            // Lua's integers are 64-bit already; an Int just lives in the low half.
+            Builtin::IntToI64 => expr(arg),
             Builtin::Chars => format!("tl_chars({})", expr(arg)),
             Builtin::Range => format!("tl_range({})", expr(arg)),
             Builtin::JsonLines => {
@@ -729,6 +745,31 @@ fn expr(t: &Tir) -> String {
                 body.push_str("return \"none\" ");
             }
             format!("(function() {body}end)()")
+        }
+    }
+}
+
+/// One arithmetic expression at the width the node's type names. At 64 bits Lua's own
+/// integers are the semantics (kantord/toylang#83): `+`, `-` and `*` wrap natively, so only
+/// division and remainder go through a helper.
+fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
+    if *ty == Type::Int64 {
+        match op {
+            BinOp::Div => format!("tl_div64({l}, {r})"),
+            BinOp::Rem => format!("tl_rem64({l}, {r})"),
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else {
+        match op {
+            BinOp::Div => format!("tl_div({l}, {r})"),
+            BinOp::Rem => format!("tl_rem({l}, {r})"),
+            BinOp::Add => format!("tl_i32({l} + {r})"),
+            BinOp::Sub => format!("tl_i32({l} - {r})"),
+            BinOp::Mul => format!("tl_i32({l} * {r})"),
+            other => unreachable!("{other} is not arithmetic"),
         }
     }
 }

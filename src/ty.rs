@@ -2,6 +2,15 @@
 pub enum Type {
     Str,
     Int,
+    /// A signed 64-bit integer that wraps, `Int`'s rules at twice the width (kantord/toylang#83,
+    /// extending ADR 0006). Deliberately a separate type rather than a widening of `Int`:
+    /// nothing converts implicitly, so mixing the two demands an explicit `i64(x)`. Literals
+    /// carry no suffix -- one that fits `Int` is `Int`, and any literal resolves as `Int64`
+    /// wherever one is expected, the `[]` rule applied to numbers. Barred from `input`, like
+    /// `Opt`: not because a 64-bit integer has no JSON spelling but because two backends
+    /// cannot yet read one faithfully (JS parses numbers into doubles), and that codec design
+    /// has not been done.
+    Int64,
     Bool,
     /// A single Unicode scalar value (kantord/toylang#75): never a surrogate half, so a
     /// codepoint outside the Basic Multilingual Plane is one `Char`, on every backend, even
@@ -68,6 +77,7 @@ impl Type {
         match name {
             "Str" => Some(Type::Str),
             "Int" => Some(Type::Int),
+            "Int64" => Some(Type::Int64),
             "Bool" => Some(Type::Bool),
             "Char" => Some(Type::Char),
             _ => None,
@@ -134,6 +144,26 @@ impl Type {
         }
     }
 
+    /// Whether `Int64` appears anywhere in this type. What the checker asks of an input type:
+    /// unlike `Char` this is one-directional -- an `Int64` result prints fine on every backend
+    /// -- but reading one back is codec design nobody has done (JS parses JSON numbers into
+    /// doubles and loses exactness past 2^53), so `input` refuses it, the same reversible
+    /// direction `contains_opt` takes for absence.
+    pub fn contains_int64(&self) -> bool {
+        match self {
+            Type::Int64 => true,
+            Type::Vec(t) | Type::Stream(t) => t.contains_int64(),
+            Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_int64()),
+            Type::Enum { args, variants, .. } => {
+                args.iter().any(Type::contains_int64)
+                    || variants
+                        .iter()
+                        .any(|(_, p)| p.as_ref().is_some_and(Type::contains_int64))
+            }
+            _ => false,
+        }
+    }
+
     /// Whether `Char` appears anywhere in this type. What the checker asks of both `input`'s
     /// type and the program's own printed result: neither has a wire form for a bare Unicode
     /// scalar value, so both refuse it, the same reasoning `contains_opt` states for absence.
@@ -162,6 +192,7 @@ impl Type {
         match self {
             Type::Str => "Str".to_string(),
             Type::Int => "Int".to_string(),
+            Type::Int64 => "Int64".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Char => "Char".to_string(),
             Type::Vec(t) => format!("Vec_{}", t.ident()),
@@ -193,6 +224,7 @@ impl std::fmt::Display for Type {
             Type::Stream(t) => write!(f, "Stream<{t}>"),
             Type::Str => write!(f, "Str"),
             Type::Int => write!(f, "Int"),
+            Type::Int64 => write!(f, "Int64"),
             Type::Bool => write!(f, "Bool"),
             Type::Char => write!(f, "Char"),
             Type::Vec(t) => write!(f, "Vec<{t}>"),
@@ -224,6 +256,7 @@ impl PartialEq for Type {
         match (self, other) {
             (Type::Str, Type::Str)
             | (Type::Int, Type::Int)
+            | (Type::Int64, Type::Int64)
             | (Type::Bool, Type::Bool)
             | (Type::Char, Type::Char) => true,
             (Type::Vec(a), Type::Vec(b)) => a == b,

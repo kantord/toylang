@@ -178,3 +178,14 @@ them by 1-6 lines apiece, verified against a merge-base worktree; every one was 
 budget beforehand and stayed the only caused thing about the diff. Inherited by the same rule as
 every instance above. See [cognitive-complexity.md](cognitive-complexity.md)'s matching entry
 for the one genuinely caused finding this session did fix.
+
+The Int64 session (issue #83) is a thirteenth instance with one caused crossing: the
+width-duplicated arithmetic arms grew every emitter's already-over `expr()` (inherited nudges),
+and `expect_inner` newly crossed to 119/100 from the literal-resolution block. Both settled by
+the same width-dispatch helper extraction described in
+[cognitive-complexity.md](cognitive-complexity.md)'s matching entry -- which brought five
+emitters' `expr()` *below* their merge-base counts -- plus, for the last two lines of
+`expect_inner`'s overage, folding the new early-return into the adjacent `wanted_variant` one
+via `Option::or_else` (both are position-resolved forms with the same
+`return built.map(Expected::Checked)` shape). `synth`'s 221->237 growth (the Neg width
+dispatch) stays under the standing sinkhole exemption.

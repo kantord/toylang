@@ -1,0 +1,5 @@
+---
+source: tests/int64.rs
+expression: "toylang::compile(\"fn f(s: Stream<{ts: Int64}>) -> Stream<{ts: Int64}> = s\\n\\njsonlines(f(inputs))\").map(|_|\n()).unwrap_err().to_string()"
+---
+`inputs` cannot be read as Stream<{ts: Int64}>; how an Int64 crosses the wire is not decided yet (at byte 69)

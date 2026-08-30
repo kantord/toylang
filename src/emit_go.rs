@@ -113,6 +113,23 @@ func tlRem(a, b int32) int32 {
 }
 "#;
 
+/// The same shape at 64 bits (kantord/toylang#83): Go defines `MIN / -1` as `MIN` for int64
+/// exactly as for int32, so only the zero divisor needs the guard here too.
+const ARITH64_HELPER: &str = r#"func tlDiv64(a, b int64) int64 {
+	if b == 0 {
+		tlFail("divided by zero")
+	}
+	return a / b
+}
+
+func tlRem64(a, b int64) int64 {
+	if b == 0 {
+		tlFail("divided by zero")
+	}
+	return a % b
+}
+"#;
+
 /// Ad-hoc address-of: `&expr` only works on composite literals, and a payload is whatever
 /// expression the program wrote. The call inlines away.
 const PTR_HELPER: &str = r#"func tlPtr[T any](v T) *T { return &v }
@@ -123,6 +140,11 @@ const PTR_HELPER: &str = r#"func tlPtr[T any](v T) *T { return &v }
 /// `-2147483648`. Passing every literal through a function makes the expression non-constant, so
 /// the wrap happens at runtime where it is defined. The call inlines away.
 const INT_HELPER: &str = r#"func tlInt(n int32) int32 { return n }
+"#;
+
+/// The same constant-folding escape at 64 bits: `tlInt64(9223372036854775807) + tlInt64(1)`
+/// must wrap at runtime rather than fail Go's exact constant arithmetic.
+const INT64_HELPER: &str = r#"func tlInt64(n int64) int64 { return n }
 "#;
 
 // bufio.ScanLines strips a trailing \r along with the \n, which the other five backends do
@@ -338,8 +360,9 @@ pub fn emit(program: &Program) -> String {
     let uses = |name: &str| decls.contains(name);
     let unwrap = uses("tlUnwrap(");
     let arith = uses("tlDiv(") || uses("tlRem(");
+    let arith64 = uses("tlDiv64(") || uses("tlRem64(");
     let collect = uses("tlCollectLines(") || uses("tlScanLines");
-    let fail = unwrap || arith || program.input.is_some() || program.inputs.is_some();
+    let fail = unwrap || arith || arith64 || program.input.is_some() || program.inputs.is_some();
     let quote = uses("tlQuote(");
     let join = uses("tlJoin(");
 
@@ -354,6 +377,7 @@ pub fn emit(program: &Program) -> String {
         (fail, FAIL_HELPER),
         (uses("tlPtr("), PTR_HELPER),
         (uses("tlInt("), INT_HELPER),
+        (uses("tlInt64("), INT64_HELPER),
         (uses("tlMap("), MAP_HELPER),
         (uses("tlSelect("), SELECT_HELPER),
         (uses("tlAt("), AT_HELPER),
@@ -361,6 +385,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tlConcat("), CONCAT_HELPER),
         (unwrap, UNWRAP_HELPER),
         (arith, ARITH_HELPER),
+        (arith64, ARITH64_HELPER),
         (uses("tlRange("), RANGE_HELPER),
         (uses("tlChars("), CHARS_HELPER),
         (collect, COLLECT_HELPER),
@@ -417,7 +442,7 @@ fn has_scalar(ty: &Type) -> bool {
         Type::Stream(_) => unreachable!("a stream cannot reach has_scalar"),
         // The checker refuses a program whose result contains a Char, the same as a stream.
         Type::Char => unreachable!("a Char cannot reach has_scalar"),
-        Type::Int | Type::Bool => true,
+        Type::Int | Type::Int64 | Type::Bool => true,
         Type::Str => false,
         Type::Vec(t) => has_scalar(t),
         Type::Record(fields) => fields.iter().any(|(_, t)| has_scalar(t)),
@@ -555,7 +580,8 @@ impl Collect<'_> {
                     }
                     // Purely textually gated below, like tlAt and tlRange: nothing here needs
                     // the element type, so there is nothing to record on the walk.
-                    Builtin::Range
+                    Builtin::IntToI64
+                    | Builtin::Range
                     | Builtin::Collect
                     | Builtin::Extent
                     | Builtin::Concat
@@ -588,6 +614,8 @@ impl Emitter {
             Type::Str => "string".to_string(),
             // The default Int is 32 bits and wraps, and Go's int32 does exactly that for free.
             Type::Int => "int32".to_string(),
+            // Same story a word wider (kantord/toylang#83).
+            Type::Int64 => "int64".to_string(),
             Type::Bool => "bool".to_string(),
             // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
             // the two.
@@ -791,7 +819,7 @@ impl Emitter {
     fn expr(&self, t: &Tir) -> String {
         match &t.kind {
             Kind::Str(s) => go_string(s),
-            Kind::Int(n) => format!("tlInt({n})"),
+            Kind::Int(n) => int_lit(&t.ty, *n),
             Kind::Var(name) => self.user(name),
             Kind::Local(id) => self.local(*id),
             Kind::Input => INPUT.to_string(),
@@ -844,16 +872,7 @@ impl Emitter {
                 arg.as_deref().map_or_else(String::new, |a| self.expr(a))
             ),
             Kind::Concat(l, r) => format!("({} + {})", self.expr(l), self.expr(r)),
-            Kind::Arith { op, lhs, rhs } => match op {
-                BinOp::Div => format!("tlDiv({}, {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Rem => format!("tlRem({}, {})", self.expr(lhs), self.expr(rhs)),
-                // int32 wraps by definition in Go, so +, - and * need no guard at all. This is
-                // the only backend where the wrapping rule costs nothing to state.
-                BinOp::Add => format!("({} + {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Sub => format!("({} - {})", self.expr(lhs), self.expr(rhs)),
-                BinOp::Mul => format!("({} * {})", self.expr(lhs), self.expr(rhs)),
-                other => unreachable!("{other} is not arithmetic"),
-            },
+            Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             // Go has no conditional expression, so this is a call to a function literal rather
             // than an operator. Both branches stay unevaluated, which a `tlCond(c, a, b)` helper
             // could not manage: its arguments would both run, and one of them may divide by zero.
@@ -870,6 +889,7 @@ impl Emitter {
             ),
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("strconv.FormatInt(int64({}), 10)", self.expr(arg)),
+                Builtin::IntToI64 => format!("int64({})", self.expr(arg)),
                 Builtin::Range => format!("tlRange({})", self.expr(arg)),
                 Builtin::Chars => format!("tlChars({})", self.expr(arg)),
                 Builtin::JsonLines => {
@@ -1050,6 +1070,7 @@ impl Emitter {
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tlQuote({value})"),
             Type::Int => format!("strconv.FormatInt(int64({value}), 10)"),
+            Type::Int64 => format!("strconv.FormatInt({value}, 10)"),
             Type::Bool => format!("strconv.FormatBool({value})"),
             Type::Vec(elem) => {
                 let e = format!("e{depth}");
@@ -1112,6 +1133,42 @@ impl Emitter {
                     .collect();
                 format!("(\"{{\" + {} + \"}}\")", parts.join(" + \",\" + "))
             }
+        }
+    }
+}
+
+/// The node's type picks which constant-folding escape a literal goes through
+/// (kantord/toylang#83): tlInt for an Int, tlInt64 for an Int64.
+fn int_lit(ty: &Type, n: i64) -> String {
+    if *ty == Type::Int64 {
+        format!("tlInt64({n})")
+    } else {
+        format!("tlInt({n})")
+    }
+}
+
+/// One arithmetic expression at the width the node's type names. Both of Go's fixed-width
+/// integers wrap by definition, so +, - and * need no guard at either width -- the only
+/// backend where the wrapping rule costs nothing to state -- and the width changes nothing
+/// but the div/rem helper names.
+fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
+    if *ty == Type::Int64 {
+        match op {
+            BinOp::Div => format!("tlDiv64({l}, {r})"),
+            BinOp::Rem => format!("tlRem64({l}, {r})"),
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else {
+        match op {
+            BinOp::Div => format!("tlDiv({l}, {r})"),
+            BinOp::Rem => format!("tlRem({l}, {r})"),
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            other => unreachable!("{other} is not arithmetic"),
         }
     }
 }

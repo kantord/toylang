@@ -1,0 +1,5 @@
+---
+source: tests/int64.rs
+expression: "toylang::compile(\"fn f(n: Int64) -> Int64 = n\\n\\nf(input)\").map(|_|\n()).unwrap_err().to_string()"
+---
+`input` cannot be read as Int64; how an Int64 crosses the wire is not decided yet (at byte 31)

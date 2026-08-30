@@ -1,7 +1,8 @@
 # Arithmetic and +
 
-`+ - * / %` on `Int`, with ordinary precedence (`*`, `/`, `%` bind tighter) and parentheses
-to override:
+`+ - * / %` on `Int` (and on [Int64](../types/int64.md), with the same rules at twice the
+width -- the two never mix in one operator), with ordinary precedence (`*`, `/`, `%` bind
+tighter) and parentheses to override:
 
 ```toylang
 str(2 + 3 * 4) + "," + str((2 + 3) * 4)

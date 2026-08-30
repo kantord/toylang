@@ -386,16 +386,17 @@ fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
 }
 
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
-/// and `chars` live in `builtin()`'s fixed table; `jsonlines`, `extent`, `concat`, `tail`,
-/// `collect`, and `fields` are polymorphic and checked from `synth`'s own arms; `select` and
-/// `map` rebind `.`. All eleven are reserved the same way, and the docs harness (tests/docs.rs)
-/// reads this list to insist each one has a reference page.
-pub const BUILTIN_NAMES: [&str; 11] = [
+/// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `extent`, `concat`,
+/// `tail`, `collect`, and `fields` are polymorphic and checked from `synth`'s own arms;
+/// `select` and `map` rebind `.`. All twelve are reserved the same way, and the docs harness
+/// (tests/docs.rs) reads this list to insist each one has a reference page.
+pub const BUILTIN_NAMES: [&str; 12] = [
     "chars",
     "collect",
     "concat",
     "extent",
     "fields",
+    "i64",
     "jsonlines",
     "map",
     "range",
@@ -428,6 +429,16 @@ fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
             Sig {
                 param: Some(Type::Str),
                 ret: vec_of(Type::Char),
+            },
+        ),
+        // The one bridge between the integer types (kantord/toylang#83). Its argument is an
+        // Int, so `i64(9000000000)` is refused like any other too-big Int literal: a wide
+        // value enters as a literal only where an Int64 is already expected.
+        "i64" => (
+            tir::Builtin::IntToI64,
+            Sig {
+                param: Some(Type::Int),
+                ret: Type::Int64,
             },
         ),
         _ => return None,
@@ -619,7 +630,7 @@ fn substitute(t: &Type, map: &HashMap<String, Type>) -> Type {
                 .map(|(n, p)| (n.clone(), p.as_ref().map(|p| substitute(p, map))))
                 .collect(),
         },
-        Type::Str | Type::Int | Type::Bool | Type::Char => t.clone(),
+        Type::Str | Type::Int | Type::Int64 | Type::Bool | Type::Char => t.clone(),
     }
 }
 
@@ -1277,11 +1288,16 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             // The literal is the one place a value could enter without meeting the 32-bit rule,
             // and four backends agreed on the wrong answer only because each held it in its own
             // wider representation until an operator wrapped it. Go refuses to compile such a
-            // constant at all, which is what made the hole visible.
+            // constant at all, which is what made the hole visible. A wider literal is not
+            // guessed to be Int64 -- `expect_inner` resolves one only where an Int64 is
+            // already expected, the same rule `[]` follows.
             if *value > i32::MAX as i64 {
                 return Err(Error::new(
                     *span,
-                    format!("integer `{value}` does not fit in Int, which is 32 bits"),
+                    format!(
+                        "integer `{value}` does not fit in Int, which is 32 bits; only a \
+                         position that expects Int64 can hold it"
+                    ),
                 ));
             }
             Ok(Tir::new(Type::Int, Kind::Int(*value)))
@@ -1472,16 +1488,32 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 if *value > -(i32::MIN as i64) {
                     return Err(Error::new(
                         *lit,
-                        format!("integer `-{value}` does not fit in Int, which is 32 bits"),
+                        format!(
+                            "integer `-{value}` does not fit in Int, which is 32 bits; only a \
+                             position that expects Int64 can hold it"
+                        ),
                     ));
                 }
                 return Ok(Tir::new(Type::Int, Kind::Int(-value)));
             }
-            let inner = expect(ctx, base, &Type::Int)?;
-            let zero = Tir::new(Type::Int, Kind::Int(0));
+            // Synthesise first, so `-x` works at whichever integer width `x` already has; a
+            // form that can only be checked (`-input` fixing input to Int) falls back to the
+            // Int expectation this arm always applied.
+            let inner = match synth(ctx, base) {
+                Ok(inner) if matches!(inner.ty, Type::Int | Type::Int64) => inner,
+                Ok(inner) => {
+                    return Err(Error::new(
+                        base.span(),
+                        format!("expected Int, found {}", inner.ty),
+                    ));
+                }
+                Err(_) => expect(ctx, base, &Type::Int)?,
+            };
+            let width = inner.ty.clone();
+            let zero = Tir::new(width.clone(), Kind::Int(0));
             let _ = span;
             Ok(Tir::new(
-                Type::Int,
+                width,
                 Kind::Arith {
                     op: BinOp::Sub,
                     lhs: Box::new(zero),
@@ -1887,6 +1919,64 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<Access, Error> {
     }
 }
 
+/// A literal (or a minus on one, or a negation) met by an Int64 expectation: literals carry
+/// no suffix, so the position is the only thing that can say which width one has
+/// (kantord/toylang#83), the `[]` rule applied to numbers. A minus directly on a literal is
+/// part of the literal, as for Int, so the whole written range short of
+/// `-9223372036854775808` is reachable (the parser refuses `9223372036854775808` before the
+/// minus could claim it, the same edge Rust's own i64 literals have). `None` for any other
+/// form -- or any other `want` -- which falls through to `expect_inner`'s remaining arms.
+fn int64_resolved(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Error>> {
+    if *want != Type::Int64 {
+        return None;
+    }
+    match expr {
+        Expr::Int { value, .. } => Some(Ok(Tir::new(Type::Int64, Kind::Int(*value)))),
+        Expr::Neg { base, .. } => {
+            if let Expr::Int { value, .. } = base.as_ref() {
+                return Some(Ok(Tir::new(Type::Int64, Kind::Int(-value))));
+            }
+            let inner = match expect(ctx, base, &Type::Int64) {
+                Ok(inner) => inner,
+                Err(e) => return Some(Err(e)),
+            };
+            let zero = Tir::new(Type::Int64, Kind::Int(0));
+            Some(Ok(Tir::new(
+                Type::Int64,
+                Kind::Arith {
+                    op: BinOp::Sub,
+                    lhs: Box::new(zero),
+                    rhs: Box::new(inner),
+                },
+            )))
+        }
+        _ => None,
+    }
+}
+
+/// An arithmetic operand checked at the width the other side fixed, with the type mismatch
+/// upgraded to name the bridge when the two integer types met: "expected Int, found Int64" is
+/// true but leaves the reader to discover `i64` on their own. The re-synthesis in the error
+/// path mirrors `stream_refusal`'s.
+fn expect_int_width(ctx: &Ctx, rhs: &Expr, width: &Type, op: BinOp) -> Result<Tir, Error> {
+    expect(ctx, rhs, width).map_err(|err| {
+        let Ok(found) = synth(ctx, rhs) else {
+            return err;
+        };
+        match (width, &found.ty) {
+            (Type::Int, Type::Int64) => Error::new(
+                rhs.span(),
+                format!("`{op}` cannot mix Int and Int64; widen the Int side with `i64(...)`"),
+            ),
+            (Type::Int64, Type::Int) => Error::new(
+                rhs.span(),
+                format!("`{op}` cannot mix Int64 and Int; widen the Int side with `i64(...)`"),
+            ),
+            _ => err,
+        }
+    })
+}
+
 fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     let left = synth(ctx, lhs)?;
 
@@ -1901,6 +1991,19 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     }
 
     if op.is_comparison() {
+        // Comparison never crosses the integer widths either: the sides must already agree,
+        // and the mismatch names `i64` the same way arithmetic's does.
+        if matches!(left.ty, Type::Int | Type::Int64) {
+            let right = expect_int_width(ctx, rhs, &left.ty, op)?;
+            return Ok(Tir::new(
+                Type::Bool,
+                Kind::Compare {
+                    op,
+                    lhs: Box::new(left),
+                    rhs: Box::new(right),
+                },
+            ));
+        }
         let right = match expect(ctx, rhs, &left.ty) {
             Ok(right) => right,
             Err(err) => {
@@ -1935,15 +2038,20 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     }
 
     if op.is_arithmetic() {
-        if left.ty != Type::Int {
+        if !matches!(left.ty, Type::Int | Type::Int64) {
             return Err(Error::new(
                 lhs.span(),
-                format!("expected Int, found {}", left.ty),
+                format!("expected Int or Int64, found {}", left.ty),
             ));
         }
-        let right = expect(ctx, rhs, &Type::Int)?;
+        // Both sides share the left's width: nothing widens implicitly (kantord/toylang#83),
+        // so an Int meeting an Int64 is an error naming the bridge rather than a silent
+        // promotion -- and a bare literal on the right resolves at whichever width the left
+        // already has, since `expect_inner` types a literal by its position.
+        let width = left.ty.clone();
+        let right = expect_int_width(ctx, rhs, &width, op)?;
         return Ok(Tir::new(
-            Type::Int,
+            width,
             Kind::Arith {
                 op,
                 lhs: Box::new(left),
@@ -1952,13 +2060,14 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
         ));
     }
 
-    // `+` is the one operator whose meaning depends on its operands: addition on Int and
-    // concatenation on Str. Both sides must agree, since nothing is coerced.
+    // `+` is the one operator whose meaning depends on its operands: addition on Int or Int64
+    // and concatenation on Str. Both sides must agree, since nothing is coerced.
     match left.ty {
-        Type::Int => {
-            let right = expect(ctx, rhs, &Type::Int)?;
+        Type::Int | Type::Int64 => {
+            let width = left.ty.clone();
+            let right = expect_int_width(ctx, rhs, &width, BinOp::Add)?;
             Ok(Tir::new(
-                Type::Int,
+                width,
                 Kind::Arith {
                     op: BinOp::Add,
                     lhs: Box::new(left),
@@ -2240,6 +2349,17 @@ fn input_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
             format!("`input` cannot be read as {want}; Char has no wire form to read"),
         ));
     }
+    // One-directional, unlike Char: an Int64 result prints fine, but reading one back is
+    // codec design nobody has done -- JS parses JSON numbers into doubles and is off past
+    // 2^53, and jq computes in them. Refusing is the reversible direction.
+    if want.contains_int64() {
+        return Err(Error::new(
+            span,
+            format!(
+                "`input` cannot be read as {want}; how an Int64 crosses the wire is not decided yet"
+            ),
+        ));
+    }
     let mut slot = ctx.input.borrow_mut();
     match slot.as_ref() {
         None => *slot = Some(want.clone()),
@@ -2287,6 +2407,14 @@ fn inputs_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
         return Err(Error::new(
             span,
             format!("`inputs` cannot be read as {want}; Char has no wire form to read"),
+        ));
+    }
+    if elem.contains_int64() {
+        return Err(Error::new(
+            span,
+            format!(
+                "`inputs` cannot be read as {want}; how an Int64 crosses the wire is not decided yet"
+            ),
         ));
     }
     let mut slot = ctx.inputs.borrow_mut();
@@ -2386,7 +2514,10 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
         return construct(ctx, want, text, *span, None, None).map(Expected::Checked);
     }
 
-    if let Some(built) = wanted_variant(ctx, expr, want) {
+    // An Int64-expected literal and a wanted enum's variant are the same kind of arm: a form
+    // resolved by its position, built by its own helper, `None` falling through.
+    if let Some(built) = int64_resolved(ctx, expr, want).or_else(|| wanted_variant(ctx, expr, want))
+    {
         return built.map(Expected::Checked);
     }
 
