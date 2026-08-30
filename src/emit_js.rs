@@ -188,12 +188,26 @@ pub fn emit(program: &Program) -> String {
     // Function declarations hoist, so a call to one defined further down resolves without the
     // forward declarations Lua needs. Each backend does what its own target does.
     for f in &program.funcs {
-        out.push_str(&format!(
-            "function {}({}) {{\n  return {};\n}}\n",
-            user(&f.name),
-            f.param.as_deref().map_or_else(String::new, user),
-            expr(enums, &f.body)
-        ));
+        let param = f.param.as_deref().map(user);
+        if tir::has_tail_call(&f.name, &f.body) {
+            // The contract: a self-tail-call runs in constant stack. A tail call becomes
+            // `param = arg; continue;` in a loop, so 100k-deep self-recursion cannot blow the
+            // JS stack the way a real call would (kantord/toylang#141).
+            let mut fresh = 0;
+            out.push_str(&format!("function {}({}) {{\n", user(&f.name), param.as_deref().unwrap_or_default()));
+            out.push_str("  while (true) {\n");
+            out.push_str(&indent(&indent(&tail_stmts(
+                enums, &f.name, param.as_deref(), &mut fresh, &f.body
+            ))));
+            out.push_str("  }\n}\n");
+        } else {
+            out.push_str(&format!(
+                "function {}({}) {{\n  return {};\n}}\n",
+                user(&f.name),
+                param.as_deref().unwrap_or_default(),
+                expr(enums, &f.body)
+            ));
+        }
     }
 
     if let Some(fusion) = tir::fusion(program) {
@@ -587,6 +601,108 @@ fn arm_return(body: String, partial: bool) -> String {
     } else {
         format!("return {body}; ")
     }
+}
+
+/// `t` as statements in the tail position: `return <expr>;` for a base case, and for a tail
+/// call `param = <arg>; continue;` so the loop in the emitted function rewinds instead of
+/// growing the JS stack. Lines come out unindented; `indent` places them under the `while`.
+fn tail_stmts(
+    enums: &Enums,
+    name: &str,
+    param: Option<&str>,
+    fresh: &mut usize,
+    t: &Tir,
+) -> String {
+    match &t.kind {
+        Kind::Call { func, arg } if func == name => {
+            let assign = param.map_or_else(String::new, |p| {
+                format!(
+                    "{p} = {};\n",
+                    arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
+                )
+            });
+            format!("{assign}continue;\n")
+        }
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => format!(
+            "if ({}) {{\n{}}} else {{\n{}}}\n",
+            expr(enums, cond),
+            indent(&tail_stmts(enums, name, param, fresh, then)),
+            indent(&tail_stmts(enums, name, param, fresh, otherwise)),
+        ),
+        Kind::Bind {
+            local: id,
+            value,
+            body,
+        } => format!(
+            "const {} = {};\n{}",
+            local(*id),
+            expr(enums, value),
+            tail_stmts(enums, name, param, fresh, body)
+        ),
+        Kind::Match {
+            subject,
+            arms,
+            partial,
+        } if !partial => {
+            // The subject is read into a temp the way `expr`'s IIFE does, but there is no IIFE
+            // to contain it here, so the name has to be fresh rather than the fixed `subj`.
+            let subj = format!("tl_tailsub{}", *fresh);
+            *fresh += 1;
+            let mut out = format!("const {subj} = {};\n", expr(enums, subject));
+            for (i, arm) in arms.iter().enumerate() {
+                let mut run = String::new();
+                if let Some(pid) = arm.payload {
+                    let variant = arm
+                        .variant
+                        .as_ref()
+                        .expect("only a variant arm has a payload");
+                    run.push_str(&format!(
+                        "const {} = {subj}[{}];\n",
+                        local(pid),
+                        js_string(variant)
+                    ));
+                }
+                run.push_str(&tail_stmts(enums, name, param, fresh, &arm.body));
+                let test = match (&arm.variant, &arm.guard) {
+                    (Some(v), _) if arm.payload.is_some() => {
+                        Some(format!("{subj}[{}] !== undefined", js_string(v)))
+                    }
+                    (Some(v), _) => Some(format!("{subj} === {}", js_string(v))),
+                    (None, Some(g)) => Some(expr(enums, g)),
+                    (None, None) => None,
+                };
+                match test {
+                    // A total chain's last arm needs no test, the checker having proved nothing
+                    // else can reach it -- the same rule `expr`'s match arm follows.
+                    Some(test) if i + 1 < arms.len() => {
+                        out.push_str(&format!("if ({test}) {{\n{}}}\n", indent(&run)));
+                    }
+                    _ => out.push_str(&run),
+                }
+            }
+            out
+        }
+        // A partial match wraps every arm body, so no arm body is a tail position; the whole
+        // match stays an expression, exactly as it would outside tail position.
+        Kind::Match { .. } => format!("return {};\n", expr(enums, t)),
+        _ => format!("return {};\n", expr(enums, t)),
+    }
+}
+
+/// Prepend two spaces to every line. `tail_stmts` returns its lines unindented, and each
+/// nesting level (`while` body, an `if` branch) shifts by one indent.
+fn indent(s: &str) -> String {
+    let mut out = String::new();
+    for line in s.trim_end_matches('\n').split('\n') {
+        out.push_str("  ");
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 fn expr(enums: &Enums, t: &Tir) -> String {

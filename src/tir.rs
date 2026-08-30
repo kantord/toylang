@@ -551,3 +551,26 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
         }
     }
 }
+
+/// Whether `t` makes a self-call to `name` in a tail position: a call whose result is the
+/// function's result, with nothing left to do after it. This is what lets the js and py
+/// emitters lower a self-tail-recursive function to a loop, the constant-stack contract
+/// (kantord/toylang#141).
+///
+/// Only `Cond` branches, a total `Match`'s arm bodies, and a `Bind`'s body put their child in
+/// tail position; a partial `Match` wraps every arm body in `{some: ...}`, so nothing there is
+/// a tail call, and a call feeding an operator (`f(x) + 1`) is a genuine recursion the contract
+/// does not cover.
+pub fn has_tail_call(name: &str, t: &Tir) -> bool {
+    match &t.kind {
+        Kind::Call { func, .. } => func == name,
+        Kind::Cond { then, otherwise, .. } => {
+            has_tail_call(name, then) || has_tail_call(name, otherwise)
+        }
+        Kind::Bind { body, .. } => has_tail_call(name, body),
+        Kind::Match { arms, partial, .. } if !partial => {
+            arms.iter().any(|a| has_tail_call(name, &a.body))
+        }
+        _ => false,
+    }
+}
