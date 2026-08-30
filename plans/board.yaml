@@ -56,7 +56,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: sink-kind-build
   issue: gh:151
