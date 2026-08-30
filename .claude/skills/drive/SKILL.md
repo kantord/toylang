@@ -72,6 +72,16 @@ last events say what it was doing. Uncommitted work continues via
 anything that smells like a worker-quality problem gets a row in
 plans/opencode-rollout.md's incident table -- that log is the rollout's evidence base.
 
+**The coordinator is a router (maintainer direction, 2026-08-30).** The asymptote every
+change moves toward: a tick spends its turns on DECISIONS -- what to dispatch, what to
+land, what to surface to the maintainer -- executed through the four mechanical
+surfaces (dispatch-worker.sh, land-lane.sh, board-archive.py, round files), and reads
+results rather than exploring. The gate script hands each tick a pre-computed state
+snapshot in the prompt: act on it instead of re-reading the board, re-checking lanes,
+and re-polling stores; re-verify only what you are about to modify. The deliberate
+exception, for now, is the landing diff read -- that judgment stays in-tick until the
+rollout review prices a cheap-model alternative.
+
 The tick's diagnosis budget is the event log, git state, and the suite output --
 ROUTING evidence. The moment understanding requires reading source files or
 experimenting (why a backend misbehaves, what a generated program actually does), the

@@ -39,6 +39,7 @@ fi
 # and a non-delegated worktree sitting ahead of main both force a run.
 MODEL=sonnet
 TRIGGER=""
+STATE=""
 # A delegated row names its worktree either by pool lane (lane: lane-N, the
 # gh:124 worker pool -- resolved through the stable enwiro env symlink) or by
 # issue number (the classic one-env-per-issue flow).
@@ -72,6 +73,8 @@ for wt in $DELEGATED; do
     # claude matches cover in-flight pre-ruling lanes until they land.
     case "$(readlink /proc/$p/cwd 2>/dev/null)" in "$d_real"*) live=1 ;; esac
   done
+  esc=""; [ -f "$d/ESCALATION.md" ] && esc=" ESCALATION.md"; [ -f "$d/RESEARCH.md" ] && esc="$esc RESEARCH.md"
+  STATE="$STATE [$wt: ahead=$ahead dirty=$dirty live=$live commit_age=${commit_age}s$esc]"
   if [ "$ahead" -gt 0 ] && [ "$dirty" -eq 0 ] && [ "$live" -eq 0 ]; then
     # A gone worker with committed clean work is done NOW -- opencode workers
     # exit on finish (event-driven landing, 2026-08-30), so no quiet window.
@@ -107,6 +110,7 @@ if git rev-parse -q --verify wip >/dev/null 2>&1; then
   lines=$(git diff --shortstat main...wip 2>/dev/null | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | grep -oE '[0-9]+' | paste -sd+ | bc 2>/dev/null || echo 0)
   oldest=$(git log --merges --format=%ct main..wip 2>/dev/null | tail -1)
   age=$(( $(date +%s) - ${oldest:-$(date +%s)} ))
+  STATE="$STATE [wip: merges=$merges lines=${lines:-0} oldest_age=${age}s]"
   if [ "$merges" -ge 3 ] || [ "${lines:-0}" -ge 600 ] || { [ "$merges" -ge 1 ] && [ "$age" -ge 1800 ]; }; then
     TRIGGER="${TRIGGER:-wip promotion due ($merges lanes, ${lines:-0} lines, oldest ${age}s)}"
   fi
@@ -180,7 +184,12 @@ fi
 TS=$(date +%Y%m%d-%H%M%S)
 OUT="$LOG_DIR/$TS-${1:-tick}-$MODEL.json"
 echo "[drive-tick] $(date '+%H:%M:%S') ${1:-tick} starting on $MODEL -- $TRIGGER (log: $OUT)"
-PROMPT="$PROMPT Trigger for this tick: $TRIGGER."
+INBOX_N=$(python3 -c "
+import json
+d=json.load(open('docs/.annotations/inbox.json'))
+print(len(d.get('records',[])))" 2>/dev/null || echo '?')
+ROUNDS=$(ls docs/.grill/*.round.yaml 2>/dev/null | xargs -rn1 basename | tr '\n' ' ')
+PROMPT="$PROMPT Trigger for this tick: $TRIGGER. Pre-computed state snapshot (gathered from disk this second by the gate script -- ACT ON IT instead of re-running board reads, lane checks, and store polls; re-verify only what you are about to modify):${STATE:- no delegated lanes} [inbox_records=$INBOX_N pending_rounds=${ROUNDS:-none}]. You are a ROUTER: your turns are for decisions and the four scripts (dispatch-worker.sh, land-lane.sh, board-archive.py, round files), never for exploration."
 
 run_tick() { # $@: extra claude args (--resume <id> or nothing)
   # stream-json + the colorizer keeps the loop terminal a live, readable trace;
