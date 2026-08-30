@@ -1115,3 +1115,22 @@
   needs: []
   prio: 2
   status: done
+
+- id: shell-out-design
+  title: "Grill the syntax for calling external CLI programs -- ruled: full streaming pipe-to-subprocess (gh:158)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: stdin-syntax-design
+  title: "Grill the one-stdin-source syntax -- ruled: one Stream<Str> source, parse(.) as a library call, tentative (gh:159)"
+  kind: decide
+  needs: [type-flow-rework]
+  status: done
+
+- id: js-node-web-split-design
+  issue: gh:118
+  title: "Grill the JS Node/Web target split etc. -- ruled: one system, all four together (gh:160)"
+  kind: decide
+  needs: []
+  status: done

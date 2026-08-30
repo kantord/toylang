@@ -12,11 +12,11 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: function-signature-matching-syntax
   issue: gh:152
-  title: Grill the concrete spelling for implicit-. params via matching syntax (direction ratified, gh:152)
+  title: Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn't pick without more context; round 2 presents the maintainer's own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152)
   kind: decide
   needs: []
   prio: 3
@@ -28,7 +28,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: jsonlines-tail-marker-build
   issue: gh:154
@@ -42,7 +42,7 @@
   issue: gh:136
   title: Build the parameterized dsv(delim) source, plus prelude csv/tsv partials (gh:88 ruling)
   kind: build
-  needs: [stdin-syntax-design]
+  needs: []
   prio: 4
   status: todo
 
@@ -87,22 +87,25 @@
   model: fable
   status: todo
 
-- id: shell-out-design
-  title: Grill the syntax for calling external CLI programs -- bash-convenient or better
+- id: shell-out-build
+  issue: gh:158
+  title: Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect (shell-out-design ruling, gh:158, depends on Q35's stdout/stderr effect model)
+  kind: build
+  needs: []
+  status: todo
+
+- id: template-strings-design
+  issue: gh:161
+  title: Grill universal template strings, sparked by the shell-out round's unpicked bash-capture-literal option (gh:161)
   kind: decide
   needs: []
   status: todo
 
-- id: stdin-syntax-design
-  title: Grill the one-stdin-source syntax, once type flow makes parse steps possible
-  kind: decide
-  needs: [type-flow-rework]
-  status: todo
-
 - id: stdin-redesign-build
-  title: Retire the three stdin keywords for the one-source design
+  issue: gh:159
+  title: Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative, gh:159 -- verify parse(.) resolves an expected type inside a map body before full build)
   kind: build
-  needs: [stdin-syntax-design]
+  needs: []
   model: fable
   status: todo
 
@@ -206,16 +209,32 @@
   prio: 5
   status: todo
 
-- id: js-node-web-split-design
-  issue: gh:118
-  title: Grill the JS Node/Web target split, optional TS type generation, the web-incompatible-builtin escape hatch, and a compiler config file (maintainer compose note)
+- id: js-node-web-split-build
+  issue: gh:160
+  title: Build the JS Node/Web target split, TS type generation, builtin-replacement escape hatch, and toylang.conf.yaml as one system (js-node-web-split-design ruling, gh:160)
+  kind: build
+  needs: []
+  status: todo
+
+- id: module-as-function-routing-design
+  issue: gh:162
+  title: Consider running other modules as functions, e.g. matcher arms dispatching to a submodule file (maintainer note, unscheduled)
   kind: decide
   needs: []
+  prio: 5
+  status: todo
+
+- id: erlang-target-consideration
+  issue: gh:163
+  title: Consider Erlang as an additional backend target, as a design stress test (maintainer note, unscheduled)
+  kind: decide
+  needs: []
+  prio: 5
   status: todo
 
 - id: method-call-syntax-design
   issue: gh:119
-  title: Grill method-like call syntax -- functions that target a type with extra params (maintainer compose note)
+  title: Grill method-like call syntax -- round 1 ratified UFCS-style desugaring (x.foo(y) -> foo(x,y)); the operator spelling (dot vs an alternative like `:`) and whether the receiver form curries are still open, needs a round 2 (gh:119)
   kind: decide
   needs: []
   status: todo
