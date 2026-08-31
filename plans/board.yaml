@@ -38,14 +38,6 @@
   prio: 3
   status: todo
 
-- id: dsv-parameterized-source
-  issue: gh:136
-  title: Build the parameterized dsv(delim) source, plus prelude csv/tsv partials (gh:88 ruling)
-  kind: build
-  needs: []
-  prio: 4
-  status: delegated
-
 - id: dsv-partial-conventions
   issue: gh:136
   title: 'Rule on two dsv worker escalations: csv/tsv as compiler-predefined names vs real prelude.toy partials (blocked on source_in_fn), and raw-split-no-quoting as the DSV field convention'
