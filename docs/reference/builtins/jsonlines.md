@@ -35,5 +35,5 @@ length(jsonlines([1, 2]))
 ```
 
 ```error
-`jsonlines` is a sink, legal only as the program's outermost expression (at byte 7)
+a sink is not a value, so it is legal only as the program's outermost expression or a Sink-returning function's body (at byte 7)
 ```
