@@ -46,6 +46,14 @@
   prio: 4
   status: delegated
 
+- id: dsv-partial-conventions
+  issue: gh:136
+  title: 'Rule on two dsv worker escalations: csv/tsv as compiler-predefined names vs real prelude.toy partials (blocked on source_in_fn), and raw-split-no-quoting as the DSV field convention'
+  kind: decide
+  needs: []
+  prio: 3
+  status: todo
+
 - id: euler-slow-fragments-2
   issue: gh:93
   title: Apply the slow-fragment tier to batch 3's correct-but-slow problems (gh:90 ruling)
