@@ -160,20 +160,36 @@
   needs: []
   status: todo
 
-- id: module-as-function-routing-design
-  issue: gh:162
-  title: Consider running other modules as functions, e.g. matcher arms dispatching to a submodule file (maintainer note, unscheduled)
-  kind: decide
-  needs: [module-routing-research]
+- id: file-visibility-tracking-build
+  issue: gh:166
+  title: 'Checker tracks which file a definition came from and enforces per-call-site visibility -- prerequisite named by the module-as-function-routing-design ruling (module-routing-and-erlang-target round): the same gap that already blocks a `pub` prelude function from calling a private one blocks any module-dispatch syntax from meaning anything.'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
+
+- id: module-routing-syntax-build
+  issue: gh:167
+  title: 'Implement `@(path)` module-as-function routing-arm syntax -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C (dedicated routing-arm form) chosen; maintainer refined the spelling from the round''s bare `@path` to parenthesized `@(route-groups/baz.toy)` because it encloses the path expression. See plans/module-routing-research.md.'
+  kind: build
+  needs: [file-visibility-tracking-build]
   prio: 5
   status: todo
 
 - id: erlang-target-consideration
   issue: gh:163
-  title: Consider Erlang as an additional backend target, as a design stress test (maintainer note, unscheduled)
+  title: 'Consider Erlang as an additional backend target, as a design stress test (maintainer note) -- round answer (module-routing-and-erlang-target round, question erlang-target-consideration): option C, spend more research and actually try the Erlang toolchain rather than accepting the desk-research-only finding (plans/erlang-target-research.md). Maintainer also flagged: concurrency will need to be supported by toylang regardless of this backend question -- worth surfacing as its own open item once this research lands.'
   kind: decide
-  needs: [erlang-target-research]
+  needs: [erlang-toolchain-empirical-research]
   prio: 5
+  status: todo
+
+- id: erlang-toolchain-empirical-research
+  issue: gh:170
+  title: 'Research spike (round answer, 2026-09-01; filed as gh:170, a follow-up to gh:163 since the original issue-163 branch is already merged/archived): go beyond plans/erlang-target-research.md''s desk research -- actually install/verify the Erlang toolchain and run the documented-semantics comparison (process/effect model, selective receive, pattern matching) against real `erl`/`erlc` output, not just written docs. Prior attempt (erlang-target-research run 1) hit a sandbox denial trying `which erl`/`erl -eval` and gave up; that incident is logged in plans/opencode-rollout.md -- this is an infrastructure-level restriction, so brief this run to document the denial precisely and stop rather than retry through another channel if it recurs. Write findings as an addendum to plans/erlang-target-research.md.'
+  kind: build
+  needs: []
+  prio: 4
   status: todo
 
 - id: variant-checker-capital-first
@@ -295,8 +311,16 @@
   status: todo
 
 - id: binary-op-multiplicity-design
-  title: 'Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update''s spelling -- Q2/Q3 (draft-split). Round 1 answer: no pick on either -- "deep research to understand if each of the options would collide with something we already decided or inevitably will need to" (Q2), "deeper research into pros/cons, footguns, real code examples and edge cases" (Q3); round 2 needs that research before re-asking'
+  title: 'Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update''s spelling -- Q2/Q3 (draft-split). Round 2 answers (multiplicity-and-offload-round2): Q3 RATIFIED -- option B, require One on the right of `=`, forking becomes explicit; maintainer caveat: drop the `$c`-prefixed alias in the option''s preview, "never agreed to prefacing variable names with $" (applies to whatever alias/binding syntax eventually lands, not specific to this row). Q2 still no pick -- maintainer leans B (zip/broadcast) or C (no default, explicit) but wants to understand how much of jq''s magic/expressive power would be lost either way before choosing; needs jq-expressiveness-under-zip-or-explicit-research before a round 3 re-ask.'
   kind: decide
+  needs: [jq-expressiveness-under-zip-or-explicit-research]
+  prio: 3
+  status: todo
+
+- id: jq-expressiveness-under-zip-or-explicit-research
+  issue: gh:169
+  title: 'Research spike (round answer, multiplicity-and-offload-round2, question binary-op-default-multiplicity): survey real jq idioms that rely on the cartesian default for `Vec op Vec` (option A in binary-op-multiplicity-design), and work out concretely what breaks or gets more verbose under a zip/broadcast default (option B) versus no default at all, explicit `zip`/`cross` (option C). Use real jq snippets and their toylang-under-B and toylang-under-C equivalents so the comparison is concrete, not abstract. Write findings to plans/.'
+  kind: build
   needs: []
   prio: 3
   status: todo
@@ -310,11 +334,19 @@
   status: todo
 
 - id: offload-boundary-design
-  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 1 leaned silent/fully-derived-from-cardinality for Q8, with the caveat it must stay easy and intuitive for the user to design toward vectorizable code -- treat as a lean, not a ratification, until re-asked with that caveat addressed'
+  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled.'
   kind: decide
-  needs: []
+  needs: [offload-explain-flag-build]
   soft: [benchmark-goals]
   prio: 5
+  status: todo
+
+- id: offload-explain-flag-build
+  issue: gh:168
+  title: 'Implement `--explain-offload`: an opt-in compiler diagnostic that annotates compiled output with which sub-expressions became vectorized kernels and which fell back, and why -- per the offload-boundary-design round 2 ruling (multiplicity-and-offload-round2, question vectorizability-visibility, option B). No signature or type-system change; a build-time flag only. LSP hover (option C) is a wanted future addition, deliberately unscheduled here.'
+  kind: build
+  needs: []
+  prio: 4
   status: todo
 
 - id: draft-md-cleanup-review

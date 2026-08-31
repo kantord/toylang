@@ -1251,3 +1251,10 @@
   needs: []
   prio: 5
   status: done
+
+- id: module-as-function-routing-design
+  issue: gh:162
+  title: 'Consider running other modules as functions, e.g. matcher arms dispatching to a submodule file (maintainer note) -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C, `@path` dedicated routing-arm form, chosen over A ($(path) call-shaped) and B (path::fn named-function). Maintainer refined the spelling to parenthesized `@(route-groups/baz.toy)`. Spins off file-visibility-tracking-build (prerequisite, per the round''s own thesis that the checker doesn''t yet track per-file definition origin) and module-routing-syntax-build.'
+  kind: decide
+  needs: [module-routing-research]
+  status: done
