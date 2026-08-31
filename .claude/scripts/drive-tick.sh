@@ -226,7 +226,13 @@ run_tick() { # $1: prompt; rest: extra claude args (--resume <id> or nothing)
   local prompt=$1; shift
   # 9>&- : never leak the tick lock fd into the session or anything it spawns
   # (a tick-started dev server inherited it and held the lock 46 min, 2026-08-31).
-  claude -p --model "$MODEL" --permission-mode auto \
+  # timeout: a hung claude process (or a leaked background-task fd that never
+  # delivers stdin EOF to tick-stream.py) must not hold the flock forever --
+  # it held it 90+ min and stalled every later tick, 2026-08-31. Bounding this
+  # one process guarantees fd 9 closes and the lock releases no matter what
+  # inside the tick hangs; a killed tick just gets retried next interval.
+  timeout --kill-after=30s 2700s \
+    claude -p --model "$MODEL" --permission-mode auto \
     --output-format stream-json --verbose \
     "$@" "$prompt" 2>>"$LOG_DIR/errors.log" 9>&- \
     | python3 "$REPO/.claude/scripts/tick-stream.py" "$OUT"
