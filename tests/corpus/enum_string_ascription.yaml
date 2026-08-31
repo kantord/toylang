@@ -2,13 +2,13 @@
 # string literal checked against an enum type is the unit variant it names, the same spelling
 # the wire format already gives one.
 program: |
-  enum Status { active, inactive }
+  enum Status { Active, Inactive }
 
-  fn initial() -> Status = "active"
+  fn initial() -> Status = "Active"
 
   initial()
 
 output: |
-  "active"
+  "Active"
 
 node_types: [application, variant.unit]

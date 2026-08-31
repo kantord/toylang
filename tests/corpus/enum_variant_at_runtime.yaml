@@ -3,13 +3,13 @@
 # on the value's shape rather than its type alone. Also exercises the qualified spelling
 # (`Shape.point`) and an enum inside a record.
 program: |
-  enum Shape { point, circle{r: Int} }
+  enum Shape { Point, Circle{r: Int} }
 
   fn classify(n: Int) -> Shape = Shape.point if n == 0 else circle{r: n}
 
   {a: classify(0), b: classify(3)}
 
 output: |
-  {"a":"point","b":{"circle":{"r":3}}}
+  {"a":"Point","b":{"Circle":{"r":3}}}
 
 node_types: [application, compare.eq, conditional, int, record-literal, var, variant.payload, variant.unit]

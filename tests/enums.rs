@@ -11,7 +11,7 @@ fn err(src: &str) -> String {
 
 #[test]
 fn a_variant_declared_twice_in_one_enum() {
-    insta::assert_snapshot!(err("enum Shape { point, point }\n\nstr(1)"));
+    insta::assert_snapshot!(err("enum Shape { Point, Point }\n\nstr(1)"));
 }
 
 /// The error has to name both candidates: knowing the name is ambiguous is useless without
@@ -19,36 +19,36 @@ fn a_variant_declared_twice_in_one_enum() {
 #[test]
 fn a_bare_variant_two_enums_declare() {
     insta::assert_snapshot!(err(
-        "enum Status { active, inactive }\nenum Toggle { active, off }\n\nactive"
+        "enum Status { Active, Inactive }\nenum Toggle { Active, Off }\n\nactive"
     ));
 }
 
 #[test]
 fn a_qualified_variant_the_enum_does_not_have() {
-    insta::assert_snapshot!(err("enum Shape { point, circle{r: Int} }\n\nShape.square"));
+    insta::assert_snapshot!(err("enum Shape { Point, Circle{r: Int} }\n\nShape.square"));
 }
 
 #[test]
 fn a_payload_handed_to_a_unit_variant() {
-    insta::assert_snapshot!(err("enum Shape { point, circle{r: Int} }\n\npoint{r: 1}"));
+    insta::assert_snapshot!(err("enum Shape { Point, Circle{r: Int} }\n\npoint{r: 1}"));
 }
 
 #[test]
 fn a_payload_variant_used_bare() {
-    insta::assert_snapshot!(err("enum Shape { point, circle{r: Int} }\n\ncircle"));
+    insta::assert_snapshot!(err("enum Shape { Point, Circle{r: Int} }\n\ncircle"));
 }
 
 /// The hint follows the payload's spelling: parens for a scalar, where `circle{...}` would
 /// point at syntax the variant does not have.
 #[test]
 fn a_scalar_payload_variant_used_bare() {
-    insta::assert_snapshot!(err("enum Temp { unknown, celsius(Int) }\n\ncelsius"));
+    insta::assert_snapshot!(err("enum Temp { Unknown, Celsius(Int) }\n\ncelsius"));
 }
 
 #[test]
 fn a_scalar_payload_of_the_wrong_type() {
     insta::assert_snapshot!(err(
-        "enum Temp { unknown, celsius(Int) }\n\ncelsius(\"hot\")"
+        "enum Temp { Unknown, Celsius(Int) }\n\ncelsius(\"hot\")"
     ));
 }
 
@@ -58,7 +58,7 @@ fn a_scalar_payload_of_the_wrong_type() {
 /// stays refused (kantord/toylang#76).
 #[test]
 fn an_enum_whose_payload_mentions_itself() {
-    insta::assert_snapshot!(err("enum E { leaf, node{next: E} }\n\nleaf"));
+    insta::assert_snapshot!(err("enum E { Leaf, Node{next: E} }\n\nleaf"));
 }
 
 /// `Json`'s array case (kantord/toylang#76, `plans/mini-parser-spike.md`'s open question):
@@ -72,8 +72,8 @@ fn an_enum_whose_payload_mentions_itself() {
 fn a_vec_wrapped_self_reference_typechecks() {
     assert!(
         toylang::compile(
-            "enum Json { arr(Vec<Json>), num(Int) }\n\n\
-             fn describe(j: Json) -> Str = j | arr -> \"arr\" or num -> \"num\"\n\n\
+            "enum Json { Arr(Vec<Json>), Num(Int) }\n\n\
+             fn describe(j: Json) -> Str = j | Arr -> \"arr\" or Num -> \"num\"\n\n\
              describe(Json.arr([Json.num(1)]))"
         )
         .is_ok()
@@ -85,14 +85,14 @@ fn a_vec_wrapped_self_reference_typechecks() {
 /// self-reference is behind a `Vec` is judged per occurrence, not per declaration.
 #[test]
 fn only_the_boxed_variant_of_a_mixed_enum_is_legal() {
-    insta::assert_snapshot!(err("enum E { safe(Vec<E>), bad(E) }\n\n0"));
+    insta::assert_snapshot!(err("enum E { Safe(Vec<E>), Bad(E) }\n\n0"));
 }
 
 /// Aliases and enums share the type namespace, so the same name twice is the same error either
 /// way around.
 #[test]
 fn an_enum_cannot_reuse_an_alias_name() {
-    insta::assert_snapshot!(err("type A = Int\nenum A { x }\n\nstr(1)"));
+    insta::assert_snapshot!(err("type A = Int\nenum A { X }\n\nstr(1)"));
 }
 
 #[track_caller]
@@ -103,7 +103,7 @@ fn run_err(src: &str, stdin: &str) -> String {
         .to_string()
 }
 
-const FLIP: &str = "enum Status { active, inactive }\n\nfn f(s: Status) -> Status = s\n\nf(input)";
+const FLIP: &str = "enum Status { Active, Inactive }\n\nfn f(s: Status) -> Status = s\n\nf(input)";
 
 /// A wire mismatch names the enum, since "found a string" alone would not say which closed set
 /// the string missed.
@@ -116,7 +116,7 @@ fn input_that_is_no_variant_names_the_enum() {
 /// of it, and a unit variant wrapped in an object is not one either.
 #[test]
 fn input_using_the_wrong_shape_for_a_variant() {
-    let src = "enum Shape { point, circle{r: Int} }\n\nfn f(s: Shape) -> Shape = s\n\nf(input)";
+    let src = "enum Shape { Point, Circle{r: Int} }\n\nfn f(s: Shape) -> Shape = s\n\nf(input)";
     insta::assert_snapshot!(format!(
         "{}\n{}",
         run_err(src, "\"circle\""),
@@ -128,21 +128,21 @@ fn input_using_the_wrong_shape_for_a_variant() {
 #[test]
 fn a_match_that_misses_variants_names_them() {
     insta::assert_snapshot!(err(
-        "enum Shape { point, circle{r: Int}, square{s: Int} }\n\nShape.point | point -> 0"
+        "enum Shape { Point, Circle{r: Int}, Square{s: Int} }\n\nShape.point | Point -> 0"
     ));
 }
 
 #[test]
 fn an_arm_for_a_variant_the_enum_does_not_have() {
     insta::assert_snapshot!(err(
-        "enum Shape { point }\n\nShape.point | square -> 1 or any() -> 0"
+        "enum Shape { Point }\n\nShape.point | square -> 1 or any() -> 0"
     ));
 }
 
 #[test]
 fn an_arm_after_the_default_can_never_match() {
     insta::assert_snapshot!(err(
-        "enum Shape { point, circle{r: Int} }\n\nShape.point | any() -> 0 or point -> 1"
+        "enum Shape { Point, Circle{r: Int} }\n\nShape.point | any() -> 0 or Point -> 1"
     ));
 }
 
@@ -151,13 +151,13 @@ fn an_arm_after_the_default_can_never_match() {
 #[test]
 fn a_pattern_naming_only_some_payload_fields() {
     insta::assert_snapshot!(err(
-        "enum P { xy{x: Int, y: Int} }\n\nxy{x: 1, y: 2} | xy{x} -> x"
+        "enum P { Xy{x: Int, y: Int} }\n\nxy{x: 1, y: 2} | Xy{x} -> x"
     ));
 }
 
 #[test]
 fn a_unit_variant_has_nothing_to_destructure() {
-    insta::assert_snapshot!(err("enum S { a, b }\n\nS.a | a{q} -> 1 or b -> 2"));
+    insta::assert_snapshot!(err("enum S { A, B }\n\nS.a | A{q} -> 1 or B -> 2"));
 }
 
 /// A scalar payload has no fields for a `{...}` pattern to name; the arm's `.` is already the
@@ -165,25 +165,25 @@ fn a_unit_variant_has_nothing_to_destructure() {
 #[test]
 fn a_fields_pattern_on_a_scalar_payload() {
     insta::assert_snapshot!(err(
-        "enum Temp { unknown, celsius(Int) }\n\ncelsius(21) | celsius{deg} -> deg or unknown -> 0"
+        "enum Temp { Unknown, Celsius(Int) }\n\ncelsius(21) | Celsius{deg} -> deg or Unknown -> 0"
     ));
 }
 
 #[test]
 fn a_match_needs_an_enum_subject() {
-    insta::assert_snapshot!(err("enum S { a }\n\n1 | a -> 2 or any() -> 3"));
+    insta::assert_snapshot!(err("enum S { A }\n\n1 | A -> 2 or any() -> 3"));
 }
 
 #[test]
 fn a_match_needs_a_subject_at_all() {
-    insta::assert_snapshot!(err("enum S { a }\n\na -> 2"));
+    insta::assert_snapshot!(err("enum S { A }\n\na -> 2"));
 }
 
 /// A unit arm rebinds `.` to nothing: there is no payload to reach, and the wider subject is
 /// deliberately not reachable past the match.
 #[test]
 fn the_subject_is_not_reachable_inside_a_unit_arm() {
-    insta::assert_snapshot!(err("enum S { a }\n\nS.a | a -> ."));
+    insta::assert_snapshot!(err("enum S { A }\n\nS.a | A -> ."));
 }
 
 /// The declaration parses in a module the same as in a program, `pub` and all -- the form

@@ -267,10 +267,10 @@ fn native_streams_lines() {
 /// all. This is the same program and the same bad record, driven through the real CLI with real,
 /// unset stdin instead of `run_on`'s fixture path, to prove the two now agree.
 const REJECT: &str = r#"
-enum Msg { ping, text{body: Str} }
+enum Msg { Ping, Text{body: Str} }
 
 fn render(msgs: Stream<Msg>) -> Stream<Str> =
-    msgs | map(. | text -> .body or any() -> "*ping*")
+    msgs | map(. | Text -> .body or any() -> "*ping*")
 
 jsonlines(render(inputs))
 "#;
@@ -280,7 +280,7 @@ jsonlines(render(inputs))
 /// that already passed validation and reached the backend.
 #[test]
 fn js_streams_a_valid_record_before_a_later_one_fails_live_validation() {
-    assert_streams_first_record(spawn_cli(REJECT, "js"), b"\"ping\"\n", r#""*ping*""#);
+    assert_streams_first_record(spawn_cli(REJECT, "js"), b"\"Ping\"\n", r#""*ping*""#);
 }
 
 fn assert_refuses_live(backend: &str) {
@@ -289,7 +289,7 @@ fn assert_refuses_live(backend: &str) {
         .stdin
         .take()
         .expect("piped stdin")
-        .write_all(b"\"ping\"\n\"burst\"\n")
+        .write_all(b"\"Ping\"\n\"burst\"\n")
         .expect("write both records");
     let output = child.wait_with_output().expect("wait for exit");
     assert!(

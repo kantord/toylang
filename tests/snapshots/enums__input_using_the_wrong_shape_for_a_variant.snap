@@ -2,5 +2,5 @@
 source: tests/enums.rs
 expression: "format!(\"{}\\n{}\", run_err(src, \"\\\"circle\\\"\"), run_err(src, \"{\\\"point\\\": 1}\"))"
 ---
-input: `circle` is a payload variant of Shape, written {"circle": ...}
-input: `point` is a unit variant of Shape, written "point"
+input: `circle` is not a variant of Shape
+input: `point` is not a variant of Shape

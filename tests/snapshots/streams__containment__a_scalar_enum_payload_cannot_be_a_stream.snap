@@ -1,6 +1,5 @@
 ---
 source: tests/streams.rs
-assertion_line: 54
-expression: "err(\"enum E { v(Stream<Str>) }\\n\\n1\")"
+expression: "err(\"enum E { V(Stream<Str>) }\\n\\n1\")"
 ---
-the payload of `v` cannot hold a stream, which has nothing to store (at byte 11)
+the payload of `V` cannot hold a stream, which has nothing to store (at byte 11)

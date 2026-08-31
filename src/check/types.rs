@@ -27,6 +27,40 @@ fn value_name(name: &str, span: Span, what: &str) -> Result<(), Error> {
     Ok(())
 }
 
+/// The lowercase-constructor spelling of a declared variant's name: identical except the first
+/// letter, which is the matcher's capital lowered (gh:156). The casing split is first-letter
+/// only, so the rest must match exactly, not merely case-insensitively.
+pub(super) fn constructor_of(declared: &str) -> String {
+    let mut chars = declared.chars();
+    match chars.next() {
+        Some(c) => c.to_lowercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+/// The matcher spelling of a lowercase constructor: the first letter capitalized (gh:156).
+pub(super) fn matcher_of(name: &str) -> String {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+/// Whether `written` is the lowercase-constructor spelling of the declared variant `declared`.
+pub(super) fn is_constructor_of(declared: &str, written: &str) -> bool {
+    let mut declared_chars = declared.chars();
+    let mut written_chars = written.chars();
+    match (declared_chars.next(), written_chars.next()) {
+        (Some(d), Some(w)) => {
+            d.is_uppercase()
+                && w == d.to_lowercase().next().unwrap_or(d)
+                && declared_chars.as_str() == written_chars.as_str()
+        }
+        _ => false,
+    }
+}
+
 /// What a type name stands for. An alias is an abbreviation, so this maps to the written form
 /// and `resolve` expands it; nothing downstream ever learns a name was involved.
 type Aliases<'a> = HashMap<String, &'a TypeExpr>;
@@ -61,6 +95,24 @@ pub(super) fn enum_map(enums: &[EnumDecl]) -> Result<HashMap<String, &EnumDecl>,
                 return Err(Error::new(
                     v.span,
                     format!("variant `{}` is declared twice in `{}`", v.name, e.name),
+                ));
+            }
+            // The declared name is the matcher, so it starts with a capital letter; the value is
+            // built with the lowercase constructor (`Circle` declares, `circle` builds). The
+            // prelude's Opt/Result still spell their variants lowercase -- exempting pub enums
+            // keeps the build green until gh:165 migrates them, and a program's own variants are
+            // all non-pub, so the rule still bites everywhere it should.
+            if !e.is_pub && !v.name.chars().next().is_some_and(char::is_uppercase) {
+                return Err(Error::new(
+                    v.span,
+                    format!(
+                        "a variant name starts with a capital letter; declare `{}` of `{}` as \
+                         `{}`, and build its value with the lowercase constructor `{}`",
+                        v.name,
+                        e.name,
+                        matcher_of(&v.name),
+                        v.name
+                    ),
                 ));
             }
         }

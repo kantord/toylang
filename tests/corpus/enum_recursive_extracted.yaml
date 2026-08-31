@@ -5,11 +5,11 @@
 # has to survive that: Lua decided from it whether to emit its join helper at all, and emitted a
 # printer that called a function it had left out.
 program: |
-  enum Json { arr(Vec<Json>), num(Int) }
+  enum Json { Arr(Vec<Json>), Num(Int) }
 
-  Json.arr([Json.arr([Json.num(1)]), Json.num(2)]) | arr -> .[0]! or num -> Json.num(0)
+  Json.arr([Json.arr([Json.num(1)]), Json.num(2)]) | Arr -> .[0]! or Num -> Json.num(0)
 
 output: |
-  {"arr":[{"num":1}]}
+  {"Arr":[{"Num":1}]}
 
 node_types: [int, local, match, pipe, selection.collapse, unwrap, variant.payload, vec-literal]

@@ -10,7 +10,10 @@ mod linearity;
 mod types;
 
 use linearity::{StreamBinding, check_linear, field_used, param_used, prune_unreachable};
-use types::{TypeEnv, alias_map, enum_map, resolve, resolve_enum, signatures};
+use types::{
+    TypeEnv, alias_map, constructor_of, enum_map, is_constructor_of, matcher_of, resolve,
+    resolve_enum, signatures,
+};
 
 struct Ctx<'a> {
     sigs: &'a HashMap<String, Sig>,
@@ -118,6 +121,18 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 .entry(v.name.clone())
                 .or_default()
                 .push(e.name.clone());
+            // The lowercase spelling is the constructor, the value built right away (gh:156):
+            // a bare lowercase variant name resolves to the same owner so it reaches `construct`,
+            // which maps it to the declared variant. A declared name already lowercase (the
+            // prelude's `Opt`/`Result`) has the same constructor spelling, so pushing again would
+            // make one owner look like two.
+            let constructor = constructor_of(&v.name);
+            if constructor != v.name {
+                variant_owners
+                    .entry(constructor)
+                    .or_default()
+                    .push(e.name.clone());
+            }
         }
     }
     let sigs = signatures(&file.defs, &env)?;
@@ -338,6 +353,13 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
                 .entry(v.name.clone())
                 .or_default()
                 .push(e.name.clone());
+            let constructor = constructor_of(&v.name);
+            if constructor != v.name {
+                variant_owners
+                    .entry(constructor)
+                    .or_default()
+                    .push(e.name.clone());
+            }
         }
     }
     let sigs = signatures(&module.defs, &env)?;
@@ -725,6 +747,7 @@ fn construct(
     variant_span: Span,
     payload: Option<&Expr>,
     expected: Option<&Type>,
+    from_string: bool,
 ) -> Result<Tir, Error> {
     let Type::Enum { name, args, .. } = enum_ty else {
         unreachable!("construct is only called with an enum type")
@@ -745,7 +768,23 @@ fn construct(
         unreachable!("construct is only called with an enum type")
     };
     let variants = enum_variants(ctx, name, args);
-    let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
+    // A capitalized name is the matcher, legal only in a pattern; a value is built with the
+    // lowercase constructor, which resolves to the declared (capitalized) variant. A string
+    // literal naming a variant is the wire's spelling, so it is exempt -- see the caller.
+    if !from_string && variant.chars().next().is_some_and(char::is_uppercase) {
+        return Err(Error::new(
+            variant_span,
+            format!(
+                "a constructor starts with a lowercase letter; `{variant}` is the matcher and \
+                 matches only in a pattern, so write `{}` to build the value",
+                constructor_of(variant)
+            ),
+        ));
+    }
+    let Some((variant_name, declared)) = variants
+        .iter()
+        .find(|(n, _)| n == variant || is_constructor_of(n, variant))
+    else {
         return Err(Error::new(
             variant_span,
             format!("`{name}` has no variant `{variant}`"),
@@ -778,7 +817,10 @@ fn construct(
     Ok(Tir::new(
         enum_ty.clone(),
         Kind::EnumLit {
-            variant: variant.to_string(),
+            // The wire carries the matcher's name, the declared variant (`Circle`), so a backend
+            // reader and printer can agree on it without lowering; the lowercase `variant` is the
+            // constructor, the source spelling that builds the value (gh:156).
+            variant: variant_name.to_string(),
             payload,
         },
     ))
@@ -798,7 +840,20 @@ fn infer_instantiation(
         unreachable!("construct is only called with an enum type")
     };
     let variants = enum_variants(ctx, name, args);
-    let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
+    if variant.chars().next().is_some_and(char::is_uppercase) {
+        return Err(Error::new(
+            variant_span,
+            format!(
+                "a constructor starts with a lowercase letter; `{variant}` is the matcher and \
+                 matches only in a pattern, so write `{}` to build the value",
+                constructor_of(variant)
+            ),
+        ));
+    }
+    let Some((variant_name, declared)) = variants
+        .iter()
+        .find(|(n, _)| n == variant || is_constructor_of(n, variant))
+    else {
         return Err(Error::new(
             variant_span,
             format!("`{name}` has no variant `{variant}`"),
@@ -859,7 +914,7 @@ fn infer_instantiation(
     Ok(Tir::new(
         ty::substitute(template, &bindings),
         Kind::EnumLit {
-            variant: variant.to_string(),
+            variant: variant_name.to_string(),
             payload: Some(Box::new(built)),
         },
     ))
@@ -1172,6 +1227,17 @@ fn variant_arm<'a>(
     };
     let variants = enum_variants(ctx, enum_name, args);
     let Some((_, payload_ty)) = variants.iter().find(|(n, _)| n == vname) else {
+        // A lowercase name is the constructor, which builds a value; a pattern names the matcher.
+        if variants.iter().any(|(n, _)| is_constructor_of(n, vname)) {
+            return Err(Error::new(
+                vspan,
+                format!(
+                    "`{vname}` is the constructor, not a matcher; a pattern names the matcher, \
+                     so write `{}`",
+                    matcher_of(vname)
+                ),
+            ));
+        }
         return Err(Error::new(
             vspan,
             format!("`{enum_name}` has no variant `{vname}`"),
@@ -1440,7 +1506,7 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             }
             if let Some(owners) = ctx.variant_owners.get(name) {
                 let enum_ty = sole_owner(ctx, name, owners, *span)?.clone();
-                return construct(ctx, &enum_ty, name, *span, None, None);
+                return construct(ctx, &enum_ty, name, *span, None, None, false);
             }
             // A function is not a value, but "`f` is not defined" for a defined function is a
             // lie. This is where `f -1` lands: `-` cannot start a bare argument, so the parse
@@ -1584,6 +1650,7 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 *variant_span,
                 payload.as_deref(),
                 None,
+                false,
             )
         }
 
@@ -1788,7 +1855,7 @@ fn call(
         // here; it resolves as a variant only after the function namespace declines.
         if let Some(owners) = ctx.variant_owners.get(func) {
             let enum_ty = sole_owner(ctx, func, owners, func_span)?.clone();
-            return construct(ctx, &enum_ty, func, func_span, arg.as_deref(), None);
+            return construct(ctx, &enum_ty, func, func_span, arg.as_deref(), None, false);
         }
         return Err(Error::new(func_span, format!("`{func}` is not a function")));
     };
@@ -2809,14 +2876,18 @@ fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Err
         return None;
     };
     let variants = enum_variants(ctx, name, args);
-    let owns = |n: &str| variants.iter().any(|(vn, _)| vn == n);
+    let owns = |n: &str| {
+        variants
+            .iter()
+            .any(|(vn, _)| vn == n || is_constructor_of(vn, n))
+    };
     match expr {
         Expr::Var { name, span }
             if owns(name)
                 && !ctx.arm_fields.iter().any(|(n, ..)| n == name)
                 && !ctx.scope.iter().any(|(n, _, _)| n == name) =>
         {
-            Some(construct(ctx, want, name, *span, None, None))
+            Some(construct(ctx, want, name, *span, None, None, false))
         }
         Expr::Call {
             func,
@@ -2824,7 +2895,7 @@ fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Err
             arg,
             ..
         } if owns(func) && !ctx.sigs.contains_key(func) => {
-            Some(construct(ctx, want, func, *func_span, arg.as_deref(), None))
+            Some(construct(ctx, want, func, *func_span, arg.as_deref(), None, false))
         }
         Expr::Variant {
             enum_name,
@@ -2839,6 +2910,7 @@ fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Err
             *variant_span,
             payload.as_deref(),
             None,
+            false,
         )),
         _ => None,
     }
@@ -2882,7 +2954,7 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     if let Expr::Str { text, span } = expr
         && matches!(want, Type::Enum { .. })
     {
-        return construct(ctx, want, text, *span, None, None).map(Expected::Checked);
+        return construct(ctx, want, text, *span, None, None, true).map(Expected::Checked);
     }
 
     // An Int64-expected literal and a wanted enum's variant are the same kind of arm: a form

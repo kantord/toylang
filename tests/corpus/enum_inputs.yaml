@@ -3,17 +3,17 @@
 # story end to end on all seven backends. The shape also fuses, so each backend's own reader
 # parses and dispatches one line at a time.
 program: |
-  enum Msg { ping, text{body: Str} }
+  enum Msg { Ping, Text{body: Str} }
 
   fn render(msgs: Stream<Msg>) -> Stream<Str> =
-      msgs | map(. | text -> .body or any() -> "*ping*")
+      msgs | map(. | Text -> .body or any() -> "*ping*")
 
   jsonlines render inputs
 
 input: |
-  "ping"
-  {"text": {"body": "hi"}}
-  "ping"
+  "Ping"
+  {"Text": {"body": "hi"}}
+  "Ping"
 
 output: |
   "*ping*"

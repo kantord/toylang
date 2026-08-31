@@ -88,8 +88,8 @@ fn a_genuine_cycle_between_named_functions_is_refused_cleanly() {
 /// `tl_show_B` calls `tl_show_A`, and jq's `def` has no forward declaration for that any more
 /// than it does for `a`/`b`/`c` above (kantord/toylang#116).
 const PRINTER_CYCLE: &str = r#"
-enum A { a(Vec<B>) }
-enum B { b(Vec<A>) }
+enum A { A(Vec<B>) }
+enum B { B(Vec<A>) }
 
 {x: A.a([]), y: B.b([])}
 "#;

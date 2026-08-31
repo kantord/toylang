@@ -2,12 +2,12 @@
 # the printers a program needs are collected from both, and a backend that read only the result
 # type would emit a call to a printer it never wrote.
 program: |
-  enum Json { arr(Vec<Json>), num(Int) }
+  enum Json { Arr(Vec<Json>), Num(Int) }
 
   jsonlines([Json.arr([Json.num(1)]), Json.num(2)])
 
 output: |
-  {"arr":[{"num":1}]}
-  {"num":2}
+  {"Arr":[{"Num":1}]}
+  {"Num":2}
 
 node_types: [builtin.jsonlines, int, variant.payload, vec-literal]

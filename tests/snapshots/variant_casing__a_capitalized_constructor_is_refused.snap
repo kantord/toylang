@@ -1,0 +1,5 @@
+---
+source: tests/variant_casing.rs
+expression: "err(\"enum Shape { Point, Circle{r: Int} }\\n\\nCircle{r: 1}\")"
+---
+a constructor starts with a lowercase letter; `Circle` is the matcher and matches only in a pattern, so write `circle` to build the value (at byte 38)

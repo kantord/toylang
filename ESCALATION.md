@@ -1,42 +1,41 @@
-# Escalation: the let-bindings bug is not where the brief said it was
+# Escalation: the serialized form of a variant under the capital-name rule
 
-The brief for this lane described the issue-150 bug as the let-chain's final expression
-swallowing the next top-level statement across a line break, "the same class of bug" as the
-#148 fix. That is not what the scratch files show.
+gh:156 splits a variant's spelling in two: the declared name is the matcher, capital and used
+in a pattern (`Circle`), and the value is built with the lowercase constructor (`circle`).
+That split is unambiguous. What it implies for the JSON wire form was not settled by the
+issue, which is a grilling round re-examining exactly this convention.
 
-## Evidence
+## The question
 
-- `scratch_let_multi.toy` and `scratch_let_single.toy` both fail with `expected end of
-  program, found {` at the `input {x: Int, y: Int}` line, after the function.
-- Removing the `input {x: Int, y: Int}` line (a program whose body is just `f(input)`, the
-  let-block unchanged) runs correctly end-to-end: the let-chain's final expression already
-  stops at the newline, exactly as the #148 same-line rule requires.
-- Replacing the let-function with a plain function and keeping the `input {x: Int, y: Int}`
-  line fails the same way. The failure has nothing to do with `let`.
-- So the failing construct is `input <type>`: a program-body line that declares what stdin
-  holds. No version of toylang parses it; `input` is an atom and the trailing record type is
-  left over.
+A `Circle` value serializes to JSON. As what -- the matcher's capital (`"Circle"`) or the
+constructor's lowercase (`"circle"`)?
 
-## The decision
+## Why capital, and why it is forced
 
-The brief's definition of done is explicit: "confirm BOTH scratch files run correctly
-end-to-end". The scratch files use `input {x: Int, y: Int}` as a typed-input declaration, so
-meeting the DoD requires making that construct parse and check. The alternative -- fixing the
-let-chain boundary as the brief describes and leaving `input <type>` unsupported -- does not
-meet the DoD.
+The backend readers and printers switch on the *declared* variant name. Once declarations are
+capital, a reader emits/accepts `"Circle"` whether or not that was separately decided. The
+draft records the same answer: the 2026-08-28 revision says "The JSON form is the name
+verbatim (`"Active"`)", and the 2026-08-29 auto-matchers revision that follows does not
+reverse it. So capital is both what the code does and what the design document says.
 
-Chosen continuation: implement `input <type>` as a minimal input-type annotation, applied the
-same-line way a call argument is. The annotation resolves into the same `ctx.input` cell the
-uses of `input` read, so first-use-wins, validation, and all seven backends pick it up
-without changes of their own.
+The alternative -- a lowercase wire (`"circle"`) -- would mean changing every backend's reader
+and printer to lower the declared name, and it contradicts the draft. It was rejected.
 
-## Costs
+## Cost and follow-up
 
-- Scope: issue-150 is about `let` bindings; the annotation is a separate feature the issue
-  did not ask for. It is required only because the lane's own repro files assume it.
-- Risk: an annotation that disagrees with a position that expects a type is a loud error
-  ("`input` is used as X here and as Y elsewhere"), and a stream/absence/Char/Int64
-  annotation is refused the way `input_read` refuses those wire forms. No previously valid
-  program changes meaning: `input` followed by a same-line record type or type name was
-  already a parse error before this change.
-- The annotation is not extended to `inputs` or `lines`; nothing here needs it.
+- The wire form of existing enum data changes: `{"circle":{"r":1}}` becomes
+  `{"Circle":{"r":1}}`, a unit variant `"active"` becomes `"Active"`. This is a breaking
+  change to any data already persisted in the old form.
+- `docs/` still describes the pre-split convention ("a variant name is data, so it is
+  lowercase") and its enum fragments declare lowercase variants that no longer compile. The
+  docs mega-test (`just test`) is skipped by `just check`, so this lane is green, but the
+  enum pages under `docs/tutorial`, `docs/reference`, `docs/guides`, and `docs/adr/0009` need
+  updating before a promotion that runs `just test`.
+- The prelude's `Opt`/`Result` keep lowercase variants, exempt from the capital rule, until
+  the migration already tracked as gh:165.
+
+## Conservative continuation taken
+
+Capital wire, per the draft and the code as delivered. The migration of the corpus and the
+unit tests to the new spelling is complete; `just check`, `just fmt`, and `just clippy` are
+green on the work touched.
