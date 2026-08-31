@@ -10,16 +10,14 @@ description: Drive development autonomously from plans/board.yaml - the ordered 
 
 Orchestration is externally scheduled: the maintainer starts
 `.claude/scripts/drive-loop.sh` by hand (and stops it by killing the process). The loop
-fires `.claude/scripts/drive-tick.sh` every DRIVE_INTERVAL seconds -- each tick a
-`claude -p` request in auto permission mode that resumes ONE coordinator session; the
-script watches that session's context from outside and starts a fresh one past
-MAX_CONTEXT. The script also picks the model (sonnet routinely, fable when a lane looks
-landable) and revives the dev server after a reboot.
+fires `.claude/scripts/drive-tick.sh` every DRIVE_INTERVAL seconds -- each tick a fresh,
+standalone `claude -p` request in auto permission mode (no cross-tick --resume, dropped
+2026-08-31: it saved well under a cent/tick and both of that night's flakiest ticks
+happened on a resumed session). The script also picks the model (sonnet routinely, fable
+when a lane looks landable) and revives the dev server after a reboot.
 
-After editing this skill, any other skill, or the tick scripts: `rm ~/.cache/toylang-drive/session-id`
-so the NEXT tick boots a fresh session that reads the updated files -- a resumed session keeps
-serving its stale cached copy. Never kill a mid-tick process for this; the drop takes effect at
-the next tick boundary on its own.
+Editing this skill, any other skill, or the tick scripts takes effect on the very next
+tick automatically -- there is no cached session to drop.
 
 A tick session therefore NEVER arms crons, background watchers, or its own follow-up
 wake-ups -- scheduling belongs to the loop script. And a tick NEVER backgrounds work it

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Stateless-ish drive tick. One coordinator session is REUSED across ticks (--resume)
-# so the prompt cache stays warm and the skill/board context is not re-read every ten
-# minutes; the loop observes the session's context size from outside (the usage block
-# of the JSON result) and simply starts a fresh session once it crosses MAX_CONTEXT --
-# externally-enforced amnesia instead of in-session compaction. Ticks are drilled to
-# trust disk over memory, so a reset never loses state.
+# Stateless drive tick: every tick is a brand-new claude -p session, no --resume.
+# Ticks are drilled to trust disk over memory, so a fresh session never loses state
+# -- resuming across ticks was a prompt-cache optimization only (measured saving:
+# ~1-1.5k tokens/tick, well under a cent/tick), and the two flakiest ticks of
+# 2026-08-31 (a 90+ minute lock stall, a 0-turn/25ms empty result) both happened on
+# a resumed session; every fresh-session tick that night did clean, verifiable work.
+# Dropped for reliability -- see plans/board.yaml and the drive skill for the ruling.
 #
 # Runs in auto permission mode -- the same classifier guardrail interactive sessions
 # get. Every tick runs sonnet (maintainer rule, 2026-08-30): landing is mostly
@@ -15,8 +16,6 @@ REPO=/home/kantord/repos/toylang
 WORKTREES=/home/kantord/.local/share/enwiro/worktrees/pr/toylang-1234138d
 LANES="$HOME/.local/share/toylang-lanes"  # enwiro-free lanes (dispatch-worker.sh)
 LOG_DIR="$HOME/.cache/toylang-drive"
-SID_FILE="$LOG_DIR/session-id"
-MAX_CONTEXT="${MAX_CONTEXT:-90000}"
 mkdir -p "$LOG_DIR"
 
 # Never two ticks at once: a landing tick can outlive several loop intervals.
@@ -201,8 +200,7 @@ if [ -z "$TRIGGER" ]; then
   exit 0
 fi
 
-# The POLICY is sent once per SESSION (ticks resume a cached session until it
-# crosses MAX_CONTEXT); resumed ticks send only the trigger + snapshot. Keep it
+# The POLICY is sent fresh every tick (no cross-tick resume). Keep it
 # apostrophe-free -- it sits in single quotes.
 if [ "${1:-tick}" = "audit" ]; then
   POLICY='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has a live or accounted-for lane; no worktree holds unmerged commits the board thinks landed; no falsely-stuck lanes. Fix what is mechanical, file issues for the rest. End quietly if clean.'
@@ -220,9 +218,8 @@ print(len(d.get('records',[])))" 2>/dev/null || echo '?')
 ROUNDS=$(ls docs/.grill/*.round.yaml 2>/dev/null | xargs -rn1 basename | tr '\n' ' ')
 CORE="Trigger: $TRIGGER. Snapshot (from disk this second -- act on it, re-verify only what you modify):${STATE:- no delegated lanes} [inbox_records=$INBOX_N pending_rounds=${ROUNDS:-none}]. You are a ROUTER: turns are for decisions and the four scripts (dispatch-worker.sh, land-lane.sh, board-archive.py, round files), never exploration."
 
-run_tick() { # $1: prompt; rest: extra claude args (--resume <id> or nothing)
-  # stream-json + the colorizer keeps the loop terminal a live, readable trace;
-  # the colorizer writes the final result event to $OUT for the context watch.
+run_tick() { # $1: prompt
+  # stream-json + the colorizer keeps the loop terminal a live, readable trace.
   local prompt=$1; shift
   # 9>&- : never leak the tick lock fd into the session or anything it spawns
   # (a tick-started dev server inherited it and held the lock 46 min, 2026-08-31).
@@ -237,49 +234,8 @@ run_tick() { # $1: prompt; rest: extra claude args (--resume <id> or nothing)
   { timeout --kill-after=30s 2700s \
       claude -p --model "$MODEL" --permission-mode auto \
       --output-format stream-json --verbose \
-      "$@" "$prompt" 2>>"$LOG_DIR/errors.log" \
+      "$prompt" 2>>"$LOG_DIR/errors.log" \
       | python3 "$REPO/.claude/scripts/tick-stream.py" "$OUT"; } 9>&-
 }
 
-# Resumed sessions already hold the tick policy; send trigger + snapshot only.
-# Audits always carry their (short) full policy -- the resumed session holds
-# the tick policy, not the audit one.
-SHORT="Next tick under the standing policy. $CORE"
-[ "${1:-tick}" = "audit" ] && SHORT="$POLICY $CORE"
-SID=""
-[ -f "$SID_FILE" ] && SID=$(cat "$SID_FILE")
-if [ -n "$SID" ]; then
-  run_tick "$SHORT" --resume "$SID" || { rm -f "$SID_FILE"; SID=""; }
-fi
-[ -n "$SID" ] || run_tick "$POLICY $CORE"
-
-# Observe the context from outside: keep the session while it is small, drop it
-# (fresh session next tick) once it crosses MAX_CONTEXT. The result JSON's usage
-# is cumulative across turns, so the real context size is the LAST usage entry in
-# the session transcript: what the final request actually carried.
-python3 - "$OUT" "$SID_FILE" "$MAX_CONTEXT" <<'EOF'
-import json, sys, os, glob
-out, sid_file, max_ctx = sys.argv[1], sys.argv[2], int(sys.argv[3])
-try:
-    sid = json.load(open(out)).get("session_id")
-except Exception:
-    sys.exit(0)
-ctx = 0
-paths = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sid}.jsonl"))
-for line in open(paths[0]) if paths else []:
-    try:
-        u = json.loads(line).get("message", {}).get("usage")
-    except Exception:
-        continue
-    if u:
-        ctx = sum(u.get(k, 0) for k in
-                  ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
-if sid and 0 < ctx < max_ctx:
-    open(sid_file, "w").write(sid)
-    keep = True
-else:
-    try: os.remove(sid_file)
-    except FileNotFoundError: pass
-    keep = False
-print(f"session {sid} context~{ctx} keep={keep}")
-EOF
+run_tick "$POLICY $CORE"
