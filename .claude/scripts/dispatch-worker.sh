@@ -41,9 +41,21 @@ if [ -d "$d" ]; then
   echo "[dispatch] continuing in existing lane $d"
 else
   # -B would steal a branch checked out elsewhere; add fails loudly instead,
-  # which is the guard we want (that task already has a worktree).
-  git -C "$REPO" worktree add -b "issue-$N" "$d" "$BASE" -q 2>/dev/null \
-    || git -C "$REPO" worktree add "$d" "issue-$N" -q
+  # which is the guard we want (that task already has a worktree). The
+  # fallback here USED to silently reuse whatever branch already existed --
+  # an orphaned issue-155 branch from an abandoned gh:136 dispatch got
+  # silently inherited by a later, unrelated gh:155 dispatch this way (and
+  # the same for issue-157), so the worker exited having never touched its
+  # real task. Fail loudly instead: a same-name branch with no worktree is
+  # always leftover state, never a legitimate continuation path (that's
+  # what the [ -d "$d" ] branch above is for).
+  if ! git -C "$REPO" worktree add -b "issue-$N" "$d" "$BASE" -q 2>/dev/null; then
+    echo "refusing: branch issue-$N already exists with no worktree -- orphaned from an" \
+      "earlier dispatch (contaminated issue-155/issue-157 this way, 2026-08-31)." \
+      "Inspect it first (git log issue-$N), then either delete the stale branch or" \
+      "dispatch this task under a different lane name." >&2
+    exit 1
+  fi
 fi
 
 if [ -z "${BRIEF_RAW:-}" ]; then
