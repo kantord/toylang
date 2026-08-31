@@ -111,3 +111,27 @@ should describe the *risk*, not assert unverified internal state ("worker is liv
 as fact -- the next tick then has to re-derive ground truth from disk anyway. Cheaper
 to just mark `status: blocked-pending-verification` and let the next tick check
 `git log`/`pgrep` itself.
+
+## Incident: erlang-target-research (gh:163) gave up on a toolchain-check denial (2026-09-01)
+
+18 steps of legitimate research (read `docs/reference/types/{stream,str,char}.md`,
+`research-log/index.md`, `ESCALATION.md`, grepped `Backend::` in `src/lib.rs`, read
+backend emitters) then tried `which erl escript erlc; erl -eval '...halt().' -noshell`
+to check whether an Erlang toolchain exists on the host -- denied by the permission
+classifier -- and exited immediately after, zero commits, no `plans/*.md` written, no
+ESCALATION.md for this run. Landed on a lane whose branch tip happened to equal the
+`to-merge-1788204752` accumulator (its dispatch base, since that accumulator was the
+largest live one at dispatch time) -- misread by the gate script's `ahead=7 dirty=0`
+signal as "worker exited, landable," when actually zero commits were this worker's own.
+
+Root cause: the task never needed to actually run Erlang. The brief asks for a design
+survey (process/effect model, pattern matching, immutability) against docs already in
+the repo and toylang's own backend source -- a desk review, not an empirical one. The
+worker chose to verify toolchain presence anyway, hit the sandbox wall, and gave up
+rather than continuing with the read-only research it had already started.
+
+Fix: rebriefed with an explicit "no toolchain/execution needed, docs+source read only,
+write findings to plans/erlang-target-research.md" instruction. | $0.01, 18 steps,
+zero commits, one coordinator rebrief | No -- the `which`/`erl -eval` denial is sandbox
+policy (arbitrary binary execution), not opencode-specific; the give-up-after-one-denial
+behavior is the same shape as issue-108/125 above.
