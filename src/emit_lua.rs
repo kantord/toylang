@@ -142,6 +142,31 @@ local function tl_reverse(v)
 end
 ";
 
+// `narrow` is true exactly when the element type is Int: both widths live in the same 64-bit
+// integer here, so the only difference is whether each addition is brought back to 32 bits the
+// way `+` does.
+const SUM_HELPER: &str = "\
+local function tl_sum(v, narrow)
+  local acc = 0
+  for i = 1, #v do
+    acc = acc + v[i]
+    if narrow then acc = tl_i32(acc) end
+  end
+  return acc
+end
+";
+
+const MAX_HELPER: &str = "\
+local function tl_max(v)
+  if #v == 0 then return \"none\" end
+  local m = v[1]
+  for i = 2, #v do
+    if v[i] > m then m = v[i] end
+  end
+  return { some = m }
+end
+";
+
 const UNWRAP_HELPER: &str = r#"local function tl_unwrap(v, depth)
   if depth > 0 then
     local out = {}
@@ -281,6 +306,11 @@ pub fn emit(program: &Program) -> String {
         (used.reverse, REVERSE_HELPER),
         (used.arith, ARITH_HELPER),
         (used.arith64, ARITH64_HELPER),
+        // After ARITH_HELPER: `tl_sum` narrows through `tl_i32`, and a local declared later in
+        // the same chunk is invisible to an earlier function body, which would fall back to the
+        // nil global at runtime.
+        (used.sum, SUM_HELPER),
+        (used.max, MAX_HELPER),
         (used.map, MAP_HELPER),
         (used.range, RANGE_HELPER),
         (used.collect, COLLECT_HELPER),
@@ -535,6 +565,8 @@ struct Helpers {
     chars: bool,
     sort: bool,
     reverse: bool,
+    sum: bool,
+    max: bool,
     eq: bool,
 }
 
@@ -569,8 +601,10 @@ fn compare_helpers(op: BinOp, operand: &Type, used: &mut Helpers) {
     used.eq |= operand.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne);
 }
 
-/// One helper per builtin whose Lua spelling is a function rather than an operator.
-fn builtin_helpers(which: Builtin, used: &mut Helpers) {
+/// One helper per builtin whose Lua spelling is a function rather than an operator. `arg.ty` is
+/// needed for `sum` alone: `tl_sum` narrows through `tl_i32` when the element is an Int, so the
+/// helper that defines it has to be present alongside.
+fn builtin_helpers(which: Builtin, arg_ty: &Type, used: &mut Helpers) {
     used.range |= which == Builtin::Range;
     used.jsonlines |= which == Builtin::JsonLines;
     used.tail |= which == Builtin::Tail;
@@ -578,6 +612,9 @@ fn builtin_helpers(which: Builtin, used: &mut Helpers) {
     used.chars |= which == Builtin::Chars;
     used.sort |= which == Builtin::Sort;
     used.reverse |= which == Builtin::Reverse;
+    used.sum |= which == Builtin::Sum;
+    used.max |= which == Builtin::Max;
+    used.arith |= which == Builtin::Sum && tir::runtime_elem(arg_ty) == Some(&Type::Int);
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -645,7 +682,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
             }
             Kind::Builtin { which, arg } => {
-                builtin_helpers(*which, used);
+                builtin_helpers(*which, &arg.ty, used);
                 walk(arg, used);
             }
             Kind::Cond {
@@ -789,6 +826,12 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
             Builtin::Sort => format!("tl_sort({})", expr(enums, arg)),
             Builtin::Reverse => format!("tl_reverse({})", expr(enums, arg)),
+            Builtin::Sum => format!(
+                "tl_sum({}, {})",
+                expr(enums, arg),
+                tir::runtime_elem(&arg.ty) == Some(&Type::Int)
+            ),
+            Builtin::Max => format!("tl_max({})", expr(enums, arg)),
             // The names come from the checked type, not the table value, so `arg` runs as the
             // function literal's ignored parameter -- the same IIFE shape `Bind` uses -- purely
             // for whatever else it does.

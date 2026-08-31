@@ -26,17 +26,17 @@ Solved, one page each: [multiples of 3 and 5](01-multiples-of-3-and-5.md),
 too-wide-for-`Int` half of
 [kantord/toylang#38](https://github.com/kantord/toylang/issues/38).
 
-One is skipped, and not for anything the language lacks:
-
-- [**Problem 10**](10-summation-of-primes.md) now produces the right answer on all seven
-  backends, but two million trial divisions cost the interpreted backends minutes, and every
-  fragment here runs on every `just test`. Whether the docs harness grows a slow tier is
-  [kantord/toylang#90](https://github.com/kantord/toylang/issues/90).
+[Adding up the primes below a bound](10-summation-of-primes.md) is solved too, as a `slow`
+fragment. Two million trial divisions cost the interpreted backends half a minute to minutes,
+so [the docs harness](../../reference/syntax/programs.md) type-checks and emits the fragment on
+every backend on every `just test` and only executes it under `just slow-test`
+([kantord/toylang#90](https://github.com/kantord/toylang/issues/90) asked for that tier;
+[kantord/toylang#135](https://github.com/kantord/toylang/issues/135) built it).
 
 ## Problems 11-20
 
 Continuing the stream ([kantord/toylang#67](https://github.com/kantord/toylang/issues/67)):
-six solved, four skipped. Three of the solved pages (11, 13, 18) read a blob of problem-given
+seven solved, three skipped. Three of the solved pages (11, 13, 18) read a blob of problem-given
 data that can never live in this repo
 ([kantord/toylang#39](https://github.com/kantord/toylang/issues/39)); each checks a small
 synthetic input in its fragment instead and points at `tests/euler_real_data.rs`, where
@@ -51,9 +51,14 @@ asserting a result nobody here had run
 Solved: [the first triangular number with over 500 divisors](12-highly-divisible-triangular-number.md),
 [four in a row, multiplied](11-largest-product-in-a-grid.md),
 [summing a hundred large numbers](13-large-sum.md),
+[the longest Collatz chain under a million](14-longest-collatz-sequence.md),
 [counting letters in one to a thousand](17-number-letter-counts.md),
 [the richest way down a triangle](18-maximum-path-sum-i.md), and
-[Sundays on the first of the month, 1901-2000](19-counting-sundays.md). Problems 8, 13 and 18
+[Sundays on the first of the month, 1901-2000](19-counting-sundays.md). Problem 14 is a `slow`
+fragment like problem 10: the million chains price the interpreted backends out of the
+every-fragment suite, so `just test` compiles the fragment on every backend and `just
+slow-test` runs it
+([kantord/toylang#90](https://github.com/kantord/toylang/issues/90)). Problems 8, 13 and 18
 are confirmed against the real, official data; problem 11 is not yet, because at the real 20x20
 scale its linear maximum scan blows past the Python backend's 1000-frame recursion limit
 ([kantord/toylang#132](https://github.com/kantord/toylang/issues/132)), a gap in `emit_py.rs`,
@@ -61,11 +66,6 @@ not in the language.
 
 Still skipped:
 
-- [**Problem 14**](14-longest-collatz-sequence.md): the chain terms fit
-  [Int64](../../reference/types/int64.md) now and the true winner comes out on the compiled
-  backends, but roughly 130 million recursive steps price the interpreted backends out of
-  the every-fragment suite -- the same slow-tier question as problem 10,
-  [kantord/toylang#90](https://github.com/kantord/toylang/issues/90).
 - [**Problem 15**](15-lattice-paths.md): its answer (about 1.4e11) fits Int64, so the width
   blocker recorded under [kantord/toylang#38](https://github.com/kantord/toylang/issues/38)
   no longer applies; nobody has written the page since.

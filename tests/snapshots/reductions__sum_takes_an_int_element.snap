@@ -1,0 +1,5 @@
+---
+source: tests/reductions.rs
+expression: "toylang::compile(r#\"sum([\"a\"])\"#).map(|_| ()).unwrap_err().to_string()"
+---
+`sum` needs a Vec of Int or Int64, found Vec<Str> (at byte 4)

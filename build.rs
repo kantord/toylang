@@ -180,6 +180,8 @@ impl ToRust for tir::Builtin {
             tir::Builtin::Chars => "Chars",
             tir::Builtin::Sort => "Sort",
             tir::Builtin::Reverse => "Reverse",
+            tir::Builtin::Sum => "Sum",
+            tir::Builtin::Max => "Max",
         };
         format!("crate::tir::Builtin::{variant}")
     }

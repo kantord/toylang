@@ -1,0 +1,5 @@
+---
+source: tests/reductions.rs
+expression: "toylang::compile(\"fn sum(x: Vec<Int>) -> Int = x[0]!\\n\\nsum([1])\").map(|_|\n()).unwrap_err().to_string()"
+---
+`sum` is a builtin and cannot be redefined (at byte 0)

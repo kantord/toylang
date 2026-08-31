@@ -144,6 +144,41 @@ const REVERSE_HELPER: &str = r#"func tlReverse[T any](v []T) []T {
 }
 "#;
 
+// `int32`/`int64` `+=` wraps by definition, so a fold needs nothing but the loop itself -- the
+// same "the width wraps on its own" story ARITH_HELPER and ARITH64_HELPER tell for one operator.
+const SUM_HELPER: &str = r#"func tlSum(v []int32) int32 {
+	var acc int32
+	for _, x := range v {
+		acc += x
+	}
+	return acc
+}
+
+func tlSum64(v []int64) int64 {
+	var acc int64
+	for _, x := range v {
+		acc += x
+	}
+	return acc
+}
+"#;
+
+// `cmp.Ordered` covers both integer widths, so one helper serves Int and Int64. Absence is the
+// zero `tlOpt`, the same answer an out-of-range index gives.
+const MAX_HELPER: &str = r#"func tlMax[T cmp.Ordered](v []T) tlOpt[T] {
+	if len(v) == 0 {
+		return tlOpt[T]{}
+	}
+	m := v[0]
+	for _, x := range v[1:] {
+		if x > m {
+			m = x
+		}
+	}
+	return tlOpt[T]{true, m}
+}
+"#;
+
 /// Go's `int32` wraps on overflow by definition, and its `/` and `%` truncate toward zero, so
 /// only the zero divisor needs a guard. `MIN / -1` is defined to be `MIN` here, which is the
 /// wrapping answer the other backends were made to give.
@@ -450,6 +485,8 @@ pub fn emit(program: &Program) -> String {
         (uses("tlFlatten("), FLATTEN_HELPER),
         (uses("tlSort("), SORT_HELPER),
         (uses("tlReverse("), REVERSE_HELPER),
+        (uses("tlSum(") || uses("tlSum64("), SUM_HELPER),
+        (uses("tlMax("), MAX_HELPER),
         (unwrap, UNWRAP_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
@@ -478,6 +515,7 @@ pub fn emit(program: &Program) -> String {
         (program.inputs.is_some(), &["io"]),
         (join || quote || used.jsonlines, &["strings"]),
         (uses("tlSort("), &["cmp", "slices"]),
+        (uses("tlMax("), &["cmp"]),
         (uses("tlEq("), &["reflect"]),
         (
             used.itoa
@@ -683,7 +721,9 @@ impl Collect<'_> {
                     | Builtin::Fields
                     | Builtin::Chars
                     | Builtin::Sort
-                    | Builtin::Reverse => {}
+                    | Builtin::Reverse
+                    | Builtin::Sum
+                    | Builtin::Max => {}
                 }
                 self.walk(arg);
             }
@@ -1013,6 +1053,16 @@ impl Emitter<'_> {
                 Builtin::Flatten => format!("tlFlatten({})", self.expr(arg)),
                 Builtin::Sort => format!("tlSort({})", self.expr(arg)),
                 Builtin::Reverse => format!("tlReverse({})", self.expr(arg)),
+                // Which fold depends on the element width: int32 and int64 are distinct types in
+                // Go, so they cannot share one helper the way a dynamically typed backend can.
+                Builtin::Sum => {
+                    if tir::runtime_elem(&arg.ty) == Some(&Type::Int) {
+                        format!("tlSum({})", self.expr(arg))
+                    } else {
+                        format!("tlSum64({})", self.expr(arg))
+                    }
+                }
+                Builtin::Max => format!("tlMax({})", self.expr(arg)),
                 // The names come from the checked type, not the struct value, so `arg` runs in
                 // an ignored parameter -- the same IIFE shape `Bind` uses -- purely for whatever
                 // else it does.

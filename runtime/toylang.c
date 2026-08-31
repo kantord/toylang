@@ -1140,6 +1140,38 @@ tl_vec *tl_vec_reverse(const tl_vec *v, int64_t ncols) {
     return out;
 }
 
+/* `sum` over a Vec of Int or Int64 (kantord/toylang#140): the reduction of `+`, each addition
+ * wrapping the way the language's `+` wraps. Both widths live in the same i64 slot, so `narrow`
+ * is what tells Int (32-bit wrap after every addition) from Int64 (none). Accumulated in
+ * uint64_t so no addition can overflow into undefined behaviour; the narrow step truncates to
+ * 32 bits and sign-extends. */
+int64_t tl_vec_sum(const tl_vec *v, int narrow) {
+    uint64_t acc = 0;
+    for (int64_t i = 0; i < v->len; i++) {
+        acc += (uint64_t)v->cols[0][i];
+        if (narrow) {
+            acc = (uint64_t)(int64_t)(int32_t)acc;
+        }
+    }
+    return (int64_t)acc;
+}
+
+/* `max` over a Vec of Int or Int64: the greatest raw slot, Int's already sign-extended so the
+ * i64 comparison orders it correctly. NULL on an empty Vec, the same absence encoding
+ * tl_opt_some uses everywhere else, so a caller unwraps it the way it unwraps an Index result. */
+int64_t *tl_vec_max(const tl_vec *v) {
+    if (v->len == 0) {
+        return NULL;
+    }
+    int64_t m = v->cols[0][0];
+    for (int64_t i = 1; i < v->len; i++) {
+        if (v->cols[0][i] > m) {
+            m = v->cols[0][i];
+        }
+    }
+    return tl_opt_some(m);
+}
+
 /* Collapse one dimension at `i`, `depth` layers down, counting from the end when negative.
  *
  * `is_record` decides whether an entry has to be gathered out of the columns. The column count

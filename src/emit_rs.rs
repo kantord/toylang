@@ -138,6 +138,23 @@ const REVERSE_HELPER: &str = r#"fn tl_reverse<T: Clone>(v: &[T]) -> Vec<T> {
 }
 "#;
 
+// `wrapping_add` is the same wrap `+` gets through INT_HELPER/ARITH_HELPER, so a fold is the
+// repeated addition with nothing else to spell.
+const SUM_HELPER: &str = r#"fn tl_sum(v: &[i32]) -> i32 {
+    v.iter().fold(0i32, |acc, x| acc.wrapping_add(*x))
+}
+
+fn tl_sum64(v: &[i64]) -> i64 {
+    v.iter().fold(0i64, |acc, x| acc.wrapping_add(*x))
+}
+"#;
+
+// `Option::max` is exactly the empty-is-absent answer, and `Ord` covers both integer widths.
+const MAX_HELPER: &str = r#"fn tl_max<T: Clone + Ord>(v: &[T]) -> Option<T> {
+    v.iter().cloned().max()
+}
+"#;
+
 const RANGE_HELPER: &str = r#"fn tl_range(n: i32) -> Vec<i32> {
     (0..n.max(0)).collect()
 }
@@ -602,6 +619,8 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_flatten("), FLATTEN_HELPER),
         (uses("tl_sort("), SORT_HELPER),
         (uses("tl_reverse("), REVERSE_HELPER),
+        (uses("tl_sum(") || uses("tl_sum64("), SUM_HELPER),
+        (uses("tl_max("), MAX_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
         (
@@ -1144,6 +1163,16 @@ impl Emitter<'_> {
                 Builtin::Flatten => format!("tl_flatten(&{})", self.expr(arg)),
                 Builtin::Sort => format!("tl_sort(&{})", self.expr(arg)),
                 Builtin::Reverse => format!("tl_reverse(&{})", self.expr(arg)),
+                // `i32` and `i64` are distinct types in Rust, so the fold is chosen by the
+                // element width.
+                Builtin::Sum => {
+                    if tir::runtime_elem(&arg.ty) == Some(&Type::Int) {
+                        format!("tl_sum(&{})", self.expr(arg))
+                    } else {
+                        format!("tl_sum64(&{})", self.expr(arg))
+                    }
+                }
+                Builtin::Max => format!("tl_max(&{})", self.expr(arg)),
                 // The names come from the checked type, not the struct value, so `arg` is
                 // evaluated only for whatever else it does (a division inside it must still
                 // trap) and its value discarded.

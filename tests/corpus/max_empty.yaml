@@ -1,0 +1,12 @@
+# An empty Vec has no maximum, so `max` yields the absent Opt, which prints as null -- the
+# same answer an out-of-range index gives, and why `max` returns `Opt<T>` at all. The empty
+# Vec<Int> comes from a declared return type, since a bare `[]` literal cannot be typed.
+program: |
+  fn nothing() -> Vec<Int> = []
+
+  max(nothing())
+
+output: |
+  null
+
+node_types: [application, builtin.max, vec-literal]
