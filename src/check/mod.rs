@@ -418,11 +418,11 @@ fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
 
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
 /// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `length`, `flatten`,
-/// `tail`, `collect`, `fields`, `sort`, and `reverse` are polymorphic and checked from
-/// `synth`'s own arms; `select` and `map` rebind `.`. All fourteen are reserved the same way,
-/// and the docs harness (tests/docs.rs) reads this list to insist each one has a reference
-/// page.
-pub const BUILTIN_NAMES: [&str; 14] = [
+/// `tail`, `collect`, `fields`, `sort`, `reverse`, `sum`, and `max` are polymorphic and checked
+/// from `synth`'s own arms; `select` and `map` rebind `.`. All sixteen are reserved the same
+/// way, and the docs harness (tests/docs.rs) reads this list to insist each one has a
+/// reference page.
+pub const BUILTIN_NAMES: [&str; 16] = [
     "chars",
     "collect",
     "length",
@@ -431,11 +431,13 @@ pub const BUILTIN_NAMES: [&str; 14] = [
     "i64",
     "jsonlines",
     "map",
+    "max",
     "range",
     "reverse",
     "select",
     "sort",
     "str",
+    "sum",
     "tail",
 ];
 
@@ -1482,7 +1484,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Expected::Checked(tir) | Expected::Synthesised(tir) => Ok(tir),
         },
 
-        Expr::Field { .. } | Expr::Index { .. } | Expr::Unwrap { .. } => {
+        Expr::Field { .. } | Expr::Index { .. } | Expr::Slice { .. } | Expr::Unwrap { .. } => {
             let Access { tir, stream, .. } = access(ctx, expr)?;
             // Projection over a stream is a mapper, and it is normalized to one here: the chain
             // is rebased onto a fresh per-element param, so neither the backends nor fusion
@@ -1731,6 +1733,16 @@ fn call(
     if func == "reverse" {
         return reverse_call(ctx, need_arg(arg, func, span)?);
     }
+    // The two reductions (kantord/toylang#140): `sum` folds `+` at the element width, `max`
+    // returns `Opt` because an empty Vec has no maximum. Both are checked here rather than
+    // through `builtin()`'s fixed table because the return type is the element type's, which
+    // no fixed signature can express.
+    if func == "sum" {
+        return sum_call(ctx, need_arg(arg, func, span)?);
+    }
+    if func == "max" {
+        return max_call(ctx, need_arg(arg, func, span)?);
+    }
     if let Some((which, sig)) = builtin(func) {
         let param_ty = sig
             .param
@@ -1956,6 +1968,65 @@ fn reverse_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
     ))
 }
 
+/// The element types a reduction is defined for: the two integer types. Neither Str nor Char
+/// participates -- there is no caller for either -- so the restricted set is what a backend has
+/// to spell (kantord/toylang#140, the ruling that cut min and product on the same grounds).
+fn reducible(ty: &Type) -> bool {
+    matches!(ty, Type::Int | Type::Int64)
+}
+
+/// `sum(v)`, the reduction of `+` at the element type's width: `Vec<Int> -> Int`,
+/// `Vec<Int64> -> Int64`. An empty Vec sums to 0, so unlike `max` the result is never `Opt`.
+fn sum_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(elem) = arg.ty.elem() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`sum` needs a Vec of Int or Int64, found {}", arg.ty),
+        ));
+    };
+    if !reducible(elem) {
+        return Err(Error::new(
+            arg_span,
+            format!("`sum` needs a Vec of Int or Int64, found {}", arg.ty),
+        ));
+    }
+    Ok(Tir::new(
+        elem.clone(),
+        Kind::Builtin {
+            which: tir::Builtin::Sum,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// `max(v)`, the greatest element, `Opt<T>` because an empty Vec has no maximum -- the same
+/// answer indexing gives to absence (kantord/toylang#140).
+fn max_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(elem) = arg.ty.elem() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`max` needs a Vec of Int or Int64, found {}", arg.ty),
+        ));
+    };
+    if !reducible(elem) {
+        return Err(Error::new(
+            arg_span,
+            format!("`max` needs a Vec of Int or Int64, found {}", arg.ty),
+        ));
+    }
+    Ok(Tir::new(
+        opt_of(ctx, elem.clone()),
+        Kind::Builtin {
+            which: tir::Builtin::Max,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
 /// Walk an access chain left to right, carrying what we are currently looking at and how many
 /// dimensions we are inside.
 ///
@@ -2059,6 +2130,36 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<Access, Error> {
                 elem_is_record,
             };
             Ok(Access::new(Tir::new(ty, kind), out, b.depth, b.stream))
+        }
+
+        // Narrowing a dimension by position. Unlike a collapsing `[i]` the entry can never be
+        // absent, so the answer is the dimension itself, not an `Opt`: out-of-range bounds
+        // clamp jq-style rather than going missing (kantord/toylang#143). A `None` bound means
+        // the dimension's own boundary.
+        Expr::Slice { base, start, end, span } => {
+            let b = access(ctx, base)?;
+            let Some(_) = b.elem.elem().cloned() else {
+                return Err(Error::new(
+                    *span,
+                    format!("`[a:b]` needs a dimension, found {}", b.elem),
+                ));
+            };
+            let start = match start {
+                Some(s) => Some(Box::new(expect(ctx, s, &Type::Int)?)),
+                None => None,
+            };
+            let end = match end {
+                Some(e) => Some(Box::new(expect(ctx, e, &Type::Int)?)),
+                None => None,
+            };
+            let kind = Kind::Slice {
+                base: Box::new(b.tir),
+                start,
+                end,
+                depth: b.depth,
+            };
+            let ty = wrap(b.elem.clone(), b.depth, b.stream);
+            Ok(Access::new(Tir::new(ty, kind), b.elem, b.depth, b.stream))
         }
 
         Expr::Field { base, name, span } => {

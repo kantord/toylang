@@ -36,6 +36,16 @@ function tl_at(v, i, depth) {
 }
 ";
 
+// `Array.prototype.slice` already clamps out-of-range bounds and counts negatives from the
+// end, so jq's boundary behaviour is the target's native one; `undefined` is a bound left
+// out, which `.slice` reads as the array's own boundary.
+const SLICE_HELPER: &str = "\
+function tl_slice(v, lo, hi, depth) {
+  if (depth > 0) return v.map((e) => tl_slice(e, lo, hi, depth - 1));
+  return v.slice(lo, hi);
+}
+";
+
 const TAIL_HELPER: &str = "\
 function tl_tail(v) {
   if (v.length === 0) return \"none\";
@@ -156,6 +166,32 @@ function tl_chars(s) {
 }
 ";
 
+// Int and Int64 are different runtime types here -- Number and BigInt -- so `+` cannot mix
+// them and each width needs its own fold. `|0` is the 32-bit wrap (the same ToInt32 ARITH_HELPER
+// relies on); `BigInt.asIntN(64, ...)` is the 64-bit one ARITH64_HELPER uses.
+const SUM_HELPER: &str = "\
+function tl_sum(v) {
+  let acc = 0;
+  for (let i = 0; i < v.length; i++) acc = (acc + v[i]) | 0;
+  return acc;
+}
+function tl_sum64(v) {
+  let acc = 0n;
+  for (let i = 0; i < v.length; i++) acc = BigInt.asIntN(64, acc + v[i]);
+  return acc;
+}
+";
+
+// `>` orders Number and BigInt alike, so one maximum serves both widths.
+const MAX_HELPER: &str = "\
+function tl_max(v) {
+  if (v.length === 0) return \"none\";
+  let m = v[0];
+  for (let i = 1; i < v.length; i++) if (v[i] > m) m = v[i];
+  return { some: m };
+}
+";
+
 pub fn emit(program: &Program) -> String {
     let enums = &program.enums;
     let mut out = String::new();
@@ -169,6 +205,7 @@ pub fn emit(program: &Program) -> String {
         (used.field, FIELD_HELPER),
         (join, JOIN_HELPER),
         (used.index, OPT_HELPER),
+        (used.slice, SLICE_HELPER),
         (used.tail, TAIL_HELPER),
         (used.unwrap, UNWRAP_HELPER),
         (used.arith, ARITH_HELPER),
@@ -177,6 +214,8 @@ pub fn emit(program: &Program) -> String {
         (used.jsonlines, JSONLINES_HELPER),
         (used.str_cmp, STR_CMP_HELPER),
         (used.chars, CHARS_HELPER),
+        (used.sum || used.sum64, SUM_HELPER),
+        (used.max, MAX_HELPER),
         (used.eq, EQ_HELPER),
     ] {
         if on {
@@ -188,12 +227,26 @@ pub fn emit(program: &Program) -> String {
     // Function declarations hoist, so a call to one defined further down resolves without the
     // forward declarations Lua needs. Each backend does what its own target does.
     for f in &program.funcs {
-        out.push_str(&format!(
-            "function {}({}) {{\n  return {};\n}}\n",
-            user(&f.name),
-            f.param.as_deref().map_or_else(String::new, user),
-            expr(enums, &f.body)
-        ));
+        let param = f.param.as_deref().map(user);
+        if tir::has_tail_call(&f.name, &f.body) {
+            // The contract: a self-tail-call runs in constant stack. A tail call becomes
+            // `param = arg; continue;` in a loop, so 100k-deep self-recursion cannot blow the
+            // JS stack the way a real call would (kantord/toylang#141).
+            let mut fresh = 0;
+            out.push_str(&format!("function {}({}) {{\n", user(&f.name), param.as_deref().unwrap_or_default()));
+            out.push_str("  while (true) {\n");
+            out.push_str(&indent(&indent(&tail_stmts(
+                enums, &f.name, param.as_deref(), &mut fresh, &f.body
+            ))));
+            out.push_str("  }\n}\n");
+        } else {
+            out.push_str(&format!(
+                "function {}({}) {{\n  return {};\n}}\n",
+                user(&f.name),
+                param.as_deref().unwrap_or_default(),
+                expr(enums, &f.body)
+            ));
+        }
     }
 
     if let Some(fusion) = tir::fusion(program) {
@@ -424,6 +477,7 @@ struct Helpers {
     select: bool,
     field: bool,
     index: bool,
+    slice: bool,
     unwrap: bool,
     arith: bool,
     arith64: bool,
@@ -432,6 +486,9 @@ struct Helpers {
     tail: bool,
     str_cmp: bool,
     chars: bool,
+    sum: bool,
+    sum64: bool,
+    max: bool,
     eq: bool,
 }
 
@@ -532,6 +589,10 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.chars |= *which == Builtin::Chars;
                 used.str_cmp |=
                     *which == Builtin::Sort && tir::runtime_elem(&arg.ty) == Some(&Type::Str);
+                used.sum |= *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int);
+                used.sum64 |=
+                    *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int64);
+                used.max |= *which == Builtin::Max;
                 walk(arg, used);
             }
             Kind::Cond {
@@ -562,6 +623,16 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
                 walk(index, used);
             }
+            Kind::Slice { base, start, end, .. } => {
+                used.slice = true;
+                walk(base, used);
+                if let Some(s) = start {
+                    walk(s, used);
+                }
+                if let Some(e) = end {
+                    walk(e, used);
+                }
+            }
             Kind::Match { subject, arms, .. } => {
                 walk(subject, used);
                 for a in arms {
@@ -587,6 +658,108 @@ fn arm_return(body: String, partial: bool) -> String {
     } else {
         format!("return {body}; ")
     }
+}
+
+/// `t` as statements in the tail position: `return <expr>;` for a base case, and for a tail
+/// call `param = <arg>; continue;` so the loop in the emitted function rewinds instead of
+/// growing the JS stack. Lines come out unindented; `indent` places them under the `while`.
+fn tail_stmts(
+    enums: &Enums,
+    name: &str,
+    param: Option<&str>,
+    fresh: &mut usize,
+    t: &Tir,
+) -> String {
+    match &t.kind {
+        Kind::Call { func, arg } if func == name => {
+            let assign = param.map_or_else(String::new, |p| {
+                format!(
+                    "{p} = {};\n",
+                    arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
+                )
+            });
+            format!("{assign}continue;\n")
+        }
+        Kind::Cond {
+            cond,
+            then,
+            otherwise,
+        } => format!(
+            "if ({}) {{\n{}}} else {{\n{}}}\n",
+            expr(enums, cond),
+            indent(&tail_stmts(enums, name, param, fresh, then)),
+            indent(&tail_stmts(enums, name, param, fresh, otherwise)),
+        ),
+        Kind::Bind {
+            local: id,
+            value,
+            body,
+        } => format!(
+            "const {} = {};\n{}",
+            local(*id),
+            expr(enums, value),
+            tail_stmts(enums, name, param, fresh, body)
+        ),
+        Kind::Match {
+            subject,
+            arms,
+            partial,
+        } if !partial => {
+            // The subject is read into a temp the way `expr`'s IIFE does, but there is no IIFE
+            // to contain it here, so the name has to be fresh rather than the fixed `subj`.
+            let subj = format!("tl_tailsub{}", *fresh);
+            *fresh += 1;
+            let mut out = format!("const {subj} = {};\n", expr(enums, subject));
+            for (i, arm) in arms.iter().enumerate() {
+                let mut run = String::new();
+                if let Some(pid) = arm.payload {
+                    let variant = arm
+                        .variant
+                        .as_ref()
+                        .expect("only a variant arm has a payload");
+                    run.push_str(&format!(
+                        "const {} = {subj}[{}];\n",
+                        local(pid),
+                        js_string(variant)
+                    ));
+                }
+                run.push_str(&tail_stmts(enums, name, param, fresh, &arm.body));
+                let test = match (&arm.variant, &arm.guard) {
+                    (Some(v), _) if arm.payload.is_some() => {
+                        Some(format!("{subj}[{}] !== undefined", js_string(v)))
+                    }
+                    (Some(v), _) => Some(format!("{subj} === {}", js_string(v))),
+                    (None, Some(g)) => Some(expr(enums, g)),
+                    (None, None) => None,
+                };
+                match test {
+                    // A total chain's last arm needs no test, the checker having proved nothing
+                    // else can reach it -- the same rule `expr`'s match arm follows.
+                    Some(test) if i + 1 < arms.len() => {
+                        out.push_str(&format!("if ({test}) {{\n{}}}\n", indent(&run)));
+                    }
+                    _ => out.push_str(&run),
+                }
+            }
+            out
+        }
+        // A partial match wraps every arm body, so no arm body is a tail position; the whole
+        // match stays an expression, exactly as it would outside tail position.
+        Kind::Match { .. } => format!("return {};\n", expr(enums, t)),
+        _ => format!("return {};\n", expr(enums, t)),
+    }
+}
+
+/// Prepend two spaces to every line. `tail_stmts` returns its lines unindented, and each
+/// nesting level (`while` body, an `if` branch) shifts by one indent.
+fn indent(s: &str) -> String {
+    let mut out = String::new();
+    for line in s.trim_end_matches('\n').split('\n') {
+        out.push_str("  ");
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 fn expr(enums: &Enums, t: &Tir) -> String {
@@ -694,6 +867,15 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // `.reverse()` mutates in place, so the spread copy is what keeps this an ordinary
             // expression rather than a statement with a visible side effect on `arg`.
             Builtin::Reverse => format!("[...{}].reverse()", expr(enums, arg)),
+            // One fold per width, since the element type picks the runtime integer type.
+            Builtin::Sum => {
+                if tir::runtime_elem(&arg.ty) == Some(&Type::Int) {
+                    format!("tl_sum({})", expr(enums, arg))
+                } else {
+                    format!("tl_sum64({})", expr(enums, arg))
+                }
+            }
+            Builtin::Max => format!("tl_max({})", expr(enums, arg)),
             // The names come from the checked type, not the object value, so `arg` is evaluated
             // only for whatever else it does (a division inside it must still throw) and its
             // value discarded with the comma operator.
@@ -772,6 +954,25 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 "tl_at({}, {}, {})",
                 expr(enums, base),
                 expr(enums, index),
+                depth
+            )
+        }
+        Kind::Slice {
+            base, start, end, depth,
+        } => {
+            let lo = match start {
+                Some(s) => expr(enums, s),
+                None => "undefined".to_string(),
+            };
+            let hi = match end {
+                Some(e) => expr(enums, e),
+                None => "undefined".to_string(),
+            };
+            format!(
+                "tl_slice({}, {}, {}, {})",
+                expr(enums, base),
+                lo,
+                hi,
                 depth
             )
         }

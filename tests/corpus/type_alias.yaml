@@ -4,7 +4,7 @@ program: |
   type User = {name: Str, age: Int}
   type Db = {users: Vec<User>}
 
-  fn adults(db: Db) -> Vec<Str> = db.users | select(.age >= 18) | map(.name)
+  fn adults(db: Db) -> Vec<Str> = db.users | select(.age >= 18) | .[].name
 
   adults input
 
@@ -14,4 +14,4 @@ input: |
 output: |
   ["ada"]
 
-node_types: [application, compare.ge, input, int, local, map-over, pipe, projection, selection.narrow, var]
+node_types: [application, compare.ge, input, int, local, pipe, projection, selection.narrow, var]

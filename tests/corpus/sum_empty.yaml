@@ -1,0 +1,12 @@
+# The empty Vec has a 0 sum rather than an Opt -- no absence to represent, so `sum` is total
+# where `max` is not. The empty Vec<Int> comes from a declared return type, since a bare `[]`
+# literal cannot be typed.
+program: |
+  fn nothing() -> Vec<Int> = []
+
+  sum(nothing())
+
+output: |
+  0
+
+node_types: [application, builtin.sum, vec-literal]
