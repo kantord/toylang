@@ -1213,3 +1213,11 @@
   kind: decide
   needs: []
   status: done
+
+- id: rust-lines-tl-fail-build
+  issue: gh:157
+  title: Rust backend omits tl_fail helper for lines-only programs, compile error (found verifying gh:102)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
