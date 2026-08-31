@@ -125,9 +125,11 @@ for wt in $DELEGATED; do
     fi
   fi
 done
-# Landable lanes (unconditional TRIGGER above) always outrank a dead lane; only
-# fall back to the stalest dead-lane candidate found when nothing is landable.
-[ -z "$TRIGGER" ] && [ -n "$DEAD_TRIGGER" ] && TRIGGER="$DEAD_TRIGGER"
+# Landable lanes (unconditional TRIGGER above) always outrank a dead lane or a
+# blocked accumulator; the DEAD_TRIGGER backfill happens once, after the
+# accumulator loop below has also had a chance to raise DEAD_PRIORITY -- doing
+# it here instead would lock in a low-priority lane trigger before a RED
+# promotion or an over-limit accumulator (tiers 4-6) ever got compared.
 # Orphaned commits: a worktree ahead of main whose row is NOT delegated is
 # forgotten work (post-landing hook growth is the known producer). Pool lane
 # worktrees (gh:124) live under a different base and are cooked as
@@ -151,14 +153,30 @@ for b in $(git for-each-ref --format='%(refname:short)' 'refs/heads/to-merge-*')
   age=$(( $(date +%s) - $(git log -1 --format=%ct "$b" 2>/dev/null || date +%s) ))
   promoting=""; [ -f "$LOG_DIR/promoting-$b" ] && promoting=" promoting"
   STATE="$STATE [$b: lines=${lines:-0} age=${age}s$promoting]"
+  # Same DEAD_PRIORITY mechanism as the lane loop, but tiers 4-6 so accumulator
+  # issues always outrank lane chatter: a RED promotion or an over-limit
+  # accumulator blocks real, already-completed work, which matters more than
+  # one more routine dead-lane rebrief. Without this, "over the size limit"
+  # never won a single tick's trigger all night (2026-08-31/09-01) despite two
+  # accumulators sitting over 600 lines for hours, one of them already RED.
   if [ -f "$LOG_DIR/promote-failed-$b" ]; then
-    TRIGGER="${TRIGGER:-promotion of $b went RED (main untouched) -- route the repair}"
+    if [ 6 -gt "$DEAD_PRIORITY" ]; then
+      DEAD_PRIORITY=6; DEAD_AGE=$age
+      DEAD_TRIGGER="promotion of $b went RED (main untouched) -- route the repair"
+    fi
   elif [ -z "$promoting" ] && [ "${lines:-0}" -ge 600 ]; then
-    TRIGGER="${TRIGGER:-$b is over the size limit (${lines} lines) -- promote it (land-lane.sh promote, detached)}"
+    if [ 5 -gt "$DEAD_PRIORITY" ] || { [ 5 -eq "$DEAD_PRIORITY" ] && [ "${lines:-0}" -gt "$DEAD_AGE" ]; }; then
+      DEAD_PRIORITY=5; DEAD_AGE=${lines:-0}
+      DEAD_TRIGGER="$b is over the size limit (${lines} lines) -- promote it (land-lane.sh promote, detached)"
+    fi
   elif [ -z "$promoting" ] && [ "$age" -ge 1800 ]; then
-    TRIGGER="${TRIGGER:-$b untouched ${age}s -- stale, promote it as-is (land-lane.sh promote, detached)}"
+    if [ 4 -gt "$DEAD_PRIORITY" ] || { [ 4 -eq "$DEAD_PRIORITY" ] && [ "$age" -gt "$DEAD_AGE" ]; }; then
+      DEAD_PRIORITY=4; DEAD_AGE=$age
+      DEAD_TRIGGER="$b untouched ${age}s -- stale, promote it as-is (land-lane.sh promote, detached)"
+    fi
   fi
 done
+[ -z "$TRIGGER" ] && [ -n "$DEAD_TRIGGER" ] && TRIGGER="$DEAD_TRIGGER"
 # Maintainer input always runs the tick (the 5-minute quiet rule is judged inside).
 if python3 -c "
 import json, sys
