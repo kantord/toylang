@@ -54,6 +54,16 @@ for r in yaml.safe_load(open('plans/board.yaml')):
     elif str(r.get('issue', '')).startswith('gh:'):
         print('issue-' + r['issue'][3:])
 " | tr '\n' ' ')
+# Dead-lane triggers are picked by STALEST, not first-in-file-order: a soft-default
+# TRIGGER="${TRIGGER:-...}" inside this loop let whichever lane sorts first in
+# board.yaml claim every tick it was also dead, starving lanes later in the file
+# even past their own rebrief/escalate threshold (issue-153 sat 22h at runs=2
+# while issue-151, first in the file, kept re-claiming the slot, 2026-08-31).
+# DEAD_PRIORITY ranks tiers (3=escalate, 2=rebrief, 1=no-live-worker, 0=stalled-live);
+# ties break on commit_age, so the actually-oldest dead lane wins within a tier.
+DEAD_PRIORITY=-1
+DEAD_TRIGGER=""
+DEAD_AGE=-1
 for wt in $DELEGATED; do
   case "$wt" in
     lane:*) d="$HOME/.enwiro_envs/toylang@${wt#lane:}/toylang@${wt#lane:}" ;;
@@ -94,17 +104,30 @@ for wt in $DELEGATED; do
   elif [ "$live" -eq 0 ] && [ "$ahead" -eq 0 ] && [ "$runs" -ge 4 ]; then
     # Streak cap: stop feeding the lane. Escalate to the maintainer's mail ONCE
     # (the marker suppresses re-noise); their answer or a landing clears it.
-    if [ ! -f "$LOG_DIR/escalated-$wt" ]; then
-      TRIGGER="lane $wt: $runs commitless runs -- STOP redispatching; escalate to the maintainer inbox"
+    if [ ! -f "$LOG_DIR/escalated-$wt" ] && [ 3 -gt "$DEAD_PRIORITY" ]; then
+      DEAD_PRIORITY=3; DEAD_AGE=$commit_age
+      DEAD_TRIGGER="lane $wt: $runs commitless runs -- STOP redispatching; escalate to the maintainer inbox"
     fi
   elif [ "$live" -eq 0 ] && [ "$ahead" -eq 0 ] && [ "$runs" -ge 2 ]; then
-    TRIGGER="${TRIGGER:-lane $wt: $runs commitless runs -- diagnose the last event log and REBRIEF; never repeat a failed brief}"
+    if [ 2 -gt "$DEAD_PRIORITY" ] || { [ 2 -eq "$DEAD_PRIORITY" ] && [ "$commit_age" -gt "$DEAD_AGE" ]; }; then
+      DEAD_PRIORITY=2; DEAD_AGE=$commit_age
+      DEAD_TRIGGER="lane $wt: $runs commitless runs -- diagnose the last event log and REBRIEF; never repeat a failed brief"
+    fi
   elif [ "$live" -eq 0 ]; then
-    TRIGGER="${TRIGGER:-lane $wt has no live worker}"
+    if [ 1 -gt "$DEAD_PRIORITY" ] || { [ 1 -eq "$DEAD_PRIORITY" ] && [ "$commit_age" -gt "$DEAD_AGE" ]; }; then
+      DEAD_PRIORITY=1; DEAD_AGE=$commit_age
+      DEAD_TRIGGER="lane $wt has no live worker"
+    fi
   elif [ -z "$recent30" ] && [ "$commit_age" -ge 1800 ]; then
-    TRIGGER="${TRIGGER:-lane $wt silent 30+ minutes (stall diagnosis)}"
+    if [ 0 -gt "$DEAD_PRIORITY" ] || { [ 0 -eq "$DEAD_PRIORITY" ] && [ "$commit_age" -gt "$DEAD_AGE" ]; }; then
+      DEAD_PRIORITY=0; DEAD_AGE=$commit_age
+      DEAD_TRIGGER="lane $wt silent 30+ minutes (stall diagnosis)"
+    fi
   fi
 done
+# Landable lanes (unconditional TRIGGER above) always outrank a dead lane; only
+# fall back to the stalest dead-lane candidate found when nothing is landable.
+[ -z "$TRIGGER" ] && [ -n "$DEAD_TRIGGER" ] && TRIGGER="$DEAD_TRIGGER"
 # Orphaned commits: a worktree ahead of main whose row is NOT delegated is
 # forgotten work (post-landing hook growth is the known producer). Pool lane
 # worktrees (gh:124) live under a different base and are cooked as
