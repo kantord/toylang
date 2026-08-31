@@ -1182,3 +1182,34 @@
   needs: []
   prio: 3
   status: done
+
+- id: template-strings-design
+  issue: gh:161
+  title: Grill universal template strings, sparked by the shell-out round's unpicked bash-capture-literal option (gh:161)
+  kind: decide
+  needs: []
+  status: done
+
+- id: matcher-totality-and-alt-design
+  issue: gh:156
+  title: 'Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test -- round 1 drew pushback on the circle{r} vs Circle(r) naming convention (gh:156), needs a round 2 -- ruled: curly-only pattern syntax (`Name{fields}`) stays the only pattern form; checker now enforces capital-first variant names as a real rule instead of an unenforced convention, since case already carries meaning elsewhere (lowercase = regular constructor, capitalized = matcher use) (gh:156)'
+  kind: decide
+  needs: [auto-matchers-design]
+  prio: 1
+  status: done
+
+- id: matcher-model-clarification
+  issue: gh:122
+  title: 'Grill the matching system''s conceptual model -- round 1 drew a "." as wrapping match-type strawman (gh:122 comment), needs a round 2 before it''s buildable -- ruled: build the full Match<T> wrapper, but treat it as an experiment first and see what goes wrong (gh:122)'
+  kind: decide
+  needs: []
+  soft: [matcher-totality-and-alt-design]
+  prio: 2
+  status: done
+
+- id: method-call-syntax-design
+  issue: gh:119
+  title: 'Grill method-like call syntax -- round 1 ratified UFCS-style desugaring (x.foo(y) -> foo(x,y)); the operator spelling (dot vs an alternative like `:`) and whether the receiver form curries are still open, needs a round 2 (gh:119) -- ruled: colon operator (`x:foo(y)`); "curried" redefined away from this round''s framing -- maintainer: "five_plus(1, 2) should not be correct, either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function" -- spins off partial-application-system-design (gh:119)'
+  kind: decide
+  needs: []
+  status: done

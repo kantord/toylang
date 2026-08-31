@@ -8,7 +8,7 @@
 
 - id: function-signature-matching-syntax
   issue: gh:152
-  title: Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn't pick without more context; round 2 presents the maintainer's own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152)
+  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 needs to stress-test each option (esp. the Msg(...) call-form sketch) for concrete problems before re-asking'
   kind: decide
   needs: []
   prio: 3
@@ -46,23 +46,6 @@
   prio: 3
   status: delegated
 
-- id: matcher-totality-and-alt-design
-  issue: gh:156
-  title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test -- round 1 drew pushback on the circle{r} vs Circle(r) naming convention (gh:156), needs a round 2
-  kind: decide
-  needs: [auto-matchers-design]
-  prio: 1
-  status: todo
-
-- id: matcher-model-clarification
-  issue: gh:122
-  title: Grill the matching system's conceptual model -- round 1 drew a "." as wrapping match-type strawman (gh:122 comment), needs a round 2 before it's buildable
-  kind: decide
-  needs: []
-  soft: [matcher-totality-and-alt-design]
-  prio: 2
-  status: todo
-
 - id: variant-types-flip
   title: Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference)
   kind: build
@@ -77,13 +60,6 @@
   kind: build
   needs: []
   status: delegated
-
-- id: template-strings-design
-  issue: gh:161
-  title: Grill universal template strings, sparked by the shell-out round's unpicked bash-capture-literal option (gh:161)
-  kind: decide
-  needs: []
-  status: todo
 
 - id: stdin-redesign-build
   issue: gh:159
@@ -122,7 +98,7 @@
 
 - id: lines-utf8-edge
   issue: gh:102
-  title: Pin what a non-UTF-8 byte arriving via lines does, on every backend
+  title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. Round 1 answer: no pick -- "we should research correctness best practices and see what would actually match people''s expectations in a unix environment and is actually easy to implement efficiently across all backends; we are allowed to question previous decisions and assumptions"; round 2 needs that research before re-asking refuse-vs-replace-vs-leave-backend-defined'
   kind: decide
   needs: []
   status: todo
@@ -192,9 +168,23 @@
   prio: 5
   status: todo
 
-- id: method-call-syntax-design
+- id: variant-checker-capital-first
+  issue: gh:156
+  title: Checker rejects enum variant declarations that don't start with a capital letter, per the curly-only-pattern ruling (gh:156 ruling)
+  kind: build
+  needs: []
+  status: todo
+
+- id: match-type-wrapper-experiment
+  issue: gh:122
+  title: 'Experimentally build a Match<T> wrapper: `.` entering a `|` chain wraps as Match<T>, traits like `%` get generic impls over Match<T> per underlying T (applying only past a passing boolean guard), and an arm''s aliases become named fields on a result struct the match produces -- see what goes wrong before ratifying (gh:122 ruling)'
+  kind: build
+  needs: []
+  status: todo
+
+- id: partial-application-system-design
   issue: gh:119
-  title: Grill method-like call syntax -- round 1 ratified UFCS-style desugaring (x.foo(y) -> foo(x,y)); the operator spelling (dot vs an alternative like `:`) and whether the receiver form curries are still open, needs a round 2 (gh:119)
+  title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff) -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like"'
   kind: decide
   needs: []
   status: todo
