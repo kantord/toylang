@@ -1235,3 +1235,11 @@
   kind: decide
   needs: [precedent-survey]
   status: done
+
+- id: erlang-target-research
+  issue: gh:163
+  title: 'Research spike (gh:163''s own issue body flags this as needing investigation first): survey Erlang''s process/effect model, pattern matching, and immutability against toylang''s current design docs and its seven existing backends (Lua, JS, Native/LLVM, jq, Go, Python, Rust) -- identify what a design stress test would actually surface. Write findings to plans/. Run 1 (2026-08-31) did 18 legit research steps then tried to verify an Erlang toolchain (`which erl`/`erl -eval`), got denied, and gave up with zero output -- likely provoked by the standard brief wrapper''s "do not touch plans/" line contradicting this task''s own deliverable. Rebriefed 2026-09-01 with BRIEF_RAW=1 (no wrapper, explicit "no toolchain needed, write plans/erlang-target-research.md"); incident logged in plans/opencode-rollout.md. The lane''s `ahead=7` is entirely inherited base content from the to-merge-1788204752 accumulator (dispatch base at the time), not this task''s own work -- do not read `ahead>0` on this lane as landable without checking for a real new commit past that base.'
+  kind: build
+  needs: []
+  prio: 5
+  status: done
