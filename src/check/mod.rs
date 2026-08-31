@@ -269,9 +269,29 @@ fn check_defs<'a>(
         // position (`[]`, `input`, a variant-naming string) resolves against the annotation. A
         // body that synthesises instead is compared below, where the error can name the
         // function rather than just the two types.
-        let body = match expect_inner(&def_ctx, &def.body, &sig.ret)? {
-            Expected::Checked(body) => body,
-            Expected::Synthesised(body) => conform(&def_ctx, body, &sig.ret),
+        //
+        // A function declared `-> Sink` is the other sink position, so its body may be a direct
+        // sink call; nothing else is a sink, and a body that is not one fails here with the
+        // declared-vs-found mismatch below naming the function.
+        let body = if sig.ret == Type::Sink {
+            match sink_call(&def_ctx, &def.body)? {
+                Some(tir) => tir,
+                None => {
+                    return Err(Error::new(
+                        def.body.span(),
+                        format!(
+                            "`{}` declares it returns Sink, so its body must be a sink call \
+                             such as `jsonlines(...)` or a call to a Sink-returning function",
+                            def.name
+                        ),
+                    ));
+                }
+            }
+        } else {
+            match expect_inner(&def_ctx, &def.body, &sig.ret)? {
+                Expected::Checked(body) => body,
+                Expected::Synthesised(body) => conform(&def_ctx, body, &sig.ret),
+            }
         };
         if let Some(param) = &def.param {
             check_param(&body, param, &sig.param, &def.name, def.body.span())?;
@@ -373,47 +393,41 @@ fn check_param(
     Ok(())
 }
 
-/// The program's own body, one call form special-cased ahead of `synth`: `jsonlines` is a sink,
-/// legal only here, as the outermost expression, taking a Vec or a Stream and having no result
-/// type at all, since nothing remains that could observe one. The Tir node still carries `Str`
-/// -- under eager lowering the emitted expression genuinely is the joined string every backend
-/// prints raw -- but no program can see that: `synth` refuses `jsonlines` everywhere else.
+/// The program's own body. A sink-shaped body -- a direct `jsonlines(...)` call or a call to a
+/// function declared `-> Sink` -- is the one legal place a `Sink` may be born besides a
+/// `Sink`-returning function's body, so it is recognized ahead of `synth`, which refuses a
+/// sink everywhere else (the general position rule; see `sink_call`). Any other body is
+/// synthesized, and a `Sink` result that slips past recognition can only mean a shape `synth`
+/// should have refused.
 fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
-    if let Expr::Call { func, arg, .. } = body
-        && func == "jsonlines"
-    {
-        let Some(arg) = arg else {
-            return Err(Error::new(
-                body.span(),
-                "`jsonlines` needs a Vec or a stream, but was called with no argument".to_string(),
-            ));
-        };
-        let arg_span = arg.span();
-        let arg = synth(ctx, arg)?;
-        if !matches!(arg.ty, Type::Vec(_) | Type::Stream(_)) {
-            return Err(Error::new(
-                arg_span,
-                format!("`jsonlines` needs a Vec or a stream, found {}", arg.ty),
-            ));
-        }
-        if arg.ty.contains_char() {
-            return Err(Error::new(
-                arg_span,
-                format!(
-                    "`jsonlines` cannot print {}; Char has no wire form to write",
-                    arg.ty
-                ),
-            ));
-        }
-        return Ok(Tir::new(
-            Type::Str,
-            Kind::Builtin {
-                which: tir::Builtin::JsonLines,
-                arg: Box::new(arg),
-            },
-        ));
+    if let Some(tir) = sink_call(ctx, body)? {
+        return Ok(tir);
     }
     synth(ctx, body)
+}
+
+/// Whether `body` is a sink-shaped expression -- a direct `jsonlines(...)` call or a call to a
+/// function declared `-> Sink` -- and, if so, the `Sink`-typed Tir it checks to. This is the
+/// only legal place a `Sink` may be born (the program's body and a `Sink`-returning function's
+/// body); everywhere else `synth` runs the general position rule and a `Sink` that slips past
+/// here is a shape `synth` should have refused.
+fn sink_call(ctx: &Ctx, body: &Expr) -> Result<Option<Tir>, Error> {
+    let Expr::Call {
+        func,
+        func_span,
+        arg,
+        span,
+    } = body
+    else {
+        return Ok(None);
+    };
+    if func == "jsonlines" {
+        return Ok(Some(jsonlines_call(ctx, arg, *span)?));
+    }
+    if ctx.sigs.get(func).is_some_and(|sig| sig.ret == Type::Sink) {
+        return Ok(Some(call(ctx, func, *func_span, arg, *span)?));
+    }
+    Ok(None)
 }
 
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
@@ -1334,6 +1348,22 @@ fn match_chain(
 }
 
 fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
+    let tir = synth_inner(ctx, expr)?;
+    // A sink is not a value, so it can exist only where `sink_call` recognized a sink position:
+    // the program's own body or a Sink-returning function's. Reaching `synth` with a sink means
+    // it is nested where its output would be observed, which is the general position rule.
+    if tir.ty.contains_sink() {
+        return Err(Error::new(
+            expr.span(),
+            "a sink is not a value, so it is legal only as the program's outermost expression \
+             or a Sink-returning function's body"
+                .to_string(),
+        ));
+    }
+    Ok(tir)
+}
+
+fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     match expr {
         Expr::Str { text, .. } => Ok(Tir::new(Type::Str, Kind::Str(text.clone()))),
         Expr::Lines { span } => {
@@ -1687,16 +1717,12 @@ fn call(
     if func == "map" {
         return map_call(ctx, need_arg(arg, func, span)?, span, None);
     }
-    // A sink, not a function: `check` handles the one legal position (the program's outermost
-    // expression) before `synth` ever runs, so reaching it here means it is nested inside
-    // something that would need its result -- and it has none. The old `Str` typing was a
-    // placeholder asserting the opposite of what the fused loop does (a type claiming the whole
-    // output exists as one value).
+    // The one sink builtin: a regular call now, typed `Sink`, and so subject to the same
+    // general position rule every sink is -- `synth`'s wrapper refuses a `Sink` result except
+    // where `sink_call` recognized it. The old special case in `check_program_body` retired in
+    // favor of that rule.
     if func == "jsonlines" {
-        return Err(Error::new(
-            span,
-            "`jsonlines` is a sink, legal only as the program's outermost expression".to_string(),
-        ));
+        return jsonlines_call(ctx, arg, span);
     }
     // `length`, `tail`, and `flatten` are polymorphic over the element type, the same reason
     // `jsonlines` is checked here rather than through `builtin()`'s fixed table.
@@ -1824,6 +1850,43 @@ fn select_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
             source: Box::new(source),
             param,
             pred: Box::new(pred),
+        },
+    ))
+}
+
+/// `jsonlines(x)`, the one sink builtin, typed `Sink`. A sink is not a value, so this is legal
+/// only where `sink_call` recognized it; nested anywhere else `synth` reaches the general rule
+/// and the mismatch against whatever type the position wanted fails there. The argument is a
+/// Vec or a Stream of elements with a wire form; Char has none.
+fn jsonlines_call(ctx: &Ctx, arg: &Option<Box<Expr>>, span: Span) -> Result<Tir, Error> {
+    let Some(arg) = arg else {
+        return Err(Error::new(
+            span,
+            "`jsonlines` needs a Vec or a stream, but was called with no argument".to_string(),
+        ));
+    };
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    if !matches!(arg.ty, Type::Vec(_) | Type::Stream(_)) {
+        return Err(Error::new(
+            arg_span,
+            format!("`jsonlines` needs a Vec or a stream, found {}", arg.ty),
+        ));
+    }
+    if arg.ty.contains_char() {
+        return Err(Error::new(
+            arg_span,
+            format!(
+                "`jsonlines` cannot print {}; Char has no wire form to write",
+                arg.ty
+            ),
+        ));
+    }
+    Ok(Tir::new(
+        Type::Sink,
+        Kind::Builtin {
+            which: tir::Builtin::JsonLines,
+            arg: Box::new(arg),
         },
     ))
 }
