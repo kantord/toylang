@@ -20,7 +20,7 @@
   kind: build
   needs: [sink-kind-build]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: dsv-partial-conventions
   issue: gh:136
@@ -39,12 +39,13 @@
   status: delegated
 
 - id: variant-types-flip
+  issue: gh:165
   title: Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference)
   kind: build
   needs: [matcher-totality-and-alt-design]
   prio: 2
   model: fable
-  status: todo
+  status: delegated
 
 - id: shell-out-build
   issue: gh:158
@@ -256,14 +257,14 @@
   status: todo
 
 - id: binary-op-multiplicity-design
-  title: Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update's spelling -- Q2/Q3 (draft-split)
+  title: 'Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update''s spelling -- Q2/Q3 (draft-split). Round 1 answer: no pick on either -- "deep research to understand if each of the options would collide with something we already decided or inevitably will need to" (Q2), "deeper research into pros/cons, footguns, real code examples and edge cases" (Q3); round 2 needs that research before re-asking'
   kind: decide
   needs: []
   prio: 3
   status: todo
 
 - id: search-and-fold-design
-  title: Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split)
+  title: 'Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split). Round 1 leaned depth-first for `..` (Q7) but answer was "also research the performance implications before we fully commit"; round 2 needs that research before re-asking'
   kind: decide
   needs: []
   soft: [first-search-cut]
@@ -271,7 +272,7 @@
   status: todo
 
 - id: offload-boundary-design
-  title: Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split)
+  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 1 leaned silent/fully-derived-from-cardinality for Q8, with the caveat it must stay easy and intuitive for the user to design toward vectorizable code -- treat as a lean, not a ratification, until re-asked with that caveat addressed'
   kind: decide
   needs: []
   soft: [benchmark-goals]
