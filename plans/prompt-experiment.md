@@ -26,3 +26,4 @@ and hold a grilling session on the results.
 
 | # | issue | phrase used | outcome | notes |
 |---|-------|-------------|---------|-------|
+| 1 | gh:151 (continuation) | "This is much simpler than it looks -- the prior run got 95% of the way there and only tripped on two duplicate-definition slips near the finish line." | pending | continuation dispatch, 2026-08-31 tick; fixes a duplicate `contains_sink` method + duplicate `ident()` match arm left by the prior run |
