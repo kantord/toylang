@@ -314,6 +314,8 @@ impl<'ctx> Emitter<'ctx, '_> {
             // is. Fusion is what will remove this materialization.
             Type::Stream(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
+            // A sink is a joined string at runtime, so a `-> Sink` function returns one here too.
+            Type::Sink => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Int => self.ctx.i64_type().into(),
             // The same i64 an Int already lives in: an Int is computed wide and narrowed after
             // every operation, and an Int64 is that representation with the narrowing left off
@@ -418,6 +420,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
+            Type::Sink => unreachable!("the grammar keeps a sink out of every slot"),
             Type::Int | Type::Int64 | Type::Char => value.into_int_value(),
             Type::Bool => self
                 .builder
@@ -435,6 +438,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
+            Type::Sink => unreachable!("the grammar keeps a sink out of every slot"),
             Type::Int | Type::Int64 | Type::Char => slot.into(),
             Type::Bool => self
                 .builder
@@ -951,6 +955,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
+            Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
             // tl_int_to_str already takes the full i64, so both widths print through it.
             Type::Int | Type::Int64 => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
@@ -2446,7 +2451,7 @@ impl<'ctx> Emitter<'ctx, '_> {
     /// A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
     fn print(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<(), String> {
         let as_str = match ty {
-            Type::Str => value,
+            Type::Str | Type::Sink => value,
             other => self.show(value, other)?,
         };
         self.builder
@@ -2469,6 +2474,7 @@ fn descriptor(enums: &Enums, ty: &Type) -> String {
             // Stream is unspellable in a type annotation, so `input`'s declared type -- the only
             // thing this function is ever called on -- can never contain one.
             Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
+            Type::Sink => unreachable!("input cannot be a sink, refused by the checker"),
             Type::Str => "s".to_string(),
             Type::Int => "i".to_string(),
             // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.

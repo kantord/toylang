@@ -566,7 +566,7 @@ pub fn emit(program: &Program) -> String {
             ));
         }
         let body = e.expr(&program.body);
-        let printed = if program.body.ty == Type::Str {
+        let printed = if matches!(program.body.ty, Type::Str | Type::Sink) {
             body
         } else {
             e.show(&program.body.ty, &body, 0)
@@ -830,6 +830,8 @@ impl Emitter<'_> {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Str => "String".to_string(),
+            // A sink is a joined string at runtime, so a `-> Sink` function returns one here too.
+            Type::Sink => "String".to_string(),
             Type::Int => "i32".to_string(),
             Type::Int64 => "i64".to_string(),
             Type::Bool => "bool".to_string(),
@@ -869,6 +871,7 @@ impl Emitter<'_> {
             ),
             // The checker refuses Opt anywhere in an input type: absence has no wire form.
             Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
+            Type::Sink => unreachable!("input cannot be a sink, refused by the checker"),
             Type::Enum { .. } => format!("tl_parse_enum{}", self.enum_index(ty)),
             Type::Record(_) => format!("tl_parse_rec{}", self.record_index(ty)),
         }
@@ -1326,6 +1329,7 @@ impl Emitter<'_> {
             // The checker refuses a program whose result contains a Char: it has no wire form.
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tl_quote(&{value})"),
+            Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Int | Type::Int64 => format!("({value}).to_string()"),
             Type::Bool => format!("({value}).to_string()"),
             Type::Vec(elem) => {

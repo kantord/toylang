@@ -408,7 +408,7 @@ pub fn emit(program: &Program) -> String {
         }
         let body = e.expr(&program.body);
         // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
-        let printed = if program.body.ty == Type::Str {
+        let printed = if matches!(program.body.ty, Type::Str | Type::Sink) {
             body
         } else {
             e.show(&program.body.ty, &body, 0)
@@ -514,6 +514,7 @@ fn has_scalar(enums: &Enums, ty: &Type) -> bool {
             Type::Char => unreachable!("a Char cannot reach has_scalar"),
             Type::Int | Type::Int64 | Type::Bool => true,
             Type::Str => false,
+            Type::Sink => false,
             Type::Vec(t) => reaches(enums, t, seen),
             Type::Record(fields) => fields.iter().any(|(_, t)| reaches(enums, t, seen)),
             Type::Enum { .. } => {
@@ -711,6 +712,8 @@ impl Emitter<'_> {
     fn go_type(&self, ty: &Type) -> String {
         match ty {
             Type::Str => "string".to_string(),
+            // A sink is a joined string at runtime, so a `-> Sink` function has one here too.
+            Type::Sink => "string".to_string(),
             // The default Int is 32 bits and wraps, and Go's int32 does exactly that for free.
             Type::Int => "int32".to_string(),
             // Same story a word wider (kantord/toylang#83).
@@ -1208,6 +1211,7 @@ impl Emitter<'_> {
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tlQuote({value})"),
+            Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Int => format!("strconv.FormatInt(int64({value}), 10)"),
             Type::Int64 => format!("strconv.FormatInt({value}, 10)"),
             Type::Bool => format!("strconv.FormatBool({value})"),

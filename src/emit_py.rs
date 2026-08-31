@@ -198,7 +198,7 @@ pub fn emit(program: &Program) -> String {
 
         let body = expr(enums, &program.body);
         // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
-        let printed = if program.body.ty == Type::Str {
+        let printed = if matches!(program.body.ty, Type::Str | Type::Sink) {
             body
         } else {
             show(enums, &program.body.ty, &body, 0)
@@ -321,6 +321,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
+        Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         Type::Int | Type::Int64 => format!("str({value})"),
         Type::Bool => format!("(\"true\" if {value} else \"false\")"),
         Type::Vec(elem) => {

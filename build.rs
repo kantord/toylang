@@ -147,6 +147,7 @@ impl ToRust for ty::Type {
             ty::Type::Char => "crate::ty::Type::Char".to_string(),
             ty::Type::Vec(elem) => format!("crate::ty::Type::Vec({})", elem.to_rust()),
             ty::Type::Stream(elem) => format!("crate::ty::Type::Stream({})", elem.to_rust()),
+            ty::Type::Sink => "crate::ty::Type::Sink".to_string(),
             ty::Type::Record(fields) => {
                 format!("crate::ty::Type::Record({})", fields.to_rust())
             }

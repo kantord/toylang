@@ -148,6 +148,7 @@ fn canonical(enums: &Enums, ty: &Type, value: &str) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str | Type::Int | Type::Int64 | Type::Bool => value.to_string(),
+        Type::Sink => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(enums, elem, ".")),
         Type::Enum { .. } if ty.as_opt().is_some() => {
             let inner = ty.as_opt().expect("guarded");

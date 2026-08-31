@@ -264,7 +264,7 @@ pub fn emit(program: &Program) -> String {
     let used = used_helpers(program);
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON. So a
     // string inside a Vec is quoted while a bare string is not.
-    let structured = program.body.ty != Type::Str;
+    let structured = !matches!(program.body.ty, Type::Str | Type::Sink);
     let quote = (structured && needs_quote(&program.body.ty)) || used.jsonlines;
     let join = (structured && contains_vec(enums, &program.body.ty)) || used.jsonlines;
     for (on, text) in [
@@ -390,6 +390,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
+        Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         Type::Int | Type::Int64 | Type::Bool => format!("tostring({value})"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
