@@ -596,6 +596,9 @@ pub fn emit(program: &Program) -> String {
     let arith = uses("tl_div(") || uses("tl_rem(");
     let arith64 = uses("tl_div64(") || uses("tl_rem64(");
     let reads_value = program.input.is_some() || program.inputs.is_some();
+    // `tl_read_lines` alone (a program whose only stdin-touching builtin is `lines`) emits
+    // READ_HELPER, whose body calls `tl_fail` via `tl_read_all_stdin`; the `uses` scan only sees
+    // the program decls, not other helpers' source, so the trigger has to be named here too.
     let fail = unwrap
         || arith
         || arith64
@@ -604,6 +607,7 @@ pub fn emit(program: &Program) -> String {
         || uses("tl_tail(")
         || uses("tl_range(")
         || uses("tl_read_all_stdin(")
+        || uses("tl_read_lines(")
         || uses("tl_fail(");
 
     let mut helpers = String::new();
