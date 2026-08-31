@@ -27,9 +27,11 @@ export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:/usr/local/bin:/usr/bin:/b
 cd "$REPO"
 
 # The maintainer's mail UI depends on the dev server; revive it if a reboot ate it.
+# 9>&- : the dev server outlives this script, so it must never inherit the tick
+# lock fd -- otherwise it pins the lock open forever and every future tick yields.
 if ! curl -s -o /dev/null --max-time 3 http://localhost:5173/toylang/dev/; then
   (cd "$REPO/site" && nohup pnpm dev --port 5173 --strictPort \
-    >>"$LOG_DIR/devserver.log" 2>&1 &)
+    >>"$LOG_DIR/devserver.log" 2>&1 9>&- &)
 fi
 
 # Decide in bash whether this tick needs a model at all, and which one. A tick
