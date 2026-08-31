@@ -81,6 +81,21 @@ const AT_HELPER: &str = r#"fn tl_at<T: Clone>(v: &[T], i: i32) -> Option<T> {
 }
 "#;
 
+// Out-of-range bounds clamp jq-style rather than answering absence, so this never fails.
+// A `None` bound is passed as its sentinel: `i32::MIN` for the start (clamps to 0) and
+// `i32::MAX` for the end (clamps to the length).
+const SLICE_HELPER: &str = r#"fn tl_slice<T: Clone>(v: &[T], lo: i32, hi: i32) -> Vec<T> {
+    let n = v.len() as i32;
+    let lo = (if lo < 0 { n + lo } else { lo }).clamp(0, n);
+    let hi = (if hi < 0 { n + hi } else { hi }).clamp(0, n);
+    if lo >= hi {
+        Vec::new()
+    } else {
+        v[lo as usize..hi as usize].to_vec()
+    }
+}
+"#;
+
 const UNWRAP_HELPER: &str = r#"fn tl_unwrap<T>(o: Option<T>) -> T {
     match o {
         Some(v) => v,
@@ -120,6 +135,23 @@ const REVERSE_HELPER: &str = r#"fn tl_reverse<T: Clone>(v: &[T]) -> Vec<T> {
     let mut out = v.to_vec();
     out.reverse();
     out
+}
+"#;
+
+// `wrapping_add` is the same wrap `+` gets through INT_HELPER/ARITH_HELPER, so a fold is the
+// repeated addition with nothing else to spell.
+const SUM_HELPER: &str = r#"fn tl_sum(v: &[i32]) -> i32 {
+    v.iter().fold(0i32, |acc, x| acc.wrapping_add(*x))
+}
+
+fn tl_sum64(v: &[i64]) -> i64 {
+    v.iter().fold(0i64, |acc, x| acc.wrapping_add(*x))
+}
+"#;
+
+// `Option::max` is exactly the empty-is-absent answer, and `Ord` covers both integer widths.
+const MAX_HELPER: &str = r#"fn tl_max<T: Clone + Ord>(v: &[T]) -> Option<T> {
+    v.iter().cloned().max()
 }
 "#;
 
@@ -551,7 +583,7 @@ pub fn emit(program: &Program) -> String {
             ));
         }
         let body = e.expr(&program.body);
-        let printed = if program.body.ty == Type::Str {
+        let printed = if matches!(program.body.ty, Type::Str | Type::Sink) {
             body
         } else {
             e.show(&program.body.ty, &body, 0)
@@ -564,6 +596,9 @@ pub fn emit(program: &Program) -> String {
     let arith = uses("tl_div(") || uses("tl_rem(");
     let arith64 = uses("tl_div64(") || uses("tl_rem64(");
     let reads_value = program.input.is_some() || program.inputs.is_some();
+    // `tl_read_lines` alone (a program whose only stdin-touching builtin is `lines`) emits
+    // READ_HELPER, whose body calls `tl_fail` via `tl_read_all_stdin`; the `uses` scan only sees
+    // the program decls, not other helpers' source, so the trigger has to be named here too.
     let fail = unwrap
         || arith
         || arith64
@@ -572,6 +607,7 @@ pub fn emit(program: &Program) -> String {
         || uses("tl_tail(")
         || uses("tl_range(")
         || uses("tl_read_all_stdin(")
+        || uses("tl_read_lines(")
         || uses("tl_fail(");
 
     let mut helpers = String::new();
@@ -581,11 +617,14 @@ pub fn emit(program: &Program) -> String {
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
         (uses("tl_at("), AT_HELPER),
+        (uses("tl_slice("), SLICE_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
         (uses("tl_sort("), SORT_HELPER),
         (uses("tl_reverse("), REVERSE_HELPER),
+        (uses("tl_sum(") || uses("tl_sum64("), SUM_HELPER),
+        (uses("tl_max("), MAX_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
         (
@@ -750,6 +789,15 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
+            Kind::Slice { base, start, end, .. } => {
+                self.walk(base);
+                if let Some(s) = start {
+                    self.walk(s);
+                }
+                if let Some(e) = end {
+                    self.walk(e);
+                }
+            }
             Kind::Match { subject, arms, .. } => {
                 self.walk(subject);
                 for a in arms {
@@ -805,6 +853,8 @@ impl Emitter<'_> {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Str => "String".to_string(),
+            // A sink is a joined string at runtime, so a `-> Sink` function returns one here too.
+            Type::Sink => "String".to_string(),
             Type::Int => "i32".to_string(),
             Type::Int64 => "i64".to_string(),
             Type::Bool => "bool".to_string(),
@@ -844,6 +894,7 @@ impl Emitter<'_> {
             ),
             // The checker refuses Opt anywhere in an input type: absence has no wire form.
             Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
+            Type::Sink => unreachable!("input cannot be a sink, refused by the checker"),
             Type::Enum { .. } => format!("tl_parse_enum{}", self.enum_index(ty)),
             Type::Record(_) => format!("tl_parse_rec{}", self.record_index(ty)),
         }
@@ -1083,12 +1134,7 @@ impl Emitter<'_> {
                 self.user(func),
                 arg.as_deref().map_or_else(String::new, |a| self.expr(a))
             ),
-            // `Vec<T>` has no `Add` impl, but the standard library's slice `concat` is exactly
-            // this operation for an owned pair.
-            Kind::Concat(l, r) => match &t.ty {
-                Type::Vec(_) => format!("[{}, {}].concat()", self.expr(l), self.expr(r)),
-                _ => format!("({} + &{})", self.expr(l), self.expr(r)),
-            },
+            Kind::Concat(l, r) => concat(&t.ty, self.expr(l), self.expr(r)),
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             // A genuine expression, unlike Go: both branches stay unevaluated except the taken
             // one, which is what `if`/`else` already guarantees.
@@ -1124,6 +1170,16 @@ impl Emitter<'_> {
                 Builtin::Flatten => format!("tl_flatten(&{})", self.expr(arg)),
                 Builtin::Sort => format!("tl_sort(&{})", self.expr(arg)),
                 Builtin::Reverse => format!("tl_reverse(&{})", self.expr(arg)),
+                // `i32` and `i64` are distinct types in Rust, so the fold is chosen by the
+                // element width.
+                Builtin::Sum => {
+                    if tir::runtime_elem(&arg.ty) == Some(&Type::Int) {
+                        format!("tl_sum(&{})", self.expr(arg))
+                    } else {
+                        format!("tl_sum64(&{})", self.expr(arg))
+                    }
+                }
+                Builtin::Max => format!("tl_max(&{})", self.expr(arg)),
                 // The names come from the checked type, not the struct value, so `arg` is
                 // evaluated only for whatever else it does (a division inside it must still
                 // trap) and its value discarded.
@@ -1226,6 +1282,21 @@ impl Emitter<'_> {
                     format!("tl_at(&{v}, {i})")
                 })
             }
+            Kind::Slice {
+                base, start, end, depth,
+            } => {
+                let lo = match start {
+                    Some(s) => self.expr(s),
+                    None => "i32::MIN".to_string(),
+                };
+                let hi = match end {
+                    Some(e) => self.expr(e),
+                    None => "i32::MAX".to_string(),
+                };
+                self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
+                    format!("tl_slice(&{v}, {lo}, {hi})")
+                })
+            }
             // The one target with the construct itself: a toylang match is a Rust match, and
             // for a chain of variant arms rustc re-proves the exhaustiveness the checker
             // already established. A default arm is `_`, a guard arm `_ if cond` (the guard
@@ -1291,6 +1362,7 @@ impl Emitter<'_> {
             // The checker refuses a program whose result contains a Char: it has no wire form.
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tl_quote(&{value})"),
+            Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Int | Type::Int64 => format!("({value}).to_string()"),
             Type::Bool => format!("({value}).to_string()"),
             Type::Vec(elem) => {
@@ -1387,6 +1459,15 @@ fn int_lit(ty: &Type, n: i64) -> String {
         format!("{n}i64")
     } else {
         format!("tl_int({n})")
+    }
+}
+
+/// `Vec<T>` has no `Add` impl, but the standard library's slice `concat` is exactly
+/// this operation for an owned pair.
+fn concat(ty: &Type, l: String, r: String) -> String {
+    match ty {
+        Type::Vec(_) => format!("[{l}, {r}].concat()"),
+        _ => format!("({l} + &{r})"),
     }
 }
 

@@ -148,6 +148,7 @@ fn canonical(enums: &Enums, ty: &Type, value: &str) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str | Type::Int | Type::Int64 | Type::Bool => value.to_string(),
+        Type::Sink => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(enums, elem, ".")),
         Type::Enum { .. } if ty.as_opt().is_some() => {
             let inner = ty.as_opt().expect("guarded");
@@ -241,6 +242,15 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
         Kind::Index { base, index, .. } => {
             callees(base, out);
             callees(index, out);
+        }
+        Kind::Slice { base, start, end, .. } => {
+            callees(base, out);
+            if let Some(s) = start {
+                callees(s, out);
+            }
+            if let Some(e) = end {
+                callees(e, out);
+            }
         }
         Kind::Match { subject, arms, .. } => {
             callees(subject, out);
@@ -387,7 +397,14 @@ fn uses_arith(program: &Program) -> (bool, bool) {
                     walk(a, found);
                 }
             }
-            Kind::Builtin { arg, .. } => walk(arg, found),
+            Kind::Builtin { which, arg } => {
+                // `sum` over Int narrows through `tl_i32` in its fold, so the helper that
+                // defines it has to be present alongside.
+                if *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int) {
+                    found.0 = true;
+                }
+                walk(arg, found);
+            }
             Kind::Concat(l, r)
             | Kind::Compare { lhs: l, rhs: r, .. }
             | Kind::Logic { lhs: l, rhs: r, .. } => {
@@ -416,6 +433,15 @@ fn uses_arith(program: &Program) -> (bool, bool) {
             Kind::Index { base, index, .. } => {
                 walk(base, found);
                 walk(index, found);
+            }
+            Kind::Slice { base, start, end, .. } => {
+                walk(base, found);
+                if let Some(s) = start {
+                    walk(s, found);
+                }
+                if let Some(e) = end {
+                    walk(e, found);
+                }
             }
             Kind::Match { subject, arms, .. } => {
                 walk(subject, found);
@@ -545,6 +571,25 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // restricts `sort` to Int, Int64, Str, and Char.
             Builtin::Sort => format!("({} | sort)", expr(enums, arg)),
             Builtin::Reverse => format!("({} | reverse)", expr(enums, arg)),
+            // `reduce` starting from 0 is `add`'s empty-is-0 shape with the wrap `+` applies to
+            // an Int spelled explicitly; Int64's fold is plain `+`, exact within the 2^53 the
+            // module comment already owns.
+            Builtin::Sum => {
+                if tir::runtime_elem(&arg.ty) == Some(&Type::Int) {
+                    format!(
+                        "({} | reduce .[] as $x (0; ((. + $x) | tl_i32)))",
+                        expr(enums, arg)
+                    )
+                } else {
+                    format!("({} | reduce .[] as $x (0; . + $x))", expr(enums, arg))
+                }
+            }
+            // jq's own `max` on an empty list errors, and on a non-empty one is exactly this,
+            // so only the empty case is spelled: the absent Opt, tagged the way `Tail` tags.
+            Builtin::Max => format!(
+                "({} | if length == 0 then \"none\" else {{some: max}} end)",
+                expr(enums, arg)
+            ),
             // The names come from the checked type, not the object value, so `arg` runs only to
             // become the `.` a literal array then ignores -- the same discard the pipe already
             // gives every other builtin here.
@@ -638,6 +683,22 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 expr(enums, index)
             );
             format!("({} | {})", expr(enums, base), distribute(&at, *depth))
+        }
+        // jq's own slice clamps out-of-range bounds and counts negatives from the end, so the
+        // ruled behaviour is the target's native one; a `None` bound is just left out.
+        Kind::Slice {
+            base, start, end, depth,
+        } => {
+            let lo = match start {
+                Some(s) => expr(enums, s),
+                None => String::new(),
+            };
+            let hi = match end {
+                Some(e) => expr(enums, e),
+                None => String::new(),
+            };
+            let sl = format!(".[{lo}:{hi}]");
+            format!("({} | {})", expr(enums, base), distribute(&sl, *depth))
         }
         // Tests over the subject: equality for a unit variant, `type`-guarded `has` for a
         // payload one, since `has` on a string is an error rather than false, and the guard's

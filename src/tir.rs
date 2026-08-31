@@ -148,6 +148,17 @@ pub enum Kind {
         /// Whether an entry is a record, which decides if collapsing has to gather columns.
         elem_is_record: bool,
     },
+    /// Narrow a dimension to the `[start, end)` window, `depth` layers down, counting negative
+    /// bounds from the end. Out-of-range bounds clamp to the valid range rather than answering
+    /// `Opt` the way a collapsing `Index` does (kantord/toylang#143), jq's `.[a:b]`; `None`
+    /// means the dimension's own boundary (0 and its length), and `start >= end` after
+    /// clamping yields empty.
+    Slice {
+        base: Box<Tir>,
+        start: Option<Box<Tir>>,
+        end: Option<Box<Tir>>,
+        depth: usize,
+    },
     /// First-match-wins dispatch over the subject: variant arms test its shape, guard arms
     /// evaluate a Bool of their own. The checker has already resolved every name a pattern
     /// bound, so an arm is only a test, a payload local to bind, and a body.
@@ -233,6 +244,16 @@ pub enum Builtin {
     /// same reason `sort` is (the whole Vec has to be there before the first output element
     /// is), but unrestricted in element type, since reversing needs no comparison.
     Reverse,
+    /// `sum(v)`, the reduction of `+` over `v`'s elements, at the element type's own width: a
+    /// `Vec<Int>` sums to `Int`, a `Vec<Int64>` to `Int64`, and an empty Vec sums to 0. Each
+    /// addition wraps the way the language's `+` does, so a sum that leaves the width is the
+    /// same number a hand-written fold would produce (kantord/toylang#140).
+    Sum,
+    /// `max(v)`, the greatest of `v`'s elements, `Opt<T>` because an empty Vec has no maximum
+    /// -- the same answer indexing gives to absence (kantord/toylang#140). Restricted to the
+    /// same two integer element types `sum` takes, so a backend can reach for its native
+    /// maximum.
+    Max,
 }
 
 pub struct Func {
@@ -540,6 +561,15 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
             each_node(base, f);
             each_node(index, f);
         }
+        Kind::Slice { base, start, end, .. } => {
+            each_node(base, f);
+            if let Some(s) = start {
+                each_node(s, f);
+            }
+            if let Some(e) = end {
+                each_node(e, f);
+            }
+        }
         Kind::Match { subject, arms, .. } => {
             each_node(subject, f);
             for arm in arms {
@@ -549,5 +579,28 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
                 each_node(&arm.body, f);
             }
         }
+    }
+}
+
+/// Whether `t` makes a self-call to `name` in a tail position: a call whose result is the
+/// function's result, with nothing left to do after it. This is what lets the js and py
+/// emitters lower a self-tail-recursive function to a loop, the constant-stack contract
+/// (kantord/toylang#141).
+///
+/// Only `Cond` branches, a total `Match`'s arm bodies, and a `Bind`'s body put their child in
+/// tail position; a partial `Match` wraps every arm body in `{some: ...}`, so nothing there is
+/// a tail call, and a call feeding an operator (`f(x) + 1`) is a genuine recursion the contract
+/// does not cover.
+pub fn has_tail_call(name: &str, t: &Tir) -> bool {
+    match &t.kind {
+        Kind::Call { func, .. } => func == name,
+        Kind::Cond { then, otherwise, .. } => {
+            has_tail_call(name, then) || has_tail_call(name, otherwise)
+        }
+        Kind::Bind { body, .. } => has_tail_call(name, body),
+        Kind::Match { arms, partial, .. } if !partial => {
+            arms.iter().any(|a| has_tail_call(name, &a.body))
+        }
+        _ => false,
     }
 }

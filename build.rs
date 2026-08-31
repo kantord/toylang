@@ -147,6 +147,7 @@ impl ToRust for ty::Type {
             ty::Type::Char => "crate::ty::Type::Char".to_string(),
             ty::Type::Vec(elem) => format!("crate::ty::Type::Vec({})", elem.to_rust()),
             ty::Type::Stream(elem) => format!("crate::ty::Type::Stream({})", elem.to_rust()),
+            ty::Type::Sink => "crate::ty::Type::Sink".to_string(),
             ty::Type::Record(fields) => {
                 format!("crate::ty::Type::Record({})", fields.to_rust())
             }
@@ -180,6 +181,8 @@ impl ToRust for tir::Builtin {
             tir::Builtin::Chars => "Chars",
             tir::Builtin::Sort => "Sort",
             tir::Builtin::Reverse => "Reverse",
+            tir::Builtin::Sum => "Sum",
+            tir::Builtin::Max => "Max",
         };
         format!("crate::tir::Builtin::{variant}")
     }
@@ -339,6 +342,22 @@ fn index(base: &tir::Tir, index: &tir::Tir, depth: &usize, elem_is_record: &bool
         ],
     )
 }
+fn slice(
+    base: &tir::Tir,
+    start: &Option<Box<tir::Tir>>,
+    end: &Option<Box<tir::Tir>>,
+    depth: &usize,
+) -> String {
+    variant(
+        "Slice",
+        &[
+            ("base", boxed(base)),
+            ("start", start.to_rust()),
+            ("end", end.to_rust()),
+            ("depth", depth.to_rust()),
+        ],
+    )
+}
 fn match_(subject: &tir::Tir, arms: &[tir::MatchArm], partial: &bool) -> String {
     variant(
         "Match",
@@ -404,6 +423,12 @@ impl ToRust for tir::Kind {
                 depth,
                 elem_is_record,
             } => index(base, i, depth, elem_is_record),
+            Slice {
+                base,
+                start,
+                end,
+                depth,
+            } => slice(base, start, end, depth),
             Match {
                 subject,
                 arms,

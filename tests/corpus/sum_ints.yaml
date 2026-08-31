@@ -1,0 +1,7 @@
+program: |
+  sum([1, 2, 3, 4])
+
+output: |
+  10
+
+node_types: [builtin.sum, int, vec-literal]
