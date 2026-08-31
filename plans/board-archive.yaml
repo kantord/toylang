@@ -1229,3 +1229,9 @@
   needs: []
   prio: 3
   status: done
+
+- id: overloading-and-traits-design
+  title: 'Grill function overloading and Rust-style traits -- ruled (overloading-and-utf8-lines round, question ad-hoc-polymorphism-mechanism): declared interface/trait mechanism (Rust/Swift-shaped) is the direction for ad hoc polymorphism, superseding the closed per-operator match. Spins off trait-interface-research and trait-interface-design.'
+  kind: decide
+  needs: [precedent-survey]
+  status: done

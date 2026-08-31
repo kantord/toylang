@@ -70,10 +70,17 @@
   model: fable
   status: delegated
 
-- id: overloading-and-traits-design
-  title: 'Grill function overloading and Rust-style traits -- the direction that dissolves concat and kin. Re-verified against current source (2026-09-01): the survey doc was even more stale than known -- concat is no longer a user-facing builtin at all, `+` fully absorbed it (tests/corpus/concat.yaml is now `"hello " + "world"`), so only extent/tail/collect remain as one-off polymorphism sites. Round composed: docs/.grill/overloading-and-utf8-lines.round.yaml, question ad-hoc-polymorphism-mechanism, three options with real code previews -- awaiting maintainer answer'
+- id: trait-interface-research
+  title: 'Ruled (overloading-and-utf8-lines round ruling spinoff): declared interface/trait mechanism (Rust/Swift-shaped) is the direction for ad hoc polymorphism. Research spike before design: scope the minimal checker mechanism (trait declaration, impl-for-type, static dispatch) and whether it truly requires user-facing generics or can start monomorphic (one impl per concrete type, no generic trait bounds). Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: trait-interface-design
+  title: 'Grill the concrete trait/impl syntax and dispatch mechanism (overloading-and-utf8-lines round ruling spinoff), informed by trait-interface-research'
   kind: decide
-  needs: [precedent-survey]
+  needs: [trait-interface-research]
   status: todo
 
 - id: mutation-semantics-spike
@@ -97,11 +104,19 @@
   prio: 4
   status: todo
 
+- id: lines-utf8-posix-research
+  issue: gh:102
+  title: 'Round 2 answer (question lines-non-utf8-byte): no pick -- maintainer wants deeper research beyond plans/string-type-spike.md:194-201 before choosing refuse/carry-through/lossy-replace: what is most correct, most secure, most POSIX-compliant, most common across existing Unix line-oriented tools, and what would match user expectations. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
 - id: lines-utf8-edge
   issue: gh:102
-  title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. The round-1-requested research already existed on disk: plans/string-type-spike.md:194-201 covers per-backend behavior and a leaned (not ratified) refusal recommendation. Round composed: docs/.grill/overloading-and-utf8-lines.round.yaml, question lines-non-utf8-byte, three options (refuse / carry-where-possible / uniform lossy replacement) -- awaiting maintainer answer'
+  title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. Round 1 research (plans/string-type-spike.md:194-201) covered per-backend mechanics only; round 2 answer asked for correctness/security/POSIX-compliance/common-practice research first (see lines-utf8-posix-research) before round 3 re-asks with the three options (refuse / carry-where-possible / uniform lossy replacement).'
   kind: decide
-  needs: []
+  needs: [lines-utf8-posix-research]
   status: todo
 
 - id: retire-ternary-build
@@ -145,19 +160,35 @@
   needs: []
   status: todo
 
+- id: module-routing-research
+  issue: gh:162
+  title: 'Research spike (gh:162''s own issue body flags this as ungrillable without it): toylang has no module/import system today -- work out what "module" means here, survey precedent (Elixir/Phoenix-style router dispatch, file-based submodule routing elsewhere), and propose 2-3 concrete toylang syntax candidates with real code sketches for matcher-arm-to-submodule-file dispatch. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 5
+  status: delegated
+
 - id: module-as-function-routing-design
   issue: gh:162
   title: Consider running other modules as functions, e.g. matcher arms dispatching to a submodule file (maintainer note, unscheduled)
   kind: decide
-  needs: []
+  needs: [module-routing-research]
   prio: 5
   status: todo
+
+- id: erlang-target-research
+  issue: gh:163
+  title: 'Research spike (gh:163''s own issue body flags this as needing investigation first): survey Erlang''s process/effect model, pattern matching, and immutability against toylang''s current design docs and its seven existing backends (Lua, JS, Native/LLVM, jq, Go, Python, Rust) -- identify what a design stress test would actually surface. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 5
+  status: delegated
 
 - id: erlang-target-consideration
   issue: gh:163
   title: Consider Erlang as an additional backend target, as a design stress test (maintainer note, unscheduled)
   kind: decide
-  needs: []
+  needs: [erlang-target-research]
   prio: 5
   status: todo
 
@@ -181,6 +212,13 @@
   kind: build
   needs: []
   prio: 3
+  status: todo
+
+- id: http-query-sugar-research
+  title: 'Maintainer note (docs/.annotations/notes.json composed 2026-08-31T22:08:16Z, unscheduled): consider a simple HTTP query builtin (like Python requests) as thin sugar over whatever each backend runtime already provides, minimal added complexity. Research spike: survey what request/response building blocks already exist per backend (Go net/http, JS fetch, Python urllib, Lua, Rust reqwest, native) before scoping a design row. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 5
   status: todo
 
 - id: partial-application-system-design
