@@ -172,6 +172,10 @@ pub struct File {
     pub aliases: Vec<Alias>,
     pub enums: Vec<EnumDecl>,
     pub defs: Vec<Def>,
+    /// `input <type>`: a declaration of what stdin holds, written after the definitions and
+    /// before the body, the way a signature types a parameter. `None` when the program leaves
+    /// the input untyped, in which case the first use of `input` in the body types it.
+    pub input: Option<TypeExpr>,
     pub body: Expr,
 }
 
@@ -327,6 +331,14 @@ pub enum Expr {
         rhs: Box<Expr>,
         span: Span,
     },
+    /// `let <name> = <expr>` on its own line, repeated, then the expression that ends the block
+    /// -- the local-binding form the ruling on #87 picked over `let ... in`: no keyword to pair,
+    /// just a sequence of bindings followed by a result. Only reachable as a function body.
+    Let {
+        bindings: Vec<(String, Expr)>,
+        body: Box<Expr>,
+        span: Span,
+    },
 }
 
 #[derive(Debug)]
@@ -394,7 +406,8 @@ impl Expr {
             | Expr::Match { span, .. }
             | Expr::Pipe { span, .. }
             | Expr::Binary { span, .. }
-            | Expr::Logic { span, .. } => *span,
+            | Expr::Logic { span, .. }
+            | Expr::Let { span, .. } => *span,
         }
     }
 }

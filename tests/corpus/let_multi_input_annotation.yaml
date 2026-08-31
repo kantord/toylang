@@ -1,0 +1,21 @@
+# The multi-binding `let` block, end to end, with the input type declared up front by an
+# `input <type>` annotation instead of borrowed from the first use of `input` -- the shape
+# found failing as "expected end of program, found {" when the annotation followed the
+# function (issue #150). The annotation types the same stdin the body reads, so the run
+# validates the fixture against it just as it would against an inferred type.
+program: |
+  fn f(p: {x: Int, y: Int}) -> Int =
+      let a = p.x * 2
+      let b = p.y * 3
+      a + b
+
+  input {x: Int, y: Int}
+  f(input)
+
+input: |
+  {"x": 3, "y": 4}
+
+output: |
+  18
+
+node_types: [application, arith.add, arith.mul, input, int, local, pipe, projection, var]

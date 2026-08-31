@@ -2,7 +2,7 @@
 source: tests/backend_rust.rs
 expression: "format!(\"compiles (rust) ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles (rust) (210):
+compiles (rust) (214):
 adults
 arith_add
 arith_div_trunc
@@ -79,6 +79,7 @@ index_positive
 index_ragged_inner
 index_ragged_present
 index_strings
+input_annotation
 input_typed_by_first_use
 inputs_records
 inputs_scalars
@@ -101,7 +102,10 @@ jsonlines_of_lines
 jsonlines_record_with_vec_field
 jsonlines_scalars
 length_of_vec
+let_classify_cond
+let_multi_input_annotation
 lines_cat
+lines_only
 lines_preserve_crlf
 lines_stream_signature
 lines_unterminated_final_line

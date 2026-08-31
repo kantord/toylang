@@ -267,7 +267,7 @@ pub fn emit(program: &Program) -> String {
 
     let body = expr(enums, &program.body);
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
-    if program.body.ty == Type::Str {
+    if matches!(program.body.ty, Type::Str | Type::Sink) {
         out.push_str(&format!("console.log({body});\n"));
     } else {
         out.push_str(&format!(
@@ -364,6 +364,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("JSON.stringify({value})"),
+        Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         // String() on a BigInt is the bare digits, no `n` suffix, so Int64 rides the same arm.
         Type::Int | Type::Int64 | Type::Bool => format!("String({value})"),
         Type::Vec(elem) => {

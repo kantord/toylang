@@ -42,6 +42,7 @@ enum Tok {
     Pub,
     Type,
     Enum,
+    Let,
     If,
     Else,
     Input,
@@ -87,6 +88,7 @@ impl std::fmt::Display for Tok {
             Tok::Pub => "`pub`",
             Tok::Type => "`type`",
             Tok::Enum => "`enum`",
+            Tok::Let => "`let`",
             Tok::If => "`if`",
             Tok::Else => "`else`",
             Tok::Input => "`input`",
@@ -177,6 +179,7 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "pub" => Tok::Pub,
                 "type" => Tok::Type,
                 "enum" => Tok::Enum,
+                "let" => Tok::Let,
                 "if" => Tok::If,
                 "else" => Tok::Else,
                 "input" => Tok::Input,
@@ -390,6 +393,26 @@ pub fn parse(src: &str) -> Result<File, Error> {
         }
     }
 
+    // `input <type>` declares what stdin holds before the body reads it. It is the one
+    // declaration that sits after the defs rather than among them, so it is read here, and it is
+    // recognized by the same-line rule a call argument follows: only when the type opens on
+    // `input`'s own line does the keyword start an annotation, so a body that merely uses
+    // `input` is never mistaken for one.
+    let input = match p.peek()? {
+        (Tok::Input, input_span) => {
+            let (next, next_span) = p.peek2()?;
+            if (next == Tok::LBrace || matches!(next, Tok::Ident(_)))
+                && p.same_line(input_span.end, next_span.start)
+            {
+                p.advance()?;
+                Some(p.type_expr()?)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
+
     let body = p.expr(0)?;
     let (rest, rest_span) = p.peek()?;
     if rest != Tok::Eof {
@@ -399,6 +422,7 @@ pub fn parse(src: &str) -> Result<File, Error> {
         aliases,
         enums,
         defs,
+        input,
         body,
     })
 }
@@ -464,6 +488,14 @@ impl<'i> Cursor<'i> {
     /// offset), so looking ahead is just tokenizing a throwaway copy of the cursor.
     fn peek(&self) -> Result<(Tok, Span), Error> {
         let mut probe = self.input;
+        read_tok(&mut probe)
+    }
+
+    /// Reads the token after the next one without consuming either. One probe over `input`,
+    /// then a second over the probe, so the cursor never moves.
+    fn peek2(&self) -> Result<(Tok, Span), Error> {
+        let mut probe = self.input;
+        read_tok(&mut probe)?;
         read_tok(&mut probe)
     }
 
@@ -579,7 +611,7 @@ impl<'i> Cursor<'i> {
         let ret = self.type_expr()?;
 
         self.eat(Tok::Eq)?;
-        let body = self.expr(0)?;
+        let body = self.def_body()?;
         Ok(Def {
             span: start.to(body.span()),
             name,
@@ -587,6 +619,49 @@ impl<'i> Cursor<'i> {
             ret,
             body,
             is_pub,
+        })
+    }
+
+    /// A function's body. An ordinary expression, or -- when the `let` keyword opens it -- the
+    /// local-binding block the ruling on #87 settled on: `let <name> = <expr>` one per line,
+    /// then the expression that ends the block, with no `in` keyword. The line that is not a
+    /// `let` is the value, so each binding's value has to fit on its own line or the next line
+    /// cannot be told apart from the block's result.
+    fn def_body(&mut self) -> Result<Expr, Error> {
+        let (first, _) = self.peek()?;
+        if first != Tok::Let {
+            return self.expr(0);
+        }
+        let first_let = self.advance()?.1;
+        let mut bindings = Vec::new();
+        let mut binding_start = first_let.start;
+
+        loop {
+            let (name, _) = self.eat_ident("a binding name")?;
+            self.eat(Tok::Eq)?;
+            let value = self.expr(0)?;
+            if !self.same_line(binding_start, value.span().end) {
+                return Err(Error::new(
+                    value.span(),
+                    "a `let` binding must fit on its line; write the whole `let <name> = <expr>` \
+                     on one line and let the next line be another `let` or the block's value"
+                        .to_string(),
+                ));
+            }
+            bindings.push((name, value));
+            if self.peek()?.0 == Tok::Let {
+                binding_start = self.advance()?.1.start;
+
+                continue;
+            }
+            break;
+        }
+        let body = self.expr(0)?;
+        let span = first_let.to(body.span());
+        Ok(Expr::Let {
+            bindings,
+            body: Box::new(body),
+            span,
         })
     }
 
