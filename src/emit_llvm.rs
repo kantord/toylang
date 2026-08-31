@@ -1350,7 +1350,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             Kind::Dsv { delim } => {
                 let lines = self.call_rt(self.rt.collect_lines, &[], "lines")?;
                 let sep = self.string_const(delim);
-                self.call_rt(self.rt.split_lines, &[lines.into(), sep.into()], "rows")?
+                self.call_rt(self.rt.split_lines, &[lines, sep.into()], "rows")?
             }
 
             Kind::Input => {
