@@ -1,11 +1,3 @@
-- id: sink-kind-build
-  issue: gh:151
-  title: Implement a dedicated Sink kind, retire jsonlines' hand-special-cased position check (gh:138 ruling)
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
 - id: function-signature-matching-syntax
   issue: gh:152
   title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 needs to stress-test each option (esp. the Msg(...) call-form sketch) for concrete problems before re-asking'

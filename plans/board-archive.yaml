@@ -1221,3 +1221,11 @@
   needs: []
   prio: 2
   status: done
+
+- id: sink-kind-build
+  issue: gh:151
+  title: Implement a dedicated Sink kind, retire jsonlines' hand-special-cased position check (gh:138 ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: done
