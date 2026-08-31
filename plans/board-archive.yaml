@@ -1243,3 +1243,11 @@
   needs: []
   prio: 5
   status: done
+
+- id: module-routing-research
+  issue: gh:162
+  title: 'Research spike (gh:162''s own issue body flags this as ungrillable without it): toylang has no module/import system today -- work out what "module" means here, survey precedent (Elixir/Phoenix-style router dispatch, file-based submodule routing elsewhere), and propose 2-3 concrete toylang syntax candidates with real code sketches for matcher-arm-to-submodule-file dispatch. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 5
+  status: done
