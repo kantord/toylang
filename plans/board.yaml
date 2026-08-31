@@ -1,11 +1,3 @@
-- id: let-bindings-build
-  issue: gh:150
-  title: Implement multi-line let bindings, no in keyword (gh:87 ruling)
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
 - id: sink-kind-build
   issue: gh:151
   title: Implement a dedicated Sink kind, retire jsonlines' hand-special-cased position check (gh:138 ruling)
@@ -137,11 +129,11 @@
 
 - id: rust-lines-tl-fail-build
   issue: gh:157
-  title: Rust backend omits tl_fail helper for lines-only programs, compile error (found verifying gh:102)
+  title: 'Rust backend omits tl_fail helper for lines-only programs, compile error (found verifying gh:102). DISPATCH MISTAKE 2026-08-31: worker is live in toylang-lanes/issue-150 (dispatch-worker.sh was called with N=150 instead of 157, reusing the just-landed issue-150 lane), not toylang-lanes/issue-157 -- do not dispatch a second worker here believing this is unstarted; once the issue-150 worker exits, move that worktree/branch to issue-157 to match this row, then clear this note.'
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: retire-ternary-build
   issue: gh:155
