@@ -71,7 +71,7 @@
   status: delegated
 
 - id: overloading-and-traits-design
-  title: 'Grill function overloading and Rust-style traits -- the direction that dissolves concat and kin. plans/language-precedents.md''s code citations are now stale: it claims Vec is excluded from `+`, but src/check/mod.rs:2164-2176 shows `+` already concatenates two Vecs of the same type (kantord/toylang#97, landed after the survey was written) -- re-verify the doc''s three framings against current src/check/mod.rs before batching this into a round'
+  title: 'Grill function overloading and Rust-style traits -- the direction that dissolves concat and kin. Re-verified against current source (2026-09-01): the survey doc was even more stale than known -- concat is no longer a user-facing builtin at all, `+` fully absorbed it (tests/corpus/concat.yaml is now `"hello " + "world"`), so only extent/tail/collect remain as one-off polymorphism sites. Round composed: docs/.grill/overloading-and-utf8-lines.round.yaml, question ad-hoc-polymorphism-mechanism, three options with real code previews -- awaiting maintainer answer'
   kind: decide
   needs: [precedent-survey]
   status: todo
@@ -99,7 +99,7 @@
 
 - id: lines-utf8-edge
   issue: gh:102
-  title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. Round 1 answer: no pick -- "we should research correctness best practices and see what would actually match people''s expectations in a unix environment and is actually easy to implement efficiently across all backends; we are allowed to question previous decisions and assumptions"; round 2 needs that research before re-asking refuse-vs-replace-vs-leave-backend-defined'
+  title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. The round-1-requested research already existed on disk: plans/string-type-spike.md:194-201 covers per-backend behavior and a leaned (not ratified) refusal recommendation. Round composed: docs/.grill/overloading-and-utf8-lines.round.yaml, question lines-non-utf8-byte, three options (refuse / carry-where-possible / uniform lossy replacement) -- awaiting maintainer answer'
   kind: decide
   needs: []
   status: todo
