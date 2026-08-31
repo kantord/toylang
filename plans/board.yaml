@@ -129,11 +129,11 @@
 
 - id: rust-lines-tl-fail-build
   issue: gh:157
-  title: 'Rust backend omits tl_fail helper for lines-only programs, compile error (found verifying gh:102). DISPATCH MISTAKE 2026-08-31: worker is live in toylang-lanes/issue-150 (dispatch-worker.sh was called with N=150 instead of 157, reusing the just-landed issue-150 lane), not toylang-lanes/issue-157 -- do not dispatch a second worker here believing this is unstarted; once the issue-150 worker exits, move that worktree/branch to issue-157 to match this row, then clear this note.'
+  title: Rust backend omits tl_fail helper for lines-only programs, compile error (found verifying gh:102)
   kind: build
   needs: []
   prio: 2
-  status: delegated
+  status: todo
 
 - id: retire-ternary-build
   issue: gh:155

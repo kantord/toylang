@@ -1174,3 +1174,11 @@
   needs: []
   prio: 4
   status: done
+
+- id: let-bindings-build
+  issue: gh:150
+  title: Implement multi-line let bindings, no in keyword (gh:87 ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: done

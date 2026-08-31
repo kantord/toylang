@@ -83,3 +83,31 @@ route) named the candidates for a post-review tier ladder:
   isolation yet (published best practice for unattended runs; accepted for this
   self-authored public repo); worker cannot receive SendMessage nudges (steer by
   killing + `opencode run --session <id>` resume with a new message).
+
+## Incident: repeated N=150-for-157 dispatch mistake, and a stale board note that made it worse (2026-08-31)
+
+A tick dispatched gh:157's brief with `dispatch-worker.sh 150` instead of `157`,
+landing in the just-freed issue-150 worktree. A concurrent/duplicate tick session
+(same underlying session id, two `claude --resume` processes observed running at
+once -- see the concurrent-sessions memory note) caught this independently and
+committed a board note (fb7754d) marking the row `delegated` with a "worker is
+live in toylang-lanes/issue-150" warning and a follow-up to rename that branch to
+issue-157 once the worker exited.
+
+That note was wrong on the facts: the issue-150 worktree only ever held issue-150's
+own already-landed let-bindings/input-annotation work (folded into
+to-merge-1788204752 this session); no gh:157-related worker ever actually ran there
+-- both the original mistaken dispatch and its bash wrapper appear to have been
+killed by session teardown (background job, "[killed]", zero output, task
+notification "no completion record found") before `dispatch-worker.sh` got far
+enough to print anything. Following the note's instruction (rename that branch to
+issue-157) would have mislabeled unrelated, already-consumed work.
+
+Fix applied: cleared the note, reset the row to `status: todo`, dispatched
+`dispatch-worker.sh 157` correctly into the actual free lane.
+
+Lesson: a board note written under time pressure to prevent a duplicate dispatch
+should describe the *risk*, not assert unverified internal state ("worker is live")
+as fact -- the next tick then has to re-derive ground truth from disk anyway. Cheaper
+to just mark `status: blocked-pending-verification` and let the next tick check
+`git log`/`pgrep` itself.
