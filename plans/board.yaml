@@ -44,7 +44,7 @@
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: euler-slow-fragments-2
   issue: gh:93
@@ -99,7 +99,7 @@
   kind: build
   needs: []
   model: fable
-  status: todo
+  status: delegated
 
 - id: overloading-and-traits-design
   title: Grill function overloading and Rust-style traits -- the direction that dissolves concat and kin
