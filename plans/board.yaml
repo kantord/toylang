@@ -22,12 +22,20 @@
   prio: 3
   status: delegated
 
-- id: dsv-partial-conventions
+- id: dsv-rfc4180-quoting-build
   issue: gh:136
-  title: 'Rule on two dsv worker escalations: csv/tsv as compiler-predefined names vs real prelude.toy partials (blocked on source_in_fn), and raw-split-no-quoting as the DSV field convention'
-  kind: decide
+  title: 'Ruled (prelude-partials-and-mutation round): dsv(delim) needs RFC 4180 quoted-field handling (embedded delimiters, doubled quotes, embedded newlines) -- replace the raw byte-split shipped in gh:136 with a real stateful scanner'
+  kind: build
   needs: []
   prio: 3
+  status: todo
+
+- id: dsv-partials-migration
+  issue: gh:136
+  title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet.'
+  kind: build
+  needs: [partial-application-system-design]
+  prio: 5
   status: todo
 
 - id: euler-slow-fragments-2
@@ -40,12 +48,12 @@
 
 - id: variant-types-flip
   issue: gh:165
-  title: Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference)
+  title: 'Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference). Lane issue-165 stalled here (0 commits, renamed aside as issue-165-contaminated-20260831): the brief claims checker enforcement "already done via gh:156" but variant-checker-capital-first was still status: todo -- added as a real needs edge below so the migration cannot be dispatched again until the checker actually enforces the rule.'
   kind: build
-  needs: [matcher-totality-and-alt-design]
+  needs: [matcher-totality-and-alt-design, variant-checker-capital-first]
   prio: 2
   model: fable
-  status: delegated
+  status: todo
 
 - id: shell-out-build
   issue: gh:158
@@ -63,14 +71,14 @@
   status: delegated
 
 - id: overloading-and-traits-design
-  title: Grill function overloading and Rust-style traits -- the direction that dissolves concat and kin
+  title: 'Grill function overloading and Rust-style traits -- the direction that dissolves concat and kin. plans/language-precedents.md''s code citations are now stale: it claims Vec is excluded from `+`, but src/check/mod.rs:2164-2176 shows `+` already concatenates two Vecs of the same type (kantord/toylang#97, landed after the survey was written) -- re-verify the doc''s three framings against current src/check/mod.rs before batching this into a round'
   kind: decide
   needs: [precedent-survey]
   status: todo
 
-- id: mutation-semantics-design
-  title: Grill privileged/shared references -- mutation as a static optimization, no borrow checker
-  kind: decide
+- id: mutation-semantics-spike
+  title: 'Ruled (prelude-partials-and-mutation round): maintainer leans privileged/shared-reference mutation-as-optimization but will not ratify without prototyping -- spike the "provably one reference exists" static analysis against a couple of backends before a real decide row reopens this'
+  kind: build
   needs: []
   prio: 4
   status: todo
@@ -158,7 +166,7 @@
   title: Checker rejects enum variant declarations that don't start with a capital letter, per the curly-only-pattern ruling (gh:156 ruling)
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: match-type-wrapper-experiment
   issue: gh:122
@@ -167,11 +175,19 @@
   needs: []
   status: todo
 
+- id: closures-first-class-functions-research
+  issue: gh:119
+  title: 'Research spike (prelude-partials-and-mutation round, Q3): maintainer answer -- both struct-like and array-like partial application are needed, chosen by the input type''s shape, and true currying should fall out for free once closures/functions are first-class rather than being its own mechanism. Look at how Rust and similar languages simplify this before a final design; write findings to plans/'
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
 - id: partial-application-system-design
   issue: gh:119
-  title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff) -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like"'
+  title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff), informed by closures-first-class-functions-research -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like"'
   kind: decide
-  needs: []
+  needs: [closures-first-class-functions-research]
   status: todo
 
 
