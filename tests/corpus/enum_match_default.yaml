@@ -1,9 +1,9 @@
 # A bare payload arm rebinds `.` to the payload, and `any()` is the default arm that stands in
 # for the variants nothing named.
 program: |
-  enum Msg { ping, text{body: Str}, quit }
+  enum Msg { Ping, Text{body: Str}, Quit }
 
-  fn describe(m: Msg) -> Str = m | text -> .body or any() -> "control"
+  fn describe(m: Msg) -> Str = m | Text -> .body or any() -> "control"
 
   {a: describe text{body: "hi"}, b: describe ping, c: describe quit}
 

@@ -26,15 +26,15 @@ fn a_parameter_used_only_in_a_nested_call_still_counts() {
 
 #[test]
 fn an_unused_destructured_field_is_refused() {
-    insta::assert_snapshot!(err("enum Shape { point, circle{r: Int, color: Str} }\n\n\
-         fn area(s: Shape) -> Int = s | circle{r, color} -> r * r or point -> 0\n\n\
+    insta::assert_snapshot!(err("enum Shape { Point, Circle{r: Int, color: Str} }\n\n\
+         fn area(s: Shape) -> Int = s | Circle{r, color} -> r * r or Point -> 0\n\n\
          area(Shape.point)"));
 }
 
 #[test]
 fn a_read_destructured_field_compiles() {
-    let src = "enum Shape { point, circle{r: Int} }\n\n\
-               fn area(s: Shape) -> Int = s | circle{r} -> r * r or point -> 0\n\n\
+    let src = "enum Shape { Point, Circle{r: Int} }\n\n\
+               fn area(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0\n\n\
                area(Shape.point)";
     assert!(toylang::compile(src).is_ok());
 }
@@ -44,8 +44,8 @@ fn a_read_destructured_field_compiles() {
 /// the subject, not the binding" that the checker could tell apart from using `r`.
 #[test]
 fn reading_the_field_through_the_subject_spelling_still_counts_as_using_the_binding() {
-    let src = "enum Shape { circle{r: Int} }\n\n\
-               fn area(s: Shape) -> Int = s | circle{r} -> .r * .r\n\n\
+    let src = "enum Shape { Circle{r: Int} }\n\n\
+               fn area(s: Shape) -> Int = s | Circle{r} -> .r * .r\n\n\
                area(circle{r: 3})";
     assert!(toylang::compile(src).is_ok());
 }
@@ -54,7 +54,7 @@ fn reading_the_field_through_the_subject_spelling_still_counts_as_using_the_bind
 /// already there.
 #[test]
 fn the_hint_does_not_repeat_an_existing_rest() {
-    insta::assert_snapshot!(err("enum Shape { circle{r: Int, color: Str} }\n\n\
-         fn area(s: Shape) -> Int = s | circle{r, color, ..} -> r * r\n\n\
+    insta::assert_snapshot!(err("enum Shape { Circle{r: Int, color: Str} }\n\n\
+         fn area(s: Shape) -> Int = s | Circle{r, color, ..} -> r * r\n\n\
          area(circle{r: 3, color: \"red\"})"));
 }

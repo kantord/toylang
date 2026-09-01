@@ -10,7 +10,7 @@
 # Ordering is not here. `<` on a Str is pinned by str_ordering_codepoint.yaml, and `<` on a
 # composite is a question nobody has answered.
 program: |
-  enum Shape { point, circle{r: Int}, box{w: Int, h: Int} }
+  enum Shape { Point, Circle{r: Int}, Box{w: Int, h: Int} }
 
   {
     same: {a: 1, b: 2} == {a: 1, b: 2},
