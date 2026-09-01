@@ -103,6 +103,7 @@ def insert_row(lane, inc_rel, st):
         f"- id: stuck-{lane}-investigation\n"
         f"  kind: build\n"
         f"  status: todo\n"
+        f"  needs: []\n"
         f"  issue: gh:{n}\n"
         f"  title: 'INVESTIGATE stuck lane {lane} (no activity {hours}h, {st['runs']}"
         f" run(s), 0 commits): evidence frozen in {inc_rel}/ -- read it plus the lane"
