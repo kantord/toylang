@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (187):
+compiles natively (215):
 adults
 arith_add
 arith_div_trunc
@@ -79,6 +79,7 @@ index_positive
 index_ragged_inner
 index_ragged_present
 index_strings
+input_annotation
 input_typed_by_first_use
 inputs_records
 inputs_scalars
@@ -102,7 +103,10 @@ jsonlines_of_range
 jsonlines_record_with_vec_field
 jsonlines_scalars
 length_of_vec
+let_classify_cond
+let_multi_input_annotation
 lines_cat
+lines_only
 lines_preserve_crlf
 lines_stream_signature
 lines_unterminated_final_line
@@ -119,6 +123,11 @@ map_to_str
 match_arms_from_annotation
 match_partial_guards
 match_partial_opt_arms
+max_empty
+max_empty_unwrap_refuses
+max_int64s
+max_ints
+max_negative
 nested_field_access
 nullary_function
 opt_constructors
@@ -150,6 +159,18 @@ rem_by_zero
 result_match_both_arms
 reverse_records
 shadowing_print
+slice_basic
+slice_negative
+slice_negative_both
+slice_nested
+slice_omit_high
+slice_omit_low
+slice_out_of_range
+slice_out_of_range_high
+slice_out_of_range_low
+slice_plus_concat
+slice_records
+slice_reversed
 sort_chars
 sort_descending
 sort_int64s
@@ -164,8 +185,14 @@ str_ordering
 str_ordering_codepoint
 str_positive
 str_zero
+sum_empty
+sum_int64s
+sum_ints
+sum_negative
+sum_wrap
 tail_drops_first
 tail_of_empty_refuses
+tail_recursion_deep
 type_alias
 undeclared_input_fields
 unicode_input
@@ -176,6 +203,7 @@ unwrap_int
 unwrap_negative
 unwrap_nested
 unwrap_str
+vec_body_after_definition
 vec_concat
 vec_concat_chain
 vec_concat_empty

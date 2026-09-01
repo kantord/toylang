@@ -8,10 +8,11 @@
 
 mod support;
 
-use toylang::Backend;
-
-#[test]
-fn every_backend_agrees_and_is_right() {
+/// The agreement check for one slice of the corpus: every `of`th case by index. Splitting by
+/// index, not by backend, is the point -- `agreement_failures` runs every backend internally, so
+/// the case is the unit of work a parallel runner can hand to a thread, and each shard keeps the
+/// same bar a single test always had.
+fn assert_shard_agrees(shard: usize, of: usize) {
     let cases = support::cases();
     assert!(
         !cases.is_empty(),
@@ -20,7 +21,10 @@ fn every_backend_agrees_and_is_right() {
 
     let mut failures = Vec::new();
 
-    for case in &cases {
+    for (i, case) in cases.iter().enumerate() {
+        if i % of != shard {
+            continue;
+        }
         failures.extend(support::agreement_failures(
             &case.name,
             &case.program,
@@ -31,12 +35,43 @@ fn every_backend_agrees_and_is_right() {
 
     assert!(
         failures.is_empty(),
-        "{} of {} corpus programs failed across {} backends:\n{}",
+        "{} corpus programs failed in shard {shard}/{of}:\n{}",
         failures.len(),
-        cases.len(),
-        Backend::ALL.len(),
         failures.join("\n")
     );
+}
+
+#[test]
+fn every_backend_agrees_and_is_right_shard_0() {
+    assert_shard_agrees(0, 8);
+}
+#[test]
+fn every_backend_agrees_and_is_right_shard_1() {
+    assert_shard_agrees(1, 8);
+}
+#[test]
+fn every_backend_agrees_and_is_right_shard_2() {
+    assert_shard_agrees(2, 8);
+}
+#[test]
+fn every_backend_agrees_and_is_right_shard_3() {
+    assert_shard_agrees(3, 8);
+}
+#[test]
+fn every_backend_agrees_and_is_right_shard_4() {
+    assert_shard_agrees(4, 8);
+}
+#[test]
+fn every_backend_agrees_and_is_right_shard_5() {
+    assert_shard_agrees(5, 8);
+}
+#[test]
+fn every_backend_agrees_and_is_right_shard_6() {
+    assert_shard_agrees(6, 8);
+}
+#[test]
+fn every_backend_agrees_and_is_right_shard_7() {
+    assert_shard_agrees(7, 8);
 }
 
 /// What a program prints is not always the whole claim. A case that asks for it gets the code a

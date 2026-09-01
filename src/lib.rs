@@ -231,7 +231,7 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
             &emit_jq::emit(&program).map_err(anyhow::Error::msg)?,
             JqInvocation {
                 has_value: value.is_some(),
-                raw: program.body.ty == ty::Type::Str,
+                raw: matches!(program.body.ty, ty::Type::Str | ty::Type::Sink),
                 uses_lines: program.uses_lines,
             },
             &feed,

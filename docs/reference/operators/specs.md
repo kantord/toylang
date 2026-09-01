@@ -26,6 +26,49 @@ out-of-range is absence, not an error, and `!` is how a program insists otherwis
 null
 ```
 
+A slice narrows by position instead of collapsing to one entry. Zero-based like an
+index, either bound optional, and out-of-range bounds clamp to the valid range rather
+than answering absence the way the collapsing index does:
+
+```toylang
+[0, 1, 2, 3, 4][1:3]
+```
+
+```output
+[1,2]
+```
+
+A negative bound counts from the end, and a start at or past the stop is empty:
+
+```toylang
+[0, 1, 2, 3, 4][-2:]
+```
+
+```output
+[3,4]
+```
+
+```toylang
+[0, 1, 2, 3, 4][9:]
+```
+
+```output
+[]
+```
+
+`[a:]` and `[:b]` leave the other edge at the dimension's boundary. `[:]` is refused:
+both edges already at the boundaries is the identity `[]` is, so there is nothing to
+say. A slice is a `Vec` result, so it composes with `+` like the other specs do --
+dropping entry `i` is `v[0:i] + v[i+1:]`.
+
+```toylang
+[1, 2, 3][:]
+```
+
+```error
+a slice needs at least one bound (at byte 9)
+```
+
 `[]` keeps a dimension at full extent, so what follows applies to every entry. A kept
 dimension followed by an inner index collapses inside each entry, and a ragged inner
 dimension yields `null` where entries are missing:

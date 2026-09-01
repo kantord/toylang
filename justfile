@@ -15,6 +15,12 @@ check:
 euler-data DIR:
     EULER_DATA={{DIR}} cargo nextest run --run-ignored ignored-only -E 'test(euler_real_data)'
 
+# Re-run the slow-fragment tier: the same suite, but `slow` fragments are executed on every
+# backend rather than only type-checked and emitted. The tier exists so `just test` stays fast;
+# this is where the deferred execution claim is re-verified.
+slow-test:
+    TOYLANG_SLOW=1 cargo nextest run
+
 # Run clippy with the repo's lint set, the same surface the Stop hook checks.
 clippy:
     cargo clippy --workspace --all-targets
