@@ -37,8 +37,12 @@ worker_free() { # $1: dir that must have no live worker
   return 0
 }
 
+# 8>&- everywhere a child is spawned: fd 8 carries the land flock, and any
+# child inheriting it keeps the whole queue locked for its own lifetime -- a
+# retriggered WORKER held the lock through its 20-minute run and three lands
+# queued behind it (2026-09-01, the same disease as the tick's fd-9 leak).
 fire_tick() {
-  (nohup "$SCRIPTS/drive-tick.sh" >>"$LOG_DIR/event-ticks.log" 2>&1 &)
+  (nohup "$SCRIPTS/drive-tick.sh" >>"$LOG_DIR/event-ticks.log" 2>&1 &) 8>&-
 }
 
 # Red gate or conflict: write evidence into the lane (untracked scratch is
@@ -56,7 +60,7 @@ retrigger() { # $1: issue number  $2: short failure kind  $3: evidence file
     return
   fi
   echo "[land] issue-$n: $kind on attempt $count -- re-dispatching the lane worker"
-  "$SCRIPTS/dispatch-worker.sh" "$n" "A previous worker completed this task, but landing the branch on main FAILED: $kind (landing attempt $count of $((RETRY_CAP + 1))). Read LAND-FAILURE.txt at the worktree root for the exact evidence before touching anything. Your job now is ONLY to make this branch land: merge origin/main into this branch, resolve any conflicts in favor of intent (both sides' tests must still pass), fix whatever LAND-FAILURE.txt shows failing, and re-run the gate. Do not start new feature work." \
+  "$SCRIPTS/dispatch-worker.sh" "$n" "A previous worker completed this task, but landing the branch on main FAILED: $kind (landing attempt $count of $((RETRY_CAP + 1))). Read LAND-FAILURE.txt at the worktree root for the exact evidence before touching anything. Your job now is ONLY to make this branch land: merge origin/main into this branch, resolve any conflicts in favor of intent (both sides' tests must still pass), fix whatever LAND-FAILURE.txt shows failing, and re-run the gate. Do not start new feature work." 8>&- \
     || echo "[land] issue-$n: re-dispatch refused (see above)"
 }
 
