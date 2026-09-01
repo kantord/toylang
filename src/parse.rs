@@ -198,56 +198,20 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
         }
         // `-` is subtraction and negation now, so a digit after it is no longer a negative
         // literal: `a -1` would otherwise not be `a - 1`.
-        '-' => {
-            input.next_token();
-            if input.peek_token() == Some('>') {
-                input.next_token();
-                Tok::Arrow
-            } else {
-                Tok::Minus
-            }
-        }
-        '!' => {
-            input.next_token();
-            if input.peek_token() == Some('=') {
-                input.next_token();
-                Tok::Ne
-            } else {
-                Tok::Bang
-            }
-        }
-        '=' | '<' | '>' => {
-            input.next_token();
-            if input.peek_token() == Some('=') {
-                input.next_token();
-                match c {
-                    '=' => Tok::EqEq,
-                    '<' => Tok::Le,
-                    _ => Tok::Ge,
-                }
-            } else {
-                match c {
-                    '=' => Tok::Eq,
-                    '<' => Tok::Lt,
-                    _ => Tok::Gt,
-                }
-            }
-        }
+        '-' => read_two_char(input, '>', Tok::Minus, Tok::Arrow),
+        '!' => read_two_char(input, '=', Tok::Bang, Tok::Ne),
+        '=' | '<' | '>' => match c {
+            '=' => read_two_char(input, '=', Tok::Eq, Tok::EqEq),
+            '<' => read_two_char(input, '=', Tok::Lt, Tok::Le),
+            _ => read_two_char(input, '=', Tok::Gt, Tok::Ge),
+        },
         '+' => single(input, Tok::Plus),
         '*' => single(input, Tok::Star),
         // `//` is not a token anymore: match arms compose with `or` now, so a second slash is
         // just a `/` where no expression can start, which is the parse error migration needs.
         '/' => single(input, Tok::Slash),
         '%' => single(input, Tok::Percent),
-        '|' => {
-            input.next_token();
-            if input.peek_token() == Some('>') {
-                input.next_token();
-                Tok::PipeGt
-            } else {
-                Tok::Pipe
-            }
-        }
+        '|' => read_two_char(input, '>', Tok::Pipe, Tok::PipeGt),
         ',' => single(input, Tok::Comma),
         '.' => single(input, Tok::Dot),
         '(' => single(input, Tok::LParen),
@@ -270,6 +234,19 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
 fn single(input: &mut Input, tok: Tok) -> Tok {
     input.next_token();
     tok
+}
+
+/// `-`, `!`, `=`, `<`, `>`, `|` all may start a two-character token: if the char after the
+/// first is `second`, the compound token stands; otherwise the bare operator does. `single` is
+/// for tokens that have no compound form at all.
+fn read_two_char(input: &mut Input, second: char, bare: Tok, compound: Tok) -> Tok {
+    input.next_token();
+    if input.peek_token() == Some(second) {
+        input.next_token();
+        compound
+    } else {
+        bare
+    }
 }
 
 /// Returns the unescaped contents of a string literal, having consumed through the closing
