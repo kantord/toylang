@@ -12,6 +12,8 @@
 # plumbing, and review panels/subagents are retired outright (same-day ruling) --
 # the coordinator reads diffs itself. `audit` as $1 runs the audit prompt.
 set -uo pipefail
+# PAUSED during the 2026-09-01 landing-pipeline refactor -- remove with the rewrite.
+[ -f "$HOME/.cache/toylang-drive/tick-paused" ] && { echo "[drive-tick] paused for refactor"; exit 0; }
 REPO=/home/kantord/repos/toylang
 WORKTREES=/home/kantord/.local/share/enwiro/worktrees/pr/toylang-1234138d
 LANES="$HOME/.local/share/toylang-lanes"  # enwiro-free lanes (dispatch-worker.sh)
@@ -69,7 +71,7 @@ for wt in $DELEGATED; do
     lane:*) d="$HOME/.enwiro_envs/toylang@${wt#lane:}/toylang@${wt#lane:}" ;;
     *) d="$LANES/$wt"; [ -d "$d" ] || d="$WORKTREES/$wt" ;;
   esac
-  [ -d "$d" ] || { TRIGGER="lane $wt has no worktree"; continue; }
+  [ -d "$d" ] || { TRIGGER="delegated row $wt has no worktree -- it landed (verify in main log, then board-archive the row)"; continue; }
   ahead=$(git -C "$d" rev-list --count main..HEAD 2>/dev/null || echo 0)
   dirty=$(git -C "$d" status --porcelain 2>/dev/null | wc -l)
   recent8=$(find "$d" -name .git -prune -o -name target -prune -o -type f \
@@ -143,37 +145,19 @@ for d in "$WORKTREES"/*/ "$POOL_WORKTREES"/*/ "$LANES"/*/; do
   ahead=$(git -C "$d" rev-list --count main..HEAD 2>/dev/null || echo 0)
   [ "$ahead" -gt 0 ] && TRIGGER="${TRIGGER:-non-delegated worktree $wt is $ahead ahead of main}"
 done
-# Accumulators (to-merge-* branches, the size-driven pipeline): a full one
-# promotes itself at fold time -- unless that fold hit a merge conflict and
-# died before its size check (twice on 2026-08-30), so the tick also catches
-# over-limit accumulators, plus STALENESS (untouched 30+ min -> promote
-# as-is, straight to main) and red promotions.
-for b in $(git for-each-ref --format='%(refname:short)' 'refs/heads/to-merge-*'); do
-  lines=$(git diff --shortstat "main...$b" 2>/dev/null | grep -oE '[0-9]+ (insertion|deletion)' | awk '{s+=$1} END {print s+0}')  # awk not bc: bc absent here
-  age=$(( $(date +%s) - $(git log -1 --format=%ct "$b" 2>/dev/null || date +%s) ))
-  promoting=""; [ -f "$LOG_DIR/promoting-$b" ] && promoting=" promoting"
-  STATE="$STATE [$b: lines=${lines:-0} age=${age}s$promoting]"
-  # Same DEAD_PRIORITY mechanism as the lane loop, but tiers 4-6 so accumulator
-  # issues always outrank lane chatter: a RED promotion or an over-limit
-  # accumulator blocks real, already-completed work, which matters more than
-  # one more routine dead-lane rebrief. Without this, "over the size limit"
-  # never won a single tick's trigger all night (2026-08-31/09-01) despite two
-  # accumulators sitting over 600 lines for hours, one of them already RED.
-  if [ -f "$LOG_DIR/promote-failed-$b" ]; then
-    if [ 6 -gt "$DEAD_PRIORITY" ]; then
-      DEAD_PRIORITY=6; DEAD_AGE=$age
-      DEAD_TRIGGER="promotion of $b went RED (main untouched) -- route the repair"
-    fi
-  elif [ -z "$promoting" ] && [ "${lines:-0}" -ge 600 ]; then
-    if [ 5 -gt "$DEAD_PRIORITY" ] || { [ 5 -eq "$DEAD_PRIORITY" ] && [ "${lines:-0}" -gt "$DEAD_AGE" ]; }; then
-      DEAD_PRIORITY=5; DEAD_AGE=${lines:-0}
-      DEAD_TRIGGER="$b is over the size limit (${lines} lines) -- promote it (land-lane.sh promote, detached)"
-    fi
-  elif [ -z "$promoting" ] && [ "$age" -ge 1800 ]; then
-    if [ 4 -gt "$DEAD_PRIORITY" ] || { [ 4 -eq "$DEAD_PRIORITY" ] && [ "$age" -gt "$DEAD_AGE" ]; }; then
-      DEAD_PRIORITY=4; DEAD_AGE=$age
-      DEAD_TRIGGER="$b untouched ${age}s -- stale, promote it as-is (land-lane.sh promote, detached)"
-    fi
+# Landing failures (serial queue, 2026-09-01): land-lane.sh handles its own
+# conflict/red re-dispatches (cap 2); a marker here means the cap is spent (or
+# the main checkout stayed busy) and the tick must route it. Tier 6 so a
+# blocked landing of finished work always outranks routine lane chatter (the
+# lesson of the accumulator era: promotion triggers starved behind dead-lane
+# rebriefs all night, 2026-08-31).
+for m in "$LOG_DIR"/land-failed-issue-*; do
+  [ -f "$m" ] || continue
+  n=$(basename "$m"); n=${n#land-failed-issue-}
+  STATE="$STATE [land-failed: issue-$n -- $(cat "$m")]"
+  if [ 6 -gt "$DEAD_PRIORITY" ]; then
+    DEAD_PRIORITY=6; DEAD_AGE=0
+    DEAD_TRIGGER="landing of issue-$n is stuck ($(cat "$m")) -- route it"
   fi
 done
 [ -z "$TRIGGER" ] && [ -n "$DEAD_TRIGGER" ] && TRIGGER="$DEAD_TRIGGER"
@@ -246,7 +230,7 @@ fi
 if [ "${1:-tick}" = "audit" ]; then
   POLICY='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has a live or accounted-for lane; no worktree holds unmerged commits the board thinks landed; no falsely-stuck lanes. Fix what is mechanical, file issues for the rest. End quietly if clean.'
 else
-  POLICY='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. This policy stands for every tick of this session; later ticks send only their trigger and snapshot. Trust disk over memory. ORDER: (1) Maintainer input first: poll docs/.annotations/inbox.json AND notes.json -- apply entries older than 5 minutes, clear at capture; records whose page is a docs/.grill/*.round.yaml are wizard submissions: apply IMMEDIATELY, delete the round file at capture. (2) If the trigger names an under-filled round buffer, compose the next wizard round BEFORE any landing (an empty maintainer inbox outranks lane plumbing): read pending rounds first and never re-ask them; keep two buffered; write docs/.grill/<topic>.round.yaml -- 3-5 ready decide rows batched by theme, every option carrying real verified code examples (delegate heavy example prep to a research worker) -- and ALWAYS verify the finished file both parses (python3 yaml.safe_load) AND serves clean (curl -s http://localhost:5173/__grill/round?topic=<topic>, expect 200) before the tick ends -- yaml.safe_load alone missed a round with valid YAML but no "question" string per question, which the mail UI rejected and which, until the isolation fix (kantord/toylang#164), blanked every OTHER pending round too, 2026-08-31. (3) Land finished lanes (ahead, clean, no live worker): diff read, then .claude/scripts/land-lane.sh fold <msgfile> <issues...>, board-archive.py for the row moves; run land-lane.sh promote <branch> DETACHED with nohup only when the trigger names a stale accumulator. (4) Dispatch ready build rows into free lanes (cap 8; decide rows use no lane): .claude/scripts/dispatch-worker.sh <N> "<brief>" -- brief shape per the enwiro-delegate skill; record every rollout incident in plans/opencode-rollout.md. RULES: never edit a lane worktree file yourself -- a dead or half-done lane gets a continuation or research dispatch, however small the fix looks. A permission denial is a ruling, not an obstacle: NEVER re-attempt a blocked change through another channel (sed after a blocked Edit, a worker dispatched to make the same change, any workaround) -- write the proposed change as a question into a docs/.grill/ round for the maintainer and move on (maintainer rule, 2026-08-30). The docs dev server is the maintainers process: never start, stop, or restart it from a tick (a foreground restart wedged the tick lock 46 minutes) -- if it looks down, note that in the mail and move on. Never write an unbounded wait for a background task (lock, sentinel file, subagent): use a bounded primitive with an explicit give-up path -- the flock -w 1200 8 in land-lane.sh is the house pattern -- an ad hoc flock -x plus an infinite sentinel-file poll loop held a lock 90+ minutes and stalled every later tick, 2026-08-31. FAILURE STREAKS (snapshot carries runs= per lane): at 2-3 commitless runs read the last event log in ~/.cache/toylang-drive/opencode/ and rebrief with the actual root cause, never a repeat of a failed brief; at 4+ STOP -- no redispatch; write one escalation question into a docs/.grill/ round (the lane, the repeated root cause, options: stronger OPENCODE_MODEL, reshape, drop), touch ~/.cache/toylang-drive/escalated-issue-<N>, rm the marker when acting on the ruling. BOUND: one round composition plus one landing, or up to three landings (a cascade is one), then END the session even if more work is visible. Nothing changed: end quietly.'
+  POLICY='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. This policy stands for every tick of this session; later ticks send only their trigger and snapshot. Trust disk over memory. ORDER: (1) Maintainer input first: poll docs/.annotations/inbox.json AND notes.json -- apply entries older than 5 minutes, clear at capture; records whose page is a docs/.grill/*.round.yaml are wizard submissions: apply IMMEDIATELY, delete the round file at capture. (2) If the trigger names an under-filled round buffer, compose the next wizard round BEFORE any landing (an empty maintainer inbox outranks lane plumbing): read pending rounds first and never re-ask them; keep two buffered; write docs/.grill/<topic>.round.yaml -- 3-5 ready decide rows batched by theme, every option carrying real verified code examples (delegate heavy example prep to a research worker) -- and ALWAYS verify the finished file both parses (python3 yaml.safe_load) AND serves clean (curl -s http://localhost:5173/__grill/round?topic=<topic>, expect 200) before the tick ends -- yaml.safe_load alone missed a round with valid YAML but no "question" string per question, which the mail UI rejected and which, until the isolation fix (kantord/toylang#164), blanked every OTHER pending round too, 2026-08-31. (3) Landing is DETERMINISTIC and automatic (serial queue, 2026-09-01): a worker exit fires .claude/scripts/land-lane.sh land <N> -- full just test gate in a throwaway worktree, straight onto main, pushed; a merge conflict or red gate re-dispatches the lane worker with the evidence in LAND-FAILURE.txt, cap 2, then leaves a land-failed marker. You NEVER fold, promote, read diffs pre-merge, or compose merge messages. Your landing duties instead: (a) a delegated row whose WORKTREE IS GONE has landed -- verify the Land commit in main log, board-archive.py the row; (b) a landable lane the event missed (trigger says so): run land-lane.sh land <N> DETACHED with nohup; (c) a land-failed marker in the trigger: if it says re-run land, do exactly that (detached); if the retry cap is spent, write one escalation question into a docs/.grill/ round (the lane, the LAND-FAILURE.txt evidence, options: rebrief with stronger model, reshape, drop) and rm the marker when acting on the ruling; (d) post-land review, AFTER other duties: read the newest Land commit diff on main and file follow-up board rows for real problems -- never edit main yourself. (4) Dispatch ready build rows into free lanes (cap 8; decide rows use no lane): .claude/scripts/dispatch-worker.sh <N> "<brief>" -- brief shape per the enwiro-delegate skill; record every rollout incident in plans/opencode-rollout.md. RULES: never edit a lane worktree file yourself -- a dead or half-done lane gets a continuation or research dispatch, however small the fix looks. A permission denial is a ruling, not an obstacle: NEVER re-attempt a blocked change through another channel (sed after a blocked Edit, a worker dispatched to make the same change, any workaround) -- write the proposed change as a question into a docs/.grill/ round for the maintainer and move on (maintainer rule, 2026-08-30). The docs dev server is the maintainers process: never start, stop, or restart it from a tick (a foreground restart wedged the tick lock 46 minutes) -- if it looks down, note that in the mail and move on. Never write an unbounded wait for a background task (lock, sentinel file, subagent): use a bounded primitive with an explicit give-up path -- the flock -w 1800 8 in land-lane.sh is the house pattern -- an ad hoc flock -x plus an infinite sentinel-file poll loop held a lock 90+ minutes and stalled every later tick, 2026-08-31. FAILURE STREAKS (snapshot carries runs= per lane): at 2-3 commitless runs read the last event log in ~/.cache/toylang-drive/opencode/ and rebrief with the actual root cause, never a repeat of a failed brief; at 4+ STOP -- no redispatch; write one escalation question into a docs/.grill/ round (the lane, the repeated root cause, options: stronger OPENCODE_MODEL, reshape, drop), touch ~/.cache/toylang-drive/escalated-issue-<N>, rm the marker when acting on the ruling. BOUND: one round composition plus one landing, or up to three landings (a cascade is one), then END the session even if more work is visible. Nothing changed: end quietly.'
 fi
 
 TS=$(date +%Y%m%d-%H%M%S)

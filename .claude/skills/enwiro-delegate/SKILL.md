@@ -25,8 +25,8 @@ A lane is just a git worktree plus a background worker process:
     .claude/scripts/dispatch-worker.sh <issue-number> '<the brief, shaped per section 2>'
 
 That creates (or continues) `~/.local/share/toylang-lanes/issue-<N>` on branch
-`issue-<N>` cut from the largest live `to-merge-*` accumulator (origin/main when
-none exists), refuses if a live worker already owns the worktree
+`issue-<N>` cut from origin/main (serial landing queue, 2026-09-01; the to-merge-*
+accumulators are retired), refuses if a live worker already owns the worktree
 (the two-sessions-one-worktree race predates this flow and survives it), launches the
 worker detached, and prints the `tail -f` line for watching the live colorized stream.
 No env, no workspace, no focus dance. The worker-pool machinery (gh:124: `enw prep`
