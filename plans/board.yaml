@@ -24,7 +24,7 @@
 
 - id: jsonlines-tail-marker-build
   issue: gh:154
-  title: Implement the |> tail-pipeline marker for sink calls, restricted to outermost position (issue #9 oddity ruling)
+  title: 'Implement the |> tail-pipeline marker for sink calls, restricted to outermost position (issue #9 oddity ruling). Escalated after 4 commitless automated runs (2026-09-01): the worktree has real uncommitted progress across src/ast.rs, src/check/mod.rs, src/emit_toylang.rs, src/parse.rs -- each run reviews the diff, confirms it looks right, then fires landing WITHOUT committing, so land-lane.sh skips it every time. A stale ESCALATION.md from an already-folded issue-150 decision also sits in the worktree unremoved. Do not redispatch until the issue-154-escalation round is ruled (~/.cache/toylang-drive/escalated-issue-154).'
   kind: build
   needs: [sink-kind-build]
   prio: 3
