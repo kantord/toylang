@@ -619,6 +619,7 @@ impl<'i> Cursor<'i> {
             ret,
             body,
             is_pub,
+            origin: crate::ast::Origin::Program,
         })
     }
 
