@@ -196,10 +196,16 @@ fi
 # instead of being a fallback: as a fallback it starved 2h behind the
 # streak/starvation triggers while 7 lanes sat idle (2026-08-30).
 DISPATCH=$(python3 -c "
-import yaml
+import glob, os, yaml
 rows = yaml.safe_load(open('plans/board.yaml'))
 live = {r['id'] for r in rows}  # a needs id absent here landed and archived (issue #113)
-lanes = sum(1 for r in rows if r.get('status') == 'delegated' and r.get('kind') == 'build')
+# An escalated lane is parked on the maintainer's desk -- it holds no worker, so
+# it must not hold a dispatch slot either (8 zombie delegated rows once occupied
+# the whole cap and starved every new dispatch for two days, found 2026-09-01).
+esc = {os.path.basename(p)[len('escalated-'):]
+       for p in glob.glob(os.path.expanduser('~/.cache/toylang-drive/escalated-*'))}
+lanes = sum(1 for r in rows if r.get('status') == 'delegated' and r.get('kind') == 'build'
+            and 'issue-' + str(r.get('issue', ''))[3:] not in esc)
 ready = [r['id'] for r in rows
          if r.get('status') == 'todo' and r.get('kind') == 'build'
          and all(n not in live for n in r.get('needs', []))]
