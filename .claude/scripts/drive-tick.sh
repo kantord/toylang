@@ -12,8 +12,6 @@
 # plumbing, and review panels/subagents are retired outright (same-day ruling) --
 # the coordinator reads diffs itself. `audit` as $1 runs the audit prompt.
 set -uo pipefail
-# PAUSED during the 2026-09-01 landing-pipeline refactor -- remove with the rewrite.
-[ -f "$HOME/.cache/toylang-drive/tick-paused" ] && { echo "[drive-tick] paused for refactor"; exit 0; }
 REPO=/home/kantord/repos/toylang
 WORKTREES=/home/kantord/.local/share/enwiro/worktrees/pr/toylang-1234138d
 LANES="$HOME/.local/share/toylang-lanes"  # enwiro-free lanes (dispatch-worker.sh)
