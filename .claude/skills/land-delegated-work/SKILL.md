@@ -19,7 +19,7 @@ Do not ping for intermediate progress or ask permission to review or merge.
   racing it for the cargo lock. An opencode worker's quality problems found during landing
   (review findings traceable to the worker, red suites, half-done work) additionally get a
   row in plans/opencode-rollout.md's incident table.
-- Run `just check` in the worktree (the full `just test` runs once per accumulator promotion). A red check goes back to the session (or gets fixed here
+- Run `just check` in the worktree (the full `just test` runs at landing). A red check goes back to the session (or gets fixed here
   if the session is gone and the fix is small); never review a red branch as if it were done.
 
 ## 2. Review: the coordinator reads the diff itself. No review agents. (maintainer rule, 2026-08-30)
@@ -50,42 +50,35 @@ What review IS now:
   `pkill`/`killall` by process name. Name-based kills took down the coordinator's
   annotations server (and once the maintainer's own) four times in one day.
 
-## 2b + 3. The size-driven pipeline: lane -> to-merge-* -> main (maintainer design, 2026-08-30, superseding the same-day single-wip flow)
+## 2b + 3. The serial landing queue: lane -> main (maintainer design, 2026-09-01, superseding the size-driven accumulator pipeline of 2026-08-30)
 
-Merging never blocks work, and the SIZE of a branch tells you its role: small
-accumulators take lanes in, a full or stale one goes to main. All plumbing (verify
-clean/ahead/no live worker, merge --no-ff, gate, push, worktree removal) lives in
-`.claude/scripts/land-lane.sh` so the coordinator spends its turns on judgment:
+One lane at a time, straight onto main, behind the full `just test` -- the suite is
+about three minutes, so batching lanes into accumulators bought nothing and cost
+blame ambiguity (a red batch could not name its breaking lane). All plumbing lives
+in `.claude/scripts/land-lane.sh`:
 
-- **Fold finished lanes** (after the diff read passes):
-  `.claude/scripts/land-lane.sh fold <merge-msg-file> <issue>...` -- gate is `just
-  check`. Several ready lanes go in ONE call; lane worktrees are removed by the
-  script. The first lane seeds a `to-merge-<epoch>` accumulator (its own commits,
-  aliased); later lanes fold into the LARGEST accumulator not mid-promotion.
-- **Promotion is automatic and DETACHED.** A fold that crosses 600 changed lines
-  (insertions + deletions vs main; typical lanes 50-700, measured 2026-08-30) fires
-  `land-lane.sh promote <branch>` itself, in the background. The full `just test`
-  runs in a throwaway worktree; main is touched only after green, then pushed. The
-  coordinator never waits on it.
-- **A stale accumulator promotes as-is**: untouched 30+ minutes (the tick trigger
-  names it) means nothing more is coming -- run the promote yourself, detached with
-  nohup. Under light load this IS the common promotion.
-- **A red promotion leaves main untouched** and drops a `promote-failed-<branch>`
-  marker the tick gate reports. Route a research/continuation dispatch (nextest
-  names the breaking test, which usually names the lane); the accumulator keeps
-  taking folds only after the repair -- never promote around a red suite.
-- Workers cut their branches from the largest live accumulator (dispatch-worker.sh
-  does this), so landed-but-unpromoted work is buildable-upon.
-- On merge conflicts inside an accumulator: resolve each conflicted path explicitly,
-  NEVER `git add -A` mid-merge (it once staged conflict markers into board.yaml
-  unseen); structured files get validated after resolution, hard-gating the commit.
+- **Landing is event-driven and deterministic.** A worker's exit fires
+  `land-lane.sh land <N>` by itself (opencode-worker.sh's EXIT trap); no model sits
+  in the happy path, and the merge message is generated from the lane's own commit
+  subjects. To land manually, run the same command -- detached with nohup when you
+  do not want to wait on the suite. Lands serialize on a flock.
+- **The gate runs in a throwaway worktree**; main is touched only after green, then
+  pushed, then the lane worktree and branch are removed by the script.
+- **A conflict or red gate never blocks the queue.** The script writes the evidence
+  to LAND-FAILURE.txt in the lane worktree, re-dispatches the lane's own worker
+  with a templated repair brief (cap: 2 automatic retries), and moves on. The third
+  failure leaves a `land-failed-issue-<N>` marker the tick escalates to the
+  maintainer.
+- **Review happens post-land** (maintainer ruling, 2026-09-01): read the newest
+  Land commit's diff on main and file follow-up rows or issues for real problems --
+  never block or gate the merge on a model read.
 
 ## 3b. Update the board and the env
 
 If `plans/board.yaml` exists: run `.claude/scripts/board-archive.py <row-id>...` -- it does the
 issue-#113 move (terminator-anchored cut from `plans/board.yaml`, append to
 `plans/board-archive.yaml` with `status: done`, both files validated) in one deterministic
-step; commit its result together with the wip merge. Add rows for any follow-up issues the review filed -- `build` rows usually, or a `decide` +
+step; commit its result. Add rows for any follow-up issues the review filed -- `build` rows usually, or a `decide` +
 `build` pair when a finding needs a design call first.
 
 The worktree's fate depends on which kind it is:

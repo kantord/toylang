@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Param, Pattern, Span};
+use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Origin, Param, Pattern, Span};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{self, Sig, Type};
@@ -43,6 +43,10 @@ struct Ctx<'a> {
     /// read is refused rather than silently handed nothing, the way a second pass over an
     /// already-consumed iterator would be in a language that let it compile.
     lines_used: &'a Cell<bool>,
+    /// The delimiter `dsv` was read with, filled in the first time it is used. `csv`/`tsv`
+    /// arrive here with the delimiter already fixed by the parser. A second read of any kind
+    /// is refused the same way a second `lines` is.
+    dsv: &'a RefCell<Option<String>>,
     /// Whether checking is inside a mapper's body (`map`'s, or `select`'s predicate), which
     /// runs once per element: a source read there would drain stdin on the first element and
     /// hand every later one nothing, so `lines` and `inputs` are refused in that position.
@@ -51,6 +55,13 @@ struct Ctx<'a> {
     /// source is legal only in the program body (see `source_in_fn`), so `lines` and `inputs`
     /// are refused whenever this is set.
     in_fn: Option<&'a str>,
+    /// Every user function, keyed by name, with the file it was defined in and whether it is
+    /// `pub`. A call to a non-`pub` one from a different file than `file` is refused, which is
+    /// the visibility rule (gh:166).
+    visibility: &'a HashMap<String, (Origin, bool)>,
+    /// Which file the code being checked was written in. The program's body and definitions are
+    /// `Program`; the prelude's definitions (checked at build time) are `Prelude`.
+    file: Origin,
     next_local: &'a Cell<LocalId>,
 }
 
@@ -74,8 +85,11 @@ impl Ctx<'_> {
             input: self.input,
             inputs: self.inputs,
             lines_used: self.lines_used,
+            dsv: self.dsv,
             in_mapper: self.in_mapper,
             in_fn: self.in_fn,
+            visibility: self.visibility,
+            file: self.file,
             next_local: self.next_local,
         }
     }
@@ -157,7 +171,13 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         *input.borrow_mut() = Some(ty);
     }
     let inputs = RefCell::new(None);
+    let dsv = RefCell::new(None);
     let next_local = Cell::new(0);
+    let visibility: HashMap<String, (Origin, bool)> = file
+        .defs
+        .iter()
+        .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
+        .collect();
     let ctx = Ctx {
         sigs: &sigs,
         enums: &enums,
@@ -168,8 +188,11 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         input: &input,
         inputs: &inputs,
         lines_used: &lines_used,
+        dsv: &dsv,
         in_mapper: false,
         in_fn: None,
+        visibility: &visibility,
+        file: Origin::Program,
         next_local: &next_local,
     };
 
@@ -238,12 +261,31 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 .to_string(),
         ));
     }
+    // `dsv` reads the same raw lines `lines` does, so it joins the same exclusivity: one real
+    // stdin, read one way.
+    let dsv = dsv.into_inner();
+    for (other, name) in [
+        (input.is_some(), "`input`"),
+        (inputs.is_some(), "`inputs`"),
+        (lines_used.get(), "`lines`"),
+    ] {
+        if dsv.is_some() && other {
+            return Err(Error::new(
+                file.body.span(),
+                format!(
+                    "a program cannot use both `dsv` and {name}; they read the same real stdin \
+                     two different ways"
+                ),
+            ));
+        }
+    }
     Ok(tir::Program {
         funcs: prune_unreachable(funcs, &body),
         body,
         input,
         inputs,
         uses_lines: lines_used.get(),
+        dsv,
         enums,
     })
 }
@@ -276,8 +318,11 @@ fn check_defs<'a>(
             input: ctx.input,
             inputs: ctx.inputs,
             lines_used: ctx.lines_used,
+            dsv: ctx.dsv,
             in_mapper: false,
             in_fn: Some(&def.name),
+            visibility: ctx.visibility,
+            file: ctx.file,
             next_local: ctx.next_local,
         };
         // The declared return type flows into the body, so a form whose type comes from its
@@ -366,7 +411,13 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
     let input = RefCell::new(None);
     let inputs = RefCell::new(None);
     let lines_used = Cell::new(false);
+    let dsv = RefCell::new(None);
     let next_local = Cell::new(0);
+    let visibility: HashMap<String, (Origin, bool)> = module
+        .defs
+        .iter()
+        .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
+        .collect();
     let ctx = Ctx {
         sigs: &sigs,
         enums: &enums,
@@ -377,8 +428,11 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
         input: &input,
         inputs: &inputs,
         lines_used: &lines_used,
+        dsv: &dsv,
         in_mapper: false,
         in_fn: None,
+        visibility: &visibility,
+        file: Origin::Prelude,
         next_local: &next_local,
     };
     check_defs(module.defs.iter(), &ctx)
@@ -493,7 +547,7 @@ fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
             tir::Builtin::Range,
             Sig {
                 param: Some(Type::Int),
-                ret: vec_of(Type::Int),
+                ret: Type::Stream(Box::new(Type::Int)),
             },
         ),
         "chars" => (
@@ -1452,6 +1506,49 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             ctx.lines_used.set(true);
             Ok(Tir::new(Type::Stream(Box::new(Type::Str)), Kind::Lines))
         }
+        // `dsv` reads the same raw lines `lines` does and splits each on the delimiter, so it
+        // shares every rule: refused in function and mapper bodies, read at most once, and its
+        // type is fixed (`Vec<Vec<Str>>`) rather than borrowed from a position. `csv`/`tsv`
+        // are this same node with the delimiter already fixed by the parser.
+        Expr::Dsv { delim, span } => {
+            if let Some(func) = ctx.in_fn {
+                return Err(Error::new(
+                    *span,
+                    format!(
+                        "`dsv` cannot be read inside `fn {func}`; a source is legal only in \
+                         the program's own body, so take the value through a parameter"
+                    ),
+                ));
+            }
+            if ctx.in_mapper {
+                return Err(Error::new(
+                    *span,
+                    "`dsv` cannot be read inside a mapper body, which runs once per element"
+                        .to_string(),
+                ));
+            }
+            // Every backend's split on an empty separator is its own undefined behaviour (Rust
+            // panics, Python raises, jq matches nothing), so the empty delimiter is refused
+            // rather than left to disagree.
+            if delim.is_empty() {
+                return Err(Error::new(
+                    *span,
+                    "`dsv`'s delimiter cannot be empty".to_string(),
+                ));
+            }
+            if ctx.dsv.borrow().is_some() {
+                return Err(Error::new(
+                    *span,
+                    "`dsv` has already been read; there is only one stdin".to_string(),
+                ));
+            }
+            *ctx.dsv.borrow_mut() = Some(delim.clone());
+            let field = Type::Vec(Box::new(Type::Str));
+            Ok(Tir::new(
+                Type::Vec(Box::new(field)),
+                Kind::Dsv { delim: delim.clone() },
+            ))
+        }
         Expr::Int { value, span } => {
             // The literal is the one place a value could enter without meeting the 32-bit rule,
             // and four backends agreed on the wrong answer only because each held it in its own
@@ -1859,6 +1956,20 @@ fn call(
         }
         return Err(Error::new(func_span, format!("`{func}` is not a function")));
     };
+    // A non-`pub` definition is a helper for its own file: it may be called from where it was
+    // defined, and nowhere else. `file` is the caller's file, so a `Prelude`-origin private
+    // helper is refused from the program's file while remaining legal inside prelude.toy -- the
+    // same privacy a `pub` prelude function already kept from calling a private helper, now
+    // stated as a per-call-site rule rather than by dropping the helper (gh:166).
+    if let Some((origin, is_pub)) = ctx.visibility.get(func)
+        && !is_pub
+        && *origin != ctx.file
+    {
+        return Err(Error::new(
+            func_span,
+            format!("`{func}` is not `pub`, so it can only be called from its own file"),
+        ));
+    }
     let arg = call_arg(ctx, func, span, &sig.param, arg)?;
     Ok(Tir::new(
         sig.ret.clone(),

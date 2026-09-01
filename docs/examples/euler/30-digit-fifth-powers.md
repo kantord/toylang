@@ -27,7 +27,7 @@ fn sum_vec(p: {v: Vec<Int>, lo: Int, hi: Int}) -> Int =
 fn total(v: Vec<Int>) -> Int =
     0 if length(v) == 0 else sum_vec({v: v, lo: 0, hi: length(v)})
 
-total(range(354295) | select(. >= 2) | select(is_digit_power_sum(.)))
+total(collect(range(354295)) | select(. >= 2) | select(is_digit_power_sum(.)))
 ```
 
 ```output

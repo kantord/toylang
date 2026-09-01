@@ -85,7 +85,17 @@ function load(): { board: Task[]; archive: Task[] } {
   return { board: boardRows.map(toTask), archive: archiveRows.map(toTask) }
 }
 
-const { board, archive } = load()
+// board.yaml/board-archive.yaml are coordinator-written, committed content -- a syntax error
+// in either (missing closing quote, 2026-09-01: took the whole site down, not just one tab,
+// since this module is imported eagerly and widely) must degrade to an empty board instead of
+// throwing at module init, which would crash every page that transitively imports BOARD/ARCHIVE.
+let board: Task[] = []
+let archive: Task[] = []
+try {
+  ;({ board, archive } = load())
+} catch (e) {
+  console.error("board.yaml/board-archive.yaml failed to parse -- showing an empty board", e)
+}
 
 /** The live board: never contains a `done` row (issue #113). */
 export const BOARD: Task[] = board

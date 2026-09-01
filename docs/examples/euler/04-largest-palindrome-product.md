@@ -24,14 +24,14 @@ fn row_max(a: Int) -> Int =
     max_vec(
         [0] +
             (
-                range(1000)
+                collect(range(1000))
                     | select(. >= a)
                     | map(a * .)
                     | select(. == reverse_num({n: ., acc: 0}))
             )
     )
 
-max_vec(range(1000) | select(. >= 100) | map(row_max(.)))
+max_vec(collect(range(1000)) | select(. >= 100) | map(row_max(.)))
 ```
 
 ```output

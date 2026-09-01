@@ -37,7 +37,12 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
             StreamBinding::Local(l) => (l == id) as usize,
             StreamBinding::Param(_) => 0,
         }),
-        Kind::Str(_) | Kind::Int(_) | Kind::Input | Kind::Inputs | Kind::Lines => Ok(0),
+        Kind::Str(_)
+        | Kind::Int(_)
+        | Kind::Input
+        | Kind::Inputs
+        | Kind::Lines
+        | Kind::Dsv { .. } => Ok(0),
         Kind::VecLit(items) => items
             .iter()
             .try_fold(0, |n, i| Ok(n + stream_uses(i, binding)?)),
@@ -179,7 +184,8 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
         | Kind::Int(_)
         | Kind::Input
         | Kind::Inputs
-        | Kind::Lines => false,
+        | Kind::Lines
+        | Kind::Dsv { .. } => false,
         Kind::VecLit(items) => items.iter().any(|i| any_node(i, pred)),
         Kind::RecordLit { fields } => fields.iter().any(|(_, v)| any_node(v, pred)),
         Kind::EnumLit { payload, .. } => payload.as_deref().is_some_and(|p| any_node(p, pred)),
@@ -273,7 +279,8 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
         | Kind::Local(_)
         | Kind::Input
         | Kind::Inputs
-        | Kind::Lines => {}
+        | Kind::Lines
+        | Kind::Dsv { .. } => {}
         Kind::VecLit(items) => items.iter().for_each(|i| calls_in(i, out)),
         Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| calls_in(v, out)),
         Kind::EnumLit { payload, .. } => {

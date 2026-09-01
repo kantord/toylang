@@ -1,7 +1,7 @@
 program: |
-  str(range(5)[3]!)
+  str(collect(range(5))[3]!)
 
 output: |
   3
 
-node_types: [builtin.range, builtin.str, int, selection.collapse, unwrap]
+node_types: [builtin.collect, builtin.range, builtin.str, int, selection.collapse, unwrap]

@@ -168,6 +168,59 @@ const CHARS_HELPER: &str = r#"fn tl_chars(s: &str) -> Vec<i32> {
 }
 "#;
 
+/// RFC 4180 field splitting over the raw lines `tl_read_lines` keeps: a field wrapped in double
+/// quotes may contain the delimiter, a doubled `""` is a literal quote, and a quoted field may
+/// span lines. The delimiter is matched literally, never as a pattern.
+const DSV_HELPER: &str = r#"fn tl_dsv(lines: &[String], delim: &str) -> Vec<Vec<String>> {
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut row: Vec<String> = Vec::new();
+    let mut field = String::new();
+    let mut in_quotes = false;
+    for line in lines {
+        let mut i = 0;
+        while i < line.len() {
+            if in_quotes {
+                if line[i..].starts_with('"') {
+                    if line[i + 1..].starts_with('"') {
+                        field.push('"');
+                        i += 2;
+                    } else {
+                        in_quotes = false;
+                        i += 1;
+                    }
+                } else {
+                    let c = line[i..].chars().next().expect("i is within the line");
+                    field.push(c);
+                    i += c.len_utf8();
+                }
+            } else if line[i..].starts_with(delim) {
+                row.push(std::mem::take(&mut field));
+                i += delim.len();
+            } else if line[i..].starts_with('"') && field.is_empty() {
+                in_quotes = true;
+                i += 1;
+            } else {
+                let c = line[i..].chars().next().expect("i is within the line");
+                field.push(c);
+                i += c.len_utf8();
+            }
+        }
+        if in_quotes {
+            field.push('\n');
+        } else {
+            row.push(std::mem::take(&mut field));
+            rows.push(std::mem::take(&mut row));
+        }
+    }
+    if in_quotes {
+        field.pop();
+        row.push(field);
+        rows.push(row);
+    }
+    rows
+}
+"#;
+
 /// Read all of stdin, and every line of it, both by the one primitive read needs: reading to
 /// EOF is `lines`/`inputs`/`input` doing the exact same underlying thing three ways.
 const READ_HELPER: &str = r#"fn tl_read_all_stdin() -> Vec<u8> {
@@ -627,6 +680,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_max("), MAX_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
+        (uses("tl_dsv("), DSV_HELPER),
         (
             reads_value || uses("tl_read_all_stdin(") || uses("tl_read_lines("),
             READ_HELPER,
@@ -743,7 +797,8 @@ impl Collect<'_> {
             | Kind::Local(_)
             | Kind::Input
             | Kind::Inputs
-            | Kind::Lines => {}
+            | Kind::Lines
+            | Kind::Dsv { .. } => {}
             Kind::VecLit(items) => items.iter().for_each(|i| self.walk(i)),
             Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| self.walk(v)),
             Kind::EnumLit { payload, .. } => {
@@ -998,21 +1053,26 @@ impl Emitter<'_> {
     fn fused_main(&self, program: &Program, fusion: &tir::Fusion) -> String {
         let mut out = String::new();
         out.push_str("fn main() {\n");
-        out.push_str("    use std::io::{BufRead, Write};\n");
-        out.push_str("    let stdin = std::io::stdin();\n");
-        out.push_str("    let mut stdin = stdin.lock();\n");
+        // A range source reads nothing, so it does not need `BufRead`; the stdin-based sources
+        // do. An unused import would only warn, but the emitted file carries enough noise already.
+        out.push_str(match fusion.source {
+            tir::Source::Range(_) => "    use std::io::Write;\n",
+            _ => "    use std::io::{BufRead, Write};\n",
+        });
         out.push_str("    let stdout = std::io::stdout();\n");
         out.push_str("    let mut stdout = stdout.lock();\n");
-        out.push_str("    let mut line = String::new();\n");
-        out.push_str("    loop {\n");
-        out.push_str("        line.clear();\n");
-        out.push_str(
-            "        let n = stdin.read_line(&mut line).unwrap_or_else(|e| tl_fail(&format!(\"could not read stdin: {e}\")));\n",
-        );
-        out.push_str("        if n == 0 { break; }\n");
-        out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
         let (mut current, mut current_ty) = match fusion.source {
             tir::Source::Inputs => {
+                out.push_str("    let stdin = std::io::stdin();\n");
+                out.push_str("    let mut stdin = stdin.lock();\n");
+                out.push_str("    let mut line = String::new();\n");
+                out.push_str("    loop {\n");
+                out.push_str("        line.clear();\n");
+                out.push_str(
+                    "        let n = stdin.read_line(&mut line).unwrap_or_else(|e| tl_fail(&format!(\"could not read stdin: {e}\")));\n",
+                );
+                out.push_str("        if n == 0 { break; }\n");
+                out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
                 let elem = program
                     .inputs
                     .as_ref()
@@ -1027,8 +1087,25 @@ impl Emitter<'_> {
             }
             // A raw line is already the element, blank ones included: `lines` keeps them.
             tir::Source::Lines => {
+                out.push_str("    let stdin = std::io::stdin();\n");
+                out.push_str("    let mut stdin = stdin.lock();\n");
+                out.push_str("    let mut line = String::new();\n");
+                out.push_str("    loop {\n");
+                out.push_str("        line.clear();\n");
+                out.push_str(
+                    "        let n = stdin.read_line(&mut line).unwrap_or_else(|e| tl_fail(&format!(\"could not read stdin: {e}\")));\n",
+                );
+                out.push_str("        if n == 0 { break; }\n");
+                out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
                 out.push_str("        let t_line: String = line.clone();\n");
                 ("t_line".to_string(), Type::Str)
+            }
+            // The bound is evaluated once; the loop counter is the element. A negative bound
+            // yields an empty loop via `.max(0)`, the same answer `tl_range` gives eagerly.
+            tir::Source::Range(bound) => {
+                out.push_str(&format!("    let n: i32 = {}.max(0);\n", self.expr(bound)));
+                out.push_str("    for t_i in 0..n {\n");
+                ("t_i".to_string(), Type::Int)
             }
         };
         for stage in &fusion.stages {
@@ -1109,6 +1186,12 @@ impl Emitter<'_> {
             // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
             // works on the Vec of its entries.
             Kind::Lines => "tl_read_lines()".to_string(),
+            // RFC 4180 field scanning over the same raw lines `lines` keeps, the scanner in
+            // DSV_HELPER.
+            Kind::Dsv { delim } => format!(
+                "tl_dsv(&tl_read_lines(), {}.as_str())",
+                rs_string(delim)
+            ),
             Kind::RecordLit { fields } => {
                 let parts: Vec<String> = fields
                     .iter()

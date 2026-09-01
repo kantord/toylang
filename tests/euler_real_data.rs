@@ -49,13 +49,13 @@ fn four(p: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int =
         get({g: p.g, r: p.r + 3 * p.dr, c: p.c + 3 * p.dc})
 
 fn row_products(p: {g: Vec<Vec<Int>>, r: Int, dr: Int, dc: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
-    range(p.cmax)
+    collect(range(p.cmax))
         | select(. >= p.cmin)
         | map(four({g: p.g, r: p.r, c: ., dr: p.dr, dc: p.dc}))
 
 fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
     flatten(
-        range(p.rmax)
+        collect(range(p.rmax))
             | map(
                   row_products(
                       {
@@ -155,7 +155,7 @@ fn add_digits(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int, acc: Vec<Int>}) -> Ve
             }
         )
 
-fn first_ten(v: Vec<Int>) -> Vec<Int> = range(10) | map(v[.]!)
+fn first_ten(v: Vec<Int>) -> Vec<Int> = collect(range(10)) | map(v[.]!)
 
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
     first_ten(
@@ -176,7 +176,7 @@ fn combine(p: {row: Vec<Int>, below: Vec<Int>, i: Int}) -> Int =
         )
 
 fn merge_row(p: {row: Vec<Int>, below: Vec<Int>}) -> Vec<Int> =
-    range(length(p.row)) | map(combine({row: p.row, below: p.below, i: .}))
+    collect(range(length(p.row))) | map(combine({row: p.row, below: p.below, i: .}))
 
 fn collapse(p: {rows: Vec<Vec<Int>>, i: Int, acc: Vec<Int>}) -> Int =
     p.acc[0]! if p.i < 0 else

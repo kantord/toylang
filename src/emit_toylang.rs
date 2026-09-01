@@ -492,6 +492,8 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
         Expr::Input { .. } => "input".to_string(),
         Expr::Inputs { .. } => "inputs".to_string(),
         Expr::Lines { .. } => "lines".to_string(),
+        // `csv`/`tsv` are parser sugar, so the canonical spelling is the parameterized form.
+        Expr::Dsv { delim, .. } => format!("dsv(\"{}\")", escape_str(delim)),
         Expr::Variant {
             enum_name,
             variant,

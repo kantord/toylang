@@ -1,11 +1,3 @@
-- id: sink-kind-build
-  issue: gh:151
-  title: Implement a dedicated Sink kind, retire jsonlines' hand-special-cased position check (gh:138 ruling)
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
 - id: function-signature-matching-syntax
   issue: gh:152
   title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 needs to stress-test each option (esp. the Msg(...) call-form sketch) for concrete problems before re-asking'
@@ -28,14 +20,22 @@
   kind: build
   needs: [sink-kind-build]
   prio: 3
-  status: todo
+  status: delegated
 
-- id: dsv-partial-conventions
+- id: dsv-rfc4180-quoting-build
   issue: gh:136
-  title: 'Rule on two dsv worker escalations: csv/tsv as compiler-predefined names vs real prelude.toy partials (blocked on source_in_fn), and raw-split-no-quoting as the DSV field convention'
-  kind: decide
+  title: 'Ruled (prelude-partials-and-mutation round): dsv(delim) needs RFC 4180 quoted-field handling (embedded delimiters, doubled quotes, embedded newlines) -- replace the raw byte-split shipped in gh:136 with a real stateful scanner'
+  kind: build
   needs: []
   prio: 3
+  status: delegated
+
+- id: dsv-partials-migration
+  issue: gh:136
+  title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet.'
+  kind: build
+  needs: [partial-application-system-design]
+  prio: 5
   status: todo
 
 - id: euler-slow-fragments-2
@@ -47,9 +47,10 @@
   status: delegated
 
 - id: variant-types-flip
-  title: Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference)
+  issue: gh:165
+  title: 'Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference). Lane issue-165 stalled here (0 commits, renamed aside as issue-165-contaminated-20260831): the brief claims checker enforcement "already done via gh:156" but variant-checker-capital-first was still status: todo -- added as a real needs edge below so the migration cannot be dispatched again until the checker actually enforces the rule.'
   kind: build
-  needs: [matcher-totality-and-alt-design]
+  needs: [matcher-totality-and-alt-design, variant-checker-capital-first]
   prio: 2
   model: fable
   status: todo
@@ -69,15 +70,22 @@
   model: fable
   status: delegated
 
-- id: overloading-and-traits-design
-  title: Grill function overloading and Rust-style traits -- the direction that dissolves concat and kin
-  kind: decide
-  needs: [precedent-survey]
+- id: trait-interface-research
+  title: 'Ruled (overloading-and-utf8-lines round ruling spinoff): declared interface/trait mechanism (Rust/Swift-shaped) is the direction for ad hoc polymorphism. Research spike before design: scope the minimal checker mechanism (trait declaration, impl-for-type, static dispatch) and whether it truly requires user-facing generics or can start monomorphic (one impl per concrete type, no generic trait bounds). Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
   status: todo
 
-- id: mutation-semantics-design
-  title: Grill privileged/shared references -- mutation as a static optimization, no borrow checker
+- id: trait-interface-design
+  title: 'Grill the concrete trait/impl syntax and dispatch mechanism (overloading-and-utf8-lines round ruling spinoff), informed by trait-interface-research'
   kind: decide
+  needs: [trait-interface-research]
+  status: todo
+
+- id: mutation-semantics-spike
+  title: 'Ruled (prelude-partials-and-mutation round): maintainer leans privileged/shared-reference mutation-as-optimization but will not ratify without prototyping -- spike the "provably one reference exists" static analysis against a couple of backends before a real decide row reopens this'
+  kind: build
   needs: []
   prio: 4
   status: todo
@@ -96,20 +104,20 @@
   prio: 4
   status: todo
 
-- id: lines-utf8-edge
+- id: lines-utf8-posix-research
   issue: gh:102
-  title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. Round 1 answer: no pick -- "we should research correctness best practices and see what would actually match people''s expectations in a unix environment and is actually easy to implement efficiently across all backends; we are allowed to question previous decisions and assumptions"; round 2 needs that research before re-asking refuse-vs-replace-vs-leave-backend-defined'
-  kind: decide
-  needs: []
-  status: todo
-
-- id: rust-lines-tl-fail-build
-  issue: gh:157
-  title: Rust backend omits tl_fail helper for lines-only programs, compile error (found verifying gh:102)
+  title: 'Round 2 answer (question lines-non-utf8-byte): no pick -- maintainer wants deeper research beyond plans/string-type-spike.md:194-201 before choosing refuse/carry-through/lossy-replace: what is most correct, most secure, most POSIX-compliant, most common across existing Unix line-oriented tools, and what would match user expectations. Write findings to plans/.'
   kind: build
   needs: []
-  prio: 2
-  status: delegated
+  prio: 3
+  status: todo
+
+- id: lines-utf8-edge
+  issue: gh:102
+  title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. Round 1 research (plans/string-type-spike.md:194-201) covered per-backend mechanics only; round 2 answer asked for correctness/security/POSIX-compliance/common-practice research first (see lines-utf8-posix-research) before round 3 re-asks with the three options (refuse / carry-where-possible / uniform lossy replacement).'
+  kind: decide
+  needs: [lines-utf8-posix-research]
+  status: todo
 
 - id: retire-ternary-build
   issue: gh:155
@@ -152,20 +160,28 @@
   needs: []
   status: todo
 
-- id: module-as-function-routing-design
-  issue: gh:162
-  title: Consider running other modules as functions, e.g. matcher arms dispatching to a submodule file (maintainer note, unscheduled)
-  kind: decide
-  needs: []
+- id: module-routing-syntax-build
+  issue: gh:167
+  title: 'Implement `@(path)` module-as-function routing-arm syntax -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C (dedicated routing-arm form) chosen; maintainer refined the spelling from the round''s bare `@path` to parenthesized `@(route-groups/baz.toy)` because it encloses the path expression. See plans/module-routing-research.md.'
+  kind: build
+  needs: [file-visibility-tracking-build]
   prio: 5
   status: todo
 
 - id: erlang-target-consideration
   issue: gh:163
-  title: Consider Erlang as an additional backend target, as a design stress test (maintainer note, unscheduled)
+  title: 'Consider Erlang as an additional backend target, as a design stress test (maintainer note) -- round answer (module-routing-and-erlang-target round, question erlang-target-consideration): option C, spend more research and actually try the Erlang toolchain rather than accepting the desk-research-only finding (plans/erlang-target-research.md). Maintainer also flagged: concurrency will need to be supported by toylang regardless of this backend question -- worth surfacing as its own open item once this research lands.'
   kind: decide
-  needs: []
+  needs: [erlang-toolchain-empirical-research]
   prio: 5
+  status: todo
+
+- id: erlang-toolchain-empirical-research
+  issue: gh:170
+  title: 'Research spike (round answer, 2026-09-01; filed as gh:170, a follow-up to gh:163 since the original issue-163 branch is already merged/archived): go beyond plans/erlang-target-research.md''s desk research -- actually install/verify the Erlang toolchain and run the documented-semantics comparison (process/effect model, selective receive, pattern matching) against real `erl`/`erlc` output, not just written docs. Prior attempt (erlang-target-research run 1) hit a sandbox denial trying `which erl`/`erl -eval` and gave up; that incident is logged in plans/opencode-rollout.md -- this is an infrastructure-level restriction, so brief this run to document the denial precisely and stop rather than retry through another channel if it recurs. Write findings as an addendum to plans/erlang-target-research.md.'
+  kind: build
+  needs: []
+  prio: 4
   status: todo
 
 - id: variant-checker-capital-first
@@ -173,7 +189,7 @@
   title: Checker rejects enum variant declarations that don't start with a capital letter, per the curly-only-pattern ruling (gh:156 ruling)
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: match-type-wrapper-experiment
   issue: gh:122
@@ -182,11 +198,26 @@
   needs: []
   status: todo
 
+- id: closures-first-class-functions-research
+  issue: gh:119
+  title: 'Research spike (prelude-partials-and-mutation round, Q3): maintainer answer -- both struct-like and array-like partial application are needed, chosen by the input type''s shape, and true currying should fall out for free once closures/functions are first-class rather than being its own mechanism. Look at how Rust and similar languages simplify this before a final design; write findings to plans/'
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: http-query-sugar-research
+  title: 'Maintainer note (docs/.annotations/notes.json composed 2026-08-31T22:08:16Z, unscheduled): consider a simple HTTP query builtin (like Python requests) as thin sugar over whatever each backend runtime already provides, minimal added complexity. Research spike: survey what request/response building blocks already exist per backend (Go net/http, JS fetch, Python urllib, Lua, Rust reqwest, native) before scoping a design row. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 5
+  status: todo
+
 - id: partial-application-system-design
   issue: gh:119
-  title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff) -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like"'
+  title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff), informed by closures-first-class-functions-research -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like"'
   kind: decide
-  needs: []
+  needs: [closures-first-class-functions-research]
   status: todo
 
 
@@ -272,26 +303,49 @@
   status: todo
 
 - id: binary-op-multiplicity-design
-  title: Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update's spelling -- Q2/Q3 (draft-split)
+  title: 'Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update''s spelling -- Q2/Q3 (draft-split). Round 2 answers (multiplicity-and-offload-round2): Q3 RATIFIED -- option B, require One on the right of `=`, forking becomes explicit; maintainer caveat: drop the `$c`-prefixed alias in the option''s preview, "never agreed to prefacing variable names with $" (applies to whatever alias/binding syntax eventually lands, not specific to this row). Q2 still no pick -- maintainer leans B (zip/broadcast) or C (no default, explicit) but wants to understand how much of jq''s magic/expressive power would be lost either way before choosing; needs jq-expressiveness-under-zip-or-explicit-research before a round 3 re-ask.'
   kind: decide
+  needs: [jq-expressiveness-under-zip-or-explicit-research]
+  prio: 3
+  status: todo
+
+- id: jq-expressiveness-under-zip-or-explicit-research
+  issue: gh:169
+  title: 'Research spike (round answer, multiplicity-and-offload-round2, question binary-op-default-multiplicity): survey real jq idioms that rely on the cartesian default for `Vec op Vec` (option A in binary-op-multiplicity-design), and work out concretely what breaks or gets more verbose under a zip/broadcast default (option B) versus no default at all, explicit `zip`/`cross` (option C). Use real jq snippets and their toylang-under-B and toylang-under-C equivalents so the comparison is concrete, not abstract. Write findings to plans/.'
+  kind: build
   needs: []
   prio: 3
   status: todo
 
 - id: search-and-fold-design
-  title: Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split)
+  title: 'Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split). Round 1 leaned depth-first for `..` (Q7) but answer was "also research the performance implications before we fully commit"; round 2 needs that research before re-asking. Round 4 answers (search-vocab-choice-cut-fold, no picks made): Q search-choice-point-syntax -- no pick, maintainer asks whether the choice-point operator should instead be spelled parallel to match syntax rather than a new infix operator; needs search-choice-point-match-syntax-research before re-ask. Q search-cut-semantics -- no pick, maintainer leans "first should be a real prelude function" (tentative, not ratified -- re-ask against that framing, i.e. option B reworded as an ordinary stdlib fn rather than compiler-magic sugar). Q applicative-fold-block-syntax -- no pick, maintainer questions whether fold is needed at all ("fold is basically the same as reduce... reduce is usually too low level, a code smell, results in confusing code"); before continuing fold syntax design, next round must first ask whether applicative-fold-block-syntax should be justified or dropped.'
   kind: decide
-  needs: []
+  needs: [search-choice-point-match-syntax-research]
   soft: [first-search-cut]
   prio: 4
   status: todo
 
-- id: offload-boundary-design
-  title: Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split)
-  kind: decide
+- id: search-choice-point-match-syntax-research
+  title: 'Research spike (round answer, search-vocab-choice-cut-fold, question search-choice-point-syntax): maintainer asks for a deeper design pass on whether the choice-point ("branch wider, explore every alternative") operator should be spelled parallel to toylang''s match syntax instead of a new infix operator (`;`, `branch(...)`, or folding into `//`). Survey how other languages with pattern-matching-flavored search/logic constructs (Prolog disjunction, Icon/Curry generators, list-monad comprehensions) express this, and produce 2-3 concrete syntax candidates with real toylang code examples, explicitly including a match-parallel option. Write findings to plans/.'
+  kind: build
   needs: []
+  prio: 3
+  status: todo
+
+- id: offload-boundary-design
+  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled.'
+  kind: decide
+  needs: [offload-explain-flag-build]
   soft: [benchmark-goals]
   prio: 5
+  status: todo
+
+- id: offload-explain-flag-build
+  issue: gh:168
+  title: 'Implement `--explain-offload`: an opt-in compiler diagnostic that annotates compiled output with which sub-expressions became vectorized kernels and which fell back, and why -- per the offload-boundary-design round 2 ruling (multiplicity-and-offload-round2, question vectorizability-visibility, option B). No signature or type-system change; a build-time flag only. LSP hover (option C) is a wanted future addition, deliberately unscheduled here.'
+  kind: build
+  needs: []
+  prio: 4
   status: todo
 
 - id: draft-md-cleanup-review
@@ -307,4 +361,19 @@
   kind: build
   needs: []
   prio: 2
+  status: todo
+
+- id: http-query-sugar-design
+  issue: gh:171
+  title: 'Maintainer note (composed 2026-08-31): design minimal HTTP query support (Python-requests-like) as sugar over whatever backend already provides -- needs a grilling round on surface area before it becomes build work'
+  kind: decide
+  needs: []
+  prio: 4
+  status: todo
+
+- id: brief-phrasing-experiment
+  title: 'Tracked in-repo per maintainer ruling (coordinator-escalation-brief-phrasing-experiment round, 2026-09-01: gh issue create was blocked by the permission classifier; no gh issue, no retry). Maintainer note (composed 2026-08-31): generic non-informational reassurance phrasing ("its much simpler than you think") in dispatch briefs seems to help planning agents find better plans -- experiment on at least 10 issues, then report progress and grill on the results.'
+  kind: build
+  needs: []
+  prio: 5
   status: todo

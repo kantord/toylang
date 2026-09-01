@@ -25,7 +25,7 @@ Joining a fixed, known count of `Vec`s is `+` instead (see
 not known at the call site, such as one built by `map`:
 
 ```toylang
-flatten(range(3) | map([., .]))
+flatten(collect(range(3)) | map([., .]))
 ```
 
 ```output

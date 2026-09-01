@@ -48,6 +48,9 @@ enum Tok {
     Input,
     Inputs,
     Lines,
+    Dsv,
+    Csv,
+    Tsv,
     And,
     Or,
     Not,
@@ -94,6 +97,9 @@ impl std::fmt::Display for Tok {
             Tok::Input => "`input`",
             Tok::Inputs => "`inputs`",
             Tok::Lines => "`lines`",
+            Tok::Dsv => "`dsv`",
+            Tok::Csv => "`csv`",
+            Tok::Tsv => "`tsv`",
             Tok::And => "`and`",
             Tok::Or => "`or`",
             Tok::Not => "`not`",
@@ -185,6 +191,9 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "input" => Tok::Input,
                 "inputs" => Tok::Inputs,
                 "lines" => Tok::Lines,
+                "dsv" => Tok::Dsv,
+                "csv" => Tok::Csv,
+                "tsv" => Tok::Tsv,
                 "and" => Tok::And,
                 // Two operators sharing one spelling, told apart by position: the arm separator
                 // at a chain's top level, Bool disjunction everywhere else. `Cursor::or_separates`
@@ -619,6 +628,7 @@ impl<'i> Cursor<'i> {
             ret,
             body,
             is_pub,
+            origin: crate::ast::Origin::Program,
         })
     }
 
@@ -1283,7 +1293,8 @@ impl<'i> Cursor<'i> {
         }
         let argument_starts = match next {
             Tok::LParen | Tok::LBrace => true,
-            Tok::Str(_) | Tok::Int(_) | Tok::Input | Tok::Inputs | Tok::Lines | Tok::Ident(_) => {
+            Tok::Str(_) | Tok::Int(_) | Tok::Input | Tok::Inputs | Tok::Lines | Tok::Dsv
+            | Tok::Csv | Tok::Tsv | Tok::Ident(_) => {
                 bare_callee(&name)
             }
             _ => false,
@@ -1333,6 +1344,32 @@ impl<'i> Cursor<'i> {
             Tok::Input => Ok(Expr::Input { span }),
             Tok::Inputs => Ok(Expr::Inputs { span }),
             Tok::Lines => Ok(Expr::Lines { span }),
+            Tok::Csv => Ok(Expr::Dsv {
+                delim: ",".to_string(),
+                span,
+            }),
+            Tok::Tsv => Ok(Expr::Dsv {
+                delim: "\t".to_string(),
+                span,
+            }),
+            // The parameterized spelling: the delimiter is a string literal in parens, the
+            // one argument form that cannot be misread as anything else at this position.
+            Tok::Dsv => {
+                self.eat(Tok::LParen)?;
+                let (tok, _) = self.advance()?;
+                let Tok::Str(delim) = tok else {
+                    return Err(Error::new(
+                        span,
+                        "`dsv`'s delimiter must be a string literal, as in `dsv(\",\")`"
+                            .to_string(),
+                    ));
+                };
+                let close = self.eat(Tok::RParen)?;
+                Ok(Expr::Dsv {
+                    delim,
+                    span: span.to(close),
+                })
+            }
 
             // `.name` is field access on the subject, so the leading dot yields `.` and the
             // postfix loop above picks the field up.

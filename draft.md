@@ -1924,7 +1924,10 @@ officially transitional. The destination is one raw source with parsing as ordin
 visible steps -- the design rejected earlier *only* because expected types could not flow
 into map bodies, a blocker the type-flow rework removes. Syntax is deliberately not settled
 here; it gets its own session once type-flow lands. Until then: no fourth stdin reader, no
-new exclusivity rules -- nothing that makes the migration bigger.
+new exclusivity rules -- nothing that makes the migration bigger. One ratified exception
+(gh:88's ruling, built as gh:136): a parameterized `dsv(delim)` source, with `csv`/`tsv`
+as its predefined partials -- the shape the one-source design lands on, added ahead of it
+rather than as a fourth nullary keyword.
 
 ## DECIDED: `inputs`, eager, not an answer to Q1 either
 
@@ -2207,14 +2210,26 @@ A `Stream<T>` is born only at a source, flows only through a pipeline, and dies 
 exit.
 
 **Sources.** `inputs : Stream<T>` (element type inferred from use, as before) and
-`lines : Stream<Str>`, replacing the monomorphic `Lines`. Nothing else creates one: there is
-no value-to-effect operator, exactly as [Q13](plans/questions.md#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator)
-leans. Decided after the implementation disclosed a cross-function hole (a function reading a
-source, called from a mapper body, re-read stdin per element): a source may appear only in
-the program's own body, never inside a `fn` definition -- functions receive streams
-exclusively through `Stream<T>` parameters. The alternative, tracking source-consumption per
-function transitively, was rejected as an invisible effect on every signature, the implicit
-shape this design keeps refusing.
+`lines : Stream<Str>`, replacing the monomorphic `Lines`, and `range : Int -> Stream<Int>`
+(kantord/toylang#137). `range` is the first source with no stdin behind it: it generates its
+entries by counting. It reopens the "nothing else creates one" clause that
+[Q13](plans/questions.md#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator)
+wrote, and the ruling (gh:127, ratified in the streams-and-sinks grill round) keeps the
+substance of that clause while giving the boundary a name. What Q13 leans against is degrading
+a value that already exists -- turning a `Vec` back into a stream forgets its extent and buys
+nothing, and a held value of genuinely unknown extent is exactly the first-class stream ADR
+0001 rejects. `range` degrades nothing: `n` is one integer, and the stream of values below it
+has no extent to forget, only one to generate. It is still a source, so it keeps every source
+rule -- born in the program's own body, single-use, dying at `collect` or `jsonlines`, never
+stored -- and the Euler `range | select | map` pipelines that motivated it now stream at
+constant memory instead of materializing a `Vec`. A function cannot conjure a stream from an
+argument it merely holds; `range` remains a name, not an operator. Decided after the
+implementation disclosed a cross-function hole (a function reading a source, called from a
+mapper body, re-read stdin per element): a source may appear only in the program's own body,
+never inside a `fn` definition -- functions receive streams exclusively through `Stream<T>`
+parameters. The alternative, tracking source-consumption per function transitively, was
+rejected as an invisible effect on every signature, the implicit shape this design keeps
+refusing.
 
 **Mappers.** `Stream` is spellable in signatures -- the one thing the `Lines` design
 deliberately withheld -- so `fn f(s: Stream<A>) -> Stream<B>` is legal. `map`, `select`, and

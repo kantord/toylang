@@ -8,7 +8,7 @@ collapsing index, [`tail`](../builtins/tail.md), a projection through a ragged d
 and the constructors `some(x)` and `none` spell one directly.
 
 ```toylang
-str(range(5)[3]!)
+str(collect(range(5))[3]!)
 ```
 
 ```output

@@ -1213,3 +1213,56 @@
   kind: decide
   needs: []
   status: done
+
+- id: rust-lines-tl-fail-build
+  issue: gh:157
+  title: Rust backend omits tl_fail helper for lines-only programs, compile error (found verifying gh:102)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: sink-kind-build
+  issue: gh:151
+  title: Implement a dedicated Sink kind, retire jsonlines' hand-special-cased position check (gh:138 ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: overloading-and-traits-design
+  title: 'Grill function overloading and Rust-style traits -- ruled (overloading-and-utf8-lines round, question ad-hoc-polymorphism-mechanism): declared interface/trait mechanism (Rust/Swift-shaped) is the direction for ad hoc polymorphism, superseding the closed per-operator match. Spins off trait-interface-research and trait-interface-design.'
+  kind: decide
+  needs: [precedent-survey]
+  status: done
+
+- id: erlang-target-research
+  issue: gh:163
+  title: 'Research spike (gh:163''s own issue body flags this as needing investigation first): survey Erlang''s process/effect model, pattern matching, and immutability against toylang''s current design docs and its seven existing backends (Lua, JS, Native/LLVM, jq, Go, Python, Rust) -- identify what a design stress test would actually surface. Write findings to plans/. Run 1 (2026-08-31) did 18 legit research steps then tried to verify an Erlang toolchain (`which erl`/`erl -eval`), got denied, and gave up with zero output -- likely provoked by the standard brief wrapper''s "do not touch plans/" line contradicting this task''s own deliverable. Rebriefed 2026-09-01 with BRIEF_RAW=1 (no wrapper, explicit "no toolchain needed, write plans/erlang-target-research.md"); incident logged in plans/opencode-rollout.md. The lane''s `ahead=7` is entirely inherited base content from the to-merge-1788204752 accumulator (dispatch base at the time), not this task''s own work -- do not read `ahead>0` on this lane as landable without checking for a real new commit past that base.'
+  kind: build
+  needs: []
+  prio: 5
+  status: done
+
+- id: module-routing-research
+  issue: gh:162
+  title: 'Research spike (gh:162''s own issue body flags this as ungrillable without it): toylang has no module/import system today -- work out what "module" means here, survey precedent (Elixir/Phoenix-style router dispatch, file-based submodule routing elsewhere), and propose 2-3 concrete toylang syntax candidates with real code sketches for matcher-arm-to-submodule-file dispatch. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 5
+  status: done
+
+- id: module-as-function-routing-design
+  issue: gh:162
+  title: 'Consider running other modules as functions, e.g. matcher arms dispatching to a submodule file (maintainer note) -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C, `@path` dedicated routing-arm form, chosen over A ($(path) call-shaped) and B (path::fn named-function). Maintainer refined the spelling to parenthesized `@(route-groups/baz.toy)`. Spins off file-visibility-tracking-build (prerequisite, per the round''s own thesis that the checker doesn''t yet track per-file definition origin) and module-routing-syntax-build.'
+  kind: decide
+  needs: [module-routing-research]
+  status: done
+
+- id: file-visibility-tracking-build
+  issue: gh:166
+  title: 'Checker tracks which file a definition came from and enforces per-call-site visibility -- prerequisite named by the module-as-function-routing-design ruling (module-routing-and-erlang-target round): the same gap that already blocks a `pub` prelude function from calling a private one blocks any module-dispatch syntax from meaning anything.'
+  kind: build
+  needs: []
+  prio: 4
+  status: done

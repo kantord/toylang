@@ -126,6 +126,17 @@ pub struct Param {
     pub span: Span,
 }
 
+/// Which source file a definition came from. Only two exist today: the program's own file and
+/// the single prelude module. A non-`pub` definition is callable only from its own file, so
+/// this is what the checker keys visibility on at each call site (gh:166).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Origin {
+    /// The program's own file.
+    Program,
+    /// The prelude module, `prelude.toy`.
+    Prelude,
+}
+
 #[derive(Debug)]
 pub struct Def {
     pub name: String,
@@ -137,6 +148,9 @@ pub struct Def {
     /// Whether a module's prelude includes this definition when compiling a program. Meaningless
     /// outside a module today, since nothing yet imports from a program file.
     pub is_pub: bool,
+    /// The file this definition was written in. A program's own definitions get `Program` from
+    /// the parser; the prelude's get `Prelude` from `prelude::module`.
+    pub origin: Origin,
 }
 
 /// `enum Shape { point, circle{r: Int} }`. The first declaration that creates a type identity
@@ -292,6 +306,12 @@ pub enum Expr {
     Lines {
         span: Span,
     },
+    /// Stdin read as raw lines, each split on a delimiter, born `Vec<Vec<Str>>`: the
+    /// parameterized DSV source. `csv` and `tsv` are the same node with the delimiter fixed.
+    Dsv {
+        delim: String,
+        span: Span,
+    },
     /// An `or` chain of match arms over the subject `.`: `point -> 0 or circle{r} -> r * r`.
     /// The subject is not part of the node; a match reads `.` the way `select` does, so it
     /// appears as a pipe stage.
@@ -402,6 +422,7 @@ impl Expr {
             | Expr::Input { span }
             | Expr::Inputs { span }
             | Expr::Lines { span }
+            | Expr::Dsv { span, .. }
             | Expr::Variant { span, .. }
             | Expr::Match { span, .. }
             | Expr::Pipe { span, .. }
