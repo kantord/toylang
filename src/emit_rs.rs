@@ -168,6 +168,59 @@ const CHARS_HELPER: &str = r#"fn tl_chars(s: &str) -> Vec<i32> {
 }
 "#;
 
+/// RFC 4180 field splitting over the raw lines `tl_read_lines` keeps: a field wrapped in double
+/// quotes may contain the delimiter, a doubled `""` is a literal quote, and a quoted field may
+/// span lines. The delimiter is matched literally, never as a pattern.
+const DSV_HELPER: &str = r#"fn tl_dsv(lines: &[String], delim: &str) -> Vec<Vec<String>> {
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut row: Vec<String> = Vec::new();
+    let mut field = String::new();
+    let mut in_quotes = false;
+    for line in lines {
+        let mut i = 0;
+        while i < line.len() {
+            if in_quotes {
+                if line[i..].starts_with('"') {
+                    if line[i + 1..].starts_with('"') {
+                        field.push('"');
+                        i += 2;
+                    } else {
+                        in_quotes = false;
+                        i += 1;
+                    }
+                } else {
+                    let c = line[i..].chars().next().expect("i is within the line");
+                    field.push(c);
+                    i += c.len_utf8();
+                }
+            } else if line[i..].starts_with(delim) {
+                row.push(std::mem::take(&mut field));
+                i += delim.len();
+            } else if line[i..].starts_with('"') && field.is_empty() {
+                in_quotes = true;
+                i += 1;
+            } else {
+                let c = line[i..].chars().next().expect("i is within the line");
+                field.push(c);
+                i += c.len_utf8();
+            }
+        }
+        if in_quotes {
+            field.push('\n');
+        } else {
+            row.push(std::mem::take(&mut field));
+            rows.push(std::mem::take(&mut row));
+        }
+    }
+    if in_quotes {
+        field.pop();
+        row.push(field);
+        rows.push(row);
+    }
+    rows
+}
+"#;
+
 /// Read all of stdin, and every line of it, both by the one primitive read needs: reading to
 /// EOF is `lines`/`inputs`/`input` doing the exact same underlying thing three ways.
 const READ_HELPER: &str = r#"fn tl_read_all_stdin() -> Vec<u8> {
@@ -627,6 +680,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_max("), MAX_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
+        (uses("tl_dsv("), DSV_HELPER),
         (
             reads_value || uses("tl_read_all_stdin(") || uses("tl_read_lines("),
             READ_HELPER,
@@ -1132,9 +1186,10 @@ impl Emitter<'_> {
             // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
             // works on the Vec of its entries.
             Kind::Lines => "tl_read_lines()".to_string(),
-            // Same raw lines as `lines`, split on the delimiter into one row per line.
+            // RFC 4180 field scanning over the same raw lines `lines` keeps, the scanner in
+            // DSV_HELPER.
             Kind::Dsv { delim } => format!(
-                "tl_read_lines().iter().map(|l| l.split({}.as_str()).map(|f| f.to_string()).collect::<Vec<_>>()).collect::<Vec<_>>()",
+                "tl_dsv(&tl_read_lines(), {}.as_str())",
                 rs_string(delim)
             ),
             Kind::RecordLit { fields } => {
