@@ -4,12 +4,6 @@
   needs: []
   issue: gh:168
   title: 'INVESTIGATE stuck lane issue-168 (no activity 4h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-168-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-158-investigation
-  kind: build
-  status: todo
-  needs: []
-  issue: gh:158
-  title: 'INVESTIGATE stuck lane issue-158 (no activity 0h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-158-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-153-investigation
   kind: build
   status: todo
