@@ -1266,3 +1266,11 @@
   needs: []
   prio: 4
   status: done
+
+- id: dsv-rfc4180-quoting-build
+  issue: gh:136
+  title: 'Ruled (prelude-partials-and-mutation round): dsv(delim) needs RFC 4180 quoted-field handling (embedded delimiters, doubled quotes, embedded newlines) -- replace the raw byte-split shipped in gh:136 with a real stateful scanner'
+  kind: build
+  needs: []
+  prio: 3
+  status: done

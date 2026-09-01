@@ -22,14 +22,6 @@
   prio: 3
   status: delegated
 
-- id: dsv-rfc4180-quoting-build
-  issue: gh:136
-  title: 'Ruled (prelude-partials-and-mutation round): dsv(delim) needs RFC 4180 quoted-field handling (embedded delimiters, doubled quotes, embedded newlines) -- replace the raw byte-split shipped in gh:136 with a real stateful scanner'
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
 - id: dsv-partials-migration
   issue: gh:136
   title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet.'
@@ -40,11 +32,11 @@
 
 - id: euler-slow-fragments-2
   issue: gh:93
-  title: Apply the slow-fragment tier to batch 3's correct-but-slow problems (gh:90 ruling)
+  title: 'Apply the slow-fragment tier to batch 3''s correct-but-slow problems (gh:90 ruling). Parked after 4 commitless automated runs -- maintainer ruling (2026-09-01): hand off to a privileged manual session rather than redispatch. Prompt drafted at plans/issue-93-privileged-agent-prompt.md. Lane stays escalated (~/.cache/toylang-drive/escalated-issue-93 kept) until that session lands it.'
   kind: build
   needs: [docs-slow-fragment-tier]
   prio: 3
-  status: delegated
+  status: todo
 
 - id: variant-types-flip
   issue: gh:165
@@ -75,7 +67,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: trait-interface-design
   title: 'Grill the concrete trait/impl syntax and dispatch mechanism (overloading-and-utf8-lines round ruling spinoff), informed by trait-interface-research'
