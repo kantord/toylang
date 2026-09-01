@@ -518,6 +518,11 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
                 print_expr_compact(rhs, Ctx::Expr(PIPE_RIGHT))
             )
         }
+        Expr::TailPipe { lhs, callee, .. } => {
+            // `|>` binds looser than everything and sits only at the outermost position, so the
+            // lhs is a fresh `expr(0)` with no parens to reach the sink.
+            format!("{} |> {callee}", print_expr_compact(lhs, Ctx::Expr(0)))
+        }
         Expr::Binary { op, lhs, rhs, .. } => {
             let (left, right) = bin_power(*op);
             format!(
@@ -623,6 +628,10 @@ fn print_expr_wrapped(e: &Expr, ctx: Ctx, indent: usize) -> String {
             print_expr_wrapped(base, Ctx::Operand(NOT_POWER), indent)
         ),
         Expr::Pipe { .. } => wrap_pipe(e, indent),
+        Expr::TailPipe { lhs, callee, .. } => format!(
+            "{} |> {callee}",
+            print_expr_wrapped(lhs, Ctx::Expr(0), indent)
+        ),
         Expr::Match { arms, .. } => wrap_match(arms, indent),
         Expr::Cond { .. } => wrap_cond(e, outer_m(ctx), indent),
         Expr::VecLit { items, .. } => {

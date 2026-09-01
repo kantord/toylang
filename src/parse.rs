@@ -57,6 +57,7 @@ enum Tok {
     Slash,
     Percent,
     Pipe,
+    PipeGt,
     Comma,
     Dot,
     Eq,
@@ -103,6 +104,7 @@ impl std::fmt::Display for Tok {
             Tok::Slash => "`/`",
             Tok::Percent => "`%`",
             Tok::Pipe => "`|`",
+            Tok::PipeGt => "`|>`",
             Tok::Comma => "`,`",
             Tok::Dot => "`.`",
             Tok::Eq => "`=`",
@@ -237,7 +239,15 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
         // just a `/` where no expression can start, which is the parse error migration needs.
         '/' => single(input, Tok::Slash),
         '%' => single(input, Tok::Percent),
-        '|' => single(input, Tok::Pipe),
+        '|' => {
+            input.next_token();
+            if input.peek_token() == Some('>') {
+                input.next_token();
+                Tok::PipeGt
+            } else {
+                Tok::Pipe
+            }
+        }
         ',' => single(input, Tok::Comma),
         '.' => single(input, Tok::Dot),
         '(' => single(input, Tok::LParen),
@@ -413,7 +423,7 @@ pub fn parse(src: &str) -> Result<File, Error> {
         _ => None,
     };
 
-    let body = p.expr(0)?;
+    let body = p.tail_pipe()?;
     let (rest, rest_span) = p.peek()?;
     if rest != Tok::Eof {
         return Err(p.unexpected(rest_span, format!("expected end of program, found {rest}")));
@@ -630,7 +640,7 @@ impl<'i> Cursor<'i> {
     fn def_body(&mut self) -> Result<Expr, Error> {
         let (first, _) = self.peek()?;
         if first != Tok::Let {
-            return self.expr(0);
+            return self.tail_pipe();
         }
         let first_let = self.advance()?.1;
         let mut bindings = Vec::new();
@@ -1072,6 +1082,28 @@ impl<'i> Cursor<'i> {
         }
 
         Ok(lhs)
+    }
+
+    /// The program's body (or a function's, when it is not a `let` block): an ordinary
+    /// expression, or the tail-pipeline `lhs |> callee` that is the one way a sink is written.
+    /// Parsed only here, at the outermost position, so a nested `|>` is a parse error rather
+    /// than a value -- the checker's sink position rule is this production's, not a search for
+    /// a stray token somewhere inside a larger expression.
+    fn tail_pipe(&mut self) -> Result<Expr, Error> {
+        let lhs = self.expr(0)?;
+        let (tok, _) = self.peek()?;
+        if tok != Tok::PipeGt {
+            return Ok(lhs);
+        }
+        self.advance()?;
+        let (callee, callee_span) = self.eat_ident("a sink call")?;
+        let span = lhs.span().to(callee_span);
+        Ok(Expr::TailPipe {
+            lhs: Box::new(lhs),
+            callee,
+            callee_span,
+            span,
+        })
     }
 
     fn operand(&mut self, min_power: u8) -> Result<Expr, Error> {
