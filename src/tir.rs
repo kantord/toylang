@@ -64,6 +64,11 @@ pub enum Kind {
     Inputs,
     /// The stream of lines read from stdin, read incrementally by whatever consumes it.
     Lines,
+    /// Stdin read as raw lines, each split on the delimiter, born `Vec<Vec<Str>>`: the
+    /// parameterized DSV source. `csv`/`tsv` arrive here with the delimiter already fixed.
+    Dsv {
+        delim: String,
+    },
     Call {
         func: String,
         /// `None` for a call to a nullary function.
@@ -275,6 +280,9 @@ pub struct Program {
     /// unrelated readers of the same real stdin and a program using `lines` alone still needs
     /// it connected, even though `input` is `None`.
     pub uses_lines: bool,
+    /// The delimiter the program splits raw lines on, if it reads `dsv`/`csv`/`tsv`. It
+    /// reads the same real stdin as the other three, so it is exclusive with them.
+    pub dsv: Option<String>,
     /// Every enum the program declared, the prelude's included. A backend has no checker `Ctx`
     /// to hand, and the variant list on a `Type::Enum` is a placeholder wherever a recursive
     /// enum's payload reaches back to itself, so this travels with the tree: it is what
@@ -524,7 +532,8 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
         | Kind::Local(_)
         | Kind::Input
         | Kind::Inputs
-        | Kind::Lines => {}
+        | Kind::Lines
+        | Kind::Dsv { .. } => {}
         Kind::VecLit(items) => items.iter().for_each(|i| each_node(i, f)),
         Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| each_node(v, f)),
         Kind::EnumLit { payload, .. } => {

@@ -306,6 +306,12 @@ pub enum Expr {
     Lines {
         span: Span,
     },
+    /// Stdin read as raw lines, each split on a delimiter, born `Vec<Vec<Str>>`: the
+    /// parameterized DSV source. `csv` and `tsv` are the same node with the delimiter fixed.
+    Dsv {
+        delim: String,
+        span: Span,
+    },
     /// An `or` chain of match arms over the subject `.`: `point -> 0 or circle{r} -> r * r`.
     /// The subject is not part of the node; a match reads `.` the way `select` does, so it
     /// appears as a pipe stage.
@@ -416,6 +422,7 @@ impl Expr {
             | Expr::Input { span }
             | Expr::Inputs { span }
             | Expr::Lines { span }
+            | Expr::Dsv { span, .. }
             | Expr::Variant { span, .. }
             | Expr::Match { span, .. }
             | Expr::Pipe { span, .. }

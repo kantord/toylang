@@ -567,6 +567,7 @@ fn used_helpers(program: &Program) -> Helpers {
             | Kind::Inputs => {}
             // The source is what reads stdin now, so it is what needs the helper.
             Kind::Lines => used.collect = true,
+            Kind::Dsv { .. } => used.collect = true,
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -794,6 +795,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
         // works on the array of its entries. Fusion is what will remove this materialization.
         Kind::Lines => "tl_collect_lines()".to_string(),
+        // Same raw lines as `lines`, each split on the delimiter into one row.
+        Kind::Dsv { delim } => format!(
+            "tl_collect_lines().map((l) => l.split({}))",
+            js_string(delim)
+        ),
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()

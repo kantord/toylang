@@ -56,6 +56,7 @@ struct Runtime<'ctx> {
     rec_get: FunctionValue<'ctx>,
     rec_new: FunctionValue<'ctx>,
     collect_lines: FunctionValue<'ctx>,
+    split_lines: FunctionValue<'ctx>,
     rec_set: FunctionValue<'ctx>,
     read_input: FunctionValue<'ctx>,
     read_inputs: FunctionValue<'ctx>,
@@ -196,6 +197,11 @@ impl<'ctx> Emitter<'ctx, '_> {
             ),
             rec_new: module.add_function("tl_rec_new", ptr.fn_type(&[i64t.into()], false), None),
             collect_lines: module.add_function("tl_collect_lines", ptr.fn_type(&[], false), None),
+            split_lines: module.add_function(
+                "tl_split_lines",
+                ptr.fn_type(&[ptr.into(), ptr.into()], false),
+                None,
+            ),
             rec_set: module.add_function(
                 "tl_rec_set",
                 ctx.void_type()
@@ -1349,6 +1355,14 @@ impl<'ctx> Emitter<'ctx, '_> {
             // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
             // works on the Vec of its entries.
             Kind::Lines => self.call_rt(self.rt.collect_lines, &[], "lines")?,
+
+            // Same raw lines as `lines`, each split on the delimiter into one row. The delimiter
+            // rides as a string constant, so the split is literal on every backend.
+            Kind::Dsv { delim } => {
+                let lines = self.call_rt(self.rt.collect_lines, &[], "lines")?;
+                let sep = self.string_const(delim);
+                self.call_rt(self.rt.split_lines, &[lines, sep.into()], "rows")?
+            }
 
             Kind::Input => {
                 let global = self

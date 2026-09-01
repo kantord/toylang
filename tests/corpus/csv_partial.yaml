@@ -1,0 +1,14 @@
+# `csv` is the prelude partial of `dsv(",")`: rows of comma-separated fields, all
+# strings. Indexing collapses a dimension to `Opt`, so `!` is what turns the second
+# column into a plain Str.
+program: |
+  csv | map(.[1]!)
+
+input: |
+  ada,36
+  bo,2
+
+output: |
+  ["36","2"]
+
+node_types: [dsv, int, local, map-over, pipe, selection.collapse, unwrap]

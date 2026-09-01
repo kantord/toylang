@@ -392,6 +392,7 @@ impl ToRust for tir::Kind {
             Input => "crate::tir::Kind::Input".to_string(),
             Inputs => "crate::tir::Kind::Inputs".to_string(),
             Lines => "crate::tir::Kind::Lines".to_string(),
+            Dsv { delim } => format!("crate::tir::Kind::Dsv {{ delim: {} }}", delim.to_rust()),
             Call { func, arg } => call(func, arg),
             Concat(a, b) => format!("crate::tir::Kind::Concat({}, {})", a.to_rust(), b.to_rust()),
             Arith { op, lhs, rhs } => arith(op, lhs, rhs),

@@ -47,6 +47,31 @@ local function tl_collect_lines()
 end
 ";
 
+// `dsv` splits each collected line on the delimiter. `string.find` with `plain = true` is the
+// literal-search form, so the delimiter is not read as a Lua pattern.
+const SPLIT_HELPER: &str = "\
+local function tl_split(s, sep)
+  local out = {}
+  local pos = 1
+  while true do
+    local start, stop = string.find(s, sep, pos, true)
+    if not start then
+      out[#out + 1] = string.sub(s, pos)
+      break
+    end
+    out[#out + 1] = string.sub(s, pos, start - 1)
+    pos = stop + 1
+  end
+  return out
+end
+
+local function tl_split_lines(lines, sep)
+  local out = {}
+  for i = 1, #lines do out[i] = tl_split(lines[i], sep) end
+  return out
+end
+";
+
 const MAP_HELPER: &str = "\
 local function tl_map(src, f)
   local out = {}
@@ -314,6 +339,7 @@ pub fn emit(program: &Program) -> String {
         (used.map, MAP_HELPER),
         (used.range, RANGE_HELPER),
         (used.collect, COLLECT_HELPER),
+        (used.split, SPLIT_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
         (used.chars, CHARS_HELPER),
         (used.eq, EQ_HELPER),
@@ -577,6 +603,7 @@ struct Helpers {
     sum: bool,
     max: bool,
     eq: bool,
+    split: bool,
 }
 
 /// Equality on a composite is structural, which Lua's `==` on two tables is not -- it compares
@@ -637,6 +664,10 @@ fn used_helpers(program: &Program) -> Helpers {
             | Kind::Inputs => {}
             // The source is what reads stdin now, so it is what needs the helper.
             Kind::Lines => used.collect = true,
+            Kind::Dsv { .. } => {
+                used.collect = true;
+                used.split = true;
+            }
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -770,6 +801,10 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
         // works on the table of its entries. Fusion is what will remove this materialization.
         Kind::Lines => "tl_collect_lines()".to_string(),
+        Kind::Dsv { delim } => format!(
+            "tl_split_lines(tl_collect_lines(), {})",
+            lua_string(delim)
+        ),
         // A record is a table keyed by field name, which is what field access reads.
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields

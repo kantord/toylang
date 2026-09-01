@@ -40,6 +40,10 @@ struct Ctx<'a> {
     /// read is refused rather than silently handed nothing, the way a second pass over an
     /// already-consumed iterator would be in a language that let it compile.
     lines_used: &'a Cell<bool>,
+    /// The delimiter `dsv` was read with, filled in the first time it is used. `csv`/`tsv`
+    /// arrive here with the delimiter already fixed by the parser. A second read of any kind
+    /// is refused the same way a second `lines` is.
+    dsv: &'a RefCell<Option<String>>,
     /// Whether checking is inside a mapper's body (`map`'s, or `select`'s predicate), which
     /// runs once per element: a source read there would drain stdin on the first element and
     /// hand every later one nothing, so `lines` and `inputs` are refused in that position.
@@ -78,6 +82,7 @@ impl Ctx<'_> {
             input: self.input,
             inputs: self.inputs,
             lines_used: self.lines_used,
+            dsv: self.dsv,
             in_mapper: self.in_mapper,
             in_fn: self.in_fn,
             visibility: self.visibility,
@@ -151,6 +156,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         *input.borrow_mut() = Some(ty);
     }
     let inputs = RefCell::new(None);
+    let dsv = RefCell::new(None);
     let next_local = Cell::new(0);
     let visibility: HashMap<String, (Origin, bool)> = file
         .defs
@@ -167,6 +173,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         input: &input,
         inputs: &inputs,
         lines_used: &lines_used,
+        dsv: &dsv,
         in_mapper: false,
         in_fn: None,
         visibility: &visibility,
@@ -239,12 +246,31 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 .to_string(),
         ));
     }
+    // `dsv` reads the same raw lines `lines` does, so it joins the same exclusivity: one real
+    // stdin, read one way.
+    let dsv = dsv.into_inner();
+    for (other, name) in [
+        (input.is_some(), "`input`"),
+        (inputs.is_some(), "`inputs`"),
+        (lines_used.get(), "`lines`"),
+    ] {
+        if dsv.is_some() && other {
+            return Err(Error::new(
+                file.body.span(),
+                format!(
+                    "a program cannot use both `dsv` and {name}; they read the same real stdin \
+                     two different ways"
+                ),
+            ));
+        }
+    }
     Ok(tir::Program {
         funcs: prune_unreachable(funcs, &body),
         body,
         input,
         inputs,
         uses_lines: lines_used.get(),
+        dsv,
         enums,
     })
 }
@@ -277,6 +303,7 @@ fn check_defs<'a>(
             input: ctx.input,
             inputs: ctx.inputs,
             lines_used: ctx.lines_used,
+            dsv: ctx.dsv,
             in_mapper: false,
             in_fn: Some(&def.name),
             visibility: ctx.visibility,
@@ -362,6 +389,7 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
     let input = RefCell::new(None);
     let inputs = RefCell::new(None);
     let lines_used = Cell::new(false);
+    let dsv = RefCell::new(None);
     let next_local = Cell::new(0);
     let visibility: HashMap<String, (Origin, bool)> = module
         .defs
@@ -378,6 +406,7 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
         input: &input,
         inputs: &inputs,
         lines_used: &lines_used,
+        dsv: &dsv,
         in_mapper: false,
         in_fn: None,
         visibility: &visibility,
@@ -1410,6 +1439,49 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             }
             ctx.lines_used.set(true);
             Ok(Tir::new(Type::Stream(Box::new(Type::Str)), Kind::Lines))
+        }
+        // `dsv` reads the same raw lines `lines` does and splits each on the delimiter, so it
+        // shares every rule: refused in function and mapper bodies, read at most once, and its
+        // type is fixed (`Vec<Vec<Str>>`) rather than borrowed from a position. `csv`/`tsv`
+        // are this same node with the delimiter already fixed by the parser.
+        Expr::Dsv { delim, span } => {
+            if let Some(func) = ctx.in_fn {
+                return Err(Error::new(
+                    *span,
+                    format!(
+                        "`dsv` cannot be read inside `fn {func}`; a source is legal only in \
+                         the program's own body, so take the value through a parameter"
+                    ),
+                ));
+            }
+            if ctx.in_mapper {
+                return Err(Error::new(
+                    *span,
+                    "`dsv` cannot be read inside a mapper body, which runs once per element"
+                        .to_string(),
+                ));
+            }
+            // Every backend's split on an empty separator is its own undefined behaviour (Rust
+            // panics, Python raises, jq matches nothing), so the empty delimiter is refused
+            // rather than left to disagree.
+            if delim.is_empty() {
+                return Err(Error::new(
+                    *span,
+                    "`dsv`'s delimiter cannot be empty".to_string(),
+                ));
+            }
+            if ctx.dsv.borrow().is_some() {
+                return Err(Error::new(
+                    *span,
+                    "`dsv` has already been read; there is only one stdin".to_string(),
+                ));
+            }
+            *ctx.dsv.borrow_mut() = Some(delim.clone());
+            let field = Type::Vec(Box::new(Type::Str));
+            Ok(Tir::new(
+                Type::Vec(Box::new(field)),
+                Kind::Dsv { delim: delim.clone() },
+            ))
         }
         Expr::Int { value, span } => {
             // The literal is the one place a value could enter without meeting the 32-bit rule,

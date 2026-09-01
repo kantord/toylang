@@ -1,0 +1,16 @@
+# `jsonlines` over a `dsv` pipeline: eager because `dsv` is a value source, but each
+# row's first column still prints on its own line.
+program: |
+  jsonlines(dsv(";") | map(.[0]!))
+
+input: |
+  a;1
+  b;2
+  c;3
+
+output: |
+  "a"
+  "b"
+  "c"
+
+node_types: [builtin.jsonlines, dsv, int, local, map-over, pipe, selection.collapse, unwrap]

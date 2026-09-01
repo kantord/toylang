@@ -1,0 +1,11 @@
+# `tsv` is the prelude partial of `dsv("\t")`. Quoted rather than a block scalar so the
+# tabs survive YAML's folding; the fixture is two tab-separated rows.
+program: |
+  tsv | map(.[0]!)
+
+input: "ada\t36\nbo\t2\n"
+
+output: |
+  ["ada","bo"]
+
+node_types: [dsv, int, local, map-over, pipe, selection.collapse, unwrap]

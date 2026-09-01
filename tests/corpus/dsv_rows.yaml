@@ -1,0 +1,15 @@
+# The parameterized DSV source with a general delimiter: each raw line is split on the
+# delimiter into one row. A line with no delimiter is one whole field, the shape
+# `str.split(delim)` gives on every backend.
+program: |
+  dsv(";")
+
+input: |
+  a;b;c
+  d;e
+  f
+
+output: |
+  [["a","b","c"],["d","e"],["f"]]
+
+node_types: [dsv]

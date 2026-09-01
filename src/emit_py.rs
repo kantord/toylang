@@ -429,6 +429,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
         // works on the Vec of its entries. Fusion is what will remove this materialization.
         Kind::Lines => "tl_collect_lines()".to_string(),
+        // Same raw lines as `lines`, each split on the delimiter into one row.
+        Kind::Dsv { delim } => format!(
+            "[l.split({}) for l in tl_collect_lines()]",
+            py_string(delim)
+        ),
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()

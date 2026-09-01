@@ -196,7 +196,8 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
         | Kind::Local(_)
         | Kind::Input
         | Kind::Inputs
-        | Kind::Lines => {}
+        | Kind::Lines
+        | Kind::Dsv { .. } => {}
         Kind::VecLit(items) => items.iter().for_each(|i| callees(i, out)),
         Kind::RecordLit { fields } => {
             fields.iter().for_each(|(_, v)| callees(v, out));
@@ -390,7 +391,8 @@ fn uses_arith(program: &Program) -> (bool, bool) {
             | Kind::Local(_)
             | Kind::Input
             | Kind::Inputs
-            | Kind::Lines => {}
+            | Kind::Lines
+            | Kind::Dsv { .. } => {}
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, found)),
             Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| walk(v, found)),
             Kind::EnumLit { payload, .. } => {
@@ -500,6 +502,14 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // stdin as an array of strings. `-n -R` on the invocation is what makes this mode
         // available; see the checker rule against mixing `input` and `lines` in one program.
         Kind::Lines => "[ inputs ]".to_string(),
+        // `dsv` reads the same raw lines and splits each: `[ inputs | split(delim) ]`, with
+        // the delimiter escaped so a regex metacharacter (`.`, `|`, `[`) still splits literally
+        // the way every other backend does. jq's `split` on an empty string yields `[]` where
+        // every other backend yields `[""]`, so an empty line is forced to one empty field.
+        Kind::Dsv { delim } => format!(
+            "[ inputs | if length == 0 then [\"\"] else split({}) end ]",
+            jq_string(&regex_escape(delim))
+        ),
         // Each value is parenthesised: everything in jq is a filter, so an unbracketed `|`
         // or `,` inside one would be read as part of the object rather than as its value.
         Kind::RecordLit { fields } => {
@@ -936,5 +946,19 @@ fn jq_string(s: &str) -> String {
         }
     }
     out.push('"');
+    out
+}
+
+/// Escape the regex metacharacters jq's `split` treats specially, so a delimiter like `.` or
+/// `|` still splits literally. The set is RE2's: the characters that change meaning outside a
+/// character class, plus `\` itself.
+fn regex_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if "\\^$.|?*+()[]{}".contains(c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
     out
 }
