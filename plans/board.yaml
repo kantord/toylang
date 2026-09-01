@@ -223,13 +223,6 @@
   prio: 3
   status: todo
 
-- id: http-query-sugar-research
-  title: 'Maintainer note (docs/.annotations/notes.json composed 2026-08-31T22:08:16Z, unscheduled): consider a simple HTTP query builtin (like Python requests) as thin sugar over whatever each backend runtime already provides, minimal added complexity. Research spike: survey what request/response building blocks already exist per backend (Go net/http, JS fetch, Python urllib, Lua, Rust reqwest, native) before scoping a design row. Write findings to plans/.'
-  kind: build
-  needs: []
-  prio: 5
-  status: todo
-
 - id: partial-application-system-design
   issue: gh:119
   title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff), informed by closures-first-class-functions-research -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like"'
