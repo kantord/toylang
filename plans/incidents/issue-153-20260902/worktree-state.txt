@@ -1,0 +1,9 @@
+captured: 2026-09-02T00:24:51+0200
+state: {"ts": 1788301491, "lane": "issue-153", "ahead": 0, "tracked_dirty": 1, "live": false, "runs": 2, "last_activity": 1788292590}
+
+=== git status ===
+ M src/parse.rs
+
+=== git diff --stat ===
+ src/parse.rs | 63 ++++++++++++++----------------------------------------------
+ 1 file changed, 14 insertions(+), 49 deletions(-)
