@@ -117,9 +117,13 @@ def insert_row(lane, inc_rel, st):
     if i < 0:
         raise RuntimeError("no rows in board.yaml")
     new = text[:i] + row + text[i:]
-    import yaml
-    yaml.safe_load(new)  # refuse to write a board the site cannot parse
     open(path, "w").write(new)
+    rc = subprocess.run(
+        ["python3", os.path.join(REPO, ".claude/scripts/board-lint.py")],
+        cwd=REPO, capture_output=True, text=True)
+    if rc.returncode != 0:  # never commit a board the schema gate refuses
+        open(path, "w").write(text)
+        raise RuntimeError(f"board-lint refused the inserted row:\n{rc.stderr}")
 
 def commit(lane, inc_rel):
     sh(["git", "-C", REPO, "add", "plans/board.yaml", inc_rel])
