@@ -203,10 +203,16 @@
 
 - id: variant-checker-capital-first
   issue: gh:156
-  title: Checker rejects enum variant declarations that don't start with a capital letter, per the curly-only-pattern ruling (gh:156 ruling)
+  title: 'Reshaped after land-failure escalation (maintainer: "reshape into two lanes", 2026-09-01): checker enforcement (gh:156 ruling) is correct, but landing goes red because the doc corpus still has lowercase-leading variant examples across 6 pages -- gate/xfail the doc-corpus test `every_fragment_is_a_real_program` for exactly these 6 pages (docs/guides/enums.md:13, docs/guides/matching.md:66, docs/reference/operators/comparison.md:28, docs/reference/types/enum.md:7, docs/tutorial/04-enums.md:6/20/40) plus the 4 MISQUOTED fixtures (docs/guides/matching.md:54, docs/reference/types/enum.md:34/67, docs/tutorial/06-matching.md:67) so the checker enforcement itself can land now. The actual doc-content migration is split out as doc-migrate-capital-variants below -- do not do that migration in this lane. Evidence: ~/.cache/toylang-drive/land-gate-issue-156.log.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
+
+- id: doc-migrate-capital-variants
+  title: 'Follow-up lane split from issue-156 (reshape ruling, 2026-09-01): migrate the 6 flagged doc pages'' variant-declaration examples to capital-first-type + lowercase-constructor, and correct the 4 MISQUOTED fixture texts to match the checker''s real error output, then remove the corpus-test gating added in variant-checker-capital-first. Pages: docs/guides/enums.md, docs/guides/matching.md, docs/reference/operators/comparison.md, docs/reference/types/enum.md, docs/tutorial/04-enums.md, docs/tutorial/06-matching.md. Evidence for exact expected strings: ~/.cache/toylang-drive/land-gate-issue-156.log.'
+  kind: build
+  needs: [variant-checker-capital-first]
+  status: todo
 
 - id: match-type-wrapper-experiment
   issue: gh:122
