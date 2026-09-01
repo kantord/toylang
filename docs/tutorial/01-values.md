@@ -69,18 +69,19 @@ raw, as above.
 
 ## Choosing
 
-Comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`) produce a `Bool`, and the conditional is an
-expression, spelled Python's way:
+Comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`) produce a `Bool`. To branch on one, match on
+it as a guard: pipe the condition, `.` is the always-matches test, and the two outcomes are
+an arm and a default:
 
 ```toylang
-"big" if 10 > 5 else "small"
+10 > 5 | . -> "big" or "small"
 ```
 
 ```output
 big
 ```
 
-Chains read left to right, so a cascade of cases lays out flat; you will meet one in
-[chapter 3](03-pipes.md).
+A cascade of cases lays out flat as guard arms, each condition next to its result; you will
+meet one in [chapter 3](03-pipes.md).
 
 Next: [records](02-records.md), the type where values get names.

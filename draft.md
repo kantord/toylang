@@ -1507,30 +1507,6 @@ It found no defect. See
 [a backend that finds nothing is evidence only if it is different](research-log/a-backend-that-finds-nothing-is-evidence-only-if-it-is-different.md)
 for what that is and is not worth.
 
-### The conditional is an expression, spelled Python's way
-
-`then if condition else otherwise`, sitting between `|` and comparison, right-associative:
-
-```
-[1, 2, 3] | map(
-    "FizzBuzz" if . % 15 == 0 else
-    "Fizz"     if . % 3 == 0  else
-    "Buzz"     if . % 5 == 0  else
-    str(.)
-)
-```
-
-jq's `if ... then ... else ... end` was the alternative and was rejected. The objections to
-Python's form both dissolved on inspection. Precedence is one line: the conditional binds tighter
-than `|` and looser than comparison, so `a if c else b | f` groups as `(a if c else b) | f` and
-`x | a if c else b` groups as `x | (a if c else b)`. Python puts its ternary below `|` only
-because there `|` is bitwise or. And chaining reads well laid out as above, with the values in
-one column and the conditions in another, which for a transformation language means a reader can
-see what a branchpoint produces without reading a single condition.
-
-The deciding point is that this language has no statements. jq's form is an expression too, but
-shaped like a statement, with `end` closing a block that nothing else in the language has.
-
 ### Output needs no side effect
 
 A top-level `Str` already prints raw, so a string containing newlines is line-oriented output.
@@ -1540,9 +1516,9 @@ pure conversion from `Vec<Str>`. FizzBuzz to a hundred is then an ordinary progr
 ```
 unlines(
     range(100) | map(. + 1) | map(
-        "FizzBuzz" if . % 15 == 0 else
-        "Fizz"     if . % 3 == 0  else
-        "Buzz"     if . % 5 == 0  else
+        . % 15 == 0 -> "FizzBuzz" or
+        . % 3 == 0  -> "Fizz"     or
+        . % 5 == 0  -> "Buzz"     or
         str(.)
     )
 )
@@ -1563,10 +1539,10 @@ biting somewhere a user would actually reach.
 `range(n)` is zero-based, matching jq, Python, and this language's own indices, which is why the
 example shifts with `map(. + 1)` rather than starting at one.
 
-**The condition is exactly one `Bool`**, which is the claim
-[the safety section](#why-cardinality-in-the-type-is-the-safety-mechanism) makes. `"a" if 1 else
-"b"` does not typecheck, where jq would run both branches and hand back two answers. Both arms
-must agree, since the whole thing is one expression with one type.
+**A guard is exactly one `Bool`**, which is the claim
+[the safety section](#why-cardinality-in-the-type-is-the-safety-mechanism) makes: a match arm's
+left side must be a Bool, where jq would run both branches of its `if` and hand back two answers.
+The arms must agree, since the whole thing is one expression with one type.
 
 ## What the prototype showed
 
@@ -2295,14 +2271,13 @@ rather than assumed here.
 
 ## DECIDED: match arms compose with `or`, and a guard chain may be honestly partial
 
-FizzBuzz was the case study. The shipped conditional chain and the decided arm chain, side by
-side -- the program barely changes shape, which was the point:
+FizzBuzz was the case study. As guard arms, the one conditional form:
 
 ```
-"FizzBuzz" if . % 15 == 0 else          . % 15 == 0 -> "FizzBuzz" or
-"Fizz"     if . % 3 == 0  else          . % 3 == 0  -> "Fizz"     or
-"Buzz"     if . % 5 == 0  else          . % 5 == 0  -> "Buzz"     or
-str(.)                                  str(.)
+. % 15 == 0 -> "FizzBuzz" or
+. % 3 == 0  -> "Fizz"     or
+. % 5 == 0  -> "Buzz"     or
+str(.)
 ```
 
 An arm is a produce-or-decline value: its left side is either a variant pattern

@@ -9,9 +9,9 @@ recursion stays shallow.
 
 ```toylang
 fn even_fib_sum(p: {a: Int, b: Int, limit: Int}) -> Int =
-    0 if p.a >= p.limit else
-        (p.a if p.a % 2 == 0 else 0) +
-            even_fib_sum({a: p.b, b: p.a + p.b, limit: p.limit})
+    p
+        | .a >= .limit -> 0 or
+              (p | .a % 2 == 0 -> p.a or 0) + even_fib_sum({a: p.b, b: p.a + p.b, limit: p.limit})
 
 even_fib_sum({a: 1, b: 2, limit: 4000000})
 ```

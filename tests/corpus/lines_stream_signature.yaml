@@ -17,4 +17,4 @@ output: |
   ada!
   cy!
 
-node_types: [application, builtin.collect, builtin.length, builtin.tail, compare.eq, compare.ne, concat, conditional, int, lines, local, map-over, pipe, projection, record-literal, selection.collapse, selection.narrow, str, unwrap, var]
+node_types: [application, builtin.collect, builtin.length, builtin.tail, compare.eq, compare.ne, concat, int, lines, local, map-over, match, pipe, projection, record-literal, selection.collapse, selection.narrow, str, unwrap, var]

@@ -24,15 +24,20 @@ seven backends print the published answer.
 
 ```toylang slow
 fn has_divisor(p: {n: Int, d: Int}) -> Int =
-    0 if p.d * p.d > p.n else
-        1 if p.n % p.d == 0 else
-        has_divisor({n: p.n, d: p.d + (1 if p.d == 2 else 2)})
+    p
+        | .d * .d > .n -> 0 or
+              .n % .d == 0 -> 1 or
+              has_divisor({n: p.n, d: p.d + (p | .d == 2 -> 1 or 2)})
 
 fn is_prime(n: Int) -> Int =
-    0 if n < 2 else 0 if has_divisor({n: n, d: 2}) == 1 else 1
+    n
+        | . < 2 -> 0 or
+        has_divisor({n: n, d: 2}) == 1 -> 0 or
+        1
 
 fn sum_range(p: {v: Vec<Int>, lo: Int, hi: Int}) -> Int64 =
-    i64(p.v[p.lo]!) if p.hi - p.lo == 1 else
+    p
+        | .hi - .lo == 1 -> i64(p.v[p.lo]!) or
         sum_range({v: p.v, lo: p.lo, hi: (p.lo + p.hi) / 2}) +
             sum_range({v: p.v, lo: (p.lo + p.hi) / 2, hi: p.hi})
 

@@ -41,10 +41,8 @@ enum Tok {
     Fn,
     Pub,
     Type,
-    Enum,
+Enum,
     Let,
-    If,
-    Else,
     Input,
     Inputs,
     Lines,
@@ -92,8 +90,6 @@ impl std::fmt::Display for Tok {
             Tok::Type => "`type`",
             Tok::Enum => "`enum`",
             Tok::Let => "`let`",
-            Tok::If => "`if`",
-            Tok::Else => "`else`",
             Tok::Input => "`input`",
             Tok::Inputs => "`inputs`",
             Tok::Lines => "`lines`",
@@ -186,8 +182,6 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "type" => Tok::Type,
                 "enum" => Tok::Enum,
                 "let" => Tok::Let,
-                "if" => Tok::If,
-                "else" => Tok::Else,
                 "input" => Tok::Input,
                 "inputs" => Tok::Inputs,
                 "lines" => Tok::Lines,
@@ -353,17 +347,17 @@ fn infix_power(tok: &Tok) -> Option<(Infix, u8, u8)> {
 const PIPE_LEFT: u8 = 1;
 const PIPE_RIGHT: u8 = 2;
 
-/// The conditional sits between `|` and the Bool connectives, so `a if c else b | f` groups as
-/// `(a if c else b) | f` and `x | a if c else b` groups as `x | (a if c else b)`. Python puts
-/// its ternary below `|` because there `|` is bitwise or; ours is the pipe, so the better
-/// grouping comes for free.
+/// Where a match arm's body and its guard operand are read and printed: between `|` (1/2) and
+/// the Bool connectives (`or` at 4/5). An arm body read here stops at the separator `or` and
+/// `->`, which is what lets a chain be one pipe stage; a guard operand read here still gets the
+/// Bool `or` above it, so `a == 1 or b == 2 -> x` is one two-clause guard.
 const COND_POWER: u8 = 3;
 
 /// Bool `or`, the loosest operator a Bool expression is built from: `a == 1 or b == 2` is one
 /// disjunction of two comparisons. Its *other* reading, the match-arm separator, has no power
 /// at all -- it is not an operator there but the chain's own punctuation, and it binds looser
-/// than everything including the conditional, which is exactly why it cannot be one table entry
-/// with this (draft.md, the match-arms decision).
+/// than everything, which is exactly why it cannot be one table entry with this (draft.md, the
+/// match-arms decision).
 const OR_LEFT: u8 = 4;
 const OR_RIGHT: u8 = 5;
 
@@ -1022,9 +1016,9 @@ impl<'i> Cursor<'i> {
     /// Arm chains begin only where an expression begins fresh (a pipe stage, a delimited
     /// position), and a fresh position is also where `or` goes back to reading as disjunction:
     /// whatever chain the enclosing arm body belonged to, this expression is not part of it. An
-    /// arm body or a conditional branch enters at COND_POWER instead and leaves any `->` or
-    /// separator `or` it meets for the chain that owns it, rather than opening a nested chain
-    /// that would swallow the rest of the outer one.
+    /// arm body enters at COND_POWER instead and leaves any `->` or separator `or` it meets for
+    /// the chain that owns it, rather than opening a nested chain that would swallow the rest of
+    /// the outer one.
     fn expr(&mut self, min_power: u8) -> Result<Expr, Error> {
         if min_power <= PIPE_RIGHT {
             return self.with_or(false, |p| p.expr_at(min_power, true));
@@ -1047,24 +1041,6 @@ impl<'i> Cursor<'i> {
                 e
             }
         };
-
-        // Right-associative, so `a if c else b if d else e` chains rightward without parens.
-        let (tok, _) = self.peek()?;
-        if tok == Tok::If && COND_POWER >= min_power {
-            self.advance()?;
-            // `else` closes the condition, so a bare `or` inside it can only be disjunction --
-            // even in an arm body, where the separator reading is otherwise in force.
-            let cond = self.with_or(false, |p| p.operand(COND_POWER + 1))?;
-            self.eat(Tok::Else)?;
-            let otherwise = self.expr(COND_POWER)?;
-            let span = lhs.span().to(otherwise.span());
-            lhs = Expr::Cond {
-                then: Box::new(lhs),
-                cond: Box::new(cond),
-                otherwise: Box::new(otherwise),
-                span,
-            };
-        }
 
         loop {
             let (tok, _) = self.peek()?;

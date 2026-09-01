@@ -22,14 +22,16 @@ compiled backends.
 
 ```toylang slow
 fn chain_len(p: {n: Int64, acc: Int}) -> Int =
-    p.acc if p.n == i64(1) else
-        chain_len({n: p.n / 2 if p.n % 2 == i64(0) else p.n * 3 + 1, acc: p.acc + 1})
+    p
+        | .n == i64(1) -> p.acc or
+        chain_len({n: (p | .n % 2 == i64(0) -> p.n / 2 or p.n * 3 + 1), acc: p.acc + 1})
 
 fn better(p: {a: {n: Int, len: Int}, b: {n: Int, len: Int}}) -> {n: Int, len: Int} =
-    p.a if p.a.len >= p.b.len else p.b
+    p | .a.len >= .b.len -> p.a or p.b
 
 fn longest(p: {lo: Int, hi: Int}) -> {n: Int, len: Int} =
-    {n: p.lo, len: chain_len({n: i64(p.lo), acc: 1})} if p.hi - p.lo == 1 else
+    p
+        | .hi - .lo == 1 -> {n: p.lo, len: chain_len({n: i64(p.lo), acc: 1})} or
         better(
             {
                 a: longest({lo: p.lo, hi: (p.lo + p.hi) / 2}),
