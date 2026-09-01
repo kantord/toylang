@@ -9,6 +9,23 @@ endless -- and the program should emit results as it reads, in constant memory.
 it; [`lines`](../reference/sources/lines.md) when the lines are plain text. (When stdin is
 one document rather than a feed, this is not a streaming problem: `input` reads it whole.)
 
+The third source has nothing to do with stdin: [`range`](../reference/builtins/range.md) is
+a stream of integers, counted one at a time instead of materialized as a `Vec`. It is what
+the Euler examples use for "try every value in a range" without building the range first:
+
+```toylang
+jsonlines(range(6) | select(. % 2 == 0) | map(. * 10))
+```
+
+```output
+0
+20
+40
+```
+
+A generated range streams just like stdin does -- the same fuse-to-a-loop, same single use,
+same `collect` to make a `Vec` when the whole thing is needed.
+
 ## Write the pipeline as if it were a Vec
 
 `select`, `map`, and projection take a `Stream` subject and return a `Stream`, so the

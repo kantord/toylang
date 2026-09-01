@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (203):
+compiles natively (221):
 adults
 arith_add
 arith_div_trunc
@@ -83,6 +83,7 @@ index_positive
 index_ragged_inner
 index_ragged_present
 index_strings
+input_annotation
 input_typed_by_first_use
 inputs_records
 inputs_scalars
@@ -103,10 +104,14 @@ jsonlines_enum_stream
 jsonlines_of_dsv
 jsonlines_of_inputs
 jsonlines_of_lines
+jsonlines_of_range
 jsonlines_record_with_vec_field
 jsonlines_scalars
 length_of_vec
+let_classify_cond
+let_multi_input_annotation
 lines_cat
+lines_only
 lines_preserve_crlf
 lines_stream_signature
 lines_unterminated_final_line
@@ -159,6 +164,18 @@ rem_by_zero
 result_match_both_arms
 reverse_records
 shadowing_print
+slice_basic
+slice_negative
+slice_negative_both
+slice_nested
+slice_omit_high
+slice_omit_low
+slice_out_of_range
+slice_out_of_range_high
+slice_out_of_range_low
+slice_plus_concat
+slice_records
+slice_reversed
 sort_chars
 sort_descending
 sort_int64s
@@ -192,6 +209,7 @@ unwrap_int
 unwrap_negative
 unwrap_nested
 unwrap_str
+vec_body_after_definition
 vec_concat
 vec_concat_chain
 vec_concat_empty

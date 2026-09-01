@@ -5,11 +5,11 @@
 expression yields its entries one at a time as evaluation proceeds, not that a stream object
 exists as a value.
 
-A stream is born only at a source -- [`inputs`](../sources/inputs.md) or
-[`lines`](../sources/lines.md) -- and dies at [`collect`](../builtins/collect.md) or at the
-[`jsonlines`](../builtins/jsonlines.md) sink. In between, `select`, `map`, and projection
-accept a `Stream` subject and yield a `Stream` back, so a whole pipeline can live in the
-effect layer:
+A stream is born only at a source -- [`inputs`](../sources/inputs.md),
+[`lines`](../sources/lines.md), or [`range`](../builtins/range.md) -- and dies at
+[`collect`](../builtins/collect.md) or at the [`jsonlines`](../builtins/jsonlines.md) sink. In
+between, `select`, `map`, and projection accept a `Stream` subject and yield a `Stream` back,
+so a whole pipeline can live in the effect layer:
 
 ```case
 lines_stream_signature
@@ -17,7 +17,7 @@ lines_stream_signature
 
 The rules, each of which the checker enforces:
 
-- A stream is consumed exactly once; using one twice would read the same real stdin twice.
+- A stream is consumed exactly once; using one twice would re-run the source twice.
 - A stream never sits inside a record, a `Vec`, or another `Stream`.
 - A stream cannot be printed. It is not a value; `collect` is what makes one.
 - A function cannot conjure a stream: a signature may return `Stream` only if a `Stream`

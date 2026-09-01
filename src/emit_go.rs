@@ -70,6 +70,37 @@ const AT_HELPER: &str = r#"func tlAt[T any](v []T, i int32) tlOpt[T] {
 }
 "#;
 
+// Go's own slicing panics out of range, so the jq clamp has to be explicit: negatives count
+// from the end, then both bounds clamp to [0, n], and a crossed window is empty. A bound left
+// out is passed as its sentinel (`MinInt32` for the start, `MaxInt32` for the end), each of
+// which the clamp folds to the array's own boundary.
+const SLICE_HELPER: &str = r#"func tlSlice[T any](v []T, lo int32, hi int32) []T {
+	n := int32(len(v))
+	if lo < 0 {
+		lo += n
+	}
+	if hi < 0 {
+		hi += n
+	}
+	if lo < 0 {
+		lo = 0
+	}
+	if lo > n {
+		lo = n
+	}
+	if hi < 0 {
+		hi = 0
+	}
+	if hi > n {
+		hi = n
+	}
+	if lo >= hi {
+		return []T{}
+	}
+	return v[lo:hi]
+}
+"#;
+
 const UNWRAP_HELPER: &str = r#"func tlUnwrap[T any](o tlOpt[T]) T {
 	if !o.ok {
 		tlFail("unwrapped a value that is not there")
@@ -424,7 +455,7 @@ pub fn emit(program: &Program) -> String {
         }
         let body = e.expr(&program.body);
         // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
-        let printed = if program.body.ty == Type::Str {
+        let printed = if matches!(program.body.ty, Type::Str | Type::Sink) {
             body
         } else {
             e.show(&program.body.ty, &body, 0)
@@ -461,6 +492,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tlMap("), MAP_HELPER),
         (uses("tlSelect("), SELECT_HELPER),
         (uses("tlAt("), AT_HELPER),
+        (uses("tlSlice("), SLICE_HELPER),
         (uses("tlTail("), TAIL_HELPER),
         (uses("tlFlatten("), FLATTEN_HELPER),
         (uses("tlSort("), SORT_HELPER),
@@ -533,6 +565,7 @@ fn has_scalar(enums: &Enums, ty: &Type) -> bool {
             Type::Char => unreachable!("a Char cannot reach has_scalar"),
             Type::Int | Type::Int64 | Type::Bool => true,
             Type::Str => false,
+            Type::Sink => false,
             Type::Vec(t) => reaches(enums, t, seen),
             Type::Record(fields) => fields.iter().any(|(_, t)| reaches(enums, t, seen)),
             Type::Enum { .. } => {
@@ -665,6 +698,15 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
+            Kind::Slice { base, start, end, .. } => {
+                self.walk(base);
+                if let Some(s) = start {
+                    self.walk(s);
+                }
+                if let Some(e) = end {
+                    self.walk(e);
+                }
+            }
             Kind::Match { subject, arms, .. } => {
                 self.walk(subject);
                 for a in arms {
@@ -724,6 +766,8 @@ impl Emitter<'_> {
     fn go_type(&self, ty: &Type) -> String {
         match ty {
             Type::Str => "string".to_string(),
+            // A sink is a joined string at runtime, so a `-> Sink` function has one here too.
+            Type::Sink => "string".to_string(),
             // The default Int is 32 bits and wraps, and Go's int32 does exactly that for free.
             Type::Int => "int32".to_string(),
             // Same story a word wider (kantord/toylang#83).
@@ -864,6 +908,14 @@ impl Emitter<'_> {
                 out.push_str("\tfor s.Scan() {\n");
                 out.push_str("\t\tt_line := s.Text()\n");
                 ("t_line".to_string(), Type::Str)
+            }
+            // The bound is evaluated once; the loop counter is the element. A negative bound
+            // clamps to zero, the same answer `tlRange` gives eagerly.
+            tir::Source::Range(bound) => {
+                out.push_str(&format!("\tn := {}\n", self.expr(bound)));
+                out.push_str("\tif n < 0 {\n\t\tn = 0\n\t}\n");
+                out.push_str("\tfor t_i := int32(0); t_i < n; t_i++ {\n");
+                ("t_i".to_string(), Type::Int)
             }
         };
         for stage in &fusion.stages {
@@ -1128,6 +1180,21 @@ impl Emitter<'_> {
                     format!("tlAt({v}, {i})")
                 })
             }
+            Kind::Slice {
+                base, start, end, depth,
+            } => {
+                let lo = match start {
+                    Some(s) => self.expr(s),
+                    None => "-2147483648".to_string(),
+                };
+                let hi = match end {
+                    Some(e) => self.expr(e),
+                    None => "2147483647".to_string(),
+                };
+                self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
+                    format!("tlSlice({v}, {lo}, {hi})")
+                })
+            }
             // Tests over the subject (a plain local, so re-reading it is free): a tag test for
             // a variant arm, the same chain the enum printer uses, and the guard's own Bool
             // for a guard arm. A total chain's last arm needs no test, the checker having
@@ -1220,6 +1287,7 @@ impl Emitter<'_> {
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tlQuote({value})"),
+            Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Int => format!("strconv.FormatInt(int64({value}), 10)"),
             Type::Int64 => format!("strconv.FormatInt({value}, 10)"),
             Type::Bool => format!("strconv.FormatBool({value})"),

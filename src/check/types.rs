@@ -148,12 +148,22 @@ pub(super) fn resolve_enum(
                 let resolved = resolve_bound(ty, env, seen, &params, false)?;
                 // The record and Vec spellings refuse a stream inside themselves, but the
                 // parens spelling can put one directly in payload position, so the ban has to
-                // be stated here too: an enum value is storable, and a stream is not.
+                // be stated here too: an enum value is storable, and a stream is not. A sink
+                // is not storable either, for the same reason.
                 if resolved.contains_stream() {
                     return Err(Error::new(
                         ty.span(),
                         format!(
                             "the payload of `{}` cannot hold a stream, which has nothing to store",
+                            v.name
+                        ),
+                    ));
+                }
+                if resolved.contains_sink() {
+                    return Err(Error::new(
+                        ty.span(),
+                        format!(
+                            "the payload of `{}` cannot hold a sink, which has no value to store",
                             v.name
                         ),
                     ));
@@ -238,6 +248,17 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
                 ),
             ));
         }
+        // A sink is not a value, so nothing can be passed one: `Sink` is legal as a return
+        // type, and nowhere else in a signature.
+        if matches!(sig.param, Some(Type::Sink)) {
+            return Err(Error::new(
+                def.span,
+                format!(
+                    "`{}` cannot take a Sink parameter; a sink has no value to pass",
+                    def.name
+                ),
+            ));
+        }
         sigs.insert(def.name.clone(), sig);
     }
     Ok(sigs)
@@ -288,6 +309,12 @@ fn resolve_args(
             return Err(Error::new(
                 arg.span(),
                 format!("`{name}` cannot hold a stream, which has nothing to store"),
+            ));
+        }
+        if resolved.contains_sink() {
+            return Err(Error::new(
+                arg.span(),
+                format!("`{name}` cannot hold a sink, which has no value to store"),
             ));
         }
         resolved_args.push(resolved);
@@ -422,6 +449,12 @@ fn resolve_bound(
                     "a Vec cannot hold a stream, which has nothing to store".to_string(),
                 ));
             }
+            if inner.contains_sink() {
+                return Err(Error::new(
+                    elem.span(),
+                    "a Vec cannot hold a sink, which has no value to store".to_string(),
+                ));
+            }
             Ok(Type::Vec(Box::new(inner)))
         }
         TypeExpr::Stream { elem, .. } => {
@@ -431,6 +464,12 @@ fn resolve_bound(
                     elem.span(),
                     "a Stream cannot hold another stream; there is nothing it could yield"
                         .to_string(),
+                ));
+            }
+            if inner.contains_sink() {
+                return Err(Error::new(
+                    elem.span(),
+                    "a Stream cannot hold a sink, which has no value to yield".to_string(),
                 ));
             }
             Ok(Type::Stream(Box::new(inner)))
@@ -449,6 +488,12 @@ fn resolve_bound(
                     return Err(Error::new(
                         ty.span(),
                         format!("`{name}` cannot hold a stream, which has nothing to store"),
+                    ));
+                }
+                if field.contains_sink() {
+                    return Err(Error::new(
+                        ty.span(),
+                        format!("`{name}` cannot hold a sink, which has no value to store"),
                     ));
                 }
                 out.push((name.clone(), field));

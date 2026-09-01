@@ -24,7 +24,7 @@ use inkwell::values::{
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 
 use crate::ast::{BinOp, LogicOp};
-use crate::tir::{self, Builtin, Func, Fusion, Kind, LocalId, Program, Stage, Tir};
+use crate::tir::{self, Builtin, Func, Fusion, Kind, LocalId, Program, Source, Stage, Tir};
 use crate::ty::{self, Enums, Type};
 
 /// The C source linked into every native binary.
@@ -72,6 +72,7 @@ struct Runtime<'ctx> {
     range: FunctionValue<'ctx>,
     vec_tail: FunctionValue<'ctx>,
     vec_flatten: FunctionValue<'ctx>,
+    vec_slice: FunctionValue<'ctx>,
     vec_concat: FunctionValue<'ctx>,
     chars: FunctionValue<'ctx>,
     vec_sort_int: FunctionValue<'ctx>,
@@ -262,6 +263,11 @@ impl<'ctx> Emitter<'ctx, '_> {
                 ptr.fn_type(&[ptr.into(), i64t.into()], false),
                 None,
             ),
+            vec_slice: module.add_function(
+                "tl_vec_slice",
+                ptr.fn_type(&[ptr.into(), i64t.into(), i64t.into(), i64t.into()], false),
+                None,
+            ),
             vec_concat: module.add_function(
                 "tl_vec_concat",
                 ptr.fn_type(&[ptr.into(), ptr.into(), i64t.into()], false),
@@ -326,6 +332,8 @@ impl<'ctx> Emitter<'ctx, '_> {
             // is. Fusion is what will remove this materialization.
             Type::Stream(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Str => self.ctx.ptr_type(AddressSpace::default()).into(),
+            // A sink is a joined string at runtime, so a `-> Sink` function returns one here too.
+            Type::Sink => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Int => self.ctx.i64_type().into(),
             // The same i64 an Int already lives in: an Int is computed wide and narrowed after
             // every operation, and an Int64 is that representation with the narrowing left off
@@ -430,6 +438,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
+            Type::Sink => unreachable!("the grammar keeps a sink out of every slot"),
             Type::Int | Type::Int64 | Type::Char => value.into_int_value(),
             Type::Bool => self
                 .builder
@@ -447,6 +456,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
+            Type::Sink => unreachable!("the grammar keeps a sink out of every slot"),
             Type::Int | Type::Int64 | Type::Char => slot.into(),
             Type::Bool => self
                 .builder
@@ -963,6 +973,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
+            Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
             // tl_int_to_str already takes the full i64, so both widths print through it.
             Type::Int | Type::Int64 => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
@@ -1611,6 +1622,35 @@ impl<'ctx> Emitter<'ctx, '_> {
                             .into(),
                     ],
                     "at",
+                )?
+            }
+
+            Kind::Slice {
+                base,
+                start,
+                end,
+                depth,
+            } => {
+                let i64t = self.ctx.i64_type();
+                let base = self.expr(base)?;
+                let lo = match start {
+                    Some(s) => self.expr(s)?,
+                    // A bound left out folds to the array's own boundary inside the clamp.
+                    None => i64t.const_int(i64::MIN as u64, true).into(),
+                };
+                let hi = match end {
+                    Some(e) => self.expr(e)?,
+                    None => i64t.const_int(i64::MAX as u64, true).into(),
+                };
+                self.call_rt(
+                    self.rt.vec_slice,
+                    &[
+                        base,
+                        lo,
+                        hi,
+                        i64t.const_int(*depth as u64, false).into(),
+                    ],
+                    "slice",
                 )?
             }
 
@@ -2320,13 +2360,22 @@ impl<'ctx> Emitter<'ctx, '_> {
     /// cursor into an existing Vec's columns does not apply here, since there is no Vec -- each
     /// record arrives as its own one-off parsed value, exactly like `input` already is.
     fn fused_main(&mut self, program: &Program, fusion: &Fusion<'_>) -> Result<(), String> {
-        let elem_ty = match fusion.source {
-            crate::tir::Source::Inputs => program
-                .inputs
-                .as_ref()
-                .ok_or("an inputs source recorded its element")?
-                .clone(),
-            crate::tir::Source::Lines => Type::Str,
+        // A `range` source brings its own bound to count against; the stdin sources read from
+        // the runtime instead. Both settle the element type the same way the eager path does.
+        let (elem_ty, bound) = match fusion.source {
+            crate::tir::Source::Inputs => (
+                program
+                    .inputs
+                    .as_ref()
+                    .ok_or("an inputs source recorded its element")?
+                    .clone(),
+                None,
+            ),
+            crate::tir::Source::Lines => (Type::Str, None),
+            crate::tir::Source::Range(bound) => {
+                let bound = self.expr(bound)?.into_int_value();
+                (Type::Int, Some(bound))
+            }
         };
         let function = self
             .builder
@@ -2335,10 +2384,17 @@ impl<'ctx> Emitter<'ctx, '_> {
             .ok_or("no function to emit a loop into")?;
 
         let i64t = self.ctx.i64_type();
-        let i32t = self.ctx.i32_type();
         let out_slot = self
             .builder
             .build_alloca(i64t, "next_input")
+            .map_err(|e| e.to_string())?;
+        // The range counter, -1 so the loop condition reads 0 on the first pass.
+        let counter = self
+            .builder
+            .build_alloca(i64t, "range_i")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(counter, i64t.const_int(-1i64 as u64, true))
             .map_err(|e| e.to_string())?;
 
         let cond = self.ctx.append_basic_block(function, "fused.cond");
@@ -2350,35 +2406,32 @@ impl<'ctx> Emitter<'ctx, '_> {
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(cond);
-        let got = match fusion.source {
-            crate::tir::Source::Inputs => {
-                let descriptor = self.string_const(&descriptor(self.enums, &elem_ty));
-                self.call_rt(
-                    self.rt.read_one_input,
-                    &[descriptor.into(), out_slot.into()],
-                    "got",
-                )?
-            }
-            crate::tir::Source::Lines => {
-                self.call_rt(self.rt.read_one_line, &[out_slot.into()], "got")?
-            }
-        }
-        .into_int_value();
-        let has_more = self
-            .builder
-            .build_int_compare(IntPredicate::NE, got, i32t.const_zero(), "has_more")
-            .map_err(|e| e.to_string())?;
+        let has_more = match (fusion.source, bound) {
+            (crate::tir::Source::Range(_), Some(n)) => self.range_has_more(counter, n)?,
+            (source, None) => self.source_has_more(source, &elem_ty, out_slot)?,
+            _ => unreachable!("the source and bound match the arm that produced them"),
+        };
         self.builder
             .build_conditional_branch(has_more, body, end)
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(body);
-        let slot = self
-            .builder
-            .build_load(i64t, out_slot, "slot")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let mut current = self.read_slot(slot, &elem_ty)?;
+        let mut current = match (fusion.source, bound) {
+            (crate::tir::Source::Range(_), _) => self
+                .builder
+                .build_load(i64t, counter, "range_elem")
+                .map_err(|e| e.to_string())?
+                .into_int_value()
+                .into(),
+            _ => {
+                let slot = self
+                    .builder
+                    .build_load(i64t, out_slot, "slot")
+                    .map_err(|e| e.to_string())?
+                    .into_int_value();
+                self.read_slot(slot, &elem_ty)?
+            }
+        };
         let mut current_ty = elem_ty;
 
         for (i, stage) in fusion.stages.iter().enumerate() {
@@ -2417,6 +2470,62 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(())
     }
 
+    /// The loop condition for a stdin-backed fused source: reads one entry into `out_slot`
+    /// and reports whether there was one.
+    fn source_has_more(
+        &mut self,
+        source: Source<'_>,
+        elem_ty: &Type,
+        out_slot: PointerValue<'ctx>,
+    ) -> Result<IntValue<'ctx>, String> {
+        let i32t = self.ctx.i32_type();
+        let got = match source {
+            Source::Inputs => {
+                let descriptor = self.string_const(&descriptor(self.enums, elem_ty));
+                self.call_rt(
+                    self.rt.read_one_input,
+                    &[descriptor.into(), out_slot.into()],
+                    "got",
+                )?
+                .into_int_value()
+            }
+            Source::Lines => self
+                .call_rt(self.rt.read_one_line, &[out_slot.into()], "got")?
+                .into_int_value(),
+            Source::Range(_) => unreachable!("a range source has its own loop condition"),
+        };
+        self.builder
+            .build_int_compare(IntPredicate::NE, got, i32t.const_zero(), "has_more")
+            .map_err(|e| e.to_string())
+    }
+
+    /// The loop condition for a `range` source: increments the counter and reports whether the
+    /// new value is below the bound. Incrementing in the condition (rather than at the end of
+    /// the body) is what keeps a `select`'s continue -- a branch back to the condition -- from
+    /// skipping a count.
+    fn range_has_more(
+        &mut self,
+        counter: PointerValue<'ctx>,
+        n: IntValue<'ctx>,
+    ) -> Result<IntValue<'ctx>, String> {
+        let i64t = self.ctx.i64_type();
+        let raw = self
+            .builder
+            .build_load(i64t, counter, "raw")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let i = self
+            .builder
+            .build_int_add(raw, i64t.const_int(1, false), "i")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(counter, i)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_int_compare(IntPredicate::SLT, i, n, "has_more")
+            .map_err(|e| e.to_string())
+    }
+
     /// One printer function per recursive enum the program prints, declared before any body is
     /// emitted so that a body -- a printer's own included -- can call one.
     ///
@@ -2449,7 +2558,7 @@ impl<'ctx> Emitter<'ctx, '_> {
     /// A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
     fn print(&mut self, value: BasicValueEnum<'ctx>, ty: &Type) -> Result<(), String> {
         let as_str = match ty {
-            Type::Str => value,
+            Type::Str | Type::Sink => value,
             other => self.show(value, other)?,
         };
         self.builder
@@ -2472,6 +2581,7 @@ fn descriptor(enums: &Enums, ty: &Type) -> String {
             // Stream is unspellable in a type annotation, so `input`'s declared type -- the only
             // thing this function is ever called on -- can never contain one.
             Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
+            Type::Sink => unreachable!("input cannot be a sink, refused by the checker"),
             Type::Str => "s".to_string(),
             Type::Int => "i".to_string(),
             // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.

@@ -111,6 +111,11 @@ fn left_power(e: &Expr) -> Option<u8> {
 }
 
 fn needs_parens(e: &Expr, ctx: Ctx) -> bool {
+    // A `let` block is only ever a function body, never a sub-expression, so no child position
+    // can hold one; treating it as needing parens everywhere is the safe dead arm.
+    if matches!(e, Expr::Let { .. }) {
+        return true;
+    }
     match ctx {
         Ctx::Atom => matches!(
             e,
@@ -163,6 +168,9 @@ pub fn emit(file: &File) -> String {
     for decl in decls_in_source_order(&file.aliases, &file.enums, &file.defs) {
         out.push_str(&decl);
         out.push_str("\n\n");
+    }
+    if let Some(ty) = &file.input {
+        out.push_str(&format!("input {}\n\n", print_type(ty)));
     }
     out.push_str(&print_expr_wrapped(&file.body, Ctx::Expr(0), 0));
     out.push('\n');
@@ -273,6 +281,22 @@ fn print_def(d: &Def) -> String {
         print_param(&d.param),
         print_type(&d.ret)
     );
+    // A `let` block is line-structured, so it has no one-line form: the signature, then one
+    // `let` line per binding, then the value, each indented one level.
+    if let Expr::Let { bindings, body, .. } = &d.body {
+        let mut lines: Vec<String> = bindings
+            .iter()
+            .map(|(n, v)| format!("let {n} = {}", print_expr_compact(v, Ctx::Expr(0))))
+            .collect();
+        lines.push(print_expr_wrapped(body, Ctx::Expr(0), INDENT));
+        let mut out = format!("{sig} =\n");
+        for line in lines {
+            out.push_str(&pad(INDENT));
+            out.push_str(&line);
+            out.push('\n');
+        }
+        return out.trim_end().to_string();
+    }
     let compact_body = print_expr_compact(&d.body, Ctx::Expr(0));
     let one_line = format!("{sig} = {compact_body}");
     if fits(&one_line, 0) {
@@ -424,6 +448,17 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
         Expr::Index { base, index, .. } => {
             format!("{}[{}]", print_atom_base(base), print_paren_arg(index))
         }
+        Expr::Slice { base, start, end, .. } => {
+            let lo = match start {
+                Some(s) => print_paren_arg(s),
+                None => String::new(),
+            };
+            let hi = match end {
+                Some(e) => print_paren_arg(e),
+                None => String::new(),
+            };
+            format!("{}[{lo}:{hi}]", print_atom_base(base))
+        }
         Expr::Unwrap { base, .. } => format!("{}!", print_atom_base(base)),
         Expr::Neg { base, .. } => format!("-{}", print_expr_compact(base, Ctx::Unary)),
         // `not x`, not `not(x)`: this is an operator, and the parens spelling would read as the
@@ -501,6 +536,9 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
                 print_expr_compact(rhs, Ctx::Operand(right))
             )
         }
+        // `print_def` emits a `let` block before reaching this match; a `Let` here is a
+        // nested one the parser never produces (the block form is only a function body).
+        Expr::Let { .. } => unreachable!("a `let` block is only ever a function body"),
     }
 }
 

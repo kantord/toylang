@@ -109,7 +109,10 @@ pub fn run_with_input(src: &str, stdin: Option<&str>) -> Result<String> {
 /// stream no matter which backend runs it. Public so `main.rs` can decide, before it has read
 /// anything, whether to drain real stdin itself or hand it to `run_on` untouched.
 pub fn streams_inputs(program: &tir::Program) -> bool {
-    matches!(tir::fusion(program), Some(f) if f.source == tir::Source::Inputs)
+    matches!(
+        tir::fusion(program),
+        Some(f) if matches!(f.source, tir::Source::Inputs)
+    )
 }
 
 /// Compile and run, capturing what the program printed -- except when `stdin` is `None` and
@@ -228,7 +231,7 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
             &emit_jq::emit(&program).map_err(anyhow::Error::msg)?,
             JqInvocation {
                 has_value: value.is_some(),
-                raw: program.body.ty == ty::Type::Str,
+                raw: matches!(program.body.ty, ty::Type::Str | ty::Type::Sink),
                 uses_lines: program.uses_lines || program.dsv.is_some(),
             },
             &feed,

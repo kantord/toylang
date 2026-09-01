@@ -17,7 +17,7 @@ entry:
 
 ```toylang
 fn adults(users: Vec<{name: Str, age: Int}>) -> Vec<Str> =
-    users | select(.age >= 18) | map(.name)
+    users | select(.age >= 18) | .[].name
 
 adults([{name: "ada", age: 36}, {name: "bo", age: 9}])
 ```
@@ -26,8 +26,10 @@ adults([{name: "ada", age: 36}, {name: "bo", age: 9}])
 ["ada"]
 ```
 
-`map(.name)` has a second spelling: `[].name` projects through the dimension directly.
-They are verified identical, and both are common.
+`[].name` is the projection spelling: it reads a field through the dimension directly.
+The same projection inside a `map` body, `map(.name)`, is legal but demoted -- `map`
+is for transforming entries, not for reading a field out of them. They are verified
+identical.
 
 ## Reaching in by position
 
@@ -49,8 +51,9 @@ at runtime. Chapter 1's `Vec` pages in the reference cover the whole spec story:
 
 ## Putting it together
 
-`range(n)` makes `[0 .. n-1]`, and `join_lines` joins a `Vec<Str>` into printable lines.
-FizzBuzz is one pipeline:
+`collect(range(n))` makes `[0 .. n-1]`, and `join_lines` joins a `Vec<Str>` into printable
+lines. (`range` itself is a stream, counted one entry at a time; `collect` is the eager
+spelling that turns it into the `Vec` here.) FizzBuzz is one pipeline:
 
 ```case
 fizzbuzz

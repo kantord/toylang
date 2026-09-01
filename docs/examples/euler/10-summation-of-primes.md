@@ -9,7 +9,10 @@ The sum, about 1.4e11, is past `Int`'s 2.1 billion ceiling, so the running total
 until [kantord/toylang#83](https://github.com/kantord/toylang/issues/83) landed. Trial division
 over `range(2000000)` is [problem 7](07-10001st-prime.md)'s shape -- 2, then only odd divisors;
 `select(is_prime(.) == 1)` keeps the primes, and `sum_range` adds them by halving the range,
-each half summed as an `Int64` so the total never wraps.
+each half summed as an `Int64` so the total never wraps. `range` is a stream source since
+[kantord/toylang#137](https://github.com/kantord/toylang/issues/137), and `sum_range`'s
+halving needs random access into a held `Vec`, so the pipeline reifies it up front with
+`collect` (the eager spelling).
 
 This page is a `slow` fragment. Two million trial divisions are a second or three on the
 compiled and JIT backends, but half a minute on CPython, a minute on Lua, and minutes on jq
@@ -33,7 +36,7 @@ fn sum_range(p: {v: Vec<Int>, lo: Int, hi: Int}) -> Int64 =
         sum_range({v: p.v, lo: p.lo, hi: (p.lo + p.hi) / 2}) +
             sum_range({v: p.v, lo: (p.lo + p.hi) / 2, hi: p.hi})
 
-range(2000000) | select(is_prime(.) == 1) | sum_range({v: ., lo: 0, hi: length(.)})
+collect(range(2000000)) | select(is_prime(.) == 1) | sum_range({v: ., lo: 0, hi: length(.)})
 ```
 
 ```output

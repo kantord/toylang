@@ -4,6 +4,7 @@ expression: emitted
 ---
 import sys
 import json
+sys.setrecursionlimit(100000)
 
 
 

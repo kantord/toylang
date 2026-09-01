@@ -1,0 +1,15 @@
+# jsonlines over a range-sourced pipeline: the shape the Euler corpus drives, with `range`
+# feeding `select` and `map`. A range is now a third stream birth point, so this fuses into a
+# count-one/transform-one/write-one loop like any other stream; tests/streaming.rs proves the
+# loop, output is what this pins. The eager spelling is `collect(range(n)) | select | map`.
+program: |
+  jsonlines(range(10) | select(. % 2 == 0) | map(. * 10))
+
+output: |
+  0
+  20
+  40
+  60
+  80
+
+node_types: [arith.mul, arith.rem, builtin.jsonlines, builtin.range, compare.eq, int, local, map-over, pipe, selection.narrow]

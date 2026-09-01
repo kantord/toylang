@@ -89,10 +89,16 @@ pub fn emit(program: &Program) -> Result<String, String> {
     if let Some(fusion) = tir::fusion(program) {
         // jq's own `inputs` is already lazy; the eager path below only becomes eager by wrapping
         // it in `[...]`. Skipping that wrapper and running the whole `map`/`select` chain as one
-        // filter over the `inputs` generator is what makes jq print each record as it arrives
+        // filter over the generator is what makes jq print each record as it arrives
         // rather than after the last one, the same as running the equivalent `jq` program by
-        // hand would.
-        out.push_str("inputs");
+        // hand would. `range(0; n)` is jq's own lazy counter, the same streaming shape for a
+        // `range` source.
+        match fusion.source {
+            tir::Source::Inputs | tir::Source::Lines => out.push_str("inputs"),
+            tir::Source::Range(bound) => {
+                out.push_str(&format!("range(0; {})", expr(enums, bound)))
+            }
+        };
         for stage in &fusion.stages {
             match stage {
                 tir::Stage::Map { param, body } => {
@@ -148,6 +154,7 @@ fn canonical(enums: &Enums, ty: &Type, value: &str) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str | Type::Int | Type::Int64 | Type::Bool => value.to_string(),
+        Type::Sink => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(enums, elem, ".")),
         Type::Enum { .. } if ty.as_opt().is_some() => {
             let inner = ty.as_opt().expect("guarded");
@@ -242,6 +249,15 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
         Kind::Index { base, index, .. } => {
             callees(base, out);
             callees(index, out);
+        }
+        Kind::Slice { base, start, end, .. } => {
+            callees(base, out);
+            if let Some(s) = start {
+                callees(s, out);
+            }
+            if let Some(e) = end {
+                callees(e, out);
+            }
         }
         Kind::Match { subject, arms, .. } => {
             callees(subject, out);
@@ -425,6 +441,15 @@ fn uses_arith(program: &Program) -> (bool, bool) {
             Kind::Index { base, index, .. } => {
                 walk(base, found);
                 walk(index, found);
+            }
+            Kind::Slice { base, start, end, .. } => {
+                walk(base, found);
+                if let Some(s) = start {
+                    walk(s, found);
+                }
+                if let Some(e) = end {
+                    walk(e, found);
+                }
             }
             Kind::Match { subject, arms, .. } => {
                 walk(subject, found);
@@ -674,6 +699,22 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 expr(enums, index)
             );
             format!("({} | {})", expr(enums, base), distribute(&at, *depth))
+        }
+        // jq's own slice clamps out-of-range bounds and counts negatives from the end, so the
+        // ruled behaviour is the target's native one; a `None` bound is just left out.
+        Kind::Slice {
+            base, start, end, depth,
+        } => {
+            let lo = match start {
+                Some(s) => expr(enums, s),
+                None => String::new(),
+            };
+            let hi = match end {
+                Some(e) => expr(enums, e),
+                None => String::new(),
+            };
+            let sl = format!(".[{lo}:{hi}]");
+            format!("({} | {})", expr(enums, base), distribute(&sl, *depth))
         }
         // Tests over the subject: equality for a unit variant, `type`-guarded `has` for a
         // payload one, since `has` on a string is an error rather than false, and the guard's

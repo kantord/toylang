@@ -97,6 +97,35 @@ local function tl_at(v, i, depth)
 end
 ";
 
+// Lua has no slice operator, so the clamping is spelled out: negatives count from the end,
+// then both bounds clamp to [0, n], and a crossed window is empty. A `nil` bound is one left
+// out (0 for the start, n for the end).
+const SLICE_HELPER: &str = "\
+local function tl_slice(v, lo, hi, depth)
+  if depth > 0 then
+    local out = {}
+    for k = 1, #v do out[k] = tl_slice(v[k], lo, hi, depth - 1) end
+    return out
+  end
+  local n = #v
+  local function norm(i)
+    if i == nil then return nil end
+    if i < 0 then i = n + i end
+    if i < 0 then i = 0 end
+    if i > n then i = n end
+    return i
+  end
+  lo = norm(lo) or 0
+  hi = norm(hi) or n
+  local out = {}
+  if lo < hi then
+    local j = 0
+    for i = lo + 1, hi do j = j + 1 out[j] = v[i] end
+  end
+  return out
+end
+";
+
 const TAIL_HELPER: &str = "\
 local function tl_tail(v)
   if #v == 0 then return \"none\" end
@@ -285,7 +314,7 @@ pub fn emit(program: &Program) -> String {
     let used = used_helpers(program);
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON. So a
     // string inside a Vec is quoted while a bare string is not.
-    let structured = program.body.ty != Type::Str;
+    let structured = !matches!(program.body.ty, Type::Str | Type::Sink);
     let quote = (structured && needs_quote(&program.body.ty)) || used.jsonlines;
     let join = (structured && contains_vec(enums, &program.body.ty)) || used.jsonlines;
     for (on, text) in [
@@ -294,6 +323,7 @@ pub fn emit(program: &Program) -> String {
         (quote, QUOTE_HELPER),
         (join, JOIN_HELPER),
         (used.index, OPT_HELPER),
+        (used.slice, SLICE_HELPER),
         (used.unwrap, UNWRAP_HELPER),
         (used.tail, TAIL_HELPER),
         (used.flatten, FLATTEN_HELPER),
@@ -376,6 +406,14 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
             out.push_str("for t_line in io.lines() do\n");
             ("t_line".to_string(), Type::Str)
         }
+        // The bound is evaluated once; the loop counter is the element. A negative bound makes
+        // Lua's numeric for run zero times (start > limit), the same answer `tl_range` gives
+        // eagerly.
+        tir::Source::Range(bound) => {
+            out.push_str(&format!("local n = {}\n", expr(enums, bound)));
+            out.push_str("for t_i = 0, n - 1 do\n");
+            ("t_i".to_string(), Type::Int)
+        }
     };
     for stage in &fusion.stages {
         match stage {
@@ -416,6 +454,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
+        Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         Type::Int | Type::Int64 | Type::Bool => format!("tostring({value})"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
@@ -548,6 +587,7 @@ struct Helpers {
     select: bool,
     field: bool,
     index: bool,
+    slice: bool,
     unwrap: bool,
     arith: bool,
     arith64: bool,
@@ -712,6 +752,16 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.index = true;
                 walk(base, used);
                 walk(index, used);
+            }
+            Kind::Slice { base, start, end, .. } => {
+                used.slice = true;
+                walk(base, used);
+                if let Some(s) = start {
+                    walk(s, used);
+                }
+                if let Some(e) = end {
+                    walk(e, used);
+                }
             }
             Kind::Match { subject, arms, .. } => {
                 walk(subject, used);
@@ -905,6 +955,25 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 "tl_at({}, {}, {})",
                 expr(enums, base),
                 expr(enums, index),
+                depth
+            )
+        }
+        Kind::Slice {
+            base, start, end, depth,
+        } => {
+            let lo = match start {
+                Some(s) => expr(enums, s),
+                None => "nil".to_string(),
+            };
+            let hi = match end {
+                Some(e) => expr(enums, e),
+                None => "nil".to_string(),
+            };
+            format!(
+                "tl_slice({}, {}, {}, {})",
+                expr(enums, base),
+                lo,
+                hi,
                 depth
             )
         }

@@ -89,6 +89,14 @@ const AT_HELPER: &str = r#"def tl_at(v, i, depth):
     return {"some": v[i]}
 "#;
 
+/// Python's own slicing already clamps out-of-range bounds and counts negatives from the end,
+/// so jq's boundary behaviour is the target's native one; `None` is a bound left out.
+const SLICE_HELPER: &str = r#"def tl_slice(v, lo, hi, depth):
+    if depth > 0:
+        return [tl_slice(e, lo, hi, depth - 1) for e in v]
+    return v[lo:hi]
+"#;
+
 const UNWRAP_HELPER: &str = r#"def tl_unwrap(v, depth):
     if depth > 0:
         return [tl_unwrap(e, depth - 1) for e in v]
@@ -226,7 +234,7 @@ pub fn emit(program: &Program) -> String {
 
         let body = expr(enums, &program.body);
         // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
-        let printed = if program.body.ty == Type::Str {
+        let printed = if matches!(program.body.ty, Type::Str | Type::Sink) {
             body
         } else {
             show(enums, &program.body.ty, &body, 0)
@@ -252,6 +260,10 @@ pub fn emit(program: &Program) -> String {
     if program.input.is_some() || program.inputs.is_some() {
         out.push_str("import json\n");
     }
+    // Python's default ceiling (1000) is far below what a compiled-style recursive program
+    // needs: Euler 11's self-tail-recursive fold alone is ~1300 frames deep. Raise it before
+    // any program code runs; 100000 is comfortably above the thousands real programs reach.
+    out.push_str("sys.setrecursionlimit(100000)\n");
     out.push('\n');
     for (on, text) in [
         (unwrap || arith || arith64, FAIL_HELPER),
@@ -261,6 +273,7 @@ pub fn emit(program: &Program) -> String {
         (arith64, ARITH64_HELPER),
         (uses("tl_field("), FIELD_HELPER),
         (uses("tl_at("), AT_HELPER),
+        (uses("tl_slice("), SLICE_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
         (unwrap, UNWRAP_HELPER),
@@ -295,10 +308,10 @@ pub fn emit(program: &Program) -> String {
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     let enums = &program.enums;
     let mut out = String::new();
-    out.push_str("for _line in sys.stdin:\n");
-    out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
     let (mut current, mut current_ty) = match fusion.source {
         tir::Source::Inputs => {
+            out.push_str("for _line in sys.stdin:\n");
+            out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
             out.push_str("    if _line.strip() == \"\":\n        continue\n");
             out.push_str("    t_line = json.loads(_line)\n");
             let elem = program
@@ -308,7 +321,17 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
             ("t_line".to_string(), elem.clone())
         }
         // A raw line is already the element, blank ones included: `lines` keeps them.
-        tir::Source::Lines => ("_line".to_string(), Type::Str),
+        tir::Source::Lines => {
+            out.push_str("for _line in sys.stdin:\n");
+            out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
+            ("_line".to_string(), Type::Str)
+        }
+        // The bound is evaluated once; the loop counter is the element. A negative bound makes
+        // Python's own range empty, the same answer `tl_range` gives eagerly.
+        tir::Source::Range(bound) => {
+            out.push_str(&format!("for t_i in range({}):\n", expr(enums, bound)));
+            ("t_i".to_string(), Type::Int)
+        }
     };
     for stage in &fusion.stages {
         match stage {
@@ -346,6 +369,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
+        Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         Type::Int | Type::Int64 => format!("str({value})"),
         Type::Bool => format!("(\"true\" if {value} else \"false\")"),
         Type::Vec(elem) => {
@@ -569,6 +593,25 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 "tl_at({}, {}, {})",
                 expr(enums, base),
                 expr(enums, index),
+                depth
+            )
+        }
+        Kind::Slice {
+            base, start, end, depth,
+        } => {
+            let lo = match start {
+                Some(s) => expr(enums, s),
+                None => "None".to_string(),
+            };
+            let hi = match end {
+                Some(e) => expr(enums, e),
+                None => "None".to_string(),
+            };
+            format!(
+                "tl_slice({}, {}, {}, {})",
+                expr(enums, base),
+                lo,
+                hi,
                 depth
             )
         }

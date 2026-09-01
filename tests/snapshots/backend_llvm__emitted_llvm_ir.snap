@@ -78,6 +78,8 @@ declare ptr @tl_vec_tail(ptr)
 
 declare ptr @tl_vec_flatten(ptr, i64)
 
+declare ptr @tl_vec_slice(ptr, i64, i64, i64)
+
 declare ptr @tl_vec_concat(ptr, ptr, i64)
 
 declare ptr @tl_vec_sort_int(ptr)

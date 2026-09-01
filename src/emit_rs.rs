@@ -81,6 +81,21 @@ const AT_HELPER: &str = r#"fn tl_at<T: Clone>(v: &[T], i: i32) -> Option<T> {
 }
 "#;
 
+// Out-of-range bounds clamp jq-style rather than answering absence, so this never fails.
+// A `None` bound is passed as its sentinel: `i32::MIN` for the start (clamps to 0) and
+// `i32::MAX` for the end (clamps to the length).
+const SLICE_HELPER: &str = r#"fn tl_slice<T: Clone>(v: &[T], lo: i32, hi: i32) -> Vec<T> {
+    let n = v.len() as i32;
+    let lo = (if lo < 0 { n + lo } else { lo }).clamp(0, n);
+    let hi = (if hi < 0 { n + hi } else { hi }).clamp(0, n);
+    if lo >= hi {
+        Vec::new()
+    } else {
+        v[lo as usize..hi as usize].to_vec()
+    }
+}
+"#;
+
 const UNWRAP_HELPER: &str = r#"fn tl_unwrap<T>(o: Option<T>) -> T {
     match o {
         Some(v) => v,
@@ -568,7 +583,7 @@ pub fn emit(program: &Program) -> String {
             ));
         }
         let body = e.expr(&program.body);
-        let printed = if program.body.ty == Type::Str {
+        let printed = if matches!(program.body.ty, Type::Str | Type::Sink) {
             body
         } else {
             e.show(&program.body.ty, &body, 0)
@@ -581,6 +596,9 @@ pub fn emit(program: &Program) -> String {
     let arith = uses("tl_div(") || uses("tl_rem(");
     let arith64 = uses("tl_div64(") || uses("tl_rem64(");
     let reads_value = program.input.is_some() || program.inputs.is_some();
+    // `tl_read_lines` alone (a program whose only stdin-touching builtin is `lines`) emits
+    // READ_HELPER, whose body calls `tl_fail` via `tl_read_all_stdin`; the `uses` scan only sees
+    // the program decls, not other helpers' source, so the trigger has to be named here too.
     let fail = unwrap
         || arith
         || arith64
@@ -599,6 +617,7 @@ pub fn emit(program: &Program) -> String {
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
         (uses("tl_at("), AT_HELPER),
+        (uses("tl_slice("), SLICE_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
@@ -771,6 +790,15 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
+            Kind::Slice { base, start, end, .. } => {
+                self.walk(base);
+                if let Some(s) = start {
+                    self.walk(s);
+                }
+                if let Some(e) = end {
+                    self.walk(e);
+                }
+            }
             Kind::Match { subject, arms, .. } => {
                 self.walk(subject);
                 for a in arms {
@@ -826,6 +854,8 @@ impl Emitter<'_> {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Str => "String".to_string(),
+            // A sink is a joined string at runtime, so a `-> Sink` function returns one here too.
+            Type::Sink => "String".to_string(),
             Type::Int => "i32".to_string(),
             Type::Int64 => "i64".to_string(),
             Type::Bool => "bool".to_string(),
@@ -865,6 +895,7 @@ impl Emitter<'_> {
             ),
             // The checker refuses Opt anywhere in an input type: absence has no wire form.
             Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
+            Type::Sink => unreachable!("input cannot be a sink, refused by the checker"),
             Type::Enum { .. } => format!("tl_parse_enum{}", self.enum_index(ty)),
             Type::Record(_) => format!("tl_parse_rec{}", self.record_index(ty)),
         }
@@ -968,21 +999,26 @@ impl Emitter<'_> {
     fn fused_main(&self, program: &Program, fusion: &tir::Fusion) -> String {
         let mut out = String::new();
         out.push_str("fn main() {\n");
-        out.push_str("    use std::io::{BufRead, Write};\n");
-        out.push_str("    let stdin = std::io::stdin();\n");
-        out.push_str("    let mut stdin = stdin.lock();\n");
+        // A range source reads nothing, so it does not need `BufRead`; the stdin-based sources
+        // do. An unused import would only warn, but the emitted file carries enough noise already.
+        out.push_str(match fusion.source {
+            tir::Source::Range(_) => "    use std::io::Write;\n",
+            _ => "    use std::io::{BufRead, Write};\n",
+        });
         out.push_str("    let stdout = std::io::stdout();\n");
         out.push_str("    let mut stdout = stdout.lock();\n");
-        out.push_str("    let mut line = String::new();\n");
-        out.push_str("    loop {\n");
-        out.push_str("        line.clear();\n");
-        out.push_str(
-            "        let n = stdin.read_line(&mut line).unwrap_or_else(|e| tl_fail(&format!(\"could not read stdin: {e}\")));\n",
-        );
-        out.push_str("        if n == 0 { break; }\n");
-        out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
         let (mut current, mut current_ty) = match fusion.source {
             tir::Source::Inputs => {
+                out.push_str("    let stdin = std::io::stdin();\n");
+                out.push_str("    let mut stdin = stdin.lock();\n");
+                out.push_str("    let mut line = String::new();\n");
+                out.push_str("    loop {\n");
+                out.push_str("        line.clear();\n");
+                out.push_str(
+                    "        let n = stdin.read_line(&mut line).unwrap_or_else(|e| tl_fail(&format!(\"could not read stdin: {e}\")));\n",
+                );
+                out.push_str("        if n == 0 { break; }\n");
+                out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
                 let elem = program
                     .inputs
                     .as_ref()
@@ -997,8 +1033,25 @@ impl Emitter<'_> {
             }
             // A raw line is already the element, blank ones included: `lines` keeps them.
             tir::Source::Lines => {
+                out.push_str("    let stdin = std::io::stdin();\n");
+                out.push_str("    let mut stdin = stdin.lock();\n");
+                out.push_str("    let mut line = String::new();\n");
+                out.push_str("    loop {\n");
+                out.push_str("        line.clear();\n");
+                out.push_str(
+                    "        let n = stdin.read_line(&mut line).unwrap_or_else(|e| tl_fail(&format!(\"could not read stdin: {e}\")));\n",
+                );
+                out.push_str("        if n == 0 { break; }\n");
+                out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
                 out.push_str("        let t_line: String = line.clone();\n");
                 ("t_line".to_string(), Type::Str)
+            }
+            // The bound is evaluated once; the loop counter is the element. A negative bound
+            // yields an empty loop via `.max(0)`, the same answer `tl_range` gives eagerly.
+            tir::Source::Range(bound) => {
+                out.push_str(&format!("    let n: i32 = {}.max(0);\n", self.expr(bound)));
+                out.push_str("    for t_i in 0..n {\n");
+                ("t_i".to_string(), Type::Int)
             }
         };
         for stage in &fusion.stages {
@@ -1109,12 +1162,7 @@ impl Emitter<'_> {
                 self.user(func),
                 arg.as_deref().map_or_else(String::new, |a| self.expr(a))
             ),
-            // `Vec<T>` has no `Add` impl, but the standard library's slice `concat` is exactly
-            // this operation for an owned pair.
-            Kind::Concat(l, r) => match &t.ty {
-                Type::Vec(_) => format!("[{}, {}].concat()", self.expr(l), self.expr(r)),
-                _ => format!("({} + &{})", self.expr(l), self.expr(r)),
-            },
+            Kind::Concat(l, r) => concat(&t.ty, self.expr(l), self.expr(r)),
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             // A genuine expression, unlike Go: both branches stay unevaluated except the taken
             // one, which is what `if`/`else` already guarantees.
@@ -1262,6 +1310,21 @@ impl Emitter<'_> {
                     format!("tl_at(&{v}, {i})")
                 })
             }
+            Kind::Slice {
+                base, start, end, depth,
+            } => {
+                let lo = match start {
+                    Some(s) => self.expr(s),
+                    None => "i32::MIN".to_string(),
+                };
+                let hi = match end {
+                    Some(e) => self.expr(e),
+                    None => "i32::MAX".to_string(),
+                };
+                self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
+                    format!("tl_slice(&{v}, {lo}, {hi})")
+                })
+            }
             // The one target with the construct itself: a toylang match is a Rust match, and
             // for a chain of variant arms rustc re-proves the exhaustiveness the checker
             // already established. A default arm is `_`, a guard arm `_ if cond` (the guard
@@ -1327,6 +1390,7 @@ impl Emitter<'_> {
             // The checker refuses a program whose result contains a Char: it has no wire form.
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tl_quote(&{value})"),
+            Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Int | Type::Int64 => format!("({value}).to_string()"),
             Type::Bool => format!("({value}).to_string()"),
             Type::Vec(elem) => {
@@ -1423,6 +1487,15 @@ fn int_lit(ty: &Type, n: i64) -> String {
         format!("{n}i64")
     } else {
         format!("tl_int({n})")
+    }
+}
+
+/// `Vec<T>` has no `Add` impl, but the standard library's slice `concat` is exactly
+/// this operation for an owned pair.
+fn concat(ty: &Type, l: String, r: String) -> String {
+    match ty {
+        Type::Vec(_) => format!("[{l}, {r}].concat()"),
+        _ => format!("({l} + &{r})"),
     }
 }
 
