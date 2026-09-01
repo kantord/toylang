@@ -194,3 +194,15 @@ pointed at the existing probe output instead of re-deriving it, named ADR
 0007 + JS's Number.prototype.toString() as the reference algorithm, and
 required committing one backend's formatter at a time rather than holding
 everything uncommitted until all six are done.
+
+## issue-158 stuck lane: already explained, no dispatch needed (2026-09-02)
+
+`stuck-issue-158-investigation` asked to diagnose why issue-158 (shell-out-build,
+gh:158) had two commitless runs. Already answered on the board itself:
+`shell-out-build` carries `needs: [stdout-stderr-effect-model-design]`, and that
+decide row already has a composed, pending grill round
+(docs/.grill/stdout-stderr-effect-model.round.yaml) asking exactly the Q35
+question both runs got stuck on. Archived the investigation row instead of
+dispatching a worker to re-derive an answer that's already on file -- the real
+next step is the maintainer answering the pending round, not more automated
+investigation.
