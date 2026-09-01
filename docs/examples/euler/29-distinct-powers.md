@@ -27,17 +27,19 @@ comes back in under a second.
 
 ```toylang
 fn ipow(p: {r: Int, m: Int}) -> Int =
-    1 if p.m == 0 else p.r * ipow({r: p.r, m: p.m - 1})
+    p | .m == 0 -> 1 or .r * ipow({r: .r, m: .m - 1})
 
 fn find_root_for_mult(p: {a: Int, m: Int, r: Int}) -> Int =
-    -1 if ipow({r: p.r, m: p.m}) > p.a else
-        p.r if ipow({r: p.r, m: p.m}) == p.a else
-        find_root_for_mult({a: p.a, m: p.m, r: p.r + 1})
+    p
+        | ipow({r: p.r, m: p.m}) > .a -> -1 or
+              ipow({r: p.r, m: p.m}) == .a -> .r or
+              find_root_for_mult({a: .a, m: .m, r: .r + 1})
 
 fn best_mult(p: {a: Int, m: Int}) -> {root: Int, mult: Int} =
-    {root: p.a, mult: 1} if p.m == 0 else
-        {root: find_root_for_mult({a: p.a, m: p.m, r: 2}), mult: p.m} if find_root_for_mult({a: p.a, m: p.m, r: 2}) != -1 else
-        best_mult({a: p.a, m: p.m - 1})
+    p
+        | .m == 0 -> {root: .a, mult: 1} or
+              find_root_for_mult({a: .a, m: .m, r: 2}) != -1 -> {root: find_root_for_mult({a: .a, m: .m, r: 2}), mult: .m} or
+              best_mult({a: .a, m: .m - 1})
 
 fn root_and_mult(a: Int) -> {root: Int, mult: Int} = best_mult({a: a, m: 6})
 
@@ -50,8 +52,9 @@ fn distinct_count(v: Vec<Int>) -> Int =
     length(collect(range(length(v))) | select(not is_dup({v: v, i: .})))
 
 fn powers_from(p: {r: Int, val: Int, j: Int, top: Int}) -> Vec<Int> =
-    [] if p.val > p.top else
-        [p.j] + powers_from({r: p.r, val: p.val * p.r, j: p.j + 1, top: p.top})
+    p
+        | .val > .top -> [] or
+              [.j] + powers_from({r: .r, val: .val * .r, j: .j + 1, top: .top})
 
 fn powers_of(p: {r: Int, top: Int}) -> Vec<Int> =
     powers_from({r: p.r, val: p.r, j: 1, top: p.top})
@@ -82,7 +85,7 @@ fn multi_contribs(top: Int) -> Vec<Int> =
         | map(multi_root_contribution({r: ., top: top}))
 
 fn sum_ints(v: Vec<Int>) -> Int =
-    0 if length(v) == 0 else v[0]! + sum_ints(tail(v)!)
+    v | length(.) == 0 -> 0 or v[0]! + sum_ints(tail(v)!)
 
 fn solve(top: Int) -> Int = single_contrib(top) + sum_ints(multi_contribs(top))
 

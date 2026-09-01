@@ -3,4 +3,4 @@ source: tests/streams.rs
 assertion_line: 123
 expression: "err(\"fn f(s: Stream<Str>) -> Stream<Str> = s if 1 == 1 else s\\n\\n1\")"
 ---
-a conditional cannot yield a stream; pass each branch to `collect` first (at byte 38)
+expected end of program, found `1`; an argument must start on the same line as its function -- write `s(...)` to call across lines (at byte 58)

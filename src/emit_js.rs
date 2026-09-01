@@ -617,15 +617,6 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.max |= *which == Builtin::Max;
                 walk(arg, used);
             }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                walk(cond, used);
-                walk(then, used);
-                walk(otherwise, used);
-            }
             Kind::Arith { lhs, rhs, .. } => {
                 if t.ty == Type::Int64 {
                     used.arith64 = true;
@@ -702,16 +693,6 @@ fn tail_stmts(
             });
             format!("{assign}continue;\n")
         }
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => format!(
-            "if ({}) {{\n{}}} else {{\n{}}}\n",
-            expr(enums, cond),
-            indent(&tail_stmts(enums, name, param, fresh, then)),
-            indent(&tail_stmts(enums, name, param, fresh, otherwise)),
-        ),
         Kind::Bind {
             local: id,
             value,
@@ -828,18 +809,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         ),
         Kind::Concat(l, r) => concat(enums, &t.ty, l, r),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            format!(
-                "({} ? {} : {})",
-                expr(enums, cond),
-                expr(enums, then),
-                expr(enums, otherwise)
-            )
-        }
         Kind::Logic { op, lhs, rhs } => {
             let op = match op {
                 LogicOp::And => "&&",

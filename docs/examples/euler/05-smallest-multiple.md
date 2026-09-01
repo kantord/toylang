@@ -8,13 +8,14 @@ range 1 to 20 from the top down.
 
 ```toylang
 fn gcd(p: {a: Int, b: Int}) -> Int =
-    p.a if p.b == 0 else gcd({a: p.b, b: p.a % p.b})
+    p | .b == 0 -> p.a or gcd({a: p.b, b: p.a % p.b})
 
 fn lcm(p: {a: Int, b: Int}) -> Int = p.a / gcd({a: p.a, b: p.b}) * p.b
 
 fn lcm_upto(p: {n: Int, limit: Int}) -> Int =
-    1 if p.n > p.limit else
-        lcm({a: lcm_upto({n: p.n + 1, limit: p.limit}), b: p.n})
+    p
+        | .n > .limit -> 1 or
+              lcm({a: lcm_upto({n: p.n + 1, limit: p.limit}), b: p.n})
 
 lcm_upto({n: 1, limit: 20})
 ```

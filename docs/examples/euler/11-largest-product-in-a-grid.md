@@ -46,14 +46,9 @@ fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax:
     )
 
 fn maximum_of(p: {v: Vec<Int>, i: Int, best: Int}) -> Int =
-    p.best if p.i >= length(p.v) else
-        maximum_of(
-            {
-                v: p.v,
-                i: p.i + 1,
-                best: p.v[p.i]! if p.v[p.i]! > p.best else p.best
-            }
-        )
+    p
+        | .i >= length(.v) -> p.best or
+              maximum_of({v: p.v, i: p.i + 1, best: p | .v[.i]! > .best -> p.v[p.i]! or p.best})
 
 fn maximum(v: Vec<Int>) -> Int = maximum_of({v: v, i: 1, best: v[0]!})
 

@@ -278,13 +278,6 @@ pub enum Expr {
         base: Box<Expr>,
         span: Span,
     },
-    /// `then if cond else otherwise`. An expression, in a language that has only those.
-    Cond {
-        then: Box<Expr>,
-        cond: Box<Expr>,
-        otherwise: Box<Expr>,
-        span: Span,
-    },
     /// `base.name`. Distributes over a Vec rather than needing a map.
     Field {
         base: Box<Expr>,
@@ -417,7 +410,6 @@ impl Expr {
             | Expr::RecordLit { span, .. }
             | Expr::Neg { span, .. }
             | Expr::Not { span, .. }
-            | Expr::Cond { span, .. }
             | Expr::Field { span, .. }
             | Expr::Input { span }
             | Expr::Inputs { span }

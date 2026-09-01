@@ -462,20 +462,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // so a Vec needs no different spelling here than Str does.
         Kind::Concat(l, r) => format!("({} + {})", expr(enums, l), expr(enums, r)),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        // The one construct this target spells exactly as toylang does, because toylang took the
-        // spelling from here.
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            format!(
-                "({} if {} else {})",
-                expr(enums, then),
-                expr(enums, cond),
-                expr(enums, otherwise)
-            )
-        }
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("str({})", expr(enums, arg)),
             // Python's integers are one type at every width, so the bridge has nothing to do.
@@ -693,8 +679,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
 /// `t` as statements in the tail position, each line already padded to `level` columns:
 /// `return <expr>` for a base case, and for a tail call `param = <arg>` followed by `continue`
 /// so the emitted `while True` rewinds instead of recursing against Python's interpreter
-/// recursion limit. A `Cond`'s branches and a total `Match`'s arm bodies nest one indent
-/// deeper, the way Python needs.
+/// recursion limit. A total `Match`'s arm bodies nest one indent deeper, the way Python needs.
 fn tail_stmts(
     enums: &Enums,
     name: &str,
@@ -714,16 +699,6 @@ fn tail_stmts(
             });
             format!("{assign}{pad}continue\n")
         }
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => format!(
-            "{pad}if {}:\n{}\n{pad}else:\n{}\n",
-            expr(enums, cond),
-            tail_stmts(enums, name, param, fresh, then, level + 4),
-            tail_stmts(enums, name, param, fresh, otherwise, level + 4),
-        ),
         Kind::Bind {
             local: id,
             value,

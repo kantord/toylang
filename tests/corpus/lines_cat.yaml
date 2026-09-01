@@ -14,4 +14,4 @@ output: |
   bo
   cy
 
-node_types: [application, builtin.collect, builtin.length, builtin.tail, compare.eq, concat, conditional, int, lines, selection.collapse, str, unwrap, var]
+node_types: [application, builtin.collect, builtin.length, builtin.tail, compare.eq, concat, int, lines, local, match, pipe, selection.collapse, str, unwrap, var]

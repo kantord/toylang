@@ -9,12 +9,11 @@ program: |
   enum Json { arr(Vec<Json>), num(Int) }
 
   fn total(v: Vec<Json>) -> Int =
-      0 if length(v) == 0
-      else (v[0]! | arr -> total(.) or num -> .) + total(tail(v)!)
+      length(v) == 0 | . -> 0 or (v[0]! | arr -> total(.) or num -> .) + total(tail(v)!)
 
   total([Json.arr([Json.num(1), Json.arr([Json.num(2), Json.num(3)])]), Json.num(4)])
 
 output: |
   10
 
-node_types: [application, arith.add, builtin.length, builtin.tail, compare.eq, conditional, int, local, match, pipe, selection.collapse, unwrap, var, variant.payload, vec-literal]
+node_types: [application, arith.add, builtin.length, builtin.tail, compare.eq, int, local, match, pipe, selection.collapse, unwrap, var, variant.payload, vec-literal]
