@@ -1900,7 +1900,10 @@ officially transitional. The destination is one raw source with parsing as ordin
 visible steps -- the design rejected earlier *only* because expected types could not flow
 into map bodies, a blocker the type-flow rework removes. Syntax is deliberately not settled
 here; it gets its own session once type-flow lands. Until then: no fourth stdin reader, no
-new exclusivity rules -- nothing that makes the migration bigger.
+new exclusivity rules -- nothing that makes the migration bigger. One ratified exception
+(gh:88's ruling, built as gh:136): a parameterized `dsv(delim)` source, with `csv`/`tsv`
+as its predefined partials -- the shape the one-source design lands on, added ahead of it
+rather than as a fourth nullary keyword.
 
 ## DECIDED: `inputs`, eager, not an answer to Q1 either
 

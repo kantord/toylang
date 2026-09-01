@@ -1,0 +1,5 @@
+---
+source: tests/step_dsv.rs
+expression: "err(\"dsv(\\\",\\\") + dsv(\\\";\\\")\")"
+---
+`dsv` has already been read; there is only one stdin (at byte 11)

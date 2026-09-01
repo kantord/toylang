@@ -47,7 +47,7 @@ func tlUnwrap[T any](o tlOpt[T]) T {
 }
 
 func v_join_lines(v_v []string) string {
-	return func(t_0 []string) string { return func() string { if (int32(len(v_v)) == tlInt(0)) { return "" }; if (int32(len(v_v)) == tlInt(1)) { return tlUnwrap(tlAt(v_v, tlInt(0))) }; return ((tlUnwrap(tlAt(v_v, tlInt(0))) + "\n") + v_join_lines(tlUnwrap(tlTail(v_v)))) }() }(v_v)
+	return func(t_1 []string) string { return func() string { if (int32(len(v_v)) == tlInt(0)) { return "" }; if (int32(len(v_v)) == tlInt(1)) { return tlUnwrap(tlAt(v_v, tlInt(0))) }; return ((tlUnwrap(tlAt(v_v, tlInt(0))) + "\n") + v_join_lines(tlUnwrap(tlTail(v_v)))) }() }(v_v)
 }
 
 func main() {

@@ -1,0 +1,11 @@
+# A trailing delimiter is a trailing empty field, matching `str.split` on every backend.
+program: |
+  dsv(",")
+
+input: |
+  a,b,
+
+output: |
+  [["a","b",""]]
+
+node_types: [dsv]

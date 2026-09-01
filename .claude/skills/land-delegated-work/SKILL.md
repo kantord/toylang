@@ -19,7 +19,7 @@ Do not ping for intermediate progress or ask permission to review or merge.
   racing it for the cargo lock. An opencode worker's quality problems found during landing
   (review findings traceable to the worker, red suites, half-done work) additionally get a
   row in plans/opencode-rollout.md's incident table.
-- Run `just test` in the worktree. A red suite goes back to the session (or gets fixed here
+- Run `just check` in the worktree (the full `just test` runs at landing). A red check goes back to the session (or gets fixed here
   if the session is gone and the fix is small); never review a red branch as if it were done.
 
 ## 2. Review: the coordinator reads the diff itself. No review agents. (maintainer rule, 2026-08-30)
@@ -50,45 +50,35 @@ What review IS now:
   `pkill`/`killall` by process name. Name-based kills took down the coordinator's
   annotations server (and once the maintainer's own) four times in one day.
 
-## 2b. Batch landings cascade (maintainer flow, 2026-08-29)
+## 2b + 3. The serial landing queue: lane -> main (maintainer design, 2026-09-01, superseding the size-driven accumulator pipeline of 2026-08-30)
 
-When THREE OR MORE reviewed-and-green branches are ready at once, do not merge them into
-main one by one. Build a tournament instead: pair the branches, merge each pair into an
-integration branch (`integration/<a>+<b>`, cut from main) in its own temp worktree -- the
-pairs are independent, so their merges, conflict resolutions, and suite runs all happen in
-parallel; then pair the winners, and only the final champion merges into main, taking ONE
-main suite and ONE push for the whole batch. Conflicts get resolved at the pair level,
-where they are smallest and main is never mid-merge; a suite failure at any node localizes
-to its subtree. Board flips and issue closes all happen with the final merge. Per-branch
-review stays a hard prerequisite -- the cascade accelerates merging, never judgment. With
-fewer than three ready, the serial flow below is simpler and just as fast.
+One lane at a time, straight onto main, behind the full `just test` -- the suite is
+about three minutes, so batching lanes into accumulators bought nothing and cost
+blame ambiguity (a red batch could not name its breaking lane). All plumbing lives
+in `.claude/scripts/land-lane.sh`:
 
-## 3. Merge locally, then push
-
-- `git merge <branch> --no-ff` from the main checkout, with a merge message naming what was
-  reviewed and where follow-ups went, plus the trailer. NEVER in the same shell command as a
-  `cd` into the worktree: a compound "cd worktree && commit && merge" runs the merge INSIDE
-  the branch, silently merging nothing (it happened twice in one day -- both times the close
-  comment fired against a merge that had not reached main). Start the merge as its own
-  command from the repo root, and verify `git status -sb` says main first.
-- On conflicts: resolve each conflicted path explicitly and NEVER `git add -A` while a merge
-  is in progress -- it once staged conflict markers into board.yaml unseen. Structured files
-  (board.yaml and board-archive.yaml especially) get validated AFTER resolution and BEFORE the
-  commit, with the validation hard-gating the commit (`&&`, not a newline).
-- Re-run `just test` on main after the merge.
-- Push main after the green suite (standing authorization, 2026-08-29, "at least for now"):
-  ordinary pushes only, never force, never branch deletion. Keeping origin current is what
-  lets the next dispatch cut a fresh worktree without a human round-trip. Removing the
-  enwiro env (`enw rm`) stays the user's -- it is safe only after the merge, and never with
-  unmerged work.
+- **Landing is event-driven and deterministic.** A worker's exit fires
+  `land-lane.sh land <N>` by itself (opencode-worker.sh's EXIT trap); no model sits
+  in the happy path, and the merge message is generated from the lane's own commit
+  subjects. To land manually, run the same command -- detached with nohup when you
+  do not want to wait on the suite. Lands serialize on a flock.
+- **The gate runs in a throwaway worktree**; main is touched only after green, then
+  pushed, then the lane worktree and branch are removed by the script.
+- **A conflict or red gate never blocks the queue.** The script writes the evidence
+  to LAND-FAILURE.txt in the lane worktree, re-dispatches the lane's own worker
+  with a templated repair brief (cap: 2 automatic retries), and moves on. The third
+  failure leaves a `land-failed-issue-<N>` marker the tick escalates to the
+  maintainer.
+- **Review happens post-land** (maintainer ruling, 2026-09-01): read the newest
+  Land commit's diff on main and file follow-up rows or issues for real problems --
+  never block or gate the merge on a model read.
 
 ## 3b. Update the board and the env
 
-If `plans/board.yaml` exists: MOVE the landed task's row out of `plans/board.yaml` into
-`plans/board-archive.yaml`, appended with `status: done` (committed together with the merge) --
-landing no longer flips status in place (issue #113). Match the row by its id terminator
-(`'- id: <slug>\n'`, never a bare prefix -- see the drive skill's stall-diagnosis section) and
-add rows for any follow-up issues the review filed -- `build` rows usually, or a `decide` +
+If `plans/board.yaml` exists: run `.claude/scripts/board-archive.py <row-id>...` -- it does the
+issue-#113 move (terminator-anchored cut from `plans/board.yaml`, append to
+`plans/board-archive.yaml` with `status: done`, both files validated) in one deterministic
+step; commit its result. Add rows for any follow-up issues the review filed -- `build` rows usually, or a `decide` +
 `build` pair when a finding needs a design call first.
 
 The worktree's fate depends on which kind it is:

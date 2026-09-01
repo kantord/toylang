@@ -1,0 +1,16 @@
+# The minimal program that shows a real gap: `lines` is the only stdin-touching builtin, and on
+# the rust backend it is the one that used to ship `READ_HELPER` (which calls `tl_fail` in its own
+# body) without the `FAIL_HELPER` that defines it, so the emitted program did not compile. Every
+# other backend ran it fine; the disagreement is the bug.
+program: |
+  collect lines
+
+input: |
+  ada
+  bo
+  cy
+
+output: |
+  ["ada","bo","cy"]
+
+node_types: [builtin.collect, lines]

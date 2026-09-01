@@ -196,7 +196,7 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
     // A fused Lua program run against a fixture is not live, but still needs the raw bytes
     // verbatim rather than the eager re-serialized form, since `run_lua`'s injected function does
     // its own splitting the same way `lines` always has.
-    let feed = if program.uses_lines {
+    let feed = if program.uses_lines || program.dsv.is_some() {
         match stdin {
             Some(text) => Feed::Text(text.to_string()),
             None => Feed::Live,
@@ -231,8 +231,8 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
             &emit_jq::emit(&program).map_err(anyhow::Error::msg)?,
             JqInvocation {
                 has_value: value.is_some(),
-                raw: program.body.ty == ty::Type::Str,
-                uses_lines: program.uses_lines,
+                raw: matches!(program.body.ty, ty::Type::Str | ty::Type::Sink),
+                uses_lines: program.uses_lines || program.dsv.is_some(),
             },
             &feed,
         ),

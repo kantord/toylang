@@ -1,286 +1,147 @@
-# The task board (scheduler v2, maintainer-specified 2026-08-29): every unblocked task is by
-# definition ready to be picked up, and up to EIGHT build lanes run at once
-# (raised from five 2026-08-30; decide rows queue for the maintainer separately
-# and never consume a lane or a ready-set slot).
-#
-# Done rows do not live here (issue #113): landing a task MOVES its row to
-# plans/board-archive.yaml (same schema, append-only) instead of flipping status in place, so
-# this file stays the ~quarter of the board that is still live -- the loop's single most-read
-# file, and every tick pays for its length. A needs/soft id not found on this live board is
-# satisfied: it must have landed and been archived. Consult the archive only for provenance,
-# never to decide whether something is blocking.
-#
-# Fields: id (slug; gh:N when a GitHub issue carries the spec), title, kind, needs, soft,
-# prio, status.
-#   kind: build  = delegatable implementation work (enwiro-delegate out, land-delegated-work in)
-#         decide = needs a grilling/design session with the maintainer before anything builds
-#   needs: HARD blockers -- forced order; a task with an un-done need is not pickable at all.
-#          An id absent from this file is satisfied, not missing.
-#   soft:  SOFT blockers -- convenient order that saves effort or time (file-footprint
-#          overlaps, avoid-rework sequencing). A task with un-done soft blockers is still
-#          pickable, just ranked below less-soft-blocked work. Same absent-is-satisfied rule.
-#   prio:  1 (highest) .. 5; omitted means 3. Sorts WITHIN a soft-blockedness category, so
-#          soft order outweighs raw priority -- but among fully unblocked tasks, prio alone
-#          decides. Efficiency/process improvements are prio tasks by standing rule.
-#   status: todo | delegated  (done rows move to board-archive.yaml; "blocked" is derived from
-#           needs, never stored)
-#   lane:  which worker-pool lane a delegated row runs in (lane-1 .. lane-5, gh:124); the
-#          tick scripts resolve its worktree through the env symlink. Absent means the
-#          classic per-issue env (worktree issue-<N>). Set at dispatch, travels to the
-#          archive with the row.
-#   model: which model the delegated session runs -- omitted means sonnet (the default for
-#          regular build work); "fable" is reserved for design-heavy or cross-cutting builds
-#          the coordinator judges worth it; "haiku" is for mechanical work with an obvious
-#          done-state (renames, sweeps, small config/UI tweaks) where cheaper and faster
-#          beats smarter (maintainer rule, 2026-08-30). decide rows have no model; they are
-#          the human.
-#
-# Picking the ready set (drive skill executes this): drop hard-blocked rows (done rows are
-# already gone); group the rest by soft-blockedness (count of un-done soft blockers, in-flight
-# ones included); least soft-blocked category first, prio within each. TWO queues from that
-# ordering (2026-08-30): every ready decide goes to the maintainer's grill/mail queue, and the
-# top ready builds fill the free lanes up to the cap. List position is a tiebreak only. A
-# needs-cycle, or todo rows remaining with nothing pickable and nothing in flight, is a
-# deadlock and gets reported.
-- id: local-binding-design
-  issue: gh:87
-  title: Grill local bindings inside an expression -- the where/as shaped gap (emuto survey adopt)
-  kind: decide
-  needs: []
-  status: todo
-
-- id: csv-inputs-idea
-  issue: gh:88
-  title: Grill the DSV source shape -- delimiter vs nullary sources (worker analysis, gh:88 comment)
-  kind: decide
-  needs: []
-  prio: 4
-  status: todo
-
-- id: int64-wire-form
-  issue: gh:89
-  title: Decide the Int64 wire form -- input refuses it pending the codec call (gh:83 escalation)
+- id: function-signature-matching-syntax
+  issue: gh:152
+  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 needs to stress-test each option (esp. the Msg(...) call-form sketch) for concrete problems before re-asking'
   kind: decide
   needs: []
   prio: 3
+  status: todo
+
+- id: declare-terminator-build
+  issue: gh:153
+  title: Require an explicit terminator after fn/type declarations, retire the same-line heuristic (issue #9 oddity ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: delegated
+
+- id: jsonlines-tail-marker-build
+  issue: gh:154
+  title: Implement the |> tail-pipeline marker for sink calls, restricted to outermost position (issue #9 oddity ruling)
+  kind: build
+  needs: [sink-kind-build]
+  prio: 3
+  status: delegated
+
+- id: dsv-rfc4180-quoting-build
+  issue: gh:136
+  title: 'Ruled (prelude-partials-and-mutation round): dsv(delim) needs RFC 4180 quoted-field handling (embedded delimiters, doubled quotes, embedded newlines) -- replace the raw byte-split shipped in gh:136 with a real stateful scanner'
+  kind: build
+  needs: []
+  prio: 3
+  status: delegated
+
+- id: dsv-partials-migration
+  issue: gh:136
+  title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet.'
+  kind: build
+  needs: [partial-application-system-design]
+  prio: 5
   status: todo
 
 - id: euler-slow-fragments-2
   issue: gh:93
-  title: Batch 3's correct-but-slow problems, parked with the same tier question as gh:90
-  kind: decide
-  needs: []
-  soft: [euler-slow-fragments]
-  prio: 3
-  status: todo
-
-- id: python-recursion-limit
-  issue: gh:132
-  title: Python backend never raises sys' default recursion limit -- breaks real-sized recursive programs (found via euler-11)
+  title: Apply the slow-fragment tier to batch 3's correct-but-slow problems (gh:90 ruling)
   kind: build
-  needs: []
+  needs: [docs-slow-fragment-tier]
   prio: 3
   status: delegated
-
-- id: euler-pages-restore
-  issue: gh:133
-  title: Restore the Euler 8/11/13/18 docs pages now that tests/euler_real_data.rs verifies them (gh:129 follow-up)
-  kind: build
-  needs: []
-  soft: [python-recursion-limit]
-  prio: 3
-  status: delegated
-
-- id: projection-style-demotion
-  issue: gh:99
-  title: Demote map(.field) for pure projection -- style and sweep, not a refusal
-  kind: build
-  needs: []
-  prio: 3
-  soft: [concat-retirement]
-  status: delegated
-
-- id: euler-slow-fragments
-  issue: gh:90
-  title: Decide the slow-fragment tier -- Euler 10 and 14 solve correctly but cost minutes on the weak backends
-  kind: decide
-  needs: []
-  prio: 3
-  status: todo
-
-- id: matcher-totality-and-alt-design
-  title: Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test
-  kind: decide
-  needs: [auto-matchers-design]
-  prio: 1
-  status: todo
-
-- id: matcher-model-clarification
-  issue: gh:122
-  title: Grill the matching system's conceptual model -- base matcher kinds, how conditions enter, composition with type matchers (maintainer compose note)
-  kind: decide
-  needs: []
-  soft: [matcher-totality-and-alt-design]
-  prio: 2
-  status: todo
 
 - id: variant-types-flip
-  title: Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference)
+  issue: gh:165
+  title: 'Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference). Lane issue-165 stalled here (0 commits, renamed aside as issue-165-contaminated-20260831): the brief claims checker enforcement "already done via gh:156" but variant-checker-capital-first was still status: todo -- added as a real needs edge below so the migration cannot be dispatched again until the checker actually enforces the rule.'
   kind: build
-  needs: [matcher-totality-and-alt-design]
+  needs: [matcher-totality-and-alt-design, variant-checker-capital-first]
   prio: 2
   model: fable
   status: todo
 
-- id: shell-out-design
-  title: Grill the syntax for calling external CLI programs -- bash-convenient or better
-  kind: decide
+- id: shell-out-build
+  issue: gh:158
+  title: Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect (shell-out-design ruling, gh:158, depends on Q35's stdout/stderr effect model)
+  kind: build
   needs: []
-  status: todo
-
-- id: stdin-syntax-design
-  title: Grill the one-stdin-source syntax, once type flow makes parse steps possible
-  kind: decide
-  needs: [type-flow-rework]
-  status: todo
+  status: delegated
 
 - id: stdin-redesign-build
-  title: Retire the three stdin keywords for the one-source design
+  issue: gh:159
+  title: Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative, gh:159 -- verify parse(.) resolves an expected type inside a map body before full build)
   kind: build
-  needs: [stdin-syntax-design]
+  needs: []
   model: fable
-  status: todo
+  status: delegated
 
-- id: function-signature-ergonomics
-  title: Grill destructuring params and pipeline-first bodies -- wizard round with real code
-  kind: decide
+- id: trait-interface-research
+  title: 'Ruled (overloading-and-utf8-lines round ruling spinoff): declared interface/trait mechanism (Rust/Swift-shaped) is the direction for ad hoc polymorphism. Research spike before design: scope the minimal checker mechanism (trait declaration, impl-for-type, static dispatch) and whether it truly requires user-facing generics or can start monomorphic (one impl per concrete type, no generic trait bounds). Write findings to plans/.'
+  kind: build
   needs: []
+  prio: 3
   status: todo
 
-- id: overloading-and-traits-design
-  title: Grill function overloading and Rust-style traits -- the direction that dissolves concat and kin
+- id: trait-interface-design
+  title: 'Grill the concrete trait/impl syntax and dispatch mechanism (overloading-and-utf8-lines round ruling spinoff), informed by trait-interface-research'
   kind: decide
-  needs: [precedent-survey]
+  needs: [trait-interface-research]
   status: todo
 
-- id: mutation-semantics-design
-  title: Grill privileged/shared references -- mutation as a static optimization, no borrow checker
-  kind: decide
-  needs: []
-  prio: 4
-  status: todo
-
-- id: void-functions-design
-  issue: gh:58
-  title: Grill void functions -- formalize functions that map to nothing but may have side effects (maintainer idea, streams tutorial annotation)
-  kind: decide
-  needs: []
-  status: todo
-
-- id: range-stream-source-design
-  issue: gh:127
-  title: Grill whether range should become a Stream source -- Q1/Q13 amendment to ADR 0001 (prelude-inventory approved finding, gh:105/gh:121)
-  kind: decide
-  needs: []
-  status: todo
-
-- id: q37-float-semantics
-  title: Grill Q37 -- float printing agreement, NaN/Infinity, division by zero
-  kind: decide
-  needs: []
-  status: todo
-
-- id: benchmark-goals
-  title: Grill what workloads define the performance thesis, then plan the benchmark suite
-  kind: decide
+- id: mutation-semantics-spike
+  title: 'Ruled (prelude-partials-and-mutation round): maintainer leans privileged/shared-reference mutation-as-optimization but will not ratify without prototyping -- spike the "provably one reference exists" static analysis against a couple of backends before a real decide row reopens this'
+  kind: build
   needs: []
   prio: 4
   status: todo
 
 - id: float-build
+  issue: gh:149
   title: Implement Float (IEEE binary64 per ADR 0007) across the backends
   kind: build
-  needs: [q37-float-semantics]
+  needs: []
+  status: delegated
+
+- id: benchmark-suite-build
+  title: Build the initial benchmark suite -- 8 non-float CLBG tasks, hyperfine harness per benchmark-plan.md, framed as a general cross-language competitiveness claim (gh:147 ruling); n-body/spectral-norm deferred to a second wave (gh:146 ruling)
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
+
+- id: lines-utf8-posix-research
+  issue: gh:102
+  title: 'Round 2 answer (question lines-non-utf8-byte): no pick -- maintainer wants deeper research beyond plans/string-type-spike.md:194-201 before choosing refuse/carry-through/lossy-replace: what is most correct, most secure, most POSIX-compliant, most common across existing Unix line-oriented tools, and what would match user expectations. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
   status: todo
 
 - id: lines-utf8-edge
   issue: gh:102
-  title: Pin what a non-UTF-8 byte arriving via lines does, on every backend
+  title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. Round 1 research (plans/string-type-spike.md:194-201) covered per-backend mechanics only; round 2 answer asked for correctness/security/POSIX-compliance/common-practice research first (see lines-utf8-posix-research) before round 3 re-asks with the three options (refuse / carry-where-possible / uniform lossy replacement).'
   kind: decide
-  needs: []
+  needs: [lines-utf8-posix-research]
   status: todo
 
-- id: jq-printer-cycle-refusal
-  issue: gh:116
-  title: jq -- recursive-enum printers refuse a mutual cycle the way ordered() refuses one (issue-94 review)
+- id: retire-ternary-build
+  issue: gh:155
+  title: Remove the ternary, replace every corpus/example/doc use with the equivalent match form (ternary-vs-match ruling)
   kind: build
   needs: []
-  prio: 3
-  soft: [concat-retirement]
+  prio: 2
   status: delegated
 
-- id: benchmark-synthesis
-  issue: gh:108
-  title: Combine the benchmark set and tooling spikes into the actual benchmark plan
+- id: search-layer-build
+  title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
   kind: build
-  needs: [benchmark-set-spike, benchmark-tooling-spike]
-  prio: 3
-  status: delegated
-
-- id: record-argument-boundary
-  title: Oddity -- the paren-free record argument reaches across the definition boundary; settle it
-  kind: decide
-  needs: []
-  status: todo
-
-- id: jsonlines-statement-shape
-  title: Oddity -- jsonlines is a call-shaped statement; settle its shape
-  kind: decide
-  needs: []
-  status: todo
-
-- id: ternary-vs-match
-  title: Is the ternary redundant now that match covers it? Retire, keep, or demote
-  kind: decide
-  needs: []
-  prio: 2
-  status: todo
-
-- id: sum-max-reductions
-  title: sum and max as builtin reductions -- shape, element types, Opt on empty (euler-ergonomics row 1)
-  kind: decide
-  needs: []
-  prio: 2
-  status: todo
-
-- id: tail-call-contract
-  title: Self-tail-calls run in constant stack, as contract -- every backend (euler-ergonomics row 2)
-  kind: decide
-  needs: []
-  prio: 2
-  status: todo
-
-- id: first-search-cut
-  title: first as a value-layer search cut vs the draft's full story (euler-ergonomics row 5)
-  kind: decide
-  needs: []
-  status: todo
-
-- id: slices-decide
-  title: Slices as index specs -- clamp vs Opt at the boundary (euler-ergonomics row 6)
-  kind: decide
   needs: []
   status: todo
 
 - id: sort-by-max-by
   title: sort_by and max_by -- ordering through a scalar projection (euler-ergonomics row 7)
   kind: build
-  needs: [sum-max-reductions]
+  needs: [sum-max-builtins-build]
   status: todo
 
-- id: param-destructuring
-  title: Record parameters destructure the way match arms already do -- spelling (euler-ergonomics row 8)
-  kind: decide
+- id: param-destructure-build
+  title: Implement match-arm-style parameter destructuring, e.g. fn gcd({a, b}:{a:Int,b:Int}) (gh:144 ruling)
+  kind: build
   needs: []
   status: todo
 
@@ -292,46 +153,74 @@
   prio: 5
   status: todo
 
-- id: js-node-web-split-design
-  issue: gh:118
-  title: Grill the JS Node/Web target split, optional TS type generation, the web-incompatible-builtin escape hatch, and a compiler config file (maintainer compose note)
-  kind: decide
+- id: js-node-web-split-build
+  issue: gh:160
+  title: Build the JS Node/Web target split, TS type generation, builtin-replacement escape hatch, and toylang.conf.yaml as one system (js-node-web-split-design ruling, gh:160)
+  kind: build
   needs: []
   status: todo
 
-- id: method-call-syntax-design
+- id: module-routing-syntax-build
+  issue: gh:167
+  title: 'Implement `@(path)` module-as-function routing-arm syntax -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C (dedicated routing-arm form) chosen; maintainer refined the spelling from the round''s bare `@path` to parenthesized `@(route-groups/baz.toy)` because it encloses the path expression. See plans/module-routing-research.md.'
+  kind: build
+  needs: [file-visibility-tracking-build]
+  prio: 5
+  status: todo
+
+- id: erlang-target-consideration
+  issue: gh:163
+  title: 'Consider Erlang as an additional backend target, as a design stress test (maintainer note) -- round answer (module-routing-and-erlang-target round, question erlang-target-consideration): option C, spend more research and actually try the Erlang toolchain rather than accepting the desk-research-only finding (plans/erlang-target-research.md). Maintainer also flagged: concurrency will need to be supported by toylang regardless of this backend question -- worth surfacing as its own open item once this research lands.'
+  kind: decide
+  needs: [erlang-toolchain-empirical-research]
+  prio: 5
+  status: todo
+
+- id: erlang-toolchain-empirical-research
+  issue: gh:170
+  title: 'Research spike (round answer, 2026-09-01; filed as gh:170, a follow-up to gh:163 since the original issue-163 branch is already merged/archived): go beyond plans/erlang-target-research.md''s desk research -- actually install/verify the Erlang toolchain and run the documented-semantics comparison (process/effect model, selective receive, pattern matching) against real `erl`/`erlc` output, not just written docs. Prior attempt (erlang-target-research run 1) hit a sandbox denial trying `which erl`/`erl -eval` and gave up; that incident is logged in plans/opencode-rollout.md -- this is an infrastructure-level restriction, so brief this run to document the denial precisely and stop rather than retry through another channel if it recurs. Write findings as an addendum to plans/erlang-target-research.md.'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
+
+- id: variant-checker-capital-first
+  issue: gh:156
+  title: Checker rejects enum variant declarations that don't start with a capital letter, per the curly-only-pattern ruling (gh:156 ruling)
+  kind: build
+  needs: []
+  status: delegated
+
+- id: match-type-wrapper-experiment
+  issue: gh:122
+  title: 'Experimentally build a Match<T> wrapper: `.` entering a `|` chain wraps as Match<T>, traits like `%` get generic impls over Match<T> per underlying T (applying only past a passing boolean guard), and an arm''s aliases become named fields on a result struct the match produces -- see what goes wrong before ratifying (gh:122 ruling)'
+  kind: build
+  needs: []
+  status: todo
+
+- id: closures-first-class-functions-research
   issue: gh:119
-  title: Grill method-like call syntax -- functions that target a type with extra params (maintainer compose note)
-  kind: decide
+  title: 'Research spike (prelude-partials-and-mutation round, Q3): maintainer answer -- both struct-like and array-like partial application are needed, chosen by the input type''s shape, and true currying should fall out for free once closures/functions are first-class rather than being its own mechanism. Look at how Rust and similar languages simplify this before a final design; write findings to plans/'
+  kind: build
   needs: []
+  prio: 3
   status: todo
 
-- id: benchmark-spike-citations
-  issue: gh:125
-  title: Cite TechEmpower/SPEC license claims in benchmark-suite-spike.md (gh:106 review follow-up)
+- id: http-query-sugar-research
+  title: 'Maintainer note (docs/.annotations/notes.json composed 2026-08-31T22:08:16Z, unscheduled): consider a simple HTTP query builtin (like Python requests) as thin sugar over whatever each backend runtime already provides, minimal added complexity. Research spike: survey what request/response building blocks already exist per backend (Go net/http, JS fetch, Python urllib, Lua, Rust reqwest, native) before scoping a design row. Write findings to plans/.'
   kind: build
-  model: haiku
   needs: []
-  prio: 4
-  status: delegated
+  prio: 5
+  status: todo
 
-- id: emit-rs-concat-helper
-  issue: gh:126
-  title: Extract emit_rs.rs's Concat dispatch arm into a named helper, matching sibling backends (gh:97 review follow-up)
-  kind: build
-  model: haiku
-  needs: []
-  prio: 4
-  status: delegated
+- id: partial-application-system-design
+  issue: gh:119
+  title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff), informed by closures-first-class-functions-research -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like"'
+  kind: decide
+  needs: [closures-first-class-functions-research]
+  status: todo
 
-- id: draft-intro-migration
-  issue: gh:134
-  title: Migrate draft.md's identity sections (what this is, principles, values, worked programs, non-goals) to a docs overview page, then delete them
-  kind: build
-  needs: []
-  soft: [draft-questions-home]
-  prio: 4
-  status: delegated
+
 
 - id: draft-core-model-migration
   title: Migrate the two-layer/cardinality core model to a concepts guide; embedded open threads go to the tracker (draft-split)
@@ -414,31 +303,70 @@
   status: todo
 
 - id: binary-op-multiplicity-design
-  title: Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update's spelling -- Q2/Q3 (draft-split)
+  title: 'Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update''s spelling -- Q2/Q3 (draft-split). Round 2 answers (multiplicity-and-offload-round2): Q3 RATIFIED -- option B, require One on the right of `=`, forking becomes explicit; maintainer caveat: drop the `$c`-prefixed alias in the option''s preview, "never agreed to prefacing variable names with $" (applies to whatever alias/binding syntax eventually lands, not specific to this row). Q2 still no pick -- maintainer leans B (zip/broadcast) or C (no default, explicit) but wants to understand how much of jq''s magic/expressive power would be lost either way before choosing; needs jq-expressiveness-under-zip-or-explicit-research before a round 3 re-ask.'
   kind: decide
+  needs: [jq-expressiveness-under-zip-or-explicit-research]
+  prio: 3
+  status: todo
+
+- id: jq-expressiveness-under-zip-or-explicit-research
+  issue: gh:169
+  title: 'Research spike (round answer, multiplicity-and-offload-round2, question binary-op-default-multiplicity): survey real jq idioms that rely on the cartesian default for `Vec op Vec` (option A in binary-op-multiplicity-design), and work out concretely what breaks or gets more verbose under a zip/broadcast default (option B) versus no default at all, explicit `zip`/`cross` (option C). Use real jq snippets and their toylang-under-B and toylang-under-C equivalents so the comparison is concrete, not abstract. Write findings to plans/.'
+  kind: build
   needs: []
   prio: 3
   status: todo
 
 - id: search-and-fold-design
-  title: Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split)
+  title: 'Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split). Round 1 leaned depth-first for `..` (Q7) but answer was "also research the performance implications before we fully commit"; round 2 needs that research before re-asking. Round 4 answers (search-vocab-choice-cut-fold, no picks made): Q search-choice-point-syntax -- no pick, maintainer asks whether the choice-point operator should instead be spelled parallel to match syntax rather than a new infix operator; needs search-choice-point-match-syntax-research before re-ask. Q search-cut-semantics -- no pick, maintainer leans "first should be a real prelude function" (tentative, not ratified -- re-ask against that framing, i.e. option B reworded as an ordinary stdlib fn rather than compiler-magic sugar). Q applicative-fold-block-syntax -- no pick, maintainer questions whether fold is needed at all ("fold is basically the same as reduce... reduce is usually too low level, a code smell, results in confusing code"); before continuing fold syntax design, next round must first ask whether applicative-fold-block-syntax should be justified or dropped.'
   kind: decide
-  needs: []
+  needs: [search-choice-point-match-syntax-research]
   soft: [first-search-cut]
   prio: 4
   status: todo
 
-- id: offload-boundary-design
-  title: Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split)
-  kind: decide
+- id: search-choice-point-match-syntax-research
+  title: 'Research spike (round answer, search-vocab-choice-cut-fold, question search-choice-point-syntax): maintainer asks for a deeper design pass on whether the choice-point ("branch wider, explore every alternative") operator should be spelled parallel to toylang''s match syntax instead of a new infix operator (`;`, `branch(...)`, or folding into `//`). Survey how other languages with pattern-matching-flavored search/logic constructs (Prolog disjunction, Icon/Curry generators, list-monad comprehensions) express this, and produce 2-3 concrete syntax candidates with real toylang code examples, explicitly including a match-parallel option. Write findings to plans/.'
+  kind: build
   needs: []
+  prio: 3
+  status: todo
+
+- id: offload-boundary-design
+  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled.'
+  kind: decide
+  needs: [offload-explain-flag-build]
   soft: [benchmark-goals]
   prio: 5
+  status: todo
+
+- id: offload-explain-flag-build
+  issue: gh:168
+  title: 'Implement `--explain-offload`: an opt-in compiler diagnostic that annotates compiled output with which sub-expressions became vectorized kernels and which fell back, and why -- per the offload-boundary-design round 2 ruling (multiplicity-and-offload-round2, question vectorizability-visibility, option B). No signature or type-system change; a build-time flag only. LSP hover (option C) is a wanted future addition, deliberately unscheduled here.'
+  kind: build
+  needs: []
+  prio: 4
   status: todo
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
   kind: build
   needs: [draft-questions-home, draft-intro-migration, draft-core-model-migration, draft-access-model-migration, draft-numbers-operators-migration, draft-records-migration, draft-streams-migration, draft-calls-modules-migration, draft-matching-migration, draft-prototype-findings-migration, draft-str-adr, draft-mutation-migration, binary-op-multiplicity-design, search-and-fold-design, offload-boundary-design]
+  prio: 4
+  status: todo
+
+- id: mail-rounds-isolation
+  issue: gh:164
+  title: Mail tab must not blank on one invalid round file -- per-round fetch isolation + visible error row
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
+
+- id: http-query-sugar-design
+  issue: gh:171
+  title: 'Maintainer note (composed 2026-08-31): design minimal HTTP query support (Python-requests-like) as sugar over whatever backend already provides -- needs a grilling round on surface area before it becomes build work'
+  kind: decide
+  needs: []
   prio: 4
   status: todo

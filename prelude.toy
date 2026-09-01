@@ -2,11 +2,13 @@ pub enum Opt<T> { some(T), none }
 
 pub enum Result<T, E> { ok(T), err(E) }
 
+fn join_parts(v: Vec<Str>) -> Str =
+    v | length(v) == 0 -> "" or v[0]! + join_parts(tail(v)!)
+
 pub fn join_lines(v: Vec<Str>) -> Str =
     v
         | length(v) == 0 -> "" or
               length(v) == 1 -> v[0]! or
               v[0]! + "\n" + join_lines(tail(v)!)
 
-pub fn join(v: Vec<Str>) -> Str =
-    v | length(v) == 0 -> "" or v[0]! + join(tail(v)!)
+pub fn join(v: Vec<Str>) -> Str = join_parts(v)

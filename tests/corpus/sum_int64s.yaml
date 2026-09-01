@@ -1,0 +1,11 @@
+# The result keeps the element width: `sum` of a Vec<Int64> is an Int64, and the small values
+# here stay within jq's 2^53 exactness so every backend agrees.
+program: |
+  fn wide(x: Int) -> Int64 = i64(x)
+
+  sum([wide(3), wide(1), wide(2)])
+
+output: |
+  6
+
+node_types: [application, builtin.i64, builtin.sum, int, var, vec-literal]

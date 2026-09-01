@@ -1,0 +1,17 @@
+# The `input <type>` annotation by itself: it declares what stdin holds before the body reads
+# it, and the body's `input` resolves against the declared type rather than borrowing one from
+# the function's signature. A use where nothing expects anything would refuse without one
+# ("cannot tell what `input` contains"); the declaration is that type (issue #150).
+program: |
+  fn f(p: {x: Int, y: Int}) -> Int = p.x * 2 + p.y * 3
+
+  input {x: Int, y: Int}
+  f(input)
+
+input: |
+  {"x": 3, "y": 4}
+
+output: |
+  18
+
+node_types: [application, arith.add, arith.mul, input, int, projection, var]

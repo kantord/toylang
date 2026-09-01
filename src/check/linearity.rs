@@ -37,7 +37,12 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
             StreamBinding::Local(l) => (l == id) as usize,
             StreamBinding::Param(_) => 0,
         }),
-        Kind::Str(_) | Kind::Int(_) | Kind::Input | Kind::Inputs | Kind::Lines => Ok(0),
+        Kind::Str(_)
+        | Kind::Int(_)
+        | Kind::Input
+        | Kind::Inputs
+        | Kind::Lines
+        | Kind::Dsv { .. } => Ok(0),
         Kind::VecLit(items) => items
             .iter()
             .try_fold(0, |n, i| Ok(n + stream_uses(i, binding)?)),
@@ -72,6 +77,16 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
         }
         Kind::Field { base, .. } | Kind::Unwrap { base } => stream_uses(base, binding),
         Kind::Index { base, index, .. } => both(base, index),
+        Kind::Slice { base, start, end, .. } => {
+            let mut acc = stream_uses(base, binding)?;
+            if let Some(s) = start {
+                acc += stream_uses(s, binding)?;
+            }
+            if let Some(e) = end {
+                acc += stream_uses(e, binding)?;
+            }
+            Ok(acc)
+        }
         Kind::Match {
             subject,
             arms,
@@ -153,7 +168,8 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
         | Kind::Int(_)
         | Kind::Input
         | Kind::Inputs
-        | Kind::Lines => false,
+        | Kind::Lines
+        | Kind::Dsv { .. } => false,
         Kind::VecLit(items) => items.iter().any(|i| any_node(i, pred)),
         Kind::RecordLit { fields } => fields.iter().any(|(_, v)| any_node(v, pred)),
         Kind::EnumLit { payload, .. } => payload.as_deref().is_some_and(|p| any_node(p, pred)),
@@ -173,6 +189,11 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
         } => any_node(source, pred) || any_node(p, pred),
         Kind::Field { base, .. } | Kind::Unwrap { base } => any_node(base, pred),
         Kind::Index { base, index, .. } => any_node(base, pred) || any_node(index, pred),
+        Kind::Slice { base, start, end, .. } => {
+            any_node(base, pred)
+                || start.as_deref().is_some_and(|s| any_node(s, pred))
+                || end.as_deref().is_some_and(|e| any_node(e, pred))
+        }
         Kind::Match { subject, arms, .. } => {
             any_node(subject, pred)
                 || arms.iter().any(|a| {
@@ -237,7 +258,8 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
         | Kind::Local(_)
         | Kind::Input
         | Kind::Inputs
-        | Kind::Lines => {}
+        | Kind::Lines
+        | Kind::Dsv { .. } => {}
         Kind::VecLit(items) => items.iter().for_each(|i| calls_in(i, out)),
         Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| calls_in(v, out)),
         Kind::EnumLit { payload, .. } => {
@@ -280,6 +302,15 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
         Kind::Index { base, index, .. } => {
             calls_in(base, out);
             calls_in(index, out);
+        }
+        Kind::Slice { base, start, end, .. } => {
+            calls_in(base, out);
+            if let Some(s) = start {
+                calls_in(s, out);
+            }
+            if let Some(e) = end {
+                calls_in(e, out);
+            }
         }
         Kind::Match { subject, arms, .. } => {
             calls_in(subject, out);
