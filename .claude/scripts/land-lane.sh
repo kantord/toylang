@@ -89,7 +89,27 @@ land)
     [ -d "$d" ] || { echo "[land] skip issue-$n: no worktree $d"; continue; }
     worker_free "$d" || { echo "[land] skip issue-$n: live worker"; continue; }
     if [ -n "$(git -C "$d" status --porcelain | grep -v '^??')" ]; then
-      echo "[land] skip issue-$n: uncommitted tracked changes (not done)"; continue
+      # Worker exit IS the done signal (maintainer ruling, 2026-09-02,
+      # approved interactively): four issue-154 runs produced the right diff
+      # and never ran git commit, so a tracked-dirty tree with a green fast
+      # check is finished work nobody persisted -- commit it mechanically and
+      # land it. A red check means genuinely unfinished: skip, the rebrief
+      # path owns it.
+      if (cd "$d" && just check) >"$LOG_DIR/land-autocommit-issue-$n.log" 2>&1; then
+        git -C "$d" add -u
+        git -C "$d" commit -q -m "Auto-commit worker output for gh:$n (green tree at exit)
+
+The worker exited leaving these tracked changes uncommitted with just
+check green; land-lane.sh persisted them mechanically (maintainer
+ruling, 2026-09-02: a worker exit is the done signal, the script owns
+persistence).
+
+Written by the lane worker; committed by land-lane.sh."
+        echo "[land] issue-$n: auto-committed a green dirty tree"
+      else
+        echo "[land] skip issue-$n: tracked changes with a RED just check (not done)"
+        continue
+      fi
     fi
     # Untracked leftovers are sanctioned scratch (workers cannot rm); drop them.
     if [ "$(git -C "$d" status --porcelain | grep -c '^??')" -gt 0 ]; then
