@@ -259,16 +259,6 @@ fn arith(op: &ast::BinOp, lhs: &tir::Tir, rhs: &tir::Tir) -> String {
         ],
     )
 }
-fn cond(cond: &tir::Tir, then: &tir::Tir, otherwise: &tir::Tir) -> String {
-    variant(
-        "Cond",
-        &[
-            ("cond", boxed(cond)),
-            ("then", boxed(then)),
-            ("otherwise", boxed(otherwise)),
-        ],
-    )
-}
 fn compare(op: &ast::BinOp, lhs: &tir::Tir, rhs: &tir::Tir) -> String {
     variant(
         "Compare",
@@ -376,11 +366,6 @@ impl ToRust for tir::Kind {
             Call { func, arg } => call(func, arg),
             Concat(a, b) => format!("crate::tir::Kind::Concat({}, {})", a.to_rust(), b.to_rust()),
             Arith { op, lhs, rhs } => arith(op, lhs, rhs),
-            Cond {
-                cond: c,
-                then,
-                otherwise,
-            } => cond(c, then, otherwise),
             Compare { op, lhs, rhs } => compare(op, lhs, rhs),
             Logic { op, lhs, rhs } => logic(op, lhs, rhs),
             Not(base) => format!("crate::tir::Kind::Not({})", boxed(base)),

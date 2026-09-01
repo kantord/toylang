@@ -5,4 +5,4 @@ program: |
 
 output: "\n"
 
-node_types: [application, builtin.collect, builtin.length, builtin.range, builtin.str, builtin.tail, compare.eq, concat, conditional, int, local, map-over, pipe, selection.collapse, str, unwrap, var]
+node_types: [application, builtin.collect, builtin.length, builtin.range, builtin.str, builtin.tail, compare.eq, concat, int, local, map-over, match, pipe, selection.collapse, str, unwrap, var]

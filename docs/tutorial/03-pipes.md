@@ -57,7 +57,7 @@ spelling that turns it into the `Vec` here.) FizzBuzz is one pipeline:
 fizzbuzz
 ```
 
-The same cascade reappears chained with `or` instead of nested `else` in
-[matching](06-matching.md), once enums have introduced the other kind of arm.
+The same cascade shows up again in [matching](06-matching.md), once enums have introduced the
+other kind of arm.
 
 Next: [enums](04-enums.md), for data that is one of a known set of shapes.

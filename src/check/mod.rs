@@ -1514,37 +1514,6 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             ))
         }
 
-        // The first construct that consumes a type rather than carrying one: the condition has
-        // to be exactly one Bool, and both branches have to agree.
-        Expr::Cond {
-            then,
-            cond,
-            otherwise,
-            ..
-        } => {
-            let cond = expect(ctx, cond, &Type::Bool)?;
-            let then = synth(ctx, then)?;
-            // A pipeline's shape must be knowable at compile time for fusion to emit its loop,
-            // and a branch chosen at runtime is exactly what that excludes. Refusing is the
-            // reversible direction; lifting it later breaks nothing.
-            if then.ty.contains_stream() {
-                return Err(Error::new(
-                    expr.span(),
-                    "a conditional cannot yield a stream; pass each branch to `collect` first"
-                        .to_string(),
-                ));
-            }
-            let otherwise = expect(ctx, otherwise, &then.ty)?;
-            Ok(Tir::new(
-                then.ty.clone(),
-                Kind::Cond {
-                    cond: Box::new(cond),
-                    then: Box::new(then),
-                    otherwise: Box::new(otherwise),
-                },
-            ))
-        }
-
         Expr::Binary { op, lhs, rhs, .. } => binary(ctx, *op, lhs, rhs),
 
         // The connectives are the one place a subexpression may go unevaluated: `and` runs its
@@ -2656,30 +2625,6 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
         if let Some(elem) = want_elem {
             return map_call(ctx, arg, *span, Some(elem)).map(Expected::Checked);
         }
-    }
-
-    // Both branches of a conditional receive the expectation: which one runs is a runtime
-    // fact, so each must meet the position on its own. A want containing a stream falls
-    // through to synthesis instead, which owns the runtime-chosen-pipeline refusal.
-    if let Expr::Cond {
-        then,
-        cond,
-        otherwise,
-        ..
-    } = expr
-        && !want.contains_stream()
-    {
-        let cond = expect(ctx, cond, &Type::Bool)?;
-        let then = expect(ctx, then, want)?;
-        let otherwise = expect(ctx, otherwise, want)?;
-        return Ok(Expected::Checked(Tir::new(
-            want.clone(),
-            Kind::Cond {
-                cond: Box::new(cond),
-                then: Box::new(then),
-                otherwise: Box::new(otherwise),
-            },
-        )));
     }
 
     // Every arm of a total match chain receives the expectation the same way; a partial

@@ -17,19 +17,16 @@ example is the smallest interesting shape: a 1 followed by thirteen 9s, whose tw
 
 ```toylang
 fn window(p: {v: Vec<Int>, i: Int, k: Int}) -> Int64 =
-    1 if p.k == 0 else
-        i64(p.v[p.i + p.k - 1]!) * window({v: p.v, i: p.i, k: p.k - 1})
+    p
+        | .k == 0 -> 1 or
+              i64(p.v[p.i + p.k - 1]!) * window({v: p.v, i: p.i, k: p.k - 1})
 
-fn max2(p: {a: Int64, b: Int64}) -> Int64 = p.a if p.a > p.b else p.b
+fn max2(p: {a: Int64, b: Int64}) -> Int64 = p | .a > .b -> p.a or p.b
 
 fn best(p: {v: Vec<Int>, lo: Int, hi: Int}) -> Int64 =
-    window({v: p.v, i: p.lo, k: 13}) if p.hi - p.lo == 1 else
-        max2(
-            {
-                a: best({v: p.v, lo: p.lo, hi: (p.lo + p.hi) / 2}),
-                b: best({v: p.v, lo: (p.lo + p.hi) / 2, hi: p.hi})
-            }
-        )
+    p
+        | .hi - .lo == 1 -> window({v: p.v, i: p.lo, k: 13}) or
+              max2({a: best({v: p.v, lo: p.lo, hi: (p.lo + p.hi) / 2}), b: best({v: p.v, lo: (p.lo + p.hi) / 2, hi: p.hi})})
 
 best({v: input, lo: 0, hi: length(input) - 12})
 ```

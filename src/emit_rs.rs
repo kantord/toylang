@@ -736,15 +736,6 @@ impl Collect<'_> {
                 self.walk(source);
                 self.walk(pred);
             }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                self.walk(cond);
-                self.walk(then);
-                self.walk(otherwise);
-            }
             Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => self.walk(base),
             Kind::Index { base, index, .. } => {
                 self.walk(base);
@@ -1112,18 +1103,6 @@ impl Emitter<'_> {
                 _ => format!("({} + &{})", self.expr(l), self.expr(r)),
             },
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
-            // A genuine expression, unlike Go: both branches stay unevaluated except the taken
-            // one, which is what `if`/`else` already guarantees.
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => format!(
-                "(if {} {{ {} }} else {{ {} }})",
-                self.expr(cond),
-                self.expr(then),
-                self.expr(otherwise)
-            ),
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("({}).to_string()", self.expr(arg)),
                 Builtin::IntToI64 => format!("(({}) as i64)", self.expr(arg)),

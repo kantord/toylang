@@ -1,7 +1,7 @@
 program: |
-  [1,2,3] | map("even" if . % 2 == 0 else "odd")
+  [1,2,3] | map(. % 2 == 0 -> "even" or "odd")
 
 output: |
   ["odd","even","odd"]
 
-node_types: [arith.rem, compare.eq, conditional, int, local, map-over, pipe, str, vec-literal]
+node_types: [arith.rem, compare.eq, int, local, map-over, match, pipe, str, vec-literal]

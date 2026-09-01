@@ -599,15 +599,6 @@ impl Collect<'_> {
                 self.walk(source);
                 self.walk(pred);
             }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                self.walk(cond);
-                self.walk(then);
-                self.walk(otherwise);
-            }
             Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => self.walk(base),
             Kind::Index { base, index, .. } => {
                 self.walk(base);
@@ -934,20 +925,6 @@ impl Emitter<'_> {
             ),
             Kind::Concat(l, r) => self.concat(&t.ty, l, r),
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
-            // Go has no conditional expression, so this is a call to a function literal rather
-            // than an operator. Both branches stay unevaluated, which a `tlCond(c, a, b)` helper
-            // could not manage: its arguments would both run, and one of them may divide by zero.
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => format!(
-                "func() {} {{ if {} {{ return {} }}; return {} }}()",
-                self.go_type(&t.ty),
-                self.expr(cond),
-                self.expr(then),
-                self.expr(otherwise)
-            ),
             // Go's own `&&`/`||`, which short-circuit, so the right side stays unevaluated
             // exactly where toylang says it does.
             Kind::Logic { op, lhs, rhs } => {

@@ -230,15 +230,6 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
             callees(body, out);
         }
         Kind::Builtin { arg, .. } => callees(arg, out),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            callees(cond, out);
-            callees(then, out);
-            callees(otherwise, out);
-        }
         Kind::Arith { lhs, rhs, .. } => {
             callees(lhs, out);
             callees(rhs, out);
@@ -364,15 +355,6 @@ fn uses_arith(program: &Program) -> (bool, bool) {
                 }
                 walk(lhs, found);
                 walk(rhs, found);
-            }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                walk(cond, found);
-                walk(then, found);
-                walk(otherwise, found);
             }
             Kind::Str(_)
             | Kind::Int(_)
@@ -504,16 +486,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // no different spelling here than Str does.
         Kind::Concat(l, r) => format!("({} + {})", expr(enums, l), expr(enums, r)),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => format!(
-            "(if {} then {} else {} end)",
-            expr(enums, cond),
-            expr(enums, then),
-            expr(enums, otherwise)
-        ),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("({} | tostring)", expr(enums, arg)),
             // jq has one number type at every width, so the bridge has nothing to do.

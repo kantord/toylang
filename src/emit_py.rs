@@ -405,20 +405,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // so a Vec needs no different spelling here than Str does.
         Kind::Concat(l, r) => format!("({} + {})", expr(enums, l), expr(enums, r)),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        // The one construct this target spells exactly as toylang does, because toylang took the
-        // spelling from here.
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            format!(
-                "({} if {} else {})",
-                expr(enums, then),
-                expr(enums, cond),
-                expr(enums, otherwise)
-            )
-        }
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("str({})", expr(enums, arg)),
             // Python's integers are one type at every width, so the bridge has nothing to do.

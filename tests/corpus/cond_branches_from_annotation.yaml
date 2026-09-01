@@ -1,13 +1,13 @@
-# Step five of the type-flow rework (plans/type-flow.md): both branches of a conditional
-# receive the declared return type, so each variant-naming string resolves on its own.
+# Step five of the type-flow rework (plans/type-flow.md): both arms of a guard match receive
+# the declared return type, so each variant-naming string resolves on its own.
 program: |
   enum Status { active, inactive }
 
-  fn status(n: Int) -> Status = "active" if n > 0 else "inactive"
+  fn status(n: Int) -> Status = n | . > 0 -> "active" or "inactive"
 
   status(0)
 
 output: |
   "inactive"
 
-node_types: [application, compare.gt, conditional, int, var, variant.unit]
+node_types: [application, compare.gt, int, local, match, pipe, var, variant.unit]

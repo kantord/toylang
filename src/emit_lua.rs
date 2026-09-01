@@ -625,15 +625,6 @@ fn used_helpers(program: &Program) -> Helpers {
                 builtin_helpers(*which, used);
                 walk(arg, used);
             }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                walk(cond, used);
-                walk(then, used);
-                walk(otherwise, used);
-            }
             Kind::Arith { op, lhs, rhs } => {
                 if t.ty == Type::Int64 {
                     used.arith64 |= matches!(op, BinOp::Div | BinOp::Rem);
@@ -720,16 +711,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         ),
         Kind::Concat(l, r) => concat(enums, &t.ty, l, r),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => format!(
-            "(function() if {} then return {} else return {} end end)()",
-            expr(enums, cond),
-            expr(enums, then),
-            expr(enums, otherwise)
-        ),
         // Lua's `and`/`or` yield an operand rather than a boolean, which is the same thing here:
         // both operands are already booleans, so whichever one comes back is one.
         Kind::Logic { op, lhs, rhs } => format!("({} {op} {})", expr(enums, lhs), expr(enums, rhs)),

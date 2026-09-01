@@ -554,15 +554,6 @@ fn used_helpers(program: &Program) -> Helpers {
                     *which == Builtin::Sort && tir::runtime_elem(&arg.ty) == Some(&Type::Str);
                 walk(arg, used);
             }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                walk(cond, used);
-                walk(then, used);
-                walk(otherwise, used);
-            }
             Kind::Arith { lhs, rhs, .. } => {
                 if t.ty == Type::Int64 {
                     used.arith64 = true;
@@ -648,18 +639,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         ),
         Kind::Concat(l, r) => concat(enums, &t.ty, l, r),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            format!(
-                "({} ? {} : {})",
-                expr(enums, cond),
-                expr(enums, then),
-                expr(enums, otherwise)
-            )
-        }
         Kind::Logic { op, lhs, rhs } => {
             let op = match op {
                 LogicOp::And => "&&",

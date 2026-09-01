@@ -21,6 +21,6 @@ function tl_unwrap(v, depth) {
   return v.some;
 }
 function v_join_lines(v_v) {
-  return ((v_v.length === 0) ? "" : ((v_v.length === 1) ? tl_unwrap(tl_at(v_v, 0, 0), 0) : ((tl_unwrap(tl_at(v_v, 0, 0), 0) + "\n") + v_join_lines(tl_unwrap(tl_tail(v_v), 0)))));
+  return ((t_0) => (() => { if ((v_v.length === 0)) { return ""; } if ((v_v.length === 1)) { return tl_unwrap(tl_at(v_v, 0, 0), 0); } return ((tl_unwrap(tl_at(v_v, 0, 0), 0) + "\n") + v_join_lines(tl_unwrap(tl_tail(v_v), 0))); })())(v_v);
 }
 console.log(v_join_lines(["only"]));

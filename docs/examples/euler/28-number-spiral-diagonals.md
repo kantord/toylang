@@ -14,9 +14,9 @@ separate lookups. `sum_rings` halves its way down from ring 1 to ring 500 the wa
 fn ring_sum(i: Int) -> Int = 4 * (2 * i + 1) * (2 * i + 1) - 12 * i
 
 fn sum_rings(p: {lo: Int, hi: Int}) -> Int =
-    ring_sum(p.lo) if p.hi - p.lo == 1 else
-        sum_rings({lo: p.lo, hi: (p.lo + p.hi) / 2}) +
-            sum_rings({lo: (p.lo + p.hi) / 2, hi: p.hi})
+    p
+        | .hi - .lo == 1 -> ring_sum(.lo) or
+              sum_rings({lo: .lo, hi: (.lo + .hi) / 2}) + sum_rings({lo: (.lo + .hi) / 2, hi: .hi})
 
 1 + sum_rings({lo: 1, hi: 501})
 ```

@@ -79,13 +79,6 @@ pub enum Kind {
         lhs: Box<Tir>,
         rhs: Box<Tir>,
     },
-    /// The condition is exactly one Bool, which is what turns jq's run-both-branches behaviour
-    /// into a type error here.
-    Cond {
-        cond: Box<Tir>,
-        then: Box<Tir>,
-        otherwise: Box<Tir>,
-    },
     Compare {
         op: BinOp,
         lhs: Box<Tir>,
@@ -524,15 +517,6 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
             each_node(r, f);
         }
         Kind::Not(base) => each_node(base, f),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            each_node(cond, f);
-            each_node(then, f);
-            each_node(otherwise, f);
-        }
         Kind::Bind { value, body, .. } => {
             each_node(value, f);
             each_node(body, f);
