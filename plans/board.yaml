@@ -363,3 +363,11 @@
   needs: []
   prio: 2
   status: todo
+
+- id: http-query-sugar-design
+  issue: gh:171
+  title: 'Maintainer note (composed 2026-08-31): design minimal HTTP query support (Python-requests-like) as sugar over whatever backend already provides -- needs a grilling round on surface area before it becomes build work'
+  kind: decide
+  needs: []
+  prio: 4
+  status: todo
