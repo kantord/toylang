@@ -366,6 +366,14 @@
   issue: gh:171
   title: 'Maintainer note (composed 2026-08-31): design minimal HTTP query support (Python-requests-like) as sugar over whatever backend already provides -- needs a grilling round on surface area before it becomes build work'
   kind: decide
+  needs: [http-query-sugar-research]
+  prio: 4
+  status: todo
+
+- id: http-query-sugar-research
+  issue: gh:171
+  title: 'Research spike ahead of the http-query-sugar-design round: survey each backend''s existing I/O/effect capabilities (what a source/sink already looks like per backend, and whether any backend has network primitives today) and Python requests'' minimal surface (get/post, headers, body, response shape). Produce 2-3 concrete syntax candidates for HTTP query sugar as toylang code, each grounded in what the current sink/source vocabulary already supports, so the design round can ask a real question instead of a green-field one. Write findings to plans/.'
+  kind: build
   needs: []
   prio: 4
   status: todo
