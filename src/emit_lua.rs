@@ -380,6 +380,14 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
             out.push_str("for t_line in io.lines() do\n");
             ("t_line".to_string(), Type::Str)
         }
+        // The bound is evaluated once; the loop counter is the element. A negative bound makes
+        // Lua's numeric for run zero times (start > limit), the same answer `tl_range` gives
+        // eagerly.
+        tir::Source::Range(bound) => {
+            out.push_str(&format!("local n = {}\n", expr(enums, bound)));
+            out.push_str("for t_i = 0, n - 1 do\n");
+            ("t_i".to_string(), Type::Int)
+        }
     };
     for stage in &fusion.stages {
         match stage {

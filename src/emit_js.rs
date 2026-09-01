@@ -289,6 +289,62 @@ pub fn emit(program: &Program) -> String {
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     let enums = &program.enums;
     let mut out = String::new();
+    let (mut current, mut current_ty) = match fusion.source {
+        tir::Source::Inputs => {
+            out.push_str(&read_line_helper());
+            out.push_str("for (;;) {\n");
+            out.push_str("  const t_line_raw = tl_read_line();\n");
+            out.push_str("  if (t_line_raw === null) break;\n");
+            out.push_str("  if (t_line_raw.length === 0) continue;\n");
+            out.push_str("  const t_line = JSON.parse(t_line_raw);\n");
+            let elem = program
+                .inputs
+                .as_ref()
+                .expect("an inputs source recorded its element");
+            ("t_line".to_string(), elem.clone())
+        }
+        // A raw line is already the element, blank ones included: `lines` keeps them.
+        tir::Source::Lines => {
+            out.push_str(&read_line_helper());
+            out.push_str("for (;;) {\n");
+            out.push_str("  const t_line_raw = tl_read_line();\n");
+            out.push_str("  if (t_line_raw === null) break;\n");
+            ("t_line_raw".to_string(), Type::Str)
+        }
+        // The bound is evaluated once; the loop counter is the element. A negative bound makes
+        // the loop body never run, the same answer `tl_range` gives eagerly.
+        tir::Source::Range(bound) => {
+            out.push_str(&format!("const n = {};\n", expr(enums, bound)));
+            out.push_str("for (let t_i = 0; t_i < n; t_i++) {\n");
+            ("t_i".to_string(), Type::Int)
+        }
+    };
+    for stage in &fusion.stages {
+        match stage {
+            tir::Stage::Map { param, body } => {
+                out.push_str(&format!("  const {} = {};\n", local(*param), current));
+                current = expr(enums, body);
+                current_ty = body.ty.clone();
+            }
+            tir::Stage::Select { param, pred } => {
+                out.push_str(&format!("  const {} = {};\n", local(*param), current));
+                out.push_str(&format!("  if (!({})) continue;\n", expr(enums, pred)));
+                current = local(*param);
+            }
+        }
+    }
+    out.push_str(&format!(
+        "  console.log({});\n",
+        show(enums, &current_ty, &current, 0)
+    ));
+    out.push_str("}\n");
+    out
+}
+
+/// The read-one-line-at-a-time machinery a stdin-backed fused loop needs. A `range` source reads
+/// nothing, so it never emits this.
+fn read_line_helper() -> String {
+    let mut out = String::new();
     out.push_str("let tl_stdin_buf = \"\";\n");
     out.push_str("let tl_stdin_eof = false;\n");
     out.push_str("function tl_read_line() {\n");
@@ -311,42 +367,6 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     out.push_str("    if (n === 0) { tl_stdin_eof = true; continue; }\n");
     out.push_str("    tl_stdin_buf += chunk.toString(\"utf8\", 0, n);\n");
     out.push_str("  }\n");
-    out.push_str("}\n");
-
-    out.push_str("for (;;) {\n");
-    out.push_str("  const t_line_raw = tl_read_line();\n");
-    out.push_str("  if (t_line_raw === null) break;\n");
-    let (mut current, mut current_ty) = match fusion.source {
-        tir::Source::Inputs => {
-            out.push_str("  if (t_line_raw.length === 0) continue;\n");
-            out.push_str("  const t_line = JSON.parse(t_line_raw);\n");
-            let elem = program
-                .inputs
-                .as_ref()
-                .expect("an inputs source recorded its element");
-            ("t_line".to_string(), elem.clone())
-        }
-        // A raw line is already the element, blank ones included: `lines` keeps them.
-        tir::Source::Lines => ("t_line_raw".to_string(), Type::Str),
-    };
-    for stage in &fusion.stages {
-        match stage {
-            tir::Stage::Map { param, body } => {
-                out.push_str(&format!("  const {} = {};\n", local(*param), current));
-                current = expr(enums, body);
-                current_ty = body.ty.clone();
-            }
-            tir::Stage::Select { param, pred } => {
-                out.push_str(&format!("  const {} = {};\n", local(*param), current));
-                out.push_str(&format!("  if (!({})) continue;\n", expr(enums, pred)));
-                current = local(*param);
-            }
-        }
-    }
-    out.push_str(&format!(
-        "  console.log({});\n",
-        show(enums, &current_ty, &current, 0)
-    ));
     out.push_str("}\n");
     out
 }

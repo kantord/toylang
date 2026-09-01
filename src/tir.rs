@@ -311,11 +311,14 @@ pub enum Stage<'a> {
     Select { param: LocalId, pred: &'a Tir },
 }
 
-/// What a fused loop reads one entry at a time: parsed JSON values, or raw lines.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Source {
+/// What a fused loop reads one entry at a time: parsed JSON values, raw lines, or integers
+/// counted out of a `range` call.
+#[derive(Clone, Copy)]
+pub enum Source<'a> {
     Inputs,
     Lines,
+    /// `range(n)` with its already-checked bound `n`, evaluated once before the loop runs.
+    Range(&'a Tir),
 }
 
 /// A stream-typed pipeline ending in `jsonlines`, compiled as a read-one/transform-one/
@@ -323,7 +326,7 @@ pub enum Source {
 /// pattern match retired when `Stream` entered the type grammar (plans/streams.md step 5), so
 /// whether a program streams is now exactly whether its types say so.
 pub struct Fusion<'a> {
-    pub source: Source,
+    pub source: Source<'a>,
     pub stages: Vec<Stage<'a>>,
 }
 
@@ -332,6 +335,7 @@ pub struct Fusion<'a> {
 enum Base<'a> {
     Inputs,
     Lines,
+    Range(&'a Tir),
     Var(&'a String),
     Local(LocalId),
 }
@@ -348,6 +352,12 @@ fn flatten<'a>(t: &'a Tir, program: &'a Program, stages: &mut Vec<Stage<'a>>) ->
     match &t.kind {
         Kind::Inputs => Base::Inputs,
         Kind::Lines => Base::Lines,
+        // A stream-typed range is its own birth point: the bound is an ordinary value
+        // evaluated once, before the loop.
+        Kind::Builtin {
+            which: Builtin::Range,
+            arg,
+        } => Base::Range(arg),
         Kind::Var(name) => Base::Var(name),
         Kind::Local(id) => Base::Local(*id),
         Kind::Bind { local, value, body } => {
@@ -427,6 +437,7 @@ pub fn fusion(program: &Program) -> Option<Fusion<'_>> {
     let source = match flatten(arg, program, &mut stages) {
         Base::Inputs => Source::Inputs,
         Base::Lines => Source::Lines,
+        Base::Range(bound) => Source::Range(bound),
         Base::Var(_) | Base::Local(_) => {
             unreachable!("a program-level stream chain bottoms at its source")
         }

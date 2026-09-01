@@ -895,6 +895,14 @@ impl Emitter<'_> {
                 out.push_str("\t\tt_line := s.Text()\n");
                 ("t_line".to_string(), Type::Str)
             }
+            // The bound is evaluated once; the loop counter is the element. A negative bound
+            // clamps to zero, the same answer `tlRange` gives eagerly.
+            tir::Source::Range(bound) => {
+                out.push_str(&format!("\tn := {}\n", self.expr(bound)));
+                out.push_str("\tif n < 0 {\n\t\tn = 0\n\t}\n");
+                out.push_str("\tfor t_i := int32(0); t_i < n; t_i++ {\n");
+                ("t_i".to_string(), Type::Int)
+            }
         };
         for stage in &fusion.stages {
             match stage {

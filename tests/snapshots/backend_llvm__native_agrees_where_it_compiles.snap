@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (214):
+compiles natively (215):
 adults
 arith_add
 arith_div_trunc
@@ -99,6 +99,7 @@ jq_tutorial_step4
 jsonlines_enum_stream
 jsonlines_of_inputs
 jsonlines_of_lines
+jsonlines_of_range
 jsonlines_record_with_vec_field
 jsonlines_scalars
 length_of_vec

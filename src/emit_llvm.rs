@@ -24,7 +24,7 @@ use inkwell::values::{
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 
 use crate::ast::{BinOp, LogicOp};
-use crate::tir::{self, Builtin, Func, Fusion, Kind, LocalId, Program, Stage, Tir};
+use crate::tir::{self, Builtin, Func, Fusion, Kind, LocalId, Program, Source, Stage, Tir};
 use crate::ty::{self, Enums, Type};
 
 /// The C source linked into every native binary.
@@ -2346,13 +2346,22 @@ impl<'ctx> Emitter<'ctx, '_> {
     /// cursor into an existing Vec's columns does not apply here, since there is no Vec -- each
     /// record arrives as its own one-off parsed value, exactly like `input` already is.
     fn fused_main(&mut self, program: &Program, fusion: &Fusion<'_>) -> Result<(), String> {
-        let elem_ty = match fusion.source {
-            crate::tir::Source::Inputs => program
-                .inputs
-                .as_ref()
-                .ok_or("an inputs source recorded its element")?
-                .clone(),
-            crate::tir::Source::Lines => Type::Str,
+        // A `range` source brings its own bound to count against; the stdin sources read from
+        // the runtime instead. Both settle the element type the same way the eager path does.
+        let (elem_ty, bound) = match fusion.source {
+            crate::tir::Source::Inputs => (
+                program
+                    .inputs
+                    .as_ref()
+                    .ok_or("an inputs source recorded its element")?
+                    .clone(),
+                None,
+            ),
+            crate::tir::Source::Lines => (Type::Str, None),
+            crate::tir::Source::Range(bound) => {
+                let bound = self.expr(bound)?.into_int_value();
+                (Type::Int, Some(bound))
+            }
         };
         let function = self
             .builder
@@ -2361,10 +2370,17 @@ impl<'ctx> Emitter<'ctx, '_> {
             .ok_or("no function to emit a loop into")?;
 
         let i64t = self.ctx.i64_type();
-        let i32t = self.ctx.i32_type();
         let out_slot = self
             .builder
             .build_alloca(i64t, "next_input")
+            .map_err(|e| e.to_string())?;
+        // The range counter, -1 so the loop condition reads 0 on the first pass.
+        let counter = self
+            .builder
+            .build_alloca(i64t, "range_i")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(counter, i64t.const_int(-1i64 as u64, true))
             .map_err(|e| e.to_string())?;
 
         let cond = self.ctx.append_basic_block(function, "fused.cond");
@@ -2376,35 +2392,32 @@ impl<'ctx> Emitter<'ctx, '_> {
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(cond);
-        let got = match fusion.source {
-            crate::tir::Source::Inputs => {
-                let descriptor = self.string_const(&descriptor(self.enums, &elem_ty));
-                self.call_rt(
-                    self.rt.read_one_input,
-                    &[descriptor.into(), out_slot.into()],
-                    "got",
-                )?
-            }
-            crate::tir::Source::Lines => {
-                self.call_rt(self.rt.read_one_line, &[out_slot.into()], "got")?
-            }
-        }
-        .into_int_value();
-        let has_more = self
-            .builder
-            .build_int_compare(IntPredicate::NE, got, i32t.const_zero(), "has_more")
-            .map_err(|e| e.to_string())?;
+        let has_more = match (fusion.source, bound) {
+            (crate::tir::Source::Range(_), Some(n)) => self.range_has_more(counter, n)?,
+            (source, None) => self.source_has_more(source, &elem_ty, out_slot)?,
+            _ => unreachable!("the source and bound match the arm that produced them"),
+        };
         self.builder
             .build_conditional_branch(has_more, body, end)
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(body);
-        let slot = self
-            .builder
-            .build_load(i64t, out_slot, "slot")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let mut current = self.read_slot(slot, &elem_ty)?;
+        let mut current = match (fusion.source, bound) {
+            (crate::tir::Source::Range(_), _) => self
+                .builder
+                .build_load(i64t, counter, "range_elem")
+                .map_err(|e| e.to_string())?
+                .into_int_value()
+                .into(),
+            _ => {
+                let slot = self
+                    .builder
+                    .build_load(i64t, out_slot, "slot")
+                    .map_err(|e| e.to_string())?
+                    .into_int_value();
+                self.read_slot(slot, &elem_ty)?
+            }
+        };
         let mut current_ty = elem_ty;
 
         for (i, stage) in fusion.stages.iter().enumerate() {
@@ -2441,6 +2454,62 @@ impl<'ctx> Emitter<'ctx, '_> {
 
         self.builder.position_at_end(end);
         Ok(())
+    }
+
+    /// The loop condition for a stdin-backed fused source: reads one entry into `out_slot`
+    /// and reports whether there was one.
+    fn source_has_more(
+        &mut self,
+        source: Source<'_>,
+        elem_ty: &Type,
+        out_slot: PointerValue<'ctx>,
+    ) -> Result<IntValue<'ctx>, String> {
+        let i32t = self.ctx.i32_type();
+        let got = match source {
+            Source::Inputs => {
+                let descriptor = self.string_const(&descriptor(self.enums, elem_ty));
+                self.call_rt(
+                    self.rt.read_one_input,
+                    &[descriptor.into(), out_slot.into()],
+                    "got",
+                )?
+                .into_int_value()
+            }
+            Source::Lines => self
+                .call_rt(self.rt.read_one_line, &[out_slot.into()], "got")?
+                .into_int_value(),
+            Source::Range(_) => unreachable!("a range source has its own loop condition"),
+        };
+        self.builder
+            .build_int_compare(IntPredicate::NE, got, i32t.const_zero(), "has_more")
+            .map_err(|e| e.to_string())
+    }
+
+    /// The loop condition for a `range` source: increments the counter and reports whether the
+    /// new value is below the bound. Incrementing in the condition (rather than at the end of
+    /// the body) is what keeps a `select`'s continue -- a branch back to the condition -- from
+    /// skipping a count.
+    fn range_has_more(
+        &mut self,
+        counter: PointerValue<'ctx>,
+        n: IntValue<'ctx>,
+    ) -> Result<IntValue<'ctx>, String> {
+        let i64t = self.ctx.i64_type();
+        let raw = self
+            .builder
+            .build_load(i64t, counter, "raw")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let i = self
+            .builder
+            .build_int_add(raw, i64t.const_int(1, false), "i")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(counter, i)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_int_compare(IntPredicate::SLT, i, n, "has_more")
+            .map_err(|e| e.to_string())
     }
 
     /// One printer function per recursive enum the program prints, declared before any body is

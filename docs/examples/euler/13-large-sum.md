@@ -46,7 +46,7 @@ fn add_digits(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int, acc: Vec<Int>}) -> Ve
             }
         )
 
-fn first_ten(v: Vec<Int>) -> Vec<Int> = range(10) | map(v[.]!)
+fn first_ten(v: Vec<Int>) -> Vec<Int> = collect(range(10)) | map(v[.]!)
 
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
     first_ten(

@@ -89,10 +89,16 @@ pub fn emit(program: &Program) -> Result<String, String> {
     if let Some(fusion) = tir::fusion(program) {
         // jq's own `inputs` is already lazy; the eager path below only becomes eager by wrapping
         // it in `[...]`. Skipping that wrapper and running the whole `map`/`select` chain as one
-        // filter over the `inputs` generator is what makes jq print each record as it arrives
+        // filter over the generator is what makes jq print each record as it arrives
         // rather than after the last one, the same as running the equivalent `jq` program by
-        // hand would.
-        out.push_str("inputs");
+        // hand would. `range(0; n)` is jq's own lazy counter, the same streaming shape for a
+        // `range` source.
+        match fusion.source {
+            tir::Source::Inputs | tir::Source::Lines => out.push_str("inputs"),
+            tir::Source::Range(bound) => {
+                out.push_str(&format!("range(0; {})", expr(enums, bound)))
+            }
+        };
         for stage in &fusion.stages {
             match stage {
                 tir::Stage::Map { param, body } => {

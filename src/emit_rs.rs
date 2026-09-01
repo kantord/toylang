@@ -998,21 +998,26 @@ impl Emitter<'_> {
     fn fused_main(&self, program: &Program, fusion: &tir::Fusion) -> String {
         let mut out = String::new();
         out.push_str("fn main() {\n");
-        out.push_str("    use std::io::{BufRead, Write};\n");
-        out.push_str("    let stdin = std::io::stdin();\n");
-        out.push_str("    let mut stdin = stdin.lock();\n");
+        // A range source reads nothing, so it does not need `BufRead`; the stdin-based sources
+        // do. An unused import would only warn, but the emitted file carries enough noise already.
+        out.push_str(match fusion.source {
+            tir::Source::Range(_) => "    use std::io::Write;\n",
+            _ => "    use std::io::{BufRead, Write};\n",
+        });
         out.push_str("    let stdout = std::io::stdout();\n");
         out.push_str("    let mut stdout = stdout.lock();\n");
-        out.push_str("    let mut line = String::new();\n");
-        out.push_str("    loop {\n");
-        out.push_str("        line.clear();\n");
-        out.push_str(
-            "        let n = stdin.read_line(&mut line).unwrap_or_else(|e| tl_fail(&format!(\"could not read stdin: {e}\")));\n",
-        );
-        out.push_str("        if n == 0 { break; }\n");
-        out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
         let (mut current, mut current_ty) = match fusion.source {
             tir::Source::Inputs => {
+                out.push_str("    let stdin = std::io::stdin();\n");
+                out.push_str("    let mut stdin = stdin.lock();\n");
+                out.push_str("    let mut line = String::new();\n");
+                out.push_str("    loop {\n");
+                out.push_str("        line.clear();\n");
+                out.push_str(
+                    "        let n = stdin.read_line(&mut line).unwrap_or_else(|e| tl_fail(&format!(\"could not read stdin: {e}\")));\n",
+                );
+                out.push_str("        if n == 0 { break; }\n");
+                out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
                 let elem = program
                     .inputs
                     .as_ref()
@@ -1027,8 +1032,25 @@ impl Emitter<'_> {
             }
             // A raw line is already the element, blank ones included: `lines` keeps them.
             tir::Source::Lines => {
+                out.push_str("    let stdin = std::io::stdin();\n");
+                out.push_str("    let mut stdin = stdin.lock();\n");
+                out.push_str("    let mut line = String::new();\n");
+                out.push_str("    loop {\n");
+                out.push_str("        line.clear();\n");
+                out.push_str(
+                    "        let n = stdin.read_line(&mut line).unwrap_or_else(|e| tl_fail(&format!(\"could not read stdin: {e}\")));\n",
+                );
+                out.push_str("        if n == 0 { break; }\n");
+                out.push_str("        if line.ends_with('\\n') { line.pop(); }\n");
                 out.push_str("        let t_line: String = line.clone();\n");
                 ("t_line".to_string(), Type::Str)
+            }
+            // The bound is evaluated once; the loop counter is the element. A negative bound
+            // yields an empty loop via `.max(0)`, the same answer `tl_range` gives eagerly.
+            tir::Source::Range(bound) => {
+                out.push_str(&format!("    let n: i32 = {}.max(0);\n", self.expr(bound)));
+                out.push_str("    for t_i in 0..n {\n");
+                ("t_i".to_string(), Type::Int)
             }
         };
         for stage in &fusion.stages {
