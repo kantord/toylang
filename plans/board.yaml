@@ -160,14 +160,6 @@
   needs: []
   status: todo
 
-- id: file-visibility-tracking-build
-  issue: gh:166
-  title: 'Checker tracks which file a definition came from and enforces per-call-site visibility -- prerequisite named by the module-as-function-routing-design ruling (module-routing-and-erlang-target round): the same gap that already blocks a `pub` prelude function from calling a private one blocks any module-dispatch syntax from meaning anything.'
-  kind: build
-  needs: []
-  prio: 4
-  status: todo
-
 - id: module-routing-syntax-build
   issue: gh:167
   title: 'Implement `@(path)` module-as-function routing-arm syntax -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C (dedicated routing-arm form) chosen; maintainer refined the spelling from the round''s bare `@path` to parenthesized `@(route-groups/baz.toy)` because it encloses the path expression. See plans/module-routing-research.md.'

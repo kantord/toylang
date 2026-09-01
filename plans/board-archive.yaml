@@ -1258,3 +1258,11 @@
   kind: decide
   needs: [module-routing-research]
   status: done
+
+- id: file-visibility-tracking-build
+  issue: gh:166
+  title: 'Checker tracks which file a definition came from and enforces per-call-site visibility -- prerequisite named by the module-as-function-routing-design ruling (module-routing-and-erlang-target round): the same gap that already blocks a `pub` prelude function from calling a private one blocks any module-dispatch syntax from meaning anything.'
+  kind: build
+  needs: []
+  prio: 4
+  status: done

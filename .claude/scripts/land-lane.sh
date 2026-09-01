@@ -41,8 +41,12 @@ worker_free() { # $1: dir that must have no live worker
 changed_lines() { # $1: branch; insertions+deletions vs the merge base with main
   # awk, not bc: bc is not installed here, and its silent 127 made this
   # return 0 for every branch -- size-based promotion never fired (2026-08-30)
+  # grep exits 1 on a branch with 0 changed lines (no match) -- under pipefail
+  # + fold's `set -e`, that killed the whole fold the moment ANY accumulator
+  # sat at 0 lines (to-merge-1788204752, 2026-09-01). `|| true` on grep alone
+  # keeps awk's "0" output while not tripping pipefail.
   git -C "$REPO" diff --shortstat "main...$1" 2>/dev/null \
-    | grep -oE '[0-9]+ (insertion|deletion)' | awk '{s+=$1} END {print s+0}'
+    | { grep -oE '[0-9]+ (insertion|deletion)' || true; } | awk '{s+=$1} END {print s+0}'
 }
 
 case "$MODE" in
