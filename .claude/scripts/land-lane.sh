@@ -125,9 +125,12 @@ land)
 
     # Green: land the tested result. Bounded retry around a busy tick's
     # board commit in the main checkout; lane branches never touch plans/,
-    # so a moved main cannot conflict here.
+    # so a moved main cannot conflict here. 36x5s, not 12x5s: a tick session
+    # keeps board.yaml dirty for its whole multi-minute run, and a green
+    # 155 land burned its entire 60s window against one and deferred
+    # (2026-09-01) -- three minutes spans a typical tick end.
     ok=0
-    for _ in $(seq 12); do
+    for _ in $(seq 36); do
       if [ "$(git -C "$REPO" status --porcelain | wc -l)" -eq 0 ] \
          && [ ! -f "$REPO/.git/MERGE_HEAD" ] \
          && git -C "$REPO" merge "$TMP" -F "$MSG_FILE" >/dev/null 2>&1; then ok=1; break; fi
