@@ -265,13 +265,57 @@ func tlCollectLines() []string {
 }
 "#;
 
-// `dsv` splits each collected line on the delimiter, the same raw lines `tlCollectLines`
-// returns. `strings.Split` on an empty separator would panic, which the checker refuses, so
-// no empty case is guarded here.
-const SPLIT_LINES_HELPER: &str = r#"func tlSplitLines(lines []string, sep string) [][]string {
-	out := make([][]string, len(lines))
-	for i, l := range lines {
-		out[i] = strings.Split(l, sep)
+// RFC 4180 field splitting over the raw lines `tlCollectLines` keeps: a field wrapped in double
+// quotes may contain the delimiter, a doubled `""` is a literal quote, and a quoted field may
+// span lines. The delimiter is matched literally, never as a pattern.
+const DSV_HELPER: &str = r#"func tlDsv(lines []string, sep string) [][]string {
+	out := [][]string{}
+	row := []string{}
+	field := ""
+	inQuotes := false
+	for _, line := range lines {
+		i := 0
+		for i < len(line) {
+			if inQuotes {
+				if line[i] == '"' {
+					if i+1 < len(line) && line[i+1] == '"' {
+						field += "\""
+						i += 2
+					} else {
+						inQuotes = false
+						i++
+					}
+				} else {
+					_, size := utf8.DecodeRuneInString(line[i:])
+					field += line[i : i+size]
+					i += size
+				}
+			} else if strings.HasPrefix(line[i:], sep) {
+				row = append(row, field)
+				field = ""
+				i += len(sep)
+			} else if line[i] == '"' && field == "" {
+				inQuotes = true
+				i++
+			} else {
+				_, size := utf8.DecodeRuneInString(line[i:])
+				field += line[i : i+size]
+				i += size
+			}
+		}
+		if inQuotes {
+			field += "\n"
+		} else {
+			row = append(row, field)
+			out = append(out, row)
+			row = []string{}
+			field = ""
+		}
+	}
+	if inQuotes {
+		field = field[:len(field)-1]
+		row = append(row, field)
+		out = append(out, row)
 	}
 	return out
 }
@@ -505,7 +549,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tlRange("), RANGE_HELPER),
         (uses("tlChars("), CHARS_HELPER),
         (collect, COLLECT_HELPER),
-        (uses("tlSplitLines("), SPLIT_LINES_HELPER),
+        (uses("tlDsv("), DSV_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
         (join, JOIN_HELPER),
         (quote, QUOTE_HELPER),
@@ -526,7 +570,8 @@ pub fn emit(program: &Program) -> String {
         (collect, &["bufio", "bytes"]),
         (reads_stdin, &["encoding/json"]),
         (program.inputs.is_some(), &["io"]),
-        (join || quote || used.jsonlines || uses("tlSplitLines("), &["strings"]),
+        (join || quote || used.jsonlines || uses("tlDsv("), &["strings"]),
+        (uses("tlDsv("), &["unicode/utf8"]),
         (uses("tlSort("), &["cmp", "slices"]),
         (uses("tlMax("), &["cmp"]),
         (uses("tlEq("), &["reflect"]),
@@ -990,7 +1035,7 @@ impl Emitter<'_> {
             // works on the slice of its entries.
             Kind::Lines => "tlCollectLines()".to_string(),
             Kind::Dsv { delim } => format!(
-                "tlSplitLines(tlCollectLines(), {})",
+                "tlDsv(tlCollectLines(), {})",
                 go_string(delim)
             ),
             // go_type resolves the struct name, and the collector registered it because a
