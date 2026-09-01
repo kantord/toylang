@@ -24,6 +24,16 @@ LANES="$HOME/.local/share/toylang-lanes"
 LOG_DIR="$HOME/.cache/toylang-drive"
 SCRIPTS="$REPO/.claude/scripts"
 RETRY_CAP=2
+# The gate and the regeneration path need cargo regardless of who fired us
+# (worker trap, tick, interactive shell).
+export PATH="$HOME/.cargo/bin:$PATH"
+command -v sccache >/dev/null && export RUSTC_WRAPPER=sccache
+# Files whose merge conflicts are RESOLVABLE BY REGENERATION (maintainer
+# ruling, 2026-09-01): corpus.json appeared in every conflict of the queue's
+# first night; burning a worker on computable content was the dominant retry
+# cost. A conflict touching ONLY these is resolved mechanically below.
+GENERATED='site/public/corpus.json tests/snapshots/backend_llvm__native_agrees_where_it_compiles.snap tests/snapshots/backend_rust__rust_agrees_where_it_compiles.snap'
+REGEN_TESTS='test(export_the_corpus_for_the_site) + test(native_agrees_where_it_compiles) + test(rust_agrees_where_it_compiles)'
 mkdir -p "$LOG_DIR"
 cd "$REPO"  # never run with cwd inside a worktree this script may remove
 
@@ -109,12 +119,38 @@ land)
       git branch -D "$TMP" 2>/dev/null || true
     }
     if ! git -C "$PDIR" merge "$B" --no-ff -F "$MSG_FILE" >"$GATE_LOG" 2>&1; then
-      { echo "MERGE CONFLICT merging origin/main + this branch:";
-        git -C "$PDIR" diff --name-only --diff-filter=U; } >>"$GATE_LOG" 2>&1
-      git -C "$PDIR" merge --abort 2>/dev/null || true
-      cleanup_tmp
-      retrigger "$n" "merge conflict with main" "$GATE_LOG"
-      continue
+      CONFLICTED=$(git -C "$PDIR" diff --name-only --diff-filter=U)
+      GEN_ONLY=1
+      for f in $CONFLICTED; do
+        case " $GENERATED " in *" $f "*) ;; *) GEN_ONLY=0 ;; esac
+      done
+      if [ "$GEN_ONLY" -eq 1 ] && [ -n "$CONFLICTED" ]; then
+        # Every conflicted file is generated: take main's copy, rerun the
+        # generators, and the merge is resolved without a worker.
+        echo "[land] issue-$n: conflicts are generated files only -- regenerating"
+        git -C "$PDIR" checkout --ours -- $CONFLICTED
+        git -C "$PDIR" add $CONFLICTED
+        if (cd "$PDIR" && cargo nextest run -E "$REGEN_TESTS" >/dev/null 2>&1; \
+            cargo insta accept >/dev/null 2>&1; \
+            cargo nextest run -E "$REGEN_TESTS") >>"$GATE_LOG" 2>&1; then
+          git -C "$PDIR" add $CONFLICTED
+          git -C "$PDIR" commit -q --no-edit -F "$MSG_FILE"
+        else
+          { echo "MERGE CONFLICT (generated files, but regeneration failed):";
+            echo "$CONFLICTED"; } >>"$GATE_LOG" 2>&1
+          git -C "$PDIR" merge --abort 2>/dev/null || true
+          cleanup_tmp
+          retrigger "$n" "merge conflict with main (regeneration failed)" "$GATE_LOG"
+          continue
+        fi
+      else
+        { echo "MERGE CONFLICT merging origin/main + this branch:";
+          echo "$CONFLICTED"; } >>"$GATE_LOG" 2>&1
+        git -C "$PDIR" merge --abort 2>/dev/null || true
+        cleanup_tmp
+        retrigger "$n" "merge conflict with main" "$GATE_LOG"
+        continue
+      fi
     fi
     if ! (cd "$PDIR" && just test) >>"$GATE_LOG" 2>&1; then
       tail -n 60 "$GATE_LOG" >"$GATE_LOG.tail" && mv "$GATE_LOG.tail" "$GATE_LOG"

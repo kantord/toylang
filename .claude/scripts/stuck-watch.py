@@ -32,7 +32,10 @@ LANES = os.path.expanduser("~/.local/share/toylang-lanes")
 LOG_DIR = os.path.expanduser("~/.cache/toylang-drive")
 OC_DIR = os.path.join(LOG_DIR, "opencode")
 HISTORY = os.path.join(LOG_DIR, "lane-history.jsonl")
-STUCK_AFTER = 6 * 3600
+# 30 minutes (maintainer ruling, 2026-09-02, down from 6h): a task not clearly
+# done within 30 minutes of its last sign of life is stuck, and the
+# investigation should start while the evidence is hot.
+STUCK_AFTER = 30 * 60
 
 def sh(args, cwd=None):
     r = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=60)
