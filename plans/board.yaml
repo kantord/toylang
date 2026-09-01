@@ -1,7 +1,15 @@
 - id: function-signature-matching-syntax
   issue: gh:152
-  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 needs to stress-test each option (esp. the Msg(...) call-form sketch) for concrete problems before re-asking'
+  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 stress-tested each of the three candidates (A/B/C) against the real parser and re-asked. Round 3 answer: still no pick -- maintainer wants deeper research on how each candidate performs across types and use cases not yet examined (structs, tuples, nested/recursive matches) before re-asking; needs signature-matching-deeper-research first.'
   kind: decide
+  needs: [signature-matching-deeper-research]
+  prio: 3
+  status: todo
+
+- id: signature-matching-deeper-research
+  issue: gh:152
+  title: 'Research spike (round answer, signature-matching-and-search-cut round, question function-signature-matching-syntax): maintainer asked for deeper research on how each of the three candidate spellings (A: call-form hoist, B: anonymous param + bare match, C: additive `.`-binding) performs across a wider set of types and use cases a real language would face, not just the enum example probed so far -- structs/records, tuples, scalars, nested matches, recursive/self-referential types. Run each candidate''s shape against the real parser where possible (as round 3 did) and note where it breaks down or gets awkward. Write findings to plans/.'
+  kind: build
   needs: []
   prio: 3
   status: todo
@@ -310,10 +318,17 @@
   status: todo
 
 - id: search-and-fold-design
-  title: 'Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split). Round 1 leaned depth-first for `..` (Q7) but answer was "also research the performance implications before we fully commit"; round 2 needs that research before re-asking. Round 4 answers (search-vocab-choice-cut-fold, no picks made): Q search-choice-point-syntax -- no pick, maintainer asks whether the choice-point operator should instead be spelled parallel to match syntax rather than a new infix operator; needs search-choice-point-match-syntax-research before re-ask. Q search-cut-semantics -- no pick, maintainer leans "first should be a real prelude function" (tentative, not ratified -- re-ask against that framing, i.e. option B reworded as an ordinary stdlib fn rather than compiler-magic sugar). Q applicative-fold-block-syntax -- no pick, maintainer questions whether fold is needed at all ("fold is basically the same as reduce... reduce is usually too low level, a code smell, results in confusing code"); before continuing fold syntax design, next round must first ask whether applicative-fold-block-syntax should be justified or dropped.'
+  title: 'Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split). Round 1 leaned depth-first for `..` (Q7) but answer was "also research the performance implications before we fully commit"; round 2 needed that research before re-asking. Q7 was re-asked in the signature-matching-and-search-cut round and RULED provisional: `..` promises depth-first order (jq-compatible), flagged for reevaluation once recursive-descent-order-research lands. Round 4 answers (search-vocab-choice-cut-fold, no picks made): Q search-choice-point-syntax -- no pick, maintainer asks whether the choice-point operator should instead be spelled parallel to match syntax rather than a new infix operator; needs search-choice-point-match-syntax-research before re-ask. Q search-cut-semantics -- no pick, maintainer leans "first should be a real prelude function" (tentative, not ratified -- re-ask against that framing, i.e. option B reworded as an ordinary stdlib fn rather than compiler-magic sugar). Q applicative-fold-block-syntax -- no pick, maintainer questions whether fold is needed at all ("fold is basically the same as reduce... reduce is usually too low level, a code smell, results in confusing code"); before continuing fold syntax design, next round must first ask whether applicative-fold-block-syntax should be justified or dropped.'
   kind: decide
   needs: [search-choice-point-match-syntax-research]
-  soft: [first-search-cut]
+  soft: [first-search-cut, recursive-descent-order-research]
+  prio: 4
+  status: todo
+
+- id: recursive-descent-order-research
+  title: 'Research spike (round answer, signature-matching-and-search-cut round, question recursive-descent-order): Q7 was ruled provisional -- `..` promises depth-first order (jq-compatible) -- but the maintainer wants a deep research brief on what alternatives actually exist to the unordered/columnar-fast-path design (questions.md Q7), so the ruling can be reevaluated later with real alternatives in hand rather than the two options already on the table. Survey how other query/traversal languages and engines (jq, XPath, JSONPath, columnar/vectorized query engines) handle recursive descent order versus set semantics, and what a toylang-specific unordered fast path would cost callers who need order back. Write findings to plans/.'
+  kind: build
+  needs: []
   prio: 4
   status: todo
 
