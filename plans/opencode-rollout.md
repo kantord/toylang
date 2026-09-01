@@ -135,3 +135,42 @@ write findings to plans/erlang-target-research.md" instruction. | $0.01, 18 step
 zero commits, one coordinator rebrief | No -- the `which`/`erl -eval` denial is sandbox
 policy (arbitrary binary execution), not opencode-specific; the give-up-after-one-denial
 behavior is the same shape as issue-108/125 above.
+
+## Ruling: escalation/decision tracking moves off GitHub issues (2026-09-01)
+
+Maintainer answer to the coordinator-escalation-brief-phrasing-experiment round
+(inbox record, 2026-09-01T20:36:51Z): "we can just have a local inbox for such
+cases, no need to rely on github issues; i guess actually we can migrate the
+whole flow to work entirely on files committed into the repo at this stage."
+
+Immediate action taken: the blocked note (brief-phrasing-experiment) got a board
+row with no `issue:` field instead of a `gh issue create` retry -- board.yaml
+already supports issue-less rows, so this needed no new mechanism.
+
+Open, not yet scoped: the maintainer's broader remark reads as a ruling that the
+whole escalation/decision-tracking flow (currently: compose note -> file gh
+issue -> board row references it) should move to files committed in the repo
+instead of GitHub issues. This is a process/tooling change bigger than one note
+and hasn't been designed yet -- needs a decide row (what replaces "issue:
+gh:N" as the cross-reference key; how history/discussion attach to a row
+without an issue thread) before any dispatch. Not board-added yet; flagging
+here so the next tick that touches escalation composition sees it before
+defaulting back to gh issue create.
+
+## Incident: issue-154 stuck at 3 commitless runs on a self-inflicted denial loop (2026-09-01)
+
+Root cause (from `20260901-221717-issue-154.jsonl`): the worker built real work
+(input-type-annotation + tail-pipe |>, 173 insertions across 4 files, own
+ESCALATION.md justifying the scope), then verified it by writing
+`scratch_tailpipe.toy` and repeatedly running `cargo run -q -- run
+scratch_tailpipe.toy` -- direct binary execution, always denied. The run ended
+mid-loop on that exact denial (`UnknownError: The user rejected permission to
+use this specific tool call`), with nothing ever committed. Same failure shape
+as issue-93 and issue-155's "permission denial on direct binary execution".
+
+Fix applied: added `cargo run -- run <file>` / direct binary execution to the
+KNOWN DENIALS boilerplate in `dispatch-worker.sh`, pointing workers at
+`tests/corpus/*.yaml` + `just check` (AGENTS.md's sanctioned verification path)
+instead of scratch-file-plus-manual-run. Rebriefed issue-154 to keep its
+existing uncommitted work, convert the scratch file to a corpus case, and
+commit once `just check` is green.

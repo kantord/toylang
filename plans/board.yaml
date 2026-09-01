@@ -370,3 +370,10 @@
   needs: []
   prio: 4
   status: todo
+
+- id: brief-phrasing-experiment
+  title: 'Tracked in-repo per maintainer ruling (coordinator-escalation-brief-phrasing-experiment round, 2026-09-01: gh issue create was blocked by the permission classifier; no gh issue, no retry). Maintainer note (composed 2026-08-31): generic non-informational reassurance phrasing ("its much simpler than you think") in dispatch briefs seems to help planning agents find better plans -- experiment on at least 10 issues, then report progress and grill on the results.'
+  kind: build
+  needs: []
+  prio: 5
+  status: todo
