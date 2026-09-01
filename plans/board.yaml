@@ -1,16 +1,16 @@
 - id: stuck-issue-170-investigation
   kind: build
-  status: todo
+  status: delegated
   issue: gh:170
   title: 'INVESTIGATE stuck lane issue-170 (no activity 22h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-170-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-169-investigation
   kind: build
-  status: todo
+  status: delegated
   issue: gh:169
   title: 'INVESTIGATE stuck lane issue-169 (no activity 22h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-169-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-140-investigation
   kind: build
-  status: todo
+  status: delegated
   issue: gh:140
   title: 'INVESTIGATE stuck lane issue-140 (no activity 47h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-140-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: function-signature-matching-syntax
@@ -74,8 +74,15 @@
   issue: gh:158
   title: Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect (shell-out-design ruling, gh:158, depends on Q35's stdout/stderr effect model)
   kind: build
+  needs: [stdout-stderr-effect-model-design]
+  status: todo
+
+- id: stdout-stderr-effect-model-design
+  title: 'Decide Q35 (plans/questions.md#q35): what are stdout/stderr, and does a program write or return? Two commitless runs on shell-out-build (gh:158, issue-158, 2026-09-01) both spent their full budget rediscovering that pipe_through cannot be implemented until this effect model exists, then produced no code. Ask as a grill round.'
+  kind: decide
   needs: []
-  status: delegated
+  prio: 1
+  status: todo
 
 - id: stdin-redesign-build
   issue: gh:159
