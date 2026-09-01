@@ -116,9 +116,13 @@ for wt in $DELEGATED; do
       DEAD_TRIGGER="lane $wt: $runs commitless runs -- diagnose the last event log and REBRIEF; never repeat a failed brief"
     fi
   elif [ "$live" -eq 0 ]; then
-    if [ 1 -gt "$DEAD_PRIORITY" ] || { [ 1 -eq "$DEAD_PRIORITY" ] && [ "$commit_age" -gt "$DEAD_AGE" ]; }; then
-      DEAD_PRIORITY=1; DEAD_AGE=$commit_age
-      DEAD_TRIGGER="lane $wt has no live worker"
+    # Starvation guard: a quiet dead lane is the lowest tier, and under load it
+    # lost every tick for two days (gh:149/158/159, 2026-09-01). Dead 12+ hours
+    # jumps to escalation tier so age eventually beats churn.
+    t=1; [ "$commit_age" -ge 43200 ] && t=3
+    if [ "$t" -gt "$DEAD_PRIORITY" ] || { [ "$t" -eq "$DEAD_PRIORITY" ] && [ "$commit_age" -gt "$DEAD_AGE" ]; }; then
+      DEAD_PRIORITY=$t; DEAD_AGE=$commit_age
+      DEAD_TRIGGER="lane $wt has no live worker$([ "$t" -eq 3 ] && echo " -- dead 12+ hours, starvation guard: dispatch its continuation THIS tick")"
     fi
   elif [ -z "$recent30" ] && [ "$commit_age" -ge 1800 ]; then
     if [ 0 -gt "$DEAD_PRIORITY" ] || { [ 0 -eq "$DEAD_PRIORITY" ] && [ "$commit_age" -gt "$DEAD_AGE" ]; }; then
