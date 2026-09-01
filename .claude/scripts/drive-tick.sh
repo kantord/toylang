@@ -25,6 +25,11 @@ flock -n 9 || { echo "[drive-tick] $(date '+%H:%M:%S') another tick holds the lo
 export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin"
 cd "$REPO"
 
+# Deterministic stuck-lane watchdog (maintainer design, 2026-09-01): appends
+# the per-lane history ledger and mechanically converts a 6h-dead lane into a
+# top-priority investigation row with its evidence frozen -- no model involved.
+python3 "$REPO/.claude/scripts/stuck-watch.py" >>"$LOG_DIR/stuck-watch.log" 2>&1 || true
+
 # The maintainer's mail UI depends on the dev server; revive it if a reboot ate it.
 # 9>&- sits on the SUBSHELL, not just the pnpm command: with it only on the inner
 # nohup, the backgrounded subshell itself kept the tick lock fd -- one hung there
