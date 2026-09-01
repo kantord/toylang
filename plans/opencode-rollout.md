@@ -206,3 +206,23 @@ question both runs got stuck on. Archived the investigation row instead of
 dispatching a worker to re-derive an answer that's already on file -- the real
 next step is the maintainer answering the pending round, not more automated
 investigation.
+
+## Incident: issue-168 investigation dispatch used the wrong brief wrapper (2026-09-02)
+
+Dispatched `stuck-issue-168-investigation` via `dispatch-worker.sh 168 "<investigation
+brief>"` without `BRIEF_RAW=1`. The script's default wrapper always prepends "Your
+task is GitHub issue #$N: run `gh issue view $N` ... $BRIEF" -- for issue-168 that's
+the *original* feature issue, not "investigate why this lane is stuck." The live log
+confirms the worker read gh:168's real issue text and started exploring the actual
+offload/vectorizability feature (reading tir.rs, draft.md's offload section, corpus
+tests) instead of the frozen incident evidence at
+plans/incidents/issue-168-20260902/. Attempted to kill the misdirected process and
+was blocked by the auto-mode classifier (process-kill outside the sanctioned
+scripts) -- per house rule, not retrying through another channel. Letting this run
+finish; it will likely land as another commitless run since the worker is doing
+the wrong task. Next tick should redispatch issue-168's investigation with
+`BRIEF_RAW=1` (the script's own doc comment already names this as the case
+"research dispatches, custom continuations" need), and this note stands as a
+reminder for every future stuck-lane investigation dispatch: always set
+`BRIEF_RAW=1`, never let the standard build-brief wrapper attach to an
+investigation task.
