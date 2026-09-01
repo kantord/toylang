@@ -74,8 +74,15 @@
   issue: gh:158
   title: Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect (shell-out-design ruling, gh:158, depends on Q35's stdout/stderr effect model)
   kind: build
+  needs: [stdout-stderr-effect-model-design]
+  status: todo
+
+- id: stdout-stderr-effect-model-design
+  title: 'Decide Q35 (plans/questions.md#q35): what are stdout/stderr, and does a program write or return? Two commitless runs on shell-out-build (gh:158, issue-158, 2026-09-01) both spent their full budget rediscovering that pipe_through cannot be implemented until this effect model exists, then produced no code. Ask as a grill round.'
+  kind: decide
   needs: []
-  status: delegated
+  prio: 1
+  status: todo
 
 - id: stdin-redesign-build
   issue: gh:159
