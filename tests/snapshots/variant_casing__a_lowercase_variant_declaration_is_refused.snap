@@ -1,0 +1,5 @@
+---
+source: tests/variant_casing.rs
+expression: "err(\"enum Shape { point, circle{r: Int} }\\n\\nstr(1)\")"
+---
+a variant name starts with a capital letter; declare `point` of `Shape` as `Point`, and build its value with the lowercase constructor `point` (at byte 13)

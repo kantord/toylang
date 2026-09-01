@@ -2,17 +2,17 @@
 # reader accepts it (the eager path hands each one canonical bytes to parse for itself), and the
 # result prints back as the other variant.
 program: |
-  enum Status { active, inactive }
+  enum Status { Active, Inactive }
 
   fn flip(s: Status) -> Status =
-      s | active -> Status.inactive or inactive -> Status.active
+      s | Active -> Status.inactive or Inactive -> Status.active
 
   flip(input)
 
 input: |
-  "active"
+  "Active"
 
 output: |
-  "inactive"
+  "Inactive"
 
 node_types: [application, input, local, match, pipe, var, variant.unit]

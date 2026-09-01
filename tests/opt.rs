@@ -44,7 +44,7 @@ fn a_record_field_can_be_an_opt() {
 
 #[test]
 fn an_enum_payload_can_be_an_opt() {
-    assert!(toylang::compile("enum E { v(Opt<Int>) }\n\n1").is_ok());
+    assert!(toylang::compile("enum E { V(Opt<Int>) }\n\n1").is_ok());
 }
 
 /// `Opt` is the prelude's declaration now, not a reserved name, so redeclaring it collides
@@ -71,7 +71,7 @@ mod containment {
 
     #[test]
     fn an_enum_payload_cannot_put_a_stream_in_an_opt() {
-        insta::assert_snapshot!(err("enum E { v(Opt<Stream<Str>>) }\n\n1"));
+        insta::assert_snapshot!(err("enum E { V(Opt<Stream<Str>>) }\n\n1"));
     }
 }
 
@@ -79,7 +79,7 @@ mod containment {
 /// matcher-totality round decides (plans/opt-as-enum.md, "Open points, owned elsewhere").
 #[test]
 fn matching_an_opt_by_variant_is_not_yet_decided() {
-    insta::assert_snapshot!(err("[1, 2][0] | some -> 1 or none -> 0"));
+    insta::assert_snapshot!(err("[1, 2][0] | Some -> 1 or None -> 0"));
 }
 
 /// Absence has no ratified wire form: serialization emits null going out, and whether null

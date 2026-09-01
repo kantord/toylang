@@ -1,13 +1,13 @@
 # Step five of the type-flow rework (plans/type-flow.md): both arms of a guard match receive
 # the declared return type, so each variant-naming string resolves on its own.
 program: |
-  enum Status { active, inactive }
+  enum Status { Active, Inactive }
 
-  fn status(n: Int) -> Status = n | . > 0 -> "active" or "inactive"
+  fn status(n: Int) -> Status = n | . > 0 -> "Active" or "Inactive"
 
   status(0)
 
 output: |
-  "inactive"
+  "Inactive"
 
 node_types: [application, compare.gt, int, local, match, pipe, var, variant.unit]

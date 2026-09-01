@@ -2,11 +2,11 @@
 # with the parameters already substituted, so the arms see `wrap`'s payload as `Int` and the
 # exhaustiveness proof runs unchanged.
 program: |
-  enum Box<T> { wrap(T), empty }
+  enum Box<T> { Wrap(T), Empty }
 
   fn nothing() -> Box<Int> = empty
 
-  fn peek(b: Box<Int>) -> Int = b | wrap -> . or empty -> 0
+  fn peek(b: Box<Int>) -> Int = b | Wrap -> . or Empty -> 0
 
   peek(wrap(7)) + peek(nothing())
 

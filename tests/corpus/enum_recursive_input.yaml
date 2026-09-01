@@ -9,16 +9,16 @@
 # both of an enum's wire shapes (ADR 0009) appear inside the recursion rather than only the
 # single-key one.
 program: |
-  enum Json { arr(Vec<Json>), num(Int), null }
+  enum Json { Arr(Vec<Json>), Num(Int), Null }
 
   fn json(j: Json) -> Json = j
 
   json(input)
 
 input: |
-  {"arr": [{"num": 1}, {"arr": [{"num": 2}, "null"]}]}
+  {"Arr": [{"Num": 1}, {"Arr": [{"Num": 2}, "Null"]}]}
 
 output: |
-  {"arr":[{"num":1},{"arr":[{"num":2},"null"]}]}
+  {"Arr":[{"Num":1},{"Arr":[{"Num":2},"Null"]}]}
 
 node_types: [application, input, var]

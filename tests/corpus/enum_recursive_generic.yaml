@@ -3,13 +3,13 @@
 # variant list is re-derived per instantiation, the parameter substituted, and the payload of
 # `leaf` differs between them.
 program: |
-  enum Tree<T> { node(Vec<Tree<T>>), leaf(T) }
+  enum Tree<T> { Node(Vec<Tree<T>>), Leaf(T) }
 
-  fn label(t: Tree<Str>) -> Str = t | node -> "node" or leaf -> .
+  fn label(t: Tree<Str>) -> Str = t | Node -> "node" or Leaf -> .
 
   {shape: Tree.node([Tree.leaf("a"), Tree.node([Tree.leaf("b")])]), top: label(Tree.leaf("x"))}
 
 output: |
-  {"shape":{"node":[{"leaf":"a"},{"node":[{"leaf":"b"}]}]},"top":"x"}
+  {"shape":{"Node":[{"Leaf":"a"},{"Node":[{"Leaf":"b"}]}]},"top":"x"}
 
 node_types: [application, local, match, pipe, record-literal, str, var, variant.payload, vec-literal]

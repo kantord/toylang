@@ -1,5 +1,5 @@
 ---
 source: tests/enums.rs
-expression: "err(\"enum S { a, b }\\n\\nS.a | a{q} -> 1 // b -> 2\")"
+expression: "err(\"enum S { A, B }\\n\\nS.a | A{q} -> 1 or B -> 2\")"
 ---
-`a` is a unit variant of `S` and has no payload to destructure (at byte 24)
+`A` is a unit variant of `S` and has no payload to destructure (at byte 24)

@@ -34,7 +34,7 @@ fn a_partial_chain_over_opt_arms_is_doubly_opt() {
 #[test]
 fn the_retired_slash_slash_chain() {
     insta::assert_snapshot!(err(
-        "enum Shape { point, circle{r: Int} }\n\nfn area_ish(s: Shape) -> Int = s | circle{r} -> r * r // point -> 0\n\narea_ish(Shape.point)"
+        "enum Shape { Point, Circle{r: Int} }\n\nfn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r // Point -> 0\n\narea_ish(Shape.point)"
     ));
 }
 
@@ -42,7 +42,7 @@ fn the_retired_slash_slash_chain() {
 /// variant coverage: this chain still has to name its missing variant.
 #[test]
 fn a_guard_does_not_cover_a_variant() {
-    insta::assert_snapshot!(err("enum S { a, b }\n\nS.a | a -> 1 or 1 == 1 -> 2"));
+    insta::assert_snapshot!(err("enum S { A, B }\n\nS.a | A -> 1 or 1 == 1 -> 2"));
 }
 
 /// Once every variant is covered nothing is left to see, the same dead-arm rule the arms
@@ -50,7 +50,7 @@ fn a_guard_does_not_cover_a_variant() {
 /// without a test.
 #[test]
 fn an_arm_after_full_coverage_can_never_match() {
-    insta::assert_snapshot!(err("enum S { a }\n\nS.a | a -> 1 or 1 == 1 -> 2"));
+    insta::assert_snapshot!(err("enum S { A }\n\nS.a | A -> 1 or 1 == 1 -> 2"));
 }
 
 /// A guard arm's left side must be a Bool.
