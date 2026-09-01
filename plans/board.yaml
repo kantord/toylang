@@ -119,14 +119,6 @@
   needs: [lines-utf8-posix-research]
   status: todo
 
-- id: retire-ternary-build
-  issue: gh:155
-  title: Remove the ternary, replace every corpus/example/doc use with the equivalent match form (ternary-vs-match ruling)
-  kind: build
-  needs: []
-  prio: 2
-  status: delegated
-
 - id: search-layer-build
   title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
   kind: build

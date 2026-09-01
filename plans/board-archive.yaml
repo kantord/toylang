@@ -1274,3 +1274,11 @@
   needs: []
   prio: 3
   status: done
+
+- id: retire-ternary-build
+  issue: gh:155
+  title: Remove the ternary, replace every corpus/example/doc use with the equivalent match form (ternary-vs-match ruling)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
