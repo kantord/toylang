@@ -2,8 +2,8 @@
 //! definitions are always available to every program. There is no import statement yet -- a
 //! program does not name what it wants, it just gets all of it -- and no way for a program's own
 //! file to be imported by another. What already exists: `pub fn` marks a definition as part of
-//! that always-available set; a non-`pub` one is parsed but never included in any compiled
-//! program, so it cannot yet serve as a private helper for a `pub` one either.
+//! that always-available set; a non-`pub` one is kept and can serve as a private helper, callable
+//! only from within this file (the checker enforces that, by origin, at each call site).
 //!
 //! `join_lines` used to be a `tir::Builtin`, needing its own codegen in all six backends. Written as
 //! ordinary toylang source instead, it is checked and compiled exactly the way a program's own
@@ -14,7 +14,7 @@
 //! pass, which prunes any function -- prelude or the program's own -- that the program's body
 //! never calls, directly or transitively.
 
-use crate::ast::Module;
+use crate::ast::{Module, Origin};
 
 const PRELUDE_SRC: &str = include_str!("../prelude.toy");
 
@@ -23,11 +23,15 @@ const PRELUDE_SRC: &str = include_str!("../prelude.toy");
 // source, and writes the result here as plain Rust (kantord/toylang#73).
 include!(concat!(env!("OUT_DIR"), "/prelude_checked.rs"));
 
-/// Every `pub` declaration in `prelude.toy`.
+/// Every declaration in `prelude.toy`, `pub` and private alike. A private one stays in so it can
+/// serve as a helper for a `pub` one; the checker refuses any call to it from the program's file.
 pub fn module() -> Module {
-    let module = crate::parse::parse_module(PRELUDE_SRC).expect("prelude.toy is valid toylang");
+    let mut module = crate::parse::parse_module(PRELUDE_SRC).expect("prelude.toy is valid toylang");
+    for def in &mut module.defs {
+        def.origin = Origin::Prelude;
+    }
     Module {
-        defs: module.defs.into_iter().filter(|d| d.is_pub).collect(),
+        defs: module.defs,
         enums: module.enums.into_iter().filter(|e| e.is_pub).collect(),
     }
 }

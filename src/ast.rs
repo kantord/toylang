@@ -126,6 +126,17 @@ pub struct Param {
     pub span: Span,
 }
 
+/// Which source file a definition came from. Only two exist today: the program's own file and
+/// the single prelude module. A non-`pub` definition is callable only from its own file, so
+/// this is what the checker keys visibility on at each call site (gh:166).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Origin {
+    /// The program's own file.
+    Program,
+    /// The prelude module, `prelude.toy`.
+    Prelude,
+}
+
 #[derive(Debug)]
 pub struct Def {
     pub name: String,
@@ -137,6 +148,9 @@ pub struct Def {
     /// Whether a module's prelude includes this definition when compiling a program. Meaningless
     /// outside a module today, since nothing yet imports from a program file.
     pub is_pub: bool,
+    /// The file this definition was written in. A program's own definitions get `Program` from
+    /// the parser; the prelude's get `Prelude` from `prelude::module`.
+    pub origin: Origin,
 }
 
 /// `enum Shape { point, circle{r: Int} }`. The first declaration that creates a type identity

@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Param, Pattern, Span};
+use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Origin, Param, Pattern, Span};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{self, Sig, Type};
@@ -48,6 +48,13 @@ struct Ctx<'a> {
     /// source is legal only in the program body (see `source_in_fn`), so `lines` and `inputs`
     /// are refused whenever this is set.
     in_fn: Option<&'a str>,
+    /// Every user function, keyed by name, with the file it was defined in and whether it is
+    /// `pub`. A call to a non-`pub` one from a different file than `file` is refused, which is
+    /// the visibility rule (gh:166).
+    visibility: &'a HashMap<String, (Origin, bool)>,
+    /// Which file the code being checked was written in. The program's body and definitions are
+    /// `Program`; the prelude's definitions (checked at build time) are `Prelude`.
+    file: Origin,
     next_local: &'a Cell<LocalId>,
 }
 
@@ -73,6 +80,8 @@ impl Ctx<'_> {
             lines_used: self.lines_used,
             in_mapper: self.in_mapper,
             in_fn: self.in_fn,
+            visibility: self.visibility,
+            file: self.file,
             next_local: self.next_local,
         }
     }
@@ -143,6 +152,11 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     }
     let inputs = RefCell::new(None);
     let next_local = Cell::new(0);
+    let visibility: HashMap<String, (Origin, bool)> = file
+        .defs
+        .iter()
+        .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
+        .collect();
     let ctx = Ctx {
         sigs: &sigs,
         enums: &enums,
@@ -155,6 +169,8 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         lines_used: &lines_used,
         in_mapper: false,
         in_fn: None,
+        visibility: &visibility,
+        file: Origin::Program,
         next_local: &next_local,
     };
 
@@ -263,6 +279,8 @@ fn check_defs<'a>(
             lines_used: ctx.lines_used,
             in_mapper: false,
             in_fn: Some(&def.name),
+            visibility: ctx.visibility,
+            file: ctx.file,
             next_local: ctx.next_local,
         };
         // The declared return type flows into the body, so a form whose type comes from its
@@ -345,6 +363,11 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
     let inputs = RefCell::new(None);
     let lines_used = Cell::new(false);
     let next_local = Cell::new(0);
+    let visibility: HashMap<String, (Origin, bool)> = module
+        .defs
+        .iter()
+        .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
+        .collect();
     let ctx = Ctx {
         sigs: &sigs,
         enums: &enums,
@@ -357,6 +380,8 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
         lines_used: &lines_used,
         in_mapper: false,
         in_fn: None,
+        visibility: &visibility,
+        file: Origin::Prelude,
         next_local: &next_local,
     };
     check_defs(module.defs.iter(), &ctx)
@@ -1792,6 +1817,20 @@ fn call(
         }
         return Err(Error::new(func_span, format!("`{func}` is not a function")));
     };
+    // A non-`pub` definition is a helper for its own file: it may be called from where it was
+    // defined, and nowhere else. `file` is the caller's file, so a `Prelude`-origin private
+    // helper is refused from the program's file while remaining legal inside prelude.toy -- the
+    // same privacy a `pub` prelude function already kept from calling a private helper, now
+    // stated as a per-call-site rule rather than by dropping the helper (gh:166).
+    if let Some((origin, is_pub)) = ctx.visibility.get(func)
+        && !is_pub
+        && *origin != ctx.file
+    {
+        return Err(Error::new(
+            func_span,
+            format!("`{func}` is not `pub`, so it can only be called from its own file"),
+        ));
+    }
     let arg = call_arg(ctx, func, span, &sig.param, arg)?;
     Ok(Tir::new(
         sig.ret.clone(),
