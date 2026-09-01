@@ -174,3 +174,23 @@ KNOWN DENIALS boilerplate in `dispatch-worker.sh`, pointing workers at
 instead of scratch-file-plus-manual-run. Rebriefed issue-154 to keep its
 existing uncommitted work, convert the scratch file to a corpus case, and
 commit once `just check` is green.
+
+## Incident: issue-149 stuck at 2 commitless runs, all-or-nothing scope on a 6-backend task (2026-09-02)
+
+Root cause (from `20260830-220941-issue-149.jsonl` and `20260901-232217-issue-149.jsonl`):
+both runs treated "Implement Float across the backends" (gh:149, board row
+float-build) as a research task and spent their entire step budget writing and
+running cross-language probe scripts (Go, Lua, C via `cc`, jq, Node, Python) to
+characterize each backend's native double-to-string formatting, then hit the
+step limit with zero commits both times. This is legitimate groundwork (per
+plans/questions.md#q37, printing format is explicitly unruled per-backend
+conformance work) but the runs never got past survey mode into writing the
+actual formatter code, and held all 6 backends' work uncommitted while
+chasing full completion instead of landing backends incrementally.
+
+Diagnosed directly rather than dispatching an investigation worker (the
+evidence was conclusive from the logs alone). Rebriefed issue-149 in place:
+pointed at the existing probe output instead of re-deriving it, named ADR
+0007 + JS's Number.prototype.toString() as the reference algorithm, and
+required committing one backend's formatter at a time rather than holding
+everything uncommitted until all six are done.
