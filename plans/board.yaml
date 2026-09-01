@@ -1,7 +1,30 @@
+- id: stuck-issue-170-investigation
+  kind: build
+  status: todo
+  issue: gh:170
+  title: 'INVESTIGATE stuck lane issue-170 (no activity 22h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-170-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-169-investigation
+  kind: build
+  status: todo
+  issue: gh:169
+  title: 'INVESTIGATE stuck lane issue-169 (no activity 22h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-169-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-140-investigation
+  kind: build
+  status: todo
+  issue: gh:140
+  title: 'INVESTIGATE stuck lane issue-140 (no activity 47h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-140-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: function-signature-matching-syntax
   issue: gh:152
-  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 needs to stress-test each option (esp. the Msg(...) call-form sketch) for concrete problems before re-asking'
+  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 stress-tested each of the three candidates (A/B/C) against the real parser and re-asked. Round 3 answer: still no pick -- maintainer wants deeper research on how each candidate performs across types and use cases not yet examined (structs, tuples, nested/recursive matches) before re-asking; needs signature-matching-deeper-research first.'
   kind: decide
+  needs: [signature-matching-deeper-research]
+  prio: 3
+  status: todo
+
+- id: signature-matching-deeper-research
+  issue: gh:152
+  title: 'Research spike (round answer, signature-matching-and-search-cut round, question function-signature-matching-syntax): maintainer asked for deeper research on how each of the three candidate spellings (A: call-form hoist, B: anonymous param + bare match, C: additive `.`-binding) performs across a wider set of types and use cases a real language would face, not just the enum example probed so far -- structs/records, tuples, scalars, nested matches, recursive/self-referential types. Run each candidate''s shape against the real parser where possible (as round 3 did) and note where it breaks down or gets awkward. Write findings to plans/.'
+  kind: build
   needs: []
   prio: 3
   status: todo
@@ -16,17 +39,9 @@
 
 - id: jsonlines-tail-marker-build
   issue: gh:154
-  title: Implement the |> tail-pipeline marker for sink calls, restricted to outermost position (issue #9 oddity ruling)
+  title: 'Implement the |> tail-pipeline marker for sink calls, restricted to outermost position (issue #9 oddity ruling). Escalated after 4 commitless automated runs (2026-09-01): the worktree has real uncommitted progress across src/ast.rs, src/check/mod.rs, src/emit_toylang.rs, src/parse.rs -- each run reviews the diff, confirms it looks right, then fires landing WITHOUT committing, so land-lane.sh skips it every time. A stale ESCALATION.md from an already-folded issue-150 decision also sits in the worktree unremoved. Do not redispatch until the issue-154-escalation round is ruled (~/.cache/toylang-drive/escalated-issue-154).'
   kind: build
   needs: [sink-kind-build]
-  prio: 3
-  status: delegated
-
-- id: dsv-rfc4180-quoting-build
-  issue: gh:136
-  title: 'Ruled (prelude-partials-and-mutation round): dsv(delim) needs RFC 4180 quoted-field handling (embedded delimiters, doubled quotes, embedded newlines) -- replace the raw byte-split shipped in gh:136 with a real stateful scanner'
-  kind: build
-  needs: []
   prio: 3
   status: delegated
 
@@ -40,11 +55,11 @@
 
 - id: euler-slow-fragments-2
   issue: gh:93
-  title: Apply the slow-fragment tier to batch 3's correct-but-slow problems (gh:90 ruling)
+  title: 'Apply the slow-fragment tier to batch 3''s correct-but-slow problems (gh:90 ruling). Parked after 4 commitless automated runs -- maintainer ruling (2026-09-01): hand off to a privileged manual session rather than redispatch. Prompt drafted at plans/issue-93-privileged-agent-prompt.md. Lane stays escalated (~/.cache/toylang-drive/escalated-issue-93 kept) until that session lands it.'
   kind: build
   needs: [docs-slow-fragment-tier]
   prio: 3
-  status: delegated
+  status: todo
 
 - id: variant-types-flip
   issue: gh:165
@@ -75,7 +90,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: trait-interface-design
   title: 'Grill the concrete trait/impl syntax and dispatch mechanism (overloading-and-utf8-lines round ruling spinoff), informed by trait-interface-research'
@@ -118,14 +133,6 @@
   kind: decide
   needs: [lines-utf8-posix-research]
   status: todo
-
-- id: retire-ternary-build
-  issue: gh:155
-  title: Remove the ternary, replace every corpus/example/doc use with the equivalent match form (ternary-vs-match ruling)
-  kind: build
-  needs: []
-  prio: 2
-  status: delegated
 
 - id: search-layer-build
   title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
@@ -318,10 +325,17 @@
   status: todo
 
 - id: search-and-fold-design
-  title: 'Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split). Round 1 leaned depth-first for `..` (Q7) but answer was "also research the performance implications before we fully commit"; round 2 needs that research before re-asking. Round 4 answers (search-vocab-choice-cut-fold, no picks made): Q search-choice-point-syntax -- no pick, maintainer asks whether the choice-point operator should instead be spelled parallel to match syntax rather than a new infix operator; needs search-choice-point-match-syntax-research before re-ask. Q search-cut-semantics -- no pick, maintainer leans "first should be a real prelude function" (tentative, not ratified -- re-ask against that framing, i.e. option B reworded as an ordinary stdlib fn rather than compiler-magic sugar). Q applicative-fold-block-syntax -- no pick, maintainer questions whether fold is needed at all ("fold is basically the same as reduce... reduce is usually too low level, a code smell, results in confusing code"); before continuing fold syntax design, next round must first ask whether applicative-fold-block-syntax should be justified or dropped.'
+  title: 'Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split). Round 1 leaned depth-first for `..` (Q7) but answer was "also research the performance implications before we fully commit"; round 2 needed that research before re-asking. Q7 was re-asked in the signature-matching-and-search-cut round and RULED provisional: `..` promises depth-first order (jq-compatible), flagged for reevaluation once recursive-descent-order-research lands. Round 4 answers (search-vocab-choice-cut-fold, no picks made): Q search-choice-point-syntax -- no pick, maintainer asks whether the choice-point operator should instead be spelled parallel to match syntax rather than a new infix operator; needs search-choice-point-match-syntax-research before re-ask. Q search-cut-semantics -- no pick, maintainer leans "first should be a real prelude function" (tentative, not ratified -- re-ask against that framing, i.e. option B reworded as an ordinary stdlib fn rather than compiler-magic sugar). Q applicative-fold-block-syntax -- no pick, maintainer questions whether fold is needed at all ("fold is basically the same as reduce... reduce is usually too low level, a code smell, results in confusing code"); before continuing fold syntax design, next round must first ask whether applicative-fold-block-syntax should be justified or dropped.'
   kind: decide
   needs: [search-choice-point-match-syntax-research]
-  soft: [first-search-cut]
+  soft: [first-search-cut, recursive-descent-order-research]
+  prio: 4
+  status: todo
+
+- id: recursive-descent-order-research
+  title: 'Research spike (round answer, signature-matching-and-search-cut round, question recursive-descent-order): Q7 was ruled provisional -- `..` promises depth-first order (jq-compatible) -- but the maintainer wants a deep research brief on what alternatives actually exist to the unordered/columnar-fast-path design (questions.md Q7), so the ruling can be reevaluated later with real alternatives in hand rather than the two options already on the table. Survey how other query/traversal languages and engines (jq, XPath, JSONPath, columnar/vectorized query engines) handle recursive descent order versus set semantics, and what a toylang-specific unordered fast path would cost callers who need order back. Write findings to plans/.'
+  kind: build
+  needs: []
   prio: 4
   status: todo
 
@@ -367,6 +381,14 @@
   issue: gh:171
   title: 'Maintainer note (composed 2026-08-31): design minimal HTTP query support (Python-requests-like) as sugar over whatever backend already provides -- needs a grilling round on surface area before it becomes build work'
   kind: decide
+  needs: [http-query-sugar-research]
+  prio: 4
+  status: todo
+
+- id: http-query-sugar-research
+  issue: gh:171
+  title: 'Research spike ahead of the http-query-sugar-design round: survey each backend''s existing I/O/effect capabilities (what a source/sink already looks like per backend, and whether any backend has network primitives today) and Python requests'' minimal surface (get/post, headers, body, response shape). Produce 2-3 concrete syntax candidates for HTTP query sugar as toylang code, each grounded in what the current sink/source vocabulary already supports, so the design round can ask a real question instead of a green-field one. Write findings to plans/.'
+  kind: build
   needs: []
   prio: 4
   status: todo

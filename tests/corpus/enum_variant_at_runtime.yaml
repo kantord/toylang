@@ -5,11 +5,11 @@
 program: |
   enum Shape { Point, Circle{r: Int} }
 
-  fn classify(n: Int) -> Shape = Shape.point if n == 0 else circle{r: n}
+  fn classify(n: Int) -> Shape = n | . == 0 -> Shape.point or circle{r: n}
 
   {a: classify(0), b: classify(3)}
 
 output: |
   {"a":"Point","b":{"Circle":{"r":3}}}
 
-node_types: [application, compare.eq, conditional, int, record-literal, var, variant.payload, variant.unit]
+node_types: [application, compare.eq, int, local, match, pipe, record-literal, var, variant.payload, variant.unit]

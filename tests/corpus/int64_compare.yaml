@@ -2,9 +2,9 @@
 program: |
   fn big() -> Int64 = 4000000000
 
-  "wide" if big() > i64(2147483647) else "narrow"
+  big() > i64(2147483647) | . -> "wide" or "narrow"
 
 output: |
   wide
 
-node_types: [application, builtin.i64, compare.gt, conditional, int, int64, str]
+node_types: [application, builtin.i64, compare.gt, int, int64, local, match, pipe, str]

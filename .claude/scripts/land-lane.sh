@@ -150,7 +150,8 @@ land)
     git worktree remove --force "$d" 2>/dev/null || git worktree remove "$d"
     git branch -d "$B" 2>/dev/null || true
     rm -f "$LOG_DIR/land-retries-issue-$n" "$LOG_DIR/land-failed-issue-$n" \
-          "$LOG_DIR/escalated-issue-$n" "$MSG_FILE" "$GATE_LOG"
+          "$LOG_DIR/escalated-issue-$n" "$LOG_DIR/investigating-issue-$n" \
+          "$MSG_FILE" "$GATE_LOG"
     ANY_GREEN=1
     echo "[land] issue-$n -> main: $(git -C "$REPO" log --merges --format=%s -1) (pushed)"
   done

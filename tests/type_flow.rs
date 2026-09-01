@@ -212,29 +212,29 @@ fn a_map_body_that_misses_the_element_type() {
     ));
 }
 
-// Step 5: both branches of a conditional and every arm of a total match chain receive the
-// expectation. A partial guard chain receives it too, peeled: a declared Opt<T> return pushes
-// T into the arms, since the chain's own partiality is what supplies the Opt (kantord/toylang#48).
+// Step 5: both arms of a total match chain receive the expectation. A partial guard chain
+// receives it too, peeled: a declared Opt<T> return pushes T into the arms, since the chain's
+// own partiality is what supplies the Opt (kantord/toylang#48).
 
 #[test]
 fn both_conditional_branches_receive_the_expectation() {
-    let src = "fn f(x: Int) -> Vec<Int> = [] if x > 0 else [1]\n\nf(1)";
+    let src = "fn f(x: Int) -> Vec<Int> = x | . > 0 -> [] or [1]\n\nf(1)";
     assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
 }
 
 #[test]
 fn conditional_branches_can_name_variants() {
-    let src = "enum Status { Active, Inactive }\n\n\
-               fn status(n: Int) -> Status = \"active\" if n > 0 else \"inactive\"\n\n\
+let src = "enum Status { Active, Inactive }\n\n\
+               fn status(n: Int) -> Status = n | . > 0 -> \"Active\" or \"Inactive\"\n\n\
                status(0)";
     assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Status"));
 }
 
-/// The annotation decides which branch is wrong, so the error lands on the branch that
-/// misses it rather than on whichever branch came second.
+/// The annotation decides which arm is wrong, so the error lands on the arm that misses it
+/// rather than on whichever arm came first.
 #[test]
 fn the_branch_that_misses_the_annotation_is_blamed() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> Str = 1 if x > 0 else \"a\"\n\nf(1)"));
+    insta::assert_snapshot!(err("fn f(x: Int) -> Str = x | . > 0 -> 1 or \"a\"\n\nf(1)"));
 }
 
 #[test]

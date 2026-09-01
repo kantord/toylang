@@ -87,21 +87,6 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
             }
             Ok(acc)
         }
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            let t = stream_uses(then, binding)?;
-            let o = stream_uses(otherwise, binding)?;
-            if t != o {
-                return Err(LinearViolation::Branches {
-                    first: t,
-                    second: o,
-                });
-            }
-            Ok(stream_uses(cond, binding)? + t)
-        }
         Kind::Match {
             subject,
             arms,
@@ -109,8 +94,7 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
         } => {
             // A path through the chain evaluates every guard up to its arm, then that arm's
             // body; a partial chain has one more path, the fall-through, which evaluates every
-            // guard and no body. All of them must agree, exactly as a conditional's branches
-            // must.
+            // guard and no body. All of them must agree.
             let mut guards_so_far = 0;
             let mut counts: Vec<usize> = Vec::new();
             for a in arms {
@@ -210,11 +194,6 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
                 || start.as_deref().is_some_and(|s| any_node(s, pred))
                 || end.as_deref().is_some_and(|e| any_node(e, pred))
         }
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => any_node(cond, pred) || any_node(then, pred) || any_node(otherwise, pred),
         Kind::Match { subject, arms, .. } => {
             any_node(subject, pred)
                 || arms.iter().any(|a| {
@@ -299,15 +278,6 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
         | Kind::Logic { lhs, rhs, .. } => {
             calls_in(lhs, out);
             calls_in(rhs, out);
-        }
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            calls_in(cond, out);
-            calls_in(then, out);
-            calls_in(otherwise, out);
         }
         Kind::Bind { value, body, .. }
         | Kind::Map {

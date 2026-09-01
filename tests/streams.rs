@@ -116,8 +116,10 @@ mod linearity {
         ));
     }
 
-    /// Which branch runs is decided at runtime, and a pipeline's shape must not be: fusion has
-    /// to know its stages at compile time. Refusing is the reversible direction.
+    /// The ternary was retired (kantord/toylang#155) in favor of guard arms; the stream rule
+    /// it would have exercised lives on as `a_match_cannot_yield_a_stream` below. The old
+    /// spelling no longer parses -- `if` is an ordinary identifier, so `s if ...` reads as a
+    /// cross-line call.
     #[test]
     fn a_conditional_cannot_yield_a_stream() {
         insta::assert_snapshot!(err(

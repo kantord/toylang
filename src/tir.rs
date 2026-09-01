@@ -84,13 +84,6 @@ pub enum Kind {
         lhs: Box<Tir>,
         rhs: Box<Tir>,
     },
-    /// The condition is exactly one Bool, which is what turns jq's run-both-branches behaviour
-    /// into a type error here.
-    Cond {
-        cond: Box<Tir>,
-        then: Box<Tir>,
-        otherwise: Box<Tir>,
-    },
     Compare {
         op: BinOp,
         lhs: Box<Tir>,
@@ -554,15 +547,6 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
             each_node(r, f);
         }
         Kind::Not(base) => each_node(base, f),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            each_node(cond, f);
-            each_node(then, f);
-            each_node(otherwise, f);
-        }
         Kind::Bind { value, body, .. } => {
             each_node(value, f);
             each_node(body, f);
@@ -607,16 +591,12 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
 /// emitters lower a self-tail-recursive function to a loop, the constant-stack contract
 /// (kantord/toylang#141).
 ///
-/// Only `Cond` branches, a total `Match`'s arm bodies, and a `Bind`'s body put their child in
-/// tail position; a partial `Match` wraps every arm body in `{some: ...}`, so nothing there is
-/// a tail call, and a call feeding an operator (`f(x) + 1`) is a genuine recursion the contract
-/// does not cover.
+/// Only a total `Match`'s arm bodies and a `Bind`'s body put their child in tail position; a
+/// partial `Match` wraps every arm body in `{some: ...}`, so nothing there is a tail call, and
+/// a call feeding an operator (`f(x) + 1`) is a genuine recursion the contract does not cover.
 pub fn has_tail_call(name: &str, t: &Tir) -> bool {
     match &t.kind {
         Kind::Call { func, .. } => func == name,
-        Kind::Cond { then, otherwise, .. } => {
-            has_tail_call(name, then) || has_tail_call(name, otherwise)
-        }
         Kind::Bind { body, .. } => has_tail_call(name, body),
         Kind::Match { arms, partial, .. } if !partial => {
             arms.iter().any(|a| has_tail_call(name, &a.body))

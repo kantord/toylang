@@ -60,15 +60,6 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
             walk(lhs, tags);
             walk(rhs, tags);
         }
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            walk(cond, tags);
-            walk(then, tags);
-            walk(otherwise, tags);
-        }
         Kind::Bind { value, body, .. }
         | Kind::Map {
             source: value,
@@ -136,7 +127,6 @@ fn tag(tir: &Tir) -> String {
         Kind::Call { .. } => "application".into(),
         Kind::Concat(..) => "concat".into(),
         Kind::Arith { op, .. } => format!("arith.{}", binop_tag(*op)),
-        Kind::Cond { .. } => "conditional".into(),
         Kind::Compare { op, .. } => format!("compare.{}", binop_tag(*op)),
         Kind::Logic { op, .. } => format!("logic.{op}"),
         Kind::Not(_) => "logic.not".into(),

@@ -24,27 +24,22 @@ The example's three numbers, two of them all nines, ripple a carry all the way u
 fn empty() -> Vec<Int> = []
 
 fn col_sum(p: {nums: Vec<Vec<Int>>, i: Int, k: Int}) -> Int =
-    0 if p.i >= length(p.nums) else
-        p.nums[p.i]![p.k]! + col_sum({nums: p.nums, i: p.i + 1, k: p.k})
+    p
+        | .i >= length(.nums) -> 0 or
+              p.nums[p.i]![p.k]! + col_sum({nums: p.nums, i: p.i + 1, k: p.k})
 
 fn column_total(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int}) -> Int =
     col_sum({nums: p.nums, i: 0, k: p.k}) + p.carry
 
 fn emit_carry(p: {carry: Int, acc: Vec<Int>}) -> Vec<Int> =
-    p.acc if p.carry == 0 else
-        emit_carry({carry: p.carry / 10, acc: [p.carry % 10] + p.acc})
+    p
+        | .carry == 0 -> p.acc or
+              emit_carry({carry: p.carry / 10, acc: [p.carry % 10] + p.acc})
 
 fn add_digits(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int, acc: Vec<Int>}) -> Vec<Int> =
-    emit_carry({carry: p.carry, acc: p.acc}) if p.k < 0 else
-        add_digits(
-            {
-                nums: p.nums,
-                k: p.k - 1,
-                carry: column_total({nums: p.nums, k: p.k, carry: p.carry}) / 10,
-                acc: [column_total({nums: p.nums, k: p.k, carry: p.carry}) % 10] +
-                    p.acc
-            }
-        )
+    p
+        | .k < 0 -> emit_carry({carry: p.carry, acc: p.acc}) or
+              add_digits({nums: p.nums, k: p.k - 1, carry: column_total({nums: p.nums, k: p.k, carry: p.carry}) / 10, acc: [column_total({nums: p.nums, k: p.k, carry: p.carry}) % 10] + p.acc})
 
 fn first_ten(v: Vec<Int>) -> Vec<Int> = collect(range(10)) | map(v[.]!)
 

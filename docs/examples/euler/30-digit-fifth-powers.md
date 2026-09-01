@@ -15,17 +15,17 @@ many numbers pass the filter (six, for fifth powers).
 fn fifth(d: Int) -> Int = d * d * d * d * d
 
 fn digit_power_sum(n: Int) -> Int =
-    0 if n == 0 else fifth(n % 10) + digit_power_sum(n / 10)
+    n | . == 0 -> 0 or fifth(. % 10) + digit_power_sum(. / 10)
 
 fn is_digit_power_sum(n: Int) -> Bool = digit_power_sum(n) == n
 
 fn sum_vec(p: {v: Vec<Int>, lo: Int, hi: Int}) -> Int =
-    p.v[p.lo]! if p.hi - p.lo == 1 else
-        sum_vec({v: p.v, lo: p.lo, hi: (p.lo + p.hi) / 2}) +
-            sum_vec({v: p.v, lo: (p.lo + p.hi) / 2, hi: p.hi})
+    p
+        | .hi - .lo == 1 -> .v[.lo]! or
+              sum_vec({v: .v, lo: .lo, hi: (.lo + .hi) / 2}) + sum_vec({v: .v, lo: (.lo + .hi) / 2, hi: .hi})
 
 fn total(v: Vec<Int>) -> Int =
-    0 if length(v) == 0 else sum_vec({v: v, lo: 0, hi: length(v)})
+    v | length(.) == 0 -> 0 or sum_vec({v: v, lo: 0, hi: length(v)})
 
 total(collect(range(354295)) | select(. >= 2) | select(is_digit_power_sum(.)))
 ```

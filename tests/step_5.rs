@@ -153,7 +153,7 @@ fn a_program_cannot_call_a_private_prelude_helper() {
 fn a_program_can_call_its_own_non_pub_helper() {
     let src = r#"
 fn parts(v: Vec<Str>) -> Str =
-    "" if length(v) == 0 else v[0]! + parts(tail(v)!)
+    v | length(v) == 0 -> "" or v[0]! + parts(tail(v)!)
 
 parts(["ada", "bo"])
 "#;

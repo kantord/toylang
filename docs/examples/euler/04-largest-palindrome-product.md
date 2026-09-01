@@ -12,13 +12,14 @@ empty row never runs out of entries.
 
 ```toylang
 fn reverse_num(p: {n: Int, acc: Int}) -> Int =
-    p.acc if p.n == 0 else
-        reverse_num({n: p.n / 10, acc: p.acc * 10 + p.n % 10})
+    p
+        | .n == 0 -> p.acc or
+              reverse_num({n: p.n / 10, acc: p.acc * 10 + p.n % 10})
 
-fn max2(p: {a: Int, b: Int}) -> Int = p.a if p.a > p.b else p.b
+fn max2(p: {a: Int, b: Int}) -> Int = p | .a > .b -> p.a or p.b
 
 fn max_vec(xs: Vec<Int>) -> Int =
-    xs[0]! if length(xs) == 1 else max2({a: xs[0]!, b: max_vec(tail(xs)!)})
+    xs | length(.) == 1 -> xs[0]! or max2({a: xs[0]!, b: max_vec(tail(xs)!)})
 
 fn row_max(a: Int) -> Int =
     max_vec(
