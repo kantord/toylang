@@ -26,6 +26,26 @@ for p in $(pgrep -x opencode 2>/dev/null; pgrep -x claude 2>/dev/null); do
   esac
 done
 
+# A numeric dispatch must map to a BUILD row for that gh issue: decide rows
+# use no lane, and research rows live under slug lanes. A tick dispatched
+# bare "152" twice (2026-09-01 and again 2026-09-02) where gh:152's only row
+# is kind: decide -- each time cutting a stray lane that sat dead until the
+# watchdog filed a pointless investigation.
+if printf '%s' "$N" | grep -qE '^[0-9]+$'; then
+  python3 - "$N" <<'PYEOF' || exit 1
+import sys, yaml
+n = sys.argv[1]
+rows = yaml.safe_load(open("/home/kantord/repos/toylang/plans/board.yaml"))
+ok = any(str(r.get("issue", "")) == f"gh:{n}" and r.get("kind") == "build"
+         and r.get("status") in ("todo", "delegated") for r in rows)
+if not ok:
+    print(f"refusing: no live build row for gh:{n} on the board -- decide rows "
+          f"use no lane, and research rows dispatch under their row-id slug "
+          f"(dispatch-worker.sh <row-id>), not the gh number", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+fi
+
 git -C "$REPO" fetch -q origin
 # Lanes cut from origin/main. (They were cut from the largest accumulator
 # under the size-driven pipeline; the serial landing queue retired that,
