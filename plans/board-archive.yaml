@@ -1332,3 +1332,11 @@
   kind: build
   needs: []
   status: done
+
+- id: signature-matching-deeper-research
+  issue: gh:152
+  title: 'Research spike (round answer, signature-matching-and-search-cut round, question function-signature-matching-syntax): maintainer asked for deeper research on how each of the three candidate spellings (A: call-form hoist, B: anonymous param + bare match, C: additive `.`-binding) performs across a wider set of types and use cases a real language would face, not just the enum example probed so far -- structs/records, tuples, scalars, nested matches, recursive/self-referential types. Run each candidate''s shape against the real parser where possible (as round 3 did) and note where it breaks down or gets awkward. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
