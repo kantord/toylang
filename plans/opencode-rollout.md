@@ -342,4 +342,38 @@ Recommendation:
 
   before it ran out of steps. The bottleneck is the decision tree, not tenacity..
 | 2026-09-02 | issue-169 (stuck-issue-169-investigation, gh:169) | The stuck-lane investigation and the escalated original task (issue-150 let-bindings, later re-scoped to an `input <type>` annotation per the lane's own committed `ESCALATION.md`, 4df542d) share one lane/worktree. After that escalation was ruled on and a continuation was dispatched, two more runs fired in the same worktree (~21:03-21:05) and both ended the identical way: read `ESCALATION.md` and sibling incident folders (hitting permission denials on cross-worktree reads), wrote nothing, then auto-fired landing with zero commits ahead of main. Four consecutive commitless runs total on this lane (2 pre-escalation, 2 post-rebrief). | $0.005, 4 commitless runs across two dispatch cycles, zero code written | Unclear -- the shared-lane design (one worktree serving both the meta-investigation brief and the escalated feature's continuation brief) looks like the real defect: whichever brief a generic continuation dispatch resumes is ambiguous, not a DeepSeek-specific failure. Escalated to the maintainer (issue-169-investigation-stall round) rather than redispatching a fifth time. |
+
+## Stale board row: `input-type-annotation-build` (gh:150) had already landed (2026-09-02)
+
+Tried to dispatch the freshly-boarded `input-type-annotation-build` row (issue: gh:150) into
+a lane and `dispatch-worker.sh` refused: branch `issue-150` already exists with no worktree.
+`git merge-base main issue-150` came back equal to `issue-150`'s own tip (`421450f`, dated
+Aug 30) -- that commit is already an ancestor of `main`. It IS the `input <type>` annotation
+this board row asked for (same corpus fixture, `tests/corpus/input_annotation.yaml`, same
+`{x, y}` shape), landed by an earlier lane before the issue-169 shared-lane saga even started.
+`just check` is green on current `main` with the feature present. Archived the row
+(`board-archive.py input-type-annotation-build`) instead of dispatching a duplicate worker;
+did not touch the orphaned `issue-150` branch (deletion isn't this router's call). Lesson:
+before dispatching a freshly-boarded build row, check whether an orphaned branch of the same
+name already contains it -- `dispatch-worker.sh`'s stale-branch refusal is a real signal to
+inspect, not just a naming collision to route around.
+
+## Near-miss: `stuck-issue-172-investigation` dispatched without `BRIEF_RAW=1`, reused a live gh number (2026-09-02)
+
+Same class of mistake as the issue-168 incident above (2026-09-02, "used the wrong brief
+wrapper"): dispatched `dispatch-worker.sh 172 "<investigation brief>"` without `BRIEF_RAW=1`
+for a lane whose number (172) is also a real, unrelated open GitHub issue (the gh:159 re-file,
+stdin/`Stream<Str>` redesign) -- the standard wrapper's `gh issue view 172` pulls that issue's
+real text, not investigation instructions. Unlike issue-168, the worker's live log shows it
+followed the task-specific investigation text anyway (went straight for
+`plans/incidents/issue-172-20260902/`, pulled the frozen evidence via `git show
+e7a290d:plans/...` when the local copy was missing) rather than getting misdirected into the
+stdin-redesign feature -- so this run looks fine in progress, but it was luck, not the brief
+being correct. Also: board row `stdin-redesign-build-2` (status: delegated) targets the same
+lane number (issue-172) for the *actual* gh:172 feature work; if that row's own dispatch
+follows later, it will land in the same worktree as this investigation, the exact shared-lane
+shape that stalled issue-169. Follow-up for next tick: always pass `BRIEF_RAW=1` for
+stuck-lane-investigation dispatches (the script's own doc comment already names this as the
+"research dispatches, custom continuations" case), and give `stdin-redesign-build-2` a lane
+number that doesn't collide with an investigation row before dispatching it.
 | 2026-09-02 | issue-153 (stuck-issue-153-investigation / declare-terminator-build, gh:153) | Runs 1-2 died from backtick-command-substitution permission denials, rebriefed with that root cause on 2026-09-01 (3a2d02d). Runs 3-4, dispatched with the corrected brief, hit a different wall: edit-tool string-mismatch failures partway through the same `src/parse.rs` refactor (tokenize `;`, remove the old cross-line-call heuristic, rewire `input <type>`), leaving a coherent but uncommitted diff each time -- `Tok::Semicolon` is tokenized but never consumed; no run reached the actual terminator-parsing change gh:153 asks for. | $0 marginal (all four runs zero-committed), 4 commitless runs across two dispatch cycles, zero code landed | Unclear -- the diff's shape suggests dispatch size/duration, not task difficulty: one continuous session tries to tokenize + delete a heuristic + rewire a call site + add new parsing all at once. Escalated to the maintainer (issue-153-investigation-stall round, options: split into two smaller dispatches / stronger model / drop) rather than redispatching a fifth time. |
