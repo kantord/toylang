@@ -111,7 +111,7 @@
   title: Implement Float (IEEE binary64 per ADR 0007) for the Go backend only, following float-build's JS implementation as the reference. One backend, one commit.
   kind: build
   needs: [float-build]
-  status: todo
+  status: delegated
 
 - id: float-build-lua
   issue: gh:149
