@@ -356,14 +356,6 @@
   prio: 3
   status: todo
 
-- id: dense-tensor-design-research
-  issue: gh:175
-  title: 'dense-tensor-type round (Q17-Q19) came back with no option picks on any of the three questions -- maintainer wants deeper groundwork, not different options: (1) whether explicit tensor differentiation (a distinct dense-typed value kind, e.g. @f32) is needed at all versus Vec<Vec<Num>> + stdlib; (2) each option''s consequences and ergonomics checked against more complex, realistic multi-step pipelines, not one-line previews; (3) on null-handling specifically, whether a tensor-specific type with a near-trivial single-call conversion to/from a plain tensor sidesteps the bitmask-vs-sentinel-vs-hard-fail tradeoff (maintainer flagged this as worth examining, not a firm lean). Write findings to plans/ so the round can re-ask with sharper, examples-backed options. Round retired: docs/.grill/dense-tensor-type.round.yaml.'
-  kind: build
-  needs: []
-  prio: 2
-  status: delegated
-
 - id: offload-boundary-design
   title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled. Round 3 answer, parallel-primitive-basis (Q23): RATIFIED option A -- full basis now (map/scan/reduce/gather/scatter + segmented forms), fold and general recursion demoted to convenience leaves, future stdlib additions checked against the third-homomorphism theorem. Q22 (dense-masked-distinguishable/select representation): maintainer proposed a fourth shape (Vec-typed view, materialized only on strong reference -- ties to mutation-semantics-spike) that none of A/B/C covered; spun off select-materialization-research (gh:176) to ground a re-ask instead of re-presenting the same options. Q21 (batch-invariance-enforcement): maintainer flagged the question itself as unclear -- rewrite with a concrete worked example before round 4, do not re-ask verbatim.'
   kind: decide
@@ -401,6 +393,14 @@
   kind: decide
   needs: [http-query-sugar-research]
   prio: 4
+  status: todo
+
+- id: dense-tensor-type
+  issue: gh:175
+  title: 'Re-ask of the retired dense-tensor-type round (Q17-Q19), grounded in the gh:175 research at plans/dense-tensor-design-research.md: whether a dense tensor value kind (flat-buffer, distinct from Vec<Vec<Num>>) is justified at all, construction syntax (A. @f32 then reshape vs C. single width-deferred tensor(n;m) constructor), whether a transpose/column-access view is wanted now, and null-handling (hard-fail default with a masked/dense conversion pair vs bitmask-by-default).'
+  kind: decide
+  needs: []
+  prio: 3
   status: todo
 
 - id: http-query-sugar-research

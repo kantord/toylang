@@ -1426,3 +1426,11 @@
   needs: []
   prio: 2
   status: done
+
+- id: dense-tensor-design-research
+  issue: gh:175
+  title: 'dense-tensor-type round (Q17-Q19) came back with no option picks on any of the three questions -- maintainer wants deeper groundwork, not different options: (1) whether explicit tensor differentiation (a distinct dense-typed value kind, e.g. @f32) is needed at all versus Vec<Vec<Num>> + stdlib; (2) each option''s consequences and ergonomics checked against more complex, realistic multi-step pipelines, not one-line previews; (3) on null-handling specifically, whether a tensor-specific type with a near-trivial single-call conversion to/from a plain tensor sidesteps the bitmask-vs-sentinel-vs-hard-fail tradeoff (maintainer flagged this as worth examining, not a firm lean). Write findings to plans/ so the round can re-ask with sharper, examples-backed options. Round retired: docs/.grill/dense-tensor-type.round.yaml.'
+  kind: build
+  needs: []
+  prio: 2
+  status: done
