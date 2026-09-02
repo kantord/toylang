@@ -371,11 +371,19 @@
   status: delegated
 
 - id: offload-boundary-design
-  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled.'
+  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled. Round 3 answer, parallel-primitive-basis (Q23): RATIFIED option A -- full basis now (map/scan/reduce/gather/scatter + segmented forms), fold and general recursion demoted to convenience leaves, future stdlib additions checked against the third-homomorphism theorem. Q22 (dense-masked-distinguishable/select representation): maintainer proposed a fourth shape (Vec-typed view, materialized only on strong reference -- ties to mutation-semantics-spike) that none of A/B/C covered; spun off select-materialization-research (gh:176) to ground a re-ask instead of re-presenting the same options. Q21 (batch-invariance-enforcement): maintainer flagged the question itself as unclear -- rewrite with a concrete worked example before round 4, do not re-ask verbatim.'
   kind: decide
   needs: [offload-explain-flag-build]
   soft: [benchmark-goals]
   prio: 5
+  status: todo
+
+- id: select-materialization-research
+  issue: gh:176
+  title: 'select''s return representation (Q22 follow-up): survey NumPy views/fancy-indexing, Julia @views, Rust Cow<[T]>, pandas SettingWithCopyWarning, then work out what makes a lazy select-view indexable pre-materialization and whether indexing materializes incrementally. Findings feed a re-ask of offload-boundary-design Q22. See plans/select-materialization-research.md.'
+  kind: build
+  needs: []
+  prio: 2
   status: todo
 
 - id: draft-md-cleanup-review
