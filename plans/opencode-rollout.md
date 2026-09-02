@@ -430,3 +430,21 @@ the failed brief: `mutation-semantics-spike` now gets a capped exploration budge
 three-question findings-doc deliverable to commit even if partial; `float-build-lua` is told
 explicitly not to read the Go/Python/Rust sibling lanes and to port straight from the JS Float
 impl it already found. Both still under the 4-run escalation threshold.
+
+## `stuck-issue-159-investigation`: root cause already on the board, no dispatch needed (2026-09-03)
+
+`stuck-watch.py` auto-filed this row against the `issue-159` worktree (no activity 4h, 4
+run(s), 0 commits at detection time). No worker was dispatched to investigate it: the root
+cause is already fully documented elsewhere on the board and predates the watchdog's alert.
+`stdin-redesign-build-2` (gh:172)'s own title records the history -- the maintainer ruled
+2026-09-02 (option C, "drop the poisoned issue-159 lane, re-board under a fresh lane id rather
+than repair it") after the lane collided with a real, unrelated open issue also numbered 172.
+The `issue-159` worktree has stood abandoned in place since that ruling, permission-denied
+cleanup left as garbage on purpose, its one commit (`45c76be`) kept only as reference for the
+re-derived `stdin-redesign-build-2` work.
+
+Answering the investigation's own three questions from that existing record: not brief clarity,
+not a capability gap, not a tooling trap -- this was a maintainer cleanup decision, already
+executed, that the watchdog has no way to see (it only sees worktree inactivity, not board
+history). Archiving `stuck-issue-159-investigation` on this finding; no rebrief or reshape
+needed since there is no live task left in that lane to rebrief.

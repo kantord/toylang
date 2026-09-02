@@ -1434,3 +1434,10 @@
   needs: []
   prio: 2
   status: done
+
+- id: stuck-issue-159-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:159
+  title: 'INVESTIGATE stuck lane issue-159 (no activity 4h, 4 run(s), 0 commits): evidence frozen in plans/incidents/issue-159-20260903/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'

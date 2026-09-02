@@ -1,9 +1,3 @@
-- id: stuck-issue-159-investigation
-  kind: build
-  status: todo
-  needs: []
-  issue: gh:159
-  title: 'INVESTIGATE stuck lane issue-159 (no activity 4h, 4 run(s), 0 commits): evidence frozen in plans/incidents/issue-159-20260903/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-174-investigation
   kind: build
   status: delegated
@@ -403,8 +397,15 @@
 
 - id: dense-tensor-type
   issue: gh:175
-  title: 'Re-ask of the retired dense-tensor-type round (Q17-Q19), grounded in the gh:175 research at plans/dense-tensor-design-research.md: whether a dense tensor value kind (flat-buffer, distinct from Vec<Vec<Num>>) is justified at all, construction syntax (A. @f32 then reshape vs C. single width-deferred tensor(n;m) constructor), whether a transpose/column-access view is wanted now, and null-handling (hard-fail default with a masked/dense conversion pair vs bitmask-by-default).'
+  title: 'Round 5 answer (wizard submission, 2026-09-02): tensor-value-kind-justified picked C (defer the flat-buffer kind) but the freeText leans further -- not a new value kind at all, but formalizing Vec itself as the dataframe/tensor-capable type, with a minimal set of dataframe primitives layered over it; open sub-question (not covered by any of A/B/C) is whether that needs an explicit multi-dimensional type-design change or can ride the current simple Vec type. tensor-construction-syntax/-transpose-view/-null-handling are all contingent on building the kind, so moot under the C ruling -- their leanings (C single tensor(n;m) constructor, A transpose in scope now, null-handling left unanswered) are kept here as breadcrumbs for whenever this reopens. Spun off vec-as-dataframe-type-research to ground a re-ask on the maintainer''s actual framing instead of re-presenting A/B/C.'
   kind: decide
+  needs: [vec-as-dataframe-type-research]
+  prio: 3
+  status: todo
+
+- id: vec-as-dataframe-type-research
+  title: 'Research spike spun off dense-tensor-type round 5 (maintainer freeText, 2026-09-02): the maintainer''s lean is not a new flat-buffer tensor value kind, but treating Vec itself as inherently the dataframe/tensor-capable type -- a bare-minimum set of dataframe primitives (reshape, transpose, broadcast, reduce) implemented over the existing simple Vec<Vec<Num>> layout. Investigate whether that needs an explicit type-design change (formally making Vec a multi-dimensional type) or can be built as stdlib primitives over the current simple type unchanged, run both against the sensor-pipeline example from plans/dense-tensor-design-research.md, and note the transpose sub-question (single vs generalized multi-dimensional). Write findings to plans/.'
+  kind: build
   needs: []
   prio: 3
   status: todo
