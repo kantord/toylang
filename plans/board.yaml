@@ -363,9 +363,9 @@
   status: todo
 
 - id: offload-boundary-design
-  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled. Round 3 answer, parallel-primitive-basis (Q23): RATIFIED option A -- full basis now (map/scan/reduce/gather/scatter + segmented forms), fold and general recursion demoted to convenience leaves, future stdlib additions checked against the third-homomorphism theorem. Q22 (dense-masked-distinguishable/select representation): maintainer proposed a fourth shape (Vec-typed view, materialized only on strong reference -- ties to mutation-semantics-spike) that none of A/B/C covered; spun off select-materialization-research (gh:176) to ground a re-ask instead of re-presenting the same options. Q21 (batch-invariance-enforcement): maintainer flagged the question itself as unclear -- rewrite with a concrete worked example before round 4, do not re-ask verbatim.'
+  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled. Round 3 answer, parallel-primitive-basis (Q23): RATIFIED option A -- full basis now (map/scan/reduce/gather/scatter + segmented forms), fold and general recursion demoted to convenience leaves, future stdlib additions checked against the third-homomorphism theorem. Q22 (dense-masked-distinguishable/select representation): maintainer proposed a fourth shape (Vec-typed view, materialized only on strong reference -- ties to mutation-semantics-spike) that none of A/B/C covered; spun off select-materialization-research (gh:176) to ground a re-ask instead of re-presenting the same options. Round 4 answer, Q21 (batch-invariance-enforcement, rewritten with the mean/naive-average-of-averages worked example): RATIFIED option B -- compiler requires a declared associative combiner at every batch boundary, same enforcement posture as sort''s element-type check. Maintainer''s answer went further than the three options though, proposing the enforcement should ride on a richer effect type rather than a bare compiler gate: a distinct `Stream<Batch<T>>` (vs plain `Stream<T>`), an explicit `[Stream<T>, N] -> Stream<Batch<T, N>>` batching function, and an open question of what *initiates* batching -- explicit marker, implicit at certain constructs, or forced/unavoidable for certain operations. Spun off batch-type-design-research to ground a re-ask of that shape. Both remaining threads (Q22 and Q21''s follow-up) are now blocked on their research spikes.'
   kind: decide
-  needs: [offload-explain-flag-build]
+  needs: [select-materialization-research, batch-type-design-research]
   soft: [benchmark-goals]
   prio: 5
   status: todo
@@ -373,6 +373,13 @@
 - id: select-materialization-research
   issue: gh:176
   title: 'select''s return representation (Q22 follow-up): survey NumPy views/fancy-indexing, Julia @views, Rust Cow<[T]>, pandas SettingWithCopyWarning, then work out what makes a lazy select-view indexable pre-materialization and whether indexing materializes incrementally. Findings feed a re-ask of offload-boundary-design Q22. See plans/select-materialization-research.md.'
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
+
+- id: batch-type-design-research
+  title: 'Batch-invariance-enforcement follow-up (Q21 round 4): design the richer effect type the maintainer asked for instead of a bare compiler gate -- work out the shape of `Stream<Batch<T>>` as distinct from `Stream<T>`, an explicit `[Stream<T>, N] -> Stream<Batch<T, N>>` batching function, and what initiates batching in the first place (explicit marker, implicit at certain constructs, or forced/unavoidable for certain operations). Survey how other languages/runtimes with chunked-stream processing (Spark partitions, Flink windows, Beam bundles) expose batch boundaries in their type systems. Findings feed a re-ask of offload-boundary-design Q21.'
   kind: build
   needs: []
   prio: 2
