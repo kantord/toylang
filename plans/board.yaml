@@ -1,21 +1,9 @@
 - id: stuck-issue-174-investigation
   kind: build
-  status: todo
+  status: delegated
   needs: []
   issue: gh:174
   title: 'INVESTIGATE stuck lane issue-174 (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-174-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-168-investigation
-  kind: build
-  status: delegated
-  needs: []
-  issue: gh:168
-  title: 'INVESTIGATE stuck lane issue-168 (no activity 4h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-168-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-153-investigation
-  kind: build
-  status: delegated
-  needs: []
-  issue: gh:153
-  title: 'INVESTIGATE stuck lane issue-153 (no activity 2h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-153-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: function-signature-matching-syntax
   issue: gh:152
   title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet; round 3 stress-tested each of the three candidates (A/B/C) against the real parser and re-asked. Round 3 answer: still no pick, needs signature-matching-deeper-research first; round 4 presented that research (all six type shapes) with full code probes per option. Round 4 answer: still no pick, and it is process feedback, not a content signal -- option cards were too long ("at least 8 times shorter"), code belongs once in the thesis not repeated per option, and rounds should frame how each option interacts with future plans rather than asking for an early commit. grill-via-annotations/SKILL.md''s option-card rule updated to match (2026-09-02). Round 5 must re-ask the same A/B/C content (A and B still fail identically pre-shape, C still the only candidate that parses all six shapes) in the new short-card, future-framed shape -- no new research needed.'
@@ -100,26 +88,34 @@
   prio: 4
   status: todo
 
+- id: float-format-research
+  issue: gh:149
+  title: 'Escalation ruling (lane-escalations-168-149 round, float-build-149-siblings-stall, option A): float-build-go/python/rust stalled 6 cumulative runs across 3 lanes, zero commits, before any research. float-build (JS reference) is already landed. Survey how Go (strconv.FormatFloat/ParseFloat), Python (repr(float)/float(str)), and Rust (Display/Debug impls, str::parse) each format an IEEE binary64 float to a string and back versus the JS reference, focusing on round-trip precision and hex/exponent edge cases. The float-build-python lane (~/.local/share/toylang-lanes/issue-float-build-python) has an uncommitted diff plus scratch probe files (f64_probe, float_check.py, hexdump.py, paren_probe.py) from a real struggle with this -- read them for a concrete lead, do not modify that lane. Write concrete per-backend formatting guidance (with short verified code snippets) to plans/, so the three build lanes are not rediscovering the same snag on redispatch.'
+  kind: build
+  needs: []
+  prio: 1
+  status: delegated
+
 - id: float-build-rust
   issue: gh:149
   title: Implement Float (IEEE binary64 per ADR 0007) for the Rust backend only, following float-build's JS implementation as the reference. One backend, one commit.
   kind: build
-  needs: [float-build]
-  status: delegated
+  needs: [float-build, float-format-research]
+  status: todo
 
 - id: float-build-python
   issue: gh:149
   title: Implement Float (IEEE binary64 per ADR 0007) for the Python backend only, following float-build's JS implementation as the reference. One backend, one commit.
   kind: build
-  needs: [float-build]
-  status: delegated
+  needs: [float-build, float-format-research]
+  status: todo
 
 - id: float-build-go
   issue: gh:149
   title: Implement Float (IEEE binary64 per ADR 0007) for the Go backend only, following float-build's JS implementation as the reference. One backend, one commit.
   kind: build
-  needs: [float-build]
-  status: delegated
+  needs: [float-build, float-format-research]
+  status: todo
 
 - id: float-build-lua
   issue: gh:149
@@ -389,7 +385,7 @@
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
