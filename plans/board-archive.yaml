@@ -1418,3 +1418,11 @@
   needs: []
   prio: 4
   status: done
+
+- id: mail-rounds-isolation
+  issue: gh:164
+  title: Mail tab must not blank on one invalid round file -- per-round fetch isolation + visible error row
+  kind: build
+  needs: []
+  prio: 2
+  status: done
