@@ -1411,3 +1411,10 @@
   needs: []
   prio: 4
   status: done
+
+- id: mutation-semantics-spike
+  title: 'Ruled (prelude-partials-and-mutation round): maintainer leans privileged/shared-reference mutation-as-optimization but will not ratify without prototyping -- spike the "provably one reference exists" static analysis against a couple of backends before a real decide row reopens this'
+  kind: build
+  needs: []
+  prio: 4
+  status: done

@@ -79,13 +79,6 @@
   needs: []
   status: delegated
 
-- id: mutation-semantics-spike
-  title: 'Ruled (prelude-partials-and-mutation round): maintainer leans privileged/shared-reference mutation-as-optimization but will not ratify without prototyping -- spike the "provably one reference exists" static analysis against a couple of backends before a real decide row reopens this'
-  kind: build
-  needs: []
-  prio: 4
-  status: todo
-
 - id: float-format-research
   issue: gh:149
   title: 'Escalation ruling (lane-escalations-168-149 round, float-build-149-siblings-stall, option A): float-build-go/python/rust stalled 6 cumulative runs across 3 lanes, zero commits, before any research. float-build (JS reference) is already landed. Survey how Go (strconv.FormatFloat/ParseFloat), Python (repr(float)/float(str)), and Rust (Display/Debug impls, str::parse) each format an IEEE binary64 float to a string and back versus the JS reference, focusing on round-trip precision and hex/exponent edge cases. The float-build-python lane (~/.local/share/toylang-lanes/issue-float-build-python) has an uncommitted diff plus scratch probe files (f64_probe, float_check.py, hexdump.py, paren_probe.py) from a real struggle with this -- read them for a concrete lead, do not modify that lane. Write concrete per-backend formatting guidance (with short verified code snippets) to plans/, so the three build lanes are not rediscovering the same snag on redispatch.'
@@ -117,10 +110,10 @@
 
 - id: float-build-lua
   issue: gh:149
-  title: Implement Float (IEEE binary64 per ADR 0007) for the Lua backend only (host hook), following float-build's JS implementation as the reference. One backend, one commit.
+  title: 'Implement Float (IEEE binary64 per ADR 0007) for the Lua backend only (host hook), following float-build''s JS implementation as the reference. One backend, one commit. Parked (float-build-lua-lane-stall escalation, option C, maintainer note: "not really drop, refile as blocked issue"): 6 runs on the recycled issue-149 worktree burned surveying every other backend with nothing committed. Blocked on float-format-research landing (per-backend formatting guidance) so redispatch has concrete guidance to link instead of guessing again.'
   kind: build
-  needs: [float-build]
-  status: delegated
+  needs: [float-build, float-format-research]
+  status: todo
 
 - id: float-build-jq
   issue: gh:149
@@ -369,6 +362,14 @@
   prio: 3
   status: todo
 
+- id: dense-tensor-design-research
+  issue: gh:175
+  title: 'dense-tensor-type round (Q17-Q19) came back with no option picks on any of the three questions -- maintainer wants deeper groundwork, not different options: (1) whether explicit tensor differentiation (a distinct dense-typed value kind, e.g. @f32) is needed at all versus Vec<Vec<Num>> + stdlib; (2) each option''s consequences and ergonomics checked against more complex, realistic multi-step pipelines, not one-line previews; (3) on null-handling specifically, whether a tensor-specific type with a near-trivial single-call conversion to/from a plain tensor sidesteps the bitmask-vs-sentinel-vs-hard-fail tradeoff (maintainer flagged this as worth examining, not a firm lean). Write findings to plans/ so the round can re-ask with sharper, examples-backed options. Round retired: docs/.grill/dense-tensor-type.round.yaml.'
+  kind: build
+  needs: []
+  prio: 2
+  status: delegated
+
 - id: offload-boundary-design
   title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled.'
   kind: decide
@@ -390,7 +391,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: messagecard-flow-defensive-render
   issue: gh:173
