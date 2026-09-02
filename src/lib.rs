@@ -11,6 +11,7 @@ pub mod emit_toylang;
 pub mod error;
 pub mod fmt_tree;
 pub mod input;
+pub mod offload;
 pub mod parse;
 pub mod prelude;
 pub mod tags;
