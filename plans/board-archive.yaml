@@ -1403,3 +1403,11 @@
   needs: []
   prio: 3
   status: done
+
+- id: offload-explain-flag-build
+  issue: gh:168
+  title: 'Implement `--explain-offload`: an opt-in compiler diagnostic that annotates compiled output with which sub-expressions became vectorized kernels and which fell back, and why -- per the offload-boundary-design round 2 ruling (multiplicity-and-offload-round2, question vectorizability-visibility, option B). No signature or type-system change; a build-time flag only. LSP hover (option C) is a wanted future addition, deliberately unscheduled here.'
+  kind: build
+  needs: []
+  prio: 4
+  status: done
