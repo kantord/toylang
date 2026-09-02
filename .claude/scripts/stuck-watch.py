@@ -163,7 +163,14 @@ def main():
                 continue
             board_busy = sh(["git", "-C", REPO, "diff", "--quiet",
                              "--", "plans/board.yaml"])[0] != 0
-            if (not st["live"] and st["ahead"] == 0 and st["runs"] >= 1
+            # "Not clearly done" (maintainer ruling) covers two shapes: a lane
+            # that ran and produced nothing, AND a lane with commits plus a
+            # dirty tree the land keeps refusing as red -- ahead>0+dirty fit
+            # no tick tier and sat invisible (issue-159, 2026-09-02). A clean
+            # lane with commits ahead is landable, not stuck: the land owns it.
+            undone = (st["tracked_dirty"] > 0
+                      or (st["ahead"] == 0 and st["runs"] >= 1))
+            if (not st["live"] and undone
                     and now - st["last_activity"] >= STUCK_AFTER
                     and not os.path.exists(marker)
                     and not board_busy  # a tick mid-edit owns the board; retry next tick
