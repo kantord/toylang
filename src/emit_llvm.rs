@@ -313,6 +313,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             // every operation, and an Int64 is that representation with the narrowing left off
             // (kantord/toylang#83).
             Type::Int64 => self.ctx.i64_type().into(),
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Bool => self.ctx.bool_type().into(),
             // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
             // the two.
@@ -413,6 +414,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Int | Type::Int64 | Type::Char => value.into_int_value(),
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Bool => self
                 .builder
                 .build_int_z_extend(value.into_int_value(), i64t, "slot")
@@ -430,6 +432,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Int | Type::Int64 | Type::Char => slot.into(),
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Bool => self
                 .builder
                 .build_int_truncate(slot, self.ctx.bool_type(), "elem")
@@ -948,6 +951,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
             // tl_int_to_str already takes the full i64, so both widths print through it.
             Type::Int | Type::Int64 => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Bool => {
                 let t = self.string_const("true");
                 let f = self.string_const("false");
@@ -1215,6 +1219,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(match &t.kind {
             Kind::Str(text) => self.string_const(text).into(),
             Kind::Int(n) => self.ctx.i64_type().const_int(*n as u64, true).into(),
+            Kind::Float(_) => unreachable!("Float is JS-only in this row"),
 
             Kind::Var(name) => *self
                 .params
@@ -2438,6 +2443,7 @@ fn descriptor(enums: &Enums, ty: &Type) -> String {
             Type::Int => "i".to_string(),
             // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.
             Type::Int64 => unreachable!("input cannot contain an Int64, refused by the checker"),
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Bool => "b".to_string(),
             // The checker refuses Char anywhere in an input type: it has no wire form.
             Type::Char => unreachable!("input cannot contain a Char, refused by the checker"),

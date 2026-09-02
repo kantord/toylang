@@ -30,6 +30,12 @@ pub fn validate(enums: &Enums, value: &Value, ty: &Type, path: &str) -> Result<(
             };
         }
 
+        (Type::Float, Value::Number(_)) => {
+            // A Float is the double a JSON number already is (ADR 0007), so every JSON number
+            // -- integer or not -- reads as one, with no exactness to lose the way Int64 does.
+            return Ok(());
+        }
+
         (Type::Vec(elem), Value::Array(items)) => {
             for (i, item) in items.iter().enumerate() {
                 validate(enums, item, elem, &format!("{path}[{i}]"))?;

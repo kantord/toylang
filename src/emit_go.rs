@@ -481,6 +481,8 @@ fn has_scalar(enums: &Enums, ty: &Type) -> bool {
             // The checker refuses a program whose result contains a Char, the same as a stream.
             Type::Char => unreachable!("a Char cannot reach has_scalar"),
             Type::Int | Type::Int64 | Type::Bool => true,
+            // A Float prints as a plain number, which needs no strconv import.
+            Type::Float => false,
             Type::Str => false,
             Type::Vec(t) => reaches(enums, t, seen),
             Type::Record(fields) => fields.iter().any(|(_, t)| reaches(enums, t, seen)),
@@ -561,6 +563,7 @@ impl Collect<'_> {
         match &t.kind {
             Kind::Str(_)
             | Kind::Int(_)
+            | Kind::Float(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
@@ -678,6 +681,7 @@ impl Emitter<'_> {
             // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
             // the two.
             Type::Char => "int32".to_string(),
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Vec(e) => format!("[]{}", self.go_type(e)),
             Type::Enum { .. } if ty.as_opt().is_some() => {
                 format!("tlOpt[{}]", self.go_type(ty.as_opt().expect("guarded")))
@@ -876,6 +880,7 @@ impl Emitter<'_> {
         match &t.kind {
             Kind::Str(s) => go_string(s),
             Kind::Int(n) => int_lit(&t.ty, *n),
+            Kind::Float(_) => unreachable!("Float is JS-only in this row"),
             Kind::Var(name) => self.user(name),
             Kind::Local(id) => self.local(*id),
             Kind::Input => INPUT.to_string(),
@@ -1154,6 +1159,7 @@ impl Emitter<'_> {
             Type::Str => format!("tlQuote({value})"),
             Type::Int => format!("strconv.FormatInt(int64({value}), 10)"),
             Type::Int64 => format!("strconv.FormatInt({value}, 10)"),
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Bool => format!("strconv.FormatBool({value})"),
             Type::Vec(elem) => {
                 let e = format!("e{depth}");

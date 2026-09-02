@@ -361,6 +361,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
         Type::Int | Type::Int64 | Type::Bool => format!("tostring({value})"),
+        Type::Float => unreachable!("Float is JS-only in this row"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
             format!(
@@ -554,6 +555,7 @@ fn used_helpers(program: &Program) -> Helpers {
         match &t.kind {
             Kind::Str(_)
             | Kind::Int(_)
+            | Kind::Float(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
@@ -676,6 +678,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => lua_string(s),
         Kind::Int(n) => n.to_string(),
+        Kind::Float(_) => unreachable!("Float is JS-only in this row"),
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),

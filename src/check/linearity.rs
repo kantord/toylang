@@ -37,7 +37,7 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
             StreamBinding::Local(l) => (l == id) as usize,
             StreamBinding::Param(_) => 0,
         }),
-        Kind::Str(_) | Kind::Int(_) | Kind::Input | Kind::Inputs | Kind::Lines => Ok(0),
+        Kind::Str(_) | Kind::Int(_) | Kind::Float(_) | Kind::Input | Kind::Inputs | Kind::Lines => Ok(0),
         Kind::VecLit(items) => items
             .iter()
             .try_fold(0, |n, i| Ok(n + stream_uses(i, binding)?)),
@@ -167,6 +167,7 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
         | Kind::Local(_)
         | Kind::Str(_)
         | Kind::Int(_)
+        | Kind::Float(_)
         | Kind::Input
         | Kind::Inputs
         | Kind::Lines => false,
@@ -254,6 +255,7 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
     match &t.kind {
         Kind::Str(_)
         | Kind::Int(_)
+        | Kind::Float(_)
         | Kind::Var(_)
         | Kind::Local(_)
         | Kind::Input

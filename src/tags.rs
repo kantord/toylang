@@ -32,6 +32,7 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
     match &tir.kind {
         Kind::Str(_)
         | Kind::Int(_)
+        | Kind::Float(_)
         | Kind::Var(_)
         | Kind::Local(_)
         | Kind::Input
@@ -111,6 +112,7 @@ fn tag(tir: &Tir) -> String {
         // say (kantord/toylang#83), so the tag reads it rather than the kind.
         Kind::Int(_) if tir.ty == crate::ty::Type::Int64 => "int64".into(),
         Kind::Int(_) => "int".into(),
+        Kind::Float(_) => "float".into(),
         Kind::VecLit(_) => "vec-literal".into(),
         Kind::RecordLit { .. } => "record-literal".into(),
         // CONTEXT.md's terms: a `variant` is one alternative, a `unit variant` carries nothing.

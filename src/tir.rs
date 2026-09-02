@@ -27,6 +27,10 @@ pub type LocalId = u32;
 pub enum Kind {
     Str(String),
     Int(i64),
+    /// A float literal: an IEEE 754 binary64 double (ADR 0007). Like `Int`, the width lives
+    /// in the node's own type -- there is only one float width, so a `Float` node is always
+    /// the binary64 the ADR picks, and no other backend needs to consult the type to know.
+    Float(f64),
     VecLit(Vec<Tir>),
     /// A record literal, its fields in declaration order so a field's position here matches
     /// its position in the type. That is what lets a backend address one by index rather than
@@ -488,6 +492,7 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
     match &t.kind {
         Kind::Str(_)
         | Kind::Int(_)
+        | Kind::Float(_)
         | Kind::Var(_)
         | Kind::Local(_)
         | Kind::Input

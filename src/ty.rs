@@ -23,6 +23,14 @@ pub enum Type {
     /// cannot yet read one faithfully (JS parses numbers into doubles), and that codec design
     /// has not been done.
     Int64,
+    /// A double-precision IEEE 754 binary64 float, exactly JavaScript's number (ADR 0007):
+    /// no alternative width, no decimal type. Deliberately a separate type from `Int`, and
+    /// nothing converts implicitly: a decimal point is the spelling that makes a literal a
+    /// Float, and mixing the two in one operator is an error rather than a silent promotion.
+    /// Unlike the integer widths, arithmetic on a Float is total -- division by zero returns
+    /// Infinity, the IEEE answer, where `Int` stops the program (the Q37 ruling in
+    /// plans/questions.md, kantord/toylang#149).
+    Float,
     Bool,
     /// A single Unicode scalar value (kantord/toylang#75): never a surrogate half, so a
     /// codepoint outside the Basic Multilingual Plane is one `Char`, on every backend, even
@@ -97,6 +105,7 @@ impl Type {
             "Str" => Some(Type::Str),
             "Int" => Some(Type::Int),
             "Int64" => Some(Type::Int64),
+            "Float" => Some(Type::Float),
             "Bool" => Some(Type::Bool),
             "Char" => Some(Type::Char),
             _ => None,
@@ -238,6 +247,7 @@ impl Type {
             Type::Str => "Str".to_string(),
             Type::Int => "Int".to_string(),
             Type::Int64 => "Int64".to_string(),
+            Type::Float => "Float".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Char => "Char".to_string(),
             Type::Vec(t) => format!("Vec_{}", t.ident()),
@@ -276,6 +286,7 @@ impl std::fmt::Display for Type {
             Type::Str => write!(f, "Str"),
             Type::Int => write!(f, "Int"),
             Type::Int64 => write!(f, "Int64"),
+            Type::Float => write!(f, "Float"),
             Type::Bool => write!(f, "Bool"),
             Type::Char => write!(f, "Char"),
             Type::Vec(t) => write!(f, "Vec<{t}>"),
@@ -315,6 +326,7 @@ impl PartialEq for Type {
             (Type::Str, Type::Str)
             | (Type::Int, Type::Int)
             | (Type::Int64, Type::Int64)
+            | (Type::Float, Type::Float)
             | (Type::Bool, Type::Bool)
             | (Type::Char, Type::Char) => true,
             (Type::Vec(a), Type::Vec(b)) => a == b,
@@ -371,7 +383,7 @@ pub fn substitute(t: &Type, map: &HashMap<String, Type>) -> Type {
                 .map(|(n, p)| (n.clone(), p.as_ref().map(|p| substitute(p, map))))
                 .collect(),
         },
-        Type::Str | Type::Int | Type::Int64 | Type::Bool | Type::Char => t.clone(),
+        Type::Str | Type::Int | Type::Int64 | Type::Float | Type::Bool | Type::Char => t.clone(),
     }
 }
 

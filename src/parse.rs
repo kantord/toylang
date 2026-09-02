@@ -37,6 +37,7 @@ impl<'i> ParserError<Input<'i>> for Error {
 enum Tok {
     Str(String),
     Int(i64),
+    Float(f64),
     Ident(String),
     Fn,
     Pub,
@@ -82,6 +83,7 @@ impl std::fmt::Display for Tok {
         let s = match self {
             Tok::Str(_) => return write!(f, "a string"),
             Tok::Int(n) => return write!(f, "`{n}`"),
+            Tok::Float(n) => return write!(f, "`{n}`"),
             Tok::Ident(name) => return write!(f, "`{name}`"),
             Tok::Fn => "`fn`",
             Tok::Pub => "`pub`",
@@ -155,18 +157,7 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
 
     let tok = match c {
         '"' => Tok::Str(read_string(input)?),
-        '0'..='9' => {
-            let digits = take_while::<_, _, Error>(1.., |c: char| c.is_ascii_digit())
-                .parse_next(input)
-                .expect("a digit was just confirmed to follow");
-            let n = digits.parse::<i64>().map_err(|_| {
-                Error::new(
-                    Span::new(start, input.current_token_start()),
-                    format!("integer `{digits}` is out of range"),
-                )
-            })?;
-            Tok::Int(n)
-        }
+        '0'..='9' => read_number(input, start)?,
         c if c.is_ascii_alphabetic() || c == '_' => {
             let word =
                 take_while::<_, _, Error>(1.., |c: char| c.is_ascii_alphanumeric() || c == '_')
@@ -252,6 +243,92 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
         }
     };
     Ok((tok, Span::new(start, input.current_token_start())))
+}
+
+/// A number literal: the integer digits that opened it, then an optional `.digits` fraction
+/// and an optional `e`-exponent. Either makes it a Float (ADR 0007); without both it stays the
+/// Int it always was. A `.` or `e` only joins the literal when what follows makes a number, so
+/// `1.5` and `1e3` are one token while `1.`, `1.x`, and `1e` keep the dot or letter for the
+/// parser.
+fn read_number<'i>(input: &mut Input<'i>, start: usize) -> Result<Tok, Error> {
+    let digits = take_while::<_, _, Error>(1.., |c: char| c.is_ascii_digit())
+        .parse_next(input)
+        .expect("a digit was just confirmed to follow");
+    let mut text = digits.to_string();
+    let mut is_float = false;
+
+    if let Some(frac) = read_fraction(input) {
+        text.push('.');
+        text.push_str(&frac);
+        is_float = true;
+    }
+    if let Some(exp) = read_exponent(input) {
+        text.push('e');
+        text.push_str(&exp);
+        is_float = true;
+    }
+
+    let end = input.current_token_start();
+    if is_float {
+        let value = text.parse::<f64>().map_err(|_| {
+            Error::new(
+                Span::new(start, end),
+                format!("float `{text}` is out of range"),
+            )
+        })?;
+        Ok(Tok::Float(value))
+    } else {
+        let n = digits.parse::<i64>().map_err(|_| {
+            Error::new(
+                Span::new(start, end),
+                format!("integer `{digits}` is out of range"),
+            )
+        })?;
+        Ok(Tok::Int(n))
+    }
+}
+
+/// The `.digits` fraction of a number literal, `None` when the dot is not followed by a digit
+/// so it is left for the parser (`1.` and `1.x` are not floats).
+fn read_fraction<'i>(input: &mut Input<'i>) -> Option<String> {
+    if input.peek_token() != Some('.') {
+        return None;
+    }
+    let cp = input.checkpoint();
+    input.next_token();
+    if matches!(input.peek_token(), Some(c) if c.is_ascii_digit()) {
+        let frac = take_while::<_, _, Error>(1.., |c: char| c.is_ascii_digit())
+            .parse_next(input)
+            .expect("a digit was just confirmed to follow");
+        Some(frac.to_string())
+    } else {
+        input.reset(&cp);
+        None
+    }
+}
+
+/// The `e`-exponent of a number literal, `None` when the exponent has no digits after it so
+/// the `e` is left for the parser (a bare trailing `e` is not a float).
+fn read_exponent<'i>(input: &mut Input<'i>) -> Option<String> {
+    if !matches!(input.peek_token(), Some('e') | Some('E')) {
+        return None;
+    }
+    let cp = input.checkpoint();
+    input.next_token();
+    let mut exp = String::new();
+    if matches!(input.peek_token(), Some('+') | Some('-')) {
+        exp.push(input.next_token().expect("a sign was just seen"));
+    }
+    if matches!(input.peek_token(), Some(c) if c.is_ascii_digit()) {
+        let exd = take_while::<_, _, Error>(1.., |c: char| c.is_ascii_digit())
+            .parse_next(input)
+            .expect("a digit was just confirmed to follow");
+        exp.push_str(exd);
+        Some(exp)
+    } else {
+        input.reset(&cp);
+        None
+    }
 }
 
 fn single(input: &mut Input, tok: Tok) -> Tok {
@@ -1165,7 +1242,7 @@ impl<'i> Cursor<'i> {
         }
         let argument_starts = match next {
             Tok::LParen | Tok::LBrace => true,
-            Tok::Str(_) | Tok::Int(_) | Tok::Input | Tok::Inputs | Tok::Lines | Tok::Ident(_) => {
+            Tok::Str(_) | Tok::Int(_) | Tok::Float(_) | Tok::Input | Tok::Inputs | Tok::Lines | Tok::Ident(_) => {
                 bare_callee(&name)
             }
             _ => false,
@@ -1212,6 +1289,7 @@ impl<'i> Cursor<'i> {
         match tok {
             Tok::Str(text) => Ok(Expr::Str { text, span }),
             Tok::Int(value) => Ok(Expr::Int { value, span }),
+            Tok::Float(value) => Ok(Expr::Float { value, span }),
             Tok::Input => Ok(Expr::Input { span }),
             Tok::Inputs => Ok(Expr::Inputs { span }),
             Tok::Lines => Ok(Expr::Lines { span }),
