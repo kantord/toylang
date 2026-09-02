@@ -6,9 +6,9 @@
   title: 'INVESTIGATE stuck lane issue-174 (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-174-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: function-signature-matching-syntax
   issue: gh:152
-  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet; round 3 stress-tested each of the three candidates (A/B/C) against the real parser and re-asked. Round 3 answer: still no pick, needs signature-matching-deeper-research first; round 4 presented that research (all six type shapes) with full code probes per option. Round 4 answer: still no pick, and it is process feedback, not a content signal -- option cards were too long ("at least 8 times shorter"), code belongs once in the thesis not repeated per option, and rounds should frame how each option interacts with future plans rather than asking for an early commit. grill-via-annotations/SKILL.md''s option-card rule updated to match (2026-09-02). Round 5 must re-ask the same A/B/C content (A and B still fail identically pre-shape, C still the only candidate that parses all six shapes) in the new short-card, future-framed shape -- no new research needed.'
-  kind: decide
-  needs: [signature-matching-deeper-research]
+  title: 'Round 5 RULED: maintainer picked A -- call-form hoist (fn render = Msg(Ping -> ... or Quit -> ...)), against the round-5 thesis which favored C on parse-today grounds. Maintainer note: "we are building a new language and it''s in the early stages; most feature requests do not assume this will already parse and that is natural" -- i.e. A''s three novel surfaces (new fn-declaration shape, return-type inference, type-name-as-match-call expression form) are accepted design cost, not disqualifying. Build task: implement A. gh:152 to be closed on landing.'
+  kind: build
+  needs: []
   prio: 3
   status: todo
 
