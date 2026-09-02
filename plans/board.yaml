@@ -16,15 +16,16 @@
   needs: []
   issue: gh:153
   title: 'INVESTIGATE stuck lane issue-153 (no activity 2h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-153-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-169-investigation
+- id: input-type-annotation-build
+  issue: gh:150
   kind: build
-  status: delegated
   needs: []
-  issue: gh:169
-  title: 'INVESTIGATE stuck lane issue-169 (no activity 22h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-169-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+  prio: 3
+  status: todo
+  title: 'Implement `input <type>` as a same-line input-type annotation, applied the same way a call argument is (issue-169 lane escalation, ruled via issue-169-investigation-stall round, option A -- reshape into two lanes, 2026-09-02). The annotation resolves into the same ctx.input cell plain `input` reads (first-use-wins); validated like input_read (stream/absence/Char/Int64 annotations refused); no previously valid program changes meaning (input followed by a same-line record type or type name was already a parse error). Required to meet gh:150''s own definition of done -- its scratch repro files (scratch_let_multi.toy, scratch_let_single.toy) assume `input {x: Int, y: Int}` parses. Full spec, evidence, and cost notes: ~/.local/share/toylang-lanes/issue-169/ESCALATION.md (commit 4df542d). Do not extend to `inputs` or `lines`.'
 - id: function-signature-matching-syntax
   issue: gh:152
-  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 stress-tested each of the three candidates (A/B/C) against the real parser and re-asked. Round 3 answer: still no pick -- maintainer wants deeper research on how each candidate performs across types and use cases not yet examined (structs, tuples, nested/recursive matches) before re-asking; needs signature-matching-deeper-research first.'
+  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet; round 3 stress-tested each of the three candidates (A/B/C) against the real parser and re-asked. Round 3 answer: still no pick, needs signature-matching-deeper-research first; round 4 presented that research (all six type shapes) with full code probes per option. Round 4 answer: still no pick, and it is process feedback, not a content signal -- option cards were too long ("at least 8 times shorter"), code belongs once in the thesis not repeated per option, and rounds should frame how each option interacts with future plans rather than asking for an early commit. grill-via-annotations/SKILL.md''s option-card rule updated to match (2026-09-02). Round 5 must re-ask the same A/B/C content (A and B still fail identically pre-shape, C still the only candidate that parses all six shapes) in the new short-card, future-framed shape -- no new research needed.'
   kind: decide
   needs: [signature-matching-deeper-research]
   prio: 3
