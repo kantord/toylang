@@ -1374,3 +1374,10 @@
   prio: 3
   status: done
   title: 'Implement `input <type>` as a same-line input-type annotation, applied the same way a call argument is (issue-169 lane escalation, ruled via issue-169-investigation-stall round, option A -- reshape into two lanes, 2026-09-02). The annotation resolves into the same ctx.input cell plain `input` reads (first-use-wins); validated like input_read (stream/absence/Char/Int64 annotations refused); no previously valid program changes meaning (input followed by a same-line record type or type name was already a parse error). Required to meet gh:150''s own definition of done -- its scratch repro files (scratch_let_multi.toy, scratch_let_single.toy) assume `input {x: Int, y: Int}` parses. Full spec, evidence, and cost notes: ~/.local/share/toylang-lanes/issue-169/ESCALATION.md (commit 4df542d). Do not extend to `inputs` or `lines`.'
+
+- id: stuck-issue-172-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:172
+  title: 'INVESTIGATE stuck lane issue-172 (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-172-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'

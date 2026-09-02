@@ -377,3 +377,34 @@ stuck-lane-investigation dispatches (the script's own doc comment already names 
 "research dispatches, custom continuations" case), and give `stdin-redesign-build-2` a lane
 number that doesn't collide with an investigation row before dispatching it.
 | 2026-09-02 | issue-153 (stuck-issue-153-investigation / declare-terminator-build, gh:153) | Runs 1-2 died from backtick-command-substitution permission denials, rebriefed with that root cause on 2026-09-01 (3a2d02d). Runs 3-4, dispatched with the corrected brief, hit a different wall: edit-tool string-mismatch failures partway through the same `src/parse.rs` refactor (tokenize `;`, remove the old cross-line-call heuristic, rewire `input <type>`), leaving a coherent but uncommitted diff each time -- `Tok::Semicolon` is tokenized but never consumed; no run reached the actual terminator-parsing change gh:153 asks for. | $0 marginal (all four runs zero-committed), 4 commitless runs across two dispatch cycles, zero code landed | Unclear -- the diff's shape suggests dispatch size/duration, not task difficulty: one continuous session tries to tokenize + delete a heuristic + rewire a call site + add new parsing all at once. Escalated to the maintainer (issue-153-investigation-stall round, options: split into two smaller dispatches / stronger model / drop) rather than redispatching a fifth time. |
+
+## Resolved without a third dispatch: `stuck-issue-172-investigation`, root cause fully visible on disk (2026-09-02)
+
+2 commitless runs, both under lane `issue-172` (the near-miss above already flagged this
+lane collided with `stdin-redesign-build-2`'s real gh:172 work). Read both event logs
+directly instead of dispatching a third run:
+
+- Run 1 (`20260902-204336-issue-172.jsonl`): spent its whole budget re-deriving context
+  (`gh issue view 172`, walking `issue-159`'s abandoned worktree, `git show` on the
+  reference diff) then died when the user-permission layer rejected a `read` of
+  `/tmp/ref.diff` -- never reached the incident evidence or wrote a report.
+- Run 2 (`20260902-214450-issue-172.jsonl`): correctly found the frozen evidence at
+  `plans/incidents/issue-172-20260902/` via `git show e7a290d:plans/...` (local copy was
+  missing, main was 6 commits ahead of the checkout), read `opencode-rollout.md` for the
+  report format, then died the same way -- a `cat` of the full first-run log (after already
+  reading it once at `limit=`) got rejected by the permission layer. Never wrote a report.
+
+Root cause: both runs are permission-trap deaths, not task-shape or brief-clarity failures --
+the investigation *brief itself* is fine (run 2 followed it correctly end-to-end up to the
+report step); what killed both runs was re-reading an already-large file a second time in one
+shot instead of paging with `limit=`/`tail`. That is exactly the class of thing a fresh
+dispatch would repeat, since the trap is in how these workers read logs, not in what they were
+told to investigate.
+
+Answering the investigation's own three questions from this evidence directly (no third run
+needed): not brief clarity (run 2 read the brief and evidence correctly), not a capability gap,
+not task shape -- it is a tooling/permission trap (oversized single-shot reads of files already
+read once) compounded by the still-open lane-collision risk with `stdin-redesign-build-2`
+(follow-up already logged above, unchanged: give that row its own non-colliding lane before
+dispatching it). Archiving `stuck-issue-172-investigation` on this finding rather than spending
+a third commitless run to rediscover it.
