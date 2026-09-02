@@ -1395,3 +1395,11 @@
   needs: []
   issue: gh:153
   title: 'INVESTIGATE stuck lane issue-153 (no activity 2h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-153-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: declare-terminator-build
+  issue: gh:153
+  title: Require an explicit terminator after fn/type declarations, retire the same-line heuristic (issue #9 oddity ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: done
