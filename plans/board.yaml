@@ -100,13 +100,6 @@
   prio: 4
   status: todo
 
-- id: float-build
-  issue: gh:149
-  title: 'Reshaped after 3 commitless runs (root cause, 2026-09-02: worker burns its entire step budget deliberating the commit order and C-backend escalation timing across all 6 backends before writing any code or making a single commit -- see ~/.cache/toylang-drive/opencode/20260902-002801-issue-149.jsonl). Scope cut to ONE backend: implement Float (IEEE binary64 per ADR 0007) for the JS backend ONLY (ty, ast, parse, tir, check, emit_toylang, emit_js, src/float.rs as needed). Do not touch any other backend and do not write an ESCALATION.md -- that is out of scope for this row. Commit as soon as the JS backend test passes; do not plan ahead for the remaining backends.'
-  kind: build
-  needs: []
-  status: delegated
-
 - id: float-build-rust
   issue: gh:149
   title: Implement Float (IEEE binary64 per ADR 0007) for the Rust backend only, following float-build's JS implementation as the reference. One backend, one commit.

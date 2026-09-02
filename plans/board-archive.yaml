@@ -1325,3 +1325,10 @@
   needs: []
   issue: gh:140
   title: 'INVESTIGATE stuck lane issue-140 (no activity 47h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-140-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: float-build
+  issue: gh:149
+  title: 'Reshaped after 3 commitless runs (root cause, 2026-09-02: worker burns its entire step budget deliberating the commit order and C-backend escalation timing across all 6 backends before writing any code or making a single commit -- see ~/.cache/toylang-drive/opencode/20260902-002801-issue-149.jsonl). Scope cut to ONE backend: implement Float (IEEE binary64 per ADR 0007) for the JS backend ONLY (ty, ast, parse, tir, check, emit_toylang, emit_js, src/float.rs as needed). Do not touch any other backend and do not write an ESCALATION.md -- that is out of scope for this row. Commit as soon as the JS backend test passes; do not plan ahead for the remaining backends.'
+  kind: build
+  needs: []
+  status: done
