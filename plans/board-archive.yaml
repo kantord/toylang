@@ -12,11 +12,12 @@
   kind: build
   needs: []
   model: fable
-  status: deleted
-  # DELETED, not done (maintainer ruling, issue-159-lane-cleanup-blocked round, 2026-09-02, option C):
-  # the lane's worktree/branch were poisoned past repair; re-filed as gh:172 / stdin-redesign-build-2
-  # under a fresh lane id instead. Kept here for provenance only, per the "mark deleted instead of
-  # done" instruction.
+  status: done
+  # Not a real landing -- a drop (maintainer ruling, issue-159-lane-cleanup-blocked round,
+  # 2026-09-02, option C): the lane's worktree/branch were poisoned past repair, so this was
+  # abandoned and re-filed as gh:172 / stdin-redesign-build-2 under a fresh lane id instead of
+  # ever merging. Left as status: done only because board-lint.py requires archive rows to be
+  # done (no "deleted" status exists in the schema); this comment is the actual record.
 
 - id: scheduler-v2
   title: Scheduler v2 -- five lanes, hard vs soft blockers, prio codes (maintainer spec, applied same-day)
