@@ -73,7 +73,7 @@
 
 - id: stdin-redesign-build
   issue: gh:159
-  title: Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative, gh:159 -- verify parse(.) resolves an expected type inside a map body before full build)
+  title: 'Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative, gh:159 -- verify parse(.) resolves an expected type inside a map body before full build). Escalated after 4 runs (2026-09-02): the feature itself landed cleanly in the first run (commit 45c76be), but 3 repair attempts against a 16-file merge conflict with main have each failed, the latest leaving the branch uncompilable (unclosed delimiter, src/check/mod.rs:3034). Do not redispatch until the issue-159-escalation round is ruled (~/.cache/toylang-drive/escalated-issue-159).'
   kind: build
   needs: []
   model: fable
