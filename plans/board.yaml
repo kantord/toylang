@@ -114,10 +114,52 @@
 
 - id: float-build
   issue: gh:149
-  title: Implement Float (IEEE binary64 per ADR 0007) across the backends
+  title: 'Reshaped after 3 commitless runs (root cause, 2026-09-02: worker burns its entire step budget deliberating the commit order and C-backend escalation timing across all 6 backends before writing any code or making a single commit -- see ~/.cache/toylang-drive/opencode/20260902-002801-issue-149.jsonl). Scope cut to ONE backend: implement Float (IEEE binary64 per ADR 0007) for the JS backend ONLY (ty, ast, parse, tir, check, emit_toylang, emit_js, src/float.rs as needed). Do not touch any other backend and do not write an ESCALATION.md -- that is out of scope for this row. Commit as soon as the JS backend test passes; do not plan ahead for the remaining backends.'
   kind: build
   needs: []
   status: delegated
+
+- id: float-build-rust
+  issue: gh:149
+  title: Implement Float (IEEE binary64 per ADR 0007) for the Rust backend only, following float-build's JS implementation as the reference. One backend, one commit.
+  kind: build
+  needs: [float-build]
+  status: todo
+
+- id: float-build-python
+  issue: gh:149
+  title: Implement Float (IEEE binary64 per ADR 0007) for the Python backend only, following float-build's JS implementation as the reference. One backend, one commit.
+  kind: build
+  needs: [float-build]
+  status: todo
+
+- id: float-build-go
+  issue: gh:149
+  title: Implement Float (IEEE binary64 per ADR 0007) for the Go backend only, following float-build's JS implementation as the reference. One backend, one commit.
+  kind: build
+  needs: [float-build]
+  status: todo
+
+- id: float-build-lua
+  issue: gh:149
+  title: Implement Float (IEEE binary64 per ADR 0007) for the Lua backend only (host hook), following float-build's JS implementation as the reference. One backend, one commit.
+  kind: build
+  needs: [float-build]
+  status: todo
+
+- id: float-build-jq
+  issue: gh:149
+  title: Implement Float (IEEE binary64 per ADR 0007) for the jq backend only, following float-build's JS implementation as the reference. One backend, one commit.
+  kind: build
+  needs: [float-build]
+  status: todo
+
+- id: float-build-c-escalation
+  issue: gh:149
+  title: Attempt Float (IEEE binary64 per ADR 0007) for the C/LLVM backend; if there is no usable native matching primitive, write ESCALATION.md scoped to just this backend, commit it, and stop rather than stalling.
+  kind: build
+  needs: [float-build]
+  status: todo
 
 - id: benchmark-suite-build
   title: Build the initial benchmark suite -- 8 non-float CLBG tasks, hyperfine harness per benchmark-plan.md, framed as a general cross-language competitiveness claim (gh:147 ruling); n-body/spectral-norm deferred to a second wave (gh:146 ruling)
