@@ -217,6 +217,13 @@ pub enum Expr {
         value: i64,
         span: Span,
     },
+    /// A decimal-point literal (ADR 0007): an IEEE 754 binary64 double, the same
+    /// representation every JavaScript engine carries. The dot is what makes a number a Float,
+    /// and there is no alternative width or decimal type to guess at.
+    Float {
+        value: f64,
+        span: Span,
+    },
     VecLit {
         items: Vec<Expr>,
         span: Span,
@@ -408,6 +415,7 @@ impl Expr {
         match self {
             Expr::Str { span, .. }
             | Expr::Int { span, .. }
+            | Expr::Float { span, .. }
             | Expr::VecLit { span, .. }
             | Expr::Subject { span }
             | Expr::Var { span, .. }

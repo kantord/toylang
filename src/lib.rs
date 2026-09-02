@@ -9,6 +9,7 @@ pub mod emit_py;
 pub mod emit_rs;
 pub mod emit_toylang;
 pub mod error;
+pub mod float;
 pub mod fmt_tree;
 pub mod input;
 pub mod parse;

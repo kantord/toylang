@@ -385,8 +385,10 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("JSON.stringify({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
-        // String() on a BigInt is the bare digits, no `n` suffix, so Int64 rides the same arm.
-        Type::Int | Type::Int64 | Type::Bool => format!("String({value})"),
+        // String() on a BigInt is the bare digits, no `n` suffix, so Int64 rides the same arm;
+        // on a Number it is JS's shortest round-trip spelling, which is exactly how a Float
+        // prints (Infinity and NaN come out as their names).
+        Type::Int | Type::Int64 | Type::Float | Type::Bool => format!("String({value})"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
             format!(
@@ -561,6 +563,7 @@ fn used_helpers(program: &Program) -> Helpers {
         match &t.kind {
             Kind::Str(_)
             | Kind::Int(_)
+            | Kind::Float(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
@@ -620,7 +623,7 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::Arith { lhs, rhs, .. } => {
                 if t.ty == Type::Int64 {
                     used.arith64 = true;
-                } else {
+                } else if t.ty == Type::Int {
                     used.arith = true;
                 }
                 walk(lhs, used);
@@ -769,6 +772,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => js_string(s),
         Kind::Int(n) => int_lit(&t.ty, *n),
+        Kind::Float(n) => crate::float::lit(*n),
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
@@ -1049,7 +1053,18 @@ fn int_lit(ty: &Type, n: i64) -> String {
 /// at any width, so on the 64-bit side only the wrap needs spelling -- Math.imul has no
 /// 64-bit sibling and none is needed.
 fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
-    if *ty == Type::Int64 {
+    if *ty == Type::Float {
+        // IEEE binary64 is the type itself (ADR 0007), so plain JS operators are the exact
+        // arithmetic, with no wrap to spell. Division by zero is the IEEE answer, Infinity,
+        // which is why there is no `tl_div` guard here unlike the integer widths.
+        match op {
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            BinOp::Div => format!("({l} / {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else if *ty == Type::Int64 {
         match op {
             BinOp::Div => format!("tl_div64({l}, {r})"),
             BinOp::Rem => format!("tl_rem64({l}, {r})"),

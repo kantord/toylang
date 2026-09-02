@@ -39,6 +39,7 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
         }),
         Kind::Str(_)
         | Kind::Int(_)
+        | Kind::Float(_)
         | Kind::Input
         | Kind::Inputs
         | Kind::Lines
@@ -166,6 +167,7 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
         | Kind::Local(_)
         | Kind::Str(_)
         | Kind::Int(_)
+        | Kind::Float(_)
         | Kind::Input
         | Kind::Inputs
         | Kind::Lines
@@ -254,6 +256,7 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
     match &t.kind {
         Kind::Str(_)
         | Kind::Int(_)
+        | Kind::Float(_)
         | Kind::Var(_)
         | Kind::Local(_)
         | Kind::Input

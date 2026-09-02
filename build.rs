@@ -68,6 +68,12 @@ impl ToRust for i64 {
     }
 }
 
+impl ToRust for f64 {
+    fn to_rust(&self) -> String {
+        format!("{self}f64")
+    }
+}
+
 impl ToRust for u32 {
     fn to_rust(&self) -> String {
         format!("{self}u32")
@@ -143,6 +149,7 @@ impl ToRust for ty::Type {
             ty::Type::Str => "crate::ty::Type::Str".to_string(),
             ty::Type::Int => "crate::ty::Type::Int".to_string(),
             ty::Type::Int64 => "crate::ty::Type::Int64".to_string(),
+            ty::Type::Float => "crate::ty::Type::Float".to_string(),
             ty::Type::Bool => "crate::ty::Type::Bool".to_string(),
             ty::Type::Char => "crate::ty::Type::Char".to_string(),
             ty::Type::Vec(elem) => format!("crate::ty::Type::Vec({})", elem.to_rust()),
@@ -369,6 +376,7 @@ impl ToRust for tir::Kind {
         match self {
             Str(s) => format!("crate::tir::Kind::Str({})", s.to_rust()),
             Int(n) => format!("crate::tir::Kind::Int({})", n.to_rust()),
+            Float(n) => format!("crate::tir::Kind::Float({})", n.to_rust()),
             VecLit(items) => format!("crate::tir::Kind::VecLit({})", items.to_rust()),
             RecordLit { fields } => record_lit(fields),
             EnumLit { variant, payload } => enum_lit(variant, payload),

@@ -409,6 +409,7 @@ fn print_expr_inner(e: &Expr) -> String {
     match e {
         Expr::Str { text, .. } => format!("\"{}\"", escape_str(text)),
         Expr::Int { value, .. } => value.to_string(),
+        Expr::Float { value, .. } => crate::float::lit(*value),
         Expr::VecLit { items, .. } => {
             let items_str = items
                 .iter()

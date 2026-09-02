@@ -1636,6 +1636,13 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Ok(Tir::new(Type::Int, Kind::Int(*value)))
         }
 
+        // A float literal is exactly the binary64 it spells (ADR 0007): there is no width to
+        // resolve and no range to check, so a position has nothing to contribute, unlike Int.
+        Expr::Float { value, span } => {
+            let _ = span;
+            Ok(Tir::new(Type::Float, Kind::Float(*value)))
+        }
+
         Expr::Subject { span } => match &ctx.subject {
             Some((ty, id)) => Ok(Tir::new(ty.clone(), Kind::Local(*id))),
             None => Err(Error::new(*span, "`.` is not bound here")),
@@ -1842,11 +1849,14 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 }
                 return Ok(Tir::new(Type::Int, Kind::Int(-value)));
             }
+            if let Expr::Float { value, .. } = base.as_ref() {
+                return Ok(Tir::new(Type::Float, Kind::Float(-value)));
+            }
             // Synthesise first, so `-x` works at whichever integer width `x` already has; a
             // form that can only be checked (`-input` fixing input to Int) falls back to the
             // Int expectation this arm always applied.
             let inner = match synth(ctx, base) {
-                Ok(inner) if matches!(inner.ty, Type::Int | Type::Int64) => inner,
+                Ok(inner) if matches!(inner.ty, Type::Int | Type::Int64 | Type::Float) => inner,
                 Ok(inner) => {
                     return Err(Error::new(
                         base.span(),
@@ -2576,7 +2586,7 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
 
         // Comparison never crosses the integer widths either: the sides must already agree,
         // and the mismatch names `i64` the same way arithmetic's does.
-        if matches!(left.ty, Type::Int | Type::Int64) {
+        if matches!(left.ty, Type::Int | Type::Int64 | Type::Float) {
             let right = expect_int_width(ctx, rhs, &left.ty, op)?;
             return Ok(Tir::new(
                 Type::Bool,
@@ -2621,10 +2631,10 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     }
 
     if op.is_arithmetic() {
-        if !matches!(left.ty, Type::Int | Type::Int64) {
+        if !matches!(left.ty, Type::Int | Type::Int64 | Type::Float) {
             return Err(Error::new(
                 lhs.span(),
-                format!("expected Int or Int64, found {}", left.ty),
+                format!("expected Int, Int64, or Float, found {}", left.ty),
             ));
         }
         // Both sides share the left's width: nothing widens implicitly (kantord/toylang#83),
@@ -2652,7 +2662,7 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
 /// sides to agree.
 fn plus(ctx: &Ctx, lhs: &Expr, left: Tir, rhs: &Expr) -> Result<Tir, Error> {
     match &left.ty {
-        Type::Int | Type::Int64 => {
+        Type::Int | Type::Int64 | Type::Float => {
             let width = left.ty.clone();
             let right = expect_int_width(ctx, rhs, &width, BinOp::Add)?;
             let kind = Kind::Arith {

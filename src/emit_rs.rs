@@ -793,6 +793,7 @@ impl Collect<'_> {
         match &t.kind {
             Kind::Str(_)
             | Kind::Int(_)
+            | Kind::Float(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
@@ -903,6 +904,7 @@ impl Emitter<'_> {
             Type::Sink => "String".to_string(),
             Type::Int => "i32".to_string(),
             Type::Int64 => "i64".to_string(),
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Bool => "bool".to_string(),
             // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
             // the two, so nothing here needs to tell them apart.
@@ -931,6 +933,7 @@ impl Emitter<'_> {
             Type::Int => "tl_parse_i32".to_string(),
             // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.
             Type::Int64 => unreachable!("input cannot contain an Int64, refused by the checker"),
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Bool => "tl_parse_bool".to_string(),
             // The checker refuses Char anywhere in an input type: it has no wire form.
             Type::Char => unreachable!("input cannot contain a Char, refused by the checker"),
@@ -1170,6 +1173,7 @@ impl Emitter<'_> {
         match &t.kind {
             Kind::Str(s) => rs_string(s),
             Kind::Int(n) => int_lit(&t.ty, *n),
+            Kind::Float(_) => unreachable!("Float is JS-only in this row"),
             Kind::Var(name) => format!("{}.clone()", self.user(name)),
             Kind::Local(id) => format!("{}.clone()", self.local(*id)),
             Kind::Input => format!("{INPUT}.clone()"),
@@ -1426,6 +1430,7 @@ impl Emitter<'_> {
             Type::Str => format!("tl_quote(&{value})"),
             Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Int | Type::Int64 => format!("({value}).to_string()"),
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Bool => format!("({value}).to_string()"),
             Type::Vec(elem) => {
                 let e = format!("e{depth}");
