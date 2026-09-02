@@ -49,6 +49,10 @@ export interface MailItem {
   preview: Preview | null
   annotation?: Annotation
   round?: { topic: string; round: Round }
+  /** A round file that exists on disk but cannot be served (kantord/toylang#164): the topic names
+   *  the file and the error is the server's reason, kept on the row so a bad file is noticed
+   *  instead of silently hiding mail. */
+  roundError?: { topic: string; error: string }
   plan?: Plan
 }
 
@@ -106,6 +110,22 @@ export function grillItem(topic: string, round: Round, answered: boolean): MailI
     flow: "round",
     preview: null,
     round: { topic, round },
+  }
+}
+
+/** A round that cannot be rendered: the list keeps its row so the file's existence is visible
+ *  even though its content never parsed or served (kantord/toylang#164). Stays a `round`-flow
+ *  inbox item -- it is a round the maintainer must fix, so it needs attention like any other. */
+export function grillErrorItem(topic: string, error: string): MailItem {
+  return {
+    key: `grill-error:${topic}`,
+    folder: "inbox",
+    sender: "Grilling round",
+    subject: topic,
+    note: error,
+    flow: "round",
+    preview: { text: error },
+    roundError: { topic, error },
   }
 }
 
