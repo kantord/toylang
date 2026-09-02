@@ -81,10 +81,11 @@
   status: delegated
 
 - id: trait-interface-build
+  issue: gh:174
   title: 'Ruled (trait-interface-design round): (1) Rust-shaped declaration -- trait Name { fn sig(...) -> T } / impl Name for Type { fn sig(...) -> T = body }; (2) builtin operators (Int+Int, Str+Str, ...) tentatively become source-written prelude impls "when practical, otherwise built in" -- maintainer explicitly declined to fully commit either way ("in some cases performance may decide this... we would need to see how it works out in practice"), so start with prelude impls (uniform, matches the mechanism) and fall back to checker-generated only where the prelude indirection provably costs real performance; revisit once build experience exists; (3) named trait methods are colon-only -- x:foo(y) is the only spelling, no plain-call fallback even when unambiguous.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: mutation-semantics-spike
   title: 'Ruled (prelude-partials-and-mutation round): maintainer leans privileged/shared-reference mutation-as-optimization but will not ratify without prototyping -- spike the "provably one reference exists" static analysis against a couple of backends before a real decide row reopens this'
