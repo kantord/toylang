@@ -2,4 +2,4 @@
 source: tests/unwrap.rs
 expression: "toylang::compile(r#\"\"a\" if 1 else \"b\"\"#).map(|_| ()).unwrap_err().to_string()"
 ---
-expected Bool, found Int (at byte 7)
+expected end of program, found `if` (at byte 4)

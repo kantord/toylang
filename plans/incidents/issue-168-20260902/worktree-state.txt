@@ -1,0 +1,20 @@
+captured: 2026-09-02T00:24:51+0200
+state: {"ts": 1788301491, "lane": "issue-168", "ahead": 0, "tracked_dirty": 2, "live": false, "runs": 2, "last_activity": 1788285643}
+
+=== git status ===
+ M src/lib.rs
+ M src/main.rs
+?? scratch_off.toy
+?? src/offload.rs
+
+=== git diff --stat ===
+ src/lib.rs  |  1 +
+ src/main.rs | 24 ++++++++++++++++++++----
+ 2 files changed, 21 insertions(+), 4 deletions(-)
+
+=== coordinator note (2026-09-02) ===
+The offload implementation this lane lost from its tracked tree survives in
+two places: src/offload.rs is still present (untracked) in the worktree, and
+a dropped stash of the src/lib.rs + src/main.rs modifications was rescued to
+the branch rescue/issue-168-offload-wip (commit f4db108). Diagnose why the
+worker stashed/reset instead of committing; do not re-author the feature.

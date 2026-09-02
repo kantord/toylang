@@ -138,3 +138,24 @@ fn undeclared_input_fields_are_ignored() {
 fn program_needs_input_but_none_given() {
     insta::assert_snapshot!(toylang::run(ADULTS).map(|_| ()).unwrap_err().to_string());
 }
+
+/// A non-`pub` prelude helper is a private helper for prelude.toy: it stays available to the
+/// `pub` functions in that file, but the program's own file is a different file, so a call to it
+/// from here is refused (gh:166).
+#[test]
+fn a_program_cannot_call_a_private_prelude_helper() {
+    insta::assert_snapshot!(err(r#"join_parts(["ada", "bo"])"#));
+}
+
+/// The same-file side of that rule: a program's own non-`pub` function is in the same file as
+/// its call site, so calling it is legal. The refusal only ever crosses a file boundary.
+#[test]
+fn a_program_can_call_its_own_non_pub_helper() {
+    let src = r#"
+fn parts(v: Vec<Str>) -> Str =
+    v | length(v) == 0 -> "" or v[0]! + parts(tail(v)!)
+
+parts(["ada", "bo"])
+"#;
+    insta::assert_snapshot!(toylang::run(src).unwrap());
+}

@@ -2,11 +2,11 @@
 # exactly Str, and Status is not Str, so nothing strips them -- the case plans/enums.md step 1
 # says to pin.
 program: |
-  enum Status { active, inactive }
+  enum Status { Active, Inactive }
 
   active
 
 output: |
-  "active"
+  "Active"
 
 node_types: [variant.unit]

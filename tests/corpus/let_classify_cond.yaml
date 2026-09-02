@@ -1,0 +1,18 @@
+# The issue's canonical single-binding `let` example: one binding whose value is a whole
+# arithmetic expression, and a conditional as the block's value. The block's value is checked
+# against the return type, which is what lets the `m == 0` / `m < 100` chain read the bound
+# local (issue #150).
+program: |
+  fn classify(p: {x: Int, y: Int}) -> Str =
+      let m = p.x * p.x + p.y * p.y
+      m | m == 0 -> "origin" or m < 100 -> "near" or "far"
+
+  classify(input)
+
+input: |
+  {"x": 3, "y": 4}
+
+output: |
+  near
+
+node_types: [application, arith.add, arith.mul, compare.eq, compare.lt, input, int, local, match, pipe, projection, str, var]

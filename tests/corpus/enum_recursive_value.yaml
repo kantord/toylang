@@ -5,12 +5,12 @@
 # end. So each backend prints a recursive enum through a named function that calls itself
 # (kantord/toylang#94), which is what the snapshot below shows and the output cannot.
 program: |
-  enum Json { arr(Vec<Json>), num(Int) }
+  enum Json { Arr(Vec<Json>), Num(Int) }
 
   Json.arr([Json.num(1), Json.arr([Json.num(2)]), Json.num(3)])
 
 output: |
-  {"arr":[{"num":1},{"arr":[{"num":2}]},{"num":3}]}
+  {"Arr":[{"Num":1},{"Arr":[{"Num":2}]},{"Num":3}]}
 
 snapshot: [js]
 

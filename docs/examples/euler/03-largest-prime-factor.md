@@ -18,9 +18,10 @@ recursion is about 740 calls deep at its deepest, inside every backend's stack.
 
 ```toylang
 fn largest(p: {n: Int64, d: Int64}) -> Int64 =
-    p.n if p.d * p.d > p.n else
-        largest({n: p.n / p.d, d: p.d}) if p.n % p.d == 0 else
-        largest({n: p.n, d: p.d + (1 if p.d == 2 else 2)})
+    p
+        | .d * .d > .n -> p.n or
+              .n % .d == 0 -> largest({n: p.n / p.d, d: p.d}) or
+              largest({n: p.n, d: p.d + (p | .d == 2 -> 1 or 2)})
 
 largest({n: 600851475143, d: 2})
 ```

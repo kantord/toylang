@@ -1,0 +1,7 @@
+program: |
+  [0, 1, 2, 3, 4][-3:-1]
+
+output: |
+  [2,3]
+
+node_types: [int, selection.narrow, vec-literal]

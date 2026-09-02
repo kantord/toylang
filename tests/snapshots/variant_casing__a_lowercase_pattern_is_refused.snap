@@ -1,0 +1,5 @@
+---
+source: tests/variant_casing.rs
+expression: "err(\"enum Shape { Point, Circle{r: Int} }\\n\\n\\\n         fn f(s: Shape) -> Int = s | circle{r} -> r or Point -> 0\\n\\n\\\n         f(Shape.point)\")"
+---
+`circle` is the constructor, not a matcher; a pattern names the matcher, so write `Circle` (at byte 66)

@@ -2,11 +2,11 @@
 # receives the declared return type, which is what lets one arm hold `[]`; the argument is a
 # variant-naming string, riding on step three.
 program: |
-  enum Status { active, inactive }
+  enum Status { Active, Inactive }
 
-  fn work(s: Status) -> Vec<Int> = s | active -> [1, 2] or inactive -> []
+  fn work(s: Status) -> Vec<Int> = s | Active -> [1, 2] or Inactive -> []
 
-  work("inactive")
+  work("Inactive")
 
 output: |
   []

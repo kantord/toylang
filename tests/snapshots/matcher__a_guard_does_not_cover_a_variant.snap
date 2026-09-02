@@ -1,5 +1,5 @@
 ---
 source: tests/matcher.rs
-expression: "err(\"enum S { a, b }\\n\\nS.a | a -> 1 or 1 == 1 -> 2\")"
+expression: "err(\"enum S { A, B }\\n\\nS.a | A -> 1 or 1 == 1 -> 2\")"
 ---
-a match over `S` must cover every variant or end in a default; missing `b` (at byte 23)
+a match over `S` must cover every variant or end in a default; missing `B` (at byte 23)

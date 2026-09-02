@@ -80,7 +80,7 @@ fn equality_does_not_reach_past_a_vec() {
 #[test]
 fn equality_does_not_reach_past_a_vec_in_a_payload() {
     insta::assert_snapshot!(err(r#"
-enum Holder { empty, full{items: Vec<Int>} }
+enum Holder { Empty, Full{items: Vec<Int>} }
 
 full{items: [1]} == full{items: [1]}
 "#));

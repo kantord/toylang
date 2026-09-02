@@ -13,53 +13,36 @@ hundred digits and reports where it stopped; `cycle_outer` calls it chunk after 
 carrying the remainder forward, so no single call frame goes deeper than about a hundred.
 
 ```toylang
-fn strip2(n: Int) -> Int = strip2(n / 2) if n % 2 == 0 else n
+fn strip2(n: Int) -> Int = n | . % 2 == 0 -> strip2(. / 2) or .
 
-fn strip5(n: Int) -> Int = strip5(n / 5) if n % 5 == 0 else n
+fn strip5(n: Int) -> Int = n | . % 5 == 0 -> strip5(. / 5) or .
 
 fn reduced(d: Int) -> Int = strip5(strip2(d))
 
 fn cycle_inner(p: {m: Int, r: Int, count: Int, steps_left: Int}) -> {done: Int, count: Int, r: Int} =
-    {done: 1, count: p.count, r: p.r} if p.r == 1 else
-        {done: 0, count: p.count, r: p.r} if p.steps_left == 0 else
-        cycle_inner(
-            {
-                m: p.m,
-                r: p.r * 10 % p.m,
-                count: p.count + 1,
-                steps_left: p.steps_left - 1
-            }
-        )
+    p
+        | .r == 1 -> {done: 1, count: .count, r: .r} or
+              .steps_left == 0 -> {done: 0, count: .count, r: .r} or
+              cycle_inner({m: .m, r: .r * 10 % .m, count: .count + 1, steps_left: .steps_left - 1})
 
 fn cycle_outer(p: {m: Int, r: Int, count: Int, chunks_left: Int}) -> Int =
-    -1 if p.chunks_left == 0 else
-        cycle_inner({m: p.m, r: p.r, count: p.count, steps_left: 100}).count if cycle_inner({m: p.m, r: p.r, count: p.count, steps_left: 100}).done == 1 else
-        cycle_outer(
-            {
-                m: p.m,
-                r: cycle_inner({m: p.m, r: p.r, count: p.count, steps_left: 100}).r,
-                count: cycle_inner({m: p.m, r: p.r, count: p.count, steps_left: 100}).count,
-                chunks_left: p.chunks_left - 1
-            }
-        )
+    p
+        | .chunks_left == 0 -> -1 or
+              cycle_inner({m: .m, r: .r, count: .count, steps_left: 100}).done == 1 -> cycle_inner({m: .m, r: .r, count: .count, steps_left: 100}).count or
+              cycle_outer({m: .m, r: cycle_inner({m: .m, r: .r, count: .count, steps_left: 100}).r, count: cycle_inner({m: .m, r: .r, count: .count, steps_left: 100}).count, chunks_left: .chunks_left - 1})
 
 fn cycle_length(d: Int) -> Int =
-    0 if reduced(d) == 1 else
-        cycle_outer(
-            {m: reduced(d), r: 10 % reduced(d), count: 1, chunks_left: 10}
-        )
+    d
+        | reduced(.) == 1 -> 0 or
+              cycle_outer({m: reduced(.), r: 10 % reduced(.), count: 1, chunks_left: 10})
 
 fn best_of(p: {a: {d: Int, len: Int}, b: {d: Int, len: Int}}) -> {d: Int, len: Int} =
-    p.a if p.a.len >= p.b.len else p.b
+    p | .a.len >= .b.len -> .a or .b
 
 fn find_best(p: {lo: Int, hi: Int}) -> {d: Int, len: Int} =
-    {d: p.lo, len: cycle_length(p.lo)} if p.hi - p.lo == 1 else
-        best_of(
-            {
-                a: find_best({lo: p.lo, hi: (p.lo + p.hi) / 2}),
-                b: find_best({lo: (p.lo + p.hi) / 2, hi: p.hi})
-            }
-        )
+    p
+        | .hi - .lo == 1 -> {d: .lo, len: cycle_length(.lo)} or
+              best_of({a: find_best({lo: .lo, hi: (.lo + .hi) / 2}), b: find_best({lo: (.lo + .hi) / 2, hi: .hi})})
 
 find_best({lo: 2, hi: 1000}).d
 ```

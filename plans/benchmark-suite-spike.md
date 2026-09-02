@@ -24,15 +24,18 @@ Workable in principle but the wrong tool: every obligation it carries is aimed a
 documents, not at "we looked at a task description and wrote a program."
 
 **SPEC CPU / SPECint / SPECfp.** Commercial, paid license, no public redistribution of the
-workloads. Ruled out on the license constraint alone.
+workloads (<https://www.spec.org/order.html>: the benchmarks are ordered/purchased, not
+downloaded). Ruled out on the license constraint alone.
 
 **Phoronix Test Suite.** GPL v3 on the harness, but it wraps third-party benchmarks under a mix
 of licenses it does not itself clear, and it is a test-runner, not a set of small programs meant
 to be rewritten in a new language. Wrong shape as well as unclear license on the payload.
 
-**TechEmpower Web Framework Benchmarks.** Clean license (repo is BSD-3-Clause), but the whole suite
-is HTTP round-trip / JSON serialization / DB-query shaped, aimed at comparing web frameworks.
-toylang has no HTTP or database story; nothing in this suite exercises what the language does.
+**TechEmpower Web Framework Benchmarks.** Clean license (repo is BSD-3-Clause, per its own
+`LICENSE` file: <https://github.com/TechEmpower/FrameworkBenchmarks/blob/master/LICENSE>), but
+the whole suite is HTTP round-trip / JSON serialization / DB-query shaped, aimed at comparing web
+frameworks. toylang has no HTTP or database story; nothing in this suite exercises what the
+language does.
 
 ## Recommendation
 

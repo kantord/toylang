@@ -1002,6 +1002,51 @@ tl_vec *tl_collect_lines(void) {
     return v;
 }
 
+/* Split one Str on a literal delimiter: every occurrence, in order, with the empty string one
+ * empty field and a trailing delimiter a trailing empty field, the same shape `str.split` gives
+ * on every other backend. The delimiter is searched literally, never as a pattern. */
+static tl_vec *tl_split(const tl_str *s, const tl_str *sep) {
+    tl_list items = {NULL, 0, 0};
+    int64_t pos = 0;
+    while (pos <= s->len) {
+        int64_t found = -1;
+        for (int64_t i = pos; i + sep->len <= s->len; i++) {
+            if (memcmp(s->ptr + i, sep->ptr, (size_t)sep->len) == 0) {
+                found = i;
+                break;
+            }
+        }
+        int64_t n;
+        if (found == -1) {
+            n = s->len - pos;
+        } else {
+            n = found - pos;
+        }
+        char *bytes = tl_alloc((size_t)n);
+        memcpy(bytes, s->ptr + pos, (size_t)n);
+        tl_list_push(&items, (int64_t)tl_str_new(bytes, n));
+        if (found == -1) {
+            break;
+        }
+        pos = found + sep->len;
+    }
+    tl_vec *v = tl_vec_new(items.len, 1);
+    for (int64_t i = 0; i < items.len; i++) {
+        v->cols[0][i] = items.data[i];
+    }
+    return v;
+}
+
+/* Split every line of a Vec<Str> on the delimiter, one row per line: `dsv(delim)`. The outer
+ * Vec is a single column of inner Vecs, the struct-of-arrays spelling of Vec<Vec<Str>>. */
+tl_vec *tl_split_lines(tl_vec *lines, tl_str *sep) {
+    tl_vec *out = tl_vec_new(lines->len, 1);
+    for (int64_t i = 0; i < lines->len; i++) {
+        out->cols[0][i] = (int64_t)tl_split((tl_str *)lines->cols[0][i], sep);
+    }
+    return out;
+}
+
 /* Gather one element of a Vec of records back into a record.
  *
  * The struct-of-arrays layout means an element is spread across columns, and almost nothing in
@@ -1194,6 +1239,53 @@ int64_t *tl_at(const tl_vec *v, int64_t i, int64_t depth, int is_record) {
         return NULL;
     }
     return tl_opt_some(is_record ? (int64_t)tl_rec_from_vec(v, i) : v->cols[0][i]);
+}
+
+/* Narrow a Vec to the [lo, hi) window, clamping out-of-range bounds jq-style rather than
+ * answering absence the way tl_at does: negatives count from the end, both bounds clamp to
+ * [0, len], and a crossed window is empty (kantord/toylang#143). A bound left out is passed
+ * as INT64_MIN for the start or INT64_MAX for the end, each folding to the Vec's own boundary
+ * under the clamp. `depth` is the same layers-down the collapse uses, recursing into each
+ * element when the slice lands below the outermost dimension. */
+tl_vec *tl_vec_slice(const tl_vec *v, int64_t lo, int64_t hi, int64_t depth) {
+    if (depth > 0) {
+        tl_vec *out = tl_vec_new(v->len, 1);
+        for (int64_t k = 0; k < v->len; k++) {
+            const tl_vec *inner = (const tl_vec *)v->cols[0][k];
+            out->cols[0][k] = (int64_t)tl_vec_slice(inner, lo, hi, depth - 1);
+        }
+        return out;
+    }
+    int64_t n = v->len;
+    if (lo < 0) {
+        lo += n;
+    }
+    if (hi < 0) {
+        hi += n;
+    }
+    if (lo < 0) {
+        lo = 0;
+    }
+    if (hi < 0) {
+        hi = 0;
+    }
+    if (lo > n) {
+        lo = n;
+    }
+    if (hi > n) {
+        hi = n;
+    }
+    int64_t len = hi - lo;
+    if (len < 0) {
+        len = 0;
+    }
+    tl_vec *out = tl_vec_new(len, v->ncols);
+    for (int64_t c = 0; c < v->ncols; c++) {
+        if (len > 0) {
+            memcpy(out->cols[c], v->cols[c] + lo, (size_t)len * sizeof(int64_t));
+        }
+    }
+    return out;
 }
 
 /* Insist an Opt is present, `depth` layers down.

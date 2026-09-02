@@ -110,8 +110,19 @@ function useGrillRounds(): { topic: string; round: Round }[] {
   const [rounds, setRounds] = useState<{ topic: string; round: Round }[]>([])
   useEffect(() => {
     fetchRoundTopics()
-      .then((topics) => Promise.all(topics.map((t) => fetchRound(t).then((round) => ({ topic: t, round })))))
-      .then(setRounds)
+      .then((topics) =>
+        Promise.allSettled(topics.map((t) => fetchRound(t).then((round) => ({ topic: t, round })))),
+      )
+      .then((results) => {
+        // One malformed round file must never blank every other pending round (kantord/toylang#164):
+        // a rejected fetch here drops only its own topic, logged for visibility, not the whole list.
+        const ok: { topic: string; round: Round }[] = []
+        for (const r of results) {
+          if (r.status === "fulfilled") ok.push(r.value)
+          else console.error("grill round fetch failed", r.reason)
+        }
+        setRounds(ok)
+      })
       .catch(() => {
         // No grill endpoint reachable -- the inbox just has no rounds.
       })

@@ -8,7 +8,7 @@ the single-key wrapper rather than collapsing one side to `null`.
 
 ```toylang
 fn safe_div(pair: {a: Int, b: Int}) -> Result<Int, Str> =
-    ok(pair.a / pair.b) if pair.b != 0 else err("division by zero")
+    pair | .b != 0 -> ok(pair.a / pair.b) or err("division by zero")
 
 {good: safe_div({a: 10, b: 2}), bad: safe_div({a: 10, b: 0})}
 ```

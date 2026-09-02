@@ -54,4 +54,8 @@ for line in sys.stdin:
             json.dump(e, f)
         verdict = one_line(e.get("result") or "", 300)
         print(c("1", f"ok {verdict}" if verdict else "ok done"))
+        sys.stdout.flush()
+        break  # result is terminal; don't wait on stdin EOF, which a leaked
+        # background-task fd can withhold forever (held the tick lock
+        # 90+ min, 2026-08-31, blocking every subsequent tick)
     sys.stdout.flush()

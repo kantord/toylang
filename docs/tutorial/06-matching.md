@@ -51,14 +51,12 @@ the bare spelling there is the separator. `and` and `not` have no such wrinkle -
 
 ## Guards read like if/else
 
-Chapter 3's FizzBuzz was an `if`/`else` cascade. As guard arms, the shape barely changes:
+Chapter 3's FizzBuzz is a cascade of conditions; as guard arms each condition sits next
+to its own result, and the chain's final bare expression is the default:
 
 ```case
 fizzbuzz_arms
 ```
-
-Same output, line for line, as the [conditional chain](../reference/operators/conditional.md)
-it replaces -- `->`/`or` and `if`/`else` are the same branching operator in two notations.
 
 ## Hybrid totality
 
@@ -136,7 +134,7 @@ fn first_reading(entry: {valid: Bool, readings: Vec<Int>}) -> Opt<Int> =
 ```
 
 That is the core of the language. From here: the [matching guide](../guides/matching.md) for
-choosing between if/else and match and handling a partial chain's result, the other
+choosing a branching form and handling a partial chain's result, the other
 [guides](../guides/enums.md) for feature-sized tasks, the reference for every builtin, type,
 and operator, and Examples for every corpus program with the code all seven backends compile
 it to.

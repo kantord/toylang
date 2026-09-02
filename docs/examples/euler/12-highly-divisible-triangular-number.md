@@ -13,26 +13,21 @@ prime](07-10001st-prime.md).
 
 ```toylang
 fn cd_loop(p: {m: Int, d: Int, count: Int}) -> Int =
-    p.count if p.d * p.d > p.m else
-        cd_loop(
-            {
-                m: p.m,
-                d: p.d + 1,
-                count: p.count + (2 if p.m % p.d == 0 else 0) -
-                    (1 if p.d * p.d == p.m else 0)
-            }
-        )
+    p
+        | .d * .d > .m -> p.count or
+              cd_loop({m: p.m, d: p.d + 1, count: p.count + (p | .m % .d == 0 -> 2 or 0) - (p | .d * .d == .m -> 1 or 0)})
 
 fn count_divisors(m: Int) -> Int = cd_loop({m: m, d: 1, count: 0})
 
 fn triangle_divisors(n: Int) -> Int =
-    count_divisors(n / 2) * count_divisors(n + 1) if n % 2 == 0 else
-        count_divisors(n) * count_divisors((n + 1) / 2)
+    n
+        | . % 2 == 0 -> count_divisors(n / 2) * count_divisors(n + 1) or
+              count_divisors(n) * count_divisors((n + 1) / 2)
 
 fn triangle(n: Int) -> Int = n * (n + 1) / 2
 
 triangle(
-    (range(12376) | select(. >= 1) | select(triangle_divisors(.) > 500))[0]!
+    (collect(range(12376)) | select(. >= 1) | select(triangle_divisors(.) > 500))[0]!
 )
 ```
 

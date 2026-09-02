@@ -19,5 +19,5 @@ type tlE_Box_Int struct {
 }
 
 func main() {
-	fmt.Println(func(n0 tlE_Box_Int) string { if n0.tag == 0 { return ("{\"wrap\":" + strconv.FormatInt(int64((*n0.p0)), 10) + "}") }; return "\"empty\"" }(tlE_Box_Int{tag: 0, p0: tlPtr(tlInt(5))}))
+	fmt.Println(func(n0 tlE_Box_Int) string { if n0.tag == 0 { return ("{\"Wrap\":" + strconv.FormatInt(int64((*n0.p0)), 10) + "}") }; return "\"Empty\"" }(tlE_Box_Int{tag: 0, p0: tlPtr(tlInt(5))}))
 }

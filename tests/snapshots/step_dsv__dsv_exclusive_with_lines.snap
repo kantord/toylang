@@ -1,0 +1,5 @@
+---
+source: tests/step_dsv.rs
+expression: "err(\"fn g(a: Stream<Str>) -> Vec<Str> = collect(a)\\n{a: join_lines(g(lines)), b: csv}.a\")"
+---
+a program cannot use both `dsv` and `lines`; they read the same real stdin two different ways (at byte 46)

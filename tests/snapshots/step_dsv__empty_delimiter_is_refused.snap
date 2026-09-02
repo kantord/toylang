@@ -1,0 +1,5 @@
+---
+source: tests/step_dsv.rs
+expression: "err(\"dsv(\\\"\\\")\")"
+---
+`dsv`'s delimiter cannot be empty (at byte 0)

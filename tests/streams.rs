@@ -44,14 +44,14 @@ mod containment {
     /// And for an enum variant's payload, the one other annotation a value constructor reads.
     #[test]
     fn an_enum_payload_cannot_hold_a_stream() {
-        insta::assert_snapshot!(err("enum E { v{s: Stream<Str>} }\n\n1"));
+        insta::assert_snapshot!(err("enum E { V{s: Stream<Str>} }\n\n1"));
     }
 
     /// The parens spelling puts a type directly in payload position, so the ban has to hold
     /// there too, not only inside a record.
     #[test]
     fn a_scalar_enum_payload_cannot_be_a_stream() {
-        insta::assert_snapshot!(err("enum E { v(Stream<Str>) }\n\n1"));
+        insta::assert_snapshot!(err("enum E { V(Stream<Str>) }\n\n1"));
     }
 
     /// A stream of streams has nothing it could yield: its entries would not be values.
@@ -116,8 +116,10 @@ mod linearity {
         ));
     }
 
-    /// Which branch runs is decided at runtime, and a pipeline's shape must not be: fusion has
-    /// to know its stages at compile time. Refusing is the reversible direction.
+    /// The ternary was retired (kantord/toylang#155) in favor of guard arms; the stream rule
+    /// it would have exercised lives on as `a_match_cannot_yield_a_stream` below. The old
+    /// spelling no longer parses -- `if` is an ordinary identifier, so `s if ...` reads as a
+    /// cross-line call.
     #[test]
     fn a_conditional_cannot_yield_a_stream() {
         insta::assert_snapshot!(err(
@@ -129,7 +131,7 @@ mod linearity {
     #[test]
     fn a_match_cannot_yield_a_stream() {
         insta::assert_snapshot!(err(
-            "enum E { a, b }\n\nfn f(s: Stream<Str>) -> Stream<Str> = a | (a -> s or b -> s)\n\n1"
+            "enum E { A, B }\n\nfn f(s: Stream<Str>) -> Stream<Str> = a | (A -> s or B -> s)\n\n1"
         ));
     }
 

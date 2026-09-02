@@ -20,22 +20,25 @@ fn teens_letters(n: Int) -> Int = [3, 6, 6, 8, 8, 7, 7, 9, 8, 8][n - 10]!
 fn tens_letters(n: Int) -> Int = [0, 0, 6, 6, 5, 5, 5, 7, 6, 6][n / 10]!
 
 fn under_hundred(n: Int) -> Int =
-    0 if n == 0 else
-        ones_letters(n) if n < 10 else
-        teens_letters(n) if n < 20 else
-        tens_letters(n) + ones_letters(n % 10)
+    n
+        | . == 0 -> 0 or
+              . < 10 -> ones_letters(n) or
+              . < 20 -> teens_letters(n) or
+              tens_letters(n) + ones_letters(n % 10)
 
 fn letters(n: Int) -> Int =
-    11 if n == 1000 else
-        ones_letters(n / 100) + 7 + (3 if n % 100 > 0 else 0) + under_hundred(n % 100) if n / 100 > 0 else
-        under_hundred(n)
+    n
+        | . == 1000 -> 11 or
+              . / 100 > 0 -> ones_letters(n / 100) + 7 + (n | . % 100 > 0 -> 3 or 0) + under_hundred(n % 100) or
+              under_hundred(n)
 
 fn inner_sum(p: {n: Int, last: Int}) -> Int =
-    0 if p.n > p.last else letters(p.n) + inner_sum({n: p.n + 1, last: p.last})
+    p | .n > .last -> 0 or letters(p.n) + inner_sum({n: p.n + 1, last: p.last})
 
 fn outer_sum(g: Int) -> Int =
-    0 if g > 9 else
-        inner_sum({n: g * 100 + 1, last: g * 100 + 100}) + outer_sum(g + 1)
+    g
+        | . > 9 -> 0 or
+              inner_sum({n: g * 100 + 1, last: g * 100 + 100}) + outer_sum(g + 1)
 
 outer_sum(0)
 ```

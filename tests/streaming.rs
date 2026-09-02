@@ -44,6 +44,14 @@ jsonlines(shout(lines))
 const RECORD_IN: &[u8] = b"{\"name\": \"ada\", \"age\": 36}\n";
 const RECORD_OUT: &str = r#"{"name":"ada"}"#;
 
+/// A `range`-sourced pipeline ending in `jsonlines`: the Euler corpus's `range | select | map`
+/// shape, fused now that range is a third stream source. There is no stdin involved at all, so
+/// the liveness probe is `assert_streams_without_input`: the first line must arrive without the
+/// test supplying anything, which is exactly what a materialized `range` never promises.
+const RANGE_SUM: &str = r#"
+jsonlines(range(1000000) | select(. % 3 == 0 or . % 5 == 0) | map(. * 2))
+"#;
+
 /// Sends one record, then -- without ever sending EOF -- asserts its printed line arrives within
 /// a short timeout. An eager implementation is still blocked reading stdin to EOF at this point
 /// and never gets here, which is what a timeout here would mean; the fused implementations only
@@ -68,6 +76,29 @@ fn assert_streams_first_record(mut child: Child, send: &[u8], expect: &str) {
 
     // Cleanup only, not part of the proof: nothing here is read again, and the child would
     // otherwise sit forever waiting for stdin to close.
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Reads the first printed line of a child that needs no stdin at all -- a `range`-sourced
+/// pipeline has no external input to wait on, so a fused implementation emits its first line the
+/// moment it starts. A `range` materialized as a whole `Vec` first (the eager spelling) would
+/// still eventually print, but the constant-memory claim is exactly that the loop runs without
+/// building that `Vec`, and this is the one observable the harness can see while it runs.
+fn assert_streams_without_input(mut child: Child, expect: &str) {
+    let mut stdout = BufReader::new(child.stdout.take().expect("piped stdout"));
+
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        let _ = stdout.read_line(&mut line);
+        let _ = tx.send(line);
+    });
+    let line = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("no output arrived without any input -- the fused range loop never ran");
+    assert_eq!(line.trim_end(), expect);
+
     let _ = child.kill();
     let _ = child.wait();
 }
@@ -212,6 +243,43 @@ fn jq_streams() {
     assert_streams_first_record(spawn_jq(PROGRAM), RECORD_IN, RECORD_OUT);
 }
 
+/// Every backend runs the fused range loop over the real CLI. The first line of
+/// `range | select | map` is `0` (0 passes `% 3 == 0`), and it arrives with no input at all.
+#[test]
+fn lua_streams_range() {
+    assert_streams_without_input(spawn_lua(RANGE_SUM), "0");
+}
+
+#[test]
+fn native_streams_range() {
+    assert_streams_without_input(spawn_native(RANGE_SUM), "0");
+}
+
+#[test]
+fn rust_streams_range() {
+    assert_streams_without_input(spawn_rust(RANGE_SUM), "0");
+}
+
+#[test]
+fn go_streams_range() {
+    assert_streams_without_input(spawn_go(RANGE_SUM), "0");
+}
+
+#[test]
+fn py_streams_range() {
+    assert_streams_without_input(spawn_py(RANGE_SUM), "0");
+}
+
+#[test]
+fn js_streams_range() {
+    assert_streams_without_input(spawn_js(RANGE_SUM), "0");
+}
+
+#[test]
+fn jq_streams_range() {
+    assert_streams_without_input(spawn_jq(RANGE_SUM), "0");
+}
+
 #[test]
 fn lua_streams_composed_functions() {
     assert_streams_first_record(spawn_lua(COMPOSED), RECORD_IN, RECORD_OUT);
@@ -267,10 +335,10 @@ fn native_streams_lines() {
 /// all. This is the same program and the same bad record, driven through the real CLI with real,
 /// unset stdin instead of `run_on`'s fixture path, to prove the two now agree.
 const REJECT: &str = r#"
-enum Msg { ping, text{body: Str} }
+enum Msg { Ping, Text{body: Str} }
 
 fn render(msgs: Stream<Msg>) -> Stream<Str> =
-    msgs | map(. | text -> .body or any() -> "*ping*")
+    msgs | map(. | Text -> .body or any() -> "*ping*")
 
 jsonlines(render(inputs))
 "#;
@@ -280,7 +348,7 @@ jsonlines(render(inputs))
 /// that already passed validation and reached the backend.
 #[test]
 fn js_streams_a_valid_record_before_a_later_one_fails_live_validation() {
-    assert_streams_first_record(spawn_cli(REJECT, "js"), b"\"ping\"\n", r#""*ping*""#);
+    assert_streams_first_record(spawn_cli(REJECT, "js"), b"\"Ping\"\n", r#""*ping*""#);
 }
 
 fn assert_refuses_live(backend: &str) {
@@ -289,7 +357,7 @@ fn assert_refuses_live(backend: &str) {
         .stdin
         .take()
         .expect("piped stdin")
-        .write_all(b"\"ping\"\n\"burst\"\n")
+        .write_all(b"\"Ping\"\n\"burst\"\n")
         .expect("write both records");
     let output = child.wait_with_output().expect("wait for exit");
     assert!(

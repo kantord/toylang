@@ -1507,30 +1507,6 @@ It found no defect. See
 [a backend that finds nothing is evidence only if it is different](research-log/a-backend-that-finds-nothing-is-evidence-only-if-it-is-different.md)
 for what that is and is not worth.
 
-### The conditional is an expression, spelled Python's way
-
-`then if condition else otherwise`, sitting between `|` and comparison, right-associative:
-
-```
-[1, 2, 3] | map(
-    "FizzBuzz" if . % 15 == 0 else
-    "Fizz"     if . % 3 == 0  else
-    "Buzz"     if . % 5 == 0  else
-    str(.)
-)
-```
-
-jq's `if ... then ... else ... end` was the alternative and was rejected. The objections to
-Python's form both dissolved on inspection. Precedence is one line: the conditional binds tighter
-than `|` and looser than comparison, so `a if c else b | f` groups as `(a if c else b) | f` and
-`x | a if c else b` groups as `x | (a if c else b)`. Python puts its ternary below `|` only
-because there `|` is bitwise or. And chaining reads well laid out as above, with the values in
-one column and the conditions in another, which for a transformation language means a reader can
-see what a branchpoint produces without reading a single condition.
-
-The deciding point is that this language has no statements. jq's form is an expression too, but
-shaped like a statement, with `end` closing a block that nothing else in the language has.
-
 ### Output needs no side effect
 
 A top-level `Str` already prints raw, so a string containing newlines is line-oriented output.
@@ -1540,9 +1516,9 @@ pure conversion from `Vec<Str>`. FizzBuzz to a hundred is then an ordinary progr
 ```
 unlines(
     range(100) | map(. + 1) | map(
-        "FizzBuzz" if . % 15 == 0 else
-        "Fizz"     if . % 3 == 0  else
-        "Buzz"     if . % 5 == 0  else
+        . % 15 == 0 -> "FizzBuzz" or
+        . % 3 == 0  -> "Fizz"     or
+        . % 5 == 0  -> "Buzz"     or
         str(.)
     )
 )
@@ -1563,10 +1539,10 @@ biting somewhere a user would actually reach.
 `range(n)` is zero-based, matching jq, Python, and this language's own indices, which is why the
 example shifts with `map(. + 1)` rather than starting at one.
 
-**The condition is exactly one `Bool`**, which is the claim
-[the safety section](#why-cardinality-in-the-type-is-the-safety-mechanism) makes. `"a" if 1 else
-"b"` does not typecheck, where jq would run both branches and hand back two answers. Both arms
-must agree, since the whole thing is one expression with one type.
+**A guard is exactly one `Bool`**, which is the claim
+[the safety section](#why-cardinality-in-the-type-is-the-safety-mechanism) makes: a match arm's
+left side must be a Bool, where jq would run both branches of its `if` and hand back two answers.
+The arms must agree, since the whole thing is one expression with one type.
 
 ## What the prototype showed
 
@@ -1924,7 +1900,10 @@ officially transitional. The destination is one raw source with parsing as ordin
 visible steps -- the design rejected earlier *only* because expected types could not flow
 into map bodies, a blocker the type-flow rework removes. Syntax is deliberately not settled
 here; it gets its own session once type-flow lands. Until then: no fourth stdin reader, no
-new exclusivity rules -- nothing that makes the migration bigger.
+new exclusivity rules -- nothing that makes the migration bigger. One ratified exception
+(gh:88's ruling, built as gh:136): a parameterized `dsv(delim)` source, with `csv`/`tsv`
+as its predefined partials -- the shape the one-source design lands on, added ahead of it
+rather than as a fourth nullary keyword.
 
 ## DECIDED: `inputs`, eager, not an answer to Q1 either
 
@@ -2207,14 +2186,26 @@ A `Stream<T>` is born only at a source, flows only through a pipeline, and dies 
 exit.
 
 **Sources.** `inputs : Stream<T>` (element type inferred from use, as before) and
-`lines : Stream<Str>`, replacing the monomorphic `Lines`. Nothing else creates one: there is
-no value-to-effect operator, exactly as [Q13](plans/questions.md#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator)
-leans. Decided after the implementation disclosed a cross-function hole (a function reading a
-source, called from a mapper body, re-read stdin per element): a source may appear only in
-the program's own body, never inside a `fn` definition -- functions receive streams
-exclusively through `Stream<T>` parameters. The alternative, tracking source-consumption per
-function transitively, was rejected as an invisible effect on every signature, the implicit
-shape this design keeps refusing.
+`lines : Stream<Str>`, replacing the monomorphic `Lines`, and `range : Int -> Stream<Int>`
+(kantord/toylang#137). `range` is the first source with no stdin behind it: it generates its
+entries by counting. It reopens the "nothing else creates one" clause that
+[Q13](plans/questions.md#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator)
+wrote, and the ruling (gh:127, ratified in the streams-and-sinks grill round) keeps the
+substance of that clause while giving the boundary a name. What Q13 leans against is degrading
+a value that already exists -- turning a `Vec` back into a stream forgets its extent and buys
+nothing, and a held value of genuinely unknown extent is exactly the first-class stream ADR
+0001 rejects. `range` degrades nothing: `n` is one integer, and the stream of values below it
+has no extent to forget, only one to generate. It is still a source, so it keeps every source
+rule -- born in the program's own body, single-use, dying at `collect` or `jsonlines`, never
+stored -- and the Euler `range | select | map` pipelines that motivated it now stream at
+constant memory instead of materializing a `Vec`. A function cannot conjure a stream from an
+argument it merely holds; `range` remains a name, not an operator. Decided after the
+implementation disclosed a cross-function hole (a function reading a source, called from a
+mapper body, re-read stdin per element): a source may appear only in the program's own body,
+never inside a `fn` definition -- functions receive streams exclusively through `Stream<T>`
+parameters. The alternative, tracking source-consumption per function transitively, was
+rejected as an invisible effect on every signature, the implicit shape this design keeps
+refusing.
 
 **Mappers.** `Stream` is spellable in signatures -- the one thing the `Lines` design
 deliberately withheld -- so `fn f(s: Stream<A>) -> Stream<B>` is legal. `map`, `select`, and
@@ -2280,14 +2271,13 @@ rather than assumed here.
 
 ## DECIDED: match arms compose with `or`, and a guard chain may be honestly partial
 
-FizzBuzz was the case study. The shipped conditional chain and the decided arm chain, side by
-side -- the program barely changes shape, which was the point:
+FizzBuzz was the case study. As guard arms, the one conditional form:
 
 ```
-"FizzBuzz" if . % 15 == 0 else          . % 15 == 0 -> "FizzBuzz" or
-"Fizz"     if . % 3 == 0  else          . % 3 == 0  -> "Fizz"     or
-"Buzz"     if . % 5 == 0  else          . % 5 == 0  -> "Buzz"     or
-str(.)                                  str(.)
+. % 15 == 0 -> "FizzBuzz" or
+. % 3 == 0  -> "Fizz"     or
+. % 5 == 0  -> "Buzz"     or
+str(.)
 ```
 
 An arm is a produce-or-decline value: its left side is either a variant pattern

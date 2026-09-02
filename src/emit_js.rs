@@ -36,6 +36,16 @@ function tl_at(v, i, depth) {
 }
 ";
 
+// `Array.prototype.slice` already clamps out-of-range bounds and counts negatives from the
+// end, so jq's boundary behaviour is the target's native one; `undefined` is a bound left
+// out, which `.slice` reads as the array's own boundary.
+const SLICE_HELPER: &str = "\
+function tl_slice(v, lo, hi, depth) {
+  if (depth > 0) return v.map((e) => tl_slice(e, lo, hi, depth - 1));
+  return v.slice(lo, hi);
+}
+";
+
 const TAIL_HELPER: &str = "\
 function tl_tail(v) {
   if (v.length === 0) return \"none\";
@@ -195,6 +205,7 @@ pub fn emit(program: &Program) -> String {
         (used.field, FIELD_HELPER),
         (join, JOIN_HELPER),
         (used.index, OPT_HELPER),
+        (used.slice, SLICE_HELPER),
         (used.tail, TAIL_HELPER),
         (used.unwrap, UNWRAP_HELPER),
         (used.arith, ARITH_HELPER),
@@ -216,12 +227,26 @@ pub fn emit(program: &Program) -> String {
     // Function declarations hoist, so a call to one defined further down resolves without the
     // forward declarations Lua needs. Each backend does what its own target does.
     for f in &program.funcs {
-        out.push_str(&format!(
-            "function {}({}) {{\n  return {};\n}}\n",
-            user(&f.name),
-            f.param.as_deref().map_or_else(String::new, user),
-            expr(enums, &f.body)
-        ));
+        let param = f.param.as_deref().map(user);
+        if tir::has_tail_call(&f.name, &f.body) {
+            // The contract: a self-tail-call runs in constant stack. A tail call becomes
+            // `param = arg; continue;` in a loop, so 100k-deep self-recursion cannot blow the
+            // JS stack the way a real call would (kantord/toylang#141).
+            let mut fresh = 0;
+            out.push_str(&format!("function {}({}) {{\n", user(&f.name), param.as_deref().unwrap_or_default()));
+            out.push_str("  while (true) {\n");
+            out.push_str(&indent(&indent(&tail_stmts(
+                enums, &f.name, param.as_deref(), &mut fresh, &f.body
+            ))));
+            out.push_str("  }\n}\n");
+        } else {
+            out.push_str(&format!(
+                "function {}({}) {{\n  return {};\n}}\n",
+                user(&f.name),
+                param.as_deref().unwrap_or_default(),
+                expr(enums, &f.body)
+            ));
+        }
     }
 
     if let Some(fusion) = tir::fusion(program) {
@@ -242,7 +267,7 @@ pub fn emit(program: &Program) -> String {
 
     let body = expr(enums, &program.body);
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
-    if program.body.ty == Type::Str {
+    if matches!(program.body.ty, Type::Str | Type::Sink) {
         out.push_str(&format!("console.log({body});\n"));
     } else {
         out.push_str(&format!(
@@ -263,6 +288,62 @@ pub fn emit(program: &Program) -> String {
 /// checks this directly against a live pipe rather than assuming either way.
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     let enums = &program.enums;
+    let mut out = String::new();
+    let (mut current, mut current_ty) = match fusion.source {
+        tir::Source::Inputs => {
+            out.push_str(&read_line_helper());
+            out.push_str("for (;;) {\n");
+            out.push_str("  const t_line_raw = tl_read_line();\n");
+            out.push_str("  if (t_line_raw === null) break;\n");
+            out.push_str("  if (t_line_raw.length === 0) continue;\n");
+            out.push_str("  const t_line = JSON.parse(t_line_raw);\n");
+            let elem = program
+                .inputs
+                .as_ref()
+                .expect("an inputs source recorded its element");
+            ("t_line".to_string(), elem.clone())
+        }
+        // A raw line is already the element, blank ones included: `lines` keeps them.
+        tir::Source::Lines => {
+            out.push_str(&read_line_helper());
+            out.push_str("for (;;) {\n");
+            out.push_str("  const t_line_raw = tl_read_line();\n");
+            out.push_str("  if (t_line_raw === null) break;\n");
+            ("t_line_raw".to_string(), Type::Str)
+        }
+        // The bound is evaluated once; the loop counter is the element. A negative bound makes
+        // the loop body never run, the same answer `tl_range` gives eagerly.
+        tir::Source::Range(bound) => {
+            out.push_str(&format!("const n = {};\n", expr(enums, bound)));
+            out.push_str("for (let t_i = 0; t_i < n; t_i++) {\n");
+            ("t_i".to_string(), Type::Int)
+        }
+    };
+    for stage in &fusion.stages {
+        match stage {
+            tir::Stage::Map { param, body } => {
+                out.push_str(&format!("  const {} = {};\n", local(*param), current));
+                current = expr(enums, body);
+                current_ty = body.ty.clone();
+            }
+            tir::Stage::Select { param, pred } => {
+                out.push_str(&format!("  const {} = {};\n", local(*param), current));
+                out.push_str(&format!("  if (!({})) continue;\n", expr(enums, pred)));
+                current = local(*param);
+            }
+        }
+    }
+    out.push_str(&format!(
+        "  console.log({});\n",
+        show(enums, &current_ty, &current, 0)
+    ));
+    out.push_str("}\n");
+    out
+}
+
+/// The read-one-line-at-a-time machinery a stdin-backed fused loop needs. A `range` source reads
+/// nothing, so it never emits this.
+fn read_line_helper() -> String {
     let mut out = String::new();
     out.push_str("let tl_stdin_buf = \"\";\n");
     out.push_str("let tl_stdin_eof = false;\n");
@@ -287,42 +368,6 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     out.push_str("    tl_stdin_buf += chunk.toString(\"utf8\", 0, n);\n");
     out.push_str("  }\n");
     out.push_str("}\n");
-
-    out.push_str("for (;;) {\n");
-    out.push_str("  const t_line_raw = tl_read_line();\n");
-    out.push_str("  if (t_line_raw === null) break;\n");
-    let (mut current, mut current_ty) = match fusion.source {
-        tir::Source::Inputs => {
-            out.push_str("  if (t_line_raw.length === 0) continue;\n");
-            out.push_str("  const t_line = JSON.parse(t_line_raw);\n");
-            let elem = program
-                .inputs
-                .as_ref()
-                .expect("an inputs source recorded its element");
-            ("t_line".to_string(), elem.clone())
-        }
-        // A raw line is already the element, blank ones included: `lines` keeps them.
-        tir::Source::Lines => ("t_line_raw".to_string(), Type::Str),
-    };
-    for stage in &fusion.stages {
-        match stage {
-            tir::Stage::Map { param, body } => {
-                out.push_str(&format!("  const {} = {};\n", local(*param), current));
-                current = expr(enums, body);
-                current_ty = body.ty.clone();
-            }
-            tir::Stage::Select { param, pred } => {
-                out.push_str(&format!("  const {} = {};\n", local(*param), current));
-                out.push_str(&format!("  if (!({})) continue;\n", expr(enums, pred)));
-                current = local(*param);
-            }
-        }
-    }
-    out.push_str(&format!(
-        "  console.log({});\n",
-        show(enums, &current_ty, &current, 0)
-    ));
-    out.push_str("}\n");
     out
 }
 
@@ -339,6 +384,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("JSON.stringify({value})"),
+        Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         // String() on a BigInt is the bare digits, no `n` suffix, so Int64 rides the same arm.
         Type::Int | Type::Int64 | Type::Bool => format!("String({value})"),
         Type::Vec(elem) => {
@@ -452,6 +498,7 @@ struct Helpers {
     select: bool,
     field: bool,
     index: bool,
+    slice: bool,
     unwrap: bool,
     arith: bool,
     arith64: bool,
@@ -520,6 +567,7 @@ fn used_helpers(program: &Program) -> Helpers {
             | Kind::Inputs => {}
             // The source is what reads stdin now, so it is what needs the helper.
             Kind::Lines => used.collect = true,
+            Kind::Dsv { .. } => used.collect = true,
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -569,15 +617,6 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.max |= *which == Builtin::Max;
                 walk(arg, used);
             }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                walk(cond, used);
-                walk(then, used);
-                walk(otherwise, used);
-            }
             Kind::Arith { lhs, rhs, .. } => {
                 if t.ty == Type::Int64 {
                     used.arith64 = true;
@@ -596,6 +635,16 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.index = true;
                 walk(base, used);
                 walk(index, used);
+            }
+            Kind::Slice { base, start, end, .. } => {
+                used.slice = true;
+                walk(base, used);
+                if let Some(s) = start {
+                    walk(s, used);
+                }
+                if let Some(e) = end {
+                    walk(e, used);
+                }
             }
             Kind::Match { subject, arms, .. } => {
                 walk(subject, used);
@@ -624,6 +673,98 @@ fn arm_return(body: String, partial: bool) -> String {
     }
 }
 
+/// `t` as statements in the tail position: `return <expr>;` for a base case, and for a tail
+/// call `param = <arg>; continue;` so the loop in the emitted function rewinds instead of
+/// growing the JS stack. Lines come out unindented; `indent` places them under the `while`.
+fn tail_stmts(
+    enums: &Enums,
+    name: &str,
+    param: Option<&str>,
+    fresh: &mut usize,
+    t: &Tir,
+) -> String {
+    match &t.kind {
+        Kind::Call { func, arg } if func == name => {
+            let assign = param.map_or_else(String::new, |p| {
+                format!(
+                    "{p} = {};\n",
+                    arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
+                )
+            });
+            format!("{assign}continue;\n")
+        }
+        Kind::Bind {
+            local: id,
+            value,
+            body,
+        } => format!(
+            "const {} = {};\n{}",
+            local(*id),
+            expr(enums, value),
+            tail_stmts(enums, name, param, fresh, body)
+        ),
+        Kind::Match {
+            subject,
+            arms,
+            partial,
+        } if !partial => {
+            // The subject is read into a temp the way `expr`'s IIFE does, but there is no IIFE
+            // to contain it here, so the name has to be fresh rather than the fixed `subj`.
+            let subj = format!("tl_tailsub{}", *fresh);
+            *fresh += 1;
+            let mut out = format!("const {subj} = {};\n", expr(enums, subject));
+            for (i, arm) in arms.iter().enumerate() {
+                let mut run = String::new();
+                if let Some(pid) = arm.payload {
+                    let variant = arm
+                        .variant
+                        .as_ref()
+                        .expect("only a variant arm has a payload");
+                    run.push_str(&format!(
+                        "const {} = {subj}[{}];\n",
+                        local(pid),
+                        js_string(variant)
+                    ));
+                }
+                run.push_str(&tail_stmts(enums, name, param, fresh, &arm.body));
+                let test = match (&arm.variant, &arm.guard) {
+                    (Some(v), _) if arm.payload.is_some() => {
+                        Some(format!("{subj}[{}] !== undefined", js_string(v)))
+                    }
+                    (Some(v), _) => Some(format!("{subj} === {}", js_string(v))),
+                    (None, Some(g)) => Some(expr(enums, g)),
+                    (None, None) => None,
+                };
+                match test {
+                    // A total chain's last arm needs no test, the checker having proved nothing
+                    // else can reach it -- the same rule `expr`'s match arm follows.
+                    Some(test) if i + 1 < arms.len() => {
+                        out.push_str(&format!("if ({test}) {{\n{}}}\n", indent(&run)));
+                    }
+                    _ => out.push_str(&run),
+                }
+            }
+            out
+        }
+        // A partial match wraps every arm body, so no arm body is a tail position; the whole
+        // match stays an expression, exactly as it would outside tail position.
+        Kind::Match { .. } => format!("return {};\n", expr(enums, t)),
+        _ => format!("return {};\n", expr(enums, t)),
+    }
+}
+
+/// Prepend two spaces to every line. `tail_stmts` returns its lines unindented, and each
+/// nesting level (`while` body, an `if` branch) shifts by one indent.
+fn indent(s: &str) -> String {
+    let mut out = String::new();
+    for line in s.trim_end_matches('\n').split('\n') {
+        out.push_str("  ");
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => js_string(s),
@@ -635,6 +776,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
         // works on the array of its entries. Fusion is what will remove this materialization.
         Kind::Lines => "tl_collect_lines()".to_string(),
+        // Same raw lines as `lines`, each split on the delimiter into one row.
+        Kind::Dsv { delim } => format!(
+            "tl_collect_lines().map((l) => l.split({}))",
+            js_string(delim)
+        ),
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
@@ -663,18 +809,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         ),
         Kind::Concat(l, r) => concat(enums, &t.ty, l, r),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            format!(
-                "({} ? {} : {})",
-                expr(enums, cond),
-                expr(enums, then),
-                expr(enums, otherwise)
-            )
-        }
         Kind::Logic { op, lhs, rhs } => {
             let op = match op {
                 LogicOp::And => "&&",
@@ -816,6 +950,25 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 "tl_at({}, {}, {})",
                 expr(enums, base),
                 expr(enums, index),
+                depth
+            )
+        }
+        Kind::Slice {
+            base, start, end, depth,
+        } => {
+            let lo = match start {
+                Some(s) => expr(enums, s),
+                None => "undefined".to_string(),
+            };
+            let hi = match end {
+                Some(e) => expr(enums, e),
+                None => "undefined".to_string(),
+            };
+            format!(
+                "tl_slice({}, {}, {}, {})",
+                expr(enums, base),
+                lo,
+                hi,
                 depth
             )
         }

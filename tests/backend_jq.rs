@@ -38,9 +38,9 @@ fn an_optional_string_prints_as_json() {
 /// accepts it -- signatures are collected before any body is checked, so a call to a function
 /// defined later, or back around a cycle, is no different from any forward reference.
 const CYCLE: &str = r#"
-fn a(n: Int) -> Int = 0 if n <= 0 else 1 + b(n - 1)
-fn b(n: Int) -> Int = 0 if n <= 0 else 1 + c(n - 1)
-fn c(n: Int) -> Int = 0 if n <= 0 else 1 + a(n - 1)
+fn a(n: Int) -> Int = n | . <= 0 -> 0 or 1 + b(n - 1)
+fn b(n: Int) -> Int = n | . <= 0 -> 0 or 1 + c(n - 1)
+fn c(n: Int) -> Int = n | . <= 0 -> 0 or 1 + a(n - 1)
 
 a(5)
 "#;
@@ -88,8 +88,8 @@ fn a_genuine_cycle_between_named_functions_is_refused_cleanly() {
 /// `tl_show_B` calls `tl_show_A`, and jq's `def` has no forward declaration for that any more
 /// than it does for `a`/`b`/`c` above (kantord/toylang#116).
 const PRINTER_CYCLE: &str = r#"
-enum A { a(Vec<B>) }
-enum B { b(Vec<A>) }
+enum A { A(Vec<B>) }
+enum B { B(Vec<A>) }
 
 {x: A.a([]), y: B.b([])}
 "#;
@@ -115,7 +115,7 @@ fn a_genuine_cycle_between_printers_is_refused_cleanly() {
 #[test]
 fn self_recursion_alone_still_compiles() {
     let p =
-        toylang::compile("fn count(n: Int) -> Int = 0 if n <= 0 else 1 + count(n - 1)\n\ncount(5)")
+        toylang::compile("fn count(n: Int) -> Int = n | . <= 0 -> 0 or 1 + count(n - 1)\n\ncount(5)")
             .unwrap();
     assert!(toylang::emit_jq::emit(&p).is_ok());
 }

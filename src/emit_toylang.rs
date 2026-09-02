@@ -11,11 +11,11 @@
 //! only ground truth for layout: a function whose signature-plus-body fits on one line stays on
 //! one line; otherwise the body moves to its own indented line, and a binary chain that still
 //! does not fit breaks at its outermost operator, trailing the operator on the first line.
-//! Match-arm and conditional chains extend that same "trailing operator, one extra indent" rule
-//! by analogy, since nothing in the sample pins their layout directly. A pipeline that does not
-//! fit is the one exception: it breaks one stage per line, with `|` leading each continuation
-//! line so the pipes form a vertical column (maintainer directive, issue #101), rather than
-//! trailing like the other chains.
+//! Match-arm chains extend that same "trailing operator, one extra indent" rule by analogy,
+//! since nothing in the sample pins their layout directly. A pipeline that does not fit is the
+//! one exception: it breaks one stage per line, with `|` leading each continuation line so the
+//! pipes form a vertical column (maintainer directive, issue #101), rather than trailing like
+//! the other chains.
 //!
 //! Two style choices worth naming since nothing in the grammar forces them: calls are always
 //! written with explicit parens (`f(x)`, never the bare `f x` or brace-shorthand `f{...}`),
@@ -67,13 +67,6 @@ fn logic_power(op: LogicOp) -> (u8, u8) {
     }
 }
 
-/// Where a conditional's `else` tail is printed: the same position the conditional itself sits
-/// in when that is an arm body (so `or` keeps reading as the separator all the way down the
-/// chain), and an ordinary `expr(COND_POWER)` position otherwise.
-fn cond_tail(m: u8) -> u8 {
-    if m == ARM_BODY { ARM_BODY } else { COND_POWER }
-}
-
 /// Where a child expression sits, in terms of what the parser would have accepted bare at that
 /// spot -- everything `needs_parens` and the wrapping printer need to know to reproduce the tree
 /// exactly, and nothing else.
@@ -81,16 +74,12 @@ fn cond_tail(m: u8) -> u8 {
 enum Ctx {
     /// A fresh `self.expr(m)` call: File/Def body, a call argument (always real parens here, so
     /// always reset to `Expr(0)` inside them), `Index`'s bracketed expression, a match arm's
-    /// body, or `Cond::otherwise`. The one context where a bare `Cond` and, when `m` is loose
-    /// enough, a bare `Pipe` or `Match` are all reachable.
+    /// body. The one context where a bare `Pipe` and, when `m` is loose enough, a bare `Match`
+    /// are both reachable.
     Expr(u8),
-    /// A `self.operand(m)` call: a `Binary` child, or `Pattern::Guard`'s expression. `Cond`,
-    /// `Pipe`, and `Match` are never reachable bare here -- only `expr()` parses those.
+    /// A `self.operand(m)` call: a `Binary` child, or `Pattern::Guard`'s expression. `Pipe` and
+    /// `Match` are never reachable bare here -- only `expr()` parses those.
     Operand(u8),
-    /// `Cond::then`: built the same way as `Operand(m)`, except a `Match` is also reachable
-    /// (bare, when `m <= PIPE_RIGHT`) because it is built by the same call that would otherwise
-    /// have produced the `Operand(m)` result, before the `if` is even seen.
-    CondThen(u8),
     /// The base of a postfix chain (`Field`/`Index`/`Project`/`Unwrap`), or a `Call`/`Variant`'s
     /// argument print used only when NOT already inside real parens. Nothing compound is
     /// reachable bare here -- not even `Neg`.
@@ -111,6 +100,11 @@ fn left_power(e: &Expr) -> Option<u8> {
 }
 
 fn needs_parens(e: &Expr, ctx: Ctx) -> bool {
+    // A `let` block is only ever a function body, never a sub-expression, so no child position
+    // can hold one; treating it as needing parens everywhere is the safe dead arm.
+    if matches!(e, Expr::Let { .. }) {
+        return true;
+    }
     match ctx {
         Ctx::Atom => matches!(
             e,
@@ -118,7 +112,6 @@ fn needs_parens(e: &Expr, ctx: Ctx) -> bool {
                 | Expr::Logic { .. }
                 | Expr::Not { .. }
                 | Expr::Pipe { .. }
-                | Expr::Cond { .. }
                 | Expr::Match { .. }
                 | Expr::Neg { .. }
         ),
@@ -129,17 +122,11 @@ fn needs_parens(e: &Expr, ctx: Ctx) -> bool {
                     | Expr::Logic { .. }
                     | Expr::Not { .. }
                     | Expr::Pipe { .. }
-                    | Expr::Cond { .. }
                     | Expr::Match { .. }
             )
         }
         Ctx::Operand(m) => match e {
-            Expr::Pipe { .. } | Expr::Cond { .. } | Expr::Match { .. } => true,
-            _ => left_power(e).is_some_and(|p| p < m),
-        },
-        Ctx::CondThen(m) => match e {
-            Expr::Match { .. } => m > PIPE_RIGHT,
-            Expr::Pipe { .. } | Expr::Cond { .. } => true,
+            Expr::Pipe { .. } | Expr::Match { .. } => true,
             _ => left_power(e).is_some_and(|p| p < m),
         },
         Ctx::Expr(m) => match e {
@@ -163,6 +150,9 @@ pub fn emit(file: &File) -> String {
     for decl in decls_in_source_order(&file.aliases, &file.enums, &file.defs) {
         out.push_str(&decl);
         out.push_str("\n\n");
+    }
+    if let Some(ty) = &file.input {
+        out.push_str(&format!("input {}\n\n", print_type(ty)));
     }
     out.push_str(&print_expr_wrapped(&file.body, Ctx::Expr(0), 0));
     out.push('\n');
@@ -273,6 +263,22 @@ fn print_def(d: &Def) -> String {
         print_param(&d.param),
         print_type(&d.ret)
     );
+    // A `let` block is line-structured, so it has no one-line form: the signature, then one
+    // `let` line per binding, then the value, each indented one level.
+    if let Expr::Let { bindings, body, .. } = &d.body {
+        let mut lines: Vec<String> = bindings
+            .iter()
+            .map(|(n, v)| format!("let {n} = {}", print_expr_compact(v, Ctx::Expr(0))))
+            .collect();
+        lines.push(print_expr_wrapped(body, Ctx::Expr(0), INDENT));
+        let mut out = format!("{sig} =\n");
+        for line in lines {
+            out.push_str(&pad(INDENT));
+            out.push_str(&line);
+            out.push('\n');
+        }
+        return out.trim_end().to_string();
+    }
     let compact_body = print_expr_compact(&d.body, Ctx::Expr(0));
     let one_line = format!("{sig} = {compact_body}");
     if fits(&one_line, 0) {
@@ -391,17 +397,15 @@ fn print_paren_arg(e: &Expr) -> String {
 
 fn print_expr_compact(e: &Expr, ctx: Ctx) -> String {
     if needs_parens(e, ctx) {
-        return format!("({})", print_expr_inner(e, ctx));
+        return format!("({})", print_expr_inner(e));
     }
-    print_expr_inner(e, ctx)
+    print_expr_inner(e)
 }
 
 /// The outer parens decision (`needs_parens`) has already been made by `print_expr_compact`;
-/// `ctx` is threaded in only for `Cond::then`, which is the one child position whose available
-/// bare kinds depend on where the *whole* `Cond` sits. Every other child position is fixed by
-/// its own node (a `Binary`'s own operator powers, `Pipe`'s hard-coded `PIPE_RIGHT`, and so on),
-/// independent of `ctx`.
-fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
+/// every child position inside is fixed by its own node (a `Binary`'s own operator powers,
+/// `Pipe`'s hard-coded `PIPE_RIGHT`, and so on), independent of the outer `ctx`.
+fn print_expr_inner(e: &Expr) -> String {
     match e {
         Expr::Str { text, .. } => format!("\"{}\"", escape_str(text)),
         Expr::Int { value, .. } => value.to_string(),
@@ -424,6 +428,17 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
         Expr::Index { base, index, .. } => {
             format!("{}[{}]", print_atom_base(base), print_paren_arg(index))
         }
+        Expr::Slice { base, start, end, .. } => {
+            let lo = match start {
+                Some(s) => print_paren_arg(s),
+                None => String::new(),
+            };
+            let hi = match end {
+                Some(e) => print_paren_arg(e),
+                None => String::new(),
+            };
+            format!("{}[{lo}:{hi}]", print_atom_base(base))
+        }
         Expr::Unwrap { base, .. } => format!("{}!", print_atom_base(base)),
         Expr::Neg { base, .. } => format!("-{}", print_expr_compact(base, Ctx::Unary)),
         // `not x`, not `not(x)`: this is an operator, and the parens spelling would read as the
@@ -431,20 +446,6 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
         // the parens off the comparison the parser would give it back.
         Expr::Not { base, .. } => {
             format!("not {}", print_expr_compact(base, Ctx::Operand(NOT_POWER)))
-        }
-        Expr::Cond {
-            then,
-            cond,
-            otherwise,
-            ..
-        } => {
-            let m = outer_m(ctx);
-            format!(
-                "{} if {} else {}",
-                print_expr_compact(then, Ctx::CondThen(m)),
-                print_expr_compact(cond, Ctx::Operand(COND_POWER + 1)),
-                print_expr_compact(otherwise, Ctx::Expr(cond_tail(m)))
-            )
         }
         Expr::Field { base, name, .. } => {
             let base_str = print_atom_base(base);
@@ -457,6 +458,8 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
         Expr::Input { .. } => "input".to_string(),
         Expr::Inputs { .. } => "inputs".to_string(),
         Expr::Lines { .. } => "lines".to_string(),
+        // `csv`/`tsv` are parser sugar, so the canonical spelling is the parameterized form.
+        Expr::Dsv { delim, .. } => format!("dsv(\"{}\")", escape_str(delim)),
         Expr::Variant {
             enum_name,
             variant,
@@ -483,6 +486,11 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
                 print_expr_compact(rhs, Ctx::Expr(PIPE_RIGHT))
             )
         }
+        Expr::TailPipe { lhs, callee, .. } => {
+            // `|>` binds looser than everything and sits only at the outermost position, so the
+            // lhs is a fresh `expr(0)` with no parens to reach the sink.
+            format!("{} |> {callee}", print_expr_compact(lhs, Ctx::Expr(0)))
+        }
         Expr::Binary { op, lhs, rhs, .. } => {
             let (left, right) = bin_power(*op);
             format!(
@@ -499,13 +507,9 @@ fn print_expr_inner(e: &Expr, ctx: Ctx) -> String {
                 print_expr_compact(rhs, Ctx::Operand(right))
             )
         }
-    }
-}
-
-fn outer_m(ctx: Ctx) -> u8 {
-    match ctx {
-        Ctx::Expr(m) | Ctx::Operand(m) | Ctx::CondThen(m) => m,
-        Ctx::Atom | Ctx::Unary => 0,
+        // `print_def` emits a `let` block before reaching this match; a `Let` here is a
+        // nested one the parser never produces (the block form is only a function body).
+        Expr::Let { .. } => unreachable!("a `let` block is only ever a function body"),
     }
 }
 
@@ -585,8 +589,11 @@ fn print_expr_wrapped(e: &Expr, ctx: Ctx, indent: usize) -> String {
             print_expr_wrapped(base, Ctx::Operand(NOT_POWER), indent)
         ),
         Expr::Pipe { .. } => wrap_pipe(e, indent),
+        Expr::TailPipe { lhs, callee, .. } => format!(
+            "{} |> {callee}",
+            print_expr_wrapped(lhs, Ctx::Expr(0), indent)
+        ),
         Expr::Match { arms, .. } => wrap_match(arms, indent),
-        Expr::Cond { .. } => wrap_cond(e, outer_m(ctx), indent),
         Expr::VecLit { items, .. } => {
             let rendered: Vec<String> = items
                 .iter()
@@ -675,57 +682,6 @@ fn wrap_match(arms: &[MatchArm], indent: usize) -> String {
         out.push_str(" or\n");
         out.push_str(&pad(indent + INDENT));
         out.push_str(&p);
-    }
-    out
-}
-
-/// Flattens a right-recursive `Cond` chain (`a if c else b if d else e`) into its branches and
-/// final default, the same shape `wrap_match` handles for an arm chain: `if`/`else` chains and
-/// `or` chains are printed identically for the reason described where each is called.
-fn flatten_cond(e: &Expr) -> (Vec<(&Expr, &Expr)>, &Expr) {
-    let mut branches = Vec::new();
-    let mut cur = e;
-    while let Expr::Cond {
-        then,
-        cond,
-        otherwise,
-        ..
-    } = cur
-    {
-        branches.push((then.as_ref(), cond.as_ref()));
-        cur = otherwise.as_ref();
-    }
-    (branches, cur)
-}
-
-fn wrap_cond(e: &Expr, m: u8, indent: usize) -> String {
-    let (branches, final_otherwise) = flatten_cond(e);
-    let mut lines: Vec<String> = branches
-        .iter()
-        .enumerate()
-        .map(|(i, (then, cond))| {
-            // The first branch's `then` sits wherever the whole `Cond` sits; every later branch
-            // is reached only through `Cond::otherwise`, so its own `then` sits wherever that
-            // tail does.
-            let then_m = if i == 0 { m } else { cond_tail(m) };
-            format!(
-                "{} if {} else",
-                print_expr_compact(then, Ctx::CondThen(then_m)),
-                print_expr_compact(cond, Ctx::Operand(COND_POWER + 1))
-            )
-        })
-        .collect();
-    lines.push(print_expr_wrapped(
-        final_otherwise,
-        Ctx::Expr(cond_tail(m)),
-        indent + INDENT,
-    ));
-
-    let mut out = lines[0].clone();
-    for line in &lines[1..] {
-        out.push('\n');
-        out.push_str(&pad(indent + INDENT));
-        out.push_str(line);
     }
     out
 }

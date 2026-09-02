@@ -1,0 +1,5 @@
+---
+source: tests/step_dsv.rs
+expression: "err(\"fn g(a: {x: Str}) -> Str = a.x\\n{g: g(input), c: csv}.g\")"
+---
+a program cannot use both `dsv` and `input`; they read the same real stdin two different ways (at byte 31)
