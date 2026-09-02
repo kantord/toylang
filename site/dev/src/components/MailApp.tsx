@@ -21,6 +21,7 @@ import {
   annotationItem,
   composeItem,
   fetchNotesAndComposed,
+  grillErrorItem,
   grillItem,
   noteItem,
   planItem,
@@ -104,25 +105,33 @@ function markAsRead(a: Annotation) {
 
 /** Every grilling round waiting in `docs/.grill/` (kantord/toylang#34), fetched once up front so
  *  the inbox list has each round's question count and content ready before the maintainer opens
- *  one -- the reading pane never shows its own loading state. Soft-fails to no rounds, matching
- *  every other list here: a dev server with no `/__grill` endpoint just means nothing to grill. */
-function useGrillRounds(): { topic: string; round: Round }[] {
-  const [rounds, setRounds] = useState<{ topic: string; round: Round }[]>([])
+ *  one -- the reading pane never shows its own loading state. A round that fails to fetch or parse
+ *  (kantord/toylang#164) is kept as an `error` result so the list can render a visible row for it
+ *  instead of dropping the topic; soft-fails to no rounds when there is no `/__grill` endpoint,
+ *  matching every other list here. Discriminated on `status` so callers can narrow on it. */
+type GrillRoundResult =
+  | { status: "ok"; topic: string; round: Round }
+  | { status: "error"; topic: string; error: string }
+
+function useGrillRounds(): GrillRoundResult[] {
+  const [rounds, setRounds] = useState<GrillRoundResult[]>([])
   useEffect(() => {
     fetchRoundTopics()
       .then((topics) =>
-        Promise.allSettled(topics.map((t) => fetchRound(t).then((round) => ({ topic: t, round })))),
+        Promise.allSettled(topics.map((t) => fetchRound(t).then((round) => ({ topic: t, round })))).then((results) =>
+          setRounds(
+            results.map((r, i) =>
+              r.status === "fulfilled"
+                ? { status: "ok", ...r.value }
+                : {
+                    status: "error",
+                    topic: topics[i],
+                    error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+                  },
+            ),
+          ),
+        ),
       )
-      .then((results) => {
-        // One malformed round file must never blank every other pending round (kantord/toylang#164):
-        // a rejected fetch here drops only its own topic, logged for visibility, not the whole list.
-        const ok: { topic: string; round: Round }[] = []
-        for (const r of results) {
-          if (r.status === "fulfilled") ok.push(r.value)
-          else console.error("grill round fetch failed", r.reason)
-        }
-        setRounds(ok)
-      })
       .catch(() => {
         // No grill endpoint reachable -- the inbox just has no rounds.
       })
@@ -151,10 +160,11 @@ export function MailApp() {
 
   const items = useMemo<MailItem[]>(() => {
     const fromAnnotations = annotations.map((a) => annotationItem(a, answeredKeys.has(`${a.page.path}:${a.block}`)))
-    const fromGrill = grillRounds.map(({ topic, round }) => {
-      const page = roundPagePath(topic)
-      const answered = round.questions.every((_, i) => answeredKeys.has(`${page}:${i}`))
-      return grillItem(topic, round, answered)
+    const fromGrill = grillRounds.map((result) => {
+      if (result.status === "error") return grillErrorItem(result.topic, result.error)
+      const page = roundPagePath(result.topic)
+      const answered = result.round.questions.every((_, i) => answeredKeys.has(`${page}:${i}`))
+      return grillItem(result.topic, result.round, answered)
     })
     const fromComposed = [...composed]
       .sort((a, b) => b.created.localeCompare(a.created))
@@ -416,6 +426,9 @@ function MailRow({
   // An acknowledgement is never a request for engagement (gh:57): it sinks visually the same
   // way an already-read item does, whether or not it's actually been read yet.
   const ackMuted = item.flow === "status"
+  // A round that cannot be served reads as an error row, not a normal round (kantord/toylang#164):
+  // red text and a destructive badge so the broken file is noticed rather than passing for mail.
+  const broken = item.roundError != null
   return (
     <button
       type="button"
@@ -426,13 +439,16 @@ function MailRow({
         ackMuted && "opacity-60",
       )}
     >
-      <span className="truncate pt-0.5 text-xs font-semibold">{item.sender}</span>
+      <span className={cn("truncate pt-0.5 text-xs font-semibold", broken && "text-destructive")}>{item.sender}</span>
       <span className="min-w-0">
         <span className="flex items-center gap-1.5">
-          <Badge variant="outline" className={cn(flow.badge, "shrink-0 border-0 text-[10px]")}>
-            {flow.label}
+          <Badge
+            variant={broken ? "destructive" : "outline"}
+            className={cn("shrink-0 border-0 text-[10px]", !broken && flow.badge)}
+          >
+            {broken ? "Unreadable round" : flow.label}
           </Badge>
-          <span className="truncate text-xs font-medium">{item.subject}</span>
+          <span className={cn("truncate text-xs font-medium", broken && "text-destructive")}>{item.subject}</span>
         </span>
         {item.preview && (
           <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
@@ -481,6 +497,23 @@ function ReadingPane({
           round={round}
           onAllAnswered={() => onRoundAnswered(topic, round.questions.length)}
         />
+      </div>
+    )
+  }
+
+  const brokenRound = item.roundError
+  if (brokenRound) {
+    return (
+      <div className="space-y-3">
+        <MessageHeader item={item} />
+        <Separator />
+        <div className="rounded-sm border-l-4 border-destructive py-1 pl-2 text-xs text-destructive">
+          {brokenRound.error}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {roundPagePath(brokenRound.topic)} is on disk but cannot be served as a round. Fix the
+          file to get the round back.
+        </p>
       </div>
     )
   }
