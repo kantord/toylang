@@ -519,8 +519,9 @@ fn reachable_enums(enums: &Enums, ty: &Type, seen: &mut Vec<Type>, found: &mut V
 
 /// Every node in the tree, `t` itself included, in no particular order. The backends each walk
 /// the tree their own way, gathering what their own target needs; this is for the questions
-/// that are the same on every target.
-fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
+/// that are the same on every target. Public so `offload::explain` can report on every
+/// sub-expression the same way. 
+pub fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
     f(t);
     match &t.kind {
         Kind::Str(_)
