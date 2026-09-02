@@ -99,13 +99,6 @@
   model: fable
   status: delegated
 
-- id: trait-interface-research
-  title: 'Ruled (overloading-and-utf8-lines round ruling spinoff): declared interface/trait mechanism (Rust/Swift-shaped) is the direction for ad hoc polymorphism. Research spike before design: scope the minimal checker mechanism (trait declaration, impl-for-type, static dispatch) and whether it truly requires user-facing generics or can start monomorphic (one impl per concrete type, no generic trait bounds). Write findings to plans/.'
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
 - id: trait-interface-design
   title: 'Grill the concrete trait/impl syntax and dispatch mechanism (overloading-and-utf8-lines round ruling spinoff), informed by trait-interface-research'
   kind: decide
