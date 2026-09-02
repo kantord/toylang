@@ -71,9 +71,9 @@
   prio: 1
   status: todo
 
-- id: stdin-redesign-build
-  issue: gh:159
-  title: 'Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative, gh:159 -- verify parse(.) resolves an expected type inside a map body before full build). Escalated after 4 runs (2026-09-02): the feature itself landed cleanly in the first run (commit 45c76be), but 3 repair attempts against a 16-file merge conflict with main have each failed, the latest leaving the branch uncompilable (unclosed delimiter, src/check/mod.rs:3034). Do not redispatch until the issue-159-escalation round is ruled (~/.cache/toylang-drive/escalated-issue-159).'
+- id: stdin-redesign-build-2
+  issue: gh:172
+  title: 'Re-file of gh:159 (maintainer cleanup ruling, 2026-09-02, option C: drop the poisoned issue-159 lane, re-board under a fresh lane id rather than repair it). Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative -- verify parse(.) resolves an expected type inside a map body before full build). The old issue-159 branch/worktree are abandoned in place (permission-denied cleanup, left as garbage per the ruling); the feature diff there (commit 45c76be) is reference-only, re-derive against current main rather than cherry-pick.'
   kind: build
   needs: []
   model: fable
@@ -393,6 +393,14 @@
 - id: mail-rounds-isolation
   issue: gh:164
   title: Mail tab must not blank on one invalid round file -- per-round fetch isolation + visible error row
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
+
+- id: messagecard-flow-defensive-render
+  issue: gh:173
+  title: 'MessageCard hard-crashes the whole mail/grill UI on an unrecognized flow value (found live: two pending rounds had flow: decide, not a FlowType member, blanking the app). Fall back to a neutral style instead of throwing, and/or add an error boundary around round rendering -- the immediate bad data is already fixed in the two affected round files, this is the defensive follow-up.'
   kind: build
   needs: []
   prio: 2
