@@ -77,6 +77,7 @@ Enum,
     LBrace,
     RBrace,
     Colon,
+    Semicolon,
     Arrow,
     Eof,
 }
@@ -126,6 +127,7 @@ impl std::fmt::Display for Tok {
             Tok::LBrace => "`{`",
             Tok::RBrace => "`}`",
             Tok::Colon => "`:`",
+            Tok::Semicolon => "`;`",
             Tok::Arrow => "`->`",
             Tok::Eof => "end of program",
         };
@@ -215,6 +217,7 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
         '{' => single(input, Tok::LBrace),
         '}' => single(input, Tok::RBrace),
         ':' => single(input, Tok::Colon),
+        ';' => single(input, Tok::Semicolon),
         other => {
             return Err(Error::new(
                 Span::new(start, start + 1),
