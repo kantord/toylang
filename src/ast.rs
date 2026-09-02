@@ -329,6 +329,15 @@ pub enum Expr {
         rhs: Box<Expr>,
         span: Span,
     },
+    /// `lhs |> callee`, the tail-pipeline marker: the one way a sink call is written, `callee`
+    /// applied to `lhs`. Only a Sink-typed callee is legal here, and the production is parsed
+    /// only at a program's outermost position, so this node never appears nested.
+    TailPipe {
+        lhs: Box<Expr>,
+        callee: String,
+        callee_span: Span,
+        span: Span,
+    },
     Binary {
         op: BinOp,
         lhs: Box<Expr>,
@@ -418,6 +427,7 @@ impl Expr {
             | Expr::Variant { span, .. }
             | Expr::Match { span, .. }
             | Expr::Pipe { span, .. }
+            | Expr::TailPipe { span, .. }
             | Expr::Binary { span, .. }
             | Expr::Logic { span, .. }
             | Expr::Let { span, .. } => *span,

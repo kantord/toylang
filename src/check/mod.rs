@@ -330,22 +330,24 @@ fn check_defs<'a>(
         // body that synthesises instead is compared below, where the error can name the
         // function rather than just the two types.
         //
-        // A function declared `-> Sink` is the other sink position, so its body may be a direct
-        // sink call; nothing else is a sink, and a body that is not one fails here with the
-        // declared-vs-found mismatch below naming the function.
+        // A function declared `-> Sink` is the other sink position, so its body must be a sink
+        // call -- the tail-pipeline `|>` form or a direct call to a sink; nothing else is a
+        // sink, and a body that is not one fails here with the declared-vs-found mismatch below
+        // naming the function.
         let body = if sig.ret == Type::Sink {
-            match sink_call(&def_ctx, &def.body)? {
-                Some(tir) => tir,
-                None => {
-                    return Err(Error::new(
-                        def.body.span(),
-                        format!(
-                            "`{}` declares it returns Sink, so its body must be a sink call \
-                             such as `jsonlines(...)` or a call to a Sink-returning function",
-                            def.name
-                        ),
-                    ));
-                }
+            if matches!(def.body, Expr::TailPipe { .. }) {
+                tail_pipe(&def_ctx, &def.body)?
+            } else if let Some(tir) = sink_call(&def_ctx, &def.body)? {
+                tir
+            } else {
+                return Err(Error::new(
+                    def.body.span(),
+                    format!(
+                        "`{}` declares it returns Sink, so its body must be a sink call \
+                         such as `jsonlines(...)` or `x |> jsonlines`",
+                        def.name
+                    ),
+                ));
             }
         } else {
             match expect_inner(&def_ctx, &def.body, &sig.ret)? {
@@ -469,24 +471,27 @@ fn check_param(
     Ok(())
 }
 
-/// The program's own body. A sink-shaped body -- a direct `jsonlines(...)` call or a call to a
-/// function declared `-> Sink` -- is the one legal place a `Sink` may be born besides a
-/// `Sink`-returning function's body, so it is recognized ahead of `synth`, which refuses a
-/// sink everywhere else (the general position rule; see `sink_call`). Any other body is
-/// synthesized, and a `Sink` result that slips past recognition can only mean a shape `synth`
-/// should have refused.
+/// The program's own body. A sink-shaped body -- the tail-pipeline `lhs |> callee` or a direct
+/// sink call (`jsonlines(...)` or a call to a function declared `-> Sink`) -- is the one legal
+/// place a `Sink` may be born besides a `Sink`-returning function's body, so it is recognized
+/// ahead of `synth`, which refuses a sink everywhere else (the general position rule; see
+/// `tail_pipe` and `sink_call`). Any other body is synthesized, and a `Sink` result that slips
+/// past recognition can only mean a shape `synth` should have refused.
 fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
+    if matches!(body, Expr::TailPipe { .. }) {
+        return tail_pipe(ctx, body);
+    }
     if let Some(tir) = sink_call(ctx, body)? {
         return Ok(tir);
     }
     synth(ctx, body)
 }
 
-/// Whether `body` is a sink-shaped expression -- a direct `jsonlines(...)` call or a call to a
-/// function declared `-> Sink` -- and, if so, the `Sink`-typed Tir it checks to. This is the
-/// only legal place a `Sink` may be born (the program's body and a `Sink`-returning function's
-/// body); everywhere else `synth` runs the general position rule and a `Sink` that slips past
-/// here is a shape `synth` should have refused.
+/// Whether `body` is a direct sink call -- `jsonlines(...)` or a call to a function declared
+/// `-> Sink` -- and, if so, the `Sink`-typed Tir it checks to. The `|>` tail-pipeline is the
+/// other way a sink is written (see `tail_pipe`); both are legal in the program's body and a
+/// `Sink`-returning function's body, and everywhere else `synth` runs the general position
+/// rule and a `Sink` that slips past here is a shape `synth` should have refused.
 fn sink_call(ctx: &Ctx, body: &Expr) -> Result<Option<Tir>, Error> {
     let Expr::Call {
         func,
@@ -504,6 +509,68 @@ fn sink_call(ctx: &Ctx, body: &Expr) -> Result<Option<Tir>, Error> {
         return Ok(Some(call(ctx, func, *func_span, arg, *span)?));
     }
     Ok(None)
+}
+
+/// `lhs |> callee`, the tail-pipeline marker: `callee` -- a sink -- applied to `lhs`. This is
+/// one of the two legal places a `Sink` may be born (the program's body and a `Sink`-returning
+/// function's body; the other is a direct sink call, see `sink_call`); everywhere else `synth`
+/// runs the general position rule and a `Sink` that slips past here is a shape `synth` should
+/// have refused. Only a `Sink`-typed callee is legal, which is the general rule the old
+/// hand-checked `jsonlines` position (kantord/toylang#151, #154) folded into: `jsonlines` is
+/// the one sink builtin, and every other callee must be a function whose declared return type
+/// is `Sink`.
+fn tail_pipe(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
+    let Expr::TailPipe {
+        lhs,
+        callee,
+        callee_span,
+        ..
+    } = expr
+    else {
+        unreachable!("tail_pipe is only called on a `|>` node");
+    };
+    let value = synth(ctx, lhs)?;
+    if callee == "jsonlines" {
+        return jsonlines_arg(value, lhs.span());
+    }
+    let Some(sig) = ctx.sigs.get(callee.as_str()) else {
+        return Err(Error::new(
+            *callee_span,
+            format!(
+                "the callee of `|>` must be a sink, such as `jsonlines` or a function that \
+                 returns Sink; `{callee}` is not one"
+            ),
+        ));
+    };
+    if sig.ret != Type::Sink {
+        return Err(Error::new(
+            *callee_span,
+            format!(
+                "the callee of `|>` must be a sink, but `{callee}` returns {}",
+                sig.ret
+            ),
+        ));
+    }
+    let Some(param_ty) = &sig.param else {
+        return Err(Error::new(
+            *callee_span,
+            format!("`{callee}` takes no argument, so there is nothing for `|>` to pass it"),
+        ));
+    };
+    if value.ty != *param_ty {
+        return Err(Error::new(
+            lhs.span(),
+            format!("`{callee}` needs {param_ty}, found {}", value.ty),
+        ));
+    }
+    let value = conform(ctx, value, param_ty);
+    Ok(Tir::new(
+        Type::Sink,
+        Kind::Call {
+            func: callee.clone(),
+            arg: Some(Box::new(value)),
+        },
+    ))
 }
 
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
@@ -1469,9 +1536,10 @@ fn match_chain(
 
 fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     let tir = synth_inner(ctx, expr)?;
-    // A sink is not a value, so it can exist only where `sink_call` recognized a sink position:
-    // the program's own body or a Sink-returning function's. Reaching `synth` with a sink means
-    // it is nested where its output would be observed, which is the general position rule.
+    // A sink is not a value, so it can exist only where `tail_pipe` or `sink_call` recognized a
+    // sink position: the program's own body or a Sink-returning function's. Reaching `synth`
+    // with a sink means it is nested where its output would be observed, which is the general
+    // position rule.
     if tir.ty.contains_sink() {
         return Err(Error::new(
             expr.span(),
@@ -1677,6 +1745,12 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Expected::Checked(tir) | Expected::Synthesised(tir) => Ok(tir),
         },
 
+        // A `|>` node only ever appears as a program's or a Sink-returning function's body,
+        // which `check_program_body` and `check_defs` handle before `synth` is reached. A `Sink`
+        // result here is refused by `synth`'s wrapper with the general position rule, so this
+        // arm exists for totality and is only reachable through a shape the parser cannot make.
+        Expr::TailPipe { .. } => tail_pipe(ctx, expr),
+
         Expr::Field { .. } | Expr::Index { .. } | Expr::Slice { .. } | Expr::Unwrap { .. } => {
             let Access { tir, stream, .. } = access(ctx, expr)?;
             // Projection over a stream is a mapper, and it is normalized to one here: the chain
@@ -1852,8 +1926,8 @@ fn call(
     }
     // The one sink builtin: a regular call now, typed `Sink`, and so subject to the same
     // general position rule every sink is -- `synth`'s wrapper refuses a `Sink` result except
-    // where `sink_call` recognized it. The old special case in `check_program_body` retired in
-    // favor of that rule.
+    // where `sink_call` or the tail-pipeline `|>` (`tail_pipe`) born it. The old hand-checked
+    // `jsonlines` position in `check_program_body` retired in favor of that rule.
     if func == "jsonlines" {
         return jsonlines_call(ctx, arg, span);
     }
@@ -2001,10 +2075,11 @@ fn select_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
     ))
 }
 
-/// `jsonlines(x)`, the one sink builtin, typed `Sink`. A sink is not a value, so this is legal
-/// only where `sink_call` recognized it; nested anywhere else `synth` reaches the general rule
-/// and the mismatch against whatever type the position wanted fails there. The argument is a
-/// Vec or a Stream of elements with a wire form; Char has none.
+/// `jsonlines(x)`, the one sink builtin, typed `Sink`. A sink is not a value, so a direct call
+/// survives only where `sink_call` recognized the sink position (the program's body or a
+/// `Sink`-returning function's); anywhere else `synth` reaches the general rule and refuses
+/// the `Sink` result. The argument is a Vec or a Stream of elements with a wire form; Char has
+/// none.
 fn jsonlines_call(ctx: &Ctx, arg: &Option<Box<Expr>>, span: Span) -> Result<Tir, Error> {
     let Some(arg) = arg else {
         return Err(Error::new(
@@ -2014,15 +2089,22 @@ fn jsonlines_call(ctx: &Ctx, arg: &Option<Box<Expr>>, span: Span) -> Result<Tir,
     };
     let arg_span = arg.span();
     let arg = synth(ctx, arg)?;
+    jsonlines_arg(arg, arg_span)
+}
+
+/// The `jsonlines` sink's argument rules, applied to a value already synthesised: a Vec or a
+/// Stream of elements with a wire form. Shared by the direct call and the `|>` tail-pipeline
+/// (`x |> jsonlines`), which differ only in where the argument came from.
+fn jsonlines_arg(arg: Tir, span: Span) -> Result<Tir, Error> {
     if !matches!(arg.ty, Type::Vec(_) | Type::Stream(_)) {
         return Err(Error::new(
-            arg_span,
+            span,
             format!("`jsonlines` needs a Vec or a stream, found {}", arg.ty),
         ));
     }
     if arg.ty.contains_char() {
         return Err(Error::new(
-            arg_span,
+            span,
             format!(
                 "`jsonlines` cannot print {}; Char has no wire form to write",
                 arg.ty
