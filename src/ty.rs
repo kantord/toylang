@@ -57,6 +57,14 @@ pub enum Type {
     /// -- born at a source (`lines` is `Stream<Str>`), consumed exactly once per binding, and
     /// exiting only through `collect`.
     Stream(Box<Type>),
+    /// A sink: an expression that writes rather than producing a value, of which the only
+    /// instance today is the `jsonlines` builtin (gh:138 ruling). Second-class by construction,
+    /// the same way a `Stream` is -- a sink is not a value, so it never sits inside a Vec, a
+    /// record, a Stream, or an enum payload, and it is never a parameter -- with the position
+    /// rules stated once generally in the checker rather than hand-checked per builtin: a
+    /// `Sink` is legal only as the program's outermost expression or as a `Sink`-returning
+    /// function's body. A function may declare it as its return type and nothing else.
+    Sink,
     /// A declared enum: nominal, so the name is the identity. A name (and, for a generic enum,
     /// its arguments) determines the variants within a program, so `PartialEq` below compares
     /// only those and not `variants` itself -- which matters because a self-referential enum's
@@ -108,6 +116,7 @@ impl Type {
             "Float" => Some(Type::Float),
             "Bool" => Some(Type::Bool),
             "Char" => Some(Type::Char),
+            "Sink" => Some(Type::Sink),
             _ => None,
         }
     }
@@ -122,6 +131,25 @@ impl Type {
             Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_stream()),
             // An enum payload cannot hold a stream: resolve_enum refuses the declaration,
             // and instantiation refuses a stream as a type argument.
+            _ => false,
+        }
+    }
+
+    /// Whether `ty` is a sink or holds one anywhere inside it. A sink is not a value, so no
+    /// constructed type may contain one; the type grammar refuses every spelling of `Vec<Sink>`,
+    /// a record field, a Stream of one, and an enum payload, and the checker's one general
+    /// position rule refuses a bare `Sink` anywhere but a sink position.
+    pub fn contains_sink(&self) -> bool {
+        match self {
+            Type::Sink => true,
+            Type::Vec(t) | Type::Stream(t) => t.contains_sink(),
+            Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_sink()),
+            Type::Enum { args, variants, .. } => {
+                args.iter().any(Type::contains_sink)
+                    || variants
+                        .iter()
+                        .any(|(_, p)| p.as_ref().is_some_and(Type::contains_sink))
+            }
             _ => false,
         }
     }
@@ -252,6 +280,7 @@ impl Type {
             Type::Char => "Char".to_string(),
             Type::Vec(t) => format!("Vec_{}", t.ident()),
             Type::Stream(t) => format!("Stream_{}", t.ident()),
+            Type::Sink => "Sink".to_string(),
             Type::Record(fields) => {
                 let mut parts: Vec<String> = fields
                     .iter()
@@ -283,6 +312,7 @@ impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Stream(t) => write!(f, "Stream<{t}>"),
+            Type::Sink => write!(f, "Sink"),
             Type::Str => write!(f, "Str"),
             Type::Int => write!(f, "Int"),
             Type::Int64 => write!(f, "Int64"),
@@ -331,6 +361,7 @@ impl PartialEq for Type {
             | (Type::Char, Type::Char) => true,
             (Type::Vec(a), Type::Vec(b)) => a == b,
             (Type::Stream(a), Type::Stream(b)) => a == b,
+            (Type::Sink, Type::Sink) => true,
             (Type::Record(a), Type::Record(b)) => {
                 a.len() == b.len() && a.iter().all(|field| b.contains(field))
             }
@@ -383,7 +414,9 @@ pub fn substitute(t: &Type, map: &HashMap<String, Type>) -> Type {
                 .map(|(n, p)| (n.clone(), p.as_ref().map(|p| substitute(p, map))))
                 .collect(),
         },
-        Type::Str | Type::Int | Type::Int64 | Type::Float | Type::Bool | Type::Char => t.clone(),
+        Type::Str | Type::Int | Type::Int64 | Type::Float | Type::Bool | Type::Char | Type::Sink => {
+            t.clone()
+        }
     }
 }
 

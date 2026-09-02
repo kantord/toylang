@@ -47,8 +47,9 @@ fn plus_does_not_mix_its_operands() {
     );
 }
 
-/// The condition is exactly one Bool. This is where jq runs both branches and gets two answers;
-/// here it does not typecheck.
+/// The ternary was retired (kantord/toylang#155): one conditional form to learn. The old
+/// `then if cond else otherwise` spelling no longer parses -- `if` is an ordinary identifier
+/// now, so a bare `"a" if ...` is left hanging where an operator should end the program.
 #[test]
 fn a_condition_must_be_a_bool() {
     insta::assert_snapshot!(
@@ -59,7 +60,8 @@ fn a_condition_must_be_a_bool() {
     );
 }
 
-/// Both branches have to agree, since the conditional is an expression with one type.
+/// The retirement covers a chain too: whatever the branches' types, the spelling itself is
+/// refused before any checking could happen.
 #[test]
 fn both_branches_must_agree() {
     insta::assert_snapshot!(

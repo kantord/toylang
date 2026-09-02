@@ -69,13 +69,17 @@ function load(): { board: Task[]; archive: Task[] } {
   // and moved to the archive (issue #113).
   const liveIds = new Set(boardRows.map((r) => r.id))
   const toTask = (r: RawRow): Task => {
-    const needsAllDone = r.needs.every((id) => !liveIds.has(id))
+    // Rows are written by several deterministic writers now (ticks,
+    // stuck-watch.py), so missing optional fields must degrade, not throw: a
+    // rows-without-needs batch blanked the whole board to empty (2026-09-01).
+    const needs = r.needs ?? []
+    const needsAllDone = needs.every((id) => !liveIds.has(id))
     return {
       id: r.id,
       issue: parseIssue(r.issue),
       title: r.title,
       kind: r.kind,
-      needs: r.needs,
+      needs,
       status: r.status,
       unblocked: r.status === "todo" && needsAllDone,
       blocked: r.status === "todo" && !needsAllDone,
@@ -85,7 +89,17 @@ function load(): { board: Task[]; archive: Task[] } {
   return { board: boardRows.map(toTask), archive: archiveRows.map(toTask) }
 }
 
-const { board, archive } = load()
+// board.yaml/board-archive.yaml are coordinator-written, committed content -- a syntax error
+// in either (missing closing quote, 2026-09-01: took the whole site down, not just one tab,
+// since this module is imported eagerly and widely) must degrade to an empty board instead of
+// throwing at module init, which would crash every page that transitively imports BOARD/ARCHIVE.
+let board: Task[] = []
+let archive: Task[] = []
+try {
+  ;({ board, archive } = load())
+} catch (e) {
+  console.error("board.yaml/board-archive.yaml failed to parse -- showing an empty board", e)
+}
 
 /** The live board: never contains a `done` row (issue #113). */
 export const BOARD: Task[] = board

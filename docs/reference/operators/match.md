@@ -25,8 +25,8 @@ default spelled as an arm, standing in for every variant nothing named:
 enum_match_default
 ```
 
-A guard chain with a bare default is the conditional chain in another notation -- FizzBuzz
-barely changes shape written either way:
+A guard chain with a bare default is the whole of conditional logic -- FizzBuzz as guard
+arms:
 
 ```case
 fizzbuzz_arms

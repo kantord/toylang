@@ -2,14 +2,14 @@
 # record payload gets, so every backend's reader parses the payload by its declared type
 # rather than assuming an object inside the wrapper.
 program: |
-  enum Temp { unknown, celsius(Int) }
+  enum Temp { Unknown, Celsius(Int) }
 
-  fn read(t: Temp) -> Int = t | celsius -> . or unknown -> 0
+  fn read(t: Temp) -> Int = t | Celsius -> . or Unknown -> 0
 
   read input
 
 input: |
-  {"celsius": 21}
+  {"Celsius": 21}
 
 output: |
   21

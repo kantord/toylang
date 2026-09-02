@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Param, Pattern, Span};
+use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Origin, Param, Pattern, Span};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{self, Sig, Type};
@@ -10,7 +10,10 @@ mod linearity;
 mod types;
 
 use linearity::{StreamBinding, check_linear, field_used, param_used, prune_unreachable};
-use types::{TypeEnv, alias_map, enum_map, resolve, resolve_enum, signatures};
+use types::{
+    TypeEnv, alias_map, constructor_of, enum_map, is_constructor_of, matcher_of, resolve,
+    resolve_enum, signatures,
+};
 
 struct Ctx<'a> {
     sigs: &'a HashMap<String, Sig>,
@@ -20,8 +23,11 @@ struct Ctx<'a> {
     /// through this while exactly one enum claims the name; two claimants are a loud error
     /// naming both, with `Shape.circle` as the qualified way out.
     variant_owners: &'a HashMap<String, Vec<String>>,
-    /// Named bindings. At most one, since functions are unary and there is no `let`.
-    scope: Vec<(String, Type)>,
+    /// Named bindings, innermost last. A function parameter carries `None` for its local (the
+    /// backends render a param by name); a `let` binding carries the `LocalId` it was bound to,
+    /// so reading the name is reading that local. `let` can stack many of these, and a later one
+    /// shadows an earlier, which is what the reverse search in `synth` is for.
+    scope: Vec<(String, Type, Option<LocalId>)>,
     /// Names a match arm's record pattern bound, innermost last: reading one reads that field
     /// off the arm's payload local, so nothing beyond ordinary `Field` nodes reaches the
     /// backends. Each entry is the bound name, the payload's record type, and its local.
@@ -37,6 +43,10 @@ struct Ctx<'a> {
     /// read is refused rather than silently handed nothing, the way a second pass over an
     /// already-consumed iterator would be in a language that let it compile.
     lines_used: &'a Cell<bool>,
+    /// The delimiter `dsv` was read with, filled in the first time it is used. `csv`/`tsv`
+    /// arrive here with the delimiter already fixed by the parser. A second read of any kind
+    /// is refused the same way a second `lines` is.
+    dsv: &'a RefCell<Option<String>>,
     /// Whether checking is inside a mapper's body (`map`'s, or `select`'s predicate), which
     /// runs once per element: a source read there would drain stdin on the first element and
     /// hand every later one nothing, so `lines` and `inputs` are refused in that position.
@@ -45,23 +55,41 @@ struct Ctx<'a> {
     /// source is legal only in the program body (see `source_in_fn`), so `lines` and `inputs`
     /// are refused whenever this is set.
     in_fn: Option<&'a str>,
+    /// Every user function, keyed by name, with the file it was defined in and whether it is
+    /// `pub`. A call to a non-`pub` one from a different file than `file` is refused, which is
+    /// the visibility rule (gh:166).
+    visibility: &'a HashMap<String, (Origin, bool)>,
+    /// Which file the code being checked was written in. The program's body and definitions are
+    /// `Program`; the prelude's definitions (checked at build time) are `Prelude`.
+    file: Origin,
     next_local: &'a Cell<LocalId>,
 }
 
 impl Ctx<'_> {
     fn with(&self, subject: Option<(Type, LocalId)>) -> Ctx<'_> {
+        self.rebuild(self.scope.clone(), subject)
+    }
+
+    fn rebuild(
+        &self,
+        scope: Vec<(String, Type, Option<LocalId>)>,
+        subject: Option<(Type, LocalId)>,
+    ) -> Ctx<'_> {
         Ctx {
             sigs: self.sigs,
             enums: self.enums,
             variant_owners: self.variant_owners,
-            scope: self.scope.clone(),
+            scope,
             arm_fields: self.arm_fields.clone(),
             subject,
             input: self.input,
             inputs: self.inputs,
             lines_used: self.lines_used,
+            dsv: self.dsv,
             in_mapper: self.in_mapper,
             in_fn: self.in_fn,
+            visibility: self.visibility,
+            file: self.file,
             next_local: self.next_local,
         }
     }
@@ -107,12 +135,49 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 .entry(v.name.clone())
                 .or_default()
                 .push(e.name.clone());
+            // The lowercase spelling is the constructor, the value built right away (gh:156):
+            // a bare lowercase variant name resolves to the same owner so it reaches `construct`,
+            // which maps it to the declared variant. A declared name already lowercase (the
+            // prelude's `Opt`/`Result`) has the same constructor spelling, so pushing again would
+            // make one owner look like two.
+            let constructor = constructor_of(&v.name);
+            if constructor != v.name {
+                variant_owners
+                    .entry(constructor)
+                    .or_default()
+                    .push(e.name.clone());
+            }
         }
     }
     let sigs = signatures(&file.defs, &env)?;
     let input = RefCell::new(None);
+    // A program's `input <type>` declaration types stdin up front, before the body is read,
+    // instead of borrowing the type from the first use of `input`. Resolving it into the same
+    // cell the uses read is what lets the annotation and the uses agree on one type, and the
+    // wire rules `input_read` applies to a use are applied to a declared type here too: a
+    // stream has nothing to decode, absence and Char and Int64 have no ratified wire form.
+    if let Some(declared) = &file.input {
+        let ty = resolve(declared, &env, &mut Vec::new())?;
+        if ty.contains_stream()
+            || ty.contains_opt()
+            || ty.contains_char()
+            || ty.contains_int64()
+        {
+            return Err(Error::new(
+                declared.span(),
+                format!("`input` cannot be declared as {ty}; it has no wire form to read"),
+            ));
+        }
+        *input.borrow_mut() = Some(ty);
+    }
     let inputs = RefCell::new(None);
+    let dsv = RefCell::new(None);
     let next_local = Cell::new(0);
+    let visibility: HashMap<String, (Origin, bool)> = file
+        .defs
+        .iter()
+        .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
+        .collect();
     let ctx = Ctx {
         sigs: &sigs,
         enums: &enums,
@@ -123,8 +188,11 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         input: &input,
         inputs: &inputs,
         lines_used: &lines_used,
+        dsv: &dsv,
         in_mapper: false,
         in_fn: None,
+        visibility: &visibility,
+        file: Origin::Program,
         next_local: &next_local,
     };
 
@@ -193,12 +261,31 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 .to_string(),
         ));
     }
+    // `dsv` reads the same raw lines `lines` does, so it joins the same exclusivity: one real
+    // stdin, read one way.
+    let dsv = dsv.into_inner();
+    for (other, name) in [
+        (input.is_some(), "`input`"),
+        (inputs.is_some(), "`inputs`"),
+        (lines_used.get(), "`lines`"),
+    ] {
+        if dsv.is_some() && other {
+            return Err(Error::new(
+                file.body.span(),
+                format!(
+                    "a program cannot use both `dsv` and {name}; they read the same real stdin \
+                     two different ways"
+                ),
+            ));
+        }
+    }
     Ok(tir::Program {
         funcs: prune_unreachable(funcs, &body),
         body,
         input,
         inputs,
         uses_lines: lines_used.get(),
+        dsv,
         enums,
     })
 }
@@ -217,7 +304,7 @@ fn check_defs<'a>(
     for def in defs {
         let sig = &ctx.sigs[&def.name];
         let scope = match (&def.param, &sig.param) {
-            (Some(param), Some(param_ty)) => vec![(param.name.clone(), param_ty.clone())],
+            (Some(param), Some(param_ty)) => vec![(param.name.clone(), param_ty.clone(), None)],
             (None, None) => Vec::new(),
             _ => unreachable!("a signature's param mirrors its definition's"),
         };
@@ -231,17 +318,42 @@ fn check_defs<'a>(
             input: ctx.input,
             inputs: ctx.inputs,
             lines_used: ctx.lines_used,
+            dsv: ctx.dsv,
             in_mapper: false,
             in_fn: Some(&def.name),
+            visibility: ctx.visibility,
+            file: ctx.file,
             next_local: ctx.next_local,
         };
         // The declared return type flows into the body, so a form whose type comes from its
         // position (`[]`, `input`, a variant-naming string) resolves against the annotation. A
         // body that synthesises instead is compared below, where the error can name the
         // function rather than just the two types.
-        let body = match expect_inner(&def_ctx, &def.body, &sig.ret)? {
-            Expected::Checked(body) => body,
-            Expected::Synthesised(body) => conform(&def_ctx, body, &sig.ret),
+        //
+        // A function declared `-> Sink` is the other sink position, so its body must be a sink
+        // call -- the tail-pipeline `|>` form or a direct call to a sink; nothing else is a
+        // sink, and a body that is not one fails here with the declared-vs-found mismatch below
+        // naming the function.
+        let body = if sig.ret == Type::Sink {
+            if matches!(def.body, Expr::TailPipe { .. }) {
+                tail_pipe(&def_ctx, &def.body)?
+            } else if let Some(tir) = sink_call(&def_ctx, &def.body)? {
+                tir
+            } else {
+                return Err(Error::new(
+                    def.body.span(),
+                    format!(
+                        "`{}` declares it returns Sink, so its body must be a sink call \
+                         such as `jsonlines(...)` or `x |> jsonlines`",
+                        def.name
+                    ),
+                ));
+            }
+        } else {
+            match expect_inner(&def_ctx, &def.body, &sig.ret)? {
+                Expected::Checked(body) => body,
+                Expected::Synthesised(body) => conform(&def_ctx, body, &sig.ret),
+            }
         };
         if let Some(param) = &def.param {
             check_param(&body, param, &sig.param, &def.name, def.body.span())?;
@@ -288,13 +400,26 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
                 .entry(v.name.clone())
                 .or_default()
                 .push(e.name.clone());
+            let constructor = constructor_of(&v.name);
+            if constructor != v.name {
+                variant_owners
+                    .entry(constructor)
+                    .or_default()
+                    .push(e.name.clone());
+            }
         }
     }
     let sigs = signatures(&module.defs, &env)?;
     let input = RefCell::new(None);
     let inputs = RefCell::new(None);
     let lines_used = Cell::new(false);
+    let dsv = RefCell::new(None);
     let next_local = Cell::new(0);
+    let visibility: HashMap<String, (Origin, bool)> = module
+        .defs
+        .iter()
+        .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
+        .collect();
     let ctx = Ctx {
         sigs: &sigs,
         enums: &enums,
@@ -305,8 +430,11 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
         input: &input,
         inputs: &inputs,
         lines_used: &lines_used,
+        dsv: &dsv,
         in_mapper: false,
         in_fn: None,
+        visibility: &visibility,
+        file: Origin::Prelude,
         next_local: &next_local,
     };
     check_defs(module.defs.iter(), &ctx)
@@ -343,56 +471,115 @@ fn check_param(
     Ok(())
 }
 
-/// The program's own body, one call form special-cased ahead of `synth`: `jsonlines` is a sink,
-/// legal only here, as the outermost expression, taking a Vec or a Stream and having no result
-/// type at all, since nothing remains that could observe one. The Tir node still carries `Str`
-/// -- under eager lowering the emitted expression genuinely is the joined string every backend
-/// prints raw -- but no program can see that: `synth` refuses `jsonlines` everywhere else.
+/// The program's own body. A sink-shaped body -- the tail-pipeline `lhs |> callee` or a direct
+/// sink call (`jsonlines(...)` or a call to a function declared `-> Sink`) -- is the one legal
+/// place a `Sink` may be born besides a `Sink`-returning function's body, so it is recognized
+/// ahead of `synth`, which refuses a sink everywhere else (the general position rule; see
+/// `tail_pipe` and `sink_call`). Any other body is synthesized, and a `Sink` result that slips
+/// past recognition can only mean a shape `synth` should have refused.
 fn check_program_body(ctx: &Ctx, body: &Expr) -> Result<Tir, Error> {
-    if let Expr::Call { func, arg, .. } = body
-        && func == "jsonlines"
-    {
-        let Some(arg) = arg else {
-            return Err(Error::new(
-                body.span(),
-                "`jsonlines` needs a Vec or a stream, but was called with no argument".to_string(),
-            ));
-        };
-        let arg_span = arg.span();
-        let arg = synth(ctx, arg)?;
-        if !matches!(arg.ty, Type::Vec(_) | Type::Stream(_)) {
-            return Err(Error::new(
-                arg_span,
-                format!("`jsonlines` needs a Vec or a stream, found {}", arg.ty),
-            ));
-        }
-        if arg.ty.contains_char() {
-            return Err(Error::new(
-                arg_span,
-                format!(
-                    "`jsonlines` cannot print {}; Char has no wire form to write",
-                    arg.ty
-                ),
-            ));
-        }
-        return Ok(Tir::new(
-            Type::Str,
-            Kind::Builtin {
-                which: tir::Builtin::JsonLines,
-                arg: Box::new(arg),
-            },
-        ));
+    if matches!(body, Expr::TailPipe { .. }) {
+        return tail_pipe(ctx, body);
+    }
+    if let Some(tir) = sink_call(ctx, body)? {
+        return Ok(tir);
     }
     synth(ctx, body)
 }
 
+/// Whether `body` is a direct sink call -- `jsonlines(...)` or a call to a function declared
+/// `-> Sink` -- and, if so, the `Sink`-typed Tir it checks to. The `|>` tail-pipeline is the
+/// other way a sink is written (see `tail_pipe`); both are legal in the program's body and a
+/// `Sink`-returning function's body, and everywhere else `synth` runs the general position
+/// rule and a `Sink` that slips past here is a shape `synth` should have refused.
+fn sink_call(ctx: &Ctx, body: &Expr) -> Result<Option<Tir>, Error> {
+    let Expr::Call {
+        func,
+        func_span,
+        arg,
+        span,
+    } = body
+    else {
+        return Ok(None);
+    };
+    if func == "jsonlines" {
+        return Ok(Some(jsonlines_call(ctx, arg, *span)?));
+    }
+    if ctx.sigs.get(func).is_some_and(|sig| sig.ret == Type::Sink) {
+        return Ok(Some(call(ctx, func, *func_span, arg, *span)?));
+    }
+    Ok(None)
+}
+
+/// `lhs |> callee`, the tail-pipeline marker: `callee` -- a sink -- applied to `lhs`. This is
+/// one of the two legal places a `Sink` may be born (the program's body and a `Sink`-returning
+/// function's body; the other is a direct sink call, see `sink_call`); everywhere else `synth`
+/// runs the general position rule and a `Sink` that slips past here is a shape `synth` should
+/// have refused. Only a `Sink`-typed callee is legal, which is the general rule the old
+/// hand-checked `jsonlines` position (kantord/toylang#151, #154) folded into: `jsonlines` is
+/// the one sink builtin, and every other callee must be a function whose declared return type
+/// is `Sink`.
+fn tail_pipe(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
+    let Expr::TailPipe {
+        lhs,
+        callee,
+        callee_span,
+        ..
+    } = expr
+    else {
+        unreachable!("tail_pipe is only called on a `|>` node");
+    };
+    let value = synth(ctx, lhs)?;
+    if callee == "jsonlines" {
+        return jsonlines_arg(value, lhs.span());
+    }
+    let Some(sig) = ctx.sigs.get(callee.as_str()) else {
+        return Err(Error::new(
+            *callee_span,
+            format!(
+                "the callee of `|>` must be a sink, such as `jsonlines` or a function that \
+                 returns Sink; `{callee}` is not one"
+            ),
+        ));
+    };
+    if sig.ret != Type::Sink {
+        return Err(Error::new(
+            *callee_span,
+            format!(
+                "the callee of `|>` must be a sink, but `{callee}` returns {}",
+                sig.ret
+            ),
+        ));
+    }
+    let Some(param_ty) = &sig.param else {
+        return Err(Error::new(
+            *callee_span,
+            format!("`{callee}` takes no argument, so there is nothing for `|>` to pass it"),
+        ));
+    };
+    if value.ty != *param_ty {
+        return Err(Error::new(
+            lhs.span(),
+            format!("`{callee}` needs {param_ty}, found {}", value.ty),
+        ));
+    }
+    let value = conform(ctx, value, param_ty);
+    Ok(Tir::new(
+        Type::Sink,
+        Kind::Call {
+            func: callee.clone(),
+            arg: Some(Box::new(value)),
+        },
+    ))
+}
+
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
 /// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `length`, `flatten`,
-/// `tail`, `collect`, `fields`, `sort`, and `reverse` are polymorphic and checked from
-/// `synth`'s own arms; `select` and `map` rebind `.`. All fourteen are reserved the same way,
-/// and the docs harness (tests/docs.rs) reads this list to insist each one has a reference
-/// page.
-pub const BUILTIN_NAMES: [&str; 14] = [
+/// `tail`, `collect`, `fields`, `sort`, `reverse`, `sum`, and `max` are polymorphic and checked
+/// from `synth`'s own arms; `select` and `map` rebind `.`. All sixteen are reserved the same
+/// way, and the docs harness (tests/docs.rs) reads this list to insist each one has a
+/// reference page.
+pub const BUILTIN_NAMES: [&str; 16] = [
     "chars",
     "collect",
     "length",
@@ -401,11 +588,13 @@ pub const BUILTIN_NAMES: [&str; 14] = [
     "i64",
     "jsonlines",
     "map",
+    "max",
     "range",
     "reverse",
     "select",
     "sort",
     "str",
+    "sum",
     "tail",
 ];
 
@@ -425,7 +614,7 @@ fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
             tir::Builtin::Range,
             Sig {
                 param: Some(Type::Int),
-                ret: vec_of(Type::Int),
+                ret: Type::Stream(Box::new(Type::Int)),
             },
         ),
         "chars" => (
@@ -679,6 +868,7 @@ fn construct(
     variant_span: Span,
     payload: Option<&Expr>,
     expected: Option<&Type>,
+    from_string: bool,
 ) -> Result<Tir, Error> {
     let Type::Enum { name, args, .. } = enum_ty else {
         unreachable!("construct is only called with an enum type")
@@ -699,7 +889,23 @@ fn construct(
         unreachable!("construct is only called with an enum type")
     };
     let variants = enum_variants(ctx, name, args);
-    let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
+    // A capitalized name is the matcher, legal only in a pattern; a value is built with the
+    // lowercase constructor, which resolves to the declared (capitalized) variant. A string
+    // literal naming a variant is the wire's spelling, so it is exempt -- see the caller.
+    if !from_string && variant.chars().next().is_some_and(char::is_uppercase) {
+        return Err(Error::new(
+            variant_span,
+            format!(
+                "a constructor starts with a lowercase letter; `{variant}` is the matcher and \
+                 matches only in a pattern, so write `{}` to build the value",
+                constructor_of(variant)
+            ),
+        ));
+    }
+    let Some((variant_name, declared)) = variants
+        .iter()
+        .find(|(n, _)| n == variant || is_constructor_of(n, variant))
+    else {
         return Err(Error::new(
             variant_span,
             format!("`{name}` has no variant `{variant}`"),
@@ -732,7 +938,10 @@ fn construct(
     Ok(Tir::new(
         enum_ty.clone(),
         Kind::EnumLit {
-            variant: variant.to_string(),
+            // The wire carries the matcher's name, the declared variant (`Circle`), so a backend
+            // reader and printer can agree on it without lowering; the lowercase `variant` is the
+            // constructor, the source spelling that builds the value (gh:156).
+            variant: variant_name.to_string(),
             payload,
         },
     ))
@@ -752,7 +961,20 @@ fn infer_instantiation(
         unreachable!("construct is only called with an enum type")
     };
     let variants = enum_variants(ctx, name, args);
-    let Some((_, declared)) = variants.iter().find(|(n, _)| n == variant) else {
+    if variant.chars().next().is_some_and(char::is_uppercase) {
+        return Err(Error::new(
+            variant_span,
+            format!(
+                "a constructor starts with a lowercase letter; `{variant}` is the matcher and \
+                 matches only in a pattern, so write `{}` to build the value",
+                constructor_of(variant)
+            ),
+        ));
+    }
+    let Some((variant_name, declared)) = variants
+        .iter()
+        .find(|(n, _)| n == variant || is_constructor_of(n, variant))
+    else {
         return Err(Error::new(
             variant_span,
             format!("`{name}` has no variant `{variant}`"),
@@ -813,7 +1035,7 @@ fn infer_instantiation(
     Ok(Tir::new(
         ty::substitute(template, &bindings),
         Kind::EnumLit {
-            variant: variant.to_string(),
+            variant: variant_name.to_string(),
             payload: Some(Box::new(built)),
         },
     ))
@@ -964,6 +1186,54 @@ fn pipe(ctx: &Ctx, lhs: &Expr, rhs: &Expr, want: Option<&Type>) -> Result<Expect
     })
 }
 
+/// `let <name> = <expr>` bindings stacked one per line, then the value expression that ends
+/// the block (kantord/toylang#150): no `in` keyword to pair, just the sequence and the result.
+/// The one place a `let` block appears is a function body, so this is reached only through
+/// `check_defs`'s `expect_inner`, and the body's type is whatever the block's value expression is.
+///
+/// Later bindings see earlier ones: each value is checked in the scope built so far, and the name
+/// is bound after, so `let a = a` reads the older `a`, the way any shadowing works. Every
+/// binding gets a fresh `LocalId` and lowers to the same `Kind::Bind` a pipe does, so all seven
+/// backends already know how to run one.
+fn let_bind(
+    ctx: &Ctx,
+    bindings: &[(String, Expr)],
+    body: &Expr,
+    want: Option<&Type>,
+) -> Result<Expected, Error> {
+    let locals: Vec<LocalId> = bindings.iter().map(|_| ctx.fresh()).collect();
+    let mut values: Vec<Tir> = Vec::new();
+    let mut scope = ctx.scope.clone();
+    for ((name, value), local) in bindings.iter().zip(&locals) {
+        let inner = ctx.rebuild(scope.clone(), ctx.subject.clone());
+        let value = synth(&inner, value)?;
+        scope.push((name.clone(), value.ty.clone(), Some(*local)));
+        values.push(value);
+    }
+    let body_ctx = ctx.rebuild(scope, ctx.subject.clone());
+    let body = match want {
+        Some(want) => expect_inner(&body_ctx, body, want)?,
+        None => Expected::Synthesised(synth(&body_ctx, body)?),
+    };
+    let (checked, mut tir) = match body {
+        Expected::Checked(tir) => (true, tir),
+        Expected::Synthesised(tir) => (false, tir),
+    };
+    for (local, value) in locals.into_iter().zip(values).into_iter().rev() {
+        let body_ty = tir.ty.clone();
+        tir = Tir::new(body_ty, Kind::Bind {
+            local,
+            value: Box::new(value),
+            body: Box::new(tir),
+        });
+    }
+    Ok(if checked {
+        Expected::Checked(tir)
+    } else {
+        Expected::Synthesised(tir)
+    })
+}
+
 /// The hybrid totality the match-arms decision fixed. A chain with variant patterns is
 /// closed-world: the subject is a declared enum, and the arms are proved to cover every
 /// variant (or end in a default); guards do not count toward that coverage. A pure guard
@@ -1078,6 +1348,17 @@ fn variant_arm<'a>(
     };
     let variants = enum_variants(ctx, enum_name, args);
     let Some((_, payload_ty)) = variants.iter().find(|(n, _)| n == vname) else {
+        // A lowercase name is the constructor, which builds a value; a pattern names the matcher.
+        if variants.iter().any(|(n, _)| is_constructor_of(n, vname)) {
+            return Err(Error::new(
+                vspan,
+                format!(
+                    "`{vname}` is the constructor, not a matcher; a pattern names the matcher, \
+                     so write `{}`",
+                    matcher_of(vname)
+                ),
+            ));
+        }
         return Err(Error::new(
             vspan,
             format!("`{enum_name}` has no variant `{vname}`"),
@@ -1254,6 +1535,23 @@ fn match_chain(
 }
 
 fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
+    let tir = synth_inner(ctx, expr)?;
+    // A sink is not a value, so it can exist only where `tail_pipe` or `sink_call` recognized a
+    // sink position: the program's own body or a Sink-returning function's. Reaching `synth`
+    // with a sink means it is nested where its output would be observed, which is the general
+    // position rule.
+    if tir.ty.contains_sink() {
+        return Err(Error::new(
+            expr.span(),
+            "a sink is not a value, so it is legal only as the program's outermost expression \
+             or a Sink-returning function's body"
+                .to_string(),
+        ));
+    }
+    Ok(tir)
+}
+
+fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     match expr {
         Expr::Str { text, .. } => Ok(Tir::new(Type::Str, Kind::Str(text.clone()))),
         Expr::Lines { span } => {
@@ -1275,6 +1573,49 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             }
             ctx.lines_used.set(true);
             Ok(Tir::new(Type::Stream(Box::new(Type::Str)), Kind::Lines))
+        }
+        // `dsv` reads the same raw lines `lines` does and splits each on the delimiter, so it
+        // shares every rule: refused in function and mapper bodies, read at most once, and its
+        // type is fixed (`Vec<Vec<Str>>`) rather than borrowed from a position. `csv`/`tsv`
+        // are this same node with the delimiter already fixed by the parser.
+        Expr::Dsv { delim, span } => {
+            if let Some(func) = ctx.in_fn {
+                return Err(Error::new(
+                    *span,
+                    format!(
+                        "`dsv` cannot be read inside `fn {func}`; a source is legal only in \
+                         the program's own body, so take the value through a parameter"
+                    ),
+                ));
+            }
+            if ctx.in_mapper {
+                return Err(Error::new(
+                    *span,
+                    "`dsv` cannot be read inside a mapper body, which runs once per element"
+                        .to_string(),
+                ));
+            }
+            // Every backend's split on an empty separator is its own undefined behaviour (Rust
+            // panics, Python raises, jq matches nothing), so the empty delimiter is refused
+            // rather than left to disagree.
+            if delim.is_empty() {
+                return Err(Error::new(
+                    *span,
+                    "`dsv`'s delimiter cannot be empty".to_string(),
+                ));
+            }
+            if ctx.dsv.borrow().is_some() {
+                return Err(Error::new(
+                    *span,
+                    "`dsv` has already been read; there is only one stdin".to_string(),
+                ));
+            }
+            *ctx.dsv.borrow_mut() = Some(delim.clone());
+            let field = Type::Vec(Box::new(Type::Str));
+            Ok(Tir::new(
+                Type::Vec(Box::new(field)),
+                Kind::Dsv { delim: delim.clone() },
+            ))
         }
         Expr::Int { value, span } => {
             // The literal is the one place a value could enter without meeting the 32-bit rule,
@@ -1326,12 +1667,18 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                     },
                 ));
             }
-            if let Some((_, t)) = ctx.scope.iter().find(|(n, _)| n == name) {
-                return Ok(Tir::new(t.clone(), Kind::Var(name.clone())));
+            if let Some((_, t, local)) = ctx.scope.iter().rev().find(|(n, _, _)| n == name) {
+                return match local {
+                    // A `let`-bound name reads the local it was bound to, not a `Var`: the
+                    // backends' `Bind` only ever binds locals, so a bare name reference would dangle.
+
+                    Some(id) => Ok(Tir::new(t.clone(), Kind::Local(*id))),
+                    None => Ok(Tir::new(t.clone(), Kind::Var(name.clone()))),
+                };
             }
             if let Some(owners) = ctx.variant_owners.get(name) {
                 let enum_ty = sole_owner(ctx, name, owners, *span)?.clone();
-                return construct(ctx, &enum_ty, name, *span, None, None);
+                return construct(ctx, &enum_ty, name, *span, None, None, false);
             }
             // A function is not a value, but "`f` is not defined" for a defined function is a
             // lie. This is where `f -1` lands: `-` cannot start a bare argument, so the parse
@@ -1405,7 +1752,13 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Expected::Checked(tir) | Expected::Synthesised(tir) => Ok(tir),
         },
 
-        Expr::Field { .. } | Expr::Index { .. } | Expr::Unwrap { .. } => {
+        // A `|>` node only ever appears as a program's or a Sink-returning function's body,
+        // which `check_program_body` and `check_defs` handle before `synth` is reached. A `Sink`
+        // result here is refused by `synth`'s wrapper with the general position rule, so this
+        // arm exists for totality and is only reachable through a shape the parser cannot make.
+        Expr::TailPipe { .. } => tail_pipe(ctx, expr),
+
+        Expr::Field { .. } | Expr::Index { .. } | Expr::Slice { .. } | Expr::Unwrap { .. } => {
             let Access { tir, stream, .. } = access(ctx, expr)?;
             // Projection over a stream is a mapper, and it is normalized to one here: the chain
             // is rebased onto a fresh per-element param, so neither the backends nor fusion
@@ -1475,6 +1828,7 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 *variant_span,
                 payload.as_deref(),
                 None,
+                false,
             )
         }
 
@@ -1524,37 +1878,6 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             ))
         }
 
-        // The first construct that consumes a type rather than carrying one: the condition has
-        // to be exactly one Bool, and both branches have to agree.
-        Expr::Cond {
-            then,
-            cond,
-            otherwise,
-            ..
-        } => {
-            let cond = expect(ctx, cond, &Type::Bool)?;
-            let then = synth(ctx, then)?;
-            // A pipeline's shape must be knowable at compile time for fusion to emit its loop,
-            // and a branch chosen at runtime is exactly what that excludes. Refusing is the
-            // reversible direction; lifting it later breaks nothing.
-            if then.ty.contains_stream() {
-                return Err(Error::new(
-                    expr.span(),
-                    "a conditional cannot yield a stream; pass each branch to `collect` first"
-                        .to_string(),
-                ));
-            }
-            let otherwise = expect(ctx, otherwise, &then.ty)?;
-            Ok(Tir::new(
-                then.ty.clone(),
-                Kind::Cond {
-                    cond: Box::new(cond),
-                    then: Box::new(then),
-                    otherwise: Box::new(otherwise),
-                },
-            ))
-        }
-
         Expr::Binary { op, lhs, rhs, .. } => binary(ctx, *op, lhs, rhs),
 
         // The connectives are the one place a subexpression may go unevaluated: `and` runs its
@@ -1577,6 +1900,14 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         Expr::Not { base, .. } => {
             let base = expect(ctx, base, &Type::Bool)?;
             Ok(Tir::new(Type::Bool, Kind::Not(Box::new(base))))
+        }
+
+        // A `let` block is only reachable as a function body, which is always checked against an
+        // expected return type, so `expect_inner` owns it. `synth` has no want to hand the block's
+        // value, so this arm is unreachable in practice but must exist for the match to be total.
+        Expr::Let { bindings, body, .. } => match let_bind(ctx, bindings, body, None)? {
+            Expected::Checked(_) => unreachable!("synth has no want, so nothing is Checked"),
+            Expected::Synthesised(tir) => Ok(tir),
         }
     }
 }
@@ -1603,16 +1934,12 @@ fn call(
     if func == "map" {
         return map_call(ctx, need_arg(arg, func, span)?, span, None);
     }
-    // A sink, not a function: `check` handles the one legal position (the program's outermost
-    // expression) before `synth` ever runs, so reaching it here means it is nested inside
-    // something that would need its result -- and it has none. The old `Str` typing was a
-    // placeholder asserting the opposite of what the fused loop does (a type claiming the whole
-    // output exists as one value).
+    // The one sink builtin: a regular call now, typed `Sink`, and so subject to the same
+    // general position rule every sink is -- `synth`'s wrapper refuses a `Sink` result except
+    // where `sink_call` or the tail-pipeline `|>` (`tail_pipe`) born it. The old hand-checked
+    // `jsonlines` position in `check_program_body` retired in favor of that rule.
     if func == "jsonlines" {
-        return Err(Error::new(
-            span,
-            "`jsonlines` is a sink, legal only as the program's outermost expression".to_string(),
-        ));
+        return jsonlines_call(ctx, arg, span);
     }
     // `length`, `tail`, and `flatten` are polymorphic over the element type, the same reason
     // `jsonlines` is checked here rather than through `builtin()`'s fixed table.
@@ -1649,6 +1976,16 @@ fn call(
     if func == "reverse" {
         return reverse_call(ctx, need_arg(arg, func, span)?);
     }
+    // The two reductions (kantord/toylang#140): `sum` folds `+` at the element width, `max`
+    // returns `Opt` because an empty Vec has no maximum. Both are checked here rather than
+    // through `builtin()`'s fixed table because the return type is the element type's, which
+    // no fixed signature can express.
+    if func == "sum" {
+        return sum_call(ctx, need_arg(arg, func, span)?);
+    }
+    if func == "max" {
+        return max_call(ctx, need_arg(arg, func, span)?);
+    }
     if let Some((which, sig)) = builtin(func) {
         let param_ty = sig
             .param
@@ -1668,10 +2005,24 @@ fn call(
         // here; it resolves as a variant only after the function namespace declines.
         if let Some(owners) = ctx.variant_owners.get(func) {
             let enum_ty = sole_owner(ctx, func, owners, func_span)?.clone();
-            return construct(ctx, &enum_ty, func, func_span, arg.as_deref(), None);
+            return construct(ctx, &enum_ty, func, func_span, arg.as_deref(), None, false);
         }
         return Err(Error::new(func_span, format!("`{func}` is not a function")));
     };
+    // A non-`pub` definition is a helper for its own file: it may be called from where it was
+    // defined, and nowhere else. `file` is the caller's file, so a `Prelude`-origin private
+    // helper is refused from the program's file while remaining legal inside prelude.toy -- the
+    // same privacy a `pub` prelude function already kept from calling a private helper, now
+    // stated as a per-call-site rule rather than by dropping the helper (gh:166).
+    if let Some((origin, is_pub)) = ctx.visibility.get(func)
+        && !is_pub
+        && *origin != ctx.file
+    {
+        return Err(Error::new(
+            func_span,
+            format!("`{func}` is not `pub`, so it can only be called from its own file"),
+        ));
+    }
     let arg = call_arg(ctx, func, span, &sig.param, arg)?;
     Ok(Tir::new(
         sig.ret.clone(),
@@ -1730,6 +2081,51 @@ fn select_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
             source: Box::new(source),
             param,
             pred: Box::new(pred),
+        },
+    ))
+}
+
+/// `jsonlines(x)`, the one sink builtin, typed `Sink`. A sink is not a value, so a direct call
+/// survives only where `sink_call` recognized the sink position (the program's body or a
+/// `Sink`-returning function's); anywhere else `synth` reaches the general rule and refuses
+/// the `Sink` result. The argument is a Vec or a Stream of elements with a wire form; Char has
+/// none.
+fn jsonlines_call(ctx: &Ctx, arg: &Option<Box<Expr>>, span: Span) -> Result<Tir, Error> {
+    let Some(arg) = arg else {
+        return Err(Error::new(
+            span,
+            "`jsonlines` needs a Vec or a stream, but was called with no argument".to_string(),
+        ));
+    };
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    jsonlines_arg(arg, arg_span)
+}
+
+/// The `jsonlines` sink's argument rules, applied to a value already synthesised: a Vec or a
+/// Stream of elements with a wire form. Shared by the direct call and the `|>` tail-pipeline
+/// (`x |> jsonlines`), which differ only in where the argument came from.
+fn jsonlines_arg(arg: Tir, span: Span) -> Result<Tir, Error> {
+    if !matches!(arg.ty, Type::Vec(_) | Type::Stream(_)) {
+        return Err(Error::new(
+            span,
+            format!("`jsonlines` needs a Vec or a stream, found {}", arg.ty),
+        ));
+    }
+    if arg.ty.contains_char() {
+        return Err(Error::new(
+            span,
+            format!(
+                "`jsonlines` cannot print {}; Char has no wire form to write",
+                arg.ty
+            ),
+        ));
+    }
+    Ok(Tir::new(
+        Type::Sink,
+        Kind::Builtin {
+            which: tir::Builtin::JsonLines,
+            arg: Box::new(arg),
         },
     ))
 }
@@ -1874,6 +2270,65 @@ fn reverse_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
     ))
 }
 
+/// The element types a reduction is defined for: the two integer types. Neither Str nor Char
+/// participates -- there is no caller for either -- so the restricted set is what a backend has
+/// to spell (kantord/toylang#140, the ruling that cut min and product on the same grounds).
+fn reducible(ty: &Type) -> bool {
+    matches!(ty, Type::Int | Type::Int64)
+}
+
+/// `sum(v)`, the reduction of `+` at the element type's width: `Vec<Int> -> Int`,
+/// `Vec<Int64> -> Int64`. An empty Vec sums to 0, so unlike `max` the result is never `Opt`.
+fn sum_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(elem) = arg.ty.elem() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`sum` needs a Vec of Int or Int64, found {}", arg.ty),
+        ));
+    };
+    if !reducible(elem) {
+        return Err(Error::new(
+            arg_span,
+            format!("`sum` needs a Vec of Int or Int64, found {}", arg.ty),
+        ));
+    }
+    Ok(Tir::new(
+        elem.clone(),
+        Kind::Builtin {
+            which: tir::Builtin::Sum,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// `max(v)`, the greatest element, `Opt<T>` because an empty Vec has no maximum -- the same
+/// answer indexing gives to absence (kantord/toylang#140).
+fn max_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(elem) = arg.ty.elem() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`max` needs a Vec of Int or Int64, found {}", arg.ty),
+        ));
+    };
+    if !reducible(elem) {
+        return Err(Error::new(
+            arg_span,
+            format!("`max` needs a Vec of Int or Int64, found {}", arg.ty),
+        ));
+    }
+    Ok(Tir::new(
+        opt_of(ctx, elem.clone()),
+        Kind::Builtin {
+            which: tir::Builtin::Max,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
 /// Walk an access chain left to right, carrying what we are currently looking at and how many
 /// dimensions we are inside.
 ///
@@ -1977,6 +2432,36 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<Access, Error> {
                 elem_is_record,
             };
             Ok(Access::new(Tir::new(ty, kind), out, b.depth, b.stream))
+        }
+
+        // Narrowing a dimension by position. Unlike a collapsing `[i]` the entry can never be
+        // absent, so the answer is the dimension itself, not an `Opt`: out-of-range bounds
+        // clamp jq-style rather than going missing (kantord/toylang#143). A `None` bound means
+        // the dimension's own boundary.
+        Expr::Slice { base, start, end, span } => {
+            let b = access(ctx, base)?;
+            let Some(_) = b.elem.elem().cloned() else {
+                return Err(Error::new(
+                    *span,
+                    format!("`[a:b]` needs a dimension, found {}", b.elem),
+                ));
+            };
+            let start = match start {
+                Some(s) => Some(Box::new(expect(ctx, s, &Type::Int)?)),
+                None => None,
+            };
+            let end = match end {
+                Some(e) => Some(Box::new(expect(ctx, e, &Type::Int)?)),
+                None => None,
+            };
+            let kind = Kind::Slice {
+                base: Box::new(b.tir),
+                start,
+                end,
+                depth: b.depth,
+            };
+            let ty = wrap(b.elem.clone(), b.depth, b.stream);
+            Ok(Access::new(Tir::new(ty, kind), b.elem, b.depth, b.stream))
         }
 
         Expr::Field { base, name, span } => {
@@ -2563,14 +3048,18 @@ fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Err
         return None;
     };
     let variants = enum_variants(ctx, name, args);
-    let owns = |n: &str| variants.iter().any(|(vn, _)| vn == n);
+    let owns = |n: &str| {
+        variants
+            .iter()
+            .any(|(vn, _)| vn == n || is_constructor_of(vn, n))
+    };
     match expr {
         Expr::Var { name, span }
             if owns(name)
                 && !ctx.arm_fields.iter().any(|(n, ..)| n == name)
-                && !ctx.scope.iter().any(|(n, _)| n == name) =>
+                && !ctx.scope.iter().any(|(n, _, _)| n == name) =>
         {
-            Some(construct(ctx, want, name, *span, None, None))
+            Some(construct(ctx, want, name, *span, None, None, false))
         }
         Expr::Call {
             func,
@@ -2578,7 +3067,7 @@ fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Err
             arg,
             ..
         } if owns(func) && !ctx.sigs.contains_key(func) => {
-            Some(construct(ctx, want, func, *func_span, arg.as_deref(), None))
+            Some(construct(ctx, want, func, *func_span, arg.as_deref(), None, false))
         }
         Expr::Variant {
             enum_name,
@@ -2593,6 +3082,7 @@ fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Err
             *variant_span,
             payload.as_deref(),
             None,
+            false,
         )),
         _ => None,
     }
@@ -2636,7 +3126,7 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     if let Expr::Str { text, span } = expr
         && matches!(want, Type::Enum { .. })
     {
-        return construct(ctx, want, text, *span, None, None).map(Expected::Checked);
+        return construct(ctx, want, text, *span, None, None, true).map(Expected::Checked);
     }
 
     // An Int64-expected literal and a wanted enum's variant are the same kind of arm: a form
@@ -2650,6 +3140,12 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
     // the only road into the subject-fed forms, which exist only after `|`.
     if let Expr::Pipe { lhs, rhs, .. } = expr {
         return pipe(ctx, lhs, rhs, Some(want));
+    }
+
+    // A `let` block's value is its final expression, so the expectation flows into that. The
+    // bindings themselves synthesise, since a local binding has no position to resolve one from.
+    if let Expr::Let { bindings, body, .. } = expr {
+        return let_bind(ctx, bindings, body, Some(want));
     }
 
     // A `map` whose position expects a Vec (over a Vec subject) or a Stream (over a Stream
@@ -2666,30 +3162,6 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
         if let Some(elem) = want_elem {
             return map_call(ctx, arg, *span, Some(elem)).map(Expected::Checked);
         }
-    }
-
-    // Both branches of a conditional receive the expectation: which one runs is a runtime
-    // fact, so each must meet the position on its own. A want containing a stream falls
-    // through to synthesis instead, which owns the runtime-chosen-pipeline refusal.
-    if let Expr::Cond {
-        then,
-        cond,
-        otherwise,
-        ..
-    } = expr
-        && !want.contains_stream()
-    {
-        let cond = expect(ctx, cond, &Type::Bool)?;
-        let then = expect(ctx, then, want)?;
-        let otherwise = expect(ctx, otherwise, want)?;
-        return Ok(Expected::Checked(Tir::new(
-            want.clone(),
-            Kind::Cond {
-                cond: Box::new(cond),
-                then: Box::new(then),
-                otherwise: Box::new(otherwise),
-            },
-        )));
     }
 
     // Every arm of a total match chain receives the expectation the same way; a partial

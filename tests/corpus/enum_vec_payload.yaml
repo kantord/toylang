@@ -5,13 +5,13 @@
 # same as any other, and the arm's `some` needs no qualifying since the subject's type names
 # the enum.
 program: |
-  enum Batch { empty, some(Vec<Int>) }
+  enum Batch { Empty, Some(Vec<Int>) }
 
-  fn size(b: Batch) -> Int = b | some -> length(.) or empty -> 0
+  fn size(b: Batch) -> Int = b | Some -> length(.) or Empty -> 0
 
   {n: size Batch.some([1, 2, 3]), raw: Batch.some([4, 5]), z: size Batch.empty}
 
 output: |
-  {"n":3,"raw":{"some":[4,5]},"z":0}
+  {"n":3,"raw":{"Some":[4,5]},"z":0}
 
 node_types: [application, builtin.length, int, local, match, pipe, record-literal, var, variant.payload, variant.unit, vec-literal]

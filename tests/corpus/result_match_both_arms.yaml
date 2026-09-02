@@ -2,7 +2,7 @@
 # payload arms, and the closed-world check treats `ok`/`err` like any other two-variant enum.
 program: |
   fn safe(b: Int) -> Result<Int, Str> =
-      ok(10 / b) if b != 0 else err("division by zero")
+      b | . != 0 -> ok(10 / b) or err("division by zero")
 
   fn describe(r: Result<Int, Str>) -> Str =
       r | err -> "error: " + . or ok -> str(.)
@@ -12,4 +12,4 @@ program: |
 output: |
   5 / error: division by zero
 
-node_types: [application, arith.div, builtin.str, compare.ne, concat, conditional, int, local, match, pipe, str, var, variant.payload]
+node_types: [application, arith.div, builtin.str, compare.ne, concat, int, local, match, pipe, str, var, variant.payload]

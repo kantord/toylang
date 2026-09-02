@@ -1,0 +1,15 @@
+# A self-tail-call runs in constant stack, as contract (kantord/toylang#141). 100k levels of
+# self-recursion overflow the interpreter stacks of js and py unless the emitter lowers the
+# tail call to a loop; the statically compiled backends and jq's `until` already loop, and
+# lua has proper tail calls in the language. So this program is exactly the contract: every
+# backend runs it to completion and agrees on the answer.
+program: |
+  fn countdown(p: {n: Int, acc: Int}) -> Int =
+      p | p.n <= 0 -> p.acc or countdown({n: p.n - 1, acc: p.acc + 1})
+
+  countdown({n: 100000, acc: 0})
+
+output: |
+  100000
+
+node_types: [application, arith.add, arith.sub, compare.le, int, local, match, pipe, projection, record-literal, var]

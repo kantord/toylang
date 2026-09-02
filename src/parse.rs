@@ -42,12 +42,14 @@ enum Tok {
     Fn,
     Pub,
     Type,
-    Enum,
-    If,
-    Else,
+Enum,
+    Let,
     Input,
     Inputs,
     Lines,
+    Dsv,
+    Csv,
+    Tsv,
     And,
     Or,
     Not,
@@ -57,6 +59,7 @@ enum Tok {
     Slash,
     Percent,
     Pipe,
+    PipeGt,
     Comma,
     Dot,
     Eq,
@@ -89,11 +92,13 @@ impl std::fmt::Display for Tok {
             Tok::Pub => "`pub`",
             Tok::Type => "`type`",
             Tok::Enum => "`enum`",
-            Tok::If => "`if`",
-            Tok::Else => "`else`",
+            Tok::Let => "`let`",
             Tok::Input => "`input`",
             Tok::Inputs => "`inputs`",
             Tok::Lines => "`lines`",
+            Tok::Dsv => "`dsv`",
+            Tok::Csv => "`csv`",
+            Tok::Tsv => "`tsv`",
             Tok::And => "`and`",
             Tok::Or => "`or`",
             Tok::Not => "`not`",
@@ -103,6 +108,7 @@ impl std::fmt::Display for Tok {
             Tok::Slash => "`/`",
             Tok::Percent => "`%`",
             Tok::Pipe => "`|`",
+            Tok::PipeGt => "`|>`",
             Tok::Comma => "`,`",
             Tok::Dot => "`.`",
             Tok::Eq => "`=`",
@@ -168,11 +174,13 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "pub" => Tok::Pub,
                 "type" => Tok::Type,
                 "enum" => Tok::Enum,
-                "if" => Tok::If,
-                "else" => Tok::Else,
+                "let" => Tok::Let,
                 "input" => Tok::Input,
                 "inputs" => Tok::Inputs,
                 "lines" => Tok::Lines,
+                "dsv" => Tok::Dsv,
+                "csv" => Tok::Csv,
+                "tsv" => Tok::Tsv,
                 "and" => Tok::And,
                 // Two operators sharing one spelling, told apart by position: the arm separator
                 // at a chain's top level, Bool disjunction everywhere else. `Cursor::or_separates`
@@ -184,48 +192,20 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
         }
         // `-` is subtraction and negation now, so a digit after it is no longer a negative
         // literal: `a -1` would otherwise not be `a - 1`.
-        '-' => {
-            input.next_token();
-            if input.peek_token() == Some('>') {
-                input.next_token();
-                Tok::Arrow
-            } else {
-                Tok::Minus
-            }
-        }
-        '!' => {
-            input.next_token();
-            if input.peek_token() == Some('=') {
-                input.next_token();
-                Tok::Ne
-            } else {
-                Tok::Bang
-            }
-        }
-        '=' | '<' | '>' => {
-            input.next_token();
-            if input.peek_token() == Some('=') {
-                input.next_token();
-                match c {
-                    '=' => Tok::EqEq,
-                    '<' => Tok::Le,
-                    _ => Tok::Ge,
-                }
-            } else {
-                match c {
-                    '=' => Tok::Eq,
-                    '<' => Tok::Lt,
-                    _ => Tok::Gt,
-                }
-            }
-        }
+        '-' => read_two_char(input, '>', Tok::Minus, Tok::Arrow),
+        '!' => read_two_char(input, '=', Tok::Bang, Tok::Ne),
+        '=' | '<' | '>' => match c {
+            '=' => read_two_char(input, '=', Tok::Eq, Tok::EqEq),
+            '<' => read_two_char(input, '=', Tok::Lt, Tok::Le),
+            _ => read_two_char(input, '=', Tok::Gt, Tok::Ge),
+        },
         '+' => single(input, Tok::Plus),
         '*' => single(input, Tok::Star),
         // `//` is not a token anymore: match arms compose with `or` now, so a second slash is
         // just a `/` where no expression can start, which is the parse error migration needs.
         '/' => single(input, Tok::Slash),
         '%' => single(input, Tok::Percent),
-        '|' => single(input, Tok::Pipe),
+        '|' => read_two_char(input, '>', Tok::Pipe, Tok::PipeGt),
         ',' => single(input, Tok::Comma),
         '.' => single(input, Tok::Dot),
         '(' => single(input, Tok::LParen),
@@ -336,6 +316,19 @@ fn single(input: &mut Input, tok: Tok) -> Tok {
     tok
 }
 
+/// `-`, `!`, `=`, `<`, `>`, `|` all may start a two-character token: if the char after the
+/// first is `second`, the compound token stands; otherwise the bare operator does. `single` is
+/// for tokens that have no compound form at all.
+fn read_two_char(input: &mut Input, second: char, bare: Tok, compound: Tok) -> Tok {
+    input.next_token();
+    if input.peek_token() == Some(second) {
+        input.next_token();
+        compound
+    } else {
+        bare
+    }
+}
+
 /// Returns the unescaped contents of a string literal, having consumed through the closing
 /// quote. `input` is positioned on the opening `"` on entry.
 fn read_string(input: &mut Input) -> Result<String, Error> {
@@ -418,17 +411,17 @@ fn infix_power(tok: &Tok) -> Option<(Infix, u8, u8)> {
 const PIPE_LEFT: u8 = 1;
 const PIPE_RIGHT: u8 = 2;
 
-/// The conditional sits between `|` and the Bool connectives, so `a if c else b | f` groups as
-/// `(a if c else b) | f` and `x | a if c else b` groups as `x | (a if c else b)`. Python puts
-/// its ternary below `|` because there `|` is bitwise or; ours is the pipe, so the better
-/// grouping comes for free.
+/// Where a match arm's body and its guard operand are read and printed: between `|` (1/2) and
+/// the Bool connectives (`or` at 4/5). An arm body read here stops at the separator `or` and
+/// `->`, which is what lets a chain be one pipe stage; a guard operand read here still gets the
+/// Bool `or` above it, so `a == 1 or b == 2 -> x` is one two-clause guard.
 const COND_POWER: u8 = 3;
 
 /// Bool `or`, the loosest operator a Bool expression is built from: `a == 1 or b == 2` is one
 /// disjunction of two comparisons. Its *other* reading, the match-arm separator, has no power
 /// at all -- it is not an operator there but the chain's own punctuation, and it binds looser
-/// than everything including the conditional, which is exactly why it cannot be one table entry
-/// with this (draft.md, the match-arms decision).
+/// than everything, which is exactly why it cannot be one table entry with this (draft.md, the
+/// match-arms decision).
 const OR_LEFT: u8 = 4;
 const OR_RIGHT: u8 = 5;
 
@@ -467,7 +460,27 @@ pub fn parse(src: &str) -> Result<File, Error> {
         }
     }
 
-    let body = p.expr(0)?;
+    // `input <type>` declares what stdin holds before the body reads it. It is the one
+    // declaration that sits after the defs rather than among them, so it is read here, and it is
+    // recognized by the same-line rule a call argument follows: only when the type opens on
+    // `input`'s own line does the keyword start an annotation, so a body that merely uses
+    // `input` is never mistaken for one.
+    let input = match p.peek()? {
+        (Tok::Input, input_span) => {
+            let (next, next_span) = p.peek2()?;
+            if (next == Tok::LBrace || matches!(next, Tok::Ident(_)))
+                && p.same_line(input_span.end, next_span.start)
+            {
+                p.advance()?;
+                Some(p.type_expr()?)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
+
+    let body = p.tail_pipe()?;
     let (rest, rest_span) = p.peek()?;
     if rest != Tok::Eof {
         return Err(p.unexpected(rest_span, format!("expected end of program, found {rest}")));
@@ -476,6 +489,7 @@ pub fn parse(src: &str) -> Result<File, Error> {
         aliases,
         enums,
         defs,
+        input,
         body,
     })
 }
@@ -541,6 +555,14 @@ impl<'i> Cursor<'i> {
     /// offset), so looking ahead is just tokenizing a throwaway copy of the cursor.
     fn peek(&self) -> Result<(Tok, Span), Error> {
         let mut probe = self.input;
+        read_tok(&mut probe)
+    }
+
+    /// Reads the token after the next one without consuming either. One probe over `input`,
+    /// then a second over the probe, so the cursor never moves.
+    fn peek2(&self) -> Result<(Tok, Span), Error> {
+        let mut probe = self.input;
+        read_tok(&mut probe)?;
         read_tok(&mut probe)
     }
 
@@ -656,7 +678,7 @@ impl<'i> Cursor<'i> {
         let ret = self.type_expr()?;
 
         self.eat(Tok::Eq)?;
-        let body = self.expr(0)?;
+        let body = self.def_body()?;
         Ok(Def {
             span: start.to(body.span()),
             name,
@@ -664,6 +686,50 @@ impl<'i> Cursor<'i> {
             ret,
             body,
             is_pub,
+            origin: crate::ast::Origin::Program,
+        })
+    }
+
+    /// A function's body. An ordinary expression, or -- when the `let` keyword opens it -- the
+    /// local-binding block the ruling on #87 settled on: `let <name> = <expr>` one per line,
+    /// then the expression that ends the block, with no `in` keyword. The line that is not a
+    /// `let` is the value, so each binding's value has to fit on its own line or the next line
+    /// cannot be told apart from the block's result.
+    fn def_body(&mut self) -> Result<Expr, Error> {
+        let (first, _) = self.peek()?;
+        if first != Tok::Let {
+            return self.tail_pipe();
+        }
+        let first_let = self.advance()?.1;
+        let mut bindings = Vec::new();
+        let mut binding_start = first_let.start;
+
+        loop {
+            let (name, _) = self.eat_ident("a binding name")?;
+            self.eat(Tok::Eq)?;
+            let value = self.expr(0)?;
+            if !self.same_line(binding_start, value.span().end) {
+                return Err(Error::new(
+                    value.span(),
+                    "a `let` binding must fit on its line; write the whole `let <name> = <expr>` \
+                     on one line and let the next line be another `let` or the block's value"
+                        .to_string(),
+                ));
+            }
+            bindings.push((name, value));
+            if self.peek()?.0 == Tok::Let {
+                binding_start = self.advance()?.1.start;
+
+                continue;
+            }
+            break;
+        }
+        let body = self.expr(0)?;
+        let span = first_let.to(body.span());
+        Ok(Expr::Let {
+            bindings,
+            body: Box::new(body),
+            span,
         })
     }
 
@@ -1014,9 +1080,9 @@ impl<'i> Cursor<'i> {
     /// Arm chains begin only where an expression begins fresh (a pipe stage, a delimited
     /// position), and a fresh position is also where `or` goes back to reading as disjunction:
     /// whatever chain the enclosing arm body belonged to, this expression is not part of it. An
-    /// arm body or a conditional branch enters at COND_POWER instead and leaves any `->` or
-    /// separator `or` it meets for the chain that owns it, rather than opening a nested chain
-    /// that would swallow the rest of the outer one.
+    /// arm body enters at COND_POWER instead and leaves any `->` or separator `or` it meets for
+    /// the chain that owns it, rather than opening a nested chain that would swallow the rest of
+    /// the outer one.
     fn expr(&mut self, min_power: u8) -> Result<Expr, Error> {
         if min_power <= PIPE_RIGHT {
             return self.with_or(false, |p| p.expr_at(min_power, true));
@@ -1040,24 +1106,6 @@ impl<'i> Cursor<'i> {
             }
         };
 
-        // Right-associative, so `a if c else b if d else e` chains rightward without parens.
-        let (tok, _) = self.peek()?;
-        if tok == Tok::If && COND_POWER >= min_power {
-            self.advance()?;
-            // `else` closes the condition, so a bare `or` inside it can only be disjunction --
-            // even in an arm body, where the separator reading is otherwise in force.
-            let cond = self.with_or(false, |p| p.operand(COND_POWER + 1))?;
-            self.eat(Tok::Else)?;
-            let otherwise = self.expr(COND_POWER)?;
-            let span = lhs.span().to(otherwise.span());
-            lhs = Expr::Cond {
-                then: Box::new(lhs),
-                cond: Box::new(cond),
-                otherwise: Box::new(otherwise),
-                span,
-            };
-        }
-
         loop {
             let (tok, _) = self.peek()?;
             if tok != Tok::Pipe || PIPE_LEFT < min_power {
@@ -1074,6 +1122,28 @@ impl<'i> Cursor<'i> {
         }
 
         Ok(lhs)
+    }
+
+    /// The program's body (or a function's, when it is not a `let` block): an ordinary
+    /// expression, or the tail-pipeline `lhs |> callee` that is the one way a sink is written.
+    /// Parsed only here, at the outermost position, so a nested `|>` is a parse error rather
+    /// than a value -- the checker's sink position rule is this production's, not a search for
+    /// a stray token somewhere inside a larger expression.
+    fn tail_pipe(&mut self) -> Result<Expr, Error> {
+        let lhs = self.expr(0)?;
+        let (tok, _) = self.peek()?;
+        if tok != Tok::PipeGt {
+            return Ok(lhs);
+        }
+        self.advance()?;
+        let (callee, callee_span) = self.eat_ident("a sink call")?;
+        let span = lhs.span().to(callee_span);
+        Ok(Expr::TailPipe {
+            lhs: Box::new(lhs),
+            callee,
+            callee_span,
+            span,
+        })
     }
 
     fn operand(&mut self, min_power: u8) -> Result<Expr, Error> {
@@ -1155,7 +1225,14 @@ impl<'i> Cursor<'i> {
             let (tok, _) = self.peek()?;
             match tok {
                 Tok::LBracket => {
-                    self.advance()?;
+                    let (_, bspan) = self.peek()?;
+                    // Indexing owns `[` on the same line only, the same rule call arguments
+                    // follow: a definition's body and the program's body sit adjacent, and the
+                    // line break keeps one from swallowing the other.
+                    if !self.same_line(e.span().end, bspan.start) {
+                        return Ok(e);
+                    }
+                    let (_, lspan) = self.advance()?;
                     let (next, _) = self.peek()?;
                     if next == Tok::RBracket {
                         let close = self.advance()?.1;
@@ -1165,14 +1242,50 @@ impl<'i> Cursor<'i> {
                             span,
                         };
                     } else {
-                        let index = self.expr(0)?;
-                        let close = self.eat(Tok::RBracket)?;
-                        let span = e.span().to(close);
-                        e = Expr::Index {
-                            base: Box::new(e),
-                            index: Box::new(index),
-                            span,
+                        // `[a]` collapses; `[a:b]` narrows, with either bound optional. A `:`
+                        // is never an expression token, so peeking past the first operand (or
+                        // past the `[`, for `[:b]`) tells the two apart unambiguously.
+                        let start = if next == Tok::Colon {
+                            None
+                        } else {
+                            Some(Box::new(self.expr(0)?))
                         };
+                        if self.peek()?.0 == Tok::Colon {
+                            self.advance()?;
+                            let (next, _) = self.peek()?;
+                            let end = if next == Tok::RBracket {
+                                None
+                            } else {
+                                Some(Box::new(self.expr(0)?))
+                            };
+                            let close = self.eat(Tok::RBracket)?;
+                            // Both edges at the dimension's own boundaries is the identity
+                            // `[]` already is, and jq itself rejects the both-omitted form,
+                            // so there is no reason to carry a spelling for it.
+                            if start.is_none() && end.is_none() {
+                                return Err(Error::new(
+                                    lspan.to(close),
+                                    "a slice needs at least one bound",
+                                ));
+                            }
+                            let span = e.span().to(close);
+                            e = Expr::Slice {
+                                base: Box::new(e),
+                                start,
+                                end,
+                                span,
+                            };
+                        } else {
+                            // No colon after the first operand: a plain collapsing index,
+                            // whose `start` is the index.
+                            let close = self.eat(Tok::RBracket)?;
+                            let span = e.span().to(close);
+                            e = Expr::Index {
+                                base: Box::new(e),
+                                index: start.expect("no colon means start was parsed"),
+                                span,
+                            };
+                        }
                     }
                 }
                 Tok::Bang => {
@@ -1242,7 +1355,16 @@ impl<'i> Cursor<'i> {
         }
         let argument_starts = match next {
             Tok::LParen | Tok::LBrace => true,
-            Tok::Str(_) | Tok::Int(_) | Tok::Float(_) | Tok::Input | Tok::Inputs | Tok::Lines | Tok::Ident(_) => {
+            Tok::Str(_)
+            | Tok::Int(_)
+            | Tok::Float(_)
+            | Tok::Input
+            | Tok::Inputs
+            | Tok::Lines
+            | Tok::Dsv
+            | Tok::Csv
+            | Tok::Tsv
+            | Tok::Ident(_) => {
                 bare_callee(&name)
             }
             _ => false,
@@ -1293,6 +1415,32 @@ impl<'i> Cursor<'i> {
             Tok::Input => Ok(Expr::Input { span }),
             Tok::Inputs => Ok(Expr::Inputs { span }),
             Tok::Lines => Ok(Expr::Lines { span }),
+            Tok::Csv => Ok(Expr::Dsv {
+                delim: ",".to_string(),
+                span,
+            }),
+            Tok::Tsv => Ok(Expr::Dsv {
+                delim: "\t".to_string(),
+                span,
+            }),
+            // The parameterized spelling: the delimiter is a string literal in parens, the
+            // one argument form that cannot be misread as anything else at this position.
+            Tok::Dsv => {
+                self.eat(Tok::LParen)?;
+                let (tok, _) = self.advance()?;
+                let Tok::Str(delim) = tok else {
+                    return Err(Error::new(
+                        span,
+                        "`dsv`'s delimiter must be a string literal, as in `dsv(\",\")`"
+                            .to_string(),
+                    ));
+                };
+                let close = self.eat(Tok::RParen)?;
+                Ok(Expr::Dsv {
+                    delim,
+                    span: span.to(close),
+                })
+            }
 
             // `.name` is field access on the subject, so the leading dot yields `.` and the
             // postfix loop above picks the field up.

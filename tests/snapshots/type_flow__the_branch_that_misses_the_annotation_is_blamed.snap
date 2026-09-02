@@ -2,4 +2,4 @@
 source: tests/type_flow.rs
 expression: "err(\"fn f(x: Int) -> Str = 1 if x > 0 else \\\"a\\\"\\n\\nf(1)\")"
 ---
-expected Str, found Int (at byte 22)
+expected Str, found Int (at byte 35)

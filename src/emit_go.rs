@@ -70,6 +70,37 @@ const AT_HELPER: &str = r#"func tlAt[T any](v []T, i int32) tlOpt[T] {
 }
 "#;
 
+// Go's own slicing panics out of range, so the jq clamp has to be explicit: negatives count
+// from the end, then both bounds clamp to [0, n], and a crossed window is empty. A bound left
+// out is passed as its sentinel (`MinInt32` for the start, `MaxInt32` for the end), each of
+// which the clamp folds to the array's own boundary.
+const SLICE_HELPER: &str = r#"func tlSlice[T any](v []T, lo int32, hi int32) []T {
+	n := int32(len(v))
+	if lo < 0 {
+		lo += n
+	}
+	if hi < 0 {
+		hi += n
+	}
+	if lo < 0 {
+		lo = 0
+	}
+	if lo > n {
+		lo = n
+	}
+	if hi < 0 {
+		hi = 0
+	}
+	if hi > n {
+		hi = n
+	}
+	if lo >= hi {
+		return []T{}
+	}
+	return v[lo:hi]
+}
+"#;
+
 const UNWRAP_HELPER: &str = r#"func tlUnwrap[T any](o tlOpt[T]) T {
 	if !o.ok {
 		tlFail("unwrapped a value that is not there")
@@ -110,6 +141,41 @@ const REVERSE_HELPER: &str = r#"func tlReverse[T any](v []T) []T {
 		out[len(v)-1-i] = x
 	}
 	return out
+}
+"#;
+
+// `int32`/`int64` `+=` wraps by definition, so a fold needs nothing but the loop itself -- the
+// same "the width wraps on its own" story ARITH_HELPER and ARITH64_HELPER tell for one operator.
+const SUM_HELPER: &str = r#"func tlSum(v []int32) int32 {
+	var acc int32
+	for _, x := range v {
+		acc += x
+	}
+	return acc
+}
+
+func tlSum64(v []int64) int64 {
+	var acc int64
+	for _, x := range v {
+		acc += x
+	}
+	return acc
+}
+"#;
+
+// `cmp.Ordered` covers both integer widths, so one helper serves Int and Int64. Absence is the
+// zero `tlOpt`, the same answer an out-of-range index gives.
+const MAX_HELPER: &str = r#"func tlMax[T cmp.Ordered](v []T) tlOpt[T] {
+	if len(v) == 0 {
+		return tlOpt[T]{}
+	}
+	m := v[0]
+	for _, x := range v[1:] {
+		if x > m {
+			m = x
+		}
+	}
+	return tlOpt[T]{true, m}
 }
 "#;
 
@@ -194,6 +260,62 @@ func tlCollectLines() []string {
 	s.Split(tlScanLines)
 	for s.Scan() {
 		out = append(out, s.Text())
+	}
+	return out
+}
+"#;
+
+// RFC 4180 field splitting over the raw lines `tlCollectLines` keeps: a field wrapped in double
+// quotes may contain the delimiter, a doubled `""` is a literal quote, and a quoted field may
+// span lines. The delimiter is matched literally, never as a pattern.
+const DSV_HELPER: &str = r#"func tlDsv(lines []string, sep string) [][]string {
+	out := [][]string{}
+	row := []string{}
+	field := ""
+	inQuotes := false
+	for _, line := range lines {
+		i := 0
+		for i < len(line) {
+			if inQuotes {
+				if line[i] == '"' {
+					if i+1 < len(line) && line[i+1] == '"' {
+						field += "\""
+						i += 2
+					} else {
+						inQuotes = false
+						i++
+					}
+				} else {
+					_, size := utf8.DecodeRuneInString(line[i:])
+					field += line[i : i+size]
+					i += size
+				}
+			} else if strings.HasPrefix(line[i:], sep) {
+				row = append(row, field)
+				field = ""
+				i += len(sep)
+			} else if line[i] == '"' && field == "" {
+				inQuotes = true
+				i++
+			} else {
+				_, size := utf8.DecodeRuneInString(line[i:])
+				field += line[i : i+size]
+				i += size
+			}
+		}
+		if inQuotes {
+			field += "\n"
+		} else {
+			row = append(row, field)
+			out = append(out, row)
+			row = []string{}
+			field = ""
+		}
+	}
+	if inQuotes {
+		field = field[:len(field)-1]
+		row = append(row, field)
+		out = append(out, row)
 	}
 	return out
 }
@@ -377,7 +499,7 @@ pub fn emit(program: &Program) -> String {
         }
         let body = e.expr(&program.body);
         // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
-        let printed = if program.body.ty == Type::Str {
+        let printed = if matches!(program.body.ty, Type::Str | Type::Sink) {
             body
         } else {
             e.show(&program.body.ty, &body, 0)
@@ -414,16 +536,20 @@ pub fn emit(program: &Program) -> String {
         (uses("tlMap("), MAP_HELPER),
         (uses("tlSelect("), SELECT_HELPER),
         (uses("tlAt("), AT_HELPER),
+        (uses("tlSlice("), SLICE_HELPER),
         (uses("tlTail("), TAIL_HELPER),
         (uses("tlFlatten("), FLATTEN_HELPER),
         (uses("tlSort("), SORT_HELPER),
         (uses("tlReverse("), REVERSE_HELPER),
+        (uses("tlSum(") || uses("tlSum64("), SUM_HELPER),
+        (uses("tlMax("), MAX_HELPER),
         (unwrap, UNWRAP_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
         (uses("tlRange("), RANGE_HELPER),
         (uses("tlChars("), CHARS_HELPER),
         (collect, COLLECT_HELPER),
+        (uses("tlDsv("), DSV_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
         (join, JOIN_HELPER),
         (quote, QUOTE_HELPER),
@@ -444,8 +570,10 @@ pub fn emit(program: &Program) -> String {
         (collect, &["bufio", "bytes"]),
         (reads_stdin, &["encoding/json"]),
         (program.inputs.is_some(), &["io"]),
-        (join || quote || used.jsonlines, &["strings"]),
+        (join || quote || used.jsonlines || uses("tlDsv("), &["strings"]),
+        (uses("tlDsv("), &["unicode/utf8"]),
         (uses("tlSort("), &["cmp", "slices"]),
+        (uses("tlMax("), &["cmp"]),
         (uses("tlEq("), &["reflect"]),
         (
             used.itoa
@@ -484,6 +612,7 @@ fn has_scalar(enums: &Enums, ty: &Type) -> bool {
             // A Float prints as a plain number, which needs no strconv import.
             Type::Float => false,
             Type::Str => false,
+            Type::Sink => false,
             Type::Vec(t) => reaches(enums, t, seen),
             Type::Record(fields) => fields.iter().any(|(_, t)| reaches(enums, t, seen)),
             Type::Enum { .. } => {
@@ -568,7 +697,8 @@ impl Collect<'_> {
             | Kind::Local(_)
             | Kind::Input
             | Kind::Inputs
-            | Kind::Lines => {}
+            | Kind::Lines
+            | Kind::Dsv { .. } => {}
             Kind::VecLit(items) => items.iter().for_each(|i| self.walk(i)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| self.walk(v));
@@ -602,19 +732,19 @@ impl Collect<'_> {
                 self.walk(source);
                 self.walk(pred);
             }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                self.walk(cond);
-                self.walk(then);
-                self.walk(otherwise);
-            }
             Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => self.walk(base),
             Kind::Index { base, index, .. } => {
                 self.walk(base);
                 self.walk(index);
+            }
+            Kind::Slice { base, start, end, .. } => {
+                self.walk(base);
+                if let Some(s) = start {
+                    self.walk(s);
+                }
+                if let Some(e) = end {
+                    self.walk(e);
+                }
             }
             Kind::Match { subject, arms, .. } => {
                 self.walk(subject);
@@ -645,7 +775,9 @@ impl Collect<'_> {
                     | Builtin::Fields
                     | Builtin::Chars
                     | Builtin::Sort
-                    | Builtin::Reverse => {}
+                    | Builtin::Reverse
+                    | Builtin::Sum
+                    | Builtin::Max => {}
                 }
                 self.walk(arg);
             }
@@ -673,6 +805,8 @@ impl Emitter<'_> {
     fn go_type(&self, ty: &Type) -> String {
         match ty {
             Type::Str => "string".to_string(),
+            // A sink is a joined string at runtime, so a `-> Sink` function has one here too.
+            Type::Sink => "string".to_string(),
             // The default Int is 32 bits and wraps, and Go's int32 does exactly that for free.
             Type::Int => "int32".to_string(),
             // Same story a word wider (kantord/toylang#83).
@@ -815,6 +949,14 @@ impl Emitter<'_> {
                 out.push_str("\t\tt_line := s.Text()\n");
                 ("t_line".to_string(), Type::Str)
             }
+            // The bound is evaluated once; the loop counter is the element. A negative bound
+            // clamps to zero, the same answer `tlRange` gives eagerly.
+            tir::Source::Range(bound) => {
+                out.push_str(&format!("\tn := {}\n", self.expr(bound)));
+                out.push_str("\tif n < 0 {\n\t\tn = 0\n\t}\n");
+                out.push_str("\tfor t_i := int32(0); t_i < n; t_i++ {\n");
+                ("t_i".to_string(), Type::Int)
+            }
         };
         for stage in &fusion.stages {
             match stage {
@@ -888,6 +1030,10 @@ impl Emitter<'_> {
             // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
             // works on the slice of its entries.
             Kind::Lines => "tlCollectLines()".to_string(),
+            Kind::Dsv { delim } => format!(
+                "tlDsv(tlCollectLines(), {})",
+                go_string(delim)
+            ),
             // go_type resolves the struct name, and the collector registered it because a
             // record literal carries its own record type.
             Kind::RecordLit { fields } => {
@@ -931,20 +1077,6 @@ impl Emitter<'_> {
             ),
             Kind::Concat(l, r) => self.concat(&t.ty, l, r),
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
-            // Go has no conditional expression, so this is a call to a function literal rather
-            // than an operator. Both branches stay unevaluated, which a `tlCond(c, a, b)` helper
-            // could not manage: its arguments would both run, and one of them may divide by zero.
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => format!(
-                "func() {} {{ if {} {{ return {} }}; return {} }}()",
-                self.go_type(&t.ty),
-                self.expr(cond),
-                self.expr(then),
-                self.expr(otherwise)
-            ),
             // Go's own `&&`/`||`, which short-circuit, so the right side stays unevaluated
             // exactly where toylang says it does.
             Kind::Logic { op, lhs, rhs } => {
@@ -977,6 +1109,16 @@ impl Emitter<'_> {
                 Builtin::Flatten => format!("tlFlatten({})", self.expr(arg)),
                 Builtin::Sort => format!("tlSort({})", self.expr(arg)),
                 Builtin::Reverse => format!("tlReverse({})", self.expr(arg)),
+                // Which fold depends on the element width: int32 and int64 are distinct types in
+                // Go, so they cannot share one helper the way a dynamically typed backend can.
+                Builtin::Sum => {
+                    if tir::runtime_elem(&arg.ty) == Some(&Type::Int) {
+                        format!("tlSum({})", self.expr(arg))
+                    } else {
+                        format!("tlSum64({})", self.expr(arg))
+                    }
+                }
+                Builtin::Max => format!("tlMax({})", self.expr(arg)),
                 // The names come from the checked type, not the struct value, so `arg` runs in
                 // an ignored parameter -- the same IIFE shape `Bind` uses -- purely for whatever
                 // else it does.
@@ -1063,6 +1205,21 @@ impl Emitter<'_> {
                 let i = self.expr(index);
                 self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
                     format!("tlAt({v}, {i})")
+                })
+            }
+            Kind::Slice {
+                base, start, end, depth,
+            } => {
+                let lo = match start {
+                    Some(s) => self.expr(s),
+                    None => "-2147483648".to_string(),
+                };
+                let hi = match end {
+                    Some(e) => self.expr(e),
+                    None => "2147483647".to_string(),
+                };
+                self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
+                    format!("tlSlice({v}, {lo}, {hi})")
                 })
             }
             // Tests over the subject (a plain local, so re-reading it is free): a tag test for
@@ -1157,6 +1314,7 @@ impl Emitter<'_> {
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tlQuote({value})"),
+            Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Int => format!("strconv.FormatInt(int64({value}), 10)"),
             Type::Int64 => format!("strconv.FormatInt({value}, 10)"),
             Type::Float => unreachable!("Float is JS-only in this row"),

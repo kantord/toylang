@@ -1,15 +1,15 @@
 # A line that names no variant is refused, not coerced: the string shape is only valid when it
 # spells a unit variant of the declared enum.
 program: |
-  enum Msg { ping, text{body: Str} }
+  enum Msg { Ping, Text{body: Str} }
 
   fn render(msgs: Stream<Msg>) -> Stream<Str> =
-      msgs | map(. | text -> .body or any() -> "*ping*")
+      msgs | map(. | Text -> .body or any() -> "*ping*")
 
   jsonlines render inputs
 
 input: |
-  "ping"
+  "Ping"
   "burst"
 
 refuses: true

@@ -2,11 +2,11 @@
 # exists for: on Go and Rust, `Box<Str>` and `Box<Int>` must become two declared types or the
 # program does not compile at all, so agreement here is the witness that they do.
 program: |
-  enum Box<T> { wrap(T), empty }
+  enum Box<T> { Wrap(T), Empty }
 
   {a: wrap("x"), b: wrap(1)}
 
 output: |
-  {"a":{"wrap":"x"},"b":{"wrap":1}}
+  {"a":{"Wrap":"x"},"b":{"Wrap":1}}
 
 node_types: [int, record-literal, str, variant.payload]

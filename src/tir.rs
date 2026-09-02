@@ -68,6 +68,11 @@ pub enum Kind {
     Inputs,
     /// The stream of lines read from stdin, read incrementally by whatever consumes it.
     Lines,
+    /// Stdin read as raw lines, each split on the delimiter, born `Vec<Vec<Str>>`: the
+    /// parameterized DSV source. `csv`/`tsv` arrive here with the delimiter already fixed.
+    Dsv {
+        delim: String,
+    },
     Call {
         func: String,
         /// `None` for a call to a nullary function.
@@ -82,13 +87,6 @@ pub enum Kind {
         op: BinOp,
         lhs: Box<Tir>,
         rhs: Box<Tir>,
-    },
-    /// The condition is exactly one Bool, which is what turns jq's run-both-branches behaviour
-    /// into a type error here.
-    Cond {
-        cond: Box<Tir>,
-        then: Box<Tir>,
-        otherwise: Box<Tir>,
     },
     Compare {
         op: BinOp,
@@ -151,6 +149,17 @@ pub enum Kind {
         depth: usize,
         /// Whether an entry is a record, which decides if collapsing has to gather columns.
         elem_is_record: bool,
+    },
+    /// Narrow a dimension to the `[start, end)` window, `depth` layers down, counting negative
+    /// bounds from the end. Out-of-range bounds clamp to the valid range rather than answering
+    /// `Opt` the way a collapsing `Index` does (kantord/toylang#143), jq's `.[a:b]`; `None`
+    /// means the dimension's own boundary (0 and its length), and `start >= end` after
+    /// clamping yields empty.
+    Slice {
+        base: Box<Tir>,
+        start: Option<Box<Tir>>,
+        end: Option<Box<Tir>>,
+        depth: usize,
     },
     /// First-match-wins dispatch over the subject: variant arms test its shape, guard arms
     /// evaluate a Bool of their own. The checker has already resolved every name a pattern
@@ -237,6 +246,16 @@ pub enum Builtin {
     /// same reason `sort` is (the whole Vec has to be there before the first output element
     /// is), but unrestricted in element type, since reversing needs no comparison.
     Reverse,
+    /// `sum(v)`, the reduction of `+` over `v`'s elements, at the element type's own width: a
+    /// `Vec<Int>` sums to `Int`, a `Vec<Int64>` to `Int64`, and an empty Vec sums to 0. Each
+    /// addition wraps the way the language's `+` does, so a sum that leaves the width is the
+    /// same number a hand-written fold would produce (kantord/toylang#140).
+    Sum,
+    /// `max(v)`, the greatest of `v`'s elements, `Opt<T>` because an empty Vec has no maximum
+    /// -- the same answer indexing gives to absence (kantord/toylang#140). Restricted to the
+    /// same two integer element types `sum` takes, so a backend can reach for its native
+    /// maximum.
+    Max,
 }
 
 pub struct Func {
@@ -258,6 +277,9 @@ pub struct Program {
     /// unrelated readers of the same real stdin and a program using `lines` alone still needs
     /// it connected, even though `input` is `None`.
     pub uses_lines: bool,
+    /// The delimiter the program splits raw lines on, if it reads `dsv`/`csv`/`tsv`. It
+    /// reads the same real stdin as the other three, so it is exclusive with them.
+    pub dsv: Option<String>,
     /// Every enum the program declared, the prelude's included. A backend has no checker `Ctx`
     /// to hand, and the variant list on a `Type::Enum` is a placeholder wherever a recursive
     /// enum's payload reaches back to itself, so this travels with the tree: it is what
@@ -294,11 +316,14 @@ pub enum Stage<'a> {
     Select { param: LocalId, pred: &'a Tir },
 }
 
-/// What a fused loop reads one entry at a time: parsed JSON values, or raw lines.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Source {
+/// What a fused loop reads one entry at a time: parsed JSON values, raw lines, or integers
+/// counted out of a `range` call.
+#[derive(Clone, Copy)]
+pub enum Source<'a> {
     Inputs,
     Lines,
+    /// `range(n)` with its already-checked bound `n`, evaluated once before the loop runs.
+    Range(&'a Tir),
 }
 
 /// A stream-typed pipeline ending in `jsonlines`, compiled as a read-one/transform-one/
@@ -306,7 +331,7 @@ pub enum Source {
 /// pattern match retired when `Stream` entered the type grammar (plans/streams.md step 5), so
 /// whether a program streams is now exactly whether its types say so.
 pub struct Fusion<'a> {
-    pub source: Source,
+    pub source: Source<'a>,
     pub stages: Vec<Stage<'a>>,
 }
 
@@ -315,6 +340,7 @@ pub struct Fusion<'a> {
 enum Base<'a> {
     Inputs,
     Lines,
+    Range(&'a Tir),
     Var(&'a String),
     Local(LocalId),
 }
@@ -331,6 +357,12 @@ fn flatten<'a>(t: &'a Tir, program: &'a Program, stages: &mut Vec<Stage<'a>>) ->
     match &t.kind {
         Kind::Inputs => Base::Inputs,
         Kind::Lines => Base::Lines,
+        // A stream-typed range is its own birth point: the bound is an ordinary value
+        // evaluated once, before the loop.
+        Kind::Builtin {
+            which: Builtin::Range,
+            arg,
+        } => Base::Range(arg),
         Kind::Var(name) => Base::Var(name),
         Kind::Local(id) => Base::Local(*id),
         Kind::Bind { local, value, body } => {
@@ -410,6 +442,7 @@ pub fn fusion(program: &Program) -> Option<Fusion<'_>> {
     let source = match flatten(arg, program, &mut stages) {
         Base::Inputs => Source::Inputs,
         Base::Lines => Source::Lines,
+        Base::Range(bound) => Source::Range(bound),
         Base::Var(_) | Base::Local(_) => {
             unreachable!("a program-level stream chain bottoms at its source")
         }
@@ -497,7 +530,8 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
         | Kind::Local(_)
         | Kind::Input
         | Kind::Inputs
-        | Kind::Lines => {}
+        | Kind::Lines
+        | Kind::Dsv { .. } => {}
         Kind::VecLit(items) => items.iter().for_each(|i| each_node(i, f)),
         Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| each_node(v, f)),
         Kind::EnumLit { payload, .. } => {
@@ -518,15 +552,6 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
             each_node(r, f);
         }
         Kind::Not(base) => each_node(base, f),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            each_node(cond, f);
-            each_node(then, f);
-            each_node(otherwise, f);
-        }
         Kind::Bind { value, body, .. } => {
             each_node(value, f);
             each_node(body, f);
@@ -545,6 +570,15 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
             each_node(base, f);
             each_node(index, f);
         }
+        Kind::Slice { base, start, end, .. } => {
+            each_node(base, f);
+            if let Some(s) = start {
+                each_node(s, f);
+            }
+            if let Some(e) = end {
+                each_node(e, f);
+            }
+        }
         Kind::Match { subject, arms, .. } => {
             each_node(subject, f);
             for arm in arms {
@@ -554,5 +588,24 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
                 each_node(&arm.body, f);
             }
         }
+    }
+}
+
+/// Whether `t` makes a self-call to `name` in a tail position: a call whose result is the
+/// function's result, with nothing left to do after it. This is what lets the js and py
+/// emitters lower a self-tail-recursive function to a loop, the constant-stack contract
+/// (kantord/toylang#141).
+///
+/// Only a total `Match`'s arm bodies and a `Bind`'s body put their child in tail position; a
+/// partial `Match` wraps every arm body in `{some: ...}`, so nothing there is a tail call, and
+/// a call feeding an operator (`f(x) + 1`) is a genuine recursion the contract does not cover.
+pub fn has_tail_call(name: &str, t: &Tir) -> bool {
+    match &t.kind {
+        Kind::Call { func, .. } => func == name,
+        Kind::Bind { body, .. } => has_tail_call(name, body),
+        Kind::Match { arms, partial, .. } if !partial => {
+            arms.iter().any(|a| has_tail_call(name, &a.body))
+        }
+        _ => false,
     }
 }

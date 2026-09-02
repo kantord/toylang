@@ -38,6 +38,7 @@ of entries over many lanes is itself the finding.
 | 2026-08-30 | issue-133 (euler-pages-restore, gh:133), third run | The scratch-inside-worktree redispatch (above) died on a DIFFERENT denial: `grep ... \| head \| while read ...` -- shell loop constructs are not in the allow-list (deliberately: opencode cannot inspect a loop body, so allowing `while *` would let anything hide inside one, `git push` included), and the headless auto-reject killed its file-sweep plan. Exited commitless again, ~121s. Root cause now understood: loop-heavy sweep tasks structurally collide with the allow-list. Fix shipped in the brief template (enwiro-delegate skill): loops are named as a KNOWN DENIAL up front, with the two sanctioned alternatives (one file per tool call, or a `python3` script in the worktree -- `python3 *` is allowed). | third zero-commit run on one lane (~$0.04 total across three); ~70 min of lane wall-clock and repeated tick recovery workload | No -- any headless worker under this allow-list hits it; the finding is that the BRIEF, not the list, must carry the sandbox's known edges. |
 | 2026-08-30 | issue-133 (euler-pages-restore, gh:133), runs 4-5 | Run 4 (21:07, generic continuation brief from a tick) reached for the identical `grep \| while` pipeline and then died hard enough to take the wrapper with it -- no telemetry row, no exit tick (that gap is now closed: the wrapper fires the tick from an EXIT trap, 59167ed). Run 5 (21:16, brief with the explicit loop ban) obeyed the loop ban but created its scratch .toy via bash redirection, equally denied -- 14 steps, exited commitless. The load-bearing distinction the model kept missing: opencode's write/edit TOOLS are allowed in the worktree, bash file writes are not. Brief template updated to say so in caps; run 6 dispatched with it. | five commitless runs (~$0.06 total) and ~100 min of lane wall-clock on one small docs task | Unclear -- the sandbox edge is model-agnostic, but five consecutive failures to route around it is a DeepSeek-tenacity data point for the 30-lane review; if run 6 fails, escalate this task shape to a stronger OPENCODE_MODEL rather than re-brief again. |
 | 2026-08-30 | issue-133 (euler-pages-restore, gh:133), run 6 -- RESOLVED | Run 6 did the actual work (write/edit tools, 317+/99- across five docs pages and the test), verified nothing itself: its verify/cleanup phase used multi-command bash lines (`printf > scratch.toy, ...` and `rm -f scratch.toy, ls, git status`) which the allow-list rejects as compound commands, so it exited without committing. The coordinator ran `just check` in the lane (green), resumed the session (`opencode run --session`), and the worker committed ba9dff7 on instruction; folded to the accumulator same tick. Separately this fold exposed that `bc` is not installed on this host: `changed_lines()` in land-lane.sh/drive-tick.sh/dispatch-worker.sh silently returned 0 for every branch (the `|| echo 0` ate the 127), so SIZE-based auto-promotion had never actually fired -- all three sites now sum with awk. | six runs / ~2h lane wall-clock for one docs task, but the work itself was one run's worth; plus the latent size-check bug found | Two lessons: (1) compound bash lines are their own denial class -- brief template now says one simple command per bash call; (2) a dead-but-dirty lane whose diff passes the gate is salvaged by session-resume-to-commit, not a seventh fresh run. |
+| 2026-09-02 | issue-140 (sum-max-reductions, gh:140) | Stuck-lane alarm fired for a lane whose work had already landed:the incident evidence in `plans/incidents/issue-140-20260901/` predates the landing via 3b8c0d7.The lane was not actually stuck;the watchdog raced a landing it had not yet observed,and three commitless re-runs each re-did the same deep-dive instead of noticingthe ancestor relationship. | $0.00, no rework, no coordinator intervention --the landing was real and the re-runs were redundant| No --any watchdog racing a landing would see the same false alarm regardless of worker; not opencode-specific.The lesson is to check ancestry before re-running a flagged lane. |
 
 Four of the five incidents above share one shape: a worker's OWN verification or research step (not its core implementation work) triggers a permission rejection, and the worker either abandons a mostly-finished branch (issue-98, issue-129) or gives up immediately with zero progress (issue-88, issue-108, issue-125) rather than proceeding without the rejected step or leaving an ESCALATION.md explaining why it stopped. The uncommitted-but-good branches were both salvageable by the coordinator; the zero-progress lanes were not (nothing to salvage, only to re-brief). Worth a brief-wording fix at some point: tell workers explicitly that a rejected tool call is not a stop condition -- commit what exists, note the gap, and keep going, the same instruction ESCALATION.md already carries for genuine design questions.
 
@@ -83,3 +84,260 @@ route) named the candidates for a post-review tier ladder:
   isolation yet (published best practice for unattended runs; accepted for this
   self-authored public repo); worker cannot receive SendMessage nudges (steer by
   killing + `opencode run --session <id>` resume with a new message).
+
+## Incident: repeated N=150-for-157 dispatch mistake, and a stale board note that made it worse (2026-08-31)
+
+A tick dispatched gh:157's brief with `dispatch-worker.sh 150` instead of `157`,
+landing in the just-freed issue-150 worktree. A concurrent/duplicate tick session
+(same underlying session id, two `claude --resume` processes observed running at
+once -- see the concurrent-sessions memory note) caught this independently and
+committed a board note (fb7754d) marking the row `delegated` with a "worker is
+live in toylang-lanes/issue-150" warning and a follow-up to rename that branch to
+issue-157 once the worker exited.
+
+That note was wrong on the facts: the issue-150 worktree only ever held issue-150's
+own already-landed let-bindings/input-annotation work (folded into
+to-merge-1788204752 this session); no gh:157-related worker ever actually ran there
+-- both the original mistaken dispatch and its bash wrapper appear to have been
+killed by session teardown (background job, "[killed]", zero output, task
+notification "no completion record found") before `dispatch-worker.sh` got far
+enough to print anything. Following the note's instruction (rename that branch to
+issue-157) would have mislabeled unrelated, already-consumed work.
+
+Fix applied: cleared the note, reset the row to `status: todo`, dispatched
+`dispatch-worker.sh 157` correctly into the actual free lane.
+
+Lesson: a board note written under time pressure to prevent a duplicate dispatch
+should describe the *risk*, not assert unverified internal state ("worker is live")
+as fact -- the next tick then has to re-derive ground truth from disk anyway. Cheaper
+to just mark `status: blocked-pending-verification` and let the next tick check
+`git log`/`pgrep` itself.
+
+## Incident: erlang-target-research (gh:163) gave up on a toolchain-check denial (2026-09-01)
+
+18 steps of legitimate research (read `docs/reference/types/{stream,str,char}.md`,
+`research-log/index.md`, `ESCALATION.md`, grepped `Backend::` in `src/lib.rs`, read
+backend emitters) then tried `which erl escript erlc; erl -eval '...halt().' -noshell`
+to check whether an Erlang toolchain exists on the host -- denied by the permission
+classifier -- and exited immediately after, zero commits, no `plans/*.md` written, no
+ESCALATION.md for this run. Landed on a lane whose branch tip happened to equal the
+`to-merge-1788204752` accumulator (its dispatch base, since that accumulator was the
+largest live one at dispatch time) -- misread by the gate script's `ahead=7 dirty=0`
+signal as "worker exited, landable," when actually zero commits were this worker's own.
+
+Root cause: the task never needed to actually run Erlang. The brief asks for a design
+survey (process/effect model, pattern matching, immutability) against docs already in
+the repo and toylang's own backend source -- a desk review, not an empirical one. The
+worker chose to verify toolchain presence anyway, hit the sandbox wall, and gave up
+rather than continuing with the read-only research it had already started.
+
+Fix: rebriefed with an explicit "no toolchain/execution needed, docs+source read only,
+write findings to plans/erlang-target-research.md" instruction. | $0.01, 18 steps,
+zero commits, one coordinator rebrief | No -- the `which`/`erl -eval` denial is sandbox
+policy (arbitrary binary execution), not opencode-specific; the give-up-after-one-denial
+behavior is the same shape as issue-108/125 above.
+
+## Ruling: escalation/decision tracking moves off GitHub issues (2026-09-01)
+
+Maintainer answer to the coordinator-escalation-brief-phrasing-experiment round
+(inbox record, 2026-09-01T20:36:51Z): "we can just have a local inbox for such
+cases, no need to rely on github issues; i guess actually we can migrate the
+whole flow to work entirely on files committed into the repo at this stage."
+
+Immediate action taken: the blocked note (brief-phrasing-experiment) got a board
+row with no `issue:` field instead of a `gh issue create` retry -- board.yaml
+already supports issue-less rows, so this needed no new mechanism.
+
+Open, not yet scoped: the maintainer's broader remark reads as a ruling that the
+whole escalation/decision-tracking flow (currently: compose note -> file gh
+issue -> board row references it) should move to files committed in the repo
+instead of GitHub issues. This is a process/tooling change bigger than one note
+and hasn't been designed yet -- needs a decide row (what replaces "issue:
+gh:N" as the cross-reference key; how history/discussion attach to a row
+without an issue thread) before any dispatch. Not board-added yet; flagging
+here so the next tick that touches escalation composition sees it before
+defaulting back to gh issue create.
+
+## Incident: issue-154 stuck at 3 commitless runs on a self-inflicted denial loop (2026-09-01)
+
+Root cause (from `20260901-221717-issue-154.jsonl`): the worker built real work
+(input-type-annotation + tail-pipe |>, 173 insertions across 4 files, own
+ESCALATION.md justifying the scope), then verified it by writing
+`scratch_tailpipe.toy` and repeatedly running `cargo run -q -- run
+scratch_tailpipe.toy` -- direct binary execution, always denied. The run ended
+mid-loop on that exact denial (`UnknownError: The user rejected permission to
+use this specific tool call`), with nothing ever committed. Same failure shape
+as issue-93 and issue-155's "permission denial on direct binary execution".
+
+Fix applied: added `cargo run -- run <file>` / direct binary execution to the
+KNOWN DENIALS boilerplate in `dispatch-worker.sh`, pointing workers at
+`tests/corpus/*.yaml` + `just check` (AGENTS.md's sanctioned verification path)
+instead of scratch-file-plus-manual-run. Rebriefed issue-154 to keep its
+existing uncommitted work, convert the scratch file to a corpus case, and
+commit once `just check` is green.
+
+## Incident: issue-149 stuck at 2 commitless runs, all-or-nothing scope on a 6-backend task (2026-09-02)
+
+Root cause (from `20260830-220941-issue-149.jsonl` and `20260901-232217-issue-149.jsonl`):
+both runs treated "Implement Float across the backends" (gh:149, board row
+float-build) as a research task and spent their entire step budget writing and
+running cross-language probe scripts (Go, Lua, C via `cc`, jq, Node, Python) to
+characterize each backend's native double-to-string formatting, then hit the
+step limit with zero commits both times. This is legitimate groundwork (per
+plans/questions.md#q37, printing format is explicitly unruled per-backend
+conformance work) but the runs never got past survey mode into writing the
+actual formatter code, and held all 6 backends' work uncommitted while
+chasing full completion instead of landing backends incrementally.
+
+Diagnosed directly rather than dispatching an investigation worker (the
+evidence was conclusive from the logs alone). Rebriefed issue-149 in place:
+pointed at the existing probe output instead of re-deriving it, named ADR
+0007 + JS's Number.prototype.toString() as the reference algorithm, and
+required committing one backend's formatter at a time rather than holding
+everything uncommitted until all six are done.
+
+## issue-158 stuck lane: already explained, no dispatch needed (2026-09-02)
+
+`stuck-issue-158-investigation` asked to diagnose why issue-158 (shell-out-build,
+gh:158) had two commitless runs. Already answered on the board itself:
+`shell-out-build` carries `needs: [stdout-stderr-effect-model-design]`, and that
+decide row already has a composed, pending grill round
+(docs/.grill/stdout-stderr-effect-model.round.yaml) asking exactly the Q35
+question both runs got stuck on. Archived the investigation row instead of
+dispatching a worker to re-derive an answer that's already on file -- the real
+next step is the maintainer answering the pending round, not more automated
+investigation.
+
+## Incident: issue-168 investigation dispatch used the wrong brief wrapper (2026-09-02)
+
+Dispatched `stuck-issue-168-investigation` via `dispatch-worker.sh 168 "<investigation
+brief>"` without `BRIEF_RAW=1`. The script's default wrapper always prepends "Your
+task is GitHub issue #$N: run `gh issue view $N` ... $BRIEF" -- for issue-168 that's
+the *original* feature issue, not "investigate why this lane is stuck." The live log
+confirms the worker read gh:168's real issue text and started exploring the actual
+offload/vectorizability feature (reading tir.rs, draft.md's offload section, corpus
+tests) instead of the frozen incident evidence at
+plans/incidents/issue-168-20260902/. Attempted to kill the misdirected process and
+was blocked by the auto-mode classifier (process-kill outside the sanctioned
+scripts) -- per house rule, not retrying through another channel. Letting this run
+finish; it will likely land as another commitless run since the worker is doing
+the wrong task. Next tick should redispatch issue-168's investigation with
+`BRIEF_RAW=1` (the script's own doc comment already names this as the case
+"research dispatches, custom continuations" need), and this note stands as a
+reminder for every future stuck-lane investigation dispatch: always set
+`BRIEF_RAW=1`, never let the standard build-brief wrapper attach to an
+investigation task.
+
+## Incident: land-lane.sh's auto-commit only covers tracked files -- untracked
+## research findings are at risk of being cleaned away (2026-09-02)
+
+Found four orphaned research lanes (issue-trait-interface-research,
+issue-signature-matching-deeper-research, issue-http-query-sugar-research,
+issue-recursive-descent-order-research) with no activity since 2026-09-01
+~21:30, invisible to the current stuck-lane snapshot (their names don't match
+the numeric `issue-<N>` pattern the tracker expects). Two of them
+(trait-interface-research, signature-matching-deeper-research) have real
+findings files sitting **untracked** (`?? plans/<name>.md`) -- never `git
+add`ed, so they are not "tracked dirty" and the 2026-09-02 auto-commit ruling
+in land-lane.sh (`git -C "$d" add -u` then commit) does not pick them up.
+Worse: the very next step in `land land-lane.sh` runs `git clean -fdq` on any
+remaining untracked files as "sanctioned scratch" -- if this were run against
+these lanes as-is, it would silently **delete** the findings before they were
+ever persisted. Did not run `land-lane.sh land` on these two lanes to avoid
+that. Dispatched continuation workers instead (BRIEF_RAW=1) whose only job is
+`git add` + `git commit` for the existing findings file, so the tracked-dirty
+path lands safely on the next `land-lane.sh` pass. The other two lanes
+(http-query-sugar-research, recursive-descent-order-research) have zero diff
+from main -- they produced nothing and need re-investigation, not landing.
+Follow-up: land-lane.sh's auto-commit should `git add -A` (not `-u`) when the
+gate is green, or the cleanup step should skip files that look like research
+output (`plans/*.md`) -- filed as a board row.
+
+
+## Investigation: stuck lane issue-170 (gh:170, erlang-toolchain-empirical-research) (2026-09-01
+
+Lane stats at capture: 1 run, 0 commits, clean tree, ahead  ​0, dead 22h. The
+event-log tail ends after a completed tool call with no final message, no commit,
+no write -- consistent with the step-budget exhaustion already seen on issue-116/133,
+though not provable from the tail alone. The branch tip is `d9896ec` (the module-routing
+spike commit), so no lane work ever happened on top of the dispatch base.
+
+What the single run actually did (from the jsonl tail): read the issue body via
+`gh issue view 170`; failed to find `plans/erlang-target-research.md` in the worktree
+(it is absent from this lane base -- it landed on main via the to-merge accumulator
+only after the base was cut),and recovered it via `git show 9b9cec3:...` from git
+history;read the desk research;ran `which erl erlc escript erl_call` -- ALLOWED by the
+permission gate, found nothing on PATH;(in run 1, the compound `which ...; erl
+-eval ...` was denied, so the classifier's edge is the compound form, not `which`
+itself)ran `erl -noshell -eval ...` -- DENIED ("The user rejected permission to use
+this specific tool call");verified `/usr/bin`, `/usr/local/bin`, `/opt`, `/snap` and
+`/usr/lib/erlang` -- all empty;and stopped, uncommitted, with the last reasoning
+still mid-plan ("let me confirm by attempting to run erl directly").
+
+Diagnosis: this was primarily a **brief-clarity** failure, compounded by task shape
+and an asymmetric permission allow-list;,not a capability gap:
+
+- The brief's decision tree had two branches: denial -> document-and-stop; not-denied
+  + available -> verify empirically. The observed case -- not denied (the `which`
+  succeeded) but also not available -- had no branch. The worker's own reasoning
+  identified "a third case: allowed but not present" and then had no scripted
+  done-state to land on.
+- The brief described run 1's denial as "`which erl` / `erl -eval`" was denied,;
+  collapsing a compound-command denial into two individual denials. When `which`
+  alone succeeded, the worker concluded the denial case was off the table and pursued
+  running `erl` anyway -- exactly the outcome the denial branch existed to prevent. The
+  actual classifier edges: compound shell forms auto-reject, executing a non-whitelisted
+  binary is denied, `which` alone is fine.
+- The brief referenced "plans/opencode-rollout.md, incident 2026-09-01" -- but this
+  lane's copy of that file has no such entry (the branch predates the incident-log
+  commit),and the addendum target `plans/erlang-target-research.md` is absent from the
+  lane base. The worker recovered both from git history, at the cost of several steps
+  and early confusion.
+
+- Task shape: the core ask -- "actually install/verify the Erlang toolchain and run the
+  documented-semantics comparison against real erl/erlc output" -- is impossible on
+  this host: no Erlang binaries exist (PATH + five filesystem locations verified empty),running
+  `erl` is denied by the permission allow-list;,and installation (apt/snap/network or
+  executing an installer) would almost certainly hit the same walls (unverified;not
+  attempted). The only deliverable available is the negative finding, which the brief
+  half-defined.
+- The permission system is an aggravator, not the root: its per-command behavior is
+  stable but undiscussed at the granularity the brief needed, and the deny message "The user
+  rejected permission" doesn't name the deny system, so a worker cannot tell policy from
+  a human intervention.
+- Not a capability gap: the worker read the missing file from git history, named the
+  unscripted case explicitly, adapted after the `erl` denial (via `ls` checks, not a second
+  execution channel),and ran far past where run 1 gave up. Nothing in its reasoning
+  suggests it couldn't have written the addendum;the failure is that no instruction told
+  it the absence was itself the deliverable, plus a likely step-budget exhaustion.
+
+Recommendation:
+
+- **Reshape gh:170's row** from "empirically verify Erlang" to "determine whether an
+  Erlang toolchain can be exercised here, and record the finding". The brief must enumerate
+  the full outcome space: (a) toolchain found -> run the comparison script against real
+  erl, append results;(b) toolchain absent -> append an addendum to
+  plans/erlang-target-research.md documenting: no binaries on PATH or in /usr/bin,,
+  /usr/local/bin, /opt, /snap, /usr/lib/erlang;executing erl is additionally denied
+  by the allow-list (observed: "The user rejected permission");installation was not
+  attempted and is presumed blocked the same way (flag as unverified;;and stop -- that
+  addendum is the deliverable, not a failure.(c) any check denied -> document exactly what
+  was denied and stop.
+- **Then close gh:170**:the empirical comparison cannot happen here, the desk research
+  (plans/erlang-target-research.md) remains the deliverable for gh:163,and surface the
+  maintainer's flagged concurrency open item as its own board row now -- the issue body's
+  "once this lands" condition has effectively become "cannot land here"..
+- **Dispatch-template fixes**, generalizable: (1) any "verify tool X" brief must enumerate
+  all three outcomes (present / absent / denied)and define a done-state for each -- "a tool
+  that does not exist is a complete finding, not a stop condition", the mirror of the existing
+  "a rejected tool call is not a stop condition" rule;(2) describe the permission system's
+  edges as command classes, not as the compound commands that triggered them;(3) when a
+  brief references a file that may not exist on the lane base, either cut the lane from a base
+  that contains it or give the worker a `git show` pointer;(4) the step-budget exhaustion
+  has now hit three lanes with zero commits each (issue-116, issue-133, this one)--
+  worth instructing workers to write and commit partial findings before further verification,
+  or raising the budget;(5) for the 30-lane review: this lane did NOT reproduce run 1's
+  give-up-on-first-denial shape -- the worker pushed through multiple denials and checks -- but
+  landed in the same commitless zero-output state, because it ran out of scripted outcomes
+
+  before it ran out of steps. The bottleneck is the decision tree, not tenacity..

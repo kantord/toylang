@@ -126,6 +126,17 @@ pub struct Param {
     pub span: Span,
 }
 
+/// Which source file a definition came from. Only two exist today: the program's own file and
+/// the single prelude module. A non-`pub` definition is callable only from its own file, so
+/// this is what the checker keys visibility on at each call site (gh:166).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Origin {
+    /// The program's own file.
+    Program,
+    /// The prelude module, `prelude.toy`.
+    Prelude,
+}
+
 #[derive(Debug)]
 pub struct Def {
     pub name: String,
@@ -137,6 +148,9 @@ pub struct Def {
     /// Whether a module's prelude includes this definition when compiling a program. Meaningless
     /// outside a module today, since nothing yet imports from a program file.
     pub is_pub: bool,
+    /// The file this definition was written in. A program's own definitions get `Program` from
+    /// the parser; the prelude's get `Prelude` from `prelude::module`.
+    pub origin: Origin,
 }
 
 /// `enum Shape { point, circle{r: Int} }`. The first declaration that creates a type identity
@@ -172,6 +186,10 @@ pub struct File {
     pub aliases: Vec<Alias>,
     pub enums: Vec<EnumDecl>,
     pub defs: Vec<Def>,
+    /// `input <type>`: a declaration of what stdin holds, written after the definitions and
+    /// before the body, the way a signature types a parameter. `None` when the program leaves
+    /// the input untyped, in which case the first use of `input` in the body types it.
+    pub input: Option<TypeExpr>,
     pub body: Expr,
 }
 
@@ -242,6 +260,15 @@ pub enum Expr {
         index: Box<Expr>,
         span: Span,
     },
+    /// `base[lo:hi]`, bounds optional. A spec that narrows a dimension by position, jq's
+    /// `.[2:5]`; out-of-range bounds clamp to the valid range rather than answering `Opt` the
+    /// way a collapsing index does (kantord/toylang#143).
+    Slice {
+        base: Box<Expr>,
+        start: Option<Box<Expr>>,
+        end: Option<Box<Expr>>,
+        span: Span,
+    },
     /// `base!`. Insist the value is there, and stop the program if it is not.
     Unwrap {
         base: Box<Expr>,
@@ -256,13 +283,6 @@ pub enum Expr {
     /// tighter than `and`/`or`, so `not a and b` negates only `a`.
     Not {
         base: Box<Expr>,
-        span: Span,
-    },
-    /// `then if cond else otherwise`. An expression, in a language that has only those.
-    Cond {
-        then: Box<Expr>,
-        cond: Box<Expr>,
-        otherwise: Box<Expr>,
         span: Span,
     },
     /// `base.name`. Distributes over a Vec rather than needing a map.
@@ -284,6 +304,12 @@ pub enum Expr {
     /// The stream of lines read from stdin, born `Stream<Str>`. The checker rejects a second
     /// use rather than accepting a second stream, since there is only ever one real stdin.
     Lines {
+        span: Span,
+    },
+    /// Stdin read as raw lines, each split on a delimiter, born `Vec<Vec<Str>>`: the
+    /// parameterized DSV source. `csv` and `tsv` are the same node with the delimiter fixed.
+    Dsv {
+        delim: String,
         span: Span,
     },
     /// An `or` chain of match arms over the subject `.`: `point -> 0 or circle{r} -> r * r`.
@@ -310,6 +336,15 @@ pub enum Expr {
         rhs: Box<Expr>,
         span: Span,
     },
+    /// `lhs |> callee`, the tail-pipeline marker: the one way a sink call is written, `callee`
+    /// applied to `lhs`. Only a Sink-typed callee is legal here, and the production is parsed
+    /// only at a program's outermost position, so this node never appears nested.
+    TailPipe {
+        lhs: Box<Expr>,
+        callee: String,
+        callee_span: Span,
+        span: Span,
+    },
     Binary {
         op: BinOp,
         lhs: Box<Expr>,
@@ -323,6 +358,14 @@ pub enum Expr {
         op: LogicOp,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
+        span: Span,
+    },
+    /// `let <name> = <expr>` on its own line, repeated, then the expression that ends the block
+    /// -- the local-binding form the ruling on #87 picked over `let ... in`: no keyword to pair,
+    /// just a sequence of bindings followed by a result. Only reachable as a function body.
+    Let {
+        bindings: Vec<(String, Expr)>,
+        body: Box<Expr>,
         span: Span,
     },
 }
@@ -379,20 +422,23 @@ impl Expr {
             | Expr::Call { span, .. }
             | Expr::Project { span, .. }
             | Expr::Index { span, .. }
+            | Expr::Slice { span, .. }
             | Expr::Unwrap { span, .. }
             | Expr::RecordLit { span, .. }
             | Expr::Neg { span, .. }
             | Expr::Not { span, .. }
-            | Expr::Cond { span, .. }
             | Expr::Field { span, .. }
             | Expr::Input { span }
             | Expr::Inputs { span }
             | Expr::Lines { span }
+            | Expr::Dsv { span, .. }
             | Expr::Variant { span, .. }
             | Expr::Match { span, .. }
             | Expr::Pipe { span, .. }
+            | Expr::TailPipe { span, .. }
             | Expr::Binary { span, .. }
-            | Expr::Logic { span, .. } => *span,
+            | Expr::Logic { span, .. }
+            | Expr::Let { span, .. } => *span,
         }
     }
 }

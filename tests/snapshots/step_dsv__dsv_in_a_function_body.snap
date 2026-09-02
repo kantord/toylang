@@ -1,0 +1,5 @@
+---
+source: tests/step_dsv.rs
+expression: "err(\"fn f() -> Vec<Vec<Str>> = dsv(\\\",\\\")\\nf\")"
+---
+`dsv` cannot be read inside `fn f`; a source is legal only in the program's own body, so take the value through a parameter (at byte 26)

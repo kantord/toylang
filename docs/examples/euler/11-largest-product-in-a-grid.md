@@ -24,13 +24,13 @@ fn four(p: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int =
         get({g: p.g, r: p.r + 3 * p.dr, c: p.c + 3 * p.dc})
 
 fn row_products(p: {g: Vec<Vec<Int>>, r: Int, dr: Int, dc: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
-    range(p.cmax)
+    collect(range(p.cmax))
         | select(. >= p.cmin)
         | map(four({g: p.g, r: p.r, c: ., dr: p.dr, dc: p.dc}))
 
 fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
     flatten(
-        range(p.rmax)
+        collect(range(p.rmax))
             | map(
                   row_products(
                       {
@@ -46,14 +46,9 @@ fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax:
     )
 
 fn maximum_of(p: {v: Vec<Int>, i: Int, best: Int}) -> Int =
-    p.best if p.i >= length(p.v) else
-        maximum_of(
-            {
-                v: p.v,
-                i: p.i + 1,
-                best: p.v[p.i]! if p.v[p.i]! > p.best else p.best
-            }
-        )
+    p
+        | .i >= length(.v) -> p.best or
+              maximum_of({v: p.v, i: p.i + 1, best: p | .v[.i]! > .best -> p.v[p.i]! or p.best})
 
 fn maximum(v: Vec<Int>) -> Int = maximum_of({v: v, i: 1, best: v[0]!})
 

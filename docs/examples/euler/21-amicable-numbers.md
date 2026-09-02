@@ -13,11 +13,12 @@ sample programs do, keeping recursion depth at `log2(10000)` rather than one fra
 
 ```toylang
 fn divisor_contribution(p: {n: Int, d: Int}) -> Int =
-    0 if p.n % p.d != 0 else p.d if p.d * p.d == p.n else p.d + p.n / p.d
+    p | .n % .d != 0 -> 0 or .d * .d == .n -> .d or .d + .n / .d
 
 fn sigma(p: {n: Int, d: Int}) -> Int =
-    0 if p.d * p.d > p.n else
-        divisor_contribution({n: p.n, d: p.d}) + sigma({n: p.n, d: p.d + 1})
+    p
+        | .d * .d > .n -> 0 or
+              divisor_contribution({n: .n, d: .d}) + sigma({n: .n, d: .d + 1})
 
 fn proper_divisor_sum(n: Int) -> Int = sigma({n: n, d: 1}) - n
 
@@ -25,12 +26,12 @@ fn is_amicable(n: Int) -> Bool =
     proper_divisor_sum(n) != n and
         proper_divisor_sum(proper_divisor_sum(n)) == n
 
-fn amicable_value(n: Int) -> Int = n if is_amicable(n) else 0
+fn amicable_value(n: Int) -> Int = n | is_amicable(.) -> . or 0
 
 fn sum_range(p: {lo: Int, hi: Int}) -> Int =
-    amicable_value(p.lo) if p.hi - p.lo == 1 else
-        sum_range({lo: p.lo, hi: (p.lo + p.hi) / 2}) +
-            sum_range({lo: (p.lo + p.hi) / 2, hi: p.hi})
+    p
+        | .hi - .lo == 1 -> amicable_value(.lo) or
+              sum_range({lo: .lo, hi: (.lo + .hi) / 2}) + sum_range({lo: (.lo + .hi) / 2, hi: .hi})
 
 sum_range({lo: 1, hi: 10000})
 ```

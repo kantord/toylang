@@ -2,14 +2,14 @@
 # refused, not coerced: the payload is validated by its type, the same rule every other input
 # position follows.
 program: |
-  enum Temp { unknown, celsius(Int) }
+  enum Temp { Unknown, Celsius(Int) }
 
-  fn read(t: Temp) -> Int = t | celsius -> . or unknown -> 0
+  fn read(t: Temp) -> Int = t | Celsius -> . or Unknown -> 0
 
   read input
 
 input: |
-  {"celsius": "hot"}
+  {"Celsius": "hot"}
 
 refuses: true
 

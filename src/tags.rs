@@ -37,7 +37,8 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
         | Kind::Local(_)
         | Kind::Input
         | Kind::Inputs
-        | Kind::Lines => {}
+        | Kind::Lines
+        | Kind::Dsv { .. } => {}
         Kind::VecLit(items) => items.iter().for_each(|i| walk(i, tags)),
         Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| walk(v, tags)),
         Kind::EnumLit { payload, .. } => {
@@ -59,15 +60,6 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
         | Kind::Logic { lhs, rhs, .. } => {
             walk(lhs, tags);
             walk(rhs, tags);
-        }
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            walk(cond, tags);
-            walk(then, tags);
-            walk(otherwise, tags);
         }
         Kind::Bind { value, body, .. }
         | Kind::Map {
@@ -92,6 +84,15 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
         Kind::Index { base, index, .. } => {
             walk(base, tags);
             walk(index, tags);
+        }
+        Kind::Slice { base, start, end, .. } => {
+            walk(base, tags);
+            if let Some(s) = start {
+                walk(s, tags);
+            }
+            if let Some(e) = end {
+                walk(e, tags);
+            }
         }
         Kind::Match { subject, arms, .. } => {
             walk(subject, tags);
@@ -124,10 +125,10 @@ fn tag(tir: &Tir) -> String {
         Kind::Local(_) => "local".into(),
         Kind::Input => "input".into(),
         Kind::Lines => "lines".into(),
+        Kind::Dsv { .. } => "dsv".into(),
         Kind::Call { .. } => "application".into(),
         Kind::Concat(..) => "concat".into(),
         Kind::Arith { op, .. } => format!("arith.{}", binop_tag(*op)),
-        Kind::Cond { .. } => "conditional".into(),
         Kind::Compare { op, .. } => format!("compare.{}", binop_tag(*op)),
         Kind::Logic { op, .. } => format!("logic.{op}"),
         Kind::Not(_) => "logic.not".into(),
@@ -139,6 +140,9 @@ fn tag(tir: &Tir) -> String {
         Kind::Builtin { which, .. } => format!("builtin.{}", builtin_tag(*which)),
         Kind::Unwrap { .. } => "unwrap".into(),
         Kind::Index { .. } => "selection.collapse".into(),
+        // A slice narrows by position where `select` narrows by predicate, so both are
+        // the same kind of spec (CONTEXT.md's narrow), and share the tag.
+        Kind::Slice { .. } => "selection.narrow".into(),
         Kind::Inputs => "inputs".into(),
         Kind::Match { .. } => "match".into(),
     }
@@ -174,5 +178,7 @@ fn builtin_tag(which: Builtin) -> &'static str {
         Builtin::Chars => "chars",
         Builtin::Sort => "sort",
         Builtin::Reverse => "reverse",
+        Builtin::Sum => "sum",
+        Builtin::Max => "max",
     }
 }

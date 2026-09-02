@@ -17,5 +17,5 @@ def tl_div($a; $b):
   else ($a / $b | trunc) | tl_i32 end;
 def tl_rem($a; $b):
   if $b == 0 then error("toylang: divided by zero") else ($a % $b) | tl_i32 end;
-def v_area_ish: . as $v_s | ($v_s as $t_0 | (if ($t_0 | type == "object" and has("circle")) then ($t_0["circle"] as $t_1 | tl_mul(($t_1 | .["r"]); ($t_1 | .["r"]))) else 0 end));
-({"a": (("point" | v_area_ish)), "b": (({"circle": ({"r": (3)})} | v_area_ish))} | {"a": .["a"], "b": .["b"]})
+def v_area_ish: . as $v_s | ($v_s as $t_0 | (if ($t_0 | type == "object" and has("Circle")) then ($t_0["Circle"] as $t_1 | tl_mul(($t_1 | .["r"]); ($t_1 | .["r"]))) else 0 end));
+({"a": (("Point" | v_area_ish)), "b": (({"Circle": ({"r": (3)})} | v_area_ish))} | {"a": .["a"], "b": .["b"]})

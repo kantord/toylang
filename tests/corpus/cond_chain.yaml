@@ -1,7 +1,7 @@
 program: |
-  str(1) if 1 == 2 else str(2) if 1 == 1 else str(3)
+  1 == 2 | . -> str(1) or 1 == 1 -> str(2) or str(3)
 
 output: |
   2
 
-node_types: [builtin.str, compare.eq, conditional, int]
+node_types: [builtin.str, compare.eq, int, local, match, pipe]

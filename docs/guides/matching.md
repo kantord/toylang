@@ -4,12 +4,12 @@ The task: a program branches -- on a condition, on which variant of an enum arri
 whether anything applies at all. All three go through match; which arm shape fits depends on
 the data.
 
-## Replacing an if/else chain
+## Guard chains
 
-A guard chain (`cond -> body or cond -> body or ... or default`) is `if`/`else` in another
-notation -- [the conditional reference](../reference/operators/conditional.md) lays FizzBuzz
-out both ways. It holds up better once a cascade grows past two or three branches, because
-each condition sits next to its own result instead of nesting another `else`:
+A guard chain (`cond -> body or cond -> body or ... or default`) is the whole of conditional
+logic: each branch is a `cond -> body` arm, and the final bare expression is the default. It
+holds up well once a cascade grows past two or three branches, because each condition sits
+next to its own result instead of the cascade nesting further:
 
 ```toylang
 fn shipping(kg: Int) -> Int =

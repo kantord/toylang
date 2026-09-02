@@ -1,0 +1,5 @@
+---
+source: tests/step_dsv.rs
+expression: "err(\"dsv(\\\",\\\") | map(dsv(\\\";\\\"))\")"
+---
+`dsv` cannot be read inside a mapper body, which runs once per element (at byte 15)

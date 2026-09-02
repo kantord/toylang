@@ -3,9 +3,9 @@
 # something the output cannot: jq leans on `type`/`has` because `has` on a string errors, and
 # Rust lowers to a real match that re-proves the exhaustiveness the checker established.
 program: |
-  enum Shape { point, circle{r: Int} }
+  enum Shape { Point, Circle{r: Int} }
 
-  fn area_ish(s: Shape) -> Int = s | circle{r} -> r * r or point -> 0
+  fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0
 
   {a: area_ish(Shape.point), b: area_ish(circle{r: 3})}
 

@@ -14,8 +14,8 @@ terminators, not a platform's opinion of them.
 Being a [Stream](../types/stream.md) source, `lines` follows the stream rules: read at most
 once per program (there is only ever one real stdin, so a second `lines` is refused rather
 than silently handed nothing), consumed exactly once, incompatible with
-[`input`](input.md) and [`inputs`](inputs.md), and not readable inside a `map` or `select`
-body, which runs once per entry.
+[`input`](input.md), [`inputs`](inputs.md), and [`dsv`](dsv.md), and not readable inside a
+`map` or `select` body, which runs once per entry.
 
 ```case
 jsonlines_of_lines

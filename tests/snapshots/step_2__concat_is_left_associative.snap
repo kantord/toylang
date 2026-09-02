@@ -6,6 +6,7 @@ File {
     aliases: [],
     enums: [],
     defs: [],
+    input: None,
     body: Binary {
         op: Add,
         lhs: Binary {

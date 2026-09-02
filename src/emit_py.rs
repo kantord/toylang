@@ -89,6 +89,14 @@ const AT_HELPER: &str = r#"def tl_at(v, i, depth):
     return {"some": v[i]}
 "#;
 
+/// Python's own slicing already clamps out-of-range bounds and counts negatives from the end,
+/// so jq's boundary behaviour is the target's native one; `None` is a bound left out.
+const SLICE_HELPER: &str = r#"def tl_slice(v, lo, hi, depth):
+    if depth > 0:
+        return [tl_slice(e, lo, hi, depth - 1) for e in v]
+    return v[lo:hi]
+"#;
+
 const UNWRAP_HELPER: &str = r#"def tl_unwrap(v, depth):
     if depth > 0:
         return [tl_unwrap(e, depth - 1) for e in v]
@@ -133,6 +141,28 @@ const JSONLINES_HELPER: &str = r#"def tl_jsonlines(v, f):
     return "\n".join(f(e) for e in v)
 "#;
 
+/// Python's integers are unbounded, so both widths wrap by emulation -- `tl_i32` for Int and
+/// `tl_i64` for Int64, the same two helpers arithmetic already uses.
+const SUM_HELPER: &str = r#"def tl_sum(v):
+    acc = 0
+    for x in v:
+        acc = tl_i32(acc + x)
+    return acc
+
+
+def tl_sum64(v):
+    acc = 0
+    for x in v:
+        acc = tl_i64(acc + x)
+    return acc
+"#;
+
+const MAX_HELPER: &str = r#"def tl_max(v):
+    if len(v) == 0:
+        return "none"
+    return {"some": max(v)}
+"#;
+
 /// Iterating characters rather than bytes, which agrees with the C runtime's byte loop because
 /// the two differ only above U+007F, where both pass the value through unchanged.
 const QUOTE_HELPER: &str = r#"def tl_quote(s):
@@ -166,12 +196,26 @@ pub fn emit(program: &Program) -> String {
     // reference the checker accepts costs nothing here. Lua needed declarations, JavaScript
     // relied on hoisting, and jq could not express it at all.
     for f in &program.funcs {
-        decls.push_str(&format!(
-            "def {}({}):\n    return {}\n\n\n",
-            user(&f.name),
-            f.param.as_deref().map_or_else(String::new, user),
-            expr(enums, &f.body)
-        ));
+        let param = f.param.as_deref().map(user);
+        if tir::has_tail_call(&f.name, &f.body) {
+            // The contract: a self-tail-call runs in constant stack. A tail call becomes
+            // `param = arg` then `continue` in a loop, so 100k-deep self-recursion cannot hit
+            // Python's recursion limit the way a real call would (kantord/toylang#141).
+            let mut fresh = 0;
+            decls.push_str(&format!(
+                "def {}({}):\n    while True:\n{}\n\n\n",
+                user(&f.name),
+                param.as_deref().unwrap_or_default(),
+                tail_stmts(enums, &f.name, param.as_deref(), &mut fresh, &f.body, 8)
+            ));
+        } else {
+            decls.push_str(&format!(
+                "def {}({}):\n    return {}\n\n\n",
+                user(&f.name),
+                param.as_deref().unwrap_or_default(),
+                expr(enums, &f.body)
+            ));
+        }
     }
 
     if let Some(fusion) = tir::fusion(program) {
@@ -190,7 +234,7 @@ pub fn emit(program: &Program) -> String {
 
         let body = expr(enums, &program.body);
         // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON.
-        let printed = if program.body.ty == Type::Str {
+        let printed = if matches!(program.body.ty, Type::Str | Type::Sink) {
             body
         } else {
             show(enums, &program.body.ty, &body, 0)
@@ -223,17 +267,20 @@ pub fn emit(program: &Program) -> String {
     out.push('\n');
     for (on, text) in [
         (unwrap || arith || arith64, FAIL_HELPER),
-        (arith || uses("tl_i32("), I32_HELPER),
-        (arith64 || uses("tl_i64("), I64_HELPER),
+        (arith || uses("tl_i32(") || uses("tl_sum("), I32_HELPER),
+        (arith64 || uses("tl_i64(") || uses("tl_sum64("), I64_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
         (uses("tl_field("), FIELD_HELPER),
         (uses("tl_at("), AT_HELPER),
+        (uses("tl_slice("), SLICE_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
+        (uses("tl_sum(") || uses("tl_sum64("), SUM_HELPER),
+        (uses("tl_max("), MAX_HELPER),
         (uses("tl_collect_lines("), COLLECT_HELPER),
         (uses("tl_join("), JOIN_HELPER),
         (uses("tl_jsonlines("), JSONLINES_HELPER),
@@ -261,10 +308,10 @@ pub fn emit(program: &Program) -> String {
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     let enums = &program.enums;
     let mut out = String::new();
-    out.push_str("for _line in sys.stdin:\n");
-    out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
     let (mut current, mut current_ty) = match fusion.source {
         tir::Source::Inputs => {
+            out.push_str("for _line in sys.stdin:\n");
+            out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
             out.push_str("    if _line.strip() == \"\":\n        continue\n");
             out.push_str("    t_line = json.loads(_line)\n");
             let elem = program
@@ -274,7 +321,17 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
             ("t_line".to_string(), elem.clone())
         }
         // A raw line is already the element, blank ones included: `lines` keeps them.
-        tir::Source::Lines => ("_line".to_string(), Type::Str),
+        tir::Source::Lines => {
+            out.push_str("for _line in sys.stdin:\n");
+            out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
+            ("_line".to_string(), Type::Str)
+        }
+        // The bound is evaluated once; the loop counter is the element. A negative bound makes
+        // Python's own range empty, the same answer `tl_range` gives eagerly.
+        tir::Source::Range(bound) => {
+            out.push_str(&format!("for t_i in range({}):\n", expr(enums, bound)));
+            ("t_i".to_string(), Type::Int)
+        }
     };
     for stage in &fusion.stages {
         match stage {
@@ -312,6 +369,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
+        Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         Type::Int | Type::Int64 => format!("str({value})"),
         Type::Float => unreachable!("Float is JS-only in this row"),
         Type::Bool => format!("(\"true\" if {value} else \"false\")"),
@@ -373,6 +431,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
         // works on the Vec of its entries. Fusion is what will remove this materialization.
         Kind::Lines => "tl_collect_lines()".to_string(),
+        // Same raw lines as `lines`, each split on the delimiter into one row.
+        Kind::Dsv { delim } => format!(
+            "[l.split({}) for l in tl_collect_lines()]",
+            py_string(delim)
+        ),
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
@@ -401,20 +464,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // so a Vec needs no different spelling here than Str does.
         Kind::Concat(l, r) => format!("({} + {})", expr(enums, l), expr(enums, r)),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        // The one construct this target spells exactly as toylang does, because toylang took the
-        // spelling from here.
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            format!(
-                "({} if {} else {})",
-                expr(enums, then),
-                expr(enums, cond),
-                expr(enums, otherwise)
-            )
-        }
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("str({})", expr(enums, arg)),
             // Python's integers are one type at every width, so the bridge has nothing to do.
@@ -439,6 +488,16 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // `sorted` needs no key or comparator.
             Builtin::Sort => format!("sorted({})", expr(enums, arg)),
             Builtin::Reverse => format!("({})[::-1]", expr(enums, arg)),
+            // Which fold depends on the element width only for the wrap: Python has one integer
+            // type, so the two differ in which modulo they apply, not in the value type.
+            Builtin::Sum => {
+                if tir::runtime_elem(&arg.ty) == Some(&Type::Int) {
+                    format!("tl_sum({})", expr(enums, arg))
+                } else {
+                    format!("tl_sum64({})", expr(enums, arg))
+                }
+            }
+            Builtin::Max => format!("tl_max({})", expr(enums, arg)),
             // The names come from the checked type, not the dict value, so `arg` runs as the
             // lambda's ignored argument -- the same shape `Bind` uses -- purely for whatever
             // else it does.
@@ -525,6 +584,25 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 depth
             )
         }
+        Kind::Slice {
+            base, start, end, depth,
+        } => {
+            let lo = match start {
+                Some(s) => expr(enums, s),
+                None => "None".to_string(),
+            };
+            let hi = match end {
+                Some(e) => expr(enums, e),
+                None => "None".to_string(),
+            };
+            format!(
+                "tl_slice({}, {}, {}, {})",
+                expr(enums, base),
+                lo,
+                hi,
+                depth
+            )
+        }
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);
             if depth == 0 {
@@ -597,6 +675,93 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             out.push_str(&")".repeat(closing));
             format!("({out})")
         }
+    }
+}
+
+/// `t` as statements in the tail position, each line already padded to `level` columns:
+/// `return <expr>` for a base case, and for a tail call `param = <arg>` followed by `continue`
+/// so the emitted `while True` rewinds instead of recursing against Python's interpreter
+/// recursion limit. A total `Match`'s arm bodies nest one indent deeper, the way Python needs.
+fn tail_stmts(
+    enums: &Enums,
+    name: &str,
+    param: Option<&str>,
+    fresh: &mut usize,
+    t: &Tir,
+    level: usize,
+) -> String {
+    let pad = " ".repeat(level);
+    match &t.kind {
+        Kind::Call { func, arg } if func == name => {
+            let assign = param.map_or_else(String::new, |p| {
+                format!(
+                    "{pad}{p} = {}\n",
+                    arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
+                )
+            });
+            format!("{assign}{pad}continue\n")
+        }
+        Kind::Bind {
+            local: id,
+            value,
+            body,
+        } => format!(
+            "{pad}{} = {}\n{}",
+            local(*id),
+            expr(enums, value),
+            tail_stmts(enums, name, param, fresh, body, level),
+        ),
+        Kind::Match {
+            subject,
+            arms,
+            partial,
+        } if !partial => {
+            // The subject is read into a temp the way `expr`'s lambda chain reads it, but there
+            // is no lambda to contain it here, so the name has to be fresh rather than the
+            // fixed `subj`.
+            let subj = format!("tl_sub{}", *fresh);
+            *fresh += 1;
+            let mut out = format!("{pad}{subj} = {}\n", expr(enums, subject));
+            for (i, arm) in arms.iter().enumerate() {
+                let test = match (&arm.variant, &arm.guard) {
+                    (Some(v), _) if arm.payload.is_some() => Some(format!(
+                        "(isinstance({subj}, dict) and {} in {subj})",
+                        py_string(v)
+                    )),
+                    (Some(v), _) => Some(format!("{subj} == {}", py_string(v))),
+                    (None, Some(g)) => Some(expr(enums, g)),
+                    (None, None) => None,
+                };
+                // A total chain's last arm carries no test, the checker having proved nothing
+                // else can reach it -- the same rule `expr`'s match arm follows. Its statements
+                // sit at the block level, not nested under a test.
+                let unconditional = i + 1 == arms.len();
+                let arm_level = if unconditional { level } else { level + 4 };
+                let arm_pad = " ".repeat(arm_level);
+                let mut run = String::new();
+                if let Some(pid) = arm.payload {
+                    let variant = arm
+                        .variant
+                        .as_ref()
+                        .expect("only a variant arm has a payload");
+                    run.push_str(&format!(
+                        "{arm_pad}{} = {subj}[{}]\n",
+                        local(pid),
+                        py_string(variant)
+                    ));
+                }
+                run.push_str(&tail_stmts(enums, name, param, fresh, &arm.body, arm_level));
+                match (test, unconditional) {
+                    (Some(test), false) => out.push_str(&format!("{pad}if {test}:\n{run}")),
+                    _ => out.push_str(&run),
+                }
+            }
+            out
+        }
+        // A partial match wraps every arm body, so no arm body is a tail position; the whole
+        // match stays an expression, exactly as it would outside tail position.
+        Kind::Match { .. } => format!("{pad}return {}\n", expr(enums, t)),
+        _ => format!("{pad}return {}\n", expr(enums, t)),
     }
 }
 

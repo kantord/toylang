@@ -12,21 +12,21 @@ fn err(src: &str) -> String {
 #[test]
 fn a_generic_enum_needs_its_argument() {
     insta::assert_snapshot!(err(
-        "enum Pair<T> { two{a: T, b: T} }\n\nfn f(p: Pair) -> Int = 1\n\nf(two{a: 1, b: 2})"
+        "enum Pair<T> { Two{a: T, b: T} }\n\nfn f(p: Pair) -> Int = 1\n\nf(two{a: 1, b: 2})"
     ));
 }
 
 #[test]
 fn a_generic_enum_refuses_extra_arguments() {
     insta::assert_snapshot!(err(
-        "enum Box<T> { wrap(T), empty }\n\nfn f(b: Box<Int, Str>) -> Int = 1\n\nf(wrap(1))"
+        "enum Box<T> { Wrap(T), Empty }\n\nfn f(b: Box<Int, Str>) -> Int = 1\n\nf(wrap(1))"
     ));
 }
 
 #[test]
 fn a_plain_enum_takes_no_argument() {
     insta::assert_snapshot!(err(
-        "enum Shape { point }\n\nfn f(s: Shape<Int>) -> Int = 1\n\nf(point)"
+        "enum Shape { Point }\n\nfn f(s: Shape<Int>) -> Int = 1\n\nf(point)"
     ));
 }
 
@@ -44,17 +44,17 @@ fn an_alias_takes_no_argument() {
 
 #[test]
 fn a_type_parameter_is_capitalized() {
-    insta::assert_snapshot!(err("enum Box<t> { wrap(t) }\n\nstr(1)"));
+    insta::assert_snapshot!(err("enum Box<t> { Wrap(t) }\n\nstr(1)"));
 }
 
 #[test]
 fn a_type_parameter_declared_twice() {
-    insta::assert_snapshot!(err("enum Pair<T, T> { two{a: T, b: T} }\n\nstr(1)"));
+    insta::assert_snapshot!(err("enum Pair<T, T> { Two{a: T, b: T} }\n\nstr(1)"));
 }
 
 #[test]
 fn a_type_parameter_cannot_take_a_builtin_name() {
-    insta::assert_snapshot!(err("enum Box<Int> { wrap(Int) }\n\nstr(1)"));
+    insta::assert_snapshot!(err("enum Box<Int> { Wrap(Int) }\n\nstr(1)"));
 }
 
 /// A parameter shadows a declared name inside its own declaration -- resolve_named consults
@@ -62,19 +62,19 @@ fn a_type_parameter_cannot_take_a_builtin_name() {
 /// the old refusal broke every `enum E` program when the prelude gained Result<T, E>).
 #[test]
 fn a_type_parameter_shadows_a_declared_name() {
-    let src = "enum Shape { point }\nenum Box<Shape> { wrap(Shape) }\n\nstr(1)";
+    let src = "enum Shape { Point }\nenum Box<Shape> { Wrap(Shape) }\n\nstr(1)";
     assert!(toylang::compile(src).is_ok());
 }
 
 #[test]
 fn a_type_parameter_takes_no_argument() {
-    insta::assert_snapshot!(err("enum Box<T> { wrap(T<Int>) }\n\nstr(1)"));
+    insta::assert_snapshot!(err("enum Box<T> { Wrap(T<Int>) }\n\nstr(1)"));
 }
 
 #[test]
 fn a_stream_cannot_be_a_type_argument() {
     insta::assert_snapshot!(err(
-        "enum Box<T> { wrap(T), empty }\n\nfn f(b: Box<Stream<Str>>) -> Int = 1\n\nf(empty)"
+        "enum Box<T> { Wrap(T), Empty }\n\nfn f(b: Box<Stream<Str>>) -> Int = 1\n\nf(empty)"
     ));
 }
 
@@ -83,14 +83,14 @@ fn a_stream_cannot_be_a_type_argument() {
 /// generic_enum_unit_expectation is the spelling that works.
 #[test]
 fn a_bare_unit_variant_of_a_generic_enum_cannot_be_synthesised() {
-    insta::assert_snapshot!(err("enum Box<T> { wrap(T), empty }\n\nempty"));
+    insta::assert_snapshot!(err("enum Box<T> { Wrap(T), Empty }\n\nempty"));
 }
 
 /// A payload that does not mention every parameter leaves the instantiation open the same
 /// way, even though a payload was written.
 #[test]
 fn a_payload_that_leaves_a_parameter_open() {
-    insta::assert_snapshot!(err("enum Weird<T> { w(Int), v(T) }\n\nw(1)"));
+    insta::assert_snapshot!(err("enum Weird<T> { W(Int), V(T) }\n\nw(1)"));
 }
 
 /// One parameter bound two ways is a mismatch inside the payload, reported against the
@@ -98,14 +98,14 @@ fn a_payload_that_leaves_a_parameter_open() {
 #[test]
 fn a_parameter_bound_two_ways() {
     insta::assert_snapshot!(err(
-        "enum Pair<T> { two{a: T, b: T} }\n\ntwo{a: 1, b: \"x\"}"
+        "enum Pair<T> { Two{a: T, b: T} }\n\ntwo{a: 1, b: \"x\"}"
     ));
 }
 
 #[test]
 fn a_recursive_generic_payload_is_still_a_cycle() {
     insta::assert_snapshot!(err(
-        "enum List<T> { nil, cons{head: T, tail: List<T>} }\n\nstr(1)"
+        "enum List<T> { Nil, Cons{head: T, tail: List<T>} }\n\nstr(1)"
     ));
 }
 
@@ -117,7 +117,7 @@ fn a_recursive_generic_payload_is_still_a_cycle() {
 #[test]
 fn a_reparameterized_self_reference_is_refused() {
     insta::assert_snapshot!(err(
-        "enum Nest<T> { one, wrap(Vec<Nest<Vec<T>>>) }\n\nstr(1)"
+        "enum Nest<T> { One, Wrap(Vec<Nest<Vec<T>>>) }\n\nstr(1)"
     ));
 }
 

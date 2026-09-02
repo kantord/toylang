@@ -1050,3 +1050,271 @@
   soft: [python-recursion-limit]
   prio: 3
   status: done
+
+- id: local-binding-design
+  issue: gh:87
+  title: "Grill local bindings inside an expression -- ruled: multi-line let, no in keyword (gh:150)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: function-signature-ergonomics
+  title: "Grill destructuring params and pipeline-first bodies -- ruled: direction only, implicit . + matching syntax, spelling deferred (gh:152)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: void-sink-syntax-design
+  issue: gh:138
+  title: "Grill the void/sink function syntax -- ruled: dedicated Sink kind (gh:151)"
+  kind: decide
+  needs: []
+  prio: 3
+  status: done
+
+- id: record-argument-boundary
+  issue: gh:153
+  title: "Oddity -- the paren-free record argument reaches across the definition boundary -- ruled: delimit declarations explicitly (gh:153)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: jsonlines-statement-shape
+  issue: gh:154
+  title: "Oddity -- jsonlines is a call-shaped statement -- ruled: explicit tail-pipeline marker |> (gh:154)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: corpus-test-split
+  issue: gh:139
+  title: Split the corpus mega-test into parallel per-backend tests so `just check` drops from ~67s to ~20s
+  kind: build
+  needs: []
+  prio: 1
+  status: done
+
+- id: ternary-vs-match
+  title: "Is the ternary redundant now that match covers it? -- ruled: retire it (gh:155)"
+  kind: decide
+  needs: []
+  prio: 2
+  status: done
+
+- id: slices-build
+  issue: gh:143
+  title: Implement v[a:b] slice syntax with clamping out-of-range bounds (gh:143 ruling)
+  kind: build
+  needs: []
+  status: done
+
+- id: vec-literal-user-fn-call-bug
+  issue: gh:148
+  title: Vec literal elements can't call a user-defined function -- parser bug found during syntax-ergonomics research
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: shell-out-design
+  title: "Grill the syntax for calling external CLI programs -- ruled: full streaming pipe-to-subprocess (gh:158)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: stdin-syntax-design
+  title: "Grill the one-stdin-source syntax -- ruled: one Stream<Str> source, parse(.) as a library call, tentative (gh:159)"
+  kind: decide
+  needs: [type-flow-rework]
+  status: done
+
+- id: js-node-web-split-design
+  issue: gh:118
+  title: "Grill the JS Node/Web target split etc. -- ruled: one system, all four together (gh:160)"
+  kind: decide
+  needs: []
+  status: done
+
+- id: docs-slow-fragment-tier
+  issue: gh:135
+  title: Build the opt-in slow-fragment tier for the docs harness; land Euler 10/14 under it (gh:90 ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: tail-call-jspy-build
+  issue: gh:141
+  title: Fix js and py codegen so self-tail-recursion runs in constant stack (lua/native/jq/go/rust already comply) (gh:141 ruling)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: sum-max-builtins-build
+  issue: gh:140
+  title: Implement sum and max builtins over Vec<Int>/Vec<Int64>, empty sum is 0, empty max is Opt<T> (gh:140 ruling)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: range-stream-source-build
+  issue: gh:137
+  title: Amend ADR 0001 (Q1/Q13) for range as a Stream source; implement across backends (gh:127 ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: dsv-parameterized-source
+  issue: gh:136
+  title: Build the parameterized dsv(delim) source, plus prelude csv/tsv partials (gh:88 ruling)
+  kind: build
+  needs: []
+  prio: 4
+  status: done
+
+- id: let-bindings-build
+  issue: gh:150
+  title: Implement multi-line let bindings, no in keyword (gh:87 ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: template-strings-design
+  issue: gh:161
+  title: Grill universal template strings, sparked by the shell-out round's unpicked bash-capture-literal option (gh:161)
+  kind: decide
+  needs: []
+  status: done
+
+- id: matcher-totality-and-alt-design
+  issue: gh:156
+  title: 'Grill matcher totality measurement, alt-composition (one arm, many patterns), and the parser-combinator stress test -- round 1 drew pushback on the circle{r} vs Circle(r) naming convention (gh:156), needs a round 2 -- ruled: curly-only pattern syntax (`Name{fields}`) stays the only pattern form; checker now enforces capital-first variant names as a real rule instead of an unenforced convention, since case already carries meaning elsewhere (lowercase = regular constructor, capitalized = matcher use) (gh:156)'
+  kind: decide
+  needs: [auto-matchers-design]
+  prio: 1
+  status: done
+
+- id: matcher-model-clarification
+  issue: gh:122
+  title: 'Grill the matching system''s conceptual model -- round 1 drew a "." as wrapping match-type strawman (gh:122 comment), needs a round 2 before it''s buildable -- ruled: build the full Match<T> wrapper, but treat it as an experiment first and see what goes wrong (gh:122)'
+  kind: decide
+  needs: []
+  soft: [matcher-totality-and-alt-design]
+  prio: 2
+  status: done
+
+- id: method-call-syntax-design
+  issue: gh:119
+  title: 'Grill method-like call syntax -- round 1 ratified UFCS-style desugaring (x.foo(y) -> foo(x,y)); the operator spelling (dot vs an alternative like `:`) and whether the receiver form curries are still open, needs a round 2 (gh:119) -- ruled: colon operator (`x:foo(y)`); "curried" redefined away from this round''s framing -- maintainer: "five_plus(1, 2) should not be correct, either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function" -- spins off partial-application-system-design (gh:119)'
+  kind: decide
+  needs: []
+  status: done
+
+- id: rust-lines-tl-fail-build
+  issue: gh:157
+  title: Rust backend omits tl_fail helper for lines-only programs, compile error (found verifying gh:102)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: sink-kind-build
+  issue: gh:151
+  title: Implement a dedicated Sink kind, retire jsonlines' hand-special-cased position check (gh:138 ruling)
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: overloading-and-traits-design
+  title: 'Grill function overloading and Rust-style traits -- ruled (overloading-and-utf8-lines round, question ad-hoc-polymorphism-mechanism): declared interface/trait mechanism (Rust/Swift-shaped) is the direction for ad hoc polymorphism, superseding the closed per-operator match. Spins off trait-interface-research and trait-interface-design.'
+  kind: decide
+  needs: [precedent-survey]
+  status: done
+
+- id: erlang-target-research
+  issue: gh:163
+  title: 'Research spike (gh:163''s own issue body flags this as needing investigation first): survey Erlang''s process/effect model, pattern matching, and immutability against toylang''s current design docs and its seven existing backends (Lua, JS, Native/LLVM, jq, Go, Python, Rust) -- identify what a design stress test would actually surface. Write findings to plans/. Run 1 (2026-08-31) did 18 legit research steps then tried to verify an Erlang toolchain (`which erl`/`erl -eval`), got denied, and gave up with zero output -- likely provoked by the standard brief wrapper''s "do not touch plans/" line contradicting this task''s own deliverable. Rebriefed 2026-09-01 with BRIEF_RAW=1 (no wrapper, explicit "no toolchain needed, write plans/erlang-target-research.md"); incident logged in plans/opencode-rollout.md. The lane''s `ahead=7` is entirely inherited base content from the to-merge-1788204752 accumulator (dispatch base at the time), not this task''s own work -- do not read `ahead>0` on this lane as landable without checking for a real new commit past that base.'
+  kind: build
+  needs: []
+  prio: 5
+  status: done
+
+- id: module-routing-research
+  issue: gh:162
+  title: 'Research spike (gh:162''s own issue body flags this as ungrillable without it): toylang has no module/import system today -- work out what "module" means here, survey precedent (Elixir/Phoenix-style router dispatch, file-based submodule routing elsewhere), and propose 2-3 concrete toylang syntax candidates with real code sketches for matcher-arm-to-submodule-file dispatch. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 5
+  status: done
+
+- id: module-as-function-routing-design
+  issue: gh:162
+  title: 'Consider running other modules as functions, e.g. matcher arms dispatching to a submodule file (maintainer note) -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C, `@path` dedicated routing-arm form, chosen over A ($(path) call-shaped) and B (path::fn named-function). Maintainer refined the spelling to parenthesized `@(route-groups/baz.toy)`. Spins off file-visibility-tracking-build (prerequisite, per the round''s own thesis that the checker doesn''t yet track per-file definition origin) and module-routing-syntax-build.'
+  kind: decide
+  needs: [module-routing-research]
+  status: done
+
+- id: file-visibility-tracking-build
+  issue: gh:166
+  title: 'Checker tracks which file a definition came from and enforces per-call-site visibility -- prerequisite named by the module-as-function-routing-design ruling (module-routing-and-erlang-target round): the same gap that already blocks a `pub` prelude function from calling a private one blocks any module-dispatch syntax from meaning anything.'
+  kind: build
+  needs: []
+  prio: 4
+  status: done
+
+- id: dsv-rfc4180-quoting-build
+  issue: gh:136
+  title: 'Ruled (prelude-partials-and-mutation round): dsv(delim) needs RFC 4180 quoted-field handling (embedded delimiters, doubled quotes, embedded newlines) -- replace the raw byte-split shipped in gh:136 with a real stateful scanner'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: retire-ternary-build
+  issue: gh:155
+  title: Remove the ternary, replace every corpus/example/doc use with the equivalent match form (ternary-vs-match ruling)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: stuck-issue-149-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-149 (no activity 0h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-149-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: stuck-issue-158-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:158
+  title: 'INVESTIGATE stuck lane issue-158 (no activity 0h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-158-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: jsonlines-tail-marker-build
+  issue: gh:154
+  title: 'Implement the |> tail-pipeline marker for sink calls, restricted to outermost position (issue #9 oddity ruling). Escalated after 4 commitless automated runs (2026-09-01): the worktree has real uncommitted progress across src/ast.rs, src/check/mod.rs, src/emit_toylang.rs, src/parse.rs -- each run reviews the diff, confirms it looks right, then fires landing WITHOUT committing, so land-lane.sh skips it every time. A stale ESCALATION.md from an already-folded issue-150 decision also sits in the worktree unremoved. Do not redispatch until the issue-154-escalation round is ruled (~/.cache/toylang-drive/escalated-issue-154).'
+  kind: build
+  needs: [sink-kind-build]
+  prio: 3
+  status: done
+
+- id: trait-interface-research
+  title: 'Ruled (overloading-and-utf8-lines round ruling spinoff): declared interface/trait mechanism (Rust/Swift-shaped) is the direction for ad hoc polymorphism. Research spike before design: scope the minimal checker mechanism (trait declaration, impl-for-type, static dispatch) and whether it truly requires user-facing generics or can start monomorphic (one impl per concrete type, no generic trait bounds). Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: stuck-issue-170-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:170
+  title: 'INVESTIGATE stuck lane issue-170 (no activity 22h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-170-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
