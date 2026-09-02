@@ -226,3 +226,28 @@ the wrong task. Next tick should redispatch issue-168's investigation with
 reminder for every future stuck-lane investigation dispatch: always set
 `BRIEF_RAW=1`, never let the standard build-brief wrapper attach to an
 investigation task.
+
+## Incident: land-lane.sh's auto-commit only covers tracked files -- untracked
+## research findings are at risk of being cleaned away (2026-09-02)
+
+Found four orphaned research lanes (issue-trait-interface-research,
+issue-signature-matching-deeper-research, issue-http-query-sugar-research,
+issue-recursive-descent-order-research) with no activity since 2026-09-01
+~21:30, invisible to the current stuck-lane snapshot (their names don't match
+the numeric `issue-<N>` pattern the tracker expects). Two of them
+(trait-interface-research, signature-matching-deeper-research) have real
+findings files sitting **untracked** (`?? plans/<name>.md`) -- never `git
+add`ed, so they are not "tracked dirty" and the 2026-09-02 auto-commit ruling
+in land-lane.sh (`git -C "$d" add -u` then commit) does not pick them up.
+Worse: the very next step in `land land-lane.sh` runs `git clean -fdq` on any
+remaining untracked files as "sanctioned scratch" -- if this were run against
+these lanes as-is, it would silently **delete** the findings before they were
+ever persisted. Did not run `land-lane.sh land` on these two lanes to avoid
+that. Dispatched continuation workers instead (BRIEF_RAW=1) whose only job is
+`git add` + `git commit` for the existing findings file, so the tracked-dirty
+path lands safely on the next `land-lane.sh` pass. The other two lanes
+(http-query-sugar-research, recursive-descent-order-research) have zero diff
+from main -- they produced nothing and need re-investigation, not landing.
+Follow-up: land-lane.sh's auto-commit should `git add -A` (not `-u`) when the
+gate is green, or the cleanup step should skip files that look like research
+output (`plans/*.md`) -- filed as a board row.
