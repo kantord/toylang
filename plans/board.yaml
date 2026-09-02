@@ -154,7 +154,7 @@
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: lines-utf8-posix-research
   issue: gh:102
