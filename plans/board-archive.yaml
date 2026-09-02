@@ -1296,3 +1296,11 @@
   needs: []
   issue: gh:158
   title: 'INVESTIGATE stuck lane issue-158 (no activity 0h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-158-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: jsonlines-tail-marker-build
+  issue: gh:154
+  title: 'Implement the |> tail-pipeline marker for sink calls, restricted to outermost position (issue #9 oddity ruling). Escalated after 4 commitless automated runs (2026-09-01): the worktree has real uncommitted progress across src/ast.rs, src/check/mod.rs, src/emit_toylang.rs, src/parse.rs -- each run reviews the diff, confirms it looks right, then fires landing WITHOUT committing, so land-lane.sh skips it every time. A stale ESCALATION.md from an already-folded issue-150 decision also sits in the worktree unremoved. Do not redispatch until the issue-154-escalation round is ruled (~/.cache/toylang-drive/escalated-issue-154).'
+  kind: build
+  needs: [sink-kind-build]
+  prio: 3
+  status: done
