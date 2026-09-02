@@ -97,6 +97,11 @@ land)
       # path owns it.
       if (cd "$d" && just check) >"$LOG_DIR/land-autocommit-issue-$n.log" 2>&1; then
         git -C "$d" add -u
+        # New files under the source trees are work, not scratch: add -u alone
+        # committed a tree missing its new src/offload.rs, which compiled green
+        # here (the check sees the working tree) and failed at the gate
+        # (issue-168, 2026-09-02). Root-level scratch stays untracked.
+        git -C "$d" add -- src tests docs site plans 2>/dev/null || true
         git -C "$d" commit -q -m "Auto-commit worker output for gh:$n (green tree at exit)
 
 The worker exited leaving these tracked changes uncommitted with just
