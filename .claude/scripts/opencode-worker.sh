@@ -23,15 +23,29 @@ SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 export PATH="$HOME/.cargo/bin:$PATH"
 command -v sccache >/dev/null && export RUSTC_WRAPPER=sccache
 
-# The exit tick fires from a trap, not the last line: a wrapper death mid-run
-# (one process-group kill ate a worker AND its tick on 2026-08-30, leaving the
-# maintainer's answers waiting on the 600s loop backstop) still lands the wake-up.
-# Only SIGKILL skips a trap; the loop tick remains the backstop for that.
-fire_tick() {
-  echo "[opencode-worker] firing landing tick"
-  (nohup "$SCRIPTS/drive-tick.sh" >>"$HOME/.cache/toylang-drive/event-ticks.log" 2>&1 &)
+# The exit handoff fires from a trap, not the last line: a wrapper death
+# mid-run (one process-group kill ate a worker AND its tick on 2026-08-30,
+# leaving the maintainer's answers waiting on the 600s loop backstop) still
+# lands the wake-up. Only SIGKILL skips a trap; the loop tick remains the
+# backstop for that.
+#
+# Issue lanes go straight to the serial landing queue (deterministic, no
+# model in the happy path; maintainer redesign 2026-09-01) -- land-lane.sh
+# checks landability itself, handles conflict/red re-dispatch, and fires the
+# tick when it is done. Everything else fires the tick directly. cwd matters:
+# a nohup child keeping cwd in this worktree would block its removal.
+fire_next() {
+  case "$LANE" in
+  issue-[0-9]*)
+    echo "[opencode-worker] firing landing: $LANE"
+    (cd / && nohup "$SCRIPTS/land-lane.sh" land "${LANE#issue-}" \
+      >>"$HOME/.cache/toylang-drive/land.log" 2>&1 &) ;;
+  *)
+    echo "[opencode-worker] firing landing tick"
+    (cd / && nohup "$SCRIPTS/drive-tick.sh" >>"$HOME/.cache/toylang-drive/event-ticks.log" 2>&1 &) ;;
+  esac
 }
-trap fire_tick EXIT
+trap fire_next EXIT
 
 echo "[opencode-worker] $LANE on $MODEL (events: $LOG)"
 START=$(date +%s)
@@ -79,6 +93,6 @@ print(f"[opencode-worker] done: {steps} steps, ${cost:.4f}, telemetry row append
 EOF
 
 # Event-driven landing: a worker exit is an unambiguous finish signal; the EXIT
-# trap above fires the tick on every path out of this script. The tick's flock
-# makes this safe; if one is already running, the periodic loop is the fallback.
+# trap above fires the landing queue (or tick) on every path out of this
+# script. Both serialize on their own flocks; the periodic loop is the fallback.
 exit $RC

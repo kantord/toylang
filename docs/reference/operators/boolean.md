@@ -17,10 +17,10 @@ without parens; the alternative, binding it as tight as unary `-`, needs parens 
 bool_precedence
 ```
 
-Against the rest of the language, both connectives bind tighter than the
-[conditional](conditional.md) and looser than everything in [arithmetic](arithmetic.md) and
-[comparison](comparison.md). So `a == 1 or b == 2` is one disjunction of two comparisons, and
-`x if a or b else y` needs no parens around the condition.
+Against the rest of the language, both connectives bind looser than everything in
+[arithmetic](arithmetic.md) and [comparison](comparison.md). So `a == 1 or b == 2` is one
+disjunction of two comparisons, and a two-clause guard like `. == 4 or . == 7` needs no
+parens around it.
 
 ## The right side may not run
 
@@ -53,6 +53,5 @@ parens, since the bare spelling there is the separator. Nothing else does.
 bool_or_in_arm_body
 ```
 
-Everywhere below a chain's top level -- inside parens, a call's argument, a condition between
-`if` and `else` -- `or` is disjunction again, because none of those positions can be a chain's
-top level.
+Everywhere below a chain's top level -- inside parens, a call's argument -- `or` is
+disjunction again, because none of those positions can be a chain's top level.

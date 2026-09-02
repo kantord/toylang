@@ -22,14 +22,14 @@ struct TlRec1 {
 #[derive(Clone, PartialEq)]
 #[allow(non_camel_case_types)]
 enum TlE_Shape {
-    V_point,
-    V_circle(TlRec1),
+    V_Point,
+    V_Circle(TlRec1),
 }
 
 fn v_area_ish(v_s: TlE_Shape) -> i32 {
-    ({ let t_0: TlE_Shape = v_s.clone(); (match t_0.clone() { TlE_Shape::V_circle(t_1) => (t_1.clone().f_r).wrapping_mul(t_1.clone().f_r), TlE_Shape::V_point => tl_int(0) }) })
+    ({ let t_0: TlE_Shape = v_s.clone(); (match t_0.clone() { TlE_Shape::V_Circle(t_1) => (t_1.clone().f_r).wrapping_mul(t_1.clone().f_r), TlE_Shape::V_Point => tl_int(0) }) })
 }
 
 fn main() {
-    println!("{}", ("{".to_string() + &"\"a\":".to_string().to_string() + &((TlRec0 { f_a: v_area_ish(TlE_Shape::V_point), f_b: v_area_ish(TlE_Shape::V_circle(TlRec1 { f_r: tl_int(3) })) }).f_a).to_string() + "," + &"\"b\":".to_string().to_string() + &((TlRec0 { f_a: v_area_ish(TlE_Shape::V_point), f_b: v_area_ish(TlE_Shape::V_circle(TlRec1 { f_r: tl_int(3) })) }).f_b).to_string() + "}"));
+    println!("{}", ("{".to_string() + &"\"a\":".to_string().to_string() + &((TlRec0 { f_a: v_area_ish(TlE_Shape::V_Point), f_b: v_area_ish(TlE_Shape::V_Circle(TlRec1 { f_r: tl_int(3) })) }).f_a).to_string() + "," + &"\"b\":".to_string().to_string() + &((TlRec0 { f_a: v_area_ish(TlE_Shape::V_Point), f_b: v_area_ish(TlE_Shape::V_Circle(TlRec1 { f_r: tl_int(3) })) }).f_b).to_string() + "}"));
 }

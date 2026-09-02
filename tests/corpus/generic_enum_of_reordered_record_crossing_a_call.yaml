@@ -4,9 +4,9 @@
 # through a Match/EnumLit reconstruction (every arm rebuilds its variant), which every backend
 # can already run since it is exactly how a user-written match over the enum compiles.
 program: |
-  enum Box<T> { full(T), empty }
+  enum Box<T> { Full(T), Empty }
 
-  fn get_b(x: Box<{a: Str, b: Int}>) -> Int = x | full -> .b or empty -> 0
+  fn get_b(x: Box<{a: Str, b: Int}>) -> Int = x | Full -> .b or Empty -> 0
   fn g(x: Box<{b: Int, a: Str}>) -> Int = get_b(x)
 
   g(full({b: 42, a: "hi"}))

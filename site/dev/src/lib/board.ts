@@ -69,13 +69,17 @@ function load(): { board: Task[]; archive: Task[] } {
   // and moved to the archive (issue #113).
   const liveIds = new Set(boardRows.map((r) => r.id))
   const toTask = (r: RawRow): Task => {
-    const needsAllDone = r.needs.every((id) => !liveIds.has(id))
+    // Rows are written by several deterministic writers now (ticks,
+    // stuck-watch.py), so missing optional fields must degrade, not throw: a
+    // rows-without-needs batch blanked the whole board to empty (2026-09-01).
+    const needs = r.needs ?? []
+    const needsAllDone = needs.every((id) => !liveIds.has(id))
     return {
       id: r.id,
       issue: parseIssue(r.issue),
       title: r.title,
       kind: r.kind,
-      needs: r.needs,
+      needs,
       status: r.status,
       unblocked: r.status === "todo" && needsAllDone,
       blocked: r.status === "todo" && !needsAllDone,

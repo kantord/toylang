@@ -1,8 +1,26 @@
+- id: stuck-issue-168-investigation
+  kind: build
+  status: delegated
+  needs: []
+  issue: gh:168
+  title: 'INVESTIGATE stuck lane issue-168 (no activity 4h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-168-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-153-investigation
+  kind: build
+  status: delegated
+  needs: []
+  issue: gh:153
+  title: 'INVESTIGATE stuck lane issue-153 (no activity 2h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-153-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-169-investigation
+  kind: build
+  status: delegated
+  needs: []
+  issue: gh:169
+  title: 'INVESTIGATE stuck lane issue-169 (no activity 22h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-169-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: function-signature-matching-syntax
   issue: gh:152
-  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 needs to stress-test each option (esp. the Msg(...) call-form sketch) for concrete problems before re-asking'
+  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 stress-tested each of the three candidates (A/B/C) against the real parser and re-asked. Round 3 answer: still no pick -- maintainer wants deeper research on how each candidate performs across types and use cases not yet examined (structs, tuples, nested/recursive matches) before re-asking; needs signature-matching-deeper-research first.'
   kind: decide
-  needs: []
+  needs: [signature-matching-deeper-research]
   prio: 3
   status: todo
 
@@ -14,22 +32,6 @@
   prio: 3
   status: delegated
 
-- id: jsonlines-tail-marker-build
-  issue: gh:154
-  title: Implement the |> tail-pipeline marker for sink calls, restricted to outermost position (issue #9 oddity ruling)
-  kind: build
-  needs: [sink-kind-build]
-  prio: 3
-  status: delegated
-
-- id: dsv-rfc4180-quoting-build
-  issue: gh:136
-  title: 'Ruled (prelude-partials-and-mutation round): dsv(delim) needs RFC 4180 quoted-field handling (embedded delimiters, doubled quotes, embedded newlines) -- replace the raw byte-split shipped in gh:136 with a real stateful scanner'
-  kind: build
-  needs: []
-  prio: 3
-  status: todo
-
 - id: dsv-partials-migration
   issue: gh:136
   title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet.'
@@ -40,11 +42,11 @@
 
 - id: euler-slow-fragments-2
   issue: gh:93
-  title: Apply the slow-fragment tier to batch 3's correct-but-slow problems (gh:90 ruling)
+  title: 'Apply the slow-fragment tier to batch 3''s correct-but-slow problems (gh:90 ruling). Parked after 4 commitless automated runs -- maintainer ruling (2026-09-01): hand off to a privileged manual session rather than redispatch. Prompt drafted at plans/issue-93-privileged-agent-prompt.md. Lane stays escalated (~/.cache/toylang-drive/escalated-issue-93 kept) until that session lands it.'
   kind: build
   needs: [docs-slow-fragment-tier]
   prio: 3
-  status: delegated
+  status: todo
 
 - id: variant-types-flip
   issue: gh:165
@@ -59,23 +61,23 @@
   issue: gh:158
   title: Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect (shell-out-design ruling, gh:158, depends on Q35's stdout/stderr effect model)
   kind: build
-  needs: []
-  status: delegated
+  needs: [stdout-stderr-effect-model-design]
+  status: todo
 
-- id: stdin-redesign-build
-  issue: gh:159
-  title: Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative, gh:159 -- verify parse(.) resolves an expected type inside a map body before full build)
+- id: stdout-stderr-effect-model-design
+  title: 'Decide Q35 (plans/questions.md#q35): what are stdout/stderr, and does a program write or return? Two commitless runs on shell-out-build (gh:158, issue-158, 2026-09-01) both spent their full budget rediscovering that pipe_through cannot be implemented until this effect model exists, then produced no code. Ask as a grill round.'
+  kind: decide
+  needs: []
+  prio: 1
+  status: todo
+
+- id: stdin-redesign-build-2
+  issue: gh:172
+  title: 'Re-file of gh:159 (maintainer cleanup ruling, 2026-09-02, option C: drop the poisoned issue-159 lane, re-board under a fresh lane id rather than repair it). Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative -- verify parse(.) resolves an expected type inside a map body before full build). The old issue-159 branch/worktree are abandoned in place (permission-denied cleanup, left as garbage per the ruling); the feature diff there (commit 45c76be) is reference-only, re-derive against current main rather than cherry-pick.'
   kind: build
   needs: []
   model: fable
   status: delegated
-
-- id: trait-interface-research
-  title: 'Ruled (overloading-and-utf8-lines round ruling spinoff): declared interface/trait mechanism (Rust/Swift-shaped) is the direction for ad hoc polymorphism. Research spike before design: scope the minimal checker mechanism (trait declaration, impl-for-type, static dispatch) and whether it truly requires user-facing generics or can start monomorphic (one impl per concrete type, no generic trait bounds). Write findings to plans/.'
-  kind: build
-  needs: []
-  prio: 3
-  status: todo
 
 - id: trait-interface-design
   title: 'Grill the concrete trait/impl syntax and dispatch mechanism (overloading-and-utf8-lines round ruling spinoff), informed by trait-interface-research'
@@ -90,19 +92,54 @@
   prio: 4
   status: todo
 
-- id: float-build
+- id: float-build-rust
   issue: gh:149
-  title: Implement Float (IEEE binary64 per ADR 0007) across the backends
+  title: Implement Float (IEEE binary64 per ADR 0007) for the Rust backend only, following float-build's JS implementation as the reference. One backend, one commit.
   kind: build
-  needs: []
+  needs: [float-build]
   status: delegated
+
+- id: float-build-python
+  issue: gh:149
+  title: Implement Float (IEEE binary64 per ADR 0007) for the Python backend only, following float-build's JS implementation as the reference. One backend, one commit.
+  kind: build
+  needs: [float-build]
+  status: delegated
+
+- id: float-build-go
+  issue: gh:149
+  title: Implement Float (IEEE binary64 per ADR 0007) for the Go backend only, following float-build's JS implementation as the reference. One backend, one commit.
+  kind: build
+  needs: [float-build]
+  status: delegated
+
+- id: float-build-lua
+  issue: gh:149
+  title: Implement Float (IEEE binary64 per ADR 0007) for the Lua backend only (host hook), following float-build's JS implementation as the reference. One backend, one commit.
+  kind: build
+  needs: [float-build]
+  status: todo
+
+- id: float-build-jq
+  issue: gh:149
+  title: Implement Float (IEEE binary64 per ADR 0007) for the jq backend only, following float-build's JS implementation as the reference. One backend, one commit.
+  kind: build
+  needs: [float-build]
+  status: todo
+
+- id: float-build-c-escalation
+  issue: gh:149
+  title: Attempt Float (IEEE binary64 per ADR 0007) for the C/LLVM backend; if there is no usable native matching primitive, write ESCALATION.md scoped to just this backend, commit it, and stop rather than stalling.
+  kind: build
+  needs: [float-build]
+  status: todo
 
 - id: benchmark-suite-build
   title: Build the initial benchmark suite -- 8 non-float CLBG tasks, hyperfine harness per benchmark-plan.md, framed as a general cross-language competitiveness claim (gh:147 ruling); n-body/spectral-norm deferred to a second wave (gh:146 ruling)
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: lines-utf8-posix-research
   issue: gh:102
@@ -118,14 +155,6 @@
   kind: decide
   needs: [lines-utf8-posix-research]
   status: todo
-
-- id: retire-ternary-build
-  issue: gh:155
-  title: Remove the ternary, replace every corpus/example/doc use with the equivalent match form (ternary-vs-match ruling)
-  kind: build
-  needs: []
-  prio: 2
-  status: delegated
 
 - id: search-layer-build
   title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
@@ -186,10 +215,16 @@
 
 - id: variant-checker-capital-first
   issue: gh:156
-  title: Checker rejects enum variant declarations that don't start with a capital letter, per the curly-only-pattern ruling (gh:156 ruling)
+  title: 'Reshaped after land-failure escalation (maintainer: "reshape into two lanes", 2026-09-01): checker enforcement (gh:156 ruling) is correct, but landing goes red because the doc corpus still has lowercase-leading variant examples across 6 pages -- gate/xfail the doc-corpus test `every_fragment_is_a_real_program` for exactly these 6 pages (docs/guides/enums.md:13, docs/guides/matching.md:66, docs/reference/operators/comparison.md:28, docs/reference/types/enum.md:7, docs/tutorial/04-enums.md:6/20/40) plus the 4 MISQUOTED fixtures (docs/guides/matching.md:54, docs/reference/types/enum.md:34/67, docs/tutorial/06-matching.md:67) so the checker enforcement itself can land now. The actual doc-content migration is split out as doc-migrate-capital-variants below -- do not do that migration in this lane. Evidence: ~/.cache/toylang-drive/land-gate-issue-156.log.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
+
+- id: doc-migrate-capital-variants
+  title: 'Follow-up lane split from issue-156 (reshape ruling, 2026-09-01): migrate the 6 flagged doc pages'' variant-declaration examples to capital-first-type + lowercase-constructor, and correct the 4 MISQUOTED fixture texts to match the checker''s real error output, then remove the corpus-test gating added in variant-checker-capital-first. Pages: docs/guides/enums.md, docs/guides/matching.md, docs/reference/operators/comparison.md, docs/reference/types/enum.md, docs/tutorial/04-enums.md, docs/tutorial/06-matching.md. Evidence for exact expected strings: ~/.cache/toylang-drive/land-gate-issue-156.log.'
+  kind: build
+  needs: [variant-checker-capital-first]
+  status: todo
 
 - id: match-type-wrapper-experiment
   issue: gh:122
@@ -204,13 +239,6 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
-
-- id: http-query-sugar-research
-  title: 'Maintainer note (docs/.annotations/notes.json composed 2026-08-31T22:08:16Z, unscheduled): consider a simple HTTP query builtin (like Python requests) as thin sugar over whatever each backend runtime already provides, minimal added complexity. Research spike: survey what request/response building blocks already exist per backend (Go net/http, JS fetch, Python urllib, Lua, Rust reqwest, native) before scoping a design row. Write findings to plans/.'
-  kind: build
-  needs: []
-  prio: 5
   status: todo
 
 - id: partial-application-system-design
@@ -318,11 +346,25 @@
   status: todo
 
 - id: search-and-fold-design
-  title: 'Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split). Round 1 leaned depth-first for `..` (Q7) but answer was "also research the performance implications before we fully commit"; round 2 needs that research before re-asking'
+  title: 'Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split). Round 1 leaned depth-first for `..` (Q7) but answer was "also research the performance implications before we fully commit"; round 2 needed that research before re-asking. Q7 was re-asked in the signature-matching-and-search-cut round and RULED provisional: `..` promises depth-first order (jq-compatible), flagged for reevaluation once recursive-descent-order-research lands. Round 4 answers (search-vocab-choice-cut-fold, no picks made): Q search-choice-point-syntax -- no pick, maintainer asks whether the choice-point operator should instead be spelled parallel to match syntax rather than a new infix operator; needs search-choice-point-match-syntax-research before re-ask. Q search-cut-semantics -- no pick, maintainer leans "first should be a real prelude function" (tentative, not ratified -- re-ask against that framing, i.e. option B reworded as an ordinary stdlib fn rather than compiler-magic sugar). Q applicative-fold-block-syntax -- no pick, maintainer questions whether fold is needed at all ("fold is basically the same as reduce... reduce is usually too low level, a code smell, results in confusing code"); before continuing fold syntax design, next round must first ask whether applicative-fold-block-syntax should be justified or dropped.'
   kind: decide
-  needs: []
-  soft: [first-search-cut]
+  needs: [search-choice-point-match-syntax-research]
+  soft: [first-search-cut, recursive-descent-order-research]
   prio: 4
+  status: todo
+
+- id: recursive-descent-order-research
+  title: 'Research spike (round answer, signature-matching-and-search-cut round, question recursive-descent-order): Q7 was ruled provisional -- `..` promises depth-first order (jq-compatible) -- but the maintainer wants a deep research brief on what alternatives actually exist to the unordered/columnar-fast-path design (questions.md Q7), so the ruling can be reevaluated later with real alternatives in hand rather than the two options already on the table. Survey how other query/traversal languages and engines (jq, XPath, JSONPath, columnar/vectorized query engines) handle recursive descent order versus set semantics, and what a toylang-specific unordered fast path would cost callers who need order back. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
+
+- id: search-choice-point-match-syntax-research
+  title: 'Research spike (round answer, search-vocab-choice-cut-fold, question search-choice-point-syntax): maintainer asks for a deeper design pass on whether the choice-point ("branch wider, explore every alternative") operator should be spelled parallel to toylang''s match syntax instead of a new infix operator (`;`, `branch(...)`, or folding into `//`). Survey how other languages with pattern-matching-flavored search/logic constructs (Prolog disjunction, Icon/Curry generators, list-monad comprehensions) express this, and produce 2-3 concrete syntax candidates with real toylang code examples, explicitly including a match-parallel option. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
   status: todo
 
 - id: offload-boundary-design
@@ -356,10 +398,33 @@
   prio: 2
   status: todo
 
+- id: messagecard-flow-defensive-render
+  issue: gh:173
+  title: 'MessageCard hard-crashes the whole mail/grill UI on an unrecognized flow value (found live: two pending rounds had flow: decide, not a FlowType member, blanking the app). Fall back to a neutral style instead of throwing, and/or add an error boundary around round rendering -- the immediate bad data is already fixed in the two affected round files, this is the defensive follow-up.'
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
+
 - id: http-query-sugar-design
   issue: gh:171
   title: 'Maintainer note (composed 2026-08-31): design minimal HTTP query support (Python-requests-like) as sugar over whatever backend already provides -- needs a grilling round on surface area before it becomes build work'
   kind: decide
+  needs: [http-query-sugar-research]
+  prio: 4
+  status: todo
+
+- id: http-query-sugar-research
+  issue: gh:171
+  title: 'Research spike ahead of the http-query-sugar-design round: survey each backend''s existing I/O/effect capabilities (what a source/sink already looks like per backend, and whether any backend has network primitives today) and Python requests'' minimal surface (get/post, headers, body, response shape). Produce 2-3 concrete syntax candidates for HTTP query sugar as toylang code, each grounded in what the current sink/source vocabulary already supports, so the design round can ask a real question instead of a green-field one. Write findings to plans/.'
+  kind: build
   needs: []
   prio: 4
+  status: todo
+
+- id: brief-phrasing-experiment
+  title: 'Tracked in-repo per maintainer ruling (coordinator-escalation-brief-phrasing-experiment round, 2026-09-01: gh issue create was blocked by the permission classifier; no gh issue, no retry). Maintainer note (composed 2026-08-31): generic non-informational reassurance phrasing ("its much simpler than you think") in dispatch briefs seems to help planning agents find better plans -- experiment on at least 10 issues, then report progress and grill on the results.'
+  kind: build
+  needs: []
+  prio: 5
   status: todo

@@ -1,8 +1,8 @@
 # Quoted rather than a block scalar: output
 # holds bytes a block cannot reproduce.
 program: |
-  join_lines(range(-3) | map(str(.)))
+  join_lines(collect(range(-3)) | map(str(.)))
 
 output: "\n"
 
-node_types: [application, builtin.length, builtin.range, builtin.str, builtin.tail, compare.eq, concat, conditional, int, local, map-over, pipe, selection.collapse, str, unwrap, var]
+node_types: [application, builtin.collect, builtin.length, builtin.range, builtin.str, builtin.tail, compare.eq, concat, int, local, map-over, match, pipe, selection.collapse, str, unwrap, var]

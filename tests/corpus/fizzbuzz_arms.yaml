@@ -1,10 +1,9 @@
-# FizzBuzz again, as the guard-arm chain: the same program as fizzbuzz.yaml with each
-# `body if cond else` rewritten `cond -> body or`, and the trailing `str(.)` now the chain's
-# bare default. The point is that the two spellings are one shape -- the outputs must agree
-# line for line.
+# FizzBuzz as a guard-arm chain. With the ternary retired (kantord/toylang#155), this is now
+# the same program as fizzbuzz.yaml: every branch is a `cond -> body` arm and the trailing
+# `str(.)` the chain's bare default.
 program: |
   join_lines(
-      range(100) | map(. + 1) | map(
+      collect(range(100)) | map(. + 1) | map(
           . % 15 == 0 -> "FizzBuzz" or
           . % 3 == 0  -> "Fizz"     or
           . % 5 == 0  -> "Buzz"     or
@@ -114,4 +113,4 @@ output: |
   Fizz
   Buzz
 
-node_types: [application, arith.add, arith.rem, builtin.length, builtin.range, builtin.str, builtin.tail, compare.eq, concat, conditional, int, local, map-over, match, pipe, selection.collapse, str, unwrap, var]
+node_types: [application, arith.add, arith.rem, builtin.collect, builtin.length, builtin.range, builtin.str, builtin.tail, compare.eq, concat, int, local, map-over, match, pipe, selection.collapse, str, unwrap, var]

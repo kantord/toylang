@@ -5,7 +5,7 @@
 program: |
   fn classify(p: {x: Int, y: Int}) -> Str =
       let m = p.x * p.x + p.y * p.y
-      "origin" if m == 0 else "near" if m < 100 else "far"
+      m | m == 0 -> "origin" or m < 100 -> "near" or "far"
 
   classify(input)
 
@@ -15,4 +15,4 @@ input: |
 output: |
   near
 
-node_types: [application, arith.add, arith.mul, compare.eq, compare.lt, conditional, input, int, local, pipe, projection, str, var]
+node_types: [application, arith.add, arith.mul, compare.eq, compare.lt, input, int, local, match, pipe, projection, str, var]

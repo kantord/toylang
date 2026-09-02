@@ -32,11 +32,13 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
     match &tir.kind {
         Kind::Str(_)
         | Kind::Int(_)
+        | Kind::Float(_)
         | Kind::Var(_)
         | Kind::Local(_)
         | Kind::Input
         | Kind::Inputs
-        | Kind::Lines => {}
+        | Kind::Lines
+        | Kind::Dsv { .. } => {}
         Kind::VecLit(items) => items.iter().for_each(|i| walk(i, tags)),
         Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| walk(v, tags)),
         Kind::EnumLit { payload, .. } => {
@@ -58,15 +60,6 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
         | Kind::Logic { lhs, rhs, .. } => {
             walk(lhs, tags);
             walk(rhs, tags);
-        }
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            walk(cond, tags);
-            walk(then, tags);
-            walk(otherwise, tags);
         }
         Kind::Bind { value, body, .. }
         | Kind::Map {
@@ -120,6 +113,7 @@ fn tag(tir: &Tir) -> String {
         // say (kantord/toylang#83), so the tag reads it rather than the kind.
         Kind::Int(_) if tir.ty == crate::ty::Type::Int64 => "int64".into(),
         Kind::Int(_) => "int".into(),
+        Kind::Float(_) => "float".into(),
         Kind::VecLit(_) => "vec-literal".into(),
         Kind::RecordLit { .. } => "record-literal".into(),
         // CONTEXT.md's terms: a `variant` is one alternative, a `unit variant` carries nothing.
@@ -131,10 +125,10 @@ fn tag(tir: &Tir) -> String {
         Kind::Local(_) => "local".into(),
         Kind::Input => "input".into(),
         Kind::Lines => "lines".into(),
+        Kind::Dsv { .. } => "dsv".into(),
         Kind::Call { .. } => "application".into(),
         Kind::Concat(..) => "concat".into(),
         Kind::Arith { op, .. } => format!("arith.{}", binop_tag(*op)),
-        Kind::Cond { .. } => "conditional".into(),
         Kind::Compare { op, .. } => format!("compare.{}", binop_tag(*op)),
         Kind::Logic { op, .. } => format!("logic.{op}"),
         Kind::Not(_) => "logic.not".into(),

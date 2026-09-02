@@ -89,10 +89,16 @@ pub fn emit(program: &Program) -> Result<String, String> {
     if let Some(fusion) = tir::fusion(program) {
         // jq's own `inputs` is already lazy; the eager path below only becomes eager by wrapping
         // it in `[...]`. Skipping that wrapper and running the whole `map`/`select` chain as one
-        // filter over the `inputs` generator is what makes jq print each record as it arrives
+        // filter over the generator is what makes jq print each record as it arrives
         // rather than after the last one, the same as running the equivalent `jq` program by
-        // hand would.
-        out.push_str("inputs");
+        // hand would. `range(0; n)` is jq's own lazy counter, the same streaming shape for a
+        // `range` source.
+        match fusion.source {
+            tir::Source::Inputs | tir::Source::Lines => out.push_str("inputs"),
+            tir::Source::Range(bound) => {
+                out.push_str(&format!("range(0; {})", expr(enums, bound)))
+            }
+        };
         for stage in &fusion.stages {
             match stage {
                 tir::Stage::Map { param, body } => {
@@ -148,6 +154,7 @@ fn canonical(enums: &Enums, ty: &Type, value: &str) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str | Type::Int | Type::Int64 | Type::Bool => value.to_string(),
+        Type::Float => unreachable!("Float is JS-only in this row"),
         Type::Sink => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(enums, elem, ".")),
         Type::Enum { .. } if ty.as_opt().is_some() => {
@@ -186,11 +193,13 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
     match &t.kind {
         Kind::Str(_)
         | Kind::Int(_)
+        | Kind::Float(_)
         | Kind::Var(_)
         | Kind::Local(_)
         | Kind::Input
         | Kind::Inputs
-        | Kind::Lines => {}
+        | Kind::Lines
+        | Kind::Dsv { .. } => {}
         Kind::VecLit(items) => items.iter().for_each(|i| callees(i, out)),
         Kind::RecordLit { fields } => {
             fields.iter().for_each(|(_, v)| callees(v, out));
@@ -225,15 +234,6 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
             callees(body, out);
         }
         Kind::Builtin { arg, .. } => callees(arg, out),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            callees(cond, out);
-            callees(then, out);
-            callees(otherwise, out);
-        }
         Kind::Arith { lhs, rhs, .. } => {
             callees(lhs, out);
             callees(rhs, out);
@@ -369,22 +369,15 @@ fn uses_arith(program: &Program) -> (bool, bool) {
                 walk(lhs, found);
                 walk(rhs, found);
             }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                walk(cond, found);
-                walk(then, found);
-                walk(otherwise, found);
-            }
             Kind::Str(_)
             | Kind::Int(_)
+            | Kind::Float(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
             | Kind::Inputs
-            | Kind::Lines => {}
+            | Kind::Lines
+            | Kind::Dsv { .. } => {}
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, found)),
             Kind::RecordLit { fields } => fields.iter().for_each(|(_, v)| walk(v, found)),
             Kind::EnumLit { payload, .. } => {
@@ -486,6 +479,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => jq_string(s),
         Kind::Int(n) => n.to_string(),
+        Kind::Float(_) => unreachable!("Float is JS-only in this row"),
         Kind::Var(name) => format!("${}", user(name)),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
@@ -494,6 +488,14 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // stdin as an array of strings. `-n -R` on the invocation is what makes this mode
         // available; see the checker rule against mixing `input` and `lines` in one program.
         Kind::Lines => "[ inputs ]".to_string(),
+        // `dsv` reads the same raw lines and splits each: `[ inputs | split(delim) ]`, with
+        // the delimiter escaped so a regex metacharacter (`.`, `|`, `[`) still splits literally
+        // the way every other backend does. jq's `split` on an empty string yields `[]` where
+        // every other backend yields `[""]`, so an empty line is forced to one empty field.
+        Kind::Dsv { delim } => format!(
+            "[ inputs | if length == 0 then [\"\"] else split({}) end ]",
+            jq_string(&regex_escape(delim))
+        ),
         // Each value is parenthesised: everything in jq is a filter, so an unbracketed `|`
         // or `,` inside one would be read as part of the object rather than as its value.
         Kind::RecordLit { fields } => {
@@ -524,16 +526,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // no different spelling here than Str does.
         Kind::Concat(l, r) => format!("({} + {})", expr(enums, l), expr(enums, r)),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => format!(
-            "(if {} then {} else {} end)",
-            expr(enums, cond),
-            expr(enums, then),
-            expr(enums, otherwise)
-        ),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("({} | tostring)", expr(enums, arg)),
             // jq has one number type at every width, so the bridge has nothing to do.
@@ -930,5 +922,19 @@ fn jq_string(s: &str) -> String {
         }
     }
     out.push('"');
+    out
+}
+
+/// Escape the regex metacharacters jq's `split` treats specially, so a delimiter like `.` or
+/// `|` still splits literally. The set is RE2's: the characters that change meaning outside a
+/// character class, plus `\` itself.
+fn regex_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if "\\^$.|?*+()[]{}".contains(c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
     out
 }

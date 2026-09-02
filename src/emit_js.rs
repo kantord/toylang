@@ -289,35 +289,12 @@ pub fn emit(program: &Program) -> String {
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     let enums = &program.enums;
     let mut out = String::new();
-    out.push_str("let tl_stdin_buf = \"\";\n");
-    out.push_str("let tl_stdin_eof = false;\n");
-    out.push_str("function tl_read_line() {\n");
-    out.push_str("  const fs = require(\"fs\");\n");
-    out.push_str("  for (;;) {\n");
-    out.push_str("    const i = tl_stdin_buf.indexOf(\"\\n\");\n");
-    out.push_str("    if (i !== -1) {\n");
-    out.push_str("      const line = tl_stdin_buf.slice(0, i);\n");
-    out.push_str("      tl_stdin_buf = tl_stdin_buf.slice(i + 1);\n");
-    out.push_str("      return line;\n");
-    out.push_str("    }\n");
-    out.push_str("    if (tl_stdin_eof) {\n");
-    out.push_str("      if (tl_stdin_buf.length === 0) return null;\n");
-    out.push_str("      const line = tl_stdin_buf;\n");
-    out.push_str("      tl_stdin_buf = \"\";\n");
-    out.push_str("      return line;\n");
-    out.push_str("    }\n");
-    out.push_str("    const chunk = Buffer.alloc(65536);\n");
-    out.push_str("    const n = fs.readSync(0, chunk, 0, chunk.length, null);\n");
-    out.push_str("    if (n === 0) { tl_stdin_eof = true; continue; }\n");
-    out.push_str("    tl_stdin_buf += chunk.toString(\"utf8\", 0, n);\n");
-    out.push_str("  }\n");
-    out.push_str("}\n");
-
-    out.push_str("for (;;) {\n");
-    out.push_str("  const t_line_raw = tl_read_line();\n");
-    out.push_str("  if (t_line_raw === null) break;\n");
     let (mut current, mut current_ty) = match fusion.source {
         tir::Source::Inputs => {
+            out.push_str(&read_line_helper());
+            out.push_str("for (;;) {\n");
+            out.push_str("  const t_line_raw = tl_read_line();\n");
+            out.push_str("  if (t_line_raw === null) break;\n");
             out.push_str("  if (t_line_raw.length === 0) continue;\n");
             out.push_str("  const t_line = JSON.parse(t_line_raw);\n");
             let elem = program
@@ -327,7 +304,20 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
             ("t_line".to_string(), elem.clone())
         }
         // A raw line is already the element, blank ones included: `lines` keeps them.
-        tir::Source::Lines => ("t_line_raw".to_string(), Type::Str),
+        tir::Source::Lines => {
+            out.push_str(&read_line_helper());
+            out.push_str("for (;;) {\n");
+            out.push_str("  const t_line_raw = tl_read_line();\n");
+            out.push_str("  if (t_line_raw === null) break;\n");
+            ("t_line_raw".to_string(), Type::Str)
+        }
+        // The bound is evaluated once; the loop counter is the element. A negative bound makes
+        // the loop body never run, the same answer `tl_range` gives eagerly.
+        tir::Source::Range(bound) => {
+            out.push_str(&format!("const n = {};\n", expr(enums, bound)));
+            out.push_str("for (let t_i = 0; t_i < n; t_i++) {\n");
+            ("t_i".to_string(), Type::Int)
+        }
     };
     for stage in &fusion.stages {
         match stage {
@@ -351,6 +341,36 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     out
 }
 
+/// The read-one-line-at-a-time machinery a stdin-backed fused loop needs. A `range` source reads
+/// nothing, so it never emits this.
+fn read_line_helper() -> String {
+    let mut out = String::new();
+    out.push_str("let tl_stdin_buf = \"\";\n");
+    out.push_str("let tl_stdin_eof = false;\n");
+    out.push_str("function tl_read_line() {\n");
+    out.push_str("  const fs = require(\"fs\");\n");
+    out.push_str("  for (;;) {\n");
+    out.push_str("    const i = tl_stdin_buf.indexOf(\"\\n\");\n");
+    out.push_str("    if (i !== -1) {\n");
+    out.push_str("      const line = tl_stdin_buf.slice(0, i);\n");
+    out.push_str("      tl_stdin_buf = tl_stdin_buf.slice(i + 1);\n");
+    out.push_str("      return line;\n");
+    out.push_str("    }\n");
+    out.push_str("    if (tl_stdin_eof) {\n");
+    out.push_str("      if (tl_stdin_buf.length === 0) return null;\n");
+    out.push_str("      const line = tl_stdin_buf;\n");
+    out.push_str("      tl_stdin_buf = \"\";\n");
+    out.push_str("      return line;\n");
+    out.push_str("    }\n");
+    out.push_str("    const chunk = Buffer.alloc(65536);\n");
+    out.push_str("    const n = fs.readSync(0, chunk, 0, chunk.length, null);\n");
+    out.push_str("    if (n === 0) { tl_stdin_eof = true; continue; }\n");
+    out.push_str("    tl_stdin_buf += chunk.toString(\"utf8\", 0, n);\n");
+    out.push_str("  }\n");
+    out.push_str("}\n");
+    out
+}
+
 /// The printer is built from the type rather than by inspecting the value, so a record's keys
 /// are known and ordered at compile time, in declaration order. That removes the whole class
 /// of disagreement where one backend enumerates keys in insertion order and another sorts
@@ -365,8 +385,10 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("JSON.stringify({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
-        // String() on a BigInt is the bare digits, no `n` suffix, so Int64 rides the same arm.
-        Type::Int | Type::Int64 | Type::Bool => format!("String({value})"),
+        // String() on a BigInt is the bare digits, no `n` suffix, so Int64 rides the same arm;
+        // on a Number it is JS's shortest round-trip spelling, which is exactly how a Float
+        // prints (Infinity and NaN come out as their names).
+        Type::Int | Type::Int64 | Type::Float | Type::Bool => format!("String({value})"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
             format!(
@@ -541,12 +563,14 @@ fn used_helpers(program: &Program) -> Helpers {
         match &t.kind {
             Kind::Str(_)
             | Kind::Int(_)
+            | Kind::Float(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
             | Kind::Inputs => {}
             // The source is what reads stdin now, so it is what needs the helper.
             Kind::Lines => used.collect = true,
+            Kind::Dsv { .. } => used.collect = true,
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -596,19 +620,10 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.max |= *which == Builtin::Max;
                 walk(arg, used);
             }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                walk(cond, used);
-                walk(then, used);
-                walk(otherwise, used);
-            }
             Kind::Arith { lhs, rhs, .. } => {
                 if t.ty == Type::Int64 {
                     used.arith64 = true;
-                } else {
+                } else if t.ty == Type::Int {
                     used.arith = true;
                 }
                 walk(lhs, used);
@@ -681,16 +696,6 @@ fn tail_stmts(
             });
             format!("{assign}continue;\n")
         }
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => format!(
-            "if ({}) {{\n{}}} else {{\n{}}}\n",
-            expr(enums, cond),
-            indent(&tail_stmts(enums, name, param, fresh, then)),
-            indent(&tail_stmts(enums, name, param, fresh, otherwise)),
-        ),
         Kind::Bind {
             local: id,
             value,
@@ -767,6 +772,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => js_string(s),
         Kind::Int(n) => int_lit(&t.ty, *n),
+        Kind::Float(n) => crate::float::lit(*n),
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
@@ -774,6 +780,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
         // works on the array of its entries. Fusion is what will remove this materialization.
         Kind::Lines => "tl_collect_lines()".to_string(),
+        // Same raw lines as `lines`, each split on the delimiter into one row.
+        Kind::Dsv { delim } => format!(
+            "tl_collect_lines().map((l) => l.split({}))",
+            js_string(delim)
+        ),
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
@@ -802,18 +813,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         ),
         Kind::Concat(l, r) => concat(enums, &t.ty, l, r),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            format!(
-                "({} ? {} : {})",
-                expr(enums, cond),
-                expr(enums, then),
-                expr(enums, otherwise)
-            )
-        }
         Kind::Logic { op, lhs, rhs } => {
             let op = match op {
                 LogicOp::And => "&&",
@@ -1054,7 +1053,18 @@ fn int_lit(ty: &Type, n: i64) -> String {
 /// at any width, so on the 64-bit side only the wrap needs spelling -- Math.imul has no
 /// 64-bit sibling and none is needed.
 fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
-    if *ty == Type::Int64 {
+    if *ty == Type::Float {
+        // IEEE binary64 is the type itself (ADR 0007), so plain JS operators are the exact
+        // arithmetic, with no wrap to spell. Division by zero is the IEEE answer, Infinity,
+        // which is why there is no `tl_div` guard here unlike the integer widths.
+        match op {
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            BinOp::Div => format!("({l} / {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else if *ty == Type::Int64 {
         match op {
             BinOp::Div => format!("tl_div64({l}, {r})"),
             BinOp::Rem => format!("tl_rem64({l}, {r})"),

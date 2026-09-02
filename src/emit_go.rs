@@ -265,6 +265,62 @@ func tlCollectLines() []string {
 }
 "#;
 
+// RFC 4180 field splitting over the raw lines `tlCollectLines` keeps: a field wrapped in double
+// quotes may contain the delimiter, a doubled `""` is a literal quote, and a quoted field may
+// span lines. The delimiter is matched literally, never as a pattern.
+const DSV_HELPER: &str = r#"func tlDsv(lines []string, sep string) [][]string {
+	out := [][]string{}
+	row := []string{}
+	field := ""
+	inQuotes := false
+	for _, line := range lines {
+		i := 0
+		for i < len(line) {
+			if inQuotes {
+				if line[i] == '"' {
+					if i+1 < len(line) && line[i+1] == '"' {
+						field += "\""
+						i += 2
+					} else {
+						inQuotes = false
+						i++
+					}
+				} else {
+					_, size := utf8.DecodeRuneInString(line[i:])
+					field += line[i : i+size]
+					i += size
+				}
+			} else if strings.HasPrefix(line[i:], sep) {
+				row = append(row, field)
+				field = ""
+				i += len(sep)
+			} else if line[i] == '"' && field == "" {
+				inQuotes = true
+				i++
+			} else {
+				_, size := utf8.DecodeRuneInString(line[i:])
+				field += line[i : i+size]
+				i += size
+			}
+		}
+		if inQuotes {
+			field += "\n"
+		} else {
+			row = append(row, field)
+			out = append(out, row)
+			row = []string{}
+			field = ""
+		}
+	}
+	if inQuotes {
+		field = field[:len(field)-1]
+		row = append(row, field)
+		out = append(out, row)
+	}
+	return out
+}
+"#;
+
 const RANGE_HELPER: &str = r#"func tlRange(n int32) []int32 {
 	if n < 0 {
 		n = 0
@@ -493,6 +549,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tlRange("), RANGE_HELPER),
         (uses("tlChars("), CHARS_HELPER),
         (collect, COLLECT_HELPER),
+        (uses("tlDsv("), DSV_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
         (join, JOIN_HELPER),
         (quote, QUOTE_HELPER),
@@ -513,7 +570,8 @@ pub fn emit(program: &Program) -> String {
         (collect, &["bufio", "bytes"]),
         (reads_stdin, &["encoding/json"]),
         (program.inputs.is_some(), &["io"]),
-        (join || quote || used.jsonlines, &["strings"]),
+        (join || quote || used.jsonlines || uses("tlDsv("), &["strings"]),
+        (uses("tlDsv("), &["unicode/utf8"]),
         (uses("tlSort("), &["cmp", "slices"]),
         (uses("tlMax("), &["cmp"]),
         (uses("tlEq("), &["reflect"]),
@@ -551,6 +609,8 @@ fn has_scalar(enums: &Enums, ty: &Type) -> bool {
             // The checker refuses a program whose result contains a Char, the same as a stream.
             Type::Char => unreachable!("a Char cannot reach has_scalar"),
             Type::Int | Type::Int64 | Type::Bool => true,
+            // A Float prints as a plain number, which needs no strconv import.
+            Type::Float => false,
             Type::Str => false,
             Type::Sink => false,
             Type::Vec(t) => reaches(enums, t, seen),
@@ -632,11 +692,13 @@ impl Collect<'_> {
         match &t.kind {
             Kind::Str(_)
             | Kind::Int(_)
+            | Kind::Float(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
             | Kind::Inputs
-            | Kind::Lines => {}
+            | Kind::Lines
+            | Kind::Dsv { .. } => {}
             Kind::VecLit(items) => items.iter().for_each(|i| self.walk(i)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| self.walk(v));
@@ -669,15 +731,6 @@ impl Collect<'_> {
             Kind::Select { source, pred, .. } => {
                 self.walk(source);
                 self.walk(pred);
-            }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                self.walk(cond);
-                self.walk(then);
-                self.walk(otherwise);
             }
             Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => self.walk(base),
             Kind::Index { base, index, .. } => {
@@ -762,6 +815,7 @@ impl Emitter<'_> {
             // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
             // the two.
             Type::Char => "int32".to_string(),
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Vec(e) => format!("[]{}", self.go_type(e)),
             Type::Enum { .. } if ty.as_opt().is_some() => {
                 format!("tlOpt[{}]", self.go_type(ty.as_opt().expect("guarded")))
@@ -895,6 +949,14 @@ impl Emitter<'_> {
                 out.push_str("\t\tt_line := s.Text()\n");
                 ("t_line".to_string(), Type::Str)
             }
+            // The bound is evaluated once; the loop counter is the element. A negative bound
+            // clamps to zero, the same answer `tlRange` gives eagerly.
+            tir::Source::Range(bound) => {
+                out.push_str(&format!("\tn := {}\n", self.expr(bound)));
+                out.push_str("\tif n < 0 {\n\t\tn = 0\n\t}\n");
+                out.push_str("\tfor t_i := int32(0); t_i < n; t_i++ {\n");
+                ("t_i".to_string(), Type::Int)
+            }
         };
         for stage in &fusion.stages {
             match stage {
@@ -960,6 +1022,7 @@ impl Emitter<'_> {
         match &t.kind {
             Kind::Str(s) => go_string(s),
             Kind::Int(n) => int_lit(&t.ty, *n),
+            Kind::Float(_) => unreachable!("Float is JS-only in this row"),
             Kind::Var(name) => self.user(name),
             Kind::Local(id) => self.local(*id),
             Kind::Input => INPUT.to_string(),
@@ -967,6 +1030,10 @@ impl Emitter<'_> {
             // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
             // works on the slice of its entries.
             Kind::Lines => "tlCollectLines()".to_string(),
+            Kind::Dsv { delim } => format!(
+                "tlDsv(tlCollectLines(), {})",
+                go_string(delim)
+            ),
             // go_type resolves the struct name, and the collector registered it because a
             // record literal carries its own record type.
             Kind::RecordLit { fields } => {
@@ -1010,20 +1077,6 @@ impl Emitter<'_> {
             ),
             Kind::Concat(l, r) => self.concat(&t.ty, l, r),
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
-            // Go has no conditional expression, so this is a call to a function literal rather
-            // than an operator. Both branches stay unevaluated, which a `tlCond(c, a, b)` helper
-            // could not manage: its arguments would both run, and one of them may divide by zero.
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => format!(
-                "func() {} {{ if {} {{ return {} }}; return {} }}()",
-                self.go_type(&t.ty),
-                self.expr(cond),
-                self.expr(then),
-                self.expr(otherwise)
-            ),
             // Go's own `&&`/`||`, which short-circuit, so the right side stays unevaluated
             // exactly where toylang says it does.
             Kind::Logic { op, lhs, rhs } => {
@@ -1264,6 +1317,7 @@ impl Emitter<'_> {
             Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Int => format!("strconv.FormatInt(int64({value}), 10)"),
             Type::Int64 => format!("strconv.FormatInt({value}, 10)"),
+            Type::Float => unreachable!("Float is JS-only in this row"),
             Type::Bool => format!("strconv.FormatBool({value})"),
             Type::Vec(elem) => {
                 let e = format!("e{depth}");

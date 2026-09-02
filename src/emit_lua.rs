@@ -47,6 +47,31 @@ local function tl_collect_lines()
 end
 ";
 
+// `dsv` splits each collected line on the delimiter. `string.find` with `plain = true` is the
+// literal-search form, so the delimiter is not read as a Lua pattern.
+const SPLIT_HELPER: &str = "\
+local function tl_split(s, sep)
+  local out = {}
+  local pos = 1
+  while true do
+    local start, stop = string.find(s, sep, pos, true)
+    if not start then
+      out[#out + 1] = string.sub(s, pos)
+      break
+    end
+    out[#out + 1] = string.sub(s, pos, start - 1)
+    pos = stop + 1
+  end
+  return out
+end
+
+local function tl_split_lines(lines, sep)
+  local out = {}
+  for i = 1, #lines do out[i] = tl_split(lines[i], sep) end
+  return out
+end
+";
+
 const MAP_HELPER: &str = "\
 local function tl_map(src, f)
   local out = {}
@@ -314,6 +339,7 @@ pub fn emit(program: &Program) -> String {
         (used.map, MAP_HELPER),
         (used.range, RANGE_HELPER),
         (used.collect, COLLECT_HELPER),
+        (used.split, SPLIT_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
         (used.chars, CHARS_HELPER),
         (used.eq, EQ_HELPER),
@@ -380,6 +406,14 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
             out.push_str("for t_line in io.lines() do\n");
             ("t_line".to_string(), Type::Str)
         }
+        // The bound is evaluated once; the loop counter is the element. A negative bound makes
+        // Lua's numeric for run zero times (start > limit), the same answer `tl_range` gives
+        // eagerly.
+        tir::Source::Range(bound) => {
+            out.push_str(&format!("local n = {}\n", expr(enums, bound)));
+            out.push_str("for t_i = 0, n - 1 do\n");
+            ("t_i".to_string(), Type::Int)
+        }
     };
     for stage in &fusion.stages {
         match stage {
@@ -422,6 +456,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Str => format!("tl_quote({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         Type::Int | Type::Int64 | Type::Bool => format!("tostring({value})"),
+        Type::Float => unreachable!("Float is JS-only in this row"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
             format!(
@@ -569,6 +604,7 @@ struct Helpers {
     sum: bool,
     max: bool,
     eq: bool,
+    split: bool,
 }
 
 /// Equality on a composite is structural, which Lua's `==` on two tables is not -- it compares
@@ -623,12 +659,17 @@ fn used_helpers(program: &Program) -> Helpers {
         match &t.kind {
             Kind::Str(_)
             | Kind::Int(_)
+            | Kind::Float(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
             | Kind::Inputs => {}
             // The source is what reads stdin now, so it is what needs the helper.
             Kind::Lines => used.collect = true,
+            Kind::Dsv { .. } => {
+                used.collect = true;
+                used.split = true;
+            }
             Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
             Kind::RecordLit { fields } => {
                 fields.iter().for_each(|(_, v)| walk(v, used));
@@ -685,15 +726,6 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::Builtin { which, arg } => {
                 builtin_helpers(*which, &arg.ty, used);
                 walk(arg, used);
-            }
-            Kind::Cond {
-                cond,
-                then,
-                otherwise,
-            } => {
-                walk(cond, used);
-                walk(then, used);
-                walk(otherwise, used);
             }
             Kind::Arith { op, lhs, rhs } => {
                 if t.ty == Type::Int64 {
@@ -755,6 +787,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => lua_string(s),
         Kind::Int(n) => n.to_string(),
+        Kind::Float(_) => unreachable!("Float is JS-only in this row"),
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
@@ -762,6 +795,10 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
         // works on the table of its entries. Fusion is what will remove this materialization.
         Kind::Lines => "tl_collect_lines()".to_string(),
+        Kind::Dsv { delim } => format!(
+            "tl_split_lines(tl_collect_lines(), {})",
+            lua_string(delim)
+        ),
         // A record is a table keyed by field name, which is what field access reads.
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
@@ -791,16 +828,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         ),
         Kind::Concat(l, r) => concat(enums, &t.ty, l, r),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => format!(
-            "(function() if {} then return {} else return {} end end)()",
-            expr(enums, cond),
-            expr(enums, then),
-            expr(enums, otherwise)
-        ),
         // Lua's `and`/`or` yield an operand rather than a boolean, which is the same thing here:
         // both operands are already booleans, so whichever one comes back is one.
         Kind::Logic { op, lhs, rhs } => format!("({} {op} {})", expr(enums, lhs), expr(enums, rhs)),

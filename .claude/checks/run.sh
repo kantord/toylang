@@ -34,6 +34,22 @@ if [ "$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/dev/null)" 
   exit 0
 fi
 
+# Board schema gate (2026-09-01): parsing is not validity -- a needs-less row
+# blanked the whole kanban. Every writer runs board-lint before committing;
+# this is the backstop for sessions that edited the board by hand.
+if [ -f plans/board.yaml ]; then
+  lint_out=$(python3 .claude/scripts/board-lint.py 2>&1) || {
+    {
+      echo "Board schema invalid (board-lint.py):"
+      echo "$lint_out"
+      echo
+      echo "Fix plans/board*.yaml before ending the turn. This is not a"
+      echo "code-style finding: the schema errors above are the fix list."
+    } >&2
+    exit 2
+  }
+fi
+
 limit=$(grep -oE '^max_file_lines[[:space:]]*=[[:space:]]*[0-9]+' .claude/checks/limits.toml 2>/dev/null | grep -oE '[0-9]+')
 : "${limit:=1000}"
 

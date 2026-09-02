@@ -43,7 +43,7 @@ fn wrong_element_under_annotation() {
 
 #[test]
 fn a_string_names_a_unit_variant_in_return_position() {
-    let src = "enum Status { active, inactive }\n\nfn initial(x: Int) -> Status = x | \"active\"\n\ninitial(1)";
+    let src = "enum Status { Active, Inactive }\n\nfn initial(x: Int) -> Status = x | \"active\"\n\ninitial(1)";
     assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Status"));
 }
 
@@ -51,14 +51,14 @@ fn a_string_names_a_unit_variant_in_return_position() {
 #[test]
 fn a_string_naming_a_payload_variant_is_refused() {
     insta::assert_snapshot!(err(
-        "enum Shape { point, circle{r: Int} }\n\nfn f(x: Int) -> Shape = \"circle\"\n\nf(1)"
+        "enum Shape { Point, Circle{r: Int} }\n\nfn f(x: Int) -> Shape = \"circle\"\n\nf(1)"
     ));
 }
 
 #[test]
 fn a_string_naming_no_variant_is_refused() {
     insta::assert_snapshot!(err(
-        "enum Status { active, inactive }\n\nfn f(x: Int) -> Status = \"gone\"\n\nf(1)"
+        "enum Status { Active, Inactive }\n\nfn f(x: Int) -> Status = \"gone\"\n\nf(1)"
     ));
 }
 
@@ -74,7 +74,7 @@ fn a_synthesised_mismatch_still_names_the_function() {
 
 #[test]
 fn record_fields_receive_the_declared_types() {
-    let src = "enum Status { active, inactive }\n\n\
+    let src = "enum Status { Active, Inactive }\n\n\
                fn f(x: Int) -> {v: Vec<Int>, s: Status} = x | {v: [], s: \"active\"}\n\nf(1)";
     assert!(matches!(body_ty(src), Type::Record(_)));
 }
@@ -140,9 +140,9 @@ fn empty_vec_as_an_argument() {
 
 #[test]
 fn a_string_names_a_variant_in_argument_position() {
-    let src = "enum Status { active, inactive }\n\n\
+    let src = "enum Status { Active, Inactive }\n\n\
                fn flip(s: Status) -> Status =\n    \
-               s | active -> Status.inactive or inactive -> Status.active\n\n\
+               s | Active -> Status.inactive or Inactive -> Status.active\n\n\
                flip(\"active\")";
     assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Status"));
 }
@@ -158,7 +158,7 @@ fn input_in_a_record_argument_field() {
 /// resolve inside one too.
 #[test]
 fn empty_vec_in_a_constructor_payload() {
-    let src = "enum Box { of{items: Vec<Int>} }\n\nof{items: []}";
+    let src = "enum Box { Of{items: Vec<Int>} }\n\nof{items: []}";
     assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Box"));
 }
 
@@ -191,7 +191,7 @@ fn empty_vec_in_a_map_body() {
 /// is declared, and each body form checks against it.
 #[test]
 fn a_record_map_body_takes_the_declared_element() {
-    let src = "enum Status { active, inactive }\n\n\
+    let src = "enum Status { Active, Inactive }\n\n\
                fn tag(v: Vec<Int>) -> Vec<{n: Int, s: Status}> = v | map({n: ., s: \"active\"})\n\n\
                tag([1])";
     assert!(matches!(body_ty(src), Type::Vec(_)));
@@ -212,35 +212,35 @@ fn a_map_body_that_misses_the_element_type() {
     ));
 }
 
-// Step 5: both branches of a conditional and every arm of a total match chain receive the
-// expectation. A partial guard chain receives it too, peeled: a declared Opt<T> return pushes
-// T into the arms, since the chain's own partiality is what supplies the Opt (kantord/toylang#48).
+// Step 5: both arms of a total match chain receive the expectation. A partial guard chain
+// receives it too, peeled: a declared Opt<T> return pushes T into the arms, since the chain's
+// own partiality is what supplies the Opt (kantord/toylang#48).
 
 #[test]
 fn both_conditional_branches_receive_the_expectation() {
-    let src = "fn f(x: Int) -> Vec<Int> = [] if x > 0 else [1]\n\nf(1)";
+    let src = "fn f(x: Int) -> Vec<Int> = x | . > 0 -> [] or [1]\n\nf(1)";
     assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
 }
 
 #[test]
 fn conditional_branches_can_name_variants() {
-    let src = "enum Status { active, inactive }\n\n\
-               fn status(n: Int) -> Status = \"active\" if n > 0 else \"inactive\"\n\n\
+let src = "enum Status { Active, Inactive }\n\n\
+               fn status(n: Int) -> Status = n | . > 0 -> \"Active\" or \"Inactive\"\n\n\
                status(0)";
     assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Status"));
 }
 
-/// The annotation decides which branch is wrong, so the error lands on the branch that
-/// misses it rather than on whichever branch came second.
+/// The annotation decides which arm is wrong, so the error lands on the arm that misses it
+/// rather than on whichever arm came first.
 #[test]
 fn the_branch_that_misses_the_annotation_is_blamed() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> Str = 1 if x > 0 else \"a\"\n\nf(1)"));
+    insta::assert_snapshot!(err("fn f(x: Int) -> Str = x | . > 0 -> 1 or \"a\"\n\nf(1)"));
 }
 
 #[test]
 fn match_arms_receive_the_expectation() {
-    let src = "enum Status { active, inactive }\n\n\
-               fn work(s: Status) -> Vec<Int> = s | active -> [1, 2] or inactive -> []\n\n\
+    let src = "enum Status { Active, Inactive }\n\n\
+               fn work(s: Status) -> Vec<Int> = s | Active -> [1, 2] or Inactive -> []\n\n\
                work(\"inactive\")";
     assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
 }
@@ -286,8 +286,8 @@ fn a_partial_chain_over_opt_arms_still_wants_the_doubled_annotation() {
 /// own duty.
 #[test]
 fn an_uncovered_variant_is_still_refused_under_an_expectation() {
-    insta::assert_snapshot!(err("enum Status { active, inactive }\n\n\
-         fn f(s: Status) -> Vec<Int> = s | active -> []\n\nf(\"active\")"));
+    insta::assert_snapshot!(err("enum Status { Active, Inactive }\n\n\
+         fn f(s: Status) -> Vec<Int> = s | Active -> []\n\nf(\"active\")"));
 }
 
 // The stream-containment lesson survives the checked fast paths (found landing this branch:

@@ -6,6 +6,19 @@
 # it can't find by treating it as satisfied, so nothing here gates picking a task. Read this
 # file to find out when and how something landed, not whether something is ready.
 
+- id: stdin-redesign-build
+  issue: gh:159
+  title: 'Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative, gh:159 -- verify parse(.) resolves an expected type inside a map body before full build). Escalated after 4 runs (2026-09-02): the feature itself landed cleanly in the first run (commit 45c76be), but 3 repair attempts against a 16-file merge conflict with main have each failed, the latest leaving the branch uncompilable (unclosed delimiter, src/check/mod.rs:3034).'
+  kind: build
+  needs: []
+  model: fable
+  status: done
+  # Not a real landing -- a drop (maintainer ruling, issue-159-lane-cleanup-blocked round,
+  # 2026-09-02, option C): the lane's worktree/branch were poisoned past repair, so this was
+  # abandoned and re-filed as gh:172 / stdin-redesign-build-2 under a fresh lane id instead of
+  # ever merging. Left as status: done only because board-lint.py requires archive rows to be
+  # done (no "deleted" status exists in the schema); this comment is the actual record.
+
 - id: scheduler-v2
   title: Scheduler v2 -- five lanes, hard vs soft blockers, prio codes (maintainer spec, applied same-day)
   kind: build
@@ -1265,4 +1278,78 @@
   kind: build
   needs: []
   prio: 4
+  status: done
+
+- id: dsv-rfc4180-quoting-build
+  issue: gh:136
+  title: 'Ruled (prelude-partials-and-mutation round): dsv(delim) needs RFC 4180 quoted-field handling (embedded delimiters, doubled quotes, embedded newlines) -- replace the raw byte-split shipped in gh:136 with a real stateful scanner'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: retire-ternary-build
+  issue: gh:155
+  title: Remove the ternary, replace every corpus/example/doc use with the equivalent match form (ternary-vs-match ruling)
+  kind: build
+  needs: []
+  prio: 2
+  status: done
+
+- id: stuck-issue-149-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-149 (no activity 0h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-149-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: stuck-issue-158-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:158
+  title: 'INVESTIGATE stuck lane issue-158 (no activity 0h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-158-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: jsonlines-tail-marker-build
+  issue: gh:154
+  title: 'Implement the |> tail-pipeline marker for sink calls, restricted to outermost position (issue #9 oddity ruling). Escalated after 4 commitless automated runs (2026-09-01): the worktree has real uncommitted progress across src/ast.rs, src/check/mod.rs, src/emit_toylang.rs, src/parse.rs -- each run reviews the diff, confirms it looks right, then fires landing WITHOUT committing, so land-lane.sh skips it every time. A stale ESCALATION.md from an already-folded issue-150 decision also sits in the worktree unremoved. Do not redispatch until the issue-154-escalation round is ruled (~/.cache/toylang-drive/escalated-issue-154).'
+  kind: build
+  needs: [sink-kind-build]
+  prio: 3
+  status: done
+
+- id: trait-interface-research
+  title: 'Ruled (overloading-and-utf8-lines round ruling spinoff): declared interface/trait mechanism (Rust/Swift-shaped) is the direction for ad hoc polymorphism. Research spike before design: scope the minimal checker mechanism (trait declaration, impl-for-type, static dispatch) and whether it truly requires user-facing generics or can start monomorphic (one impl per concrete type, no generic trait bounds). Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: stuck-issue-170-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:170
+  title: 'INVESTIGATE stuck lane issue-170 (no activity 22h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-170-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: stuck-issue-140-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:140
+  title: 'INVESTIGATE stuck lane issue-140 (no activity 47h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-140-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: float-build
+  issue: gh:149
+  title: 'Reshaped after 3 commitless runs (root cause, 2026-09-02: worker burns its entire step budget deliberating the commit order and C-backend escalation timing across all 6 backends before writing any code or making a single commit -- see ~/.cache/toylang-drive/opencode/20260902-002801-issue-149.jsonl). Scope cut to ONE backend: implement Float (IEEE binary64 per ADR 0007) for the JS backend ONLY (ty, ast, parse, tir, check, emit_toylang, emit_js, src/float.rs as needed). Do not touch any other backend and do not write an ESCALATION.md -- that is out of scope for this row. Commit as soon as the JS backend test passes; do not plan ahead for the remaining backends.'
+  kind: build
+  needs: []
+  status: done
+
+- id: signature-matching-deeper-research
+  issue: gh:152
+  title: 'Research spike (round answer, signature-matching-and-search-cut round, question function-signature-matching-syntax): maintainer asked for deeper research on how each of the three candidate spellings (A: call-form hoist, B: anonymous param + bare match, C: additive `.`-binding) performs across a wider set of types and use cases a real language would face, not just the enum example probed so far -- structs/records, tuples, scalars, nested matches, recursive/self-referential types. Run each candidate''s shape against the real parser where possible (as round 3 did) and note where it breaks down or gets awkward. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
   status: done

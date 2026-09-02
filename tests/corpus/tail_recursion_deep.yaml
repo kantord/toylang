@@ -5,11 +5,11 @@
 # backend runs it to completion and agrees on the answer.
 program: |
   fn countdown(p: {n: Int, acc: Int}) -> Int =
-      p.acc if p.n <= 0 else countdown({n: p.n - 1, acc: p.acc + 1})
+      p | p.n <= 0 -> p.acc or countdown({n: p.n - 1, acc: p.acc + 1})
 
   countdown({n: 100000, acc: 0})
 
 output: |
   100000
 
-node_types: [application, arith.add, arith.sub, compare.le, conditional, int, projection, record-literal, var]
+node_types: [application, arith.add, arith.sub, compare.le, int, local, match, pipe, projection, record-literal, var]

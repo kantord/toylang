@@ -126,6 +126,17 @@ pub struct Param {
     pub span: Span,
 }
 
+/// Which source file a definition came from. Only two exist today: the program's own file and
+/// the single prelude module. A non-`pub` definition is callable only from its own file, so
+/// this is what the checker keys visibility on at each call site (gh:166).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Origin {
+    /// The program's own file.
+    Program,
+    /// The prelude module, `prelude.toy`.
+    Prelude,
+}
+
 #[derive(Debug)]
 pub struct Def {
     pub name: String,
@@ -137,6 +148,9 @@ pub struct Def {
     /// Whether a module's prelude includes this definition when compiling a program. Meaningless
     /// outside a module today, since nothing yet imports from a program file.
     pub is_pub: bool,
+    /// The file this definition was written in. A program's own definitions get `Program` from
+    /// the parser; the prelude's get `Prelude` from `prelude::module`.
+    pub origin: Origin,
 }
 
 /// `enum Shape { point, circle{r: Int} }`. The first declaration that creates a type identity
@@ -203,6 +217,13 @@ pub enum Expr {
         value: i64,
         span: Span,
     },
+    /// A decimal-point literal (ADR 0007): an IEEE 754 binary64 double, the same
+    /// representation every JavaScript engine carries. The dot is what makes a number a Float,
+    /// and there is no alternative width or decimal type to guess at.
+    Float {
+        value: f64,
+        span: Span,
+    },
     VecLit {
         items: Vec<Expr>,
         span: Span,
@@ -264,13 +285,6 @@ pub enum Expr {
         base: Box<Expr>,
         span: Span,
     },
-    /// `then if cond else otherwise`. An expression, in a language that has only those.
-    Cond {
-        then: Box<Expr>,
-        cond: Box<Expr>,
-        otherwise: Box<Expr>,
-        span: Span,
-    },
     /// `base.name`. Distributes over a Vec rather than needing a map.
     Field {
         base: Box<Expr>,
@@ -290,6 +304,12 @@ pub enum Expr {
     /// The stream of lines read from stdin, born `Stream<Str>`. The checker rejects a second
     /// use rather than accepting a second stream, since there is only ever one real stdin.
     Lines {
+        span: Span,
+    },
+    /// Stdin read as raw lines, each split on a delimiter, born `Vec<Vec<Str>>`: the
+    /// parameterized DSV source. `csv` and `tsv` are the same node with the delimiter fixed.
+    Dsv {
+        delim: String,
         span: Span,
     },
     /// An `or` chain of match arms over the subject `.`: `point -> 0 or circle{r} -> r * r`.
@@ -314,6 +334,15 @@ pub enum Expr {
     Pipe {
         lhs: Box<Expr>,
         rhs: Box<Expr>,
+        span: Span,
+    },
+    /// `lhs |> callee`, the tail-pipeline marker: the one way a sink call is written, `callee`
+    /// applied to `lhs`. Only a Sink-typed callee is legal here, and the production is parsed
+    /// only at a program's outermost position, so this node never appears nested.
+    TailPipe {
+        lhs: Box<Expr>,
+        callee: String,
+        callee_span: Span,
         span: Span,
     },
     Binary {
@@ -386,6 +415,7 @@ impl Expr {
         match self {
             Expr::Str { span, .. }
             | Expr::Int { span, .. }
+            | Expr::Float { span, .. }
             | Expr::VecLit { span, .. }
             | Expr::Subject { span }
             | Expr::Var { span, .. }
@@ -397,14 +427,15 @@ impl Expr {
             | Expr::RecordLit { span, .. }
             | Expr::Neg { span, .. }
             | Expr::Not { span, .. }
-            | Expr::Cond { span, .. }
             | Expr::Field { span, .. }
             | Expr::Input { span }
             | Expr::Inputs { span }
             | Expr::Lines { span }
+            | Expr::Dsv { span, .. }
             | Expr::Variant { span, .. }
             | Expr::Match { span, .. }
             | Expr::Pipe { span, .. }
+            | Expr::TailPipe { span, .. }
             | Expr::Binary { span, .. }
             | Expr::Logic { span, .. }
             | Expr::Let { span, .. } => *span,

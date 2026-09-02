@@ -24,7 +24,7 @@ its detail, because collapsing it would delete the only copy.
 | [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN, but the shape is decided (ADR 0008: Kleene patterns in effect position); enums now supply tagged alternation, leaving the matcher surface and spelling |
 | [Q5](#q5-stream-lowering-strategy-across-the-three-backends) | Stream-lowering strategy across the three backends | OPEN in general; all seven backends stream the fused pipeline shape, so only lowering beyond that shape remains |
 | [Q6](#q6-does-a-reconciler-belong-in-the-language-or-a-library) | Does a reconciler belong in the language or a library? | OPEN |
-| [Q7](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes) | Does `..` promise depth-first order, or only the set of nodes? | OPEN |
+| [Q7](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes) | Does `..` promise depth-first order, or only the set of nodes? | RULED provisional (signature-matching-and-search-cut round, 2026-09-01): promises depth-first order, jq-compatible; flagged for reevaluation once the columnar-fast-path alternative has a research brief |
 | [Q8](#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization) | Is vectorizability visible in the type system, or a silent optimization? | OPEN |
 | [Q9](#q9-are-vectors-multidimensional-with--as-projection) | Are vectors multidimensional, with `[]` as projection? | OPEN, may merge with Q2 |
 | [Q10](#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes) | Is uniqueness analysis in scope, for deciding when a lens materializes? | LEANING yes, compiler-internal: see the privileged-references sketch |
@@ -153,6 +153,12 @@ recursive descent becomes one of the cheapest operators rather than one of the m
 expensive. This is not only a performance question: a jq-derived language that is fast
 everywhere except recursive descent has a positioning problem, because `..` is one of the two
 things people reach for jq to do.
+
+**Ruled provisional** (signature-matching-and-search-cut round, 2026-09-01): `..` promises
+depth-first order, matching jq. The maintainer flagged this for reevaluation once the
+unordered/columnar-fast-path alternative has a real research brief comparing it against other
+languages' recursive-descent semantics and use cases -- see `recursive-descent-order-research`
+in plans/board.yaml.
 
 ### Q8. Is vectorizability visible in the type system, or a silent optimization?
 

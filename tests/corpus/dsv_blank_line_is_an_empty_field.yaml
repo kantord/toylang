@@ -1,0 +1,14 @@
+# `dsv` reads the same raw lines `lines` keeps, so a blank line is not dropped the way
+# `inputs` drops one: it is a line, and splitting it yields one empty field.
+program: |
+  dsv(",")
+
+input: |
+  a,b
+
+  c,d
+
+output: |
+  [["a","b"],[""],["c","d"]]
+
+node_types: [dsv]

@@ -9,4 +9,4 @@ output: |
 
 snapshot: [js, go]
 
-node_types: [application, builtin.length, builtin.tail, compare.eq, concat, conditional, int, selection.collapse, str, unwrap, var, vec-literal]
+node_types: [application, builtin.length, builtin.tail, compare.eq, concat, int, local, match, pipe, selection.collapse, str, unwrap, var, vec-literal]

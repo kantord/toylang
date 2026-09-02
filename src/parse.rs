@@ -37,17 +37,19 @@ impl<'i> ParserError<Input<'i>> for Error {
 enum Tok {
     Str(String),
     Int(i64),
+    Float(f64),
     Ident(String),
     Fn,
     Pub,
     Type,
-    Enum,
+Enum,
     Let,
-    If,
-    Else,
     Input,
     Inputs,
     Lines,
+    Dsv,
+    Csv,
+    Tsv,
     And,
     Or,
     Not,
@@ -57,6 +59,7 @@ enum Tok {
     Slash,
     Percent,
     Pipe,
+    PipeGt,
     Comma,
     Dot,
     Eq,
@@ -83,17 +86,19 @@ impl std::fmt::Display for Tok {
         let s = match self {
             Tok::Str(_) => return write!(f, "a string"),
             Tok::Int(n) => return write!(f, "`{n}`"),
+            Tok::Float(n) => return write!(f, "`{n}`"),
             Tok::Ident(name) => return write!(f, "`{name}`"),
             Tok::Fn => "`fn`",
             Tok::Pub => "`pub`",
             Tok::Type => "`type`",
             Tok::Enum => "`enum`",
             Tok::Let => "`let`",
-            Tok::If => "`if`",
-            Tok::Else => "`else`",
             Tok::Input => "`input`",
             Tok::Inputs => "`inputs`",
             Tok::Lines => "`lines`",
+            Tok::Dsv => "`dsv`",
+            Tok::Csv => "`csv`",
+            Tok::Tsv => "`tsv`",
             Tok::And => "`and`",
             Tok::Or => "`or`",
             Tok::Not => "`not`",
@@ -103,6 +108,7 @@ impl std::fmt::Display for Tok {
             Tok::Slash => "`/`",
             Tok::Percent => "`%`",
             Tok::Pipe => "`|`",
+            Tok::PipeGt => "`|>`",
             Tok::Comma => "`,`",
             Tok::Dot => "`.`",
             Tok::Eq => "`=`",
@@ -157,18 +163,7 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
 
     let tok = match c {
         '"' => Tok::Str(read_string(input)?),
-        '0'..='9' => {
-            let digits = take_while::<_, _, Error>(1.., |c: char| c.is_ascii_digit())
-                .parse_next(input)
-                .expect("a digit was just confirmed to follow");
-            let n = digits.parse::<i64>().map_err(|_| {
-                Error::new(
-                    Span::new(start, input.current_token_start()),
-                    format!("integer `{digits}` is out of range"),
-                )
-            })?;
-            Tok::Int(n)
-        }
+        '0'..='9' => read_number(input, start)?,
         c if c.is_ascii_alphabetic() || c == '_' => {
             let word =
                 take_while::<_, _, Error>(1.., |c: char| c.is_ascii_alphanumeric() || c == '_')
@@ -180,11 +175,12 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "type" => Tok::Type,
                 "enum" => Tok::Enum,
                 "let" => Tok::Let,
-                "if" => Tok::If,
-                "else" => Tok::Else,
                 "input" => Tok::Input,
                 "inputs" => Tok::Inputs,
                 "lines" => Tok::Lines,
+                "dsv" => Tok::Dsv,
+                "csv" => Tok::Csv,
+                "tsv" => Tok::Tsv,
                 "and" => Tok::And,
                 // Two operators sharing one spelling, told apart by position: the arm separator
                 // at a chain's top level, Bool disjunction everywhere else. `Cursor::or_separates`
@@ -196,48 +192,20 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
         }
         // `-` is subtraction and negation now, so a digit after it is no longer a negative
         // literal: `a -1` would otherwise not be `a - 1`.
-        '-' => {
-            input.next_token();
-            if input.peek_token() == Some('>') {
-                input.next_token();
-                Tok::Arrow
-            } else {
-                Tok::Minus
-            }
-        }
-        '!' => {
-            input.next_token();
-            if input.peek_token() == Some('=') {
-                input.next_token();
-                Tok::Ne
-            } else {
-                Tok::Bang
-            }
-        }
-        '=' | '<' | '>' => {
-            input.next_token();
-            if input.peek_token() == Some('=') {
-                input.next_token();
-                match c {
-                    '=' => Tok::EqEq,
-                    '<' => Tok::Le,
-                    _ => Tok::Ge,
-                }
-            } else {
-                match c {
-                    '=' => Tok::Eq,
-                    '<' => Tok::Lt,
-                    _ => Tok::Gt,
-                }
-            }
-        }
+        '-' => read_two_char(input, '>', Tok::Minus, Tok::Arrow),
+        '!' => read_two_char(input, '=', Tok::Bang, Tok::Ne),
+        '=' | '<' | '>' => match c {
+            '=' => read_two_char(input, '=', Tok::Eq, Tok::EqEq),
+            '<' => read_two_char(input, '=', Tok::Lt, Tok::Le),
+            _ => read_two_char(input, '=', Tok::Gt, Tok::Ge),
+        },
         '+' => single(input, Tok::Plus),
         '*' => single(input, Tok::Star),
         // `//` is not a token anymore: match arms compose with `or` now, so a second slash is
         // just a `/` where no expression can start, which is the parse error migration needs.
         '/' => single(input, Tok::Slash),
         '%' => single(input, Tok::Percent),
-        '|' => single(input, Tok::Pipe),
+        '|' => read_two_char(input, '>', Tok::Pipe, Tok::PipeGt),
         ',' => single(input, Tok::Comma),
         '.' => single(input, Tok::Dot),
         '(' => single(input, Tok::LParen),
@@ -257,9 +225,108 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
     Ok((tok, Span::new(start, input.current_token_start())))
 }
 
+/// A number literal: the integer digits that opened it, then an optional `.digits` fraction
+/// and an optional `e`-exponent. Either makes it a Float (ADR 0007); without both it stays the
+/// Int it always was. A `.` or `e` only joins the literal when what follows makes a number, so
+/// `1.5` and `1e3` are one token while `1.`, `1.x`, and `1e` keep the dot or letter for the
+/// parser.
+fn read_number<'i>(input: &mut Input<'i>, start: usize) -> Result<Tok, Error> {
+    let digits = take_while::<_, _, Error>(1.., |c: char| c.is_ascii_digit())
+        .parse_next(input)
+        .expect("a digit was just confirmed to follow");
+    let mut text = digits.to_string();
+    let mut is_float = false;
+
+    if let Some(frac) = read_fraction(input) {
+        text.push('.');
+        text.push_str(&frac);
+        is_float = true;
+    }
+    if let Some(exp) = read_exponent(input) {
+        text.push('e');
+        text.push_str(&exp);
+        is_float = true;
+    }
+
+    let end = input.current_token_start();
+    if is_float {
+        let value = text.parse::<f64>().map_err(|_| {
+            Error::new(
+                Span::new(start, end),
+                format!("float `{text}` is out of range"),
+            )
+        })?;
+        Ok(Tok::Float(value))
+    } else {
+        let n = digits.parse::<i64>().map_err(|_| {
+            Error::new(
+                Span::new(start, end),
+                format!("integer `{digits}` is out of range"),
+            )
+        })?;
+        Ok(Tok::Int(n))
+    }
+}
+
+/// The `.digits` fraction of a number literal, `None` when the dot is not followed by a digit
+/// so it is left for the parser (`1.` and `1.x` are not floats).
+fn read_fraction<'i>(input: &mut Input<'i>) -> Option<String> {
+    if input.peek_token() != Some('.') {
+        return None;
+    }
+    let cp = input.checkpoint();
+    input.next_token();
+    if matches!(input.peek_token(), Some(c) if c.is_ascii_digit()) {
+        let frac = take_while::<_, _, Error>(1.., |c: char| c.is_ascii_digit())
+            .parse_next(input)
+            .expect("a digit was just confirmed to follow");
+        Some(frac.to_string())
+    } else {
+        input.reset(&cp);
+        None
+    }
+}
+
+/// The `e`-exponent of a number literal, `None` when the exponent has no digits after it so
+/// the `e` is left for the parser (a bare trailing `e` is not a float).
+fn read_exponent<'i>(input: &mut Input<'i>) -> Option<String> {
+    if !matches!(input.peek_token(), Some('e') | Some('E')) {
+        return None;
+    }
+    let cp = input.checkpoint();
+    input.next_token();
+    let mut exp = String::new();
+    if matches!(input.peek_token(), Some('+') | Some('-')) {
+        exp.push(input.next_token().expect("a sign was just seen"));
+    }
+    if matches!(input.peek_token(), Some(c) if c.is_ascii_digit()) {
+        let exd = take_while::<_, _, Error>(1.., |c: char| c.is_ascii_digit())
+            .parse_next(input)
+            .expect("a digit was just confirmed to follow");
+        exp.push_str(exd);
+        Some(exp)
+    } else {
+        input.reset(&cp);
+        None
+    }
+}
+
 fn single(input: &mut Input, tok: Tok) -> Tok {
     input.next_token();
     tok
+}
+
+/// `-`, `!`, `=`, `<`, `>`, `|` all may start a two-character token: if the char after the
+/// first is `second`, the compound token stands; otherwise the bare operator does. `single` is
+/// for tokens that have no compound form at all.
+fn read_two_char(input: &mut Input, second: char, bare: Tok, compound: Tok) -> Tok {
+    input.next_token();
+    if input.peek_token() == Some(second) {
+        input.next_token();
+        compound
+    } else {
+        bare
+    }
 }
 
 /// Returns the unescaped contents of a string literal, having consumed through the closing
@@ -344,17 +411,17 @@ fn infix_power(tok: &Tok) -> Option<(Infix, u8, u8)> {
 const PIPE_LEFT: u8 = 1;
 const PIPE_RIGHT: u8 = 2;
 
-/// The conditional sits between `|` and the Bool connectives, so `a if c else b | f` groups as
-/// `(a if c else b) | f` and `x | a if c else b` groups as `x | (a if c else b)`. Python puts
-/// its ternary below `|` because there `|` is bitwise or; ours is the pipe, so the better
-/// grouping comes for free.
+/// Where a match arm's body and its guard operand are read and printed: between `|` (1/2) and
+/// the Bool connectives (`or` at 4/5). An arm body read here stops at the separator `or` and
+/// `->`, which is what lets a chain be one pipe stage; a guard operand read here still gets the
+/// Bool `or` above it, so `a == 1 or b == 2 -> x` is one two-clause guard.
 const COND_POWER: u8 = 3;
 
 /// Bool `or`, the loosest operator a Bool expression is built from: `a == 1 or b == 2` is one
 /// disjunction of two comparisons. Its *other* reading, the match-arm separator, has no power
 /// at all -- it is not an operator there but the chain's own punctuation, and it binds looser
-/// than everything including the conditional, which is exactly why it cannot be one table entry
-/// with this (draft.md, the match-arms decision).
+/// than everything, which is exactly why it cannot be one table entry with this (draft.md, the
+/// match-arms decision).
 const OR_LEFT: u8 = 4;
 const OR_RIGHT: u8 = 5;
 
@@ -413,7 +480,7 @@ pub fn parse(src: &str) -> Result<File, Error> {
         _ => None,
     };
 
-    let body = p.expr(0)?;
+    let body = p.tail_pipe()?;
     let (rest, rest_span) = p.peek()?;
     if rest != Tok::Eof {
         return Err(p.unexpected(rest_span, format!("expected end of program, found {rest}")));
@@ -619,6 +686,7 @@ impl<'i> Cursor<'i> {
             ret,
             body,
             is_pub,
+            origin: crate::ast::Origin::Program,
         })
     }
 
@@ -630,7 +698,7 @@ impl<'i> Cursor<'i> {
     fn def_body(&mut self) -> Result<Expr, Error> {
         let (first, _) = self.peek()?;
         if first != Tok::Let {
-            return self.expr(0);
+            return self.tail_pipe();
         }
         let first_let = self.advance()?.1;
         let mut bindings = Vec::new();
@@ -1012,9 +1080,9 @@ impl<'i> Cursor<'i> {
     /// Arm chains begin only where an expression begins fresh (a pipe stage, a delimited
     /// position), and a fresh position is also where `or` goes back to reading as disjunction:
     /// whatever chain the enclosing arm body belonged to, this expression is not part of it. An
-    /// arm body or a conditional branch enters at COND_POWER instead and leaves any `->` or
-    /// separator `or` it meets for the chain that owns it, rather than opening a nested chain
-    /// that would swallow the rest of the outer one.
+    /// arm body enters at COND_POWER instead and leaves any `->` or separator `or` it meets for
+    /// the chain that owns it, rather than opening a nested chain that would swallow the rest of
+    /// the outer one.
     fn expr(&mut self, min_power: u8) -> Result<Expr, Error> {
         if min_power <= PIPE_RIGHT {
             return self.with_or(false, |p| p.expr_at(min_power, true));
@@ -1038,24 +1106,6 @@ impl<'i> Cursor<'i> {
             }
         };
 
-        // Right-associative, so `a if c else b if d else e` chains rightward without parens.
-        let (tok, _) = self.peek()?;
-        if tok == Tok::If && COND_POWER >= min_power {
-            self.advance()?;
-            // `else` closes the condition, so a bare `or` inside it can only be disjunction --
-            // even in an arm body, where the separator reading is otherwise in force.
-            let cond = self.with_or(false, |p| p.operand(COND_POWER + 1))?;
-            self.eat(Tok::Else)?;
-            let otherwise = self.expr(COND_POWER)?;
-            let span = lhs.span().to(otherwise.span());
-            lhs = Expr::Cond {
-                then: Box::new(lhs),
-                cond: Box::new(cond),
-                otherwise: Box::new(otherwise),
-                span,
-            };
-        }
-
         loop {
             let (tok, _) = self.peek()?;
             if tok != Tok::Pipe || PIPE_LEFT < min_power {
@@ -1072,6 +1122,28 @@ impl<'i> Cursor<'i> {
         }
 
         Ok(lhs)
+    }
+
+    /// The program's body (or a function's, when it is not a `let` block): an ordinary
+    /// expression, or the tail-pipeline `lhs |> callee` that is the one way a sink is written.
+    /// Parsed only here, at the outermost position, so a nested `|>` is a parse error rather
+    /// than a value -- the checker's sink position rule is this production's, not a search for
+    /// a stray token somewhere inside a larger expression.
+    fn tail_pipe(&mut self) -> Result<Expr, Error> {
+        let lhs = self.expr(0)?;
+        let (tok, _) = self.peek()?;
+        if tok != Tok::PipeGt {
+            return Ok(lhs);
+        }
+        self.advance()?;
+        let (callee, callee_span) = self.eat_ident("a sink call")?;
+        let span = lhs.span().to(callee_span);
+        Ok(Expr::TailPipe {
+            lhs: Box::new(lhs),
+            callee,
+            callee_span,
+            span,
+        })
     }
 
     fn operand(&mut self, min_power: u8) -> Result<Expr, Error> {
@@ -1283,7 +1355,16 @@ impl<'i> Cursor<'i> {
         }
         let argument_starts = match next {
             Tok::LParen | Tok::LBrace => true,
-            Tok::Str(_) | Tok::Int(_) | Tok::Input | Tok::Inputs | Tok::Lines | Tok::Ident(_) => {
+            Tok::Str(_)
+            | Tok::Int(_)
+            | Tok::Float(_)
+            | Tok::Input
+            | Tok::Inputs
+            | Tok::Lines
+            | Tok::Dsv
+            | Tok::Csv
+            | Tok::Tsv
+            | Tok::Ident(_) => {
                 bare_callee(&name)
             }
             _ => false,
@@ -1330,9 +1411,36 @@ impl<'i> Cursor<'i> {
         match tok {
             Tok::Str(text) => Ok(Expr::Str { text, span }),
             Tok::Int(value) => Ok(Expr::Int { value, span }),
+            Tok::Float(value) => Ok(Expr::Float { value, span }),
             Tok::Input => Ok(Expr::Input { span }),
             Tok::Inputs => Ok(Expr::Inputs { span }),
             Tok::Lines => Ok(Expr::Lines { span }),
+            Tok::Csv => Ok(Expr::Dsv {
+                delim: ",".to_string(),
+                span,
+            }),
+            Tok::Tsv => Ok(Expr::Dsv {
+                delim: "\t".to_string(),
+                span,
+            }),
+            // The parameterized spelling: the delimiter is a string literal in parens, the
+            // one argument form that cannot be misread as anything else at this position.
+            Tok::Dsv => {
+                self.eat(Tok::LParen)?;
+                let (tok, _) = self.advance()?;
+                let Tok::Str(delim) = tok else {
+                    return Err(Error::new(
+                        span,
+                        "`dsv`'s delimiter must be a string literal, as in `dsv(\",\")`"
+                            .to_string(),
+                    ));
+                };
+                let close = self.eat(Tok::RParen)?;
+                Ok(Expr::Dsv {
+                    delim,
+                    span: span.to(close),
+                })
+            }
 
             // `.name` is field access on the subject, so the leading dot yields `.` and the
             // postfix loop above picks the field up.

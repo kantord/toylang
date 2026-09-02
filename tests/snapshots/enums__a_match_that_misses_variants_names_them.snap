@@ -1,5 +1,5 @@
 ---
 source: tests/enums.rs
-expression: "err(\"enum Shape { point, circle{r: Int}, square{s: Int} }\\n\\nShape.point | point -> 0\")"
+expression: "err(\"enum Shape { Point, Circle{r: Int}, Square{s: Int} }\\n\\nShape.point | Point -> 0\")"
 ---
-a match over `Shape` must cover every variant or end in a default; missing `circle` and `square` (at byte 68)
+a match over `Shape` must cover every variant or end in a default; missing `Circle` and `Square` (at byte 68)

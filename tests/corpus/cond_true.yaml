@@ -1,7 +1,7 @@
 program: |
-  "yes" if 1 == 1 else "no"
+  1 == 1 | . -> "yes" or "no"
 
 output: |
   yes
 
-node_types: [compare.eq, conditional, int, str]
+node_types: [compare.eq, int, local, match, pipe, str]

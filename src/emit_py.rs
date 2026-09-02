@@ -308,10 +308,10 @@ pub fn emit(program: &Program) -> String {
 fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
     let enums = &program.enums;
     let mut out = String::new();
-    out.push_str("for _line in sys.stdin:\n");
-    out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
     let (mut current, mut current_ty) = match fusion.source {
         tir::Source::Inputs => {
+            out.push_str("for _line in sys.stdin:\n");
+            out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
             out.push_str("    if _line.strip() == \"\":\n        continue\n");
             out.push_str("    t_line = json.loads(_line)\n");
             let elem = program
@@ -321,7 +321,17 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
             ("t_line".to_string(), elem.clone())
         }
         // A raw line is already the element, blank ones included: `lines` keeps them.
-        tir::Source::Lines => ("_line".to_string(), Type::Str),
+        tir::Source::Lines => {
+            out.push_str("for _line in sys.stdin:\n");
+            out.push_str("    _line = _line[:-1] if _line.endswith(\"\\n\") else _line\n");
+            ("_line".to_string(), Type::Str)
+        }
+        // The bound is evaluated once; the loop counter is the element. A negative bound makes
+        // Python's own range empty, the same answer `tl_range` gives eagerly.
+        tir::Source::Range(bound) => {
+            out.push_str(&format!("for t_i in range({}):\n", expr(enums, bound)));
+            ("t_i".to_string(), Type::Int)
+        }
     };
     for stage in &fusion.stages {
         match stage {
@@ -361,6 +371,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Str => format!("tl_quote({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         Type::Int | Type::Int64 => format!("str({value})"),
+        Type::Float => unreachable!("Float is JS-only in this row"),
         Type::Bool => format!("(\"true\" if {value} else \"false\")"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
@@ -412,6 +423,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => py_string(s),
         Kind::Int(n) => n.to_string(),
+        Kind::Float(_) => unreachable!("Float is JS-only in this row"),
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
@@ -419,6 +431,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
         // works on the Vec of its entries. Fusion is what will remove this materialization.
         Kind::Lines => "tl_collect_lines()".to_string(),
+        // Same raw lines as `lines`, each split on the delimiter into one row.
+        Kind::Dsv { delim } => format!(
+            "[l.split({}) for l in tl_collect_lines()]",
+            py_string(delim)
+        ),
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
@@ -447,20 +464,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // so a Vec needs no different spelling here than Str does.
         Kind::Concat(l, r) => format!("({} + {})", expr(enums, l), expr(enums, r)),
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
-        // The one construct this target spells exactly as toylang does, because toylang took the
-        // spelling from here.
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => {
-            format!(
-                "({} if {} else {})",
-                expr(enums, then),
-                expr(enums, cond),
-                expr(enums, otherwise)
-            )
-        }
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("str({})", expr(enums, arg)),
             // Python's integers are one type at every width, so the bridge has nothing to do.
@@ -678,8 +681,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
 /// `t` as statements in the tail position, each line already padded to `level` columns:
 /// `return <expr>` for a base case, and for a tail call `param = <arg>` followed by `continue`
 /// so the emitted `while True` rewinds instead of recursing against Python's interpreter
-/// recursion limit. A `Cond`'s branches and a total `Match`'s arm bodies nest one indent
-/// deeper, the way Python needs.
+/// recursion limit. A total `Match`'s arm bodies nest one indent deeper, the way Python needs.
 fn tail_stmts(
     enums: &Enums,
     name: &str,
@@ -699,16 +701,6 @@ fn tail_stmts(
             });
             format!("{assign}{pad}continue\n")
         }
-        Kind::Cond {
-            cond,
-            then,
-            otherwise,
-        } => format!(
-            "{pad}if {}:\n{}\n{pad}else:\n{}\n",
-            expr(enums, cond),
-            tail_stmts(enums, name, param, fresh, then, level + 4),
-            tail_stmts(enums, name, param, fresh, otherwise, level + 4),
-        ),
         Kind::Bind {
             local: id,
             value,
