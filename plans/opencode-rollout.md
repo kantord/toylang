@@ -251,3 +251,92 @@ from main -- they produced nothing and need re-investigation, not landing.
 Follow-up: land-lane.sh's auto-commit should `git add -A` (not `-u`) when the
 gate is green, or the cleanup step should skip files that look like research
 output (`plans/*.md`) -- filed as a board row.
+
+
+## Investigation: stuck lane issue-170 (gh:170, erlang-toolchain-empirical-research) (2026-09-01
+
+Lane stats at capture: 1 run, 0 commits, clean tree, ahead  ​0, dead 22h. The
+event-log tail ends after a completed tool call with no final message, no commit,
+no write -- consistent with the step-budget exhaustion already seen on issue-116/133,
+though not provable from the tail alone. The branch tip is `d9896ec` (the module-routing
+spike commit), so no lane work ever happened on top of the dispatch base.
+
+What the single run actually did (from the jsonl tail): read the issue body via
+`gh issue view 170`; failed to find `plans/erlang-target-research.md` in the worktree
+(it is absent from this lane base -- it landed on main via the to-merge accumulator
+only after the base was cut),and recovered it via `git show 9b9cec3:...` from git
+history;read the desk research;ran `which erl erlc escript erl_call` -- ALLOWED by the
+permission gate, found nothing on PATH;(in run 1, the compound `which ...; erl
+-eval ...` was denied, so the classifier's edge is the compound form, not `which`
+itself)ran `erl -noshell -eval ...` -- DENIED ("The user rejected permission to use
+this specific tool call");verified `/usr/bin`, `/usr/local/bin`, `/opt`, `/snap` and
+`/usr/lib/erlang` -- all empty;and stopped, uncommitted, with the last reasoning
+still mid-plan ("let me confirm by attempting to run erl directly").
+
+Diagnosis: this was primarily a **brief-clarity** failure, compounded by task shape
+and an asymmetric permission allow-list;,not a capability gap:
+
+- The brief's decision tree had two branches: denial -> document-and-stop; not-denied
+  + available -> verify empirically. The observed case -- not denied (the `which`
+  succeeded) but also not available -- had no branch. The worker's own reasoning
+  identified "a third case: allowed but not present" and then had no scripted
+  done-state to land on.
+- The brief described run 1's denial as "`which erl` / `erl -eval`" was denied,;
+  collapsing a compound-command denial into two individual denials. When `which`
+  alone succeeded, the worker concluded the denial case was off the table and pursued
+  running `erl` anyway -- exactly the outcome the denial branch existed to prevent. The
+  actual classifier edges: compound shell forms auto-reject, executing a non-whitelisted
+  binary is denied, `which` alone is fine.
+- The brief referenced "plans/opencode-rollout.md, incident 2026-09-01" -- but this
+  lane's copy of that file has no such entry (the branch predates the incident-log
+  commit),and the addendum target `plans/erlang-target-research.md` is absent from the
+  lane base. The worker recovered both from git history, at the cost of several steps
+  and early confusion.
+
+- Task shape: the core ask -- "actually install/verify the Erlang toolchain and run the
+  documented-semantics comparison against real erl/erlc output" -- is impossible on
+  this host: no Erlang binaries exist (PATH + five filesystem locations verified empty),running
+  `erl` is denied by the permission allow-list;,and installation (apt/snap/network or
+  executing an installer) would almost certainly hit the same walls (unverified;not
+  attempted). The only deliverable available is the negative finding, which the brief
+  half-defined.
+- The permission system is an aggravator, not the root: its per-command behavior is
+  stable but undiscussed at the granularity the brief needed, and the deny message "The user
+  rejected permission" doesn't name the deny system, so a worker cannot tell policy from
+  a human intervention.
+- Not a capability gap: the worker read the missing file from git history, named the
+  unscripted case explicitly, adapted after the `erl` denial (via `ls` checks, not a second
+  execution channel),and ran far past where run 1 gave up. Nothing in its reasoning
+  suggests it couldn't have written the addendum;the failure is that no instruction told
+  it the absence was itself the deliverable, plus a likely step-budget exhaustion.
+
+Recommendation:
+
+- **Reshape gh:170's row** from "empirically verify Erlang" to "determine whether an
+  Erlang toolchain can be exercised here, and record the finding". The brief must enumerate
+  the full outcome space: (a) toolchain found -> run the comparison script against real
+  erl, append results;(b) toolchain absent -> append an addendum to
+  plans/erlang-target-research.md documenting: no binaries on PATH or in /usr/bin,,
+  /usr/local/bin, /opt, /snap, /usr/lib/erlang;executing erl is additionally denied
+  by the allow-list (observed: "The user rejected permission");installation was not
+  attempted and is presumed blocked the same way (flag as unverified;;and stop -- that
+  addendum is the deliverable, not a failure.(c) any check denied -> document exactly what
+  was denied and stop.
+- **Then close gh:170**:the empirical comparison cannot happen here, the desk research
+  (plans/erlang-target-research.md) remains the deliverable for gh:163,and surface the
+  maintainer's flagged concurrency open item as its own board row now -- the issue body's
+  "once this lands" condition has effectively become "cannot land here"..
+- **Dispatch-template fixes**, generalizable: (1) any "verify tool X" brief must enumerate
+  all three outcomes (present / absent / denied)and define a done-state for each -- "a tool
+  that does not exist is a complete finding, not a stop condition", the mirror of the existing
+  "a rejected tool call is not a stop condition" rule;(2) describe the permission system's
+  edges as command classes, not as the compound commands that triggered them;(3) when a
+  brief references a file that may not exist on the lane base, either cut the lane from a base
+  that contains it or give the worker a `git show` pointer;(4) the step-budget exhaustion
+  has now hit three lanes with zero commits each (issue-116, issue-133, this one)--
+  worth instructing workers to write and commit partial findings before further verification,
+  or raising the budget;(5) for the 30-lane review: this lane did NOT reproduce run 1's
+  give-up-on-first-denial shape -- the worker pushed through multiple denials and checks -- but
+  landed in the same commitless zero-output state, because it ran out of scripted outcomes
+
+  before it ran out of steps. The bottleneck is the decision tree, not tenacity..
