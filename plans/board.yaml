@@ -65,8 +65,15 @@
   status: todo
 
 - id: stdout-stderr-effect-model-design
-  title: 'Decide Q35 (plans/questions.md#q35): what are stdout/stderr, and does a program write or return? Two commitless runs on shell-out-build (gh:158, issue-158, 2026-09-01) both spent their full budget rediscovering that pipe_through cannot be implemented until this effect model exists, then produced no code. Ask as a grill round.'
+  title: 'Decide Q35 (plans/questions.md#q35): what are stdout/stderr, and does a program write or return? Two commitless runs on shell-out-build (gh:158, issue-158, 2026-09-01) both spent their full budget rediscovering that pipe_through cannot be implemented until this effect model exists, then produced no code. Round 1 answer: no pick -- maintainer''s freeText pulled two directions at once ("well i would say real type, but isn''t it already the same types that we are using for our own program''s own inputs and outputs?") and flagged a second open question riding along, how stdin/stdout splitting works. Needs stdout-stderr-effect-model-research (does the already-decided "Stream is the effect layer" model already cover a mid-pipeline write, or does it need a real Effect/IO type; how does stdin/stdout splitting fit) before a sharper round 2.'
   kind: decide
+  needs: [stdout-stderr-effect-model-research]
+  prio: 1
+  status: todo
+
+- id: stdout-stderr-effect-model-research
+  title: 'Research spike (round 1 answer, stdout-stderr-effect-model question): the maintainer''s freeText was torn between "a real type" (option C, Effect/IO) and noting the program already has Stream-typed inputs/outputs (option B, extend the decided "Stream is the effect layer" model) -- and separately flagged that stdin/stdout splitting still needs deciding. Write up how each of the three round-1 options (opaque plumbing, Stream-carries-writes, real Effect/IO type) would actually model reading and writing on two separate streams (stdout vs stderr) using types the language already has, so round 2 can present concrete, verified code for each rather than re-asking the same abstract question. Write findings to plans/.'
+  kind: build
   needs: []
   prio: 1
   status: todo
@@ -79,10 +86,10 @@
   model: fable
   status: delegated
 
-- id: trait-interface-design
-  title: 'Grill the concrete trait/impl syntax and dispatch mechanism (overloading-and-utf8-lines round ruling spinoff), informed by trait-interface-research'
-  kind: decide
-  needs: [trait-interface-research]
+- id: trait-interface-build
+  title: 'Ruled (trait-interface-design round): (1) Rust-shaped declaration -- trait Name { fn sig(...) -> T } / impl Name for Type { fn sig(...) -> T = body }; (2) builtin operators (Int+Int, Str+Str, ...) tentatively become source-written prelude impls "when practical, otherwise built in" -- maintainer explicitly declined to fully commit either way ("in some cases performance may decide this... we would need to see how it works out in practice"), so start with prelude impls (uniform, matches the mechanism) and fall back to checker-generated only where the prelude indirection provably costs real performance; revisit once build experience exists; (3) named trait methods are colon-only -- x:foo(y) is the only spelling, no plain-call fallback even when unambiguous.'
+  kind: build
+  needs: []
   status: todo
 
 - id: mutation-semantics-spike

@@ -1353,3 +1353,9 @@
   needs: []
   prio: 3
   status: done
+
+- id: trait-interface-design
+  title: 'Grill the concrete trait/impl syntax and dispatch mechanism (overloading-and-utf8-lines round ruling spinoff), informed by trait-interface-research -- ruled: (1) declaration-syntax: A, Rust-shaped trait{}/impl X for Type{}; (2) builtin-operator-impl-representation: tentative hybrid, prelude impls when practical otherwise checker-generated, maintainer declined to fully commit ("we would need to see how it works out in practice"); (3) trait-method-receiver-spelling: A, colon-only x:foo(y), no plain-call fallback. Spins off trait-interface-build.'
+  kind: decide
+  needs: [trait-interface-research]
+  status: done
