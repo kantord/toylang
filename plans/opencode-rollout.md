@@ -408,3 +408,25 @@ read once) compounded by the still-open lane-collision risk with `stdin-redesign
 (follow-up already logged above, unchanged: give that row its own non-colliding lane before
 dispatching it). Archiving `stuck-issue-172-investigation` on this finding rather than spending
 a third commitless run to rediscover it.
+
+## `mutation-semantics-spike` and `float-build-lua`: 2 commitless runs each, exploration without a stopping point (2026-09-02)
+
+Both lanes were redispatched once already this evening (~22:14-22:16, corrected at ~22:34-22:39)
+and both still landed at zero commits, worktrees exactly at main -- not a permission trap this
+time, a different root cause each:
+
+- `mutation-semantics-spike`: the second run did substantial legitimate exploration (linearity.rs,
+  tir.rs, emit_lua.rs, emit_rs.rs, ty.rs, corpus tests, draft.md, matcher-parser-spike.md) but
+  the brief ("spike the analysis... before a real decide row reopens this") names no concrete
+  deliverable, so the worker never reaches a natural point to stop investigating and write.
+  It ran to a rejected tool call near the end of budget having written nothing.
+- `float-build-lua`: the second run opened with exactly the right reference (`src/emit_js.rs`'s
+  Float impl, `src/emit_lua.rs`'s current state) in its first four steps, then abandoned that
+  path to spend the rest of the budget diffing `float-build-go`/`float-build-python`'s commit
+  history instead -- an unrequested detour into sibling lanes -- and never touched `emit_lua.rs`.
+
+Rebriefed both (BRIEF_RAW=1, continuation dispatch in the same worktree) rather than repeating
+the failed brief: `mutation-semantics-spike` now gets a capped exploration budget and a named
+three-question findings-doc deliverable to commit even if partial; `float-build-lua` is told
+explicitly not to read the Go/Python/Rust sibling lanes and to port straight from the JS Float
+impl it already found. Both still under the 4-run escalation threshold.
