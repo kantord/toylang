@@ -141,11 +141,25 @@
   status: delegated
 
 - id: benchmark-suite-build
-  title: Build the initial benchmark suite -- 8 non-float CLBG tasks, hyperfine harness per benchmark-plan.md, framed as a general cross-language competitiveness claim (gh:147 ruling); n-body/spectral-norm deferred to a second wave (gh:146 ruling)
+  title: 'Landed directly (2026-09-03), not by a delegated worker: the hyperfine harness (src/bin/bench.rs, just bench NAME) and binary-trees, the first of the 8 non-float CLBG tasks, per benchmark-plan.md''s Build status section. That section also corrects the suite spike''s "good fit today" claim: reverse-complement/k-nucleotide/regex-redux need Str slicing or Char -> Str, neither of which exists; pidigits needs a bignum type; mandelbrot needs float support most backends lack. fasta and fannkuch-redux are the two next real candidates (benchmark-fasta-build, benchmark-fannkuch-redux-build below); n-body/spectral-norm stay deferred (gh:146 ruling).'
   kind: build
   needs: []
-  prio: 1
-  status: delegated
+  prio: 4
+  status: done
+
+- id: benchmark-fasta-build
+  title: 'Build the CLBG fasta task in toylang (benchmark-plan.md Build status): generates DNA sequences from a small literal Str alphabet via a computed PRNG index, so it needs no Char -> Str conversion. Follows the pattern in benches/programs/binary-trees.toy -- program under benches/programs/, correctness pinned as a small-N tests/corpus/ case, a larger benches/inputs/ fixture for real timing.'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
+
+- id: benchmark-fannkuch-redux-build
+  title: 'Build the CLBG fannkuch-redux task in toylang (benchmark-plan.md Build status): permutations of Vec<Int>, fully numeric, no string decode needed. Follows the pattern in benches/programs/binary-trees.toy.'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
 
 - id: search-layer-build
   title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
