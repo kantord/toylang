@@ -1807,6 +1807,11 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 
         Expr::Match { arms, span } => match_chain(ctx, arms, *span, None),
 
+        // No parser path constructs a match-call yet (gh:152), so this arm is totalness until
+        // the parser learns to hoist match arms into a call form.
+
+        Expr::MatchCall { .. } => unreachable!("no parser path constructs a match-call yet"),
+
         Expr::Variant {
             enum_name,
             enum_span,

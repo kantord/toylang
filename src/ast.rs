@@ -142,7 +142,11 @@ pub struct Def {
     pub name: String,
     /// `None` for a nullary function (`fn name() -> T = body`).
     pub param: Option<Param>,
-    pub ret: TypeExpr,
+    /// `None` for a hoisted definition (`fn name = body`, gh:152): no return type is written, so
+    /// the signature -- parameter and return both -- is inferred from the body. A hoisted
+    /// function's parameter is the implicit `.` the body matches against, and its type comes from
+    /// what the body matches; the return type is what the body synthesises.
+    pub ret: Option<TypeExpr>,
     pub body: Expr,
     pub span: Span,
     /// Whether a module's prelude includes this definition when compiling a program. Meaningless
@@ -151,6 +155,11 @@ pub struct Def {
     /// The file this definition was written in. A program's own definitions get `Program` from
     /// the parser; the prelude's get `Prelude` from `prelude::module`.
     pub origin: Origin,
+    /// `fn name = body` (gh:152): no parameter list, no return annotation. `param` and `ret` are
+    /// both `None`, and the checker infers the signature from the body. The first slice accepts
+    /// only a match-call body (`Msg(Ping -> ...)`), which fixes the parameter type to the named
+    /// enum and the return type to the arms' common type.
+    pub hoisted: bool,
 }
 
 /// `enum Shape { point, circle{r: Int} }`. The first declaration that creates a type identity
@@ -319,6 +328,17 @@ pub enum Expr {
         arms: Vec<MatchArm>,
         span: Span,
     },
+    /// `Msg(Ping -> "pong", Quit -> "bye")`: a type name used as a match call (gh:152). The
+    /// parens hold comma-separated arms over the subject `.`, the same arms a `Match` carries;
+    /// the enum name is the assertion that the subject is one of this enum's values, and the
+    /// checker resolves each variant against it. Sugar for a `Match` whose subject is `.`, kept
+    /// as its own node so the surface spelling survives formatting.
+    MatchCall {
+        enum_name: String,
+        enum_span: Span,
+        arms: Vec<MatchArm>,
+        span: Span,
+    },
     /// `Shape.circle` or `Shape.circle{r: 1}`: a variant constructor spelled through its enum.
     /// Only the qualified form needs its own node; a bare `circle{r: 1}` is an ordinary `Call`
     /// and a bare `active` an ordinary `Var`, resolved through the enum registry by the checker.
@@ -434,6 +454,7 @@ impl Expr {
             | Expr::Dsv { span, .. }
             | Expr::Variant { span, .. }
             | Expr::Match { span, .. }
+            | Expr::MatchCall { span, .. }
             | Expr::Pipe { span, .. }
             | Expr::TailPipe { span, .. }
             | Expr::Binary { span, .. }
