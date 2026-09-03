@@ -1,10 +1,34 @@
-- id: function-signature-matching-syntax
+- id: call-form-hoist-ast
   issue: gh:152
-  title: 'Round 5 RULED: maintainer picked A -- call-form hoist (fn render = Msg(Ping -> ... or Quit -> ...)), against the round-5 thesis which favored C on parse-today grounds. Maintainer note: "we are building a new language and it''s in the early stages; most feature requests do not assume this will already parse and that is natural" -- i.e. A''s three novel surfaces (new fn-declaration shape, return-type inference, type-name-as-match-call expression form) are accepted design cost, not disqualifying. Build task: implement A. gh:152 to be closed on landing.'
+  title: 'issue-152-stall escalation RULED (option B, reshape): 5 commitless runs on the monolithic lane -- split into an ordered sequence, each step independently committable. Step 1/4: add the MatchCall AST node (Msg(Ping -> ... or Quit -> ...)) -- finish and commit the stub already sitting uncommitted in the dead issue-152 worktree (src/ast.rs, from run 5), no parser/checker/codegen wiring yet.'
   kind: build
   needs: []
   prio: 3
-  status: delegated
+  status: todo
+
+- id: call-form-hoist-parse
+  issue: gh:152
+  title: 'Step 2/4 of the issue-152-stall reshape: parse the new `fn name = expr` call-form declaration and the MatchCall expression syntax.'
+  kind: build
+  needs: [call-form-hoist-ast]
+  prio: 3
+  status: todo
+
+- id: call-form-hoist-check
+  issue: gh:152
+  title: 'Step 3/4 of the issue-152-stall reshape: checker -- return-type inference for `fn name = expr`; resolve MatchCall arms against the enum registry.'
+  kind: build
+  needs: [call-form-hoist-parse]
+  prio: 3
+  status: todo
+
+- id: call-form-hoist-codegen
+  issue: gh:152
+  title: 'Step 4/4 of the issue-152-stall reshape: codegen for the call-form hoist across all backends. gh:152 closes on landing this row.'
+  kind: build
+  needs: [call-form-hoist-check]
+  prio: 3
+  status: todo
 
 - id: dsv-partials-migration
   issue: gh:136
@@ -54,7 +78,7 @@
 
 - id: stdin-redesign-build-2
   issue: gh:172
-  title: 'Re-file of gh:159 (maintainer cleanup ruling, 2026-09-02, option C: drop the poisoned issue-159 lane, re-board under a fresh lane id rather than repair it). Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative -- verify parse(.) resolves an expected type inside a map body before full build). The old issue-159 branch/worktree are abandoned in place (permission-denied cleanup, left as garbage per the ruling); the feature diff there (commit 45c76be) is reference-only, re-derive against current main rather than cherry-pick.'
+  title: 'Re-file of gh:159 (maintainer cleanup ruling, 2026-09-02, option C: drop the poisoned issue-159 lane, re-board under a fresh lane id rather than repair it). Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative -- verify parse(.) resolves an expected type inside a map body before full build). The old issue-159 branch/worktree are abandoned in place (permission-denied cleanup, left as garbage per the ruling); the feature diff there (commit 45c76be) is reference-only, re-derive against current main rather than cherry-pick. stdin-parse-shape escalation RULED (option 1, 2026-09-03): `parse` grows a second checked shape, `Stream<Str> -> T` (join lines with \n, then parse as one value) alongside the existing `Str -> T` -- matches the lane''s own uncommitted direction exactly. `input` migrates to `parse(stdin)`; `inputs` to `stdin | map(parse(.))`; `lines` to plain `stdin`.'
   kind: build
   needs: []
   model: fable
