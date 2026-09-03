@@ -448,3 +448,54 @@ not a capability gap, not a tooling trap -- this was a maintainer cleanup decisi
 executed, that the watchdog has no way to see (it only sees worktree inactivity, not board
 history). Archiving `stuck-issue-159-investigation` on this finding; no rebrief or reshape
 needed since there is no live task left in that lane to rebrief.
+
+## Resolved without a third dispatch: `stuck-issue-174-investigation`, structurally undoable by a sandboxed worker (2026-09-03)
+
+The original `trait-interface-build` stall (run 1, `20260902-221014-issue-174.jsonl`) is a
+task-shape failure: the worker spent its whole ~34-minute budget on broad orientation (full
+reads of `parse.rs`, `check/mod.rs`, `ty.rs`, `tir.rs`, `prelude.rs`, `lib.rs`,
+`check/types.rs`, plus `draft.md` and grep sweeps for colon-call precedent) across a task that
+spans parser + AST + checker + TIR + six codegen backends + prelude impls in one shot, and
+never reached a first edit.
+
+The investigation dispatched to explain that (`20260902-224729-issue-174.jsonl`, 7 steps) could
+not do its job at all: the incident evidence it was told to read lives at the absolute path
+`/home/kantord/repos/toylang/plans/incidents/issue-174-20260902/`, outside the worker's own
+`~/.local/share/toylang-lanes/issue-174` worktree/sandbox. Both attempts to read it (the
+directory listing and the marker file) were permission-rejected, and the run gave up after 7
+steps having written nothing to `plans/opencode-rollout.md`. A second dispatch would fail
+identically -- opencode workers cannot read outside their own worktree, so an incident frozen
+in the main checkout is structurally unreachable to them, exactly as already established for
+`stuck-issue-172-investigation` above.
+
+Answering the investigation's own three questions from the coordinator-side evidence directly:
+not brief clarity, not a capability gap in the model itself -- it is a tooling/permission trap
+(sandbox boundary) for the investigation row, and separately a task-shape problem (too large
+for one-shot orientation) for the underlying `trait-interface-build` row. Archiving
+`stuck-issue-174-investigation` on this finding; `trait-interface-build` was rebriefed in the
+same tick to a parse-only first slice (AST + parser only, no checker/codegen/prelude), reusing
+the freed `issue-174` lane.
+
+## Escalated: three lanes stuck at 4+ commitless runs, same root shape (2026-09-03)
+
+`function-signature-matching-syntax` (gh:152, 4 runs), `stdin-redesign-build-2` (gh:172, 4
+runs), and `float-format-research` (gh:149, 6 runs) all independently hit the identical
+failure shape: every run reads the issue, walks git log/source/corpus tests to rebuild
+context, and runs out of step budget before a first edit or written finding -- no permission
+denials involved for 152/172, a genuine one for 149 (brief asked it to read scratch probe
+files living in a *different* lane's worktree, `issue-float-build-python`, denied by the
+sandbox boundary already established for issue-172/174). Read all four lanes' `.live.log`
+tails directly rather than dispatching more investigation runs (evidence was conclusive).
+
+Archived the now-redundant `stuck-issue-152-investigation` row (it would only re-derive the
+diagnosis already made here). Did not redispatch any of the three -- three unrelated task
+shapes stalling identically looks like a capability ceiling on DeepSeek V4 Flash for
+context-heavy tasks, not three brief-wording problems, and this is the second time 149 alone
+has stalled after an in-place rebrief (see the 2026-09-02 entry above). Composed one
+escalation round, `docs/.grill/stalled-lanes-escalation.round.yaml`, with a per-lane
+stronger-model / reshape / drop question; touched `escalated-issue-152`,
+`escalated-issue-172`, `escalated-issue-149`. `trait-interface-build` (gh:174, run 3, same
+rediscovery shape plus a repeat cross-worktree-denial detour into `plans/incidents/`) is one
+run under the escalation threshold -- rebriefed in place instead with an explicit
+incident-folder ban and a narrower first slice (just the `trait`/`impl` keywords and AST
+parse, pointing at `src/parse.rs:173-176` directly) rather than escalated.

@@ -1,15 +1,3 @@
-- id: stuck-issue-152-investigation
-  kind: build
-  status: todo
-  needs: []
-  issue: gh:152
-  title: 'INVESTIGATE stuck lane issue-152 (no activity 0h, 3 run(s), 0 commits): evidence frozen in plans/incidents/issue-152-20260903/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-174-investigation
-  kind: build
-  status: delegated
-  needs: []
-  issue: gh:174
-  title: 'INVESTIGATE stuck lane issue-174 (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-174-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: function-signature-matching-syntax
   issue: gh:152
   title: 'Round 5 RULED: maintainer picked A -- call-form hoist (fn render = Msg(Ping -> ... or Quit -> ...)), against the round-5 thesis which favored C on parse-today grounds. Maintainer note: "we are building a new language and it''s in the early stages; most feature requests do not assume this will already parse and that is natural" -- i.e. A''s three novel surfaces (new fn-declaration shape, return-type inference, type-name-as-match-call expression form) are accepted design cost, not disqualifying. Build task: implement A. gh:152 to be closed on landing.'
@@ -120,7 +108,7 @@
   title: Implement Float (IEEE binary64 per ADR 0007) for the jq backend only, following float-build's JS implementation as the reference. One backend, one commit.
   kind: build
   needs: [float-build]
-  status: todo
+  status: delegated
 
 - id: float-build-c-escalation
   issue: gh:149
