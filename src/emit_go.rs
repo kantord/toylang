@@ -259,7 +259,11 @@ func tlCollectLines() []string {
 	s.Buffer(make([]byte, 0, 65536), 1024*1024)
 	s.Split(tlScanLines)
 	for s.Scan() {
-		out = append(out, s.Text())
+		line := s.Text()
+		if !utf8.ValidString(line) {
+			tlFail("stdin is not valid UTF-8")
+		}
+		out = append(out, line)
 	}
 	return out
 }
@@ -516,7 +520,7 @@ pub fn emit(program: &Program) -> String {
     let arith = uses("tlDiv(") || uses("tlRem(");
     let arith64 = uses("tlDiv64(") || uses("tlRem64(");
     let collect = uses("tlCollectLines(") || uses("tlScanLines");
-    let fail = unwrap || arith || arith64 || program.input.is_some() || program.inputs.is_some();
+    let fail = unwrap || arith || arith64 || collect || program.input.is_some() || program.inputs.is_some();
     let quote = uses("tlQuote(");
     let join = uses("tlJoin(");
 
@@ -571,7 +575,7 @@ pub fn emit(program: &Program) -> String {
         (reads_stdin, &["encoding/json"]),
         (program.inputs.is_some(), &["io"]),
         (join || quote || used.jsonlines || uses("tlDsv("), &["strings"]),
-        (uses("tlDsv("), &["unicode/utf8"]),
+        (uses("tlDsv(") || collect, &["unicode/utf8"]),
         (uses("tlSort("), &["cmp", "slices"]),
         (uses("tlMax("), &["cmp"]),
         (uses("tlEq("), &["reflect"]),
@@ -947,6 +951,7 @@ impl Emitter<'_> {
                 out.push_str("\ts.Split(tlScanLines)\n");
                 out.push_str("\tfor s.Scan() {\n");
                 out.push_str("\t\tt_line := s.Text()\n");
+                out.push_str("\t\tif !utf8.ValidString(t_line) {\n\t\t\ttlFail(\"stdin is not valid UTF-8\")\n\t\t}\n");
                 ("t_line".to_string(), Type::Str)
             }
             // The bound is evaluated once; the loop counter is the element. A negative bound
