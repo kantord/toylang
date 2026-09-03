@@ -121,7 +121,7 @@
   title: Build the initial benchmark suite -- 8 non-float CLBG tasks, hyperfine harness per benchmark-plan.md, framed as a general cross-language competitiveness claim (gh:147 ruling); n-body/spectral-norm deferred to a second wave (gh:146 ruling)
   kind: build
   needs: []
-  prio: 4
+  prio: 1
   status: delegated
 
 - id: lines-utf8-posix-research
@@ -130,7 +130,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: lines-utf8-edge
   issue: gh:102
@@ -143,7 +143,7 @@
   title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: sort-by-max-by
   title: sort_by and max_by -- ordering through a scalar projection (euler-ergonomics row 7)

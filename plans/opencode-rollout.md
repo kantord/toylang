@@ -499,3 +499,19 @@ rediscovery shape plus a repeat cross-worktree-denial detour into `plans/inciden
 run under the escalation threshold -- rebriefed in place instead with an explicit
 incident-folder ban and a narrower first slice (just the `trait`/`impl` keywords and AST
 parse, pointing at `src/parse.rs:173-176` directly) rather than escalated.
+
+## Escalation ruling applied: all three stalled lanes redispatched on GLM 5.2 (2026-09-03)
+
+Maintainer wizard answers on `stalled-lanes-escalation` (captured 2026-09-03 18:07, applied
+same tick): all three questions -- `function-signature-matching-syntax` (gh:152),
+`stdin-redesign-build-2` (gh:172), `float-format-research` (gh:149) -- ruled **Stronger
+model**, none reshaped or dropped. Redispatched all three in their existing worktrees with
+`OPENCODE_MODEL=openrouter/z-ai/glm-5.2` (confirmed live via `opencode models`), same task
+scope as before with the prior stall summarized in-brief so the run doesn't spend its budget
+re-deriving what's already known. `float-format-research`'s brief still carries the
+probe-file read that's been sandbox-denied every prior run (the maintainer picked
+"Stronger model," not "Reshape," for that question specifically, despite the option
+description flagging that a model bump alone won't fix a permission boundary) -- told the
+worker explicitly not to retry that read if denied again and to fall back to public
+knowledge instead. This is the first GLM 5.2 dispatch of the rollout; worth a first data
+point for the eventual model-ladder comparison once these land or stall again.
