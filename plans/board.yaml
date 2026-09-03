@@ -4,7 +4,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: call-form-hoist-parse
   issue: gh:152
@@ -158,7 +158,7 @@
   title: Implement match-arm-style parameter destructuring, e.g. fn gcd({a, b}:{a:Int,b:Int}) (gh:144 ruling)
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: bigint-tracking
   issue: gh:112
