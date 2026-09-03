@@ -135,10 +135,10 @@
 
 - id: float-build-c-escalation
   issue: gh:149
-  title: Attempt Float (IEEE binary64 per ADR 0007) for the C/LLVM backend; if there is no usable native matching primitive, write ESCALATION.md scoped to just this backend, commit it, and stop rather than stalling.
+  title: 'Landed directly (2026-09-04), not by a delegated worker: full Float support for Native/LLVM, not an escalation -- lane had sat delegated 23.5 hours, 0 commits, last run burned its whole budget re-deriving history before a blocked CLI call ended it. libc has no shortest-round-trip float formatter (the actual "usable native matching primitive" question), so one was built: increasing-precision search over %e for the digits, ECMA-262 Number::toString layout for the notation, verified against Node byte-for-byte across a ~5000-value fuzz run before landing in runtime/toylang.c. Also fixed a real Kind-mismatch bug in check/mod.rs''s `-x` desugaring (Float-typed zero built as Kind::Int(0)), general to every backend, that JS''s untyped runtime numbers were masking. Float still needs Go/Python/Rust/Lua before it can be a corpus case.'
   kind: build
   needs: [float-build]
-  status: delegated
+  status: done
 
 - id: benchmark-suite-build
   title: 'Landed directly (2026-09-03), not by a delegated worker: the hyperfine harness (src/bin/bench.rs, just bench NAME) and binary-trees, the first of the 8 non-float CLBG tasks, per benchmark-plan.md''s Build status section. That section also corrects the suite spike''s "good fit today" claim: reverse-complement/k-nucleotide/regex-redux need Str slicing or Char -> Str, neither of which exists; pidigits needs a bignum type; mandelbrot needs float support most backends lack. fasta and fannkuch-redux are the two next real candidates (benchmark-fasta-build, benchmark-fannkuch-redux-build below); n-body/spectral-norm stay deferred (gh:146 ruling).'
