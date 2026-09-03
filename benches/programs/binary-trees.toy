@@ -1,0 +1,10 @@
+enum Tree { Leaf, Node(Vec<Tree>) }
+
+fn build(depth: Int) -> Tree =
+    depth | . == 0 -> Tree.leaf or Tree.node([build(. - 1), build(. - 1)])
+
+fn count(t: Tree) -> Int =
+    t | Leaf -> 1 or Node -> 1 + count(.[0]!) + count(.[1]!)
+
+input Int
+count(build(input))
