@@ -952,7 +952,33 @@ int tl_read_one_input(const tl_str *descriptor, int64_t *out) {
 /* One raw line of stdin at a time: the streaming counterpart of tl_collect_lines below, the
  * same way tl_read_one_input above is tl_read_inputs's. Returns 0 at EOF (*out untouched) and
  * 1 with *out set to the line's tl_str otherwise. Same trailing-newline rule as
- * tl_collect_lines; a blank line is a line, since `lines` keeps them. */
+ * tl_collect_lines; a blank line is a line, since `lines` keeps them. A non-UTF-8 line is
+ * refused rather than carried: a Str is Unicode scalar values (kantord/toylang#102). */
+static int tl_utf8_valid(const char *s, size_t len) {
+    size_t i = 0;
+    while (i < len) {
+        unsigned char b = (unsigned char)s[i];
+        if (b < 0x80) {
+            i++;
+        } else if (b >= 0xC2 && b < 0xE0) {
+            if (i + 1 >= len || ((unsigned char)s[i + 1] & 0xC0) != 0x80) return 0;
+            i += 2;
+        } else if (b >= 0xE0 && b < 0xF0) {
+            if (i + 2 >= len || ((unsigned char)s[i + 1] & 0xC0) != 0x80
+                || ((unsigned char)s[i + 2] & 0xC0) != 0x80) return 0;
+            i += 3;
+        } else if (b >= 0xF0 && b < 0xF5) {
+            if (i + 3 >= len || ((unsigned char)s[i + 1] & 0xC0) != 0x80
+                || ((unsigned char)s[i + 2] & 0xC0) != 0x80
+                || ((unsigned char)s[i + 3] & 0xC0) != 0x80) return 0;
+            i += 4;
+        } else {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int tl_read_one_line(int64_t *out) {
     char *line = NULL;
     size_t cap = 0;
@@ -963,6 +989,9 @@ int tl_read_one_line(int64_t *out) {
     }
     if (len > 0 && line[len - 1] == '\n') {
         len--;
+    }
+    if (!tl_utf8_valid(line, (size_t)len)) {
+        tl_fail("stdin is not valid UTF-8", "lines");
     }
     char *bytes = tl_alloc((size_t)len);
     memcpy(bytes, line, (size_t)len);
@@ -988,6 +1017,9 @@ tl_vec *tl_collect_lines(void) {
     while ((len = getline(&line, &cap, stdin)) != -1) {
         if (len > 0 && line[len - 1] == '\n') {
             len--;
+        }
+        if (!tl_utf8_valid(line, (size_t)len)) {
+            tl_fail("stdin is not valid UTF-8", "lines");
         }
         char *bytes = tl_alloc((size_t)len);
         memcpy(bytes, line, (size_t)len);

@@ -88,21 +88,33 @@ function tl_rem64(a, b) {
 const COLLECT_HELPER: &str = r#"// Synchronous, because a toylang expression evaluates to completion and node has no
 // synchronous line reader built in. Reads in fixed chunks off the real fd rather than
 // `readFileSync(0)`, so a line is available to the rest of the program as soon as it arrives
-// rather than only once stdin closes.
+// rather than only once stdin closes. TextDecoder with fatal: true replaces the lossy
+// toString("utf8"), so a non-UTF-8 byte is refused rather than silently becoming U+FFFD
+// (kantord/toylang#102).
 function tl_collect_lines() {
   const fs = require("fs");
   const out = [];
   let buf = "";
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   const chunk = Buffer.alloc(65536);
   for (;;) {
     const n = fs.readSync(0, chunk, 0, chunk.length, null);
     if (n === 0) break;
-    buf += chunk.toString("utf8", 0, n);
+    try {
+      buf += decoder.decode(chunk.subarray(0, n), { stream: true });
+    } catch (e) {
+      throw new Error("toylang: stdin is not valid UTF-8");
+    }
     let i;
     while ((i = buf.indexOf("\n")) !== -1) {
       out.push(buf.slice(0, i));
       buf = buf.slice(i + 1);
     }
+  }
+  try {
+    buf += decoder.decode();
+  } catch (e) {
+    throw new Error("toylang: stdin is not valid UTF-8");
   }
   if (buf.length > 0) out.push(buf);
   return out;
@@ -347,6 +359,7 @@ fn read_line_helper() -> String {
     let mut out = String::new();
     out.push_str("let tl_stdin_buf = \"\";\n");
     out.push_str("let tl_stdin_eof = false;\n");
+    out.push_str("let tl_decoder = new TextDecoder(\"utf-8\", { fatal: true });\n");
     out.push_str("function tl_read_line() {\n");
     out.push_str("  const fs = require(\"fs\");\n");
     out.push_str("  for (;;) {\n");
@@ -365,7 +378,11 @@ fn read_line_helper() -> String {
     out.push_str("    const chunk = Buffer.alloc(65536);\n");
     out.push_str("    const n = fs.readSync(0, chunk, 0, chunk.length, null);\n");
     out.push_str("    if (n === 0) { tl_stdin_eof = true; continue; }\n");
-    out.push_str("    tl_stdin_buf += chunk.toString(\"utf8\", 0, n);\n");
+    out.push_str("    try {\n");
+    out.push_str("      tl_stdin_buf += tl_decoder.decode(chunk.subarray(0, n), { stream: true });\n");
+    out.push_str("    } catch (e) {\n");
+    out.push_str("      throw new Error(\"toylang: stdin is not valid UTF-8\");\n");
+    out.push_str("    }\n");
     out.push_str("  }\n");
     out.push_str("}\n");
     out

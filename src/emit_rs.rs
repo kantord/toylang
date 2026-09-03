@@ -235,13 +235,15 @@ const READ_HELPER: &str = r#"fn tl_read_all_stdin() -> Vec<u8> {
 /// Split on `\n` only, matching `jq -R` and Python's raw stdin iteration rather than Rust's own
 /// `BufRead::lines`, which also swallows a `\r` before it -- CRLF is ordinary content here, not a
 /// line terminator. The final line is yielded even with no trailing `\n`, deliberately not `wc
-/// -l`'s undercount; empty stdin yields zero lines, not one empty one.
+/// -l`'s undercount; empty stdin yields zero lines, not one empty one. A non-UTF-8 byte is
+/// refused rather than replaced: a `Str` is Unicode scalar values, and a byte that is not one
+/// should not exist long enough to disagree about (kantord/toylang#102).
 fn tl_read_lines() -> Vec<String> {
     let bytes = tl_read_all_stdin();
     if bytes.is_empty() {
         return Vec::new();
     }
-    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let text = String::from_utf8(bytes).unwrap_or_else(|_| tl_fail("stdin is not valid UTF-8"));
     let mut out: Vec<String> = text.split('\n').map(|s| s.to_string()).collect();
     if text.ends_with('\n') {
         out.pop();

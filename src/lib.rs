@@ -457,6 +457,21 @@ fn run_jq(source: &str, inv: JqInvocation, feed: &Feed) -> Result<String> {
         raw,
         uses_lines,
     } = inv;
+    // jq has no UTF-8 validator of its own, and `[inputs]` in raw-input mode reads all of
+    // stdin before anything else runs, so the host validates here rather than leaving a
+    // non-UTF-8 byte to be carried through per jq's own internals (kantord/toylang#102).
+    let validated_feed;
+    let feed: &Feed = if uses_lines && matches!(feed, Feed::Live) {
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut std::io::stdin(), &mut buf)?;
+        let text = std::str::from_utf8(&buf)
+            .map_err(|_| anyhow::anyhow!("stdin is not valid UTF-8"))?
+            .to_string();
+        validated_feed = Feed::Text(text);
+        &validated_feed
+    } else {
+        feed
+    };
     let mut cmd = std::process::Command::new("jq");
     // jq's stdout is fully buffered rather than line-buffered whenever it is not a terminal, the
     // same as any other libc stdio program, so a filter over `inputs` piped into another process
