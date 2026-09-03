@@ -117,13 +117,6 @@
   prio: 1
   status: delegated
 
-- id: lines-utf8-edge
-  issue: gh:102
-  title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. Round 1 research (plans/string-type-spike.md:194-201) covered per-backend mechanics only; round 2 answer asked for correctness/security/POSIX-compliance/common-practice research first (see lines-utf8-posix-research) before round 3 re-asks with the three options (refuse / carry-where-possible / uniform lossy replacement).'
-  kind: decide
-  needs: [lines-utf8-posix-research]
-  status: todo
-
 - id: search-layer-build
   title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
   kind: build

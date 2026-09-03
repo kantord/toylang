@@ -1470,3 +1470,10 @@
   needs: []
   prio: 3
   status: done
+
+- id: lines-utf8-edge
+  issue: gh:102
+  title: 'Round 3 ruling (lines-utf8-edge-round3, 2026-09-03): option A ratified -- "refuse" is the permanent answer for a non-UTF-8 byte arriving via lines, matching the already-shipped cross-backend behavior (commit 6920c86, tests/streaming.rs::assert_refuses_non_utf8). No further work required.'
+  kind: decide
+  needs: [lines-utf8-posix-research]
+  status: done
