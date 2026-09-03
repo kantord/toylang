@@ -1,3 +1,9 @@
+- id: stuck-issue-177-investigation
+  kind: build
+  status: todo
+  needs: []
+  issue: gh:177
+  title: 'INVESTIGATE stuck lane issue-177 (no activity 0h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-177-20260903/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: call-form-hoist-ast
   issue: gh:152
   title: 'issue-152-stall escalation RULED (option B, reshape): 5 commitless runs on the monolithic lane -- split into an ordered sequence, each step independently committable. Step 1/4: add the MatchCall AST node (Msg(Ping -> ... or Quit -> ...)) -- finish and commit the stub already sitting uncommitted in the dead issue-152 worktree (src/ast.rs, from run 5), no parser/checker/codegen wiring yet.'

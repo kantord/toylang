@@ -1,0 +1,29 @@
+captured: 2026-09-03T23:06:39+0200
+state: {"ts": 1788469599, "lane": "issue-177", "ahead": 1, "tracked_dirty": 11, "live": false, "runs": 2, "last_activity": 1788466807}
+
+=== git status ===
+ M build.rs
+ M runtime/toylang.c
+ M src/check/linearity.rs
+ M src/check/mod.rs
+ M src/emit_go.rs
+ M src/emit_jq.rs
+ M src/emit_js.rs
+ M src/emit_lua.rs
+ M src/emit_py.rs
+ M src/emit_rs.rs
+ M src/tags.rs
+
+=== git diff --stat ===
+ build.rs               | 30 ++++++++++++++++
+ runtime/toylang.c      | 93 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/check/linearity.rs | 13 +++++++
+ src/check/mod.rs       | 86 ++++++++++++++++++++++++++++++++++++++++++++++
+ src/emit_go.rs         | 67 ++++++++++++++++++++++++++++++++++--
+ src/emit_jq.rs         | 30 ++++++++++++++++
+ src/emit_js.rs         | 76 +++++++++++++++++++++++++++++++++++++++++
+ src/emit_lua.rs        | 66 +++++++++++++++++++++++++++++++++++
+ src/emit_py.rs         | 31 +++++++++++++++++
+ src/emit_rs.rs         | 58 +++++++++++++++++++++++++++++--
+ src/tags.rs            |  6 ++++
+ 11 files changed, 551 insertions(+), 5 deletions(-)
