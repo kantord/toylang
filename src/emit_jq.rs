@@ -55,15 +55,87 @@ def tl_rem64($a; $b):
   if $b == 0 then error("toylang: divided by zero") else ($a % $b) end;
 "#;
 
+/// Float division is the one Float arithmetic that jq's native operator cannot express: its `/`
+/// raises on a zero divisor, where IEEE 754 (ADR 0007, the Q37 ruling) says the answer is
+/// `Infinity` with no failure at all. jq's `infinite`/`nan` constants are the values the IEEE
+/// cases demand, so the zero case is spelled: `0 / 0` is `NaN`, a positive dividend gives
+/// `infinite`, a negative one `-infinite`.
+const FLOAT_HELPER: &str = r#"def tl_fdiv($a; $b):
+  if $b == 0 then (if $a == 0 then nan else (if $a > 0 then infinite else -infinite end) end)
+  else ($a / $b) end;
+"#;
+
+/// A Float's printed form, as a string. jq's `-c` output cannot carry the non-finite values the
+/// IEEE semantics admit -- it renders `infinite` as `1.7976931348623157e+308` and `nan` as
+/// `null` -- so a Float body is rendered through here and printed raw (`-r` in `run_jq`), which
+/// is the only way the bare words the other backends print for `Infinity`/`NaN` come out of jq.
+///
+/// jq's own `tostring` already computes the shortest round-trip decimal digits (verified against
+/// JS's `String(number)` across a ~5000-value fuzz run: the digits always agree), but its
+/// notation choice does not -- it switches to scientific at a different, and not entirely
+/// consistent, magnitude than JS's ECMA-262 rule, and zero-pads the exponent (`1e-06`, not
+/// `1e-6`). So `tostring`'s output is reparsed (one of two shapes: `d(.ddd)?[eE][+-]?NN`, or a
+/// plain decimal/integer) back into digits and a decimal-point position, then laid out again
+/// using the same fixed-vs-scientific rule this project's Native backend already implements in
+/// C (runtime/toylang.c's `tl_float_to_str`) -- the same algorithm, a second time, because jq
+/// has no shortest-round-trip primitive of its own to just call with different flags the way
+/// Go's `strconv.FormatFloat` does. `+ 0.0` still strips a source literal's own suffix (`2.0`
+/// would otherwise print as `2.0`) before any of this runs. Verified the same way as the C
+/// version: the same fuzz run, byte-for-byte, not derived from reading jq's behavior once.
+const FLOAT_PRINT_HELPER: &str = r#"def tl_show_float:
+  if isnan then "NaN"
+  elif isinfinite then (if . > 0 then "Infinity" else "-Infinity" end)
+  elif . == 0 then "0"
+  else
+    (if . < 0 then "-" else "" end) as $sign
+    | ((if . < 0 then -. else . end) + 0.0 | tostring) as $raw
+    | ($raw | capture("^(?<int>[0-9])(\\.(?<frac>[0-9]+))?[eE](?<exp>[+-]?[0-9]+)$")) // null as $e
+    | (if $e != null
+         then { digs: ($e.int + ($e.frac // "")), n: (($e.exp | tonumber) + 1) }
+         else
+           ($raw | capture("^(?<int>[0-9]+)(\\.(?<frac>[0-9]+))?$")) as $p
+           | ($p.int + ($p.frac // "")) as $all
+           | ($all | capture("^(?<z>0*)").z) as $zeros
+           | ($zeros | length) as $fnz
+           | { digs: ($all[$fnz:]), n: (($p.int | length) - $fnz) }
+       end
+     ) as $d
+    | ($d.digs | capture("^(?<body>.*?)0*$").body) as $trimmed
+    | (if $trimmed == "" then "0" else $trimmed end) as $digs
+    | ($digs | length) as $k
+    | ($d.n) as $n
+    | (
+        if $k <= $n and $n <= 21 then
+          $digs + ("0" * ($n - $k))
+        elif 0 < $n and $n <= 21 and $n < $k then
+          $digs[0:$n] + "." + $digs[$n:]
+        elif -6 < $n and $n <= 0 then
+          "0." + ("0" * (-$n)) + $digs
+        else
+          $digs[0:1] + (if $k > 1 then "." + $digs[1:] else "" end)
+          + "e" + (if ($n - 1) < 0 then "-" else "+" end)
+          + ((($n - 1) | if . < 0 then -. else . end) | tostring)
+        end
+      ) as $body
+    | $sign + $body
+  end;
+"#;
+
 pub fn emit(program: &Program) -> Result<String, String> {
     let enums = &program.enums;
     let mut out = String::new();
-    let (arith, arith64) = uses_arith(program);
+    let (arith, arith64, fdiv) = uses_arith(program);
     if arith {
         out.push_str(ARITH_HELPER);
     }
     if arith64 {
         out.push_str(ARITH64_HELPER);
+    }
+    if fdiv {
+        out.push_str(FLOAT_HELPER);
+    }
+    if matches!(program.body.ty, Type::Float) {
+        out.push_str(FLOAT_PRINT_HELPER);
     }
 
     out.push_str(&printers(program)?);
@@ -95,9 +167,7 @@ pub fn emit(program: &Program) -> Result<String, String> {
         // `range` source.
         match fusion.source {
             tir::Source::Inputs | tir::Source::Lines => out.push_str("inputs"),
-            tir::Source::Range(bound) => {
-                out.push_str(&format!("range(0; {})", expr(enums, bound)))
-            }
+            tir::Source::Range(bound) => out.push_str(&format!("range(0; {})", expr(enums, bound))),
         };
         for stage in &fusion.stages {
             match stage {
@@ -135,12 +205,22 @@ pub fn emit(program: &Program) -> Result<String, String> {
     }
     // Records are rebuilt in the type's field order, because jq preserves insertion order and
     // an object read from input carries whatever order the input had.
-    out.push_str(&canonical(
-        enums,
-        &program.body.ty,
-        &expr(enums, &program.body),
-    ));
-    out.push('\n');
+    if matches!(program.body.ty, Type::Float) {
+        // A Float body renders to a string (`tl_show_float`) and is printed raw, because jq's
+        // `-c` JSON output cannot spell the non-finite values a Float can hold; `run_jq` sets
+        // `-r` for exactly this body type.
+        out.push_str(&format!(
+            "({} | tl_show_float)\n",
+            expr(enums, &program.body)
+        ));
+    } else {
+        out.push_str(&canonical(
+            enums,
+            &program.body.ty,
+            &expr(enums, &program.body),
+        ));
+        out.push('\n');
+    }
     Ok(out)
 }
 
@@ -154,7 +234,7 @@ fn canonical(enums: &Enums, ty: &Type, value: &str) -> String {
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str | Type::Int | Type::Int64 | Type::Bool => value.to_string(),
-        Type::Float => unreachable!("Float is JS-only in this row"),
+        Type::Float => value.to_string(),
         Type::Sink => value.to_string(),
         Type::Vec(elem) => format!("[ {value}[] | {} ]", canonical(enums, elem, ".")),
         Type::Enum { .. } if ty.as_opt().is_some() => {
@@ -243,7 +323,9 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
             callees(base, out);
             callees(index, out);
         }
-        Kind::Slice { base, start, end, .. } => {
+        Kind::Slice {
+            base, start, end, ..
+        } => {
             callees(base, out);
             if let Some(s) = start {
                 callees(s, out);
@@ -355,14 +437,20 @@ fn cycle_message<T>(
     }
 }
 
-/// Whether the program does 32-bit arithmetic, 64-bit arithmetic, or both: the node's type
-/// says which width each `Arith` is, so the two helper blocks are included independently.
-fn uses_arith(program: &Program) -> (bool, bool) {
-    fn walk(t: &Tir, found: &mut (bool, bool)) {
+/// Whether the program does 32-bit arithmetic, 64-bit arithmetic, or Float division: the node's
+/// type says which width each `Arith` is, so the helper blocks are included independently.
+/// Float `+`/`-`/`*` are jq's own operators and need no helper; only its `/` does (the zero
+/// divisor that jq rejects and IEEE admits).
+fn uses_arith(program: &Program) -> (bool, bool, bool) {
+    fn walk(t: &Tir, found: &mut (bool, bool, bool)) {
         match &t.kind {
-            Kind::Arith { lhs, rhs, .. } => {
+            Kind::Arith { op, lhs, rhs, .. } => {
                 if t.ty == Type::Int64 {
                     found.1 = true;
+                } else if t.ty == Type::Float {
+                    if matches!(op, BinOp::Div) {
+                        found.2 = true;
+                    }
                 } else {
                     found.0 = true;
                 }
@@ -427,7 +515,9 @@ fn uses_arith(program: &Program) -> (bool, bool) {
                 walk(base, found);
                 walk(index, found);
             }
-            Kind::Slice { base, start, end, .. } => {
+            Kind::Slice {
+                base, start, end, ..
+            } => {
                 walk(base, found);
                 if let Some(s) = start {
                     walk(s, found);
@@ -447,7 +537,7 @@ fn uses_arith(program: &Program) -> (bool, bool) {
             }
         }
     }
-    let mut found = (false, false);
+    let mut found = (false, false, false);
     program.funcs.iter().for_each(|f| walk(&f.body, &mut found));
     walk(&program.body, &mut found);
     found
@@ -479,7 +569,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => jq_string(s),
         Kind::Int(n) => n.to_string(),
-        Kind::Float(_) => unreachable!("Float is JS-only in this row"),
+        Kind::Float(n) => crate::float::lit(*n),
         Kind::Var(name) => format!("${}", user(name)),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
@@ -679,7 +769,10 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // jq's own slice clamps out-of-range bounds and counts negatives from the end, so the
         // ruled behaviour is the target's native one; a `None` bound is just left out.
         Kind::Slice {
-            base, start, end, depth,
+            base,
+            start,
+            end,
+            depth,
         } => {
             let lo = match start {
                 Some(s) => expr(enums, s),
@@ -761,7 +854,18 @@ fn expr(enums: &Enums, t: &Tir) -> String {
 /// jq's doubles, exact within +/-2^53 and honestly not past it (the ARITH64_HELPER comment);
 /// nothing wraps there, since no double could carry the wrapped value back.
 fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
-    if *ty == Type::Int64 {
+    if *ty == Type::Float {
+        // jq's numbers are doubles (ADR 0007), so `+`/`-`/`*` are the IEEE arithmetic with
+        // nothing to spell; `/` is the one that jq's own operator cannot take past a zero
+        // divisor, which is why it goes through `tl_fdiv`.
+        match op {
+            BinOp::Div => format!("tl_fdiv({l}; {r})"),
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else if *ty == Type::Int64 {
         match op {
             BinOp::Div => format!("tl_div64({l}; {r})"),
             BinOp::Rem => format!("tl_rem64({l}; {r})"),

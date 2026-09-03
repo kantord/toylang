@@ -233,7 +233,13 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
             &emit_jq::emit(&program).map_err(anyhow::Error::msg)?,
             JqInvocation {
                 has_value: value.is_some(),
-                raw: matches!(program.body.ty, ty::Type::Str | ty::Type::Sink),
+                // A Str prints raw, and so does a Float: its emitter renders the value to a
+                // string (`tl_show_float`) because jq's compact JSON output cannot spell the
+                // non-finite values a Float can hold, so `-r` is what lets those words through.
+                raw: matches!(
+                    program.body.ty,
+                    ty::Type::Str | ty::Type::Sink | ty::Type::Float
+                ),
                 uses_lines: program.uses_lines || program.dsv.is_some(),
             },
             &feed,
