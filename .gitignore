@@ -8,3 +8,4 @@ site/*.tsbuildinfo
 docs/.annotations/
 docs/.grill/
 /repro.toy
+/benches/results

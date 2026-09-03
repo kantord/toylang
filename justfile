@@ -25,6 +25,11 @@ slow-test:
 clippy:
     cargo clippy --workspace --all-targets
 
+# Time one benchmark (a name under benches/programs/) across every backend with hyperfine.
+# Design: plans/benchmark-plan.md. Results land in benches/results/<name>.{md,json}.
+bench NAME:
+    cargo run -q --bin bench -- {{NAME}}
+
 # Formatter check over every .toy file from the repo root down (exit 1 on drift).
 fmt:
     cargo run -q -- fmt
