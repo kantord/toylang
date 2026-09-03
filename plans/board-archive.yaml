@@ -1455,3 +1455,10 @@
   needs: []
   issue: gh:152
   title: 'INVESTIGATE stuck lane issue-152 (no activity 0h, 3 run(s), 0 commits): evidence frozen in plans/incidents/issue-152-20260903/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: trait-interface-build
+  issue: gh:174
+  title: 'Ruled (trait-interface-design round): (1) Rust-shaped declaration -- trait Name { fn sig(...) -> T } / impl Name for Type { fn sig(...) -> T = body }; (2) builtin operators (Int+Int, Str+Str, ...) tentatively become source-written prelude impls "when practical, otherwise built in" -- maintainer explicitly declined to fully commit either way ("in some cases performance may decide this... we would need to see how it works out in practice"), so start with prelude impls (uniform, matches the mechanism) and fall back to checker-generated only where the prelude indirection provably costs real performance; revisit once build experience exists; (3) named trait methods are colon-only -- x:foo(y) is the only spelling, no plain-call fallback even when unambiguous.'
+  kind: build
+  needs: []
+  status: done
