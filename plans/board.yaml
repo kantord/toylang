@@ -124,10 +124,11 @@
   status: delegated
 
 - id: sort-by-max-by
+  issue: gh:177
   title: sort_by and max_by -- ordering through a scalar projection (euler-ergonomics row 7)
   kind: build
   needs: [sum-max-builtins-build]
-  status: todo
+  status: delegated
 
 - id: param-destructure-build
   title: Implement match-arm-style parameter destructuring, e.g. fn gcd({a, b}:{a:Int,b:Int}) (gh:144 ruling)
