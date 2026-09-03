@@ -158,11 +158,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     // stream has nothing to decode, absence and Char and Int64 have no ratified wire form.
     if let Some(declared) = &file.input {
         let ty = resolve(declared, &env, &mut Vec::new())?;
-        if ty.contains_stream()
-            || ty.contains_opt()
-            || ty.contains_char()
-            || ty.contains_int64()
-        {
+        if ty.contains_stream() || ty.contains_opt() || ty.contains_char() || ty.contains_int64() {
             return Err(Error::new(
                 declared.span(),
                 format!("`input` cannot be declared as {ty}; it has no wire form to read"),
@@ -1221,11 +1217,14 @@ fn let_bind(
     };
     for (local, value) in locals.into_iter().zip(values).into_iter().rev() {
         let body_ty = tir.ty.clone();
-        tir = Tir::new(body_ty, Kind::Bind {
-            local,
-            value: Box::new(value),
-            body: Box::new(tir),
-        });
+        tir = Tir::new(
+            body_ty,
+            Kind::Bind {
+                local,
+                value: Box::new(value),
+                body: Box::new(tir),
+            },
+        );
     }
     Ok(if checked {
         Expected::Checked(tir)
@@ -1614,7 +1613,9 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             let field = Type::Vec(Box::new(Type::Str));
             Ok(Tir::new(
                 Type::Vec(Box::new(field)),
-                Kind::Dsv { delim: delim.clone() },
+                Kind::Dsv {
+                    delim: delim.clone(),
+                },
             ))
         }
         Expr::Int { value, span } => {
@@ -1671,7 +1672,6 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 return match local {
                     // A `let`-bound name reads the local it was bound to, not a `Var`: the
                     // backends' `Bind` only ever binds locals, so a bare name reference would dangle.
-
                     Some(id) => Ok(Tir::new(t.clone(), Kind::Local(*id))),
                     None => Ok(Tir::new(t.clone(), Kind::Var(name.clone()))),
                 };
@@ -1809,7 +1809,6 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 
         // No parser path constructs a match-call yet (gh:152), so this arm is totalness until
         // the parser learns to hoist match arms into a call form.
-
         Expr::MatchCall { .. } => unreachable!("no parser path constructs a match-call yet"),
 
         Expr::Variant {
@@ -1871,7 +1870,18 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 Err(_) => expect(ctx, base, &Type::Int)?,
             };
             let width = inner.ty.clone();
-            let zero = Tir::new(width.clone(), Kind::Int(0));
+            // A Float's zero has to be `Kind::Float(0.0)`, not `Kind::Int(0)` typed as Float:
+            // every backend but JS keeps Int and Float in different representations (an i64 and
+            // an LLVM double are not interchangeable bits the way JS's untyped numbers let this
+            // slide), so a mismatched Kind here compiles on JS by accident and is a real bug on
+            // any backend that tells the two apart (kantord/toylang#149, found building the
+            // Native backend's Float support).
+            let zero_kind = if width == Type::Float {
+                Kind::Float(0.0)
+            } else {
+                Kind::Int(0)
+            };
+            let zero = Tir::new(width.clone(), zero_kind);
             let _ = span;
             Ok(Tir::new(
                 width,
@@ -1913,7 +1923,7 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         Expr::Let { bindings, body, .. } => match let_bind(ctx, bindings, body, None)? {
             Expected::Checked(_) => unreachable!("synth has no want, so nothing is Checked"),
             Expected::Synthesised(tir) => Ok(tir),
-        }
+        },
     }
 }
 
@@ -2443,7 +2453,12 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<Access, Error> {
         // absent, so the answer is the dimension itself, not an `Opt`: out-of-range bounds
         // clamp jq-style rather than going missing (kantord/toylang#143). A `None` bound means
         // the dimension's own boundary.
-        Expr::Slice { base, start, end, span } => {
+        Expr::Slice {
+            base,
+            start,
+            end,
+            span,
+        } => {
             let b = access(ctx, base)?;
             let Some(_) = b.elem.elem().cloned() else {
                 return Err(Error::new(
@@ -3071,9 +3086,15 @@ fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Err
             func_span,
             arg,
             ..
-        } if owns(func) && !ctx.sigs.contains_key(func) => {
-            Some(construct(ctx, want, func, *func_span, arg.as_deref(), None, false))
-        }
+        } if owns(func) && !ctx.sigs.contains_key(func) => Some(construct(
+            ctx,
+            want,
+            func,
+            *func_span,
+            arg.as_deref(),
+            None,
+            false,
+        )),
         Expr::Variant {
             enum_name,
             variant,

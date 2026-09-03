@@ -12,6 +12,8 @@ declare ptr @tl_concat(ptr, ptr)
 
 declare ptr @tl_int_to_str(i64)
 
+declare ptr @tl_float_to_str(double)
+
 declare i64 @tl_str_eq(ptr, ptr)
 
 declare i64 @tl_str_cmp(ptr, ptr)
