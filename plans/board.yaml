@@ -76,11 +76,11 @@
   status: todo
 
 - id: stdout-stderr-effect-model-research
-  title: 'Research spike (round 1 answer, stdout-stderr-effect-model question): the maintainer''s freeText was torn between "a real type" (option C, Effect/IO) and noting the program already has Stream-typed inputs/outputs (option B, extend the decided "Stream is the effect layer" model) -- and separately flagged that stdin/stdout splitting still needs deciding. Write up how each of the three round-1 options (opaque plumbing, Stream-carries-writes, real Effect/IO type) would actually model reading and writing on two separate streams (stdout vs stderr) using types the language already has, so round 2 can present concrete, verified code for each rather than re-asking the same abstract question. Write findings to plans/.'
+  title: 'Landed directly (2026-09-04), not by a delegated worker: plans/stdout-stderr-effect-model-research.md. Lane had sat delegated 25 hours, 0 commits, last run burning its whole budget on read-only exploration before a blocked CLI call ended it. Core finding, verified by running real programs rather than reading docs: a toylang program is exactly one expression -- no sequencing construct exists at all -- so Q35 is not just "does stderr have a type," it is "can a program write more than once, anywhere." All three round-1 options worked through against that: A (opaque plumbing, one more single-instance sink alongside jsonlines) is real but cannot address shell-out-build''s actual need (relay a subprocess''s stdout and stderr in one run); B (extend Sink to Sink<T> plus a sequencing form, reusing `or`''s existing positional-overload precedent) is the smallest true extension and matches the maintainer''s own round-1 free text; C (a real IO<T> monad) needs a Unit type the language does not have and would leave two competing effect notations side by side. Ready for round 2.'
   kind: build
   needs: []
-  prio: 1
-  status: delegated
+  prio: 4
+  status: done
 
 - id: stdin-redesign-build-2
   issue: gh:172
