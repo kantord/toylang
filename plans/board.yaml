@@ -128,10 +128,10 @@
 
 - id: float-build-jq
   issue: gh:149
-  title: Implement Float (IEEE binary64 per ADR 0007) for the jq backend only, following float-build's JS implementation as the reference. One backend, one commit.
+  title: 'Landed directly (2026-09-04), not by a delegated worker: full Float for jq -- lane had 4.3h-idle real progress (arithmetic, comparisons, input, a careful ESCALATION.md) stalled by the worker''s own model repeatedly corrupting a probe script with a stray Unicode combining character. Closed the escalation''s printing gap: jq''s tostring already gets the shortest round-trip digits right (verified against a ~5000-value fuzz run, matching float-build-c-escalation''s own verification), so its output is reparsed and relaid-out with the same notation rule runtime/toylang.c''s Native formatter uses, rather than needing a fresh Q37 decision round. One gap left open on purpose: a non-finite float nested in a Vec/Record diverges from JS (pinned by a test, not silently untested) -- fixing it means jq abandoning its value-based JSON encoder for hand-built string concatenation, a bigger change than this row''s scope.'
   kind: build
   needs: [float-build]
-  status: delegated
+  status: done
 
 - id: float-build-c-escalation
   issue: gh:149
