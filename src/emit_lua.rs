@@ -39,10 +39,21 @@ local function tl_range(n)
 end
 ";
 
+const UTF8_HELPER: &str = "\
+local function tl_utf8_valid(s)
+  return pcall(function()
+    for _ in utf8.codes(s) do end
+  end)
+end
+";
+
 const COLLECT_HELPER: &str = "\
 local function tl_collect_lines()
   local out = {}
-  for line in io.lines() do out[#out + 1] = line end
+  for line in io.lines() do
+    if not tl_utf8_valid(line) then error(\"toylang: stdin is not valid UTF-8\", 0) end
+    out[#out + 1] = line
+  end
   return out
 end
 ";
@@ -338,6 +349,7 @@ pub fn emit(program: &Program) -> String {
         (used.max, MAX_HELPER),
         (used.map, MAP_HELPER),
         (used.range, RANGE_HELPER),
+        (used.collect, UTF8_HELPER),
         (used.collect, COLLECT_HELPER),
         (used.split, SPLIT_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
@@ -404,6 +416,7 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
         }
         tir::Source::Lines => {
             out.push_str("for t_line in io.lines() do\n");
+            out.push_str("  if not tl_utf8_valid(t_line) then error(\"toylang: stdin is not valid UTF-8\", 0) end\n");
             ("t_line".to_string(), Type::Str)
         }
         // The bound is evaluated once; the loop counter is the element. A negative bound makes
