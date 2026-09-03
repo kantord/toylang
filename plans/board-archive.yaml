@@ -1462,3 +1462,11 @@
   kind: build
   needs: []
   status: done
+
+- id: lines-utf8-posix-research
+  issue: gh:102
+  title: 'Round 2 answer (question lines-non-utf8-byte): no pick -- maintainer wants deeper research beyond plans/string-type-spike.md:194-201 before choosing refuse/carry-through/lossy-replace: what is most correct, most secure, most POSIX-compliant, most common across existing Unix line-oriented tools, and what would match user expectations. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
+  status: done

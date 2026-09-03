@@ -117,14 +117,6 @@
   prio: 1
   status: delegated
 
-- id: lines-utf8-posix-research
-  issue: gh:102
-  title: 'Round 2 answer (question lines-non-utf8-byte): no pick -- maintainer wants deeper research beyond plans/string-type-spike.md:194-201 before choosing refuse/carry-through/lossy-replace: what is most correct, most secure, most POSIX-compliant, most common across existing Unix line-oriented tools, and what would match user expectations. Write findings to plans/.'
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
 - id: lines-utf8-edge
   issue: gh:102
   title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. Round 1 research (plans/string-type-spike.md:194-201) covered per-backend mechanics only; round 2 answer asked for correctness/security/POSIX-compliance/common-practice research first (see lines-utf8-posix-research) before round 3 re-asks with the three options (refuse / carry-where-possible / uniform lossy replacement).'
