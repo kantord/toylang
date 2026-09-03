@@ -699,10 +699,11 @@ impl<'i> Cursor<'i> {
             span: start.to(body.span()),
             name,
             param,
-            ret,
+            ret: Some(ret),
             body,
             is_pub,
             origin: crate::ast::Origin::Program,
+            hoisted: false,
         })
     }
 

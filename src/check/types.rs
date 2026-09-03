@@ -286,7 +286,12 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
                 Some(param) => Some(resolve(&param.ty, env, &mut Vec::new())?),
                 None => None,
             },
-            ret: resolve(&def.ret, env, &mut Vec::new())?,
+            ret: match &def.ret {
+                Some(ret) => resolve(ret, env, &mut Vec::new())?,
+                // A hoisted definition's signature is inferred from its body, which no parser path
+                // constructs yet (gh:152), so this arm is totalness until the checker learns to infer it.
+                None => unreachable!("no parser path constructs a hoisted definition yet"),
+            },
         };
         // A stream is born only at a source, so a function cannot conjure one: a stream result
         // flows in through a stream parameter, and the pipeline stays one chain fusion can
