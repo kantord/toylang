@@ -4,8 +4,8 @@ use winnow::stream::{LocatingSlice, Location, Stream};
 use winnow::token::take_while;
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, LogicOp, MatchArm, Module, Param,
-    Pattern, Span, TypeExpr, Variant,
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod, LogicOp, MatchArm,
+    Module, Param, Pattern, Span, TraitDecl, TraitMethodSig, TypeExpr, Variant,
 };
 use crate::error::Error;
 use crate::ty;
@@ -43,6 +43,8 @@ enum Tok {
     Pub,
     Type,
 Enum,
+    Trait,
+    Impl,
     Let,
     Input,
     Inputs,
@@ -93,6 +95,8 @@ impl std::fmt::Display for Tok {
             Tok::Pub => "`pub`",
             Tok::Type => "`type`",
             Tok::Enum => "`enum`",
+            Tok::Trait => "`trait`",
+            Tok::Impl => "`impl`",
             Tok::Let => "`let`",
             Tok::Input => "`input`",
             Tok::Inputs => "`inputs`",
@@ -176,6 +180,8 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "pub" => Tok::Pub,
                 "type" => Tok::Type,
                 "enum" => Tok::Enum,
+                "trait" => Tok::Trait,
+                "impl" => Tok::Impl,
                 "let" => Tok::Let,
                 "input" => Tok::Input,
                 "inputs" => Tok::Inputs,
@@ -446,6 +452,8 @@ pub fn parse(src: &str) -> Result<File, Error> {
     let mut defs = Vec::new();
     let mut aliases = Vec::new();
     let mut enums = Vec::new();
+    let mut traits = Vec::new();
+    let mut impls = Vec::new();
     loop {
         let (tok, _) = p.peek()?;
         match tok {
@@ -453,12 +461,15 @@ pub fn parse(src: &str) -> Result<File, Error> {
                 p.advance()?;
                 match p.peek()?.0 {
                     Tok::Enum => enums.push(p.enum_decl(true)?),
+                    Tok::Trait => traits.push(p.trait_decl(true)?),
                     _ => defs.push(p.def(true)?),
                 }
             }
             Tok::Fn => defs.push(p.def(false)?),
             Tok::Type => aliases.push(p.alias()?),
             Tok::Enum => enums.push(p.enum_decl(false)?),
+            Tok::Trait => traits.push(p.trait_decl(false)?),
+            Tok::Impl => impls.push(p.impl_decl()?),
             _ => break,
         }
     }
@@ -491,6 +502,8 @@ pub fn parse(src: &str) -> Result<File, Error> {
     Ok(File {
         aliases,
         enums,
+        traits,
+        impls,
         defs,
         input,
         body,
@@ -690,6 +703,126 @@ impl<'i> Cursor<'i> {
             body,
             is_pub,
             origin: crate::ast::Origin::Program,
+        })
+    }
+
+    /// `fn name(param: Type) -> Type`,the signature spine a trait method and an impl method
+    /// share. `what` names the kind in the return-type error;the caller decides whether a
+    /// `= body` follows the signature. A function's own spine stays inline in `def`.
+    fn fn_signature(&mut self, what: &str) -> Result<(String, Option<Param>, TypeExpr, Span), Error> {
+        let start = self.eat(Tok::Fn)?;
+        let (name,_) = self.eat_ident("a name")?;
+        self.eat(Tok::LParen)?;
+
+        let (next,_) = self.peek()?;
+        let param = if next == Tok::RParen {
+            None
+        } else {
+            let (param_name, param_span) = self.eat_ident("a name")?;
+            let (colon,_) = self.peek()?;
+            if colon != Tok::Colon {
+                return Err(Error::new(
+                    param_span,
+                    format!("parameter `{param_name}` needs a type annotation"),
+                ));
+            }
+            self.advance()?;
+            let param_ty = self.type_expr()?;
+            Some(Param {
+                span: param_span.to(param_ty.span()),
+                name: param_name,
+                ty: param_ty,
+            })
+        };
+
+        let close = self.eat(Tok::RParen)?;
+        let (arrow,_) = self.peek()?;
+        if arrow != Tok::Arrow {
+            return Err(Error::new(
+                close,
+                format!("{what} `{name}` needs a return type"),
+            ));
+        }
+        self.advance()?;
+        let ret = self.type_expr()?;
+        let span = start.to(ret.span());
+        Ok((name, param, ret, span))
+    }
+
+    /// `trait Name { fn sig(param: Type) -> Type, ... }`:a named collection of method
+    /// signatures with no bodies;an `impl` block provides those per concrete type. `pub` marks
+    /// it for a module. The body-less `fn` spine is the only thing inside the braces, so no
+    /// separator token is needed: each method starts with its own `fn`.
+    fn trait_decl(&mut self, is_pub: bool) -> Result<TraitDecl, Error> {
+        let start = self.eat(Tok::Trait)?;
+        let (name,_) = self.eat_ident("a trait name")?;
+        self.eat(Tok::LBrace)?;
+        let mut methods = Vec::new();
+        let (first,_) = self.peek()?;
+        if first != Tok::RBrace {
+            loop {
+                let (mname, param, ret, span) = self.fn_signature("trait method")?;
+                methods.push(TraitMethodSig {
+                    name: mname,
+                    param,
+                    ret,
+                    span,
+                });
+                if self.peek()?.0 == Tok::RBrace {
+                    break;
+                }
+            }
+        }
+        let close = self.eat(Tok::RBrace)?;
+        Ok(TraitDecl {
+            name,
+            methods,
+            span: start.to(close),
+            is_pub,
+        })
+    }
+
+    /// `impl Trait for Type { fn sig(param: Type) -> Type = body, ... }`:concrete bodies
+    /// for one trait's methods, one block per (trait, type) pair. Like a trait's, each method
+    /// starts with its own `fn`, so the methods need no separator token between them.
+    fn impl_decl(&mut self) -> Result<ImplDecl, Error> {
+        let start = self.eat(Tok::Impl)?;
+        let (trait_name,_) = self.eat_ident("a trait name")?;
+        let (link, link_span) = self.eat_ident("`for`")?;
+        if link != "for" {
+            return Err(Error::new(
+                link_span,
+                format!("expected `for` between the trait name and its target type, found `{link}`"),
+            ));
+        }
+        let ty = self.type_expr()?;
+        self.eat(Tok::LBrace)?;
+        let mut methods = Vec::new();
+        let (first,_) = self.peek()?;
+        if first != Tok::RBrace {
+            loop {
+                let (mname, param, ret, sig_span) = self.fn_signature("impl method")?;
+                self.eat(Tok::Eq)?;
+                let body = self.def_body()?;
+                let span = sig_span.to(body.span());
+                methods.push(ImplMethod {
+                    name: mname,
+                    param,
+                    ret,
+                    body,
+                    span,
+                });
+                if self.peek()?.0 == Tok::RBrace {
+                    break;
+                }
+            }
+        }
+        let close = self.eat(Tok::RBrace)?;
+        Ok(ImplDecl {
+            trait_name,
+            ty,
+            methods,
+            span: start.to(close),
         })
     }
 

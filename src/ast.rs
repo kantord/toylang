@@ -178,6 +178,55 @@ pub struct Variant {
     pub payload: Option<TypeExpr>,
 }
 
+/// `trait Name { fn sig(param: Type) -> Type }`:a named collection of method signatures,
+/// with no bodies. The receiver type is spelled `Self` in a signature, and binds to whatever
+/// concrete type an `impl` block targets. Parsed only for now: checking and dispatch are later
+/// slices.
+#[derive(Debug)]
+pub struct TraitDecl {
+    pub name: String,
+    /// The method signatures, in declaration order.
+    pub methods: Vec<TraitMethodSig>,
+    pub span: Span,
+    /// Same meaning as `Def::is_pub`: whether a module exports this declaration.
+    pub is_pub: bool,
+}
+
+/// One method signature of a trait declaration:the same `fn name(param: Type) -> Type`
+/// spine a function uses, minus the body an `impl` provides.
+#[derive(Debug)]
+pub struct TraitMethodSig {
+    pub name: String,
+    /// `None` for a nullary method (`fn name() -> T`).
+    pub param: Option<Param>,
+    pub ret: TypeExpr,
+    pub span: Span,
+}
+
+/// `impl Trait for Type { fn sig(param: Type) -> Type = body }`: concrete bodies for one
+/// trait's methods, one block per (trait, type) pair. Parsed only for now:the checker does
+/// not use this yet.
+#[derive(Debug)]
+pub struct ImplDecl {
+    pub trait_name: String,
+    /// The concrete type the trait's `Self` substitutes to.
+    pub ty: TypeExpr,
+    /// The method bodies, each against the trait's signature of the same name.
+    pub methods: Vec<ImplMethod>,
+    pub span: Span,
+}
+/// One method of an impl block:the same spine a trait signature has, plus the body that makes
+/// it a definition.
+
+#[derive(Debug)]
+pub struct ImplMethod {
+    pub name: String,
+    pub param: Option<Param>,
+    pub ret: TypeExpr,
+    pub body: Expr,
+    pub span: Span,
+}
+
 /// Zero or more definitions followed by the expression that is the program.
 #[derive(Debug)]
 pub struct File {
@@ -185,6 +234,10 @@ pub struct File {
     /// stands for are one type, so nothing distinguishes them once resolved.
     pub aliases: Vec<Alias>,
     pub enums: Vec<EnumDecl>,
+    /// `trait Name { ... }`:a named collection of method signatures. Parsed only for now.
+    pub traits: Vec<TraitDecl>,
+    /// `impl Trait for Type { ... }`: concrete bodies for one trait's methods. Parsed only for now.
+    pub impls: Vec<ImplDecl>,
     pub defs: Vec<Def>,
     /// `input <type>`: a declaration of what stdin holds, written after the definitions and
     /// before the body, the way a signature types a parameter. `None` when the program leaves

@@ -1,0 +1,18 @@
+# The parser accepts a trait declaration and an impl block, even though the checker does not
+# yet do anything with them: no dispatch, no method checking, no codegen. This program
+# only asserts that the declarations parse;the body is ordinary.
+program: |
+  trait Area {
+      fn area(s: Self) -> Int
+  }
+
+  impl Area for Circle {
+      fn area(s: Self) -> Int = s.r * s.r
+  }
+
+  1
+
+output: |
+  1
+
+node_types: [int]
