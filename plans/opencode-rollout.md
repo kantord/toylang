@@ -528,3 +528,24 @@ Classification: brief clarity, not capability, tooling, or task shape. The worke
 Rebrief (redo, not reshape or drop:the deliverable is still needed, same as gh:163). Re-dispatch into the same lane with the standard brief plus: "This is DESK RESEARCH, docs + source read-only: no toolchain or execution is needed or allowed, so do not run `which`, version checks, or any host probe (all denied). the per-backend survey is a documented-semantics comparison against src/emit_*.rs, docs/reference/, and public API knowledge, not measurements. One correction to the board row:the Rust backend cannot use reqwest -- self-contained emitted file, no external crates -- so Rust+HTTP ends at 'no HTTP, no TLS in stdlib' without new deps. Write findings to plans/http-query-sugar-research.md and commit per AGENTS.md."
 
 Worth carrying into the dispatch template, so this shape stops needing a per-lane rebrief:make the "no toolchain/execution needed" line part of the default brief for research rows (or add `which <tool>` probes to KNOWN DENIALS). The give-up-after-one-denial behavior itself is already logged as the 30-lane-review data point (issue-108/125/133/163);this lane adds another instance, not a new class.
+
+## Fixed: OPENCODE_MODEL redispatch not persisted, escalation ruling applied for real (2026-09-04)
+
+Root cause of the 2026-09-03 "stronger model" ruling silently not applying (8
+commitless issue-172 runs, confirmed by lane telemetry still showing
+`openrouter/deepseek/deepseek-v4-flash-0731` on run 8): `OPENCODE_MODEL` was a
+one-shot env var read by `opencode-worker.sh` with no persistence in
+`dispatch-worker.sh`, so any redispatch that didn't re-set the env var by hand
+(continuation dispatch, event-driven re-run) fell back to the hardcoded
+default. Maintainer wizard ruling on `stdin-redesign-stall-escalation`
+(captured 2026-09-04 20:22, applied same tick): option 1, fix the persistence
+gap and redispatch for real.
+
+Fixed `dispatch-worker.sh`: an explicit `OPENCODE_MODEL` at dispatch time is
+now written to `.opencode-model` in the lane worktree; a later dispatch with
+no `OPENCODE_MODEL` set falls back to reading that file if present. Redispatched
+`issue-172` with `OPENCODE_MODEL=openrouter/z-ai/glm-5.2`, confirmed via
+`ps` that the live worker is running `opencode run -m openrouter/z-ai/glm-5.2`
+and that `.opencode-model` now holds that value, so future redispatches of
+this lane (and any lane that gets an explicit model override) stay on it
+without needing the env var re-supplied every time.
