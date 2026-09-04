@@ -15,43 +15,43 @@
   title: 'INVESTIGATE stuck lane issue-param-destructure-build (no activity 10h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-param-destructure-build-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-http-query-sugar-research-investigation
   kind: build
-  status: todo
+  status: delegated
   needs: []
   issue: gh:171
   title: 'INVESTIGATE stuck lane issue-http-query-sugar-research (no activity 58h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-http-query-sugar-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-float-format-research-investigation
   kind: build
-  status: todo
+  status: delegated
   needs: []
   issue: gh:149
   title: 'INVESTIGATE stuck lane issue-float-format-research (no activity 10h, 3 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-format-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-float-build-rust-investigation
   kind: build
-  status: todo
+  status: delegated
   needs: []
   issue: gh:149
   title: 'INVESTIGATE stuck lane issue-float-build-rust (no activity 38h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-rust-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-float-build-python-investigation
   kind: build
-  status: todo
+  status: delegated
   needs: []
   issue: gh:149
   title: 'INVESTIGATE stuck lane issue-float-build-python (no activity 37h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-python-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-float-build-lua-investigation
   kind: build
-  status: todo
+  status: delegated
   needs: []
   issue: gh:149
   title: 'INVESTIGATE stuck lane issue-float-build-lua (no activity 34h, 4 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-lua-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-float-build-go-investigation
   kind: build
-  status: todo
+  status: delegated
   needs: []
   issue: gh:149
   title: 'INVESTIGATE stuck lane issue-float-build-go (no activity 37h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-go-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-177-investigation
   kind: build
-  status: todo
+  status: delegated
   needs: []
   issue: gh:177
   title: 'INVESTIGATE stuck lane issue-177 (no activity 0h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-177-20260903/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
