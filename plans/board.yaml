@@ -1,3 +1,8 @@
+- id: stuck-issue-recursive-descent-order-research-investigation
+  kind: build
+  status: todo
+  needs: []
+  title: 'INVESTIGATE stuck lane issue-recursive-descent-order-research (no activity 58h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-recursive-descent-order-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-param-destructure-build-investigation
   kind: build
   status: todo
