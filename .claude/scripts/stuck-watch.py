@@ -8,12 +8,22 @@ nothing. Three jobs:
    ahead/dirty/live/runs/last_activity -- so "how long has this been stuck"
    is a query over a ledger instead of an agent's guess.
 2. DETECT: a lane is stuck when it has no live worker, no commits ahead, at
-   least one attempted run, and no activity for STUCK_AFTER seconds.
+   least one attempted run, no activity for STUCK_AFTER seconds, and the
+   board row it belongs to is still live (`todo`/`delegated`) -- a lane whose
+   row already landed or was finished by hand through some other path is
+   stale, not stuck (kantord/toylang#149's Native and jq Float rows were
+   landed directly while their own lanes sat untouched, 2026-09-04).
 3. CONVERT: snapshot the evidence (last event log tail, git status/diff) into
    plans/incidents/ BEFORE a redispatch can destroy it, insert a top-priority
    investigation row into plans/board.yaml, and commit both. The row asks WHY
    the lane got stuck (brief clarity / capability gap / tooling trap / task
    shape), not for the task itself to be done.
+
+A lane is named `issue-<N>`, but `N` is not always a bare gh issue number: a
+row with no single owning issue (several rows can share one `gh:149`) is
+dispatched under its own row-id slug instead (`dispatch-worker.sh <row-id>`,
+the enwiro-delegate skill's research-dispatch convention). Every lookup
+keyed on `N` (the owning row, its `issue:` field) checks both readings.
 
 Dedup: the board row id (stuck-issue-N-investigation) is checked against both
 board files; the investigating-issue-N marker survives until the lane lands
@@ -81,6 +91,20 @@ def board_has_row(row_id):
                 return True
     return False
 
+def lane_row_live(n):
+    """Whether the board row a lane named `issue-<n>` belongs to is still
+    `todo` or `delegated` in plans/board.yaml. False for a row that landed and
+    archived, or one someone finished by hand outside its own lane (a real
+    case: kantord/toylang#149's Native and jq Float rows were landed directly
+    while their lanes sat untouched, 2026-09-04) -- either way, a worktree
+    with no live row behind it is stale, not stuck."""
+    import yaml
+    rows = yaml.safe_load(open(os.path.join(REPO, "plans/board.yaml")))
+    for r in rows:
+        if str(r.get("id", "")) == n or str(r.get("issue", "")) == f"gh:{n}":
+            return r.get("status") in ("todo", "delegated")
+    return False
+
 def snapshot_evidence(lane, st):
     day = time.strftime("%Y%m%d")
     inc = os.path.join(REPO, "plans", "incidents", f"{lane}-{day}")
@@ -99,15 +123,35 @@ def snapshot_evidence(lane, st):
             f.writelines(lines[-300:])
     return os.path.relpath(inc, REPO)
 
+def board_issue(n):
+    """The `issue:` field (e.g. 'gh:149') of the board row a lane named `issue-<n>`
+    belongs to, or None if that row carries no issue. `n` is either a bare gh issue
+    number (the classic one-lane-per-issue flow) or a board row's own `id` (a slug
+    lane, dispatched as `dispatch-worker.sh <row-id>` for a row with no single
+    owning issue -- several rows can share one `gh:149`, so they cannot all be
+    lane `issue-149`). Matched against plans/board.yaml only: a row that already
+    landed and archived is not what "stuck" is asking about."""
+    import yaml
+    rows = yaml.safe_load(open(os.path.join(REPO, "plans/board.yaml")))
+    for r in rows:
+        issue = r.get("issue")
+        if str(r.get("id", "")) == n:
+            return issue
+        if issue and str(issue) == f"gh:{n}":
+            return issue
+    return None
+
 def insert_row(lane, inc_rel, st):
     n = lane.split("-", 1)[1]
+    issue = board_issue(n)
+    issue_line = f"  issue: {issue}\n" if issue else ""
     hours = (int(time.time()) - st["last_activity"]) // 3600
     row = (
         f"- id: stuck-{lane}-investigation\n"
         f"  kind: build\n"
         f"  status: todo\n"
         f"  needs: []\n"
-        f"  issue: gh:{n}\n"
+        f"{issue_line}"
         f"  title: 'INVESTIGATE stuck lane {lane} (no activity {hours}h, {st['runs']}"
         f" run(s), 0 commits): evidence frozen in {inc_rel}/ -- read it plus the lane"
         f" worktree, then report in plans/opencode-rollout.md whether this was brief"
@@ -151,8 +195,6 @@ def main():
     with open(HISTORY, "a") as hist:
         for d in sorted(glob.glob(os.path.join(LANES, "issue-*/"))):
             lane = os.path.basename(d.rstrip("/"))
-            if not lane.replace("issue-", "").isdigit():
-                continue
             st = lane_state(d, live_dirs)
             hist.write(json.dumps(st) + "\n")
             marker = os.path.join(LOG_DIR, f"investigating-{lane}")
@@ -174,7 +216,8 @@ def main():
                     and now - st["last_activity"] >= STUCK_AFTER
                     and not os.path.exists(marker)
                     and not board_busy  # a tick mid-edit owns the board; retry next tick
-                    and not board_has_row(f"stuck-{lane}-investigation")):
+                    and not board_has_row(f"stuck-{lane}-investigation")
+                    and lane_row_live(lane.split("-", 1)[1])):
                 inc_rel = snapshot_evidence(lane, st)
                 insert_row(lane, inc_rel, st)
                 if commit(lane, inc_rel):
