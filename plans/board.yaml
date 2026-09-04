@@ -1,3 +1,9 @@
+- id: stuck-issue-http-query-sugar-research-investigation
+  kind: build
+  status: todo
+  needs: []
+  issue: gh:171
+  title: 'INVESTIGATE stuck lane issue-http-query-sugar-research (no activity 58h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-http-query-sugar-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-float-format-research-investigation
   kind: build
   status: todo
