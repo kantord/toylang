@@ -1,0 +1,19 @@
+captured: 2026-09-04T09:44:48+0200
+state: {"ts": 1788507888, "lane": "issue-param-destructure-build", "ahead": 0, "tracked_dirty": 6, "live": false, "runs": 1, "last_activity": 1788469757}
+
+=== git status ===
+ M src/ast.rs
+ M src/check/linearity.rs
+ M src/check/mod.rs
+ M src/check/types.rs
+ M src/emit_toylang.rs
+ M src/parse.rs
+
+=== git diff --stat ===
+ src/ast.rs             |  21 ++++-
+ src/check/linearity.rs |   7 ++
+ src/check/mod.rs       | 207 ++++++++++++++++++++++++++++++++++++++++++-------
+ src/check/types.rs     |   6 +-
+ src/emit_toylang.rs    |   7 +-
+ src/parse.rs           | 103 ++++++++++++------------
+ 6 files changed, 264 insertions(+), 87 deletions(-)
