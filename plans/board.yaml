@@ -43,12 +43,6 @@
   needs: []
   issue: gh:149
   title: 'INVESTIGATE stuck lane issue-float-build-go (no activity 37h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-go-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-177-investigation
-  kind: build
-  status: delegated
-  needs: []
-  issue: gh:177
-  title: 'INVESTIGATE stuck lane issue-177 (no activity 0h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-177-20260903/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: call-form-hoist-parse
   issue: gh:152
   title: 'Step 2/4 of the issue-152-stall reshape: parse the new `fn name = expr` call-form declaration and the MatchCall expression syntax.'
