@@ -174,3 +174,17 @@ KNOWN DENIALS boilerplate in `dispatch-worker.sh`, pointing workers at
 instead of scratch-file-plus-manual-run. Rebriefed issue-154 to keep its
 existing uncommitted work, convert the scratch file to a corpus case, and
 commit once `just check` is green.
+
+## Incident: issue-http-query-sugar-research (gh:171) dead on a self-inflicted toolchain probe (2026-09-01
+
+Root cause (from `20260901-231026-issue-http-query-sugar-research.jsonl.tail`): a long one-run session of correct desk research (board row, gh:171 body, the sources family and `Sink` in tir.rs/ty.rs, the `dsv(delim)` parameterized-source precedent, the 7-backend list in lib.rs, draft.md's streams-and-sinks decisions) then `which go node python3 jq cc rustc` to survey which backend toolchains exist on the host -- denied by the permission classifier -- and the worker exited immediately after, zero commits, zero file writes, no ESCALATION.md, no `plans/http-query-sugar-research.md`. Exactly the gh:163 (erlang-target-research) shape one lane later: an unnecessary toolchain probe on a task that needed none, followed by give-up-on-first-denial.
+
+
+
+Classification: brief clarity, not capability, tooling, or task shape. The worker had effectively finished the research -- three syntax candidates designed in-session,and the per-backend capability claims its survey needed are public API knowledge, not host measurements. The permission gate blocked nothing the deliverable needed;`which` was as optional here as `which erl escript erlc` was for gh:163. The task shape is the same desk-review spike gh:163 landed after its rebrief. What was missing was the brief:the gh:163 fix ("no toolchain/execution needed, docs+source read only") was applied to that lane's rebrief only, never baked into the default research-spike brief `dispatch-worker.sh` hands every fresh lane, so the next research spike replayed the identical probe-then-give-up. The board row's own phrasing ("survey what request/response building blocks already exist per backend (Go net/http, JS fetch, Python urllib, Lua, Rust reqwest, native)") invites the probe;it also carries a factual wrinkle -- the Rust backend emits self-contained files with no external crates, so `reqwest` is not available to it -- that only a probe could have made worse, not better.
+
+
+
+Rebrief (redo, not reshape or drop:the deliverable is still needed, same as gh:163). Re-dispatch into the same lane with the standard brief plus: "This is DESK RESEARCH, docs + source read-only: no toolchain or execution is needed or allowed, so do not run `which`, version checks, or any host probe (all denied). the per-backend survey is a documented-semantics comparison against src/emit_*.rs, docs/reference/, and public API knowledge, not measurements. One correction to the board row:the Rust backend cannot use reqwest -- self-contained emitted file, no external crates -- so Rust+HTTP ends at 'no HTTP, no TLS in stdlib' without new deps. Write findings to plans/http-query-sugar-research.md and commit per AGENTS.md."
+
+Worth carrying into the dispatch template, so this shape stops needing a per-lane rebrief:make the "no toolchain/execution needed" line part of the default brief for research rows (or add `which <tool>` probes to KNOWN DENIALS). The give-up-after-one-denial behavior itself is already logged as the 30-lane-review data point (issue-108/125/133/163);this lane adds another instance, not a new class.
