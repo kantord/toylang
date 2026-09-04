@@ -549,3 +549,15 @@ no `OPENCODE_MODEL` set falls back to reading that file if present. Redispatched
 and that `.opencode-model` now holds that value, so future redispatches of
 this lane (and any lane that gets an explicit model override) stay on it
 without needing the env var re-supplied every time.
+
+## 2026-09-04: stdin-redesign-build-2 (issue-172) escalated again -- brief-shape, not model
+
+The 2026-09-04 stronger-model ruling (GLM 5.2, persisted via `.opencode-model`) was applied
+and the redispatched run used it correctly, but still landed 0 commits (run 9 total). Unlike
+prior runs, this one reasoned cleanly to a real structural finding: the 2026-09-03 reshape's
+commit-1 boundary ("parse.rs + tir.rs only, tree stays green") cannot compile, because
+`Builtin` is matched exhaustively with no catch-all arm in `check/mod.rs` and all 8
+`emit_*.rs` files -- confirmed directly against `src/emit_js.rs`. Escalation round composed:
+docs/.grill/stdin-redesign-shape.round.yaml (marker: escalated-issue-172). Root cause this
+time is the reshape ruling's own commit boundary, not brief clarity or model strength --
+future redispatches of this lane should wait for the ruling rather than retrying.
