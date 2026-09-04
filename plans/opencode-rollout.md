@@ -340,4 +340,112 @@ Recommendation:
   give-up-on-first-denial shape -- the worker pushed through multiple denials and checks -- but
   landed in the same commitless zero-output state, because it ran out of scripted outcomes
 
-  before it ran out of steps. The bottleneck is the decision tree, not tenacity..
+  before it ran out of steps. The bottleneck is the decision tree, not tenacity.
+
+## Investigation: stuck lane issue-float-build-python (2026-09-04)
+
+Verdict: **tooling/permission trap**, compounded by a brief-wording gap
+and a content-channel corruption, not a capability gap. The lane's one run
+produced real, committable work -- the entire Python float emitter diff
+(src/emit_py.rs, +71/-3, ASCII-clean) -- but died at a denied scratch-probe
+execution with nothing committed, no tests written, no `just check` run, no
+ESCALATION.md. Lane stats at capture: 1 run,  0 commits, tracked-dirty
+tree, dead ~38h (evidence fetched from git via ca1f011, since the lane checkout
+predates the freeze note).
+
+What the run did: read the JS reference tests, implemented FLOAT_HELPER
+(Python repr reshaped into JS's String(number) spelling: exponent expansion,
+`.0` strip, exponent unpadding),, DIVF_HELPER (IEEE zero-divisor answers through
+tl_divf),,, wired show()/expr()/arith() and the helper gating,, then cleaned the file
+to plain ASCII. It then planned backend_py.rs tests (mirroring the JS five plus
+exponent-boundary cases),, got worried whether Rust's `f64::to_string()`
+(`src/float.rs::lit` is `n.to_string()`) might emit a plain-decimal literal Python
+would parse as an int (a real hazard: tl_float's reshaping only fires when repr
+has an `e` or `.0`), wrote f64_probe.rs, compiled it with `rustc` (allowed),
+tried `./f64_probe` -- denied (direct binary execution), and ended right there.
+
+
+
+Two aggravators made the run as expensive as it was. First, the worker's own
+tool-call text got corrupted in transit, intermittently: combining accents inserted before digits, `)` -> `[]`, `,` -> `[],`, `the`/`ther` swaps,
+dropped parens -- across write/edit/bash-c strings. It diagnosed this forensically
+(hexdumps, sub-string probes,)and adapted (single-line edits,, "no risky
+characters", a `python3` script for the comment surgery the edit tool couldn't
+match), but the forensics consumed roughly the majority of the run's steps. This
+is an environment problem, not a capability failure -- and worth a landing-time
+scan: this lane's diff is clean only because the worker ran its own byte scan;a
+lane that skipped that would have committed the corruption silently. Second, the
+fatal probe question (Rust's f64 Display spelling at exponent boundaries)has no
+sanctioned direct answer on this host;the sanctioned routes were the test suite
+(write the tests, `just check`, read failures),the already-board-planned
+float-format-research, or neutralizing the hazard outright (`tl_float` coercing
+`float(n)`, or `lit` emitting a Python-float spelling). The worker's instinct was
+sound, the route wasn't briefed.
+
+
+
+Diagnosis, on the four categories:
+
+- **Tooling/permission trap** (fatal step):`./f64_probe` is direct binary
+  execution, a KNOWN denial class named in the brief by toylang-runner examples
+  only (`cargo run -- run file.toy`, `./target/debug/toylang`),which the worker
+  didn't generalize to its own rustc-compiled binary. `rustc f64_probe.rs
+  -o f64_probe` compiled fine,so the classifier allowed the compile and denied the
+  run -- a half-sanctioned dead end.
+
+- **Brief clarity**:the denial list names the class by example, not by
+  principle,so "a binary I compiled myself" didn't look covered;the commit-early
+  rule was present but aspirational ("never let cleanup failures stop you
+  committing"),not an ordering,so real work sat uncommitted through verification.
+
+- **Not a capability gap**:the reasoning is sharp throughout -- correctly
+  identified the int-absorption hazard, planned the right tests, diagnosed and
+  routed around the corruption,, produced exactly the emitter shape the JS reference
+  calls for. It hit the wall on an unsanctioned verification step after the work was
+  done,, with the step budget spent.
+
+- **Task shape**:the underlying formatting question is the family-wide snag the
+  float-format-research escalation already names -- Go/Python/Rust siblings stalled
+  6 cumulative runs probing target float formatting before any formatter code.
+
+  This lane got furthest (real emitter diff);the research row, already dispatched
+  and pointed at this lane's probes, is the right unblock
+
+
+
+Recommendation:
+
+- **Reshape the immediate action to a session resume, not a redispatch**:keep
+  the uncommitted emitter diff,and brief via `opencode run --session <id>`:(1) commit
+  the emitter diff FIRST, as its own commit, before any further verification;(2)
+  then add tests/backend_py.rs Float tests mirroring backend_js.rs plus exponent-
+  boundary cases;(3) verify with `just check` only -- failure output is the empirical
+  answer it was probing for;(4) never compile-and-run a scratch probe -- `rustc -o` +
+  `./binary` is the same denial class as `cargo run`,and `rustc <file>.rs -o ...`
+  should be treated as denied outright;(5) if a test surfaces the int-absorption
+  hazard, fix it in `tl_float` by coercing `float(n)` up front (one line;makes
+  Rust's Display spelling irrelevant). One backend, one or two commits, land promptly.
+
+
+
+- **Sequence behind float-format-research**:this lane's diff (read via `git -C
+  ~/.local/share/toylang-lanes/issue-float-build-python diff`)is that row's best
+  concrete lead;the research brief should add the int-absorption edge as the specific
+  snag this lane died on,and Rust's `Display` (`src/float.rs::lit`)as the emission
+  path to characterize.
+
+- **Dispatch-template fixes**, generalizable:(1) name the direct-binary-execution
+  denial by principle -- "any binary you compiled, however you compiled it (rustc
+  -o, cc, go build), is direct binary execution, never run it" -- and add
+  `rustc <file>.rs -o ...` to the KNOWN DENIALS outright;(2) make commit-early a hard
+  ordering -- "commit each piece of real work as you finish it, verification happens
+  after commits, not before" -- the current phrasing has now failed the same way on
+  this lane's siblings (issue-98/129/133-run6/154/170);(3) scan landed lane diffs
+  for the corruption's tells (non-ASCII, U+0301, `[]` for `),`, `ther` for `the`),,
+  since a lane that doesn't run forensics commits it silently.
+
+
+
+- **Escalation threshold**:if the resumed run also fails to commit on this lane,
+  escalate to a stronger OPENCODE_MODEL -- six commitless runs across the float-build
+  sibling family already argue for research-row-first sequencing,not another probe-happy redispatch of the same model.
