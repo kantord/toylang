@@ -1,0 +1,45 @@
+captured: 2026-09-04T09:44:48+0200
+state: {"ts": 1788507888, "lane": "issue-search-layer-build", "ahead": 0, "tracked_dirty": 12, "live": false, "runs": 1, "last_activity": 1788460884}
+
+=== git status ===
+ M build.rs
+ M runtime/toylang.c
+ M src/check/mod.rs
+ M src/emit_go.rs
+ M src/emit_jq.rs
+ M src/emit_js.rs
+ M src/emit_llvm.rs
+ M src/emit_lua.rs
+ M src/emit_py.rs
+ M src/emit_rs.rs
+ M src/tags.rs
+ M src/tir.rs
+?? docs/reference/builtins/all.md
+?? docs/reference/builtins/any.md
+?? docs/reference/builtins/first.md
+?? tests/corpus/all_basic.yaml
+?? tests/corpus/all_empty.yaml
+?? tests/corpus/all_true.yaml
+?? tests/corpus/any_basic.yaml
+?? tests/corpus/any_empty.yaml
+?? tests/corpus/any_needs_bool.yaml
+?? tests/corpus/first_basic.yaml
+?? tests/corpus/first_empty.yaml
+?? tests/corpus/first_needs_vec.yaml
+?? tests/corpus/first_of_records.yaml
+?? tests/corpus/first_of_strings.yaml
+
+=== git diff --stat ===
+ build.rs          |  3 ++
+ runtime/toylang.c | 34 +++++++++++++++++++++
+ src/check/mod.rs  | 89 +++++++++++++++++++++++++++++++++++++++++++++++++++----
+ src/emit_go.rs    | 49 ++++++++++++++++++++++++++++--
+ src/emit_jq.rs    | 12 ++++++++
+ src/emit_js.rs    | 19 ++++++++++++
+ src/emit_llvm.rs  | 57 +++++++++++++++++++++++++++++++++++
+ src/emit_lua.rs   | 39 ++++++++++++++++++++++++
+ src/emit_py.rs    | 15 ++++++++++
+ src/emit_rs.rs    | 15 ++++++++++
+ src/tags.rs       |  3 ++
+ src/tir.rs        | 13 ++++++++
+ 12 files changed, 341 insertions(+), 7 deletions(-)
