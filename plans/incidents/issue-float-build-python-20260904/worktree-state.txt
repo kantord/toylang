@@ -1,0 +1,15 @@
+captured: 2026-09-04T09:44:47+0200
+state: {"ts": 1788507887, "lane": "issue-float-build-python", "ahead": 0, "tracked_dirty": 1, "live": false, "runs": 1, "last_activity": 1788371336}
+
+=== git status ===
+ M src/emit_py.rs
+?? f64_probe
+?? f64_probe.rs
+?? fix_emit.py
+?? float_check.py
+?? hexdump.py
+?? paren_probe.py
+
+=== git diff --stat ===
+ src/emit_py.rs | 74 +++++++++++++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 71 insertions(+), 3 deletions(-)

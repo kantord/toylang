@@ -1,3 +1,9 @@
+- id: stuck-issue-float-build-python-investigation
+  kind: build
+  status: todo
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-build-python (no activity 37h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-python-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-float-build-lua-investigation
   kind: build
   status: todo
