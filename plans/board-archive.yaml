@@ -1477,3 +1477,11 @@
   kind: decide
   needs: [lines-utf8-posix-research]
   status: done
+
+- id: call-form-hoist-ast
+  issue: gh:152
+  title: 'issue-152-stall escalation RULED (option B, reshape): 5 commitless runs on the monolithic lane -- split into an ordered sequence, each step independently committable. Step 1/4: add the MatchCall AST node (Msg(Ping -> ... or Quit -> ...)) -- finish and commit the stub already sitting uncommitted in the dead issue-152 worktree (src/ast.rs, from run 5), no parser/checker/codegen wiring yet.'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
