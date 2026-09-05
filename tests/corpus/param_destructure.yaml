@@ -8,3 +8,5 @@ program: |
 
 output: |
   5
+
+node_types: [application, arith.add, int, local, pipe, projection, record-literal, var]

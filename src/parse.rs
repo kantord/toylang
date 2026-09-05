@@ -4,8 +4,9 @@ use winnow::stream::{LocatingSlice, Location, Stream};
 use winnow::token::take_while;
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod, LogicOp, MatchArm,
-    Module, Param, ParamShape, Pattern, Span, TraitDecl, TraitMethodSig, TypeExpr, Variant,
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod, LogicOp,
+    MatchArm, Module, Param, ParamShape, Pattern, Span, TraitDecl, TraitMethodSig, TypeExpr,
+    Variant,
 };
 use crate::error::Error;
 use crate::ty;
@@ -42,7 +43,7 @@ enum Tok {
     Fn,
     Pub,
     Type,
-Enum,
+    Enum,
     Trait,
     Impl,
     Let,
@@ -729,15 +730,18 @@ impl<'i> Cursor<'i> {
     /// `fn name(param: Type) -> Type`,the signature spine a trait method and an impl method
     /// share. `what` names the kind in the return-type error;the caller decides whether a
     /// `= body` follows the signature. A function's own spine stays inline in `def`.
-    fn fn_signature(&mut self, what: &str) -> Result<(String, Option<Param>, TypeExpr, Span), Error> {
+    fn fn_signature(
+        &mut self,
+        what: &str,
+    ) -> Result<(String, Option<Param>, TypeExpr, Span), Error> {
         let start = self.eat(Tok::Fn)?;
-        let (name,_) = self.eat_ident("a name")?;
+        let (name, _) = self.eat_ident("a name")?;
         self.eat(Tok::LParen)?;
 
         let param = self.param()?;
 
         let close = self.eat(Tok::RParen)?;
-        let (arrow,_) = self.peek()?;
+        let (arrow, _) = self.peek()?;
         if arrow != Tok::Arrow {
             return Err(Error::new(
                 close,
@@ -756,10 +760,10 @@ impl<'i> Cursor<'i> {
     /// separator token is needed: each method starts with its own `fn`.
     fn trait_decl(&mut self, is_pub: bool) -> Result<TraitDecl, Error> {
         let start = self.eat(Tok::Trait)?;
-        let (name,_) = self.eat_ident("a trait name")?;
+        let (name, _) = self.eat_ident("a trait name")?;
         self.eat(Tok::LBrace)?;
         let mut methods = Vec::new();
-        let (first,_) = self.peek()?;
+        let (first, _) = self.peek()?;
         if first != Tok::RBrace {
             loop {
                 let (mname, param, ret, span) = self.fn_signature("trait method")?;
@@ -788,18 +792,20 @@ impl<'i> Cursor<'i> {
     /// starts with its own `fn`, so the methods need no separator token between them.
     fn impl_decl(&mut self) -> Result<ImplDecl, Error> {
         let start = self.eat(Tok::Impl)?;
-        let (trait_name,_) = self.eat_ident("a trait name")?;
+        let (trait_name, _) = self.eat_ident("a trait name")?;
         let (link, link_span) = self.eat_ident("`for`")?;
         if link != "for" {
             return Err(Error::new(
                 link_span,
-                format!("expected `for` between the trait name and its target type, found `{link}`"),
+                format!(
+                    "expected `for` between the trait name and its target type, found `{link}`"
+                ),
             ));
         }
         let ty = self.type_expr()?;
         self.eat(Tok::LBrace)?;
         let mut methods = Vec::new();
-        let (first,_) = self.peek()?;
+        let (first, _) = self.peek()?;
         if first != Tok::RBrace {
             loop {
                 let (mname, param, ret, sig_span) = self.fn_signature("impl method")?;
@@ -1191,7 +1197,7 @@ impl<'i> Cursor<'i> {
     /// `..` is two Dot tokens, and it ends the list: naming a field after "and the rest" would
     /// make the marker meaningless.
     fn fields_pattern(&mut self) -> Result<FieldsPattern, Error> {
-        let (open, _) = self.eat(Tok::LBrace)?;
+        let open = self.eat(Tok::LBrace)?;
         let mut names = Vec::new();
         let mut rest = false;
         let (first, _) = self.peek()?;
@@ -1506,9 +1512,7 @@ impl<'i> Cursor<'i> {
             | Tok::Dsv
             | Tok::Csv
             | Tok::Tsv
-            | Tok::Ident(_) => {
-                bare_callee(&name)
-            }
+            | Tok::Ident(_) => bare_callee(&name),
             _ => false,
         };
         if !argument_starts || !self.takes_argument(&name, span, next_span) {

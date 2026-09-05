@@ -8,3 +8,5 @@ program: |
 
 output: |
   7
+
+node_types: [application, int, local, pipe, projection, record-literal, var]
