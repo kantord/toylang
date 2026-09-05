@@ -49,7 +49,20 @@ trap fire_next EXIT
 
 echo "[opencode-worker] $LANE on $MODEL (events: $LOG)"
 START=$(date +%s)
-opencode run -m "$MODEL" --format json "$BRIEF" 2>>"$LOG_DIR/errors.log" \
+# < /dev/null: opencode's `run` unconditionally awaits stdin EOF whenever
+# stdin isn't a TTY (no timeout, no skip-if-message-given check) -- an
+# inherited pipe with no EOF hangs it forever right after "message=init",
+# before a session is ever created. /dev/null gives instant EOF. Confirmed
+# root cause via strace + pty/no-pty A/B testing, 2026-09-05 (no upstream
+# fix; toylang never pipes stdin into a worker, so this costs nothing here).
+# timeout: belt-and-suspenders against ANY indefinite hang (this bug, a
+# future one, a network stall) -- same principle as drive-tick.sh's own
+# `timeout --kill-after=30s 2700s claude -p ...` wrapper; workers had no
+# such cap before this. 3600s (vs the coordinator's 2700s): the longest
+# real worker run on record is 3255s (lanes.csv), so give it headroom.
+timeout --kill-after=30s 3600s \
+  opencode run -m "$MODEL" --format json "$BRIEF" < /dev/null \
+  2>>"$LOG_DIR/errors.log" \
   | tee "$LOG" | python3 "$SCRIPTS/opencode-peek.py"
 RC=$?
 END=$(date +%s)
