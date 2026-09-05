@@ -119,9 +119,28 @@ impl TypeExpr {
     }
 }
 
+/// What a parameter's left side binds: either one name or a record destructured the way a match
+/// arm's brace pattern destructures one. The type annotation stays fully explicit either way.
+#[derive(Debug)]
+pub enum ParamShape {
+    /// `name` in `fn f(name: T) -> R`.
+    Name(String, Span),
+    /// `{a, b, ..}` in `fn f({a, b}: T) -> R`, binding each named field of the record `T`.
+    Fields(FieldsPattern),
+}
+
+impl ParamShape {
+    pub fn span(&self) -> Span {
+        match self {
+            ParamShape::Name(_, span) => *span,
+            ParamShape::Fields(f) => f.span,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Param {
-    pub name: String,
+    pub shape: ParamShape,
     pub ty: TypeExpr,
     pub span: Span,
 }

@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use crate::ast::{Alias, Def, EnumDecl, Span, TypeExpr};
+use crate::ast::{Alias, Def, EnumDecl, ParamShape, Span, TypeExpr};
 use crate::error::Error;
 use crate::ty::{self, Sig, Type};
 
@@ -267,7 +267,9 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
     for def in defs {
         value_name(&def.name, def.span, "function name")?;
         if let Some(param) = &def.param {
-            value_name(&param.name, param.span, "parameter name")?;
+            if let ParamShape::Name(name, _) = &param.shape {
+                value_name(name, param.span, "parameter name")?;
+            }
         }
         if BUILTIN_NAMES.contains(&def.name.as_str()) {
             return Err(Error::new(

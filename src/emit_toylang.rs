@@ -32,7 +32,7 @@
 
 use crate::ast::{
     Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, LogicOp, MatchArm, Module, Param,
-    Pattern, TypeExpr, Variant,
+    ParamShape, Pattern, TypeExpr, Variant,
 };
 
 const WIDTH: usize = 80;
@@ -251,7 +251,10 @@ fn print_alias(a: &Alias) -> String {
 fn print_param(p: &Option<Param>) -> String {
     match p {
         None => String::new(),
-        Some(p) => format!("{}: {}", p.name, print_type(&p.ty)),
+        Some(p) => match &p.shape {
+            ParamShape::Name(name, _) => format!("{name}: {}", print_type(&p.ty)),
+            ParamShape::Fields(f) => format!("{}: {}", print_fields_pattern(f), print_type(&p.ty)),
+        },
     }
 }
 
