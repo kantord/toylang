@@ -520,7 +520,7 @@ pub fn emit(program: &Program) -> String {
     let arith = uses("tlDiv(") || uses("tlRem(");
     let arith64 = uses("tlDiv64(") || uses("tlRem64(");
     let collect = uses("tlCollectLines(") || uses("tlScanLines");
-    let fail = unwrap || arith || arith64 || collect || program.input.is_some() || program.inputs.is_some();
+    let fail = unwrap || arith || arith64 || collect || program.input.is_some() || program.inputs.is_some() || uses("tlFail(");
     let quote = uses("tlQuote(");
     let join = uses("tlJoin(");
 

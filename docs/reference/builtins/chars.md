@@ -43,5 +43,5 @@ use_it(parse(stdin))
 ```
 
 ```error
-`input` cannot be read as Char; Char has no wire form to read (at byte 44)
+`parse(stdin)` cannot be read as Char; Char has no wire form to read (at byte 44)
 ```
