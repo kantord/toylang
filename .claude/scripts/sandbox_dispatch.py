@@ -264,25 +264,32 @@ def send_text(name: str, guest_path: str, text: str, workdir: Path, env: dict, t
 
 
 def run_opencode(name: str, message_file_guest: str, model: str, env: dict,
-                  continue_session: bool, agent: str | None = None) -> str:
+                  continue_session: bool, agent: str | None = None,
+                  log_tag: str = "run") -> str:
     """One opencode turn. `< /dev/null` is load-bearing: opencode run hangs
     forever on non-TTY stdin with no EOF (confirmed root cause, 2026-09-05).
     `agent`: None lets opencode default to "build"; pass "plan" for a
     read-only evaluation turn (plan is restrictive by default -- edit/bash
     ask -- but our own opencode.jsonc already blanket-allows everything, so
     this only affects which system prompt/model config opencode selects).
+    `log_tag`: every phase gets its OWN log file (/root/opencode-run-<tag>.log)
+    -- a single shared filename silently destroyed the devil's-advocate
+    phase's own log the moment the next phase ran, making a real failure
+    there (it wrote no critique.json) undiagnosable after the fact
+    (2026-09-05).
     """
     cont = "--continue " if continue_session else ""
     agent_flag = f"--agent {agent} " if agent else ""
+    log = f"/root/opencode-run-{log_tag}.log"
     script = (
         f"cd /repo && "
         f"timeout --kill-after=30s 1800s opencode run {cont}{agent_flag}"
         f'"$(cat {message_file_guest})" -m {model} < /dev/null '
-        f"> /root/opencode-run.log 2>&1; "
-        f"echo RC=$? >> /root/opencode-run.log"
+        f"> {log} 2>&1; "
+        f"echo RC=$? >> {log}"
     )
     exec_in(name, script, env, check=False)
-    tail = exec_in(name, "tail -c 4000 /root/opencode-run.log", env, check=False).stdout
+    tail = exec_in(name, f"tail -c 4000 {log}", env, check=False).stdout
     return tail
 
 
@@ -308,7 +315,7 @@ def plan_phase(name: str, task_text: str, plan_model: str, env: dict, workdir: P
     send_text(name, guest_path, prompt, workdir, env, f"plan-{round_no}-sent")
     exec_in(name, "rm -f /root/verdict.json", env, check=False)
     run_opencode(name, guest_path, plan_model, env,
-                 continue_session=(round_no > 0), agent="plan")
+                 continue_session=(round_no > 0), agent="plan", log_tag=f"plan-{round_no}")
     return read_json_from_guest(name, "/root/verdict.json", env)
 
 
@@ -326,7 +333,8 @@ def devils_advocate_phase(name: str, task_text: str, verdict: dict, critic_model
     guest_path = f"/root/critic-{round_no}.txt"
     send_text(name, guest_path, prompt, workdir, env, f"critic-{round_no}-sent")
     exec_in(name, "rm -f /root/critique.json", env, check=False)
-    run_opencode(name, guest_path, critic_model, env, continue_session=False, agent="plan")
+    run_opencode(name, guest_path, critic_model, env, continue_session=False, agent="plan",
+                 log_tag=f"critic-{round_no}")
     return read_json_from_guest(name, "/root/critique.json", env)
 
 
@@ -382,7 +390,8 @@ def run_build_cycle(issue_id: str, name: str, first_message_guest: str, model: s
     for i in range(retry_cap + 1):
         print(f"== {issue_id}: build turn {i + 1} ==", file=sys.stderr)
         if i == 0:
-            run_opencode(name, first_message_guest, model, env, continue_session=continue_session)
+            run_opencode(name, first_message_guest, model, env, continue_session=continue_session,
+                         agent="build", log_tag=f"build-{i}")
         else:
             fb_guest = f"/root/feedback-{i}.txt"
             feedback = (
@@ -390,7 +399,8 @@ def run_build_cycle(issue_id: str, name: str, first_message_guest: str, model: s
                 f"failures below -- do not start over or redo work that already passed.\n\n{attempts[-1].verify_tail}"
             )
             send_text(name, fb_guest, feedback, workdir, env, f"feedback-{i}-sent")
-            run_opencode(name, fb_guest, model, env, continue_session=True)
+            run_opencode(name, fb_guest, model, env, continue_session=True,
+                         agent="build", log_tag=f"build-{i}")
 
         print(f"== {issue_id}: verifying build turn {i + 1} ==", file=sys.stderr)
         ok, tail = verify(name, env)
@@ -436,7 +446,17 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
         # original verdict) beats an unbounded back-and-forth.
         critique = devils_advocate_phase(name, task_text, verdict, critic_model,
                                           env, workdir, round_no)
-        if critique and critique.get("agree") is False:
+        if critique is None:
+            # Distinct from an explicit agreement: the critic wrote no
+            # critique.json at all. Proceed on the original verdict (same
+            # safe-fallback philosophy as the plan phase itself), but say so
+            # plainly -- this used to be silently indistinguishable from a
+            # real "agree" (2026-09-05), which made a real critic failure
+            # look like a passed review.
+            print(f"== {issue_id}: devil's advocate produced no critique.json "
+                  "(not an agreement -- proceeding on the original verdict) ==",
+                  file=sys.stderr)
+        elif critique.get("agree") is False:
             objection = critique.get("objection", "(no objection text given)")
             print(f"== {issue_id}: devil's advocate objects: {objection[:300]} ==",
                   file=sys.stderr)
@@ -449,7 +469,7 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
                 workdir, env, f"correction-{round_no}-sent")
             exec_in(name, "rm -f /root/verdict.json", env, check=False)
             run_opencode(name, correction_guest, plan_model, env,
-                         continue_session=True, agent="plan")
+                         continue_session=True, agent="plan", log_tag=f"correction-{round_no}")
             revised = read_json_from_guest(name, "/root/verdict.json", env)
             if revised is not None:
                 verdict = revised
@@ -466,7 +486,8 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
         if kind == "refactor-first" and verdict.get("refactor_brief"):
             rf_guest = f"/root/refactor-{round_no}.txt"
             send_text(name, rf_guest, verdict["refactor_brief"], workdir, env, f"refactor-{round_no}-sent")
-            run_opencode(name, rf_guest, build_model, env, continue_session=True, agent="build")
+            run_opencode(name, rf_guest, build_model, env, continue_session=True, agent="build",
+                         log_tag=f"refactor-{round_no}")
             ok, tail = verify(name, env)
             print(f"== {issue_id}: refactor round {round_no + 1} verify: "
                   f"{'green' if ok else 'red'} ==", file=sys.stderr)
@@ -477,7 +498,8 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
             for j, sub_brief in enumerate(verdict["split_briefs"]):
                 sub_guest = f"/root/split-{round_no}-{j}.txt"
                 send_text(name, sub_guest, sub_brief, workdir, env, f"split-{round_no}-{j}-sent")
-                run_opencode(name, sub_guest, build_model, env, continue_session=True, agent="build")
+                run_opencode(name, sub_guest, build_model, env, continue_session=True, agent="build",
+                             log_tag=f"split-{round_no}-{j}")
                 verify(name, env)  # best-effort per-subtask check; final cycle re-verifies everything
                 ensure_committed(name, env)
             break
