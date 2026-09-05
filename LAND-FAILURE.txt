@@ -1,0 +1,29 @@
+Auto-merging runtime/toylang.c
+Auto-merging site/public/corpus.json
+CONFLICT (content): Merge conflict in site/public/corpus.json
+Auto-merging src/ast.rs
+Auto-merging src/check/mod.rs
+CONFLICT (content): Merge conflict in src/check/mod.rs
+Auto-merging src/emit_go.rs
+CONFLICT (content): Merge conflict in src/emit_go.rs
+Auto-merging src/emit_jq.rs
+Auto-merging src/emit_js.rs
+Auto-merging src/emit_llvm.rs
+Auto-merging src/emit_lua.rs
+Auto-merging src/emit_rs.rs
+Auto-merging src/emit_toylang.rs
+Auto-merging src/parse.rs
+CONFLICT (content): Merge conflict in src/parse.rs
+Auto-merging src/tir.rs
+Auto-merging tests/backend_js.rs
+CONFLICT (content): Merge conflict in tests/backend_js.rs
+Auto-merging tests/snapshots/backend_llvm__emitted_llvm_ir.snap
+Auto-merging tests/snapshots/step_2__concat_is_left_associative.snap
+Auto-merging tests/streaming.rs
+Automatic merge failed; fix conflicts and then commit the result.
+MERGE CONFLICT merging origin/main + this branch:
+site/public/corpus.json
+src/check/mod.rs
+src/emit_go.rs
+src/parse.rs
+tests/backend_js.rs

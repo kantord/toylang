@@ -77,6 +77,43 @@ option, deliberately not built now: there is no baseline worth protecting until 
 for the first time, and a moving dashboard is only worth its upkeep once a specific regression it
 would have caught actually happens.
 
+## Build status (2026-09-03)
+
+The harness landed as designed: `src/bin/bench.rs` (`just bench NAME`) compiles a
+`benches/programs/<name>.toy` benchmark once, builds Go/Rust/Native ahead of the timed run,
+retargets Lua at the system `lua5.4` (writing the `t_input` global into the script text itself,
+since there is no embedding host to set it the way `run_lua` does), and drives `hyperfine`
+`--shell=none` over all seven. Results export to `benches/results/<name>.{md,json}` (gitignored).
+Today's harness feeds at most one `Int` value from stdin, or nothing -- see the doc comment atop
+`bench.rs` for what extending it to a richer input type needs.
+
+`binary-trees` is the one task landed so far (`benches/programs/binary-trees.toy`, correctness
+pinned at `tests/corpus/binary_trees_node_count.yaml`): build a perfect binary tree of a given
+depth, count its nodes. Simplified from CLBG's actual multi-tree, GC-stress variant (a stretch
+tree, a long-lived tree, and a loop of many trees at each depth) to the single build-and-count
+core, which is what the language can express today; the loop-of-many-trees shape adds nothing a
+recursive count doesn't already exercise, so it was left out rather than force-fit.
+
+**The suite spike's "good fit today" claim for fasta/k-nucleotide/reverse-complement/regex-redux
+does not hold against the current builtin set.** `chars(s)` decodes `Str` to `Vec<Char>`, but
+`Char` has no wire form and there is no `Char -> Str` builtin and no `Str` slice/index operator
+(`docs/reference/types/char.md`; confirmed empirically, not just read off the docs, since the
+docs could themselves be stale) -- so a program cannot decode an existing string, transform it
+character by character, and print the result. That blocks reverse-complement (decode, complement,
+re-encode) and k-nucleotide (decode into k-length windows, print each as a string) outright.
+regex-redux additionally has no regex engine to build on. fasta is different: it only *generates*
+text from a small fixed alphabet of literal `Str` values chosen by a computed index, never
+decodes anything, so it stays buildable -- just not yet built. pidigits needs digits of pi beyond
+what a 32-bit or even 64-bit accumulator holds; the spigot algorithm's usual unbounded-bignum
+shape has no home in a language with no bignum type, so it is blocked the same way the float
+tasks are, on a type the language does not have yet.
+
+Of the eight, `binary-trees` is landed; `fasta` and `fannkuch-redux` (both fully numeric or
+literal-driven, no decode needed) are the next real candidates; `mandelbrot` needs float support
+most backends don't have yet, the same gate n-body/spectral-norm are already behind; `pidigits`
+needs a bignum type; `reverse-complement`, `k-nucleotide`, and `regex-redux` need `Str`
+slicing or a `Char -> Str` builtin, neither of which exists.
+
 ## What this plan leaves to the next person
 
 - Whether n-body and spectral-norm stay in the initial set, and whether float semantics (the

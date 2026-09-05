@@ -1,0 +1,216 @@
+captured: 2026-09-03T00:37:01+0200
+state: {"ts": 1788388621, "lane": "issue-159", "ahead": 1, "tracked_dirty": 176, "live": false, "runs": 4, "last_activity": 1788372605}
+
+=== git status ===
+A  .claude/scripts/board-archive.py
+M  .claude/scripts/dispatch-worker.sh
+M  .claude/scripts/drive-tick.sh
+A  .claude/scripts/land-lane.sh
+M  .claude/scripts/opencode-worker.sh
+A  .claude/scripts/stuck-watch.py
+M  .claude/scripts/tick-stream.py
+M  .claude/skills/drive/SKILL.md
+M  .claude/skills/enwiro-delegate/SKILL.md
+M  .claude/skills/land-delegated-work/SKILL.md
+M  .gitignore
+UU build.rs
+M  docs/adr/0001-stream-is-the-effect-layer-typed.md
+M  docs/examples/euler/02-even-fibonacci-sum.md
+M  docs/examples/euler/03-largest-prime-factor.md
+M  docs/examples/euler/04-largest-palindrome-product.md
+M  docs/examples/euler/05-smallest-multiple.md
+M  docs/examples/euler/07-10001st-prime.md
+M  docs/examples/euler/08-largest-product-in-a-series.md
+M  docs/examples/euler/09-special-pythagorean-triplet.md
+M  docs/examples/euler/10-summation-of-primes.md
+M  docs/examples/euler/11-largest-product-in-a-grid.md
+M  docs/examples/euler/12-highly-divisible-triangular-number.md
+M  docs/examples/euler/13-large-sum.md
+M  docs/examples/euler/14-longest-collatz-sequence.md
+M  docs/examples/euler/17-number-letter-counts.md
+M  docs/examples/euler/18-maximum-path-sum-i.md
+M  docs/examples/euler/19-counting-sundays.md
+M  docs/examples/euler/21-amicable-numbers.md
+M  docs/examples/euler/24-lexicographic-permutations.md
+M  docs/examples/euler/26-reciprocal-cycles.md
+M  docs/examples/euler/28-number-spiral-diagonals.md
+M  docs/examples/euler/29-distinct-powers.md
+M  docs/examples/euler/30-digit-fifth-powers.md
+M  docs/guides/matching.md
+A  docs/guides/projection.md
+M  docs/guides/streams.md
+M  docs/reference/builtins/flatten.md
+M  docs/reference/builtins/jsonlines.md
+M  docs/reference/builtins/range.md
+M  docs/reference/operators/boolean.md
+M  docs/reference/operators/conditional.md
+M  docs/reference/operators/match.md
+M  docs/reference/operators/projection.md
+M  docs/reference/operators/specs.md
+A  docs/reference/sources/dsv.md
+M  docs/reference/sources/input.md
+M  docs/reference/sources/inputs.md
+M  docs/reference/sources/lines.md
+M  docs/reference/types/bool.md
+M  docs/reference/types/opt.md
+M  docs/reference/types/result.md
+M  docs/reference/types/stream.md
+M  docs/tutorial/01-values.md
+M  docs/tutorial/03-pipes.md
+M  docs/tutorial/05-streams.md
+M  docs/tutorial/06-matching.md
+M  draft.md
+M  examples/fizzbuzz.toy
+A  plans/benchmark-plan.md
+M  plans/benchmark-suite-spike.md
+M  plans/board-archive.yaml
+M  plans/board.yaml
+A  plans/erlang-target-research.md
+A  plans/incidents/issue-140-20260901/20260830-214444-issue-140.jsonl.tail
+A  plans/incidents/issue-140-20260901/worktree-state.txt
+A  plans/incidents/issue-169-20260901/20260901-010814-issue-169.jsonl.tail
+A  plans/incidents/issue-169-20260901/worktree-state.txt
+A  plans/incidents/issue-170-20260901/20260901-010824-issue-170.jsonl.tail
+A  plans/incidents/issue-170-20260901/worktree-state.txt
+A  plans/issue-93-privileged-agent-prompt.md
+A  plans/module-routing-research.md
+M  plans/opencode-rollout.md
+A  plans/prompt-experiment.md
+M  plans/questions.md
+M  prelude.toy
+M  runtime/toylang.c
+M  site/dev/src/components/MailApp.tsx
+M  site/dev/src/lib/board.ts
+M  site/public/corpus.json
+UU src/ast.rs
+UU src/check/linearity.rs
+UU src/check/mod.rs
+M  src/check/types.rs
+UU src/emit_go.rs
+UU src/emit_jq.rs
+UU src/emit_js.rs
+UU src/emit_llvm.rs
+UU src/emit_lua.rs
+UU src/emit_py.rs
+UU src/emit_rs.rs
+UU src/emit_toylang.rs
+UU src/lib.rs
+UU src/parse.rs
+M  src/prelude.rs
+UU src/tags.rs
+UU src/tir.rs
+M  src/ty.rs
+M  tests/backend_jq.rs
+M  tests/corpus.rs
+M  tests/corpus/cond_branches_from_annotation.yaml
+M  tests/corpus/cond_chain.yaml
+M  tests/corpus/cond_false.yaml
+M  tests/corpus/cond_in_map.yaml
+M  tests/corpus/cond_true.yaml
+A  tests/corpus/csv_partial.yaml
+A  tests/corpus/dsv_blank_line_is_an_empty_field.yaml
+A  tests/corpus/dsv_rows.yaml
+A  tests/corpus/dsv_trailing_delimiter.yaml
+M  tests/corpus/enum_recursive_walk.yaml
+M  tests/corpus/enum_variant_at_runtime.yaml
+M  tests/corpus/fizzbuzz.yaml
+M  tests/corpus/fizzbuzz_arms.yaml
+A  tests/corpus/input_annotation.yaml
+M  tests/corpus/int64_compare.yaml
+M  tests/corpus/join_basic.yaml
+M  tests/corpus/join_lines_one.yaml
+A  tests/corpus/jsonlines_of_dsv.yaml
+A  tests/corpus/jsonlines_of_range.yaml
+A  tests/corpus/let_classify_cond.yaml
+A  tests/corpus/let_multi_input_annotation.yaml
+M  tests/corpus/lines_cat.yaml
+A  tests/corpus/lines_only.yaml
+M  tests/corpus/lines_preserve_crlf.yaml
+M  tests/corpus/lines_stream_signature.yaml
+M  tests/corpus/lines_unterminated_final_line.yaml
+M  tests/corpus/range_basic.yaml
+M  tests/corpus/range_empty.yaml
+M  tests/corpus/range_index.yaml
+M  tests/corpus/range_negative.yaml
+M  tests/corpus/result_match_both_arms.yaml
+A  tests/corpus/slice_basic.yaml
+A  tests/corpus/slice_negative.yaml
+A  tests/corpus/slice_negative_both.yaml
+A  tests/corpus/slice_nested.yaml
+A  tests/corpus/slice_omit_high.yaml
+A  tests/corpus/slice_omit_low.yaml
+A  tests/corpus/slice_out_of_range.yaml
+A  tests/corpus/slice_out_of_range_high.yaml
+A  tests/corpus/slice_out_of_range_low.yaml
+A  tests/corpus/slice_plus_concat.yaml
+A  tests/corpus/slice_records.yaml
+A  tests/corpus/slice_reversed.yaml
+M  tests/corpus/tail_recursion_deep.yaml
+A  tests/corpus/tsv_partial.yaml
+M  tests/corpus/type_alias.yaml
+A  tests/corpus/vec_body_after_definition.yaml
+M  tests/euler_real_data.rs
+M  tests/snapshots/backend_llvm__emitted_llvm_ir.snap
+M  tests/snapshots/backend_llvm__native_agrees_where_it_compiles.snap
+M  tests/snapshots/backend_rust__rust_agrees_where_it_compiles.snap
+M  tests/snapshots/corpus__adults__py.snap
+M  tests/snapshots/corpus__join_lines_one__go.snap
+M  tests/snapshots/corpus__join_lines_one__js.snap
+M  tests/snapshots/jsonlines__jsonlines_cannot_be_nested.snap
+A  tests/snapshots/step_1__slice_with_no_bounds_is_refused.snap
+M  tests/snapshots/step_2__concat_is_left_associative.snap
+A  tests/snapshots/step_5__a_program_can_call_its_own_non_pub_helper.snap
+A  tests/snapshots/step_5__a_program_cannot_call_a_private_prelude_helper.snap
+A  tests/snapshots/step_dsv__dsv_exclusive_with_input.snap
+A  tests/snapshots/step_dsv__dsv_exclusive_with_lines.snap
+A  tests/snapshots/step_dsv__dsv_in_a_function_body.snap
+A  tests/snapshots/step_dsv__dsv_in_a_mapper_body.snap
+A  tests/snapshots/step_dsv__dsv_read_twice.snap
+A  tests/snapshots/step_dsv__empty_delimiter_is_refused.snap
+M  tests/snapshots/streams__linearity__a_conditional_cannot_yield_a_stream.snap
+M  tests/snapshots/type_flow__the_branch_that_misses_the_annotation_is_blamed.snap
+M  tests/snapshots/unwrap__a_condition_must_be_a_bool.snap
+M  tests/snapshots/unwrap__both_branches_must_agree.snap
+M  tests/step_1.rs
+M  tests/step_5.rs
+A  tests/step_dsv.rs
+M  tests/streaming.rs
+M  tests/streams.rs
+M  tests/type_flow.rs
+M  tests/unwrap.rs
+?? LAND-FAILURE.txt
+
+=== git diff --stat ===
+ build.rs               | Unmerged
+ build.rs               |  58 ++++--
+ src/ast.rs             | Unmerged
+ src/ast.rs             |  56 ++++-
+ src/check/linearity.rs | Unmerged
+ src/check/linearity.rs |  63 +++---
+ src/check/mod.rs       | Unmerged
+ src/check/mod.rs       | 556 +++++++++++++++++++++++++++++++++++++++----------
+ src/emit_go.rs         | Unmerged
+ src/emit_go.rs         | 173 ++++++++++++---
+ src/emit_jq.rs         | Unmerged
+ src/emit_jq.rs         | 117 ++++++++---
+ src/emit_js.rs         | Unmerged
+ src/emit_js.rs         | 149 ++++++++++---
+ src/emit_llvm.rs       | Unmerged
+ src/emit_llvm.rs       | 250 ++++++++++++++++------
+ src/emit_lua.rs        | Unmerged
+ src/emit_lua.rs        | 137 ++++++++++--
+ src/emit_py.rs         | Unmerged
+ src/emit_py.rs         | 100 ++++++---
+ src/emit_rs.rs         | Unmerged
+ src/emit_rs.rs         | 225 ++++++++++++++++----
+ src/emit_toylang.rs    | Unmerged
+ src/emit_toylang.rs    | 169 ++++++---------
+ src/lib.rs             | Unmerged
+ src/lib.rs             | 103 +++++++++
+ src/parse.rs           | Unmerged
+ src/parse.rs           | 222 ++++++++++++++++----
+ src/tags.rs            | Unmerged
+ src/tags.rs            |  26 +--
+ src/tir.rs             | Unmerged
+ src/tir.rs             | 453 ++++++++++++++++++++++------------------
+ 16 files changed, 2074 insertions(+), 783 deletions(-)

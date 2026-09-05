@@ -1,0 +1,12 @@
+# A destructuring parameter may leave fields out when its pattern ends in `..`, the same
+# rule a match arm's pattern follows; naming a field binds it and leaves the rest out of scope.
+program: |
+  fn first({a, ..}: {a: Int, b: Int}) -> Int =
+      a
+
+  first({a: 7, b: 9})
+
+output: |
+  7
+
+node_types: [application, int, local, pipe, projection, record-literal, var]

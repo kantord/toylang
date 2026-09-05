@@ -19,9 +19,9 @@ use inkwell::targets::{
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType};
 use inkwell::values::{
-    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue,
+    BasicMetadataValueEnum, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue,
 };
-use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
+use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
 
 use crate::ast::{BinOp, LogicOp};
 use crate::tir::{self, Builtin, Func, Fusion, Kind, LocalId, Program, Source, Stage, Tir};
@@ -40,6 +40,7 @@ fn unsupported(what: &str) -> String {
 struct Runtime<'ctx> {
     concat: FunctionValue<'ctx>,
     int_to_str: FunctionValue<'ctx>,
+    float_to_str: FunctionValue<'ctx>,
     str_eq: FunctionValue<'ctx>,
     str_cmp: FunctionValue<'ctx>,
     print: FunctionValue<'ctx>,
@@ -124,6 +125,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let ptr = ctx.ptr_type(AddressSpace::default());
         let i64t = ctx.i64_type();
         let i32t = ctx.i32_type();
+        let f64t = ctx.f64_type();
 
         // Nothing crosses into the runtime by value. A 16-byte struct is passed in registers
         // under the SysV ABI, but that lowering is a C frontend's job rather than LLVM's, and
@@ -134,6 +136,11 @@ impl<'ctx> Emitter<'ctx, '_> {
             int_to_str: module.add_function(
                 "tl_int_to_str",
                 ptr.fn_type(&[i64t.into()], false),
+                None,
+            ),
+            float_to_str: module.add_function(
+                "tl_float_to_str",
+                ptr.fn_type(&[f64t.into()], false),
                 None,
             ),
             str_eq: module.add_function(
@@ -341,7 +348,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             // every operation, and an Int64 is that representation with the narrowing left off
             // (kantord/toylang#83).
             Type::Int64 => self.ctx.i64_type().into(),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            Type::Float => self.ctx.f64_type().into(),
             Type::Bool => self.ctx.bool_type().into(),
             // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
             // the two.
@@ -401,6 +408,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let sig = match ret {
             BasicTypeEnum::IntType(t) => t.fn_type(&args, false),
             BasicTypeEnum::PointerType(t) => t.fn_type(&args, false),
+            BasicTypeEnum::FloatType(t) => t.fn_type(&args, false),
             other => return Err(unsupported(&format!("a {other:?} return"))),
         };
         // Names are prefixed for the same reason the other backends prefix: `main` is a legal
@@ -443,7 +451,14 @@ impl<'ctx> Emitter<'ctx, '_> {
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Sink => unreachable!("the grammar keeps a sink out of every slot"),
             Type::Int | Type::Int64 | Type::Char => value.into_int_value(),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            // A Float is the same 8 bytes as the i64 every other slot holds, reinterpreted
+            // rather than converted: the bit pattern round-trips exactly, which a numeric
+            // int<->float conversion would not.
+            Type::Float => self
+                .builder
+                .build_bit_cast(value.into_float_value(), i64t, "slot")
+                .map_err(|e| e.to_string())?
+                .into_int_value(),
             Type::Bool => self
                 .builder
                 .build_int_z_extend(value.into_int_value(), i64t, "slot")
@@ -462,7 +477,10 @@ impl<'ctx> Emitter<'ctx, '_> {
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Sink => unreachable!("the grammar keeps a sink out of every slot"),
             Type::Int | Type::Int64 | Type::Char => slot.into(),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            Type::Float => self
+                .builder
+                .build_bit_cast(slot, self.ctx.f64_type(), "elem")
+                .map_err(|e| e.to_string())?,
             Type::Bool => self
                 .builder
                 .build_int_truncate(slot, self.ctx.bool_type(), "elem")
@@ -982,7 +1000,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
             // tl_int_to_str already takes the full i64, so both widths print through it.
             Type::Int | Type::Int64 => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            Type::Float => self.call_rt(self.rt.float_to_str, &[value], "float_str")?,
             Type::Bool => {
                 let t = self.string_const("true");
                 let f = self.string_const("false");
@@ -1255,7 +1273,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(match &t.kind {
             Kind::Str(text) => self.string_const(text).into(),
             Kind::Int(n) => self.ctx.i64_type().const_int(*n as u64, true).into(),
-            Kind::Float(_) => unreachable!("Float is JS-only in this row"),
+            Kind::Float(n) => self.ctx.f64_type().const_float(*n).into(),
 
             Kind::Var(name) => *self
                 .params
@@ -1399,6 +1417,11 @@ impl<'ctx> Emitter<'ctx, '_> {
 
             Kind::Field { base, name } => self.field(base, name, &t.ty)?,
 
+            Kind::Arith { op, lhs, rhs } if t.ty == Type::Float => {
+                let l = self.expr(lhs)?.into_float_value();
+                let r = self.expr(rhs)?.into_float_value();
+                self.arith_float(*op, l, r)?
+            }
             Kind::Arith { op, lhs, rhs } => {
                 let l = self.expr(lhs)?.into_int_value();
                 let r = self.expr(rhs)?.into_int_value();
@@ -1880,6 +1903,27 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(done.into())
     }
 
+    /// Native IEEE 754 arithmetic, unlike `arith`/`arith64`: a Float is hardware-width already,
+    /// so there is no wrapping or narrowing to do, and division by zero is not this backend's
+    /// problem to trap -- `fdiv` already returns Infinity or NaN, the ADR 0007 / Q37 ruling's
+    /// own answer (division by zero returns Infinity, matching IEEE).
+    fn arith_float(
+        &mut self,
+        op: BinOp,
+        lhs: FloatValue<'ctx>,
+        rhs: FloatValue<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let done = match op {
+            BinOp::Add => self.builder.build_float_add(lhs, rhs, "fadd"),
+            BinOp::Sub => self.builder.build_float_sub(lhs, rhs, "fsub"),
+            BinOp::Mul => self.builder.build_float_mul(lhs, rhs, "fmul"),
+            BinOp::Div => self.builder.build_float_div(lhs, rhs, "fdiv"),
+            other => return Err(format!("{other} is not arithmetic on Float")),
+        }
+        .map_err(|e| e.to_string())?;
+        Ok(done.into())
+    }
+
     /// Sign-extend the low 32 bits, which is the wrap.
     fn narrow_to_i32(&self, wide: IntValue<'ctx>) -> Result<IntValue<'ctx>, String> {
         let narrow = self
@@ -1958,6 +2002,18 @@ impl<'ctx> Emitter<'ctx, '_> {
                     l.into_int_value(),
                     r.into_int_value(),
                     "eq",
+                )
+                .map_err(|e| e.to_string()),
+            // OEQ, the same ordered predicate the top-level `==` uses: NaN is not equal to
+            // itself here either, matching JS's `===` on two numbers (JS has no separate float
+            // path -- every JS number already carries these semantics).
+            Type::Float => self
+                .builder
+                .build_float_compare(
+                    FloatPredicate::OEQ,
+                    l.into_float_value(),
+                    r.into_float_value(),
+                    "feq",
                 )
                 .map_err(|e| e.to_string()),
             Type::Record(fields) => {
@@ -2277,6 +2333,33 @@ impl<'ctx> Emitter<'ctx, '_> {
             .into());
         }
 
+        // Float gets its own predicate table rather than joining the Int one below: ordered
+        // (`O*`) predicates are false whenever either operand is NaN, which is what IEEE and
+        // this language's own Q37 ruling (NaN admitted, comparisons follow IEEE) want for `==`,
+        // `<`, `<=`, `>`, `>=` -- but `!=` needs the unordered predicate (`UNE`), since `NaN !=
+        // NaN` is true. Reusing `OEQ`'s negation for `!=` would get that backwards.
+        if operand_ty == Type::Float {
+            let predicate = match op {
+                BinOp::Eq => FloatPredicate::OEQ,
+                BinOp::Ne => FloatPredicate::UNE,
+                BinOp::Lt => FloatPredicate::OLT,
+                BinOp::Le => FloatPredicate::OLE,
+                BinOp::Gt => FloatPredicate::OGT,
+                BinOp::Ge => FloatPredicate::OGE,
+                other => return Err(format!("{other} is not a comparison")),
+            };
+            return Ok(self
+                .builder
+                .build_float_compare(
+                    predicate,
+                    l.into_float_value(),
+                    r.into_float_value(),
+                    "fcmp",
+                )
+                .map_err(|e| e.to_string())?
+                .into());
+        }
+
         let predicate = match op {
             BinOp::Eq => IntPredicate::EQ,
             BinOp::Ne => IntPredicate::NE,
@@ -2557,7 +2640,7 @@ fn descriptor(enums: &Enums, ty: &Type) -> String {
             Type::Int => "i".to_string(),
             // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.
             Type::Int64 => unreachable!("input cannot contain an Int64, refused by the checker"),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            Type::Float => "f".to_string(),
             Type::Bool => "b".to_string(),
             // The checker refuses Char anywhere in an input type: it has no wire form.
             Type::Char => unreachable!("input cannot contain a Char, refused by the checker"),
