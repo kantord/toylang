@@ -315,7 +315,7 @@ def plan_phase(name: str, task_text: str, plan_model: str, env: dict, workdir: P
     send_text(name, guest_path, prompt, workdir, env, f"plan-{round_no}-sent")
     exec_in(name, "rm -f /root/verdict.json", env, check=False)
     run_opencode(name, guest_path, plan_model, env,
-                 continue_session=(round_no > 0), agent="plan", log_tag=f"plan-{round_no}")
+                 continue_session=(round_no > 0), log_tag=f"plan-{round_no}")
     return read_json_from_guest(name, "/root/verdict.json", env)
 
 
@@ -333,7 +333,7 @@ def devils_advocate_phase(name: str, task_text: str, verdict: dict, critic_model
     guest_path = f"/root/critic-{round_no}.txt"
     send_text(name, guest_path, prompt, workdir, env, f"critic-{round_no}-sent")
     exec_in(name, "rm -f /root/critique.json", env, check=False)
-    run_opencode(name, guest_path, critic_model, env, continue_session=False, agent="plan",
+    run_opencode(name, guest_path, critic_model, env, continue_session=False,
                  log_tag=f"critic-{round_no}")
     return read_json_from_guest(name, "/root/critique.json", env)
 
@@ -469,7 +469,7 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
                 workdir, env, f"correction-{round_no}-sent")
             exec_in(name, "rm -f /root/verdict.json", env, check=False)
             run_opencode(name, correction_guest, plan_model, env,
-                         continue_session=True, agent="plan", log_tag=f"correction-{round_no}")
+                         continue_session=True, log_tag=f"correction-{round_no}")
             revised = read_json_from_guest(name, "/root/verdict.json", env)
             if revised is not None:
                 verdict = revised
