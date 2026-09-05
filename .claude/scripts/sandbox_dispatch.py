@@ -40,6 +40,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 REPO = Path("/home/kantord/repos/toylang")
 LANES = Path.home() / ".local/share/toylang-lanes"
 AUTH_JSON = Path.home() / ".local/share/opencode/auth.json"
@@ -406,6 +408,72 @@ def extract_result(name: str, base_commit: str, env: dict, out_dir: Path) -> Pat
     return out
 
 
+def compose_escalation(issue_id: str, task_text: str, attempts: list[Attempt],
+                        result_patch: Path | None, plan_summary: str) -> Path:
+    """When the harness exhausts its full budget (plan-decompose rounds AND
+    build retries) without reaching green, write a maintainer-facing round
+    instead of just logging a failure nobody will read -- same
+    docs/.grill/*.round.yaml pattern this project already uses for every
+    other stuck-lane escalation (see stdin-redesign-shape.round.yaml,
+    issue-177-salvage-stall.round.yaml), so a real blocker surfaces in the
+    normal mail flow and a human can approve a stronger model or a
+    privileged manual session, rather than the harness silently retrying
+    forever or silently giving up."""
+    last = attempts[-1] if attempts else None
+    tail_excerpt = last.verify_tail[-1500:] if last else "(no verify output captured)"
+    n_attempts = len(attempts)
+    grill_dir = REPO / "docs" / ".grill"
+    grill_dir.mkdir(parents=True, exist_ok=True)
+    round_path = grill_dir / f"{issue_id}-sandbox-blocker.round.yaml"
+
+    doc = {
+        "intro": (
+            f"# {issue_id}: sandboxed dispatch reached its full budget without going green\n"
+            f"{plan_summary} Then {n_attempts} build attempt(s) against the real toolchain "
+            "(full permissions, real LLVM/cargo-nextest, real `just check` each round). This "
+            "is real, verified progress -- a patch exists, extracted and ready to inspect at "
+            f"{result_patch} -- not a stall; it just did not clear the last hurdle within the "
+            "automated budget."
+        ),
+        "questions": [{
+            "id": f"{issue_id}-sandbox-blocker",
+            "title": f"{issue_id}: one remaining gap after {n_attempts} verified attempt(s)",
+            "flow": "escalation",
+            "background": (
+                f"TASK:\n{task_text[:800]}\n\n"
+                f"LAST VERIFY OUTPUT (tail):\n```\n{tail_excerpt}\n```\n\n"
+                f"Extracted patch, not yet applied to the real lane or main: {result_patch}"
+            ),
+            "thesis": (
+                "This got substantially further than a plain one-shot dispatch would have -- "
+                "a plan-phase search for a simplifying refactor, an adversarial review of that "
+                "verdict, and real toolchain verification every round -- and converged close "
+                "to green. The remaining gap needs either more automated attempts, a stronger "
+                "model, or direct human/privileged-agent attention, not a blind redispatch."
+            ),
+            "question": "**How should this blocker move forward?**",
+            "options": [
+                {"label": "A. Stronger model, same patch as the starting point",
+                 "description": "Resume the sandboxed session from this patch with a stronger "
+                                 "OPENCODE_MODEL for just the remaining fix, keeping all the "
+                                 "context already built up rather than starting over."},
+                {"label": "B. Hand to a privileged/human session",
+                 "description": "The remaining gap is small and specific enough (see the "
+                                 "verify tail above) for a human or a fully-privileged manual "
+                                 "session to close directly, faster than more automated retries."},
+                {"label": "C. Land as-is with the known gap tracked",
+                 "description": "Accept the extracted patch with the remaining failure "
+                                 "explicitly marked (e.g. an ignored/xfail test) and file the "
+                                 "gap as its own small follow-up board row."},
+            ],
+            "freeText": True,
+        }],
+    }
+    round_path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100))
+    yaml.safe_load(round_path.read_text())  # fail loudly here, not silently in the mail UI
+    return round_path
+
+
 def run_build_cycle(issue_id: str, name: str, first_message_guest: str, model: str,
                      env: dict, workdir: Path, retry_cap: int, base_commit: str,
                      continue_session: bool) -> tuple[list[Attempt], Path | None]:
@@ -616,11 +684,26 @@ def main() -> int:
         if not args.keep_sandbox:
             sh([str(MSB_BIN), "rm", "-f", name], env=env, check=False)
 
+    green = attempts[-1].verify_ok if attempts else False
+    escalation_path = None
+    if not green:
+        plan_summary = (
+            f"Ran up to {args.max_plan_rounds} plan-decompose round(s) with a devil's-advocate "
+            "review of each verdict before the real build attempt."
+            if args.max_plan_rounds > 0 else
+            "Plan-decompose phase was disabled for this run (--max-plan-rounds 0)."
+        )
+        escalation_path = compose_escalation(args.issue_id, task_text, attempts,
+                                              result_patch, plan_summary)
+        print(f"== {args.issue_id}: wrote escalation round at {escalation_path} ==",
+              file=sys.stderr)
+
     summary = {
         "issue_id": args.issue_id,
         "attempts": len(attempts),
-        "green": attempts[-1].verify_ok if attempts else False,
+        "green": green,
         "result_patch": str(result_patch) if result_patch else None,
+        "escalation": str(escalation_path) if escalation_path else None,
         "workdir": str(workdir),
     }
     print(json.dumps(summary, indent=2))
