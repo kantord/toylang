@@ -225,6 +225,13 @@ pub(super) fn field_used(body: &Tir, pid: LocalId, name: &str) -> bool {
     )
 }
 
+/// Whether a destructured parameter's field local is read anywhere in its body. A field's
+/// lowered `Kind::Local` is produced only by reading its name in source, so its presence
+/// anywhere is a use.
+pub(super) fn local_used(body: &Tir, local: LocalId) -> bool {
+    any_node(body, &|t| matches!(&t.kind, Kind::Local(id) if *id == local))
+}
+
 /// Every function the program's body can actually reach, directly or through calls a reached
 /// function itself makes. `pub fn`s from the prelude are always merged into `file.defs` before
 /// this runs, so a `pub` one the program never calls needs pruning here to keep it out of a

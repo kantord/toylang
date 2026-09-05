@@ -4,8 +4,9 @@ use winnow::stream::{LocatingSlice, Location, Stream};
 use winnow::token::take_while;
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod, LogicOp, MatchArm,
-    Module, Param, Pattern, Span, TraitDecl, TraitMethodSig, TypeExpr, Variant,
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod, LogicOp,
+    MatchArm, Module, Param, ParamShape, Pattern, Span, TraitDecl, TraitMethodSig, TypeExpr,
+    Variant,
 };
 use crate::error::Error;
 use crate::ty;
@@ -42,7 +43,7 @@ enum Tok {
     Fn,
     Pub,
     Type,
-Enum,
+    Enum,
     Trait,
     Impl,
     Let,
@@ -652,6 +653,45 @@ impl<'i> Cursor<'i> {
         }
     }
 
+    /// What the parens hold in a function signature: nothing, `name: Type`, or
+    /// `{a, b, ..}: Type`, the destructuring spelling reusing a match arm's brace pattern.
+    fn param(&mut self) -> Result<Option<Param>, Error> {
+        let (next, _) = self.peek()?;
+        if next == Tok::RParen {
+            return Ok(None);
+        }
+        let shape = if next == Tok::LBrace {
+            ParamShape::Fields(self.fields_pattern()?)
+        } else {
+            let (param_name, param_span) = self.eat_ident("a name")?;
+            ParamShape::Name(param_name, param_span)
+        };
+        // Both spellings are followed by `: Type`; the Name case checks for the `:` before
+        // parsing anything, and the Fields case must consume it too or the type parser meets it
+        // first.
+        let (colon, _) = self.peek()?;
+        if colon != Tok::Colon {
+            return Err(Error::new(
+                shape.span(),
+                match &shape {
+                    ParamShape::Name(name, _) => {
+                        format!("parameter `{name}` needs a type annotation")
+                    }
+                    ParamShape::Fields(_) => {
+                        "a destructured parameter needs a type annotation".to_string()
+                    }
+                },
+            ));
+        }
+        self.advance()?;
+        let param_ty = self.type_expr()?;
+        Ok(Some(Param {
+            span: shape.span().to(param_ty.span()),
+            shape,
+            ty: param_ty,
+        }))
+    }
+
     /// `fn name(param: Type) -> Type = body` or `fn name() -> Type = body`.
     ///
     /// Both annotations are required by the grammar rather than by the checker, which is what
@@ -661,26 +701,7 @@ impl<'i> Cursor<'i> {
         let (name, _) = self.eat_ident("a name")?;
         self.eat(Tok::LParen)?;
 
-        let (next, _) = self.peek()?;
-        let param = if next == Tok::RParen {
-            None
-        } else {
-            let (param_name, param_span) = self.eat_ident("a name")?;
-            let (colon, _) = self.peek()?;
-            if colon != Tok::Colon {
-                return Err(Error::new(
-                    param_span,
-                    format!("parameter `{param_name}` needs a type annotation"),
-                ));
-            }
-            self.advance()?;
-            let param_ty = self.type_expr()?;
-            Some(Param {
-                span: param_span.to(param_ty.span()),
-                name: param_name,
-                ty: param_ty,
-            })
-        };
+        let param = self.param()?;
 
         let close = self.eat(Tok::RParen)?;
         let (arrow, _) = self.peek()?;
@@ -710,34 +731,18 @@ impl<'i> Cursor<'i> {
     /// `fn name(param: Type) -> Type`,the signature spine a trait method and an impl method
     /// share. `what` names the kind in the return-type error;the caller decides whether a
     /// `= body` follows the signature. A function's own spine stays inline in `def`.
-    fn fn_signature(&mut self, what: &str) -> Result<(String, Option<Param>, TypeExpr, Span), Error> {
+    fn fn_signature(
+        &mut self,
+        what: &str,
+    ) -> Result<(String, Option<Param>, TypeExpr, Span), Error> {
         let start = self.eat(Tok::Fn)?;
-        let (name,_) = self.eat_ident("a name")?;
+        let (name, _) = self.eat_ident("a name")?;
         self.eat(Tok::LParen)?;
 
-        let (next,_) = self.peek()?;
-        let param = if next == Tok::RParen {
-            None
-        } else {
-            let (param_name, param_span) = self.eat_ident("a name")?;
-            let (colon,_) = self.peek()?;
-            if colon != Tok::Colon {
-                return Err(Error::new(
-                    param_span,
-                    format!("parameter `{param_name}` needs a type annotation"),
-                ));
-            }
-            self.advance()?;
-            let param_ty = self.type_expr()?;
-            Some(Param {
-                span: param_span.to(param_ty.span()),
-                name: param_name,
-                ty: param_ty,
-            })
-        };
+        let param = self.param()?;
 
         let close = self.eat(Tok::RParen)?;
-        let (arrow,_) = self.peek()?;
+        let (arrow, _) = self.peek()?;
         if arrow != Tok::Arrow {
             return Err(Error::new(
                 close,
@@ -756,10 +761,10 @@ impl<'i> Cursor<'i> {
     /// separator token is needed: each method starts with its own `fn`.
     fn trait_decl(&mut self, is_pub: bool) -> Result<TraitDecl, Error> {
         let start = self.eat(Tok::Trait)?;
-        let (name,_) = self.eat_ident("a trait name")?;
+        let (name, _) = self.eat_ident("a trait name")?;
         self.eat(Tok::LBrace)?;
         let mut methods = Vec::new();
-        let (first,_) = self.peek()?;
+        let (first, _) = self.peek()?;
         if first != Tok::RBrace {
             loop {
                 let (mname, param, ret, span) = self.fn_signature("trait method")?;
@@ -788,18 +793,20 @@ impl<'i> Cursor<'i> {
     /// starts with its own `fn`, so the methods need no separator token between them.
     fn impl_decl(&mut self) -> Result<ImplDecl, Error> {
         let start = self.eat(Tok::Impl)?;
-        let (trait_name,_) = self.eat_ident("a trait name")?;
+        let (trait_name, _) = self.eat_ident("a trait name")?;
         let (link, link_span) = self.eat_ident("`for`")?;
         if link != "for" {
             return Err(Error::new(
                 link_span,
-                format!("expected `for` between the trait name and its target type, found `{link}`"),
+                format!(
+                    "expected `for` between the trait name and its target type, found `{link}`"
+                ),
             ));
         }
         let ty = self.type_expr()?;
         self.eat(Tok::LBrace)?;
         let mut methods = Vec::new();
-        let (first,_) = self.peek()?;
+        let (first, _) = self.peek()?;
         if first != Tok::RBrace {
             loop {
                 let (mname, param, ret, sig_span) = self.fn_signature("impl method")?;
@@ -1164,7 +1171,7 @@ impl<'i> Cursor<'i> {
 
     fn pattern(&mut self) -> Result<Pattern, Error> {
         let (name, span) = self.eat_ident("a pattern")?;
-        let (next, brace_span) = self.peek()?;
+        let (next, _) = self.peek()?;
         if name == "any" && next == Tok::LParen {
             self.advance()?;
             let close = self.eat(Tok::RParen)?;
@@ -1179,14 +1186,24 @@ impl<'i> Cursor<'i> {
                 fields: None,
             });
         }
-        self.advance()?;
+        let fields = self.fields_pattern()?;
+        Ok(Pattern::Variant {
+            name,
+            span: span.to(fields.span),
+            fields: Some(fields),
+        })
+    }
+
+    /// `{a, b, ..}`: the brace pattern a match arm and a destructuring parameter share.
+    /// `..` is two Dot tokens, and it ends the list: naming a field after "and the rest" would
+    /// make the marker meaningless.
+    fn fields_pattern(&mut self) -> Result<FieldsPattern, Error> {
+        let open = self.eat(Tok::LBrace)?;
         let mut names = Vec::new();
         let mut rest = false;
         let (first, _) = self.peek()?;
         if first != Tok::RBrace {
             loop {
-                // `..` is two Dot tokens, and it ends the list: naming a field after "and the
-                // rest" would make the marker meaningless.
                 if self.peek()?.0 == Tok::Dot {
                     self.advance()?;
                     self.eat(Tok::Dot)?;
@@ -1202,15 +1219,10 @@ impl<'i> Cursor<'i> {
             }
         }
         let close = self.eat(Tok::RBrace)?;
-        let fields = FieldsPattern {
+        Ok(FieldsPattern {
             names,
             rest,
-            span: brace_span.to(close),
-        };
-        Ok(Pattern::Variant {
-            name,
-            span: span.to(close),
-            fields: Some(fields),
+            span: open.to(close),
         })
     }
 
@@ -1501,9 +1513,7 @@ impl<'i> Cursor<'i> {
             | Tok::Dsv
             | Tok::Csv
             | Tok::Tsv
-            | Tok::Ident(_) => {
-                bare_callee(&name)
-            }
+            | Tok::Ident(_) => bare_callee(&name),
             _ => false,
         };
         if !argument_starts || !self.takes_argument(&name, span, next_span) {

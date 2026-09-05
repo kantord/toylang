@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Origin, Param, Pattern, Span};
+use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Origin, Param, ParamShape, Pattern, Span};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{self, Sig, Type};
@@ -9,7 +9,7 @@ use crate::ty::{self, Sig, Type};
 mod linearity;
 mod types;
 
-use linearity::{StreamBinding, check_linear, field_used, param_used, prune_unreachable};
+use linearity::{StreamBinding, check_linear, field_used, local_used, param_used, prune_unreachable};
 use types::{
     TypeEnv, alias_map, constructor_of, enum_map, is_constructor_of, matcher_of, resolve,
     resolve_enum, signatures,
@@ -286,6 +286,16 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     })
 }
 
+/// What `check_defs` made of a definition's parameter: the TIR param name the backends bind
+/// the function's argument to, and, for a destructured one, the locals each named field was
+/// lowered to. The param name is a real user name for a plain parameter and a hidden one the body
+/// never sees for a destructured one.
+struct LoweredParam {
+    name: String,
+    record: Option<LocalId>,
+    field_locals: Vec<(String, Span, LocalId, Type)>,
+}
+
 /// Signatures are collected before any body is checked, so a definition may call one that
 /// appears later in `defs`. This is also what recursion needs. No reachability pruning happens
 /// here: that needs the whole program's body, which `check_module` never has and `check` only
@@ -299,9 +309,84 @@ fn check_defs<'a>(
     let mut funcs = Vec::new();
     for def in defs {
         let sig = &ctx.sigs[&def.name];
-        let scope = match (&def.param, &sig.param) {
-            (Some(param), Some(param_ty)) => vec![(param.name.clone(), param_ty.clone(), None)],
-            (None, None) => Vec::new(),
+        // A destructured parameter binds each named field to a fresh local, and its record arrives
+        // as a hidden single-name parameter the body never sees: the `Bind` chain below reads it off
+        // the backend's function argument, so a user name can never collide with it. The fields'
+        // `Some(local)` scope entries are what make `let` shadowing behave (kantord/toylang#144).
+        let (scope, lowered) = match (&def.param, &sig.param) {
+            (Some(param), Some(param_ty)) => match &param.shape {
+                ParamShape::Name(name, _) => (
+                    vec![(name.clone(), param_ty.clone(), None)],
+                    LoweredParam {
+                        name: name.clone(),
+                        record: None,
+                        field_locals: Vec::new(),
+                    },
+                ),
+                ParamShape::Fields(fields) => {
+                    let Type::Record(pfields) = param_ty else {
+                        return Err(Error::new(
+                            fields.span,
+                            format!(
+                                "a destructuring parameter needs a record type, found {param_ty}"
+                            ),
+                        ));
+                    };
+                    let record = ctx.fresh();
+                    let mut scope = Vec::new();
+                    let mut field_locals = Vec::new();
+                    for (i, (fname, fspan)) in fields.names.iter().enumerate() {
+                        if fields.names[..i].iter().any(|(seen,_)| seen == fname) {
+                            return Err(Error::new(
+                                *fspan,
+                                format!("`{fname}` is bound twice in this pattern"),
+                            ));
+                        }
+                        let Some((_, fty)) = pfields.iter().find(|(n, _)| n == fname) else {
+                            return Err(Error::new(*fspan, format!("no field `{fname}` on {param_ty}")));
+                        };
+                        let fid = ctx.fresh();
+                        scope.push((fname.clone(), fty.clone(), Some(fid)));
+                        field_locals.push((fname.clone(), *fspan, fid, fty.clone()));
+                    }
+                    // Leaving fields out of a destructuring parameter is a forgotten field until
+                    // `..` says it was meant, the same rule a match arm's pattern follows.
+                    if !fields.rest {
+                        let missing: Vec<String> = pfields
+                            .iter()
+                            .filter(|(n,_)| !fields.names.iter().any(|(m,_)| m == n))
+                            .map(|(n,_)| format!("`{n}`"))
+                            .collect();
+                        if !missing.is_empty() {
+                            return Err(Error::new(
+                                fields.span,
+                                format!(
+                                    "a destructuring parameter must name every field of its type \
+                                     or end in `..`; missing {}",
+                                    missing.join(" and ")
+                                ),
+                            ));
+                        }
+                    }
+                    let name = format!("__{}_param", def.name);
+                    (
+                        scope,
+                        LoweredParam {
+                            name,
+                            record: Some(record),
+                            field_locals,
+                        },
+                    )
+                }
+            },
+            (None, None) => (
+                Vec::new(),
+                LoweredParam {
+                    name: String::new(),
+                    record: None,
+                    field_locals: Vec::new(),
+                },
+            ),
             _ => unreachable!("a signature's param mirrors its definition's"),
         };
         let def_ctx = Ctx {
@@ -330,7 +415,7 @@ fn check_defs<'a>(
         // call -- the tail-pipeline `|>` form or a direct call to a sink; nothing else is a
         // sink, and a body that is not one fails here with the declared-vs-found mismatch below
         // naming the function.
-        let body = if sig.ret == Type::Sink {
+        let mut body = if sig.ret == Type::Sink {
             if matches!(def.body, Expr::TailPipe { .. }) {
                 tail_pipe(&def_ctx, &def.body)?
             } else if let Some(tir) = sink_call(&def_ctx, &def.body)? {
@@ -351,8 +436,40 @@ fn check_defs<'a>(
                 Expected::Synthesised(body) => conform(&def_ctx, body, &sig.ret),
             }
         };
+        // A destructured parameter's record arrives as a hidden param and is bound to a fresh
+        // local, then each named field is projected off it -- the same `Bind` shape `let` uses, so
+        // every backend already knows how to run one. Field bindings wrap innermost-first so the
+        // record's own bind comes first.
+        if let Some(record) = lowered.record {
+            let param_ty = sig.param.clone().expect("a destructured param's type is Some");
+            for (fname, _, fid, fty) in lowered.field_locals.iter().rev() {
+                let base = Tir::new(param_ty.clone(), Kind::Local(record));
+                body = Tir::new(
+                    body.ty.clone(),
+                    Kind::Bind {
+                        local: *fid,
+                        value: Box::new(Tir::new(
+                            fty.clone(),
+                            Kind::Field {
+                                base: Box::new(base),
+                                name: fname.clone(),
+                            },
+                        )),
+                        body: Box::new(body),
+                    },
+                );
+            }
+            body = Tir::new(
+                body.ty.clone(),
+                Kind::Bind {
+                    local: record,
+                    value: Box::new(Tir::new(param_ty, Kind::Var(lowered.name.clone()))),
+                    body: Box::new(body),
+                },
+            );
+        }
         if let Some(param) = &def.param {
-            check_param(&body, param, &sig.param, &def.name, def.body.span())?;
+            check_param(&body, param, &lowered, &sig.param, &def.name, def.body.span())?;
         }
         if body.ty != sig.ret {
             return Err(Error::new(
@@ -365,7 +482,7 @@ fn check_defs<'a>(
         }
         funcs.push(tir::Func {
             name: def.name.clone(),
-            param: def.param.as_ref().map(|p| p.name.clone()),
+            param: if def.param.is_some() { Some(lowered.name.clone()) } else { None },
             param_ty: sig.param.clone(),
             body,
         });
@@ -443,26 +560,55 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
 fn check_param(
     body: &Tir,
     param: &Param,
+    lowered: &LoweredParam,
     param_ty: &Option<Type>,
     func_name: &str,
     body_span: Span,
 ) -> Result<(), Error> {
-    if matches!(param_ty, Some(Type::Stream(_))) {
-        check_linear(
-            body,
-            &StreamBinding::Param(&param.name),
-            &format!("`{}`", param.name),
-            body_span,
-        )?;
-    }
-    if !param_used(body, &param.name) {
-        return Err(Error::new(
-            param.span,
-            format!(
-                "parameter `{}` is never used; delete it from `{}`'s definition and its call sites",
-                param.name, func_name
-            ),
-        ));
+    match &param.shape {
+        ParamShape::Name(name, _) => {
+            if matches!(param_ty, Some(Type::Stream(_))) {
+                check_linear(
+                    body,
+                    &StreamBinding::Param(name),
+                    &format!("`{}`", name),
+                    body_span,
+                )?;
+            }
+            if !param_used(body, name) {
+                return Err(Error::new(
+                    param.span,
+                    format!(
+                        "parameter `{}` is never used; delete it from `{}`'s definition and its call sites",
+                        name, func_name
+                    ),
+                ));
+            }
+        }
+        // A destructured parameter's record type can never be a Stream (streams cannot live in
+        // records), so nothing linear to check; each named field is instead held to the same
+        // dead-code rule the plain parameter's name is, echoing what a match arm does to its
+        // pattern's fields.
+        ParamShape::Fields(fields) => {
+            for (fname, fspan) in &fields.names {
+                let (_, _, fid, _) = lowered
+                    .field_locals
+                    .iter()
+                    .find(|(n, _, _, _)| n == fname)
+                    .expect("the checker lowered every named field");
+                if !local_used(body, *fid) {
+                    let hint = if fields.rest {
+                        "remove it from the pattern".to_string()
+                    } else {
+                        "remove it from the pattern and close it with `..`".to_string()
+                    };
+                    return Err(Error::new(
+                        *fspan,
+                        format!("`{fname}` is bound here but never used in the body; {hint}"),
+                    ));
+                }
+            }
+        }
     }
     Ok(())
 }

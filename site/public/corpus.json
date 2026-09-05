@@ -4167,6 +4167,67 @@
     },
     {
       "emitted": {
+        "go": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n)\n\nfunc tlInt(n int32) int32 { return n }\n\ntype tlRec0 struct {\n\tFa int32 `json:\"a\"`\n\tFb int32 `json:\"b\"`\n}\n\nfunc v_pair_sum(v___pair_sum_param tlRec0) int32 {\n\treturn func(t_0 tlRec0) int32 { return func(t_1 int32) int32 { return func(t_2 int32) int32 { return (t_1 + t_2) }((t_0).Fb) }((t_0).Fa) }(v___pair_sum_param)\n}\n\nfunc main() {\n\tfmt.Println(strconv.FormatInt(int64(v_pair_sum(tlRec0{Fa: tlInt(2), Fb: tlInt(3)})), 10))\n}\n",
+        "jq": "def tl_i32: . as $r\n  | ((($r % 4294967296) + 4294967296) % 4294967296)\n  | if . >= 2147483648 then . - 4294967296 else . end;\ndef tl_mul($a; $b):\n  ($a | tl_i32) as $x | ($b | tl_i32) as $y\n  | (if $x < 0 then $x + 4294967296 else $x end) as $ua\n  | (if $y < 0 then $y + 4294967296 else $y end) as $ub\n  | ($ua / 65536 | floor) as $ah | ($ua % 65536) as $al\n  | ($ub / 65536 | floor) as $bh | ($ub % 65536) as $bl\n  | (($al * $bl) + ((($ah * $bl) + ($al * $bh)) % 65536) * 65536) | tl_i32;\ndef tl_div($a; $b):\n  if $b == 0 then error(\"toylang: divided by zero\")\n  else ($a / $b | trunc) | tl_i32 end;\ndef tl_rem($a; $b):\n  if $b == 0 then error(\"toylang: divided by zero\") else ($a % $b) | tl_i32 end;\ndef v_pair_sum: . as $v___pair_sum_param | ($v___pair_sum_param as $t_0 | (($t_0 | .[\"a\"]) as $t_1 | (($t_0 | .[\"b\"]) as $t_2 | (($t_1 + $t_2) | tl_i32))));\n({\"a\": (2), \"b\": (3)} | v_pair_sum)\n",
+        "js": "// `|0` is ToInt32: it wraps to 32 bits and truncates toward zero, and V8 folds it away once it\n// knows the value is already a Smi.\nfunction tl_div(a, b) {\n  if (b === 0) { throw new Error(\"toylang: divided by zero\"); }\n  return (a / b) | 0;\n}\nfunction tl_rem(a, b) {\n  if (b === 0) { throw new Error(\"toylang: divided by zero\"); }\n  return (a % b) | 0;\n}\nfunction v_pair_sum(v___pair_sum_param) {\n  return ((t_0) => ((t_1) => ((t_2) => ((t_1 + t_2) | 0))(t_0[\"b\"]))(t_0[\"a\"]))(v___pair_sum_param);\n}\nconsole.log(String(v_pair_sum(({\"a\": 2, \"b\": 3}))));\n",
+        "lua": "local TL_2_31 <const> = 2147483648\nlocal TL_2_32 <const> = 4294967296\n-- Lua integers are 64-bit, so an Int has to be brought back into 32 bits after every operation.\n-- `%` is floored here and the modulus is positive, so this is exact for negatives too.\nlocal function tl_i32(x)\n  return (x + TL_2_31) % TL_2_32 - TL_2_31\nend\n-- Lua's `//` floors and `%` is floored; toylang truncates, which math.fmod already does.\nlocal function tl_div(a, b)\n  if b == 0 then error(\"toylang: divided by zero\", 0) end\n  return tl_i32((a - math.fmod(a, b)) // b)\nend\nlocal function tl_rem(a, b)\n  if b == 0 then error(\"toylang: divided by zero\", 0) end\n  return tl_i32(math.fmod(a, b))\nend\nlocal v_pair_sum\nfunction v_pair_sum(v___pair_sum_param)\n  return (function(t_0) return (function(t_1) return (function(t_2) return tl_i32(t_1 + t_2) end)(t_0[\"b\"]) end)(t_0[\"a\"]) end)(v___pair_sum_param)\nend\nprint(tostring(v_pair_sum(({[\"a\"] = 2, [\"b\"] = 3}))))\n",
+        "native": "; ModuleID = 'toylang'\nsource_filename = \"toylang\"\n\ndeclare ptr @tl_concat(ptr, ptr)\n\ndeclare ptr @tl_int_to_str(i64)\n\ndeclare i64 @tl_str_eq(ptr, ptr)\n\ndeclare i64 @tl_str_cmp(ptr, ptr)\n\ndeclare void @tl_print(ptr)\n\ndeclare ptr @tl_quote(ptr)\n\ndeclare ptr @tl_str_join(ptr, ptr, ptr, ptr)\n\ndeclare ptr @tl_vec_new(i64, i64)\n\ndeclare i64 @tl_vec_len(ptr)\n\ndeclare i64 @tl_vec_get(ptr, i64, i64)\n\ndeclare void @tl_vec_set(ptr, i64, i64, i64)\n\ndeclare ptr @tl_vec_from_mask(ptr, ptr)\n\ndeclare ptr @tl_mask_new(i64)\n\ndeclare void @tl_mask_set(ptr, i64, i64)\n\ndeclare ptr @tl_vec_column(ptr, i64)\n\ndeclare i64 @tl_rec_get(ptr, i64)\n\ndeclare ptr @tl_rec_new(i64)\n\ndeclare ptr @tl_collect_lines()\n\ndeclare ptr @tl_split_lines(ptr, ptr)\n\ndeclare void @tl_rec_set(ptr, i64, i64)\n\ndeclare i64 @tl_read_input(ptr)\n\ndeclare ptr @tl_read_inputs(ptr)\n\ndeclare i32 @tl_read_one_input(ptr, ptr)\n\ndeclare i32 @tl_read_one_line(ptr)\n\ndeclare ptr @tl_rec_from_vec(ptr, i64)\n\ndeclare ptr @tl_at(ptr, i64, i64, i32)\n\ndeclare i64 @tl_opt_is_some(ptr)\n\ndeclare i64 @tl_opt_get(ptr)\n\ndeclare ptr @tl_opt_some(i64)\n\ndeclare ptr @tl_unwrap(ptr, i64)\n\ndeclare void @tl_div_by_zero()\n\ndeclare ptr @tl_range(i64)\n\ndeclare ptr @tl_chars(ptr)\n\ndeclare ptr @tl_vec_tail(ptr)\n\ndeclare ptr @tl_vec_flatten(ptr, i64)\n\ndeclare ptr @tl_vec_slice(ptr, i64, i64, i64)\n\ndeclare ptr @tl_vec_concat(ptr, ptr, i64)\n\ndeclare ptr @tl_vec_sort_int(ptr)\n\ndeclare ptr @tl_vec_sort_str(ptr)\n\ndeclare ptr @tl_vec_reverse(ptr, i64)\n\ndeclare i64 @tl_vec_sum(ptr, i32)\n\ndeclare ptr @tl_vec_max(ptr)\n\ndefine i64 @v_pair_sum(ptr %0) {\nentry:\n  %field = call i64 @tl_rec_get(ptr %0, i64 0)\n  %field1 = call i64 @tl_rec_get(ptr %0, i64 1)\n  %add = add i64 %field, %field1\n  %narrow = trunc i64 %add to i32\n  %wrapped = sext i32 %narrow to i64\n  ret i64 %wrapped\n}\n\ndefine i32 @main() {\nentry:\n  %rec = call ptr @tl_rec_new(i64 2)\n  call void @tl_rec_set(ptr %rec, i64 0, i64 2)\n  call void @tl_rec_set(ptr %rec, i64 1, i64 3)\n  %call = call i64 @v_pair_sum(ptr %rec)\n  %int_str = call ptr @tl_int_to_str(i64 %call)\n  call void @tl_print(ptr %int_str)\n  ret i32 0\n}\n",
+        "py": "import sys\nsys.setrecursionlimit(100000)\n\n\n\ndef tl_i32(n):\n    return ((n + 2147483648) % 4294967296) - 2147483648\n\n\ndef v_pair_sum(v___pair_sum_param):\n    return (lambda t_0: (lambda t_1: (lambda t_2: tl_i32(t_1 + t_2))(t_0[\"b\"]))(t_0[\"a\"]))(v___pair_sum_param)\n\n\nsys.stdout.buffer.write((str(v_pair_sum({\"a\": 2, \"b\": 3})) + \"\\n\").encode(\"utf-8\"))\n",
+        "rust": "#![allow(dead_code)]\n\nfn tl_int(n: i32) -> i32 {\n    n\n}\n\n#[derive(Clone, PartialEq)]\nstruct TlRec0 {\n    f_a: i32,\n    f_b: i32,\n}\n\nfn v_pair_sum(v___pair_sum_param: TlRec0) -> i32 {\n    ({ let t_0: TlRec0 = v___pair_sum_param.clone(); ({ let t_1: i32 = t_0.clone().f_a; ({ let t_2: i32 = t_0.clone().f_b; (t_1.clone()).wrapping_add(t_2.clone()) }) }) })\n}\n\nfn main() {\n    println!(\"{}\", (v_pair_sum(TlRec0 { f_a: tl_int(2), f_b: tl_int(3) })).to_string());\n}\n"
+      },
+      "expect": {
+        "kind": "output",
+        "value": "5\n"
+      },
+      "input": null,
+      "inputType": null,
+      "name": "param_destructure",
+      "nodeTypes": [
+        "application",
+        "arith.add",
+        "int",
+        "local",
+        "pipe",
+        "projection",
+        "record-literal",
+        "var"
+      ],
+      "program": "fn pair_sum({a, b}: {a: Int, b: Int}) -> Int =\n    a + b\n\npair_sum({a: 2, b: 3})\n",
+      "resultType": "Int",
+      "usesLines": false
+    },
+    {
+      "emitted": {
+        "go": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n)\n\nfunc tlInt(n int32) int32 { return n }\n\ntype tlRec0 struct {\n\tFa int32 `json:\"a\"`\n\tFb int32 `json:\"b\"`\n}\n\nfunc v_first(v___first_param tlRec0) int32 {\n\treturn func(t_0 tlRec0) int32 { return func(t_1 int32) int32 { return t_1 }((t_0).Fa) }(v___first_param)\n}\n\nfunc main() {\n\tfmt.Println(strconv.FormatInt(int64(v_first(tlRec0{Fa: tlInt(7), Fb: tlInt(9)})), 10))\n}\n",
+        "jq": "def v_first: . as $v___first_param | ($v___first_param as $t_0 | (($t_0 | .[\"a\"]) as $t_1 | $t_1));\n({\"a\": (7), \"b\": (9)} | v_first)\n",
+        "js": "function v_first(v___first_param) {\n  return ((t_0) => ((t_1) => t_1)(t_0[\"a\"]))(v___first_param);\n}\nconsole.log(String(v_first(({\"a\": 7, \"b\": 9}))));\n",
+        "lua": "local v_first\nfunction v_first(v___first_param)\n  return (function(t_0) return (function(t_1) return t_1 end)(t_0[\"a\"]) end)(v___first_param)\nend\nprint(tostring(v_first(({[\"a\"] = 7, [\"b\"] = 9}))))\n",
+        "native": "; ModuleID = 'toylang'\nsource_filename = \"toylang\"\n\ndeclare ptr @tl_concat(ptr, ptr)\n\ndeclare ptr @tl_int_to_str(i64)\n\ndeclare i64 @tl_str_eq(ptr, ptr)\n\ndeclare i64 @tl_str_cmp(ptr, ptr)\n\ndeclare void @tl_print(ptr)\n\ndeclare ptr @tl_quote(ptr)\n\ndeclare ptr @tl_str_join(ptr, ptr, ptr, ptr)\n\ndeclare ptr @tl_vec_new(i64, i64)\n\ndeclare i64 @tl_vec_len(ptr)\n\ndeclare i64 @tl_vec_get(ptr, i64, i64)\n\ndeclare void @tl_vec_set(ptr, i64, i64, i64)\n\ndeclare ptr @tl_vec_from_mask(ptr, ptr)\n\ndeclare ptr @tl_mask_new(i64)\n\ndeclare void @tl_mask_set(ptr, i64, i64)\n\ndeclare ptr @tl_vec_column(ptr, i64)\n\ndeclare i64 @tl_rec_get(ptr, i64)\n\ndeclare ptr @tl_rec_new(i64)\n\ndeclare ptr @tl_collect_lines()\n\ndeclare ptr @tl_split_lines(ptr, ptr)\n\ndeclare void @tl_rec_set(ptr, i64, i64)\n\ndeclare i64 @tl_read_input(ptr)\n\ndeclare ptr @tl_read_inputs(ptr)\n\ndeclare i32 @tl_read_one_input(ptr, ptr)\n\ndeclare i32 @tl_read_one_line(ptr)\n\ndeclare ptr @tl_rec_from_vec(ptr, i64)\n\ndeclare ptr @tl_at(ptr, i64, i64, i32)\n\ndeclare i64 @tl_opt_is_some(ptr)\n\ndeclare i64 @tl_opt_get(ptr)\n\ndeclare ptr @tl_opt_some(i64)\n\ndeclare ptr @tl_unwrap(ptr, i64)\n\ndeclare void @tl_div_by_zero()\n\ndeclare ptr @tl_range(i64)\n\ndeclare ptr @tl_chars(ptr)\n\ndeclare ptr @tl_vec_tail(ptr)\n\ndeclare ptr @tl_vec_flatten(ptr, i64)\n\ndeclare ptr @tl_vec_slice(ptr, i64, i64, i64)\n\ndeclare ptr @tl_vec_concat(ptr, ptr, i64)\n\ndeclare ptr @tl_vec_sort_int(ptr)\n\ndeclare ptr @tl_vec_sort_str(ptr)\n\ndeclare ptr @tl_vec_reverse(ptr, i64)\n\ndeclare i64 @tl_vec_sum(ptr, i32)\n\ndeclare ptr @tl_vec_max(ptr)\n\ndefine i64 @v_first(ptr %0) {\nentry:\n  %field = call i64 @tl_rec_get(ptr %0, i64 0)\n  ret i64 %field\n}\n\ndefine i32 @main() {\nentry:\n  %rec = call ptr @tl_rec_new(i64 2)\n  call void @tl_rec_set(ptr %rec, i64 0, i64 7)\n  call void @tl_rec_set(ptr %rec, i64 1, i64 9)\n  %call = call i64 @v_first(ptr %rec)\n  %int_str = call ptr @tl_int_to_str(i64 %call)\n  call void @tl_print(ptr %int_str)\n  ret i32 0\n}\n",
+        "py": "import sys\nsys.setrecursionlimit(100000)\n\ndef v_first(v___first_param):\n    return (lambda t_0: (lambda t_1: t_1)(t_0[\"a\"]))(v___first_param)\n\n\nsys.stdout.buffer.write((str(v_first({\"a\": 7, \"b\": 9})) + \"\\n\").encode(\"utf-8\"))\n",
+        "rust": "#![allow(dead_code)]\n\nfn tl_int(n: i32) -> i32 {\n    n\n}\n\n#[derive(Clone, PartialEq)]\nstruct TlRec0 {\n    f_a: i32,\n    f_b: i32,\n}\n\nfn v_first(v___first_param: TlRec0) -> i32 {\n    ({ let t_0: TlRec0 = v___first_param.clone(); ({ let t_1: i32 = t_0.clone().f_a; t_1.clone() }) })\n}\n\nfn main() {\n    println!(\"{}\", (v_first(TlRec0 { f_a: tl_int(7), f_b: tl_int(9) })).to_string());\n}\n"
+      },
+      "expect": {
+        "kind": "output",
+        "value": "7\n"
+      },
+      "input": null,
+      "inputType": null,
+      "name": "param_destructure_rest",
+      "nodeTypes": [
+        "application",
+        "int",
+        "local",
+        "pipe",
+        "projection",
+        "record-literal",
+        "var"
+      ],
+      "program": "fn first({a, ..}: {a: Int, b: Int}) -> Int =\n    a\n\nfirst({a: 7, b: 9})\n",
+      "resultType": "Int",
+      "usesLines": false
+    },
+    {
+      "emitted": {
         "go": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n\t\"strings\"\n)\n\nfunc tlInt(n int32) int32 { return n }\n\nfunc tlSelect[T any](src []T, pred func(T) bool) []T {\n\tout := []T{}\n\tfor _, e := range src {\n\t\tif pred(e) {\n\t\t\tout = append(out, e)\n\t\t}\n\t}\n\treturn out\n}\n\nfunc tlJoin[T any](v []T, f func(T) string) string {\n\tparts := make([]string, len(v))\n\tfor i, e := range v {\n\t\tparts[i] = f(e)\n\t}\n\treturn \"[\" + strings.Join(parts, \",\") + \"]\"\n}\n\nfunc main() {\n\tfmt.Println(tlJoin(func(t_2 []int32) []int32 { return tlSelect(t_2, func(t_3 int32) bool { return (t_3 >= tlInt(3)) }) }(func(t_0 []int32) []int32 { return tlSelect(t_0, func(t_1 int32) bool { return (t_1 >= tlInt(2)) }) }([]int32{tlInt(1), tlInt(2), tlInt(3)})), func(e0 int32) string { return strconv.FormatInt(int64(e0), 10) }))\n}\n",
         "jq": "[ (([1, 2, 3] as $t_0 | [ $t_0[] | . as $t_1 | select(($t_1 >= 2)) ]) as $t_2 | [ $t_2[] | . as $t_3 | select(($t_3 >= 3)) ])[] | . ]\n",
         "js": "function tl_select(src, pred) {\n  const out = [];\n  for (let i = 0; i < src.length; i++) if (pred(src[i])) out.push(src[i]);\n  return out;\n}\nfunction tl_join(v, f) {\n  const parts = [];\n  for (let i = 0; i < v.length; i++) parts.push(f(v[i]));\n  return \"[\" + parts.join(\",\") + \"]\";\n}\nconsole.log(tl_join(((t_2) => tl_select(t_2, (t_3) => (t_3 >= 3)))(((t_0) => tl_select(t_0, (t_1) => (t_1 >= 2)))([1, 2, 3])), (e0) => String(e0)));\n",
