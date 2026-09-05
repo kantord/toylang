@@ -60,6 +60,7 @@ struct Runtime<'ctx> {
     rec_set: FunctionValue<'ctx>,
     read_input: FunctionValue<'ctx>,
     read_inputs: FunctionValue<'ctx>,
+    parse_str: FunctionValue<'ctx>,
     read_one_input: FunctionValue<'ctx>,
     read_one_line: FunctionValue<'ctx>,
     rec_from_vec: FunctionValue<'ctx>,
@@ -211,6 +212,11 @@ impl<'ctx> Emitter<'ctx, '_> {
             read_input: module.add_function(
                 "tl_read_input",
                 i64t.fn_type(&[ptr.into()], false),
+                None,
+            ),
+            parse_str: module.add_function(
+                "tl_parse_str",
+                i64t.fn_type(&[ptr.into(), ptr.into()], false),
                 None,
             ),
             read_inputs: module.add_function(
@@ -1407,12 +1413,17 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let arg = self.expr(arg)?;
                 match which {
                     Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,
+                    // The descriptor tells the runtime parser what the result type is, the
+                    // same string `tl_read_input` carries for stdin; here it parses a value
+                    // already in hand instead of reading a stream.
                     Builtin::Parse => {
-                        return Err(
-                            "`parse` on a plain string is not supported on the native backend yet; \
-                             `parse(stdin)` and `stdin | map(parse(.))` lower to the stdin readers"
-                                .to_string(),
-                        );
+                        let descriptor = self.string_const(&descriptor(self.enums, &t.ty));
+                        let slot = self.call_rt(
+                            self.rt.parse_str,
+                            &[arg, descriptor.into()],
+                            "parse",
+                        )?;
+                        self.read_slot(slot.into_int_value(), &t.ty)?
                     }
                     // An Int already lives in an i64 here (see `llvm_type`), so the bridge
                     // is the identity: the value is its own widening.

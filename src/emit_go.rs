@@ -568,7 +568,7 @@ pub fn emit(program: &Program) -> String {
     for (on, names) in [
         (fail || reads_stdin || collect, &["os"][..]),
         (collect, &["bufio", "bytes"]),
-        (reads_stdin, &["encoding/json"]),
+        (reads_stdin || used.json_parse, &["encoding/json"]),
         (program.inputs.is_some(), &["io"]),
         (
             join || quote || used.jsonlines || uses("tlDsv("),
@@ -642,6 +642,9 @@ struct Used {
     /// ordinary `has_scalar` check on the program's own result type misses whenever that result
     /// is exactly `Str` -- true for every `jsonlines` call, since that is what it returns.
     jsonlines_has_scalar: bool,
+    /// Whether `parse` was called on a plain string, which needs `encoding/json` to decode it
+    /// the same way stdin is decoded.
+    json_parse: bool,
 }
 
 /// One walk, collecting the record types that need declaring and the two builtins whose imports
@@ -771,6 +774,7 @@ impl Collect<'_> {
                     }
                     // Purely textually gated below, like tlAt and tlRange: nothing here needs
                     // the element type, so there is nothing to record on the walk.
+                    Builtin::Parse => self.used.json_parse = true,
                     Builtin::IntToI64
                     | Builtin::Range
                     | Builtin::Collect
@@ -782,8 +786,7 @@ impl Collect<'_> {
                     | Builtin::Sort
                     | Builtin::Reverse
                     | Builtin::Sum
-                    | Builtin::Max
-                    | Builtin::Parse => {}
+                    | Builtin::Max => {}
                 }
                 self.walk(arg);
             }
@@ -1093,10 +1096,16 @@ impl Emitter<'_> {
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("strconv.FormatInt(int64({}), 10)", self.expr(arg)),
                 Builtin::IntToI64 => format!("int64({})", self.expr(arg)),
-                Builtin::Parse => unreachable!(
-                    "`parse` on a plain string is not supported on the Go backend yet; \
-                     `parse(stdin)` and `stdin | map(parse(.))` lower to the stdin readers"
-                ),
+                // Decode the string as one JSON value into the result type, the same path stdin
+                // already uses (`json.NewDecoder(os.Stdin).Decode`). A failed parse stops the
+                // program the way a malformed stdin value would.
+                Builtin::Parse => {
+                    let ty = self.go_type(&t.ty);
+                    format!(
+                        "func() {ty} {{ var v {ty}; if err := json.Unmarshal([]byte({}), &v); err != nil {{ tlFail(err.Error()) }}; return v }}()",
+                        self.expr(arg)
+                    )
+                }
                 Builtin::Range => format!("tlRange({})", self.expr(arg)),
                 Builtin::Chars => format!("tlChars({})", self.expr(arg)),
                 Builtin::JsonLines => {

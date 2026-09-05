@@ -39,7 +39,7 @@ Both directions are refused at compile time:
 ```toylang
 fn use_it(c: Char) -> Bool = c == c
 
-use_it(input)
+use_it(parse(stdin))
 ```
 
 ```error

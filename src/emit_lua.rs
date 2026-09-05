@@ -307,6 +307,127 @@ const CHARS_HELPER: &str = r#"local function tl_chars(s)
 end
 "#;
 
+// Lua has no JSON parser of its own (stdin values are parsed host-side before the chunk runs),
+// so `parse` needs one. It produces the same runtime shape the host-side parser hands over:
+// tables with 1-based numeric keys for arrays, string keys for objects, bare strings for unit
+// enum variants and single-key tables for payload ones. `null` becomes nil, which is fine since
+// the checker refuses absence as a parse result.
+const JSON_PARSE_HELPER: &str = r#"local function tl_parse_json(s)
+  local pos = 1
+  local n = #s
+  local function ws()
+    while pos <= n do
+      local c = s:sub(pos, pos)
+      if c == " " or c == "\t" or c == "\n" or c == "\r" then pos = pos + 1 else return end
+    end
+  end
+  local function fail(msg)
+    error("could not parse JSON: " .. msg, 0)
+  end
+  local function str()
+    pos = pos + 1
+    local out = {}
+    while true do
+      if pos > n then fail("unterminated string") end
+      local c = s:sub(pos, pos)
+      pos = pos + 1
+      if c == '"' then return table.concat(out) end
+      if c == "\\" then
+        local e = s:sub(pos, pos)
+        pos = pos + 1
+        if e == "n" then out[#out + 1] = "\n"
+        elseif e == "t" then out[#out + 1] = "\t"
+        elseif e == "r" then out[#out + 1] = "\r"
+        elseif e == "b" then out[#out + 1] = "\b"
+        elseif e == "f" then out[#out + 1] = "\f"
+        elseif e == "u" then
+          local cp = tonumber(s:sub(pos, pos + 3), 16)
+          pos = pos + 4
+          if cp >= 0xD800 and cp <= 0xDBFF and s:sub(pos, pos + 1) == "\\u" then
+            local lo = tonumber(s:sub(pos + 2, pos + 5), 16)
+            pos = pos + 6
+            cp = 0x10000 + (cp - 0xD800) * 0x400 + (lo - 0xDC00)
+          end
+          out[#out + 1] = utf8.char(cp)
+        else
+          out[#out + 1] = e
+        end
+      else
+        out[#out + 1] = c
+      end
+    end
+  end
+  local function val()
+    ws()
+    local c = s:sub(pos, pos)
+    if c == "{" then
+      pos = pos + 1
+      local t = {}
+      ws()
+      if s:sub(pos, pos) == "}" then pos = pos + 1 return t end
+      while true do
+        ws()
+        local key = str()
+        ws()
+        if s:sub(pos, pos) ~= ":" then fail("expected `:`") end
+        pos = pos + 1
+        t[key] = val()
+        ws()
+        local d = s:sub(pos, pos)
+        if d == "," then pos = pos + 1
+        elseif d == "}" then pos = pos + 1 return t
+        else fail("expected `,` or `}`") end
+      end
+    elseif c == "[" then
+      pos = pos + 1
+      local t = {}
+      local i = 0
+      ws()
+      if s:sub(pos, pos) == "]" then pos = pos + 1 return t end
+      while true do
+        i = i + 1
+        t[i] = val()
+        ws()
+        local d = s:sub(pos, pos)
+        if d == "," then pos = pos + 1
+        elseif d == "]" then pos = pos + 1 return t
+        else fail("expected `,` or `]`") end
+      end
+    elseif c == '"' then
+      return str()
+    elseif c == "t" then
+      if s:sub(pos, pos + 3) ~= "true" then fail("expected `true`") end
+      pos = pos + 4
+      return true
+    elseif c == "f" then
+      if s:sub(pos, pos + 4) ~= "false" then fail("expected `false`") end
+      pos = pos + 5
+      return false
+    elseif c == "n" then
+      if s:sub(pos, pos + 3) ~= "null" then fail("expected `null`") end
+      pos = pos + 4
+      return nil
+    else
+      local start = pos
+      while pos <= n do
+        local d = s:sub(pos, pos)
+        if d >= "0" and d <= "9" or d == "-" or d == "." or d == "e" or d == "E" then
+          pos = pos + 1
+        else
+          break
+        end
+      end
+      if pos == start then fail("unexpected character") end
+      return tonumber(s:sub(start, pos - 1))
+    end
+  end
+  local v = val()
+  ws()
+  if pos <= n then fail("trailing content after the value") end
+  return v
+end
+"#;
+
 pub fn emit(program: &Program) -> String {
     let enums = &program.enums;
     let mut out = String::new();
@@ -342,6 +463,7 @@ pub fn emit(program: &Program) -> String {
         (used.split, SPLIT_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
         (used.chars, CHARS_HELPER),
+        (used.parse, JSON_PARSE_HELPER),
         (used.eq, EQ_HELPER),
     ] {
         if on {
@@ -605,6 +727,7 @@ struct Helpers {
     max: bool,
     eq: bool,
     split: bool,
+    parse: bool,
 }
 
 /// Equality on a composite is structural, which Lua's `==` on two tables is not -- it compares
@@ -651,6 +774,7 @@ fn builtin_helpers(which: Builtin, arg_ty: &Type, used: &mut Helpers) {
     used.reverse |= which == Builtin::Reverse;
     used.sum |= which == Builtin::Sum;
     used.max |= which == Builtin::Max;
+    used.parse |= which == Builtin::Parse;
     used.arith |= which == Builtin::Sum && tir::runtime_elem(arg_ty) == Some(&Type::Int);
 }
 
@@ -835,10 +959,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::IntToStr => format!("tostring({})", expr(enums, arg)),
             // Lua has no JSON parser of its own -- stdin values are parsed host-side before the
             // chunk runs -- so a string handed to `parse` has nothing to read it with.
-            Builtin::Parse => {
-                "error(\"`parse` on a plain string is not supported on the Lua backend yet\")"
-                    .to_string()
-            }
+            Builtin::Parse => format!("tl_parse_json({})", expr(enums, arg)),
             // Lua's integers are 64-bit already; an Int just lives in the low half.
             Builtin::IntToI64 => expr(enums, arg),
             Builtin::Chars => format!("tl_chars({})", expr(enums, arg)),

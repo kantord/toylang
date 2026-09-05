@@ -6,11 +6,13 @@ to a string already in hand. The result type comes only from the position the ca
 the same way `input` always borrowed its type.
 
 ```toylang
-parse("[1, 2, 3]")
+fn total(v: Vec<Int>) -> Int = length(v)
+
+total(parse("[1, 2, 3]"))
 ```
 
 ```output
-[1,2,3]
+3
 ```
 
 The two stdin spellings are the other face of `parse`. `parse(stdin)` reads the whole of

@@ -50,7 +50,7 @@ fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
         )
     )
 
-leading_digits(input)
+leading_digits(parse(stdin))
 ```
 
 ```input

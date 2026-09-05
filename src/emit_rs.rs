@@ -524,10 +524,12 @@ pub fn emit(program: &Program) -> String {
     let mut used = Used::default();
     let mut records = Vec::new();
     let mut enums = Vec::new();
+    let mut parse_types: Vec<Type> = Vec::new();
     let mut ctx = Collect {
         used: &mut used,
         records: &mut records,
         enums: &mut enums,
+        parse_types: &mut parse_types,
         registry: &program.enums,
     };
     for f in &program.funcs {
@@ -552,6 +554,11 @@ pub fn emit(program: &Program) -> String {
     // parser for a shape the checker already promised can never cross the wire.
     let mut wire: Vec<Type> = Vec::new();
     for ty in [&program.input, &program.inputs].into_iter().flatten() {
+        collect_wire(&program.enums, ty, &mut wire);
+    }
+    // A `parse` result is delivered the same way stdin is, so its type's parsers are needed
+    // too; without this a record/enum parse would emit a call to a parser that never existed.
+    for ty in &parse_types {
         collect_wire(&program.enums, ty, &mut wire);
     }
 
@@ -656,6 +663,7 @@ pub fn emit(program: &Program) -> String {
         || arith
         || arith64
         || reads_value
+        || used.parse
         || uses("tl_at(")
         || uses("tl_tail(")
         || uses("tl_range(")
@@ -682,10 +690,10 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_chars("), CHARS_HELPER),
         (uses("tl_dsv("), DSV_HELPER),
         (
-            reads_value || uses("tl_read_all_stdin(") || uses("tl_read_lines("),
+            reads_value || uses("tl_read_all_stdin(") || uses("tl_read_lines(") || used.parse,
             READ_HELPER,
         ),
-        (reads_value || uses("TlParser"), PARSER_HELPER),
+        (reads_value || uses("TlParser") || used.parse, PARSER_HELPER),
         (uses("tl_quote("), QUOTE_HELPER),
         (uses("tl_join("), JOIN_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
@@ -740,6 +748,8 @@ fn collect_wire(enums: &Enums, ty: &Type, out: &mut Vec<Type>) {
 #[derive(Default)]
 struct Used {
     jsonlines: bool,
+    /// Whether `parse` was called on a plain string, which needs the reader and parser helpers.
+    parse: bool,
 }
 
 /// One walk, collecting the record types that need a struct declaration (and a parser, if the
@@ -748,6 +758,8 @@ struct Collect<'a> {
     used: &'a mut Used,
     records: &'a mut Vec<Type>,
     enums: &'a mut Vec<Type>,
+    /// The result types of every `Builtin::Parse`, so their record/enum parsers are emitted.
+    parse_types: &'a mut Vec<Type>,
     /// Every enum the program declared. The variant list on a `Type::Enum` in hand may be a
     /// placeholder, so the payloads to descend into are read from here (`ty::variants`).
     registry: &'a Enums,
@@ -859,6 +871,12 @@ impl Collect<'_> {
             Kind::Builtin { which, arg } => {
                 if *which == Builtin::JsonLines {
                     self.used.jsonlines = true;
+                }
+                if *which == Builtin::Parse {
+                    self.used.parse = true;
+                    if !self.parse_types.contains(&t.ty) {
+                        self.parse_types.push(t.ty.clone());
+                    }
                 }
                 self.walk(arg);
             }
@@ -1217,9 +1235,12 @@ impl Emitter<'_> {
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("({}).to_string()", self.expr(arg)),
-                Builtin::Parse => unreachable!(
-                    "`parse` on a plain string is not supported on the Rust backend yet; \
-                     `parse(stdin)` and `stdin | map(parse(.))` lower to the stdin readers"
+                // Read the string as one value, refusing any trailing content the way stdin is
+                // read: `tl_parse_line` is the per-document path `inputs` uses.
+                Builtin::Parse => format!(
+                    "tl_parse_line(&{}, {})",
+                    self.expr(arg),
+                    self.parser_expr(&t.ty)
                 ),
                 Builtin::IntToI64 => format!("(({}) as i64)", self.expr(arg)),
                 Builtin::Range => format!("tl_range({})", self.expr(arg)),

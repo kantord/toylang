@@ -34,7 +34,7 @@ fn collapse(p: {rows: Vec<Vec<Int>>, i: Int, acc: Vec<Int>}) -> Int =
 fn triangle_max(rows: Vec<Vec<Int>>) -> Int =
     collapse({rows: rows, i: length(rows) - 2, acc: rows[length(rows) - 1]!})
 
-triangle_max(input)
+triangle_max(parse(stdin))
 ```
 
 ```input
