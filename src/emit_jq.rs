@@ -95,9 +95,7 @@ pub fn emit(program: &Program) -> Result<String, String> {
         // `range` source.
         match fusion.source {
             tir::Source::Inputs | tir::Source::Lines => out.push_str("inputs"),
-            tir::Source::Range(bound) => {
-                out.push_str(&format!("range(0; {})", expr(enums, bound)))
-            }
+            tir::Source::Range(bound) => out.push_str(&format!("range(0; {})", expr(enums, bound))),
         };
         for stage in &fusion.stages {
             match stage {
@@ -243,7 +241,9 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
             callees(base, out);
             callees(index, out);
         }
-        Kind::Slice { base, start, end, .. } => {
+        Kind::Slice {
+            base, start, end, ..
+        } => {
             callees(base, out);
             if let Some(s) = start {
                 callees(s, out);
@@ -427,7 +427,9 @@ fn uses_arith(program: &Program) -> (bool, bool) {
                 walk(base, found);
                 walk(index, found);
             }
-            Kind::Slice { base, start, end, .. } => {
+            Kind::Slice {
+                base, start, end, ..
+            } => {
                 walk(base, found);
                 if let Some(s) = start {
                     walk(s, found);
@@ -530,6 +532,10 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::IntToStr => format!("({} | tostring)", expr(enums, arg)),
             // jq has one number type at every width, so the bridge has nothing to do.
             Builtin::IntToI64 => format!("({})", expr(enums, arg)),
+            // jq's own `fromjson` reads a string as one JSON value; the body-level `canonical`
+            // reorders any record it produces into the type's field order, the same way a parsed
+            // stdin value is handled.
+            Builtin::Parse => format!("({} |fromjson)", expr(enums, arg)),
             Builtin::Range => format!("[ range(0; {}) ]", expr(enums, arg)),
             // `explode` already decodes jq's UTF-8 string by codepoint, not by byte, so there
             // is no decoding to get right here.
@@ -679,7 +685,10 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // jq's own slice clamps out-of-range bounds and counts negatives from the end, so the
         // ruled behaviour is the target's native one; a `None` bound is just left out.
         Kind::Slice {
-            base, start, end, depth,
+            base,
+            start,
+            end,
+            depth,
         } => {
             let lo = match start {
                 Some(s) => expr(enums, s),

@@ -37,7 +37,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =\n    db.users | select(.age >= 18) | .[].name\n\nadults input\n",
+      "program": "fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =\n    db.users | select(.age >= 18) | .[].name\n\nadults parse(stdin)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -754,7 +754,7 @@
         "projection",
         "var"
       ],
-      "program": "fn tag(db: {tag: Str}) -> Str = db.tag\n\ntag(input)\n",
+      "program": "fn tag(db: {tag: Str}) -> Str = db.tag\n\ntag(parse(stdin))\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -990,7 +990,7 @@
         "var",
         "variant.unit"
       ],
-      "program": "enum Status { Active, Inactive }\n\nfn flip(s: Status) -> Status =\n    s | Active -> Status.inactive or Inactive -> Status.active\n\nflip(input)\n",
+      "program": "enum Status { Active, Inactive }\n\nfn flip(s: Status) -> Status =\n    s | Active -> Status.inactive or Inactive -> Status.active\n\nflip(parse(stdin))\n",
       "resultType": "Status",
       "usesLines": false
     },
@@ -1023,7 +1023,7 @@
         "str",
         "var"
       ],
-      "program": "enum Msg { Ping, Text{body: Str} }\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n    msgs | map(. | Text -> .body or any() -> \"*ping*\")\n\njsonlines render inputs\n",
+      "program": "enum Msg { Ping, Text{body: Str} }\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n    msgs | map(. | Text -> .body or any() -> \"*ping*\")\n\njsonlines render (stdin | map(parse(.)))\n",
       "resultType": "Sink",
       "usesLines": false
     },
@@ -1055,7 +1055,7 @@
         "str",
         "var"
       ],
-      "program": "enum Msg { Ping, Text{body: Str} }\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n    msgs | map(. | Text -> .body or any() -> \"*ping*\")\n\njsonlines render inputs\n",
+      "program": "enum Msg { Ping, Text{body: Str} }\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n    msgs | map(. | Text -> .body or any() -> \"*ping*\")\n\njsonlines render (stdin | map(parse(.)))\n",
       "resultType": "Sink",
       "usesLines": false
     },
@@ -1237,7 +1237,7 @@
         "input",
         "var"
       ],
-      "program": "enum Json { Arr(Vec<Json>), Num(Int), Null }\n\nfn json(j: Json) -> Json = j\n\njson(input)\n",
+      "program": "enum Json { Arr(Vec<Json>), Num(Int), Null }\n\nfn json(j: Json) -> Json = j\n\njson(parse(stdin))\n",
       "resultType": "Json",
       "usesLines": false
     },
@@ -1384,7 +1384,7 @@
         "pipe",
         "var"
       ],
-      "program": "enum Temp { Unknown, Celsius(Int) }\n\nfn read(t: Temp) -> Int = t | Celsius -> . or Unknown -> 0\n\nread input\n",
+      "program": "enum Temp { Unknown, Celsius(Int) }\n\nfn read(t: Temp) -> Int = t | Celsius -> . or Unknown -> 0\n\nread parse(stdin)\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -1413,7 +1413,7 @@
         "pipe",
         "var"
       ],
-      "program": "enum Temp { Unknown, Celsius(Int) }\n\nfn read(t: Temp) -> Int = t | Celsius -> . or Unknown -> 0\n\nread input\n",
+      "program": "enum Temp { Unknown, Celsius(Int) }\n\nfn read(t: Temp) -> Int = t | Celsius -> . or Unknown -> 0\n\nread parse(stdin)\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -1613,7 +1613,7 @@
         "projection",
         "var"
       ],
-      "program": "fn get_name(db: {name: Str}) -> Str = db.name\n\nget_name(input)\n",
+      "program": "fn get_name(db: {name: Str}) -> Str = db.name\n\nget_name(parse(stdin))\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -1926,7 +1926,7 @@
         "projection",
         "var"
       ],
-      "program": "enum Box<T> { Wrap{v: T}, Empty }\n\nfn peek(b: Box<Int>) -> Int = b | Wrap{v} -> v or Empty -> 0\n\npeek(input)\n",
+      "program": "enum Box<T> { Wrap{v: T}, Empty }\n\nfn peek(b: Box<Int>) -> Int = b | Wrap{v} -> v or Empty -> 0\n\npeek(parse(stdin))\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -2333,7 +2333,7 @@
         "projection",
         "var"
       ],
-      "program": "fn f(p: {x: Int, y: Int}) -> Int = p.x * 2 + p.y * 3\n\ninput {x: Int, y: Int}\nf(input)\n",
+      "program": "fn f(p: {x: Int, y: Int}) -> Int = p.x * 2 + p.y * 3\n\nf(parse(stdin))\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -2361,7 +2361,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn f(v: Vec<Int>) -> Int = length(v)\n\n{a: f(input), b: input}\n",
+      "program": "fn f(v: Vec<Int>) -> Int = length(v)\n\n{a: f(parse(stdin)), b: parse(stdin)}\n",
       "resultType": "{a: Int, b: Vec<Int>}",
       "usesLines": false
     },
@@ -2395,7 +2395,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "fn names(users: Stream<{name: Str, age: Int}>) -> Stream<Str> =\n    users | select(.age >= 18) | .[].name\n\ncollect names inputs\n",
+      "program": "fn names(users: Stream<{name: Str, age: Int}>) -> Stream<Str> =\n    users | select(.age >= 18) | .[].name\n\ncollect names (stdin | map(parse(.)))\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -2423,7 +2423,7 @@
         "inputs",
         "var"
       ],
-      "program": "fn total(nums: Vec<Int>) -> Int = length(nums)\n\ntotal collect inputs\n",
+      "program": "fn total(nums: Vec<Int>) -> Int = length(nums)\n\ntotal collect (stdin | map(parse(.)))\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -2622,7 +2622,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn wide() -> Int64 = 600851475143\n\nfn double(x: Int) -> Int = x * 2\n\n{a: wide(), b: double(input)}\n",
+      "program": "fn wide() -> Int64 = 600851475143\n\nfn double(x: Int) -> Int = x * 2\n\n{a: wide(), b: double(parse(stdin))}\n",
       "resultType": "{a: Int64, b: Int}",
       "usesLines": false
     },
@@ -2780,7 +2780,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn commits(db: Vec<{commit: {message: Str, committer: {name: Str}},\n                    parents: Vec<{html_url: Str}>}>)\n    -> Vec<{commit: {message: Str, committer: {name: Str}},\n            parents: Vec<{html_url: Str}>}> = db\n\ncommits input | map {\n    message: .commit.message,\n    name:    .commit.committer.name,\n    parents: .parents[].html_url\n}\n",
+      "program": "fn commits(db: Vec<{commit: {message: Str, committer: {name: Str}},\n                    parents: Vec<{html_url: Str}>}>)\n    -> Vec<{commit: {message: Str, committer: {name: Str}},\n            parents: Vec<{html_url: Str}>}> = db\n\ncommits parse(stdin) | map {\n    message: .commit.message,\n    name:    .commit.committer.name,\n    parents: .parents[].html_url\n}\n",
       "resultType": "Vec<{message: Str, name: Str, parents: Vec<Str>}>",
       "usesLines": false
     },
@@ -2812,7 +2812,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn commits(db: Vec<{commit: {message: Str, committer: {name: Str}}}>)\n    -> Vec<{commit: {message: Str, committer: {name: Str}}}> = db\n\njsonlines(commits input | map {message: .commit.message, name: .commit.committer.name})\n",
+      "program": "fn commits(db: Vec<{commit: {message: Str, committer: {name: Str}}}>)\n    -> Vec<{commit: {message: Str, committer: {name: Str}}}> = db\n\njsonlines(commits parse(stdin) | map {message: .commit.message, name: .commit.committer.name})\n",
       "resultType": "Sink",
       "usesLines": false
     },
@@ -2845,7 +2845,7 @@
         "str",
         "var"
       ],
-      "program": "enum Msg { Ping, Quit, Text{body: Str} }\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n    msgs | map(. | Ping -> \"*ping*\" or Quit -> \"*quit*\" or Text -> .body)\n\njsonlines render inputs\n",
+      "program": "enum Msg { Ping, Quit, Text{body: Str} }\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n    msgs | map(. | Ping -> \"*ping*\" or Quit -> \"*quit*\" or Text -> .body)\n\njsonlines render (stdin | map(parse(.)))\n",
       "resultType": "Sink",
       "usesLines": false
     },
@@ -2911,7 +2911,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =\n    users | select(.age >= 18) | map {name: .name}\n\njsonlines adults inputs\n",
+      "program": "fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =\n    users | select(.age >= 18) | map {name: .name}\n\njsonlines adults (stdin | map(parse(.)))\n",
       "resultType": "Sink",
       "usesLines": false
     },
@@ -2943,7 +2943,7 @@
         "str",
         "var"
       ],
-      "program": "fn shout(names: Stream<Str>) -> Stream<Str> =\n    names | map(. + \"!\")\n\njsonlines shout lines\n",
+      "program": "fn shout(names: Stream<Str>) -> Stream<Str> =\n    names | map(. + \"!\")\n\njsonlines shout stdin\n",
       "resultType": "Sink",
       "usesLines": true
     },
@@ -3092,7 +3092,7 @@
         "str",
         "var"
       ],
-      "program": "fn classify(p: {x: Int, y: Int}) -> Str =\n    let m = p.x * p.x + p.y * p.y\n    m | m == 0 -> \"origin\" or m < 100 -> \"near\" or \"far\"\n\nclassify(input)\n",
+      "program": "fn classify(p: {x: Int, y: Int}) -> Str =\n    let m = p.x * p.x + p.y * p.y\n    m | m == 0 -> \"origin\" or m < 100 -> \"near\" or \"far\"\n\nclassify(parse(stdin))\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -3124,7 +3124,7 @@
         "projection",
         "var"
       ],
-      "program": "fn f(p: {x: Int, y: Int}) -> Int =\n    let a = p.x * 2\n    let b = p.y * 3\n    a + b\n\ninput {x: Int, y: Int}\nf(input)\n",
+      "program": "fn f(p: {x: Int, y: Int}) -> Int =\n    let a = p.x * 2\n    let b = p.y * 3\n    a + b\n\nf(parse(stdin))\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -3162,7 +3162,7 @@
         "unwrap",
         "var"
       ],
-      "program": "join_lines collect lines\n",
+      "program": "join_lines collect stdin\n",
       "resultType": "Str",
       "usesLines": true
     },
@@ -3187,7 +3187,7 @@
         "builtin.collect",
         "lines"
       ],
-      "program": "collect lines\n",
+      "program": "collect stdin\n",
       "resultType": "Vec<Str>",
       "usesLines": true
     },
@@ -3225,7 +3225,7 @@
         "unwrap",
         "var"
       ],
-      "program": "join_lines collect lines\n",
+      "program": "join_lines collect stdin\n",
       "resultType": "Str",
       "usesLines": true
     },
@@ -3268,7 +3268,7 @@
         "unwrap",
         "var"
       ],
-      "program": "fn shout(names: Stream<Str>) -> Stream<Str> =\n    names | select(. != \"bo\") | map {who: . + \"!\"} | .[].who\n\njoin_lines collect shout lines\n",
+      "program": "fn shout(names: Stream<Str>) -> Stream<Str> =\n    names | select(. != \"bo\") | map {who: . + \"!\"} | .[].who\n\njoin_lines collect shout stdin\n",
       "resultType": "Str",
       "usesLines": true
     },
@@ -3306,7 +3306,7 @@
         "unwrap",
         "var"
       ],
-      "program": "join_lines collect lines\n",
+      "program": "join_lines collect stdin\n",
       "resultType": "Str",
       "usesLines": true
     },
@@ -3494,7 +3494,7 @@
         "str",
         "var"
       ],
-      "program": "fn shout(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =\n    db.users | map(.name + \" is \" + str(.age))\n\nshout input\n",
+      "program": "fn shout(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =\n    db.users | map(.name + \" is \" + str(.age))\n\nshout parse(stdin)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -3871,7 +3871,7 @@
         "projection",
         "var"
       ],
-      "program": "# Two dimensions, so two specs: one for the groups and one for the members.\nfn names(db: {groups: Vec<{members: Vec<{name: Str}>}>}) -> Vec<Vec<Str>> =\n    db.groups[].members[].name\n\nnames(input)\n",
+      "program": "# Two dimensions, so two specs: one for the groups and one for the members.\nfn names(db: {groups: Vec<{members: Vec<{name: Str}>}>}) -> Vec<Vec<Str>> =\n    db.groups[].members[].name\n\nnames(parse(stdin))\n",
       "resultType": "Vec<Vec<Str>>",
       "usesLines": false
     },
@@ -3953,7 +3953,7 @@
         "selection.collapse",
         "var"
       ],
-      "program": "# Python is the only target where absence and an empty Vec are both falsy, so a\n# truthiness test for absence would print null here. It uses `is None`.\nfn rows(db: {v: Vec<Vec<Int>>}) -> Vec<Vec<Int>> = db.v\n\nrows(input)[0]\n",
+      "program": "# Python is the only target where absence and an empty Vec are both falsy, so a\n# truthiness test for absence would print null here. It uses `is None`.\nfn rows(db: {v: Vec<Vec<Int>>}) -> Vec<Vec<Int>> = db.v\n\nrows(parse(stdin))[0]\n",
       "resultType": "Opt<Vec<Int>>",
       "usesLines": false
     },
@@ -4010,7 +4010,7 @@
         "selection.collapse",
         "var"
       ],
-      "program": "# The other side of opt_holds_an_empty_vec: nothing there at all.\nfn rows(db: {v: Vec<Vec<Int>>}) -> Vec<Vec<Int>> = db.v\n\nrows(input)[0]\n",
+      "program": "# The other side of opt_holds_an_empty_vec: nothing there at all.\nfn rows(db: {v: Vec<Vec<Int>>}) -> Vec<Vec<Int>> = db.v\n\nrows(parse(stdin))[0]\n",
       "resultType": "Opt<Vec<Int>>",
       "usesLines": false
     },
@@ -4436,7 +4436,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn f(r: {a: Str, b: Int}) -> Str = r.a\nfn g(r: {b: Int, a: Str}) -> Str = f(r)\n\ng(input)\n",
+      "program": "fn f(r: {a: Str, b: Int}) -> Str = r.a\nfn g(r: {b: Int, a: Str}) -> Str = f(r)\n\ng(parse(stdin))\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -4463,7 +4463,7 @@
         "projection",
         "var"
       ],
-      "program": "fn deep(db: Vec<{a: {b: Int}}>) -> Vec<Int> = db[].a.b\n\ndeep input\n",
+      "program": "fn deep(db: Vec<{a: {b: Int}}>) -> Vec<Int> = db[].a.b\n\ndeep parse(stdin)\n",
       "resultType": "Vec<Int>",
       "usesLines": false
     },
@@ -4490,7 +4490,7 @@
         "projection",
         "var"
       ],
-      "program": "fn deep(db: Vec<Vec<{a: {b: Int}}>>) -> Vec<Vec<Int>> = db[][].a.b\n\ndeep input\n",
+      "program": "fn deep(db: Vec<Vec<{a: {b: Int}}>>) -> Vec<Vec<Int>> = db[][].a.b\n\ndeep parse(stdin)\n",
       "resultType": "Vec<Vec<Int>>",
       "usesLines": false
     },
@@ -4592,7 +4592,7 @@
         "projection",
         "var"
       ],
-      "program": "fn first(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u\n\nfirst(input)\n",
+      "program": "fn first(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u\n\nfirst(parse(stdin))\n",
       "resultType": "{name: Str, age: Int}",
       "usesLines": false
     },
@@ -4619,7 +4619,7 @@
         "projection",
         "var"
       ],
-      "program": "fn inner(db: Vec<{a: {b: Str}, z: Int}>) -> Vec<{b: Str}> = db[].a\n\ninner(input)\n",
+      "program": "fn inner(db: Vec<{a: {b: Str}, z: Int}>) -> Vec<{b: Str}> = db[].a\n\ninner(parse(stdin))\n",
       "resultType": "Vec<{b: Str}>",
       "usesLines": false
     },
@@ -5702,7 +5702,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "type User = {name: Str, age: Int}\ntype Db = {users: Vec<User>}\n\nfn adults(db: Db) -> Vec<Str> = db.users | select(.age >= 18) | .[].name\n\nadults input\n",
+      "program": "type User = {name: Str, age: Int}\ntype Db = {users: Vec<User>}\n\nfn adults(db: Db) -> Vec<Str> = db.users | select(.age >= 18) | .[].name\n\nadults parse(stdin)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -5734,7 +5734,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =\n    db.users | select(.age >= 18) | .[].name\n\nadults input\n",
+      "program": "fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =\n    db.users | select(.age >= 18) | .[].name\n\nadults parse(stdin)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -5761,7 +5761,7 @@
         "projection",
         "var"
       ],
-      "program": "# Six JSON parsers and six string representations, one answer.\nfn tags(db: {rows: Vec<{name: Str, tag: Str}>}) -> Vec<{name: Str, tag: Str}> = db.rows\n\ntags(input)\n",
+      "program": "# Six JSON parsers and six string representations, one answer.\nfn tags(db: {rows: Vec<{name: Str, tag: Str}>}) -> Vec<{name: Str, tag: Str}> = db.rows\n\ntags(parse(stdin))\n",
       "resultType": "Vec<{name: Str, tag: Str}>",
       "usesLines": false
     },
@@ -5812,7 +5812,7 @@
         "projection",
         "var"
       ],
-      "program": "fn tag(db: {tag: Str}) -> Str = db.tag\n\ntag(input)\n",
+      "program": "fn tag(db: {tag: Str}) -> Str = db.tag\n\ntag(parse(stdin))\n",
       "resultType": "Str",
       "usesLines": false
     },

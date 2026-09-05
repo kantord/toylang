@@ -1,7 +1,7 @@
 program: |
   fn first(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
 
-  first(input)
+  first(parse(stdin))
 
 input: |
   {"u": {"name": "ada", "age": 36}}

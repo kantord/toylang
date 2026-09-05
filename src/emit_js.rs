@@ -233,10 +233,18 @@ pub fn emit(program: &Program) -> String {
             // `param = arg; continue;` in a loop, so 100k-deep self-recursion cannot blow the
             // JS stack the way a real call would (kantord/toylang#141).
             let mut fresh = 0;
-            out.push_str(&format!("function {}({}) {{\n", user(&f.name), param.as_deref().unwrap_or_default()));
+            out.push_str(&format!(
+                "function {}({}) {{\n",
+                user(&f.name),
+                param.as_deref().unwrap_or_default()
+            ));
             out.push_str("  while (true) {\n");
             out.push_str(&indent(&indent(&tail_stmts(
-                enums, &f.name, param.as_deref(), &mut fresh, &f.body
+                enums,
+                &f.name,
+                param.as_deref(),
+                &mut fresh,
+                &f.body,
             ))));
             out.push_str("  }\n}\n");
         } else {
@@ -614,7 +622,8 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.chars |= *which == Builtin::Chars;
                 used.str_cmp |=
                     *which == Builtin::Sort && tir::runtime_elem(&arg.ty) == Some(&Type::Str);
-                used.sum |= *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int);
+                used.sum |=
+                    *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int);
                 used.sum64 |=
                     *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int64);
                 used.max |= *which == Builtin::Max;
@@ -639,7 +648,9 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
                 walk(index, used);
             }
-            Kind::Slice { base, start, end, .. } => {
+            Kind::Slice {
+                base, start, end, ..
+            } => {
                 used.slice = true;
                 walk(base, used);
                 if let Some(s) = start {
@@ -823,6 +834,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::Not(base) => format!("(!{})", expr(enums, base)),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("String({})", expr(enums, arg)),
+            // `JSON.parse` reads a string as one JSON value, the same shape `input` already
+            // reads stdin into.
+            Builtin::Parse => format!("JSON.parse({})", expr(enums, arg)),
             // The one real conversion among the backends: an Int is a number and an Int64 is
             // a BigInt, and BigInt() of a 32-bit integer is always exact.
             Builtin::IntToI64 => format!("BigInt({})", expr(enums, arg)),
@@ -958,7 +972,10 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             )
         }
         Kind::Slice {
-            base, start, end, depth,
+            base,
+            start,
+            end,
+            depth,
         } => {
             let lo = match start {
                 Some(s) => expr(enums, s),
@@ -968,13 +985,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 Some(e) => expr(enums, e),
                 None => "undefined".to_string(),
             };
-            format!(
-                "tl_slice({}, {}, {}, {})",
-                expr(enums, base),
-                lo,
-                hi,
-                depth
-            )
+            format!("tl_slice({}, {}, {}, {})", expr(enums, base), lo, hi, depth)
         }
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);

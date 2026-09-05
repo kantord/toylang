@@ -24,7 +24,7 @@ fn record_key_order_follows_the_type() {
     let src = r#"
 fn first(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
 
-first(input)
+first(parse(stdin))
 "#;
     let declared_order = agree(src, Some(r#"{"u": {"name": "ada", "age": 36}}"#));
     let reversed = agree(src, Some(r#"{"u": {"age": 36, "name": "ada"}}"#));
@@ -71,7 +71,7 @@ fn float_comparison() {
 /// double a Float names (ADR 0007), the case that made Int64 refuse `input`.
 #[test]
 fn float_input_reads_a_json_number() {
-    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(input)\n";
+    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(parse(stdin))\n";
     let out = toylang::run_on(src, Some("2.5"), Backend::Js).unwrap();
     assert_eq!(out, "5\n");
 }

@@ -746,7 +746,9 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
                 walk(index, used);
             }
-            Kind::Slice { base, start, end, .. } => {
+            Kind::Slice {
+                base, start, end, ..
+            } => {
                 used.slice = true;
                 walk(base, used);
                 if let Some(s) = start {
@@ -795,10 +797,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
         // works on the table of its entries. Fusion is what will remove this materialization.
         Kind::Lines => "tl_collect_lines()".to_string(),
-        Kind::Dsv { delim } => format!(
-            "tl_split_lines(tl_collect_lines(), {})",
-            lua_string(delim)
-        ),
+        Kind::Dsv { delim } => format!("tl_split_lines(tl_collect_lines(), {})", lua_string(delim)),
         // A record is a table keyed by field name, which is what field access reads.
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
@@ -834,6 +833,12 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::Not(base) => format!("(not {})", expr(enums, base)),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("tostring({})", expr(enums, arg)),
+            // Lua has no JSON parser of its own -- stdin values are parsed host-side before the
+            // chunk runs -- so a string handed to `parse` has nothing to read it with.
+            Builtin::Parse => {
+                "error(\"`parse` on a plain string is not supported on the Lua backend yet\")"
+                    .to_string()
+            }
             // Lua's integers are 64-bit already; an Int just lives in the low half.
             Builtin::IntToI64 => expr(enums, arg),
             Builtin::Chars => format!("tl_chars({})", expr(enums, arg)),
@@ -943,7 +948,10 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             )
         }
         Kind::Slice {
-            base, start, end, depth,
+            base,
+            start,
+            end,
+            depth,
         } => {
             let lo = match start {
                 Some(s) => expr(enums, s),
@@ -953,13 +961,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 Some(e) => expr(enums, e),
                 None => "nil".to_string(),
             };
-            format!(
-                "tl_slice({}, {}, {}, {})",
-                expr(enums, base),
-                lo,
-                hi,
-                depth
-            )
+            format!("tl_slice({}, {}, {}, {})", expr(enums, base), lo, hi, depth)
         }
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);

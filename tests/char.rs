@@ -25,13 +25,13 @@ fn a_vec_can_hold_a_char() {
 
 #[test]
 fn input_cannot_be_char_typed() {
-    insta::assert_snapshot!(err("fn f(c: Char) -> Bool = c == c\n\nf(input)"));
+    insta::assert_snapshot!(err("fn f(c: Char) -> Bool = c == c\n\nf(parse(stdin))"));
 }
 
 #[test]
 fn inputs_cannot_carry_a_char_element() {
     insta::assert_snapshot!(err(
-        "fn f(v: Vec<Char>) -> Int = length(v)\n\nf(collect(inputs))"
+        "fn f(v: Vec<Char>) -> Int = length(v)\n\nf(collect((stdin | map(parse(.)))))"
     ));
 }
 

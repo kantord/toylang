@@ -5,7 +5,7 @@ program: |
   fn f(r: {a: Str, b: Int}) -> Str = r.a
   fn g(r: {b: Int, a: Str}) -> Str = f(r)
 
-  g(input)
+  g(parse(stdin))
 
 input: |
   {"b": 1, "a": "hi"}

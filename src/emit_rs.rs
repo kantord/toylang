@@ -836,7 +836,9 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
-            Kind::Slice { base, start, end, .. } => {
+            Kind::Slice {
+                base, start, end, ..
+            } => {
                 self.walk(base);
                 if let Some(s) = start {
                     self.walk(s);
@@ -1183,10 +1185,9 @@ impl Emitter<'_> {
             Kind::Lines => "tl_read_lines()".to_string(),
             // RFC 4180 field scanning over the same raw lines `lines` keeps, the scanner in
             // DSV_HELPER.
-            Kind::Dsv { delim } => format!(
-                "tl_dsv(&tl_read_lines(), {}.as_str())",
-                rs_string(delim)
-            ),
+            Kind::Dsv { delim } => {
+                format!("tl_dsv(&tl_read_lines(), {}.as_str())", rs_string(delim))
+            }
             Kind::RecordLit { fields } => {
                 let parts: Vec<String> = fields
                     .iter()
@@ -1216,6 +1217,10 @@ impl Emitter<'_> {
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("({}).to_string()", self.expr(arg)),
+                Builtin::Parse => unreachable!(
+                    "`parse` on a plain string is not supported on the Rust backend yet; \
+                     `parse(stdin)` and `stdin | map(parse(.))` lower to the stdin readers"
+                ),
                 Builtin::IntToI64 => format!("(({}) as i64)", self.expr(arg)),
                 Builtin::Range => format!("tl_range({})", self.expr(arg)),
                 Builtin::Chars => format!("tl_chars(&{})", self.expr(arg)),
@@ -1349,7 +1354,10 @@ impl Emitter<'_> {
                 })
             }
             Kind::Slice {
-                base, start, end, depth,
+                base,
+                start,
+                end,
+                depth,
             } => {
                 let lo = match start {
                     Some(s) => self.expr(s),

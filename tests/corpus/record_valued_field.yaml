@@ -3,7 +3,7 @@
 program: |
   fn inner(db: Vec<{a: {b: Str}, z: Int}>) -> Vec<{b: Str}> = db[].a
 
-  inner(input)
+  inner(parse(stdin))
 
 input: |
   [{"a": {"b": "x"}, "z": 7}, {"a": {"b": "y"}, "z": 8}]

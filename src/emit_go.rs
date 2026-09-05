@@ -570,7 +570,10 @@ pub fn emit(program: &Program) -> String {
         (collect, &["bufio", "bytes"]),
         (reads_stdin, &["encoding/json"]),
         (program.inputs.is_some(), &["io"]),
-        (join || quote || used.jsonlines || uses("tlDsv("), &["strings"]),
+        (
+            join || quote || used.jsonlines || uses("tlDsv("),
+            &["strings"],
+        ),
         (uses("tlDsv("), &["unicode/utf8"]),
         (uses("tlSort("), &["cmp", "slices"]),
         (uses("tlMax("), &["cmp"]),
@@ -737,7 +740,9 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
-            Kind::Slice { base, start, end, .. } => {
+            Kind::Slice {
+                base, start, end, ..
+            } => {
                 self.walk(base);
                 if let Some(s) = start {
                     self.walk(s);
@@ -777,7 +782,8 @@ impl Collect<'_> {
                     | Builtin::Sort
                     | Builtin::Reverse
                     | Builtin::Sum
-                    | Builtin::Max => {}
+                    | Builtin::Max
+                    | Builtin::Parse => {}
                 }
                 self.walk(arg);
             }
@@ -1030,10 +1036,7 @@ impl Emitter<'_> {
             // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
             // works on the slice of its entries.
             Kind::Lines => "tlCollectLines()".to_string(),
-            Kind::Dsv { delim } => format!(
-                "tlDsv(tlCollectLines(), {})",
-                go_string(delim)
-            ),
+            Kind::Dsv { delim } => format!("tlDsv(tlCollectLines(), {})", go_string(delim)),
             // go_type resolves the struct name, and the collector registered it because a
             // record literal carries its own record type.
             Kind::RecordLit { fields } => {
@@ -1090,6 +1093,10 @@ impl Emitter<'_> {
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("strconv.FormatInt(int64({}), 10)", self.expr(arg)),
                 Builtin::IntToI64 => format!("int64({})", self.expr(arg)),
+                Builtin::Parse => unreachable!(
+                    "`parse` on a plain string is not supported on the Go backend yet; \
+                     `parse(stdin)` and `stdin | map(parse(.))` lower to the stdin readers"
+                ),
                 Builtin::Range => format!("tlRange({})", self.expr(arg)),
                 Builtin::Chars => format!("tlChars({})", self.expr(arg)),
                 Builtin::JsonLines => {
@@ -1208,7 +1215,10 @@ impl Emitter<'_> {
                 })
             }
             Kind::Slice {
-                base, start, end, depth,
+                base,
+                start,
+                end,
+                depth,
             } => {
                 let lo = match start {
                     Some(s) => self.expr(s),

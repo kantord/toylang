@@ -293,11 +293,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 i64t.fn_type(&[ptr.into(), i32t.into()], false),
                 None,
             ),
-            vec_max: module.add_function(
-                "tl_vec_max",
-                ptr.fn_type(&[ptr.into()], false),
-                None,
-            ),
+            vec_max: module.add_function("tl_vec_max", ptr.fn_type(&[ptr.into()], false), None),
         };
 
         Emitter {
@@ -1129,9 +1125,14 @@ impl<'ctx> Emitter<'ctx, '_> {
             .into_int_value();
         let done = self.ctx.append_basic_block(function, "enum.done");
 
-        self.dispatch_on_tag("enum", tag, &variants, done, slot, |e, vname, payload, slot| {
-            e.enum_arm(value, vname, payload, slot)
-        })?;
+        self.dispatch_on_tag(
+            "enum",
+            tag,
+            &variants,
+            done,
+            slot,
+            |e, vname, payload, slot| e.enum_arm(value, vname, payload, slot),
+        )?;
 
         self.builder.position_at_end(done);
         self.builder
@@ -1406,6 +1407,13 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let arg = self.expr(arg)?;
                 match which {
                     Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,
+                    Builtin::Parse => {
+                        return Err(
+                            "`parse` on a plain string is not supported on the native backend yet; \
+                             `parse(stdin)` and `stdin | map(parse(.))` lower to the stdin readers"
+                                .to_string(),
+                        );
+                    }
                     // An Int already lives in an i64 here (see `llvm_type`), so the bridge
                     // is the identity: the value is its own widening.
                     Builtin::IntToI64 => arg,
@@ -1442,10 +1450,10 @@ impl<'ctx> Emitter<'ctx, '_> {
                     // is what tells Int (32-bit wrap per addition) from Int64. An `i32` like
                     // `tl_at`'s `is_record` flag, since C's `int` is 32 bits.
                     Builtin::Sum => {
-                        let narrow = self.ctx.i32_type().const_int(
-                            (elem_ty.as_ref() == Some(&Type::Int)) as u64,
-                            false,
-                        );
+                        let narrow = self
+                            .ctx
+                            .i32_type()
+                            .const_int((elem_ty.as_ref() == Some(&Type::Int)) as u64, false);
                         self.call_rt(self.rt.vec_sum, &[arg, narrow.into()], "sum")?
                     }
                     // NULL on an empty Vec is exactly the absent Opt a partial Index yields.
@@ -1597,12 +1605,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 };
                 self.call_rt(
                     self.rt.vec_slice,
-                    &[
-                        base,
-                        lo,
-                        hi,
-                        i64t.const_int(*depth as u64, false).into(),
-                    ],
+                    &[base, lo, hi, i64t.const_int(*depth as u64, false).into()],
                     "slice",
                 )?
             }
@@ -2153,9 +2156,13 @@ impl<'ctx> Emitter<'ctx, '_> {
         let function = self.enclosing_function()?;
         let i64t = self.ctx.i64_type();
         for (i, (vname, payload)) in variants.iter().enumerate() {
-            let arm_block = self.ctx.append_basic_block(function, &format!("{prefix}.arm"));
+            let arm_block = self
+                .ctx
+                .append_basic_block(function, &format!("{prefix}.arm"));
             if i + 1 < variants.len() {
-                let next = self.ctx.append_basic_block(function, &format!("{prefix}.next"));
+                let next = self
+                    .ctx
+                    .append_basic_block(function, &format!("{prefix}.next"));
                 let is = self
                     .builder
                     .build_int_compare(IntPredicate::EQ, tag, i64t.const_int(i as u64, false), "is")
