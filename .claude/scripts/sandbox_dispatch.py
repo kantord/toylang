@@ -493,15 +493,24 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
             send_text(
                 name, correction_guest,
                 f"A reviewer raised this objection to your verdict: {objection}\n\n"
-                "Defend your original verdict with a rebuttal, or revise it -- either way, "
-                "rewrite /root/verdict.json with your final decision now.",
+                "Defend your original verdict with a rebuttal, or revise it. Either way, "
+                "rewrite /root/verdict.json now with your final decision, using the EXACT SAME "
+                "schema as before -- one of:\n"
+                '{"verdict": "trivial", "reasoning": "..."}\n'
+                '{"verdict": "refactor-first", "reasoning": "...", "refactor_brief": "..."}\n'
+                '{"verdict": "split", "reasoning": "...", "split_briefs": [...]}\n'
+                'This file does NOT use {"agree": ...} -- that schema belongs to the reviewer, '
+                "not to you.",
                 workdir, env, f"correction-{round_no}-sent")
             exec_in(name, "rm -f /root/verdict.json", env, check=False)
             run_opencode(name, correction_guest, plan_model, env,
                          continue_session=True, log_tag=f"correction-{round_no}")
             revised = read_json_from_guest(name, "/root/verdict.json", env)
-            if revised is not None:
+            if revised is not None and revised.get("verdict") in ("trivial", "refactor-first", "split"):
                 verdict = revised
+            elif revised is not None:
+                print(f"== {issue_id}: correction round wrote malformed verdict.json "
+                      f"({revised!r}), keeping the pre-correction verdict ==", file=sys.stderr)
         else:
             print(f"== {issue_id}: devil's advocate agrees ==", file=sys.stderr)
 
