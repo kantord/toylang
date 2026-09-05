@@ -52,9 +52,9 @@ g(input)
 #[test]
 fn a_record_can_be_the_result() {
     let src = r#"
-fn first(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
+fn pick(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
 
-first(input)
+pick(input)
 "#;
     insta::assert_snapshot!(
         toylang::run_with_input(src, Some(r#"{"u": {"name": "ada", "age": 36}}"#)).unwrap()

@@ -117,6 +117,37 @@ const TAIL_HELPER: &str = r#"func tlTail[T any](v []T) tlOpt[[]T] {
 }
 "#;
 
+const FIRST_HELPER: &str = r#"func tlFirst[T any](v []T) tlOpt[T] {
+	if len(v) == 0 {
+		return tlOpt[T]{}
+	}
+	return tlOpt[T]{true, v[0]}
+}
+"#;
+
+// A Bool is a bool here, so the cut is a scan for (or past) the first true/false. An empty
+// Vec is false for `any` and vacuously true for `all`, which is what falling off the end
+// gives.
+const ANY_HELPER: &str = r#"func tlAny(v []bool) bool {
+	for _, x := range v {
+		if x {
+			return true
+		}
+	}
+	return false
+}
+"#;
+
+const ALL_HELPER: &str = r#"func tlAll(v []bool) bool {
+	for _, x := range v {
+		if !x {
+			return false
+		}
+	}
+	return true
+}
+"#;
+
 const FLATTEN_HELPER: &str = r#"func tlFlatten[T any](vv [][]T) []T {
 	out := []T{}
 	for _, v := range vv {
@@ -523,7 +554,7 @@ pub fn emit(program: &Program) -> String {
     let mut helpers = String::new();
     // tlOpt is what tlAt and tlUnwrap are written in terms of, and inference means the emitted
     // text need never spell it. Helper-to-helper dependencies are stated rather than read back.
-    if uses("tlOpt[") || uses("tlAt(") || uses("tlTail(") || unwrap {
+    if uses("tlOpt[") || uses("tlAt(") || uses("tlTail(") || uses("tlFirst(") || unwrap {
         helpers.push_str(OPT_TYPE);
         helpers.push('\n');
     }
@@ -538,6 +569,9 @@ pub fn emit(program: &Program) -> String {
         (uses("tlAt("), AT_HELPER),
         (uses("tlSlice("), SLICE_HELPER),
         (uses("tlTail("), TAIL_HELPER),
+        (uses("tlFirst("), FIRST_HELPER),
+        (uses("tlAny("), ANY_HELPER),
+        (uses("tlAll("), ALL_HELPER),
         (uses("tlFlatten("), FLATTEN_HELPER),
         (uses("tlSort("), SORT_HELPER),
         (uses("tlReverse("), REVERSE_HELPER),
@@ -777,7 +811,10 @@ impl Collect<'_> {
                     | Builtin::Sort
                     | Builtin::Reverse
                     | Builtin::Sum
-                    | Builtin::Max => {}
+                    | Builtin::Max
+                    | Builtin::First
+                    | Builtin::Any
+                    | Builtin::All => {}
                 }
                 self.walk(arg);
             }
@@ -1106,6 +1143,9 @@ impl Emitter<'_> {
                 Builtin::Collect => self.expr(arg),
                 Builtin::Length => format!("int32(len({}))", self.expr(arg)),
                 Builtin::Tail => format!("tlTail({})", self.expr(arg)),
+                Builtin::First => format!("tlFirst({})", self.expr(arg)),
+                Builtin::Any => format!("tlAny({})", self.expr(arg)),
+                Builtin::All => format!("tlAll({})", self.expr(arg)),
                 Builtin::Flatten => format!("tlFlatten({})", self.expr(arg)),
                 Builtin::Sort => format!("tlSort({})", self.expr(arg)),
                 Builtin::Reverse => format!("tlReverse({})", self.expr(arg)),

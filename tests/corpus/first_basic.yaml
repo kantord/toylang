@@ -1,0 +1,7 @@
+program: |
+  first([3, 1, 4])!
+
+output: |
+  3
+
+node_types: [builtin.first, int, unwrap, vec-literal]

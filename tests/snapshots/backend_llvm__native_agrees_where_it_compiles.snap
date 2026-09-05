@@ -1,9 +1,16 @@
 ---
 source: tests/backend_llvm.rs
+assertion_line: 46
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (221):
+compiles natively (230):
 adults
+all_basic
+all_empty
+all_has_false
+any_basic
+any_empty
+any_none
 arith_add
 arith_div_trunc
 arith_mul
@@ -63,6 +70,9 @@ fields_basic
 fields_reflects_checked_order
 filter
 filter_strings
+first_basic
+first_empty
+first_of_records
 fizzbuzz
 fizzbuzz_arms
 flatten_basic

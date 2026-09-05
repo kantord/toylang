@@ -1097,6 +1097,39 @@ int64_t *tl_vec_tail(const tl_vec *v) {
     return tl_opt_some((int64_t)out);
 }
 
+/* `first` over a Vec of any element type: the first entry, NULL on an empty Vec -- the same
+ * absence encoding tl_opt_some uses everywhere else, so a caller unwraps it the way it unwraps
+ * an Index result. `is_record` decides whether the entry has to be gathered out of the columns,
+ * the same reason tl_at takes it. */
+int64_t *tl_vec_first(const tl_vec *v, int is_record) {
+    if (v->len == 0) {
+        return NULL;
+    }
+    return tl_opt_some(is_record ? (int64_t)tl_rec_from_vec(v, 0) : v->cols[0][0]);
+}
+
+/* `any` over a Vec<Bool>: whether any slot is nonzero. Bool widens to a 0/1 slot, so a zero
+ * test is the whole of it. An empty Vec is false. */
+int64_t tl_vec_any(const tl_vec *v) {
+    for (int64_t i = 0; i < v->len; i++) {
+        if (v->cols[0][i] != 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* `all` over a Vec<Bool>: whether every slot is nonzero. An empty Vec has no false entry, so
+ * it is true (vacuously). */
+int64_t tl_vec_all(const tl_vec *v) {
+    for (int64_t i = 0; i < v->len; i++) {
+        if (v->cols[0][i] == 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /* Flatten a Vec<Vec<T>> into a Vec<T>. `ncols` is T's column count: passed in rather than read
  * off an inner Vec, since an empty outer Vec has no inner Vec to read it from. */
 tl_vec *tl_vec_flatten(const tl_vec *vv, int64_t ncols) {

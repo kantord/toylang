@@ -180,5 +180,8 @@ fn builtin_tag(which: Builtin) -> &'static str {
         Builtin::Reverse => "reverse",
         Builtin::Sum => "sum",
         Builtin::Max => "max",
+        Builtin::First => "first",
+        Builtin::Any => "any",
+        Builtin::All => "all",
     }
 }

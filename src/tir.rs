@@ -256,6 +256,16 @@ pub enum Builtin {
     /// same two integer element types `sum` takes, so a backend can reach for its native
     /// maximum.
     Max,
+    /// `first(v)`, `Vec<T> -> Opt<T>`: the first entry, `None` when `v` is empty -- the cut
+    /// that commits to what you have and abandons the remaining alternatives
+    /// (draft.md#query-is-search). Generic over the element type the way `tail` is.
+    First,
+    /// `any(v)`, `Vec<Bool> -> Bool`: whether any entry is true. The existential cut: an
+    /// empty Vec has no true entry, so it is false.
+    Any,
+    /// `all(v)`, `Vec<Bool> -> Bool`: whether every entry is true. The universal cut: an
+    /// empty Vec has no false entry, so it is true (vacuously).
+    All,
 }
 
 pub struct Func {
