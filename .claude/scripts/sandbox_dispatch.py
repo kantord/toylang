@@ -51,33 +51,42 @@ TOOLCHAIN_PATH_EXPORT = (
     "export PATH=$HOME/.cargo/bin:/usr/lib/llvm-22/bin:$PATH"
 )
 
-PLAN_PROMPT_TEMPLATE = """Before writing or editing anything, evaluate this task's shape.
+PLAN_PROMPT_TEMPLATE = """Before writing or editing anything, actively search for a way to make
+this task easier -- do not just classify it.
 
 TASK:
 {task}
+{prior_refactor_evidence}
+The question to answer, and actually try to answer generatively rather than defaulting past it:
+**what relatively small refactor of the EXISTING code -- ideally a NET REDUCTION in total lines,
+not just a reshuffle -- would make the real task measurably easier for a less experienced
+developer to get right in one pass?** A task that "feels atomic" because it touches many files is
+not evidence that no such refactor exists -- a shared helper, a flattened nesting, or a removed
+special case can shrink what has to be gotten right at every one of those call sites even when the
+files themselves can't be decoupled. Be aggressive about proposing this kind of refactor: the only
+real constraint is that it must not be a hard-to-reverse design decision that could backfire later
+(a genuine architecture change is not what this is for; a mechanical simplification is).
 
-Decide one of three verdicts:
-- "trivial": a single build session can implement the whole task and reach a green `just check`.
-- "refactor-first": the real change touches many call sites that share an awkward, error-prone
-  shape (e.g. deeply nested constructor calls where parenthesis-counting mistakes are likely,
-  or a pattern repeated across many backends that a small shared helper would simplify), and a
-  small, separate preparatory refactor would make the real change significantly easier and less
-  error-prone to get right. Scope the refactor tightly -- it must NOT implement any part of the
-  real feature, only reshape existing code to make the coming change easier.
-- "split": the task is really two or more independent sub-tasks (e.g. per-backend work that does
-  not depend on the others) that can each be implemented and verified on their own.
+Only if you have actually looked for such a refactor and could not find one -- not merely because
+the task admits it touches many files -- does "trivial" (attempt the real task directly, no prep
+refactor) apply. A "trivial" verdict should mean "I searched and this is already about as simple
+as this kind of change can be," not "this can't be decomposed into independent pieces." Splitting
+into independent sub-tasks ("split") is a separate, third option when pieces genuinely don't need
+each other, e.g. true per-backend independence.
 
-You have {rounds_left} more round(s) of this evaluate-then-refactor cycle available after this one
+You have {rounds_left} more round(s) of this search-then-refactor cycle available after this one
 before the harness will just attempt the full task directly -- that direct attempt is always a
-safe fallback, so if you are not confident a decomposition fits in the remaining rounds, pick
-"trivial" rather than starting a decomposition you cannot finish.
+safe fallback, so if you are not confident a further round of refactoring fits in what remains,
+say so honestly in your reasoning rather than starting one you cannot finish. It is normal and
+expected for one refactor to not be enough by itself -- say so and this loop will run again against
+the now-simpler code, up to the round budget.
 
 Read whatever source you need to make this judgment, but do NOT write or edit any file except the
 verdict file itself.
 
 Write your decision to /root/verdict.json as a single JSON object, exactly one of these shapes:
-{{"verdict": "trivial", "reasoning": "one paragraph"}}
-{{"verdict": "refactor-first", "reasoning": "...", "refactor_brief": "the exact small change to make now, with its own definition of done -- just the refactor, not the feature"}}
+{{"verdict": "trivial", "reasoning": "one paragraph explaining what you looked for and why no beneficial refactor exists"}}
+{{"verdict": "refactor-first", "reasoning": "...", "refactor_brief": "the exact small change to make now, with its own definition of done -- just the refactor, not the feature -- and your estimate of the net line-count change it should produce"}}
 {{"verdict": "split", "reasoning": "...", "split_briefs": ["complete self-contained brief for sub-task 1", "complete self-contained brief for sub-task 2", "..."]}}
 
 Use your write tool to create /root/verdict.json with valid JSON (no trailing commas, no comments),
@@ -304,13 +313,31 @@ def read_json_from_guest(name: str, guest_path: str, env: dict) -> dict | None:
         return None
 
 
+def diff_line_delta(name: str, base_commit: str, env: dict) -> tuple[int, int]:
+    """(insertions, deletions) since base_commit, on whatever is committed
+    right now. Used to check a refactor's own claimed net-line-reduction
+    against what it actually did, the same way build failures get checked
+    against real `just check` output rather than trusted at face value."""
+    r = exec_in(name, f"cd /repo && git diff --shortstat {base_commit} -- . ':!site/public/corpus.json'",
+                env, check=False)
+    ins = dels = 0
+    for tok in r.stdout.split(","):
+        tok = tok.strip()
+        if "insertion" in tok:
+            ins = int(tok.split()[0])
+        elif "deletion" in tok:
+            dels = int(tok.split()[0])
+    return ins, dels
+
+
 def plan_phase(name: str, task_text: str, plan_model: str, env: dict, workdir: Path,
-               round_no: int, rounds_left: int) -> dict | None:
+               round_no: int, rounds_left: int, prior_refactor_evidence: str = "") -> dict | None:
     """One plan-phase turn: dispatch --agent plan on the plan model, asking
     for a structured trivial/refactor-first/split verdict instead of code.
     Continues the same session from round 2 onward so the model keeps its
     own prior exploration instead of re-reading the codebase from scratch."""
-    prompt = PLAN_PROMPT_TEMPLATE.format(task=task_text, rounds_left=rounds_left)
+    prompt = PLAN_PROMPT_TEMPLATE.format(task=task_text, rounds_left=rounds_left,
+                                          prior_refactor_evidence=prior_refactor_evidence)
     guest_path = f"/root/plan-{round_no}.txt"
     send_text(name, guest_path, prompt, workdir, env, f"plan-{round_no}-sent")
     exec_in(name, "rm -f /root/verdict.json", env, check=False)
@@ -425,11 +452,13 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
     Every dispatch here continues the SAME session, so the eventual build
     phase inherits all of this exploration/refactor context for free."""
     started = False
+    refactor_evidence = ""
     for round_no in range(max_plan_rounds):
         rounds_left = max_plan_rounds - round_no - 1
         print(f"== {issue_id}: plan round {round_no + 1}/{max_plan_rounds} "
               f"({rounds_left} left after this) ==", file=sys.stderr)
-        verdict = plan_phase(name, task_text, plan_model, env, workdir, round_no, rounds_left)
+        verdict = plan_phase(name, task_text, plan_model, env, workdir, round_no, rounds_left,
+                              prior_refactor_evidence=refactor_evidence)
         started = True
         if verdict is None:
             print(f"== {issue_id}: plan round {round_no + 1} produced no verdict.json, "
@@ -489,9 +518,22 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
             run_opencode(name, rf_guest, build_model, env, continue_session=True, agent="build",
                          log_tag=f"refactor-{round_no}")
             ok, tail = verify(name, env)
-            print(f"== {issue_id}: refactor round {round_no + 1} verify: "
-                  f"{'green' if ok else 'red'} ==", file=sys.stderr)
             ensure_committed(name, env)
+            # Check the refactor's own claim against what it actually did --
+            # same principle as feeding real `just check` output back on a
+            # build failure, rather than trusting a self-reported estimate.
+            ins, dels = diff_line_delta(name, base_commit, env)
+            net = ins - dels
+            print(f"== {issue_id}: refactor round {round_no + 1} verify: "
+                  f"{'green' if ok else 'red'}, net lines so far: {net:+d} "
+                  f"(+{ins}/-{dels}) ==", file=sys.stderr)
+            refactor_evidence = (
+                f"\nEVIDENCE FROM THE LAST REFACTOR ROUND: `just check` was "
+                f"{'green' if ok else 'red'} afterward, and the net line change since the "
+                f"original code is {net:+d} lines (+{ins}/-{dels}). If this is not a net "
+                "reduction, explain honestly why the refactor was still worthwhile, or say so "
+                "if it was not and adjust your approach this round.\n"
+            )
             continue  # re-evaluate the (hopefully now simpler) remaining task
 
         if kind == "split" and verdict.get("split_briefs"):
