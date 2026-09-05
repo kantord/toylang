@@ -84,6 +84,32 @@ Use your write tool to create /root/verdict.json with valid JSON (no trailing co
 then stop. Do not implement anything yet.
 """
 
+DEVILS_ADVOCATE_PROMPT_TEMPLATE = """You are reviewing a planning decision, not writing code. Do NOT
+read any files or explore the repository -- judge this purely on the text below. This should be a
+fast, cheap review, not a re-investigation.
+
+ORIGINAL TASK (for scope only):
+{task}
+
+THE PLANNER'S VERDICT:
+{verdict_json}
+
+Is this verdict actually justified given the task's real scope? Look specifically for a mismatch
+between the claimed verdict and the stated facts -- e.g. "trivial" claimed for something that
+admits it touches many files/backends/modules, or a "refactor-first" whose refactor_brief secretly
+implements real feature work, or a "split" whose pieces are not actually independent. A verdict
+that leans on a prior/reference implementation is not automatically safe if that reference is
+described as unreliable, abandoned, or needing re-derivation.
+
+Write your review to /root/critique.json as a single JSON object:
+{{"agree": true}}
+or
+{{"agree": false, "objection": "one paragraph: specifically what fact in the verdict does not
+support its conclusion, and what verdict would fit the stated facts better"}}
+
+Use your write tool to create /root/critique.json, then stop.
+"""
+
 BUILD_AFTER_TRIVIAL = (
     "Your plan-phase evaluation judged this task trivial for one build session. "
     "Implement it now, to the full definition of done in the original brief above."
@@ -286,6 +312,24 @@ def plan_phase(name: str, task_text: str, plan_model: str, env: dict, workdir: P
     return read_json_from_guest(name, "/root/verdict.json", env)
 
 
+def devils_advocate_phase(name: str, task_text: str, verdict: dict, critic_model: str,
+                           env: dict, workdir: Path, round_no: int) -> dict | None:
+    """A cheap, FRESH (no --continue) session that only sees the task's
+    stated scope and the planner's verdict+reasoning -- never the planner's
+    own exploration. Cheaper by construction: no codebase re-reading, just a
+    consistency check of a claim against stated facts. Uses the cheap build
+    model, not the plan model -- this is a small-input judgment task, not a
+    context-heavy one, so DeepSeek's weakness (burning budget re-deriving
+    context on LARGE tasks) doesn't apply here."""
+    prompt = DEVILS_ADVOCATE_PROMPT_TEMPLATE.format(
+        task=task_text, verdict_json=json.dumps(verdict, indent=2))
+    guest_path = f"/root/critic-{round_no}.txt"
+    send_text(name, guest_path, prompt, workdir, env, f"critic-{round_no}-sent")
+    exec_in(name, "rm -f /root/critique.json", env, check=False)
+    run_opencode(name, guest_path, critic_model, env, continue_session=False, agent="plan")
+    return read_json_from_guest(name, "/root/critique.json", env)
+
+
 def verify(name: str, env: dict) -> tuple[bool, str]:
     # CARGO_BUILD_JOBS=2: cap concurrent rustc/lld processes -- several
     # linking the full inkwell/LLVM-22 chain at once is what caused the
@@ -364,8 +408,8 @@ def run_build_cycle(issue_id: str, name: str, first_message_guest: str, model: s
 
 
 def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str,
-                        build_model: str, env: dict, workdir: Path, base_commit: str,
-                        max_plan_rounds: int) -> tuple[str, bool]:
+                        build_model: str, critic_model: str, env: dict, workdir: Path,
+                        base_commit: str, max_plan_rounds: int) -> tuple[str, bool]:
     """Runs up to max_plan_rounds of evaluate-then-refactor before the real
     build attempt. Returns (next_build_message_guest_path, session_already_started).
     Every dispatch here continues the SAME session, so the eventual build
@@ -381,6 +425,37 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
             print(f"== {issue_id}: plan round {round_no + 1} produced no verdict.json, "
                   "falling back to trivial ==", file=sys.stderr)
             break
+
+        # Devil's advocate: a fresh, uncontexted, cheap-model review of the
+        # verdict's stated justification against the task's stated scope --
+        # not a re-exploration. If it objects, send the objection back to
+        # the SAME plan session (which still has full context) for one
+        # defend-or-revise round, then use whatever verdict.json holds now.
+        # Capped at one correction per plan round for the same reason the
+        # plan phase itself is round-capped: a safe fallback (use the
+        # original verdict) beats an unbounded back-and-forth.
+        critique = devils_advocate_phase(name, task_text, verdict, critic_model,
+                                          env, workdir, round_no)
+        if critique and critique.get("agree") is False:
+            objection = critique.get("objection", "(no objection text given)")
+            print(f"== {issue_id}: devil's advocate objects: {objection[:300]} ==",
+                  file=sys.stderr)
+            correction_guest = f"/root/correction-{round_no}.txt"
+            send_text(
+                name, correction_guest,
+                f"A reviewer raised this objection to your verdict: {objection}\n\n"
+                "Defend your original verdict with a rebuttal, or revise it -- either way, "
+                "rewrite /root/verdict.json with your final decision now.",
+                workdir, env, f"correction-{round_no}-sent")
+            exec_in(name, "rm -f /root/verdict.json", env, check=False)
+            run_opencode(name, correction_guest, plan_model, env,
+                         continue_session=True, agent="plan")
+            revised = read_json_from_guest(name, "/root/verdict.json", env)
+            if revised is not None:
+                verdict = revised
+        else:
+            print(f"== {issue_id}: devil's advocate agrees ==", file=sys.stderr)
+
         kind = verdict.get("verdict")
         print(f"== {issue_id}: verdict = {kind} -- {verdict.get('reasoning', '')[:300]} ==",
               file=sys.stderr)
@@ -424,6 +499,9 @@ def main() -> int:
     ap.add_argument("--brief", required=True, type=Path)
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--plan-model", default=DEFAULT_PLAN_MODEL)
+    ap.add_argument("--critic-model", default=DEFAULT_MODEL,
+                     help="devil's-advocate reviewer of the plan verdict -- cheap by design, "
+                          "since it never inherits context, only the stated verdict + task scope")
     ap.add_argument("--max-plan-rounds", type=int, default=2,
                      help="0 disables the plan-decompose phase entirely")
     ap.add_argument("--retry-cap", type=int, default=2)
@@ -453,7 +531,7 @@ def main() -> int:
     try:
         if args.max_plan_rounds > 0:
             first_build_guest, session_started = run_plan_decompose(
-                args.issue_id, name, task_text, args.plan_model, args.model,
+                args.issue_id, name, task_text, args.plan_model, args.model, args.critic_model,
                 env, workdir, base_commit, args.max_plan_rounds)
         else:
             first_build_guest, session_started = brief_guest, False
