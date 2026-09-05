@@ -1,10 +1,71 @@
-- id: function-signature-matching-syntax
-  issue: gh:152
-  title: 'Round 5 RULED: maintainer picked A -- call-form hoist (fn render = Msg(Ping -> ... or Quit -> ...)), against the round-5 thesis which favored C on parse-today grounds. Maintainer note: "we are building a new language and it''s in the early stages; most feature requests do not assume this will already parse and that is natural" -- i.e. A''s three novel surfaces (new fn-declaration shape, return-type inference, type-name-as-match-call expression form) are accepted design cost, not disqualifying. Build task: implement A. gh:152 to be closed on landing.'
+- id: stuck-issue-search-layer-build-investigation
   kind: build
-  needs: []
-  prio: 3
   status: delegated
+  needs: []
+  title: 'INVESTIGATE stuck lane issue-search-layer-build (no activity 13h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-search-layer-build-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-recursive-descent-order-research-investigation
+  kind: build
+  status: delegated
+  needs: []
+  title: 'INVESTIGATE stuck lane issue-recursive-descent-order-research (no activity 58h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-recursive-descent-order-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-param-destructure-build-investigation
+  kind: build
+  status: delegated
+  needs: []
+  title: 'INVESTIGATE stuck lane issue-param-destructure-build (no activity 10h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-param-destructure-build-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-float-format-research-investigation
+  kind: build
+  status: delegated
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-format-research (no activity 10h, 3 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-format-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-float-build-rust-investigation
+  kind: build
+  status: delegated
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-build-rust (no activity 38h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-rust-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-float-build-python-investigation
+  kind: build
+  status: delegated
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-build-python (no activity 37h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-python-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-float-build-lua-investigation
+  kind: build
+  status: delegated
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-build-lua (no activity 34h, 4 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-lua-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-float-build-go-investigation
+  kind: build
+  status: delegated
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-build-go (no activity 37h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-go-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: call-form-hoist-parse
+  issue: gh:152
+  title: 'Step 2/4 of the issue-152-stall reshape: parse the new `fn name = expr` call-form declaration and the MatchCall expression syntax.'
+  kind: build
+  needs: [call-form-hoist-ast]
+  prio: 3
+  status: todo
+
+- id: call-form-hoist-check
+  issue: gh:152
+  title: 'Step 3/4 of the issue-152-stall reshape: checker -- return-type inference for `fn name = expr`; resolve MatchCall arms against the enum registry.'
+  kind: build
+  needs: [call-form-hoist-parse]
+  prio: 3
+  status: todo
+
+- id: call-form-hoist-codegen
+  issue: gh:152
+  title: 'Step 4/4 of the issue-152-stall reshape: codegen for the call-form hoist across all backends. gh:152 closes on landing this row.'
+  kind: build
+  needs: [call-form-hoist-check]
+  prio: 3
+  status: todo
 
 - id: dsv-partials-migration
   issue: gh:136
@@ -46,25 +107,18 @@
   status: todo
 
 - id: stdout-stderr-effect-model-research
-  title: 'Research spike (round 1 answer, stdout-stderr-effect-model question): the maintainer''s freeText was torn between "a real type" (option C, Effect/IO) and noting the program already has Stream-typed inputs/outputs (option B, extend the decided "Stream is the effect layer" model) -- and separately flagged that stdin/stdout splitting still needs deciding. Write up how each of the three round-1 options (opaque plumbing, Stream-carries-writes, real Effect/IO type) would actually model reading and writing on two separate streams (stdout vs stderr) using types the language already has, so round 2 can present concrete, verified code for each rather than re-asking the same abstract question. Write findings to plans/.'
+  title: 'Landed directly (2026-09-04), not by a delegated worker: plans/stdout-stderr-effect-model-research.md. Lane had sat delegated 25 hours, 0 commits, last run burning its whole budget on read-only exploration before a blocked CLI call ended it. Core finding, verified by running real programs rather than reading docs: a toylang program is exactly one expression -- no sequencing construct exists at all -- so Q35 is not just "does stderr have a type," it is "can a program write more than once, anywhere." All three round-1 options worked through against that: A (opaque plumbing, one more single-instance sink alongside jsonlines) is real but cannot address shell-out-build''s actual need (relay a subprocess''s stdout and stderr in one run); B (extend Sink to Sink<T> plus a sequencing form, reusing `or`''s existing positional-overload precedent) is the smallest true extension and matches the maintainer''s own round-1 free text; C (a real IO<T> monad) needs a Unit type the language does not have and would leave two competing effect notations side by side. Ready for round 2.'
   kind: build
   needs: []
-  prio: 1
-  status: delegated
+  prio: 4
+  status: done
 
 - id: stdin-redesign-build-2
   issue: gh:172
-  title: 'Re-file of gh:159 (maintainer cleanup ruling, 2026-09-02, option C: drop the poisoned issue-159 lane, re-board under a fresh lane id rather than repair it). Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative -- verify parse(.) resolves an expected type inside a map body before full build). The old issue-159 branch/worktree are abandoned in place (permission-denied cleanup, left as garbage per the ruling); the feature diff there (commit 45c76be) is reference-only, re-derive against current main rather than cherry-pick.'
+  title: 'Re-file of gh:159 (maintainer cleanup ruling, 2026-09-02, option C: drop the poisoned issue-159 lane, re-board under a fresh lane id rather than repair it). Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative -- verify parse(.) resolves an expected type inside a map body before full build). The old issue-159 branch/worktree are abandoned in place (permission-denied cleanup, left as garbage per the ruling); the feature diff there (commit 45c76be) is reference-only, re-derive against current main rather than cherry-pick. stdin-parse-shape escalation RULED (option 1, 2026-09-03): `parse` grows a second checked shape, `Stream<Str> -> T` (join lines with \n, then parse as one value) alongside the existing `Str -> T` -- matches the lane''s own uncommitted direction exactly. `input` migrates to `parse(stdin)`; `inputs` to `stdin | map(parse(.))`; `lines` to plain `stdin`. RESHAPED (issue-172-task-shape escalation, option 1, 2026-09-03): 7 runs / 0 commits -- the task cannot reach a commit boundary in one run''s step budget as a single all-in-one change (ast.rs + both check modules + all 8 emit_*.rs backends + ~30 corpus files + ~27 Rust test files together). Land in incremental, independently-landable commits instead: commit 1 -- `parse()` gains the `Stream<Str> -> T` overload in src/parse.rs and src/tir.rs ONLY, old `input`/`inputs`/`lines` keywords untouched, tree stays green; commit 2+ -- migrate ONE backend (its emit_*.rs, its corpus subset, its Rust tests) per commit, one backend per continuation dispatch; final commit -- once every backend covers `parse(stdin)`, retire `input`/`inputs`/`lines` from src/ast.rs and the parser. Each continuation dispatch does exactly one commit from this list and stops, never reaching for the next backend in the same run.'
   kind: build
   needs: []
   model: fable
-  status: delegated
-
-- id: trait-interface-build
-  issue: gh:174
-  title: 'Ruled (trait-interface-design round): (1) Rust-shaped declaration -- trait Name { fn sig(...) -> T } / impl Name for Type { fn sig(...) -> T = body }; (2) builtin operators (Int+Int, Str+Str, ...) tentatively become source-written prelude impls "when practical, otherwise built in" -- maintainer explicitly declined to fully commit either way ("in some cases performance may decide this... we would need to see how it works out in practice"), so start with prelude impls (uniform, matches the mechanism) and fall back to checker-generated only where the prelude indirection provably costs real performance; revisit once build experience exists; (3) named trait methods are colon-only -- x:foo(y) is the only spelling, no plain-call fallback even when unambiguous.'
-  kind: build
-  needs: []
   status: delegated
 
 - id: float-format-research
@@ -105,57 +159,57 @@
 
 - id: float-build-jq
   issue: gh:149
-  title: Implement Float (IEEE binary64 per ADR 0007) for the jq backend only, following float-build's JS implementation as the reference. One backend, one commit.
+  title: 'Landed directly (2026-09-04), not by a delegated worker: full Float for jq -- lane had 4.3h-idle real progress (arithmetic, comparisons, input, a careful ESCALATION.md) stalled by the worker''s own model repeatedly corrupting a probe script with a stray Unicode combining character. Closed the escalation''s printing gap: jq''s tostring already gets the shortest round-trip digits right (verified against a ~5000-value fuzz run, matching float-build-c-escalation''s own verification), so its output is reparsed and relaid-out with the same notation rule runtime/toylang.c''s Native formatter uses, rather than needing a fresh Q37 decision round. One gap left open on purpose: a non-finite float nested in a Vec/Record diverges from JS (pinned by a test, not silently untested) -- fixing it means jq abandoning its value-based JSON encoder for hand-built string concatenation, a bigger change than this row''s scope.'
   kind: build
   needs: [float-build]
-  status: delegated
+  status: done
 
 - id: float-build-c-escalation
   issue: gh:149
-  title: Attempt Float (IEEE binary64 per ADR 0007) for the C/LLVM backend; if there is no usable native matching primitive, write ESCALATION.md scoped to just this backend, commit it, and stop rather than stalling.
+  title: 'Landed directly (2026-09-04), not by a delegated worker: full Float support for Native/LLVM, not an escalation -- lane had sat delegated 23.5 hours, 0 commits, last run burned its whole budget re-deriving history before a blocked CLI call ended it. libc has no shortest-round-trip float formatter (the actual "usable native matching primitive" question), so one was built: increasing-precision search over %e for the digits, ECMA-262 Number::toString layout for the notation, verified against Node byte-for-byte across a ~5000-value fuzz run before landing in runtime/toylang.c. Also fixed a real Kind-mismatch bug in check/mod.rs''s `-x` desugaring (Float-typed zero built as Kind::Int(0)), general to every backend, that JS''s untyped runtime numbers were masking. Float still needs Go/Python/Rust/Lua before it can be a corpus case.'
   kind: build
   needs: [float-build]
-  status: delegated
+  status: done
 
 - id: benchmark-suite-build
-  title: Build the initial benchmark suite -- 8 non-float CLBG tasks, hyperfine harness per benchmark-plan.md, framed as a general cross-language competitiveness claim (gh:147 ruling); n-body/spectral-norm deferred to a second wave (gh:146 ruling)
+  title: 'Landed directly (2026-09-03), not by a delegated worker: the hyperfine harness (src/bin/bench.rs, just bench NAME) and binary-trees, the first of the 8 non-float CLBG tasks, per benchmark-plan.md''s Build status section. That section also corrects the suite spike''s "good fit today" claim: reverse-complement/k-nucleotide/regex-redux need Str slicing or Char -> Str, neither of which exists; pidigits needs a bignum type; mandelbrot needs float support most backends lack. fasta and fannkuch-redux are the two next real candidates (benchmark-fasta-build, benchmark-fannkuch-redux-build below); n-body/spectral-norm stay deferred (gh:146 ruling).'
   kind: build
   needs: []
   prio: 4
-  status: delegated
+  status: done
 
-- id: lines-utf8-posix-research
-  issue: gh:102
-  title: 'Round 2 answer (question lines-non-utf8-byte): no pick -- maintainer wants deeper research beyond plans/string-type-spike.md:194-201 before choosing refuse/carry-through/lossy-replace: what is most correct, most secure, most POSIX-compliant, most common across existing Unix line-oriented tools, and what would match user expectations. Write findings to plans/.'
+- id: benchmark-fasta-build
+  title: 'Build the CLBG fasta task in toylang (benchmark-plan.md Build status): generates DNA sequences from a small literal Str alphabet via a computed PRNG index, so it needs no Char -> Str conversion. Follows the pattern in benches/programs/binary-trees.toy -- program under benches/programs/, correctness pinned as a small-N tests/corpus/ case, a larger benches/inputs/ fixture for real timing.'
   kind: build
   needs: []
-  prio: 3
+  prio: 4
   status: todo
 
-- id: lines-utf8-edge
-  issue: gh:102
-  title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. Round 1 research (plans/string-type-spike.md:194-201) covered per-backend mechanics only; round 2 answer asked for correctness/security/POSIX-compliance/common-practice research first (see lines-utf8-posix-research) before round 3 re-asks with the three options (refuse / carry-where-possible / uniform lossy replacement).'
-  kind: decide
-  needs: [lines-utf8-posix-research]
+- id: benchmark-fannkuch-redux-build
+  title: 'Build the CLBG fannkuch-redux task in toylang (benchmark-plan.md Build status): permutations of Vec<Int>, fully numeric, no string decode needed. Follows the pattern in benches/programs/binary-trees.toy.'
+  kind: build
+  needs: []
+  prio: 4
   status: todo
 
 - id: search-layer-build
   title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: sort-by-max-by
+  issue: gh:177
   title: sort_by and max_by -- ordering through a scalar projection (euler-ergonomics row 7)
   kind: build
   needs: [sum-max-builtins-build]
-  status: todo
+  status: delegated
 
 - id: param-destructure-build
   title: Implement match-arm-style parameter destructuring, e.g. fn gcd({a, b}:{a:Int,b:Int}) (gh:144 ruling)
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: bigint-tracking
   issue: gh:112
@@ -424,4 +478,11 @@
   kind: build
   needs: []
   prio: 5
+  status: todo
+
+- id: native-backend-rust-ergonomics-research
+  title: 'Maintainer note (composed 2026-09-04): investigate whether the native/LLVM backend is properly ergonomic today, in the sense that we should be using well-established Rust libraries for this rather than hand-writing everything in raw LLVM IR/C -- ideally gaining the ability to write integrated code directly in Rust, or even import functionality from other crates, instead of manually authoring it in runtime/toylang.c or src/emit_llvm.rs. Survey what an inkwell-based (or similar) LLVM codegen layer and/or a thin Rust runtime crate (in place of hand-rolled C in runtime/toylang.c) would buy in ergonomics and correctness versus the current hand-written approach, and what it would cost in build complexity/toolchain deps. Concrete recent evidence worth grounding the survey in: the issue-177 lane (sort_by/max_by) spent much of a 193-step run hand-patching runtime/toylang.c with oldString-not-found edit failures and a self-introduced combining-character corruption bug while adding four keyed C helper functions -- exactly the kind of hand-authored-C friction the note is asking about. Write findings (with concrete code comparisons) to plans/, then compose a design round.'
+  kind: build
+  needs: []
+  prio: 4
   status: todo

@@ -5,6 +5,8 @@ expression: "toylang::parse::parse(r#\"\"a\" + \"b\" + \"c\"\"#).unwrap()"
 File {
     aliases: [],
     enums: [],
+    traits: [],
+    impls: [],
     defs: [],
     input: None,
     body: Binary {

@@ -499,3 +499,65 @@ rediscovery shape plus a repeat cross-worktree-denial detour into `plans/inciden
 run under the escalation threshold -- rebriefed in place instead with an explicit
 incident-folder ban and a narrower first slice (just the `trait`/`impl` keywords and AST
 parse, pointing at `src/parse.rs:173-176` directly) rather than escalated.
+
+## Escalation ruling applied: all three stalled lanes redispatched on GLM 5.2 (2026-09-03)
+
+Maintainer wizard answers on `stalled-lanes-escalation` (captured 2026-09-03 18:07, applied
+same tick): all three questions -- `function-signature-matching-syntax` (gh:152),
+`stdin-redesign-build-2` (gh:172), `float-format-research` (gh:149) -- ruled **Stronger
+model**, none reshaped or dropped. Redispatched all three in their existing worktrees with
+`OPENCODE_MODEL=openrouter/z-ai/glm-5.2` (confirmed live via `opencode models`), same task
+scope as before with the prior stall summarized in-brief so the run doesn't spend its budget
+re-deriving what's already known. `float-format-research`'s brief still carries the
+probe-file read that's been sandbox-denied every prior run (the maintainer picked
+"Stronger model," not "Reshape," for that question specifically, despite the option
+description flagging that a model bump alone won't fix a permission boundary) -- told the
+worker explicitly not to retry that read if denied again and to fall back to public
+knowledge instead. This is the first GLM 5.2 dispatch of the rollout; worth a first data
+point for the eventual model-ladder comparison once these land or stall again.
+## Incident: issue-http-query-sugar-research (gh:171) dead on a self-inflicted toolchain probe (2026-09-01
+
+Root cause (from `20260901-231026-issue-http-query-sugar-research.jsonl.tail`): a long one-run session of correct desk research (board row, gh:171 body, the sources family and `Sink` in tir.rs/ty.rs, the `dsv(delim)` parameterized-source precedent, the 7-backend list in lib.rs, draft.md's streams-and-sinks decisions) then `which go node python3 jq cc rustc` to survey which backend toolchains exist on the host -- denied by the permission classifier -- and the worker exited immediately after, zero commits, zero file writes, no ESCALATION.md, no `plans/http-query-sugar-research.md`. Exactly the gh:163 (erlang-target-research) shape one lane later: an unnecessary toolchain probe on a task that needed none, followed by give-up-on-first-denial.
+
+
+
+Classification: brief clarity, not capability, tooling, or task shape. The worker had effectively finished the research -- three syntax candidates designed in-session,and the per-backend capability claims its survey needed are public API knowledge, not host measurements. The permission gate blocked nothing the deliverable needed;`which` was as optional here as `which erl escript erlc` was for gh:163. The task shape is the same desk-review spike gh:163 landed after its rebrief. What was missing was the brief:the gh:163 fix ("no toolchain/execution needed, docs+source read only") was applied to that lane's rebrief only, never baked into the default research-spike brief `dispatch-worker.sh` hands every fresh lane, so the next research spike replayed the identical probe-then-give-up. The board row's own phrasing ("survey what request/response building blocks already exist per backend (Go net/http, JS fetch, Python urllib, Lua, Rust reqwest, native)") invites the probe;it also carries a factual wrinkle -- the Rust backend emits self-contained files with no external crates, so `reqwest` is not available to it -- that only a probe could have made worse, not better.
+
+
+
+Rebrief (redo, not reshape or drop:the deliverable is still needed, same as gh:163). Re-dispatch into the same lane with the standard brief plus: "This is DESK RESEARCH, docs + source read-only: no toolchain or execution is needed or allowed, so do not run `which`, version checks, or any host probe (all denied). the per-backend survey is a documented-semantics comparison against src/emit_*.rs, docs/reference/, and public API knowledge, not measurements. One correction to the board row:the Rust backend cannot use reqwest -- self-contained emitted file, no external crates -- so Rust+HTTP ends at 'no HTTP, no TLS in stdlib' without new deps. Write findings to plans/http-query-sugar-research.md and commit per AGENTS.md."
+
+Worth carrying into the dispatch template, so this shape stops needing a per-lane rebrief:make the "no toolchain/execution needed" line part of the default brief for research rows (or add `which <tool>` probes to KNOWN DENIALS). The give-up-after-one-denial behavior itself is already logged as the 30-lane-review data point (issue-108/125/133/163);this lane adds another instance, not a new class.
+
+## Fixed: OPENCODE_MODEL redispatch not persisted, escalation ruling applied for real (2026-09-04)
+
+Root cause of the 2026-09-03 "stronger model" ruling silently not applying (8
+commitless issue-172 runs, confirmed by lane telemetry still showing
+`openrouter/deepseek/deepseek-v4-flash-0731` on run 8): `OPENCODE_MODEL` was a
+one-shot env var read by `opencode-worker.sh` with no persistence in
+`dispatch-worker.sh`, so any redispatch that didn't re-set the env var by hand
+(continuation dispatch, event-driven re-run) fell back to the hardcoded
+default. Maintainer wizard ruling on `stdin-redesign-stall-escalation`
+(captured 2026-09-04 20:22, applied same tick): option 1, fix the persistence
+gap and redispatch for real.
+
+Fixed `dispatch-worker.sh`: an explicit `OPENCODE_MODEL` at dispatch time is
+now written to `.opencode-model` in the lane worktree; a later dispatch with
+no `OPENCODE_MODEL` set falls back to reading that file if present. Redispatched
+`issue-172` with `OPENCODE_MODEL=openrouter/z-ai/glm-5.2`, confirmed via
+`ps` that the live worker is running `opencode run -m openrouter/z-ai/glm-5.2`
+and that `.opencode-model` now holds that value, so future redispatches of
+this lane (and any lane that gets an explicit model override) stay on it
+without needing the env var re-supplied every time.
+
+## 2026-09-04: stdin-redesign-build-2 (issue-172) escalated again -- brief-shape, not model
+
+The 2026-09-04 stronger-model ruling (GLM 5.2, persisted via `.opencode-model`) was applied
+and the redispatched run used it correctly, but still landed 0 commits (run 9 total). Unlike
+prior runs, this one reasoned cleanly to a real structural finding: the 2026-09-03 reshape's
+commit-1 boundary ("parse.rs + tir.rs only, tree stays green") cannot compile, because
+`Builtin` is matched exhaustively with no catch-all arm in `check/mod.rs` and all 8
+`emit_*.rs` files -- confirmed directly against `src/emit_js.rs`. Escalation round composed:
+docs/.grill/stdin-redesign-shape.round.yaml (marker: escalated-issue-172). Root cause this
+time is the reshape ruling's own commit boundary, not brief clarity or model strength --
+future redispatches of this lane should wait for the ruling rather than retrying.

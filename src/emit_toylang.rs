@@ -32,7 +32,7 @@
 
 use crate::ast::{
     Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, LogicOp, MatchArm, Module, Param,
-    Pattern, TypeExpr, Variant,
+    ParamShape, Pattern, TypeExpr, Variant,
 };
 
 const WIDTH: usize = 80;
@@ -251,17 +251,27 @@ fn print_alias(a: &Alias) -> String {
 fn print_param(p: &Option<Param>) -> String {
     match p {
         None => String::new(),
-        Some(p) => format!("{}: {}", p.name, print_type(&p.ty)),
+        Some(p) => match &p.shape {
+            ParamShape::Name(name, _) => format!("{name}: {}", print_type(&p.ty)),
+            ParamShape::Fields(f) => {
+                format!("{{{}}}: {}", print_fields_pattern(f), print_type(&p.ty))
+            }
+        },
     }
 }
 
 fn print_def(d: &Def) -> String {
     let pub_prefix = if d.is_pub { "pub " } else { "" };
+    let ret = match &d.ret {
+        Some(ret) => print_type(ret),
+        // A hoisted definition's return type is inferred from its body, which no parser path
+        // constructs yet (gh:152), so there is nothing to print until the parser learns the form.
+        None => unreachable!("no parser path constructs a hoisted definition yet"),
+    };
     let sig = format!(
-        "{pub_prefix}fn {}({}) -> {}",
+        "{pub_prefix}fn {}({}) -> {ret}",
         d.name,
         print_param(&d.param),
-        print_type(&d.ret)
     );
     // A `let` block is line-structured, so it has no one-line form: the signature, then one
     // `let` line per binding, then the value, each indented one level.
@@ -429,7 +439,9 @@ fn print_expr_inner(e: &Expr) -> String {
         Expr::Index { base, index, .. } => {
             format!("{}[{}]", print_atom_base(base), print_paren_arg(index))
         }
-        Expr::Slice { base, start, end, .. } => {
+        Expr::Slice {
+            base, start, end, ..
+        } => {
             let lo = match start {
                 Some(s) => print_paren_arg(s),
                 None => String::new(),
@@ -476,6 +488,8 @@ fn print_expr_inner(e: &Expr) -> String {
             .map(|(i, a)| print_match_arm(a, i + 1 == arms.len()))
             .collect::<Vec<_>>()
             .join(" or "),
+        // No parser path constructs a match-call yet (gh:152), so nothing to print for one.
+        Expr::MatchCall { .. } => unreachable!("no parser path constructs a match-call yet"),
         Expr::Pipe { lhs, rhs, .. } => {
             // `Pipe.lhs` accumulates the same way a `Binary` chain does (`a | b | c` folds
             // left, exactly like `a - b - c`), so a nested `Pipe` there reproduces itself with

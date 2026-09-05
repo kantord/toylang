@@ -1,0 +1,30 @@
+# The core of the CLBG binary-trees task (kantord/toylang#106, benchmark suite): build a
+# perfect binary tree of a given depth and count its nodes. The recursive self-reference goes
+# through `Vec<Tree>` per the enum-recursion rule (docs/reference/types/enum.md), with `node`'s
+# Vec always holding exactly two children. This is the correctness fixture for
+# benches/programs/binary-trees.toy, at a depth small enough to run fast on every backend; the
+# benchmark input under benches/inputs/ uses a larger depth for real timing.
+#
+# Derived: Computer Language Benchmarks Game binary-trees task,
+# https://benchmarksgame-team.pages.debian.net/benchmarksgame/, BSD-3-Clause -- reimplemented
+# from the task's plain description (build a tree, count nodes), not copied from any reference
+# source.
+program: |
+  enum Tree { Leaf, Node(Vec<Tree>) }
+
+  fn build(depth: Int) -> Tree =
+      depth | . == 0 -> Tree.leaf or Tree.node([build(. - 1), build(. - 1)])
+
+  fn count(t: Tree) -> Int =
+      t | Leaf -> 1 or Node -> 1 + count(.[0]!) + count(.[1]!)
+
+  input Int
+  count(build(input))
+
+input: |
+  6
+
+output: |
+  127
+
+node_types: [application, arith.add, arith.sub, compare.eq, input, int, local, match, pipe, selection.collapse, unwrap, var, variant.payload, variant.unit, vec-literal]
