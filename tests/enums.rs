@@ -103,7 +103,8 @@ fn run_err(src: &str, stdin: &str) -> String {
         .to_string()
 }
 
-const FLIP: &str = "enum Status { Active, Inactive }\n\nfn f(s: Status) -> Status = s\n\nf(input)";
+const FLIP: &str =
+    "enum Status { Active, Inactive }\n\nfn f(s: Status) -> Status = s\n\nf(parse(stdin))";
 
 /// A wire mismatch names the enum, since "found a string" alone would not say which closed set
 /// the string missed.
@@ -116,7 +117,8 @@ fn input_that_is_no_variant_names_the_enum() {
 /// of it, and a unit variant wrapped in an object is not one either.
 #[test]
 fn input_using_the_wrong_shape_for_a_variant() {
-    let src = "enum Shape { Point, Circle{r: Int} }\n\nfn f(s: Shape) -> Shape = s\n\nf(input)";
+    let src =
+        "enum Shape { Point, Circle{r: Int} }\n\nfn f(s: Shape) -> Shape = s\n\nf(parse(stdin))";
     insta::assert_snapshot!(format!(
         "{}\n{}",
         run_err(src, "\"circle\""),

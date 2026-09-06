@@ -47,9 +47,7 @@ enum Tok {
     Trait,
     Impl,
     Let,
-    Input,
-    Inputs,
-    Lines,
+    Stdin,
     Dsv,
     Csv,
     Tsv,
@@ -99,9 +97,7 @@ impl std::fmt::Display for Tok {
             Tok::Trait => "`trait`",
             Tok::Impl => "`impl`",
             Tok::Let => "`let`",
-            Tok::Input => "`input`",
-            Tok::Inputs => "`inputs`",
-            Tok::Lines => "`lines`",
+            Tok::Stdin => "`stdin`",
             Tok::Dsv => "`dsv`",
             Tok::Csv => "`csv`",
             Tok::Tsv => "`tsv`",
@@ -158,7 +154,7 @@ fn skip_trivia(input: &mut Input) {
 }
 
 /// Skips trivia, then reads exactly one token from the front of `input`. Called fresh for every
-/// `peek`/`peek2`/`advance` rather than once up front into a `Vec`, so a lexical error (a bad
+/// `peek`/`advance` rather than once up front into a `Vec`, so a lexical error (a bad
 /// escape, an out-of-range integer) surfaces at the point parsing actually reaches it instead of
 /// always winning over a parse error earlier in the file the way a separate up-front pass would.
 fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
@@ -184,9 +180,7 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "trait" => Tok::Trait,
                 "impl" => Tok::Impl,
                 "let" => Tok::Let,
-                "input" => Tok::Input,
-                "inputs" => Tok::Inputs,
-                "lines" => Tok::Lines,
+                "stdin" => Tok::Stdin,
                 "dsv" => Tok::Dsv,
                 "csv" => Tok::Csv,
                 "tsv" => Tok::Tsv,
@@ -475,26 +469,6 @@ pub fn parse(src: &str) -> Result<File, Error> {
         }
     }
 
-    // `input <type>` declares what stdin holds before the body reads it. It is the one
-    // declaration that sits after the defs rather than among them, so it is read here, and it is
-    // recognized by the same-line rule a call argument follows: only when the type opens on
-    // `input`'s own line does the keyword start an annotation, so a body that merely uses
-    // `input` is never mistaken for one.
-    let input = match p.peek()? {
-        (Tok::Input, input_span) => {
-            let (next, next_span) = p.peek2()?;
-            if (next == Tok::LBrace || matches!(next, Tok::Ident(_)))
-                && p.same_line(input_span.end, next_span.start)
-            {
-                p.advance()?;
-                Some(p.type_expr()?)
-            } else {
-                None
-            }
-        }
-        _ => None,
-    };
-
     let body = p.tail_pipe()?;
     let (rest, rest_span) = p.peek()?;
     if rest != Tok::Eof {
@@ -506,7 +480,6 @@ pub fn parse(src: &str) -> Result<File, Error> {
         traits,
         impls,
         defs,
-        input,
         body,
     })
 }
@@ -572,14 +545,6 @@ impl<'i> Cursor<'i> {
     /// offset), so looking ahead is just tokenizing a throwaway copy of the cursor.
     fn peek(&self) -> Result<(Tok, Span), Error> {
         let mut probe = self.input;
-        read_tok(&mut probe)
-    }
-
-    /// Reads the token after the next one without consuming either. One probe over `input`,
-    /// then a second over the probe, so the cursor never moves.
-    fn peek2(&self) -> Result<(Tok, Span), Error> {
-        let mut probe = self.input;
-        read_tok(&mut probe)?;
         read_tok(&mut probe)
     }
 
@@ -1507,9 +1472,7 @@ impl<'i> Cursor<'i> {
             Tok::Str(_)
             | Tok::Int(_)
             | Tok::Float(_)
-            | Tok::Input
-            | Tok::Inputs
-            | Tok::Lines
+            | Tok::Stdin
             | Tok::Dsv
             | Tok::Csv
             | Tok::Tsv
@@ -1559,9 +1522,7 @@ impl<'i> Cursor<'i> {
             Tok::Str(text) => Ok(Expr::Str { text, span }),
             Tok::Int(value) => Ok(Expr::Int { value, span }),
             Tok::Float(value) => Ok(Expr::Float { value, span }),
-            Tok::Input => Ok(Expr::Input { span }),
-            Tok::Inputs => Ok(Expr::Inputs { span }),
-            Tok::Lines => Ok(Expr::Lines { span }),
+            Tok::Stdin => Ok(Expr::Stdin { span }),
             Tok::Csv => Ok(Expr::Dsv {
                 delim: ",".to_string(),
                 span,

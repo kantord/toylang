@@ -15,7 +15,7 @@ const PROGRAM: &str = r#"
 fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
     users | select(.age >= 18) | map {name: .name}
 
-jsonlines(adults(inputs))
+jsonlines(adults((stdin | map(parse(.)))))
 "#;
 
 /// The probe that proves the shape guess actually retired: two stream-signature functions
@@ -29,7 +29,7 @@ fn keep(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str, age: Int}> =
 fn names(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
     users | map {name: .name}
 
-jsonlines(names(keep(inputs)))
+jsonlines(names(keep((stdin | map(parse(.))))))
 "#;
 
 /// A `lines`-sourced pipeline ending in `jsonlines`: a shape the old recognizer never knew
@@ -38,7 +38,7 @@ const SHOUT: &str = r#"
 fn shout(names: Stream<Str>) -> Stream<Str> =
     names | map(. + "!")
 
-jsonlines(shout(lines))
+jsonlines(shout(stdin))
 "#;
 
 const RECORD_IN: &[u8] = b"{\"name\": \"ada\", \"age\": 36}\n";
@@ -340,7 +340,7 @@ enum Msg { Ping, Text{body: Str} }
 fn render(msgs: Stream<Msg>) -> Stream<Str> =
     msgs | map(. | Text -> .body or any() -> "*ping*")
 
-jsonlines(render(inputs))
+jsonlines(render((stdin | map(parse(.)))))
 "#;
 
 /// The valid record ahead of the bad one still streams before the refusal ends the run: a live

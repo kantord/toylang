@@ -3,7 +3,7 @@ program: |
   fn names(db: {groups: Vec<{members: Vec<{name: Str}>}>}) -> Vec<Vec<Str>> =
       db.groups[].members[].name
 
-  names(input)
+  names(parse(stdin))
 
 input: |
   {"groups": [{"members": [{"name": "ada"}, {"name": "bo"}]}, {"members": [{"name": "cy"}]}]}

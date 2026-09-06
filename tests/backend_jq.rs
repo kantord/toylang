@@ -170,7 +170,7 @@ fn float_comparison() {
 /// double a Float names (ADR 0007), the case that made Int64 refuse `input`.
 #[test]
 fn float_input_reads_a_json_number() {
-    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(input)\n";
+    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(parse(stdin))\n";
     assert_eq!(agree_jq_js(src, Some("2.5")), "5\n");
 }
 

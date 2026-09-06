@@ -998,6 +998,22 @@ int64_t tl_read_input(const tl_str *descriptor) {
     return value;
 }
 
+/* `parse(s)`: one JSON value read from the string in hand, not from stdin, parsed with the
+ * same descriptor-driven grammar `tl_read_input` uses. Same trailing-content refusal. */
+int64_t tl_parse_str(const tl_str *value, const tl_str *descriptor) {
+    char *t = tl_alloc((size_t)descriptor->len + 1);
+    memcpy(t, descriptor->ptr, (size_t)descriptor->len);
+    t[descriptor->len] = 0;
+
+    tl_json j = {value->ptr, value->ptr + value->len};
+    int64_t parsed = tl_parse(&j, t, "parse", NULL);
+    tl_skip_ws(&j);
+    if (j.p != j.end) {
+        tl_fail("trailing content after the value", "parse");
+    }
+    return parsed;
+}
+
 /* Every remaining JSON value on stdin, one per line, parsed with the same descriptor-driven
  * grammar tl_read_input uses above and assembled into a proper Vec -- spread into columns when
  * the element is a record, the same invariant vec_lit and tl_at already keep, since tl_parse

@@ -85,7 +85,9 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
             walk(base, tags);
             walk(index, tags);
         }
-        Kind::Slice { base, start, end, .. } => {
+        Kind::Slice {
+            base, start, end, ..
+        } => {
             walk(base, tags);
             if let Some(s) = start {
                 walk(s, tags);
@@ -180,6 +182,7 @@ fn builtin_tag(which: Builtin) -> &'static str {
         Builtin::Reverse => "reverse",
         Builtin::Sum => "sum",
         Builtin::Max => "max",
+        Builtin::Parse => "parse",
         Builtin::First => "first",
         Builtin::Any => "any",
         Builtin::All => "all",

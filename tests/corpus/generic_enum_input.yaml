@@ -5,7 +5,7 @@ program: |
 
   fn peek(b: Box<Int>) -> Int = b | Wrap{v} -> v or Empty -> 0
 
-  peek(input)
+  peek(parse(stdin))
 
 input: |
   {"Wrap": {"v": 5}}

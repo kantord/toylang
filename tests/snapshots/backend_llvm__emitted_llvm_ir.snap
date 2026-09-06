@@ -53,6 +53,8 @@ declare void @tl_rec_set(ptr, i64, i64)
 
 declare i64 @tl_read_input(ptr)
 
+declare i64 @tl_parse_str(ptr, ptr)
+
 declare ptr @tl_read_inputs(ptr)
 
 declare i32 @tl_read_one_input(ptr, ptr)

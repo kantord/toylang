@@ -6,7 +6,7 @@ endless -- and the program should emit results as it reads, in constant memory.
 ## Pick the source
 
 `inputs` when each line is a JSON value, typed by the `Stream<T>` parameter that consumes
-it; [`lines`](../reference/sources/lines.md) when the lines are plain text. (When stdin is
+it; [`stdin`](../reference/sources/stdin.md) when the lines are plain text. (When stdin is
 one document rather than a feed, this is not a streaming problem: `input` reads it whole.)
 
 The third source has nothing to do with stdin: [`range`](../reference/builtins/range.md) is
@@ -35,7 +35,7 @@ pipeline reads the same as chapter 3's:
 fn shout(names: Stream<Str>) -> Stream<Str> =
     names | select(. != "bo") | map(. + "!")
 
-jsonlines(shout(lines))
+jsonlines(shout(stdin))
 ```
 
 ```input

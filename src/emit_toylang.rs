@@ -151,9 +151,6 @@ pub fn emit(file: &File) -> String {
         out.push_str(&decl);
         out.push_str("\n\n");
     }
-    if let Some(ty) = &file.input {
-        out.push_str(&format!("input {}\n\n", print_type(ty)));
-    }
     out.push_str(&print_expr_wrapped(&file.body, Ctx::Expr(0), 0));
     out.push('\n');
     out
@@ -468,9 +465,7 @@ fn print_expr_inner(e: &Expr) -> String {
                 format!("{base_str}.{name}")
             }
         }
-        Expr::Input { .. } => "input".to_string(),
-        Expr::Inputs { .. } => "inputs".to_string(),
-        Expr::Lines { .. } => "lines".to_string(),
+        Expr::Stdin { .. } => "stdin".to_string(),
         // `csv`/`tsv` are parser sugar, so the canonical spelling is the parameterized form.
         Expr::Dsv { delim, .. } => format!("dsv(\"{}\")", escape_str(delim)),
         Expr::Variant {

@@ -1,5 +1,6 @@
 ---
 source: tests/step_5.rs
-expression: "err(\"input\")"
+assertion_line: 84
+expression: "err(\"parse(stdin)\")"
 ---
-cannot tell what `input` contains (at byte 0)
+cannot tell what `parse(stdin)` contains (at byte 6)

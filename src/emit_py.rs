@@ -277,7 +277,7 @@ pub fn emit(program: &Program) -> String {
 
     let mut helpers = false;
     let mut out = String::from("import sys\n");
-    if program.input.is_some() || program.inputs.is_some() {
+    if program.input.is_some() || program.inputs.is_some() || uses("json.loads(") {
         out.push_str("import json\n");
     }
     // Python's default ceiling (1000) is far below what a compiled-style recursive program
@@ -489,6 +489,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("str({})", expr(enums, arg)),
+            // Python's `json.loads` reads a string as one JSON value, and the result is already
+            // in the runtime shape every other Python value lives in: no conversion needed.
+            Builtin::Parse => format!("json.loads({})", expr(enums, arg)),
             // Python's integers are one type at every width, so the bridge has nothing to do.
             Builtin::IntToI64 => expr(enums, arg),
             Builtin::Range => format!("tl_range({})", expr(enums, arg)),
@@ -611,7 +614,10 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             )
         }
         Kind::Slice {
-            base, start, end, depth,
+            base,
+            start,
+            end,
+            depth,
         } => {
             let lo = match start {
                 Some(s) => expr(enums, s),
@@ -621,13 +627,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 Some(e) => expr(enums, e),
                 None => "None".to_string(),
             };
-            format!(
-                "tl_slice({}, {}, {}, {})",
-                expr(enums, base),
-                lo,
-                hi,
-                depth
-            )
+            format!("tl_slice({}, {}, {}, {})", expr(enums, base), lo, hi, depth)
         }
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);

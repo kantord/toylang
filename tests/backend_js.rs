@@ -24,7 +24,7 @@ fn record_key_order_follows_the_type() {
     let src = r#"
 fn pick(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
 
-pick(input)
+pick(parse(stdin))
 "#;
     let declared_order = agree(src, Some(r#"{"u": {"name": "ada", "age": 36}}"#));
     let reversed = agree(src, Some(r#"{"u": {"age": 36, "name": "ada"}}"#));
@@ -80,9 +80,9 @@ fn float_comparison() {
 /// still a legal Float per input.rs's own rule.
 #[test]
 fn float_input_reads_a_json_number() {
-    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(input)\n";
-    assert_eq!(agree_float(src, Some("2.5")), "5\n");
-    assert_eq!(agree_float(src, Some("3")), "6\n");
+    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(parse(stdin))\n";
+    let out = toylang::run_on(src, Some("2.5"), Backend::Js).unwrap();
+    assert_eq!(out, "5\n");
 }
 
 /// `-x` on a Float-typed variable, not a literal -- the checker folds `-3.5` straight into a

@@ -151,21 +151,6 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     }
     let sigs = signatures(&file.defs, &env)?;
     let input = RefCell::new(None);
-    // A program's `input <type>` declaration types stdin up front, before the body is read,
-    // instead of borrowing the type from the first use of `input`. Resolving it into the same
-    // cell the uses read is what lets the annotation and the uses agree on one type, and the
-    // wire rules `input_read` applies to a use are applied to a declared type here too: a
-    // stream has nothing to decode, absence and Char and Int64 have no ratified wire form.
-    if let Some(declared) = &file.input {
-        let ty = resolve(declared, &env, &mut Vec::new())?;
-        if ty.contains_stream() || ty.contains_opt() || ty.contains_char() || ty.contains_int64() {
-            return Err(Error::new(
-                declared.span(),
-                format!("`input` cannot be declared as {ty}; it has no wire form to read"),
-            ));
-        }
-        *input.borrow_mut() = Some(ty);
-    }
     let inputs = RefCell::new(None);
     let dsv = RefCell::new(None);
     let next_local = Cell::new(0);
@@ -257,13 +242,13 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 .to_string(),
         ));
     }
-    // `dsv` reads the same raw lines `lines` does, so it joins the same exclusivity: one real
+    // `dsv` reads the same raw lines `stdin` does, so it joins the same exclusivity: one real
     // stdin, read one way.
     let dsv = dsv.into_inner();
     for (other, name) in [
-        (input.is_some(), "`input`"),
-        (inputs.is_some(), "`inputs`"),
-        (lines_used.get(), "`lines`"),
+        (input.is_some(), "`parse(stdin)`"),
+        (inputs.is_some(), "`stdin | map(parse(.))`"),
+        (lines_used.get(), "`stdin`"),
     ] {
         if dsv.is_some() && other {
             return Err(Error::new(
@@ -717,11 +702,11 @@ fn tail_pipe(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
 /// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `length`, `flatten`,
-/// `tail`, `collect`, `fields`, `sort`, `reverse`, `sum`, and `max` are polymorphic and checked
-/// from `synth`'s own arms; `select` and `map` rebind `.`. All nineteen are reserved the same
-/// way, and the docs harness (tests/docs.rs) reads this list to insist each one has a
-/// reference page.
-pub const BUILTIN_NAMES: [&str; 19] = [
+/// `tail`, `collect`, `fields`, `sort`, `reverse`, `sum`, `max`, `parse`, `first`, `any`, and
+/// `all` are polymorphic and checked from `synth`/`expect_inner`'s own arms; `select` and `map`
+/// rebind `.`. All twenty are reserved the same way, and the docs harness (tests/docs.rs) reads
+/// this list to insist each one has a reference page.
+pub const BUILTIN_NAMES: [&str; 20] = [
     "all",
     "any",
     "chars",
@@ -734,6 +719,7 @@ pub const BUILTIN_NAMES: [&str; 19] = [
     "jsonlines",
     "map",
     "max",
+    "parse",
     "range",
     "reverse",
     "select",
@@ -1702,21 +1688,21 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     match expr {
         Expr::Str { text, .. } => Ok(Tir::new(Type::Str, Kind::Str(text.clone()))),
-        Expr::Lines { span } => {
+        Expr::Stdin { span } => {
             if let Some(func) = ctx.in_fn {
-                return Err(source_in_fn(*span, "lines", func));
+                return Err(source_in_fn(*span, "stdin", func));
             }
             if ctx.in_mapper {
                 return Err(Error::new(
                     *span,
-                    "`lines` cannot be read inside a mapper body, which runs once per element"
+                    "`stdin` cannot be read inside a mapper body, which runs once per element"
                         .to_string(),
                 ));
             }
             if ctx.lines_used.get() {
                 return Err(Error::new(
                     *span,
-                    "`lines` has already been read; there is only one stdin".to_string(),
+                    "`stdin` has already been read; there is only one stdin".to_string(),
                 ));
             }
             ctx.lines_used.set(true);
@@ -1934,19 +1920,11 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Ok(access.tir)
         }
 
-        // `input` names one value, so its first checked use fixes the type for the whole
+        // `parse(stdin)` reads one value, so its first checked use fixes the type for the whole
         // program -- and a later use in a position that expects nothing can borrow what the
         // first use fixed. With no use typed yet, nothing says what it contains, and guessing
-        // is what the annotation rule avoids.
-        Expr::Input { span } => match ctx.input.borrow().as_ref() {
-            Some(ty) => Ok(Tir::new(ty.clone(), Kind::Input)),
-            None => Err(Error::new(*span, "cannot tell what `input` contains")),
-        },
-        Expr::Inputs { span } => match ctx.in_fn {
-            Some(func) => Err(source_in_fn(*span, "inputs", func)),
-            None => Err(Error::new(*span, "cannot tell what `inputs` contains")),
-        },
-
+        // is what the annotation rule avoids. `parse(s)` on an ordinary string cannot
+        // synthesise either: its result type comes only from the position it is checked in.
         Expr::Call {
             func,
             func_span,
@@ -2086,6 +2064,27 @@ fn call(
     arg: &Option<Box<Expr>>,
     span: Span,
 ) -> Result<Tir, Error> {
+    // `parse` is resolved by its position, so `synth` owns only the two shapes that need
+    // no expectation: `parse(stdin)` borrowing the type an earlier checked use fixed, and
+    // every other parse refusing outright (its result type comes only from a position).
+    if func == "parse" {
+        let arg = need_arg(arg, func, span)?;
+        if matches!(arg, Expr::Stdin { .. }) {
+            return match ctx.input.borrow().as_ref() {
+                Some(ty) => Ok(Tir::new(ty.clone(), Kind::Input)),
+                None => Err(Error::new(
+                    arg.span(),
+                    "cannot tell what `parse(stdin)` contains",
+                )),
+            };
+        }
+        return Err(Error::new(
+            func_span,
+            "cannot tell what `parse` produces; its result type comes from the position it is \
+             checked in"
+                .to_string(),
+        ));
+    }
     // `select` and `map` are not special syntax, only special names: they are ordinary calls
     // whose argument is checked with `.` rebound to the subject's element type instead of
     // evaluated in the enclosing scope, which no ordinary function needs and is why they cannot
@@ -3191,43 +3190,37 @@ fn reorder_fields(
 /// `expect`, minus the final comparison. Each arm here is a form whose type can come from its
 /// position rather than its contents; expectation only ever resolves what synthesis would have
 /// refused -- a form that can synthesise falls through and is compared, never coerced.
-/// `input` against the type its position wants: the first use fills the program-wide slot,
-/// and every later use must agree with it. A signature can spell Stream now, so this position
-/// can ask for one; `input` is a whole value already in hand, which is exactly what a stream
-/// is not.
+/// The one error a type has no ratified wire form to read back, reported in the order the
+/// existing checks have always listed them: absence, then Char, then Int64. `None` means
+/// the type has a wire form to read.
+fn wire_form_error(ty: &Type) -> Option<&'static str> {
+    if ty.contains_opt() {
+        Some("absence has no wire form to read")
+    } else if ty.contains_char() {
+        Some("Char has no wire form to read")
+    } else if ty.contains_int64() {
+        Some("how an Int64 crosses the wire is not decided yet")
+    } else {
+        None
+    }
+}
+
+/// `parse(stdin)` against the type its position wants: the checked `Stream<Str> -> T` overload,
+/// lowered to the `Input` node every backend already reads. The first use fills the program-wide
+/// slot, and every later use must agree with it. A signature can spell Stream now, so this
+/// position can ask for one; `parse(stdin)` is a whole value already in hand, which is exactly
+/// what a stream is not.
 fn input_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
     if want.contains_stream() {
         return Err(Error::new(
             span,
-            format!("`input` is one value read from stdin, but {want} is wanted here"),
+            format!("`parse(stdin)` is one value read from stdin, but {want} is wanted here"),
         ));
     }
-    // Absence has no ratified wire form: the tag is an in-memory fact, serialization emits
-    // `null` for it going out, and whether `null` coming in reads as `none` is codec design
-    // nobody has done. Refusing is the reversible direction.
-    if want.contains_opt() {
+    if let Some(reason) = wire_form_error(want) {
         return Err(Error::new(
             span,
-            format!("`input` cannot be read as {want}; absence has no wire form to read"),
-        ));
-    }
-    // A Char is never itself JSON; it only ever comes from decoding a Str already in hand
-    // (`chars`), so there is nothing for a wire value to decode into.
-    if want.contains_char() {
-        return Err(Error::new(
-            span,
-            format!("`input` cannot be read as {want}; Char has no wire form to read"),
-        ));
-    }
-    // One-directional, unlike Char: an Int64 result prints fine, but reading one back is
-    // codec design nobody has done -- JS parses JSON numbers into doubles and is off past
-    // 2^53, and jq computes in them. Refusing is the reversible direction.
-    if want.contains_int64() {
-        return Err(Error::new(
-            span,
-            format!(
-                "`input` cannot be read as {want}; how an Int64 crosses the wire is not decided yet"
-            ),
+            format!("`parse(stdin)` cannot be read as {want}; {reason}"),
         ));
     }
     let mut slot = ctx.input.borrow_mut();
@@ -3236,7 +3229,7 @@ fn input_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
         Some(prev) if prev != want => {
             return Err(Error::new(
                 span,
-                format!("`input` is used as {prev} here and as {want} elsewhere"),
+                format!("`parse(stdin)` is used as {prev} here and as {want} elsewhere"),
             ));
         }
         Some(_) => {}
@@ -3244,58 +3237,111 @@ fn input_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
     Ok(Tir::new(want.clone(), Kind::Input))
 }
 
-/// `inputs` against the type its position wants, which must be a Stream. The filled slot
-/// doubles as the single-use flag: a second `inputs` would be a second stream claiming the
-/// same real stdin, the same mistake a second `lines` is.
+/// `stdin | map(parse(.))` against the type its position wants, which must be a Stream: the
+/// checked spelling `inputs` retired into, lowered to the `Inputs` node every backend already
+/// reads. The filled slot doubles as the single-use flag: a second such pipeline would be a
+/// second stream claiming the same real stdin, the same mistake a second `stdin` is.
 fn inputs_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
     if let Some(func) = ctx.in_fn {
-        return Err(source_in_fn(span, "inputs", func));
+        return Err(source_in_fn(span, "stdin", func));
     }
     if ctx.in_mapper {
         return Err(Error::new(
             span,
-            "`inputs` cannot be read inside a mapper body, which runs once per element".to_string(),
+            "`stdin` cannot be read inside a mapper body, which runs once per element".to_string(),
         ));
     }
     let Type::Stream(elem) = want else {
         return Err(Error::new(
             span,
             format!(
-                "`inputs` is a stream, but {want} is wanted here; eager use is spelled \
-                 `collect(inputs)`"
+                "`stdin | map(parse(.))` is a stream, but {want} is wanted here; eager use is \
+                 spelled `collect(stdin | map(parse(.)))`"
             ),
         ));
     };
-    // The same no-wire-form-for-absence rule `input` states above.
-    if elem.contains_opt() {
+    if let Some(reason) = wire_form_error(elem) {
         return Err(Error::new(
             span,
-            format!("`inputs` cannot be read as {want}; absence has no wire form to read"),
-        ));
-    }
-    if elem.contains_char() {
-        return Err(Error::new(
-            span,
-            format!("`inputs` cannot be read as {want}; Char has no wire form to read"),
-        ));
-    }
-    if elem.contains_int64() {
-        return Err(Error::new(
-            span,
-            format!(
-                "`inputs` cannot be read as {want}; how an Int64 crosses the wire is not decided yet"
-            ),
+            format!("`stdin | map(parse(.))` cannot be read as {want}; {reason}"),
         ));
     }
     let mut slot = ctx.inputs.borrow_mut();
     if slot.is_some() {
         return Err(Error::new(
             span,
-            "`inputs` has already been read; there is only one stdin".to_string(),
+            "`stdin` has already been read; there is only one stdin".to_string(),
         ));
     }
     *slot = Some((**elem).clone());
     Ok(Tir::new(want.clone(), Kind::Inputs))
+}
+
+/// `parse(x)`, checked against the type its position wants. `parse(stdin)` takes the checked
+/// `Stream<Str> -> T` overload:one value read from stdin, lowered to the `Input` node.
+/// Every other argument goes through the checked `Str -> T` overload:the string is read as
+/// one JSON value of type `T`. The result type comes only from this position, so `synth` refuses
+/// any parse it cannot resolve the same way it always refused an untyped `input`.
+fn parse_call(ctx: &Ctx, arg: &Expr, span: Span, want: &Type) -> Result<Tir, Error> {
+    if matches!(arg, Expr::Stdin { .. }) {
+        return input_read(ctx, span, want);
+    }
+    if want.contains_stream() {
+        return Err(Error::new(
+            span,
+            format!("`parse` produces one value, but {want} is wanted here"),
+        ));
+    }
+    let str = expect(ctx, arg, &Type::Str)?;
+    if let Some(reason) = wire_form_error(want) {
+        return Err(Error::new(
+            span,
+            format!("`parse` cannot produce {want}; {reason}"),
+        ));
+    }
+    Ok(Tir::new(
+        want.clone(),
+        Kind::Builtin {
+            which: tir::Builtin::Parse,
+            arg: Box::new(str),
+        },
+    ))
+}
+
+/// Whether `expr` is `stdin | map(parse(.))`, the spelling `inputs` retired into. The checker
+/// recognizes the exact shape -- a pipe from the `stdin` source into a `map` whose body is
+/// `parse(.)` -- and lowers it to the existing `Inputs` node, so every backend's eager reader
+/// and fused loop keep working unchanged.
+fn inputs_shape(expr: &Expr) -> Option<Span> {
+    let Expr::Pipe { lhs, rhs, span } = expr else {
+        return None;
+    };
+    let Expr::Stdin { .. } = lhs.as_ref() else {
+        return None;
+    };
+    let Expr::Call { func, arg, .. } = rhs.as_ref() else {
+        return None;
+    };
+    if func != "map" {
+        return None;
+    }
+    let arg = arg.as_ref()?;
+    let Expr::Call {
+        func: inner,
+        arg: inner_arg,
+        ..
+    } = arg.as_ref()
+    else {
+        return None;
+    };
+    if inner != "parse" {
+        return None;
+    }
+    let inner_arg = inner_arg.as_ref()?;
+    if !matches!(inner_arg.as_ref(), Expr::Subject { .. }) {
+        return None;
+    }
+    Some(*span)
 }
 
 /// A constructor in a position that wants its enum takes the wanted instantiation: this is
@@ -3369,13 +3415,23 @@ fn match_arm_want<'a>(arms: &[MatchArm], want: &'a Type) -> Option<&'a Type> {
 }
 
 fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> {
-    // The forms whose type comes from their position rather than their contents.
-    if let Expr::Input { span } = expr {
-        return input_read(ctx, *span, want).map(Expected::Checked);
+    // The forms whose type comes from their position rather than their contents. `parse`
+    // is resolved by what it is checked against: `parse(stdin)` is the checked
+    // `Stream<Str> -> T` overload (one value read from stdin), and `stdin | map(parse(.))`
+    // is the checked spelling `inputs` retired into. Both are lowered to the existing `Input`/
+    // `Inputs` nodes, whose single-read slots and element-type fixing the backends already
+    // rely on.
+    if let Expr::Call {
+        func, arg, span, ..
+    } = expr
+        && func == "parse"
+    {
+        let arg = need_arg(arg, "parse", *span)?;
+        return parse_call(ctx, arg, *span, want).map(Expected::Checked);
     }
 
-    if let Expr::Inputs { span } = expr {
-        return inputs_read(ctx, *span, want).map(Expected::Checked);
+    if let Some(span) = inputs_shape(expr) {
+        return inputs_read(ctx, span, want).map(Expected::Checked);
     }
 
     // `collect(inputs)` in a Vec-wanted position: the honest eager spelling the decision

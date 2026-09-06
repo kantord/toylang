@@ -620,6 +620,10 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::IntToStr => format!("({} | tostring)", expr(enums, arg)),
             // jq has one number type at every width, so the bridge has nothing to do.
             Builtin::IntToI64 => format!("({})", expr(enums, arg)),
+            // jq's own `fromjson` reads a string as one JSON value; the body-level `canonical`
+            // reorders any record it produces into the type's field order, the same way a parsed
+            // stdin value is handled.
+            Builtin::Parse => format!("({} |fromjson)", expr(enums, arg)),
             Builtin::Range => format!("[ range(0; {}) ]", expr(enums, arg)),
             // `explode` already decodes jq's UTF-8 string by codepoint, not by byte, so there
             // is no decoding to get right here.

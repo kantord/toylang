@@ -3,7 +3,7 @@
 program: |
   fn total(nums: Vec<Int>) -> Int = length(nums)
 
-  total collect inputs
+  total collect (stdin | map(parse(.)))
 
 input: |
   1

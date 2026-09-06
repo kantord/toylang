@@ -7,7 +7,7 @@ program: |
       let m = p.x * p.x + p.y * p.y
       m | m == 0 -> "origin" or m < 100 -> "near" or "far"
 
-  classify(input)
+  classify(parse(stdin))
 
 input: |
   {"x": 3, "y": 4}

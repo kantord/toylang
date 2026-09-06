@@ -19,13 +19,13 @@ mod containment {
     /// ever one real stdin to hold in the first place.
     #[test]
     fn lines_cannot_enter_a_vec() {
-        insta::assert_snapshot!(err("str(1) | [lines]"));
+        insta::assert_snapshot!(err("str(1) | [stdin]"));
     }
 
     /// Same reasoning as the Vec case, for a record field.
     #[test]
     fn lines_cannot_enter_a_record() {
-        insta::assert_snapshot!(err("{a: lines}"));
+        insta::assert_snapshot!(err("{a: stdin}"));
     }
 
     /// The containment bans hold in the type grammar itself, not just at value construction
@@ -71,7 +71,7 @@ mod linearity {
     /// return type does.
     #[test]
     fn lines_cannot_be_the_programs_result() {
-        insta::assert_snapshot!(err("lines"));
+        insta::assert_snapshot!(err("stdin"));
     }
 
     /// `Stream` is spellable in a signature now -- the one thing the `Lines` design deliberately
@@ -79,7 +79,7 @@ mod linearity {
     #[test]
     fn a_stream_signature_checks_end_to_end() {
         assert!(
-            toylang::compile("fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\n\nf(lines)").is_ok()
+            toylang::compile("fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\n\nf(stdin)").is_ok()
         );
     }
 
@@ -104,7 +104,7 @@ mod linearity {
     /// expression gets the same exactly-once rule a stream-typed parameter does.
     #[test]
     fn a_piped_stream_must_be_consumed() {
-        insta::assert_snapshot!(err("lines | 0"));
+        insta::assert_snapshot!(err("stdin | 0"));
     }
 
     /// The generalization of "contains `lines`, nothing to print": any bare unconsumed stream as
@@ -112,7 +112,7 @@ mod linearity {
     #[test]
     fn a_program_cannot_result_in_a_bare_stream() {
         insta::assert_snapshot!(err(
-            "fn noisy(s: Stream<Str>) -> Stream<Str> = s | map(. + \"!\")\n\nnoisy(lines)"
+            "fn noisy(s: Stream<Str>) -> Stream<Str> = s | map(. + \"!\")\n\nnoisy(stdin)"
         ));
     }
 
@@ -157,7 +157,7 @@ mod linearity {
     /// A source read beside an unrelated piped value is not one chain either.
     #[test]
     fn a_pipes_stream_must_flow_in_from_its_left() {
-        insta::assert_snapshot!(err("1 | (lines | map(. + \"!\"))"));
+        insta::assert_snapshot!(err("1 | (stdin | map(. + \"!\"))"));
     }
 }
 
@@ -171,7 +171,7 @@ mod sources {
     /// silently handed nothing back, the way Python's own generators are.
     #[test]
     fn lines_cannot_be_read_twice() {
-        insta::assert_snapshot!(err("[collect(lines), collect(lines)]"));
+        insta::assert_snapshot!(err("[collect(stdin), collect(stdin)]"));
     }
 
     /// Forced by jq specifically: raw-input mode, needed for `collect` to read lines rather than
@@ -181,7 +181,7 @@ mod sources {
     #[test]
     fn input_and_lines_cannot_both_be_used() {
         insta::assert_snapshot!(err(
-            "fn f(x: Int) -> Int = x\n\nf(input) + (collect(lines) | 0)"
+            "fn f(x: Int) -> Int = x\n\nf(parse(stdin)) + (collect(stdin) | 0)"
         ));
     }
 
@@ -190,7 +190,7 @@ mod sources {
     #[test]
     fn input_and_inputs_cannot_both_be_used() {
         insta::assert_snapshot!(err(
-            "fn f(x: Int) -> Int = x\nfn g(x: Vec<Int>) -> Int = length(x)\n\nf(input) + g(collect(inputs))"
+            "fn f(x: Int) -> Int = x\nfn g(x: Vec<Int>) -> Int = length(x)\n\nf(parse(stdin)) + g(collect((stdin | map(parse(.)))))"
         ));
     }
 
@@ -200,14 +200,14 @@ mod sources {
     #[test]
     fn lines_and_inputs_cannot_both_be_used() {
         insta::assert_snapshot!(err(
-            "fn g(x: Vec<Int>) -> Int = length(x)\n\n(collect(lines) | 0) + g(collect(inputs))"
+            "fn g(x: Vec<Int>) -> Int = length(x)\n\n(collect(stdin) | 0) + g(collect((stdin | map(parse(.)))))"
         ));
     }
 
     /// Like `input`, `inputs` has no type of its own until it is checked against one.
     #[test]
     fn inputs_needs_a_position_to_check_against() {
-        insta::assert_snapshot!(err("inputs"));
+        insta::assert_snapshot!(err("stdin | map(parse(.))"));
     }
 
     /// A second `inputs` would be a second stream claiming the same real stdin, refused exactly
@@ -216,17 +216,17 @@ mod sources {
     #[test]
     fn inputs_cannot_be_read_twice() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Int>) -> Vec<Int> = collect(s)\n\nlength(f(inputs)) + length(f(inputs))"
+            "fn f(s: Stream<Int>) -> Vec<Int> = collect(s)\n\nlength(f((stdin | map(parse(.))))) + length(f((stdin | map(parse(.)))))"
         ));
     }
 
     /// `collect` is an ordinary function, so the bare-application rule reaches it like any
-    /// other: `collect lines`, with no parens at all, is one more way to spell the acceptance
-    /// program alongside `collect(lines)`.
+    /// other: `collect stdin`, with no parens at all, is one more way to spell the acceptance
+    /// program alongside `collect(stdin)`.
     #[test]
     fn collect_takes_lines_with_or_without_parens() {
-        assert!(toylang::compile("collect(lines)").is_ok());
-        assert!(toylang::compile("collect lines").is_ok());
+        assert!(toylang::compile("collect(stdin)").is_ok());
+        assert!(toylang::compile("collect stdin").is_ok());
     }
 
     /// A Vec is already a value; `collect` is the exit from the effect layer, not a copy.
@@ -239,7 +239,9 @@ mod sources {
     /// of silently materializing.
     #[test]
     fn inputs_wanted_as_a_vec_names_the_eager_spelling() {
-        insta::assert_snapshot!(err("fn g(x: Vec<Int>) -> Int = length(x)\n\ng(inputs)"));
+        insta::assert_snapshot!(err(
+            "fn g(x: Vec<Int>) -> Int = length(x)\n\ng((stdin | map(parse(.))))"
+        ));
     }
 
     /// `input` is one whole value already in hand, which is exactly what a stream is not, so a
@@ -247,20 +249,20 @@ mod sources {
     #[test]
     fn input_cannot_be_a_stream() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\n\nf(input)"
+            "fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\n\nf(parse(stdin))"
         ));
     }
 
     /// The same once-per-element problem for the sources themselves.
     #[test]
     fn lines_cannot_be_read_inside_a_mapper() {
-        insta::assert_snapshot!(err("length([1] | map(length(collect(lines))))"));
+        insta::assert_snapshot!(err("length([1] | map(length(collect(stdin))))"));
     }
 
     #[test]
     fn inputs_cannot_be_read_inside_a_mapper() {
         insta::assert_snapshot!(err(
-            "fn g(x: Vec<Int>) -> Int = length(x)\n\nlength([1] | map(g(collect(inputs))))"
+            "fn g(x: Vec<Int>) -> Int = length(x)\n\nlength([1] | map(g(collect((stdin | map(parse(.)))))))"
         ));
     }
 
@@ -269,12 +271,14 @@ mod sources {
     /// below.
     #[test]
     fn lines_cannot_be_read_inside_a_fn_body() {
-        insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Str> = collect(lines)\n\n1"));
+        insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Str> = collect(stdin)\n\n1"));
     }
 
     #[test]
     fn inputs_cannot_be_read_inside_a_fn_body() {
-        insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Int> = collect(inputs)\n\n1"));
+        insta::assert_snapshot!(err(
+            "fn f(x: Int) -> Vec<Int> = collect((stdin | map(parse(.))))\n\n1"
+        ));
     }
 
     /// The reproducer that forced the rule: the source is read in `f`'s body, the mapper only
@@ -284,7 +288,7 @@ mod sources {
     #[test]
     fn a_function_reading_a_source_cannot_be_called_from_a_mapper() {
         insta::assert_snapshot!(err(
-            "fn f(x: Int) -> Int = length(collect(lines)) + x\n\nlength([1, 2] | map(f(.)))"
+            "fn f(x: Int) -> Int = length(collect(stdin)) + x\n\nlength([1, 2] | map(f(.)))"
         ));
     }
 
@@ -293,6 +297,6 @@ mod sources {
     /// sink.
     #[test]
     fn a_function_cannot_conjure_a_stream() {
-        insta::assert_snapshot!(err("fn f(x: Int) -> Stream<Str> = lines\n\n1"));
+        insta::assert_snapshot!(err("fn f(x: Int) -> Stream<Str> = stdin\n\n1"));
     }
 }

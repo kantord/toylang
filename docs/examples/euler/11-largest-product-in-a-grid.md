@@ -96,7 +96,7 @@ fn largest_product(g: Vec<Vec<Int>>) -> Int =
             )
     )
 
-largest_product(input)
+largest_product(parse(stdin))
 ```
 
 ```input

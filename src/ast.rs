@@ -267,10 +267,6 @@ pub struct File {
     /// `impl Trait for Type { ... }`: concrete bodies for one trait's methods. Parsed only for now.
     pub impls: Vec<ImplDecl>,
     pub defs: Vec<Def>,
-    /// `input <type>`: a declaration of what stdin holds, written after the definitions and
-    /// before the body, the way a signature types a parameter. `None` when the program leaves
-    /// the input untyped, in which case the first use of `input` in the body types it.
-    pub input: Option<TypeExpr>,
     pub body: Expr,
 }
 
@@ -372,19 +368,10 @@ pub enum Expr {
         name: String,
         span: Span,
     },
-    /// The value read from stdin. It has no type of its own and can only be checked against an
-    /// expected one, which is the same rule the draft gives for lambdas.
-    Input {
-        span: Span,
-    },
-    /// Every remaining JSON value on stdin, one per line, collected eagerly into a `Vec<T>`.
-    /// Like `input`, its element type comes only from where it is used.
-    Inputs {
-        span: Span,
-    },
-    /// The stream of lines read from stdin, born `Stream<Str>`. The checker rejects a second
-    /// use rather than accepting a second stream, since there is only ever one real stdin.
-    Lines {
+    /// The raw lines of stdin, born `Stream<Str>`. The checker rejects a second read rather
+    /// than accepting a second stream, since there is only ever one real stdin. Lowered to
+    /// `tir::Kind::Lines`; the old `lines` keyword is this same node respelled.
+    Stdin {
         span: Span,
     },
     /// Stdin read as raw lines, each split on a delimiter, born `Vec<Vec<Str>>`: the
@@ -520,9 +507,7 @@ impl Expr {
             | Expr::Neg { span, .. }
             | Expr::Not { span, .. }
             | Expr::Field { span, .. }
-            | Expr::Input { span }
-            | Expr::Inputs { span }
-            | Expr::Lines { span }
+            | Expr::Stdin { span }
             | Expr::Dsv { span, .. }
             | Expr::Variant { span, .. }
             | Expr::Match { span, .. }

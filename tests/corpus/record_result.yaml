@@ -2,7 +2,7 @@ program: |
   # `first` is a builtin now, so the record-returning function picks another name.
   fn pick(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
 
-  pick(input)
+  pick(parse(stdin))
 
 input: |
   {"u": {"name": "ada", "age": 36}}
