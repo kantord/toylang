@@ -175,6 +175,24 @@ def insert_row(lane, inc_rel, st):
     n = lane.split("-", 1)[1]
     issue = board_issue(n)
     issue_line = f"  issue: {issue}\n" if issue else ""
+    # board_issue() matches the numeric lane suffix against ANY board row's own
+    # issue: field, which is only reliable when that suffix genuinely is a
+    # GitHub issue number this specific lane was dispatched under -- a lane
+    # renamed/reshaped since (e.g. a slug lane whose numeric-looking suffix is
+    # an internal ordinal, not a gh number) can inherit a totally unrelated
+    # issue link this way. Confirmed live, 2026-09-07: stuck-issue-156's
+    # `issue: gh:156` pointed at an unrelated grilling thread (the owning
+    # row's own field was stale), and every dispatched run burned its whole
+    # budget trying to reconcile that mismatch instead of investigating. The
+    # caveat below costs nothing when the link IS correct and saves a wasted
+    # run when it is not.
+    caveat = (
+        " If the linked issue's content does not match this lane's own evidence "
+        "below, the issue: link is likely a stale numeric-slug collision, not a "
+        "real connection -- trust the incident evidence and the lane worktree "
+        "over it and proceed with the investigation anyway."
+        if issue else ""
+    )
     hours = (int(time.time()) - st["last_activity"]) // 3600
     row = (
         f"- id: stuck-{lane}-investigation\n"
@@ -186,7 +204,7 @@ def insert_row(lane, inc_rel, st):
         f" run(s), 0 commits): evidence frozen in {inc_rel}/ -- read it plus the lane"
         f" worktree, then report in plans/opencode-rollout.md whether this was brief"
         f" clarity, a capability gap, a tooling/permission trap, or task shape, and"
-        f" propose the rebrief or reshape. Do NOT attempt the original task.'\n"
+        f" propose the rebrief or reshape. Do NOT attempt the original task.{caveat}'\n"
     )
     path = os.path.join(REPO, "plans/board.yaml")
     text = open(path).read()

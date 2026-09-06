@@ -1309,3 +1309,42 @@ never actually delivered before due to the OPENCODE_MODEL persistence bug -- moo
 sandbox_dispatch.py takes `--model` directly per invocation). Deleted the stale
 `float-build-lua-stall-2.round.yaml` -- this was a brief-quality problem, not a stronger-model-
 or-drop decision.
+
+## Two stuck-lane investigations, two different root causes, neither a real decision (2026-09-07)
+
+Asked to investigate `stuck-issue-156-investigation`'s escalation directly rather than pick
+A/B/C, then to check the other open one (`stuck-issue-167-investigation`) for the same pattern.
+They turned out to be different bugs:
+
+**156**: the row it investigated, `variant-checker-capital-first`, carried a stale `issue:
+gh:156` field -- GitHub issue #156 is an unrelated matcher-naming grilling thread, confirmed via
+`gh issue view`. Every dispatched run opened it, got confused reconciling the mismatch, and
+burned its whole budget on archaeology. But the real answer needed no more dispatches at all:
+`variant-checker-capital-first` had ALREADY LANDED -- checker enforcement in `e09f063`
+(2026-09-01), the doc-corpus gate (`capital_variant_gate` in `tests/docs.rs`, matching the row's
+own page list exactly) in `0f45ea0` -- and was simply never archived. Archived it directly
+(status: done, dropped the stale issue: field rather than guessing a replacement), archived the
+investigation with that outcome, no redispatch. `doc-migrate-capital-variants` (needs it) is the
+genuine remaining work and was already correctly `status: todo` -- confirmed still needed by
+checking `docs/tutorial/04-enums.md`, which still has the un-migrated `circle{r: 3}` example.
+This also unblocks `variant-types-flip`, whose own title already flagged the same problem
+("brief claims checker enforcement 'already done via gh:156' but variant-checker-capital-first
+was still status: todo").
+
+**167**: NOT the same bug -- `gh:167` genuinely is `module-routing-syntax-build`'s real issue
+(confirmed: spun off from that exact number in the 2026-09-01 module-routing-and-erlang-target
+ruling). Its dependency (`file-visibility-tracking-build`) had already landed too. It was just a
+real, ready, unblocked task sitting zombied at `status: delegated` with zero work ever attempted
+-- the investigating worker got lost in exploration (checked both `gh:166` and `gh:167`, git-log
+archaeology) without reaching that straightforward conclusion. Reset to `status: todo` for a
+normal build dispatch; archived the investigation with that outcome, no further investigation
+needed.
+
+**Systemic hardening**: `stuck-watch.py`'s `board_issue()` correctly found the row that owns a
+given lane's numeric suffix -- the bug was stale DATA on that row (156's case), not the matching
+logic itself. But the matching logic still cannot tell a genuine gh-number lane from a slug lane
+whose numeric-looking suffix is an internal ordinal, so a future stale `issue:` field would
+reproduce the exact same worker-confusion pattern. `insert_row()` now appends a one-line caveat
+to the auto-generated investigation title whenever an `issue:` field is attached, telling the
+worker to trust `plans/incidents/` over the link when the two disagree -- costs nothing when the
+link is correct (167's case), saves a wasted run when it is not (156's case).
