@@ -1,3 +1,17 @@
+- id: escalation-md-gitignore-hygiene
+  title: 'ESCALATION.md is a tracked file on main (root of repo), left over from a past
+    worker''s escalation write and never cleaned up -- its content is stale (references a
+    "search-layer-build"/cardinality-migration task, not anything current). LAND-FAILURE.txt
+    got exactly this treatment already in 93ea626 ("gitignore LAND-FAILURE.txt: stop
+    landing-evidence scratch files from riding onto main"); ESCALATION.md needs the same fix
+    (gitignore it and git rm the stale committed copy) so it stops riding onto main and getting
+    forked into every new lane worktree, where it can be mistaken for a live escalation on an
+    unrelated task.'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
+
 - id: stuck-issue-recursive-descent-order-research-investigation
   kind: build
   status: delegated
