@@ -296,9 +296,20 @@ if grep -q "Failed to authenticate" "$OUT" 2>/dev/null; then
   STREAK=$(( $(cat "$AUTH_STREAK_FILE" 2>/dev/null || echo 0) + 1 ))
   echo "$STREAK" >"$AUTH_STREAK_FILE"
   if [ "$STREAK" -ge 3 ]; then
+    # Notify once per outage, not once per tick: a passive sentinel file
+    # only helps someone who happens to go looking for it, which defeats
+    # the point for an unattended stretch (this exact gap went unnoticed
+    # for ~40 minutes, 2026-09-06). The file's own presence is the
+    # dedup -- only fire the notification on the tick that creates it.
+    FIRST_DETECTION=0
+    [ -f "$LOG_DIR/COORDINATOR-DOWN" ] || FIRST_DETECTION=1
     echo "$(date -Iseconds): $STREAK consecutive coordinator auth failures -- run \`claude /login\`" \
       >"$LOG_DIR/COORDINATOR-DOWN"
     echo "[drive-tick] $(date '+%H:%M:%S') $STREAK consecutive auth failures -- wrote $LOG_DIR/COORDINATOR-DOWN"
+    if [ "$FIRST_DETECTION" -eq 1 ]; then
+      DISPLAY="${DISPLAY:-:0}" notify-send "toylang coordinator down" \
+        "$STREAK consecutive auth failures -- run 'claude /login'" 2>/dev/null || true
+    fi
   fi
 else
   rm -f "$AUTH_STREAK_FILE" "$LOG_DIR/COORDINATOR-DOWN"
