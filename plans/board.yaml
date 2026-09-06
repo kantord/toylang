@@ -53,14 +53,21 @@
   issue: gh:158
   title: Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect (shell-out-design ruling, gh:158, depends on Q35's stdout/stderr effect model)
   kind: build
-  needs: [shell-out-stderr-relay-design]
+  needs: [stream-merge-tagged-design]
   status: todo
 
 - id: shell-out-stderr-relay-design
   issue: gh:158
-  title: 'Q35 was RULED option A, opaque plumbing (stdout-stderr-effect-model-design, wizard submission 2026-09-07) -- a second single-instance sink alongside jsonlines, structurally unable to relay two streams (stdout and stderr) from one subprocess at once. But pipe_through''s whole point is exactly that: relay a subprocess''s stdout AND stderr in the same run. Decide how shell-out-build should actually spell this under option A before dispatching it -- e.g. two separate pipe_through-style calls each claiming one stream (never combined in one program, so a program picks stdout-relay xor stderr-relay), a merged single-stream relay that drops the distinction, or something else. Also settle the stdin/stdout splitting question flagged alongside Q35 as possibly distinct.'
+  title: 'Q35 was RULED option A, opaque plumbing (stdout-stderr-effect-model-design, wizard submission 2026-09-07) -- a second single-instance sink alongside jsonlines, structurally unable to relay two streams (stdout and stderr) from one subprocess at once. But pipe_through''s whole point is exactly that: relay a subprocess''s stdout AND stderr in the same run. Decide how shell-out-build should actually spell this under option A before dispatching it -- e.g. two separate pipe_through-style calls each claiming one stream (never combined in one program, so a program picks stdout-relay xor stderr-relay), a merged single-stream relay that drops the distinction, or something else. Also settle the stdin/stdout splitting question flagged alongside Q35 as possibly distinct. Follow-up (wizard submission, 2026-09-07): RULED option C, merge before toylang sees them -- but the maintainer reinterpreted it away from a lossy OS-level 2>&1 merge: "it seems like all we need is a built in enum for creating combined tagged streams... so a merged stream of type A and type B is just a single stream where each item is either A or B." So pipe_through relays one Stream where each item is tagged Stdout or Stderr, not two indistinguishable byte streams. Spun off stream-merge-tagged-design to ground this against Q25''s existing Alt<A,B> sketch and produce the concrete mechanism. Stdin/stdout splitting was NOT addressed by this answer -- still open, carry it into the same follow-up.'
   kind: decide
   needs: [stdout-stderr-effect-model-design]
+  status: done
+
+- id: stream-merge-tagged-design
+  issue: gh:158
+  title: 'Follow-up from shell-out-stderr-relay-design''s Q35 follow-up ruling (wizard submission, 2026-09-07, option C reinterpreted): the maintainer wants pipe_through to relay stdout+stderr as one Stream whose items are tagged by origin (a built-in enum: "a merged stream of type A and type B is just a single stream where each item is either A or B"), not an OS-level 2>&1 byte merge and not two mutually-exclusive single-stream calls. Ground this against Q25''s existing Alt<A,B> sketch (already recorded for stream-ordering, plans/questions.md#q25) and the closed-nominal-enum mechanism from the enum decision -- work out whether Alt<A,B> is literally reusable here or needs its own shape, then produce the concrete pipe_through signature. Also still open: the stdin/stdout splitting question flagged since Q35 and re-flagged here, never answered by either round.'
+  kind: decide
+  needs: [shell-out-stderr-relay-design]
   status: todo
 
 - id: stdout-stderr-effect-model-design
@@ -372,9 +379,16 @@
 
 - id: select-materialization-scope
   issue: gh:176
-  title: 'Follow-up from offload-boundary-design round 5''s Q22 ruling (mask/selection-backed select, compact on strong reference): the maintainer''s own proposal was framed around Vec, but asked in the same breath whether the representation should be Vec-only or shared with streams or some other trait they''d both implement. Ground this against what select-materialization-research already found (NumPy/Julia/Rust Cow/pandas survey) plus whatever Stream-side operations exist today, then re-ask.'
+  title: 'Follow-up from offload-boundary-design round 5''s Q22 ruling (mask/selection-backed select, compact on strong reference): the maintainer''s own proposal was framed around Vec, but asked in the same breath whether the representation should be Vec-only or shared with streams or some other trait they''d both implement. Ground this against what select-materialization-research already found (NumPy/Julia/Rust Cow/pandas survey) plus whatever Stream-side operations exist today, then re-ask. RULED (wizard submission, 2026-09-07): option B, a shared select-able mechanism over Vec and Stream -- but conditionally: "only if we can actually find out a way to basically hide this complexity... only actually one select implementation that uses a built in function or sth similar... probably not ''selectable'' in the sense of having a trait for a single method, but sth simpler but more reusable." Maintainer wants one generic mechanism select is the first user of, not a bespoke single-method trait. Spun off select-shared-mechanism-design to work out that shape once trait-interface-dispatch-build gives the checker something to build it on.'
   kind: decide
   needs: []
+  status: done
+
+- id: select-shared-mechanism-design
+  issue: gh:176
+  title: 'Follow-up from select-materialization-scope''s ruling (wizard submission, 2026-09-07, option B with a hedge): the maintainer wants select generic over Vec and Stream via one shared, generic, reusable mechanism -- explicitly NOT a bespoke single-method "Selectable" trait, and only if the complexity can genuinely be hidden behind it. Blocked until trait-interface-dispatch-build lands enough of the trait/dispatch system to know what a generic mechanism can actually look like in toylang; then work out the concrete shape and produce select''s real signature.'
+  kind: decide
+  needs: [trait-interface-dispatch-build]
   status: todo
 
 - id: draft-md-cleanup-review
