@@ -38,7 +38,7 @@
   kind: build
   needs: [call-form-hoist-parse]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: call-form-hoist-codegen
   issue: gh:152
