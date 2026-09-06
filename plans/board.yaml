@@ -458,3 +458,58 @@
   needs: []
   prio: 3
   status: todo
+
+- id: trait-interface-dispatch-build
+  issue: gh:174
+  title: 'Periodic-audit finding (2026-09-06): trait-interface-build (archived, gh:174) is marked
+    done but only delivered declaration parsing -- tests/corpus/trait_impl_parse.yaml says so
+    explicitly ("the checker does not yet do anything with them: no dispatch, no method
+    checking, no codegen"), and grep confirms zero references to TraitDecl/ImplDecl outside
+    src/ast.rs and the parser. Finish the system per the trait-interface-design ruling: checker
+    resolution of colon-only method calls (`x:foo(y)`, no plain-call fallback) to the matching
+    `impl Name for Type` block, plus codegen for every backend. Builtin operators (Int+Int,
+    Str+Str, ...) tentatively become source-written prelude impls where practical, checker-
+    generated only where that provably costs real performance (maintainer explicitly declined
+    to fully commit either way pending build experience).'
+  kind: build
+  needs: []
+  prio: 3
+  status: todo
+
+- id: js-web-escape-hatch-build
+  issue: gh:160
+  title: 'Follow-up split from js-node-web-split-build (archived, gh:160 ruling "one system, all
+    four together"; dispatch scoped down to the Node/Web split slice only, deferring the other
+    three as separate follow-ups -- this is one of them). Build the builtin-replacement escape
+    hatch: a way for a toylang program (or its build config) to supply a different JS
+    implementation for a builtin under the Web target instead of the Node-only default (e.g.
+    `tl_collect_lines` in src/emit_js.rs, which reads stdin through node''s `fs` and is already
+    correctly refused at compile time for Web -- see `reads_stdin`/`is_web` in src/emit_js.rs --
+    but has no substitute mechanism for a Web build that wants equivalent behavior via browser
+    APIs instead of erroring out).'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
+
+- id: ts-type-generation-build
+  issue: gh:160
+  title: 'Follow-up split from js-node-web-split-build (archived, gh:160 ruling): generate
+    TypeScript type declarations alongside emitted JS output (Node and/or Web target), so
+    consumers get real types instead of plain JS. No board row or code currently exists for
+    this.'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
+
+- id: toylang-conf-yaml-build
+  issue: gh:160
+  title: 'Follow-up split from js-node-web-split-build (archived, gh:160 ruling): add
+    `toylang.conf.yaml` as the compiler config file (selects JS target Node vs Web, and once
+    built, wires in ts-type-generation-build and js-web-escape-hatch-build''s settings). No
+    board row or code currently exists for this.'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
