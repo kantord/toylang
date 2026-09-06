@@ -1558,3 +1558,11 @@
   status: done
   needs: []
   title: 'INVESTIGATE stuck lane issue-stuck-issue-benchmark-fannkuch-redux-build-investigation (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-stuck-issue-benchmark-fannkuch-redux-build-investigation-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: call-form-hoist-parse
+  issue: gh:152
+  title: 'Step 2/4 of the issue-152-stall reshape: parse the new `fn name = expr` call-form declaration and the MatchCall expression syntax.'
+  kind: build
+  needs: [call-form-hoist-ast]
+  prio: 3
+  status: done
