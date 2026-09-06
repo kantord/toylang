@@ -81,14 +81,14 @@ fn record_fields_receive_the_declared_types() {
 
 #[test]
 fn input_in_a_field_checked_against_a_declared_record() {
-    let src = "fn f(x: Int) -> {n: Int} = x | {n: input}\n\nf(1)";
+    let src = "fn f(x: Int) -> {n: Int} = x | {n: parse(stdin)}\n\nf(1)";
     let program = toylang::compile(src).unwrap();
     assert_eq!(program.input, Some(Type::Int));
 }
 
 #[test]
 fn a_later_input_borrows_the_type_the_first_use_fixed() {
-    let src = "fn f(v: Vec<Int>) -> Int = length(v)\n\n{a: f(input), b: input}";
+    let src = "fn f(v: Vec<Int>) -> Int = length(v)\n\n{a: f(parse(stdin)), b: parse(stdin)}";
     assert_eq!(
         body_ty(src),
         Type::Record(vec![
@@ -149,7 +149,7 @@ fn a_string_names_a_variant_in_argument_position() {
 
 #[test]
 fn input_in_a_record_argument_field() {
-    let src = "fn g(r: {n: Int, tag: Str}) -> Int = r.n\n\ng({n: input, tag: \"x\"})";
+    let src = "fn g(r: {n: Int, tag: Str}) -> Int = r.n\n\ng({n: parse(stdin), tag: \"x\"})";
     let program = toylang::compile(src).unwrap();
     assert_eq!(program.input, Some(Type::Int));
 }
@@ -200,7 +200,7 @@ fn a_record_map_body_takes_the_declared_element() {
 #[test]
 fn a_stream_map_body_takes_the_declared_element() {
     let src = "fn pad(s: Stream<Int>) -> Stream<Vec<Int>> = s | map([])\n\n\
-               collect(pad(inputs))";
+               collect(pad((stdin | map(parse(.)))))";
     assert!(matches!(body_ty(src), Type::Vec(_)));
 }
 
@@ -224,7 +224,7 @@ fn both_conditional_branches_receive_the_expectation() {
 
 #[test]
 fn conditional_branches_can_name_variants() {
-let src = "enum Status { Active, Inactive }\n\n\
+    let src = "enum Status { Active, Inactive }\n\n\
                fn status(n: Int) -> Status = n | . > 0 -> \"Active\" or \"Inactive\"\n\n\
                status(0)";
     assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Status"));

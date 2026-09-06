@@ -1,0 +1,14 @@
+# A match call is also an ordinary expression, not just the body of a hoisted definition
+# (gh:152): inside a mapper body `.` is the element, and `Msg(...)` is sugar for a `Match` over
+# it. The checker resolves each arm against the enum the name spells.
+program: |
+  enum Msg { Ping, Quit, Text{body: Str} }
+
+  [Msg.ping, Msg.quit, Msg.text{body: "hi"}] | map(Msg(Ping -> "ping" or Quit -> "quit" or Text -> "text"))
+
+output: |
+  ["ping","quit","text"]
+
+snapshot: [jq, rust]
+
+node_types: [local, map-over, match, pipe, record-literal, str, variant.payload, variant.unit, vec-literal]

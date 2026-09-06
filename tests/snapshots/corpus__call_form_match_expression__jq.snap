@@ -1,0 +1,5 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+[ (["Ping", "Quit", {"Text": ({"body": ("hi")})}] as $t_0 | [ $t_0[] | . as $t_1 | (if $t_1 == "Ping" then "ping" elif $t_1 == "Quit" then "quit" else ($t_1["Text"] as $t_2 | "text") end) ])[] | . ]

@@ -4,8 +4,9 @@ use winnow::stream::{LocatingSlice, Location, Stream};
 use winnow::token::take_while;
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, LogicOp, MatchArm, Module, Param,
-    Pattern, Span, TypeExpr, Variant,
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod, LogicOp,
+    MatchArm, Module, Param, ParamShape, Pattern, Span, TraitDecl, TraitMethodSig, TypeExpr,
+    Variant,
 };
 use crate::error::Error;
 use crate::ty;
@@ -42,11 +43,11 @@ enum Tok {
     Fn,
     Pub,
     Type,
-Enum,
+    Enum,
+    Trait,
+    Impl,
     Let,
-    Input,
-    Inputs,
-    Lines,
+    Stdin,
     Dsv,
     Csv,
     Tsv,
@@ -77,6 +78,7 @@ Enum,
     LBrace,
     RBrace,
     Colon,
+    Semicolon,
     Arrow,
     Eof,
 }
@@ -92,10 +94,10 @@ impl std::fmt::Display for Tok {
             Tok::Pub => "`pub`",
             Tok::Type => "`type`",
             Tok::Enum => "`enum`",
+            Tok::Trait => "`trait`",
+            Tok::Impl => "`impl`",
             Tok::Let => "`let`",
-            Tok::Input => "`input`",
-            Tok::Inputs => "`inputs`",
-            Tok::Lines => "`lines`",
+            Tok::Stdin => "`stdin`",
             Tok::Dsv => "`dsv`",
             Tok::Csv => "`csv`",
             Tok::Tsv => "`tsv`",
@@ -126,6 +128,7 @@ impl std::fmt::Display for Tok {
             Tok::LBrace => "`{`",
             Tok::RBrace => "`}`",
             Tok::Colon => "`:`",
+            Tok::Semicolon => "`;`",
             Tok::Arrow => "`->`",
             Tok::Eof => "end of program",
         };
@@ -151,7 +154,7 @@ fn skip_trivia(input: &mut Input) {
 }
 
 /// Skips trivia, then reads exactly one token from the front of `input`. Called fresh for every
-/// `peek`/`peek2`/`advance` rather than once up front into a `Vec`, so a lexical error (a bad
+/// `peek`/`advance` rather than once up front into a `Vec`, so a lexical error (a bad
 /// escape, an out-of-range integer) surfaces at the point parsing actually reaches it instead of
 /// always winning over a parse error earlier in the file the way a separate up-front pass would.
 fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
@@ -174,10 +177,10 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
                 "pub" => Tok::Pub,
                 "type" => Tok::Type,
                 "enum" => Tok::Enum,
+                "trait" => Tok::Trait,
+                "impl" => Tok::Impl,
                 "let" => Tok::Let,
-                "input" => Tok::Input,
-                "inputs" => Tok::Inputs,
-                "lines" => Tok::Lines,
+                "stdin" => Tok::Stdin,
                 "dsv" => Tok::Dsv,
                 "csv" => Tok::Csv,
                 "tsv" => Tok::Tsv,
@@ -215,6 +218,7 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
         '{' => single(input, Tok::LBrace),
         '}' => single(input, Tok::RBrace),
         ':' => single(input, Tok::Colon),
+        ';' => single(input, Tok::Semicolon),
         other => {
             return Err(Error::new(
                 Span::new(start, start + 1),
@@ -443,6 +447,8 @@ pub fn parse(src: &str) -> Result<File, Error> {
     let mut defs = Vec::new();
     let mut aliases = Vec::new();
     let mut enums = Vec::new();
+    let mut traits = Vec::new();
+    let mut impls = Vec::new();
     loop {
         let (tok, _) = p.peek()?;
         match tok {
@@ -450,35 +456,18 @@ pub fn parse(src: &str) -> Result<File, Error> {
                 p.advance()?;
                 match p.peek()?.0 {
                     Tok::Enum => enums.push(p.enum_decl(true)?),
+                    Tok::Trait => traits.push(p.trait_decl(true)?),
                     _ => defs.push(p.def(true)?),
                 }
             }
             Tok::Fn => defs.push(p.def(false)?),
             Tok::Type => aliases.push(p.alias()?),
             Tok::Enum => enums.push(p.enum_decl(false)?),
+            Tok::Trait => traits.push(p.trait_decl(false)?),
+            Tok::Impl => impls.push(p.impl_decl()?),
             _ => break,
         }
     }
-
-    // `input <type>` declares what stdin holds before the body reads it. It is the one
-    // declaration that sits after the defs rather than among them, so it is read here, and it is
-    // recognized by the same-line rule a call argument follows: only when the type opens on
-    // `input`'s own line does the keyword start an annotation, so a body that merely uses
-    // `input` is never mistaken for one.
-    let input = match p.peek()? {
-        (Tok::Input, input_span) => {
-            let (next, next_span) = p.peek2()?;
-            if (next == Tok::LBrace || matches!(next, Tok::Ident(_)))
-                && p.same_line(input_span.end, next_span.start)
-            {
-                p.advance()?;
-                Some(p.type_expr()?)
-            } else {
-                None
-            }
-        }
-        _ => None,
-    };
 
     let body = p.tail_pipe()?;
     let (rest, rest_span) = p.peek()?;
@@ -488,8 +477,9 @@ pub fn parse(src: &str) -> Result<File, Error> {
     Ok(File {
         aliases,
         enums,
+        traits,
+        impls,
         defs,
-        input,
         body,
     })
 }
@@ -555,14 +545,6 @@ impl<'i> Cursor<'i> {
     /// offset), so looking ahead is just tokenizing a throwaway copy of the cursor.
     fn peek(&self) -> Result<(Tok, Span), Error> {
         let mut probe = self.input;
-        read_tok(&mut probe)
-    }
-
-    /// Reads the token after the next one without consuming either. One probe over `input`,
-    /// then a second over the probe, so the cursor never moves.
-    fn peek2(&self) -> Result<(Tok, Span), Error> {
-        let mut probe = self.input;
-        read_tok(&mut probe)?;
         read_tok(&mut probe)
     }
 
@@ -636,35 +618,74 @@ impl<'i> Cursor<'i> {
         }
     }
 
-    /// `fn name(param: Type) -> Type = body` or `fn name() -> Type = body`.
+    /// What the parens hold in a function signature: nothing, `name: Type`, or
+    /// `{a, b, ..}: Type`, the destructuring spelling reusing a match arm's brace pattern.
+    fn param(&mut self) -> Result<Option<Param>, Error> {
+        let (next, _) = self.peek()?;
+        if next == Tok::RParen {
+            return Ok(None);
+        }
+        let shape = if next == Tok::LBrace {
+            ParamShape::Fields(self.fields_pattern()?)
+        } else {
+            let (param_name, param_span) = self.eat_ident("a name")?;
+            ParamShape::Name(param_name, param_span)
+        };
+        // Both spellings are followed by `: Type`; the Name case checks for the `:` before
+        // parsing anything, and the Fields case must consume it too or the type parser meets it
+        // first.
+        let (colon, _) = self.peek()?;
+        if colon != Tok::Colon {
+            return Err(Error::new(
+                shape.span(),
+                match &shape {
+                    ParamShape::Name(name, _) => {
+                        format!("parameter `{name}` needs a type annotation")
+                    }
+                    ParamShape::Fields(_) => {
+                        "a destructured parameter needs a type annotation".to_string()
+                    }
+                },
+            ));
+        }
+        self.advance()?;
+        let param_ty = self.type_expr()?;
+        Ok(Some(Param {
+            span: shape.span().to(param_ty.span()),
+            shape,
+            ty: param_ty,
+        }))
+    }
+
+    /// `fn name(param: Type) -> Type = body`, `fn name() -> Type = body`, or the hoisted
+    /// `fn name = body` (gh:152) with no parameter list and no return annotation.
     ///
-    /// Both annotations are required by the grammar rather than by the checker, which is what
-    /// makes the message point at the missing annotation instead of at an inference failure.
+    /// The annotated forms require both annotations by the grammar rather than by the checker,
+    /// which is what makes the message point at the missing annotation instead of at an
+    /// inference failure. The hoisted form is the opposite: `=` follows the name directly, and
+    /// the whole signature -- parameter and return -- is inferred from the body, whose first
+    /// token must be a match call that names the enum the implicit `.` parameter matches.
     fn def(&mut self, is_pub: bool) -> Result<Def, Error> {
         let start = self.eat(Tok::Fn)?;
         let (name, _) = self.eat_ident("a name")?;
+        let (next, _) = self.peek()?;
+        if next == Tok::Eq {
+            self.advance()?;
+            let body = self.def_body()?;
+            return Ok(Def {
+                span: start.to(body.span()),
+                name,
+                param: None,
+                ret: None,
+                body,
+                is_pub,
+                origin: crate::ast::Origin::Program,
+                hoisted: true,
+            });
+        }
         self.eat(Tok::LParen)?;
 
-        let (next, _) = self.peek()?;
-        let param = if next == Tok::RParen {
-            None
-        } else {
-            let (param_name, param_span) = self.eat_ident("a name")?;
-            let (colon, _) = self.peek()?;
-            if colon != Tok::Colon {
-                return Err(Error::new(
-                    param_span,
-                    format!("parameter `{param_name}` needs a type annotation"),
-                ));
-            }
-            self.advance()?;
-            let param_ty = self.type_expr()?;
-            Some(Param {
-                span: param_span.to(param_ty.span()),
-                name: param_name,
-                ty: param_ty,
-            })
-        };
+        let param = self.param()?;
 
         let close = self.eat(Tok::RParen)?;
         let (arrow, _) = self.peek()?;
@@ -683,10 +704,117 @@ impl<'i> Cursor<'i> {
             span: start.to(body.span()),
             name,
             param,
-            ret,
+            ret: Some(ret),
             body,
             is_pub,
             origin: crate::ast::Origin::Program,
+            hoisted: false,
+        })
+    }
+
+    /// `fn name(param: Type) -> Type`,the signature spine a trait method and an impl method
+    /// share. `what` names the kind in the return-type error;the caller decides whether a
+    /// `= body` follows the signature. A function's own spine stays inline in `def`.
+    fn fn_signature(
+        &mut self,
+        what: &str,
+    ) -> Result<(String, Option<Param>, TypeExpr, Span), Error> {
+        let start = self.eat(Tok::Fn)?;
+        let (name, _) = self.eat_ident("a name")?;
+        self.eat(Tok::LParen)?;
+
+        let param = self.param()?;
+
+        let close = self.eat(Tok::RParen)?;
+        let (arrow, _) = self.peek()?;
+        if arrow != Tok::Arrow {
+            return Err(Error::new(
+                close,
+                format!("{what} `{name}` needs a return type"),
+            ));
+        }
+        self.advance()?;
+        let ret = self.type_expr()?;
+        let span = start.to(ret.span());
+        Ok((name, param, ret, span))
+    }
+
+    /// `trait Name { fn sig(param: Type) -> Type, ... }`:a named collection of method
+    /// signatures with no bodies;an `impl` block provides those per concrete type. `pub` marks
+    /// it for a module. The body-less `fn` spine is the only thing inside the braces, so no
+    /// separator token is needed: each method starts with its own `fn`.
+    fn trait_decl(&mut self, is_pub: bool) -> Result<TraitDecl, Error> {
+        let start = self.eat(Tok::Trait)?;
+        let (name, _) = self.eat_ident("a trait name")?;
+        self.eat(Tok::LBrace)?;
+        let mut methods = Vec::new();
+        let (first, _) = self.peek()?;
+        if first != Tok::RBrace {
+            loop {
+                let (mname, param, ret, span) = self.fn_signature("trait method")?;
+                methods.push(TraitMethodSig {
+                    name: mname,
+                    param,
+                    ret,
+                    span,
+                });
+                if self.peek()?.0 == Tok::RBrace {
+                    break;
+                }
+            }
+        }
+        let close = self.eat(Tok::RBrace)?;
+        Ok(TraitDecl {
+            name,
+            methods,
+            span: start.to(close),
+            is_pub,
+        })
+    }
+
+    /// `impl Trait for Type { fn sig(param: Type) -> Type = body, ... }`:concrete bodies
+    /// for one trait's methods, one block per (trait, type) pair. Like a trait's, each method
+    /// starts with its own `fn`, so the methods need no separator token between them.
+    fn impl_decl(&mut self) -> Result<ImplDecl, Error> {
+        let start = self.eat(Tok::Impl)?;
+        let (trait_name, _) = self.eat_ident("a trait name")?;
+        let (link, link_span) = self.eat_ident("`for`")?;
+        if link != "for" {
+            return Err(Error::new(
+                link_span,
+                format!(
+                    "expected `for` between the trait name and its target type, found `{link}`"
+                ),
+            ));
+        }
+        let ty = self.type_expr()?;
+        self.eat(Tok::LBrace)?;
+        let mut methods = Vec::new();
+        let (first, _) = self.peek()?;
+        if first != Tok::RBrace {
+            loop {
+                let (mname, param, ret, sig_span) = self.fn_signature("impl method")?;
+                self.eat(Tok::Eq)?;
+                let body = self.def_body()?;
+                let span = sig_span.to(body.span());
+                methods.push(ImplMethod {
+                    name: mname,
+                    param,
+                    ret,
+                    body,
+                    span,
+                });
+                if self.peek()?.0 == Tok::RBrace {
+                    break;
+                }
+            }
+        }
+        let close = self.eat(Tok::RBrace)?;
+        Ok(ImplDecl {
+            trait_name,
+            ty,
+            methods,
+            span: start.to(close),
         })
     }
 
@@ -969,22 +1097,8 @@ impl<'i> Cursor<'i> {
         let mut lead = lead;
         loop {
             let arm = match lead.take() {
-                Some(e) => self.guard_or_default_arm(e)?,
-                None if self.arm_starts_here() => {
-                    let pattern = self.pattern()?;
-                    self.eat(Tok::Arrow)?;
-                    let body = self.arm_body()?;
-                    let span = pattern.span().to(body.span());
-                    MatchArm {
-                        pattern,
-                        body,
-                        span,
-                    }
-                }
-                None => {
-                    let e = self.with_or(false, |p| p.operand(COND_POWER))?;
-                    self.guard_or_default_arm(e)?
-                }
+                Some(e) => self.match_arm(Some(e))?,
+                None => self.match_arm(None)?,
             };
             arms.push(arm);
             let (sep, _) = self.peek()?;
@@ -995,6 +1109,57 @@ impl<'i> Cursor<'i> {
         }
         let span = arms[0].span.to(arms[arms.len() - 1].span);
         Ok(Expr::Match { arms, span })
+    }
+
+    /// One `or`-separated element of an arm chain: a variant pattern arm, or (when `lead` is a
+    /// guard the caller already read, or no pattern begins the element) a guard or default arm.
+    /// Shared by a `Match` and a `MatchCall` (gh:152), which differ only in what heads them and
+    /// how the chain ends.
+    fn match_arm(&mut self, lead: Option<Expr>) -> Result<MatchArm, Error> {
+        match lead {
+            Some(e) => self.guard_or_default_arm(e),
+            None if self.arm_starts_here() => {
+                let pattern = self.pattern()?;
+                self.eat(Tok::Arrow)?;
+                let body = self.arm_body()?;
+                let span = pattern.span().to(body.span());
+                Ok(MatchArm {
+                    pattern,
+                    body,
+                    span,
+                })
+            }
+            None => {
+                let e = self.with_or(false, |p| p.operand(COND_POWER))?;
+                self.guard_or_default_arm(e)
+            }
+        }
+    }
+
+    /// `Msg(Ping -> "pong" or Quit -> "bye")` (gh:152): a capitalized type name used as a match
+    /// call. The parens hold the same `or`-separated arms a `Match` carries, over the subject
+    /// `.`; the name is the assertion of what the subject is, and the checker resolves each arm
+    /// against it. A capitalized name is always an enum, never a callable, so `Name(...)` is
+    /// unambiguously a match call rather than a function application.
+    fn match_call(&mut self, enum_name: String, enum_span: Span) -> Result<Expr, Error> {
+        self.eat(Tok::LParen)?;
+        let mut arms = Vec::new();
+        loop {
+            arms.push(self.match_arm(None)?);
+            let (sep, _) = self.peek()?;
+            if sep != Tok::Or {
+                break;
+            }
+            self.advance()?;
+        }
+        let close = self.eat(Tok::RParen)?;
+        let span = enum_span.to(close);
+        Ok(Expr::MatchCall {
+            enum_name,
+            enum_span,
+            arms,
+            span,
+        })
     }
 
     /// An arm's right side: the one position where a bare `or` is the chain's separator rather
@@ -1027,7 +1192,7 @@ impl<'i> Cursor<'i> {
 
     fn pattern(&mut self) -> Result<Pattern, Error> {
         let (name, span) = self.eat_ident("a pattern")?;
-        let (next, brace_span) = self.peek()?;
+        let (next, _) = self.peek()?;
         if name == "any" && next == Tok::LParen {
             self.advance()?;
             let close = self.eat(Tok::RParen)?;
@@ -1042,14 +1207,24 @@ impl<'i> Cursor<'i> {
                 fields: None,
             });
         }
-        self.advance()?;
+        let fields = self.fields_pattern()?;
+        Ok(Pattern::Variant {
+            name,
+            span: span.to(fields.span),
+            fields: Some(fields),
+        })
+    }
+
+    /// `{a, b, ..}`: the brace pattern a match arm and a destructuring parameter share.
+    /// `..` is two Dot tokens, and it ends the list: naming a field after "and the rest" would
+    /// make the marker meaningless.
+    fn fields_pattern(&mut self) -> Result<FieldsPattern, Error> {
+        let open = self.eat(Tok::LBrace)?;
         let mut names = Vec::new();
         let mut rest = false;
         let (first, _) = self.peek()?;
         if first != Tok::RBrace {
             loop {
-                // `..` is two Dot tokens, and it ends the list: naming a field after "and the
-                // rest" would make the marker meaningless.
                 if self.peek()?.0 == Tok::Dot {
                     self.advance()?;
                     self.eat(Tok::Dot)?;
@@ -1065,15 +1240,10 @@ impl<'i> Cursor<'i> {
             }
         }
         let close = self.eat(Tok::RBrace)?;
-        let fields = FieldsPattern {
+        Ok(FieldsPattern {
             names,
             rest,
-            span: brace_span.to(close),
-        };
-        Ok(Pattern::Variant {
-            name,
-            span: span.to(close),
-            fields: Some(fields),
+            span: open.to(close),
         })
     }
 
@@ -1353,20 +1523,25 @@ impl<'i> Cursor<'i> {
                 span: span.to(end),
             });
         }
+        // `Msg(Ping -> ...)`: a capitalized name is an enum, so `Name(` is a match call
+        // (gh:152), never a function application. Like a call, the `(` must start on the
+        // name's line.
+        if next == Tok::LParen && name.chars().next().is_some_and(char::is_uppercase) {
+            if !self.same_line(span.end, next_span.start) {
+                return Ok(Expr::Var { name, span });
+            }
+            return self.match_call(name, span);
+        }
         let argument_starts = match next {
             Tok::LParen | Tok::LBrace => true,
             Tok::Str(_)
             | Tok::Int(_)
             | Tok::Float(_)
-            | Tok::Input
-            | Tok::Inputs
-            | Tok::Lines
+            | Tok::Stdin
             | Tok::Dsv
             | Tok::Csv
             | Tok::Tsv
-            | Tok::Ident(_) => {
-                bare_callee(&name)
-            }
+            | Tok::Ident(_) => bare_callee(&name),
             _ => false,
         };
         if !argument_starts || !self.takes_argument(&name, span, next_span) {
@@ -1412,9 +1587,7 @@ impl<'i> Cursor<'i> {
             Tok::Str(text) => Ok(Expr::Str { text, span }),
             Tok::Int(value) => Ok(Expr::Int { value, span }),
             Tok::Float(value) => Ok(Expr::Float { value, span }),
-            Tok::Input => Ok(Expr::Input { span }),
-            Tok::Inputs => Ok(Expr::Inputs { span }),
-            Tok::Lines => Ok(Expr::Lines { span }),
+            Tok::Stdin => Ok(Expr::Stdin { span }),
             Tok::Csv => Ok(Expr::Dsv {
                 delim: ",".to_string(),
                 span,

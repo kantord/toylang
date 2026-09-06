@@ -7,7 +7,7 @@
 program: |
   fn get_name(db: {name: Str}) -> Str = db.name
 
-  get_name(input)
+  get_name(parse(stdin))
 
 input: |
   {"Name": "ada"}

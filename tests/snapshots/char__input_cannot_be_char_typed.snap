@@ -1,5 +1,6 @@
 ---
 source: tests/char.rs
-expression: "err(\"fn f(c: Char) -> Bool = c == c\\n\\nf(input)\")"
+assertion_line: 28
+expression: "err(\"fn f(c: Char) -> Bool = c == c\\n\\nf(parse(stdin))\")"
 ---
-`input` cannot be read as Char; Char has no wire form to read (at byte 34)
+`parse(stdin)` cannot be read as Char; Char has no wire form to read (at byte 34)

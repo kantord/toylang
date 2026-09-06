@@ -1,0 +1,7 @@
+program: |
+  any([1 == 1, 1 == 2])
+
+output: |
+  true
+
+node_types: [builtin.any, compare.eq, int, vec-literal]

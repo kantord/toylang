@@ -1,12 +1,14 @@
 ---
 source: tests/step_2.rs
+assertion_line: 20
 expression: "toylang::parse::parse(r#\"\"a\" + \"b\" + \"c\"\"#).unwrap()"
 ---
 File {
     aliases: [],
     enums: [],
+    traits: [],
+    impls: [],
     defs: [],
-    input: None,
     body: Binary {
         op: Add,
         lhs: Binary {

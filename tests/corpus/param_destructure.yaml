@@ -1,0 +1,12 @@
+# A function parameter can be a record destructuring pattern instead of a plain name; each
+# named field binds like a match arm's pattern binds one, and the record type stays explicit.
+program: |
+  fn pair_sum({a, b}: {a: Int, b: Int}) -> Int =
+      a + b
+
+  pair_sum({a: 2, b: 3})
+
+output: |
+  5
+
+node_types: [application, arith.add, int, local, pipe, projection, record-literal, var]

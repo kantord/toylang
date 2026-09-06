@@ -1,5 +1,6 @@
 ---
 source: tests/opt.rs
-expression: "err(\"fn f(v: Vec<Opt<Int>>) -> Int = length(v)\\n\\nf(collect(inputs))\")"
+assertion_line: 95
+expression: "err(\"fn f(v: Vec<Opt<Int>>) -> Int = length(v)\\n\\nf(collect((stdin | map(parse(.)))))\")"
 ---
-`inputs` cannot be read as Stream<Opt<Int>>; absence has no wire form to read (at byte 53)
+`stdin | map(parse(.))` cannot be read as Stream<Opt<Int>>; absence has no wire form to read (at byte 54)

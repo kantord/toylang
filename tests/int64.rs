@@ -113,7 +113,7 @@ fn i64_takes_an_int() {
 #[test]
 fn input_cannot_be_int64() {
     insta::assert_snapshot!(
-        toylang::compile("fn f(n: Int64) -> Int64 = n\n\nf(input)")
+        toylang::compile("fn f(n: Int64) -> Int64 = n\n\nf(parse(stdin))")
             .map(|_| ())
             .unwrap_err()
             .to_string()
@@ -124,7 +124,7 @@ fn input_cannot_be_int64() {
 fn inputs_cannot_carry_int64() {
     insta::assert_snapshot!(
         toylang::compile(
-            "fn f(s: Stream<{ts: Int64}>) -> Stream<{ts: Int64}> = s\n\njsonlines(f(inputs))"
+            "fn f(s: Stream<{ts: Int64}>) -> Stream<{ts: Int64}> = s\n\njsonlines(f((stdin | map(parse(.)))))"
         )
         .map(|_| ())
         .unwrap_err()

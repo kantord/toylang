@@ -28,7 +28,7 @@ fn best(p: {v: Vec<Int>, lo: Int, hi: Int}) -> Int64 =
         | .hi - .lo == 1 -> window({v: p.v, i: p.lo, k: 13}) or
               max2({a: best({v: p.v, lo: p.lo, hi: (p.lo + p.hi) / 2}), b: best({v: p.v, lo: (p.lo + p.hi) / 2, hi: p.hi})})
 
-best({v: input, lo: 0, hi: length(input) - 12})
+best({v: parse(stdin), lo: 0, hi: length(parse(stdin)) - 12})
 ```
 
 ```input

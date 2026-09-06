@@ -1,0 +1,6 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+def v_render: . as $v___render_param | ($v___render_param as $t_2 | (if $t_2 == "Ping" then "*ping*" elif $t_2 == "Quit" then "*quit*" else ($t_2["Text"] as $t_3 | ($t_3 | .["body"])) end));
+({"a": (("Ping" | v_render)), "b": (("Quit" | v_render)), "c": (({"Text": ({"body": ("hi")})} | v_render))} | {"a": .["a"], "b": .["b"], "c": .["c"]})

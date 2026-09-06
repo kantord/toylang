@@ -5,8 +5,7 @@
 program: |
   fn f(p: {x: Int, y: Int}) -> Int = p.x * 2 + p.y * 3
 
-  input {x: Int, y: Int}
-  f(input)
+  f(parse(stdin))
 
 input: |
   {"x": 3, "y": 4}

@@ -1,0 +1,47 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+#![allow(dead_code)]
+
+fn tl_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 || c == '\u{7f}' => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn tl_join<T>(v: &[T], f: fn(&T) -> String) -> String {
+    let parts: Vec<String> = v.iter().map(f).collect();
+    format!("[{}]", parts.join(","))
+}
+
+#[derive(Clone, PartialEq)]
+struct TlRec0 {
+    f_body: String,
+}
+
+#[derive(Clone, PartialEq)]
+#[allow(non_camel_case_types)]
+enum TlE_Msg {
+    V_Ping,
+    V_Quit,
+    V_Text(TlRec0),
+}
+
+fn main() {
+    println!("{}", tl_join(&({ let t_0: Vec<TlE_Msg> = vec![TlE_Msg::V_Ping, TlE_Msg::V_Quit, TlE_Msg::V_Text(TlRec0 { f_body: "hi".to_string() })]; t_0.clone().iter().map(|t_1: &TlE_Msg| -> String { (match t_1.clone() { TlE_Msg::V_Ping => "ping".to_string(), TlE_Msg::V_Quit => "quit".to_string(), TlE_Msg::V_Text(t_2) => "text".to_string() }) }).collect::<Vec<_>>() }), |e0: &String| -> String { tl_quote(&e0.clone()) }));
+}

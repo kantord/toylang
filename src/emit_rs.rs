@@ -70,6 +70,53 @@ fn tl_rem64(a: i64, b: i64) -> i64 {
 }
 "#;
 
+/// A Float's printed form, byte for byte the JS reference's `String(number)` (ECMA-262
+/// Number::toString). Rust's `Display` is shortest-round-trip but holds fixed notation across
+/// the whole representable range where JS goes scientific outside the decimal band (`k <= n <=
+/// 21`), and it prints `-0` where JS prints `0`; so the digits come from `Display` and are laid
+/// out again with the ECMA-262 fixed-vs-scientific rule, the same re-layout the native and jq
+/// lanes already build (plans/float-format-research.md). Non-finite values are never literals,
+/// so they are named off the value the way JS's `String(number)` would.
+const FLOAT_HELPER: &str = r#"fn tl_float_to_str(n: f64) -> String {
+    if n.is_nan() {
+        return "NaN".to_string();
+    }
+    if n.is_infinite() {
+        return if n > 0.0 { "Infinity" } else { "-Infinity" }.to_string();
+    }
+    if n == 0.0 {
+        return "0".to_string();
+    }
+    let sign = if n < 0.0 { "-" } else { "" };
+    let raw = n.abs().to_string();
+    let int_len = raw.split('.').next().expect("Display writes the integer part").len();
+    let all: String = raw.chars().filter(|&c| c != '.').collect();
+    let fnz = all.chars().take_while(|&c| c == '0').count();
+    let npos = int_len as i64 - fnz as i64;
+    let trimmed = all[fnz..].trim_end_matches('0');
+    let digs = if trimmed.is_empty() { "0" } else { trimmed };
+    let k = digs.len() as i64;
+    let body = if k <= npos && npos <= 21 {
+        format!("{digs}{}", "0".repeat((npos - k) as usize))
+    } else if 0 < npos && npos <= 21 && npos < k {
+        let split = npos as usize;
+        format!("{}.{}", &digs[..split], &digs[split..])
+    } else if -6 < npos && npos <= 0 {
+        format!("0.{}{}", "0".repeat((-npos) as usize), digs)
+    } else {
+        let exp = npos - 1;
+        let esign = if exp < 0 { "-" } else { "+" };
+        let e = exp.abs().to_string();
+        if k > 1 {
+            format!("{}.{}e{}{}", &digs[..1], &digs[1..], esign, e)
+        } else {
+            format!("{}e{}{}", &digs[..1], esign, e)
+        }
+    };
+    format!("{sign}{body}")
+}
+"#;
+
 const AT_HELPER: &str = r#"fn tl_at<T: Clone>(v: &[T], i: i32) -> Option<T> {
     let n = v.len() as i32;
     let i = if i < 0 { n + i } else { i };
@@ -110,6 +157,21 @@ const TAIL_HELPER: &str = r#"fn tl_tail<T: Clone>(v: &[T]) -> Option<Vec<T>> {
     } else {
         Some(v[1..].to_vec())
     }
+}
+"#;
+
+const FIRST_HELPER: &str = r#"fn tl_first<T: Clone>(v: &[T]) -> Option<T> {
+    v.first().cloned()
+}
+"#;
+
+const ANY_HELPER: &str = r#"fn tl_any(v: &[bool]) -> bool {
+    v.iter().any(|&x| x)
+}
+"#;
+
+const ALL_HELPER: &str = r#"fn tl_all(v: &[bool]) -> bool {
+    v.iter().all(|&x| x)
 }
 "#;
 
@@ -235,13 +297,15 @@ const READ_HELPER: &str = r#"fn tl_read_all_stdin() -> Vec<u8> {
 /// Split on `\n` only, matching `jq -R` and Python's raw stdin iteration rather than Rust's own
 /// `BufRead::lines`, which also swallows a `\r` before it -- CRLF is ordinary content here, not a
 /// line terminator. The final line is yielded even with no trailing `\n`, deliberately not `wc
-/// -l`'s undercount; empty stdin yields zero lines, not one empty one.
+/// -l`'s undercount; empty stdin yields zero lines, not one empty one. A non-UTF-8 byte is
+/// refused rather than replaced: a `Str` is Unicode scalar values, and a byte that is not one
+/// should not exist long enough to disagree about (kantord/toylang#102).
 fn tl_read_lines() -> Vec<String> {
     let bytes = tl_read_all_stdin();
     if bytes.is_empty() {
         return Vec::new();
     }
-    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let text = String::from_utf8(bytes).unwrap_or_else(|_| tl_fail("stdin is not valid UTF-8"));
     let mut out: Vec<String> = text.split('\n').map(|s| s.to_string()).collect();
     if text.ends_with('\n') {
         out.pop();
@@ -414,6 +478,43 @@ fn tl_parse_i32(p: &mut TlParser) -> i32 {
     i32::try_from(n).unwrap_or_else(|_| tl_fail("integer is out of range"))
 }
 
+fn tl_parse_f64(p: &mut TlParser) -> f64 {
+    p.skip_ws();
+    let start = p.p;
+    if p.p < p.b.len() && matches!(p.b[p.p], b'-' | b'+') {
+        p.p += 1;
+    }
+    let mut digits = 0;
+    while p.p < p.b.len() && p.b[p.p].is_ascii_digit() {
+        p.p += 1;
+        digits += 1;
+    }
+    if p.p < p.b.len() && p.b[p.p] == b'.' {
+        p.p += 1;
+        while p.p < p.b.len() && p.b[p.p].is_ascii_digit() {
+            p.p += 1;
+            digits += 1;
+        }
+    }
+    if digits == 0 {
+        tl_fail("expected a number");
+    }
+    if p.p < p.b.len() && matches!(p.b[p.p], b'e' | b'E') {
+        p.p += 1;
+        if p.p < p.b.len() && matches!(p.b[p.p], b'-' | b'+') {
+            p.p += 1;
+        }
+        if p.p >= p.b.len() || !p.b[p.p].is_ascii_digit() {
+            tl_fail("malformed exponent");
+        }
+        while p.p < p.b.len() && p.b[p.p].is_ascii_digit() {
+            p.p += 1;
+        }
+    }
+    let text = std::str::from_utf8(&p.b[start..p.p]).expect("number characters are ascii");
+    text.parse().unwrap_or_else(|_| tl_fail("number is out of range"))
+}
+
 fn tl_parse_bool(p: &mut TlParser) -> bool {
     p.skip_ws();
     if p.b[p.p..].starts_with(b"true") {
@@ -524,10 +625,12 @@ pub fn emit(program: &Program) -> String {
     let mut used = Used::default();
     let mut records = Vec::new();
     let mut enums = Vec::new();
+    let mut parse_types: Vec<Type> = Vec::new();
     let mut ctx = Collect {
         used: &mut used,
         records: &mut records,
         enums: &mut enums,
+        parse_types: &mut parse_types,
         registry: &program.enums,
     };
     for f in &program.funcs {
@@ -552,6 +655,11 @@ pub fn emit(program: &Program) -> String {
     // parser for a shape the checker already promised can never cross the wire.
     let mut wire: Vec<Type> = Vec::new();
     for ty in [&program.input, &program.inputs].into_iter().flatten() {
+        collect_wire(&program.enums, ty, &mut wire);
+    }
+    // A `parse` result is delivered the same way stdin is, so its type's parsers are needed
+    // too; without this a record/enum parse would emit a call to a parser that never existed.
+    for ty in &parse_types {
         collect_wire(&program.enums, ty, &mut wire);
     }
 
@@ -656,6 +764,7 @@ pub fn emit(program: &Program) -> String {
         || arith
         || arith64
         || reads_value
+        || used.parse
         || uses("tl_at(")
         || uses("tl_tail(")
         || uses("tl_range(")
@@ -669,10 +778,14 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_int("), INT_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
+        (uses("tl_float_to_str("), FLOAT_HELPER),
         (uses("tl_at("), AT_HELPER),
         (uses("tl_slice("), SLICE_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
+        (uses("tl_first("), FIRST_HELPER),
+        (uses("tl_any("), ANY_HELPER),
+        (uses("tl_all("), ALL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
         (uses("tl_sort("), SORT_HELPER),
         (uses("tl_reverse("), REVERSE_HELPER),
@@ -682,10 +795,10 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_chars("), CHARS_HELPER),
         (uses("tl_dsv("), DSV_HELPER),
         (
-            reads_value || uses("tl_read_all_stdin(") || uses("tl_read_lines("),
+            reads_value || uses("tl_read_all_stdin(") || uses("tl_read_lines(") || used.parse,
             READ_HELPER,
         ),
-        (reads_value || uses("TlParser"), PARSER_HELPER),
+        (reads_value || uses("TlParser") || used.parse, PARSER_HELPER),
         (uses("tl_quote("), QUOTE_HELPER),
         (uses("tl_join("), JOIN_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
@@ -740,6 +853,8 @@ fn collect_wire(enums: &Enums, ty: &Type, out: &mut Vec<Type>) {
 #[derive(Default)]
 struct Used {
     jsonlines: bool,
+    /// Whether `parse` was called on a plain string, which needs the reader and parser helpers.
+    parse: bool,
 }
 
 /// One walk, collecting the record types that need a struct declaration (and a parser, if the
@@ -748,6 +863,8 @@ struct Collect<'a> {
     used: &'a mut Used,
     records: &'a mut Vec<Type>,
     enums: &'a mut Vec<Type>,
+    /// The result types of every `Builtin::Parse`, so their record/enum parsers are emitted.
+    parse_types: &'a mut Vec<Type>,
     /// Every enum the program declared. The variant list on a `Type::Enum` in hand may be a
     /// placeholder, so the payloads to descend into are read from here (`ty::variants`).
     registry: &'a Enums,
@@ -836,7 +953,9 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
-            Kind::Slice { base, start, end, .. } => {
+            Kind::Slice {
+                base, start, end, ..
+            } => {
                 self.walk(base);
                 if let Some(s) = start {
                     self.walk(s);
@@ -857,6 +976,12 @@ impl Collect<'_> {
             Kind::Builtin { which, arg } => {
                 if *which == Builtin::JsonLines {
                     self.used.jsonlines = true;
+                }
+                if *which == Builtin::Parse {
+                    self.used.parse = true;
+                    if !self.parse_types.contains(&t.ty) {
+                        self.parse_types.push(t.ty.clone());
+                    }
                 }
                 self.walk(arg);
             }
@@ -904,7 +1029,7 @@ impl Emitter<'_> {
             Type::Sink => "String".to_string(),
             Type::Int => "i32".to_string(),
             Type::Int64 => "i64".to_string(),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            Type::Float => "f64".to_string(),
             Type::Bool => "bool".to_string(),
             // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
             // the two, so nothing here needs to tell them apart.
@@ -933,7 +1058,7 @@ impl Emitter<'_> {
             Type::Int => "tl_parse_i32".to_string(),
             // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.
             Type::Int64 => unreachable!("input cannot contain an Int64, refused by the checker"),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            Type::Float => "tl_parse_f64".to_string(),
             Type::Bool => "tl_parse_bool".to_string(),
             // The checker refuses Char anywhere in an input type: it has no wire form.
             Type::Char => unreachable!("input cannot contain a Char, refused by the checker"),
@@ -1173,7 +1298,11 @@ impl Emitter<'_> {
         match &t.kind {
             Kind::Str(s) => rs_string(s),
             Kind::Int(n) => int_lit(&t.ty, *n),
-            Kind::Float(_) => unreachable!("Float is JS-only in this row"),
+            // `float::lit` is Rust's `Display`, which drops the `.0` on a whole value (`2.0` ->
+            // `2`) -- fine on a dynamically-typed target, but in Rust that spelling is an
+            // integer literal. The `f64` suffix re-types it so `2f64` is the 2.0 the node names
+            // and `0.25 * 2` type-checks as float-by-float (plans/float-format-research.md).
+            Kind::Float(n) => format!("{}f64", crate::float::lit(*n)),
             Kind::Var(name) => format!("{}.clone()", self.user(name)),
             Kind::Local(id) => format!("{}.clone()", self.local(*id)),
             Kind::Input => format!("{INPUT}.clone()"),
@@ -1183,10 +1312,9 @@ impl Emitter<'_> {
             Kind::Lines => "tl_read_lines()".to_string(),
             // RFC 4180 field scanning over the same raw lines `lines` keeps, the scanner in
             // DSV_HELPER.
-            Kind::Dsv { delim } => format!(
-                "tl_dsv(&tl_read_lines(), {}.as_str())",
-                rs_string(delim)
-            ),
+            Kind::Dsv { delim } => {
+                format!("tl_dsv(&tl_read_lines(), {}.as_str())", rs_string(delim))
+            }
             Kind::RecordLit { fields } => {
                 let parts: Vec<String> = fields
                     .iter()
@@ -1216,6 +1344,13 @@ impl Emitter<'_> {
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("({}).to_string()", self.expr(arg)),
+                // Read the string as one value, refusing any trailing content the way stdin is
+                // read: `tl_parse_line` is the per-document path `inputs` uses.
+                Builtin::Parse => format!(
+                    "tl_parse_line(&{}, {})",
+                    self.expr(arg),
+                    self.parser_expr(&t.ty)
+                ),
                 Builtin::IntToI64 => format!("(({}) as i64)", self.expr(arg)),
                 Builtin::Range => format!("tl_range({})", self.expr(arg)),
                 Builtin::Chars => format!("tl_chars(&{})", self.expr(arg)),
@@ -1233,6 +1368,9 @@ impl Emitter<'_> {
                 Builtin::Collect => self.expr(arg),
                 Builtin::Length => format!("(({}).len() as i32)", self.expr(arg)),
                 Builtin::Tail => format!("tl_tail(&{})", self.expr(arg)),
+                Builtin::First => format!("tl_first(&{})", self.expr(arg)),
+                Builtin::Any => format!("tl_any(&{})", self.expr(arg)),
+                Builtin::All => format!("tl_all(&{})", self.expr(arg)),
                 Builtin::Flatten => format!("tl_flatten(&{})", self.expr(arg)),
                 Builtin::Sort => format!("tl_sort(&{})", self.expr(arg)),
                 Builtin::Reverse => format!("tl_reverse(&{})", self.expr(arg)),
@@ -1349,7 +1487,10 @@ impl Emitter<'_> {
                 })
             }
             Kind::Slice {
-                base, start, end, depth,
+                base,
+                start,
+                end,
+                depth,
             } => {
                 let lo = match start {
                     Some(s) => self.expr(s),
@@ -1430,7 +1571,7 @@ impl Emitter<'_> {
             Type::Str => format!("tl_quote(&{value})"),
             Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Int | Type::Int64 => format!("({value}).to_string()"),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            Type::Float => format!("tl_float_to_str({value})"),
             Type::Bool => format!("({value}).to_string()"),
             Type::Vec(elem) => {
                 let e = format!("e{depth}");
@@ -1539,17 +1680,39 @@ fn concat(ty: &Type, l: String, r: String) -> String {
 }
 
 /// One arithmetic expression at the width the node's type names. `wrapping_*` are
-/// width-generic method names, so only the div/rem helpers change at 64 bits.
+/// width-generic method names, so only the div/rem helpers change at 64 bits; a Float is IEEE
+/// binary64 itself, so it uses plain operators with no wrap or guard to spell.
 fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
-    match op {
-        BinOp::Div if *ty == Type::Int64 => format!("tl_div64({l}, {r})"),
-        BinOp::Rem if *ty == Type::Int64 => format!("tl_rem64({l}, {r})"),
-        BinOp::Div => format!("tl_div({l}, {r})"),
-        BinOp::Rem => format!("tl_rem({l}, {r})"),
-        BinOp::Add => format!("({l}).wrapping_add({r})"),
-        BinOp::Sub => format!("({l}).wrapping_sub({r})"),
-        BinOp::Mul => format!("({l}).wrapping_mul({r})"),
-        other => unreachable!("{other} is not arithmetic"),
+    if *ty == Type::Float {
+        // IEEE binary64 is the type itself (ADR 0007), so plain operators are the exact
+        // arithmetic with no wrap to spell. Division by zero is the IEEE answer, Infinity --
+        // Rust's own f64 `/` already gives it, so there is no `tl_div` guard here the way the
+        // integer widths need.
+        match op {
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            BinOp::Div => format!("({l} / {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else if *ty == Type::Int64 {
+        match op {
+            BinOp::Div => format!("tl_div64({l}, {r})"),
+            BinOp::Rem => format!("tl_rem64({l}, {r})"),
+            BinOp::Add => format!("({l}).wrapping_add({r})"),
+            BinOp::Sub => format!("({l}).wrapping_sub({r})"),
+            BinOp::Mul => format!("({l}).wrapping_mul({r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else {
+        match op {
+            BinOp::Div => format!("tl_div({l}, {r})"),
+            BinOp::Rem => format!("tl_rem({l}, {r})"),
+            BinOp::Add => format!("({l}).wrapping_add({r})"),
+            BinOp::Sub => format!("({l}).wrapping_sub({r})"),
+            BinOp::Mul => format!("({l}).wrapping_mul({r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
     }
 }
 

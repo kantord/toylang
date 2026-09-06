@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Origin, Param, Pattern, Span};
+use crate::ast::{BinOp, Def, Expr, FieldsPattern, File, MatchArm, Origin, Param, ParamShape, Pattern, Span};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{self, Sig, Type};
@@ -9,7 +9,7 @@ use crate::ty::{self, Sig, Type};
 mod linearity;
 mod types;
 
-use linearity::{StreamBinding, check_linear, field_used, param_used, prune_unreachable};
+use linearity::{StreamBinding, check_linear, field_used, local_used, param_used, prune_unreachable};
 use types::{
     TypeEnv, alias_map, constructor_of, enum_map, is_constructor_of, matcher_of, resolve,
     resolve_enum, signatures,
@@ -149,27 +149,8 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             }
         }
     }
-    let sigs = signatures(&file.defs, &env)?;
+    let mut sigs = signatures(&file.defs, &env)?;
     let input = RefCell::new(None);
-    // A program's `input <type>` declaration types stdin up front, before the body is read,
-    // instead of borrowing the type from the first use of `input`. Resolving it into the same
-    // cell the uses read is what lets the annotation and the uses agree on one type, and the
-    // wire rules `input_read` applies to a use are applied to a declared type here too: a
-    // stream has nothing to decode, absence and Char and Int64 have no ratified wire form.
-    if let Some(declared) = &file.input {
-        let ty = resolve(declared, &env, &mut Vec::new())?;
-        if ty.contains_stream()
-            || ty.contains_opt()
-            || ty.contains_char()
-            || ty.contains_int64()
-        {
-            return Err(Error::new(
-                declared.span(),
-                format!("`input` cannot be declared as {ty}; it has no wire form to read"),
-            ));
-        }
-        *input.borrow_mut() = Some(ty);
-    }
     let inputs = RefCell::new(None);
     let dsv = RefCell::new(None);
     let next_local = Cell::new(0);
@@ -178,6 +159,34 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         .iter()
         .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
         .collect();
+    // The first context carries `signatures`' provisional hoisted signatures (ret = the matched
+    // enum), enough to check their bodies; the inference pass below replaces each provisional
+    // return with the body's actual type and rebuilds the context before anything is checked.
+    let ctx = Ctx {
+        sigs: &sigs,
+        enums: &enums,
+        variant_owners: &variant_owners,
+        scope: Vec::new(),
+        arm_fields: Vec::new(),
+        subject: None,
+        input: &input,
+        inputs: &inputs,
+        lines_used: &lines_used,
+        dsv: &dsv,
+        in_mapper: false,
+        in_fn: None,
+        visibility: &visibility,
+        file: Origin::Program,
+        next_local: &next_local,
+    };
+    // Return-type inference for hoisted definitions (`fn name = expr`, gh:152): a hoisted
+    // function's signature is not written, so no body -- its own or another's -- may be checked
+    // against the provisional return `signatures` seeded. Checking each hoisted body once here
+    // fixes the real return, and rebuilding `sigs` first is what lets every later call, a
+    // recursive one included, resolve it.
+    for (name, sig) in infer_hoisted(&ctx, file.defs.iter())? {
+        sigs.insert(name, sig);
+    }
     let ctx = Ctx {
         sigs: &sigs,
         enums: &enums,
@@ -261,13 +270,13 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
                 .to_string(),
         ));
     }
-    // `dsv` reads the same raw lines `lines` does, so it joins the same exclusivity: one real
+    // `dsv` reads the same raw lines `stdin` does, so it joins the same exclusivity: one real
     // stdin, read one way.
     let dsv = dsv.into_inner();
     for (other, name) in [
-        (input.is_some(), "`input`"),
-        (inputs.is_some(), "`inputs`"),
-        (lines_used.get(), "`lines`"),
+        (input.is_some(), "`parse(stdin)`"),
+        (inputs.is_some(), "`stdin | map(parse(.))`"),
+        (lines_used.get(), "`stdin`"),
     ] {
         if dsv.is_some() && other {
             return Err(Error::new(
@@ -290,6 +299,16 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     })
 }
 
+/// What `check_defs` made of a definition's parameter: the TIR param name the backends bind
+/// the function's argument to, and, for a destructured one, the locals each named field was
+/// lowered to. The param name is a real user name for a plain parameter and a hidden one the body
+/// never sees for a destructured one.
+struct LoweredParam {
+    name: String,
+    record: Option<LocalId>,
+    field_locals: Vec<(String, Span, LocalId, Type)>,
+}
+
 /// Signatures are collected before any body is checked, so a definition may call one that
 /// appears later in `defs`. This is also what recursion needs. No reachability pruning happens
 /// here: that needs the whole program's body, which `check_module` never has and `check` only
@@ -302,10 +321,93 @@ fn check_defs<'a>(
 ) -> Result<Vec<tir::Func>, Error> {
     let mut funcs = Vec::new();
     for def in defs {
+        // A hoisted definition (`fn name = expr`, gh:152) is checked by its own path: the
+        // signature is inferred rather than written, so none of the annotated-param machinery
+        // below applies. `infer_hoisted` already checked it once to fix the return type; this
+        // second check produces the `Func` the backends emit.
+        if def.hoisted {
+            funcs.push(check_hoisted_def(ctx, def)?);
+            continue;
+        }
         let sig = &ctx.sigs[&def.name];
-        let scope = match (&def.param, &sig.param) {
-            (Some(param), Some(param_ty)) => vec![(param.name.clone(), param_ty.clone(), None)],
-            (None, None) => Vec::new(),
+        // A destructured parameter binds each named field to a fresh local, and its record arrives
+        // as a hidden single-name parameter the body never sees: the `Bind` chain below reads it off
+        // the backend's function argument, so a user name can never collide with it. The fields'
+        // `Some(local)` scope entries are what make `let` shadowing behave (kantord/toylang#144).
+        let (scope, lowered) = match (&def.param, &sig.param) {
+            (Some(param), Some(param_ty)) => match &param.shape {
+                ParamShape::Name(name, _) => (
+                    vec![(name.clone(), param_ty.clone(), None)],
+                    LoweredParam {
+                        name: name.clone(),
+                        record: None,
+                        field_locals: Vec::new(),
+                    },
+                ),
+                ParamShape::Fields(fields) => {
+                    let Type::Record(pfields) = param_ty else {
+                        return Err(Error::new(
+                            fields.span,
+                            format!(
+                                "a destructuring parameter needs a record type, found {param_ty}"
+                            ),
+                        ));
+                    };
+                    let record = ctx.fresh();
+                    let mut scope = Vec::new();
+                    let mut field_locals = Vec::new();
+                    for (i, (fname, fspan)) in fields.names.iter().enumerate() {
+                        if fields.names[..i].iter().any(|(seen,_)| seen == fname) {
+                            return Err(Error::new(
+                                *fspan,
+                                format!("`{fname}` is bound twice in this pattern"),
+                            ));
+                        }
+                        let Some((_, fty)) = pfields.iter().find(|(n, _)| n == fname) else {
+                            return Err(Error::new(*fspan, format!("no field `{fname}` on {param_ty}")));
+                        };
+                        let fid = ctx.fresh();
+                        scope.push((fname.clone(), fty.clone(), Some(fid)));
+                        field_locals.push((fname.clone(), *fspan, fid, fty.clone()));
+                    }
+                    // Leaving fields out of a destructuring parameter is a forgotten field until
+                    // `..` says it was meant, the same rule a match arm's pattern follows.
+                    if !fields.rest {
+                        let missing: Vec<String> = pfields
+                            .iter()
+                            .filter(|(n,_)| !fields.names.iter().any(|(m,_)| m == n))
+                            .map(|(n,_)| format!("`{n}`"))
+                            .collect();
+                        if !missing.is_empty() {
+                            return Err(Error::new(
+                                fields.span,
+                                format!(
+                                    "a destructuring parameter must name every field of its type \
+                                     or end in `..`; missing {}",
+                                    missing.join(" and ")
+                                ),
+                            ));
+                        }
+                    }
+                    let name = format!("__{}_param", def.name);
+                    (
+                        scope,
+                        LoweredParam {
+                            name,
+                            record: Some(record),
+                            field_locals,
+                        },
+                    )
+                }
+            },
+            (None, None) => (
+                Vec::new(),
+                LoweredParam {
+                    name: String::new(),
+                    record: None,
+                    field_locals: Vec::new(),
+                },
+            ),
             _ => unreachable!("a signature's param mirrors its definition's"),
         };
         let def_ctx = Ctx {
@@ -334,7 +436,7 @@ fn check_defs<'a>(
         // call -- the tail-pipeline `|>` form or a direct call to a sink; nothing else is a
         // sink, and a body that is not one fails here with the declared-vs-found mismatch below
         // naming the function.
-        let body = if sig.ret == Type::Sink {
+        let mut body = if sig.ret == Type::Sink {
             if matches!(def.body, Expr::TailPipe { .. }) {
                 tail_pipe(&def_ctx, &def.body)?
             } else if let Some(tir) = sink_call(&def_ctx, &def.body)? {
@@ -355,8 +457,40 @@ fn check_defs<'a>(
                 Expected::Synthesised(body) => conform(&def_ctx, body, &sig.ret),
             }
         };
+        // A destructured parameter's record arrives as a hidden param and is bound to a fresh
+        // local, then each named field is projected off it -- the same `Bind` shape `let` uses, so
+        // every backend already knows how to run one. Field bindings wrap innermost-first so the
+        // record's own bind comes first.
+        if let Some(record) = lowered.record {
+            let param_ty = sig.param.clone().expect("a destructured param's type is Some");
+            for (fname, _, fid, fty) in lowered.field_locals.iter().rev() {
+                let base = Tir::new(param_ty.clone(), Kind::Local(record));
+                body = Tir::new(
+                    body.ty.clone(),
+                    Kind::Bind {
+                        local: *fid,
+                        value: Box::new(Tir::new(
+                            fty.clone(),
+                            Kind::Field {
+                                base: Box::new(base),
+                                name: fname.clone(),
+                            },
+                        )),
+                        body: Box::new(body),
+                    },
+                );
+            }
+            body = Tir::new(
+                body.ty.clone(),
+                Kind::Bind {
+                    local: record,
+                    value: Box::new(Tir::new(param_ty, Kind::Var(lowered.name.clone()))),
+                    body: Box::new(body),
+                },
+            );
+        }
         if let Some(param) = &def.param {
-            check_param(&body, param, &sig.param, &def.name, def.body.span())?;
+            check_param(&body, param, &lowered, &sig.param, &def.name, def.body.span())?;
         }
         if body.ty != sig.ret {
             return Err(Error::new(
@@ -369,7 +503,7 @@ fn check_defs<'a>(
         }
         funcs.push(tir::Func {
             name: def.name.clone(),
-            param: def.param.as_ref().map(|p| p.name.clone()),
+            param: if def.param.is_some() { Some(lowered.name.clone()) } else { None },
             param_ty: sig.param.clone(),
             body,
         });
@@ -409,7 +543,7 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
             }
         }
     }
-    let sigs = signatures(&module.defs, &env)?;
+    let mut sigs = signatures(&module.defs, &env)?;
     let input = RefCell::new(None);
     let inputs = RefCell::new(None);
     let lines_used = Cell::new(false);
@@ -437,6 +571,26 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
         file: Origin::Prelude,
         next_local: &next_local,
     };
+    for (name, sig) in infer_hoisted(&ctx, module.defs.iter())? {
+        sigs.insert(name, sig);
+    }
+    let ctx = Ctx {
+        sigs: &sigs,
+        enums: &enums,
+        variant_owners: &variant_owners,
+        scope: Vec::new(),
+        arm_fields: Vec::new(),
+        subject: None,
+        input: &input,
+        inputs: &inputs,
+        lines_used: &lines_used,
+        dsv: &dsv,
+        in_mapper: false,
+        in_fn: None,
+        visibility: &visibility,
+        file: Origin::Prelude,
+        next_local: &next_local,
+    };
     check_defs(module.defs.iter(), &ctx)
 }
 
@@ -447,26 +601,55 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
 fn check_param(
     body: &Tir,
     param: &Param,
+    lowered: &LoweredParam,
     param_ty: &Option<Type>,
     func_name: &str,
     body_span: Span,
 ) -> Result<(), Error> {
-    if matches!(param_ty, Some(Type::Stream(_))) {
-        check_linear(
-            body,
-            &StreamBinding::Param(&param.name),
-            &format!("`{}`", param.name),
-            body_span,
-        )?;
-    }
-    if !param_used(body, &param.name) {
-        return Err(Error::new(
-            param.span,
-            format!(
-                "parameter `{}` is never used; delete it from `{}`'s definition and its call sites",
-                param.name, func_name
-            ),
-        ));
+    match &param.shape {
+        ParamShape::Name(name, _) => {
+            if matches!(param_ty, Some(Type::Stream(_))) {
+                check_linear(
+                    body,
+                    &StreamBinding::Param(name),
+                    &format!("`{}`", name),
+                    body_span,
+                )?;
+            }
+            if !param_used(body, name) {
+                return Err(Error::new(
+                    param.span,
+                    format!(
+                        "parameter `{}` is never used; delete it from `{}`'s definition and its call sites",
+                        name, func_name
+                    ),
+                ));
+            }
+        }
+        // A destructured parameter's record type can never be a Stream (streams cannot live in
+        // records), so nothing linear to check; each named field is instead held to the same
+        // dead-code rule the plain parameter's name is, echoing what a match arm does to its
+        // pattern's fields.
+        ParamShape::Fields(fields) => {
+            for (fname, fspan) in &fields.names {
+                let (_, _, fid, _) = lowered
+                    .field_locals
+                    .iter()
+                    .find(|(n, _, _, _)| n == fname)
+                    .expect("the checker lowered every named field");
+                if !local_used(body, *fid) {
+                    let hint = if fields.rest {
+                        "remove it from the pattern".to_string()
+                    } else {
+                        "remove it from the pattern and close it with `..`".to_string()
+                    };
+                    return Err(Error::new(
+                        *fspan,
+                        format!("`{fname}` is bound here but never used in the body; {hint}"),
+                    ));
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -575,13 +758,16 @@ fn tail_pipe(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
 /// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `length`, `flatten`,
-/// `tail`, `collect`, `fields`, `sort`, `reverse`, `sum`, and `max` are polymorphic and checked
-/// from `synth`'s own arms; `select` and `map` rebind `.`. All sixteen are reserved the same
-/// way, and the docs harness (tests/docs.rs) reads this list to insist each one has a
-/// reference page.
-pub const BUILTIN_NAMES: [&str; 16] = [
+/// `tail`, `collect`, `fields`, `sort`, `reverse`, `sum`, `max`, `parse`, `first`, `any`, and
+/// `all` are polymorphic and checked from `synth`/`expect_inner`'s own arms; `select` and `map`
+/// rebind `.`. All twenty are reserved the same way, and the docs harness (tests/docs.rs) reads
+/// this list to insist each one has a reference page.
+pub const BUILTIN_NAMES: [&str; 20] = [
+    "all",
+    "any",
     "chars",
     "collect",
+    "first",
     "length",
     "fields",
     "flatten",
@@ -589,6 +775,7 @@ pub const BUILTIN_NAMES: [&str; 16] = [
     "jsonlines",
     "map",
     "max",
+    "parse",
     "range",
     "reverse",
     "select",
@@ -1221,11 +1408,14 @@ fn let_bind(
     };
     for (local, value) in locals.into_iter().zip(values).into_iter().rev() {
         let body_ty = tir.ty.clone();
-        tir = Tir::new(body_ty, Kind::Bind {
-            local,
-            value: Box::new(value),
-            body: Box::new(tir),
-        });
+        tir = Tir::new(
+            body_ty,
+            Kind::Bind {
+                local,
+                value: Box::new(value),
+                body: Box::new(tir),
+            },
+        );
     }
     Ok(if checked {
         Expected::Checked(tir)
@@ -1534,6 +1724,130 @@ fn match_chain(
     ))
 }
 
+/// `Msg(Ping -> "ping" or Quit -> "quit")` (gh:152): a `Match` over the subject `.`, with the
+/// named enum asserted as the subject's type. The arms are the same `or`-chain a `Match`
+/// carries; only the head differs. Resolution is delegated to `match_chain` once the subject is
+/// confirmed to be the enum the name spells, which is what makes the whole call form something
+/// the checker can reason about rather than a type name that happened to be called.
+fn match_call(
+    ctx: &Ctx,
+    enum_name: &str,
+    enum_span: Span,
+    arms: &[MatchArm],
+    span: Span,
+) -> Result<Tir, Error> {
+    if !ctx.enums.contains_key(enum_name) {
+        return Err(Error::new(enum_span, format!("unknown type `{enum_name}`")));
+    }
+    let Some((subject_ty, _)) = ctx.subject.clone() else {
+        return Err(Error::new(
+            span,
+            "a match needs a subject, so it must follow `|`".to_string(),
+        ));
+    };
+    let Type::Enum { name, .. } = &subject_ty else {
+        return Err(Error::new(
+            enum_span,
+            format!("`{enum_name}` names an enum, but the subject is {subject_ty}"),
+        ));
+    };
+    if name != enum_name {
+        return Err(Error::new(
+            enum_span,
+            format!(
+                "`{enum_name}` is not the subject's type, which is {subject_ty}"
+            ),
+        ));
+    }
+    match_chain(ctx, arms, span, None)
+}
+
+/// The body of `fn name = Msg(Ping -> ... or ...)` (gh:152): the implicit `.` parameter is the
+/// named enum, the body is a match call over it, and the function's signature -- parameter type
+/// and return both -- is whatever that resolves to. The parameter is bound as the subject and
+/// arrives through a hidden name the body never sees (it reads the subject), so the call form's
+/// `.` is real input flowing in, not a constant.
+fn check_hoisted_def(ctx: &Ctx, def: &Def) -> Result<tir::Func, Error> {
+    let Expr::MatchCall {
+        enum_name,
+        enum_span,
+        arms,
+        span,
+    } = &def.body
+    else {
+        return Err(Error::new(
+            def.span,
+            format!(
+                "`fn {} = ...` needs a match-call body that names the enum it matches, \
+                 such as `Msg(Ping -> \"ping\" or Quit -> \"quit\")`",
+                def.name
+            ),
+        ));
+    };
+    let Some(enum_ty) = ctx.enums.get(enum_name.as_str()) else {
+        return Err(Error::new(*enum_span, format!("unknown type `{enum_name}`")));
+    };
+    let sid = ctx.fresh();
+    let def_ctx = Ctx {
+        sigs: ctx.sigs,
+        enums: ctx.enums,
+        variant_owners: ctx.variant_owners,
+        scope: Vec::new(),
+        arm_fields: Vec::new(),
+        subject: Some((enum_ty.clone(), sid)),
+        input: ctx.input,
+        inputs: ctx.inputs,
+        lines_used: ctx.lines_used,
+        dsv: ctx.dsv,
+        in_mapper: false,
+        in_fn: Some(&def.name),
+        visibility: ctx.visibility,
+        file: ctx.file,
+        next_local: ctx.next_local,
+    };
+    let body = match_call(&def_ctx, enum_name, *enum_span, arms, *span)?;
+    let param_name = format!("__{}_param", def.name);
+    let body = Tir::new(
+        body.ty.clone(),
+        Kind::Bind {
+            local: sid,
+            value: Box::new(Tir::new(enum_ty.clone(), Kind::Var(param_name.clone()))),
+            body: Box::new(body),
+        },
+    );
+    Ok(tir::Func {
+        name: def.name.clone(),
+        param: Some(param_name),
+        param_ty: Some(enum_ty.clone()),
+        body,
+    })
+}
+
+/// Refine the provisional signatures of hoisted definitions (`fn name = expr`, gh:152) from
+/// their bodies. `signatures` seeded each with the enum it matches as a stand-in return; no
+/// call may rely on that, so this pass runs before any body is checked and replaces every one
+/// with the body's actual type. `ctx` is a provisional context carrying those seed signatures.
+fn infer_hoisted<'a>(
+    ctx: &Ctx<'a>,
+    defs: impl IntoIterator<Item = &'a Def>,
+) -> Result<HashMap<String, Sig>, Error> {
+    let mut refined = HashMap::new();
+    for def in defs {
+        if !def.hoisted {
+            continue;
+        }
+        let func = check_hoisted_def(ctx, def)?;
+        refined.insert(
+            def.name.clone(),
+            Sig {
+                param: func.param_ty.clone(),
+                ret: func.body.ty.clone(),
+            },
+        );
+    }
+    Ok(refined)
+}
+
 fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     let tir = synth_inner(ctx, expr)?;
     // A sink is not a value, so it can exist only where `tail_pipe` or `sink_call` recognized a
@@ -1554,21 +1868,21 @@ fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     match expr {
         Expr::Str { text, .. } => Ok(Tir::new(Type::Str, Kind::Str(text.clone()))),
-        Expr::Lines { span } => {
+        Expr::Stdin { span } => {
             if let Some(func) = ctx.in_fn {
-                return Err(source_in_fn(*span, "lines", func));
+                return Err(source_in_fn(*span, "stdin", func));
             }
             if ctx.in_mapper {
                 return Err(Error::new(
                     *span,
-                    "`lines` cannot be read inside a mapper body, which runs once per element"
+                    "`stdin` cannot be read inside a mapper body, which runs once per element"
                         .to_string(),
                 ));
             }
             if ctx.lines_used.get() {
                 return Err(Error::new(
                     *span,
-                    "`lines` has already been read; there is only one stdin".to_string(),
+                    "`stdin` has already been read; there is only one stdin".to_string(),
                 ));
             }
             ctx.lines_used.set(true);
@@ -1614,7 +1928,9 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             let field = Type::Vec(Box::new(Type::Str));
             Ok(Tir::new(
                 Type::Vec(Box::new(field)),
-                Kind::Dsv { delim: delim.clone() },
+                Kind::Dsv {
+                    delim: delim.clone(),
+                },
             ))
         }
         Expr::Int { value, span } => {
@@ -1671,7 +1987,6 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 return match local {
                     // A `let`-bound name reads the local it was bound to, not a `Var`: the
                     // backends' `Bind` only ever binds locals, so a bare name reference would dangle.
-
                     Some(id) => Ok(Tir::new(t.clone(), Kind::Local(*id))),
                     None => Ok(Tir::new(t.clone(), Kind::Var(name.clone()))),
                 };
@@ -1785,19 +2100,11 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Ok(access.tir)
         }
 
-        // `input` names one value, so its first checked use fixes the type for the whole
+        // `parse(stdin)` reads one value, so its first checked use fixes the type for the whole
         // program -- and a later use in a position that expects nothing can borrow what the
         // first use fixed. With no use typed yet, nothing says what it contains, and guessing
-        // is what the annotation rule avoids.
-        Expr::Input { span } => match ctx.input.borrow().as_ref() {
-            Some(ty) => Ok(Tir::new(ty.clone(), Kind::Input)),
-            None => Err(Error::new(*span, "cannot tell what `input` contains")),
-        },
-        Expr::Inputs { span } => match ctx.in_fn {
-            Some(func) => Err(source_in_fn(*span, "inputs", func)),
-            None => Err(Error::new(*span, "cannot tell what `inputs` contains")),
-        },
-
+        // is what the annotation rule avoids. `parse(s)` on an ordinary string cannot
+        // synthesise either: its result type comes only from the position it is checked in.
         Expr::Call {
             func,
             func_span,
@@ -1806,6 +2113,16 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         } => call(ctx, func, *func_span, arg, *span),
 
         Expr::Match { arms, span } => match_chain(ctx, arms, *span, None),
+
+        // A type name used as a match call (gh:152): sugar for a `Match` over `.`, resolved by
+        // `match_call` against the enum the name spells, then down to the same `match_chain`
+        // the ordinary `Match` runs.
+        Expr::MatchCall {
+            enum_name,
+            enum_span,
+            arms,
+            span,
+        } => match_call(ctx, enum_name, *enum_span, arms, *span),
 
         Expr::Variant {
             enum_name,
@@ -1866,7 +2183,18 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 Err(_) => expect(ctx, base, &Type::Int)?,
             };
             let width = inner.ty.clone();
-            let zero = Tir::new(width.clone(), Kind::Int(0));
+            // A Float's zero has to be `Kind::Float(0.0)`, not `Kind::Int(0)` typed as Float:
+            // every backend but JS keeps Int and Float in different representations (an i64 and
+            // an LLVM double are not interchangeable bits the way JS's untyped numbers let this
+            // slide), so a mismatched Kind here compiles on JS by accident and is a real bug on
+            // any backend that tells the two apart (kantord/toylang#149, found building the
+            // Native backend's Float support).
+            let zero_kind = if width == Type::Float {
+                Kind::Float(0.0)
+            } else {
+                Kind::Int(0)
+            };
+            let zero = Tir::new(width.clone(), zero_kind);
             let _ = span;
             Ok(Tir::new(
                 width,
@@ -1908,7 +2236,7 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         Expr::Let { bindings, body, .. } => match let_bind(ctx, bindings, body, None)? {
             Expected::Checked(_) => unreachable!("synth has no want, so nothing is Checked"),
             Expected::Synthesised(tir) => Ok(tir),
-        }
+        },
     }
 }
 
@@ -1922,6 +2250,27 @@ fn call(
     arg: &Option<Box<Expr>>,
     span: Span,
 ) -> Result<Tir, Error> {
+    // `parse` is resolved by its position, so `synth` owns only the two shapes that need
+    // no expectation: `parse(stdin)` borrowing the type an earlier checked use fixed, and
+    // every other parse refusing outright (its result type comes only from a position).
+    if func == "parse" {
+        let arg = need_arg(arg, func, span)?;
+        if matches!(arg, Expr::Stdin { .. }) {
+            return match ctx.input.borrow().as_ref() {
+                Some(ty) => Ok(Tir::new(ty.clone(), Kind::Input)),
+                None => Err(Error::new(
+                    arg.span(),
+                    "cannot tell what `parse(stdin)` contains",
+                )),
+            };
+        }
+        return Err(Error::new(
+            func_span,
+            "cannot tell what `parse` produces; its result type comes from the position it is \
+             checked in"
+                .to_string(),
+        ));
+    }
     // `select` and `map` are not special syntax, only special names: they are ordinary calls
     // whose argument is checked with `.` rebound to the subject's element type instead of
     // evaluated in the enclosing scope, which no ordinary function needs and is why they cannot
@@ -1985,6 +2334,19 @@ fn call(
     }
     if func == "max" {
         return max_call(ctx, need_arg(arg, func, span)?);
+    }
+    // The three search cuts (draft.md#query-is-search): `first` takes any element type
+    // the way `tail` does, `any` and `all` each take a Vec of Bool. All three are checked here
+    // rather than through `builtin()`'s fixed table: their return types are the element type's
+    // (or a fixed Bool), which no fixed signature can express.
+    if func == "first" {
+        return first_call(ctx, need_arg(arg, func, span)?);
+    }
+    if func == "any" {
+        return any_call(ctx, need_arg(arg, func, span)?);
+    }
+    if func == "all" {
+        return all_call(ctx, need_arg(arg, func, span)?);
     }
     if let Some((which, sig)) = builtin(func) {
         let param_ty = sig
@@ -2329,6 +2691,85 @@ fn max_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
     ))
 }
 
+/// `first(v)`, `Vec<T> -> Opt<T>`: the first entry, `None` on an empty Vec -- the cut that
+/// commits to what you have and abandons the remaining alternatives. Generic over the element
+/// type the way `tail` is, so it is checked here rather than through `builtin()`'s fixed table.
+fn first_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(elem) = arg.ty.elem().cloned() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`first` needs a Vec, found {}", arg.ty),
+        ));
+    };
+    Ok(Tir::new(
+        opt_of(ctx, elem),
+        Kind::Builtin {
+            which: tir::Builtin::First,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// The element type `any` and `all` are defined for: the one Bool. A Vec of anything else has
+/// no truth value to reduce over, so it is refused the way `sum`'s restricted set is.
+fn truthy(ty: &Type) -> bool {
+    matches!(ty, Type::Bool)
+}
+
+/// `any(v)`, `Vec<Bool> -> Bool`: whether any entry is true. The existential cut: an empty Vec
+/// has no true entry, so it is false.
+fn any_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(elem) = arg.ty.elem() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`any` needs a Vec of Bool, found {}", arg.ty),
+        ));
+    };
+    if !truthy(elem) {
+        return Err(Error::new(
+            arg_span,
+            format!("`any` needs a Vec of Bool, found {}", arg.ty),
+        ));
+    }
+    Ok(Tir::new(
+        Type::Bool,
+        Kind::Builtin {
+            which: tir::Builtin::Any,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// `all(v)`, `Vec<Bool> -> Bool`: whether every entry is true. The universal cut: an empty Vec
+/// has no false entry, so it is true (vacuously).
+fn all_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(elem) = arg.ty.elem() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`all` needs a Vec of Bool, found {}", arg.ty),
+        ));
+    };
+    if !truthy(elem) {
+        return Err(Error::new(
+            arg_span,
+            format!("`all` needs a Vec of Bool, found {}", arg.ty),
+        ));
+    }
+    Ok(Tir::new(
+        Type::Bool,
+        Kind::Builtin {
+            which: tir::Builtin::All,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
 /// Walk an access chain left to right, carrying what we are currently looking at and how many
 /// dimensions we are inside.
 ///
@@ -2438,7 +2879,12 @@ fn access(ctx: &Ctx, expr: &Expr) -> Result<Access, Error> {
         // absent, so the answer is the dimension itself, not an `Opt`: out-of-range bounds
         // clamp jq-style rather than going missing (kantord/toylang#143). A `None` bound means
         // the dimension's own boundary.
-        Expr::Slice { base, start, end, span } => {
+        Expr::Slice {
+            base,
+            start,
+            end,
+            span,
+        } => {
             let b = access(ctx, base)?;
             let Some(_) = b.elem.elem().cloned() else {
                 return Err(Error::new(
@@ -2930,43 +3376,37 @@ fn reorder_fields(
 /// `expect`, minus the final comparison. Each arm here is a form whose type can come from its
 /// position rather than its contents; expectation only ever resolves what synthesis would have
 /// refused -- a form that can synthesise falls through and is compared, never coerced.
-/// `input` against the type its position wants: the first use fills the program-wide slot,
-/// and every later use must agree with it. A signature can spell Stream now, so this position
-/// can ask for one; `input` is a whole value already in hand, which is exactly what a stream
-/// is not.
+/// The one error a type has no ratified wire form to read back, reported in the order the
+/// existing checks have always listed them: absence, then Char, then Int64. `None` means
+/// the type has a wire form to read.
+fn wire_form_error(ty: &Type) -> Option<&'static str> {
+    if ty.contains_opt() {
+        Some("absence has no wire form to read")
+    } else if ty.contains_char() {
+        Some("Char has no wire form to read")
+    } else if ty.contains_int64() {
+        Some("how an Int64 crosses the wire is not decided yet")
+    } else {
+        None
+    }
+}
+
+/// `parse(stdin)` against the type its position wants: the checked `Stream<Str> -> T` overload,
+/// lowered to the `Input` node every backend already reads. The first use fills the program-wide
+/// slot, and every later use must agree with it. A signature can spell Stream now, so this
+/// position can ask for one; `parse(stdin)` is a whole value already in hand, which is exactly
+/// what a stream is not.
 fn input_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
     if want.contains_stream() {
         return Err(Error::new(
             span,
-            format!("`input` is one value read from stdin, but {want} is wanted here"),
+            format!("`parse(stdin)` is one value read from stdin, but {want} is wanted here"),
         ));
     }
-    // Absence has no ratified wire form: the tag is an in-memory fact, serialization emits
-    // `null` for it going out, and whether `null` coming in reads as `none` is codec design
-    // nobody has done. Refusing is the reversible direction.
-    if want.contains_opt() {
+    if let Some(reason) = wire_form_error(want) {
         return Err(Error::new(
             span,
-            format!("`input` cannot be read as {want}; absence has no wire form to read"),
-        ));
-    }
-    // A Char is never itself JSON; it only ever comes from decoding a Str already in hand
-    // (`chars`), so there is nothing for a wire value to decode into.
-    if want.contains_char() {
-        return Err(Error::new(
-            span,
-            format!("`input` cannot be read as {want}; Char has no wire form to read"),
-        ));
-    }
-    // One-directional, unlike Char: an Int64 result prints fine, but reading one back is
-    // codec design nobody has done -- JS parses JSON numbers into doubles and is off past
-    // 2^53, and jq computes in them. Refusing is the reversible direction.
-    if want.contains_int64() {
-        return Err(Error::new(
-            span,
-            format!(
-                "`input` cannot be read as {want}; how an Int64 crosses the wire is not decided yet"
-            ),
+            format!("`parse(stdin)` cannot be read as {want}; {reason}"),
         ));
     }
     let mut slot = ctx.input.borrow_mut();
@@ -2975,7 +3415,7 @@ fn input_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
         Some(prev) if prev != want => {
             return Err(Error::new(
                 span,
-                format!("`input` is used as {prev} here and as {want} elsewhere"),
+                format!("`parse(stdin)` is used as {prev} here and as {want} elsewhere"),
             ));
         }
         Some(_) => {}
@@ -2983,58 +3423,111 @@ fn input_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
     Ok(Tir::new(want.clone(), Kind::Input))
 }
 
-/// `inputs` against the type its position wants, which must be a Stream. The filled slot
-/// doubles as the single-use flag: a second `inputs` would be a second stream claiming the
-/// same real stdin, the same mistake a second `lines` is.
+/// `stdin | map(parse(.))` against the type its position wants, which must be a Stream: the
+/// checked spelling `inputs` retired into, lowered to the `Inputs` node every backend already
+/// reads. The filled slot doubles as the single-use flag: a second such pipeline would be a
+/// second stream claiming the same real stdin, the same mistake a second `stdin` is.
 fn inputs_read(ctx: &Ctx, span: Span, want: &Type) -> Result<Tir, Error> {
     if let Some(func) = ctx.in_fn {
-        return Err(source_in_fn(span, "inputs", func));
+        return Err(source_in_fn(span, "stdin", func));
     }
     if ctx.in_mapper {
         return Err(Error::new(
             span,
-            "`inputs` cannot be read inside a mapper body, which runs once per element".to_string(),
+            "`stdin` cannot be read inside a mapper body, which runs once per element".to_string(),
         ));
     }
     let Type::Stream(elem) = want else {
         return Err(Error::new(
             span,
             format!(
-                "`inputs` is a stream, but {want} is wanted here; eager use is spelled \
-                 `collect(inputs)`"
+                "`stdin | map(parse(.))` is a stream, but {want} is wanted here; eager use is \
+                 spelled `collect(stdin | map(parse(.)))`"
             ),
         ));
     };
-    // The same no-wire-form-for-absence rule `input` states above.
-    if elem.contains_opt() {
+    if let Some(reason) = wire_form_error(elem) {
         return Err(Error::new(
             span,
-            format!("`inputs` cannot be read as {want}; absence has no wire form to read"),
-        ));
-    }
-    if elem.contains_char() {
-        return Err(Error::new(
-            span,
-            format!("`inputs` cannot be read as {want}; Char has no wire form to read"),
-        ));
-    }
-    if elem.contains_int64() {
-        return Err(Error::new(
-            span,
-            format!(
-                "`inputs` cannot be read as {want}; how an Int64 crosses the wire is not decided yet"
-            ),
+            format!("`stdin | map(parse(.))` cannot be read as {want}; {reason}"),
         ));
     }
     let mut slot = ctx.inputs.borrow_mut();
     if slot.is_some() {
         return Err(Error::new(
             span,
-            "`inputs` has already been read; there is only one stdin".to_string(),
+            "`stdin` has already been read; there is only one stdin".to_string(),
         ));
     }
     *slot = Some((**elem).clone());
     Ok(Tir::new(want.clone(), Kind::Inputs))
+}
+
+/// `parse(x)`, checked against the type its position wants. `parse(stdin)` takes the checked
+/// `Stream<Str> -> T` overload:one value read from stdin, lowered to the `Input` node.
+/// Every other argument goes through the checked `Str -> T` overload:the string is read as
+/// one JSON value of type `T`. The result type comes only from this position, so `synth` refuses
+/// any parse it cannot resolve the same way it always refused an untyped `input`.
+fn parse_call(ctx: &Ctx, arg: &Expr, span: Span, want: &Type) -> Result<Tir, Error> {
+    if matches!(arg, Expr::Stdin { .. }) {
+        return input_read(ctx, span, want);
+    }
+    if want.contains_stream() {
+        return Err(Error::new(
+            span,
+            format!("`parse` produces one value, but {want} is wanted here"),
+        ));
+    }
+    let str = expect(ctx, arg, &Type::Str)?;
+    if let Some(reason) = wire_form_error(want) {
+        return Err(Error::new(
+            span,
+            format!("`parse` cannot produce {want}; {reason}"),
+        ));
+    }
+    Ok(Tir::new(
+        want.clone(),
+        Kind::Builtin {
+            which: tir::Builtin::Parse,
+            arg: Box::new(str),
+        },
+    ))
+}
+
+/// Whether `expr` is `stdin | map(parse(.))`, the spelling `inputs` retired into. The checker
+/// recognizes the exact shape -- a pipe from the `stdin` source into a `map` whose body is
+/// `parse(.)` -- and lowers it to the existing `Inputs` node, so every backend's eager reader
+/// and fused loop keep working unchanged.
+fn inputs_shape(expr: &Expr) -> Option<Span> {
+    let Expr::Pipe { lhs, rhs, span } = expr else {
+        return None;
+    };
+    let Expr::Stdin { .. } = lhs.as_ref() else {
+        return None;
+    };
+    let Expr::Call { func, arg, .. } = rhs.as_ref() else {
+        return None;
+    };
+    if func != "map" {
+        return None;
+    }
+    let arg = arg.as_ref()?;
+    let Expr::Call {
+        func: inner,
+        arg: inner_arg,
+        ..
+    } = arg.as_ref()
+    else {
+        return None;
+    };
+    if inner != "parse" {
+        return None;
+    }
+    let inner_arg = inner_arg.as_ref()?;
+    if !matches!(inner_arg.as_ref(), Expr::Subject { .. }) {
+        return None;
+    }
+    Some(*span)
 }
 
 /// A constructor in a position that wants its enum takes the wanted instantiation: this is
@@ -3066,9 +3559,15 @@ fn wanted_variant(ctx: &Ctx, expr: &Expr, want: &Type) -> Option<Result<Tir, Err
             func_span,
             arg,
             ..
-        } if owns(func) && !ctx.sigs.contains_key(func) => {
-            Some(construct(ctx, want, func, *func_span, arg.as_deref(), None, false))
-        }
+        } if owns(func) && !ctx.sigs.contains_key(func) => Some(construct(
+            ctx,
+            want,
+            func,
+            *func_span,
+            arg.as_deref(),
+            None,
+            false,
+        )),
         Expr::Variant {
             enum_name,
             variant,
@@ -3102,13 +3601,23 @@ fn match_arm_want<'a>(arms: &[MatchArm], want: &'a Type) -> Option<&'a Type> {
 }
 
 fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> {
-    // The forms whose type comes from their position rather than their contents.
-    if let Expr::Input { span } = expr {
-        return input_read(ctx, *span, want).map(Expected::Checked);
+    // The forms whose type comes from their position rather than their contents. `parse`
+    // is resolved by what it is checked against: `parse(stdin)` is the checked
+    // `Stream<Str> -> T` overload (one value read from stdin), and `stdin | map(parse(.))`
+    // is the checked spelling `inputs` retired into. Both are lowered to the existing `Input`/
+    // `Inputs` nodes, whose single-read slots and element-type fixing the backends already
+    // rely on.
+    if let Expr::Call {
+        func, arg, span, ..
+    } = expr
+        && func == "parse"
+    {
+        let arg = need_arg(arg, "parse", *span)?;
+        return parse_call(ctx, arg, *span, want).map(Expected::Checked);
     }
 
-    if let Expr::Inputs { span } = expr {
-        return inputs_read(ctx, *span, want).map(Expected::Checked);
+    if let Some(span) = inputs_shape(expr) {
+        return inputs_read(ctx, span, want).map(Expected::Checked);
     }
 
     // `collect(inputs)` in a Vec-wanted position: the honest eager spelling the decision

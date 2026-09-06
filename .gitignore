@@ -1,5 +1,6 @@
 /target
 *.snap.new
+__pycache__/
 .claude/settings.local.json
 .claude/settings.local.json.tmp.*
 site/node_modules
@@ -8,3 +9,5 @@ site/*.tsbuildinfo
 docs/.annotations/
 docs/.grill/
 /repro.toy
+/benches/results
+/LAND-FAILURE.txt

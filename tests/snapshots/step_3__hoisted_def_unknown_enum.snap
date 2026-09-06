@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"fn nope = Missing(any() -> 0)\n\nnope(1)\"#)"
+---
+unknown type `Missing` (at byte 10)

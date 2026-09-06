@@ -1,9 +1,12 @@
 //! Type resolution: turns the surface syntax of types (`TypeExpr`, `EnumDecl`) into `ty::Type`.
-//! Runs once, eagerly, before any expression is checked, and touches neither `Expr` nor `Tir`.
+//! Runs once, eagerly, before any expression is checked, and touches neither `Expr` nor `Tir` --
+//! except one case: a hoisted definition's (`fn name = expr`, gh:152) signature is inferred from
+//! its body, which is the one place resolution must read the body's match-call head to name the
+//! enum the parameter matches.
 
 use std::collections::HashMap;
 
-use crate::ast::{Alias, Def, EnumDecl, Span, TypeExpr};
+use crate::ast::{Alias, Def, EnumDecl, Expr, ParamShape, Span, TypeExpr};
 use crate::error::Error;
 use crate::ty::{self, Sig, Type};
 
@@ -267,7 +270,9 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
     for def in defs {
         value_name(&def.name, def.span, "function name")?;
         if let Some(param) = &def.param {
-            value_name(&param.name, param.span, "parameter name")?;
+            if let ParamShape::Name(name, _) = &param.shape {
+                value_name(name, param.span, "parameter name")?;
+            }
         }
         if BUILTIN_NAMES.contains(&def.name.as_str()) {
             return Err(Error::new(
@@ -281,17 +286,50 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
                 format!("`{}` is defined twice", def.name),
             ));
         }
-        let sig = Sig {
-            param: match &def.param {
-                Some(param) => Some(resolve(&param.ty, env, &mut Vec::new())?),
-                None => None,
-            },
-            ret: resolve(&def.ret, env, &mut Vec::new())?,
+        let sig = if def.hoisted {
+            // `fn name = Msg(Ping -> ... or ...)` (gh:152): the signature is inferred from the
+            // body. The parameter is always the enum the match-call body names; the return is
+            // provisionally that same enum here and refined to the body's actual type by the
+            // hoisted-inference pass in `check::check` before any body is checked, so no call
+            // ever relies on the provisional value. The stream/sink rules below do not apply: a
+            // hoisted function's return is whatever its arms synthesise, not a written type.
+            let Expr::MatchCall { enum_name, enum_span, .. } = &def.body else {
+                return Err(Error::new(
+                    def.span,
+                    format!(
+                        "`fn {} = ...` needs a match-call body that names the enum it matches, \
+                         such as `Msg(Ping -> \"ping\" or Quit -> \"quit\")`",
+                        def.name
+                    ),
+                ));
+            };
+            let enum_ty =
+                resolve_named(enum_name, &[], *enum_span, env, &mut Vec::new(), &HashMap::new(), false)?;
+            Sig {
+                param: Some(enum_ty.clone()),
+                ret: enum_ty,
+            }
+        } else {
+            Sig {
+                param: match &def.param {
+                    Some(param) => Some(resolve(&param.ty, env, &mut Vec::new())?),
+                    None => None,
+                },
+                ret: match &def.ret {
+                    Some(ret) => resolve(ret, env, &mut Vec::new())?,
+                    // The `hoisted` branch above takes every `None`-ret definition, so a
+                    // non-hoisted one always wrote its return type.
+                    None => unreachable!("a non-hoisted definition always writes a return type"),
+                },
+            }
         };
         // A stream is born only at a source, so a function cannot conjure one: a stream result
         // flows in through a stream parameter, and the pipeline stays one chain fusion can
         // read. Refusing is the reversible direction.
-        if matches!(sig.ret, Type::Stream(_)) && !matches!(sig.param, Some(Type::Stream(_))) {
+        if !def.hoisted
+            && matches!(sig.ret, Type::Stream(_))
+            && !matches!(sig.param, Some(Type::Stream(_)))
+        {
             return Err(Error::new(
                 def.span,
                 format!(
@@ -302,7 +340,7 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
         }
         // A sink is not a value, so nothing can be passed one: `Sink` is legal as a return
         // type, and nowhere else in a signature.
-        if matches!(sig.param, Some(Type::Sink)) {
+        if !def.hoisted && matches!(sig.param, Some(Type::Sink)) {
             return Err(Error::new(
                 def.span,
                 format!(

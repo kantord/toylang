@@ -112,6 +112,11 @@ fn naming_a_file_still_formats_it_to_stdout() {
 #[test]
 #[cfg(unix)]
 fn unreadable_directory_is_reported_and_walk_continues() {
+    // Root reads a 0o000 directory anyway, so the permission refusal this test asserts is
+    // unobservable there; CI and normal development run as a regular user and still get it.
+    if running_as_root() {
+        return;
+    }
     use std::os::unix::fs::PermissionsExt;
 
     let dir = tempfile::tempdir().expect("a temp dir");
@@ -123,6 +128,12 @@ fn unreadable_directory_is_reported_and_walk_continues() {
     let unreadable = dir.path().join("unreadable");
     let perms = std::fs::Permissions::from_mode(0o000);
     std::fs::set_permissions(&unreadable, perms).expect("remove permissions");
+    // Root bypasses permission bits, so the scenario cannot be set up there: an unreadable
+    // directory is readable. Skip rather than fail.
+    if std::fs::read_dir(&unreadable).is_ok() {
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        return;
+    }
 
     let out = fmt(dir.path(), &[]);
 
@@ -145,6 +156,11 @@ fn unreadable_directory_is_reported_and_walk_continues() {
 #[test]
 #[cfg(unix)]
 fn unreadable_file_is_reported_and_walk_continues() {
+    // Root reads a 0o000 file anyway, so the permission refusal this test asserts is
+    // unobservable there; CI and normal development run as a regular user and still get it.
+    if running_as_root() {
+        return;
+    }
     use std::os::unix::fs::PermissionsExt;
 
     let dir = tempfile::tempdir().expect("a temp dir");
@@ -154,6 +170,12 @@ fn unreadable_file_is_reported_and_walk_continues() {
     let sealed = dir.path().join("sealed.toy");
     let perms = std::fs::Permissions::from_mode(0o000);
     std::fs::set_permissions(&sealed, perms).expect("remove permissions");
+    // Root bypasses permission bits, so the scenario cannot be set up there: a sealed file is
+    // readable. Skip rather than fail.
+    if std::fs::read(&sealed).is_ok() {
+        std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o644)).unwrap();
+        return;
+    }
 
     let out = fmt(dir.path(), &[]);
 
@@ -192,4 +214,14 @@ fn stdout(out: &Output) -> String {
 
 fn stderr(out: &Output) -> String {
     String::from_utf8(out.stderr.clone()).expect("utf-8 stderr")
+}
+
+/// Whether the suite is running with root's privileges, which bypass the permission bits the
+/// two unreadable-* tests assert on: a 0o000 directory or file stays readable, so there is no
+/// refusal for the walker to report. `id -u` says 0 for root (and for a setuid 0 process).
+fn running_as_root() -> bool {
+    Command::new("id")
+        .arg("-u")
+        .output()
+        .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).trim() == "0")
 }

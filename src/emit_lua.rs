@@ -39,10 +39,21 @@ local function tl_range(n)
 end
 ";
 
+const UTF8_HELPER: &str = "\
+local function tl_utf8_valid(s)
+  return pcall(function()
+    for _ in utf8.codes(s) do end
+  end)
+end
+";
+
 const COLLECT_HELPER: &str = "\
 local function tl_collect_lines()
   local out = {}
-  for line in io.lines() do out[#out + 1] = line end
+  for line in io.lines() do
+    if not tl_utf8_valid(line) then error(\"toylang: stdin is not valid UTF-8\", 0) end
+    out[#out + 1] = line
+  end
   return out
 end
 ";
@@ -132,6 +143,31 @@ local function tl_tail(v)
   local out = {}
   for i = 2, #v do out[i - 1] = v[i] end
   return { some = out }
+end
+";
+
+const FIRST_HELPER: &str = "\
+local function tl_first(v)
+  if #v == 0 then return \"none\" end
+  return { some = v[1] }
+end
+";
+
+const ANY_HELPER: &str = "\
+local function tl_any(v)
+  for i = 1, #v do
+    if v[i] then return true end
+  end
+  return false
+end
+";
+
+const ALL_HELPER: &str = "\
+local function tl_all(v)
+  for i = 1, #v do
+    if not v[i] then return false end
+  end
+  return true
 end
 ";
 
@@ -307,6 +343,127 @@ const CHARS_HELPER: &str = r#"local function tl_chars(s)
 end
 "#;
 
+// Lua has no JSON parser of its own (stdin values are parsed host-side before the chunk runs),
+// so `parse` needs one. It produces the same runtime shape the host-side parser hands over:
+// tables with 1-based numeric keys for arrays, string keys for objects, bare strings for unit
+// enum variants and single-key tables for payload ones. `null` becomes nil, which is fine since
+// the checker refuses absence as a parse result.
+const JSON_PARSE_HELPER: &str = r#"local function tl_parse_json(s)
+  local pos = 1
+  local n = #s
+  local function ws()
+    while pos <= n do
+      local c = s:sub(pos, pos)
+      if c == " " or c == "\t" or c == "\n" or c == "\r" then pos = pos + 1 else return end
+    end
+  end
+  local function fail(msg)
+    error("could not parse JSON: " .. msg, 0)
+  end
+  local function str()
+    pos = pos + 1
+    local out = {}
+    while true do
+      if pos > n then fail("unterminated string") end
+      local c = s:sub(pos, pos)
+      pos = pos + 1
+      if c == '"' then return table.concat(out) end
+      if c == "\\" then
+        local e = s:sub(pos, pos)
+        pos = pos + 1
+        if e == "n" then out[#out + 1] = "\n"
+        elseif e == "t" then out[#out + 1] = "\t"
+        elseif e == "r" then out[#out + 1] = "\r"
+        elseif e == "b" then out[#out + 1] = "\b"
+        elseif e == "f" then out[#out + 1] = "\f"
+        elseif e == "u" then
+          local cp = tonumber(s:sub(pos, pos + 3), 16)
+          pos = pos + 4
+          if cp >= 0xD800 and cp <= 0xDBFF and s:sub(pos, pos + 1) == "\\u" then
+            local lo = tonumber(s:sub(pos + 2, pos + 5), 16)
+            pos = pos + 6
+            cp = 0x10000 + (cp - 0xD800) * 0x400 + (lo - 0xDC00)
+          end
+          out[#out + 1] = utf8.char(cp)
+        else
+          out[#out + 1] = e
+        end
+      else
+        out[#out + 1] = c
+      end
+    end
+  end
+  local function val()
+    ws()
+    local c = s:sub(pos, pos)
+    if c == "{" then
+      pos = pos + 1
+      local t = {}
+      ws()
+      if s:sub(pos, pos) == "}" then pos = pos + 1 return t end
+      while true do
+        ws()
+        local key = str()
+        ws()
+        if s:sub(pos, pos) ~= ":" then fail("expected `:`") end
+        pos = pos + 1
+        t[key] = val()
+        ws()
+        local d = s:sub(pos, pos)
+        if d == "," then pos = pos + 1
+        elseif d == "}" then pos = pos + 1 return t
+        else fail("expected `,` or `}`") end
+      end
+    elseif c == "[" then
+      pos = pos + 1
+      local t = {}
+      local i = 0
+      ws()
+      if s:sub(pos, pos) == "]" then pos = pos + 1 return t end
+      while true do
+        i = i + 1
+        t[i] = val()
+        ws()
+        local d = s:sub(pos, pos)
+        if d == "," then pos = pos + 1
+        elseif d == "]" then pos = pos + 1 return t
+        else fail("expected `,` or `]`") end
+      end
+    elseif c == '"' then
+      return str()
+    elseif c == "t" then
+      if s:sub(pos, pos + 3) ~= "true" then fail("expected `true`") end
+      pos = pos + 4
+      return true
+    elseif c == "f" then
+      if s:sub(pos, pos + 4) ~= "false" then fail("expected `false`") end
+      pos = pos + 5
+      return false
+    elseif c == "n" then
+      if s:sub(pos, pos + 3) ~= "null" then fail("expected `null`") end
+      pos = pos + 4
+      return nil
+    else
+      local start = pos
+      while pos <= n do
+        local d = s:sub(pos, pos)
+        if d >= "0" and d <= "9" or d == "-" or d == "." or d == "e" or d == "E" then
+          pos = pos + 1
+        else
+          break
+        end
+      end
+      if pos == start then fail("unexpected character") end
+      return tonumber(s:sub(start, pos - 1))
+    end
+  end
+  local v = val()
+  ws()
+  if pos <= n then fail("trailing content after the value") end
+  return v
+end
+"#;
+
 pub fn emit(program: &Program) -> String {
     let enums = &program.enums;
     let mut out = String::new();
@@ -326,6 +483,9 @@ pub fn emit(program: &Program) -> String {
         (used.slice, SLICE_HELPER),
         (used.unwrap, UNWRAP_HELPER),
         (used.tail, TAIL_HELPER),
+        (used.first, FIRST_HELPER),
+        (used.any, ANY_HELPER),
+        (used.all, ALL_HELPER),
         (used.flatten, FLATTEN_HELPER),
         (used.sort, SORT_HELPER),
         (used.reverse, REVERSE_HELPER),
@@ -338,10 +498,12 @@ pub fn emit(program: &Program) -> String {
         (used.max, MAX_HELPER),
         (used.map, MAP_HELPER),
         (used.range, RANGE_HELPER),
+        (used.collect, UTF8_HELPER),
         (used.collect, COLLECT_HELPER),
         (used.split, SPLIT_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
         (used.chars, CHARS_HELPER),
+        (used.parse, JSON_PARSE_HELPER),
         (used.eq, EQ_HELPER),
     ] {
         if on {
@@ -404,6 +566,7 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
         }
         tir::Source::Lines => {
             out.push_str("for t_line in io.lines() do\n");
+            out.push_str("  if not tl_utf8_valid(t_line) then error(\"toylang: stdin is not valid UTF-8\", 0) end\n");
             ("t_line".to_string(), Type::Str)
         }
         // The bound is evaluated once; the loop counter is the element. A negative bound makes
@@ -597,6 +760,9 @@ struct Helpers {
     collect: bool,
     jsonlines: bool,
     tail: bool,
+    first: bool,
+    any: bool,
+    all: bool,
     flatten: bool,
     chars: bool,
     sort: bool,
@@ -605,6 +771,7 @@ struct Helpers {
     max: bool,
     eq: bool,
     split: bool,
+    parse: bool,
 }
 
 /// Equality on a composite is structural, which Lua's `==` on two tables is not -- it compares
@@ -645,12 +812,16 @@ fn builtin_helpers(which: Builtin, arg_ty: &Type, used: &mut Helpers) {
     used.range |= which == Builtin::Range;
     used.jsonlines |= which == Builtin::JsonLines;
     used.tail |= which == Builtin::Tail;
+    used.first |= which == Builtin::First;
+    used.any |= which == Builtin::Any;
+    used.all |= which == Builtin::All;
     used.flatten |= which == Builtin::Flatten;
     used.chars |= which == Builtin::Chars;
     used.sort |= which == Builtin::Sort;
     used.reverse |= which == Builtin::Reverse;
     used.sum |= which == Builtin::Sum;
     used.max |= which == Builtin::Max;
+    used.parse |= which == Builtin::Parse;
     used.arith |= which == Builtin::Sum && tir::runtime_elem(arg_ty) == Some(&Type::Int);
 }
 
@@ -746,7 +917,9 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
                 walk(index, used);
             }
-            Kind::Slice { base, start, end, .. } => {
+            Kind::Slice {
+                base, start, end, ..
+            } => {
                 used.slice = true;
                 walk(base, used);
                 if let Some(s) = start {
@@ -795,10 +968,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
         // works on the table of its entries. Fusion is what will remove this materialization.
         Kind::Lines => "tl_collect_lines()".to_string(),
-        Kind::Dsv { delim } => format!(
-            "tl_split_lines(tl_collect_lines(), {})",
-            lua_string(delim)
-        ),
+        Kind::Dsv { delim } => format!("tl_split_lines(tl_collect_lines(), {})", lua_string(delim)),
         // A record is a table keyed by field name, which is what field access reads.
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
@@ -834,6 +1004,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::Not(base) => format!("(not {})", expr(enums, base)),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("tostring({})", expr(enums, arg)),
+            // Lua has no JSON parser of its own -- stdin values are parsed host-side before the
+            // chunk runs -- so a string handed to `parse` has nothing to read it with.
+            Builtin::Parse => format!("tl_parse_json({})", expr(enums, arg)),
             // Lua's integers are 64-bit already; an Int just lives in the low half.
             Builtin::IntToI64 => expr(enums, arg),
             Builtin::Chars => format!("tl_chars({})", expr(enums, arg)),
@@ -851,6 +1024,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Collect => expr(enums, arg),
             Builtin::Length => format!("#{}", expr(enums, arg)),
             Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
+            Builtin::First => format!("tl_first({})", expr(enums, arg)),
+            Builtin::Any => format!("tl_any({})", expr(enums, arg)),
+            Builtin::All => format!("tl_all({})", expr(enums, arg)),
             Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
             Builtin::Sort => format!("tl_sort({})", expr(enums, arg)),
             Builtin::Reverse => format!("tl_reverse({})", expr(enums, arg)),
@@ -943,7 +1119,10 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             )
         }
         Kind::Slice {
-            base, start, end, depth,
+            base,
+            start,
+            end,
+            depth,
         } => {
             let lo = match start {
                 Some(s) => expr(enums, s),
@@ -953,13 +1132,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 Some(e) => expr(enums, e),
                 None => "nil".to_string(),
             };
-            format!(
-                "tl_slice({}, {}, {}, {})",
-                expr(enums, base),
-                lo,
-                hi,
-                depth
-            )
+            format!("tl_slice({}, {}, {}, {})", expr(enums, base), lo, hi, depth)
         }
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);

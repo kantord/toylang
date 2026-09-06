@@ -53,6 +53,27 @@ function tl_tail(v) {
 }
 ";
 
+const FIRST_HELPER: &str = "\
+function tl_first(v) {
+  if (v.length === 0) return \"none\";
+  return { some: v[0] };
+}
+";
+
+const ANY_HELPER: &str = "\
+function tl_any(v) {
+  for (let i = 0; i < v.length; i++) if (v[i]) return true;
+  return false;
+}
+";
+
+const ALL_HELPER: &str = "\
+function tl_all(v) {
+  for (let i = 0; i < v.length; i++) if (!v[i]) return false;
+  return true;
+}
+";
+
 const UNWRAP_HELPER: &str = r#"function tl_unwrap(v, depth) {
   if (depth > 0) return v.map((e) => tl_unwrap(e, depth - 1));
   if (v === "none") { throw new Error("toylang: unwrapped a value that is not there"); }
@@ -88,21 +109,33 @@ function tl_rem64(a, b) {
 const COLLECT_HELPER: &str = r#"// Synchronous, because a toylang expression evaluates to completion and node has no
 // synchronous line reader built in. Reads in fixed chunks off the real fd rather than
 // `readFileSync(0)`, so a line is available to the rest of the program as soon as it arrives
-// rather than only once stdin closes.
+// rather than only once stdin closes. TextDecoder with fatal: true replaces the lossy
+// toString("utf8"), so a non-UTF-8 byte is refused rather than silently becoming U+FFFD
+// (kantord/toylang#102).
 function tl_collect_lines() {
   const fs = require("fs");
   const out = [];
   let buf = "";
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   const chunk = Buffer.alloc(65536);
   for (;;) {
     const n = fs.readSync(0, chunk, 0, chunk.length, null);
     if (n === 0) break;
-    buf += chunk.toString("utf8", 0, n);
+    try {
+      buf += decoder.decode(chunk.subarray(0, n), { stream: true });
+    } catch (e) {
+      throw new Error("toylang: stdin is not valid UTF-8");
+    }
     let i;
     while ((i = buf.indexOf("\n")) !== -1) {
       out.push(buf.slice(0, i));
       buf = buf.slice(i + 1);
     }
+  }
+  try {
+    buf += decoder.decode();
+  } catch (e) {
+    throw new Error("toylang: stdin is not valid UTF-8");
   }
   if (buf.length > 0) out.push(buf);
   return out;
@@ -207,6 +240,9 @@ pub fn emit(program: &Program) -> String {
         (used.index, OPT_HELPER),
         (used.slice, SLICE_HELPER),
         (used.tail, TAIL_HELPER),
+        (used.first, FIRST_HELPER),
+        (used.any, ANY_HELPER),
+        (used.all, ALL_HELPER),
         (used.unwrap, UNWRAP_HELPER),
         (used.arith, ARITH_HELPER),
         (used.arith64, ARITH64_HELPER),
@@ -233,10 +269,18 @@ pub fn emit(program: &Program) -> String {
             // `param = arg; continue;` in a loop, so 100k-deep self-recursion cannot blow the
             // JS stack the way a real call would (kantord/toylang#141).
             let mut fresh = 0;
-            out.push_str(&format!("function {}({}) {{\n", user(&f.name), param.as_deref().unwrap_or_default()));
+            out.push_str(&format!(
+                "function {}({}) {{\n",
+                user(&f.name),
+                param.as_deref().unwrap_or_default()
+            ));
             out.push_str("  while (true) {\n");
             out.push_str(&indent(&indent(&tail_stmts(
-                enums, &f.name, param.as_deref(), &mut fresh, &f.body
+                enums,
+                &f.name,
+                param.as_deref(),
+                &mut fresh,
+                &f.body,
             ))));
             out.push_str("  }\n}\n");
         } else {
@@ -347,6 +391,7 @@ fn read_line_helper() -> String {
     let mut out = String::new();
     out.push_str("let tl_stdin_buf = \"\";\n");
     out.push_str("let tl_stdin_eof = false;\n");
+    out.push_str("let tl_decoder = new TextDecoder(\"utf-8\", { fatal: true });\n");
     out.push_str("function tl_read_line() {\n");
     out.push_str("  const fs = require(\"fs\");\n");
     out.push_str("  for (;;) {\n");
@@ -365,7 +410,11 @@ fn read_line_helper() -> String {
     out.push_str("    const chunk = Buffer.alloc(65536);\n");
     out.push_str("    const n = fs.readSync(0, chunk, 0, chunk.length, null);\n");
     out.push_str("    if (n === 0) { tl_stdin_eof = true; continue; }\n");
-    out.push_str("    tl_stdin_buf += chunk.toString(\"utf8\", 0, n);\n");
+    out.push_str("    try {\n");
+    out.push_str("      tl_stdin_buf += tl_decoder.decode(chunk.subarray(0, n), { stream: true });\n");
+    out.push_str("    } catch (e) {\n");
+    out.push_str("      throw new Error(\"toylang: stdin is not valid UTF-8\");\n");
+    out.push_str("    }\n");
     out.push_str("  }\n");
     out.push_str("}\n");
     out
@@ -507,6 +556,9 @@ struct Helpers {
     collect: bool,
     jsonlines: bool,
     tail: bool,
+    first: bool,
+    any: bool,
+    all: bool,
     str_cmp: bool,
     chars: bool,
     sum: bool,
@@ -611,10 +663,14 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::Builtin { which, arg } => {
                 used.jsonlines |= *which == Builtin::JsonLines;
                 used.tail |= *which == Builtin::Tail;
+                used.first |= *which == Builtin::First;
+                used.any |= *which == Builtin::Any;
+                used.all |= *which == Builtin::All;
                 used.chars |= *which == Builtin::Chars;
                 used.str_cmp |=
                     *which == Builtin::Sort && tir::runtime_elem(&arg.ty) == Some(&Type::Str);
-                used.sum |= *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int);
+                used.sum |=
+                    *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int);
                 used.sum64 |=
                     *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int64);
                 used.max |= *which == Builtin::Max;
@@ -639,7 +695,9 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
                 walk(index, used);
             }
-            Kind::Slice { base, start, end, .. } => {
+            Kind::Slice {
+                base, start, end, ..
+            } => {
                 used.slice = true;
                 walk(base, used);
                 if let Some(s) = start {
@@ -823,6 +881,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::Not(base) => format!("(!{})", expr(enums, base)),
         Kind::Builtin { which, arg } => match which {
             Builtin::IntToStr => format!("String({})", expr(enums, arg)),
+            // `JSON.parse` reads a string as one JSON value, the same shape `input` already
+            // reads stdin into.
+            Builtin::Parse => format!("JSON.parse({})", expr(enums, arg)),
             // The one real conversion among the backends: an Int is a number and an Int64 is
             // a BigInt, and BigInt() of a 32-bit integer is always exact.
             Builtin::IntToI64 => format!("BigInt({})", expr(enums, arg)),
@@ -846,6 +907,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Collect => expr(enums, arg),
             Builtin::Length => format!("{}.length", expr(enums, arg)),
             Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
+            Builtin::First => format!("tl_first({})", expr(enums, arg)),
+            Builtin::Any => format!("tl_any({})", expr(enums, arg)),
+            Builtin::All => format!("tl_all({})", expr(enums, arg)),
             Builtin::Flatten => format!("{}.flat()", expr(enums, arg)),
             // `Array.prototype.sort`'s default comparator stringifies, which is wrong for
             // numbers; `tl_str_cmp` already returns the -1/0/1 a comparator wants, so it can be
@@ -958,7 +1022,10 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             )
         }
         Kind::Slice {
-            base, start, end, depth,
+            base,
+            start,
+            end,
+            depth,
         } => {
             let lo = match start {
                 Some(s) => expr(enums, s),
@@ -968,13 +1035,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 Some(e) => expr(enums, e),
                 None => "undefined".to_string(),
             };
-            format!(
-                "tl_slice({}, {}, {}, {})",
-                expr(enums, base),
-                lo,
-                hi,
-                depth
-            )
+            format!("tl_slice({}, {}, {}, {})", expr(enums, base), lo, hi, depth)
         }
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);

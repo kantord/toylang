@@ -125,7 +125,7 @@ fn largest_product(g: Vec<Vec<Int>>) -> Int =
             )
     )
 
-largest_product(input)
+largest_product(parse(stdin))
 "#;
 
 const PROGRAM_13: &str = r#"
@@ -163,7 +163,7 @@ fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
         )
     )
 
-leading_digits(input)
+leading_digits(parse(stdin))
 "#;
 
 const PROGRAM_18: &str = r#"
@@ -189,7 +189,7 @@ fn collapse(p: {rows: Vec<Vec<Int>>, i: Int, acc: Vec<Int>}) -> Int =
 fn triangle_max(rows: Vec<Vec<Int>>) -> Int =
     collapse({rows: rows, i: length(rows) - 2, acc: rows[length(rows) - 1]!})
 
-triangle_max(input)
+triangle_max(parse(stdin))
 "#;
 
 /// A number split into its digits, one JSON integer per digit.

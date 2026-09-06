@@ -6,17 +6,24 @@ use anyhow::{Context, Result};
 use toylang::Backend;
 use toylang::fmt_tree::{self, Mode};
 
-const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE\n       toylang fmt FILE\n       toylang fmt [--write]";
+const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE\n       toylang fmt FILE\n       toylang fmt [--write]\n       toylang --explain-offload <run|emit|build> FILE [lua|js|jq|go|py|llvm]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    // `--explain-offload` is a leading flag on the file-naming commands: strip it, remember
+    // it, and dispatch the rest as usual.
+    let (args, explain) = if args.first() == Some(&"--explain-offload") {
+        (&args[1..], true)
+    } else {
+        (args.as_slice(), false)
+    };
     // The project-wide forms take no file, so they are read off first; everything else, `fmt
     // FILE` included, needs one file read before it can dispatch.
-    match args.as_slice() {
+    match args {
         ["fmt"] => fmt_project(Mode::Check),
         ["fmt", "--write"] => fmt_project(Mode::Write),
-        _ => on_file(&args),
+        _ => on_file(args, explain),
     }
 }
 
@@ -42,7 +49,7 @@ fn fmt_project(mode: Mode) -> ExitCode {
 }
 
 /// Every command that names one file to read: `run`, `emit`, `build`, and `fmt`'s filter form.
-fn on_file(args: &[&str]) -> ExitCode {
+fn on_file(args: &[&str], explain: bool) -> ExitCode {
     let (cmd, path, backend) = match args {
         [cmd, path] => (*cmd, *path, Backend::Lua),
         [cmd, path, name] => {
@@ -66,6 +73,15 @@ fn on_file(args: &[&str]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+
+    // The offload explanation is a diagnostic: it goes to stderr, so the command's own
+    // output -- the run's stdout, the emitted source -- is left untouched. A compile that
+    // fails is reported by the dispatch below; nothing is printed here.
+    if explain && matches!(cmd, "run" | "emit" | "build") {
+        if let Ok(program) = toylang::compile(&src) {
+            eprint!("{}", toylang::offload::explain(&program));
+        }
+    }
 
     let result = match cmd {
         "run" => run(&src, backend),

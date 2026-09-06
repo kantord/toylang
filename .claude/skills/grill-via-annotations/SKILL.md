@@ -31,9 +31,17 @@ annotations mode and its annotations join the sidebar; it never appears in publi
 - Each question is one annotated span: `<!-- @fill ... -->` where an answer gets typed,
   `<!-- @review ... -->` where a recommendation needs confirming or vetoing,
   `<!-- @comment ... -->` for coordinator commentary that frames a question.
-- Present options as full rendered blocks: the code as it would look under each option,
-  costs stated, recommendation marked. This is the entire point of the mode -- never
-  compress options back into one-liners.
+- Option cards are SHORT (maintainer ruling, function-signature-matching-syntax round 4,
+  2026-09-02: round 4's option blocks ran full code probes per option and drew explicit
+  complaint -- "at least 8 times shorter"). One line of tradeoff plus a one-line verdict per
+  option; no fenced code block inside `options[].description`. Put the shared code -- the
+  baseline, the probes, the evidence that differentiates the options -- in `thesis` ONCE,
+  referenced by each option rather than repeated per option. `background`/`thesis` still
+  carry full rendered code; only `options[].description` shrank.
+- Frame forward, not just for the immediate pick: name how each option would interact with
+  known future plans/ambitions in this design area, not only whether it parses today. The
+  maintainer does not want to commit early to an option that closes off a direction -- surface
+  that tension in `thesis` rather than presenting a bare pick.
 - End the page with a short "what happens on submit" note so the user knows what their
   answers trigger.
 

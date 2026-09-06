@@ -1,6 +1,6 @@
 ---
 source: tests/streams.rs
-assertion_line: 208
-expression: "err(\"inputs\")"
+assertion_line: 210
+expression: "err(\"stdin | map(parse(.))\")"
 ---
-cannot tell what `inputs` contains (at byte 0)
+cannot tell what `parse` produces; its result type comes from the position it is checked in (at byte 12)

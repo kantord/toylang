@@ -15,7 +15,7 @@ const PROGRAM: &str = r#"
 fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
     users | select(.age >= 18) | map {name: .name}
 
-jsonlines(adults(inputs))
+jsonlines(adults((stdin | map(parse(.)))))
 "#;
 
 /// The probe that proves the shape guess actually retired: two stream-signature functions
@@ -29,7 +29,7 @@ fn keep(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str, age: Int}> =
 fn names(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
     users | map {name: .name}
 
-jsonlines(names(keep(inputs)))
+jsonlines(names(keep((stdin | map(parse(.))))))
 "#;
 
 /// A `lines`-sourced pipeline ending in `jsonlines`: a shape the old recognizer never knew
@@ -38,7 +38,7 @@ const SHOUT: &str = r#"
 fn shout(names: Stream<Str>) -> Stream<Str> =
     names | map(. + "!")
 
-jsonlines(shout(lines))
+jsonlines(shout(stdin))
 "#;
 
 const RECORD_IN: &[u8] = b"{\"name\": \"ada\", \"age\": 36}\n";
@@ -340,7 +340,7 @@ enum Msg { Ping, Text{body: Str} }
 fn render(msgs: Stream<Msg>) -> Stream<Str> =
     msgs | map(. | Text -> .body or any() -> "*ping*")
 
-jsonlines(render(inputs))
+jsonlines(render((stdin | map(parse(.)))))
 "#;
 
 /// The valid record ahead of the bad one still streams before the refusal ends the run: a live
@@ -384,4 +384,62 @@ fn go_refuses_live_same_as_the_fixture() {
 #[test]
 fn py_refuses_live_same_as_the_fixture() {
     assert_refuses_live("py");
+}
+
+/// A non-UTF-8 byte arriving via `lines` is refused on every backend: a Str is Unicode
+/// scalar values, and a byte that is not one should not exist long enough to disagree about
+/// (kantord/toylang#102). The corpus harness feeds `Feed::Text(String)` -- always valid UTF-8
+/// -- so this is the one path where a raw invalid byte can arrive: the real CLI, whose stdin
+/// is inherited straight through to each backend's line reader. What each backend says while
+/// refusing is its own business; only the refusal is compared.
+const LINES_ECHO: &str = "join_lines collect lines\n";
+
+fn assert_refuses_non_utf8(backend: &str) {
+    let mut child = spawn_cli(LINES_ECHO, backend);
+    child
+        .stdin
+        .take()
+        .expect("piped stdin")
+        .write_all(b"ada\xff\nbo\n")
+        .expect("write non-UTF-8 input");
+    let output = child.wait_with_output().expect("wait for exit");
+    assert!(
+        !output.status.success(),
+        "{backend} exited successfully on non-UTF-8 input via lines"
+    );
+}
+
+#[test]
+fn lua_refuses_non_utf8_via_lines() {
+    assert_refuses_non_utf8("lua");
+}
+
+#[test]
+fn native_refuses_non_utf8_via_lines() {
+    assert_refuses_non_utf8("native");
+}
+
+#[test]
+fn rust_refuses_non_utf8_via_lines() {
+    assert_refuses_non_utf8("rust");
+}
+
+#[test]
+fn go_refuses_non_utf8_via_lines() {
+    assert_refuses_non_utf8("go");
+}
+
+#[test]
+fn py_refuses_non_utf8_via_lines() {
+    assert_refuses_non_utf8("py");
+}
+
+#[test]
+fn js_refuses_non_utf8_via_lines() {
+    assert_refuses_non_utf8("js");
+}
+
+#[test]
+fn jq_refuses_non_utf8_via_lines() {
+    assert_refuses_non_utf8("jq");
 }
