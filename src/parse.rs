@@ -657,13 +657,32 @@ impl<'i> Cursor<'i> {
         }))
     }
 
-    /// `fn name(param: Type) -> Type = body` or `fn name() -> Type = body`.
+    /// `fn name(param: Type) -> Type = body`, `fn name() -> Type = body`, or the hoisted
+    /// `fn name = body` (gh:152) with no parameter list and no return annotation.
     ///
-    /// Both annotations are required by the grammar rather than by the checker, which is what
-    /// makes the message point at the missing annotation instead of at an inference failure.
+    /// The annotated forms require both annotations by the grammar rather than by the checker,
+    /// which is what makes the message point at the missing annotation instead of at an
+    /// inference failure. The hoisted form is the opposite: `=` follows the name directly, and
+    /// the whole signature -- parameter and return -- is inferred from the body, whose first
+    /// token must be a match call that names the enum the implicit `.` parameter matches.
     fn def(&mut self, is_pub: bool) -> Result<Def, Error> {
         let start = self.eat(Tok::Fn)?;
         let (name, _) = self.eat_ident("a name")?;
+        let (next, _) = self.peek()?;
+        if next == Tok::Eq {
+            self.advance()?;
+            let body = self.def_body()?;
+            return Ok(Def {
+                span: start.to(body.span()),
+                name,
+                param: None,
+                ret: None,
+                body,
+                is_pub,
+                origin: crate::ast::Origin::Program,
+                hoisted: true,
+            });
+        }
         self.eat(Tok::LParen)?;
 
         let param = self.param()?;
@@ -1078,22 +1097,8 @@ impl<'i> Cursor<'i> {
         let mut lead = lead;
         loop {
             let arm = match lead.take() {
-                Some(e) => self.guard_or_default_arm(e)?,
-                None if self.arm_starts_here() => {
-                    let pattern = self.pattern()?;
-                    self.eat(Tok::Arrow)?;
-                    let body = self.arm_body()?;
-                    let span = pattern.span().to(body.span());
-                    MatchArm {
-                        pattern,
-                        body,
-                        span,
-                    }
-                }
-                None => {
-                    let e = self.with_or(false, |p| p.operand(COND_POWER))?;
-                    self.guard_or_default_arm(e)?
-                }
+                Some(e) => self.match_arm(Some(e))?,
+                None => self.match_arm(None)?,
             };
             arms.push(arm);
             let (sep, _) = self.peek()?;
@@ -1104,6 +1109,57 @@ impl<'i> Cursor<'i> {
         }
         let span = arms[0].span.to(arms[arms.len() - 1].span);
         Ok(Expr::Match { arms, span })
+    }
+
+    /// One `or`-separated element of an arm chain: a variant pattern arm, or (when `lead` is a
+    /// guard the caller already read, or no pattern begins the element) a guard or default arm.
+    /// Shared by a `Match` and a `MatchCall` (gh:152), which differ only in what heads them and
+    /// how the chain ends.
+    fn match_arm(&mut self, lead: Option<Expr>) -> Result<MatchArm, Error> {
+        match lead {
+            Some(e) => self.guard_or_default_arm(e),
+            None if self.arm_starts_here() => {
+                let pattern = self.pattern()?;
+                self.eat(Tok::Arrow)?;
+                let body = self.arm_body()?;
+                let span = pattern.span().to(body.span());
+                Ok(MatchArm {
+                    pattern,
+                    body,
+                    span,
+                })
+            }
+            None => {
+                let e = self.with_or(false, |p| p.operand(COND_POWER))?;
+                self.guard_or_default_arm(e)
+            }
+        }
+    }
+
+    /// `Msg(Ping -> "pong" or Quit -> "bye")` (gh:152): a capitalized type name used as a match
+    /// call. The parens hold the same `or`-separated arms a `Match` carries, over the subject
+    /// `.`; the name is the assertion of what the subject is, and the checker resolves each arm
+    /// against it. A capitalized name is always an enum, never a callable, so `Name(...)` is
+    /// unambiguously a match call rather than a function application.
+    fn match_call(&mut self, enum_name: String, enum_span: Span) -> Result<Expr, Error> {
+        self.eat(Tok::LParen)?;
+        let mut arms = Vec::new();
+        loop {
+            arms.push(self.match_arm(None)?);
+            let (sep, _) = self.peek()?;
+            if sep != Tok::Or {
+                break;
+            }
+            self.advance()?;
+        }
+        let close = self.eat(Tok::RParen)?;
+        let span = enum_span.to(close);
+        Ok(Expr::MatchCall {
+            enum_name,
+            enum_span,
+            arms,
+            span,
+        })
     }
 
     /// An arm's right side: the one position where a bare `or` is the chain's separator rather
@@ -1466,6 +1522,15 @@ impl<'i> Cursor<'i> {
                 payload,
                 span: span.to(end),
             });
+        }
+        // `Msg(Ping -> ...)`: a capitalized name is an enum, so `Name(` is a match call
+        // (gh:152), never a function application. Like a call, the `(` must start on the
+        // name's line.
+        if next == Tok::LParen && name.chars().next().is_some_and(char::is_uppercase) {
+            if !self.same_line(span.end, next_span.start) {
+                return Ok(Expr::Var { name, span });
+            }
+            return self.match_call(name, span);
         }
         let argument_starts = match next {
             Tok::LParen | Tok::LBrace => true,

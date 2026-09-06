@@ -833,3 +833,6 @@ nothing else changes, since it feeds on the watchdog's own unresolved output; **
 staleness** is a slow-accumulating tax rather than a hard stop. None of these are reasons to slow
 down the rollout -- they are the concrete list of what the next round of hardening should target
 before volume triples.
+of future work; **(5) worktree staleness** is a slow-accumulating tax rather than a hard stop.
+None of these are reasons to slow down the rollout -- they are the concrete list of what the next
+round of hardening should target before volume triples.
