@@ -323,6 +323,26 @@ fn select(source: &tir::Tir, param: &tir::LocalId, pred: &tir::Tir) -> String {
         ],
     )
 }
+fn sort_by(source: &tir::Tir, param: &tir::LocalId, body: &tir::Tir) -> String {
+    variant(
+        "SortBy",
+        &[
+            ("source", boxed(source)),
+            ("param", param.to_rust()),
+            ("body", boxed(body)),
+        ],
+    )
+}
+fn max_by(source: &tir::Tir, param: &tir::LocalId, body: &tir::Tir) -> String {
+    variant(
+        "MaxBy",
+        &[
+            ("source", boxed(source)),
+            ("param", param.to_rust()),
+            ("body", boxed(body)),
+        ],
+    )
+}
 fn field(base: &tir::Tir, name: &String) -> String {
     variant("Field", &[("base", boxed(base)), ("name", name.to_rust())])
 }
@@ -412,6 +432,16 @@ impl ToRust for tir::Kind {
                 param,
                 pred,
             } => select(source, param, pred),
+            SortBy {
+                source,
+                param,
+                body,
+            } => sort_by(source, param, body),
+            MaxBy {
+                source,
+                param,
+                body,
+            } => max_by(source, param, body),
             Field { base, name } => field(base, name),
             Builtin { which, arg } => builtin(which, arg),
             Unwrap { base } => variant("Unwrap", &[("base", base.to_rust())]),

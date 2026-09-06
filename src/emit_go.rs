@@ -864,6 +864,10 @@ impl Collect<'_> {
                 self.walk(source);
                 self.walk(pred);
             }
+            Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+                self.walk(source);
+                self.walk(body);
+            }
             Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => self.walk(base),
             Kind::Index { base, index, .. } => {
                 self.walk(base);
@@ -1324,6 +1328,11 @@ impl Emitter<'_> {
                 self.go_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
                 self.expr(pred)
             ),
+            // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
+            // program produced one without its backend being taught to emit it yet.
+            Kind::SortBy { .. } | Kind::MaxBy { .. } => {
+                unreachable!("sort_by/max_by emission lands in a later step")
+            }
             // Opt's reorder pass (kantord/toylang#66): the same `!o.ok`/`.v` shape tlUnwrap and
             // the printer already branch on, generalised to rebuild the tlOpt instead of
             // reading through it. `__srcOpt` binds the source once, so evaluating it twice (the

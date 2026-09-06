@@ -1,0 +1,5 @@
+---
+source: tests/reductions.rs
+expression: "toylang::compile(r#\"[{n: 1}] | max_by(.)\"#).map(|_|\n()).unwrap_err().to_string()"
+---
+`max_by`'s projection must be Int, Int64, Str, or Char, found {n: Int} (at byte 18)

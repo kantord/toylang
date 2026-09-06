@@ -122,6 +122,24 @@ pub enum Kind {
         param: LocalId,
         pred: Box<Tir>,
     },
+    /// `v | sort_by(.key)`, `v`'s entries in ascending order by the scalar the projection `body`
+    /// projects each entry to, ties keeping their original order (a stable sort, the way jq's
+    /// `sort_by` reads). Unlike `sort` no total order on `T` is needed: every backend orders
+    /// by the projected key, which the checker restricts to the same natively-ordered scalars
+    /// `sort` takes.
+    SortBy {
+        source: Box<Tir>,
+        param: LocalId,
+        body: Box<Tir>,
+    },
+    /// `v | max_by(.key)`, the entry whose projection `body` is greatest, `Opt<T>` because an
+    /// empty Vec has no maximum -- the same absence answer `max` gives (kantord/toylang#140).
+    /// Ties keep the first such entry, the way a stable maximum reads.
+    MaxBy {
+        source: Box<Tir>,
+        param: LocalId,
+        body: Box<Tir>,
+    },
     /// Read `name` off `base`. How many Vec layers to descend through is `base.ty`'s doing and
     /// is not stored, so it cannot disagree with the type.
     Field {
@@ -580,6 +598,10 @@ pub fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
         Kind::Select { source, pred, .. } => {
             each_node(source, f);
             each_node(pred, f);
+        }
+        Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+            each_node(source, f);
+            each_node(body, f);
         }
         Kind::Field { base, .. } | Kind::Unwrap { base } => each_node(base, f),
         Kind::Builtin { arg, .. } => each_node(arg, f),

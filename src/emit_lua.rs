@@ -889,6 +889,10 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(source, used);
                 walk(pred, used);
             }
+            Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+                walk(source, used);
+                walk(body, used);
+            }
             Kind::Field { base, .. } => {
                 // Depth zero is a plain index and needs no helper.
                 used.field |= tir::vec_depth(&base.ty) > 0;
@@ -1085,6 +1089,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             local(*param),
             expr(enums, pred)
         ),
+        // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
+        // program produced one without its backend being taught to emit it yet.
+        Kind::SortBy { .. } | Kind::MaxBy { .. } => {
+            unreachable!("sort_by/max_by emission lands in a later step")
+        }
         // The depth comes from the type on the node below, so it cannot disagree with it, and
         // the emitted helper is told the answer rather than inspecting the value for it.
         Kind::Unwrap { base } => {

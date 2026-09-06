@@ -79,6 +79,10 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
             walk(source, tags);
             walk(pred, tags);
         }
+        Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+            walk(source, tags);
+            walk(body, tags);
+        }
         Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => walk(base, tags),
         Kind::Builtin { arg, .. } => walk(arg, tags),
         Kind::Index { base, index, .. } => {
@@ -138,6 +142,8 @@ fn tag(tir: &Tir) -> String {
         Kind::Map { .. } => "map-over".into(),
         Kind::OptMap { .. } => "opt-map".into(),
         Kind::Select { .. } => "selection.narrow".into(),
+        Kind::SortBy { .. } => "sort-by".into(),
+        Kind::MaxBy { .. } => "max-by".into(),
         Kind::Field { .. } => "projection".into(),
         Kind::Builtin { which, .. } => format!("builtin.{}", builtin_tag(*which)),
         Kind::Unwrap { .. } => "unwrap".into(),

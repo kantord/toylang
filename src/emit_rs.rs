@@ -948,6 +948,10 @@ impl Collect<'_> {
                 self.walk(source);
                 self.walk(pred);
             }
+            Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+                self.walk(source);
+                self.walk(body);
+            }
             Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => self.walk(base),
             Kind::Index { base, index, .. } => {
                 self.walk(base);
@@ -1466,6 +1470,11 @@ impl Emitter<'_> {
                 self.rs_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
                 self.expr(pred)
             ),
+            // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
+            // program produced one without its backend being taught to emit it yet.
+            Kind::SortBy { .. } | Kind::MaxBy { .. } => {
+                unreachable!("sort_by/max_by emission lands in a later step")
+            }
             Kind::Field { base, name } => {
                 let depth = tir::vec_depth(&base.ty);
                 self.distribute(&self.expr(base), &base.ty, &t.ty, depth, &|v| {
