@@ -561,3 +561,81 @@ commit-1 boundary ("parse.rs + tir.rs only, tree stays green") cannot compile, b
 docs/.grill/stdin-redesign-shape.round.yaml (marker: escalated-issue-172). Root cause this
 time is the reshape ruling's own commit boundary, not brief clarity or model strength --
 future redispatches of this lane should wait for the ruling rather than retrying.
+## Investigation: `issue-float-format-research` stuck at 3 commitless runs on two permission walls (2026-09-04)
+
+Lane stats at capture: 3 runs, 0 commits, clean tracked tree, live false, only
+untracked scratch files (`scratch_float_py.py`, `scratch_float_go/main.go`) left behind. Base is
+`5e2fd24` (2026-09-03, the "escalate float-build-{go,python,rust} stall" commit), 72
+commits behind `origin/main`. Two frozen tails survive in
+`plans/incidents/issue-float-format-research-20260904/`.
+
+Run 1 (20:21:35) was competent and progressing: read the issue, the ADR, and
+`src/float.rs` (the JS reference: Rust's `f64::to_string()`, the shortest round-trip
+decimal = JS's `String(number)`), grepped the backends (`Float is JS-only in every non-JS
+row`), wrote and ran a Python probe successfully (repr(float): always a `.0` suffix on
+integral values, fixed notation in [1e-4, 1e16), exponent form outside that with
+`e+NN`/`e-NN`, zero-padded exponent digits), wrote a Go probe, and died when
+`go run ./scratch_float_go` auto-refused headless. No finding committed.
+
+Run 2 (22:52:49) found the `float-format-research` row only in `origin/main`'s
+board.yaml (its own base predates the row),traced the sandbox-widening ruling via git log,
+then followed the board row's "read the float-build-python lane's probe files for a concrete
+lead" instruction into the sandbox boundary: all five cross-worktree reads denied,and it
+stopped, commitless, without writing anything. This is the same probe-read wall the task's
+dispatch note names as the prior-stall cause,and it fired after the stronger-model redispatch
+commit (8891ca5, GLM 5.2),its behavior matches what the escalation entry said the brief
+carried ("told the worker explicitly not to retry that read if denied again") -- if that run
+was the GLM dispatch, it reproduced the stall exactly as the option description warned (a model
+bump alone won't fix a permission boundary).
+
+Diagnosis: **tooling/permission trap**, compounded by a **brief-clarity** defect, not a
+capability gap(and only weakly task shape):
+
+- **Wall #1: `go run` is denied.** Already ruled on (float-format-research-sandbox
+  escalation, `c92073a`, 2026-09-03 22:53): the ruling added `opencode.jsonc`
+  allowing `go run*` for this project, because `go` had no allow rule and fell to the global
+  catch-all ("ask"), auto-refused headless. But that fix landed on `main`, and this lane's base
+  (`5e2fd24`) predates it -- a redispatch on the current worktree would reproduce run 1's
+  death verbatim until the branch is refreshed onto main.
+- **Wall #2: cross-worktree reads are denied.** The board row's own lead -- the
+  issue-float-build-python lane's probe files -- lives outside the sandbox boundary, denied
+  every prior attempt (run 2 hit it on all five files;issue-172/174 set the precedent).It is
+  a poison instruction for a sandboxed worker: it either kills the run with denials,or, were
+  it allowed, it would be reading a different lane's uncommitted scratch -- an ephemeral,
+  unversioned data source, not a durable lead. The 2026-09-03 escalation already told the
+  stronger-model run not to retry it, which it did anyway. It must come out of the board row,
+  not be carried forward.
+
+- Not capability: both runs read the right sources and made real progress (run 1 had the
+  Python leg complete and was one tool call from Go's);the survey itself is close, not hard.
+-
+
+Proposal (rebrief/reshape of `float-format-research`):
+
+1. **Refresh the lane base onto `main` before redispatch** -- else run 1's `go run` denial
+   (now fixed on main via `opencode.jsonc`) repeats from the stale base.
+ The `float-build-python`/`float-build-go`/`float-build-rust` siblings carry
+   `needs: [float-format-research]` (per origin/main's board),so unblocking this lane
+   unblocks three.
+2. **Amend the board row**: drop the cross-worktree probe-read clause entirely(denied every
+   attempt;unversioned scratch is not a lead a sandboxed worker can use). Substitute the
+   already-in-worktree probes as the concrete lead: `scratch_float_py.py` (run 1's complete
+   Python probe)and `scratch_float_go/main.go` (its Go probe, written but never run -- now
+   runnable on a refreshed base),with documented-behavior fallback (strconv.FormatFloat /
+   repr(float) docs,`cargo`/`rustc` are globally allowed) if a probe is denied again.
+3. **Pre-seed the reference**: state that `src/float.rs` (`f64::to_string()`) = JS
+   `String(number)` = shortest round-trip decimal,and that the deliverable is per-backend
+   *spelling convention*, not the digits themselves -- the digits already agree by construction.
+
+   Run 1 re-derived this;give the next run that finding for free instead of re-burning budget.
+
+4. **Add a landing rule**: commit each backend's guidance as soon as that backend's probe
+   leg is done (one backend per commit, mirroring the float-build-* sibling reshapes),not
+   hold all three uncommitted while chasing the last leg. The board row's "a partial written
+   finding beats another commitless run" is already there,but both deaths came before any
+   write;the landing rule only bites once the walls are gone,or.
+5. If a fresh run stalls again after steps 1-4 (the go-run wall now genuinely gone):then
+   reshape the row to accept the survey from documented behavior as the deliverable -- the
+   formatting conventions are documented facts and the cross-language differences are themselves
+   the finding, not something needing live execution to record. The empirical-verification
+   requirement is the ask worth dropping, not the survey.
