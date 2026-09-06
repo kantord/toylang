@@ -1125,3 +1125,35 @@ diagnosis; the other tick's commit, `4d64926`, won the race and is the one on ma
 
 Root cause of the `format-patch` rc=128 itself is still open -- next occurrence will
 have both a kept sandbox and a captured log to diagnose from.
+
+## Likely root cause found: stale `/repo` baked into the shared toolchain snapshot (2026-09-06)
+
+Next occurrence, as predicted: `select-materialization-research` went GREEN (398/398)
+on attempt 1, `format-patch-failure.log` captured `fatal: bad object <base_commit>`,
+and the anomaly-path kept `sd-select-materialization-resear` alive for inspection.
+
+Diagnosis from the live sandbox: `git cat-file -t <base_commit>` inside the container
+fails outright (object absent from its odb), yet the same hash is a perfectly normal
+commit in the host-side `clone_dir` that `base_commit` was computed from (`git
+rev-parse HEAD` right after `prepare_clone()`'s checkout). `git log --oneline` inside
+the container shows its own history rooted several commits *behind* `base_commit`,
+ending in an old, real commit from main's history rather than the fresh checkout.
+
+`boot_sandbox()` boots the sandbox `--from-snapshot toylang-toolchain-v2` -- a full
+filesystem snapshot pinned at boot, created at some earlier point specifically to
+avoid rebuilding the Rust toolchain on every dispatch (see the 12G/40G-root-disk
+history above). The working theory: that snapshot was captured from a sandbox that
+already had `/repo` checked out (from whatever dispatch created it), so `/repo` exists
+in every fresh boot before the per-run `msb copy clone_dir name:/repo` ever runs.
+`msb copy` of a directory onto an existing directory of the same name appears not to
+fully replace it -- the snapshot's stale `.git` (refs, HEAD, and objects) survives, so
+the container ends up running against the old baked-in checkout while `base_commit`
+(and everything `extract_result()` computes from it) refers to a commit that was never
+actually transferred into the container's object store. This would explain both why
+`just check` still runs fine (a complete, just old, repo is present) and why
+`format-patch {base_commit}` fails outright (the object genuinely isn't there).
+
+Not yet fixed or confirmed with a controlled repro -- next step, if this recurs, is to
+`msb exec` into a *freshly booted, not-yet-copied* sandbox and check whether `/repo`
+already exists pre-copy. If confirmed, the fix is to make `boot_sandbox()` remove
+`/repo` before the `msb copy`, or copy into a scratch path and `mv` over it.
