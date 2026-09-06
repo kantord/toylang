@@ -175,3 +175,22 @@ If issue #163 is to be closed rather than left as a backlog idea, the recommenda
 is to record this analysis and close it as "considered, not a backend, see
 plans/erlang-target-research.md". The one condition that would reopen it, added
 concurrency, is not on any board.
+
+## Addendum: empirical verification is not possible on this host (gh:170)
+
+Follow-up asked to install/verify the Erlang toolchain and run the documented-semantics
+comparison against real `erl`/`erlc` output rather than written docs alone. `which erl
+erlc escript` finds nothing (confirmed directly, 2026-09-07: all three absent from
+`$PATH`), and there is no toolchain to install it with either -- this is a plain
+missing-dependency environment gap, not a permission wall (the prior attempt's `erl
+-noshell -eval 'halt().'` failing was the shell reporting "command not found", not a
+sandbox denial; the two look identical in a failed-command log, which is why the
+original brief mis-classified it).
+
+This does not change the recommendation above -- it was already reached without
+running Erlang (see line 9), on the documented-semantics comparison alone -- but it
+does mean the *comparison itself* stays a documented-semantics comparison rather than
+an empirically-verified one. Closing this addendum as the honest answer rather than
+leaving the row open for a redispatch that would rediscover the same absence: the
+recommendation stands, and empirical verification is blocked on installing an Erlang
+toolchain on the host, which is outside this research task's scope.
