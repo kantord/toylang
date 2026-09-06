@@ -4,13 +4,13 @@ Some data is one of a known set of shapes: a status is `active` or `inactive`, a
 point or a circle with a radius. An enum declares the set, closed:
 
 ```toylang
-enum Status { active, inactive }
+enum Status { Active, Inactive }
 
 Status.active
 ```
 
 ```output
-"active"
+"Active"
 ```
 
 Note what printed: a bare string. An enum is plain JSON on the wire -- a unit variant is a
@@ -19,18 +19,18 @@ rather than inventing a private encoding.
 
 ```toylang
 # fmt: syntax-example
-enum Shape { point, circle{r: Int} }
+enum Shape { Point, Circle{r: Int} }
 
 circle{r: 3}
 ```
 
 ```output
-{"circle":{"r":3}}
+{"Circle":{"r":3}}
 ```
 
-Constructing a variant is ordinary application of the constructor the declaration derives.
-The bare name (`circle{r: 3}`, `active`) works while only one enum claims it; the qualified
-`Shape.point` always works.
+Constructing a variant is ordinary application of the lowercase constructor the declaration
+derives. The bare constructor (`circle{r: 3}`, `active`) works while only one enum claims it;
+the qualified `Shape.point` always works.
 
 ## Match
 
@@ -38,9 +38,9 @@ Consuming an enum must handle every variant. The subject arrives through a pipe,
 with `or`, first match wins:
 
 ```toylang
-enum Shape { point, circle{r: Int} }
+enum Shape { Point, Circle{r: Int} }
 
-fn area_ish(s: Shape) -> Int = s | circle{r} -> r * r or point -> 0
+fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0
 
 {a: area_ish(Shape.point), b: area_ish(circle({r: 3}))}
 ```
