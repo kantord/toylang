@@ -240,15 +240,6 @@
 
 
 
-- id: draft-core-model-migration
-  title: Migrate the two-layer/cardinality core model to a concepts guide; embedded open threads go to the tracker (draft-split)
-  kind: build
-  model: fable
-  needs: []
-  soft: [draft-intro-migration, draft-questions-home]
-  prio: 4
-  status: todo
-
 - id: draft-access-model-migration
   title: Verify unary functions, lens access, and the dimension-spec model against the reference pages; salvage rationale, delete sections (draft-split)
   kind: build
