@@ -303,6 +303,28 @@ def run_opencode(name: str, message_file_guest: str, model: str, env: dict,
     return tail
 
 
+# Substrings that mean opencode never got to attempt the task at all (auth/
+# quota/rate-limit), as opposed to attempting it and failing. Confirmed live,
+# 2026-09-06: an expired OPENROUTER_API_KEY made every build turn a no-op --
+# `just check` then trivially passed against an untouched repo, so the run
+# reported GREEN with nothing to extract, silently losing two real tasks'
+# worth of work before anyone noticed. Nothing checked the opencode
+# invocation's own outcome before this.
+FATAL_API_PATTERNS = ("API key expired", "invalid_api_key", "Insufficient credit",
+                       "insufficient_quota", "rate limit exceeded")
+
+
+def fatal_api_error(tail: str) -> str | None:
+    """The matched pattern if `tail` shows opencode failed before doing any
+    real work, else None. Retrying against the same dead key/quota wastes the
+    retry cap on a failure no amount of build attempts can fix."""
+    low = tail.lower()
+    for pat in FATAL_API_PATTERNS:
+        if pat.lower() in low:
+            return pat
+    return None
+
+
 def read_json_from_guest(name: str, guest_path: str, env: dict) -> dict | None:
     r = exec_in(name, f"cat {guest_path} 2>/dev/null", env, check=False)
     if not r.stdout.strip():
@@ -507,8 +529,9 @@ def run_build_cycle(issue_id: str, name: str, first_message_guest: str, model: s
     for i in range(retry_cap + 1):
         print(f"== {issue_id}: build turn {i + 1} ==", file=sys.stderr)
         if i == 0:
-            run_opencode(name, first_message_guest, model, env, continue_session=continue_session,
-                         agent="build", log_tag=f"build-{i}")
+            run_tail = run_opencode(name, first_message_guest, model, env,
+                                     continue_session=continue_session,
+                                     agent="build", log_tag=f"build-{i}")
         else:
             fb_guest = f"/root/feedback-{i}.txt"
             feedback = (
@@ -516,8 +539,19 @@ def run_build_cycle(issue_id: str, name: str, first_message_guest: str, model: s
                 f"failures below -- do not start over or redo work that already passed.\n\n{attempts[-1].verify_tail}"
             )
             send_text(name, fb_guest, feedback, workdir, env, f"feedback-{i}-sent")
-            run_opencode(name, fb_guest, model, env, continue_session=True,
-                         agent="build", log_tag=f"build-{i}")
+            run_tail = run_opencode(name, fb_guest, model, env, continue_session=True,
+                                     agent="build", log_tag=f"build-{i}")
+
+        fatal = fatal_api_error(run_tail)
+        if fatal is not None:
+            print(f"== {issue_id}: FATAL opencode invocation failure on build turn {i + 1} "
+                  f"(matched '{fatal}') -- not retrying, this needs the key/quota fixed, not "
+                  "another attempt ==", file=sys.stderr)
+            attempts.append(Attempt(
+                i + 1, False,
+                f"opencode never attempted the task -- matched fatal pattern '{fatal}' in its "
+                f"own log:\n\n{run_tail}"))
+            break
 
         print(f"== {issue_id}: verifying build turn {i + 1} ==", file=sys.stderr)
         ok, tail = verify(name, env)

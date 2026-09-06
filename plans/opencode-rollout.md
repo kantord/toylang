@@ -1178,3 +1178,36 @@ of the same name, exactly matching a leftover checkout baked into the toolchain
 snapshot) was specific enough that the scratch-path alternative wasn't needed. Next
 green-but-unextracted run (if any) will confirm or refute this from the resulting
 `format-patch-failure.log`.
+
+## Two more green-but-unextracted rows, real cause is an expired API key (2026-09-06)
+
+A drive tick's trigger again read a gone-worktree row (`messagecard-flow-defensive-render`,
+gh:173) as landed. It hadn't -- no Land commit on main, and `msb list` showed
+`sd-messagecard-flow-defensive-re` still alive, kept by the anomaly path. Inspecting the
+live sandbox (`msb exec ... cat /root/opencode-run-*.log`) found the actual cause: both
+the plan round and the build turn failed immediately with `Error: API key expired`, so
+opencode never made a single edit. `git status --porcelain` inside the sandbox was
+clean and `HEAD == base_commit` exactly. `just check` then trivially passed against the
+untouched repo, and the dispatch script's GREEN-but-no-diff path treated that as the
+already-known "green but no patch extracted" anomaly and wrote an escalation round --
+but that round's auto-generated boilerplate ("a patch exists... close to green") is
+false for this case: there is no patch and never was one. Deleted the misleading round
+and replaced it with `docs/.grill/opencode-api-key-expired.round.yaml`, which names the
+real cause and asks the maintainer to renew `OPENROUTER_API_KEY` (or explicitly pause
+sandbox dispatch until it's renewed).
+
+Second row, `batch-type-design-research`, hit the *other*, already-fixed bug
+(`format-patch: fatal: bad object`) instead -- its log has no `rm -rf /repo` step before
+the `msb copy`, meaning this particular dispatch process started running with the
+pre-17b0f14 `sandbox_dispatch.py` already loaded in memory before that commit landed,
+so it never picked up the fix despite running afterward. Its escalation round had the
+same false "close to green" framing and was replaced too. Once the key is renewed,
+both rows just need a fresh redispatch -- there's no patch to resume from and no
+"stronger model" that would help either one; the `sandbox_dispatch.py` fix from the
+prior incident is already in place for whichever dispatch happens next.
+
+Lesson for future ticks: `msb exec`-ing into a still-alive anomaly sandbox to read its
+actual opencode/build logs is cheap and finds the real cause; trusting the
+auto-generated escalation-round boilerplate at face value would have sent the
+maintainer a "stronger model or hand to human" choice for a problem neither option
+touches.
