@@ -10,7 +10,7 @@
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: stuck-issue-recursive-descent-order-research-investigation
   kind: build
