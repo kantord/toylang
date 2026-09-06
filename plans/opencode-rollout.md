@@ -639,3 +639,197 @@ Proposal (rebrief/reshape of `float-format-research`):
    formatting conventions are documented facts and the cross-language differences are themselves
    the finding, not something needing live execution to record. The empirical-verification
    requirement is the ask worth dropping, not the survey.
+
+
+## Remaining pipeline problems and scaling limits, surveyed after a night of heavy autonomous use (2026-09-06)
+
+Context: this covers one continuous stretch spanning an OAuth outage, a full host reboot, the
+sandboxed plan-decompose harness (`sandbox_dispatch.py`) landing two genuinely stuck tasks
+(issue-172, float-format-research), and three more tasks dispatched and landed after that. Every
+item below was hit directly or confirmed by reading the relevant script, not inferred.
+
+### 1. The serial landing queue's lock can be silently stolen by an unrelated process
+
+`land-lane.sh` serializes all landings through `flock -w 1800 8` on a fixed path,
+`/tmp/toylang-land.lock`. Tonight, `sccache` (the Rust compiler cache daemon, unrelated to this
+pipeline) ended up holding an `flock` on that exact inode -- almost certainly inode reuse in
+`/tmp` after the lock file was deleted and recreated at some point in this file's lifetime, with
+sccache having separately opened and flocked some other temp file that happened to land on the
+same inode number. Two concurrent `land-lane.sh land <N>` invocations (mine, and the
+coordinator's own for issue-152) both queued behind this phantom holder for 10+ minutes before it
+happened to clear. Nothing in the pipeline can detect or break this class of lock -- the 1800s
+timeout is the only recovery, and every landing attempt during that window is silently stalled
+with no error, just `do_wait` in `ps`. **Scaling impact**: as landing frequency increases, the
+odds of colliding with some other process's transient use of `/tmp` rise; a fixed, well-known
+path in a shared, high-churn directory is not the failure mode a growing pipeline can absorb
+gracefully. Fix: move the lock to a path scoped to this pipeline alone (e.g.
+`~/.cache/toylang-drive/land.lock`, a directory nothing else touches) so accidental inode
+collisions with unrelated host daemons become structurally impossible.
+
+### 2. `ensure_committed()`'s tracked-path allowlist has already fallen behind once, silently, with real data loss on the line
+
+`land-lane.sh`'s auto-commit-a-green-dirty-tree path does `git add -u` then
+`git add -- src tests docs site plans` (line ~104) -- a hand-maintained list of directories,
+extended once already (2026-09-02, issue-168, to add `src/` for a new file `git add -u` alone
+missed). Tonight, `benchmark-fasta-build`'s new files (`benches/programs/fasta.toy`,
+`benches/inputs/fasta.txt`) landed under `benches/`, which is **not** in that list. Had the
+worker's own exit triggered this path unattended (it would have, on any run I did not manually
+intervene in), the untracked-file cleanup two lines later --
+`git -C "$d" clean -fdq` -- would have **permanently deleted the new benchmark program and its
+input fixture** before they were ever committed, the exact same failure class as the 2026-09-02
+incident (which was about `plans/*.md` findings), just in a directory nobody had hit yet. This is
+not a hypothetical: I caught it only by manually diffing the sandbox's git status before letting
+the harness's own commit step run. **Scaling impact**: every new top-level content category this
+project adds (a new `benches/`, a future `fixtures/`, a future `assets/`) silently re-opens this
+exact data-loss window until the next incident happens to surface it, because the fix is indexed
+to specific past incidents rather than to the actual invariant ("anything a worker legitimately
+creates should never be swept by `git clean`"). Fix: invert the allowlist to a denylist of
+genuinely-scratch top-level paths (a short, explicit list: root-level loose files, `/tmp`-style
+scratch dirs workers are told to use), or simply drop the `git clean -fdq` step and instead
+report untracked files in the land log for a human/coordinator glance -- the false-positive cost
+of an occasional real scratch file lingering is far cheaper than silently deleting real work.
+
+### 3. The sandboxed dispatch mechanism is completely invisible to the stuck-lane watchdog
+
+`stuck-watch.py`'s liveness check (`live_worker_dirs()`) only recognizes a live lane by scanning
+`/proc/*/comm` for a process literally named `opencode` or `claude` whose `cwd` is inside the
+lane worktree. Its secondary activity signal (`lane_state()`) globs
+`~/.cache/toylang-drive/opencode/*-<lane>.jsonl` for a log mtime. `sandbox_dispatch.py`'s real
+work happens inside a microsandbox VM via `msb exec` -- the host-side process is `python3`, `msb`,
+and short-lived `git`/`msb exec` calls, never a process named `opencode` with the lane's cwd; its
+logs live at `~/.cache/toylang-drive/sandbox-dispatch-<id>.log` (plain text, not the jsonl glob
+pattern) and, for the actual opencode run output, *inside the guest's own filesystem*
+(`/root/opencode-run-*.log`), which the host-side watchdog cannot see at all. Result, confirmed
+directly tonight: the watchdog auto-filed `stuck-issue-benchmark-fasta-build-investigation` and
+`stuck-issue-benchmark-fannkuch-redux-build-investigation` for two lanes that were, at that exact
+moment, being actively and (for fasta) successfully worked via the sandbox. Cost: a wasted
+worker dispatch on a bogus investigation, a spurious board row that needed manual archival, and
+-- in a case where nobody happened to be watching -- the real risk that a coordinator tick reads
+the false "stuck" signal as ground truth and takes a destructive action (killing/reassigning a
+lane that was fine). **Scaling impact**: the sandbox harness is the mechanism that actually
+unblocks tasks the plain dispatch-worker.sh path cannot (permission-wall tasks, tasks needing
+`webfetch`) -- exactly the highest-value, hardest cases. As sandboxed dispatch becomes a bigger
+fraction of total work (which it should, given tonight's results), the fraction of false stuck-
+lane alarms grows with it, unless the watchdog is taught the sandbox's own activity signals
+(check `msb list`/`msb exec <name> -- stat ...` for the sandbox's mtime, or have
+`sandbox_dispatch.py` write a lane-name-matching heartbeat file the existing glob can find).
+
+### 4. Non-numeric lane slugs never trigger a direct landing -- they depend entirely on the coordinator noticing
+
+`opencode-worker.sh`'s `fire_next()` only calls `land-lane.sh land <N>` directly when the lane
+name matches `issue-[0-9]*` (a real GitHub issue number); every other lane shape (research/
+benchmark/decompose slugs like `benchmark-fasta-build`, `float-format-research` -- which is now
+the *normal* naming convention for a growing share of dispatched work, not an edge case) instead
+just fires a generic `drive-tick.sh` and hopes the coordinator's own duty-(b) logic ("a landable
+lane the event missed") notices and lands it. Tonight this worked, but only because the
+coordinator's tick was healthy and its policy explicitly names this duty; for stretches where the
+coordinator's own `claude -p` calls are failing (see #6) or busy elsewhere, a finished
+non-numeric lane has no direct path to landing at all -- it just sits, indistinguishable from a
+lane nobody has looked at, until some tick happens to have bandwidth. **Scaling impact**: as the
+non-numeric-slug share of work grows, so does the population of "finished but not yet landed"
+lanes silently waiting on an indirect, best-effort mechanism, with no forcing function
+comparable to the direct call numeric lanes get. Fix: extend `fire_next()`'s case pattern to
+also directly land any lane whose worktree exists (drop the numeric-only restriction) --
+`land-lane.sh` already no-ops safely on a lane with nothing to land.
+
+### 5. Long-lived lane worktrees produce false-negative `just check` results the pre-landing gate trusts
+
+Twice tonight, `just check` run *inside a lane's own long-lived worktree* failed on
+`native_agrees_where_it_compiles`/`rust_agrees_where_it_compiles` (an insta snapshot of which
+corpus programs compile), while the identical committed state verified clean in a fresh clone.
+Root cause not fully chased (most likely a stale incremental `target/` build cache reused across
+many hours and many merges in the same worktree), but the practical effect is real: land-lane.sh's
+own pre-check (`if (cd "$d" && just check) ...`, see #2's code) runs this exact fragile check
+*in the lane worktree*, not a fresh clone -- so a perfectly good, fully-committed piece of work can
+be wrongly judged "RED, not done" and skipped, exactly as happened to `draft-core-model-migration`
+tonight (its own `site/public/corpus.json` diff was real, but the red verdict was worktree
+staleness, not a real regression). I only caught it by manually cloning `origin/main` fresh and
+re-running `just check` there for comparison. **Scaling impact**: the more lanes stay open longer
+(more concurrent work, slower human/coordinator attention), the more worktrees accumulate this
+kind of staleness, and the false-negative rate on this specific pre-check rises with lane
+lifetime, not with anything about the actual change being landed. Fix: either `cargo clean`
+lane worktrees periodically (cheap insurance, costs a slow next build), or -- better -- change
+this specific pre-check to verify against a disposable clone the way the REAL landing gate
+already does a few lines later, so the pre-check and the real gate can never disagree.
+
+### 6. The whole autonomous loop has one silent single point of failure: OAuth, with no alerting
+
+For roughly 40 minutes tonight, every coordinator tick's `claude -p ...` call failed immediately
+with `Failed to authenticate: OAuth session expired and could not be refreshed`. Nothing surfaced
+this beyond a line in `event-ticks.log` that looks, at a glance, identical to a healthy tick's
+own stderr noise -- there is no distinct alert, no escalation, no board row, nothing that would
+catch a maintainer's eye short of reading the raw tick log closely. During that window: no
+landings happened, no new work was dispatched, and (worse) the retry-cap/failure-streak logic
+that watches *lane* health has no equivalent watching *coordinator* health -- a lane gets escalated
+to the mailbox after N commitless runs, but the coordinator silently failing its own turn N times
+in a row triggers nothing. **Scaling impact**: as the pipeline runs for longer unattended
+stretches, any credential/infra failure of this shape (auth expiry, API outage, a changed API key)
+produces the same silent, total stop with no signal -- exactly the "full blocker in the mailbox"
+gap the maintainer identified earlier this session for lane-level stalls, but here at the
+coordinator level, which is more severe since it stops *everything*, not one lane. Fix: have the
+tick wrapper (`drive-tick.sh`) detect its own `claude -p` auth/API failures specifically (grep the
+captured stderr for the known failure strings) and, on N consecutive failures, write directly to
+a place a human will see it fast (not just append to a log) -- e.g. a dedicated
+`~/.cache/toylang-drive/COORDINATOR-DOWN` sentinel plus a docs/.grill/ round, since that channel
+is already the established maintainer-facing escalation path.
+
+### 7. This session itself demonstrated the risk of multiple uncoordinated autonomous loops
+
+At various points tonight there were: the "real" self-perpetuating coordinator (a `claude -p`
+session that re-schedules itself via its own tool call), a `drive-loop.sh` I started by hand
+(redundant with the above, and which did not survive detached backgrounding reliably), and one to
+three `sandbox_dispatch.py` runs I drove directly -- all capable of dispatching workers and
+attempting landings against the same board and the same main checkout, with only `land-lane.sh`'s
+own flock actually serializing the landing half of that (dispatch has no equivalent lock; two
+dispatch-worker.sh calls for the same lane are guarded by the `live worker (pid $p) owns $d`
+check, which is itself a `/proc` scan racy for the exact reason #3 describes). Nothing melted
+down tonight, but it took deliberate manual reconciliation (checking `git log`, `board.yaml`,
+which lock a process actually held) more than once to be sure two mechanisms weren't about to
+double-apply the same work. **Scaling impact**: as more independent triggers for autonomous
+action exist (a human starting a manual sandbox run, a scheduled loop, a webhook-driven one), the
+surface for this kind of race grows faster than the coordination primitives (one flock, one
+`/proc` scan) were designed for. Worth a single source of truth for "what is currently allowed to
+touch this repo's landing/dispatch surface" before the next mechanism is added, rather than after
+the first real collision.
+
+### 8. Confirmed live: the stuck-lane watchdog can recursively investigate its own investigations
+
+`stuck-watch.py` has a dedup guard against re-filing the *same* investigation twice
+(`not board_has_row(f"stuck-{lane}-investigation")`), but nothing stops it from investigating a
+lane whose name already IS an investigation. Caught mid-flight tonight: the coordinator's own
+tick dispatched a worker into `stuck-issue-benchmark-fannkuch-redux-build-investigation` (a
+perfectly normal `kind: build` row, dispatched like any other) as part of a batch of three; that
+worker never ran to completion in the time since, so 30+ minutes later (`STUCK_AFTER = 30*60`)
+the exact same "not live, no commits, no escalation marker" criteria that flags any ordinary
+stalled lane fired again -- this time producing a board row literally named
+`stuck-issue-stuck-issue-benchmark-fannkuch-redux-build-investigation-investigation`. Nothing in
+the age/liveness check distinguishes "a real task nobody has worked yet" from "a meta-task about
+a task nobody has worked yet"; each additional unattended cycle would prepend another
+`stuck-issue-...-investigation` layer indefinitely. Older investigation rows sitting `delegated`
+for 10-38h (`float-format-research-investigation`, the four `float-build-*-investigation` rows)
+apparently never hit this because their worktrees no longer exist on disk (the loop only scans
+`glob(LANES/issue-*/)`) -- itself further evidence of the stale-bookkeeping pattern noted
+elsewhere tonight (board rows outliving their worktrees in both directions: "delegated" rows
+whose work already landed, and "delegated" rows whose worktree was silently lost). **Scaling
+impact**: this is the one finding here that gets structurally *worse*, not just more frequent, as
+volume grows -- an investigation lane is exactly as likely to itself go unattended as any other
+lane (arguably more likely, since nothing currently prioritizes clearing them), and each miss
+compounds into more board noise than the miss before it. Fix: skip lanes whose name matches
+`^stuck-.*-investigation$` in the scan entirely (an investigation that stalls needs a human
+glance, not another investigation of why it stalled), and separately, prioritize dispatching
+existing investigation rows over fresh work so they do not accumulate a queue of their own.
+
+### Summary: what's actually blocking further scale
+
+Ranked by how much they'd bite as volume grows, not by how loud they were tonight: **(2) the
+`ensure_committed` allowlist gap** is the most dangerous (silent data loss, already proven twice
+under two different directories) and cheapest to fix; **(1) the lock-file collision** and
+**(6) the silent coordinator-auth outage** are the ones that most directly cap total throughput
+(everything stops, nobody notices); **(3) watchdog blindness to sandboxed lanes** and
+**(4) non-numeric lanes lacking a direct land path** both get worse specifically *because* the
+sandbox harness (this session's main positive result) is the right tool for an increasing share
+of future work; **(8) recursive self-investigation** is the one that compounds on its own even if
+nothing else changes, since it feeds on the watchdog's own unresolved output; **(5) worktree
+staleness** is a slow-accumulating tax rather than a hard stop. None of these are reasons to slow
+down the rollout -- they are the concrete list of what the next round of hardening should target
+before volume triples.
