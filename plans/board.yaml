@@ -254,7 +254,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: partial-application-system-design
   issue: gh:119
