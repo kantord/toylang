@@ -400,7 +400,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
