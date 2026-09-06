@@ -1,0 +1,11 @@
+# An empty Vec has no false entry, so the universal cut is vacuously true. The empty Vec<Bool>
+# comes from a declared return type, since a bare `[]` literal cannot be typed.
+program: |
+  fn none() -> Vec<Bool> = []
+
+  all(none())
+
+output: |
+  true
+
+node_types: [application, builtin.all, vec-literal]

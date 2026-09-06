@@ -113,6 +113,21 @@ const TAIL_HELPER: &str = r#"fn tl_tail<T: Clone>(v: &[T]) -> Option<Vec<T>> {
 }
 "#;
 
+const FIRST_HELPER: &str = r#"fn tl_first<T: Clone>(v: &[T]) -> Option<T> {
+    v.first().cloned()
+}
+"#;
+
+const ANY_HELPER: &str = r#"fn tl_any(v: &[bool]) -> bool {
+    v.iter().any(|&x| x)
+}
+"#;
+
+const ALL_HELPER: &str = r#"fn tl_all(v: &[bool]) -> bool {
+    v.iter().all(|&x| x)
+}
+"#;
+
 const FLATTEN_HELPER: &str = r#"fn tl_flatten<T: Clone>(vv: &[Vec<T>]) -> Vec<T> {
     let mut out = Vec::new();
     for v in vv {
@@ -675,6 +690,9 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_slice("), SLICE_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
+        (uses("tl_first("), FIRST_HELPER),
+        (uses("tl_any("), ANY_HELPER),
+        (uses("tl_all("), ALL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
         (uses("tl_sort("), SORT_HELPER),
         (uses("tl_reverse("), REVERSE_HELPER),
@@ -1235,6 +1253,9 @@ impl Emitter<'_> {
                 Builtin::Collect => self.expr(arg),
                 Builtin::Length => format!("(({}).len() as i32)", self.expr(arg)),
                 Builtin::Tail => format!("tl_tail(&{})", self.expr(arg)),
+                Builtin::First => format!("tl_first(&{})", self.expr(arg)),
+                Builtin::Any => format!("tl_any(&{})", self.expr(arg)),
+                Builtin::All => format!("tl_all(&{})", self.expr(arg)),
                 Builtin::Flatten => format!("tl_flatten(&{})", self.expr(arg)),
                 Builtin::Sort => format!("tl_sort(&{})", self.expr(arg)),
                 Builtin::Reverse => format!("tl_reverse(&{})", self.expr(arg)),

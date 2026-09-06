@@ -718,12 +718,15 @@ fn tail_pipe(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
 /// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `length`, `flatten`,
 /// `tail`, `collect`, `fields`, `sort`, `reverse`, `sum`, and `max` are polymorphic and checked
-/// from `synth`'s own arms; `select` and `map` rebind `.`. All sixteen are reserved the same
+/// from `synth`'s own arms; `select` and `map` rebind `.`. All nineteen are reserved the same
 /// way, and the docs harness (tests/docs.rs) reads this list to insist each one has a
 /// reference page.
-pub const BUILTIN_NAMES: [&str; 16] = [
+pub const BUILTIN_NAMES: [&str; 19] = [
+    "all",
+    "any",
     "chars",
     "collect",
+    "first",
     "length",
     "fields",
     "flatten",
@@ -2147,6 +2150,19 @@ fn call(
     if func == "max" {
         return max_call(ctx, need_arg(arg, func, span)?);
     }
+    // The three search cuts (draft.md#query-is-search): `first` takes any element type
+    // the way `tail` does, `any` and `all` each take a Vec of Bool. All three are checked here
+    // rather than through `builtin()`'s fixed table: their return types are the element type's
+    // (or a fixed Bool), which no fixed signature can express.
+    if func == "first" {
+        return first_call(ctx, need_arg(arg, func, span)?);
+    }
+    if func == "any" {
+        return any_call(ctx, need_arg(arg, func, span)?);
+    }
+    if func == "all" {
+        return all_call(ctx, need_arg(arg, func, span)?);
+    }
     if let Some((which, sig)) = builtin(func) {
         let param_ty = sig
             .param
@@ -2485,6 +2501,85 @@ fn max_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
         opt_of(ctx, elem.clone()),
         Kind::Builtin {
             which: tir::Builtin::Max,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// `first(v)`, `Vec<T> -> Opt<T>`: the first entry, `None` on an empty Vec -- the cut that
+/// commits to what you have and abandons the remaining alternatives. Generic over the element
+/// type the way `tail` is, so it is checked here rather than through `builtin()`'s fixed table.
+fn first_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(elem) = arg.ty.elem().cloned() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`first` needs a Vec, found {}", arg.ty),
+        ));
+    };
+    Ok(Tir::new(
+        opt_of(ctx, elem),
+        Kind::Builtin {
+            which: tir::Builtin::First,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// The element type `any` and `all` are defined for: the one Bool. A Vec of anything else has
+/// no truth value to reduce over, so it is refused the way `sum`'s restricted set is.
+fn truthy(ty: &Type) -> bool {
+    matches!(ty, Type::Bool)
+}
+
+/// `any(v)`, `Vec<Bool> -> Bool`: whether any entry is true. The existential cut: an empty Vec
+/// has no true entry, so it is false.
+fn any_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(elem) = arg.ty.elem() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`any` needs a Vec of Bool, found {}", arg.ty),
+        ));
+    };
+    if !truthy(elem) {
+        return Err(Error::new(
+            arg_span,
+            format!("`any` needs a Vec of Bool, found {}", arg.ty),
+        ));
+    }
+    Ok(Tir::new(
+        Type::Bool,
+        Kind::Builtin {
+            which: tir::Builtin::Any,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// `all(v)`, `Vec<Bool> -> Bool`: whether every entry is true. The universal cut: an empty Vec
+/// has no false entry, so it is true (vacuously).
+fn all_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(elem) = arg.ty.elem() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`all` needs a Vec of Bool, found {}", arg.ty),
+        ));
+    };
+    if !truthy(elem) {
+        return Err(Error::new(
+            arg_span,
+            format!("`all` needs a Vec of Bool, found {}", arg.ty),
+        ));
+    }
+    Ok(Tir::new(
+        Type::Bool,
+        Kind::Builtin {
+            which: tir::Builtin::All,
             arg: Box::new(arg),
         },
     ))

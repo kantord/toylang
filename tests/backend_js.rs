@@ -22,9 +22,9 @@ fn agree(src: &str, stdin: Option<&str>) -> String {
 #[test]
 fn record_key_order_follows_the_type() {
     let src = r#"
-fn first(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
+fn pick(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
 
-first(input)
+pick(input)
 "#;
     let declared_order = agree(src, Some(r#"{"u": {"name": "ada", "age": 36}}"#));
     let reversed = agree(src, Some(r#"{"u": {"age": 36, "name": "ada"}}"#));
