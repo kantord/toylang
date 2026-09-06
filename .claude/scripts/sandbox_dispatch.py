@@ -238,6 +238,16 @@ def boot_sandbox(name: str, clone_dir: Path, cfg_path: Path, opencode_bin: Path,
     sh(args, env=env)
     time.sleep(2)
 
+    # The toolchain snapshot was captured from a booted sandbox that already
+    # had /repo checked out, so a fresh boot starts with a stale /repo (old
+    # .git, wrong history) baked in. `msb copy` onto an existing directory
+    # does not fully replace it, so the stale .git survives underneath the
+    # copied files -- confirmed 2026-09-06 on select-materialization-research:
+    # `just check` ran fine against the old-but-complete repo, but
+    # `git format-patch {base_commit}` failed with "fatal: bad object", since
+    # base_commit was never actually in the stale object store. Remove it
+    # before copying in the real clone.
+    exec_in(name, "rm -rf /repo", env)
     sh([str(MSB_BIN), "copy", str(clone_dir), f"{name}:/repo"], env=env)
     sh([str(MSB_BIN), "copy", str(opencode_bin), f"{name}:/usr/local/bin/opencode"], env=env)
     exec_in(name, "mkdir -p /root/.config/opencode", env)

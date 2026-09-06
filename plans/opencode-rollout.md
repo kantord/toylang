@@ -1157,3 +1157,24 @@ Not yet fixed or confirmed with a controlled repro -- next step, if this recurs,
 `msb exec` into a *freshly booted, not-yet-copied* sandbox and check whether `/repo`
 already exists pre-copy. If confirmed, the fix is to make `boot_sandbox()` remove
 `/repo` before the `msb copy`, or copy into a scratch path and `mv` over it.
+
+## Fix applied without a fresh controlled repro (2026-09-06)
+
+A drive tick's trigger claimed `select-materialization-research` (gh:176) had landed,
+reasoning from "worktree is gone" alone. It never had a worktree (it ran in an `msb`
+sandbox, not a git worktree) and the main log has no Land commit for it -- the
+tick that produced the trigger conflated "gone" with "landed" without checking. Disk
+state instead showed exactly the green-but-unextracted anomaly diagnosed above: `msb`
+kept `sd-select-materialization-resear` alive, `format-patch-failure.log` showed `fatal:
+bad object <base_commit>`, and an escalation round was already sitting in
+`docs/.grill/select-materialization-research-sandbox-blocker.round.yaml`. The row was
+left `delegated`, not archived.
+
+Applied the fix this diagnosis already named (`boot_sandbox()` in
+`.claude/scripts/sandbox_dispatch.py` now runs `rm -rf /repo` in the guest before the
+`msb copy` of the real clone) without first doing the suggested fresh-boot repro --
+the existing evidence (stale, behind-history `.git` surviving under a directory-copy
+of the same name, exactly matching a leftover checkout baked into the toolchain
+snapshot) was specific enough that the scratch-path alternative wasn't needed. Next
+green-but-unextracted run (if any) will confirm or refute this from the resulting
+`format-patch-failure.log`.
