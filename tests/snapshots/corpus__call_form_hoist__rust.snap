@@ -1,0 +1,53 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+#![allow(dead_code)]
+
+fn tl_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 || c == '\u{7f}' => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+#[derive(Clone, PartialEq)]
+struct TlRec0 {
+    f_a: String,
+    f_b: String,
+    f_c: String,
+}
+
+#[derive(Clone, PartialEq)]
+struct TlRec1 {
+    f_body: String,
+}
+
+#[derive(Clone, PartialEq)]
+#[allow(non_camel_case_types)]
+enum TlE_Msg {
+    V_Ping,
+    V_Quit,
+    V_Text(TlRec1),
+}
+
+fn v_render(v___render_param: TlE_Msg) -> String {
+    ({ let t_2: TlE_Msg = v___render_param.clone(); (match t_2.clone() { TlE_Msg::V_Ping => "*ping*".to_string(), TlE_Msg::V_Quit => "*quit*".to_string(), TlE_Msg::V_Text(t_3) => t_3.clone().f_body }) })
+}
+
+fn main() {
+    println!("{}", ("{".to_string() + &"\"a\":".to_string().to_string() + &tl_quote(&(TlRec0 { f_a: v_render(TlE_Msg::V_Ping), f_b: v_render(TlE_Msg::V_Quit), f_c: v_render(TlE_Msg::V_Text(TlRec1 { f_body: "hi".to_string() })) }).f_a) + "," + &"\"b\":".to_string().to_string() + &tl_quote(&(TlRec0 { f_a: v_render(TlE_Msg::V_Ping), f_b: v_render(TlE_Msg::V_Quit), f_c: v_render(TlE_Msg::V_Text(TlRec1 { f_body: "hi".to_string() })) }).f_b) + "," + &"\"c\":".to_string().to_string() + &tl_quote(&(TlRec0 { f_a: v_render(TlE_Msg::V_Ping), f_b: v_render(TlE_Msg::V_Quit), f_c: v_render(TlE_Msg::V_Text(TlRec1 { f_body: "hi".to_string() })) }).f_c) + "}"));
+}

@@ -12,4 +12,6 @@ program: |
 output: |
   {"a":"*ping*","b":"*quit*","c":"hi"}
 
+snapshot: [jq, rust]
+
 node_types: [application, local, match, pipe, projection, record-literal, str, var, variant.payload, variant.unit]
