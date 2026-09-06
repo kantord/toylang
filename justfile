@@ -32,11 +32,11 @@ bench NAME:
 
 # Formatter check over every .toy file from the repo root down (exit 1 on drift).
 fmt:
-    cargo run -q -- fmt
+    cargo run -q --bin toylang -- fmt
 
 # Rewrite drifted files in place (same exit code as the check).
 fmt-write:
-    cargo run -q -- fmt --write
+    cargo run -q --bin toylang -- fmt --write
 
 # The repo's mechanical checks, the same surface the Stop hook runs.
 checks:

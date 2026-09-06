@@ -70,6 +70,53 @@ fn tl_rem64(a: i64, b: i64) -> i64 {
 }
 "#;
 
+/// A Float's printed form, byte for byte the JS reference's `String(number)` (ECMA-262
+/// Number::toString). Rust's `Display` is shortest-round-trip but holds fixed notation across
+/// the whole representable range where JS goes scientific outside the decimal band (`k <= n <=
+/// 21`), and it prints `-0` where JS prints `0`; so the digits come from `Display` and are laid
+/// out again with the ECMA-262 fixed-vs-scientific rule, the same re-layout the native and jq
+/// lanes already build (plans/float-format-research.md). Non-finite values are never literals,
+/// so they are named off the value the way JS's `String(number)` would.
+const FLOAT_HELPER: &str = r#"fn tl_float_to_str(n: f64) -> String {
+    if n.is_nan() {
+        return "NaN".to_string();
+    }
+    if n.is_infinite() {
+        return if n > 0.0 { "Infinity" } else { "-Infinity" }.to_string();
+    }
+    if n == 0.0 {
+        return "0".to_string();
+    }
+    let sign = if n < 0.0 { "-" } else { "" };
+    let raw = n.abs().to_string();
+    let int_len = raw.split('.').next().expect("Display writes the integer part").len();
+    let all: String = raw.chars().filter(|&c| c != '.').collect();
+    let fnz = all.chars().take_while(|&c| c == '0').count();
+    let npos = int_len as i64 - fnz as i64;
+    let trimmed = all[fnz..].trim_end_matches('0');
+    let digs = if trimmed.is_empty() { "0" } else { trimmed };
+    let k = digs.len() as i64;
+    let body = if k <= npos && npos <= 21 {
+        format!("{digs}{}", "0".repeat((npos - k) as usize))
+    } else if 0 < npos && npos <= 21 && npos < k {
+        let split = npos as usize;
+        format!("{}.{}", &digs[..split], &digs[split..])
+    } else if -6 < npos && npos <= 0 {
+        format!("0.{}{}", "0".repeat((-npos) as usize), digs)
+    } else {
+        let exp = npos - 1;
+        let esign = if exp < 0 { "-" } else { "+" };
+        let e = exp.abs().to_string();
+        if k > 1 {
+            format!("{}.{}e{}{}", &digs[..1], &digs[1..], esign, e)
+        } else {
+            format!("{}e{}{}", &digs[..1], esign, e)
+        }
+    };
+    format!("{sign}{body}")
+}
+"#;
+
 const AT_HELPER: &str = r#"fn tl_at<T: Clone>(v: &[T], i: i32) -> Option<T> {
     let n = v.len() as i32;
     let i = if i < 0 { n + i } else { i };
@@ -431,6 +478,43 @@ fn tl_parse_i32(p: &mut TlParser) -> i32 {
     i32::try_from(n).unwrap_or_else(|_| tl_fail("integer is out of range"))
 }
 
+fn tl_parse_f64(p: &mut TlParser) -> f64 {
+    p.skip_ws();
+    let start = p.p;
+    if p.p < p.b.len() && matches!(p.b[p.p], b'-' | b'+') {
+        p.p += 1;
+    }
+    let mut digits = 0;
+    while p.p < p.b.len() && p.b[p.p].is_ascii_digit() {
+        p.p += 1;
+        digits += 1;
+    }
+    if p.p < p.b.len() && p.b[p.p] == b'.' {
+        p.p += 1;
+        while p.p < p.b.len() && p.b[p.p].is_ascii_digit() {
+            p.p += 1;
+            digits += 1;
+        }
+    }
+    if digits == 0 {
+        tl_fail("expected a number");
+    }
+    if p.p < p.b.len() && matches!(p.b[p.p], b'e' | b'E') {
+        p.p += 1;
+        if p.p < p.b.len() && matches!(p.b[p.p], b'-' | b'+') {
+            p.p += 1;
+        }
+        if p.p >= p.b.len() || !p.b[p.p].is_ascii_digit() {
+            tl_fail("malformed exponent");
+        }
+        while p.p < p.b.len() && p.b[p.p].is_ascii_digit() {
+            p.p += 1;
+        }
+    }
+    let text = std::str::from_utf8(&p.b[start..p.p]).expect("number characters are ascii");
+    text.parse().unwrap_or_else(|_| tl_fail("number is out of range"))
+}
+
 fn tl_parse_bool(p: &mut TlParser) -> bool {
     p.skip_ws();
     if p.b[p.p..].starts_with(b"true") {
@@ -694,6 +778,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_int("), INT_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
+        (uses("tl_float_to_str("), FLOAT_HELPER),
         (uses("tl_at("), AT_HELPER),
         (uses("tl_slice("), SLICE_HELPER),
         (unwrap, UNWRAP_HELPER),
@@ -944,7 +1029,7 @@ impl Emitter<'_> {
             Type::Sink => "String".to_string(),
             Type::Int => "i32".to_string(),
             Type::Int64 => "i64".to_string(),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            Type::Float => "f64".to_string(),
             Type::Bool => "bool".to_string(),
             // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
             // the two, so nothing here needs to tell them apart.
@@ -973,7 +1058,7 @@ impl Emitter<'_> {
             Type::Int => "tl_parse_i32".to_string(),
             // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.
             Type::Int64 => unreachable!("input cannot contain an Int64, refused by the checker"),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            Type::Float => "tl_parse_f64".to_string(),
             Type::Bool => "tl_parse_bool".to_string(),
             // The checker refuses Char anywhere in an input type: it has no wire form.
             Type::Char => unreachable!("input cannot contain a Char, refused by the checker"),
@@ -1213,7 +1298,11 @@ impl Emitter<'_> {
         match &t.kind {
             Kind::Str(s) => rs_string(s),
             Kind::Int(n) => int_lit(&t.ty, *n),
-            Kind::Float(_) => unreachable!("Float is JS-only in this row"),
+            // `float::lit` is Rust's `Display`, which drops the `.0` on a whole value (`2.0` ->
+            // `2`) -- fine on a dynamically-typed target, but in Rust that spelling is an
+            // integer literal. The `f64` suffix re-types it so `2f64` is the 2.0 the node names
+            // and `0.25 * 2` type-checks as float-by-float (plans/float-format-research.md).
+            Kind::Float(n) => format!("{}f64", crate::float::lit(*n)),
             Kind::Var(name) => format!("{}.clone()", self.user(name)),
             Kind::Local(id) => format!("{}.clone()", self.local(*id)),
             Kind::Input => format!("{INPUT}.clone()"),
@@ -1482,7 +1571,7 @@ impl Emitter<'_> {
             Type::Str => format!("tl_quote(&{value})"),
             Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Int | Type::Int64 => format!("({value}).to_string()"),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            Type::Float => format!("tl_float_to_str({value})"),
             Type::Bool => format!("({value}).to_string()"),
             Type::Vec(elem) => {
                 let e = format!("e{depth}");
@@ -1591,17 +1680,39 @@ fn concat(ty: &Type, l: String, r: String) -> String {
 }
 
 /// One arithmetic expression at the width the node's type names. `wrapping_*` are
-/// width-generic method names, so only the div/rem helpers change at 64 bits.
+/// width-generic method names, so only the div/rem helpers change at 64 bits; a Float is IEEE
+/// binary64 itself, so it uses plain operators with no wrap or guard to spell.
 fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
-    match op {
-        BinOp::Div if *ty == Type::Int64 => format!("tl_div64({l}, {r})"),
-        BinOp::Rem if *ty == Type::Int64 => format!("tl_rem64({l}, {r})"),
-        BinOp::Div => format!("tl_div({l}, {r})"),
-        BinOp::Rem => format!("tl_rem({l}, {r})"),
-        BinOp::Add => format!("({l}).wrapping_add({r})"),
-        BinOp::Sub => format!("({l}).wrapping_sub({r})"),
-        BinOp::Mul => format!("({l}).wrapping_mul({r})"),
-        other => unreachable!("{other} is not arithmetic"),
+    if *ty == Type::Float {
+        // IEEE binary64 is the type itself (ADR 0007), so plain operators are the exact
+        // arithmetic with no wrap to spell. Division by zero is the IEEE answer, Infinity --
+        // Rust's own f64 `/` already gives it, so there is no `tl_div` guard here the way the
+        // integer widths need.
+        match op {
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            BinOp::Div => format!("({l} / {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else if *ty == Type::Int64 {
+        match op {
+            BinOp::Div => format!("tl_div64({l}, {r})"),
+            BinOp::Rem => format!("tl_rem64({l}, {r})"),
+            BinOp::Add => format!("({l}).wrapping_add({r})"),
+            BinOp::Sub => format!("({l}).wrapping_sub({r})"),
+            BinOp::Mul => format!("({l}).wrapping_mul({r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else {
+        match op {
+            BinOp::Div => format!("tl_div({l}, {r})"),
+            BinOp::Rem => format!("tl_rem({l}, {r})"),
+            BinOp::Add => format!("({l}).wrapping_add({r})"),
+            BinOp::Sub => format!("({l}).wrapping_sub({r})"),
+            BinOp::Mul => format!("({l}).wrapping_mul({r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
     }
 }
 
