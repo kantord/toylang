@@ -309,6 +309,10 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
             callees(source, out);
             callees(pred, out);
         }
+        Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+            callees(source, out);
+            callees(body, out);
+        }
         Kind::Map { source, body, .. } | Kind::OptMap { source, body, .. } => {
             callees(source, out);
             callees(body, out);
@@ -509,6 +513,10 @@ fn uses_arith(program: &Program) -> (bool, bool, bool) {
             Kind::Select { source, pred, .. } => {
                 walk(source, found);
                 walk(pred, found);
+            }
+            Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+                walk(source, found);
+                walk(body, found);
             }
             Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => walk(base, found),
             Kind::Index { base, index, .. } => {
@@ -736,6 +744,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             local(*param),
             expr(enums, pred)
         ),
+        // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
+        // program produced one without its backend being taught to emit it yet.
+        Kind::SortBy { .. } | Kind::MaxBy { .. } => {
+            unreachable!("sort_by/max_by emission lands in a later step")
+        }
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);
             format!(

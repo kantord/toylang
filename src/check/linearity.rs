@@ -76,6 +76,12 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
             }
             stream_uses(source, binding)
         }
+        Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+            if stream_uses(body, binding)? > 0 {
+                return Err(LinearViolation::InMapper);
+            }
+            stream_uses(source, binding)
+        }
         Kind::Field { base, .. } | Kind::Unwrap { base } => stream_uses(base, binding),
         Kind::Index { base, index, .. } => both(base, index),
         Kind::Slice {
@@ -191,6 +197,9 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
         Kind::Select {
             source, pred: p, ..
         } => any_node(source, pred) || any_node(p, pred),
+        Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+            any_node(source, pred) || any_node(body, pred)
+        }
         Kind::Field { base, .. } | Kind::Unwrap { base } => any_node(base, pred),
         Kind::Index { base, index, .. } => any_node(base, pred) || any_node(index, pred),
         Kind::Slice {
@@ -310,6 +319,10 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
         Kind::Select { source, pred, .. } => {
             calls_in(source, out);
             calls_in(pred, out);
+        }
+        Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+            calls_in(source, out);
+            calls_in(body, out);
         }
         Kind::Field { base, .. } | Kind::Unwrap { base } => calls_in(base, out),
         Kind::Builtin { arg, .. } => calls_in(arg, out),

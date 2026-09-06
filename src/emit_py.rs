@@ -630,7 +630,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 expr(enums, source)
             )
         }
-        Kind::Select {
+                Kind::Select {
             source,
             param,
             pred,
@@ -641,6 +641,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 expr(enums, source),
                 expr(enums, pred)
             )
+        }
+        // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
+        // program produced one without its backend being taught to emit it yet.
+        Kind::SortBy { .. } | Kind::MaxBy { .. } => {
+            unreachable!("sort_by/max_by emission lands in a later step")
         }
         Kind::Unwrap { base } => {
             format!(

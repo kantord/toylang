@@ -1386,6 +1386,11 @@ impl<'ctx> Emitter<'ctx, '_> {
                 pred,
             } => self.select(source, *param, pred)?,
 
+            // `sort_by`/`max_by` codegen lands in a later step (gh:177).
+            Kind::SortBy { .. } | Kind::MaxBy { .. } => {
+                return Err(unsupported("sort_by/max_by emission lands in a later step"));
+            }
+
             Kind::Map {
                 source,
                 param,

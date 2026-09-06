@@ -760,9 +760,9 @@ fn tail_pipe(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 /// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `length`, `flatten`,
 /// `tail`, `collect`, `fields`, `sort`, `reverse`, `sum`, `max`, `parse`, `first`, `any`, and
 /// `all` are polymorphic and checked from `synth`/`expect_inner`'s own arms; `select` and `map`
-/// rebind `.`. All twenty are reserved the same way, and the docs harness (tests/docs.rs) reads
+/// rebind `.`,and `sort_by`/`max_by` do the same with an orderable projection. All twenty-two are reserved the same way, and the docs harness (tests/docs.rs) reads
 /// this list to insist each one has a reference page.
-pub const BUILTIN_NAMES: [&str; 20] = [
+pub const BUILTIN_NAMES: [&str; 22] = [
     "all",
     "any",
     "chars",
@@ -775,11 +775,13 @@ pub const BUILTIN_NAMES: [&str; 20] = [
     "jsonlines",
     "map",
     "max",
+    "max_by",
     "parse",
     "range",
     "reverse",
     "select",
     "sort",
+    "sort_by",
     "str",
     "sum",
     "tail",
@@ -2283,6 +2285,16 @@ fn call(
     if func == "map" {
         return map_call(ctx, need_arg(arg, func, span)?, span, None);
     }
+    // `sort_by` and `max_by` order or reduce by a scalar projection, so they are subject-fed
+    // like `map`/`select`: the projection's `.` is rebound to the subject's element type. Blocking
+    // (ordering and maximum both need the whole Vec), so unlike `map` they take a Vec only, never
+    // a stream.
+    if func == "sort_by" {
+        return sort_by_call(ctx, need_arg(arg, func, span)?, span);
+    }
+    if func == "max_by" {
+        return max_by_call(ctx, need_arg(arg, func, span)?, span);
+    }
     // The one sink builtin: a regular call now, typed `Sink`, and so subject to the same
     // general position rule every sink is -- `synth`'s wrapper refuses a `Sink` result except
     // where `sink_call` or the tail-pipeline `|>` (`tail_pipe`) born it. The old hand-checked
@@ -2687,6 +2699,85 @@ fn max_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
         Kind::Builtin {
             which: tir::Builtin::Max,
             arg: Box::new(arg),
+        },
+    ))
+}
+
+/// `v | sort_by(.key)`, `v`'s entries ascending by the scalar the projection `body` reads off
+/// each entry (gh:177), the same projection machinery `map` uses. Ties keep their original
+/// order, a stable sort. Blocking like `sort`, so the subject is a Vec only -- never a stream --
+/// and the projection is restricted to the same natively-ordered scalars `sort` takes, since a
+/// backend orders by the key it projects.
+fn sort_by_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
+    let Some((subject, id)) = ctx.subject.clone() else {
+        return Err(Error::new(
+            span,
+            "`sort_by` needs a subject, so it must follow `|`",
+        ));
+    };
+    let Some(elem) = subject.elem().cloned() else {
+        return Err(Error::new(
+            span,
+            format!("`sort_by` needs a Vec, found {subject}"),
+        ));
+    };
+    let param = ctx.fresh();
+    let body = synth(&mapper_ctx(ctx, elem, param), arg)?;
+    if !orderable(&body.ty) {
+        return Err(Error::new(
+            arg.span(),
+            format!(
+                "`sort_by`'s projection must be Int, Int64, Str, or Char, found {}",
+                body.ty
+            ),
+        ));
+    }
+    let source = Tir::new(subject.clone(), Kind::Local(id));
+    Ok(Tir::new(
+        subject,
+        Kind::SortBy {
+            source: Box::new(source),
+            param,
+            body: Box::new(body),
+        },
+    ))
+}
+
+/// `v | max_by(.key)`, the entry whose projection `body` is greatest, `Opt<T>` because an empty
+/// Vec has no maximum -- the same absence answer `max` gives (kantord/toylang#140). Ties keep the
+/// first such entry, the way a stable maximum reads. Blocking like `max`, so the subject is a Vec
+/// only, and the projection is restricted to the same natively-ordered scalars `sort` takes.
+fn max_by_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
+    let Some((subject, id)) = ctx.subject.clone() else {
+        return Err(Error::new(
+            span,
+            "`max_by` needs a subject, so it must follow `|`",
+        ));
+    };
+    let Some(elem) = subject.elem().cloned() else {
+        return Err(Error::new(
+            span,
+            format!("`max_by` needs a Vec, found {subject}"),
+        ));
+    };
+    let param = ctx.fresh();
+    let body = synth(&mapper_ctx(ctx, elem.clone(), param), arg)?;
+    if !orderable(&body.ty) {
+        return Err(Error::new(
+            arg.span(),
+            format!(
+                "`max_by`'s projection must be Int, Int64, Str, or Char, found {}",
+                body.ty
+            ),
+        ));
+    }
+    let source = Tir::new(subject.clone(), Kind::Local(id));
+    Ok(Tir::new(
+        opt_of(ctx, elem),
+        Kind::MaxBy {
+            source: Box::new(source),
+            param,
+            body: Box::new(body),
         },
     ))
 }

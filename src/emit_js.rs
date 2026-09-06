@@ -656,6 +656,10 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(source, used);
                 walk(pred, used);
             }
+            Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+                walk(source, used);
+                walk(body, used);
+            }
             Kind::Field { base, .. } => {
                 used.field |= tir::vec_depth(&base.ty) > 0;
                 walk(base, used);
@@ -988,6 +992,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 local(*param),
                 expr(enums, pred)
             )
+        }
+        // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
+        // program produced one without its backend being taught to emit it yet.
+        Kind::SortBy { .. } | Kind::MaxBy { .. } => {
+            unreachable!("sort_by/max_by emission lands in a later step")
         }
         // Opt's reorder pass (kantord/toylang#66): the tagged shape (`"none"` or `{some: v}`)
         // is generic enough that this is the ordinary key-presence test every Match arm over

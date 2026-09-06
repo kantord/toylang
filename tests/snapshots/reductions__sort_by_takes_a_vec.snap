@@ -1,0 +1,5 @@
+---
+source: tests/reductions.rs
+expression: "toylang::compile(r#\"1 | sort_by(.)\"#).map(|_| ()).unwrap_err().to_string()"
+---
+`sort_by` needs a Vec, found Int (at byte 4)
