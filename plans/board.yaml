@@ -251,12 +251,6 @@
   prio: 5
   status: done
 
-- id: doc-migrate-capital-variants
-  title: 'Follow-up lane split from issue-156 (reshape ruling, 2026-09-01): migrate the 6 flagged doc pages'' variant-declaration examples to capital-first-type + lowercase-constructor, and correct the 4 MISQUOTED fixture texts to match the checker''s real error output, then remove the corpus-test gating added in variant-checker-capital-first. Pages: docs/guides/enums.md, docs/guides/matching.md, docs/reference/operators/comparison.md, docs/reference/types/enum.md, docs/tutorial/04-enums.md, docs/tutorial/06-matching.md. Evidence for exact expected strings: ~/.cache/toylang-drive/land-gate-issue-156.log.'
-  kind: build
-  needs: [variant-checker-capital-first]
-  status: todo
-
 - id: partial-application-system-design
   issue: gh:119
   title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff), informed by closures-first-class-functions-research -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like". RULED (wizard submission, 2026-09-07): option C, both unified as one mechanism once functions are first-class -- array-like (positional prefix) and struct-like (field subtraction) are two input shapes hitting the same application-returns-a-function mechanism, not two features to build separately. Maintainer added a hard requirement not covered by any option: partial application must always be syntactically explicit, never silently inferred from arity/shape -- e.g. a residual function value must be visibly distinct from a genuine array literal (`[1]` as a partial-application residual must not look the same as the array value `[1]`). This constrains whatever concrete syntax closures-first-class-functions-build lands: the colon call form and any partial-application spelling need a marker (or distinct type-level shape) that makes "this is a partial application, not a value" visible at the call site.'

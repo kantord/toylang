@@ -1887,3 +1887,9 @@
   needs: []
   prio: 3
   status: done
+
+- id: doc-migrate-capital-variants
+  title: 'Follow-up lane split from issue-156 (reshape ruling, 2026-09-01): migrate the 6 flagged doc pages'' variant-declaration examples to capital-first-type + lowercase-constructor, and correct the 4 MISQUOTED fixture texts to match the checker''s real error output, then remove the corpus-test gating added in variant-checker-capital-first. Pages: docs/guides/enums.md, docs/guides/matching.md, docs/reference/operators/comparison.md, docs/reference/types/enum.md, docs/tutorial/04-enums.md, docs/tutorial/06-matching.md. Evidence for exact expected strings: ~/.cache/toylang-drive/land-gate-issue-156.log. LANDED (verify, 2026-09-07): tests/docs.rs has no capital_variant_gate left and all 6 pages use capital-first declarations -- this row''s worktree was already gone with two Land commits on main (c4e999e, 86f6250) from before sandbox_dispatch_status.py''s ready-row over-reporting bug was fixed (522f230); board row was just never flipped.'
+  kind: build
+  needs: [variant-checker-capital-first]
+  status: done
