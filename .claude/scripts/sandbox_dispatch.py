@@ -25,7 +25,7 @@ Lessons this design bakes in from the manual spike that preceded it:
 Usage:
   sandbox_dispatch.py <board-row-id> --brief path/to/brief.txt
       [--model openrouter/deepseek/deepseek-v4-flash-0731]
-      [--retry-cap 2] [--snapshot toylang-toolchain] [--keep-sandbox]
+      [--retry-cap 2] [--snapshot toylang-toolchain-v2] [--keep-sandbox]
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ AUTH_JSON = Path.home() / ".local/share/opencode/auth.json"
 MSB_BIN = Path.home() / ".local/bin/msb"
 DEFAULT_MODEL = "openrouter/deepseek/deepseek-v4-flash-0731"
 DEFAULT_PLAN_MODEL = "openrouter/z-ai/glm-5.2"
-DEFAULT_SNAPSHOT = "toylang-toolchain"
+DEFAULT_SNAPSHOT = "toylang-toolchain-v2"
 TOOLCHAIN_PATH_EXPORT = (
     "export PATH=$HOME/.cargo/bin:/usr/lib/llvm-22/bin:$PATH"
 )
