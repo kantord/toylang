@@ -378,6 +378,13 @@
   prio: 4
   status: todo
 
+- id: questions-md-stale-draft-links
+  title: 'Repoint two dead links in plans/questions.md left by draft-core-model-migration: Q11 -> ../draft.md#the-core-idea-two-layers and Q32 -> ../draft.md#proposal-the-layer-shift-only-runs-one-way both point at headings that migration deleted (see ESCALATION.md in that landed commit). Point them at docs/guides/cardinality.md instead. Left alone by that row under the "do not touch plans/" hard constraint.'
+  kind: build
+  needs: []
+  prio: 5
+  status: todo
+
 - id: messagecard-flow-defensive-render
   issue: gh:173
   title: 'MessageCard hard-crashes the whole mail/grill UI on an unrecognized flow value (found live: two pending rounds had flow: decide, not a FlowType member, blanking the app). Fall back to a neutral style instead of throwing, and/or add an error boundary around round rendering -- the immediate bad data is already fixed in the two affected round files, this is the defensive follow-up.'
