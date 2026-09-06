@@ -6,13 +6,13 @@
   title: 'INVESTIGATE stuck lane issue-erlang-toolchain-empirical-research (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-erlang-toolchain-empirical-research-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-167-investigation
   kind: build
-  status: todo
+  status: delegated
   needs: []
   issue: gh:167
   title: 'INVESTIGATE stuck lane issue-167 (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-167-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-156-investigation
   kind: build
-  status: todo
+  status: delegated
   needs: []
   issue: gh:156
   title: 'INVESTIGATE stuck lane issue-156 (no activity 0h, 6 run(s), 0 commits): evidence frozen in plans/incidents/issue-156-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
