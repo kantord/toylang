@@ -464,6 +464,64 @@ const JSON_PARSE_HELPER: &str = r#"local function tl_parse_json(s)
 end
 "#;
 
+// A Float prints the way JavaScript's `String(number)` does, the ground truth the corpus's
+// agreement harness compares against byte for byte (ADR 0007). Lua's `tostring` on a float is
+// not the shortest round-trip spelling -- `tostring(0.1 + 0.2)` is "0.30000000000000004" only
+// by accident of Lua's default `%g` precision, which pads and switches notation on its own
+// heuristic -- so this re-derives the shortest digits and re-lays them out the way ECMA-262
+// 6.1.6.1.20 does: fixed notation for 1e-6 up to 1e21, scientific outside, the non-finite names
+// as-is. The port of emit_go.rs's `tlShowFloat`, which follows the same rule off Go's
+// `strconv.FormatFloat(v, 'e', -1, 64)`; Lua has no shortest-digit formatter, so the precision is
+// raised one digit at a time and stopped at the first that parses back to the same double.
+const SHOW_FLOAT_HELPER: &str = r#"local function tl_shortest_digits(v)
+  for p = 0, 17 do
+    local s = string.format("%." .. p .. "e", v)
+    if tonumber(s) == v then return s end
+  end
+  return string.format("%.17e", v)
+end
+
+local function tl_show_float(v)
+  if v ~= v then return "NaN" end
+  if v == math.huge then return "Infinity" end
+  if v == -math.huge then return "-Infinity" end
+  -- JS renders both signed and unsigned zero as "0".
+  if v == 0 then return "0" end
+  local sign = ""
+  if v < 0 then sign = "-" v = -v end
+  local e = tl_shortest_digits(v)
+  local _, ep = string.find(e, "e", 1, true)
+  local dot = string.find(e, ".", 1, true)
+  local digits
+  if dot then
+    digits = string.sub(e, 1, dot - 1) .. string.sub(e, dot + 1, ep - 1)
+  else
+    digits = string.sub(e, 1, ep - 1)
+  end
+  -- n is the spec's decimal point position: the %e exponent plus one.
+  local n = tonumber(string.sub(e, ep + 1)) + 1
+  local k = #digits
+  local out
+  if k <= n and n <= 21 then
+    out = digits .. string.rep("0", n - k)
+  elseif n > 0 and n <= 21 then
+    out = string.sub(digits, 1, n) .. "." .. string.sub(digits, n + 1)
+  elseif n > -6 and n <= 0 then
+    out = "0." .. string.rep("0", -n) .. digits
+  else
+    local mant = digits
+    if k > 1 then
+      mant = string.sub(digits, 1, 1) .. "." .. string.sub(digits, 2)
+    end
+    local exp = n - 1
+    local es = "+"
+    if exp < 0 then es = "-" exp = -exp end
+    out = mant .. "e" .. es .. tostring(exp)
+  end
+  return sign .. out
+end
+"#;
+
 pub fn emit(program: &Program) -> String {
     let enums = &program.enums;
     let mut out = String::new();
@@ -474,6 +532,12 @@ pub fn emit(program: &Program) -> String {
     let structured = !matches!(program.body.ty, Type::Str | Type::Sink);
     let quote = (structured && needs_quote(&program.body.ty)) || used.jsonlines;
     let join = (structured && contains_vec(enums, &program.body.ty)) || used.jsonlines;
+    // `tl_show_float` is a printer helper, so its inclusion tracks the output type the way
+    // `quote` and `join` do: a Float anywhere in what `show` walks needs it present. A stream
+    // never reaches the printer directly, so its element is not a case here the way a jsonlines
+    // callback's is on the backends that scan emitted text -- a Float inside `inputs` is reached
+    // through `fused_main`'s `current_ty`, which is `program.body.ty`'s element by then.
+    let show_float = structured && contains_float(enums, &program.body.ty);
     for (on, text) in [
         (used.select, SELECT_HELPER),
         (used.field, FIELD_HELPER),
@@ -505,6 +569,7 @@ pub fn emit(program: &Program) -> String {
         (used.chars, CHARS_HELPER),
         (used.parse, JSON_PARSE_HELPER),
         (used.eq, EQ_HELPER),
+        (show_float, SHOW_FLOAT_HELPER),
     ] {
         if on {
             out.push_str(text);
@@ -619,7 +684,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Str => format!("tl_quote({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         Type::Int | Type::Int64 | Type::Bool => format!("tostring({value})"),
-        Type::Float => unreachable!("Float is JS-only in this row"),
+        Type::Float => format!("tl_show_float({value})"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
             format!(
@@ -733,6 +798,36 @@ fn contains_vec(enums: &Enums, ty: &Type) -> bool {
             .any(|(_, p)| p.as_ref().is_some_and(|p| contains_vec(enums, p))),
         _ => false,
     }
+}
+
+/// A Float prints through `tl_show_float` rather than Lua's `tostring`, whose spelling is not
+/// the shortest round-trip digit string ADR 0007 requires. The printer walks the type, so a
+/// Float anywhere in the output -- a bare one, a Vec element, a record field -- needs the
+/// helper present, the same way `needs_quote` reaches a Str inside a container. A recursive
+/// enum's self-reference is always behind a Vec (the checker allows no other), so the first hop
+/// back into one is reachable; `seen` stops the second from looping, the way `is_recursive`
+/// does for the same reason.
+fn contains_float(enums: &Enums, ty: &Type) -> bool {
+    fn walk(enums: &Enums, ty: &Type, seen: &mut Vec<Type>) -> bool {
+        match ty {
+            Type::Float => true,
+            Type::Vec(elem) => walk(enums, elem, seen),
+            Type::Record(fields) => fields.iter().any(|(_, t)| walk(enums, t, seen)),
+            Type::Enum { .. } => {
+                if seen.contains(ty) {
+                    return false;
+                }
+                seen.push(ty.clone());
+                let r = ty::variants(enums, ty)
+                    .iter()
+                    .any(|(_, p)| p.as_ref().is_some_and(|p| walk(enums, p, seen)));
+                seen.pop();
+                r
+            }
+            _ => false,
+        }
+    }
+    walk(enums, ty, &mut Vec::new())
 }
 
 /// Which identifiers are reserved is the target's business, not toylang's. A program with a
@@ -964,7 +1059,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => lua_string(s),
         Kind::Int(n) => n.to_string(),
-        Kind::Float(_) => unreachable!("Float is JS-only in this row"),
+        Kind::Float(n) => lua_float_lit(*n),
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
@@ -1205,11 +1300,22 @@ fn expr(enums: &Enums, t: &Tir) -> String {
     }
 }
 
-/// One arithmetic expression at the width the node's type names. At 64 bits Lua's own
-/// integers are the semantics (kantord/toylang#83): `+`, `-` and `*` wrap natively, so only
-/// division and remainder go through a helper.
+/// One arithmetic expression at the width the node's type names. A Float is IEEE binary64 itself
+/// (ADR 0007), so Lua's native `+`, `-`, `*`, `/` are the exact arithmetic: division by zero is
+/// the IEEE answer (`inf`, `-inf`, `-nan`), which is why there is no `tl_div` guard here the way
+/// the integer widths need one. At 64 bits Lua's own integers are the semantics
+/// (kantord/toylang#83): `+`, `-` and `*` wrap natively, so only division and remainder go
+/// through a helper.
 fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
-    if *ty == Type::Int64 {
+    if *ty == Type::Float {
+        match op {
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            BinOp::Div => format!("({l} / {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else if *ty == Type::Int64 {
         match op {
             BinOp::Div => format!("tl_div64({l}, {r})"),
             BinOp::Rem => format!("tl_rem64({l}, {r})"),
@@ -1227,6 +1333,21 @@ fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
             BinOp::Mul => format!("tl_i32({l} * {r})"),
             other => unreachable!("{other} is not arithmetic"),
         }
+    }
+}
+
+/// A Float literal, in `float::lit`'s shortest round-trip spelling -- with one Lua-specific
+/// addition. `float::lit` spells a whole-number float as a bare run of digits (`2.0` -> `"2"`,
+/// `1e11` -> `"100000000000"`), and Lua reads that as an *integer* literal, so two of them in
+/// `arith` below multiply as integers and overflow the 64-bit width a Float is meant to transcend.
+/// The trailing `.0` forces Lua to parse it as a float, the same coercion `go_float_lit` applies
+/// for the same reason (Go reads a bare digit run as an integer constant).
+fn lua_float_lit(n: f64) -> String {
+    let s = crate::float::lit(n);
+    if s.contains('.') || s.contains('e') || s.contains('E') {
+        s
+    } else {
+        format!("{s}.0")
     }
 }
 
