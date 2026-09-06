@@ -1640,3 +1640,11 @@
   kind: build
   needs: [float-build, float-format-research]
   status: done
+
+- id: drive-tick-lane-resolution-bug
+  issue: gh:178
+  title: 'Process improvement, prio (standing rule): drive-tick.sh''s dead-lane watchdog watches a delegated row''s worktree by building "issue-<gh number>" from the board row''s `issue:` field, but dispatch-worker.sh names multi-row-per-issue lanes (research spikes, the float-build-* family sharing gh:149) after the row `id` instead -- e.g. float-build-python actually lives at issue-float-build-python, not issue-149. The watchdog watched the wrong (stale) worktree for 6 runs, reporting a false 6-run commitless streak on issue-149 while the real lane finished cleanly and landed fine on its own (worker-exit auto-land is unaffected -- it already knows the right name from dispatch time; only the tick''s polling/escalation diagnosis is wrong). Fix: resolve the watched path by checking which of issue-<id> / issue-<gh-number> actually exists on disk (prefer id, fall back to number), not by blindly deriving one name from `issue:`. See gh:178.'
+  kind: build
+  needs: []
+  prio: 1
+  status: done

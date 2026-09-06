@@ -1,11 +1,3 @@
-- id: drive-tick-lane-resolution-bug
-  issue: gh:178
-  title: 'Process improvement, prio (standing rule): drive-tick.sh''s dead-lane watchdog watches a delegated row''s worktree by building "issue-<gh number>" from the board row''s `issue:` field, but dispatch-worker.sh names multi-row-per-issue lanes (research spikes, the float-build-* family sharing gh:149) after the row `id` instead -- e.g. float-build-python actually lives at issue-float-build-python, not issue-149. The watchdog watched the wrong (stale) worktree for 6 runs, reporting a false 6-run commitless streak on issue-149 while the real lane finished cleanly and landed fine on its own (worker-exit auto-land is unaffected -- it already knows the right name from dispatch time; only the tick''s polling/escalation diagnosis is wrong). Fix: resolve the watched path by checking which of issue-<id> / issue-<gh-number> actually exists on disk (prefer id, fall back to number), not by blindly deriving one name from `issue:`. See gh:178.'
-  kind: build
-  needs: []
-  prio: 1
-  status: todo
-
 - id: stuck-issue-benchmark-fannkuch-redux-build-investigation
   kind: build
   status: delegated
@@ -16,6 +8,32 @@
   status: delegated
   needs: []
   title: 'INVESTIGATE stuck lane issue-recursive-descent-order-research (no activity 58h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-recursive-descent-order-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: iteration-traits-research
+  title: 'Maintainer note captured from docs/reference/builtins/max annotations
+    (2026-09-06): max is defined separately for Vec and Stream today, but both
+    only need a simple linear iteration (sync or async, any order) to compute
+    it -- the comparison need is the same too. Spike whether an iteration trait
+    (or a family of them) would let one function definition serve both, and
+    whether the trait needs to split by the specific property a function
+    actually promises rather than being one monolithic "iterable" contract --
+    e.g. max only needs "iteration terminates, item order/arrival timing
+    unconstrained," while some other function may need "items arrive in a
+    fixed order," a strictly stronger promise. Land findings directly (no code
+    change expected); feeds iteration-traits-design.'
+  kind: build
+  needs: []
+  prio: 3
+  status: delegated
+
+- id: iteration-traits-design
+  title: 'Decide whether to add iteration traits (see iteration-traits-research)
+    and, if so, their shape -- language-design change, needs a maintainer round
+    before any implementation.'
+  kind: decide
+  needs: [iteration-traits-research]
+  prio: 3
+  status: todo
+
 - id: dsv-partials-migration
   issue: gh:136
   title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet.'
@@ -67,7 +85,7 @@
   title: 'Implement Float (IEEE binary64 per ADR 0007) for the Lua backend only (host hook), following float-build''s JS implementation as the reference. One backend, one commit. Parked (float-build-lua-lane-stall escalation, option C, maintainer note: "not really drop, refile as blocked issue"): 6 runs on the recycled issue-149 worktree burned surveying every other backend with nothing committed. Blocked on float-format-research landing (per-backend formatting guidance) so redispatch has concrete guidance to link instead of guessing again.'
   kind: build
   needs: [float-build, float-format-research]
-  status: todo
+  status: delegated
 
 - id: float-build-jq
   issue: gh:149
