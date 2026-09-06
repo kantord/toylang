@@ -125,6 +125,8 @@ def gc_orphaned_sandboxes() -> list[str]:
 
 
 def dispatch_trigger(cap: int = DEFAULT_CAP) -> str | None:
+    import glob
+    import os
     import yaml
     active = active_issue_ids()
     free = cap - len(active)
@@ -132,10 +134,47 @@ def dispatch_trigger(cap: int = DEFAULT_CAP) -> str | None:
         return None
     with open(REPO / "plans/board.yaml") as f:
         rows = yaml.safe_load(f) or []
-    live = {r["id"] for r in rows}
-    ready = [r["id"] for r in rows
-             if r.get("status") == "todo" and r.get("kind") == "build"
-             and all(n not in live for n in r.get("needs", []))]
+    # A needs-id merely ABSENT from the live board is not necessarily done --
+    # it can equally mean the id was never boarded at all (a typo or a
+    # forgotten follow-up row), which is not "unblocked", just broken. Found
+    # live, 2026-09-07: variant-types-flip's `needs: [matcher-totality-and-
+    # alt-design, ...]` names a row that exists nowhere, live or archived --
+    # the coordinator had to catch this by hand every tick because this
+    # function's original "absent from live board" check (matching the
+    # board's own documented issue-#113 shorthand) treated it as satisfied.
+    # Board-archive.yaml is the actual, unambiguous record of "genuinely
+    # landed" -- require presence there instead.
+    with open(REPO / "plans/board-archive.yaml") as f:
+        archived = yaml.safe_load(f) or []
+    done = {r["id"] for r in archived}
+    # A standing "do not redispatch" hold -- the dispatch-worker.sh-era
+    # escalated-<lane> marker convention, still actively maintained by hand
+    # (confirmed live, 2026-09-07: euler-slow-fragments-2's own title
+    # documents exactly this, and ~/.cache/toylang-drive/escalated-issue-93
+    # exists on disk). Dropped when this function replaced the old cap-8
+    # dispatch trigger; restored, matched by the row's `issue: gh:N` field.
+    escalated_issues = {
+        os.path.basename(p)[len("escalated-issue-"):]
+        for p in glob.glob(os.path.expanduser("~/.cache/toylang-drive/escalated-issue-*"))
+    }
+
+    def is_ready(r: dict) -> bool:
+        if r.get("status") != "todo" or r.get("kind") != "build":
+            return False
+        # board.yaml's status field can lag a genuinely-dispatched row by a
+        # tick or two (dispatch and the "mark delegated" commit are separate
+        # steps) -- found live, 2026-09-07: two rows still read `status:
+        # todo` while their own sandbox_dispatch.py process was actively
+        # running (finishing land-lane.sh). Trust the live process list over
+        # the field to avoid recommending a double-dispatch in that window.
+        if r["id"] in active:
+            return False
+        gh = str(r.get("issue", ""))
+        if gh.startswith("gh:") and gh[3:] in escalated_issues:
+            return False
+        return all(n in done for n in r.get("needs", []))
+
+    ready = [r["id"] for r in rows if is_ready(r)]
     if not ready:
         return None
     return f"{free} free sandbox slot(s) (cap {cap}), ready: {' '.join(ready[:3])}"
