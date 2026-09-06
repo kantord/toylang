@@ -387,9 +387,9 @@ pub enum Expr {
         arms: Vec<MatchArm>,
         span: Span,
     },
-    /// `Msg(Ping -> "pong", Quit -> "bye")`: a type name used as a match call (gh:152). The
-    /// parens hold comma-separated arms over the subject `.`, the same arms a `Match` carries;
-    /// the enum name is the assertion that the subject is one of this enum's values, and the
+    /// `Msg(Ping -> "pong" or Quit -> "bye")`: a type name used as a match call (gh:152). The
+    /// parens hold the same `or`-separated arms a `Match` carries, over the subject `.`; the
+    /// enum name is the assertion that the subject is one of this enum's values, and the
     /// checker resolves each variant against it. Sugar for a `Match` whose subject is `.`, kept
     /// as its own node so the surface spelling survives formatting.
     MatchCall {

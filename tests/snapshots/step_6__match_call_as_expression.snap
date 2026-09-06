@@ -1,0 +1,67 @@
+---
+source: tests/step_6.rs
+assertion_line: 19
+expression: "parse(r#\"Msg(Ping -> \"pong\" or Quit -> \"bye\")\"#)"
+---
+File {
+    aliases: [],
+    enums: [],
+    traits: [],
+    impls: [],
+    defs: [],
+    body: MatchCall {
+        enum_name: "Msg",
+        enum_span: Span {
+            start: 0,
+            end: 3,
+        },
+        arms: [
+            MatchArm {
+                pattern: Variant {
+                    name: "Ping",
+                    span: Span {
+                        start: 4,
+                        end: 8,
+                    },
+                    fields: None,
+                },
+                body: Str {
+                    text: "pong",
+                    span: Span {
+                        start: 12,
+                        end: 18,
+                    },
+                },
+                span: Span {
+                    start: 4,
+                    end: 18,
+                },
+            },
+            MatchArm {
+                pattern: Variant {
+                    name: "Quit",
+                    span: Span {
+                        start: 22,
+                        end: 26,
+                    },
+                    fields: None,
+                },
+                body: Str {
+                    text: "bye",
+                    span: Span {
+                        start: 30,
+                        end: 35,
+                    },
+                },
+                span: Span {
+                    start: 22,
+                    end: 35,
+                },
+            },
+        ],
+        span: Span {
+            start: 0,
+            end: 36,
+        },
+    },
+}
