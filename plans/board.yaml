@@ -271,7 +271,7 @@
   needs: []
   soft: [draft-intro-migration, draft-questions-home]
   prio: 4
-  status: todo
+  status: delegated
 
 - id: draft-records-migration
   title: Migrate the three record decisions (literals-and-arguments, declared order, order-not-identity) into the record reference, delete (draft-split)
