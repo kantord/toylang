@@ -70,6 +70,64 @@ def tl_rem64(a, b):
     return -r if a < 0 else r
 "#;
 
+/// Python's `str(float)` is neither JS's `String(number)` spelling nor does it name NaN or
+/// Infinity, and the corpus compares a Float against the JS backend byte for byte
+/// (kantord/toylang#149). Python's shortest-round-trip `repr` picks the same digits JS does,
+/// so this only reshapes the framing: JS keeps a plain decimal for decimal exponents -6..20,
+/// Python's repr already writes 16..20 and -6..-5 exponentially; the `.0` Python keeps
+/// on an integral value; and the exponent JS writes unpadded. NaN, Infinity, and signed zero
+/// are never literals, so arithmetic's results are read off the value and named the way JS's
+/// `String(number)` would.
+///
+/// Rust's `Display` emits a whole-number float as a bare integer (`src/float.rs::lit`), which
+/// Python parses as an `int`, so `float(n)` runs first to keep `repr` on the value's real type.
+const FLOAT_HELPER: &str = r#"def tl_float(n):
+    n = float(n)
+    if n != n:
+        return "NaN"
+    if n == float("inf"):
+        return "Infinity"
+    if n == float("-inf"):
+        return "-Infinity"
+    if n == 0:
+        return "0"
+    s = repr(n)
+    if "e" in s:
+        m, _, ex = s.partition("e")
+        e = int(ex)
+        if -6 <= e <= 20:
+            sign = ""
+            if m.startswith("-"):
+                sign = "-"
+                m = m[1:]
+            if "." in m:
+                intp, frac = m.split(".")
+                digits = intp + frac
+                point = len(intp) + e
+            else:
+                digits = m
+                point = len(m) + e
+            if point <= 0:
+                return sign + "0." + "0" * (-point) + digits
+            if point >= len(digits):
+                return sign + digits + "0" * (point - len(digits))
+            return sign + digits[:point] + "." + digits[point:]
+        return m + "e" + ("+" if e >= 0 else "-") + str(abs(e))
+    if s.endswith(".0"):
+        return s[:-2]
+    return s
+"#;
+/// Float division spells the IEEE zero-divisor answers Python refuses to give: NaN
+/// for zero over zero, the infinities otherwise, signs XORed. Negative zero is reachable, so
+/// the zero tests use < not == to read a sign.
+const DIVF_HELPER: &str = r#"def tl_divf(a, b):
+    if b == 0:
+        if a == 0:
+            return float("nan")
+        return float("inf") if (a < 0) == (b < 0) else float("-inf")
+    return a / b
+"#;
+
 const FIELD_HELPER: &str = r#"def tl_field(v, k, depth):
     if depth == 0:
         return v[k]
@@ -291,6 +349,8 @@ pub fn emit(program: &Program) -> String {
         (arith64 || uses("tl_i64(") || uses("tl_sum64("), I64_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
+        (uses("tl_float("), FLOAT_HELPER),
+        (uses("tl_divf("), DIVF_HELPER),
         (uses("tl_field("), FIELD_HELPER),
         (uses("tl_at("), AT_HELPER),
         (uses("tl_slice("), SLICE_HELPER),
@@ -394,7 +454,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         Type::Str => format!("tl_quote({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         Type::Int | Type::Int64 => format!("str({value})"),
-        Type::Float => unreachable!("Float is JS-only in this row"),
+        Type::Float => format!("tl_float({value})"),
         Type::Bool => format!("(\"true\" if {value} else \"false\")"),
         Type::Vec(elem) => {
             let e = format!("e{depth}");
@@ -446,7 +506,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => py_string(s),
         Kind::Int(n) => n.to_string(),
-        Kind::Float(_) => unreachable!("Float is JS-only in this row"),
+        Kind::Float(n) => crate::float::lit(*n),
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),
@@ -794,7 +854,18 @@ fn tail_stmts(
 /// One arithmetic expression at the width the node's type names (kantord/toylang#83): the
 /// same emulation either way, through the 64-bit helpers when the type says so.
 fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
-    if *ty == Type::Int64 {
+    if *ty == Type::Float {
+        // IEEE binary64 is the type itself (ADR 0007), so plain Python operators are the
+        // exact arithmetic,with no wrap to spell. Python's `/` raises on a zero divisor,so
+        // division spells the IEEE answer through `tl_divf` instead of a plain `/`.
+        match op {
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            BinOp::Div => format!("tl_divf({l}, {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else if *ty == Type::Int64 {
         match op {
             BinOp::Div => format!("tl_div64({l}, {r})"),
             BinOp::Rem => format!("tl_rem64({l}, {r})"),
