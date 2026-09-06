@@ -633,6 +633,43 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
     return final_guest, started
 
 
+def sync_real_lane(issue_id: str, env: dict) -> Path:
+    """Reset (or create) the real lane worktree at LANES/issue-<id> to a clean
+    origin/main tip. Every dispatch attempt -- first try or retry -- starts
+    from current disk truth rather than accumulating stale history across
+    attempts, matching this harness's stateless-per-attempt design (the same
+    reasoning drive-tick.sh itself is built on: 'trust disk over memory')."""
+    d = LANES / f"issue-{issue_id}"
+    branch = f"issue-{issue_id}"
+    sh(["git", "-C", str(REPO), "fetch", "origin", "-q"], env=env, check=False)
+    if d.exists():
+        sh(["git", "-C", str(REPO), "worktree", "remove", "--force", str(d)], env=env, check=False)
+    sh(["git", "-C", str(REPO), "branch", "-D", branch], env=env, check=False)
+    sh(["git", "-C", str(REPO), "worktree", "add", "-b", branch, str(d), "origin/main", "-q"], env=env)
+    return d
+
+
+def apply_and_land(issue_id: str, result_patch: Path, env: dict) -> bool:
+    """Apply the sandbox's own commits onto a fresh real lane and hand off to
+    land-lane.sh -- its real `just test` gate (fresh clone) is the sole merge
+    authority, unchanged from the plain-dispatch path this replaces (ruling:
+    plans/opencode-rollout.md, 2026-09-06). No pre-merge review here by
+    design: the house philosophy already has none for the path this
+    supersedes, and land-lane.sh's own retry/escalation logic (unchanged)
+    takes over from here on a red gate."""
+    d = sync_real_lane(issue_id, env)
+    r = sh(["git", "-C", str(d), "am", str(result_patch)], env=env, check=False)
+    if r.returncode != 0:
+        sh(["git", "-C", str(d), "am", "--abort"], env=env, check=False)
+        print(f"== {issue_id}: git am failed applying the sandbox's own patch onto a freshly "
+              "reset lane -- left unlanded for the stuck-lane watchdog or a human to "
+              "investigate (should not happen: same base_commit moments earlier) ==",
+              file=sys.stderr)
+        return False
+    sh([str(REPO / ".claude/scripts/land-lane.sh"), "land", issue_id], env=env, check=False)
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -685,7 +722,10 @@ def main() -> int:
             sh([str(MSB_BIN), "rm", "-f", name], env=env, check=False)
 
     green = attempts[-1].verify_ok if attempts else False
+    landed = False
     escalation_path = None
+    if green and result_patch is not None:
+        landed = apply_and_land(args.issue_id, result_patch, env)
     if not green:
         plan_summary = (
             f"Ran up to {args.max_plan_rounds} plan-decompose round(s) with a devil's-advocate "
@@ -702,12 +742,13 @@ def main() -> int:
         "issue_id": args.issue_id,
         "attempts": len(attempts),
         "green": green,
+        "landed": landed,
         "result_patch": str(result_patch) if result_patch else None,
         "escalation": str(escalation_path) if escalation_path else None,
         "workdir": str(workdir),
     }
     print(json.dumps(summary, indent=2))
-    return 0 if summary["green"] else 1
+    return 0 if summary["landed"] else 1
 
 
 if __name__ == "__main__":
