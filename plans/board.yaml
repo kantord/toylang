@@ -32,14 +32,6 @@
   needs: []
   issue: gh:149
   title: 'INVESTIGATE stuck lane issue-float-build-go (no activity 37h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-go-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: call-form-hoist-check
-  issue: gh:152
-  title: 'Step 3/4 of the issue-152-stall reshape: checker -- return-type inference for `fn name = expr`; resolve MatchCall arms against the enum registry.'
-  kind: build
-  needs: [call-form-hoist-parse]
-  prio: 3
-  status: delegated
-
 - id: call-form-hoist-codegen
   issue: gh:152
   title: 'Step 4/4 of the issue-152-stall reshape: codegen for the call-form hoist across all backends. gh:152 closes on landing this row.'
@@ -436,4 +428,12 @@
   kind: build
   needs: []
   prio: 4
+  status: todo
+
+- id: hoisted-def-stream-invariant-gap
+  issue: gh:152
+  title: 'Post-land review finding (commit 8a0fd90, issue-152 step 3/4): `signatures` in src/check/types.rs skips the "a stream is born only at a source" check (`if !def.hoisted && matches!(sig.ret, Type::Stream(_)) ...`) for every hoisted def (`fn name = Msg(...)`), because at that point the return is still the provisional enum placeholder, never a stream. But `infer_hoisted` in src/check/mod.rs later replaces that provisional return with whatever the match arms actually synthesize -- and that inferred type is never re-checked against the stream invariant. A hoisted def whose arm body produces a stream (e.g. an arm that calls a stream source like `csv(...)`) would type-check with a stream return and a plain-enum parameter, bypassing the fusion/pipeline invariant the non-hoisted path still enforces. Add a corpus/step_3 test asserting this is refused, and re-run (or move) the stream-return check after `infer_hoisted` resolves the real return type.'
+  kind: build
+  needs: []
+  prio: 3
   status: todo
