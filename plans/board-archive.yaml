@@ -1859,3 +1859,14 @@
     fresh); stuck-issue-recursive-descent-order-research-investigation traced to the real task''s
     own webfetch-blocked runs, resolved by landing the research directly. No systemic dispatch bug
     found beyond what these three individually explain.'
+
+- id: float-build-lua
+  issue: gh:149
+  title: 'Implement Float (IEEE binary64 per ADR 0007) for the Lua backend only (host hook), following float-build''s JS implementation as the reference. One backend, one commit. Parked (float-build-lua-lane-stall escalation, option C, maintainer note: "not really drop, refile as blocked issue"): 6 runs on the recycled issue-149 worktree burned surveying every other backend with nothing committed. Blocked on float-format-research landing (per-backend formatting guidance) so redispatch has concrete guidance to link instead of guessing again.'
+  kind: build
+  needs: [float-build, float-format-research]
+  status: done
+  outcome: 'Landed on the first attempt after 7 prior stalls, once redispatched with a brief
+    handing over the exact code sites and a verified-working shortest-round-trip formatting
+    technique instead of asking the model to rediscover one via git archaeology -- confirmed the
+    2026-09-06 diagnosis that this was a missing-algorithm problem, not a model-strength one.'

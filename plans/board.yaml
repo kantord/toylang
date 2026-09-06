@@ -77,13 +77,6 @@
   prio: 4
   status: done
 
-- id: float-build-lua
-  issue: gh:149
-  title: 'Implement Float (IEEE binary64 per ADR 0007) for the Lua backend only (host hook), following float-build''s JS implementation as the reference. One backend, one commit. Parked (float-build-lua-lane-stall escalation, option C, maintainer note: "not really drop, refile as blocked issue"): 6 runs on the recycled issue-149 worktree burned surveying every other backend with nothing committed. Blocked on float-format-research landing (per-backend formatting guidance) so redispatch has concrete guidance to link instead of guessing again.'
-  kind: build
-  needs: [float-build, float-format-research]
-  status: delegated
-
 - id: float-build-jq
   issue: gh:149
   title: 'Landed directly (2026-09-04), not by a delegated worker: full Float for jq -- lane had 4.3h-idle real progress (arithmetic, comparisons, input, a careful ESCALATION.md) stalled by the worker''s own model repeatedly corrupting a probe script with a stray Unicode combining character. Closed the escalation''s printing gap: jq''s tostring already gets the shortest round-trip digits right (verified against a ~5000-value fuzz run, matching float-build-c-escalation''s own verification), so its output is reparsed and relaid-out with the same notation rule runtime/toylang.c''s Native formatter uses, rather than needing a fresh Q37 decision round. One gap left open on purpose: a non-finite float nested in a Vec/Record diverges from JS (pinned by a test, not silently untested) -- fixing it means jq abandoning its value-based JSON encoder for hand-built string concatenation, a bigger change than this row''s scope.'
