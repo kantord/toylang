@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"fn nope = 42\n\nnope(1)\"#)"
+---
+`fn nope = ...` needs a match-call body that names the enum it matches, such as `Msg(Ping -> "ping" or Quit -> "quit")` (at byte 0)

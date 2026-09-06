@@ -137,3 +137,22 @@ fn a_unary_function_called_with_no_argument() {
     insta::assert_snapshot!(err(r#"fn greet(who: Str) -> Str = who
 greet()"#));
 }
+
+/// A hoisted definition (`fn name = expr`, gh:152) may write any body, but the checker insists
+/// that body be a match call naming the enum the implicit `.` parameter matches; a bare
+/// expression gives it nothing to infer a parameter type from.
+#[test]
+fn hoisted_def_needs_a_match_call_body() {
+    insta::assert_snapshot!(err(r#"fn nope = 42
+
+nope(1)"#));
+}
+
+/// The match call in a hoisted body names an enum that must exist: an unknown name is an
+/// unknown type, not a plausible-but-wrong signature.
+#[test]
+fn hoisted_def_unknown_enum() {
+    insta::assert_snapshot!(err(r#"fn nope = Missing(any() -> 0)
+
+nope(1)"#));
+}

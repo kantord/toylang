@@ -1,0 +1,15 @@
+# A hoisted definition (gh:152): `fn name = expr` with no parameter list and no return
+# annotation. The implicit `.` parameter is the enum the match-call body names, the signature is
+# inferred from the body, and each arm resolves against that enum's variants. The whole call
+# form is sugar for a `Match` over the implicit parameter.
+program: |
+  enum Msg { Ping, Quit, Text{body: Str} }
+
+  fn render = Msg(Ping -> "*ping*" or Quit -> "*quit*" or Text{body} -> body)
+
+  {a: render(Msg.ping), b: render(Msg.quit), c: render(Msg.text{body: "hi"})}
+
+output: |
+  {"a":"*ping*","b":"*quit*","c":"hi"}
+
+node_types: [application, local, match, pipe, projection, record-literal, str, var, variant.payload, variant.unit]

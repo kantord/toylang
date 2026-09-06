@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{BinOp, Expr, FieldsPattern, File, MatchArm, Origin, Param, ParamShape, Pattern, Span};
+use crate::ast::{BinOp, Def, Expr, FieldsPattern, File, MatchArm, Origin, Param, ParamShape, Pattern, Span};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{self, Sig, Type};
@@ -149,7 +149,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             }
         }
     }
-    let sigs = signatures(&file.defs, &env)?;
+    let mut sigs = signatures(&file.defs, &env)?;
     let input = RefCell::new(None);
     let inputs = RefCell::new(None);
     let dsv = RefCell::new(None);
@@ -159,6 +159,34 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
         .iter()
         .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
         .collect();
+    // The first context carries `signatures`' provisional hoisted signatures (ret = the matched
+    // enum), enough to check their bodies; the inference pass below replaces each provisional
+    // return with the body's actual type and rebuilds the context before anything is checked.
+    let ctx = Ctx {
+        sigs: &sigs,
+        enums: &enums,
+        variant_owners: &variant_owners,
+        scope: Vec::new(),
+        arm_fields: Vec::new(),
+        subject: None,
+        input: &input,
+        inputs: &inputs,
+        lines_used: &lines_used,
+        dsv: &dsv,
+        in_mapper: false,
+        in_fn: None,
+        visibility: &visibility,
+        file: Origin::Program,
+        next_local: &next_local,
+    };
+    // Return-type inference for hoisted definitions (`fn name = expr`, gh:152): a hoisted
+    // function's signature is not written, so no body -- its own or another's -- may be checked
+    // against the provisional return `signatures` seeded. Checking each hoisted body once here
+    // fixes the real return, and rebuilding `sigs` first is what lets every later call, a
+    // recursive one included, resolve it.
+    for (name, sig) in infer_hoisted(&ctx, file.defs.iter())? {
+        sigs.insert(name, sig);
+    }
     let ctx = Ctx {
         sigs: &sigs,
         enums: &enums,
@@ -293,6 +321,14 @@ fn check_defs<'a>(
 ) -> Result<Vec<tir::Func>, Error> {
     let mut funcs = Vec::new();
     for def in defs {
+        // A hoisted definition (`fn name = expr`, gh:152) is checked by its own path: the
+        // signature is inferred rather than written, so none of the annotated-param machinery
+        // below applies. `infer_hoisted` already checked it once to fix the return type; this
+        // second check produces the `Func` the backends emit.
+        if def.hoisted {
+            funcs.push(check_hoisted_def(ctx, def)?);
+            continue;
+        }
         let sig = &ctx.sigs[&def.name];
         // A destructured parameter binds each named field to a fresh local, and its record arrives
         // as a hidden single-name parameter the body never sees: the `Bind` chain below reads it off
@@ -507,7 +543,7 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
             }
         }
     }
-    let sigs = signatures(&module.defs, &env)?;
+    let mut sigs = signatures(&module.defs, &env)?;
     let input = RefCell::new(None);
     let inputs = RefCell::new(None);
     let lines_used = Cell::new(false);
@@ -518,6 +554,26 @@ pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error
         .iter()
         .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
         .collect();
+    let ctx = Ctx {
+        sigs: &sigs,
+        enums: &enums,
+        variant_owners: &variant_owners,
+        scope: Vec::new(),
+        arm_fields: Vec::new(),
+        subject: None,
+        input: &input,
+        inputs: &inputs,
+        lines_used: &lines_used,
+        dsv: &dsv,
+        in_mapper: false,
+        in_fn: None,
+        visibility: &visibility,
+        file: Origin::Prelude,
+        next_local: &next_local,
+    };
+    for (name, sig) in infer_hoisted(&ctx, module.defs.iter())? {
+        sigs.insert(name, sig);
+    }
     let ctx = Ctx {
         sigs: &sigs,
         enums: &enums,
@@ -1668,6 +1724,130 @@ fn match_chain(
     ))
 }
 
+/// `Msg(Ping -> "ping" or Quit -> "quit")` (gh:152): a `Match` over the subject `.`, with the
+/// named enum asserted as the subject's type. The arms are the same `or`-chain a `Match`
+/// carries; only the head differs. Resolution is delegated to `match_chain` once the subject is
+/// confirmed to be the enum the name spells, which is what makes the whole call form something
+/// the checker can reason about rather than a type name that happened to be called.
+fn match_call(
+    ctx: &Ctx,
+    enum_name: &str,
+    enum_span: Span,
+    arms: &[MatchArm],
+    span: Span,
+) -> Result<Tir, Error> {
+    if !ctx.enums.contains_key(enum_name) {
+        return Err(Error::new(enum_span, format!("unknown type `{enum_name}`")));
+    }
+    let Some((subject_ty, _)) = ctx.subject.clone() else {
+        return Err(Error::new(
+            span,
+            "a match needs a subject, so it must follow `|`".to_string(),
+        ));
+    };
+    let Type::Enum { name, .. } = &subject_ty else {
+        return Err(Error::new(
+            enum_span,
+            format!("`{enum_name}` names an enum, but the subject is {subject_ty}"),
+        ));
+    };
+    if name != enum_name {
+        return Err(Error::new(
+            enum_span,
+            format!(
+                "`{enum_name}` is not the subject's type, which is {subject_ty}"
+            ),
+        ));
+    }
+    match_chain(ctx, arms, span, None)
+}
+
+/// The body of `fn name = Msg(Ping -> ... or ...)` (gh:152): the implicit `.` parameter is the
+/// named enum, the body is a match call over it, and the function's signature -- parameter type
+/// and return both -- is whatever that resolves to. The parameter is bound as the subject and
+/// arrives through a hidden name the body never sees (it reads the subject), so the call form's
+/// `.` is real input flowing in, not a constant.
+fn check_hoisted_def(ctx: &Ctx, def: &Def) -> Result<tir::Func, Error> {
+    let Expr::MatchCall {
+        enum_name,
+        enum_span,
+        arms,
+        span,
+    } = &def.body
+    else {
+        return Err(Error::new(
+            def.span,
+            format!(
+                "`fn {} = ...` needs a match-call body that names the enum it matches, \
+                 such as `Msg(Ping -> \"ping\" or Quit -> \"quit\")`",
+                def.name
+            ),
+        ));
+    };
+    let Some(enum_ty) = ctx.enums.get(enum_name.as_str()) else {
+        return Err(Error::new(*enum_span, format!("unknown type `{enum_name}`")));
+    };
+    let sid = ctx.fresh();
+    let def_ctx = Ctx {
+        sigs: ctx.sigs,
+        enums: ctx.enums,
+        variant_owners: ctx.variant_owners,
+        scope: Vec::new(),
+        arm_fields: Vec::new(),
+        subject: Some((enum_ty.clone(), sid)),
+        input: ctx.input,
+        inputs: ctx.inputs,
+        lines_used: ctx.lines_used,
+        dsv: ctx.dsv,
+        in_mapper: false,
+        in_fn: Some(&def.name),
+        visibility: ctx.visibility,
+        file: ctx.file,
+        next_local: ctx.next_local,
+    };
+    let body = match_call(&def_ctx, enum_name, *enum_span, arms, *span)?;
+    let param_name = format!("__{}_param", def.name);
+    let body = Tir::new(
+        body.ty.clone(),
+        Kind::Bind {
+            local: sid,
+            value: Box::new(Tir::new(enum_ty.clone(), Kind::Var(param_name.clone()))),
+            body: Box::new(body),
+        },
+    );
+    Ok(tir::Func {
+        name: def.name.clone(),
+        param: Some(param_name),
+        param_ty: Some(enum_ty.clone()),
+        body,
+    })
+}
+
+/// Refine the provisional signatures of hoisted definitions (`fn name = expr`, gh:152) from
+/// their bodies. `signatures` seeded each with the enum it matches as a stand-in return; no
+/// call may rely on that, so this pass runs before any body is checked and replaces every one
+/// with the body's actual type. `ctx` is a provisional context carrying those seed signatures.
+fn infer_hoisted<'a>(
+    ctx: &Ctx<'a>,
+    defs: impl IntoIterator<Item = &'a Def>,
+) -> Result<HashMap<String, Sig>, Error> {
+    let mut refined = HashMap::new();
+    for def in defs {
+        if !def.hoisted {
+            continue;
+        }
+        let func = check_hoisted_def(ctx, def)?;
+        refined.insert(
+            def.name.clone(),
+            Sig {
+                param: func.param_ty.clone(),
+                ret: func.body.ty.clone(),
+            },
+        );
+    }
+    Ok(refined)
+}
+
 fn synth(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
     let tir = synth_inner(ctx, expr)?;
     // A sink is not a value, so it can exist only where `tail_pipe` or `sink_call` recognized a
@@ -1934,9 +2114,15 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 
         Expr::Match { arms, span } => match_chain(ctx, arms, *span, None),
 
-        // No parser path constructs a match-call yet (gh:152), so this arm is totalness until
-        // the parser learns to hoist match arms into a call form.
-        Expr::MatchCall { .. } => unreachable!("no parser path constructs a match-call yet"),
+        // A type name used as a match call (gh:152): sugar for a `Match` over `.`, resolved by
+        // `match_call` against the enum the name spells, then down to the same `match_chain`
+        // the ordinary `Match` runs.
+        Expr::MatchCall {
+            enum_name,
+            enum_span,
+            arms,
+            span,
+        } => match_call(ctx, enum_name, *enum_span, arms, *span),
 
         Expr::Variant {
             enum_name,
