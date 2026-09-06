@@ -102,12 +102,6 @@
   prio: 4
   status: done
 
-- id: benchmark-fannkuch-redux-build
-  title: 'Build the CLBG fannkuch-redux task in toylang (benchmark-plan.md Build status): permutations of Vec<Int>, fully numeric, no string decode needed. Follows the pattern in benches/programs/binary-trees.toy.'
-  kind: build
-  needs: []
-  prio: 4
-  status: todo
 
 - id: sort-by-max-by-checkpoint-1
   issue: gh:177

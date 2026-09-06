@@ -1893,3 +1893,18 @@
   kind: build
   needs: [variant-checker-capital-first]
   status: done
+
+- id: benchmark-fannkuch-redux-build
+  title: 'Build the CLBG fannkuch-redux task in toylang (benchmark-plan.md Build status): permutations of Vec<Int>, fully numeric, no string decode needed. Follows the pattern in benches/programs/binary-trees.toy.'
+  kind: build
+  needs: []
+  prio: 4
+  status: done
+  outcome: 'Landed as e3cf6a5. Its own status: done never took effect on main because a
+    CONCURRENT, unrelated board.yaml commit (5be5ecc, same parent commit as e3cf6a5 -- a real git
+    race, not a stale-status bug) was computed from a board.yaml snapshot read before this rows
+    landing existed, and its own rebase-and-push silently reverted the field back to todo. The
+    worker also edited plans/board.yaml directly as part of its own patch, which normally only
+    the coordinator should do -- a contributing factor to the collision. Board bookkeeping fixed
+    directly, 2026-09-07, in response to a user question about why board status kept lagging
+    reality.'
