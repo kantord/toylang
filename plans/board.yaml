@@ -393,7 +393,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: batch-type-design-research
   title: 'Batch-invariance-enforcement follow-up (Q21 round 4): design the richer effect type the maintainer asked for instead of a bare compiler gate -- work out the shape of `Stream<Batch<T>>` as distinct from `Stream<T>`, an explicit `[Stream<T>, N] -> Stream<Batch<T, N>>` batching function, and what initiates batching in the first place (explicit marker, implicit at certain constructs, or forced/unavoidable for certain operations). Survey how other languages/runtimes with chunked-stream processing (Spark partitions, Flink windows, Beam bundles) expose batch boundaries in their type systems. Findings feed a re-ask of offload-boundary-design Q21.'
