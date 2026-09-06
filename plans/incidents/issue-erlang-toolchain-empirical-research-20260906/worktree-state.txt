@@ -1,0 +1,6 @@
+captured: 2026-09-06T17:13:10+0200
+state: {"ts": 1788707590, "lane": "issue-erlang-toolchain-empirical-research", "ahead": 0, "tracked_dirty": 0, "live": false, "runs": 1, "last_activity": 1788705305}
+
+=== git status ===
+
+=== git diff --stat ===
