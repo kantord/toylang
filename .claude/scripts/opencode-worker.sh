@@ -29,21 +29,23 @@ command -v sccache >/dev/null && export RUSTC_WRAPPER=sccache
 # lands the wake-up. Only SIGKILL skips a trap; the loop tick remains the
 # backstop for that.
 #
-# Issue lanes go straight to the serial landing queue (deterministic, no
+# Every lane goes straight to the serial landing queue (deterministic, no
 # model in the happy path; maintainer redesign 2026-09-01) -- land-lane.sh
-# checks landability itself, handles conflict/red re-dispatch, and fires the
-# tick when it is done. Everything else fires the tick directly. cwd matters:
-# a nohup child keeping cwd in this worktree would block its removal.
+# checks landability itself (a lane with nothing ahead of main, or one whose
+# gate goes red, no-ops or re-dispatches safely on its own), handles
+# conflict/red re-dispatch, and fires the tick when it is done. This used to
+# only fire a direct land for numeric `issue-<N>` lanes and route every
+# research/benchmark/decompose slug lane (issue-benchmark-fasta-build,
+# issue-float-format-research, ...) through a generic tick instead, hoping
+# the coordinator's own duty-(b) logic noticed and landed it -- an indirect,
+# best-effort path with no forcing function, unlike the direct call numeric
+# lanes got (2026-09-06 finding: non-numeric lanes are not an edge case, they
+# are a growing share of dispatched work). cwd matters: a nohup child keeping
+# cwd in this worktree would block its removal.
 fire_next() {
-  case "$LANE" in
-  issue-[0-9]*)
-    echo "[opencode-worker] firing landing: $LANE"
-    (cd / && nohup "$SCRIPTS/land-lane.sh" land "${LANE#issue-}" \
-      >>"$HOME/.cache/toylang-drive/land.log" 2>&1 &) ;;
-  *)
-    echo "[opencode-worker] firing landing tick"
-    (cd / && nohup "$SCRIPTS/drive-tick.sh" >>"$HOME/.cache/toylang-drive/event-ticks.log" 2>&1 &) ;;
-  esac
+  echo "[opencode-worker] firing landing: $LANE"
+  (cd / && nohup "$SCRIPTS/land-lane.sh" land "${LANE#issue-}" \
+    >>"$HOME/.cache/toylang-drive/land.log" 2>&1 &)
 }
 trap fire_next EXIT
 
