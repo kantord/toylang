@@ -410,14 +410,6 @@
   prio: 5
   status: todo
 
-- id: messagecard-flow-defensive-render
-  issue: gh:173
-  title: 'MessageCard hard-crashes the whole mail/grill UI on an unrecognized flow value (found live: two pending rounds had flow: decide, not a FlowType member, blanking the app). Fall back to a neutral style instead of throwing, and/or add an error boundary around round rendering -- the immediate bad data is already fixed in the two affected round files, this is the defensive follow-up.'
-  kind: build
-  needs: []
-  prio: 2
-  status: delegated
-
 - id: http-query-sugar-design
   issue: gh:171
   title: 'Maintainer note (composed 2026-08-31): design minimal HTTP query support (Python-requests-like) as sugar over whatever backend already provides -- needs a grilling round on surface area before it becomes build work'

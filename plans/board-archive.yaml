@@ -1700,3 +1700,11 @@
   kind: build
   needs: []
   status: done
+
+- id: messagecard-flow-defensive-render
+  issue: gh:173
+  title: 'MessageCard hard-crashes the whole mail/grill UI on an unrecognized flow value (found live: two pending rounds had flow: decide, not a FlowType member, blanking the app). Fall back to a neutral style instead of throwing, and/or add an error boundary around round rendering -- the immediate bad data is already fixed in the two affected round files, this is the defensive follow-up.'
+  kind: build
+  needs: []
+  prio: 2
+  status: done
