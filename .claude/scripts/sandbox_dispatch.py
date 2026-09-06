@@ -160,37 +160,26 @@ def msb_env() -> dict:
 
 
 def prepare_clone(issue_id: str, workdir: Path) -> tuple[Path, str]:
-    """Disposable local clone at the lane's current state (or main's tip if
-    no lane worktree exists yet). Never touches the real lane or main repo."""
+    """Disposable local clone, always freshly branched from origin/main's
+    current tip -- never a continuation from any existing branch. Every
+    dispatch is stateless per attempt (kanban ruling, 2026-09-06), the same
+    reasoning drive-tick.sh's own ticks are built on. A prior version of this
+    function continued from an `origin/<branch>` ref when one existed, which
+    seemed right for a genuinely still-running lane but silently picked up
+    ancient, unrelated history from a stale local branch left over from an
+    earlier plain-dispatch attempt at the same row-id (found live,
+    2026-09-06: a benchmark-fannkuch-redux-build run's extracted patch
+    replayed hours-old, already-landed commits because the local repo this
+    clones from still had that old branch sitting around). Never touches the
+    real lane or main repo -- this clone is fully disposable."""
     clone_dir = workdir / "repo"
     if clone_dir.exists():
         shutil.rmtree(clone_dir)
     sh(["git", "clone", "--no-hardlinks", "--quiet", str(REPO), str(clone_dir)])
+    sh(["git", "-C", str(clone_dir), "fetch", "origin", "-q"])
     branch = f"issue-{issue_id}"
-    # `git clone` of a local repo only checks out the DEFAULT branch locally;
-    # every other branch (including lane branches, which are never pushed to
-    # a remote) lands as an `origin/<branch>` remote-tracking ref, not a
-    # plain local branch. Checking `rev-parse --verify <branch>` directly
-    # against a fresh clone always misses this and silently branches off
-    # main's current tip instead -- confirmed the hard way (2026-09-05): a
-    # test run for issue-172 branched off main AFTER an unrelated same-day
-    # merge, completely disconnected from that lane's real history.
-    remote_ref = f"origin/{branch}"
-    have_branch = sh(["git", "-C", str(clone_dir), "rev-parse", "--verify", remote_ref],
-                      check=False).returncode == 0
-    if have_branch:
-        sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "-b", branch, remote_ref])
-    else:
-        sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "-b", branch])
+    sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "-b", branch, "origin/main"])
     base_commit = sh(["git", "-C", str(clone_dir), "rev-parse", "HEAD"]).stdout.strip()
-
-    lane = LANES / f"issue-{issue_id}"
-    if lane.is_dir():
-        diff = sh(["git", "-C", str(lane), "diff"]).stdout
-        if diff.strip():
-            patch = workdir / "lane.patch"
-            patch.write_text(diff)
-            sh(["git", "apply", str(patch)], check=False)  # best-effort; harness still proceeds if it doesn't apply
     return clone_dir, base_commit
 
 
@@ -658,13 +647,19 @@ def apply_and_land(issue_id: str, result_patch: Path, env: dict) -> bool:
     supersedes, and land-lane.sh's own retry/escalation logic (unchanged)
     takes over from here on a red gate."""
     d = sync_real_lane(issue_id, env)
-    r = sh(["git", "-C", str(d), "am", str(result_patch)], env=env, check=False)
+    # -3 (three-way merge, using the patch's own recorded base blobs): this
+    # repo lands commits every few minutes, and a sandbox run takes 15-40
+    # minutes, so origin/main drifting past the patch's own base_commit
+    # before landing is the NORMAL case here, not a rare one -- a plain `git
+    # am` fails on stale context lines even when the actual changes do not
+    # conflict (found live, 2026-09-06: plans/opencode-rollout.md, edited
+    # throughout this session, broke a plain apply that -3 resolved cleanly).
+    r = sh(["git", "-C", str(d), "am", "-3", str(result_patch)], env=env, check=False)
     if r.returncode != 0:
         sh(["git", "-C", str(d), "am", "--abort"], env=env, check=False)
-        print(f"== {issue_id}: git am failed applying the sandbox's own patch onto a freshly "
-              "reset lane -- left unlanded for the stuck-lane watchdog or a human to "
-              "investigate (should not happen: same base_commit moments earlier) ==",
-              file=sys.stderr)
+        print(f"== {issue_id}: git am -3 failed applying the sandbox's own patch onto a "
+              "freshly reset lane -- a genuine conflict with origin/main, left unlanded for "
+              "the stuck-lane watchdog or a human to investigate ==", file=sys.stderr)
         return False
     sh([str(REPO / ".claude/scripts/land-lane.sh"), "land", issue_id], env=env, check=False)
     return True
