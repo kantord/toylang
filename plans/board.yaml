@@ -502,3 +502,16 @@
   needs: []
   prio: 4
   status: todo
+
+- id: stuck-lane-investigation-chain-diagnosis
+  issue: gh:179
+  title: 'Diagnose why iteration-traits-research and stuck-issue-recursive-descent-order-research-investigation
+    never diverged from main (0 unique commits despite runs=1 each) and why
+    stuck-issue-iteration-traits-research-investigation landed an unrelated
+    self-invented fix instead of its requested plans/opencode-rollout.md report
+    (found live during the 2026-09-06 periodic audit). Check
+    ~/.cache/toylang-drive/opencode/ logs for whether a worker ever actually
+    started on any of the three, then decide whether to redispatch or reshape.'
+  kind: build
+  needs: []
+  status: todo
