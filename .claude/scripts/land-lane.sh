@@ -59,19 +59,33 @@ fire_tick() {
 # sanctioned and cleaned on the next land attempt), then either re-dispatch
 # the lane's worker with a templated brief or, past the cap, leave the marker.
 retrigger() { # $1: issue number  $2: short failure kind  $3: evidence file
-  local n=$1 kind=$2 evidence=$3 d="$LANES/issue-$1" count
+  local n=$1 kind=$2 evidence=$3 count brief_file
   count=$(( $(cat "$LOG_DIR/land-retries-issue-$n" 2>/dev/null || echo 0) + 1 ))
   echo "$count" >"$LOG_DIR/land-retries-issue-$n"
-  cp "$evidence" "$d/LAND-FAILURE.txt" 2>/dev/null || true
   if [ "$count" -gt "$RETRY_CAP" ]; then
     echo "landing issue-$n: $kind, attempt $count -- retry cap reached" \
       >"$LOG_DIR/land-failed-issue-$n"
     echo "[land] issue-$n: $kind on attempt $count -- CAP REACHED, left for escalation"
     return
   fi
-  echo "[land] issue-$n: $kind on attempt $count -- re-dispatching the lane worker"
-  "$SCRIPTS/dispatch-worker.sh" "$n" "A previous worker completed this task, but landing the branch on main FAILED: $kind (landing attempt $count of $((RETRY_CAP + 1))). Read LAND-FAILURE.txt at the worktree root for the exact evidence before touching anything. Your job now is ONLY to make this branch land: merge origin/main into this branch, resolve any conflicts in favor of intent (both sides' tests must still pass), fix whatever LAND-FAILURE.txt shows failing, and re-run the gate. Do not start new feature work." 8>&- \
-    || echo "[land] issue-$n: re-dispatch refused (see above)"
+  echo "[land] issue-$n: $kind on attempt $count -- re-dispatching via sandbox_dispatch.py"
+  # sandbox_dispatch.py resets the lane fresh from origin/main on every run
+  # (kanban ruling, 2026-09-06: stateless per attempt, same reasoning as
+  # drive-tick.sh's own ticks) -- a file left in the OLD worktree would not
+  # survive to the retry, so the evidence goes straight into the brief text
+  # instead of a copied LAND-FAILURE.txt.
+  brief_file="$LOG_DIR/land-retry-brief-issue-$n.txt"
+  {
+    echo "A previous sandboxed attempt completed this task, but landing the branch on main"
+    echo "FAILED: $kind (landing attempt $count of $((RETRY_CAP + 1))). The exact evidence:"
+    echo
+    cat "$evidence"
+    echo
+    echo "Your job now is ONLY to make this branch land: fix whatever the evidence above"
+    echo "shows failing, and re-run the gate. Do not start new feature work."
+  } >"$brief_file"
+  (cd / && nohup python3 "$SCRIPTS/sandbox_dispatch.py" "$n" --brief "$brief_file" \
+    >>"$LOG_DIR/sandbox-dispatch-issue-$n.log" 2>&1 &) 8>&-
 }
 
 case "$MODE" in
