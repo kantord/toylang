@@ -325,6 +325,20 @@ def fatal_api_error(tail: str) -> str | None:
     return None
 
 
+def zero_progress_since_base(name: str, base_commit: str, env: dict) -> bool:
+    """True if nothing has been written to real repo files since the run
+    started -- neither committed (HEAD still equals base_commit) nor pending
+    (git status clean). Checked against base_commit rather than "did this
+    specific turn change anything" so a later turn in the same continued
+    session correctly reads as real progress once an earlier turn already
+    committed something."""
+    head = exec_in(name, "cd /repo && git rev-parse HEAD", env, check=False).stdout.strip()
+    if head != base_commit:
+        return False
+    status = exec_in(name, "cd /repo && git status --porcelain", env, check=False).stdout
+    return not status.strip()
+
+
 def read_json_from_guest(name: str, guest_path: str, env: dict) -> dict | None:
     r = exec_in(name, f"cat {guest_path} 2>/dev/null", env, check=False)
     if not r.stdout.strip():
@@ -552,6 +566,28 @@ def run_build_cycle(issue_id: str, name: str, first_message_guest: str, model: s
                 f"opencode never attempted the task -- matched fatal pattern '{fatal}' in its "
                 f"own log:\n\n{run_tail}"))
             break
+
+        if zero_progress_since_base(name, base_commit, env):
+            # `just check` passing against a completely untouched tree is
+            # trivially true and is not evidence the task was even attempted,
+            # let alone done -- confirmed live, 2026-09-06: a build turn spent
+            # its whole budget writing throwaway repro scripts under /tmp
+            # (outside the repo) and reading source, never touching the
+            # actual deliverable, and the harness reported GREEN on attempt 1
+            # with zero retries (a `kind: build` row always implies SOME real
+            # diff, so this check is safe unconditionally here).
+            print(f"== {issue_id}: build turn {i + 1} made zero file changes since base "
+                  f"({'retrying' if i < retry_cap else 'cap reached'}) -- not trusting a "
+                  "trivial `just check` pass ==", file=sys.stderr)
+            attempts.append(Attempt(
+                i + 1, False,
+                "This turn made ZERO file changes (git status --porcelain was completely "
+                "empty and HEAD never moved from the starting commit). A passing `just "
+                "check` here is trivially true, not evidence of progress. Actually "
+                "IMPLEMENT the task now: edit the real target files described in the "
+                "brief. Do not just explore, read code, or write throwaway test/repro "
+                "scripts."))
+            continue
 
         print(f"== {issue_id}: verifying build turn {i + 1} ==", file=sys.stderr)
         ok, tail = verify(name, env)
