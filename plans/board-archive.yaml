@@ -1655,6 +1655,19 @@
   needs: []
   title: 'INVESTIGATE stuck lane issue-benchmark-fannkuch-redux-build (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-benchmark-fannkuch-redux-build-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 
+- id: stuck-issue-erlang-toolchain-empirical-research-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:170
+  title: 'INVESTIGATE stuck lane issue-erlang-toolchain-empirical-research (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-erlang-toolchain-empirical-research-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+  outcome: 'Sandbox went green-but-no-patch (pre-17b0f14 stale-/repo bug). Rescued the one
+    real commit from the dead sandbox (tests/streaming.rs BrokenPipe tolerance fix) and
+    landed it as 04cae72 -- see plans/opencode-rollout.md, "Rescued a real fix from a
+    pre-rm -rf /repo-fix sandbox instead of discarding it (2026-09-06)". The requested
+    prose investigation report was not among the rescued commits and was lost with the
+    sandbox.'
+
 - id: escalation-md-gitignore-hygiene
   title: 'ESCALATION.md is a tracked file on main (root of repo), left over from a past
     worker''s escalation write and never cleaned up -- its content is stale (references a

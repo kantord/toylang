@@ -1211,3 +1211,41 @@ actual opencode/build logs is cheap and finds the real cause; trusting the
 auto-generated escalation-round boilerplate at face value would have sent the
 maintainer a "stronger model or hand to human" choice for a problem neither option
 touches.
+
+## Ruling: opencode invocation failures now surface as an explicit build-turn failure (2026-09-06)
+
+`run_build_cycle()` in `sandbox_dispatch.py` never checked whether `opencode run` itself
+actually attempted the task -- only whether `just check` passed afterward. An expired
+`OPENROUTER_API_KEY` made every call a no-op, so `just check` trivially passed against
+an untouched repo and the run reported GREEN with nothing to extract (see the incident
+above). Added `fatal_api_error()`: checks each build turn's own opencode log tail for
+known hard-failure substrings ("API key expired", "invalid_api_key", "Insufficient
+credit", "insufficient_quota", "rate limit exceeded") and, on a match, records that
+turn as a failed `Attempt` and stops retrying immediately -- retrying against the same
+dead key/quota wastes the retry cap on something no amount of attempts fixes. This
+routes straight into the existing escalation path instead of the misleading
+green-but-no-patch anomaly. Deliberately scoped to `run_build_cycle()` only for now
+(the confirmed, reproduced failure mode); `plan_phase()` has the identical gap but
+already degrades gracefully to "trivial" on a missing `verdict.json`, so a dead key
+there still gets caught once the build cycle runs -- lower priority, not yet fixed.
+
+## Rescued a real fix from a pre-`rm -rf /repo`-fix sandbox instead of discarding it (2026-09-06)
+
+`stuck-issue-erlang-toolchain-empirical-research-investigation` (gh:170) was another
+green-but-no-patch anomaly, kept alive by the anomaly path. `msb exec`-ing in found the
+same stale-`/repo` `format-patch: fatal: bad object` bug already fixed in `17b0f14`
+(this sandbox's dispatch process had started before that fix landed, same class as
+`batch-type-design-research` above) -- but unlike that row, this one's own `git log`
+inside the guest showed 4 real commits ahead of a commit (`15e440e`) that does exist on
+the host. Two were already-landed content (identical hashes to commits already on
+`origin/main` -- board/ruling writeups), one was pure garbage from the *original*
+stale-snapshot bug (a stray `repo` gitlink entry auto-committed by `ensure_committed()`'s
+untracked-staging step), but one, `d5b9785`, was a genuine, small, well-formed fix:
+`tests/streaming.rs` tolerating `BrokenPipe` when the native backend's child process
+exits mid-write instead of asserting a clean write always succeeds. Extracted just that
+commit with `git format-patch 15e440e -o /root/` inside the guest, applied it onto a
+fresh `issue-stuck-issue-erlang-toolchain-empirical-research-investigation` lane with
+`git am -3`, and landed it normally through `land-lane.sh land` -- pushed as `04cae72`.
+The investigation's own prose write-up (what the task actually asked for in
+`plans/opencode-rollout.md`) was not among the rescued commits and was lost with the
+sandbox before this was noticed; the concrete fix it produced was not.
