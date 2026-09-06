@@ -407,6 +407,13 @@ def extract_result(name: str, base_commit: str, env: dict, out_dir: Path) -> Pat
             env, check=False)
     r = exec_in(name, "cat /root/*.patch 2>/dev/null", env, check=False)
     if not r.stdout.strip():
+        # format-patch produced nothing -- capture why, so a green-but-lost
+        # run leaves a trace instead of vanishing with the sandbox (found
+        # live, 2026-09-06: stuck-issue-156-investigation went GREEN, 398/398
+        # tests, then format-patch failed silently and the sandbox was
+        # destroyed in main()'s `finally` before anyone could look).
+        log = exec_in(name, "cat /root/format-patch.log 2>/dev/null", env, check=False)
+        (out_dir / "format-patch-failure.log").write_text(log.stdout)
         return None
     out = out_dir / "result.patch"
     out.write_text(r.stdout)
@@ -717,6 +724,8 @@ def main() -> int:
     brief_guest = "/root/brief.txt"
     send_text(name, brief_guest, task_text, workdir, env, "brief-sent")
 
+    attempts: list[Attempt] = []
+    result_patch = None
     try:
         if args.max_plan_rounds > 0:
             first_build_guest, session_started = run_plan_decompose(
@@ -729,7 +738,22 @@ def main() -> int:
             args.issue_id, name, first_build_guest, args.model, env, workdir,
             args.retry_cap, base_commit, continue_session=session_started)
     finally:
-        if not args.keep_sandbox:
+        # Keep the sandbox on an ANOMALY -- an outcome the harness itself does
+        # not expect (green but no patch extracted; found live, 2026-09-06,
+        # root cause still unknown since the sandbox was already gone by the
+        # time this was noticed) -- not on every run. The ordinary "red gate,
+        # retry cap reached, escalate" path is already well understood and
+        # explained by compose_escalation(); keeping every sandbox for that
+        # would just accumulate disk on a host already at 96% full for no
+        # debugging benefit. An exception here (empty attempts) is not an
+        # anomaly by this definition -- ordinary crash cleanup still applies.
+        ok = attempts[-1].verify_ok if attempts else False
+        anomaly = ok and result_patch is None
+        if anomaly:
+            print(f"== {args.issue_id}: green but no patch extracted -- keeping sandbox {name} "
+                  "for debugging (msb inspect/exec/logs), not root-caused yet ==",
+                  file=sys.stderr)
+        if not args.keep_sandbox and not anomaly:
             sh([str(MSB_BIN), "rm", "-f", name], env=env, check=False)
 
     green = attempts[-1].verify_ok if attempts else False
@@ -737,7 +761,11 @@ def main() -> int:
     escalation_path = None
     if green and result_patch is not None:
         landed = apply_and_land(args.issue_id, result_patch, env)
-    if not green:
+    if not landed:
+        # Escalate whenever the run did not land -- including green-but-
+        # extraction-failed, not just red. Leaving that case silent (the
+        # original bug) meant verified, passing work could be destroyed with
+        # the sandbox and nobody would ever hear about it.
         plan_summary = (
             f"Ran up to {args.max_plan_rounds} plan-decompose round(s) with a devil's-advocate "
             "review of each verdict before the real build attempt."
