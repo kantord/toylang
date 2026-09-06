@@ -55,6 +55,8 @@ its detail, because collapsing it would delete the only copy.
 | [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | OPEN; `jsonlines` is now a top-level-only sink with no result type, which removes a placeholder answer without deciding the question |
 | [Q36](#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy) | Does a real module system need imports, multiple files, and enforced privacy? | OPEN, one always-on prelude file exists; nothing beyond it does |
 | [Q37](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model) | How do floats print, and what are NaN and Infinity in a JSON-shaped value model? | RULED (gh:145): admit NaN/Infinity, division by zero returns Infinity (matches IEEE). Printing format is still open per-backend conformance work; tracked at board row `float-build` |
+| [Q38](#q38-are-composites-ordered-at-all) | Are composites ordered at all? | OPEN |
+| [Q39](#q39-is-a-timestamp-type-worth-a-third-numeric-type) | Is a timestamp type worth a third numeric type? | OPEN |
 
 [Multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) is the one
 question still capable of changing [the two-layer
@@ -89,7 +91,7 @@ is still open.
 Composite equality is settled without touching it. `==` on a record or an enum compares
 structurally, and is refused outright when the type carries a Vec anywhere inside it, so a
 `Vec`-typed record field never quietly acquires whole-value semantics
-([the equality decision](../draft.md#decided-equality-on-a-composite-is-structural-and-stops-at-a-vec)).
+([the equality decision](../docs/reference/operators/comparison.md)).
 
 ### Q3. What symbol replaces `=` for the record-forming update?
 
@@ -537,7 +539,7 @@ internal helper, at which point the non-`pub`-is-simply-absent rule stops being 
 
 ### Q37. How do floats print, and what are NaN and Infinity in a JSON-shaped value model?
 
-The representation is [decided](../draft.md#decided-float-is-javascripts-double): IEEE 754 binary64,
+The representation is [decided](../docs/adr/0007-float-is-javascripts-double.md): IEEE 754 binary64,
 JavaScript's number. Everything observable about it is not, and each piece has to survive the
 agreement harness, which checks bytes.
 
@@ -557,3 +559,21 @@ agreement harness, which checks bytes.
 
 None of this blocks anything else, so it waits for `Float` to be forced by a real program the
 way `inputs` and `jsonlines` were.
+
+### Q38. Are composites ordered at all?
+
+The equality decision ([comparison](../docs/reference/operators/comparison.md)) made equality
+on a record or enum structural and stopped at a `Vec`, but deliberately left ordering alone.
+`<` on a record typechecks today and the backends disagree on it: three refuse to compile it,
+two fail at runtime, and two answer -- jq by its own document order, JS by comparing the string
+`[object Object]` against itself. Whether composites should be ordered at all is a question
+nobody has been asked, so the disagreement stands until someone is.
+
+### Q39. Is a timestamp type worth a third numeric type?
+
+`Int`'s named cost is that millisecond timestamps (1.8e12, past its 2.1e9 ceiling) are
+rejected at the input validator, with `Int64` as the fix that covers them ([int64](../docs/reference/types/int64.md)).
+`Int64` is for identifiers and timestamps -- values that are *carried*, not computed -- but it is
+also a real 64-bit integer whose arithmetic wraps past 2^63, which a timestamp wants nothing
+to do with. A dedicated timestamp type is a separate question again, and possibly a better
+answer than an integer either way, but nothing has forced it yet.

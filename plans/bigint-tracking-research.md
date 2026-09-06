@@ -102,7 +102,7 @@ breaks it.
 - **A second type with a named bridge is the mainstream choice.** Python is the only one
   that absorbs bigints into the single int, and it is the only language here without a
   fixed-width fast path to preserve. toylang has one (the 32-bit wrap is what lets a
-  reduction vectorise, [draft.md: why wrapping rather than trapping](../draft.md#why-wrapping-rather-than-trapping)), so Python's
+  reduction vectorise, [ADR 0006](../docs/adr/0006-int-is-32-bits-and-wraps.md)), so Python's
   model is the one that costs the thing the language is for.
 - **No implicit widening, ever.** Rust, Go, and JS all refuse silent mixing. toylang's `Int64`
   already does, and the error already names the bridge. BigInt inherits this for free.
@@ -179,7 +179,7 @@ big()
 
 This is the smallest surface -- it deletes a type rather than adding one -- but it reverses
 [ADR 0006](../docs/adr/0006-int-is-32-bits-and-wraps.md)'s wrap, and the wrap is load-bearing: it is what lets `+` vectorise without a
-branch, and [draft.md: why wrapping rather than trapping](../draft.md#why-wrapping-rather-than-trapping) argues that branch is
+branch, and [ADR 0006](../docs/adr/0006-int-is-32-bits-and-wraps.md) argues that branch is
 exactly what the language should not pay. It also strands `Int64` as a pointless duplicate,
 and it makes `Int` slower on the backends where the 32-bit wrap maps to hardware. This is the
 option that trades away the performance argument the other three preserve.
