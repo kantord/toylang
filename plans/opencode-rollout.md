@@ -1249,3 +1249,41 @@ fresh `issue-stuck-issue-erlang-toolchain-empirical-research-investigation` lane
 The investigation's own prose write-up (what the task actually asked for in
 `plans/opencode-rollout.md`) was not among the rescued commits and was lost with the
 sandbox before this was noticed; the concrete fix it produced was not.
+
+## Four pending grill escalations were harness bugs, not real decisions (2026-09-06)
+
+A user question ("do I actually need to manually answer those grilling blocks?") prompted
+re-checking every open `docs/.grill/*-sandbox-blocker.round.yaml` against root causes found
+earlier tonight, rather than assuming each one needs a maintainer ruling. Found four that were
+not real decisions at all:
+
+- `stuck-issue-156-investigation` and `draft-access-model-migration`: the already-fixed
+  green-but-no-patch bugs (stale `/repo`, `17b0f14`; zero-progress-not-checked, this commit's
+  sibling fix below).
+- `stuck-issue-167-investigation` and `benchmark-fannkuch-redux-build`: both failed on the exact
+  same pre-existing flaky test, `tests/streaming.rs::assert_refuses_non_utf8` (via
+  `lua_refuses_non_utf8_via_lines`/`py_refuses_non_utf8_via_lines`) -- the BrokenPipe race fixed
+  in `04cae72`. Both runs predate that fix.
+
+Deleted all four stale rounds and reset their board rows to `status: todo` so the normal
+ready-row dispatch picks them up fresh once a sandbox slot is free -- no redispatch fired
+immediately since WIP was already at cap 3. `float-build-lua-stall-2` and
+`issue-177-worktree-cleanup` were left standing: the former's specific *framing* (persisting
+`OPENCODE_MODEL` across a `dispatch-worker.sh` redispatch) is obsolete under the sandbox-only
+model, but the underlying need (a stronger model for this lane specifically) still requires an
+explicit `--model` override sandbox_dispatch.py's normal dispatch invocation does not carry
+today; the latter is a genuine permission-denial escalation that needs the maintainer's decision
+by design (never work around a blocked action through another channel).
+
+## Bug found and fixed: a build turn that touched nothing still reported GREEN (2026-09-06)
+
+`draft-access-model-migration` went GREEN on attempt 1 with zero retries, but the sandbox's own
+`HEAD` was still exactly at `base_commit` and `git status` was completely clean: the build turn
+spent its whole budget writing throwaway repro scripts under `/tmp` (outside the repo) and
+reading source, never touching the actual deliverable. `just check` trivially passes against an
+untouched tree, and nothing had checked whether the tree was actually touched before trusting
+that pass -- the same structural gap as the already-fixed API-key case, but broader: this
+happens with a perfectly valid key and a model that genuinely engaged with the task, just never
+wrote to a real file. Fixed with `zero_progress_since_base()` (`HEAD` unmoved from `base_commit`
+AND `git status` clean) checked before `verify()` on every build turn -- safe unconditionally
+since a `kind: build` row always implies some real diff.
