@@ -1287,3 +1287,25 @@ happens with a perfectly valid key and a model that genuinely engaged with the t
 wrote to a real file. Fixed with `zero_progress_since_base()` (`HEAD` unmoved from `base_commit`
 AND `git status` clean) checked before `verify()` on every build turn -- safe unconditionally
 since a `kind: build` row always implies some real diff.
+
+## float-build-lua-stall-2: the real blocker was a missing algorithm, not model strength (2026-09-06)
+
+Asked to investigate directly rather than pick from the escalation's A/B/C rather than guess.
+Traced every prior stall to the same root cause: `src/emit_lua.rs` has exactly three sites that
+need a real Float implementation (`show()`, `expr()`'s `Kind::Float` arm, and a missing `Type::Float`
+branch in `arith()`), and Lua has no built-in shortest-round-trip float formatter to lean on the
+way Go's `strconv.FormatFloat(v, 'e', -1, 64)` does -- every run's budget went to git archaeology
+(re-deriving the JS reference commit, diffing sibling lanes) because nobody had ever handed the
+dispatched model a WORKING formatting technique, so it kept trying to discover one from history
+instead of implementing one. Verified by hand (`lua5.4`) that the standard technique -- increase
+`%e` precision one digit at a time, stop at the first that round-trips via `tonumber()` -- 
+produces exactly the right shortest digits, and that Lua's native float division/comparison
+already give IEEE semantics with no guard needed (same as JS, unlike Int/Int64). Wrote a brief
+handing over the three exact code sites, the verified-working formatting snippet, and Go's
+`tlShowFloat` as the direct port target for the ECMA-262 notation-relayout logic, explicitly
+forbidding the git-archaeology pattern that burned every prior run's budget. Redispatched with
+`--model openrouter/z-ai/glm-5.2` as cheap insurance (the original 2026-09-03 ruling's intent,
+never actually delivered before due to the OPENCODE_MODEL persistence bug -- moot now, since
+sandbox_dispatch.py takes `--model` directly per invocation). Deleted the stale
+`float-build-lua-stall-2.round.yaml` -- this was a brief-quality problem, not a stronger-model-
+or-drop decision.
