@@ -3,20 +3,6 @@
   status: delegated
   needs: []
   title: 'INVESTIGATE stuck lane issue-iteration-traits-research (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-iteration-traits-research-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: escalation-md-gitignore-hygiene
-  title: 'ESCALATION.md is a tracked file on main (root of repo), left over from a past
-    worker''s escalation write and never cleaned up -- its content is stale (references a
-    "search-layer-build"/cardinality-migration task, not anything current). LAND-FAILURE.txt
-    got exactly this treatment already in 93ea626 ("gitignore LAND-FAILURE.txt: stop
-    landing-evidence scratch files from riding onto main"); ESCALATION.md needs the same fix
-    (gitignore it and git rm the stale committed copy) so it stops riding onto main and getting
-    forked into every new lane worktree, where it can be mistaken for a live escalation on an
-    unrelated task.'
-  kind: build
-  needs: []
-  prio: 4
-  status: delegated
-
 - id: stuck-issue-recursive-descent-order-research-investigation
   kind: build
   status: delegated
@@ -230,10 +216,10 @@
 
 - id: js-node-web-split-build
   issue: gh:160
-  title: Build the JS Node/Web target split, TS type generation, builtin-replacement escape hatch, and toylang.conf.yaml as one system (js-node-web-split-design ruling, gh:160)
+  title: Build the JS Node/Web target split, TS type generation, builtin-replacement escape hatch, and toylang.conf.yaml as one system (js-node-web-split-design ruling, gh:160). Dispatched (2026-09-06) scoped to the Node/Web split slice only -- TS type generation, the escape-hatch config, and toylang.conf.yaml are separate follow-up dispatches.
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: module-routing-syntax-build
   issue: gh:167
