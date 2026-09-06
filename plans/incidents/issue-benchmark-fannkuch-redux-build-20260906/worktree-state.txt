@@ -1,0 +1,7 @@
+captured: 2026-09-06T11:53:30+0200
+state: {"ts": 1788688410, "lane": "issue-benchmark-fannkuch-redux-build", "ahead": 0, "tracked_dirty": 0, "live": false, "runs": 1, "last_activity": 1788686372}
+
+=== git status ===
+?? ref_fannkuch.py
+
+=== git diff --stat ===
