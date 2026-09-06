@@ -127,3 +127,26 @@ fn float_printing_matches_at_notation_boundaries() {
     assert_eq!(agree_float("0.0001\n", None), "0.0001\n");
     assert_eq!(agree_float("-0.5 * 2.0\n", None), "-1\n");
 }
+
+/// The JS target split (gh:160): Node reads stdin through its own `fs`, and the Web target
+/// refuses the stdin-reading shapes rather than emitting code that would break in a browser.
+/// The two targets share every other code path byte-for-byte. This pins Node's stdin-emitting
+/// output, proves Web never emits it, and proves the two agree when no stdin is read.
+
+#[test]
+fn js_targets_split_on_stdin() {
+    let stdin_program = toylang::compile("collect stdin\n").expect("compiles");
+    let node = toylang::emit_js::emit(&stdin_program, toylang::emit_js::JsTarget::Node).unwrap();
+    assert!(node.contains("require(\"fs\")"), "node reads stdin through fs");
+    insta::assert_snapshot!(node);
+    assert!(
+        toylang::emit_js::emit(&stdin_program, toylang::emit_js::JsTarget::Web).is_err(),
+        "the web target refuses a program that reads stdin"
+    );
+
+    let plain_program = toylang::compile("str(1 + 2)\n").expect("compiles");
+    let node_plain = toylang::emit_js::emit(&plain_program, toylang::emit_js::JsTarget::Node).unwrap();
+    let web_plain = toylang::emit_js::emit(&plain_program, toylang::emit_js::JsTarget::Web).unwrap();
+    assert_eq!(node_plain, web_plain, "the two targets share every non-stdin code path");
+    assert!(!web_plain.contains("require(\"fs\")"), "web code has no node fs:\n{web_plain}");
+}

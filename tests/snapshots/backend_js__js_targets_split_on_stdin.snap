@@ -1,0 +1,44 @@
+---
+source: tests/backend_js.rs
+expression: node
+---
+function tl_join(v, f) {
+  const parts = [];
+  for (let i = 0; i < v.length; i++) parts.push(f(v[i]));
+  return "[" + parts.join(",") + "]";
+}
+// Synchronous, because a toylang expression evaluates to completion and node has no
+// synchronous line reader built in. Reads in fixed chunks off the real fd rather than
+// `readFileSync(0)`, so a line is available to the rest of the program as soon as it arrives
+// rather than only once stdin closes. TextDecoder with fatal: true replaces the lossy
+// toString("utf8"), so a non-UTF-8 byte is refused rather than silently becoming U+FFFD
+// (kantord/toylang#102).
+function tl_collect_lines() {
+  const fs = require("fs");
+  const out = [];
+  let buf = "";
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const chunk = Buffer.alloc(65536);
+  for (;;) {
+    const n = fs.readSync(0, chunk, 0, chunk.length, null);
+    if (n === 0) break;
+    try {
+      buf += decoder.decode(chunk.subarray(0, n), { stream: true });
+    } catch (e) {
+      throw new Error("toylang: stdin is not valid UTF-8");
+    }
+    let i;
+    while ((i = buf.indexOf("\n")) !== -1) {
+      out.push(buf.slice(0, i));
+      buf = buf.slice(i + 1);
+    }
+  }
+  try {
+    buf += decoder.decode();
+  } catch (e) {
+    throw new Error("toylang: stdin is not valid UTF-8");
+  }
+  if (buf.length > 0) out.push(buf);
+  return out;
+}
+console.log(tl_join(tl_collect_lines(), (e0) => JSON.stringify(e0)));

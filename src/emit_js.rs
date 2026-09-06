@@ -7,6 +7,21 @@ use crate::ty::{self, Enums, Type};
 const INPUT: &str = "t_input";
 const INPUTS: &str = "t_inputs";
 
+/// The two JavaScript runtimes the JS backend emits for. Node reads stdin through its own
+/// `fs`; a browser has no stdin, so the Web target refuses the stdin-reading shapes rather
+/// than emitting code that would break there.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum JsTarget {
+    Node,
+    Web,
+}
+
+impl JsTarget {
+    fn is_web(self) -> bool {
+        matches!(self, JsTarget::Web)
+    }
+}
+
 const SELECT_HELPER: &str = "\
 function tl_select(src, pred) {
   const out = [];
@@ -225,14 +240,23 @@ function tl_max(v) {
 }
 ";
 
-pub fn emit(program: &Program) -> String {
+pub fn emit(program: &Program, target: JsTarget) -> Result<String, String> {
     let enums = &program.enums;
     let mut out = String::new();
+    let fused = tir::fusion(program);
 
     let used = used_helpers(program);
     let join = matches!(program.body.ty, Type::Vec(_))
         || contains_vec(enums, &program.body.ty)
         || used.jsonlines;
+
+    if target.is_web() && reads_stdin(program, fused.as_ref(), used.collect) {
+        return Err(
+            "the web target has no stdin: `input`, `inputs`, `lines`, `dsv`, and stream-typed \
+             pipelines all read through node's `fs`"
+                .to_string(),
+        );
+    }
     for (on, text) in [
         (used.select, SELECT_HELPER),
         (used.field, FIELD_HELPER),
@@ -293,9 +317,9 @@ pub fn emit(program: &Program) -> String {
         }
     }
 
-    if let Some(fusion) = tir::fusion(program) {
+    if let Some(fusion) = fused {
         out.push_str(&fused_main(program, &fusion));
-        return out;
+        return Ok(out);
     }
 
     if program.input.is_some() {
@@ -319,7 +343,23 @@ pub fn emit(program: &Program) -> String {
             show(enums, &program.body.ty, &body, 0)
         ));
     }
-    out
+    Ok(out)
+}
+
+/// Whether the program reads stdin through node's `fs`, which is what the Web target has to
+/// refuse. `used.collect` covers an eager `lines`/`dsv`;a fused program's source decides
+/// instead, so the two are checked separately.
+fn reads_stdin(program: &Program, fused: Option<&tir::Fusion>, collect: bool) -> bool {
+    if program.input.is_some() || program.inputs.is_some() {
+        return true;
+    }
+    if collect {
+        return true;
+    }
+    matches!(
+        fused.map(|f| f.source),
+        Some(tir::Source::Inputs | tir::Source::Lines)
+    )
 }
 
 /// A stream-typed `jsonlines` program, compiled as a loop reading one line at a time off the

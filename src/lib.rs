@@ -73,7 +73,7 @@ impl Backend {
     pub fn emit(self, program: &Program) -> Result<String, String> {
         match self {
             Backend::Lua => Ok(emit_lua::emit(program)),
-            Backend::Js => Ok(emit_js::emit(program)),
+            Backend::Js => emit_js::emit(program, emit_js::JsTarget::Node),
             Backend::Native => emit_llvm::to_ir(program),
             Backend::Jq => emit_jq::emit(program),
             Backend::Go => Ok(emit_go::emit(program)),
@@ -228,7 +228,10 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
             program.inputs.as_ref(),
             &feed,
         ),
-        Backend::Js => run_node(&emit_js::emit(&program), &feed),
+        Backend::Js => run_node(
+            &emit_js::emit(&program, emit_js::JsTarget::Node).map_err(anyhow::Error::msg)?,
+            &feed,
+        ),
         Backend::Jq => run_jq(
             &emit_jq::emit(&program).map_err(anyhow::Error::msg)?,
             JqInvocation {
