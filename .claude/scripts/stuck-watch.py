@@ -66,23 +66,26 @@ def live_worker_dirs():
     return dirs
 
 def sandbox_live_names():
-    """Names of currently-running microsandbox VMs (sandbox_dispatch.py names
-    them sd-<row-id>, truncated to 32 chars). This is a wholly separate
-    liveness signal from live_worker_dirs() above: a sandboxed dispatch's
-    actual opencode process runs INSIDE the guest via `msb exec`, so the host
-    /proc scan never sees it and the lane's cwd is never set either -- this
-    gap caused two false stuck-lane alarms against lanes the sandbox harness
-    was actively (and successfully) finishing, 2026-09-06."""
-    msb = os.path.expanduser("~/.local/bin/msb")
-    rc, out = sh([msb, "list"])
+    """issue-ids of dispatch attempts genuinely still running right now. This
+    is a wholly separate liveness signal from live_worker_dirs() above: a
+    sandboxed dispatch's actual opencode process runs INSIDE the guest via
+    `msb exec`, so the host /proc scan never sees it and the lane's cwd is
+    never set either -- this gap caused two false stuck-lane alarms against
+    lanes the sandbox harness was actively (and successfully) finishing,
+    2026-09-06.
+
+    Delegates to sandbox_dispatch_status.py's active_issue_ids() (host
+    process liveness) rather than reading `msb list` directly here: `msb
+    list`'s "running" status stays true for a sandbox kept alive for anomaly
+    debugging long after its own dispatch process has exited, which made a
+    lane behind a kept anomaly sandbox permanently invisible to this
+    watchdog -- exactly backwards, since that lane is the one most in need
+    of a stuck-alarm (found live, 2026-09-06)."""
+    rc, out = sh([sys.executable,
+                  os.path.join(REPO, ".claude/scripts/sandbox_dispatch_status.py")])
     if rc != 0:
         return set()
-    names = set()
-    for line in out.splitlines()[1:]:  # header row: NAME IMAGE STATUS CREATED
-        parts = line.split()
-        if len(parts) >= 3 and parts[2] == "running":
-            names.add(parts[0])
-    return names
+    return {line.strip() for line in out.splitlines() if line.strip()}
 
 def lane_state(d, live_dirs, sandbox_names):
     name = os.path.basename(d.rstrip("/"))
@@ -98,8 +101,8 @@ def lane_state(d, live_dirs, sandbox_names):
     # dispatch's progress (the guest's own per-phase logs are invisible here).
     sandbox_logs = glob.glob(os.path.join(LOG_DIR, f"sandbox-dispatch-{row_id}*.log"))
     last_sandbox_log = max((os.path.getmtime(p) for p in sandbox_logs), default=0)
-    sandbox_live = any(row_id == n or row_id.startswith(n[3:]) or n[3:].startswith(row_id)
-                        for n in sandbox_names if n.startswith("sd-"))
+    sandbox_live = any(row_id == n or row_id.startswith(n) or n.startswith(row_id)
+                        for n in sandbox_names)
     _, ct = sh(["git", "-C", d, "log", "-1", "--format=%ct"])
     return {
         "ts": int(time.time()),

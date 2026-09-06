@@ -73,8 +73,9 @@ plans/opencode-rollout.md's incident table -- that log is the rollout's evidence
 **The coordinator is a router (maintainer direction, 2026-08-30).** The asymptote every
 change moves toward: a tick spends its turns on DECISIONS -- what to dispatch, what to
 land, what to surface to the maintainer -- executed through the four mechanical
-surfaces (dispatch-worker.sh, land-lane.sh, board-archive.py, round files), and reads
-results rather than exploring. The gate script hands each tick a pre-computed state
+surfaces (sandbox_dispatch.py, land-lane.sh, board-archive.py, round files), and reads
+results rather than exploring. dispatch-worker.sh is retired (kanban ruling, 2026-09-06)
+-- never invoke it. The gate script hands each tick a pre-computed state
 snapshot in the prompt: act on it instead of re-reading the board, re-checking lanes,
 and re-polling stores; re-verify only what you are about to modify. The deliberate
 exception, for now, is the landing diff read -- that judgment stays in-tick until the
@@ -151,33 +152,45 @@ provenance ("self-originated, idle board" on the row/issue):
    third, operational one: a delegated session with no commits and no transcript activity
    for ~30 minutes -- go read its state (worktree diff, last transcript entry) and either
    finish its work by hand, relaunch it, or escalate; do not just wait.
-3. **Fill the lanes: up to EIGHT concurrent** (raised from five 2026-08-30; cheap
-   workers moved the constraint to landing throughput, disjoint footprints, and local
-   CPU). When several ready rows share a file footprint (the draft.md migration family,
-   say), dispatch ONE of the family per cycle and record the `soft` edges between the
-   rest -- parallel same-file lanes just manufacture merge conflicts.
+3. **Fill the sandbox pool: up to THREE concurrent** (kanban ruling, 2026-09-06, down
+   from the old plain-lane cap of eight -- `dispatch-worker.sh` is retired,
+   `sandbox_dispatch.py` is the only dispatch mechanism. The old cap was never a real
+   constraint: measured `lane-history.jsonl` data across a full session showed the
+   practical concurrency ceiling was 3, and high lane counts reflected accumulated
+   stuck/idle backlog, not genuine parallel throughput). Occupancy is counted by live
+   `sandbox_dispatch.py` host processes (`.claude/scripts/sandbox_dispatch_status.py
+   --count`), never by board.yaml's `status: delegated` or `msb list`'s VM status --
+   both go stale on an escalated or kept-for-debugging row and silently starve the pool
+   behind zombies (found live, 2026-09-06). When several ready rows share a file
+   footprint (the draft.md migration family, say), dispatch ONE of the family per cycle
+   and record the `soft` edges between the rest -- parallel same-file lanes just
+   manufacture merge conflicts.
    - `decide` entries in the ready set: queue for the user, batched into wizard/mail rounds
-     where they carry code; they occupy attention, not a lane.
+     where they carry code; they occupy attention, not a sandbox slot.
    - `build` entries: make sure a GitHub issue carries the spec (file one if the row has
-     none), then dispatch with `.claude/scripts/dispatch-worker.sh <N> '<brief>'` (the
-     enwiro-free default -- brief shape in the enwiro-delegate skill, section 2) and set
-     `status: delegated`; the worker-pool and per-issue enwiro flows are legacy, kept
-     only for their in-flight lanes. ALL delegated builds run
-     opencode + DeepSeek V4 Flash through `.claude/scripts/opencode-worker.sh`
-     (maintainer ruling, 2026-08-30: claude-code delegation is retired -- no new
-     delegated work on claude code, no exceptions for tier or size, until the
-     re-evaluation gate in plans/opencode-rollout.md at ~30 landed opencode lanes).
-     The board's model tiers are dormant for builds during the rollout. Two standing
-     obligations travel with the ruling: EVERY rollout incident (retry, stall, review
-     finding traceable to the worker, abandoned lane) gets a row in the rollout log's
-     incident table, and when the landed-lane count reaches ~30 the coordinator boards
-     the `opencode-rollout-review` decide row. The landing review is
-     the safety net either way. Footprint conflicts are SOFT BLOCKER
+     none), write a brief per the enwiro-delegate skill, then dispatch DETACHED --
+     `nohup python3 .claude/scripts/sandbox_dispatch.py ROW-ID --brief PATH-TO-BRIEF &`
+     -- and set `status: delegated`. Every sandbox loop runs FULLY unsupervised end to
+     end: plan-decompose, build, its own `just check` verify, patch extraction,
+     `git am -3` onto a fresh lane, then `land-lane.sh land` directly -- no cheap-first
+     attempt, no human review gate (the house philosophy already had none for the path
+     this replaced), and no claude-code-vs-opencode re-evaluation gate (that
+     distinction, and the `opencode-rollout-review` checkpoint built around it, is
+     superseded by the sandbox-only ruling: every dispatch already runs the strongest
+     available cheap model inside a disposable, fully-permissive microVM, so there is
+     no weaker fallback tier left to compare against). EVERY rollout incident (retry,
+     stall, review finding, abandoned lane) still gets a row in
+     plans/opencode-rollout.md's incident table -- that observability is not optional.
+     Unresolved runs (retry cap reached, `git am -3` conflict, extraction anomaly)
+     route to the maintainer's mailbox automatically via `compose_escalation()`
+     (`docs/.grill/<row-id>-sandbox-blocker.round.yaml`) -- read and act on these the
+     same way as any other wizard round (duty 1 above), never by blindly redispatching
+     while one is open. Footprint conflicts are SOFT BLOCKER
      EDGES on the board (file-level -- a folder is not a footprint; that lesson cost a lane
      of parallelism once), not ad-hoc judgment: when a conflict is discovered at dispatch
      time, record the `soft` edge rather than just serializing silently. Picking a
      soft-blocked task while its blocker is in flight is allowed only when no cleaner task
-     can fill the lane and the overlap is tolerable; otherwise leave the lane empty and say
+     can fill the slot and the overlap is tolerable; otherwise leave the slot empty and say
      so in the report. Efficiency/process improvements are prio work by standing rule --
      schedule them ahead of ordinary rows so no time is spent working the old way.
 4. **Monitor and land.** Watch delegated work (a cron tick per active delegation is enough);

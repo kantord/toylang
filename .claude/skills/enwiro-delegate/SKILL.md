@@ -18,22 +18,36 @@ recorded in the rollout log -- that observability is part of this ruling, not op
 The kitty window shows the live colorized event stream (opencode-peek.py), so lanes
 stay visually navigable in the window manager exactly as before.
 
-## 0. The default dispatch: no enwiro at all (maintainer simplification, 2026-08-30)
+## 0. The default dispatch: a disposable sandbox, no enwiro at all (kanban ruling, 2026-09-06)
 
-A lane is just a git worktree plus a background worker process:
+`dispatch-worker.sh` is retired -- the plain worktree-plus-background-process model it
+implemented is a strict subset of what the sandbox does, and every permission-wall
+failure on that path needed a sandboxed rescue anyway. The one dispatch mechanism now:
 
-    .claude/scripts/dispatch-worker.sh <issue-number> '<the brief, shaped per section 2>'
+    nohup python3 .claude/scripts/sandbox_dispatch.py <row-id> --brief <path-to-brief-file> &
 
-That creates (or continues) `~/.local/share/toylang-lanes/issue-<N>` on branch
-`issue-<N>` cut from origin/main (serial landing queue, 2026-09-01; the to-merge-*
-accumulators are retired), refuses if a live worker already owns the worktree
-(the two-sessions-one-worktree race predates this flow and survives it), launches the
-worker detached, and prints the `tail -f` line for watching the live colorized stream.
-No env, no workspace, no focus dance. The worker-pool machinery (gh:124: `enw prep`
-lanes, `lane-context.py`, the board's `lane:` field) is retired for new dispatches --
-sccache makes cold worktrees cheap, so worktree reuse stopped paying for its
-complexity. Every dispatch is a fresh opencode session on a fresh-or-continued
-worktree.
+That runs the FULL cycle unsupervised in a disposable, fully-permissive microsandbox
+microVM: plan-decompose (search for a simplifying refactor before writing code),
+build, its own real `just check` verify with retries against the actual failure
+evidence, patch extraction, `git am -3` onto a fresh `~/.local/share/toylang-lanes/issue-<row-id>`
+lane, then `land-lane.sh land` directly -- 15-40 minutes end to end, never waited on
+inline. Sandbox concurrency is capped at 3 (kanban ruling, 2026-09-06 -- measured
+`lane-history.jsonl` data showed the practical concurrency ceiling was 3, not the old
+plain-lane cap of 8); count truly in-progress dispatches with
+`.claude/scripts/sandbox_dispatch_status.py --count` (a live host process), never
+`msb list` (its "running" status stays true for a sandbox kept alive for anomaly
+debugging long after the dispatch that owned it has already exited) or board.yaml's
+`status: delegated` (never flipped back on an escalated row). Orphaned kept-for-debugging
+sandboxes are reclaimed automatically every tick, no action needed.
+
+No env, no workspace, no focus dance, no permission-wall boilerplate to teach around --
+the sandbox is fully permissive by construction, which is the whole reason
+`dispatch-worker.sh`'s `KNOWN DENIALS` accumulation is gone rather than extended
+further. Unresolved runs (retry cap reached, a genuine `git am -3` conflict, an
+extraction anomaly) route to the maintainer's mailbox automatically via
+`compose_escalation()` (`docs/.grill/<row-id>-sandbox-blocker.round.yaml`) -- read and
+act on these like any other wizard round, never by blindly redispatching while one is
+still open.
 
 The full enwiro flow below (env + workspace + kitty window) remains available for the
 rare one-off the user explicitly wants visually navigable in the window manager; a
@@ -49,11 +63,11 @@ the anyhow work once). Before dispatching: push local main (standing authorizati
 
 ## 2. Launch
 
-Default: `dispatch-worker.sh` (section 0). One model for all lanes during the rollout
-(the board's `model:` field is dormant for builds; `OPENCODE_MODEL` overrides
-per-dispatch if a ruling ever asks). On worker exit the wrapper fires a drive tick
-itself -- event-driven landing, no quiet window -- so a finished lane lands within
-minutes, not tick-intervals.
+Default: `sandbox_dispatch.py` (section 0). It picks its own models (`--model` for the
+build turn, `--plan-model` for plan-decompose, `--critic-model` for the devil's-advocate
+review; the board's `model:` field is dormant for builds) and lands directly on success
+-- no separate "wrapper fires a drive tick" step, `sandbox_dispatch.py` calls
+`land-lane.sh land` itself before its process exits.
 
 For the explicitly-requested enwiro variant only:
 
