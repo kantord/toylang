@@ -192,13 +192,6 @@
   prio: 5
   status: todo
 
-- id: js-node-web-split-build
-  issue: gh:160
-  title: Build the JS Node/Web target split, TS type generation, builtin-replacement escape hatch, and toylang.conf.yaml as one system (js-node-web-split-design ruling, gh:160). Dispatched (2026-09-06) scoped to the Node/Web split slice only -- TS type generation, the escape-hatch config, and toylang.conf.yaml are separate follow-up dispatches.
-  kind: build
-  needs: []
-  status: delegated
-
 - id: module-routing-syntax-build
   issue: gh:167
   title: 'Implement `@(path)` module-as-function routing-arm syntax -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C (dedicated routing-arm form) chosen; maintainer refined the spelling from the round''s bare `@path` to parenthesized `@(route-groups/baz.toy)` because it encloses the path expression. See plans/module-routing-research.md.'
@@ -221,7 +214,7 @@
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: variant-checker-capital-first
   issue: gh:156
