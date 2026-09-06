@@ -196,14 +196,6 @@
   needs: [sort-by-max-by-checkpoint-3]
   status: todo
 
-- id: bigint-tracking
-  issue: gh:112
-  title: Arbitrary-precision integers -- tracked, deliberately unscheduled
-  kind: build
-  needs: []
-  prio: 5
-  status: delegated
-
 - id: module-routing-syntax-build
   issue: gh:167
   title: 'Implement `@(path)` module-as-function routing-arm syntax -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C (dedicated routing-arm form) chosen; maintainer refined the spelling from the round''s bare `@path` to parenthesized `@(route-groups/baz.toy)` because it encloses the path expression. See plans/module-routing-research.md.'
