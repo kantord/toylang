@@ -1,15 +1,3 @@
-- id: stuck-issue-167-investigation
-  kind: build
-  status: todo
-  needs: []
-  issue: gh:167
-  title: 'INVESTIGATE stuck lane issue-167 (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-167-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-156-investigation
-  kind: build
-  status: todo
-  needs: []
-  issue: gh:156
-  title: 'INVESTIGATE stuck lane issue-156 (no activity 0h, 6 run(s), 0 commits): evidence frozen in plans/incidents/issue-156-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-iteration-traits-research-investigation
   kind: build
   status: delegated
@@ -202,7 +190,7 @@
   kind: build
   needs: [file-visibility-tracking-build]
   prio: 5
-  status: delegated
+  status: todo
 
 - id: erlang-target-consideration
   issue: gh:163
@@ -218,13 +206,6 @@
   kind: build
   needs: []
   prio: 4
-  status: delegated
-
-- id: variant-checker-capital-first
-  issue: gh:156
-  title: 'Reshaped after land-failure escalation (maintainer: "reshape into two lanes", 2026-09-01): checker enforcement (gh:156 ruling) is correct, but landing goes red because the doc corpus still has lowercase-leading variant examples across 6 pages -- gate/xfail the doc-corpus test `every_fragment_is_a_real_program` for exactly these 6 pages (docs/guides/enums.md:13, docs/guides/matching.md:66, docs/reference/operators/comparison.md:28, docs/reference/types/enum.md:7, docs/tutorial/04-enums.md:6/20/40) plus the 4 MISQUOTED fixtures (docs/guides/matching.md:54, docs/reference/types/enum.md:34/67, docs/tutorial/06-matching.md:67) so the checker enforcement itself can land now. The actual doc-content migration is split out as doc-migrate-capital-variants below -- do not do that migration in this lane. Evidence: ~/.cache/toylang-drive/land-gate-issue-156.log.'
-  kind: build
-  needs: []
   status: delegated
 
 - id: doc-migrate-capital-variants
@@ -249,14 +230,6 @@
   soft: [draft-intro-migration, draft-questions-home]
   prio: 4
   status: todo
-
-- id: draft-numbers-operators-migration
-  title: Verify the Int/Float/equality sections against ADRs 0006/0007/0010 and the reference; move what's missing, delete (draft-split)
-  kind: build
-  needs: []
-  soft: [draft-intro-migration, draft-questions-home]
-  prio: 4
-  status: delegated
 
 - id: draft-records-migration
   title: Migrate the three record decisions (literals-and-arguments, declared order, order-not-identity) into the record reference, delete (draft-split)

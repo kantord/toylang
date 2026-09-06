@@ -1746,3 +1746,47 @@
   kind: build
   needs: []
   status: done
+
+- id: variant-checker-capital-first
+  title: 'Reshaped after land-failure escalation (maintainer: "reshape into two lanes", 2026-09-01): checker enforcement (gh:156 ruling) is correct, but landing goes red because the doc corpus still has lowercase-leading variant examples across 6 pages -- gate/xfail the doc-corpus test `every_fragment_is_a_real_program` for exactly these 6 pages (docs/guides/enums.md:13, docs/guides/matching.md:66, docs/reference/operators/comparison.md:28, docs/reference/types/enum.md:7, docs/tutorial/04-enums.md:6/20/40) plus the 4 MISQUOTED fixtures (docs/guides/matching.md:54, docs/reference/types/enum.md:34/67, docs/tutorial/06-matching.md:67) so the checker enforcement itself can land now. The actual doc-content migration is split out as doc-migrate-capital-variants below -- do not do that migration in this lane. Evidence: ~/.cache/toylang-drive/land-gate-issue-156.log.'
+  kind: build
+  needs: []
+  status: done
+  outcome: 'Already landed, never archived: checker enforcement in e09f063 (2026-09-01), the
+    doc-corpus gate in 0f45ea0. Its `issue: gh:156` field was stale/wrong -- gh:156 on GitHub is
+    an unrelated matcher-naming grilling thread, not this work (found investigating
+    stuck-issue-156-investigation, 2026-09-07). Dropped rather than replaced: no clean GitHub
+    issue exists for this reshaped lane.'
+
+- id: stuck-issue-156-investigation
+  kind: build
+  needs: []
+  status: done
+  title: 'INVESTIGATE stuck lane issue-156 (no activity 0h, 6 run(s), 0 commits): evidence frozen in plans/incidents/issue-156-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+  outcome: 'Root cause: the row it investigated (variant-checker-capital-first) carried a stale
+    issue: gh:156 field pointing at an unrelated GitHub thread, which every dispatched run opened
+    and got confused by, burning its whole budget on archaeology instead of investigating. The
+    real answer needed no more dispatches: variant-checker-capital-first had already landed
+    (e09f063, 0f45ea0) and was archived directly; doc-migrate-capital-variants (needs it) is the
+    genuine remaining work and was already correctly status: todo.'
+
+- id: stuck-issue-167-investigation
+  kind: build
+  needs: []
+  status: done
+  title: 'INVESTIGATE stuck lane issue-167 (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-167-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+  outcome: 'Unlike stuck-issue-156-investigation, gh:167 IS the correct issue for this lane
+    (module-routing-syntax-build) -- not a bad-link case. Its dependency
+    (file-visibility-tracking-build) had already landed, leaving it a genuinely ready, unblocked
+    task with zero real work ever attempted -- the investigating worker got lost in exploration
+    (checked gh:166 and gh:167, git-log archaeology) without reaching that straightforward
+    conclusion. Reset module-routing-syntax-build to status: todo for a normal build dispatch;
+    no further investigation needed.'
+
+- id: draft-numbers-operators-migration
+  title: Verify the Int/Float/equality sections against ADRs 0006/0007/0010 and the reference; move what's missing, delete (draft-split)
+  kind: build
+  needs: []
+  soft: [draft-intro-migration, draft-questions-home]
+  prio: 4
+  status: done
