@@ -78,7 +78,11 @@ def tl_rem64(a, b):
 /// on an integral value; and the exponent JS writes unpadded. NaN, Infinity, and signed zero
 /// are never literals, so arithmetic's results are read off the value and named the way JS's
 /// `String(number)` would.
+///
+/// Rust's `Display` emits a whole-number float as a bare integer (`src/float.rs::lit`), which
+/// Python parses as an `int`, so `float(n)` runs first to keep `repr` on the value's real type.
 const FLOAT_HELPER: &str = r#"def tl_float(n):
+    n = float(n)
     if n != n:
         return "NaN"
     if n == float("inf"):
@@ -116,7 +120,6 @@ const FLOAT_HELPER: &str = r#"def tl_float(n):
 /// Float division spells the IEEE zero-divisor answers Python refuses to give: NaN
 /// for zero over zero, the infinities otherwise, signs XORed. Negative zero is reachable, so
 /// the zero tests use < not == to read a sign.
-
 const DIVF_HELPER: &str = r#"def tl_divf(a, b):
     if b == 0:
         if a == 0:
