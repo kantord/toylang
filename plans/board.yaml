@@ -122,28 +122,6 @@
   prio: 4
   status: delegated
 
-# sort_by/max_by (gh:177) re-scoped 2026-09-06 per maintainer ruling (option C, grill round
-# issue-177-salvage-stall): the combined single-lane attempt hit 5 commitless runs, its final
-# state was a corrupted 7-backend blob (unclosed delimiters in emit_go.rs from in-place
-# byte-forensics repair, mangled runtime/toylang.c). Diagnosis: task shape (one 7-place
-# multi-backend commit) was the root cause, not model strength. Re-filed below as a chain of
-# small, backend-scoped steps with reevaluation checkpoints between groups. The abandoned lane
-# (worktree + branch issue-177) still exists on disk -- worktree removal was permission-denied
-# mid-tick 2026-09-06; the clean, isolated TIR-only commit aa4aaad on that branch is a valid
-# reference for step 1 (`git show issue-177:src/tir.rs`), the rest of that branch should not be
-# reused. See plans/opencode-rollout.md for the run history.
-- id: sort-by-max-by-tir
-  issue: gh:177
-  title: 'sort_by and max_by (gh:177), step 1/6 -- TIR + type-check plumbing only, no codegen.
-    Add Kind::SortBy/Kind::MaxBy to src/tir.rs (SortBy shaped like Map: source, binding, body;
-    MaxBy answers Opt<T> for an empty source, matching max/gh:140), and wire src/check/mod.rs,
-    src/check/linearity.rs, and src/tags.rs. Keep this to one clean, isolated commit -- reuse
-    the known-good reference at `git show issue-177:src/tir.rs` (commit aa4aaad) rather than
-    reimplementing from scratch.'
-  kind: build
-  needs: [sum-max-builtins-build]
-  status: delegated
-
 - id: sort-by-max-by-checkpoint-1
   issue: gh:177
   title: 'sort_by and max_by (gh:177), step 2/6 -- reevaluate: confirm the step-1 TIR shape is
@@ -227,7 +205,7 @@
   kind: build
   needs: [file-visibility-tracking-build]
   prio: 5
-  status: todo
+  status: delegated
 
 - id: erlang-target-consideration
   issue: gh:163

@@ -1668,3 +1668,15 @@
   needs: []
   prio: 4
   status: done
+
+- id: sort-by-max-by-tir
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), step 1/6 -- TIR + type-check plumbing only, no codegen.
+    Add Kind::SortBy/Kind::MaxBy to src/tir.rs (SortBy shaped like Map: source, binding, body;
+    MaxBy answers Opt<T> for an empty source, matching max/gh:140), and wire src/check/mod.rs,
+    src/check/linearity.rs, and src/tags.rs. Keep this to one clean, isolated commit -- reuse
+    the known-good reference at `git show issue-177:src/tir.rs` (commit aa4aaad) rather than
+    reimplementing from scratch.'
+  kind: build
+  needs: [sum-max-builtins-build]
+  status: done
