@@ -214,6 +214,79 @@ func tlRem64(a, b int64) int64 {
 }
 "#;
 
+// A Float prints the way JavaScript's `String(number)` does, the ground truth the corpus's
+// agreement harness compares against byte for byte. Go's default formatting would diverge at the
+// notation-switch boundaries (its `1e-06` where JS writes `0.000001`, its `1e+21` where both
+// switch to scientific), so this re-layouts the shortest round-trip digits -- from
+// strconv.FormatFloat, which never pads the mantissa -- following ECMA-262 6.1.6.1.20: fixed
+// notation for 1e-6 up to 1e21, scientific outside that range, and the non-finite names as-is.
+const FLOAT_HELPER: &str = r#"// tlFloat turns a literal into a runtime value so Go cannot constant-fold a later
+// division by zero into a compile error; the division is the IEEE answer, +Inf.
+func tlFloat(x float64) float64 { return x }
+
+func tlShowFloat(v float64) string {
+	if math.IsNaN(v) {
+		return "NaN"
+	}
+	if math.IsInf(v, 1) {
+		return "Infinity"
+	}
+	if math.IsInf(v, -1) {
+		return "-Infinity"
+	}
+	// JS renders both signed and unsigned zero as "0".
+	if v == 0 {
+		return "0"
+	}
+	sign := ""
+	if v < 0 {
+		sign = "-"
+		v = -v
+	}
+	// Shortest round-trip digits as a mantissa and a base-10 exponent. With 'e' and -1
+	// precision, the digit count is k and the exponent is n-1 from the spec's decomposition.
+	e := strconv.FormatFloat(v, 'e', -1, 64)
+	dot := strings.IndexByte(e, '.')
+	ep := strings.IndexByte(e, 'e')
+	digits := e[:ep]
+	if dot >= 0 {
+		digits = e[:dot] + e[dot+1:ep]
+	}
+	n := 0
+	neg := e[ep+1] == '-'
+	for i := ep + 2; i < len(e); i++ {
+		n = n*10 + int(e[i]-'0')
+	}
+	if neg {
+		n = -n
+	}
+	n++
+	k := len(digits)
+	var out string
+	switch {
+	case k <= n && n <= 21:
+		out = digits + strings.Repeat("0", n-k)
+	case n > 0 && n <= 21:
+		out = digits[:n] + "." + digits[n:]
+	case n > -6 && n <= 0:
+		out = "0." + strings.Repeat("0", -n) + digits
+	default:
+		mant := digits
+		if k > 1 {
+			mant = digits[:1] + "." + digits[1:]
+		}
+		exp := n - 1
+		es := "+"
+		if exp < 0 {
+			es = "-"
+			exp = -exp
+		}
+		out = mant + "e" + es + strconv.Itoa(exp)
+	}
+	return sign + out
+}
+"#;
+
 // An enum value carries its payload behind a pointer (tlPtr below), so Go's own `==` on two
 // of them compares addresses: `circle{r: 1} == circle{r: 1}` was false here and true on
 // Python (kantord/toylang#68). reflect.DeepEqual is the structural walk, following the
@@ -553,6 +626,7 @@ pub fn emit(program: &Program) -> String {
         (used.jsonlines, JSONLINES_HELPER),
         (join, JOIN_HELPER),
         (quote, QUOTE_HELPER),
+        (uses("tlShowFloat(") || uses("tlFloat("), FLOAT_HELPER),
     ] {
         if on {
             helpers.push_str(text);
@@ -570,7 +644,8 @@ pub fn emit(program: &Program) -> String {
         (collect, &["bufio", "bytes"]),
         (reads_stdin, &["encoding/json"]),
         (program.inputs.is_some(), &["io"]),
-        (join || quote || used.jsonlines || uses("tlDsv("), &["strings"]),
+        (join || quote || used.jsonlines || uses("tlDsv(") || uses("tlShowFloat(") || uses("tlFloat("), &["strings"]),
+        (uses("tlShowFloat(") || uses("tlFloat("), &["math"]),
         (uses("tlDsv("), &["unicode/utf8"]),
         (uses("tlSort("), &["cmp", "slices"]),
         (uses("tlMax("), &["cmp"]),
@@ -578,6 +653,8 @@ pub fn emit(program: &Program) -> String {
         (
             used.itoa
                 || used.jsonlines_has_scalar
+                || uses("tlShowFloat(")
+                || uses("tlFloat(")
                 || (program.body.ty != Type::Str && has_scalar(&program.enums, &program.body.ty)),
             &["strconv"],
         ),
@@ -597,7 +674,8 @@ pub fn emit(program: &Program) -> String {
     out
 }
 
-/// Whether printing this type reaches an Int or a Bool, which are the two `strconv` needs.
+/// Whether printing this type reaches an Int or a Bool, the scalars whose printer calls into
+/// `strconv` directly. (A Float's `strconv` use is gated on the `tlShowFloat` call instead.)
 fn has_scalar(enums: &Enums, ty: &Type) -> bool {
     /// `seen` is what a recursive enum needs: its own payload leads back to it, and an enum
     /// already under consideration answers nothing new.
@@ -609,7 +687,7 @@ fn has_scalar(enums: &Enums, ty: &Type) -> bool {
             // The checker refuses a program whose result contains a Char, the same as a stream.
             Type::Char => unreachable!("a Char cannot reach has_scalar"),
             Type::Int | Type::Int64 | Type::Bool => true,
-            // A Float prints as a plain number, which needs no strconv import.
+            // A Float prints through tlShowFloat, whose strconv use is gated on the call itself.
             Type::Float => false,
             Type::Str => false,
             Type::Sink => false,
@@ -815,7 +893,8 @@ impl Emitter<'_> {
             // Same width as Int: a Char is a codepoint, and the checker already refuses to mix
             // the two.
             Type::Char => "int32".to_string(),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            // IEEE binary64 is the type itself (ADR 0007), and Go's float64 is exactly that.
+            Type::Float => "float64".to_string(),
             Type::Vec(e) => format!("[]{}", self.go_type(e)),
             Type::Enum { .. } if ty.as_opt().is_some() => {
                 format!("tlOpt[{}]", self.go_type(ty.as_opt().expect("guarded")))
@@ -1022,7 +1101,10 @@ impl Emitter<'_> {
         match &t.kind {
             Kind::Str(s) => go_string(s),
             Kind::Int(n) => int_lit(&t.ty, *n),
-            Kind::Float(_) => unreachable!("Float is JS-only in this row"),
+            // Wrapped in a function call so the literal is not a compile-time constant: Go
+            // constant-folds `1.0 / 0.0` to a compile error, where the runtime division (the
+            // whole point of a total Float) is the IEEE answer, +Inf. See `go_float_lit`.
+            Kind::Float(n) => go_float_lit(*n),
             Kind::Var(name) => self.user(name),
             Kind::Local(id) => self.local(*id),
             Kind::Input => INPUT.to_string(),
@@ -1317,7 +1399,7 @@ impl Emitter<'_> {
             Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Int => format!("strconv.FormatInt(int64({value}), 10)"),
             Type::Int64 => format!("strconv.FormatInt({value}, 10)"),
-            Type::Float => unreachable!("Float is JS-only in this row"),
+            Type::Float => format!("tlShowFloat({value})"),
             Type::Bool => format!("strconv.FormatBool({value})"),
             Type::Vec(elem) => {
                 let e = format!("e{depth}");
@@ -1424,12 +1506,38 @@ fn int_lit(ty: &Type, n: i64) -> String {
     }
 }
 
+/// A Float literal, wrapped in `tlFloat` so Go cannot constant-fold a later division by zero
+/// into a compile error. The wrap is what the integer widths do too (kantord/toylang#83), but a
+/// Float needs one more step: `float::lit` spells a large value as a run of digits with no
+/// decimal point, and Go reads that as an *integer* constant -- one past the float64 range is a
+/// compile-time overflow even though the value itself fits. The trailing `.0` forces Go to parse
+/// it as a float constant instead.
+fn go_float_lit(n: f64) -> String {
+    let s = crate::float::lit(n);
+    if s.contains('.') || s.contains('e') || s.contains('E') {
+        format!("tlFloat({s})")
+    } else {
+        format!("tlFloat({s}.0)")
+    }
+}
+
 /// One arithmetic expression at the width the node's type names. Both of Go's fixed-width
 /// integers wrap by definition, so +, - and * need no guard at either width -- the only
 /// backend where the wrapping rule costs nothing to state -- and the width changes nothing
 /// but the div/rem helper names.
 fn arith(ty: &Type, op: BinOp, l: String, r: String) -> String {
-    if *ty == Type::Int64 {
+    if *ty == Type::Float {
+        // IEEE binary64 is the type itself (ADR 0007), so plain Go operators are the exact
+        // arithmetic, with no wrap to spell. Division by zero is the IEEE answer, Infinity,
+        // which is why there is no `tlDiv` guard here unlike the integer widths.
+        match op {
+            BinOp::Add => format!("({l} + {r})"),
+            BinOp::Sub => format!("({l} - {r})"),
+            BinOp::Mul => format!("({l} * {r})"),
+            BinOp::Div => format!("({l} / {r})"),
+            other => unreachable!("{other} is not arithmetic"),
+        }
+    } else if *ty == Type::Int64 {
         match op {
             BinOp::Div => format!("tlDiv64({l}, {r})"),
             BinOp::Rem => format!("tlRem64({l}, {r})"),
