@@ -1680,3 +1680,10 @@
   kind: build
   needs: [sum-max-builtins-build]
   status: done
+
+- id: js-node-web-split-build
+  issue: gh:160
+  title: Build the JS Node/Web target split, TS type generation, builtin-replacement escape hatch, and toylang.conf.yaml as one system (js-node-web-split-design ruling, gh:160). Dispatched (2026-09-06) scoped to the Node/Web split slice only -- TS type generation, the escape-hatch config, and toylang.conf.yaml are separate follow-up dispatches.
+  kind: build
+  needs: []
+  status: done
