@@ -6,17 +6,18 @@ description: Delegate a task to a worker session in its own enwiro environment (
 
 # Delegate a task to a new enwiro environment
 
-Workers run **opencode + DeepSeek V4 Flash** via `.claude/scripts/opencode-worker.sh`
-(maintainer ruling, 2026-08-30: claude-code delegation is RETIRED -- no new delegated
-work on claude code until the re-evaluation gate in
-[plans/opencode-rollout.md](../../../plans/opencode-rollout.md), roughly 30 landed
-lanes in). The wrapper never passes `--auto`: the maintainer's opencode.jsonc
-allow-list (deny-by-default, chezmoi-managed) is the permission guardrail, and the
-wrapper writes the lanes.csv telemetry row on exit. Every rollout incident gets
-recorded in the rollout log -- that observability is part of this ruling, not optional.
+Workers run **opencode + DeepSeek V4 Flash / GLM** inside a disposable, fully-permissive
+microsandbox microVM via `.claude/scripts/sandbox_dispatch.py` (kanban ruling,
+2026-09-06 -- `dispatch-worker.sh` and claude-code delegation are both retired; see
+[plans/opencode-rollout.md](../../../plans/opencode-rollout.md) for the full history).
+No permission allow-list to maintain: the sandbox is throwaway and fully permissive by
+construction, which is the whole reason this superseded the plain-worktree path rather
+than extending its `KNOWN DENIALS` list further. Every rollout incident still gets
+recorded in the rollout log -- that observability is not optional.
 
-The kitty window shows the live colorized event stream (opencode-peek.py), so lanes
-stay visually navigable in the window manager exactly as before.
+The explicit enwiro variant below (a visible kitty window via `opencode-worker.sh`)
+remains for the rare one-off the user wants visually navigable in the window manager;
+it is not what the autonomous loop dispatches.
 
 ## 0. The default dispatch: a disposable sandbox, no enwiro at all (kanban ruling, 2026-09-06)
 
@@ -82,52 +83,48 @@ i3-msg "workspace \"$prev\"" >/dev/null
 
 (`enw activate` yanks focus: capture the workspace BEFORE and switch back last.)
 
-### The brief: dispatch-worker.sh wraps the boilerplate (2026-08-30)
+### The brief: a plain task description, no boilerplate to wrap (2026-09-06)
 
-An opencode session reads AGENTS.md natively but gets NONE of the claude-side context;
-the standard build boilerplate (role, AGENTS.md, gates, hard constraints, KNOWN
-DENIALS, ESCALATION.md protocol) lives IN dispatch-worker.sh and is wrapped around
-whatever you pass. So the dispatcher writes ONLY the task-specific middle:
+`sandbox_dispatch.py` has no permission-wall boilerplate to teach around (the sandbox is
+fully permissive by construction), so there is no `KNOWN DENIALS` list and no
+`ESCALATION.md`-in-the-worktree convention to wrap the brief in either -- the brief file
+passed to `--brief` is just the task description, plain text, written directly:
 
 - pointers to the in-repo source of truth (files, the ruling issue, existing patterns
   to read first);
-- for a continuation after a failed run: what killed the last run (from its event
-  log) and the concrete adaptation, stated plainly at the top;
-- any extra done-gates beyond the standard ones.
+- for a research task: exactly where to write findings (e.g. `plans/<name>.md`) and
+  that it should be committed;
+- any extra done-gates beyond `just check` passing.
 
-Two to five sentences. Do not restate the boilerplate -- it is added verbatim by the
-script (read it there when editing it; new denial classes are added there once, not
-per-brief). `BRIEF_RAW=1 dispatch-worker.sh ...` passes the brief through unwrapped
-for shapes the boilerplate does not fit (research dispatches below).
+Two to eight sentences is normal; `sandbox_dispatch.py` itself supplies the
+plan-decompose and build prompts around it (`PLAN_PROMPT_TEMPLATE`,
+`BUILD_AFTER_DECOMPOSE` in the script). AGENTS.md is read natively by the opencode
+session inside the sandbox, same as before.
 
-(Escalation is a committed file, not a GitHub issue: workers have no `gh issue create`
-permission by design -- rollout incident #1, 2026-08-30 -- and a file on the branch is
-what the coordinator's event-driven tick reads anyway. The coordinator turns it into
-the real issue/board row and removes it before merging; ESCALATION.md never lands on
-main.)
+A blocker the dispatch itself cannot resolve reaches the maintainer automatically --
+`compose_escalation()` writes `docs/.grill/<row-id>-sandbox-blocker.round.yaml` and the
+sandbox's own exit is the trigger, no `ESCALATION.md`-in-the-worktree convention needed.
 
-### Research dispatches (2026-08-30): diagnosis is worker work too
+### Research dispatches (2026-09-06): diagnosis is worker work too
 
 A deep dive -- why a backend misbehaves, why a lane died mid-task, what an odd test
 failure means -- is DELEGATED, never done by the coordinator in its own session:
 coordinator time is the expensive tier now, and reading a codebase is exactly what a
-cheap worker does well. Same `dispatch-worker.sh` with `BRIEF_RAW=1` (the build
-boilerplate does not fit), usually as a continuation into the lane that raised the
-question; the brief is this shape in full:
+cheap worker does well. Same `sandbox_dispatch.py`, same brief shape as any other
+dispatch -- there is no separate raw-vs-wrapped mode to choose, since there is no build
+boilerplate being wrapped in the first place. State the question plainly and where to
+write the answer:
 
-> You are a research worker for the toylang repository, in this git worktree. FIRST
-> read AGENTS.md. Your task is to ANSWER A QUESTION, not to fix anything: [the precise
-> question, with every symptom the dispatcher already has -- failing command, error
-> text, suspect files]. Investigate freely (read code, run `just check`, reproduce);
-> do NOT change or discard existing working-tree edits beyond reverting your own
-> experiments. Deliverable: RESEARCH.md at the worktree root -- the answer, the
-> evidence, and a recommendation (fix shape, or what to escalate) -- COMMITTED on this
-> branch. That commit is your entire output; never stop to wait for a human.
+> Board row `<row-id>`: this is a RESEARCH task, no compiler code changes expected.
+> [the precise question, with every symptom already known -- failing command, error
+> text, suspect files]. Investigate freely (read code, run `just check`, reproduce).
+> Write findings to `plans/<name>.md` and commit it.
 
-The worker's exit fires the event tick as always; that tick reads RESEARCH.md, acts on
-it (follow-up issue, informed continuation brief, board row), and strips the file
-before any merge -- like ESCALATION.md, it never lands on main. `OPENCODE_MODEL` can
-lift a hard question to a stronger cheap model per-dispatch.
+`sandbox_dispatch.py` runs its normal cycle against this brief (plan-decompose still
+fires, usually converges to "trivial" fast for a pure research task) and lands the
+committed findings file exactly like a code change -- `--max-plan-rounds 0` skips
+plan-decompose entirely for a brief that is already this precise. `--model`/`--plan-model`
+can lift a hard question to a stronger model per-dispatch.
 
 ## 2b. Update the board
 
@@ -136,17 +133,19 @@ issue number (`~/.local/share/toylang-lanes/issue-<N>` first, the legacy enwiro 
 fallback); the `lane:` field is legacy and set on no new row. A delegation without a
 board row means the task skipped planning -- add the row.
 
-## 3. Steering a running worker
+## 3. Steering a running sandbox dispatch
 
-There is no SendMessage into an opencode worker. The steering primitive is: kill the
-process, then resume the same session with a new message --
-
-    opencode run --session <sessionID> -m "$OPENCODE_MODEL" '<correction / next step>'
-
-(the sessionID is in the run's event log under `~/.cache/toylang-drive/opencode/`; a
-resumed session keeps its full context -- verified 2026-08-30 on the gh:114 trial). A
-worker whose process exited without committing is diagnosed from the same log: the last
-events say what it was doing and whether a resume or a fresh dispatch is right.
+There is no SendMessage into a sandboxed dispatch, and no session-resume primitive
+either (unlike the retired `dispatch-worker.sh` path, sandbox dispatch is stateless
+per attempt by design -- every fresh dispatch branches clean from `origin/main`, never
+continuing a prior attempt's state). A run in progress cannot be redirected: let it
+finish (green and landed, or escalated to `docs/.grill/`) rather than killing it
+mid-flight. Feedback on a FAILED build turn is already automatic within one dispatch
+-- `run_build_cycle()` feeds the real `just check` failure back to the same opencode
+session on retry (`--continue`), up to `--retry-cap`. Once a dispatch has fully exited
+(landed, or escalated), the only way to correct its course is a fresh dispatch with a
+sharper brief -- there is no log-and-resume step, since the escalation round or the
+landed diff already carries the evidence needed to write one.
 
 ## Cleanup
 
