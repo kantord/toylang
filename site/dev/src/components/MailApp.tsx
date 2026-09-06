@@ -1,5 +1,5 @@
 import { Archive, Check, Inbox as InboxIcon, LayoutDashboard, Pencil, StickyNote, X } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
 import { BoardPage } from "@dev/components/BoardPage"
 import { GrillRoundReader } from "@dev/components/GrillWizard"
@@ -474,6 +474,29 @@ function MessageHeader({ item }: { item: MailItem }) {
   )
 }
 
+class RoundBoundary extends Component<{ topic: string; children: ReactNode }, { error: Error | null }> {
+  state = { error: null }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="space-y-3">
+          <div className="rounded-sm border-l-4 border-destructive py-1 pl-2 text-xs text-destructive">
+            {this.state.error.message}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {roundPagePath(this.props.topic)}could not be displayed. Fix the file to get the round
+            back.
+          </p>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 function ReadingPane({
   item,
   onMarkRead,
@@ -491,12 +514,13 @@ function ReadingPane({
       <div className="space-y-3">
         <MessageHeader item={item} />
         <Separator />
-        <GrillRoundReader
-          key={topic}
-          topic={topic}
-          round={round}
-          onAllAnswered={() => onRoundAnswered(topic, round.questions.length)}
-        />
+        <RoundBoundary key={topic} topic={topic}>
+          <GrillRoundReader
+            topic={topic}
+            round={round}
+            onAllAnswered={() => onRoundAnswered(topic, round.questions.length)}
+          />
+        </RoundBoundary>
       </div>
     )
   }
