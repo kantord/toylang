@@ -1790,3 +1790,72 @@
   soft: [draft-intro-migration, draft-questions-home]
   prio: 4
   status: done
+
+- id: erlang-toolchain-empirical-research
+  issue: gh:170
+  title: "Research spike (round answer, 2026-09-01; filed as gh:170, a follow-up to gh:163 since the original issue-163 branch is already merged/archived): go beyond plans/erlang-target-research.md's desk research -- actually install/verify the Erlang toolchain and run the documented-semantics comparison (process/effect model, selective receive, pattern matching) against real `erl`/`erlc` output, not just written docs. Prior attempt (erlang-target-research run 1) hit a sandbox denial trying `which erl`/`erl -eval` and gave up; that incident is logged in plans/opencode-rollout.md -- this is an infrastructure-level restriction, so brief this run to document the denial precisely and stop rather than retry through another channel if it recurs. Write findings as an addendum to plans/erlang-target-research.md."
+  kind: build
+  needs: []
+  prio: 4
+  status: done
+  outcome: 'Its own frozen incident log showed the worker correctly ran `which erl`/`erl -noshell`,
+    confirmed nothing found, then died mid-session (machine interruption) before writing anything
+    up. Confirmed independently (erl/erlc/escript all absent from PATH) and added the addendum to
+    plans/erlang-target-research.md directly rather than redispatching to redo a 30-second check --
+    also corrected the original brief''s "sandbox denial" framing: the actual failure is a missing
+    dependency (command not found), not a permission wall.'
+
+- id: recursive-descent-order-research
+  title: 'Research spike (round answer, signature-matching-and-search-cut round, question recursive-descent-order): Q7 was ruled provisional -- `..` promises depth-first order (jq-compatible) -- but the maintainer wants a deep research brief on what alternatives actually exist to the unordered/columnar-fast-path design (questions.md Q7), so the ruling can be reevaluated later with real alternatives in hand rather than the two options already on the table. Survey how other query/traversal languages and engines (jq, XPath, JSONPath, columnar/vectorized query engines) handle recursive descent order versus set semantics, and what a toylang-specific unordered fast path would cost callers who need order back. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 4
+  status: done
+  outcome: 'Landed directly, not by a delegated worker: plans/recursive-descent-order-research.md.
+    Three dispatch attempts died without producing anything -- their event logs show webfetch
+    erroring immediately every time, structural for a sandboxed worker in this environment, not a
+    brief problem -- so the survey was done directly, verified empirically (ran jq 1.8.2 by hand)
+    rather than trusting a single web source (one search result wrongly claimed jq''s `..` is
+    breadth-first). Every real precedent (jq, XPath, JSONPath/RFC 9535) treats depth-first
+    pre-order as load-bearing, matching the provisional ruling -- recommend closing Q7 as
+    ratified, no reevaluation needed.'
+
+- id: stuck-issue-iteration-traits-research-investigation
+  kind: build
+  needs: []
+  status: done
+  title: 'INVESTIGATE stuck lane issue-iteration-traits-research (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-iteration-traits-research-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+  outcome: 'Its own event log showed a worker genuinely started, made one bad `gh` CLI call (wrong
+    --repo), then died a few events later (machine interruption, not a task failure). No capability
+    gap or brief problem -- iteration-traits-research was reset to status: todo and redispatched
+    fresh via sandbox_dispatch.py.'
+
+- id: stuck-issue-recursive-descent-order-research-investigation
+  kind: build
+  needs: []
+  status: done
+  title: 'INVESTIGATE stuck lane issue-recursive-descent-order-research (no activity 58h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-recursive-descent-order-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+  outcome: 'Root cause found in the underlying task''s own event logs: every attempt''s webfetch
+    calls errored immediately, a structural capability gap for a sandboxed dispatch worker in this
+    environment (the research brief requires surveying external sources). Resolved by doing the
+    research directly instead of redispatching against the same wall a fourth time -- see
+    recursive-descent-order-research.'
+
+- id: stuck-lane-investigation-chain-diagnosis
+  issue: gh:179
+  title: 'Diagnose why iteration-traits-research and stuck-issue-recursive-descent-order-research-investigation
+    never diverged from main (0 unique commits despite runs=1 each) and why
+    stuck-issue-iteration-traits-research-investigation landed an unrelated
+    self-invented fix instead of its requested plans/opencode-rollout.md report
+    (found live during the 2026-09-06 periodic audit). Check
+    ~/.cache/toylang-drive/opencode/ logs for whether a worker ever actually
+    started on any of the three, then decide whether to redispatch or reshape.'
+  kind: build
+  needs: []
+  status: done
+  outcome: 'Answered directly rather than dispatched. Checked ~/.cache/toylang-drive/opencode/:
+    workers DID start on all three, contrary to this row''s own suspicion -- iteration-traits-research
+    and its investigation both died to machine interruption mid-session (no real work lost, redispatched
+    fresh); stuck-issue-recursive-descent-order-research-investigation traced to the real task''s
+    own webfetch-blocked runs, resolved by landing the research directly. No systemic dispatch bug
+    found beyond what these three individually explain.'
