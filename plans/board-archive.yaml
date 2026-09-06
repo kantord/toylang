@@ -1499,3 +1499,56 @@
   needs: []
   issue: gh:177
   title: 'INVESTIGATE stuck lane issue-177 (no activity 0h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-177-20260903/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: stdin-redesign-build-2
+  issue: gh:172
+  title: 'Re-file of gh:159 (maintainer cleanup ruling, 2026-09-02, option C: drop the poisoned issue-159 lane, re-board under a fresh lane id rather than repair it). Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative -- verify parse(.) resolves an expected type inside a map body before full build). The old issue-159 branch/worktree are abandoned in place (permission-denied cleanup, left as garbage per the ruling); the feature diff there (commit 45c76be) is reference-only, re-derive against current main rather than cherry-pick. stdin-parse-shape escalation RULED (option 1, 2026-09-03): `parse` grows a second checked shape, `Stream<Str> -> T` (join lines with \n, then parse as one value) alongside the existing `Str -> T` -- matches the lane''s own uncommitted direction exactly. `input` migrates to `parse(stdin)`; `inputs` to `stdin | map(parse(.))`; `lines` to plain `stdin`. RESHAPED (issue-172-task-shape escalation, option 1, 2026-09-03): 7 runs / 0 commits -- the task cannot reach a commit boundary in one run''s step budget as a single all-in-one change (ast.rs + both check modules + all 8 emit_*.rs backends + ~30 corpus files + ~27 Rust test files together). Land in incremental, independently-landable commits instead: commit 1 -- `parse()` gains the `Stream<Str> -> T` overload in src/parse.rs and src/tir.rs ONLY, old `input`/`inputs`/`lines` keywords untouched, tree stays green; commit 2+ -- migrate ONE backend (its emit_*.rs, its corpus subset, its Rust tests) per commit, one backend per continuation dispatch; final commit -- once every backend covers `parse(stdin)`, retire `input`/`inputs`/`lines` from src/ast.rs and the parser. Each continuation dispatch does exactly one commit from this list and stops, never reaching for the next backend in the same run.'
+  kind: build
+  needs: []
+  model: fable
+  status: done
+
+- id: stuck-issue-float-format-research-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-format-research (no activity 10h, 3 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-format-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: float-format-research
+  issue: gh:149
+  title: 'Escalation ruling (lane-escalations-168-149 round, float-build-149-siblings-stall, option A): float-build-go/python/rust stalled 6 cumulative runs across 3 lanes, zero commits, before any research. float-build (JS reference) is already landed. Survey how Go (strconv.FormatFloat/ParseFloat), Python (repr(float)/float(str)), and Rust (Display/Debug impls, str::parse) each format an IEEE binary64 float to a string and back versus the JS reference, focusing on round-trip precision and hex/exponent edge cases. The float-build-python lane (~/.local/share/toylang-lanes/issue-float-build-python) has an uncommitted diff plus scratch probe files (f64_probe, float_check.py, hexdump.py, paren_probe.py) from a real struggle with this -- read them for a concrete lead, do not modify that lane. Write concrete per-backend formatting guidance (with short verified code snippets) to plans/, so the three build lanes are not rediscovering the same snag on redispatch.'
+  kind: build
+  needs: []
+  prio: 1
+  status: done
+
+- id: stuck-issue-search-layer-build-investigation
+  kind: build
+  status: done
+  needs: []
+  title: 'INVESTIGATE stuck lane issue-search-layer-build (no activity 13h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-search-layer-build-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: search-layer-build
+  title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
+  kind: build
+  needs: []
+  status: done
+
+- id: stuck-issue-param-destructure-build-investigation
+  kind: build
+  status: done
+  needs: []
+  title: 'INVESTIGATE stuck lane issue-param-destructure-build (no activity 10h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-param-destructure-build-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: param-destructure-build
+  title: Implement match-arm-style parameter destructuring, e.g. fn gcd({a, b}:{a:Int,b:Int}) (gh:144 ruling)
+  kind: build
+  needs: []
+  status: done
+
+- id: stuck-issue-benchmark-fasta-build-investigation
+  kind: build
+  status: done
+  needs: []
+  title: 'INVESTIGATE stuck lane issue-benchmark-fasta-build (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-benchmark-fasta-build-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
