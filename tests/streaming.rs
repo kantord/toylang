@@ -405,12 +405,18 @@ const LINES_ECHO: &str = "join_lines collect lines\n";
 
 fn assert_refuses_non_utf8(backend: &str) {
     let mut child = spawn_cli(LINES_ECHO, backend);
-    child
-        .stdin
-        .take()
-        .expect("piped stdin")
-        .write_all(b"ada\xff\nbo\n")
-        .expect("write non-UTF-8 input");
+    let mut stdin = child.stdin.take().expect("piped stdin");
+    // The child may read the first line, refuse,and exit, closing stdin while the
+    // rest of this write is still in flight -- a BrokenPipe here is that refusal,
+    // not a setup failure. Any other error is.
+    let r = stdin.write_all(b"ada\xff\nbo\n");
+    if let Err(e) = r {
+        assert_eq!(
+            e.kind(),
+            std::io::ErrorKind::BrokenPipe,
+            "write non-UTF-8 input: {e}"
+        );
+    }
     let output = child.wait_with_output().expect("wait for exit");
     assert!(
         !output.status.success(),
