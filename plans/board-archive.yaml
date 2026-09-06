@@ -1612,3 +1612,24 @@
   needs: []
   issue: gh:149
   title: 'INVESTIGATE stuck lane issue-float-build-go (no activity 37h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-go-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: float-build-go
+  issue: gh:149
+  title: Implement Float (IEEE binary64 per ADR 0007) for the Go backend only, following float-build's JS implementation as the reference. One backend, one commit.
+  kind: build
+  needs: [float-build, float-format-research]
+  status: done
+
+- id: stuck-issue-float-build-python-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-build-python (no activity 37h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-python-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: stuck-issue-float-build-lua-investigation
+  kind: build
+  status: done
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-build-lua (no activity 34h, 4 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-lua-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'

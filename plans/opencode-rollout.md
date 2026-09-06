@@ -865,3 +865,29 @@ before volume triples.
 of future work; **(5) worktree staleness** is a slow-accumulating tax rather than a hard stop.
 None of these are reasons to slow down the rollout -- they are the concrete list of what the next
 round of hardening should target before volume triples.
+
+## Resolved: float-build-{go,python,lua} siblings, post float-format-research (2026-09-06)
+
+`float-format-research` (gh:149) landed, unblocking all three parked siblings. Since the
+2026-09-03 escalation, the automatic pipeline independently dispatched and landed
+`float-build-go` (`8ab6eaffc`, merged via `2f7cb2d`/`e312f59`): `strconv.FormatFloat` gives
+shortest-round-trip digits, printer rewrites notation to match JS's `Number::toString` layout,
+same pattern as the jq and native backends. Archived the `float-build-go` row (done) and its
+now-redundant `stuck-issue-float-build-go-investigation` sibling (already archived by the same
+pipeline run) as done: further investigation of a stall that predates the unblocking would only
+re-derive a diagnosis that no longer applies.
+
+`float-build-python`'s worker (exited 2026-09-06 13:13) found and fixed a real bug beyond the
+row's original scope: `lit` emits whole-number floats as bare integers (Rust `Display`), Python
+parses them as `int`, and `tl_float`'s `repr` then spells all the digits instead of the
+exponential form JS prints. Fix + regression tests landed in the worktree (`just check`: 353
+green), but the "firing landing tick" logged by the worker never reached `land-lane.sh` --
+never appears in `land.log`. Fired `land-lane.sh land float-build-python` directly (duty (b),
+event missed) rather than waiting for a retry that evidently isn't coming.
+
+Archived `stuck-issue-float-build-python-investigation` and `stuck-issue-float-build-lua-investigation`
+as redundant for the same reason as `float-build-go`'s: both investigations targeted a stall
+whose real cause (missing per-backend formatting guidance) is now fixed on main. Dispatched
+`float-build-lua` fresh into its existing worktree (base refreshed from origin/main by
+`dispatch-worker.sh`), pointing at `plans/float-format-research.md` as the concrete lead the
+prior 6 runs never had.
