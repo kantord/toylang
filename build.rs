@@ -191,6 +191,9 @@ impl ToRust for tir::Builtin {
             tir::Builtin::Sum => "Sum",
             tir::Builtin::Max => "Max",
             tir::Builtin::Parse => "Parse",
+            tir::Builtin::First => "First",
+            tir::Builtin::Any => "Any",
+            tir::Builtin::All => "All",
         };
         format!("crate::tir::Builtin::{variant}")
     }

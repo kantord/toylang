@@ -1,0 +1,11 @@
+# An empty Vec has no true entry, so the existential cut is false. The empty Vec<Bool> comes
+# from a declared return type, since a bare `[]` literal cannot be typed.
+program: |
+  fn none() -> Vec<Bool> = []
+
+  any(none())
+
+output: |
+  false
+
+node_types: [application, builtin.any, vec-literal]

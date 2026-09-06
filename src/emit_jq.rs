@@ -650,6 +650,15 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                     expr(enums, arg)
                 )
             }
+            // The first entry, tagged the same way `tail` tags; an empty Vec is the absent Opt.
+            Builtin::First => format!(
+                "({} | if length == 0 then \"none\" else {{some: .[0]}} end)",
+                expr(enums, arg)
+            ),
+            // jq's own `any`/`all` already reduce a list of Bools the way the language's cuts
+            // do: false on an empty `any`, vacuously true on an empty `all`.
+            Builtin::Any => format!("({} | any)", expr(enums, arg)),
+            Builtin::All => format!("({} | all)", expr(enums, arg)),
             // Not jq's own `add`, which is `null` on an empty list rather than `[]` -- a reduce
             // starting from `[]` gives the right answer in both cases.
             Builtin::Flatten => format!("({} | reduce .[] as $x ([]; . + $x))", expr(enums, arg)),

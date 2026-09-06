@@ -73,6 +73,9 @@ struct Runtime<'ctx> {
     div_by_zero: FunctionValue<'ctx>,
     range: FunctionValue<'ctx>,
     vec_tail: FunctionValue<'ctx>,
+    vec_first: FunctionValue<'ctx>,
+    vec_any: FunctionValue<'ctx>,
+    vec_all: FunctionValue<'ctx>,
     vec_flatten: FunctionValue<'ctx>,
     vec_slice: FunctionValue<'ctx>,
     vec_concat: FunctionValue<'ctx>,
@@ -271,6 +274,13 @@ impl<'ctx> Emitter<'ctx, '_> {
             range: module.add_function("tl_range", ptr.fn_type(&[i64t.into()], false), None),
             chars: module.add_function("tl_chars", ptr.fn_type(&[ptr.into()], false), None),
             vec_tail: module.add_function("tl_vec_tail", ptr.fn_type(&[ptr.into()], false), None),
+            vec_first: module.add_function(
+                "tl_vec_first",
+                ptr.fn_type(&[ptr.into(), i32t.into()], false),
+                None,
+            ),
+            vec_any: module.add_function("tl_vec_any", i64t.fn_type(&[ptr.into()], false), None),
+            vec_all: module.add_function("tl_vec_all", i64t.fn_type(&[ptr.into()], false), None),
             vec_flatten: module.add_function(
                 "tl_vec_flatten",
                 ptr.fn_type(&[ptr.into(), i64t.into()], false),
@@ -1462,6 +1472,34 @@ impl<'ctx> Emitter<'ctx, '_> {
                     // Already tracked on the Vec header; nothing to compute.
                     Builtin::Length => self.call_rt(self.rt.vec_len, &[arg], "length")?,
                     Builtin::Tail => self.call_rt(self.rt.vec_tail, &[arg], "tail")?,
+                    // A record entry is spread across columns, so `is_record` is what tells the
+                    // runtime to gather it back, the same flag an Index collapse carries.
+                    Builtin::First => {
+                        let elem = elem_ty.expect("checked to be a Vec");
+                        let is_record = self.ctx.i32_type().const_int(
+                            matches!(elem, Type::Record(_)) as u64,
+                            false,
+                        );
+                        self.call_rt(self.rt.vec_first, &[arg, is_record.into()], "first")?
+                    }
+                    // The runtime answers in a slot (an i64), so the result is truncated to the
+                    // i1 a Bool is here, the same width an Int-to-Bool narrowing does.
+                    Builtin::Any | Builtin::All => {
+                        let rt = if *which == Builtin::Any {
+                            self.rt.vec_any
+                        } else {
+                            self.rt.vec_all
+                        };
+                        let call = self.call_rt(rt, &[arg], "cut")?;
+                        self.builder
+                            .build_int_truncate(
+                                call.into_int_value(),
+                                self.ctx.bool_type(),
+                                "cut",
+                            )
+                            .map_err(|e| e.to_string())?
+                            .into()
+                    }
                     Builtin::Flatten => {
                         let elem = t.ty.elem().expect("checked to be Vec<Vec<T>> -> Vec<T>");
                         let ncols = self.ctx.i64_type().const_int(Self::columns(elem), false);

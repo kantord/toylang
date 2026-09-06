@@ -146,6 +146,31 @@ local function tl_tail(v)
 end
 ";
 
+const FIRST_HELPER: &str = "\
+local function tl_first(v)
+  if #v == 0 then return \"none\" end
+  return { some = v[1] }
+end
+";
+
+const ANY_HELPER: &str = "\
+local function tl_any(v)
+  for i = 1, #v do
+    if v[i] then return true end
+  end
+  return false
+end
+";
+
+const ALL_HELPER: &str = "\
+local function tl_all(v)
+  for i = 1, #v do
+    if not v[i] then return false end
+  end
+  return true
+end
+";
+
 const FLATTEN_HELPER: &str = "\
 local function tl_flatten(vv)
   local out = {}
@@ -458,6 +483,9 @@ pub fn emit(program: &Program) -> String {
         (used.slice, SLICE_HELPER),
         (used.unwrap, UNWRAP_HELPER),
         (used.tail, TAIL_HELPER),
+        (used.first, FIRST_HELPER),
+        (used.any, ANY_HELPER),
+        (used.all, ALL_HELPER),
         (used.flatten, FLATTEN_HELPER),
         (used.sort, SORT_HELPER),
         (used.reverse, REVERSE_HELPER),
@@ -732,6 +760,9 @@ struct Helpers {
     collect: bool,
     jsonlines: bool,
     tail: bool,
+    first: bool,
+    any: bool,
+    all: bool,
     flatten: bool,
     chars: bool,
     sort: bool,
@@ -781,6 +812,9 @@ fn builtin_helpers(which: Builtin, arg_ty: &Type, used: &mut Helpers) {
     used.range |= which == Builtin::Range;
     used.jsonlines |= which == Builtin::JsonLines;
     used.tail |= which == Builtin::Tail;
+    used.first |= which == Builtin::First;
+    used.any |= which == Builtin::Any;
+    used.all |= which == Builtin::All;
     used.flatten |= which == Builtin::Flatten;
     used.chars |= which == Builtin::Chars;
     used.sort |= which == Builtin::Sort;
@@ -990,6 +1024,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Collect => expr(enums, arg),
             Builtin::Length => format!("#{}", expr(enums, arg)),
             Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
+            Builtin::First => format!("tl_first({})", expr(enums, arg)),
+            Builtin::Any => format!("tl_any({})", expr(enums, arg)),
+            Builtin::All => format!("tl_all({})", expr(enums, arg)),
             Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
             Builtin::Sort => format!("tl_sort({})", expr(enums, arg)),
             Builtin::Reverse => format!("tl_reverse({})", expr(enums, arg)),

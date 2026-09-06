@@ -53,6 +53,27 @@ function tl_tail(v) {
 }
 ";
 
+const FIRST_HELPER: &str = "\
+function tl_first(v) {
+  if (v.length === 0) return \"none\";
+  return { some: v[0] };
+}
+";
+
+const ANY_HELPER: &str = "\
+function tl_any(v) {
+  for (let i = 0; i < v.length; i++) if (v[i]) return true;
+  return false;
+}
+";
+
+const ALL_HELPER: &str = "\
+function tl_all(v) {
+  for (let i = 0; i < v.length; i++) if (!v[i]) return false;
+  return true;
+}
+";
+
 const UNWRAP_HELPER: &str = r#"function tl_unwrap(v, depth) {
   if (depth > 0) return v.map((e) => tl_unwrap(e, depth - 1));
   if (v === "none") { throw new Error("toylang: unwrapped a value that is not there"); }
@@ -219,6 +240,9 @@ pub fn emit(program: &Program) -> String {
         (used.index, OPT_HELPER),
         (used.slice, SLICE_HELPER),
         (used.tail, TAIL_HELPER),
+        (used.first, FIRST_HELPER),
+        (used.any, ANY_HELPER),
+        (used.all, ALL_HELPER),
         (used.unwrap, UNWRAP_HELPER),
         (used.arith, ARITH_HELPER),
         (used.arith64, ARITH64_HELPER),
@@ -532,6 +556,9 @@ struct Helpers {
     collect: bool,
     jsonlines: bool,
     tail: bool,
+    first: bool,
+    any: bool,
+    all: bool,
     str_cmp: bool,
     chars: bool,
     sum: bool,
@@ -636,6 +663,9 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::Builtin { which, arg } => {
                 used.jsonlines |= *which == Builtin::JsonLines;
                 used.tail |= *which == Builtin::Tail;
+                used.first |= *which == Builtin::First;
+                used.any |= *which == Builtin::Any;
+                used.all |= *which == Builtin::All;
                 used.chars |= *which == Builtin::Chars;
                 used.str_cmp |=
                     *which == Builtin::Sort && tir::runtime_elem(&arg.ty) == Some(&Type::Str);
@@ -877,6 +907,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Collect => expr(enums, arg),
             Builtin::Length => format!("{}.length", expr(enums, arg)),
             Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
+            Builtin::First => format!("tl_first({})", expr(enums, arg)),
+            Builtin::Any => format!("tl_any({})", expr(enums, arg)),
+            Builtin::All => format!("tl_all({})", expr(enums, arg)),
             Builtin::Flatten => format!("{}.flat()", expr(enums, arg)),
             // `Array.prototype.sort`'s default comparator stringifies, which is wrong for
             // numbers; `tl_str_cmp` already returns the -1/0/1 a comparator wants, so it can be

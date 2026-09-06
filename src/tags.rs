@@ -183,5 +183,8 @@ fn builtin_tag(which: Builtin) -> &'static str {
         Builtin::Sum => "sum",
         Builtin::Max => "max",
         Builtin::Parse => "parse",
+        Builtin::First => "first",
+        Builtin::Any => "any",
+        Builtin::All => "all",
     }
 }
