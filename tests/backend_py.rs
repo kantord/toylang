@@ -79,7 +79,7 @@ fn float_comparison() {
 /// double a Float names (ADR 0007).
 #[test]
 fn float_input_reads_a_json_number() {
-    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(input)\n";
+    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(parse(stdin))\n";
     let out = toylang::run_on(src, Some("2.5"), toylang::Backend::Py).unwrap();
     assert_eq!(out, "5\n");
 }
