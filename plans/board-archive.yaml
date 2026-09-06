@@ -1870,3 +1870,20 @@
     handing over the exact code sites and a verified-working shortest-round-trip formatting
     technique instead of asking the model to rediscover one via git archaeology -- confirmed the
     2026-09-06 diagnosis that this was a missing-algorithm problem, not a model-strength one.'
+
+- id: iteration-traits-research
+  title: 'Maintainer note captured from docs/reference/builtins/max annotations
+    (2026-09-06): max is defined separately for Vec and Stream today, but both
+    only need a simple linear iteration (sync or async, any order) to compute
+    it -- the comparison need is the same too. Spike whether an iteration trait
+    (or a family of them) would let one function definition serve both, and
+    whether the trait needs to split by the specific property a function
+    actually promises rather than being one monolithic "iterable" contract --
+    e.g. max only needs "iteration terminates, item order/arrival timing
+    unconstrained," while some other function may need "items arrive in a
+    fixed order," a strictly stronger promise. Land findings directly (no code
+    change expected); feeds iteration-traits-design.'
+  kind: build
+  needs: []
+  prio: 3
+  status: done

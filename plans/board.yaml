@@ -1,20 +1,3 @@
-- id: iteration-traits-research
-  title: 'Maintainer note captured from docs/reference/builtins/max annotations
-    (2026-09-06): max is defined separately for Vec and Stream today, but both
-    only need a simple linear iteration (sync or async, any order) to compute
-    it -- the comparison need is the same too. Spike whether an iteration trait
-    (or a family of them) would let one function definition serve both, and
-    whether the trait needs to split by the specific property a function
-    actually promises rather than being one monolithic "iterable" contract --
-    e.g. max only needs "iteration terminates, item order/arrival timing
-    unconstrained," while some other function may need "items arrive in a
-    fixed order," a strictly stronger promise. Land findings directly (no code
-    change expected); feeds iteration-traits-design.'
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
 - id: iteration-traits-design
   title: 'Decide whether to add iteration traits (see iteration-traits-research)
     and, if so, their shape -- language-design change, needs a maintainer round
@@ -65,9 +48,16 @@
 
 - id: stream-merge-tagged-design
   issue: gh:158
-  title: 'Follow-up from shell-out-stderr-relay-design''s Q35 follow-up ruling (wizard submission, 2026-09-07, option C reinterpreted): the maintainer wants pipe_through to relay stdout+stderr as one Stream whose items are tagged by origin (a built-in enum: "a merged stream of type A and type B is just a single stream where each item is either A or B"), not an OS-level 2>&1 byte merge and not two mutually-exclusive single-stream calls. Ground this against Q25''s existing Alt<A,B> sketch (already recorded for stream-ordering, plans/questions.md#q25) and the closed-nominal-enum mechanism from the enum decision -- work out whether Alt<A,B> is literally reusable here or needs its own shape, then produce the concrete pipe_through signature. Also still open: the stdin/stdout splitting question flagged since Q35 and re-flagged here, never answered by either round.'
+  title: 'Follow-up from shell-out-stderr-relay-design''s Q35 follow-up ruling (wizard submission, 2026-09-07, option C reinterpreted): the maintainer wants pipe_through to relay stdout+stderr as one Stream whose items are tagged by origin (a built-in enum: "a merged stream of type A and type B is just a single stream where each item is either A or B"), not an OS-level 2>&1 byte merge and not two mutually-exclusive single-stream calls. Ground this against Q25''s existing Alt<A,B> sketch (already recorded for stream-ordering, plans/questions.md#q25) and the closed-nominal-enum mechanism from the enum decision -- work out whether Alt<A,B> is literally reusable here or needs its own shape, then produce the concrete pipe_through signature. Also still open: the stdin/stdout splitting question flagged since Q35 and re-flagged here, never answered by either round. RULED (wizard submission, 2026-09-07): option A, a fixed stdlib-predefined two-variant enum -- verified that an ordinary enum already produces the tagged shape with zero new type-system machinery (no Alt<A,B> needed): `enum Line { Out{text: Str}, Err{text: Str} }` over a mapped stream. pipe_through should tag with one fixed enum (e.g. PipeLine{ Stdout, Stderr }), same shape for every caller. Option B (generic over a caller-supplied enum) was not picked -- it depends on user-defined generic functions, which do not exist yet. Stdin/stdout splitting was still not addressed by this ruling -- spun off as its own row, stdin-stdout-splitting-design.'
   kind: decide
   needs: [shell-out-stderr-relay-design]
+  status: done
+
+- id: stdin-stdout-splitting-design
+  issue: gh:158
+  title: 'How pipe_through''s *input* side works (writing to a subprocess''s stdin) -- flagged as possibly distinct from the stdout/stderr tagged-merge question (Q35, stdout-stderr-effect-model-design, shell-out-stderr-relay-design) across three rounds now, never actually asked. Ground it against the now-settled tagged-enum output shape (stream-merge-tagged-design, RULED option A) and the opaque-plumbing effect model (stdout-stderr-effect-model-design, RULED option A), then produce the concrete pipe_through input-side signature.'
+  kind: decide
+  needs: [stream-merge-tagged-design]
   status: todo
 
 - id: stdout-stderr-effect-model-design
@@ -255,11 +245,11 @@
 
 - id: erlang-target-consideration
   issue: gh:163
-  title: 'Consider Erlang as an additional backend target, as a design stress test (maintainer note) -- round answer (module-routing-and-erlang-target round, question erlang-target-consideration): option C, spend more research and actually try the Erlang toolchain rather than accepting the desk-research-only finding (plans/erlang-target-research.md). Maintainer also flagged: concurrency will need to be supported by toylang regardless of this backend question -- worth surfacing as its own open item once this research lands.'
+  title: 'Consider Erlang as an additional backend target, as a design stress test (maintainer note) -- round answer (module-routing-and-erlang-target round, question erlang-target-consideration): option C, spend more research and actually try the Erlang toolchain rather than accepting the desk-research-only finding (plans/erlang-target-research.md). Maintainer also flagged: concurrency will need to be supported by toylang regardless of this backend question -- worth surfacing as its own open item once this research lands. RULED (wizard submission, 2026-09-07): option A, close per the research recommendation -- erl/erlc/escript all absent from this host with no toolchain available to install them (plans/erlang-target-research.md, addendum), and the underlying recommendation (Erlang fails ADR 0002''s backend-admission test; its one distinct axis, concurrency, is unexercised by any toylang program) did not depend on that gap closing. Closed gh:163. Reopen only if toylang grows concurrency.'
   kind: decide
   needs: [erlang-toolchain-empirical-research]
   prio: 5
-  status: todo
+  status: done
 
 - id: doc-migrate-capital-variants
   title: 'Follow-up lane split from issue-156 (reshape ruling, 2026-09-01): migrate the 6 flagged doc pages'' variant-declaration examples to capital-first-type + lowercase-constructor, and correct the 4 MISQUOTED fixture texts to match the checker''s real error output, then remove the corpus-test gating added in variant-checker-capital-first. Pages: docs/guides/enums.md, docs/guides/matching.md, docs/reference/operators/comparison.md, docs/reference/types/enum.md, docs/tutorial/04-enums.md, docs/tutorial/06-matching.md. Evidence for exact expected strings: ~/.cache/toylang-drive/land-gate-issue-156.log.'
