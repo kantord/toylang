@@ -1,60 +1,60 @@
-        PASS [   0.021s] (334/362) toylang::unwrap a_field_name_may_be_capitalised
-        PASS [   0.033s] (335/362) toylang::unwrap a_field_cannot_be_given_twice
-        PASS [   0.042s] (336/362) toylang::unwrap a_builtin_cannot_be_redefined
-        PASS [   0.042s] (337/362) toylang::unwrap a_condition_must_be_a_bool
-        PASS [   0.036s] (338/362) toylang::unwrap an_int_literal_has_to_fit_in_an_int
-        PASS [   0.034s] (339/362) toylang::unwrap both_branches_must_agree
-        PASS [   0.039s] (340/362) toylang::unwrap a_function_name_starts_lowercase
-        PASS [   0.035s] (341/362) toylang::unwrap ne_on_an_opt_suggests_the_unwrap
-        PASS [   0.032s] (342/362) toylang::unwrap str_takes_an_int
-        PASS [   0.037s] (343/362) toylang::unwrap plus_does_not_mix_its_operands
-        PASS [   0.020s] (344/362) toylang::unwrap unwrapping_changes_how_a_string_prints
-        PASS [   0.039s] (345/362) toylang::unwrap the_most_negative_int_is_writable_but_not_one_past_it
-        PASS [   0.033s] (346/362) toylang::variant_casing a_capitalized_constructor_is_refused
-        PASS [   0.033s] (347/362) toylang::variant_casing a_lowercase_pattern_is_refused
-        PASS [   0.018s] (348/362) toylang::variant_casing capitalized_declaration_with_lowercase_constructor_runs
-        PASS [   0.033s] (349/362) toylang::variant_casing a_lowercase_variant_declaration_is_refused
-        PASS [   1.008s] (350/362) toylang::streaming lua_streams_range
-        PASS [   0.529s] (351/362) toylang::unwrap an_int_from_input_has_to_fit_too
-        PASS [  11.321s] (352/362) toylang::corpus every_backend_agrees_and_is_right_shard_4
-        PASS [  11.544s] (353/362) toylang::corpus every_backend_agrees_and_is_right_shard_1
-        PASS [  11.540s] (354/362) toylang::corpus every_backend_agrees_and_is_right_shard_5
-        PASS [  11.586s] (355/362) toylang::corpus every_backend_agrees_and_is_right_shard_7
-        PASS [  11.835s] (356/362) toylang::corpus every_backend_agrees_and_is_right_shard_3
-        PASS [  11.824s] (357/362) toylang::corpus every_backend_agrees_and_is_right_shard_6
-        PASS [  12.083s] (358/362) toylang::corpus every_backend_agrees_and_is_right_shard_2
-        PASS [  12.170s] (359/362) toylang::corpus every_backend_agrees_and_is_right_shard_0
-        PASS [  26.913s] (360/362) toylang::backend_llvm native_agrees_where_it_compiles
-        PASS [  31.123s] (361/362) toylang::backend_rust rust_agrees_where_it_compiles
-        SLOW [> 60.000s] (───────) toylang::docs every_fragment_is_a_real_program
-        SLOW [>120.000s] (───────) toylang::docs every_fragment_is_a_real_program
-        FAIL [ 152.594s] (362/362) toylang::docs every_fragment_is_a_real_program
-  stdout ───
-
-    running 1 test
-    test every_fragment_is_a_real_program has been running for over 60 seconds
-    test every_fragment_is_a_real_program ... FAILED
 
     failures:
 
     failures:
-        every_fragment_is_a_real_program
+        go_streams
 
-    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 152.58s
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 33 filtered out; finished in 5.00s
 
   stderr ───
 
-    thread 'every_fragment_is_a_real_program' (3225069) panicked at tests/docs.rs:114:5:
-    2 of 157 docs fragments failed:
-    MISQUOTED docs/reference/builtins/chars.md:39: the checker says "`parse(stdin)` cannot be read as Char; Char has no wire form to read (at byte 44)", the page says "`input` cannot be read as Char; Char has no wire form to read (at byte 44)"
-    BROKEN  docs/reference/builtins/parse.md:8: go could not run: go failed: # command-line-arguments
-    /tmp/.tmpxB0hH0/main.go:14:142: undefined: tlFail
-
+    thread 'go_streams' (427423) panicked at tests/streaming.rs:74:10:
+    no output arrived before stdin closed -- this is reading all of stdin first, not streaming: Timeout
     note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
-  Cancelling due to test failure: 
+        FAIL [   5.048s] (240/362) toylang::streaming go_streams_range
+  stdout ───
+
+    running 1 test
+    test go_streams_range ... FAILED
+
+    failures:
+
+    failures:
+        go_streams_range
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 33 filtered out; finished in 5.01s
+
+  stderr ───
+
+    thread 'go_streams_range' (427453) panicked at tests/streaming.rs:99:10:
+    no output arrived without any input -- the fused range loop never ran: Timeout
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [   0.871s] (241/362) toylang::streaming native_streams_lines
+        PASS [   9.886s] (242/362) toylang::backend_jq mutual_recursion_runs_and_agrees_on_every_backend_but_jq
+        PASS [   8.537s] (243/362) toylang::int64 int64_wraps_at_the_2_63_boundary
+        PASS [   8.826s] (244/362) toylang::int64 int64_min_over_minus_one_wraps
+        PASS [   7.968s] (245/362) toylang::streaming go_refuses_live_same_as_the_fixture
+        PASS [  12.094s] (246/362) toylang::backend_js record_key_order_follows_the_type
+        PASS [  19.953s] (247/362) toylang::corpus every_backend_agrees_and_is_right_shard_1
+        PASS [  20.336s] (248/362) toylang::corpus every_backend_agrees_and_is_right_shard_4
+        PASS [  20.707s] (249/362) toylang::corpus every_backend_agrees_and_is_right_shard_5
+        PASS [  20.917s] (250/362) toylang::corpus every_backend_agrees_and_is_right_shard_7
+        PASS [  21.049s] (251/362) toylang::corpus every_backend_agrees_and_is_right_shard_2
+        PASS [  21.073s] (252/362) toylang::corpus every_backend_agrees_and_is_right_shard_6
+        PASS [  21.242s] (253/362) toylang::corpus every_backend_agrees_and_is_right_shard_3
+        PASS [  22.019s] (254/362) toylang::corpus every_backend_agrees_and_is_right_shard_0
+        PASS [  31.986s] (255/362) toylang::backend_llvm native_agrees_where_it_compiles
+        PASS [  37.273s] (256/362) toylang::backend_rust rust_agrees_where_it_compiles
+        SLOW [> 60.000s] (───────) toylang::docs every_fragment_is_a_real_program
+        SLOW [>120.000s] (───────) toylang::docs every_fragment_is_a_real_program
+        PASS [ 159.722s] (257/362) toylang::docs every_fragment_is_a_real_program
 ────────────
-     Summary [ 152.829s] 362 tests run: 361 passed, 1 failed, 1 skipped
-        FAIL [ 152.594s] (362/362) toylang::docs every_fragment_is_a_real_program
+     Summary [ 159.953s] 257/362 tests run: 254 passed (1 slow), 3 failed, 1 skipped
+        FAIL [   5.024s] (238/362) toylang::streaming go_streams_composed_functions
+        FAIL [   5.060s] (239/362) toylang::streaming go_streams
+        FAIL [   5.048s] (240/362) toylang::streaming go_streams_range
+warning: 105/362 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)
 error: test run failed
 error: recipe `test` failed on line 7 with exit code 100
