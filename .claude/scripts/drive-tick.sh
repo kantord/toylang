@@ -100,12 +100,33 @@ for r in yaml.safe_load(open('plans/board.yaml')):
 DEAD_PRIORITY=-1
 DEAD_TRIGGER=""
 DEAD_AGE=-1
+# A sandbox dispatch only creates its LANES worktree at the final landing step
+# (sync_real_lane() inside apply_and_land()) -- "no worktree" during the
+# plan/build/verify phase is the NORMAL, common state now, not evidence of a
+# landing. Without this check every in-progress sandbox row falsely read as
+# "it landed" on every single tick (found live, 2026-09-06: this is not an
+# edge case under the sandbox-only model, it is most of a dispatch's
+# lifetime). An escalated-without-landing row (retry cap reached before ever
+# reaching apply_and_land) never creates a worktree either -- that also is
+# not "it landed"; it is already surfaced through the pending_rounds state
+# duty (1) reads, so no separate trigger is needed for it here.
+ACTIVE_SANDBOX_IDS=$(python3 "$REPO/.claude/scripts/sandbox_dispatch_status.py" 2>/dev/null)
 for wt in $DELEGATED; do
   case "$wt" in
     lane:*) d="$HOME/.enwiro_envs/toylang@${wt#lane:}/toylang@${wt#lane:}" ;;
     *) d="$LANES/$wt"; [ -d "$d" ] || d="$WORKTREES/$wt" ;;
   esac
-  [ -d "$d" ] || { TRIGGER="delegated row $wt has no worktree -- it landed (verify in main log, then board-archive the row)"; continue; }
+  if [ ! -d "$d" ]; then
+    row_id="${wt#issue-}"
+    if printf '%s\n' "$ACTIVE_SANDBOX_IDS" | grep -qxF "$row_id"; then
+      continue  # still building in its sandbox -- not landed, not stuck
+    fi
+    if [ -f "$REPO/docs/.grill/${row_id}-sandbox-blocker.round.yaml" ]; then
+      continue  # escalated without ever landing -- duty (1) already surfaces this
+    fi
+    TRIGGER="delegated row $wt has no worktree -- it landed (verify in main log, then board-archive the row)"
+    continue
+  fi
   ahead=$(git -C "$d" rev-list --count main..HEAD 2>/dev/null || echo 0)
   dirty=$(git -C "$d" status --porcelain 2>/dev/null | wc -l)
   recent8=$(find "$d" -name .git -prune -o -name target -prune -o -type f \
