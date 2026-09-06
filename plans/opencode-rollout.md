@@ -1054,3 +1054,46 @@ dispatching through `sandbox_dispatch.py` with webfetch available(the path fasta
 earlier this session),or grant the tool to a host-side run. Do not keep dispatching host-side
 investigation runs at it: until finding #3's watchdog fix lands, every `STUCK_AFTER` window
 re-files the same false positive.
+
+## Ruling: retire dispatch-worker.sh, sandbox_dispatch.py becomes the only dispatch mechanism (2026-09-06)
+
+Grilled with the maintainer after a night where every plain-dispatch permission-wall failure
+(this row included) needed a sandboxed rescue anyway. Two observations converged: (1) the
+`KNOWN DENIALS` boilerplate in `dispatch-worker.sh` (`plans/prompt-efficiency-review.md`,
+finding #1) is a backtracking-accumulation anti-pattern that can never fully catch up to what
+the sandbox already solves structurally by removing the restriction instead of teaching around
+it; (2) `sandbox_dispatch.py` is a strict superset of `dispatch-worker.sh`'s capability -- nothing
+the plain path could do that the sandbox can't also do. Per the maintainer: "if the sandbox pool
+works just fine, then no reason to keep both. we can add it back if we find a good reason to."
+
+**The model, kanban for agents**: `dispatch-worker.sh` is retired. Sandbox concurrency (WIP
+limit) is 3, chosen from measured `lane-history.jsonl` data across the whole session (217
+snapshots): max concurrent *live* workers ever observed was 5, once; the practical ceiling was 3.
+The old dispatch cap of 8 was never a real constraint -- high lane counts in the board reflected
+accumulated stuck/idle backlog, not genuine parallel throughput (a fact the maintainer suspected
+before the data confirmed it). Every coordinator tick: if in-progress count < 3, pull the
+highest-priority unblocked board row straight into a new sandbox loop. No "try cheap first" --
+there is no cheap path left to try.
+
+**No new merge-safety gate.** Re-examined and rejected a "human reviews before landing, graduate
+to full-auto after 5 clean successes" design initially proposed for this ruling: the house
+philosophy already has no pre-merge review for the plain path either (`drive-tick.sh`'s own
+policy: "You NEVER... read diffs pre-merge... post-land review, AFTER other duties"). What
+tonight's manual sandbox rescues (issue-172, float-format-research, benchmark-fasta-build,
+float-build-go -- 0/4 fully clean) actually needed was recognizing the sandbox's *own* `verify()`
+false negatives (jq 1.7 vs host 1.8, root bypassing permission tests, stale `target/` caches in
+long-lived worktrees), not a merge-safety review -- `land-lane.sh`'s real gate (fresh clone, full
+`just test`) is unchanged and was never the thing needing a human. So each sandbox loop runs the
+full cycle unsupervised from day one: extract patch, apply, merge `origin/main`, call
+`land-lane.sh` directly; its existing retry/escalation logic (already built) handles a red gate
+exactly as it does today for the plain path. Unresolved runs route to the mailbox via the
+already-built `compose_escalation()`. Push notification fires only on mailbox escalation, not on
+routine clean lands (matches "nothing changed: end quietly").
+
+**Immediate prerequisite, not yet done**: pin the toolchain snapshot's `jq` to match the host
+version before turning this on -- with no human catching false negatives anymore, an unfixed
+version mismatch becomes pure wasted mailbox noise instead of a one-time discovery.
+
+**Implementation not yet landed**: `drive-tick.sh` still dispatches via `dispatch-worker.sh` and
+`opencode-worker.sh`'s numeric-lane special-casing is still live. This ruling is the design;
+the cutover is a follow-up.
