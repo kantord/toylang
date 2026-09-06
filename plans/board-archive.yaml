@@ -1715,3 +1715,11 @@
   needs: []
   prio: 2
   status: done
+
+- id: closures-first-class-functions-research
+  issue: gh:119
+  title: 'Research spike (prelude-partials-and-mutation round, Q3): maintainer answer -- both struct-like and array-like partial application are needed, chosen by the input type''s shape, and true currying should fall out for free once closures/functions are first-class rather than being its own mechanism. Look at how Rust and similar languages simplify this before a final design; write findings to plans/'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
