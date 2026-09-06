@@ -123,6 +123,12 @@ fn unreadable_directory_is_reported_and_walk_continues() {
     let unreadable = dir.path().join("unreadable");
     let perms = std::fs::Permissions::from_mode(0o000);
     std::fs::set_permissions(&unreadable, perms).expect("remove permissions");
+    // Root bypasses permission bits, so the scenario cannot be set up there: an unreadable
+    // directory is readable. Skip rather than fail.
+    if std::fs::read_dir(&unreadable).is_ok() {
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        return;
+    }
 
     let out = fmt(dir.path(), &[]);
 
@@ -154,6 +160,12 @@ fn unreadable_file_is_reported_and_walk_continues() {
     let sealed = dir.path().join("sealed.toy");
     let perms = std::fs::Permissions::from_mode(0o000);
     std::fs::set_permissions(&sealed, perms).expect("remove permissions");
+    // Root bypasses permission bits, so the scenario cannot be set up there: a sealed file is
+    // readable. Skip rather than fail.
+    if std::fs::read(&sealed).is_ok() {
+        std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o644)).unwrap();
+        return;
+    }
 
     let out = fmt(dir.path(), &[]);
 
