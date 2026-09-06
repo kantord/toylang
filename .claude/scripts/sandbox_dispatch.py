@@ -369,14 +369,30 @@ def verify(name: str, env: dict) -> tuple[bool, str]:
 
 
 def ensure_committed(name: str, env: dict) -> None:
-    """A green (or final) tree with uncommitted tracked changes is still done
-    work nobody persisted (land-lane.sh's own rule for the same situation) --
-    commit it mechanically rather than losing it to a missed commit step."""
+    """A green (or final) tree with uncommitted work is still done work
+    nobody persisted (land-lane.sh's own rule for the same situation) --
+    commit it mechanically rather than losing it to a missed commit step.
+
+    Stage untracked subdirectory files FIRST, unconditionally -- a pure
+    research task (write a new plans/*.md, touch nothing else) leaves every
+    line as `??`, so the old tracked-only check below saw nothing to commit
+    and did nothing, and the file was then destroyed with the sandbox at
+    cleanup (found live, 2026-09-06: select-materialization-research and
+    batch-type-design-research both went green with zero commits and their
+    findings were lost -- the same allowlist-gap bug already fixed in
+    land-lane.sh's own copy of this logic, missed here)."""
+    # A portable (dash, not bash -- this runs via `sh -c` inside the guest)
+    # loop: read -d is a bashism dash does not support, so this stages
+    # untracked subdirectory files with plain word-splitting instead of
+    # NUL-delimited parsing (breaks on filenames with spaces, an accepted,
+    # narrow limitation shared with the rest of this codebase's shell glue).
     exec_in(
         name,
         "cd /repo && "
+        "for f in $(git status --porcelain | awk '/^\\?\\?/{print $2}' | grep /); do "
+        "git add -- \"$f\"; done; "
         "if [ -n \"$(git status --porcelain | grep -v '^??')\" ]; then "
-        "git add -u && git add -- src tests docs site plans 2>/dev/null; "
+        "git add -u; "
         "git commit -q -m 'Auto-commit sandbox worker output (tracked changes at verify time)' "
         "|| true; fi",
         env,
