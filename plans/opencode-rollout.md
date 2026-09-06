@@ -1348,3 +1348,19 @@ reproduce the exact same worker-confusion pattern. `insert_row()` now appends a 
 to the auto-generated investigation title whenever an `issue:` field is attached, telling the
 worker to trust `plans/incidents/` over the link when the two disagree -- costs nothing when the
 link is correct (167's case), saves a wasted run when it is not (156's case).
+
+**Dispatch-ready and round-ready counts don't check `needs`/rulings (found live, 2026-09-07)**:
+trigger listed 3 sandbox-ready build rows (`euler-slow-fragments-2`, `variant-types-flip`,
+`benchmark-fannkuch-redux-build`) and "3 decide rows ready" for the round buffer. Neither count
+holds up against the board: `euler-slow-fragments-2` carries an explicit maintainer ruling
+(2026-09-01) to hand off to a privileged manual session, not redispatch; `variant-types-flip`'s
+`needs: [matcher-totality-and-alt-design, variant-checker-capital-first]` names two board rows
+that do not exist anywhere in `board.yaml` (never created), so it is not actually unblocked.
+Only `benchmark-fannkuch-redux-build` (`needs: []`) was real -- dispatched that one. Checked
+every `kind: decide` row's `needs` by hand: all 12 either have their `needs` already covered by
+the pending `design-decisions-batch-1.round.yaml` (5 questions) or are blocked on a research row
+that is still `status: todo`/`delegated`, never `done`. Composed no second round this tick --
+fabricating options against unfinished research would violate the "real verified code examples"
+bar. Whatever generates the trigger's "ready" counts appears to filter on `status: todo` alone,
+not `needs` resolution or narrative rulings buried in the title text -- worth fixing at the
+tooling level so future ticks don't have to re-derive this by hand.
