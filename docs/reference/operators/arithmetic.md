@@ -33,7 +33,8 @@ str(1 / 0)
 ```refuses
 ```
 
-Unary minus negates, and the most negative `Int` is writable directly.
+Unary minus negates, and the most negative `Int` is writable directly. It stays a prefix operator rather than being folded into the lexer,
+because `a -1` still has to mean `a - 1`.
 
 `+` is also `Str` concatenation, and `Vec` concatenation of two `Vec`s of the same element
 type:

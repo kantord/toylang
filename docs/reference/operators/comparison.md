@@ -48,6 +48,11 @@ compare the whole thing, or compare entry by entry and hand back a `Vec<Bool>` -
 question the language has not answered, and a record field is no better a place to answer it
 by accident than the top level is.
 
+Ordering on a composite is untouched, and still disagrees. `<` on a record typechecks today,
+then three backends refuse to compile it, two fail at runtime, and two answer -- jq by its own
+document order, JS by comparing the string `[object Object]` against itself. Whether composites
+are ordered at all is an open question, not a settled decision.
+
 Ordering also typechecks on `Str`, and it compares by Unicode codepoint on every backend --
 including the JavaScript target, whose native `<` compares UTF-16 code units instead and so
 disagrees with the other six on any pair straddling a surrogate pair; the emitted code steps by
