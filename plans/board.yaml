@@ -202,7 +202,7 @@
   kind: build
   needs: []
   prio: 5
-  status: todo
+  status: delegated
 
 - id: module-routing-syntax-build
   issue: gh:167
@@ -246,7 +246,7 @@
   title: 'Experimentally build a Match<T> wrapper: `.` entering a `|` chain wraps as Match<T>, traits like `%` get generic impls over Match<T> per underlying T (applying only past a passing boolean guard), and an arm''s aliases become named fields on a result struct the match produces -- see what goes wrong before ratifying (gh:122 ruling)'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: partial-application-system-design
   issue: gh:119
@@ -372,14 +372,6 @@
   soft: [benchmark-goals]
   prio: 5
   status: todo
-
-- id: select-materialization-research
-  issue: gh:176
-  title: 'select''s return representation (Q22 follow-up): survey NumPy views/fancy-indexing, Julia @views, Rust Cow<[T]>, pandas SettingWithCopyWarning, then work out what makes a lazy select-view indexable pre-materialization and whether indexing materializes incrementally. Findings feed a re-ask of offload-boundary-design Q22. See plans/select-materialization-research.md.'
-  kind: build
-  needs: []
-  prio: 2
-  status: delegated
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
