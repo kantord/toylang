@@ -5,13 +5,13 @@ one must handle every variant. As data an enum is plain JSON, never an opaque va
 ([ADR 0009](../../adr/0009-enums-are-json-native-single-key-wrappers.md)).
 
 ```toylang
-enum Shape { point, circle{r: Int} }
+enum Shape { Point, Circle{r: Int} }
 
 {a: Shape.point, b: circle({r: 3})}
 ```
 
 ```output
-{"a":"point","b":{"circle":{"r":3}}}
+{"a":"Point","b":{"Circle":{"r":3}}}
 ```
 
 A unit variant carries nothing and is a bare string on the wire. A payload variant carries
@@ -23,24 +23,25 @@ non-record argument:
 enum_scalar_payload
 ```
 
-A variant name is data, so it is lowercase, like a field. Construction is ordinary
-application of the constructor the declaration derives -- `circle{r: 3}`, `celsius(21)` --
-and the bare unit-variant name works while exactly one enum claims it; `Shape.point` is the
-qualified way out when two do.
+A variant name starts with a capital letter; it is the identity used in a match pattern and
+the JSON key for a payload variant. Construction is ordinary application of the lowercase
+constructor the declaration derives -- `circle{r: 3}`, `celsius(21)` -- and the bare
+constructor works while exactly one enum claims it; `Shape.point` is the qualified way out
+when two do.
 
 Consumption is the [match](../operators/match.md), which is closed-world: every variant
 handled, or an `any()` arm for the rest. A program whose match misses a variant is refused:
 
 ```toylang
-enum Shape { point, circle{r: Int} }
+enum Shape { Point, Circle{r: Int} }
 
-fn area_ish(s: Shape) -> Int = s | circle{r} -> r * r
+fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r
 
 area_ish(Shape.point)
 ```
 
 ```error
-a match over `Shape` must cover every variant or end in a default; missing `point` (at byte 73)
+a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 73)
 ```
 
 Because the wire shape is plain JSON, an enum types input directly, and the input is
@@ -65,7 +66,7 @@ The rule is per occurrence, not per declaration, so `enum E { safe(Vec<E>), bad(
 `safe` and still refuses `bad`: a bare self-reference is a layout that contains itself.
 
 ```toylang
-enum Json { arr(Vec<Json>), num(Int), node{next: Json} }
+enum Json { Arr(Vec<Json>), Num(Int), Node{next: Json} }
 
 Json.num(1)
 ```

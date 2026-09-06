@@ -26,7 +26,7 @@ enum values when they are the same variant carrying equal payloads, and neither 
 the value came from:
 
 ```toylang
-enum Shape { point, circle{r: Int} }
+enum Shape { Point, Circle{r: Int} }
 
 circle({r: 1}) == circle({r: 1})
 ```

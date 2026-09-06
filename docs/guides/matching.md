@@ -52,21 +52,21 @@ never finishes the job. Coverage is checked on the pattern, not the runtime valu
 guard that always holds does not close the match:
 
 ```toylang
-enum S { a, b }
+enum S { A, B }
 
-S.a | a -> 1 or 1 == 1 -> 2
+S.a | A -> 1 or 1 == 1 -> 2
 ```
 
 ```error
-a match over `S` must cover every variant or end in a default; missing `b` (at byte 23)
+a match over `S` must cover every variant or end in a default; missing `B` (at byte 23)
 ```
 
 Name the remaining variant, or end the chain in `any()`:
 
 ```toylang
-enum S { a, b }
+enum S { A, B }
 
-S.a | a -> 1 or any() -> 2
+S.a | A -> 1 or any() -> 2
 ```
 
 ```output

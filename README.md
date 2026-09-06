@@ -38,15 +38,15 @@ boundary, and the language does not erase boundaries.
 Enums are the first deliberate import from Rust: a declared, closed set of variants, and a
 match that must handle every one. As data an enum is plain JSON, never an opaque value
 ([ADR 0009](docs/adr/0009-enums-are-json-native-single-key-wrappers.md)): a unit variant is a
-bare string, a payload variant a single-key wrapper like `{"circle":{"r":1}}`, so an enum
+bare string, a payload variant a single-key wrapper like `{"Circle":{"r":1}}`, so an enum
 types wire data directly.
 
 [`examples/shapes.toy`](examples/shapes.toy):
 
 ```
-enum Shape { point, circle{r: Int} }
+enum Shape { Point, Circle{r: Int} }
 
-fn area_ish(s: Shape) -> Int = s | circle{r} -> r * r or point -> 0
+fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0
 
 {a: area_ish(Shape.point), b: area_ish(circle{r: 3})}
 ```
@@ -57,12 +57,12 @@ $ cargo run --quiet -- run examples/shapes.toy
 ```
 
 Match arms chain with `or`; the first that matches wins. The match is closed-world: a
-program whose match handles only `circle`,
+program whose match handles only `Circle`,
 
 ```
-enum Shape { point, circle{r: Int} }
+enum Shape { Point, Circle{r: Int} }
 
-fn area_ish(s: Shape) -> Int = s | circle{r} -> r * r
+fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r
 
 area_ish(Shape.point)
 ```
@@ -70,7 +70,7 @@ area_ish(Shape.point)
 is refused:
 
 ```
-a match over `Shape` must cover every variant or end in a default; missing `point` (at byte 73)
+a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 73)
 ```
 
 ## Seven backends, kept as falsifiers

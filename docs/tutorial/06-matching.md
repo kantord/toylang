@@ -65,13 +65,13 @@ naming it, unless the chain ends in `any()`. A guard is a runtime Bool the check
 through, so no guard -- however certain -- contributes to that coverage:
 
 ```toylang
-enum S { a, b }
+enum S { A, B }
 
-S.a | a -> 1 or 1 == 1 -> 2
+S.a | A -> 1 or 1 == 1 -> 2
 ```
 
 ```error
-a match over `S` must cover every variant or end in a default; missing `b` (at byte 23)
+a match over `S` must cover every variant or end in a default; missing `B` (at byte 23)
 ```
 
 `1 == 1` always matches at runtime, but the checker only counts named variants and `any()`.
