@@ -1364,3 +1364,55 @@ fabricating options against unfinished research would violate the "real verified
 bar. Whatever generates the trigger's "ready" counts appears to filter on `status: todo` alone,
 not `needs` resolution or narrative rulings buried in the title text -- worth fixing at the
 tooling level so future ticks don't have to re-derive this by hand.
+## Investigation: stuck lane issue-167 (gh:167, `@(path)` module routing-arm syntax) (2026-09-06)
+
+Lane stats at capture (frozen in plans/incidents/issue-167-20260906/): 1 run, 0 commits, clean
+tree, ahead 0, live false. The lane base already carries the declared prerequisite (gh:166,
+per-file origin tracking): `Origin` and the prelude merge are in the worktree, so the lane was
+not blocked on it. The single run is 62 tool calls, every one read-only (31 bash, 27 read, 4
+grep), zero writes, zero edits, zero commits; it ends on a denied `cat .gitignore` with no final
+message.
+
+What the single run did: read the issue and gh:166; read the whole relevant surface --
+module-routing-research.md, parse.rs, ast.rs, lib.rs, main.rs, check/mod.rs, ty.rs,
+check/types.rs, prelude.rs, prelude.toy, emit_toylang.rs, build.rs, draft.md, tests/corpus.rs,
+tests/support/mod.rs, docs/reference/operators/match.md -- and grep'd the tree for `Origin`,
+module routing, the arm-body shape, and `ty::variants`. By the end it had a complete mental
+model of the change and, in the reasoning, kept circling the same un-ruled questions: which
+function in the submodule is the entry point, whether dispatch is a full typed function call,
+whether a submodule gets the prelude's definitions merged in, how `Origin` widens from
+Program/Prelude to carry a module path, and what happens when a submodule's enums collide with
+the caller's. It wrote nothing because no amount of code reading settles those.
+
+Diagnosis: **task shape, compounded by brief clarity** -- not a capability gap, not (primarily)
+a tooling/permission trap.
+
+- The issue ruling chose the *syntax* (option C, `@(path)`) and nothing else. The semantics the
+  implementation needs are the open questions module-routing-research.md leaves open: the
+  entry-point convention, the strictness of the signature check, and whether a submodule ever
+  has submodules. A whole-file routing primitive must say which function in the module runs, and
+  no ruling says it is `handle` -- the research doc only sketches `handle` as the convention for
+  candidate 1/3. The agent correctly refused to bake in answers the maintainer has not decided,
+  which is the agent-invented design AGENTS.md puts at lowest authority, and so produced nothing.
+
+- **Brief clarity** is the compounding half: the board title points at the ruled syntax but not
+  at the fact that the semantics are un-ruled, so an implementer is sent into a build row that
+  is really waiting on a decide step.
+
+- **Not a capability gap**: the run's exploration was sharp and complete; it assembled the whole
+  plan and stalled only on decisions that live in a decide row, not in the code.
+
+- **Not a tooling/permission trap as the cause**: one tool was denied (`cat .gitignore`) and it
+  was the last call, after the agent had already written nothing all session. Terminal detail,
+  not the reason the lane stalled.
+
+Recommendation: **reshape to a decide step, then re-dispatch the build.** The code is already
+about as simple as this change can be -- `check_module` returns `ty::Enums` and `resolve_defs`
+is the single module entry point, so no refactor is needed; the missing piece is rulings. The
+decide step (a maintainer round) should rule: the entry-point convention for a submodule
+dispatch target; whether dispatch is a full typed function call (the research doc leans strict,
+to keep the backends agreeing); whether a submodule's definitions merge the way the prelude's
+do, and how `Origin` widens to carry a module path; and the enum-collision policy for a merged
+submodule. With those ruled, re-dispatch the build with them in the brief and an early-commit
+instruction -- the standing rule this lane and its siblings keep missing -- so a partial
+checker/parser diff lands before tests rather than another zero-commit run.

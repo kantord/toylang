@@ -1,7 +1,10 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{BinOp, Def, Expr, FieldsPattern, File, MatchArm, Origin, Param, ParamShape, Pattern, Span};
+use crate::ast::{
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, MatchArm, Origin, Param, ParamShape,
+    Pattern, Span,
+};
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{self, Sig, Type};
@@ -101,35 +104,45 @@ impl Ctx<'_> {
     }
 }
 
-pub fn check(file: &File) -> Result<tir::Program, Error> {
-    let lines_used = Cell::new(false);
-    let aliases = alias_map(&file.aliases)?;
+/// The setup `check` and `check_module` share: build the type environment, resolve every declared
+/// enum, index which enum claims each variant name, collect the provisional signatures, and map
+/// each function to its file and visibility. Everything a `Ctx` needs except the per-file cells,
+/// which the caller owns because a module has no program body to run the input-exclusivity
+/// checks over. The module caller passes `&[]` for aliases, so the eager alias resolution below
+/// is a no-op for it.
+fn resolve_defs<'a>(
+    aliases: &'a [Alias],
+    enum_decls: &'a [EnumDecl],
+    defs: &'a [Def],
+    file: Origin,
+) -> Result<
+    (
+        TypeEnv<'a>,
+        HashMap<String, Type>,
+        HashMap<String, Vec<String>>,
+        HashMap<String, Sig>,
+        HashMap<String, (Origin, bool)>,
+    ),
+    Error,
+> {
     let env = TypeEnv {
-        aliases,
-        enums: enum_map(&file.enums)?,
+        aliases: alias_map(aliases)?,
+        enums: enum_map(enum_decls)?,
     };
-    for e in &file.enums {
-        if env.aliases.contains_key(&e.name) {
-            return Err(Error::new(
-                e.span,
-                format!("type `{}` is defined twice", e.name),
-            ));
-        }
-    }
     // Resolved eagerly so a broken declaration is an error even when nothing uses it, and so a
     // cycle is found here rather than wherever it happened to be reached from.
-    for a in &file.aliases {
+    for a in aliases {
         resolve(&a.ty, &env, &mut vec![(a.name.clone(), Vec::new())])?;
     }
     let mut enums: HashMap<String, Type> = HashMap::new();
-    for e in &file.enums {
+    for e in enum_decls {
         enums.insert(
             e.name.clone(),
             resolve_enum(e, &env, &mut Vec::new(), None)?,
         );
     }
     let mut variant_owners: HashMap<String, Vec<String>> = HashMap::new();
-    for e in &file.enums {
+    for e in enum_decls {
         for v in &e.variants {
             variant_owners
                 .entry(v.name.clone())
@@ -149,36 +162,83 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
             }
         }
     }
-    let mut sigs = signatures(&file.defs, &env)?;
-    let input = RefCell::new(None);
-    let inputs = RefCell::new(None);
-    let dsv = RefCell::new(None);
-    let next_local = Cell::new(0);
-    let visibility: HashMap<String, (Origin, bool)> = file
-        .defs
+    let sigs = signatures(defs, &env)?;
+    let visibility: HashMap<String, (Origin, bool)> = defs
         .iter()
         .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
         .collect();
-    // The first context carries `signatures`' provisional hoisted signatures (ret = the matched
-    // enum), enough to check their bodies; the inference pass below replaces each provisional
-    // return with the body's actual type and rebuilds the context before anything is checked.
-    let ctx = Ctx {
-        sigs: &sigs,
-        enums: &enums,
-        variant_owners: &variant_owners,
-        scope: Vec::new(),
-        arm_fields: Vec::new(),
-        subject: None,
+    Ok((env, enums, variant_owners, sigs, visibility))
+}
+
+/// The per-file mutable checker state, borrowed so a module with no program body can still build
+/// a `Ctx`. Bundled so both callers construct it once and get every `Ctx` from one method rather
+/// than repeating the seventeen-field literal.
+struct Cells<'a> {
+    input: &'a RefCell<Option<Type>>,
+    inputs: &'a RefCell<Option<Type>>,
+    lines_used: &'a Cell<bool>,
+    dsv: &'a RefCell<Option<String>>,
+    next_local: &'a Cell<LocalId>,
+}
+
+impl Cells<'_> {
+    /// A fresh top-level context over `sigs` and the resolved declarations: empty scope and
+    /// subject, not inside a mapper or a function. `file` is the only per-caller difference.
+    fn ctx<'a>(
+        &'a self,
+        sigs: &'a HashMap<String, Sig>,
+        enums: &'a HashMap<String, Type>,
+        variant_owners: &'a HashMap<String, Vec<String>>,
+        visibility: &'a HashMap<String, (Origin, bool)>,
+        file: Origin,
+    ) -> Ctx<'a> {
+        Ctx {
+            sigs,
+            enums,
+            variant_owners,
+            scope: Vec::new(),
+            arm_fields: Vec::new(),
+            subject: None,
+            input: self.input,
+            inputs: self.inputs,
+            lines_used: self.lines_used,
+            dsv: self.dsv,
+            in_mapper: false,
+            in_fn: None,
+            visibility,
+            file,
+            next_local: self.next_local,
+        }
+    }
+}
+
+pub fn check(file: &File) -> Result<tir::Program, Error> {
+    let (env, enums, variant_owners, mut sigs, visibility) =
+        resolve_defs(&file.aliases, &file.enums, &file.defs, Origin::Program)?;
+    for e in &file.enums {
+        if env.aliases.contains_key(&e.name) {
+            return Err(Error::new(
+                e.span,
+                format!("type `{}` is defined twice", e.name),
+            ));
+        }
+    }
+    let input = RefCell::new(None);
+    let inputs = RefCell::new(None);
+    let lines_used = Cell::new(false);
+    let dsv = RefCell::new(None);
+    let next_local = Cell::new(0);
+    let cells = Cells {
         input: &input,
         inputs: &inputs,
         lines_used: &lines_used,
         dsv: &dsv,
-        in_mapper: false,
-        in_fn: None,
-        visibility: &visibility,
-        file: Origin::Program,
         next_local: &next_local,
     };
+    // The first context carries `signatures`' provisional hoisted signatures (ret = the matched
+    // enum), enough to check their bodies; the inference pass below replaces each provisional
+    // return with the body's actual type and rebuilds the context before anything is checked.
+    let ctx = cells.ctx(&sigs, &enums, &variant_owners, &visibility, Origin::Program);
     // Return-type inference for hoisted definitions (`fn name = expr`, gh:152): a hoisted
     // function's signature is not written, so no body -- its own or another's -- may be checked
     // against the provisional return `signatures` seeded. Checking each hoisted body once here
@@ -187,23 +247,7 @@ pub fn check(file: &File) -> Result<tir::Program, Error> {
     for (name, sig) in infer_hoisted(&ctx, file.defs.iter())? {
         sigs.insert(name, sig);
     }
-    let ctx = Ctx {
-        sigs: &sigs,
-        enums: &enums,
-        variant_owners: &variant_owners,
-        scope: Vec::new(),
-        arm_fields: Vec::new(),
-        subject: None,
-        input: &input,
-        inputs: &inputs,
-        lines_used: &lines_used,
-        dsv: &dsv,
-        in_mapper: false,
-        in_fn: None,
-        visibility: &visibility,
-        file: Origin::Program,
-        next_local: &next_local,
-    };
+    let ctx = cells.ctx(&sigs, &enums, &variant_owners, &visibility, Origin::Program);
 
     // `prelude::inject` prepended prelude.toy's own defs to `file.defs`, which is what let
     // `sigs` above resolve calls into them and is what catches a program that redefines one --
@@ -515,83 +559,30 @@ fn check_defs<'a>(
 /// (`build.rs`), before there is any file for them to be merged into and nothing yet calling any
 /// of it. Every declaration is kept: reachability is the calling file's question, decided once
 /// program and prelude are merged (`check` above, via `prune_unreachable`).
-pub fn check_module(module: &crate::ast::Module) -> Result<Vec<tir::Func>, Error> {
-    let env = TypeEnv {
-        aliases: HashMap::new(),
-        enums: enum_map(&module.enums)?,
-    };
-    let mut enums: HashMap<String, Type> = HashMap::new();
-    for e in &module.enums {
-        enums.insert(
-            e.name.clone(),
-            resolve_enum(e, &env, &mut Vec::new(), None)?,
-        );
-    }
-    let mut variant_owners: HashMap<String, Vec<String>> = HashMap::new();
-    for e in &module.enums {
-        for v in &e.variants {
-            variant_owners
-                .entry(v.name.clone())
-                .or_default()
-                .push(e.name.clone());
-            let constructor = constructor_of(&v.name);
-            if constructor != v.name {
-                variant_owners
-                    .entry(constructor)
-                    .or_default()
-                    .push(e.name.clone());
-            }
-        }
-    }
-    let mut sigs = signatures(&module.defs, &env)?;
+pub fn check_module(
+    module: &crate::ast::Module,
+) -> Result<(Vec<tir::Func>, ty::Enums), Error> {
+    let (_, enums, variant_owners, mut sigs, visibility) =
+        resolve_defs(&[], &module.enums, &module.defs, Origin::Prelude)?;
     let input = RefCell::new(None);
     let inputs = RefCell::new(None);
     let lines_used = Cell::new(false);
     let dsv = RefCell::new(None);
     let next_local = Cell::new(0);
-    let visibility: HashMap<String, (Origin, bool)> = module
-        .defs
-        .iter()
-        .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
-        .collect();
-    let ctx = Ctx {
-        sigs: &sigs,
-        enums: &enums,
-        variant_owners: &variant_owners,
-        scope: Vec::new(),
-        arm_fields: Vec::new(),
-        subject: None,
+    let cells = Cells {
         input: &input,
         inputs: &inputs,
         lines_used: &lines_used,
         dsv: &dsv,
-        in_mapper: false,
-        in_fn: None,
-        visibility: &visibility,
-        file: Origin::Prelude,
         next_local: &next_local,
     };
+    let ctx = cells.ctx(&sigs, &enums, &variant_owners, &visibility, Origin::Prelude);
     for (name, sig) in infer_hoisted(&ctx, module.defs.iter())? {
         sigs.insert(name, sig);
     }
-    let ctx = Ctx {
-        sigs: &sigs,
-        enums: &enums,
-        variant_owners: &variant_owners,
-        scope: Vec::new(),
-        arm_fields: Vec::new(),
-        subject: None,
-        input: &input,
-        inputs: &inputs,
-        lines_used: &lines_used,
-        dsv: &dsv,
-        in_mapper: false,
-        in_fn: None,
-        visibility: &visibility,
-        file: Origin::Prelude,
-        next_local: &next_local,
-    };
-    check_defs(module.defs.iter(), &ctx)
+    let ctx = cells.ctx(&sigs, &enums, &variant_owners, &visibility, Origin::Prelude);
+    let funcs = check_defs(module.defs.iter(), &ctx)?;
+    Ok((funcs, enums))
 }
 
 /// A signature may spell Stream now, which un-does the trick the Lines design leaned on (a
