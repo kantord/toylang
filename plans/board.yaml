@@ -1,6 +1,6 @@
 - id: stuck-issue-erlang-toolchain-empirical-research-investigation
   kind: build
-  status: todo
+  status: delegated
   needs: []
   issue: gh:170
   title: 'INVESTIGATE stuck lane issue-erlang-toolchain-empirical-research (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-erlang-toolchain-empirical-research-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
