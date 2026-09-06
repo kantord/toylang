@@ -1097,3 +1097,30 @@ version mismatch becomes pure wasted mailbox noise instead of a one-time discove
 **Implementation not yet landed**: `drive-tick.sh` still dispatches via `dispatch-worker.sh` and
 `opencode-worker.sh`'s numeric-lane special-casing is still live. This ruling is the design;
 the cutover is a follow-up.
+
+## Bug found and fixed: green-but-unextracted runs vanished silently (2026-09-06)
+
+`stuck-issue-156-investigation` reached GREEN on attempt 2 (398/398 tests passing, real
+verified work) but `extract_result()`'s `git format-patch {base_commit}` then failed
+(rc=128, reason not yet known -- the log was discarded before this fix). `main()` only
+called `compose_escalation()` when `not green`, so the green-but-no-patch case fell
+through both branches: `landed` stayed `False`, `escalation` stayed `None`, and the
+`finally` block removed the sandbox unconditionally. The verified work was destroyed
+with no mail, no round, no trace -- compare `stuck-issue-167-investigation`, which hit
+the ordinary red/retry-cap-reached path in the same tick and correctly escalated.
+
+Two fixes landed directly to `sandbox_dispatch.py` (paired with a concurrent
+maintainer edit to the same `finally` block, made live in another session while this
+fix was in progress -- confirmed non-conflicting: it keeps the sandbox alive
+specifically on this anomaly for hands-on debugging, without doing so for the
+already-understood red-gate case, which matters with the host at 97% disk):
+
+- `extract_result()` now captures `/root/format-patch.log` to
+  `format-patch-failure.log` in the run's workdir when no patch comes out, so the next
+  occurrence has the actual git error instead of nothing.
+- `main()` now escalates on `not landed` (any run that didn't land) instead of `not
+  green`, so a green-but-unextracted run always produces a `docs/.grill/` round rather
+  than disappearing.
+
+Root cause of the `format-patch` rc=128 itself is still open -- next occurrence will
+have a captured log to diagnose from.
