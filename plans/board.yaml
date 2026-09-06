@@ -422,7 +422,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 
 - id: http-query-sugar-design
   issue: gh:171
