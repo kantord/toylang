@@ -1,0 +1,714 @@
+#!/usr/bin/env python3
+"""Dispatch a toylang board task to a disposable, fully-permissive microsandbox
+microVM, verify it with the real toolchain (just check), and retry with the
+exact failure evidence (same opencode session, same sandbox) until green or a
+retry cap is hit. Never touches the real lane or main -- land-lane.sh's own
+`just test` gate stays the final authority; this is a fast pre-filter that
+runs before a lane is ever proposed for landing.
+
+Lessons this design bakes in from the manual spike that preceded it:
+  - opencode's `run` hangs forever on non-TTY stdin with no EOF: every
+    invocation redirects stdin from /dev/null (see run_opencode()).
+  - A sandbox whose entrypoint IS the task stops when the task exits, and
+    /tmp is tmpfs -- wiped on the next msb exec's implicit restart. This
+    harness keeps one sandbox alive per attempt with `sleep infinity` as
+    the entrypoint and does everything else via `msb exec`, writing any
+    file it needs to survive to /root (real disk), never /tmp.
+  - `--secret ENV@HOST` keeps the API key out of the guest entirely; the
+    key must also be present as a host env var on every `msb exec` call
+    against a --secret sandbox, not just at boot.
+  - Continuing the SAME opencode session on retry (--continue) means the
+    model already has its own exploration in context instead of re-reading
+    every file from scratch -- the single most effective lever found for
+    reducing DeepSeek V4 Flash's context-heavy-task budget burn.
+
+Usage:
+  sandbox_dispatch.py <board-row-id> --brief path/to/brief.txt
+      [--model openrouter/deepseek/deepseek-v4-flash-0731]
+      [--retry-cap 2] [--snapshot toylang-toolchain] [--keep-sandbox]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+import yaml
+
+REPO = Path("/home/kantord/repos/toylang")
+LANES = Path.home() / ".local/share/toylang-lanes"
+AUTH_JSON = Path.home() / ".local/share/opencode/auth.json"
+MSB_BIN = Path.home() / ".local/bin/msb"
+DEFAULT_MODEL = "openrouter/deepseek/deepseek-v4-flash-0731"
+DEFAULT_PLAN_MODEL = "openrouter/z-ai/glm-5.2"
+DEFAULT_SNAPSHOT = "toylang-toolchain"
+TOOLCHAIN_PATH_EXPORT = (
+    "export PATH=$HOME/.cargo/bin:/usr/lib/llvm-22/bin:$PATH"
+)
+
+PLAN_PROMPT_TEMPLATE = """Before writing or editing anything, actively search for a way to make
+this task easier -- do not just classify it.
+
+TASK:
+{task}
+{prior_refactor_evidence}
+The question to answer, and actually try to answer generatively rather than defaulting past it:
+**what relatively small refactor of the EXISTING code -- ideally a NET REDUCTION in total lines,
+not just a reshuffle -- would make the real task measurably easier for a less experienced
+developer to get right in one pass?** A task that "feels atomic" because it touches many files is
+not evidence that no such refactor exists -- a shared helper, a flattened nesting, or a removed
+special case can shrink what has to be gotten right at every one of those call sites even when the
+files themselves can't be decoupled. Be aggressive about proposing this kind of refactor: the only
+real constraint is that it must not be a hard-to-reverse design decision that could backfire later
+(a genuine architecture change is not what this is for; a mechanical simplification is).
+
+Only if you have actually looked for such a refactor and could not find one -- not merely because
+the task admits it touches many files -- does "trivial" (attempt the real task directly, no prep
+refactor) apply. A "trivial" verdict should mean "I searched and this is already about as simple
+as this kind of change can be," not "this can't be decomposed into independent pieces." Splitting
+into independent sub-tasks ("split") is a separate, third option when pieces genuinely don't need
+each other, e.g. true per-backend independence.
+
+You have {rounds_left} more round(s) of this search-then-refactor cycle available after this one
+before the harness will just attempt the full task directly -- that direct attempt is always a
+safe fallback, so if you are not confident a further round of refactoring fits in what remains,
+say so honestly in your reasoning rather than starting one you cannot finish. It is normal and
+expected for one refactor to not be enough by itself -- say so and this loop will run again against
+the now-simpler code, up to the round budget.
+
+Read whatever source you need to make this judgment, but do NOT write or edit any file except the
+verdict file itself.
+
+Write your decision to /root/verdict.json as a single JSON object, exactly one of these shapes:
+{{"verdict": "trivial", "reasoning": "one paragraph explaining what you looked for and why no beneficial refactor exists"}}
+{{"verdict": "refactor-first", "reasoning": "...", "refactor_brief": "the exact small change to make now, with its own definition of done -- just the refactor, not the feature -- and your estimate of the net line-count change it should produce"}}
+{{"verdict": "split", "reasoning": "...", "split_briefs": ["complete self-contained brief for sub-task 1", "complete self-contained brief for sub-task 2", "..."]}}
+
+Use your write tool to create /root/verdict.json with valid JSON (no trailing commas, no comments),
+then stop. Do not implement anything yet.
+"""
+
+DEVILS_ADVOCATE_PROMPT_TEMPLATE = """You are reviewing a planning decision, not writing code. Do NOT
+read any files or explore the repository -- judge this purely on the text below. This should be a
+fast, cheap review, not a re-investigation.
+
+ORIGINAL TASK (for scope only):
+{task}
+
+THE PLANNER'S VERDICT:
+{verdict_json}
+
+Is this verdict actually justified given the task's real scope? Look specifically for a mismatch
+between the claimed verdict and the stated facts -- e.g. "trivial" claimed for something that
+admits it touches many files/backends/modules, or a "refactor-first" whose refactor_brief secretly
+implements real feature work, or a "split" whose pieces are not actually independent. A verdict
+that leans on a prior/reference implementation is not automatically safe if that reference is
+described as unreliable, abandoned, or needing re-derivation.
+
+Write your review to /root/critique.json as a single JSON object:
+{{"agree": true}}
+or
+{{"agree": false, "objection": "one paragraph: specifically what fact in the verdict does not
+support its conclusion, and what verdict would fit the stated facts better"}}
+
+Use your write tool to create /root/critique.json, then stop.
+"""
+
+BUILD_AFTER_TRIVIAL = (
+    "Your plan-phase evaluation judged this task trivial for one build session. "
+    "Implement it now, to the full definition of done in the original brief above."
+)
+
+BUILD_AFTER_DECOMPOSE = (
+    "The decomposition above is complete. Implement whatever of the original task remains "
+    "(if anything), then verify the whole thing reaches the full definition of done in the "
+    "original brief."
+)
+
+
+@dataclass
+class Attempt:
+    n: int
+    verify_ok: bool
+    verify_tail: str
+
+
+def sh(cmd: list[str], env: dict | None = None, check: bool = True,
+       capture: bool = True) -> subprocess.CompletedProcess:
+    print(f"$ {' '.join(cmd)}", file=sys.stderr)
+    r = subprocess.run(cmd, env=env, check=False, text=True, capture_output=capture)
+    if r.returncode != 0:
+        print(f"  rc={r.returncode} stderr={r.stderr!r}", file=sys.stderr)
+        if check:
+            r.check_returncode()
+    return r
+
+
+def msb_env() -> dict:
+    env = os.environ.copy()
+    env["PATH"] = f"{Path.home() / '.local/bin'}:{env.get('PATH', '')}"
+    key = json.loads(AUTH_JSON.read_text())["openrouter"]["key"]
+    env["OPENROUTER_API_KEY"] = key
+    return env
+
+
+def prepare_clone(issue_id: str, workdir: Path) -> tuple[Path, str]:
+    """Disposable local clone at the lane's current state (or main's tip if
+    no lane worktree exists yet). Never touches the real lane or main repo."""
+    clone_dir = workdir / "repo"
+    if clone_dir.exists():
+        shutil.rmtree(clone_dir)
+    sh(["git", "clone", "--no-hardlinks", "--quiet", str(REPO), str(clone_dir)])
+    branch = f"issue-{issue_id}"
+    # `git clone` of a local repo only checks out the DEFAULT branch locally;
+    # every other branch (including lane branches, which are never pushed to
+    # a remote) lands as an `origin/<branch>` remote-tracking ref, not a
+    # plain local branch. Checking `rev-parse --verify <branch>` directly
+    # against a fresh clone always misses this and silently branches off
+    # main's current tip instead -- confirmed the hard way (2026-09-05): a
+    # test run for issue-172 branched off main AFTER an unrelated same-day
+    # merge, completely disconnected from that lane's real history.
+    remote_ref = f"origin/{branch}"
+    have_branch = sh(["git", "-C", str(clone_dir), "rev-parse", "--verify", remote_ref],
+                      check=False).returncode == 0
+    if have_branch:
+        sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "-b", branch, remote_ref])
+    else:
+        sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "-b", branch])
+    base_commit = sh(["git", "-C", str(clone_dir), "rev-parse", "HEAD"]).stdout.strip()
+
+    lane = LANES / f"issue-{issue_id}"
+    if lane.is_dir():
+        diff = sh(["git", "-C", str(lane), "diff"]).stdout
+        if diff.strip():
+            patch = workdir / "lane.patch"
+            patch.write_text(diff)
+            sh(["git", "apply", str(patch)], check=False)  # best-effort; harness still proceeds if it doesn't apply
+    return clone_dir, base_commit
+
+
+def write_permissive_config(workdir: Path) -> Path:
+    cfg = workdir / "opencode.jsonc"
+    cfg.write_text(json.dumps({
+        "$schema": "https://opencode.ai/config.json",
+        # Disposable microVM: blast radius is the VM, not the host. No
+        # hand-curated allow-list needed -- that is the point of the sandbox.
+        "permission": {
+            "edit": "allow",
+            "webfetch": "allow",
+            "external_directory": "allow",
+            "bash": {"*": "allow"},
+        },
+    }))
+    return cfg
+
+
+def opencode_binary() -> Path:
+    for candidate in (Path("/usr/bin/opencode"),):
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError("opencode binary not found; expected /usr/bin/opencode")
+
+
+def boot_sandbox(name: str, clone_dir: Path, cfg_path: Path, opencode_bin: Path,
+                  snapshot: str, env: dict) -> None:
+    # --copy-dir/--copy-file ("patches") cannot combine with --from-snapshot
+    # (a snapshot pins the whole filesystem state at boot) -- confirmed by
+    # `error: invalid config: patches cannot be combined with from_snapshot`.
+    # So the sandbox boots clean from the snapshot with just an idle
+    # entrypoint, and every file (repo clone, opencode binary, config)
+    # arrives afterward via `msb copy`, which works fine post-boot.
+    # 4G crashed the linker with a Bus Error (SIGBUS) mid-`just check`
+    # (2026-09-05): rust-lld linking inkwell/LLVM-22 test binaries, several
+    # in parallel under nextest, ran the tmpfs-backed guest out of memory.
+    # 12G gives real headroom; CARGO_BUILD_JOBS in verify() further caps
+    # concurrent linker processes.
+    # The toolchain snapshot itself now has a 40G root disk baked in (the
+    # real fix for repeated "sandbox fs error: flush: No space left on
+    # device" crashes, 2026-09-05 -- not a memory issue, ruled out at 16G
+    # RAM). `--root-disk` cannot be passed here: it requires a plain OCI
+    # image and is rejected outright when combined with --from-snapshot.
+    args = [str(MSB_BIN), "run", "-m", "16G", "-c", "4", "--no-tty", "-d",
+            "--name", name, "--replace",
+            "--secret", "OPENROUTER_API_KEY@openrouter.ai"]
+    from_snapshot = sh([str(MSB_BIN), "snapshot", "list"], check=False).stdout
+    if snapshot in from_snapshot:
+        args += ["--from-snapshot", snapshot]
+    else:
+        print(f"warning: snapshot '{snapshot}' not found, booting bare debian "
+              "(just check will fail without the toolchain)", file=sys.stderr)
+        args += ["debian"]
+    args += ["--", "sh", "-c", "sleep infinity"]
+    sh(args, env=env)
+    time.sleep(2)
+
+    sh([str(MSB_BIN), "copy", str(clone_dir), f"{name}:/repo"], env=env)
+    sh([str(MSB_BIN), "copy", str(opencode_bin), f"{name}:/usr/local/bin/opencode"], env=env)
+    exec_in(name, "mkdir -p /root/.config/opencode", env)
+    sh([str(MSB_BIN), "copy", str(cfg_path), f"{name}:/root/.config/opencode/opencode.jsonc"], env=env)
+    exec_in(name, "chmod +x /usr/local/bin/opencode && cd /repo && "
+                  "git config user.name 'Daniel Kantor' && "
+                  "git config user.email 'git@daniel-kantor.com'", env)
+
+
+def exec_in(name: str, script: str, env: dict, check: bool = True) -> subprocess.CompletedProcess:
+    return sh([str(MSB_BIN), "exec", name, "--", "sh", "-c", script], env=env, check=check)
+
+
+def send_text(name: str, guest_path: str, text: str, workdir: Path, env: dict, tag: str) -> None:
+    """Deliver text into the guest via `msb copy`, not a heredoc through `sh
+    -c`. A heredoc containing a backtick-wrapped phrase (`` `just check` ``)
+    reproducibly hung `msb exec` for over two minutes on a trivial sandbox
+    with nothing else running (2026-09-05) -- root cause not chased down
+    since `msb copy` sidesteps the whole class of shell-quoting risk and is
+    already proven reliable for exactly this."""
+    local = workdir / f"{tag}.txt"
+    local.write_text(text)
+    sh([str(MSB_BIN), "copy", str(local), f"{name}:{guest_path}"], env=env)
+
+
+def run_opencode(name: str, message_file_guest: str, model: str, env: dict,
+                  continue_session: bool, agent: str | None = None,
+                  log_tag: str = "run") -> str:
+    """One opencode turn. `< /dev/null` is load-bearing: opencode run hangs
+    forever on non-TTY stdin with no EOF (confirmed root cause, 2026-09-05).
+    `agent`: None lets opencode default to "build"; pass "plan" for a
+    read-only evaluation turn (plan is restrictive by default -- edit/bash
+    ask -- but our own opencode.jsonc already blanket-allows everything, so
+    this only affects which system prompt/model config opencode selects).
+    `log_tag`: every phase gets its OWN log file (/root/opencode-run-<tag>.log)
+    -- a single shared filename silently destroyed the devil's-advocate
+    phase's own log the moment the next phase ran, making a real failure
+    there (it wrote no critique.json) undiagnosable after the fact
+    (2026-09-05).
+    """
+    cont = "--continue " if continue_session else ""
+    agent_flag = f"--agent {agent} " if agent else ""
+    log = f"/root/opencode-run-{log_tag}.log"
+    script = (
+        f"cd /repo && "
+        f"timeout --kill-after=30s 1800s opencode run {cont}{agent_flag}"
+        f'"$(cat {message_file_guest})" -m {model} < /dev/null '
+        f"> {log} 2>&1; "
+        f"echo RC=$? >> {log}"
+    )
+    exec_in(name, script, env, check=False)
+    tail = exec_in(name, f"tail -c 4000 {log}", env, check=False).stdout
+    return tail
+
+
+def read_json_from_guest(name: str, guest_path: str, env: dict) -> dict | None:
+    r = exec_in(name, f"cat {guest_path} 2>/dev/null", env, check=False)
+    if not r.stdout.strip():
+        return None
+    try:
+        return json.loads(r.stdout)
+    except json.JSONDecodeError as e:
+        print(f"  warning: {guest_path} is not valid JSON: {e}", file=sys.stderr)
+        return None
+
+
+def diff_line_delta(name: str, base_commit: str, env: dict) -> tuple[int, int]:
+    """(insertions, deletions) since base_commit, on whatever is committed
+    right now. Used to check a refactor's own claimed net-line-reduction
+    against what it actually did, the same way build failures get checked
+    against real `just check` output rather than trusted at face value."""
+    r = exec_in(name, f"cd /repo && git diff --shortstat {base_commit} -- . ':!site/public/corpus.json'",
+                env, check=False)
+    ins = dels = 0
+    for tok in r.stdout.split(","):
+        tok = tok.strip()
+        if "insertion" in tok:
+            ins = int(tok.split()[0])
+        elif "deletion" in tok:
+            dels = int(tok.split()[0])
+    return ins, dels
+
+
+def plan_phase(name: str, task_text: str, plan_model: str, env: dict, workdir: Path,
+               round_no: int, rounds_left: int, prior_refactor_evidence: str = "") -> dict | None:
+    """One plan-phase turn: dispatch --agent plan on the plan model, asking
+    for a structured trivial/refactor-first/split verdict instead of code.
+    Continues the same session from round 2 onward so the model keeps its
+    own prior exploration instead of re-reading the codebase from scratch."""
+    prompt = PLAN_PROMPT_TEMPLATE.format(task=task_text, rounds_left=rounds_left,
+                                          prior_refactor_evidence=prior_refactor_evidence)
+    guest_path = f"/root/plan-{round_no}.txt"
+    send_text(name, guest_path, prompt, workdir, env, f"plan-{round_no}-sent")
+    exec_in(name, "rm -f /root/verdict.json", env, check=False)
+    run_opencode(name, guest_path, plan_model, env,
+                 continue_session=(round_no > 0), log_tag=f"plan-{round_no}")
+    return read_json_from_guest(name, "/root/verdict.json", env)
+
+
+def devils_advocate_phase(name: str, task_text: str, verdict: dict, critic_model: str,
+                           env: dict, workdir: Path, round_no: int) -> dict | None:
+    """A cheap, FRESH (no --continue) session that only sees the task's
+    stated scope and the planner's verdict+reasoning -- never the planner's
+    own exploration. Cheaper by construction: no codebase re-reading, just a
+    consistency check of a claim against stated facts. Uses the cheap build
+    model, not the plan model -- this is a small-input judgment task, not a
+    context-heavy one, so DeepSeek's weakness (burning budget re-deriving
+    context on LARGE tasks) doesn't apply here."""
+    prompt = DEVILS_ADVOCATE_PROMPT_TEMPLATE.format(
+        task=task_text, verdict_json=json.dumps(verdict, indent=2))
+    guest_path = f"/root/critic-{round_no}.txt"
+    send_text(name, guest_path, prompt, workdir, env, f"critic-{round_no}-sent")
+    exec_in(name, "rm -f /root/critique.json", env, check=False)
+    run_opencode(name, guest_path, critic_model, env, continue_session=False,
+                 log_tag=f"critic-{round_no}")
+    return read_json_from_guest(name, "/root/critique.json", env)
+
+
+def verify(name: str, env: dict) -> tuple[bool, str]:
+    # CARGO_BUILD_JOBS=2: cap concurrent rustc/lld processes -- several
+    # linking the full inkwell/LLVM-22 chain at once is what caused the
+    # SIGBUS at -m 4G; even at -m 12G this keeps peak memory well clear.
+    script = (f"cd /repo && {TOOLCHAIN_PATH_EXPORT} && export CARGO_BUILD_JOBS=2 && "
+              f"just check > /root/check.log 2>&1; echo RC=$? >> /root/check.log; tail -c 6000 /root/check.log")
+    r = exec_in(name, script, env, check=False)
+    out = r.stdout
+    ok = "\nRC=0" in out or out.strip().endswith("RC=0")
+    return ok, out
+
+
+def ensure_committed(name: str, env: dict) -> None:
+    """A green (or final) tree with uncommitted tracked changes is still done
+    work nobody persisted (land-lane.sh's own rule for the same situation) --
+    commit it mechanically rather than losing it to a missed commit step."""
+    exec_in(
+        name,
+        "cd /repo && "
+        "if [ -n \"$(git status --porcelain | grep -v '^??')\" ]; then "
+        "git add -u && git add -- src tests docs site plans 2>/dev/null; "
+        "git commit -q -m 'Auto-commit sandbox worker output (tracked changes at verify time)' "
+        "|| true; fi",
+        env,
+        check=False,
+    )
+
+
+def extract_result(name: str, base_commit: str, env: dict, out_dir: Path) -> Path | None:
+    ensure_committed(name, env)
+    exec_in(name, f"cd /repo && rm -f /root/*.patch; "
+                  f"git format-patch {base_commit} -o /root/ >/root/format-patch.log 2>&1",
+            env, check=False)
+    r = exec_in(name, "cat /root/*.patch 2>/dev/null", env, check=False)
+    if not r.stdout.strip():
+        return None
+    out = out_dir / "result.patch"
+    out.write_text(r.stdout)
+    return out
+
+
+def compose_escalation(issue_id: str, task_text: str, attempts: list[Attempt],
+                        result_patch: Path | None, plan_summary: str) -> Path:
+    """When the harness exhausts its full budget (plan-decompose rounds AND
+    build retries) without reaching green, write a maintainer-facing round
+    instead of just logging a failure nobody will read -- same
+    docs/.grill/*.round.yaml pattern this project already uses for every
+    other stuck-lane escalation (see stdin-redesign-shape.round.yaml,
+    issue-177-salvage-stall.round.yaml), so a real blocker surfaces in the
+    normal mail flow and a human can approve a stronger model or a
+    privileged manual session, rather than the harness silently retrying
+    forever or silently giving up."""
+    last = attempts[-1] if attempts else None
+    tail_excerpt = last.verify_tail[-1500:] if last else "(no verify output captured)"
+    n_attempts = len(attempts)
+    grill_dir = REPO / "docs" / ".grill"
+    grill_dir.mkdir(parents=True, exist_ok=True)
+    round_path = grill_dir / f"{issue_id}-sandbox-blocker.round.yaml"
+
+    doc = {
+        "intro": (
+            f"# {issue_id}: sandboxed dispatch reached its full budget without going green\n"
+            f"{plan_summary} Then {n_attempts} build attempt(s) against the real toolchain "
+            "(full permissions, real LLVM/cargo-nextest, real `just check` each round). This "
+            "is real, verified progress -- a patch exists, extracted and ready to inspect at "
+            f"{result_patch} -- not a stall; it just did not clear the last hurdle within the "
+            "automated budget."
+        ),
+        "questions": [{
+            "id": f"{issue_id}-sandbox-blocker",
+            "title": f"{issue_id}: one remaining gap after {n_attempts} verified attempt(s)",
+            "flow": "escalation",
+            "background": (
+                f"TASK:\n{task_text[:800]}\n\n"
+                f"LAST VERIFY OUTPUT (tail):\n```\n{tail_excerpt}\n```\n\n"
+                f"Extracted patch, not yet applied to the real lane or main: {result_patch}"
+            ),
+            "thesis": (
+                "This got substantially further than a plain one-shot dispatch would have -- "
+                "a plan-phase search for a simplifying refactor, an adversarial review of that "
+                "verdict, and real toolchain verification every round -- and converged close "
+                "to green. The remaining gap needs either more automated attempts, a stronger "
+                "model, or direct human/privileged-agent attention, not a blind redispatch."
+            ),
+            "question": "**How should this blocker move forward?**",
+            "options": [
+                {"label": "A. Stronger model, same patch as the starting point",
+                 "description": "Resume the sandboxed session from this patch with a stronger "
+                                 "OPENCODE_MODEL for just the remaining fix, keeping all the "
+                                 "context already built up rather than starting over."},
+                {"label": "B. Hand to a privileged/human session",
+                 "description": "The remaining gap is small and specific enough (see the "
+                                 "verify tail above) for a human or a fully-privileged manual "
+                                 "session to close directly, faster than more automated retries."},
+                {"label": "C. Land as-is with the known gap tracked",
+                 "description": "Accept the extracted patch with the remaining failure "
+                                 "explicitly marked (e.g. an ignored/xfail test) and file the "
+                                 "gap as its own small follow-up board row."},
+            ],
+            "freeText": True,
+        }],
+    }
+    round_path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100))
+    yaml.safe_load(round_path.read_text())  # fail loudly here, not silently in the mail UI
+    return round_path
+
+
+def run_build_cycle(issue_id: str, name: str, first_message_guest: str, model: str,
+                     env: dict, workdir: Path, retry_cap: int, base_commit: str,
+                     continue_session: bool) -> tuple[list[Attempt], Path | None]:
+    """Dispatch + verify + retry-with-evidence until green or retry_cap is
+    hit. This is the harness's original (pre-decomposition) loop, now reused
+    as the "actually build it" tail end of the plan-decompose flow."""
+    attempts: list[Attempt] = []
+    result_patch: Path | None = None
+    for i in range(retry_cap + 1):
+        print(f"== {issue_id}: build turn {i + 1} ==", file=sys.stderr)
+        if i == 0:
+            run_opencode(name, first_message_guest, model, env, continue_session=continue_session,
+                         agent="build", log_tag=f"build-{i}")
+        else:
+            fb_guest = f"/root/feedback-{i}.txt"
+            feedback = (
+                "The verification gate failed after your last change. Fix the specific "
+                f"failures below -- do not start over or redo work that already passed.\n\n{attempts[-1].verify_tail}"
+            )
+            send_text(name, fb_guest, feedback, workdir, env, f"feedback-{i}-sent")
+            run_opencode(name, fb_guest, model, env, continue_session=True,
+                         agent="build", log_tag=f"build-{i}")
+
+        print(f"== {issue_id}: verifying build turn {i + 1} ==", file=sys.stderr)
+        ok, tail = verify(name, env)
+        attempts.append(Attempt(i + 1, ok, tail))
+        print(tail[-2000:], file=sys.stderr)
+
+        if ok:
+            print(f"== {issue_id}: GREEN on attempt {i + 1} ==", file=sys.stderr)
+            result_patch = extract_result(name, base_commit, env, workdir)
+            return attempts, result_patch
+        print(f"== {issue_id}: red on attempt {i + 1}, "
+              f"{'retrying' if i < retry_cap else 'cap reached'} ==", file=sys.stderr)
+    result_patch = extract_result(name, base_commit, env, workdir)
+    return attempts, result_patch
+
+
+def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str,
+                        build_model: str, critic_model: str, env: dict, workdir: Path,
+                        base_commit: str, max_plan_rounds: int) -> tuple[str, bool]:
+    """Runs up to max_plan_rounds of evaluate-then-refactor before the real
+    build attempt. Returns (next_build_message_guest_path, session_already_started).
+    Every dispatch here continues the SAME session, so the eventual build
+    phase inherits all of this exploration/refactor context for free."""
+    started = False
+    refactor_evidence = ""
+    for round_no in range(max_plan_rounds):
+        rounds_left = max_plan_rounds - round_no - 1
+        print(f"== {issue_id}: plan round {round_no + 1}/{max_plan_rounds} "
+              f"({rounds_left} left after this) ==", file=sys.stderr)
+        verdict = plan_phase(name, task_text, plan_model, env, workdir, round_no, rounds_left,
+                              prior_refactor_evidence=refactor_evidence)
+        started = True
+        if verdict is None:
+            print(f"== {issue_id}: plan round {round_no + 1} produced no verdict.json, "
+                  "falling back to trivial ==", file=sys.stderr)
+            break
+
+        # Devil's advocate: a fresh, uncontexted, cheap-model review of the
+        # verdict's stated justification against the task's stated scope --
+        # not a re-exploration. If it objects, send the objection back to
+        # the SAME plan session (which still has full context) for one
+        # defend-or-revise round, then use whatever verdict.json holds now.
+        # Capped at one correction per plan round for the same reason the
+        # plan phase itself is round-capped: a safe fallback (use the
+        # original verdict) beats an unbounded back-and-forth.
+        critique = devils_advocate_phase(name, task_text, verdict, critic_model,
+                                          env, workdir, round_no)
+        if critique is None:
+            # Distinct from an explicit agreement: the critic wrote no
+            # critique.json at all. Proceed on the original verdict (same
+            # safe-fallback philosophy as the plan phase itself), but say so
+            # plainly -- this used to be silently indistinguishable from a
+            # real "agree" (2026-09-05), which made a real critic failure
+            # look like a passed review.
+            print(f"== {issue_id}: devil's advocate produced no critique.json "
+                  "(not an agreement -- proceeding on the original verdict) ==",
+                  file=sys.stderr)
+        elif critique.get("agree") is False:
+            objection = critique.get("objection", "(no objection text given)")
+            print(f"== {issue_id}: devil's advocate objects: {objection[:300]} ==",
+                  file=sys.stderr)
+            correction_guest = f"/root/correction-{round_no}.txt"
+            send_text(
+                name, correction_guest,
+                f"A reviewer raised this objection to your verdict: {objection}\n\n"
+                "Defend your original verdict with a rebuttal, or revise it. Either way, "
+                "rewrite /root/verdict.json now with your final decision, using the EXACT SAME "
+                "schema as before -- one of:\n"
+                '{"verdict": "trivial", "reasoning": "..."}\n'
+                '{"verdict": "refactor-first", "reasoning": "...", "refactor_brief": "..."}\n'
+                '{"verdict": "split", "reasoning": "...", "split_briefs": [...]}\n'
+                'This file does NOT use {"agree": ...} -- that schema belongs to the reviewer, '
+                "not to you.",
+                workdir, env, f"correction-{round_no}-sent")
+            exec_in(name, "rm -f /root/verdict.json", env, check=False)
+            run_opencode(name, correction_guest, plan_model, env,
+                         continue_session=True, log_tag=f"correction-{round_no}")
+            revised = read_json_from_guest(name, "/root/verdict.json", env)
+            if revised is not None and revised.get("verdict") in ("trivial", "refactor-first", "split"):
+                verdict = revised
+            elif revised is not None:
+                print(f"== {issue_id}: correction round wrote malformed verdict.json "
+                      f"({revised!r}), keeping the pre-correction verdict ==", file=sys.stderr)
+        else:
+            print(f"== {issue_id}: devil's advocate agrees ==", file=sys.stderr)
+
+        kind = verdict.get("verdict")
+        print(f"== {issue_id}: verdict = {kind} -- {verdict.get('reasoning', '')[:300]} ==",
+              file=sys.stderr)
+
+        if kind == "trivial":
+            break
+
+        if kind == "refactor-first" and verdict.get("refactor_brief"):
+            rf_guest = f"/root/refactor-{round_no}.txt"
+            send_text(name, rf_guest, verdict["refactor_brief"], workdir, env, f"refactor-{round_no}-sent")
+            run_opencode(name, rf_guest, build_model, env, continue_session=True, agent="build",
+                         log_tag=f"refactor-{round_no}")
+            ok, tail = verify(name, env)
+            ensure_committed(name, env)
+            # Check the refactor's own claim against what it actually did --
+            # same principle as feeding real `just check` output back on a
+            # build failure, rather than trusting a self-reported estimate.
+            ins, dels = diff_line_delta(name, base_commit, env)
+            net = ins - dels
+            print(f"== {issue_id}: refactor round {round_no + 1} verify: "
+                  f"{'green' if ok else 'red'}, net lines so far: {net:+d} "
+                  f"(+{ins}/-{dels}) ==", file=sys.stderr)
+            refactor_evidence = (
+                f"\nEVIDENCE FROM THE LAST REFACTOR ROUND: `just check` was "
+                f"{'green' if ok else 'red'} afterward, and the net line change since the "
+                f"original code is {net:+d} lines (+{ins}/-{dels}). If this is not a net "
+                "reduction, explain honestly why the refactor was still worthwhile, or say so "
+                "if it was not and adjust your approach this round.\n"
+            )
+            continue  # re-evaluate the (hopefully now simpler) remaining task
+
+        if kind == "split" and verdict.get("split_briefs"):
+            for j, sub_brief in enumerate(verdict["split_briefs"]):
+                sub_guest = f"/root/split-{round_no}-{j}.txt"
+                send_text(name, sub_guest, sub_brief, workdir, env, f"split-{round_no}-{j}-sent")
+                run_opencode(name, sub_guest, build_model, env, continue_session=True, agent="build",
+                             log_tag=f"split-{round_no}-{j}")
+                verify(name, env)  # best-effort per-subtask check; final cycle re-verifies everything
+                ensure_committed(name, env)
+            break
+
+        # Unrecognized/malformed verdict shape -- don't loop forever on garbage.
+        print(f"== {issue_id}: unrecognized verdict shape, treating as trivial ==", file=sys.stderr)
+        break
+
+    final_guest = "/root/build-final.txt"
+    send_text(name, final_guest, BUILD_AFTER_DECOMPOSE if started else task_text,
+              workdir, env, "build-final-sent")
+    return final_guest, started
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("issue_id", help="board row id / lane slug, e.g. param-destructure-build")
+    ap.add_argument("--brief", required=True, type=Path)
+    ap.add_argument("--model", default=DEFAULT_MODEL)
+    ap.add_argument("--plan-model", default=DEFAULT_PLAN_MODEL)
+    ap.add_argument("--critic-model", default=DEFAULT_MODEL,
+                     help="devil's-advocate reviewer of the plan verdict -- cheap by design, "
+                          "since it never inherits context, only the stated verdict + task scope")
+    ap.add_argument("--max-plan-rounds", type=int, default=2,
+                     help="0 disables the plan-decompose phase entirely")
+    ap.add_argument("--retry-cap", type=int, default=2)
+    ap.add_argument("--snapshot", default=DEFAULT_SNAPSHOT)
+    ap.add_argument("--keep-sandbox", action="store_true",
+                     help="don't remove the sandbox on exit (for debugging)")
+    ap.add_argument("--workdir", type=Path, default=None)
+    args = ap.parse_args()
+
+    workdir = args.workdir or Path(f"/tmp/sandbox-dispatch-{args.issue_id}")
+    workdir.mkdir(parents=True, exist_ok=True)
+    name = f"sd-{args.issue_id}"[:32]
+
+    print(f"== {args.issue_id}: preparing disposable clone ==", file=sys.stderr)
+    clone_dir, base_commit = prepare_clone(args.issue_id, workdir)
+    cfg_path = write_permissive_config(workdir)
+    opencode_bin = opencode_binary()
+    env = msb_env()
+
+    print(f"== {args.issue_id}: booting sandbox {name} ==", file=sys.stderr)
+    boot_sandbox(name, clone_dir, cfg_path, opencode_bin, args.snapshot, env)
+
+    task_text = args.brief.read_text()
+    brief_guest = "/root/brief.txt"
+    send_text(name, brief_guest, task_text, workdir, env, "brief-sent")
+
+    try:
+        if args.max_plan_rounds > 0:
+            first_build_guest, session_started = run_plan_decompose(
+                args.issue_id, name, task_text, args.plan_model, args.model, args.critic_model,
+                env, workdir, base_commit, args.max_plan_rounds)
+        else:
+            first_build_guest, session_started = brief_guest, False
+
+        attempts, result_patch = run_build_cycle(
+            args.issue_id, name, first_build_guest, args.model, env, workdir,
+            args.retry_cap, base_commit, continue_session=session_started)
+    finally:
+        if not args.keep_sandbox:
+            sh([str(MSB_BIN), "rm", "-f", name], env=env, check=False)
+
+    green = attempts[-1].verify_ok if attempts else False
+    escalation_path = None
+    if not green:
+        plan_summary = (
+            f"Ran up to {args.max_plan_rounds} plan-decompose round(s) with a devil's-advocate "
+            "review of each verdict before the real build attempt."
+            if args.max_plan_rounds > 0 else
+            "Plan-decompose phase was disabled for this run (--max-plan-rounds 0)."
+        )
+        escalation_path = compose_escalation(args.issue_id, task_text, attempts,
+                                              result_patch, plan_summary)
+        print(f"== {args.issue_id}: wrote escalation round at {escalation_path} ==",
+              file=sys.stderr)
+
+    summary = {
+        "issue_id": args.issue_id,
+        "attempts": len(attempts),
+        "green": green,
+        "result_patch": str(result_patch) if result_patch else None,
+        "escalation": str(escalation_path) if escalation_path else None,
+        "workdir": str(workdir),
+    }
+    print(json.dumps(summary, indent=2))
+    return 0 if summary["green"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

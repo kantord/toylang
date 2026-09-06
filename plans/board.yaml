@@ -1,34 +1,36 @@
-- id: stuck-issue-168-investigation
+- id: stuck-issue-benchmark-fannkuch-redux-build-investigation
   kind: build
   status: delegated
   needs: []
-  issue: gh:168
-  title: 'INVESTIGATE stuck lane issue-168 (no activity 4h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-168-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-153-investigation
+  title: 'INVESTIGATE stuck lane issue-benchmark-fannkuch-redux-build (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-benchmark-fannkuch-redux-build-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-recursive-descent-order-research-investigation
   kind: build
   status: delegated
   needs: []
-  issue: gh:153
-  title: 'INVESTIGATE stuck lane issue-153 (no activity 2h, 2 run(s), 0 commits): evidence frozen in plans/incidents/issue-153-20260902/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-169-investigation
+  title: 'INVESTIGATE stuck lane issue-recursive-descent-order-research (no activity 58h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-recursive-descent-order-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-float-build-python-investigation
   kind: build
   status: delegated
   needs: []
-  issue: gh:169
-  title: 'INVESTIGATE stuck lane issue-169 (no activity 22h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-169-20260901/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: function-signature-matching-syntax
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-build-python (no activity 37h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-python-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-float-build-lua-investigation
+  kind: build
+  status: delegated
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-build-lua (no activity 34h, 4 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-lua-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: stuck-issue-float-build-go-investigation
+  kind: build
+  status: delegated
+  needs: []
+  issue: gh:149
+  title: 'INVESTIGATE stuck lane issue-float-build-go (no activity 37h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-build-go-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+- id: call-form-hoist-codegen
   issue: gh:152
-  title: 'Grill the concrete spelling for implicit-. params via matching syntax -- round 1 couldn''t pick without more context; round 2 presents the maintainer''s own hoist-into-signature sketch (fn render = Msg(Ping -> ... or ...)) as a concrete candidate (gh:152). Round 2 answer: no pick yet -- "explore all of these alternatives (especially my original preference) to see if either version would be problematic etc"; round 3 stress-tested each of the three candidates (A/B/C) against the real parser and re-asked. Round 3 answer: still no pick -- maintainer wants deeper research on how each candidate performs across types and use cases not yet examined (structs, tuples, nested/recursive matches) before re-asking; needs signature-matching-deeper-research first.'
-  kind: decide
-  needs: [signature-matching-deeper-research]
-  prio: 3
-  status: todo
-
-- id: declare-terminator-build
-  issue: gh:153
-  title: Require an explicit terminator after fn/type declarations, retire the same-line heuristic (issue #9 oddity ruling)
+  title: 'Step 4/4 of the issue-152-stall reshape: codegen for the call-form hoist across all backends. gh:152 closes on landing this row.'
   kind: build
-  needs: []
+  needs: [call-form-hoist-check]
   prio: 3
   status: delegated
 
@@ -65,114 +67,81 @@
   status: todo
 
 - id: stdout-stderr-effect-model-design
-  title: 'Decide Q35 (plans/questions.md#q35): what are stdout/stderr, and does a program write or return? Two commitless runs on shell-out-build (gh:158, issue-158, 2026-09-01) both spent their full budget rediscovering that pipe_through cannot be implemented until this effect model exists, then produced no code. Ask as a grill round.'
+  title: 'Decide Q35 (plans/questions.md#q35): what are stdout/stderr, and does a program write or return? Two commitless runs on shell-out-build (gh:158, issue-158, 2026-09-01) both spent their full budget rediscovering that pipe_through cannot be implemented until this effect model exists, then produced no code. Round 1 answer: no pick -- maintainer''s freeText pulled two directions at once ("well i would say real type, but isn''t it already the same types that we are using for our own program''s own inputs and outputs?") and flagged a second open question riding along, how stdin/stdout splitting works. Needs stdout-stderr-effect-model-research (does the already-decided "Stream is the effect layer" model already cover a mid-pipeline write, or does it need a real Effect/IO type; how does stdin/stdout splitting fit) before a sharper round 2.'
   kind: decide
-  needs: []
+  needs: [stdout-stderr-effect-model-research]
   prio: 1
   status: todo
 
-- id: stdin-redesign-build
-  issue: gh:159
-  title: 'Retire the three stdin keywords for one Stream<Str> source, parse(.) as a library call (stdin-syntax-design ruling, tentative, gh:159 -- verify parse(.) resolves an expected type inside a map body before full build). Escalated after 4 runs (2026-09-02): the feature itself landed cleanly in the first run (commit 45c76be), but 3 repair attempts against a 16-file merge conflict with main have each failed, the latest leaving the branch uncompilable (unclosed delimiter, src/check/mod.rs:3034). Do not redispatch until the issue-159-escalation round is ruled (~/.cache/toylang-drive/escalated-issue-159).'
-  kind: build
-  needs: []
-  model: fable
-  status: delegated
-
-- id: trait-interface-design
-  title: 'Grill the concrete trait/impl syntax and dispatch mechanism (overloading-and-utf8-lines round ruling spinoff), informed by trait-interface-research'
-  kind: decide
-  needs: [trait-interface-research]
-  status: todo
-
-- id: mutation-semantics-spike
-  title: 'Ruled (prelude-partials-and-mutation round): maintainer leans privileged/shared-reference mutation-as-optimization but will not ratify without prototyping -- spike the "provably one reference exists" static analysis against a couple of backends before a real decide row reopens this'
+- id: stdout-stderr-effect-model-research
+  title: 'Landed directly (2026-09-04), not by a delegated worker: plans/stdout-stderr-effect-model-research.md. Lane had sat delegated 25 hours, 0 commits, last run burning its whole budget on read-only exploration before a blocked CLI call ended it. Core finding, verified by running real programs rather than reading docs: a toylang program is exactly one expression -- no sequencing construct exists at all -- so Q35 is not just "does stderr have a type," it is "can a program write more than once, anywhere." All three round-1 options worked through against that: A (opaque plumbing, one more single-instance sink alongside jsonlines) is real but cannot address shell-out-build''s actual need (relay a subprocess''s stdout and stderr in one run); B (extend Sink to Sink<T> plus a sequencing form, reusing `or`''s existing positional-overload precedent) is the smallest true extension and matches the maintainer''s own round-1 free text; C (a real IO<T> monad) needs a Unit type the language does not have and would leave two competing effect notations side by side. Ready for round 2.'
   kind: build
   needs: []
   prio: 4
-  status: todo
-
-- id: float-build-rust
-  issue: gh:149
-  title: Implement Float (IEEE binary64 per ADR 0007) for the Rust backend only, following float-build's JS implementation as the reference. One backend, one commit.
-  kind: build
-  needs: [float-build]
-  status: delegated
+  status: done
 
 - id: float-build-python
   issue: gh:149
   title: Implement Float (IEEE binary64 per ADR 0007) for the Python backend only, following float-build's JS implementation as the reference. One backend, one commit.
   kind: build
-  needs: [float-build]
+  needs: [float-build, float-format-research]
   status: delegated
 
 - id: float-build-go
   issue: gh:149
   title: Implement Float (IEEE binary64 per ADR 0007) for the Go backend only, following float-build's JS implementation as the reference. One backend, one commit.
   kind: build
-  needs: [float-build]
-  status: delegated
+  needs: [float-build, float-format-research]
+  status: todo
 
 - id: float-build-lua
   issue: gh:149
-  title: Implement Float (IEEE binary64 per ADR 0007) for the Lua backend only (host hook), following float-build's JS implementation as the reference. One backend, one commit.
+  title: 'Implement Float (IEEE binary64 per ADR 0007) for the Lua backend only (host hook), following float-build''s JS implementation as the reference. One backend, one commit. Parked (float-build-lua-lane-stall escalation, option C, maintainer note: "not really drop, refile as blocked issue"): 6 runs on the recycled issue-149 worktree burned surveying every other backend with nothing committed. Blocked on float-format-research landing (per-backend formatting guidance) so redispatch has concrete guidance to link instead of guessing again.'
   kind: build
-  needs: [float-build]
+  needs: [float-build, float-format-research]
   status: todo
 
 - id: float-build-jq
   issue: gh:149
-  title: Implement Float (IEEE binary64 per ADR 0007) for the jq backend only, following float-build's JS implementation as the reference. One backend, one commit.
+  title: 'Landed directly (2026-09-04), not by a delegated worker: full Float for jq -- lane had 4.3h-idle real progress (arithmetic, comparisons, input, a careful ESCALATION.md) stalled by the worker''s own model repeatedly corrupting a probe script with a stray Unicode combining character. Closed the escalation''s printing gap: jq''s tostring already gets the shortest round-trip digits right (verified against a ~5000-value fuzz run, matching float-build-c-escalation''s own verification), so its output is reparsed and relaid-out with the same notation rule runtime/toylang.c''s Native formatter uses, rather than needing a fresh Q37 decision round. One gap left open on purpose: a non-finite float nested in a Vec/Record diverges from JS (pinned by a test, not silently untested) -- fixing it means jq abandoning its value-based JSON encoder for hand-built string concatenation, a bigger change than this row''s scope.'
   kind: build
   needs: [float-build]
-  status: todo
+  status: done
 
 - id: float-build-c-escalation
   issue: gh:149
-  title: Attempt Float (IEEE binary64 per ADR 0007) for the C/LLVM backend; if there is no usable native matching primitive, write ESCALATION.md scoped to just this backend, commit it, and stop rather than stalling.
+  title: 'Landed directly (2026-09-04), not by a delegated worker: full Float support for Native/LLVM, not an escalation -- lane had sat delegated 23.5 hours, 0 commits, last run burned its whole budget re-deriving history before a blocked CLI call ended it. libc has no shortest-round-trip float formatter (the actual "usable native matching primitive" question), so one was built: increasing-precision search over %e for the digits, ECMA-262 Number::toString layout for the notation, verified against Node byte-for-byte across a ~5000-value fuzz run before landing in runtime/toylang.c. Also fixed a real Kind-mismatch bug in check/mod.rs''s `-x` desugaring (Float-typed zero built as Kind::Int(0)), general to every backend, that JS''s untyped runtime numbers were masking. Float still needs Go/Python/Rust/Lua before it can be a corpus case.'
   kind: build
   needs: [float-build]
-  status: todo
+  status: done
 
 - id: benchmark-suite-build
-  title: Build the initial benchmark suite -- 8 non-float CLBG tasks, hyperfine harness per benchmark-plan.md, framed as a general cross-language competitiveness claim (gh:147 ruling); n-body/spectral-norm deferred to a second wave (gh:146 ruling)
+  title: 'Landed directly (2026-09-03), not by a delegated worker: the hyperfine harness (src/bin/bench.rs, just bench NAME) and binary-trees, the first of the 8 non-float CLBG tasks, per benchmark-plan.md''s Build status section. That section also corrects the suite spike''s "good fit today" claim: reverse-complement/k-nucleotide/regex-redux need Str slicing or Char -> Str, neither of which exists; pidigits needs a bignum type; mandelbrot needs float support most backends lack. fasta and fannkuch-redux are the two next real candidates (benchmark-fasta-build, benchmark-fannkuch-redux-build below); n-body/spectral-norm stay deferred (gh:146 ruling).'
   kind: build
   needs: []
   prio: 4
-  status: delegated
+  status: done
 
-- id: lines-utf8-posix-research
-  issue: gh:102
-  title: 'Round 2 answer (question lines-non-utf8-byte): no pick -- maintainer wants deeper research beyond plans/string-type-spike.md:194-201 before choosing refuse/carry-through/lossy-replace: what is most correct, most secure, most POSIX-compliant, most common across existing Unix line-oriented tools, and what would match user expectations. Write findings to plans/.'
+- id: benchmark-fasta-build
+  title: 'Build the CLBG fasta task in toylang (benchmark-plan.md Build status): generates DNA sequences from a small literal Str alphabet via a computed PRNG index, so it needs no Char -> Str conversion. Follows the pattern in benches/programs/binary-trees.toy -- program under benches/programs/, correctness pinned as a small-N tests/corpus/ case, a larger benches/inputs/ fixture for real timing.'
   kind: build
   needs: []
-  prio: 3
-  status: todo
+  prio: 4
+  status: done
 
-- id: lines-utf8-edge
-  issue: gh:102
-  title: 'Pin what a non-UTF-8 byte arriving via lines does, on every backend. Round 1 research (plans/string-type-spike.md:194-201) covered per-backend mechanics only; round 2 answer asked for correctness/security/POSIX-compliance/common-practice research first (see lines-utf8-posix-research) before round 3 re-asks with the three options (refuse / carry-where-possible / uniform lossy replacement).'
-  kind: decide
-  needs: [lines-utf8-posix-research]
-  status: todo
-
-- id: search-layer-build
-  title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
+- id: benchmark-fannkuch-redux-build
+  title: 'Build the CLBG fannkuch-redux task in toylang (benchmark-plan.md Build status): permutations of Vec<Int>, fully numeric, no string decode needed. Follows the pattern in benches/programs/binary-trees.toy.'
   kind: build
   needs: []
+  prio: 4
   status: todo
 
 - id: sort-by-max-by
+  issue: gh:177
   title: sort_by and max_by -- ordering through a scalar projection (euler-ergonomics row 7)
   kind: build
   needs: [sum-max-builtins-build]
-  status: todo
-
-- id: param-destructure-build
-  title: Implement match-arm-style parameter destructuring, e.g. fn gcd({a, b}:{a:Int,b:Int}) (gh:144 ruling)
-  kind: build
-  needs: []
-  status: todo
+  status: delegated
 
 - id: bigint-tracking
   issue: gh:112
@@ -249,15 +218,6 @@
   status: todo
 
 
-
-- id: draft-core-model-migration
-  title: Migrate the two-layer/cardinality core model to a concepts guide; embedded open threads go to the tracker (draft-split)
-  kind: build
-  model: fable
-  needs: []
-  soft: [draft-intro-migration, draft-questions-home]
-  prio: 4
-  status: todo
 
 - id: draft-access-model-migration
   title: Verify unary functions, lens access, and the dimension-spec model against the reference pages; salvage rationale, delete sections (draft-split)
@@ -368,19 +328,26 @@
   status: todo
 
 - id: offload-boundary-design
-  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled.'
+  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled. Round 3 answer, parallel-primitive-basis (Q23): RATIFIED option A -- full basis now (map/scan/reduce/gather/scatter + segmented forms), fold and general recursion demoted to convenience leaves, future stdlib additions checked against the third-homomorphism theorem. Q22 (dense-masked-distinguishable/select representation): maintainer proposed a fourth shape (Vec-typed view, materialized only on strong reference -- ties to mutation-semantics-spike) that none of A/B/C covered; spun off select-materialization-research (gh:176) to ground a re-ask instead of re-presenting the same options. Round 4 answer, Q21 (batch-invariance-enforcement, rewritten with the mean/naive-average-of-averages worked example): RATIFIED option B -- compiler requires a declared associative combiner at every batch boundary, same enforcement posture as sort''s element-type check. Maintainer''s answer went further than the three options though, proposing the enforcement should ride on a richer effect type rather than a bare compiler gate: a distinct `Stream<Batch<T>>` (vs plain `Stream<T>`), an explicit `[Stream<T>, N] -> Stream<Batch<T, N>>` batching function, and an open question of what *initiates* batching -- explicit marker, implicit at certain constructs, or forced/unavoidable for certain operations. Spun off batch-type-design-research to ground a re-ask of that shape. Both remaining threads (Q22 and Q21''s follow-up) are now blocked on their research spikes.'
   kind: decide
-  needs: [offload-explain-flag-build]
+  needs: [select-materialization-research, batch-type-design-research]
   soft: [benchmark-goals]
   prio: 5
   status: todo
 
-- id: offload-explain-flag-build
-  issue: gh:168
-  title: 'Implement `--explain-offload`: an opt-in compiler diagnostic that annotates compiled output with which sub-expressions became vectorized kernels and which fell back, and why -- per the offload-boundary-design round 2 ruling (multiplicity-and-offload-round2, question vectorizability-visibility, option B). No signature or type-system change; a build-time flag only. LSP hover (option C) is a wanted future addition, deliberately unscheduled here.'
+- id: select-materialization-research
+  issue: gh:176
+  title: 'select''s return representation (Q22 follow-up): survey NumPy views/fancy-indexing, Julia @views, Rust Cow<[T]>, pandas SettingWithCopyWarning, then work out what makes a lazy select-view indexable pre-materialization and whether indexing materializes incrementally. Findings feed a re-ask of offload-boundary-design Q22. See plans/select-materialization-research.md.'
   kind: build
   needs: []
-  prio: 4
+  prio: 2
+  status: todo
+
+- id: batch-type-design-research
+  title: 'Batch-invariance-enforcement follow-up (Q21 round 4): design the richer effect type the maintainer asked for instead of a bare compiler gate -- work out the shape of `Stream<Batch<T>>` as distinct from `Stream<T>`, an explicit `[Stream<T>, N] -> Stream<Batch<T, N>>` batching function, and what initiates batching in the first place (explicit marker, implicit at certain constructs, or forced/unavoidable for certain operations). Survey how other languages/runtimes with chunked-stream processing (Spark partitions, Flink windows, Beam bundles) expose batch boundaries in their type systems. Findings feed a re-ask of offload-boundary-design Q21.'
+  kind: build
+  needs: []
+  prio: 2
   status: todo
 
 - id: draft-md-cleanup-review
@@ -390,9 +357,16 @@
   prio: 4
   status: todo
 
-- id: mail-rounds-isolation
-  issue: gh:164
-  title: Mail tab must not blank on one invalid round file -- per-round fetch isolation + visible error row
+- id: questions-md-stale-draft-links
+  title: 'Repoint two dead links in plans/questions.md left by draft-core-model-migration: Q11 -> ../draft.md#the-core-idea-two-layers and Q32 -> ../draft.md#proposal-the-layer-shift-only-runs-one-way both point at headings that migration deleted (see ESCALATION.md in that landed commit). Point them at docs/guides/cardinality.md instead. Left alone by that row under the "do not touch plans/" hard constraint.'
+  kind: build
+  needs: []
+  prio: 5
+  status: todo
+
+- id: messagecard-flow-defensive-render
+  issue: gh:173
+  title: 'MessageCard hard-crashes the whole mail/grill UI on an unrecognized flow value (found live: two pending rounds had flow: decide, not a FlowType member, blanking the app). Fall back to a neutral style instead of throwing, and/or add an error boundary around round rendering -- the immediate bad data is already fixed in the two affected round files, this is the defensive follow-up.'
   kind: build
   needs: []
   prio: 2
@@ -404,6 +378,21 @@
   kind: decide
   needs: [http-query-sugar-research]
   prio: 4
+  status: todo
+
+- id: dense-tensor-type
+  issue: gh:175
+  title: 'Round 5 answer (wizard submission, 2026-09-02): tensor-value-kind-justified picked C (defer the flat-buffer kind) but the freeText leans further -- not a new value kind at all, but formalizing Vec itself as the dataframe/tensor-capable type, with a minimal set of dataframe primitives layered over it; open sub-question (not covered by any of A/B/C) is whether that needs an explicit multi-dimensional type-design change or can ride the current simple Vec type. tensor-construction-syntax/-transpose-view/-null-handling are all contingent on building the kind, so moot under the C ruling -- their leanings (C single tensor(n;m) constructor, A transpose in scope now, null-handling left unanswered) are kept here as breadcrumbs for whenever this reopens. Spun off vec-as-dataframe-type-research to ground a re-ask on the maintainer''s actual framing instead of re-presenting A/B/C.'
+  kind: decide
+  needs: [vec-as-dataframe-type-research]
+  prio: 3
+  status: todo
+
+- id: vec-as-dataframe-type-research
+  title: 'Research spike spun off dense-tensor-type round 5 (maintainer freeText, 2026-09-02): the maintainer''s lean is not a new flat-buffer tensor value kind, but treating Vec itself as inherently the dataframe/tensor-capable type -- a bare-minimum set of dataframe primitives (reshape, transpose, broadcast, reduce) implemented over the existing simple Vec<Vec<Num>> layout. Investigate whether that needs an explicit type-design change (formally making Vec a multi-dimensional type) or can be built as stdlib primitives over the current simple type unchanged, run both against the sensor-pipeline example from plans/dense-tensor-design-research.md, and note the transpose sub-question (single vs generalized multi-dimensional). Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
   status: todo
 
 - id: http-query-sugar-research
@@ -419,4 +408,19 @@
   kind: build
   needs: []
   prio: 5
+  status: todo
+
+- id: native-backend-rust-ergonomics-research
+  title: 'Maintainer note (composed 2026-09-04): investigate whether the native/LLVM backend is properly ergonomic today, in the sense that we should be using well-established Rust libraries for this rather than hand-writing everything in raw LLVM IR/C -- ideally gaining the ability to write integrated code directly in Rust, or even import functionality from other crates, instead of manually authoring it in runtime/toylang.c or src/emit_llvm.rs. Survey what an inkwell-based (or similar) LLVM codegen layer and/or a thin Rust runtime crate (in place of hand-rolled C in runtime/toylang.c) would buy in ergonomics and correctness versus the current hand-written approach, and what it would cost in build complexity/toolchain deps. Concrete recent evidence worth grounding the survey in: the issue-177 lane (sort_by/max_by) spent much of a 193-step run hand-patching runtime/toylang.c with oldString-not-found edit failures and a self-introduced combining-character corruption bug while adding four keyed C helper functions -- exactly the kind of hand-authored-C friction the note is asking about. Write findings (with concrete code comparisons) to plans/, then compose a design round.'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
+
+- id: hoisted-def-stream-invariant-gap
+  issue: gh:152
+  title: 'Post-land review finding (commit 8a0fd90, issue-152 step 3/4): `signatures` in src/check/types.rs skips the "a stream is born only at a source" check (`if !def.hoisted && matches!(sig.ret, Type::Stream(_)) ...`) for every hoisted def (`fn name = Msg(...)`), because at that point the return is still the provisional enum placeholder, never a stream. But `infer_hoisted` in src/check/mod.rs later replaces that provisional return with whatever the match arms actually synthesize -- and that inferred type is never re-checked against the stream invariant. A hoisted def whose arm body produces a stream (e.g. an arm that calls a stream source like `csv(...)`) would type-check with a stream return and a plain-enum parameter, bypassing the fusion/pipeline invariant the non-hoisted path still enforces. Add a corpus/step_3 test asserting this is refused, and re-run (or move) the stream-return check after `infer_hoisted` resolves the real return type.'
+  kind: build
+  needs: []
+  prio: 3
   status: todo

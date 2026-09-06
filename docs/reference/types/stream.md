@@ -5,8 +5,8 @@
 expression yields its entries one at a time as evaluation proceeds, not that a stream object
 exists as a value.
 
-A stream is born only at a source -- [`inputs`](../sources/inputs.md),
-[`lines`](../sources/lines.md), or [`range`](../builtins/range.md) -- and dies at
+A stream is born only at a source -- [`stdin`](../sources/stdin.md) or
+[`range`](../builtins/range.md) -- and dies at
 [`collect`](../builtins/collect.md) or at the [`jsonlines`](../builtins/jsonlines.md) sink. In
 between, `select`, `map`, and projection accept a `Stream` subject and yield a `Stream` back,
 so a whole pipeline can live in the effect layer:
@@ -24,7 +24,7 @@ The rules, each of which the checker enforces:
   came in through its parameter, so the pipeline stays one chain from source to sink.
 
 ```toylang
-fn conjure(n: Int) -> Stream<Int> = lines | map(n)
+fn conjure(n: Int) -> Stream<Int> = stdin | map(n)
 
 0
 ```

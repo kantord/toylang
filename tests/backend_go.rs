@@ -16,7 +16,7 @@ fn one_struct_per_record_type() {
 fn keep(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<{name: Str, age: Int}> = db.users
 fn name(u: {name: Str, age: Int}) -> Str = u.name
 
-keep(input)
+keep(parse(stdin))
 "#;
     let p = toylang::compile(src).unwrap();
     let go = toylang::emit_go::emit(&p);

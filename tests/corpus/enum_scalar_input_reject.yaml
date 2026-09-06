@@ -6,7 +6,7 @@ program: |
 
   fn read(t: Temp) -> Int = t | Celsius -> . or Unknown -> 0
 
-  read input
+  read parse(stdin)
 
 input: |
   {"Celsius": "hot"}

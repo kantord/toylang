@@ -119,9 +119,28 @@ impl TypeExpr {
     }
 }
 
+/// What a parameter's left side binds: either one name or a record destructured the way a match
+/// arm's brace pattern destructures one. The type annotation stays fully explicit either way.
+#[derive(Debug)]
+pub enum ParamShape {
+    /// `name` in `fn f(name: T) -> R`.
+    Name(String, Span),
+    /// `{a, b, ..}` in `fn f({a, b}: T) -> R`, binding each named field of the record `T`.
+    Fields(FieldsPattern),
+}
+
+impl ParamShape {
+    pub fn span(&self) -> Span {
+        match self {
+            ParamShape::Name(_, span) => *span,
+            ParamShape::Fields(f) => f.span,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Param {
-    pub name: String,
+    pub shape: ParamShape,
     pub ty: TypeExpr,
     pub span: Span,
 }
@@ -142,7 +161,11 @@ pub struct Def {
     pub name: String,
     /// `None` for a nullary function (`fn name() -> T = body`).
     pub param: Option<Param>,
-    pub ret: TypeExpr,
+    /// `None` for a hoisted definition (`fn name = body`, gh:152): no return type is written, so
+    /// the signature -- parameter and return both -- is inferred from the body. A hoisted
+    /// function's parameter is the implicit `.` the body matches against, and its type comes from
+    /// what the body matches; the return type is what the body synthesises.
+    pub ret: Option<TypeExpr>,
     pub body: Expr,
     pub span: Span,
     /// Whether a module's prelude includes this definition when compiling a program. Meaningless
@@ -151,6 +174,11 @@ pub struct Def {
     /// The file this definition was written in. A program's own definitions get `Program` from
     /// the parser; the prelude's get `Prelude` from `prelude::module`.
     pub origin: Origin,
+    /// `fn name = body` (gh:152): no parameter list, no return annotation. `param` and `ret` are
+    /// both `None`, and the checker infers the signature from the body. The first slice accepts
+    /// only a match-call body (`Msg(Ping -> ...)`), which fixes the parameter type to the named
+    /// enum and the return type to the arms' common type.
+    pub hoisted: bool,
 }
 
 /// `enum Shape { point, circle{r: Int} }`. The first declaration that creates a type identity
@@ -178,6 +206,55 @@ pub struct Variant {
     pub payload: Option<TypeExpr>,
 }
 
+/// `trait Name { fn sig(param: Type) -> Type }`:a named collection of method signatures,
+/// with no bodies. The receiver type is spelled `Self` in a signature, and binds to whatever
+/// concrete type an `impl` block targets. Parsed only for now: checking and dispatch are later
+/// slices.
+#[derive(Debug)]
+pub struct TraitDecl {
+    pub name: String,
+    /// The method signatures, in declaration order.
+    pub methods: Vec<TraitMethodSig>,
+    pub span: Span,
+    /// Same meaning as `Def::is_pub`: whether a module exports this declaration.
+    pub is_pub: bool,
+}
+
+/// One method signature of a trait declaration:the same `fn name(param: Type) -> Type`
+/// spine a function uses, minus the body an `impl` provides.
+#[derive(Debug)]
+pub struct TraitMethodSig {
+    pub name: String,
+    /// `None` for a nullary method (`fn name() -> T`).
+    pub param: Option<Param>,
+    pub ret: TypeExpr,
+    pub span: Span,
+}
+
+/// `impl Trait for Type { fn sig(param: Type) -> Type = body }`: concrete bodies for one
+/// trait's methods, one block per (trait, type) pair. Parsed only for now:the checker does
+/// not use this yet.
+#[derive(Debug)]
+pub struct ImplDecl {
+    pub trait_name: String,
+    /// The concrete type the trait's `Self` substitutes to.
+    pub ty: TypeExpr,
+    /// The method bodies, each against the trait's signature of the same name.
+    pub methods: Vec<ImplMethod>,
+    pub span: Span,
+}
+/// One method of an impl block:the same spine a trait signature has, plus the body that makes
+/// it a definition.
+
+#[derive(Debug)]
+pub struct ImplMethod {
+    pub name: String,
+    pub param: Option<Param>,
+    pub ret: TypeExpr,
+    pub body: Expr,
+    pub span: Span,
+}
+
 /// Zero or more definitions followed by the expression that is the program.
 #[derive(Debug)]
 pub struct File {
@@ -185,11 +262,11 @@ pub struct File {
     /// stands for are one type, so nothing distinguishes them once resolved.
     pub aliases: Vec<Alias>,
     pub enums: Vec<EnumDecl>,
+    /// `trait Name { ... }`:a named collection of method signatures. Parsed only for now.
+    pub traits: Vec<TraitDecl>,
+    /// `impl Trait for Type { ... }`: concrete bodies for one trait's methods. Parsed only for now.
+    pub impls: Vec<ImplDecl>,
     pub defs: Vec<Def>,
-    /// `input <type>`: a declaration of what stdin holds, written after the definitions and
-    /// before the body, the way a signature types a parameter. `None` when the program leaves
-    /// the input untyped, in which case the first use of `input` in the body types it.
-    pub input: Option<TypeExpr>,
     pub body: Expr,
 }
 
@@ -291,19 +368,10 @@ pub enum Expr {
         name: String,
         span: Span,
     },
-    /// The value read from stdin. It has no type of its own and can only be checked against an
-    /// expected one, which is the same rule the draft gives for lambdas.
-    Input {
-        span: Span,
-    },
-    /// Every remaining JSON value on stdin, one per line, collected eagerly into a `Vec<T>`.
-    /// Like `input`, its element type comes only from where it is used.
-    Inputs {
-        span: Span,
-    },
-    /// The stream of lines read from stdin, born `Stream<Str>`. The checker rejects a second
-    /// use rather than accepting a second stream, since there is only ever one real stdin.
-    Lines {
+    /// The raw lines of stdin, born `Stream<Str>`. The checker rejects a second read rather
+    /// than accepting a second stream, since there is only ever one real stdin. Lowered to
+    /// `tir::Kind::Lines`; the old `lines` keyword is this same node respelled.
+    Stdin {
         span: Span,
     },
     /// Stdin read as raw lines, each split on a delimiter, born `Vec<Vec<Str>>`: the
@@ -316,6 +384,17 @@ pub enum Expr {
     /// The subject is not part of the node; a match reads `.` the way `select` does, so it
     /// appears as a pipe stage.
     Match {
+        arms: Vec<MatchArm>,
+        span: Span,
+    },
+    /// `Msg(Ping -> "pong" or Quit -> "bye")`: a type name used as a match call (gh:152). The
+    /// parens hold the same `or`-separated arms a `Match` carries, over the subject `.`; the
+    /// enum name is the assertion that the subject is one of this enum's values, and the
+    /// checker resolves each variant against it. Sugar for a `Match` whose subject is `.`, kept
+    /// as its own node so the surface spelling survives formatting.
+    MatchCall {
+        enum_name: String,
+        enum_span: Span,
         arms: Vec<MatchArm>,
         span: Span,
     },
@@ -428,12 +507,11 @@ impl Expr {
             | Expr::Neg { span, .. }
             | Expr::Not { span, .. }
             | Expr::Field { span, .. }
-            | Expr::Input { span }
-            | Expr::Inputs { span }
-            | Expr::Lines { span }
+            | Expr::Stdin { span }
             | Expr::Dsv { span, .. }
             | Expr::Variant { span, .. }
             | Expr::Match { span, .. }
+            | Expr::MatchCall { span, .. }
             | Expr::Pipe { span, .. }
             | Expr::TailPipe { span, .. }
             | Expr::Binary { span, .. }

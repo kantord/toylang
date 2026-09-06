@@ -1,0 +1,9 @@
+# The first entry is a value like any other: `first` is generic over the element type the way
+# `tail` is, so a Vec of records cuts to the first record whole.
+program: |
+  first([{a: 1}, {a: 2}])!
+
+output: |
+  {"a":1}
+
+node_types: [builtin.first, int, record-literal, unwrap, vec-literal]

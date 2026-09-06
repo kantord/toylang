@@ -1,0 +1,39 @@
+---
+source: tests/step_6.rs
+assertion_line: 49
+expression: "parse(\"fn answer = 42\\nanswer\")"
+---
+File {
+    aliases: [],
+    enums: [],
+    traits: [],
+    impls: [],
+    defs: [
+        Def {
+            name: "answer",
+            param: None,
+            ret: None,
+            body: Int {
+                value: 42,
+                span: Span {
+                    start: 12,
+                    end: 14,
+                },
+            },
+            span: Span {
+                start: 0,
+                end: 14,
+            },
+            is_pub: false,
+            origin: Program,
+            hoisted: true,
+        },
+    ],
+    body: Var {
+        name: "answer",
+        span: Span {
+            start: 15,
+            end: 21,
+        },
+    },
+}

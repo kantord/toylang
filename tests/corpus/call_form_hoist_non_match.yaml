@@ -1,0 +1,14 @@
+# The hoisted signature's return type is inferred from the arms and flows into call sites, so a
+# caller can use the result where the inferred type is expected (gh:152). A payload pattern
+# rebinds `.` to the payload, exactly as in an ordinary match.
+program: |
+  enum Shape { Point, Circle{r: Int} }
+
+  fn area = Shape(Circle{r} -> r * r or Point -> 0)
+
+  {c: area(Shape.circle{r: 3}), p: area(Shape.point), doubled: area(Shape.circle{r: 4}) * 2}
+
+output: |
+  {"c":9,"p":0,"doubled":32}
+
+node_types: [application, arith.mul, int, local, match, pipe, projection, record-literal, var, variant.payload, variant.unit]

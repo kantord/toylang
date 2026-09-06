@@ -1,0 +1,6 @@
+captured: 2026-09-04T09:44:47+0200
+state: {"ts": 1788507887, "lane": "issue-float-build-go", "ahead": 0, "tracked_dirty": 0, "live": false, "runs": 1, "last_activity": 1788373676}
+
+=== git status ===
+
+=== git diff --stat ===

@@ -5,7 +5,7 @@
 program: |
   fn tag(db: {tag: Str}) -> Str = db.tag
 
-  tag(input)
+  tag(parse(stdin))
 
 input: |
   {"tag": "\ud800"}

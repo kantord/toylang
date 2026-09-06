@@ -2,8 +2,14 @@
 source: tests/backend_rust.rs
 expression: "format!(\"compiles (rust) ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles (rust) (221):
+compiles (rust) (238):
 adults
+all_basic
+all_empty
+all_has_false
+any_basic
+any_empty
+any_none
 arith_add
 arith_div_trunc
 arith_mul
@@ -11,12 +17,16 @@ arith_neg
 arith_precedence
 arith_rem_sign
 arith_sub
+binary_trees_node_count
 bool_connectives
 bool_or_in_arm_body
 bool_or_splits_from_arms
 bool_precedence
 bool_result
 bool_short_circuit
+call_form_hoist
+call_form_hoist_non_match
+call_form_match_expression
 call_without_parens
 char_range_and_complement
 chars_unicode_honest
@@ -58,11 +68,15 @@ enum_unit_variant
 enum_variant_at_runtime
 enum_vec_payload
 escapes
+fasta_generate
 field_key_case_is_significant
 fields_basic
 fields_reflects_checked_order
 filter
 filter_strings
+first_basic
+first_empty
+first_of_records
 fizzbuzz
 fizzbuzz_arms
 flatten_basic
@@ -143,6 +157,8 @@ opt_nesting_flattens
 opt_of_reordered_record_crossing_a_call
 opt_unwrap_of_none_refuses
 opt_unwrap_peels_one_level
+param_destructure
+param_destructure_rest
 pipe_chain
 plus_concats
 projection_in_record_value
@@ -198,6 +214,7 @@ sum_wrap
 tail_drops_first
 tail_of_empty_refuses
 tail_recursion_deep
+trait_impl_parse
 tsv_partial
 type_alias
 undeclared_input_fields

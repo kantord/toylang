@@ -1,6 +1,6 @@
 ---
 source: tests/streams.rs
-assertion_line: 240
-expression: "err(\"fn g(x: Vec<Int>) -> Int = length(x)\\n\\ng(inputs)\")"
+assertion_line: 242
+expression: "err(\"fn g(x: Vec<Int>) -> Int = length(x)\\n\\ng((stdin | map(parse(.))))\")"
 ---
-`inputs` is a stream, but Vec<Int> is wanted here; eager use is spelled `collect(inputs)` (at byte 40)
+`stdin | map(parse(.))` is a stream, but Vec<Int> is wanted here; eager use is spelled `collect(stdin | map(parse(.)))` (at byte 41)

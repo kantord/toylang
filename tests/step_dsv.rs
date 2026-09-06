@@ -23,7 +23,7 @@ fn dsv_read_twice() {
 #[test]
 fn dsv_exclusive_with_lines() {
     insta::assert_snapshot!(err(
-        "fn g(a: Stream<Str>) -> Vec<Str> = collect(a)\n{a: join_lines(g(lines)), b: csv}.a"
+        "fn g(a: Stream<Str>) -> Vec<Str> = collect(a)\n{a: join_lines(g(stdin)), b: csv}.a"
     ));
 }
 
@@ -31,7 +31,7 @@ fn dsv_exclusive_with_lines() {
 #[test]
 fn dsv_exclusive_with_input() {
     insta::assert_snapshot!(err(
-        "fn g(a: {x: Str}) -> Str = a.x\n{g: g(input), c: csv}.g"
+        "fn g(a: {x: Str}) -> Str = a.x\n{g: g(parse(stdin)), c: csv}.g"
     ));
 }
 

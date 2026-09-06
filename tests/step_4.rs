@@ -18,7 +18,7 @@ fn a_spec_with_nothing_to_spec_is_the_identity() {
 fn field_access_through_an_unspecced_dimension() {
     insta::assert_snapshot!(err(r#"
 fn f(db: {users: Vec<{name: Str}>}) -> Vec<Str> = db.users.name
-f(input)
+f(parse(stdin))
 "#));
 }
 

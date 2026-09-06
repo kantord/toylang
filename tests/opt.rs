@@ -87,13 +87,13 @@ fn matching_an_opt_by_variant_is_not_yet_decided() {
 /// type is refused rather than guessed.
 #[test]
 fn input_cannot_be_opt_typed() {
-    insta::assert_snapshot!(err("fn f(x: Opt<Int>) -> Int = x!\n\nf(input)"));
+    insta::assert_snapshot!(err("fn f(x: Opt<Int>) -> Int = x!\n\nf(parse(stdin))"));
 }
 
 #[test]
 fn inputs_cannot_carry_an_opt_element() {
     insta::assert_snapshot!(err(
-        "fn f(v: Vec<Opt<Int>>) -> Int = length(v)\n\nf(collect(inputs))"
+        "fn f(v: Vec<Opt<Int>>) -> Int = length(v)\n\nf(collect((stdin | map(parse(.)))))"
     ));
 }
 

@@ -6,7 +6,7 @@
 program: |
   fn tag(db: {tag: Str}) -> Str = db.tag
 
-  tag(input)
+  tag(parse(stdin))
 
 input: |
   {"tag": "a\bb\fc\nd\re\tf g"}

@@ -32,7 +32,7 @@
 
 use crate::ast::{
     Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, LogicOp, MatchArm, Module, Param,
-    Pattern, TypeExpr, Variant,
+    ParamShape, Pattern, TypeExpr, Variant,
 };
 
 const WIDTH: usize = 80;
@@ -151,9 +151,6 @@ pub fn emit(file: &File) -> String {
         out.push_str(&decl);
         out.push_str("\n\n");
     }
-    if let Some(ty) = &file.input {
-        out.push_str(&format!("input {}\n\n", print_type(ty)));
-    }
     out.push_str(&print_expr_wrapped(&file.body, Ctx::Expr(0), 0));
     out.push('\n');
     out
@@ -251,17 +248,41 @@ fn print_alias(a: &Alias) -> String {
 fn print_param(p: &Option<Param>) -> String {
     match p {
         None => String::new(),
-        Some(p) => format!("{}: {}", p.name, print_type(&p.ty)),
+        Some(p) => match &p.shape {
+            ParamShape::Name(name, _) => format!("{name}: {}", print_type(&p.ty)),
+            ParamShape::Fields(f) => {
+                format!("{{{}}}: {}", print_fields_pattern(f), print_type(&p.ty))
+            }
+        },
     }
 }
 
 fn print_def(d: &Def) -> String {
     let pub_prefix = if d.is_pub { "pub " } else { "" };
+    // A hoisted definition (`fn name = Msg(...)`, gh:152) writes no signature: parameter and
+    // return are both inferred from the body, so neither has a spelling to print.
+    if d.hoisted {
+        let one_line = format!(
+            "{pub_prefix}fn {} = {}",
+            d.name,
+            print_expr_compact(&d.body, Ctx::Expr(0))
+        );
+        if fits(&one_line, 0) {
+            return one_line;
+        }
+        let body = print_expr_wrapped(&d.body, Ctx::Expr(0), INDENT);
+        return format!("{pub_prefix}fn {} =\n{}{body}", d.name, pad(INDENT));
+    }
+    let ret = match &d.ret {
+        Some(ret) => print_type(ret),
+        // A definition that is not hoisted always writes its return type, so a `None` here is
+        // a parser/checker invariant, never a legal program.
+        None => unreachable!("a non-hoisted definition always writes a return type"),
+    };
     let sig = format!(
-        "{pub_prefix}fn {}({}) -> {}",
+        "{pub_prefix}fn {}({}) -> {ret}",
         d.name,
         print_param(&d.param),
-        print_type(&d.ret)
     );
     // A `let` block is line-structured, so it has no one-line form: the signature, then one
     // `let` line per binding, then the value, each indented one level.
@@ -429,7 +450,9 @@ fn print_expr_inner(e: &Expr) -> String {
         Expr::Index { base, index, .. } => {
             format!("{}[{}]", print_atom_base(base), print_paren_arg(index))
         }
-        Expr::Slice { base, start, end, .. } => {
+        Expr::Slice {
+            base, start, end, ..
+        } => {
             let lo = match start {
                 Some(s) => print_paren_arg(s),
                 None => String::new(),
@@ -456,9 +479,7 @@ fn print_expr_inner(e: &Expr) -> String {
                 format!("{base_str}.{name}")
             }
         }
-        Expr::Input { .. } => "input".to_string(),
-        Expr::Inputs { .. } => "inputs".to_string(),
-        Expr::Lines { .. } => "lines".to_string(),
+        Expr::Stdin { .. } => "stdin".to_string(),
         // `csv`/`tsv` are parser sugar, so the canonical spelling is the parameterized form.
         Expr::Dsv { delim, .. } => format!("dsv(\"{}\")", escape_str(delim)),
         Expr::Variant {
@@ -476,6 +497,16 @@ fn print_expr_inner(e: &Expr) -> String {
             .map(|(i, a)| print_match_arm(a, i + 1 == arms.len()))
             .collect::<Vec<_>>()
             .join(" or "),
+        Expr::MatchCall {
+            enum_name, arms, ..
+        } => format!(
+            "{enum_name}({})",
+            arms.iter()
+                .enumerate()
+                .map(|(i, a)| print_match_arm(a, i + 1 == arms.len()))
+                .collect::<Vec<_>>()
+                .join(" or ")
+        ),
         Expr::Pipe { lhs, rhs, .. } => {
             // `Pipe.lhs` accumulates the same way a `Binary` chain does (`a | b | c` folds
             // left, exactly like `a - b - c`), so a nested `Pipe` there reproduces itself with
@@ -632,6 +663,9 @@ fn print_expr_wrapped(e: &Expr, ctx: Ctx, indent: usize) -> String {
                 wrap_delim("(", &[item], ")", indent)
             )
         }
+        Expr::MatchCall {
+            enum_name, arms, ..
+        } => wrap_match_call(enum_name, arms, indent),
         Expr::Neg { base, .. } => format!("-{}", print_expr_wrapped(base, Ctx::Unary, indent)),
         // No natural seam to break at (`Var`, `Call`/`Variant` with no argument, a projection or
         // field chain, and so on): the compact form already computed above is the best available.
@@ -684,5 +718,26 @@ fn wrap_match(arms: &[MatchArm], indent: usize) -> String {
         out.push_str(&pad(indent + INDENT));
         out.push_str(&p);
     }
+    out
+}
+
+/// The wrapped form of a match call (gh:152): the arms open the parens one level down from the
+/// head, separated by `or` the way a `Match`'s are, so a call form that does not fit breaks at
+/// its arms rather than overflowing one line.
+fn wrap_match_call(enum_name: &str, arms: &[MatchArm], indent: usize) -> String {
+    let n = arms.len();
+    let inner = indent + INDENT;
+    let mut out = format!("{enum_name}(\n");
+    for (i, a) in arms.iter().enumerate() {
+        out.push_str(&pad(inner));
+        out.push_str(&print_match_arm(a, i + 1 == n));
+        if i + 1 < n {
+            out.push_str(" or\n");
+        } else {
+            out.push('\n');
+        }
+    }
+    out.push_str(&pad(indent));
+    out.push(')');
     out
 }

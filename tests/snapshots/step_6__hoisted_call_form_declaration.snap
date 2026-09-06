@@ -1,0 +1,189 @@
+---
+source: tests/step_6.rs
+assertion_line: 10
+expression: "parse(\"enum Shape { point, circle{r: Int} }\\nfn area = Shape(circle{r} -> r * r or point -> 0)\\narea(Shape.point)\")"
+---
+File {
+    aliases: [],
+    enums: [
+        EnumDecl {
+            name: "Shape",
+            params: [],
+            variants: [
+                Variant {
+                    name: "point",
+                    span: Span {
+                        start: 13,
+                        end: 18,
+                    },
+                    payload: None,
+                },
+                Variant {
+                    name: "circle",
+                    span: Span {
+                        start: 20,
+                        end: 26,
+                    },
+                    payload: Some(
+                        Record {
+                            fields: [
+                                (
+                                    "r",
+                                    Named {
+                                        name: "Int",
+                                        args: [],
+                                        span: Span {
+                                            start: 30,
+                                            end: 33,
+                                        },
+                                    },
+                                ),
+                            ],
+                            span: Span {
+                                start: 26,
+                                end: 34,
+                            },
+                        },
+                    ),
+                },
+            ],
+            span: Span {
+                start: 0,
+                end: 36,
+            },
+            is_pub: false,
+        },
+    ],
+    traits: [],
+    impls: [],
+    defs: [
+        Def {
+            name: "area",
+            param: None,
+            ret: None,
+            body: MatchCall {
+                enum_name: "Shape",
+                enum_span: Span {
+                    start: 47,
+                    end: 52,
+                },
+                arms: [
+                    MatchArm {
+                        pattern: Variant {
+                            name: "circle",
+                            span: Span {
+                                start: 53,
+                                end: 62,
+                            },
+                            fields: Some(
+                                FieldsPattern {
+                                    names: [
+                                        (
+                                            "r",
+                                            Span {
+                                                start: 60,
+                                                end: 61,
+                                            },
+                                        ),
+                                    ],
+                                    rest: false,
+                                    span: Span {
+                                        start: 59,
+                                        end: 62,
+                                    },
+                                },
+                            ),
+                        },
+                        body: Binary {
+                            op: Mul,
+                            lhs: Var {
+                                name: "r",
+                                span: Span {
+                                    start: 66,
+                                    end: 67,
+                                },
+                            },
+                            rhs: Var {
+                                name: "r",
+                                span: Span {
+                                    start: 70,
+                                    end: 71,
+                                },
+                            },
+                            span: Span {
+                                start: 66,
+                                end: 71,
+                            },
+                        },
+                        span: Span {
+                            start: 53,
+                            end: 71,
+                        },
+                    },
+                    MatchArm {
+                        pattern: Variant {
+                            name: "point",
+                            span: Span {
+                                start: 75,
+                                end: 80,
+                            },
+                            fields: None,
+                        },
+                        body: Int {
+                            value: 0,
+                            span: Span {
+                                start: 84,
+                                end: 85,
+                            },
+                        },
+                        span: Span {
+                            start: 75,
+                            end: 85,
+                        },
+                    },
+                ],
+                span: Span {
+                    start: 47,
+                    end: 86,
+                },
+            },
+            span: Span {
+                start: 37,
+                end: 86,
+            },
+            is_pub: false,
+            origin: Program,
+            hoisted: true,
+        },
+    ],
+    body: Call {
+        func: "area",
+        func_span: Span {
+            start: 87,
+            end: 91,
+        },
+        arg: Some(
+            Variant {
+                enum_name: "Shape",
+                enum_span: Span {
+                    start: 92,
+                    end: 97,
+                },
+                variant: "point",
+                variant_span: Span {
+                    start: 98,
+                    end: 103,
+                },
+                payload: None,
+                span: Span {
+                    start: 92,
+                    end: 103,
+                },
+            },
+        ),
+        span: Span {
+            start: 87,
+            end: 104,
+        },
+    },
+}

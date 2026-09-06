@@ -1,0 +1,6 @@
+captured: 2026-09-06T12:50:41+0200
+state: {"ts": 1788691840, "lane": "issue-stuck-issue-benchmark-fannkuch-redux-build-investigation", "ahead": 0, "tracked_dirty": 0, "live": false, "runs": 1, "last_activity": 1788689842}
+
+=== git status ===
+
+=== git diff --stat ===

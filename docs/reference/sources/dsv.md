@@ -1,7 +1,7 @@
 # dsv
 
 `dsv(delim)` is stdin as rows of fields: each raw line, read the way
-[`lines`](lines.md) reads one, is split on the delimiter into a `Vec<Str>`, so the
+[`stdin`](stdin.md) reads one, is split on the delimiter into a `Vec<Str>`, so the
 source's type is `Vec<Vec<Str>>`. It is the parameterized member of the sources
 family -- `csv` and `tsv` are the same source with the delimiter already fixed to `,`
 and a tab (gh:88's ruling, built as gh:136).
@@ -37,7 +37,7 @@ csv_partial
 tsv_partial
 ```
 
-Being eager like [`input`](input.md), `dsv` needs no `collect` -- it is already a value
+Being eager like `parse(stdin)`, `dsv` needs no `collect` -- it is already a value
 -- but it flows through the same `map`/`jsonlines` shapes, since those distribute over a
 `Vec` as well as a stream.
 
@@ -45,7 +45,7 @@ Being eager like [`input`](input.md), `dsv` needs no `collect` -- it is already 
 jsonlines_of_dsv
 ```
 
-`dsv` reads the same real stdin as [`input`](input.md), [`inputs`](inputs.md), and
-[`lines`](lines.md), so a program uses at most one of the four, and `dsv` is read at
+`dsv` reads the same real stdin as [`stdin`](stdin.md), so a program uses at most one of the
+two, and `dsv` is read at
 most once. The empty delimiter is refused: every backend's split on an empty separator
 is its own undefined behaviour.
