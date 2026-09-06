@@ -1000,3 +1000,29 @@ whose real cause (missing per-backend formatting guidance) is now fixed on main.
 `float-build-lua` fresh into its existing worktree (base refreshed from origin/main by
 `dispatch-worker.sh`), pointing at `plans/float-format-research.md` as the concrete lead the
 prior 6 runs never had.
+
+## Escalated: sort_by/max_by (gh:177) dropped and re-scoped, maintainer ruling (2026-09-06)
+
+`sort-by-max-by` hit 5 commitless runs on the same failure shape: worker tries to reconstruct
+already-corrupted generated code (unclosed delimiters in `emit_go.rs`, mangled punctuation in
+`runtime/toylang.c`) by byte-level in-place repair (`od`/`sed`) instead of replacing the
+corrupted block wholesale from a known-good reference. Per the drive skill's failure-streak
+rule, escalated into a grill round (`issue-177-salvage-stall`) rather than redispatching a 6th
+time. Maintainer picked option C (drop and re-scope smaller), with a freeText addendum:
+split into >=5 tasks chained by `needs`, with reevaluation checkpoints between groups.
+
+Re-filed as 7 board rows (`sort-by-max-by-tir` through `sort-by-max-by-native`), grouped by
+backend-family risk rather than 1-backend-per-row: TIR/type-check plumbing alone first, then
+Go+Rust-source (typed, similar shape), then Lua+JS+Python+jq (dynamic, no C helper strings),
+then native/LLVM last and standalone (the actual corruption site, gated behind checking whether
+`native-backend-rust-ergonomics-research` changed the plan). Three `kind: decide` checkpoints
+between groups, per the maintainer's request.
+
+The abandoned lane's worktree (`~/.local/share/toylang-lanes/issue-177`) and branch (`issue-177`)
+were left in place: `git worktree remove --force` was permission-denied by the auto-mode
+classifier mid-tick, and per the drive skill's rule against working around a permission denial
+through another channel, no other removal method was attempted. The branch's one clean commit
+(`aa4aaad`, TIR variants only, 23 lines) is cited as a reference for `sort-by-max-by-tir`; the
+rest of that branch (7-backend dirty diff, does not compile) should not be reused. Worktree
+cleanup itself needs a maintainer call (manual `rm`/`git worktree remove`, or a permission rule
+change) -- not re-attempted here.

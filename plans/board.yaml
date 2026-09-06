@@ -104,12 +104,89 @@
   prio: 4
   status: todo
 
-- id: sort-by-max-by
+# sort_by/max_by (gh:177) re-scoped 2026-09-06 per maintainer ruling (option C, grill round
+# issue-177-salvage-stall): the combined single-lane attempt hit 5 commitless runs, its final
+# state was a corrupted 7-backend blob (unclosed delimiters in emit_go.rs from in-place
+# byte-forensics repair, mangled runtime/toylang.c). Diagnosis: task shape (one 7-place
+# multi-backend commit) was the root cause, not model strength. Re-filed below as a chain of
+# small, backend-scoped steps with reevaluation checkpoints between groups. The abandoned lane
+# (worktree + branch issue-177) still exists on disk -- worktree removal was permission-denied
+# mid-tick 2026-09-06; the clean, isolated TIR-only commit aa4aaad on that branch is a valid
+# reference for step 1 (`git show issue-177:src/tir.rs`), the rest of that branch should not be
+# reused. See plans/opencode-rollout.md for the run history.
+- id: sort-by-max-by-tir
   issue: gh:177
-  title: sort_by and max_by -- ordering through a scalar projection (euler-ergonomics row 7)
+  title: 'sort_by and max_by (gh:177), step 1/6 -- TIR + type-check plumbing only, no codegen.
+    Add Kind::SortBy/Kind::MaxBy to src/tir.rs (SortBy shaped like Map: source, binding, body;
+    MaxBy answers Opt<T> for an empty source, matching max/gh:140), and wire src/check/mod.rs,
+    src/check/linearity.rs, and src/tags.rs. Keep this to one clean, isolated commit -- reuse
+    the known-good reference at `git show issue-177:src/tir.rs` (commit aa4aaad) rather than
+    reimplementing from scratch.'
   kind: build
   needs: [sum-max-builtins-build]
-  status: delegated
+  status: todo
+
+- id: sort-by-max-by-checkpoint-1
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), step 2/6 -- reevaluate: confirm the step-1 TIR shape is
+    sound before starting backend emission, and confirm the backend grouping for steps 3 and 5
+    (default plan: Go+Rust-source together in step 3, then Lua+JS+Python+jq together in step 5,
+    native/LLVM last in step 6 -- change this grouping here if step 1 turned up a reason to).'
+  kind: decide
+  needs: [sort-by-max-by-tir]
+  status: todo
+
+- id: sort-by-max-by-compiled-backends
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), step 3/6 -- emit for the Go and Rust-source backends only
+    (src/emit_go.rs, src/emit_rs.rs). Two backends per commit, not seven: the prior lane''s
+    single 7-backend blob was the diagnosed root cause of its corruption.'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-1]
+  status: todo
+
+- id: sort-by-max-by-checkpoint-2
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), step 4/6 -- reevaluate: confirm step 3 landed clean at
+    2-backends-per-commit scope before starting the 4-backend scripting group in step 5.'
+  kind: decide
+  needs: [sort-by-max-by-compiled-backends]
+  status: todo
+
+- id: sort-by-max-by-scripting-backends
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), step 5/6 -- emit for the Lua, JS, Python, and jq backends
+    (src/emit_lua.rs, src/emit_js.rs, src/emit_py.rs, src/emit_jq.rs). Grouped together since
+    they are dynamically-typed and structurally similar, with no hand-authored C helper strings
+    involved -- the corruption risk that motivated splitting was specific to Go''s typed helper
+    functions and to runtime/toylang.c, neither of which this group touches.'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-2]
+  status: todo
+
+- id: sort-by-max-by-checkpoint-3
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), step 6/6 -- reevaluate before the native/LLVM backend:
+    it needs hand-authored C in runtime/toylang.c, the exact site of the original corruption.
+    Check whether native-backend-rust-ergonomics-research has landed findings that change how
+    this should be built (e.g. an inkwell/Rust-runtime-crate approach instead of hand-rolled C)
+    before dispatching the native step as-is.'
+  kind: decide
+  needs: [sort-by-max-by-scripting-backends]
+  status: todo
+
+- id: sort-by-max-by-native
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), final step -- emit for the native/LLVM backend
+    (src/emit_llvm.rs + keyed-compare helpers in runtime/toylang.c). Highest-risk step: the
+    original lane''s corruption was concentrated in runtime/toylang.c (mangled punctuation,
+    missing parens). Standalone commit, no other backend touched. If a corrupted block needs
+    repair mid-task, replace it wholesale from a known-good reference (`git show
+    origin/main:<path>` or the pre-corruption diff) rather than reconstructing bytes in place --
+    that in-place approach is what caused the original failure.'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-3]
+  status: todo
 
 - id: bigint-tracking
   issue: gh:112
