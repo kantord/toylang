@@ -341,3 +341,32 @@ Recommendation:
   landed in the same commitless zero-output state, because it ran out of scripted outcomes
 
   before it ran out of steps. The bottleneck is the decision tree, not tenacity..
+
+## Investigation: stuck lane issue-float-build-rust (gh:149, Float for the Rust backend)(2026-09-04
+
+Lane stats at capture (frozen in plans/incidents/issue-float-build-rust-20260904/: 1 run, 0 commits, clean tree, ahead 0, dead since 2026-09-02T19:20Z, evidence captured 2026-09-04T09:44Z). The board row is still `status: todo` and the branch tip equals the dispatch base (35f0748, itself on main), so zero lane work ever happened. The event log shows a single ~2-minute run ending mid-step with no final message, no writes, no commits.
+
+What the single run did (from the jsonl tail): read AGENTS.md, listed just recipes;failed to view the issue as `gh issue view float-build-rust` -- that's a lane name, not an issue number, and recovered gh:149 from board.yaml;read gh:149's body;then spent the bulk of its budget re-deriving the JS reference from git history: multiple `git show f22a806 -- <paths>` calls (each re-printing the whole commit message and stat), full reads of emit_js.rs and emit_rs.rs from that old commit instead of the live worktree files, and reads of shared files from the same commit. By the end its reasoning already carried the full implementation plan:the four `unreachable!` Float arms in src/emit_rs.rs (lines 907, 936,1176,1433) to fill, a `tl_parse_f64` parser modeled on `tl_parse_i32`, Rust's f64 Display printing `inf`/`-inf` where JS prints `Infinity`/`-Infinity`, f64 arithmetic having no `wrapping_*` and total division by zero, tests going in tests/backend_rust.rs rather than corpus. Then it tried to read `tests/backend_rs.rs` (no such file -- it is `backend_rust.rs`), listed tests/, grep'd `Backend::Rs` (no matches -- the variant is `Backend::Rust`),and died at the start of the next step. Zero tool calls were denied all session -- the "invalid issue format" and "File not found"/"No files found" are ordinary errors, not permission rejections.
+
+
+
+Diagnosis: primarily **task shape**, compounded by **brief clarity** -- not a capability gap, not a tooling/permission trap:
+
+- The natural approach to this row -- read the whole JS reference, the whole Rust emitter, the test harness, then write -- blows past a one-run budget before the first write, exactly the shape that killed issue-149 and issue-170. The worker gathered the reference from the landing commit piecewise instead of from the live worktree files (src/emit_js.rs already implements Float in HEAD: the Float arms are at emit_js.rs lines 391, 775,1056;the four unreachable arms at emit_rs.rs lines 907,936,1176,1433 are the entire surface to change),which multiplied the context load and never reached the write phase.
+
+- The brief's issue reference was unusable:`gh issue view float-build-rust` cannot work (lane name is not an issue number;;three calls were spent recovering gh:149 from board.yaml. The brief also didn't name the test harness filename (backend_rust.rs, not backend_rs.rs)and didn't instruct early commit -- both known failure modes from issue-170's recommendations。
+- Not a capability gap:the run's own reasoning had the full, correct implementation designed before it died. Nothing in the transcript suggests it couldn't have written the diff;it simply never got the chance.
+
+
+
+Recommendation:**re-dispatch the same row**, not a drop and not a scope reshape --the work is real, bounded(one emitter diff + a parser helper + tests mirroring tests/backend_js.rs),and the JS reference is now live in the worktree, so nothing forces re-deriving it from git history. The rebrief should:
+
+- Name the task by board row and issue number (float-build-rust, gh:149)and skip the issue body entirely --the live JS emitter is the spec. Point at the live files:the Float arms in src/emit_js.rs are the reference, and the four `unreachable!` Float arms in src/emit_rs.rs (plus a `tl_parse_f64` next to `tl_parse_i32` in the PARSER_HELPER) are the entire surface to change. No `git show` of old commits needed。
+- Name the test harness exactly:`tests/backend_rust.rs`, `Backend::Rust`;mirror the Float tests from the JS commit into tests/backend_js.rs (no corpus cases --the other backends still unreachable-arm Float)。
+- Pre-state the gotchas the worker already derived, so it doesn't re-burn budget on them:Rust's f64 Display prints `inf`/`-inf` (map to `Infinity`/`-Infinity`;NaN already matches);f64 division by zero is total (returns Infinity, IEEE;, no guard needed,and there are no `wrapping_*` methods on f64;the checker already accepts Float input (per the JS commit)。
+
+- Commit early:write the emit_rs.rs diff first and commit it (the row's own one-backend-one-commit contract),then add tests,then `just check`. A partial commit beats another zero-commit run;;if the budget runs low, commit what exists and note the gap, per the standing "a rejected tool call is not a stop condition" rule。
+
+- Mark the row `delegated` on re-dispatch (it is still `todo`, so another tick could double-dispatch),and rebase the worktree onto current main before dispatching (the lane base is 88 commits behind origin/main;the task is self-contained against files already in the base, so rebasing is cheap insurance against a land-time conflict)。
+
+Written by DeepSeek V4 Flash via opencode.
