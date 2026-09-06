@@ -233,13 +233,6 @@
   needs: [variant-checker-capital-first]
   status: todo
 
-- id: match-type-wrapper-experiment
-  issue: gh:122
-  title: 'Experimentally build a Match<T> wrapper: `.` entering a `|` chain wraps as Match<T>, traits like `%` get generic impls over Match<T> per underlying T (applying only past a passing boolean guard), and an arm''s aliases become named fields on a result struct the match produces -- see what goes wrong before ratifying (gh:122 ruling)'
-  kind: build
-  needs: []
-  status: delegated
-
 - id: partial-application-system-design
   issue: gh:119
   title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff), informed by closures-first-class-functions-research -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like"'
