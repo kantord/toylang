@@ -365,7 +365,7 @@
   needs: [select-materialization-research, batch-type-design-research]
   soft: [benchmark-goals]
   prio: 5
-  status: todo
+  status: done
 
 - id: select-materialization-scope
   issue: gh:176
