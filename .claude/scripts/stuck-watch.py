@@ -65,23 +65,50 @@ def live_worker_dirs():
             continue
     return dirs
 
-def lane_state(d, live_dirs):
+def sandbox_live_names():
+    """Names of currently-running microsandbox VMs (sandbox_dispatch.py names
+    them sd-<row-id>, truncated to 32 chars). This is a wholly separate
+    liveness signal from live_worker_dirs() above: a sandboxed dispatch's
+    actual opencode process runs INSIDE the guest via `msb exec`, so the host
+    /proc scan never sees it and the lane's cwd is never set either -- this
+    gap caused two false stuck-lane alarms against lanes the sandbox harness
+    was actively (and successfully) finishing, 2026-09-06."""
+    msb = os.path.expanduser("~/.local/bin/msb")
+    rc, out = sh([msb, "list"])
+    if rc != 0:
+        return set()
+    names = set()
+    for line in out.splitlines()[1:]:  # header row: NAME IMAGE STATUS CREATED
+        parts = line.split()
+        if len(parts) >= 3 and parts[2] == "running":
+            names.add(parts[0])
+    return names
+
+def lane_state(d, live_dirs, sandbox_names):
     name = os.path.basename(d.rstrip("/"))
     real = os.path.realpath(d)
+    row_id = name.split("-", 1)[1] if "-" in name else name
     _, ahead = sh(["git", "-C", d, "rev-list", "--count", "main..HEAD"])
     _, status = sh(["git", "-C", d, "status", "--porcelain"])
     tracked = [l for l in status.splitlines() if not l.startswith("??")]
     logs = sorted(glob.glob(os.path.join(OC_DIR, f"*-{name}.jsonl")))
     last_log = max((os.path.getmtime(p) for p in logs), default=0)
+    # sandbox_dispatch.py's own log lives outside OC_DIR under a different
+    # naming pattern, and it is the only host-visible trace of a sandboxed
+    # dispatch's progress (the guest's own per-phase logs are invisible here).
+    sandbox_logs = glob.glob(os.path.join(LOG_DIR, f"sandbox-dispatch-{row_id}*.log"))
+    last_sandbox_log = max((os.path.getmtime(p) for p in sandbox_logs), default=0)
+    sandbox_live = any(row_id == n or row_id.startswith(n[3:]) or n[3:].startswith(row_id)
+                        for n in sandbox_names if n.startswith("sd-"))
     _, ct = sh(["git", "-C", d, "log", "-1", "--format=%ct"])
     return {
         "ts": int(time.time()),
         "lane": name,
         "ahead": int(ahead.strip() or 0),
         "tracked_dirty": len(tracked),
-        "live": any(w.startswith(real) for w in live_dirs),
-        "runs": len(logs),
-        "last_activity": int(max(last_log, float(ct.strip() or 0))),
+        "live": any(w.startswith(real) for w in live_dirs) or sandbox_live,
+        "runs": len(logs) + (1 if sandbox_logs else 0),
+        "last_activity": int(max(last_log, last_sandbox_log, float(ct.strip() or 0))),
     }
 
 def board_has_row(row_id):
@@ -191,11 +218,23 @@ def commit(lane, inc_rel):
 def main():
     os.makedirs(OC_DIR, exist_ok=True)
     live_dirs = live_worker_dirs()
+    sandbox_names = sandbox_live_names()
     now = int(time.time())
     with open(HISTORY, "a") as hist:
         for d in sorted(glob.glob(os.path.join(LANES, "issue-*/"))):
             lane = os.path.basename(d.rstrip("/"))
-            st = lane_state(d, live_dirs)
+            row_id = lane.split("-", 1)[1] if "-" in lane else lane
+            # An investigation lane going stuck needs a human glance at why
+            # the ORIGINAL lane stalled, not another investigation about the
+            # investigation -- confirmed live, 2026-09-06: an unattended
+            # investigation lane recursed into
+            # stuck-issue-<...>-investigation-investigation with nothing to
+            # stop a further layer next time. Investigation rows are exactly
+            # the ones most likely to sit unattended (nothing currently
+            # prioritizes them over fresh work), so this is not a rare edge.
+            if row_id.startswith("stuck-") and row_id.endswith("-investigation"):
+                continue
+            st = lane_state(d, live_dirs, sandbox_names)
             hist.write(json.dumps(st) + "\n")
             marker = os.path.join(LOG_DIR, f"investigating-{lane}")
             # A lane parked on a maintainer escalation is stuck ON PURPOSE --
