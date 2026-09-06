@@ -1575,3 +1575,11 @@
   soft: [draft-intro-migration, draft-questions-home]
   prio: 4
   status: done
+
+- id: call-form-hoist-check
+  issue: gh:152
+  title: 'Step 3/4 of the issue-152-stall reshape: checker -- return-type inference for `fn name = expr`; resolve MatchCall arms against the enum registry.'
+  kind: build
+  needs: [call-form-hoist-parse]
+  prio: 3
+  status: done
