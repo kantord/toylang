@@ -90,7 +90,7 @@ fn float_comparison() {
 /// double a Float names (ADR 0007), the case that made Int64 refuse `input`.
 #[test]
 fn float_input_reads_a_json_number() {
-    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(input)\n";
+    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(parse(stdin))\n";
     let out = toylang::run_on(src, Some("2.5"), Backend::Go).unwrap();
     assert_eq!(out, "5\n");
 }
@@ -112,6 +112,10 @@ fn float_notation_switches_like_js() {
         ("2.5e-5\n", "0.000025\n"),
         ("1.234e-6\n", "0.000001234\n"),
     ] {
-        assert_eq!(toylang::run_on(src, None, Backend::Go).unwrap(), want, "on {src:?}");
+        assert_eq!(
+            toylang::run_on(src, None, Backend::Go).unwrap(),
+            want,
+            "on {src:?}"
+        );
     }
 }
