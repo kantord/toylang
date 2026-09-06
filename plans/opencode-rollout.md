@@ -1020,9 +1020,37 @@ between groups, per the maintainer's request.
 
 The abandoned lane's worktree (`~/.local/share/toylang-lanes/issue-177`) and branch (`issue-177`)
 were left in place: `git worktree remove --force` was permission-denied by the auto-mode
-classifier mid-tick, and per the drive skill's rule against working around a permission denial
+classifier mid-tick,and per the drive skill's rule against working around a permission denial
 through another channel, no other removal method was attempted. The branch's one clean commit
-(`aa4aaad`, TIR variants only, 23 lines) is cited as a reference for `sort-by-max-by-tir`; the
+(`aa4aaad`, TIR variants only,  ​23 lines) is cited as a reference for `sort-by-max-by-tir`;the
 rest of that branch (7-backend dirty diff, does not compile) should not be reused. Worktree
-cleanup itself needs a maintainer call (manual `rm`/`git worktree remove`, or a permission rule
+cleanup itself needs a maintainer call(manual `rm`/`git worktree remove`, or a permission rule
 change) -- not re-attempted here.
+
+## Resolved: the fannkuch-redux-build investigation was a false positive(2026-09-06)
+
+`stuck-issue-benchmark-fannkuch-redux-build-investigation` (this lane) is the exact auto-file
+finding #3 names: the original `issue-benchmark-fannkuch-redux-build` worker was being actively
+worked through `sandbox_dispatch.py` when the alarm fired, and sandbox activity is invisible to
+`stuck-watch.py`'s `/proc`-and-jsonl liveness scan. The frozen evidence in
+`plans/incidents/issue-benchmark-fannkuch-redux-build-20260906/` corroborates:the worker's
+last recorded action (11:19:32) was a webfetch of the CLBG fannkuch-redux reference,
+permission-denied, while confirming the checksum convention its reference script
+(`ref_fannkuch.py`, still untracked in the lane worktree) computes. The worktree-state capture
+34 min later shows runs:1, zero commits -- a sandboxed worker mid-verification, not a stalled
+lane.
+
+The row then ate itself: three runs in (this is run 3)and still nothing committed, because
+each dispatch re-derives finding #3's conclusion from the same frozen evidence. Nothing a host-side
+run can add here: the verdict and rebrief the row asks for are already written up in findings
+#3 (sandbox blindness; fix: teach the watchdog the sandbox's own activity signals)and #8
+(the recursion; this very row is its product, archived 12:54). A fourth run produces the
+same non-commit.
+
+Rebrief: archive this row as redundant. The underlying `benchmark-fannkuch-redux-build` task
+is not stalled; it is blocked on the exact tooling wall sandboxed dispatch exists to absorb -- a
+permission-denied webfetch of the reference it needs to confirm the checksum. Unblock it by
+dispatching through `sandbox_dispatch.py` with webfetch available(the path fasta succeeded on
+earlier this session),or grant the tool to a host-side run. Do not keep dispatching host-side
+investigation runs at it: until finding #3's watchdog fix lands, every `STUCK_AFTER` window
+re-files the same false positive.
