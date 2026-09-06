@@ -54,7 +54,7 @@
   issue: gh:165
   title: 'Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference). Lane issue-165 stalled here (0 commits, renamed aside as issue-165-contaminated-20260831): the brief claims checker enforcement "already done via gh:156" but variant-checker-capital-first was still status: todo -- added as a real needs edge below so the migration cannot be dispatched again until the checker actually enforces the rule.'
   kind: build
-  needs: [matcher-totality-and-alt-design, variant-checker-capital-first]
+  needs: [matcher-totality-and-alt-design, variant-checker-capital-first, doc-migrate-capital-variants]
   prio: 2
   model: fable
   status: todo
@@ -63,15 +63,22 @@
   issue: gh:158
   title: Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect (shell-out-design ruling, gh:158, depends on Q35's stdout/stderr effect model)
   kind: build
+  needs: [shell-out-stderr-relay-design]
+  status: todo
+
+- id: shell-out-stderr-relay-design
+  issue: gh:158
+  title: 'Q35 was RULED option A, opaque plumbing (stdout-stderr-effect-model-design, wizard submission 2026-09-07) -- a second single-instance sink alongside jsonlines, structurally unable to relay two streams (stdout and stderr) from one subprocess at once. But pipe_through''s whole point is exactly that: relay a subprocess''s stdout AND stderr in the same run. Decide how shell-out-build should actually spell this under option A before dispatching it -- e.g. two separate pipe_through-style calls each claiming one stream (never combined in one program, so a program picks stdout-relay xor stderr-relay), a merged single-stream relay that drops the distinction, or something else. Also settle the stdin/stdout splitting question flagged alongside Q35 as possibly distinct.'
+  kind: decide
   needs: [stdout-stderr-effect-model-design]
   status: todo
 
 - id: stdout-stderr-effect-model-design
-  title: 'Decide Q35 (plans/questions.md#q35): what are stdout/stderr, and does a program write or return? Two commitless runs on shell-out-build (gh:158, issue-158, 2026-09-01) both spent their full budget rediscovering that pipe_through cannot be implemented until this effect model exists, then produced no code. Round 1 answer: no pick -- maintainer''s freeText pulled two directions at once ("well i would say real type, but isn''t it already the same types that we are using for our own program''s own inputs and outputs?") and flagged a second open question riding along, how stdin/stdout splitting works. Needs stdout-stderr-effect-model-research (does the already-decided "Stream is the effect layer" model already cover a mid-pipeline write, or does it need a real Effect/IO type; how does stdin/stdout splitting fit) before a sharper round 2.'
+  title: 'Decide Q35 (plans/questions.md#q35): what are stdout/stderr, and does a program write or return? Two commitless runs on shell-out-build (gh:158, issue-158, 2026-09-01) both spent their full budget rediscovering that pipe_through cannot be implemented until this effect model exists, then produced no code. Round 1 answer: no pick -- maintainer''s freeText pulled two directions at once ("well i would say real type, but isn''t it already the same types that we are using for our own program''s own inputs and outputs?") and flagged a second open question riding along, how stdin/stdout splitting works. Round 2 answer (wizard submission, 2026-09-07): RULED option A, opaque plumbing -- a second single-instance sink alongside jsonlines, symmetric in every rule, no sequencing form. Maintainer''s note: "not sure, but i lean towards A." This is against the research doc''s thesis (which leaned B, Sink<T> plus a sequencing form, since A structurally cannot relay two streams at once) -- so shell-out-build''s pipe_through need (relay a subprocess''s stdout AND stderr in one run) stays unresolved under A and will need its own follow-up if/when that need becomes concrete. stdin/stdout splitting for pipe_through was flagged as possibly a distinct question, not answered here -- open a follow-up decide row for it when shell-out-build is dispatched.'
   kind: decide
   needs: [stdout-stderr-effect-model-research]
   prio: 1
-  status: todo
+  status: done
 
 - id: stdout-stderr-effect-model-research
   title: 'Landed directly (2026-09-04), not by a delegated worker: plans/stdout-stderr-effect-model-research.md. Lane had sat delegated 25 hours, 0 commits, last run burning its whole budget on read-only exploration before a blocked CLI call ended it. Core finding, verified by running real programs rather than reading docs: a toylang program is exactly one expression -- no sequencing construct exists at all -- so Q35 is not just "does stderr have a type," it is "can a program write more than once, anywhere." All three round-1 options worked through against that: A (opaque plumbing, one more single-instance sink alongside jsonlines) is real but cannot address shell-out-build''s actual need (relay a subprocess''s stdout and stderr in one run); B (extend Sink to Sink<T> plus a sequencing form, reusing `or`''s existing positional-overload precedent) is the smallest true extension and matches the maintainer''s own round-1 free text; C (a real IO<T> monad) needs a Unit type the language does not have and would leave two competing effect notations side by side. Ready for round 2.'
@@ -124,51 +131,115 @@
 
 - id: sort-by-max-by-checkpoint-1
   issue: gh:177
-  title: 'sort_by and max_by (gh:177), step 2/6 -- reevaluate: confirm the step-1 TIR shape is
-    sound before starting backend emission, and confirm the backend grouping for steps 3 and 5
-    (default plan: Go+Rust-source together in step 3, then Lua+JS+Python+jq together in step 5,
-    native/LLVM last in step 6 -- change this grouping here if step 1 turned up a reason to).'
+  title: 'sort_by and max_by (gh:177), step 2/6 -- RULED (wizard submission, 2026-09-07): option
+    B, reevaluate the grouping. TIR shape confirmed sound (mirrors Map, reuses max''s Opt<T>
+    answer), but the maintainer picked B over confirm-and-proceed: one backend per commit for
+    all six remaining backends rather than 2+4 groups, since even the 4-backend scripting group
+    recreates a smaller version of the blast radius blamed for the original 7-backend-blob
+    corruption. Board reshaped accordingly: sort-by-max-by-compiled-backends and
+    -scripting-backends replaced by one row per backend (sort-by-max-by-go/-rust/-lua/-js/
+    -python/-jq), each followed by its own reevaluation gate, ending in
+    sort-by-max-by-checkpoint-jq before the unchanged, standalone native/LLVM step.'
   kind: decide
   needs: [sort-by-max-by-tir]
-  status: todo
+  status: done
 
-- id: sort-by-max-by-compiled-backends
+- id: sort-by-max-by-go
   issue: gh:177
-  title: 'sort_by and max_by (gh:177), step 3/6 -- emit for the Go and Rust-source backends only
-    (src/emit_go.rs, src/emit_rs.rs). Two backends per commit, not seven: the prior lane''s
-    single 7-backend blob was the diagnosed root cause of its corruption.'
+  title: 'sort_by and max_by (gh:177) -- emit for the Go backend only (src/emit_go.rs). One
+    backend per commit per the checkpoint-1 ruling (wizard submission, 2026-09-07, option B):
+    even the prior 4-backend scripting group would recreate a smaller version of the blast
+    radius blamed for the original 7-backend-blob corruption.'
   kind: build
   needs: [sort-by-max-by-checkpoint-1]
   status: todo
 
-- id: sort-by-max-by-checkpoint-2
+- id: sort-by-max-by-checkpoint-go
   issue: gh:177
-  title: 'sort_by and max_by (gh:177), step 4/6 -- reevaluate: confirm step 3 landed clean at
-    2-backends-per-commit scope before starting the 4-backend scripting group in step 5.'
+  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Go commit landed clean before
+    starting Rust-source.'
   kind: decide
-  needs: [sort-by-max-by-compiled-backends]
+  needs: [sort-by-max-by-go]
   status: todo
 
-- id: sort-by-max-by-scripting-backends
+- id: sort-by-max-by-rust
   issue: gh:177
-  title: 'sort_by and max_by (gh:177), step 5/6 -- emit for the Lua, JS, Python, and jq backends
-    (src/emit_lua.rs, src/emit_js.rs, src/emit_py.rs, src/emit_jq.rs). Grouped together since
-    they are dynamically-typed and structurally similar, with no hand-authored C helper strings
-    involved -- the corruption risk that motivated splitting was specific to Go''s typed helper
-    functions and to runtime/toylang.c, neither of which this group touches.'
+  title: 'sort_by and max_by (gh:177) -- emit for the Rust-source backend only (src/emit_rs.rs).'
   kind: build
-  needs: [sort-by-max-by-checkpoint-2]
+  needs: [sort-by-max-by-checkpoint-go]
   status: todo
 
-- id: sort-by-max-by-checkpoint-3
+- id: sort-by-max-by-checkpoint-rust
   issue: gh:177
-  title: 'sort_by and max_by (gh:177), step 6/6 -- reevaluate before the native/LLVM backend:
-    it needs hand-authored C in runtime/toylang.c, the exact site of the original corruption.
-    Check whether native-backend-rust-ergonomics-research has landed findings that change how
-    this should be built (e.g. an inkwell/Rust-runtime-crate approach instead of hand-rolled C)
+  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Rust-source commit landed clean
+    before starting Lua.'
+  kind: decide
+  needs: [sort-by-max-by-rust]
+  status: todo
+
+- id: sort-by-max-by-lua
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- emit for the Lua backend only (src/emit_lua.rs).'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-rust]
+  status: todo
+
+- id: sort-by-max-by-checkpoint-lua
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Lua commit landed clean before
+    starting JS.'
+  kind: decide
+  needs: [sort-by-max-by-lua]
+  status: todo
+
+- id: sort-by-max-by-js
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- emit for the JS backend only (src/emit_js.rs).'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-lua]
+  status: todo
+
+- id: sort-by-max-by-checkpoint-js
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the JS commit landed clean before
+    starting Python.'
+  kind: decide
+  needs: [sort-by-max-by-js]
+  status: todo
+
+- id: sort-by-max-by-python
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- emit for the Python backend only (src/emit_py.rs).'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-js]
+  status: todo
+
+- id: sort-by-max-by-checkpoint-python
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Python commit landed clean
+    before starting jq.'
+  kind: decide
+  needs: [sort-by-max-by-python]
+  status: todo
+
+- id: sort-by-max-by-jq
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- emit for the jq backend only (src/emit_jq.rs). Last of
+    the six one-backend-per-commit steps; native/LLVM (highest risk, hand-authored C) still
+    follows standalone, unchanged from the original plan.'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-python]
+  status: todo
+
+- id: sort-by-max-by-checkpoint-jq
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- reevaluate before the native/LLVM backend: it needs
+    hand-authored C in runtime/toylang.c, the exact site of the original corruption. Check
+    whether native-backend-rust-ergonomics-research has landed findings that change how this
+    should be built (e.g. an inkwell/Rust-runtime-crate approach instead of hand-rolled C)
     before dispatching the native step as-is.'
   kind: decide
-  needs: [sort-by-max-by-scripting-backends]
+  needs: [sort-by-max-by-jq]
   status: todo
 
 - id: sort-by-max-by-native
@@ -181,7 +252,7 @@
     origin/main:<path>` or the pre-corruption diff) rather than reconstructing bytes in place --
     that in-place approach is what caused the original failure.'
   kind: build
-  needs: [sort-by-max-by-checkpoint-3]
+  needs: [sort-by-max-by-checkpoint-jq]
   status: todo
 
 - id: module-routing-syntax-build
@@ -216,10 +287,10 @@
 
 - id: partial-application-system-design
   issue: gh:119
-  title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff), informed by closures-first-class-functions-research -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like"'
+  title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff), informed by closures-first-class-functions-research -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like". RULED (wizard submission, 2026-09-07): option C, both unified as one mechanism once functions are first-class -- array-like (positional prefix) and struct-like (field subtraction) are two input shapes hitting the same application-returns-a-function mechanism, not two features to build separately. Maintainer added a hard requirement not covered by any option: partial application must always be syntactically explicit, never silently inferred from arity/shape -- e.g. a residual function value must be visibly distinct from a genuine array literal (`[1]` as a partial-application residual must not look the same as the array value `[1]`). This constrains whatever concrete syntax closures-first-class-functions-build lands: the colon call form and any partial-application spelling need a marker (or distinct type-level shape) that makes "this is a partial application, not a value" visible at the call site.'
   kind: decide
   needs: [closures-first-class-functions-research]
-  status: todo
+  status: done
 
 
 
@@ -324,11 +395,18 @@
   status: todo
 
 - id: offload-boundary-design
-  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled. Round 3 answer, parallel-primitive-basis (Q23): RATIFIED option A -- full basis now (map/scan/reduce/gather/scatter + segmented forms), fold and general recursion demoted to convenience leaves, future stdlib additions checked against the third-homomorphism theorem. Q22 (dense-masked-distinguishable/select representation): maintainer proposed a fourth shape (Vec-typed view, materialized only on strong reference -- ties to mutation-semantics-spike) that none of A/B/C covered; spun off select-materialization-research (gh:176) to ground a re-ask instead of re-presenting the same options. Round 4 answer, Q21 (batch-invariance-enforcement, rewritten with the mean/naive-average-of-averages worked example): RATIFIED option B -- compiler requires a declared associative combiner at every batch boundary, same enforcement posture as sort''s element-type check. Maintainer''s answer went further than the three options though, proposing the enforcement should ride on a richer effect type rather than a bare compiler gate: a distinct `Stream<Batch<T>>` (vs plain `Stream<T>`), an explicit `[Stream<T>, N] -> Stream<Batch<T, N>>` batching function, and an open question of what *initiates* batching -- explicit marker, implicit at certain constructs, or forced/unavoidable for certain operations. Spun off batch-type-design-research to ground a re-ask of that shape. Both remaining threads (Q22 and Q21''s follow-up) are now blocked on their research spikes.'
+  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled. Round 3 answer, parallel-primitive-basis (Q23): RATIFIED option A -- full basis now (map/scan/reduce/gather/scatter + segmented forms), fold and general recursion demoted to convenience leaves, future stdlib additions checked against the third-homomorphism theorem. Q22 (dense-masked-distinguishable/select representation): maintainer proposed a fourth shape (Vec-typed view, materialized only on strong reference -- ties to mutation-semantics-spike) that none of A/B/C covered; spun off select-materialization-research (gh:176) to ground a re-ask instead of re-presenting the same options. Round 4 answer, Q21 (batch-invariance-enforcement, rewritten with the mean/naive-average-of-averages worked example): RATIFIED option B -- compiler requires a declared associative combiner at every batch boundary, same enforcement posture as sort''s element-type check. Maintainer''s answer went further than the three options though, proposing the enforcement should ride on a richer effect type rather than a bare compiler gate: a distinct `Stream<Batch<T>>` (vs plain `Stream<T>`), an explicit `[Stream<T>, N] -> Stream<Batch<T, N>>` batching function, and an open question of what *initiates* batching -- explicit marker, implicit at certain constructs, or forced/unavoidable for certain operations. Spun off batch-type-design-research to ground a re-ask of that shape. Round 5 answers (wizard submission, 2026-09-07), both threads now RATIFIED: Q22 (select-materialization) -- RULED option B, the maintainer''s own proposal worked out: select keeps returning Vec; behind the name is a {source, mask-or-selection} pair, indexable via a lazily-built selection vector or mask+popcount table (O(1) per access after one O(n) build over mask bits only), compacting on the first strong reference (reusing input storage if uniquely referenced) -- the same provably-one-reference condition mutation-semantics-spike already uses. Maintainer''s follow-up, NOT yet answered: should this mask/selection-backed representation apply only to Vec, or also to streams or some other shared trait they''d both implement -- needs its own follow-up decide row before this finding gets built. Q21 follow-up (batch-type-design) -- RULED option A: opaque Batch<T> with NO operations at all (no length, indexing, equality), batch(s, n) takes n as a runtime-value hint (not a type parameter -- type-level naturals would make batch size observable/exact, defeating the unobservability round 4''s law protects), forced at the reader and at any whole-input/two-level-reduction operation, explicit everywhere else -- closes the observability hole by construction rather than a growing per-operation gate list.'
   kind: decide
   needs: [select-materialization-research, batch-type-design-research]
   soft: [benchmark-goals]
   prio: 5
+  status: todo
+
+- id: select-materialization-scope
+  issue: gh:176
+  title: 'Follow-up from offload-boundary-design round 5''s Q22 ruling (mask/selection-backed select, compact on strong reference): the maintainer''s own proposal was framed around Vec, but asked in the same breath whether the representation should be Vec-only or shared with streams or some other trait they''d both implement. Ground this against what select-materialization-research already found (NumPy/Julia/Rust Cow/pandas survey) plus whatever Stream-side operations exist today, then re-ask.'
+  kind: decide
+  needs: []
   status: todo
 
 - id: draft-md-cleanup-review
