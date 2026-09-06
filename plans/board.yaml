@@ -8,27 +8,11 @@
   status: todo
   needs: []
   title: 'INVESTIGATE stuck lane issue-benchmark-fannkuch-redux-build (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-benchmark-fannkuch-redux-build-20260906/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-search-layer-build-investigation
-  kind: build
-  status: delegated
-  needs: []
-  title: 'INVESTIGATE stuck lane issue-search-layer-build (no activity 13h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-search-layer-build-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-recursive-descent-order-research-investigation
   kind: build
   status: delegated
   needs: []
   title: 'INVESTIGATE stuck lane issue-recursive-descent-order-research (no activity 58h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-recursive-descent-order-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-param-destructure-build-investigation
-  kind: build
-  status: delegated
-  needs: []
-  title: 'INVESTIGATE stuck lane issue-param-destructure-build (no activity 10h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-param-destructure-build-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
-- id: stuck-issue-float-format-research-investigation
-  kind: build
-  status: delegated
-  needs: []
-  issue: gh:149
-  title: 'INVESTIGATE stuck lane issue-float-format-research (no activity 10h, 3 run(s), 0 commits): evidence frozen in plans/incidents/issue-float-format-research-20260904/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: stuck-issue-float-build-rust-investigation
   kind: build
   status: delegated
@@ -123,14 +107,6 @@
   prio: 4
   status: done
 
-- id: float-format-research
-  issue: gh:149
-  title: 'Escalation ruling (lane-escalations-168-149 round, float-build-149-siblings-stall, option A): float-build-go/python/rust stalled 6 cumulative runs across 3 lanes, zero commits, before any research. float-build (JS reference) is already landed. Survey how Go (strconv.FormatFloat/ParseFloat), Python (repr(float)/float(str)), and Rust (Display/Debug impls, str::parse) each format an IEEE binary64 float to a string and back versus the JS reference, focusing on round-trip precision and hex/exponent edge cases. The float-build-python lane (~/.local/share/toylang-lanes/issue-float-build-python) has an uncommitted diff plus scratch probe files (f64_probe, float_check.py, hexdump.py, paren_probe.py) from a real struggle with this -- read them for a concrete lead, do not modify that lane. Write concrete per-backend formatting guidance (with short verified code snippets) to plans/, so the three build lanes are not rediscovering the same snag on redispatch.'
-  kind: build
-  needs: []
-  prio: 1
-  status: delegated
-
 - id: float-build-rust
   issue: gh:149
   title: Implement Float (IEEE binary64 per ADR 0007) for the Rust backend only, following float-build's JS implementation as the reference. One backend, one commit.
@@ -194,23 +170,11 @@
   prio: 4
   status: todo
 
-- id: search-layer-build
-  title: Wire first/any/all into the general nondeterministic-evaluation model from draft.md#query-is-search (gh:142 ruling, coordinate with search-and-fold-design)
-  kind: build
-  needs: []
-  status: delegated
-
 - id: sort-by-max-by
   issue: gh:177
   title: sort_by and max_by -- ordering through a scalar projection (euler-ergonomics row 7)
   kind: build
   needs: [sum-max-builtins-build]
-  status: delegated
-
-- id: param-destructure-build
-  title: Implement match-arm-style parameter destructuring, e.g. fn gcd({a, b}:{a:Int,b:Int}) (gh:144 ruling)
-  kind: build
-  needs: []
   status: delegated
 
 - id: bigint-tracking
