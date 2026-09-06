@@ -32,7 +32,7 @@
   kind: build
   needs: [call-form-hoist-check]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: dsv-partials-migration
   issue: gh:136
