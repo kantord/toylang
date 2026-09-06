@@ -12,14 +12,14 @@ type Db = {users: Vec<U>}
 
 fn adults(db: Db) -> Vec<Str> = db.users | select(.age >= 18) | .[].name
 
-adults(input)
+adults(parse(stdin))
 "#;
 
 const WRITTEN_OUT: &str = r#"
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
     db.users | select(.age >= 18) | .[].name
 
-adults(input)
+adults(parse(stdin))
 "#;
 
 /// The strongest statement of transparency available: every backend emits the same bytes either
@@ -50,10 +50,12 @@ fn an_alias_emits_identically_to_the_type_written_out() {
 #[test]
 fn an_alias_is_invisible_in_errors() {
     insta::assert_snapshot!(
-        toylang::compile("type Db = {users: Vec<Int>}\n\nfn f(d: Db) -> Str = d\n\nf(input)")
-            .map(|_| ())
-            .unwrap_err()
-            .to_string()
+        toylang::compile(
+            "type Db = {users: Vec<Int>}\n\nfn f(d: Db) -> Str = d\n\nf(parse(stdin))"
+        )
+        .map(|_| ())
+        .unwrap_err()
+        .to_string()
     );
 }
 

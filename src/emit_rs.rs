@@ -160,6 +160,21 @@ const TAIL_HELPER: &str = r#"fn tl_tail<T: Clone>(v: &[T]) -> Option<Vec<T>> {
 }
 "#;
 
+const FIRST_HELPER: &str = r#"fn tl_first<T: Clone>(v: &[T]) -> Option<T> {
+    v.first().cloned()
+}
+"#;
+
+const ANY_HELPER: &str = r#"fn tl_any(v: &[bool]) -> bool {
+    v.iter().any(|&x| x)
+}
+"#;
+
+const ALL_HELPER: &str = r#"fn tl_all(v: &[bool]) -> bool {
+    v.iter().all(|&x| x)
+}
+"#;
+
 const FLATTEN_HELPER: &str = r#"fn tl_flatten<T: Clone>(vv: &[Vec<T>]) -> Vec<T> {
     let mut out = Vec::new();
     for v in vv {
@@ -282,13 +297,15 @@ const READ_HELPER: &str = r#"fn tl_read_all_stdin() -> Vec<u8> {
 /// Split on `\n` only, matching `jq -R` and Python's raw stdin iteration rather than Rust's own
 /// `BufRead::lines`, which also swallows a `\r` before it -- CRLF is ordinary content here, not a
 /// line terminator. The final line is yielded even with no trailing `\n`, deliberately not `wc
-/// -l`'s undercount; empty stdin yields zero lines, not one empty one.
+/// -l`'s undercount; empty stdin yields zero lines, not one empty one. A non-UTF-8 byte is
+/// refused rather than replaced: a `Str` is Unicode scalar values, and a byte that is not one
+/// should not exist long enough to disagree about (kantord/toylang#102).
 fn tl_read_lines() -> Vec<String> {
     let bytes = tl_read_all_stdin();
     if bytes.is_empty() {
         return Vec::new();
     }
-    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let text = String::from_utf8(bytes).unwrap_or_else(|_| tl_fail("stdin is not valid UTF-8"));
     let mut out: Vec<String> = text.split('\n').map(|s| s.to_string()).collect();
     if text.ends_with('\n') {
         out.pop();
@@ -608,10 +625,12 @@ pub fn emit(program: &Program) -> String {
     let mut used = Used::default();
     let mut records = Vec::new();
     let mut enums = Vec::new();
+    let mut parse_types: Vec<Type> = Vec::new();
     let mut ctx = Collect {
         used: &mut used,
         records: &mut records,
         enums: &mut enums,
+        parse_types: &mut parse_types,
         registry: &program.enums,
     };
     for f in &program.funcs {
@@ -636,6 +655,11 @@ pub fn emit(program: &Program) -> String {
     // parser for a shape the checker already promised can never cross the wire.
     let mut wire: Vec<Type> = Vec::new();
     for ty in [&program.input, &program.inputs].into_iter().flatten() {
+        collect_wire(&program.enums, ty, &mut wire);
+    }
+    // A `parse` result is delivered the same way stdin is, so its type's parsers are needed
+    // too; without this a record/enum parse would emit a call to a parser that never existed.
+    for ty in &parse_types {
         collect_wire(&program.enums, ty, &mut wire);
     }
 
@@ -740,6 +764,7 @@ pub fn emit(program: &Program) -> String {
         || arith
         || arith64
         || reads_value
+        || used.parse
         || uses("tl_at(")
         || uses("tl_tail(")
         || uses("tl_range(")
@@ -758,6 +783,9 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_slice("), SLICE_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
+        (uses("tl_first("), FIRST_HELPER),
+        (uses("tl_any("), ANY_HELPER),
+        (uses("tl_all("), ALL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
         (uses("tl_sort("), SORT_HELPER),
         (uses("tl_reverse("), REVERSE_HELPER),
@@ -767,10 +795,10 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_chars("), CHARS_HELPER),
         (uses("tl_dsv("), DSV_HELPER),
         (
-            reads_value || uses("tl_read_all_stdin(") || uses("tl_read_lines("),
+            reads_value || uses("tl_read_all_stdin(") || uses("tl_read_lines(") || used.parse,
             READ_HELPER,
         ),
-        (reads_value || uses("TlParser"), PARSER_HELPER),
+        (reads_value || uses("TlParser") || used.parse, PARSER_HELPER),
         (uses("tl_quote("), QUOTE_HELPER),
         (uses("tl_join("), JOIN_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
@@ -825,6 +853,8 @@ fn collect_wire(enums: &Enums, ty: &Type, out: &mut Vec<Type>) {
 #[derive(Default)]
 struct Used {
     jsonlines: bool,
+    /// Whether `parse` was called on a plain string, which needs the reader and parser helpers.
+    parse: bool,
 }
 
 /// One walk, collecting the record types that need a struct declaration (and a parser, if the
@@ -833,6 +863,8 @@ struct Collect<'a> {
     used: &'a mut Used,
     records: &'a mut Vec<Type>,
     enums: &'a mut Vec<Type>,
+    /// The result types of every `Builtin::Parse`, so their record/enum parsers are emitted.
+    parse_types: &'a mut Vec<Type>,
     /// Every enum the program declared. The variant list on a `Type::Enum` in hand may be a
     /// placeholder, so the payloads to descend into are read from here (`ty::variants`).
     registry: &'a Enums,
@@ -921,7 +953,9 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
-            Kind::Slice { base, start, end, .. } => {
+            Kind::Slice {
+                base, start, end, ..
+            } => {
                 self.walk(base);
                 if let Some(s) = start {
                     self.walk(s);
@@ -942,6 +976,12 @@ impl Collect<'_> {
             Kind::Builtin { which, arg } => {
                 if *which == Builtin::JsonLines {
                     self.used.jsonlines = true;
+                }
+                if *which == Builtin::Parse {
+                    self.used.parse = true;
+                    if !self.parse_types.contains(&t.ty) {
+                        self.parse_types.push(t.ty.clone());
+                    }
                 }
                 self.walk(arg);
             }
@@ -1272,10 +1312,9 @@ impl Emitter<'_> {
             Kind::Lines => "tl_read_lines()".to_string(),
             // RFC 4180 field scanning over the same raw lines `lines` keeps, the scanner in
             // DSV_HELPER.
-            Kind::Dsv { delim } => format!(
-                "tl_dsv(&tl_read_lines(), {}.as_str())",
-                rs_string(delim)
-            ),
+            Kind::Dsv { delim } => {
+                format!("tl_dsv(&tl_read_lines(), {}.as_str())", rs_string(delim))
+            }
             Kind::RecordLit { fields } => {
                 let parts: Vec<String> = fields
                     .iter()
@@ -1305,6 +1344,13 @@ impl Emitter<'_> {
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("({}).to_string()", self.expr(arg)),
+                // Read the string as one value, refusing any trailing content the way stdin is
+                // read: `tl_parse_line` is the per-document path `inputs` uses.
+                Builtin::Parse => format!(
+                    "tl_parse_line(&{}, {})",
+                    self.expr(arg),
+                    self.parser_expr(&t.ty)
+                ),
                 Builtin::IntToI64 => format!("(({}) as i64)", self.expr(arg)),
                 Builtin::Range => format!("tl_range({})", self.expr(arg)),
                 Builtin::Chars => format!("tl_chars(&{})", self.expr(arg)),
@@ -1322,6 +1368,9 @@ impl Emitter<'_> {
                 Builtin::Collect => self.expr(arg),
                 Builtin::Length => format!("(({}).len() as i32)", self.expr(arg)),
                 Builtin::Tail => format!("tl_tail(&{})", self.expr(arg)),
+                Builtin::First => format!("tl_first(&{})", self.expr(arg)),
+                Builtin::Any => format!("tl_any(&{})", self.expr(arg)),
+                Builtin::All => format!("tl_all(&{})", self.expr(arg)),
                 Builtin::Flatten => format!("tl_flatten(&{})", self.expr(arg)),
                 Builtin::Sort => format!("tl_sort(&{})", self.expr(arg)),
                 Builtin::Reverse => format!("tl_reverse(&{})", self.expr(arg)),
@@ -1438,7 +1487,10 @@ impl Emitter<'_> {
                 })
             }
             Kind::Slice {
-                base, start, end, depth,
+                base,
+                start,
+                end,
+                depth,
             } => {
                 let lo = match start {
                     Some(s) => self.expr(s),

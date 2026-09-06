@@ -256,6 +256,22 @@ pub enum Builtin {
     /// same two integer element types `sum` takes, so a backend can reach for its native
     /// maximum.
     Max,
+    /// `parse(s)`, `Str -> T`: read `s` as one JSON value of the checked type `T`. The
+    /// type-descriptor-driven reader every backend already uses for stdin, applied to a string
+    /// in hand rather than to the whole of stdin. `parse(stdin)` and `stdin | map(parse(.))`
+    /// do not reach here -- the checker lowers those to `Input` and `Inputs`, reusing the
+    /// single-read machinery -- so a `Parse` node's argument is always an ordinary Str value.
+    Parse,
+    /// `first(v)`, `Vec<T> -> Opt<T>`: the first entry, `None` when `v` is empty -- the cut
+    /// that commits to what you have and abandons the remaining alternatives
+    /// (draft.md#query-is-search). Generic over the element type the way `tail` is.
+    First,
+    /// `any(v)`, `Vec<Bool> -> Bool`: whether any entry is true. The existential cut: an
+    /// empty Vec has no true entry, so it is false.
+    Any,
+    /// `all(v)`, `Vec<Bool> -> Bool`: whether every entry is true. The universal cut: an
+    /// empty Vec has no false entry, so it is true (vacuously).
+    All,
 }
 
 pub struct Func {
@@ -519,8 +535,9 @@ fn reachable_enums(enums: &Enums, ty: &Type, seen: &mut Vec<Type>, found: &mut V
 
 /// Every node in the tree, `t` itself included, in no particular order. The backends each walk
 /// the tree their own way, gathering what their own target needs; this is for the questions
-/// that are the same on every target.
-fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
+/// that are the same on every target. Public so `offload::explain` can report on every
+/// sub-expression the same way. 
+pub fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
     f(t);
     match &t.kind {
         Kind::Str(_)
@@ -570,7 +587,9 @@ fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
             each_node(base, f);
             each_node(index, f);
         }
-        Kind::Slice { base, start, end, .. } => {
+        Kind::Slice {
+            base, start, end, ..
+        } => {
             each_node(base, f);
             if let Some(s) = start {
                 each_node(s, f);

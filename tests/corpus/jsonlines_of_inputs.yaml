@@ -6,7 +6,7 @@ program: |
   fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
       users | select(.age >= 18) | map {name: .name}
 
-  jsonlines adults inputs
+  jsonlines adults (stdin | map(parse(.)))
 
 input: |
   {"name": "ada", "age": 36}

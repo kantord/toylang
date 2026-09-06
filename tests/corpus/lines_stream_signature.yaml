@@ -6,7 +6,7 @@ program: |
   fn shout(names: Stream<Str>) -> Stream<Str> =
       names | select(. != "bo") | map {who: . + "!"} | .[].who
 
-  join_lines collect shout lines
+  join_lines collect shout stdin
 
 input: |
   ada

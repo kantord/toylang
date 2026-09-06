@@ -4,7 +4,7 @@
 program: |
   fn f(v: Vec<Int>) -> Int = length(v)
 
-  {a: f(input), b: input}
+  {a: f(parse(stdin)), b: parse(stdin)}
 
 input: |
   [1, 2, 3]

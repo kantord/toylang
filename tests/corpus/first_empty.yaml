@@ -1,0 +1,12 @@
+# The cut commits to the first answer and abandons the rest, so an empty Vec has nothing to
+# commit to and yields the absent Opt, which prints as null. The empty Vec<Int> comes from a
+# declared return type, since a bare `[]` literal cannot be typed.
+program: |
+  fn nothing() -> Vec<Int> = []
+
+  first(nothing())
+
+output: |
+  null
+
+node_types: [application, builtin.first, vec-literal]

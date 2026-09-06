@@ -1,6 +1,6 @@
 ---
 source: tests/streams.rs
-assertion_line: 247
-expression: "err(\"fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\\n\\nf(input)\")"
+assertion_line: 249
+expression: "err(\"fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\\n\\nf(parse(stdin))\")"
 ---
-`input` is one value read from stdin, but Stream<Str> is wanted here (at byte 49)
+`parse(stdin)` is one value read from stdin, but Stream<Str> is wanted here (at byte 49)

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Project-scoped addition to the maintainer's global allow-list (chezmoi-managed,
+  // ~/.config/opencode/opencode.jsonc). Lives here rather than there because the
+  // maintainer's ruling (float-format-research-sandbox escalation, option 1,
+  // 2026-09-03) widened exec permission for THIS project's lanes only, not the
+  // maintainer's opencode config everywhere else it runs. `cargo *` and `rustc *`
+  // are already allowed globally; `go` had no rule at all, so `go run` fell to the
+  // global catch-all ("ask") and auto-refused headless -- blocking the
+  // float-format-research lane's empirical round-trip check of Go's float
+  // formatting against the JS/Python/Rust references.
+  "permission": {
+    "bash": {
+      "go run*": "allow"
+    }
+  }
+}

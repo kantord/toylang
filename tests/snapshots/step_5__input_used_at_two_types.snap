@@ -1,5 +1,6 @@
 ---
 source: tests/step_5.rs
-expression: "err(r#\"\nfn a(x: Int) -> Str = x | \"n\"\nfn b(x: Str) -> Str = x\n\na(input) + b(input)\n\"#)"
+assertion_line: 89
+expression: "err(r#\"\nfn a(x: Int) -> Str = x | \"n\"\nfn b(x: Str) -> Str = x\n\na(parse(stdin)) + b(parse(stdin))\n\"#)"
 ---
-`input` is used as Int here and as Str elsewhere (at byte 69)
+`parse(stdin)` is used as Int here and as Str elsewhere (at byte 76)

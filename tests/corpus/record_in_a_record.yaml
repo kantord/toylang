@@ -5,7 +5,7 @@
 program: |
   fn deep(db: Vec<{a: {b: Int}}>) -> Vec<Int> = db[].a.b
 
-  deep input
+  deep parse(stdin)
 
 input: |
   [{"a": {"b": 1}}, {"a": {"b": 2}}]

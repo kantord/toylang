@@ -1,0 +1,8 @@
+# The universal cut: one false entry is enough to fail the whole cut, so the result is false.
+program: |
+  all([1 == 1, 1 == 2])
+
+output: |
+  false
+
+node_types: [builtin.all, compare.eq, int, vec-literal]

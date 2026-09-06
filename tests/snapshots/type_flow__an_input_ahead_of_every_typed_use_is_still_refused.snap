@@ -1,5 +1,6 @@
 ---
 source: tests/type_flow.rs
+assertion_line: 105
 expression: "err(\"fn f(v: Vec<Int>) -> Int = length(v)\\n\\n{a: input, b: f(input)}\")"
 ---
-cannot tell what `input` contains (at byte 42)
+`input` is not defined (at byte 42)

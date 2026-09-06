@@ -117,6 +117,37 @@ const TAIL_HELPER: &str = r#"func tlTail[T any](v []T) tlOpt[[]T] {
 }
 "#;
 
+const FIRST_HELPER: &str = r#"func tlFirst[T any](v []T) tlOpt[T] {
+	if len(v) == 0 {
+		return tlOpt[T]{}
+	}
+	return tlOpt[T]{true, v[0]}
+}
+"#;
+
+// A Bool is a bool here, so the cut is a scan for (or past) the first true/false. An empty
+// Vec is false for `any` and vacuously true for `all`, which is what falling off the end
+// gives.
+const ANY_HELPER: &str = r#"func tlAny(v []bool) bool {
+	for _, x := range v {
+		if x {
+			return true
+		}
+	}
+	return false
+}
+"#;
+
+const ALL_HELPER: &str = r#"func tlAll(v []bool) bool {
+	for _, x := range v {
+		if !x {
+			return false
+		}
+	}
+	return true
+}
+"#;
+
 const FLATTEN_HELPER: &str = r#"func tlFlatten[T any](vv [][]T) []T {
 	out := []T{}
 	for _, v := range vv {
@@ -259,7 +290,11 @@ func tlCollectLines() []string {
 	s.Buffer(make([]byte, 0, 65536), 1024*1024)
 	s.Split(tlScanLines)
 	for s.Scan() {
-		out = append(out, s.Text())
+		line := s.Text()
+		if !utf8.ValidString(line) {
+			tlFail("stdin is not valid UTF-8")
+		}
+		out = append(out, line)
 	}
 	return out
 }
@@ -516,14 +551,14 @@ pub fn emit(program: &Program) -> String {
     let arith = uses("tlDiv(") || uses("tlRem(");
     let arith64 = uses("tlDiv64(") || uses("tlRem64(");
     let collect = uses("tlCollectLines(") || uses("tlScanLines");
-    let fail = unwrap || arith || arith64 || program.input.is_some() || program.inputs.is_some();
+    let fail = unwrap || arith || arith64 || collect || program.input.is_some() || program.inputs.is_some() || uses("tlFail(");
     let quote = uses("tlQuote(");
     let join = uses("tlJoin(");
 
     let mut helpers = String::new();
     // tlOpt is what tlAt and tlUnwrap are written in terms of, and inference means the emitted
     // text need never spell it. Helper-to-helper dependencies are stated rather than read back.
-    if uses("tlOpt[") || uses("tlAt(") || uses("tlTail(") || unwrap {
+    if uses("tlOpt[") || uses("tlAt(") || uses("tlTail(") || uses("tlFirst(") || unwrap {
         helpers.push_str(OPT_TYPE);
         helpers.push('\n');
     }
@@ -538,6 +573,9 @@ pub fn emit(program: &Program) -> String {
         (uses("tlAt("), AT_HELPER),
         (uses("tlSlice("), SLICE_HELPER),
         (uses("tlTail("), TAIL_HELPER),
+        (uses("tlFirst("), FIRST_HELPER),
+        (uses("tlAny("), ANY_HELPER),
+        (uses("tlAll("), ALL_HELPER),
         (uses("tlFlatten("), FLATTEN_HELPER),
         (uses("tlSort("), SORT_HELPER),
         (uses("tlReverse("), REVERSE_HELPER),
@@ -568,10 +606,10 @@ pub fn emit(program: &Program) -> String {
     for (on, names) in [
         (fail || reads_stdin || collect, &["os"][..]),
         (collect, &["bufio", "bytes"]),
-        (reads_stdin, &["encoding/json"]),
+        (reads_stdin || used.json_parse, &["encoding/json"]),
         (program.inputs.is_some(), &["io"]),
         (join || quote || used.jsonlines || uses("tlDsv("), &["strings"]),
-        (uses("tlDsv("), &["unicode/utf8"]),
+        (uses("tlDsv(") || collect, &["unicode/utf8"]),
         (uses("tlSort("), &["cmp", "slices"]),
         (uses("tlMax("), &["cmp"]),
         (uses("tlEq("), &["reflect"]),
@@ -639,6 +677,9 @@ struct Used {
     /// ordinary `has_scalar` check on the program's own result type misses whenever that result
     /// is exactly `Str` -- true for every `jsonlines` call, since that is what it returns.
     jsonlines_has_scalar: bool,
+    /// Whether `parse` was called on a plain string, which needs `encoding/json` to decode it
+    /// the same way stdin is decoded.
+    json_parse: bool,
 }
 
 /// One walk, collecting the record types that need declaring and the two builtins whose imports
@@ -737,7 +778,9 @@ impl Collect<'_> {
                 self.walk(base);
                 self.walk(index);
             }
-            Kind::Slice { base, start, end, .. } => {
+            Kind::Slice {
+                base, start, end, ..
+            } => {
                 self.walk(base);
                 if let Some(s) = start {
                     self.walk(s);
@@ -766,6 +809,7 @@ impl Collect<'_> {
                     }
                     // Purely textually gated below, like tlAt and tlRange: nothing here needs
                     // the element type, so there is nothing to record on the walk.
+                    Builtin::Parse => self.used.json_parse = true,
                     Builtin::IntToI64
                     | Builtin::Range
                     | Builtin::Collect
@@ -777,7 +821,10 @@ impl Collect<'_> {
                     | Builtin::Sort
                     | Builtin::Reverse
                     | Builtin::Sum
-                    | Builtin::Max => {}
+                    | Builtin::Max
+                    | Builtin::First
+                    | Builtin::Any
+                    | Builtin::All => {}
                 }
                 self.walk(arg);
             }
@@ -947,6 +994,7 @@ impl Emitter<'_> {
                 out.push_str("\ts.Split(tlScanLines)\n");
                 out.push_str("\tfor s.Scan() {\n");
                 out.push_str("\t\tt_line := s.Text()\n");
+                out.push_str("\t\tif !utf8.ValidString(t_line) {\n\t\t\ttlFail(\"stdin is not valid UTF-8\")\n\t\t}\n");
                 ("t_line".to_string(), Type::Str)
             }
             // The bound is evaluated once; the loop counter is the element. A negative bound
@@ -1030,10 +1078,7 @@ impl Emitter<'_> {
             // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
             // works on the slice of its entries.
             Kind::Lines => "tlCollectLines()".to_string(),
-            Kind::Dsv { delim } => format!(
-                "tlDsv(tlCollectLines(), {})",
-                go_string(delim)
-            ),
+            Kind::Dsv { delim } => format!("tlDsv(tlCollectLines(), {})", go_string(delim)),
             // go_type resolves the struct name, and the collector registered it because a
             // record literal carries its own record type.
             Kind::RecordLit { fields } => {
@@ -1090,6 +1135,16 @@ impl Emitter<'_> {
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("strconv.FormatInt(int64({}), 10)", self.expr(arg)),
                 Builtin::IntToI64 => format!("int64({})", self.expr(arg)),
+                // Decode the string as one JSON value into the result type, the same path stdin
+                // already uses (`json.NewDecoder(os.Stdin).Decode`). A failed parse stops the
+                // program the way a malformed stdin value would.
+                Builtin::Parse => {
+                    let ty = self.go_type(&t.ty);
+                    format!(
+                        "func() {ty} {{ var v {ty}; if err := json.Unmarshal([]byte({}), &v); err != nil {{ tlFail(err.Error()) }}; return v }}()",
+                        self.expr(arg)
+                    )
+                }
                 Builtin::Range => format!("tlRange({})", self.expr(arg)),
                 Builtin::Chars => format!("tlChars({})", self.expr(arg)),
                 Builtin::JsonLines => {
@@ -1106,6 +1161,9 @@ impl Emitter<'_> {
                 Builtin::Collect => self.expr(arg),
                 Builtin::Length => format!("int32(len({}))", self.expr(arg)),
                 Builtin::Tail => format!("tlTail({})", self.expr(arg)),
+                Builtin::First => format!("tlFirst({})", self.expr(arg)),
+                Builtin::Any => format!("tlAny({})", self.expr(arg)),
+                Builtin::All => format!("tlAll({})", self.expr(arg)),
                 Builtin::Flatten => format!("tlFlatten({})", self.expr(arg)),
                 Builtin::Sort => format!("tlSort({})", self.expr(arg)),
                 Builtin::Reverse => format!("tlReverse({})", self.expr(arg)),
@@ -1208,7 +1266,10 @@ impl Emitter<'_> {
                 })
             }
             Kind::Slice {
-                base, start, end, depth,
+                base,
+                start,
+                end,
+                depth,
             } => {
                 let lo = match start {
                     Some(s) => self.expr(s),

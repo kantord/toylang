@@ -1,0 +1,8 @@
+# The existential cut: no true entry means no cut to make, so the result is false.
+program: |
+  any([1 == 2, 2 == 3])
+
+output: |
+  false
+
+node_types: [builtin.any, compare.eq, int, vec-literal]

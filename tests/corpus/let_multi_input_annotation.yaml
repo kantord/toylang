@@ -9,8 +9,7 @@ program: |
       let b = p.y * 3
       a + b
 
-  input {x: Int, y: Int}
-  f(input)
+  f(parse(stdin))
 
 input: |
   {"x": 3, "y": 4}

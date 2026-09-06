@@ -8,12 +8,22 @@ nothing. Three jobs:
    ahead/dirty/live/runs/last_activity -- so "how long has this been stuck"
    is a query over a ledger instead of an agent's guess.
 2. DETECT: a lane is stuck when it has no live worker, no commits ahead, at
-   least one attempted run, and no activity for STUCK_AFTER seconds.
+   least one attempted run, no activity for STUCK_AFTER seconds, and the
+   board row it belongs to is still live (`todo`/`delegated`) -- a lane whose
+   row already landed or was finished by hand through some other path is
+   stale, not stuck (kantord/toylang#149's Native and jq Float rows were
+   landed directly while their own lanes sat untouched, 2026-09-04).
 3. CONVERT: snapshot the evidence (last event log tail, git status/diff) into
    plans/incidents/ BEFORE a redispatch can destroy it, insert a top-priority
    investigation row into plans/board.yaml, and commit both. The row asks WHY
    the lane got stuck (brief clarity / capability gap / tooling trap / task
    shape), not for the task itself to be done.
+
+A lane is named `issue-<N>`, but `N` is not always a bare gh issue number: a
+row with no single owning issue (several rows can share one `gh:149`) is
+dispatched under its own row-id slug instead (`dispatch-worker.sh <row-id>`,
+the enwiro-delegate skill's research-dispatch convention). Every lookup
+keyed on `N` (the owning row, its `issue:` field) checks both readings.
 
 Dedup: the board row id (stuck-issue-N-investigation) is checked against both
 board files; the investigating-issue-N marker survives until the lane lands
@@ -55,23 +65,50 @@ def live_worker_dirs():
             continue
     return dirs
 
-def lane_state(d, live_dirs):
+def sandbox_live_names():
+    """Names of currently-running microsandbox VMs (sandbox_dispatch.py names
+    them sd-<row-id>, truncated to 32 chars). This is a wholly separate
+    liveness signal from live_worker_dirs() above: a sandboxed dispatch's
+    actual opencode process runs INSIDE the guest via `msb exec`, so the host
+    /proc scan never sees it and the lane's cwd is never set either -- this
+    gap caused two false stuck-lane alarms against lanes the sandbox harness
+    was actively (and successfully) finishing, 2026-09-06."""
+    msb = os.path.expanduser("~/.local/bin/msb")
+    rc, out = sh([msb, "list"])
+    if rc != 0:
+        return set()
+    names = set()
+    for line in out.splitlines()[1:]:  # header row: NAME IMAGE STATUS CREATED
+        parts = line.split()
+        if len(parts) >= 3 and parts[2] == "running":
+            names.add(parts[0])
+    return names
+
+def lane_state(d, live_dirs, sandbox_names):
     name = os.path.basename(d.rstrip("/"))
     real = os.path.realpath(d)
+    row_id = name.split("-", 1)[1] if "-" in name else name
     _, ahead = sh(["git", "-C", d, "rev-list", "--count", "main..HEAD"])
     _, status = sh(["git", "-C", d, "status", "--porcelain"])
     tracked = [l for l in status.splitlines() if not l.startswith("??")]
     logs = sorted(glob.glob(os.path.join(OC_DIR, f"*-{name}.jsonl")))
     last_log = max((os.path.getmtime(p) for p in logs), default=0)
+    # sandbox_dispatch.py's own log lives outside OC_DIR under a different
+    # naming pattern, and it is the only host-visible trace of a sandboxed
+    # dispatch's progress (the guest's own per-phase logs are invisible here).
+    sandbox_logs = glob.glob(os.path.join(LOG_DIR, f"sandbox-dispatch-{row_id}*.log"))
+    last_sandbox_log = max((os.path.getmtime(p) for p in sandbox_logs), default=0)
+    sandbox_live = any(row_id == n or row_id.startswith(n[3:]) or n[3:].startswith(row_id)
+                        for n in sandbox_names if n.startswith("sd-"))
     _, ct = sh(["git", "-C", d, "log", "-1", "--format=%ct"])
     return {
         "ts": int(time.time()),
         "lane": name,
         "ahead": int(ahead.strip() or 0),
         "tracked_dirty": len(tracked),
-        "live": any(w.startswith(real) for w in live_dirs),
-        "runs": len(logs),
-        "last_activity": int(max(last_log, float(ct.strip() or 0))),
+        "live": any(w.startswith(real) for w in live_dirs) or sandbox_live,
+        "runs": len(logs) + (1 if sandbox_logs else 0),
+        "last_activity": int(max(last_log, last_sandbox_log, float(ct.strip() or 0))),
     }
 
 def board_has_row(row_id):
@@ -79,6 +116,20 @@ def board_has_row(row_id):
         with open(os.path.join(REPO, f)) as fh:
             if row_id in fh.read():
                 return True
+    return False
+
+def lane_row_live(n):
+    """Whether the board row a lane named `issue-<n>` belongs to is still
+    `todo` or `delegated` in plans/board.yaml. False for a row that landed and
+    archived, or one someone finished by hand outside its own lane (a real
+    case: kantord/toylang#149's Native and jq Float rows were landed directly
+    while their lanes sat untouched, 2026-09-04) -- either way, a worktree
+    with no live row behind it is stale, not stuck."""
+    import yaml
+    rows = yaml.safe_load(open(os.path.join(REPO, "plans/board.yaml")))
+    for r in rows:
+        if str(r.get("id", "")) == n or str(r.get("issue", "")) == f"gh:{n}":
+            return r.get("status") in ("todo", "delegated")
     return False
 
 def snapshot_evidence(lane, st):
@@ -99,15 +150,35 @@ def snapshot_evidence(lane, st):
             f.writelines(lines[-300:])
     return os.path.relpath(inc, REPO)
 
+def board_issue(n):
+    """The `issue:` field (e.g. 'gh:149') of the board row a lane named `issue-<n>`
+    belongs to, or None if that row carries no issue. `n` is either a bare gh issue
+    number (the classic one-lane-per-issue flow) or a board row's own `id` (a slug
+    lane, dispatched as `dispatch-worker.sh <row-id>` for a row with no single
+    owning issue -- several rows can share one `gh:149`, so they cannot all be
+    lane `issue-149`). Matched against plans/board.yaml only: a row that already
+    landed and archived is not what "stuck" is asking about."""
+    import yaml
+    rows = yaml.safe_load(open(os.path.join(REPO, "plans/board.yaml")))
+    for r in rows:
+        issue = r.get("issue")
+        if str(r.get("id", "")) == n:
+            return issue
+        if issue and str(issue) == f"gh:{n}":
+            return issue
+    return None
+
 def insert_row(lane, inc_rel, st):
     n = lane.split("-", 1)[1]
+    issue = board_issue(n)
+    issue_line = f"  issue: {issue}\n" if issue else ""
     hours = (int(time.time()) - st["last_activity"]) // 3600
     row = (
         f"- id: stuck-{lane}-investigation\n"
         f"  kind: build\n"
         f"  status: todo\n"
         f"  needs: []\n"
-        f"  issue: gh:{n}\n"
+        f"{issue_line}"
         f"  title: 'INVESTIGATE stuck lane {lane} (no activity {hours}h, {st['runs']}"
         f" run(s), 0 commits): evidence frozen in {inc_rel}/ -- read it plus the lane"
         f" worktree, then report in plans/opencode-rollout.md whether this was brief"
@@ -147,13 +218,23 @@ def commit(lane, inc_rel):
 def main():
     os.makedirs(OC_DIR, exist_ok=True)
     live_dirs = live_worker_dirs()
+    sandbox_names = sandbox_live_names()
     now = int(time.time())
     with open(HISTORY, "a") as hist:
         for d in sorted(glob.glob(os.path.join(LANES, "issue-*/"))):
             lane = os.path.basename(d.rstrip("/"))
-            if not lane.replace("issue-", "").isdigit():
+            row_id = lane.split("-", 1)[1] if "-" in lane else lane
+            # An investigation lane going stuck needs a human glance at why
+            # the ORIGINAL lane stalled, not another investigation about the
+            # investigation -- confirmed live, 2026-09-06: an unattended
+            # investigation lane recursed into
+            # stuck-issue-<...>-investigation-investigation with nothing to
+            # stop a further layer next time. Investigation rows are exactly
+            # the ones most likely to sit unattended (nothing currently
+            # prioritizes them over fresh work), so this is not a rare edge.
+            if row_id.startswith("stuck-") and row_id.endswith("-investigation"):
                 continue
-            st = lane_state(d, live_dirs)
+            st = lane_state(d, live_dirs, sandbox_names)
             hist.write(json.dumps(st) + "\n")
             marker = os.path.join(LOG_DIR, f"investigating-{lane}")
             # A lane parked on a maintainer escalation is stuck ON PURPOSE --
@@ -163,11 +244,19 @@ def main():
                 continue
             board_busy = sh(["git", "-C", REPO, "diff", "--quiet",
                              "--", "plans/board.yaml"])[0] != 0
-            if (not st["live"] and st["ahead"] == 0 and st["runs"] >= 1
+            # "Not clearly done" (maintainer ruling) covers two shapes: a lane
+            # that ran and produced nothing, AND a lane with commits plus a
+            # dirty tree the land keeps refusing as red -- ahead>0+dirty fit
+            # no tick tier and sat invisible (issue-159, 2026-09-02). A clean
+            # lane with commits ahead is landable, not stuck: the land owns it.
+            undone = (st["tracked_dirty"] > 0
+                      or (st["ahead"] == 0 and st["runs"] >= 1))
+            if (not st["live"] and undone
                     and now - st["last_activity"] >= STUCK_AFTER
                     and not os.path.exists(marker)
                     and not board_busy  # a tick mid-edit owns the board; retry next tick
-                    and not board_has_row(f"stuck-{lane}-investigation")):
+                    and not board_has_row(f"stuck-{lane}-investigation")
+                    and lane_row_live(lane.split("-", 1)[1])):
                 inc_rel = snapshot_evidence(lane, st)
                 insert_row(lane, inc_rel, st)
                 if commit(lane, inc_rel):

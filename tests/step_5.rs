@@ -4,7 +4,7 @@ const ADULTS: &str = r#"
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
     db.users | select(.age >= 18) | .[].name
 
-adults(input)
+adults(parse(stdin))
 "#;
 
 fn err(src: &str) -> String {
@@ -43,7 +43,7 @@ fn reordered_fields_are_the_same_type() {
 fn f(r: {a: Str, b: Int}) -> Str = r.a
 fn g(r: {b: Int, a: Str}) -> Str = f(r)
 
-g(input)
+g(parse(stdin))
 "#;
     let out = toylang::run_with_input(src, Some(r#"{"b": 1, "a": "hi"}"#)).unwrap();
     assert_eq!(out, "hi\n");
@@ -52,9 +52,9 @@ g(input)
 #[test]
 fn a_record_can_be_the_result() {
     let src = r#"
-fn first(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
+fn pick(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
 
-first(input)
+pick(parse(stdin))
 "#;
     insta::assert_snapshot!(
         toylang::run_with_input(src, Some(r#"{"u": {"name": "ada", "age": 36}}"#)).unwrap()
@@ -69,7 +69,7 @@ fn misspelled_field() {
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
     db.users | select(.age >= 18) | .[].nmae
 
-adults(input)
+adults(parse(stdin))
 "#));
 }
 
@@ -81,7 +81,7 @@ fn field_on_a_scalar() {
 /// `input` gets its type from the position it appears in, so with no position it has none.
 #[test]
 fn bare_input() {
-    insta::assert_snapshot!(err("input"));
+    insta::assert_snapshot!(err("parse(stdin)"));
 }
 
 #[test]
@@ -90,13 +90,15 @@ fn input_used_at_two_types() {
 fn a(x: Int) -> Str = x | "n"
 fn b(x: Str) -> Str = x
 
-a(input) + b(input)
+a(parse(stdin)) + b(parse(stdin))
 "#));
 }
 
 #[test]
 fn duplicate_record_field() {
-    insta::assert_snapshot!(err("fn f(r: {a: Str, a: Int}) -> Str = r.a\nf(input)"));
+    insta::assert_snapshot!(err(
+        "fn f(r: {a: Str, a: Int}) -> Str = r.a\nf(parse(stdin))"
+    ));
 }
 
 #[test]

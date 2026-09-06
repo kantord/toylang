@@ -370,3 +370,498 @@ Recommendation:**re-dispatch the same row**, not a drop and not a scope reshape 
 - Mark the row `delegated` on re-dispatch (it is still `todo`, so another tick could double-dispatch),and rebase the worktree onto current main before dispatching (the lane base is 88 commits behind origin/main;the task is self-contained against files already in the base, so rebasing is cheap insurance against a land-time conflict)。
 
 Written by DeepSeek V4 Flash via opencode.
+| 2026-09-02 | issue-169 (stuck-issue-169-investigation, gh:169) | The stuck-lane investigation and the escalated original task (issue-150 let-bindings, later re-scoped to an `input <type>` annotation per the lane's own committed `ESCALATION.md`, 4df542d) share one lane/worktree. After that escalation was ruled on and a continuation was dispatched, two more runs fired in the same worktree (~21:03-21:05) and both ended the identical way: read `ESCALATION.md` and sibling incident folders (hitting permission denials on cross-worktree reads), wrote nothing, then auto-fired landing with zero commits ahead of main. Four consecutive commitless runs total on this lane (2 pre-escalation, 2 post-rebrief). | $0.005, 4 commitless runs across two dispatch cycles, zero code written | Unclear -- the shared-lane design (one worktree serving both the meta-investigation brief and the escalated feature's continuation brief) looks like the real defect: whichever brief a generic continuation dispatch resumes is ambiguous, not a DeepSeek-specific failure. Escalated to the maintainer (issue-169-investigation-stall round) rather than redispatching a fifth time. |
+
+## Stale board row: `input-type-annotation-build` (gh:150) had already landed (2026-09-02)
+
+Tried to dispatch the freshly-boarded `input-type-annotation-build` row (issue: gh:150) into
+a lane and `dispatch-worker.sh` refused: branch `issue-150` already exists with no worktree.
+`git merge-base main issue-150` came back equal to `issue-150`'s own tip (`421450f`, dated
+Aug 30) -- that commit is already an ancestor of `main`. It IS the `input <type>` annotation
+this board row asked for (same corpus fixture, `tests/corpus/input_annotation.yaml`, same
+`{x, y}` shape), landed by an earlier lane before the issue-169 shared-lane saga even started.
+`just check` is green on current `main` with the feature present. Archived the row
+(`board-archive.py input-type-annotation-build`) instead of dispatching a duplicate worker;
+did not touch the orphaned `issue-150` branch (deletion isn't this router's call). Lesson:
+before dispatching a freshly-boarded build row, check whether an orphaned branch of the same
+name already contains it -- `dispatch-worker.sh`'s stale-branch refusal is a real signal to
+inspect, not just a naming collision to route around.
+
+## Near-miss: `stuck-issue-172-investigation` dispatched without `BRIEF_RAW=1`, reused a live gh number (2026-09-02)
+
+Same class of mistake as the issue-168 incident above (2026-09-02, "used the wrong brief
+wrapper"): dispatched `dispatch-worker.sh 172 "<investigation brief>"` without `BRIEF_RAW=1`
+for a lane whose number (172) is also a real, unrelated open GitHub issue (the gh:159 re-file,
+stdin/`Stream<Str>` redesign) -- the standard wrapper's `gh issue view 172` pulls that issue's
+real text, not investigation instructions. Unlike issue-168, the worker's live log shows it
+followed the task-specific investigation text anyway (went straight for
+`plans/incidents/issue-172-20260902/`, pulled the frozen evidence via `git show
+e7a290d:plans/...` when the local copy was missing) rather than getting misdirected into the
+stdin-redesign feature -- so this run looks fine in progress, but it was luck, not the brief
+being correct. Also: board row `stdin-redesign-build-2` (status: delegated) targets the same
+lane number (issue-172) for the *actual* gh:172 feature work; if that row's own dispatch
+follows later, it will land in the same worktree as this investigation, the exact shared-lane
+shape that stalled issue-169. Follow-up for next tick: always pass `BRIEF_RAW=1` for
+stuck-lane-investigation dispatches (the script's own doc comment already names this as the
+"research dispatches, custom continuations" case), and give `stdin-redesign-build-2` a lane
+number that doesn't collide with an investigation row before dispatching it.
+| 2026-09-02 | issue-153 (stuck-issue-153-investigation / declare-terminator-build, gh:153) | Runs 1-2 died from backtick-command-substitution permission denials, rebriefed with that root cause on 2026-09-01 (3a2d02d). Runs 3-4, dispatched with the corrected brief, hit a different wall: edit-tool string-mismatch failures partway through the same `src/parse.rs` refactor (tokenize `;`, remove the old cross-line-call heuristic, rewire `input <type>`), leaving a coherent but uncommitted diff each time -- `Tok::Semicolon` is tokenized but never consumed; no run reached the actual terminator-parsing change gh:153 asks for. | $0 marginal (all four runs zero-committed), 4 commitless runs across two dispatch cycles, zero code landed | Unclear -- the diff's shape suggests dispatch size/duration, not task difficulty: one continuous session tries to tokenize + delete a heuristic + rewire a call site + add new parsing all at once. Escalated to the maintainer (issue-153-investigation-stall round, options: split into two smaller dispatches / stronger model / drop) rather than redispatching a fifth time. |
+
+## Resolved without a third dispatch: `stuck-issue-172-investigation`, root cause fully visible on disk (2026-09-02)
+
+2 commitless runs, both under lane `issue-172` (the near-miss above already flagged this
+lane collided with `stdin-redesign-build-2`'s real gh:172 work). Read both event logs
+directly instead of dispatching a third run:
+
+- Run 1 (`20260902-204336-issue-172.jsonl`): spent its whole budget re-deriving context
+  (`gh issue view 172`, walking `issue-159`'s abandoned worktree, `git show` on the
+  reference diff) then died when the user-permission layer rejected a `read` of
+  `/tmp/ref.diff` -- never reached the incident evidence or wrote a report.
+- Run 2 (`20260902-214450-issue-172.jsonl`): correctly found the frozen evidence at
+  `plans/incidents/issue-172-20260902/` via `git show e7a290d:plans/...` (local copy was
+  missing, main was 6 commits ahead of the checkout), read `opencode-rollout.md` for the
+  report format, then died the same way -- a `cat` of the full first-run log (after already
+  reading it once at `limit=`) got rejected by the permission layer. Never wrote a report.
+
+Root cause: both runs are permission-trap deaths, not task-shape or brief-clarity failures --
+the investigation *brief itself* is fine (run 2 followed it correctly end-to-end up to the
+report step); what killed both runs was re-reading an already-large file a second time in one
+shot instead of paging with `limit=`/`tail`. That is exactly the class of thing a fresh
+dispatch would repeat, since the trap is in how these workers read logs, not in what they were
+told to investigate.
+
+Answering the investigation's own three questions from this evidence directly (no third run
+needed): not brief clarity (run 2 read the brief and evidence correctly), not a capability gap,
+not task shape -- it is a tooling/permission trap (oversized single-shot reads of files already
+read once) compounded by the still-open lane-collision risk with `stdin-redesign-build-2`
+(follow-up already logged above, unchanged: give that row its own non-colliding lane before
+dispatching it). Archiving `stuck-issue-172-investigation` on this finding rather than spending
+a third commitless run to rediscover it.
+
+## `mutation-semantics-spike` and `float-build-lua`: 2 commitless runs each, exploration without a stopping point (2026-09-02)
+
+Both lanes were redispatched once already this evening (~22:14-22:16, corrected at ~22:34-22:39)
+and both still landed at zero commits, worktrees exactly at main -- not a permission trap this
+time, a different root cause each:
+
+- `mutation-semantics-spike`: the second run did substantial legitimate exploration (linearity.rs,
+  tir.rs, emit_lua.rs, emit_rs.rs, ty.rs, corpus tests, draft.md, matcher-parser-spike.md) but
+  the brief ("spike the analysis... before a real decide row reopens this") names no concrete
+  deliverable, so the worker never reaches a natural point to stop investigating and write.
+  It ran to a rejected tool call near the end of budget having written nothing.
+- `float-build-lua`: the second run opened with exactly the right reference (`src/emit_js.rs`'s
+  Float impl, `src/emit_lua.rs`'s current state) in its first four steps, then abandoned that
+  path to spend the rest of the budget diffing `float-build-go`/`float-build-python`'s commit
+  history instead -- an unrequested detour into sibling lanes -- and never touched `emit_lua.rs`.
+
+Rebriefed both (BRIEF_RAW=1, continuation dispatch in the same worktree) rather than repeating
+the failed brief: `mutation-semantics-spike` now gets a capped exploration budget and a named
+three-question findings-doc deliverable to commit even if partial; `float-build-lua` is told
+explicitly not to read the Go/Python/Rust sibling lanes and to port straight from the JS Float
+impl it already found. Both still under the 4-run escalation threshold.
+
+## `stuck-issue-159-investigation`: root cause already on the board, no dispatch needed (2026-09-03)
+
+`stuck-watch.py` auto-filed this row against the `issue-159` worktree (no activity 4h, 4
+run(s), 0 commits at detection time). No worker was dispatched to investigate it: the root
+cause is already fully documented elsewhere on the board and predates the watchdog's alert.
+`stdin-redesign-build-2` (gh:172)'s own title records the history -- the maintainer ruled
+2026-09-02 (option C, "drop the poisoned issue-159 lane, re-board under a fresh lane id rather
+than repair it") after the lane collided with a real, unrelated open issue also numbered 172.
+The `issue-159` worktree has stood abandoned in place since that ruling, permission-denied
+cleanup left as garbage on purpose, its one commit (`45c76be`) kept only as reference for the
+re-derived `stdin-redesign-build-2` work.
+
+Answering the investigation's own three questions from that existing record: not brief clarity,
+not a capability gap, not a tooling trap -- this was a maintainer cleanup decision, already
+executed, that the watchdog has no way to see (it only sees worktree inactivity, not board
+history). Archiving `stuck-issue-159-investigation` on this finding; no rebrief or reshape
+needed since there is no live task left in that lane to rebrief.
+
+## Resolved without a third dispatch: `stuck-issue-174-investigation`, structurally undoable by a sandboxed worker (2026-09-03)
+
+The original `trait-interface-build` stall (run 1, `20260902-221014-issue-174.jsonl`) is a
+task-shape failure: the worker spent its whole ~34-minute budget on broad orientation (full
+reads of `parse.rs`, `check/mod.rs`, `ty.rs`, `tir.rs`, `prelude.rs`, `lib.rs`,
+`check/types.rs`, plus `draft.md` and grep sweeps for colon-call precedent) across a task that
+spans parser + AST + checker + TIR + six codegen backends + prelude impls in one shot, and
+never reached a first edit.
+
+The investigation dispatched to explain that (`20260902-224729-issue-174.jsonl`, 7 steps) could
+not do its job at all: the incident evidence it was told to read lives at the absolute path
+`/home/kantord/repos/toylang/plans/incidents/issue-174-20260902/`, outside the worker's own
+`~/.local/share/toylang-lanes/issue-174` worktree/sandbox. Both attempts to read it (the
+directory listing and the marker file) were permission-rejected, and the run gave up after 7
+steps having written nothing to `plans/opencode-rollout.md`. A second dispatch would fail
+identically -- opencode workers cannot read outside their own worktree, so an incident frozen
+in the main checkout is structurally unreachable to them, exactly as already established for
+`stuck-issue-172-investigation` above.
+
+Answering the investigation's own three questions from the coordinator-side evidence directly:
+not brief clarity, not a capability gap in the model itself -- it is a tooling/permission trap
+(sandbox boundary) for the investigation row, and separately a task-shape problem (too large
+for one-shot orientation) for the underlying `trait-interface-build` row. Archiving
+`stuck-issue-174-investigation` on this finding; `trait-interface-build` was rebriefed in the
+same tick to a parse-only first slice (AST + parser only, no checker/codegen/prelude), reusing
+the freed `issue-174` lane.
+
+## Escalated: three lanes stuck at 4+ commitless runs, same root shape (2026-09-03)
+
+`function-signature-matching-syntax` (gh:152, 4 runs), `stdin-redesign-build-2` (gh:172, 4
+runs), and `float-format-research` (gh:149, 6 runs) all independently hit the identical
+failure shape: every run reads the issue, walks git log/source/corpus tests to rebuild
+context, and runs out of step budget before a first edit or written finding -- no permission
+denials involved for 152/172, a genuine one for 149 (brief asked it to read scratch probe
+files living in a *different* lane's worktree, `issue-float-build-python`, denied by the
+sandbox boundary already established for issue-172/174). Read all four lanes' `.live.log`
+tails directly rather than dispatching more investigation runs (evidence was conclusive).
+
+Archived the now-redundant `stuck-issue-152-investigation` row (it would only re-derive the
+diagnosis already made here). Did not redispatch any of the three -- three unrelated task
+shapes stalling identically looks like a capability ceiling on DeepSeek V4 Flash for
+context-heavy tasks, not three brief-wording problems, and this is the second time 149 alone
+has stalled after an in-place rebrief (see the 2026-09-02 entry above). Composed one
+escalation round, `docs/.grill/stalled-lanes-escalation.round.yaml`, with a per-lane
+stronger-model / reshape / drop question; touched `escalated-issue-152`,
+`escalated-issue-172`, `escalated-issue-149`. `trait-interface-build` (gh:174, run 3, same
+rediscovery shape plus a repeat cross-worktree-denial detour into `plans/incidents/`) is one
+run under the escalation threshold -- rebriefed in place instead with an explicit
+incident-folder ban and a narrower first slice (just the `trait`/`impl` keywords and AST
+parse, pointing at `src/parse.rs:173-176` directly) rather than escalated.
+
+## Escalation ruling applied: all three stalled lanes redispatched on GLM 5.2 (2026-09-03)
+
+Maintainer wizard answers on `stalled-lanes-escalation` (captured 2026-09-03 18:07, applied
+same tick): all three questions -- `function-signature-matching-syntax` (gh:152),
+`stdin-redesign-build-2` (gh:172), `float-format-research` (gh:149) -- ruled **Stronger
+model**, none reshaped or dropped. Redispatched all three in their existing worktrees with
+`OPENCODE_MODEL=openrouter/z-ai/glm-5.2` (confirmed live via `opencode models`), same task
+scope as before with the prior stall summarized in-brief so the run doesn't spend its budget
+re-deriving what's already known. `float-format-research`'s brief still carries the
+probe-file read that's been sandbox-denied every prior run (the maintainer picked
+"Stronger model," not "Reshape," for that question specifically, despite the option
+description flagging that a model bump alone won't fix a permission boundary) -- told the
+worker explicitly not to retry that read if denied again and to fall back to public
+knowledge instead. This is the first GLM 5.2 dispatch of the rollout; worth a first data
+point for the eventual model-ladder comparison once these land or stall again.
+## Incident: issue-http-query-sugar-research (gh:171) dead on a self-inflicted toolchain probe (2026-09-01
+
+Root cause (from `20260901-231026-issue-http-query-sugar-research.jsonl.tail`): a long one-run session of correct desk research (board row, gh:171 body, the sources family and `Sink` in tir.rs/ty.rs, the `dsv(delim)` parameterized-source precedent, the 7-backend list in lib.rs, draft.md's streams-and-sinks decisions) then `which go node python3 jq cc rustc` to survey which backend toolchains exist on the host -- denied by the permission classifier -- and the worker exited immediately after, zero commits, zero file writes, no ESCALATION.md, no `plans/http-query-sugar-research.md`. Exactly the gh:163 (erlang-target-research) shape one lane later: an unnecessary toolchain probe on a task that needed none, followed by give-up-on-first-denial.
+
+
+
+Classification: brief clarity, not capability, tooling, or task shape. The worker had effectively finished the research -- three syntax candidates designed in-session,and the per-backend capability claims its survey needed are public API knowledge, not host measurements. The permission gate blocked nothing the deliverable needed;`which` was as optional here as `which erl escript erlc` was for gh:163. The task shape is the same desk-review spike gh:163 landed after its rebrief. What was missing was the brief:the gh:163 fix ("no toolchain/execution needed, docs+source read only") was applied to that lane's rebrief only, never baked into the default research-spike brief `dispatch-worker.sh` hands every fresh lane, so the next research spike replayed the identical probe-then-give-up. The board row's own phrasing ("survey what request/response building blocks already exist per backend (Go net/http, JS fetch, Python urllib, Lua, Rust reqwest, native)") invites the probe;it also carries a factual wrinkle -- the Rust backend emits self-contained files with no external crates, so `reqwest` is not available to it -- that only a probe could have made worse, not better.
+
+
+
+Rebrief (redo, not reshape or drop:the deliverable is still needed, same as gh:163). Re-dispatch into the same lane with the standard brief plus: "This is DESK RESEARCH, docs + source read-only: no toolchain or execution is needed or allowed, so do not run `which`, version checks, or any host probe (all denied). the per-backend survey is a documented-semantics comparison against src/emit_*.rs, docs/reference/, and public API knowledge, not measurements. One correction to the board row:the Rust backend cannot use reqwest -- self-contained emitted file, no external crates -- so Rust+HTTP ends at 'no HTTP, no TLS in stdlib' without new deps. Write findings to plans/http-query-sugar-research.md and commit per AGENTS.md."
+
+Worth carrying into the dispatch template, so this shape stops needing a per-lane rebrief:make the "no toolchain/execution needed" line part of the default brief for research rows (or add `which <tool>` probes to KNOWN DENIALS). The give-up-after-one-denial behavior itself is already logged as the 30-lane-review data point (issue-108/125/133/163);this lane adds another instance, not a new class.
+
+## Fixed: OPENCODE_MODEL redispatch not persisted, escalation ruling applied for real (2026-09-04)
+
+Root cause of the 2026-09-03 "stronger model" ruling silently not applying (8
+commitless issue-172 runs, confirmed by lane telemetry still showing
+`openrouter/deepseek/deepseek-v4-flash-0731` on run 8): `OPENCODE_MODEL` was a
+one-shot env var read by `opencode-worker.sh` with no persistence in
+`dispatch-worker.sh`, so any redispatch that didn't re-set the env var by hand
+(continuation dispatch, event-driven re-run) fell back to the hardcoded
+default. Maintainer wizard ruling on `stdin-redesign-stall-escalation`
+(captured 2026-09-04 20:22, applied same tick): option 1, fix the persistence
+gap and redispatch for real.
+
+Fixed `dispatch-worker.sh`: an explicit `OPENCODE_MODEL` at dispatch time is
+now written to `.opencode-model` in the lane worktree; a later dispatch with
+no `OPENCODE_MODEL` set falls back to reading that file if present. Redispatched
+`issue-172` with `OPENCODE_MODEL=openrouter/z-ai/glm-5.2`, confirmed via
+`ps` that the live worker is running `opencode run -m openrouter/z-ai/glm-5.2`
+and that `.opencode-model` now holds that value, so future redispatches of
+this lane (and any lane that gets an explicit model override) stay on it
+without needing the env var re-supplied every time.
+
+## 2026-09-04: stdin-redesign-build-2 (issue-172) escalated again -- brief-shape, not model
+
+The 2026-09-04 stronger-model ruling (GLM 5.2, persisted via `.opencode-model`) was applied
+and the redispatched run used it correctly, but still landed 0 commits (run 9 total). Unlike
+prior runs, this one reasoned cleanly to a real structural finding: the 2026-09-03 reshape's
+commit-1 boundary ("parse.rs + tir.rs only, tree stays green") cannot compile, because
+`Builtin` is matched exhaustively with no catch-all arm in `check/mod.rs` and all 8
+`emit_*.rs` files -- confirmed directly against `src/emit_js.rs`. Escalation round composed:
+docs/.grill/stdin-redesign-shape.round.yaml (marker: escalated-issue-172). Root cause this
+time is the reshape ruling's own commit boundary, not brief clarity or model strength --
+future redispatches of this lane should wait for the ruling rather than retrying.
+## Investigation: `issue-float-format-research` stuck at 3 commitless runs on two permission walls (2026-09-04)
+
+Lane stats at capture: 3 runs, 0 commits, clean tracked tree, live false, only
+untracked scratch files (`scratch_float_py.py`, `scratch_float_go/main.go`) left behind. Base is
+`5e2fd24` (2026-09-03, the "escalate float-build-{go,python,rust} stall" commit), 72
+commits behind `origin/main`. Two frozen tails survive in
+`plans/incidents/issue-float-format-research-20260904/`.
+
+Run 1 (20:21:35) was competent and progressing: read the issue, the ADR, and
+`src/float.rs` (the JS reference: Rust's `f64::to_string()`, the shortest round-trip
+decimal = JS's `String(number)`), grepped the backends (`Float is JS-only in every non-JS
+row`), wrote and ran a Python probe successfully (repr(float): always a `.0` suffix on
+integral values, fixed notation in [1e-4, 1e16), exponent form outside that with
+`e+NN`/`e-NN`, zero-padded exponent digits), wrote a Go probe, and died when
+`go run ./scratch_float_go` auto-refused headless. No finding committed.
+
+Run 2 (22:52:49) found the `float-format-research` row only in `origin/main`'s
+board.yaml (its own base predates the row),traced the sandbox-widening ruling via git log,
+then followed the board row's "read the float-build-python lane's probe files for a concrete
+lead" instruction into the sandbox boundary: all five cross-worktree reads denied,and it
+stopped, commitless, without writing anything. This is the same probe-read wall the task's
+dispatch note names as the prior-stall cause,and it fired after the stronger-model redispatch
+commit (8891ca5, GLM 5.2),its behavior matches what the escalation entry said the brief
+carried ("told the worker explicitly not to retry that read if denied again") -- if that run
+was the GLM dispatch, it reproduced the stall exactly as the option description warned (a model
+bump alone won't fix a permission boundary).
+
+Diagnosis: **tooling/permission trap**, compounded by a **brief-clarity** defect, not a
+capability gap(and only weakly task shape):
+
+- **Wall #1: `go run` is denied.** Already ruled on (float-format-research-sandbox
+  escalation, `c92073a`, 2026-09-03 22:53): the ruling added `opencode.jsonc`
+  allowing `go run*` for this project, because `go` had no allow rule and fell to the global
+  catch-all ("ask"), auto-refused headless. But that fix landed on `main`, and this lane's base
+  (`5e2fd24`) predates it -- a redispatch on the current worktree would reproduce run 1's
+  death verbatim until the branch is refreshed onto main.
+- **Wall #2: cross-worktree reads are denied.** The board row's own lead -- the
+  issue-float-build-python lane's probe files -- lives outside the sandbox boundary, denied
+  every prior attempt (run 2 hit it on all five files;issue-172/174 set the precedent).It is
+  a poison instruction for a sandboxed worker: it either kills the run with denials,or, were
+  it allowed, it would be reading a different lane's uncommitted scratch -- an ephemeral,
+  unversioned data source, not a durable lead. The 2026-09-03 escalation already told the
+  stronger-model run not to retry it, which it did anyway. It must come out of the board row,
+  not be carried forward.
+
+- Not capability: both runs read the right sources and made real progress (run 1 had the
+  Python leg complete and was one tool call from Go's);the survey itself is close, not hard.
+-
+
+Proposal (rebrief/reshape of `float-format-research`):
+
+1. **Refresh the lane base onto `main` before redispatch** -- else run 1's `go run` denial
+   (now fixed on main via `opencode.jsonc`) repeats from the stale base.
+ The `float-build-python`/`float-build-go`/`float-build-rust` siblings carry
+   `needs: [float-format-research]` (per origin/main's board),so unblocking this lane
+   unblocks three.
+2. **Amend the board row**: drop the cross-worktree probe-read clause entirely(denied every
+   attempt;unversioned scratch is not a lead a sandboxed worker can use). Substitute the
+   already-in-worktree probes as the concrete lead: `scratch_float_py.py` (run 1's complete
+   Python probe)and `scratch_float_go/main.go` (its Go probe, written but never run -- now
+   runnable on a refreshed base),with documented-behavior fallback (strconv.FormatFloat /
+   repr(float) docs,`cargo`/`rustc` are globally allowed) if a probe is denied again.
+3. **Pre-seed the reference**: state that `src/float.rs` (`f64::to_string()`) = JS
+   `String(number)` = shortest round-trip decimal,and that the deliverable is per-backend
+   *spelling convention*, not the digits themselves -- the digits already agree by construction.
+
+   Run 1 re-derived this;give the next run that finding for free instead of re-burning budget.
+
+4. **Add a landing rule**: commit each backend's guidance as soon as that backend's probe
+   leg is done (one backend per commit, mirroring the float-build-* sibling reshapes),not
+   hold all three uncommitted while chasing the last leg. The board row's "a partial written
+   finding beats another commitless run" is already there,but both deaths came before any
+   write;the landing rule only bites once the walls are gone,or.
+5. If a fresh run stalls again after steps 1-4 (the go-run wall now genuinely gone):then
+   reshape the row to accept the survey from documented behavior as the deliverable -- the
+   formatting conventions are documented facts and the cross-language differences are themselves
+   the finding, not something needing live execution to record. The empirical-verification
+   requirement is the ask worth dropping, not the survey.
+
+
+## Remaining pipeline problems and scaling limits, surveyed after a night of heavy autonomous use (2026-09-06)
+
+Context: this covers one continuous stretch spanning an OAuth outage, a full host reboot, the
+sandboxed plan-decompose harness (`sandbox_dispatch.py`) landing two genuinely stuck tasks
+(issue-172, float-format-research), and three more tasks dispatched and landed after that. Every
+item below was hit directly or confirmed by reading the relevant script, not inferred.
+
+### 1. The serial landing queue's lock can be silently stolen by an unrelated process
+
+`land-lane.sh` serializes all landings through `flock -w 1800 8` on a fixed path,
+`/tmp/toylang-land.lock`. Tonight, `sccache` (the Rust compiler cache daemon, unrelated to this
+pipeline) ended up holding an `flock` on that exact inode -- almost certainly inode reuse in
+`/tmp` after the lock file was deleted and recreated at some point in this file's lifetime, with
+sccache having separately opened and flocked some other temp file that happened to land on the
+same inode number. Two concurrent `land-lane.sh land <N>` invocations (mine, and the
+coordinator's own for issue-152) both queued behind this phantom holder for 10+ minutes before it
+happened to clear. Nothing in the pipeline can detect or break this class of lock -- the 1800s
+timeout is the only recovery, and every landing attempt during that window is silently stalled
+with no error, just `do_wait` in `ps`. **Scaling impact**: as landing frequency increases, the
+odds of colliding with some other process's transient use of `/tmp` rise; a fixed, well-known
+path in a shared, high-churn directory is not the failure mode a growing pipeline can absorb
+gracefully. Fix: move the lock to a path scoped to this pipeline alone (e.g.
+`~/.cache/toylang-drive/land.lock`, a directory nothing else touches) so accidental inode
+collisions with unrelated host daemons become structurally impossible.
+
+### 2. `ensure_committed()`'s tracked-path allowlist has already fallen behind once, silently, with real data loss on the line
+
+`land-lane.sh`'s auto-commit-a-green-dirty-tree path does `git add -u` then
+`git add -- src tests docs site plans` (line ~104) -- a hand-maintained list of directories,
+extended once already (2026-09-02, issue-168, to add `src/` for a new file `git add -u` alone
+missed). Tonight, `benchmark-fasta-build`'s new files (`benches/programs/fasta.toy`,
+`benches/inputs/fasta.txt`) landed under `benches/`, which is **not** in that list. Had the
+worker's own exit triggered this path unattended (it would have, on any run I did not manually
+intervene in), the untracked-file cleanup two lines later --
+`git -C "$d" clean -fdq` -- would have **permanently deleted the new benchmark program and its
+input fixture** before they were ever committed, the exact same failure class as the 2026-09-02
+incident (which was about `plans/*.md` findings), just in a directory nobody had hit yet. This is
+not a hypothetical: I caught it only by manually diffing the sandbox's git status before letting
+the harness's own commit step run. **Scaling impact**: every new top-level content category this
+project adds (a new `benches/`, a future `fixtures/`, a future `assets/`) silently re-opens this
+exact data-loss window until the next incident happens to surface it, because the fix is indexed
+to specific past incidents rather than to the actual invariant ("anything a worker legitimately
+creates should never be swept by `git clean`"). Fix: invert the allowlist to a denylist of
+genuinely-scratch top-level paths (a short, explicit list: root-level loose files, `/tmp`-style
+scratch dirs workers are told to use), or simply drop the `git clean -fdq` step and instead
+report untracked files in the land log for a human/coordinator glance -- the false-positive cost
+of an occasional real scratch file lingering is far cheaper than silently deleting real work.
+
+### 3. The sandboxed dispatch mechanism is completely invisible to the stuck-lane watchdog
+
+`stuck-watch.py`'s liveness check (`live_worker_dirs()`) only recognizes a live lane by scanning
+`/proc/*/comm` for a process literally named `opencode` or `claude` whose `cwd` is inside the
+lane worktree. Its secondary activity signal (`lane_state()`) globs
+`~/.cache/toylang-drive/opencode/*-<lane>.jsonl` for a log mtime. `sandbox_dispatch.py`'s real
+work happens inside a microsandbox VM via `msb exec` -- the host-side process is `python3`, `msb`,
+and short-lived `git`/`msb exec` calls, never a process named `opencode` with the lane's cwd; its
+logs live at `~/.cache/toylang-drive/sandbox-dispatch-<id>.log` (plain text, not the jsonl glob
+pattern) and, for the actual opencode run output, *inside the guest's own filesystem*
+(`/root/opencode-run-*.log`), which the host-side watchdog cannot see at all. Result, confirmed
+directly tonight: the watchdog auto-filed `stuck-issue-benchmark-fasta-build-investigation` and
+`stuck-issue-benchmark-fannkuch-redux-build-investigation` for two lanes that were, at that exact
+moment, being actively and (for fasta) successfully worked via the sandbox. Cost: a wasted
+worker dispatch on a bogus investigation, a spurious board row that needed manual archival, and
+-- in a case where nobody happened to be watching -- the real risk that a coordinator tick reads
+the false "stuck" signal as ground truth and takes a destructive action (killing/reassigning a
+lane that was fine). **Scaling impact**: the sandbox harness is the mechanism that actually
+unblocks tasks the plain dispatch-worker.sh path cannot (permission-wall tasks, tasks needing
+`webfetch`) -- exactly the highest-value, hardest cases. As sandboxed dispatch becomes a bigger
+fraction of total work (which it should, given tonight's results), the fraction of false stuck-
+lane alarms grows with it, unless the watchdog is taught the sandbox's own activity signals
+(check `msb list`/`msb exec <name> -- stat ...` for the sandbox's mtime, or have
+`sandbox_dispatch.py` write a lane-name-matching heartbeat file the existing glob can find).
+
+### 4. Non-numeric lane slugs never trigger a direct landing -- they depend entirely on the coordinator noticing
+
+`opencode-worker.sh`'s `fire_next()` only calls `land-lane.sh land <N>` directly when the lane
+name matches `issue-[0-9]*` (a real GitHub issue number); every other lane shape (research/
+benchmark/decompose slugs like `benchmark-fasta-build`, `float-format-research` -- which is now
+the *normal* naming convention for a growing share of dispatched work, not an edge case) instead
+just fires a generic `drive-tick.sh` and hopes the coordinator's own duty-(b) logic ("a landable
+lane the event missed") notices and lands it. Tonight this worked, but only because the
+coordinator's tick was healthy and its policy explicitly names this duty; for stretches where the
+coordinator's own `claude -p` calls are failing (see #6) or busy elsewhere, a finished
+non-numeric lane has no direct path to landing at all -- it just sits, indistinguishable from a
+lane nobody has looked at, until some tick happens to have bandwidth. **Scaling impact**: as the
+non-numeric-slug share of work grows, so does the population of "finished but not yet landed"
+lanes silently waiting on an indirect, best-effort mechanism, with no forcing function
+comparable to the direct call numeric lanes get. Fix: extend `fire_next()`'s case pattern to
+also directly land any lane whose worktree exists (drop the numeric-only restriction) --
+`land-lane.sh` already no-ops safely on a lane with nothing to land.
+
+### 5. Long-lived lane worktrees produce false-negative `just check` results the pre-landing gate trusts
+
+Twice tonight, `just check` run *inside a lane's own long-lived worktree* failed on
+`native_agrees_where_it_compiles`/`rust_agrees_where_it_compiles` (an insta snapshot of which
+corpus programs compile), while the identical committed state verified clean in a fresh clone.
+Root cause not fully chased (most likely a stale incremental `target/` build cache reused across
+many hours and many merges in the same worktree), but the practical effect is real: land-lane.sh's
+own pre-check (`if (cd "$d" && just check) ...`, see #2's code) runs this exact fragile check
+*in the lane worktree*, not a fresh clone -- so a perfectly good, fully-committed piece of work can
+be wrongly judged "RED, not done" and skipped, exactly as happened to `draft-core-model-migration`
+tonight (its own `site/public/corpus.json` diff was real, but the red verdict was worktree
+staleness, not a real regression). I only caught it by manually cloning `origin/main` fresh and
+re-running `just check` there for comparison. **Scaling impact**: the more lanes stay open longer
+(more concurrent work, slower human/coordinator attention), the more worktrees accumulate this
+kind of staleness, and the false-negative rate on this specific pre-check rises with lane
+lifetime, not with anything about the actual change being landed. Fix: either `cargo clean`
+lane worktrees periodically (cheap insurance, costs a slow next build), or -- better -- change
+this specific pre-check to verify against a disposable clone the way the REAL landing gate
+already does a few lines later, so the pre-check and the real gate can never disagree.
+
+### 6. The whole autonomous loop has one silent single point of failure: OAuth, with no alerting
+
+For roughly 40 minutes tonight, every coordinator tick's `claude -p ...` call failed immediately
+with `Failed to authenticate: OAuth session expired and could not be refreshed`. Nothing surfaced
+this beyond a line in `event-ticks.log` that looks, at a glance, identical to a healthy tick's
+own stderr noise -- there is no distinct alert, no escalation, no board row, nothing that would
+catch a maintainer's eye short of reading the raw tick log closely. During that window: no
+landings happened, no new work was dispatched, and (worse) the retry-cap/failure-streak logic
+that watches *lane* health has no equivalent watching *coordinator* health -- a lane gets escalated
+to the mailbox after N commitless runs, but the coordinator silently failing its own turn N times
+in a row triggers nothing. **Scaling impact**: as the pipeline runs for longer unattended
+stretches, any credential/infra failure of this shape (auth expiry, API outage, a changed API key)
+produces the same silent, total stop with no signal -- exactly the "full blocker in the mailbox"
+gap the maintainer identified earlier this session for lane-level stalls, but here at the
+coordinator level, which is more severe since it stops *everything*, not one lane. Fix: have the
+tick wrapper (`drive-tick.sh`) detect its own `claude -p` auth/API failures specifically (grep the
+captured stderr for the known failure strings) and, on N consecutive failures, write directly to
+a place a human will see it fast (not just append to a log) -- e.g. a dedicated
+`~/.cache/toylang-drive/COORDINATOR-DOWN` sentinel plus a docs/.grill/ round, since that channel
+is already the established maintainer-facing escalation path.
+
+### 7. This session itself demonstrated the risk of multiple uncoordinated autonomous loops
+
+At various points tonight there were: the "real" self-perpetuating coordinator (a `claude -p`
+session that re-schedules itself via its own tool call), a `drive-loop.sh` I started by hand
+(redundant with the above, and which did not survive detached backgrounding reliably), and one to
+three `sandbox_dispatch.py` runs I drove directly -- all capable of dispatching workers and
+attempting landings against the same board and the same main checkout, with only `land-lane.sh`'s
+own flock actually serializing the landing half of that (dispatch has no equivalent lock; two
+dispatch-worker.sh calls for the same lane are guarded by the `live worker (pid $p) owns $d`
+check, which is itself a `/proc` scan racy for the exact reason #3 describes). Nothing melted
+down tonight, but it took deliberate manual reconciliation (checking `git log`, `board.yaml`,
+which lock a process actually held) more than once to be sure two mechanisms weren't about to
+double-apply the same work. **Scaling impact**: as more independent triggers for autonomous
+action exist (a human starting a manual sandbox run, a scheduled loop, a webhook-driven one), the
+surface for this kind of race grows faster than the coordination primitives (one flock, one
+`/proc` scan) were designed for. Worth a single source of truth for "what is currently allowed to
+touch this repo's landing/dispatch surface" before the next mechanism is added, rather than after
+the first real collision.
+
+### 8. Confirmed live: the stuck-lane watchdog can recursively investigate its own investigations
+
+`stuck-watch.py` has a dedup guard against re-filing the *same* investigation twice
+(`not board_has_row(f"stuck-{lane}-investigation")`), but nothing stops it from investigating a
+lane whose name already IS an investigation. Caught mid-flight tonight: the coordinator's own
+tick dispatched a worker into `stuck-issue-benchmark-fannkuch-redux-build-investigation` (a
+perfectly normal `kind: build` row, dispatched like any other) as part of a batch of three; that
+worker never ran to completion in the time since, so 30+ minutes later (`STUCK_AFTER = 30*60`)
+the exact same "not live, no commits, no escalation marker" criteria that flags any ordinary
+stalled lane fired again -- this time producing a board row literally named
+`stuck-issue-stuck-issue-benchmark-fannkuch-redux-build-investigation-investigation`. Nothing in
+the age/liveness check distinguishes "a real task nobody has worked yet" from "a meta-task about
+a task nobody has worked yet"; each additional unattended cycle would prepend another
+`stuck-issue-...-investigation` layer indefinitely. Older investigation rows sitting `delegated`
+for 10-38h (`float-format-research-investigation`, the four `float-build-*-investigation` rows)
+apparently never hit this because their worktrees no longer exist on disk (the loop only scans
+`glob(LANES/issue-*/)`) -- itself further evidence of the stale-bookkeeping pattern noted
+elsewhere tonight (board rows outliving their worktrees in both directions: "delegated" rows
+whose work already landed, and "delegated" rows whose worktree was silently lost). **Scaling
+impact**: this is the one finding here that gets structurally *worse*, not just more frequent, as
+volume grows -- an investigation lane is exactly as likely to itself go unattended as any other
+lane (arguably more likely, since nothing currently prioritizes clearing them), and each miss
+compounds into more board noise than the miss before it. Fix: skip lanes whose name matches
+`^stuck-.*-investigation$` in the scan entirely (an investigation that stalls needs a human
+glance, not another investigation of why it stalled), and separately, prioritize dispatching
+existing investigation rows over fresh work so they do not accumulate a queue of their own.
+
+### Summary: what's actually blocking further scale
+
+Ranked by how much they'd bite as volume grows, not by how loud they were tonight: **(2) the
+`ensure_committed` allowlist gap** is the most dangerous (silent data loss, already proven twice
+under two different directories) and cheapest to fix; **(1) the lock-file collision** and
+**(6) the silent coordinator-auth outage** are the ones that most directly cap total throughput
+(everything stops, nobody notices); **(3) watchdog blindness to sandboxed lanes** and
+**(4) non-numeric lanes lacking a direct land path** both get worse specifically *because* the
+sandbox harness (this session's main positive result) is the right tool for an increasing share
+of future work; **(8) recursive self-investigation** is the one that compounds on its own even if
+nothing else changes, since it feeds on the watchdog's own unresolved output; **(5) worktree
+staleness** is a slow-accumulating tax rather than a hard stop. None of these are reasons to slow
+down the rollout -- they are the concrete list of what the next round of hardening should target
+before volume triples.
+of future work; **(5) worktree staleness** is a slow-accumulating tax rather than a hard stop.
+None of these are reasons to slow down the rollout -- they are the concrete list of what the next
+round of hardening should target before volume triples.

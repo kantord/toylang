@@ -2,7 +2,7 @@
 # backends, none of which pre-materializes it in Rust first. `collect` is the one place a
 # stream becomes an ordinary Vec; `join_lines` and printing are unchanged from every other program.
 program: |
-  join_lines collect lines
+  join_lines collect stdin
 
 input: |
   ada
