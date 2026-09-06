@@ -263,7 +263,7 @@
   needs: []
   soft: [draft-intro-migration, draft-questions-home]
   prio: 4
-  status: todo
+  status: delegated
 
 - id: draft-numbers-operators-migration
   title: Verify the Int/Float/equality sections against ADRs 0006/0007/0010 and the reference; move what's missing, delete (draft-split)
