@@ -192,7 +192,16 @@ fn spawn_py(program: &str) -> Child {
 }
 
 fn spawn_js(program: &str) -> Child {
-    spawn_interpreted(program, toylang::emit_js::emit, "program.js", "node", &[])
+    spawn_interpreted(
+        program,
+        |p| {
+            // The node target never refuses: only the web target has the stdin check.
+            toylang::emit_js::emit(p, toylang::emit_js::JsTarget::Node).expect("node emits")
+        },
+        "program.js",
+        "node",
+        &[],
+    )
 }
 
 fn spawn_jq(program: &str) -> Child {
