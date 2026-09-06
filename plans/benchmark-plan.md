@@ -94,6 +94,18 @@ tree, a long-lived tree, and a loop of many trees at each depth) to the single b
 core, which is what the language can express today; the loop-of-many-trees shape adds nothing a
 recursive count doesn't already exercise, so it was left out rather than force-fit.
 
+`fasta` is landed (`benches/programs/fasta.toy`, correctness pinned at
+`tests/corpus/fasta_generate.yaml`): ONE repeats an ALU fragment to `2n` bases, TWO draws `3n`
+from the IUB ambiguity codes, THREE draws `5n` from a nucleotide frequency table. The language
+has no float type and no `Str` indexing, so the weighted pick runs in integer arithmetic -- the
+classic `IM=139968 IA=3877 IC=29573` LCG, with the random value compared against cumulative
+integer weights -- and each symbol is a literal one-char `Str` chosen by the computed index, so
+no `Char -> Str` conversion is needed. The base count is threaded through the generators rather
+than re-read from stdin inside a function body, because the emitted code reads `parse(stdin)`
+off the one top-level input value on the compiled backends. It deviates from CLBG's byte-exact
+output the way binary-trees does: same task, integer arithmetic instead of doubles, our own
+pinned corpus output that every backend agrees on.
+
 **The suite spike's "good fit today" claim for fasta/k-nucleotide/reverse-complement/regex-redux
 does not hold against the current builtin set.** `chars(s)` decodes `Str` to `Vec<Char>`, but
 `Char` has no wire form and there is no `Char -> Str` builtin and no `Str` slice/index operator
@@ -108,8 +120,8 @@ what a 32-bit or even 64-bit accumulator holds; the spigot algorithm's usual unb
 shape has no home in a language with no bignum type, so it is blocked the same way the float
 tasks are, on a type the language does not have yet.
 
-Of the eight, `binary-trees` is landed; `fasta` and `fannkuch-redux` (both fully numeric or
-literal-driven, no decode needed) are the next real candidates; `mandelbrot` needs float support
+Of the eight, `binary-trees` and `fasta` are landed; `fannkuch-redux` (fully numeric, no decode
+needed) is the next real candidate; `mandelbrot` needs float support
 most backends don't have yet, the same gate n-body/spectral-norm are already behind; `pidigits`
 needs a bignum type; `reverse-complement`, `k-nucleotide`, and `regex-redux` need `Str`
 slicing or a `Char -> Str` builtin, neither of which exists.

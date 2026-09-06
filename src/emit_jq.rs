@@ -89,7 +89,7 @@ const FLOAT_PRINT_HELPER: &str = r#"def tl_show_float:
   else
     (if . < 0 then "-" else "" end) as $sign
     | ((if . < 0 then -. else . end) + 0.0 | tostring) as $raw
-    | ($raw | capture("^(?<int>[0-9])(\\.(?<frac>[0-9]+))?[eE](?<exp>[+-]?[0-9]+)$")) // null as $e
+    | (($raw | capture("^(?<int>[0-9])(\\.(?<frac>[0-9]+))?[eE](?<exp>[+-]?[0-9]+)$")) // null) as $e
     | (if $e != null
          then { digs: ($e.int + ($e.frac // "")), n: (($e.exp | tonumber) + 1) }
          else

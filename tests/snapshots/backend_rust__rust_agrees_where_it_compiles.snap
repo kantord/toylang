@@ -2,7 +2,7 @@
 source: tests/backend_rust.rs
 expression: "format!(\"compiles (rust) ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles (rust) (234):
+compiles (rust) (235):
 adults
 all_basic
 all_empty
@@ -65,6 +65,7 @@ enum_unit_variant
 enum_variant_at_runtime
 enum_vec_payload
 escapes
+fasta_generate
 field_key_case_is_significant
 fields_basic
 fields_reflects_checked_order
