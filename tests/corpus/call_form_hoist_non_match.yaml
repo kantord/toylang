@@ -11,4 +11,6 @@ program: |
 output: |
   {"c":9,"p":0,"doubled":32}
 
+snapshot: [jq, rust]
+
 node_types: [application, arith.mul, int, local, match, pipe, projection, record-literal, var, variant.payload, variant.unit]

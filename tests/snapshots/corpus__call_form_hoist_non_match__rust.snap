@@ -1,0 +1,36 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+#![allow(dead_code)]
+
+fn tl_int(n: i32) -> i32 {
+    n
+}
+
+#[derive(Clone, PartialEq)]
+struct TlRec0 {
+    f_c: i32,
+    f_p: i32,
+    f_doubled: i32,
+}
+
+#[derive(Clone, PartialEq)]
+struct TlRec1 {
+    f_r: i32,
+}
+
+#[derive(Clone, PartialEq)]
+#[allow(non_camel_case_types)]
+enum TlE_Shape {
+    V_Point,
+    V_Circle(TlRec1),
+}
+
+fn v_area(v___area_param: TlE_Shape) -> i32 {
+    ({ let t_2: TlE_Shape = v___area_param.clone(); (match t_2.clone() { TlE_Shape::V_Circle(t_3) => (t_3.clone().f_r).wrapping_mul(t_3.clone().f_r), TlE_Shape::V_Point => tl_int(0) }) })
+}
+
+fn main() {
+    println!("{}", ("{".to_string() + &"\"c\":".to_string().to_string() + &((TlRec0 { f_c: v_area(TlE_Shape::V_Circle(TlRec1 { f_r: tl_int(3) })), f_p: v_area(TlE_Shape::V_Point), f_doubled: (v_area(TlE_Shape::V_Circle(TlRec1 { f_r: tl_int(4) }))).wrapping_mul(tl_int(2)) }).f_c).to_string() + "," + &"\"p\":".to_string().to_string() + &((TlRec0 { f_c: v_area(TlE_Shape::V_Circle(TlRec1 { f_r: tl_int(3) })), f_p: v_area(TlE_Shape::V_Point), f_doubled: (v_area(TlE_Shape::V_Circle(TlRec1 { f_r: tl_int(4) }))).wrapping_mul(tl_int(2)) }).f_p).to_string() + "," + &"\"doubled\":".to_string().to_string() + &((TlRec0 { f_c: v_area(TlE_Shape::V_Circle(TlRec1 { f_r: tl_int(3) })), f_p: v_area(TlE_Shape::V_Point), f_doubled: (v_area(TlE_Shape::V_Circle(TlRec1 { f_r: tl_int(4) }))).wrapping_mul(tl_int(2)) }).f_doubled).to_string() + "}"));
+}
