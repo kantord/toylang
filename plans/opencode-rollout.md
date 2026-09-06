@@ -1109,11 +1109,9 @@ through both branches: `landed` stayed `False`, `escalation` stayed `None`, and 
 with no mail, no round, no trace -- compare `stuck-issue-167-investigation`, which hit
 the ordinary red/retry-cap-reached path in the same tick and correctly escalated.
 
-Two fixes landed directly to `sandbox_dispatch.py` (paired with a concurrent
-maintainer edit to the same `finally` block, made live in another session while this
-fix was in progress -- confirmed non-conflicting: it keeps the sandbox alive
-specifically on this anomaly for hands-on debugging, without doing so for the
-already-understood red-gate case, which matters with the host at 97% disk):
+Found and fixed independently by two coordinator ticks at the same time (this one and
+another, racing on the same file in the shared main checkout -- both landed the same
+diagnosis; the other tick's commit, `4d64926`, won the race and is the one on main):
 
 - `extract_result()` now captures `/root/format-patch.log` to
   `format-patch-failure.log` in the run's workdir when no patch comes out, so the next
@@ -1121,6 +1119,9 @@ already-understood red-gate case, which matters with the host at 97% disk):
 - `main()` now escalates on `not landed` (any run that didn't land) instead of `not
   green`, so a green-but-unextracted run always produces a `docs/.grill/` round rather
   than disappearing.
+- The `finally` block now keeps the sandbox alive specifically on this anomaly (green
+  but no patch) for hands-on debugging, while still tearing down normally for the
+  already-understood red-gate case -- matters with the host at 97% disk.
 
 Root cause of the `format-patch` rc=128 itself is still open -- next occurrence will
-have a captured log to diagnose from.
+have both a kept sandbox and a captured log to diagnose from.
