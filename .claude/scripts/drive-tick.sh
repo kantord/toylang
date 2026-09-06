@@ -19,7 +19,10 @@ LOG_DIR="$HOME/.cache/toylang-drive"
 mkdir -p "$LOG_DIR"
 
 # Never two ticks at once: a landing tick can outlive several loop intervals.
-exec 9>/tmp/toylang-drive-tick.lock
+# $LOG_DIR, not /tmp: an unrelated host process holding an flock on a /tmp
+# path via inode reuse has already stalled the sibling land.lock once
+# (2026-09-06) -- nothing else touches $LOG_DIR.
+exec 9>"$LOG_DIR/drive-tick.lock"
 flock -n 9 || { echo "[drive-tick] $(date '+%H:%M:%S') another tick holds the lock (event-driven landing, most likely) -- yielded"; exit 0; }
 
 export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin"
@@ -279,3 +282,24 @@ run_tick() { # $1: prompt
 }
 
 run_tick "$POLICY $CORE"
+
+# Coordinator-health check (2026-09-06): the tick's own claude -p call failing
+# for a basic auth/API reason looks, in the log, just like a normal quiet
+# tick -- nothing before this distinguished "nothing to do" from "the whole
+# loop has been silently dead for the last N ticks" (a real OAuth expiry once
+# went undetected for ~40 minutes). Track consecutive auth failures across
+# ticks (this script is stateless per-run, so the streak lives in a file) and
+# leave a hard-to-miss sentinel once the streak crosses a threshold, the same
+# escalate-after-N-failures shape lane retries already use.
+AUTH_STREAK_FILE="$LOG_DIR/coordinator-auth-fail-streak"
+if grep -q "Failed to authenticate" "$OUT" 2>/dev/null; then
+  STREAK=$(( $(cat "$AUTH_STREAK_FILE" 2>/dev/null || echo 0) + 1 ))
+  echo "$STREAK" >"$AUTH_STREAK_FILE"
+  if [ "$STREAK" -ge 3 ]; then
+    echo "$(date -Iseconds): $STREAK consecutive coordinator auth failures -- run \`claude /login\`" \
+      >"$LOG_DIR/COORDINATOR-DOWN"
+    echo "[drive-tick] $(date '+%H:%M:%S') $STREAK consecutive auth failures -- wrote $LOG_DIR/COORDINATOR-DOWN"
+  fi
+else
+  rm -f "$AUTH_STREAK_FILE" "$LOG_DIR/COORDINATOR-DOWN"
+fi
