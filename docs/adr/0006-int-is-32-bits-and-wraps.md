@@ -4,9 +4,8 @@ status: accepted
 
 # Int is a signed 32-bit integer, and arithmetic wraps
 
-Recorded 2026-08-27, after the fact. The full argument lives in draft.md's
-[DECIDED: Int is 32 bits and wraps](../../draft.md#decided-int-is-32-bits-and-wraps) and is not
-duplicated here; this ADR exists so the decision is findable next to the others.
+Recorded 2026-08-27, after the fact. The full argument lives in the research log
+([each target constrains the design differently](../../research-log/each-target-constrains-the-design-differently.md), [backends can agree and still be wrong](../../research-log/backends-can-agree-and-still-be-wrong.md)) and is not duplicated here; this ADR exists so the decision is findable next to the others.
 
 The default integer diverges from jq, which has only IEEE doubles. It was settled by
 measurement after three recommendations were each reversed by a fact (i64 with trapping, then

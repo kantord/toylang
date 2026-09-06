@@ -89,7 +89,7 @@ is still open.
 Composite equality is settled without touching it. `==` on a record or an enum compares
 structurally, and is refused outright when the type carries a Vec anywhere inside it, so a
 `Vec`-typed record field never quietly acquires whole-value semantics
-([the equality decision](../draft.md#decided-equality-on-a-composite-is-structural-and-stops-at-a-vec)).
+([the equality decision](../docs/reference/operators/comparison.md)).
 
 ### Q3. What symbol replaces `=` for the record-forming update?
 
@@ -537,7 +537,7 @@ internal helper, at which point the non-`pub`-is-simply-absent rule stops being 
 
 ### Q37. How do floats print, and what are NaN and Infinity in a JSON-shaped value model?
 
-The representation is [decided](../draft.md#decided-float-is-javascripts-double): IEEE 754 binary64,
+The representation is [decided](../docs/adr/0007-float-is-javascripts-double.md): IEEE 754 binary64,
 JavaScript's number. Everything observable about it is not, and each piece has to survive the
 agreement harness, which checks bytes.
 
