@@ -53,17 +53,35 @@ TRIGGER=""
 STATE=""
 # A delegated row names its worktree either by pool lane (lane: lane-N, the
 # gh:124 worker pool -- resolved through the stable enwiro env symlink) or by
-# issue number (the classic one-env-per-issue flow).
+# a worktree slug. The classic flow names it after the gh issue number
+# (issue-177), but dispatch-worker.sh names multi-row-per-issue lanes after the
+# row id instead (float-build-* sharing gh:149 live at issue-float-build-*).
+# Resolve the watched path against disk: prefer the id-named worktree when it
+# exists, falling back to the gh-number one, so a row-id lane is watched at its
+# real path and a classic numeric lane is not misread (gh:178).
 DELEGATED=$(python3 -c "
-import yaml
+import os, sys, yaml
+lanes, worktrees = sys.argv[1], sys.argv[2]
 for r in yaml.safe_load(open('plans/board.yaml')):
     if r.get('status') != 'delegated':
         continue
     if r.get('lane'):
         print('lane:' + r['lane'])
-    elif str(r.get('issue', '')).startswith('gh:'):
-        print('issue-' + r['issue'][3:])
-" | tr '\n' ' ')
+        continue
+    cands = []
+    if r.get('id'):
+        cands.append('issue-' + r['id'])
+    if str(r.get('issue', '')).startswith('gh:'):
+        cands.append('issue-' + r['issue'][3:])
+    if not cands:
+        continue
+    for c in cands:
+        if os.path.isdir(os.path.join(lanes, c)) or os.path.isdir(os.path.join(worktrees, c)):
+            print(c)
+            break
+    else:
+        print(cands[-1])
+" "$LANES" "$WORKTREES" | tr '\n' ' ')
 # Dead-lane triggers are picked by STALEST, not first-in-file-order: a soft-default
 # TRIGGER="${TRIGGER:-...}" inside this loop let whichever lane sorts first in
 # board.yaml claim every tick it was also dead, starving lanes later in the file
