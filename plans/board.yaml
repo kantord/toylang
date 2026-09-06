@@ -38,7 +38,7 @@
   kind: build
   needs: [call-form-hoist-parse]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: call-form-hoist-codegen
   issue: gh:152
@@ -99,7 +99,7 @@
   title: Implement Float (IEEE binary64 per ADR 0007) for the Rust backend only, following float-build's JS implementation as the reference. One backend, one commit.
   kind: build
   needs: [float-build, float-format-research]
-  status: todo
+  status: delegated
 
 - id: float-build-python
   issue: gh:149
@@ -240,15 +240,6 @@
 
 
 
-- id: draft-core-model-migration
-  title: Migrate the two-layer/cardinality core model to a concepts guide; embedded open threads go to the tracker (draft-split)
-  kind: build
-  model: fable
-  needs: []
-  soft: [draft-intro-migration, draft-questions-home]
-  prio: 4
-  status: todo
-
 - id: draft-access-model-migration
   title: Verify unary functions, lens access, and the dimension-spec model against the reference pages; salvage rationale, delete sections (draft-split)
   kind: build
@@ -385,6 +376,13 @@
   kind: build
   needs: [draft-questions-home, draft-intro-migration, draft-core-model-migration, draft-access-model-migration, draft-numbers-operators-migration, draft-records-migration, draft-streams-migration, draft-calls-modules-migration, draft-matching-migration, draft-prototype-findings-migration, draft-str-adr, draft-mutation-migration, binary-op-multiplicity-design, search-and-fold-design, offload-boundary-design]
   prio: 4
+  status: todo
+
+- id: questions-md-stale-draft-links
+  title: 'Repoint two dead links in plans/questions.md left by draft-core-model-migration: Q11 -> ../draft.md#the-core-idea-two-layers and Q32 -> ../draft.md#proposal-the-layer-shift-only-runs-one-way both point at headings that migration deleted (see ESCALATION.md in that landed commit). Point them at docs/guides/cardinality.md instead. Left alone by that row under the "do not touch plans/" hard constraint.'
+  kind: build
+  needs: []
+  prio: 5
   status: todo
 
 - id: messagecard-flow-defensive-render
