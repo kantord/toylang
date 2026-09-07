@@ -114,7 +114,7 @@ which is powerful but infects the whole system. Unpacking one item is then the *
 of the pattern: given that an `A` was just consumed, what remains? Open: how type tagging is
 represented so the runtime and type-level guarantees stay symmetrical.
 
-An exploration after [the streams decision](../draft.md#decided-stream-is-the-effect-layer-typed)
+An exploration after [the streams decision](../docs/adr/0001-stream-is-the-effect-layer-typed.md)
 committed to this shape without settling the open parts; it is recorded as
 [ADR 0008](../docs/adr/0008-stream-protocols-are-kleene-patterns.md). The load-bearing findings:
 the linearity objection above is obsolete, since the streams decision introduced exactly-once
@@ -515,7 +515,7 @@ Blocked on the same thing as [Q5](#q5-stream-lowering-strategy-across-the-three-
 program that writes as it goes is a program with an effect layer.
 
 The fused `jsonlines(f(inputs))` loop has since made write-as-it-goes real at the backend
-level, and [the streams decision](../draft.md#decided-stream-is-the-effect-layer-typed) gave the effect
+level, and [the streams decision](../docs/adr/0001-stream-is-the-effect-layer-typed.md) gave the effect
 layer a type -- so the blockage above is gone, and the question is sharpened rather than
 answered. What was decided there about output is deliberately minimal: `jsonlines` is a sink,
 legal only as the program's outermost expression, with no result type. That removes the old
