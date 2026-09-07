@@ -77,13 +77,26 @@ born only at a source; see [Stream](../types/stream.md)). A function is not a va
 cannot be stored, passed, or returned -- and the nine [builtin names](../builtins/str.md)
 cannot be redefined.
 
-Bare application, `f x`, is the default call form for a function that takes one argument;
-since a function is never variadic, parens never said which argument is which -- only where
-the argument starts and ends -- and `f(x)` is the same call with the argument grouped. Chains
-read right-to-left: `str double 21` is `str(double(21))`. Reach for the parens when the bare
-form would read differently: `-` starts subtraction rather than an argument (`f -1` is
-`f - 1`), and `.` and `[` bind tighter as [projection](../operators/projection.md) and
-indexing, so a projection or Vec-literal argument is spelled `map(.name)` or `some([4, 5])`.
-An argument must also start on the same line as its function; to call across lines, use the
-parens. A nullary function has no bare form -- `name` alone is a reference the checker would
-have to disambiguate from a call -- so it is always called `name()`.
+Bare application, `f x`,is the default call form for a function that takes one argument.
+Since a function is never variadic, parens never said which argument is which -- only where
+the argument starts and ends. Parens do two jobs: grouping (`(x + y)`)and marking a
+call's boundary (`f(x)`),and those turn out to be the same job: `f(x)` is `f` applied
+to the atom `(x)`, a grouped `x`; nothing distinguishes it from `f (x)`. An argument's
+parens are exactly as optional as around any other atom that does not need grouping. A bare
+argument is a postfix chain, not an operand: an infix operator after it belongs to the
+enclosing expression, so `f x + y` is `f(x) + y`; when the argument itself is a binary
+expression, use the parens: `f (x + y)`. Chaining reads right-to-left:
+`str double 21` is `str(double(21))`; `f g x` is `f(g(x))`,and since toylang has no
+first-class functions or currying,that right-associative reading is the only one that could
+typecheck -- nothing is given up by it. Reach for the parens when the bare form would read
+differently: `-` starts subtraction rather than an argument (`f -1` is `f - 1`),
+and `.` and `[` bind tighter as [projection](../operators/projection.md)and indexing, so a
+projection or Vec-literal argument is spelled `map(.name)` or `some([4, 5])`. Only a
+lowercase name can be a bare call's function, which is what keeps `Shape.circle`,the
+[qualified variant spelling](../types/enum.md),from being swallowed as `Shape (.circle)`,
+since `.` also starts a bare argument. Nothing legal is lost -- a capitalised bare call
+could never typecheck under the casing rule -- but the rule is a parser fact, not a
+checker consequence. An argument must also start on the same line as its function;to call
+across lines, use the parens. A nullary function has no bare form -- `name` alone is a
+reference the checker would have to disambiguate from a call -- so it is always called
+`name()`.
