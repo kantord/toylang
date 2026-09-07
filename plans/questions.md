@@ -351,9 +351,12 @@ SUPERSEDED: there is no derived codec picking a representation, because the repr
 *is* the value. [ADR 0009](../docs/adr/0009-enums-are-json-native-single-key-wrappers.md)
 records the decision, and why the tag-field and shape-matched alternatives lost.
 
-The wider derived-codec thread -- a `Json -> T` decode, a `T -> Json` encode, and a JSON
-Schema projection, all falling out of one structural description -- is deferred to the
-codec layer ADR 0009 names, with nothing settled there.
+The wider derived-codec thread -- a `Json -> T` decode,a `T -> Json` encode,and a `Str -> T`
+parse, plus the JSON Schema projection, all falling out of one structural description -- is
+deferred to the codec layer ADR 0009 names,with nothing settled there.The three codec
+directions are one trait family picked by which types the codec sits between (the same shape as
+[`Field<K>`](#q40-is-a-fieldk-lens-trait-part-of-the-design),and the decode-vs-encode split is the
+total/partial split again: decode, and parse can fail,and encode cannot.
 
 ### Q30. Do the base-functor generics double as parser combinators, across trees, strings, and streams?
 
