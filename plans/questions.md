@@ -57,6 +57,7 @@ its detail, because collapsing it would delete the only copy.
 | [Q37](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model) | How do floats print, and what are NaN and Infinity in a JSON-shaped value model? | RULED (gh:145): admit NaN/Infinity, division by zero returns Infinity (matches IEEE). Printing format is still open per-backend conformance work; tracked at board row `float-build` |
 | [Q38](#q38-are-composites-ordered-at-all) | Are composites ordered at all? | OPEN |
 | [Q39](#q39-is-a-timestamp-type-worth-a-third-numeric-type) | Is a timestamp type worth a third numeric type? | OPEN |
+| [Q40](#q40-is-a-fieldk-lens-trait-part-of-the-design) | Is a `Field<K>` lens trait part of the design? | OPEN |
 
 [Multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) is the one
 question still capable of changing [the two-layer
@@ -192,9 +193,12 @@ section](../draft.md#the-core-idea-two-layers).
 
 ### Q12. On a type mismatch, does field access error, yield null, or something third?
 
-SETTLED: something third. Field access desugars to a lens with three distinguishable outcomes
--- a value, a specific absence, and a specific error; see [the field-access
-section](../draft.md#field-access-is-a-lens).
+SETTLED: something third. A type mismatch errors loudly rather than yielding `null`: an unknown
+field is a compile error ([projection](../docs/reference/operators/projection.md)). Missing is
+distinct from error: an out-of-range index yields an [Opt](../docs/reference/types/opt.md),
+which prints `null` unless `!` insists otherwise ([unwrap](../docs/reference/operators/unwrap.md)).
+The lens framing -- field access desugars to a lens --is unbuilt future design, tracked as
+[Q40](#q40-is-a-fieldk-lens-trait-part-of-the-design).
 
 ### Q13. Does the layer shift run only one way, with no value-to-effect operator?
 
@@ -306,8 +310,8 @@ different feature with a different justification, still an absence rather than a
 
 ### Q26. Is JSX's children slot a closed per-site union, or an open one?
 
-Sketch: a creator function taking a `Record` of strictly-typed attrs (this is just `Field`
-in the existing sense, no new machinery) plus a `Dimension` of children. The children slot needs
+Sketch: a creator function taking a `Record` of strictly-typed attrs (this is just
+[`Field<K>`](#q40-is-a-fieldk-lens-trait-part-of-the-design) in the existing sense, no new machinery) plus a `Dimension` of children. The children slot needs
 an element type, and that is where the interesting question lives.
 
 React's `ReactNode` is open: any function shaped like a creator function is accepted, unconstrained
@@ -353,7 +357,7 @@ and as the shape [Pattern matching is decoding](../draft.md#pattern-matching-is-
 combinators only makes the precedent explicit (Hutton and Meijer; Wadler; parsing with
 derivatives). OPEN: whether this is one trait with implementations that differ by receiver (a
 parsed tree needs no backtracking, a string needs an actual parsing engine), the same shape as
-[`Field<K>`](../draft.md#field-access-is-a-lens), and if so what law the implementations have to share. See
+[`Field<K>`](#q40-is-a-fieldk-lens-trait-part-of-the-design), and if so what law the implementations have to share. See
 [One combinator algebra for trees, strings, and streams](../draft.md#one-combinator-algebra-for-trees-strings-and-streams).
 
 ### Q31. Does a friendlier string-pattern language belong in the language, and what regex flavor does it extend to?
@@ -370,14 +374,14 @@ name which flavor. See
 
 The two-layer section says multiplicity lives either in a value or in evaluation, and
 [the one-way shift](../draft.md#proposal-the-layer-shift-only-runs-one-way) narrows that to
-effect multiplicity being born from streaming input and never from a value. The dimension
-proposal says something that may be the same thing in different words: a value has an ordered
+effect multiplicity being born from streaming input and never from a value. The
+[index-spec model](../docs/reference/operators/specs.md) says something that may be the same thing in different words: a value has an ordered
 list of dimensions, and a spec says what happens to each.
 
 Put them together and a `Stream` looks like a value with a dimension whose extent is not known
 yet. The spec vocabulary already covers it without a second layer: keep and narrow are
 streamable, since neither has to consume anything to know what it did, and collapse is not. That
-distinction is written down in the dimension proposal and it is exactly the `Vec` and `Stream`
+distinction is written down in [the index-spec model](../docs/reference/operators/specs.md) and it is exactly the `Vec` and `Stream`
 difference.
 
 If that holds, there is one layer with a refinement rather than two layers, and the question
@@ -577,3 +581,15 @@ rejected at the input validator, with `Int64` as the fix that covers them ([int6
 also a real 64-bit integer whose arithmetic wraps past 2^63, which a timestamp wants nothing
 to do with. A dedicated timestamp type is a separate question again, and possibly a better
 answer than an integer either way, but nothing has forced it yet.
+
+### Q40. Is a `Field<K>` lens trait part of the design?
+
+The draft sketched `.foo` desugaring to a `Field<K>` trait -- `get`, `path`, `set` -- so a path
+expression is simultaneously a getter, a setter, and a path witness, making update-in-place,
+deletion, and path enumeration one syntax. None of that is built:the spelling is not documented
+behavior. [Q10](#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes)
+asks when a lens materializes,and [Q12](#q12-on-a-type-mismatch-does-field-access-error-yield-null-or-something-third)
+records the value/absence/error distinction, but neither carries the trait itself. Its law --
+what `set` promises about the path, whether `path` witnesses updates, deletions, or both,
+and how the receiver changes the implementation (indexable versus iterable) -- is unwritten.
+Recorded so the sketch survives the draft's deletion without being built.
