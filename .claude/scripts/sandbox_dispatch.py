@@ -764,7 +764,12 @@ def apply_and_land(issue_id: str, result_patch: Path, env: dict) -> bool:
               "freshly reset lane -- a genuine conflict with origin/main, left unlanded for "
               "the stuck-lane watchdog or a human to investigate ==", file=sys.stderr)
         return False
-    sh([str(REPO / ".claude/scripts/land-lane.sh"), "land", issue_id], env=env, check=False)
+    r = sh([str(REPO / ".claude/scripts/land-lane.sh"), "land", issue_id], env=env, check=False)
+    if r.returncode != 0:
+        print(f"== {issue_id}: patch applied cleanly onto a fresh lane but land-lane.sh "
+              "itself did not land it (e.g. nothing ahead of main after the merge, or a "
+              "conflict/red-gate retrigger) -- not landed ==", file=sys.stderr)
+        return False
     return True
 
 

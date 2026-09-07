@@ -1416,3 +1416,35 @@ do, and how `Origin` widens to carry a module path; and the enum-collision polic
 submodule. With those ruled, re-dispatch the build with them in the brief and an early-commit
 instruction -- the standing rule this lane and its siblings keep missing -- so a partial
 checker/parser diff lands before tests rather than another zero-commit run.
+
+## New failure class: sandbox replayed another lane's already-landed commit as its own (2026-09-07)
+
+`module-routing-syntax-build` reported `"landed": true` from `sandbox_dispatch.py`, but main has
+no `Land issue-module-routing-syntax-build` commit and the lane worktree sits at `origin/main`
+tip, untouched. Two distinct bugs stacked:
+
+- **`apply_and_land()` never checked `land-lane.sh`'s exit code** -- it returned `True` as soon
+  as `git am -3` applied the extracted patch onto a fresh lane, regardless of whether
+  `land-lane.sh land <id>` itself actually pushed anything. Here `land-lane.sh` hit its own
+  `nothing ahead of main` skip (the applied patch was already identical to `origin/main`) and
+  exited 1, but the dispatch summary still claimed `landed: true`. Fixed: `apply_and_land()` now
+  propagates that exit code.
+- **The extracted "own work" patch was someone else's already-landed commit.** The result patch
+  for this row was byte-identical to `1ac2863`, `draft-access-model-migration`'s real landed
+  commit -- a wholly unrelated row that finished landing (its own `land-lane.sh` push) within the
+  same few minutes, on the same shared `REPO` checkout that every dispatch clones as its `origin`.
+  `boot_sandbox()`'s `rm -rf /repo` fix (17b0f14) ran correctly on both attempts, so this is not
+  the earlier stale-snapshot bug. Working theory: the opencode agent, mid-task, fetched/merged
+  `origin/main` inside the sandbox (plausible given the brief said a prerequisite "has already
+  landed") right as `draft-access-model-migration` pushed to that same shared `REPO`, made no
+  real edits of its own (`net lines so far: +0` was already logged before this), and
+  `format-patch {base_commit}` then dumped the fetched-in commit as if it were the run's own
+  product. Not yet confirmed with a repro (would need to catch it live);
+  the fix applied now (checking `land-lane.sh`'s exit code) at least stops this class from ever
+  silently reporting `landed: true` again -- the row correctly stays undispatched instead of
+  being wrongly archived.
+
+Board: reset `module-routing-syntax-build` to `status: todo` (never actually landed) and
+board-archived `draft-access-model-migration` (genuinely landed as `b78fdad`, but its board row
+had been stuck at `status: todo` since its *own* earlier `green-but-no-patch` reset on 2026-09-06
+and was never flipped back to `delegated`/archived across its successful redispatch).

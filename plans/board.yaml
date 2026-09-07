@@ -221,7 +221,7 @@
   kind: build
   needs: [file-visibility-tracking-build]
   prio: 5
-  status: delegated
+  status: todo
 
 - id: erlang-target-consideration
   issue: gh:163
@@ -239,14 +239,6 @@
   status: done
 
 
-
-- id: draft-access-model-migration
-  title: Verify unary functions, lens access, and the dimension-spec model against the reference pages; salvage rationale, delete sections (draft-split)
-  kind: build
-  needs: []
-  soft: [draft-intro-migration, draft-questions-home]
-  prio: 4
-  status: todo
 
 - id: draft-records-migration
   title: Migrate the three record decisions (literals-and-arguments, declared order, order-not-identity) into the record reference, delete (draft-split)

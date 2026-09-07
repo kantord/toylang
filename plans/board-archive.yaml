@@ -1951,3 +1951,11 @@
   prio: 2
   model: fable
   status: done
+
+- id: draft-access-model-migration
+  title: Verify unary functions, lens access, and the dimension-spec model against the reference pages; salvage rationale, delete sections (draft-split)
+  kind: build
+  needs: []
+  soft: [draft-intro-migration, draft-questions-home]
+  prio: 4
+  status: done
