@@ -1497,3 +1497,28 @@ corrupted state -- but it produces exactly the "busy/dirty" land-failed markers 
 wastes a queue slot's worth of wall-clock per overlap. Needs a lock at the *tick* level (e.g. a
 pidfile/flock around the whole drive-tick invocation, not just around land-lane.sh), not
 something this skill can fix from inside one tick.
+
+## 2026-09-07 (later still): contention cleared, resumed landing for 3 of 4 land-failed lanes
+
+Checked before acting this time. `ps -eo pid,ppid,etimes,cmd` showed only one `land-lane.sh`
+in flight (`land draft-str-adr`, PID 3960497, holding `land.lock` since 12:37, child of the
+`sandbox_dispatch.py draft-str-adr` worker) and no sibling `claude -p` drive-tick process --
+`/proc/<pid>/fd` on the parent `drive-tick.sh`/`claude -p` pair confirmed it was this tick's own
+process tree, not a duplicate. The `iteration-traits-scaffold-build` land attempt seen moments
+earlier (PID 3516358) had already exited between the two `ps` calls.
+
+With no in-flight duplicate for any of the 4 land-failed lanes, queued 3 (house bound: up to
+three landings per tick) via `nohup ... &`, each to its own log under
+`~/.cache/toylang-drive/`:
+- `land draft-calls-modules-migration` (also the trigger's "looks landable" lane)
+- `land iteration-traits-scaffold-build`
+- `land stuck-issue-draft-records-migration-investigation`
+
+Left `land draft-matching-migration` unqueued -- bound is 3 landings, and its snapshot entry
+had no ahead/dirty/live line (only the land-failed marker), so it's the least-verified of the
+four; next tick should re-check and queue it if still needed.
+
+Did not touch round composition (`inbox_records=0`, no under-filled buffer named in trigger) or
+dispatch new sandbox rows (2 free slots, `draft-records-migration`/`draft-prototype-findings-migration`
+already have unanswered sandbox-blocker rounds pending -- redispatching either would repeat the
+prior near-miss, and this tick's bound was already spent on landing).
