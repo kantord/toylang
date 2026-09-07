@@ -25,14 +25,22 @@ include!(concat!(env!("OUT_DIR"), "/prelude_checked.rs"));
 
 /// Every declaration in `prelude.toy`, `pub` and private alike. A private one stays in so it can
 /// serve as a helper for a `pub` one; the checker refuses any call to it from the program's file.
+/// An impl block's methods ride along as the ordinary defs `module_impl_defs` synthesizes,with
+/// `Self` already substituted by the impl's target, so the program's checker resolves them the
+/// way it does any other prelude function without knowing traits exist.
 pub fn module() -> Module {
     let mut module = crate::parse::parse_module(PRELUDE_SRC).expect("prelude.toy is valid toylang");
     for def in &mut module.defs {
         def.origin = Origin::Prelude;
     }
+    let mut impl_defs = crate::ast::module_impl_defs(module.impls);
+    module.defs.append(&mut impl_defs);
     Module {
         defs: module.defs,
+        aliases: module.aliases,
         enums: module.enums.into_iter().filter(|e| e.is_pub).collect(),
+        traits: module.traits,
+        impls: Vec::new(),
     }
 }
 

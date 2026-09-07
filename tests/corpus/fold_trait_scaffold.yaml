@@ -1,0 +1,11 @@
+# The Fold trait's impl for Vec<Int> ships through the prelude:its methods lower to
+# ordinary prelude functions, checked once at build time and reachable the way any
+# prelude function is. A fold is the two methods composed:identity() builds the
+# empty accumulator,step({acc, x}) appends one element.
+
+program: |
+  step({acc: identity(), x: 3})
+output: |
+  [3]
+
+node_types: [application, concat, int, projection, record-literal, var, vec-literal]

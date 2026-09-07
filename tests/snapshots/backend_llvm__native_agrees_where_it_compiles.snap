@@ -1,8 +1,9 @@
 ---
 source: tests/backend_llvm.rs
+assertion_line: 46
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (239):
+compiles natively (240):
 adults
 all_basic
 all_empty
@@ -82,6 +83,7 @@ fizzbuzz
 fizzbuzz_arms
 flatten_basic
 flatten_empty
+fold_trait_scaffold
 forward_reference
 generic_enum_input
 generic_enum_match

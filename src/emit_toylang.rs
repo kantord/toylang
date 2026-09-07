@@ -31,8 +31,8 @@
 //! marked a syntax-spelling exception rather than swept.
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, LogicOp, MatchArm, Module, Param,
-    ParamShape, Pattern, TypeExpr, Variant,
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod, LogicOp,
+    MatchArm, Module, Param, ParamShape, Pattern, TraitDecl, TraitMethodSig, TypeExpr, Variant,
 };
 
 const WIDTH: usize = 80;
@@ -147,7 +147,7 @@ fn pad(n: usize) -> String {
 
 pub fn emit(file: &File) -> String {
     let mut out = String::new();
-    for decl in decls_in_source_order(&file.aliases, &file.enums, &file.defs) {
+    for decl in decls_in_source_order(&file.aliases, &file.enums, &file.traits, &file.impls, &file.defs) {
         out.push_str(&decl);
         out.push_str("\n\n");
     }
@@ -159,7 +159,7 @@ pub fn emit(file: &File) -> String {
 /// A module is the declarations alone: no trailing expression to separate them from, so they end
 /// the file rather than each being followed by a blank line the way `emit` writes them.
 pub fn emit_module(module: &Module) -> String {
-    let decls = decls_in_source_order(&[], &module.enums, &module.defs);
+    let decls = decls_in_source_order(&[], &module.enums, &module.traits, &module.impls, &module.defs);
     if decls.is_empty() {
         return String::new();
     }
@@ -171,10 +171,18 @@ pub fn emit_module(module: &Module) -> String {
 /// The AST groups declarations by kind, losing their interleaving in the source; sorting by span
 /// start puts them back, which is what makes the output idempotent -- reformatting an
 /// already-sorted file is a no-op re-sort.
-fn decls_in_source_order(aliases: &[Alias], enums: &[EnumDecl], defs: &[Def]) -> Vec<String> {
+fn decls_in_source_order(
+    aliases: &[Alias],
+    enums: &[EnumDecl],
+    traits: &[TraitDecl],
+    impls: &[ImplDecl],
+    defs: &[Def],
+) -> Vec<String> {
     enum Item<'a> {
         Alias(&'a Alias),
         Enum(&'a EnumDecl),
+        Trait(&'a TraitDecl),
+        Impl(&'a ImplDecl),
         Def(&'a Def),
     }
 
@@ -184,6 +192,12 @@ fn decls_in_source_order(aliases: &[Alias], enums: &[EnumDecl], defs: &[Def]) ->
     }
     for e in enums {
         items.push((e.span.start, Item::Enum(e)));
+    }
+    for t in traits {
+        items.push((t.span.start, Item::Trait(t)));
+    }
+    for i in impls {
+        items.push((i.span.start, Item::Impl(i)));
     }
     for d in defs {
         items.push((d.span.start, Item::Def(d)));
@@ -195,6 +209,8 @@ fn decls_in_source_order(aliases: &[Alias], enums: &[EnumDecl], defs: &[Def]) ->
         .map(|(_, item)| match item {
             Item::Alias(a) => print_alias(a),
             Item::Enum(e) => print_enum(e),
+            Item::Trait(t) => print_trait(t),
+            Item::Impl(i) => print_impl(i),
             Item::Def(d) => print_def(d),
         })
         .collect()
@@ -342,6 +358,58 @@ fn print_enum(e: &EnumDecl) -> String {
         return compact;
     }
     format!("{head} {}", wrap_delim("{", &variants, "}", 0))
+}
+
+fn print_trait(t: &TraitDecl) -> String {
+    let pub_prefix = if t.is_pub { "pub " } else { "" };
+    if t.methods.is_empty() {
+        return format!("{pub_prefix}trait {} {{}}", t.name);
+    }
+    let methods: Vec<String> = t.methods.iter().map(print_trait_method).collect();
+    format!("{pub_prefix}trait {} {}", t.name, wrap_brace("{", &methods, "}"))
+}
+
+fn print_trait_method(m: &TraitMethodSig) -> String {
+    format!("fn {}({}) -> {}", m.name, print_param(&m.param), print_type(&m.ret))
+}
+
+fn print_impl(i: &ImplDecl) -> String {
+    if i.methods.is_empty() {
+        return format!("impl {} for {} {{}}", i.trait_name, print_type(&i.ty));
+    }
+    let methods: Vec<String> = i.methods.iter().map(print_impl_method).collect();
+    format!(
+        "impl {} for {} {}",
+        i.trait_name,
+        print_type(&i.ty),
+        wrap_brace("{", &methods, "}")
+    )
+}
+
+fn print_impl_method(m: &ImplMethod) -> String {
+    let sig = format!("fn {}({}) -> {}", m.name, print_param(&m.param), print_type(&m.ret));
+    let compact_body = print_expr_compact(&m.body, Ctx::Expr(0));
+    let one_line = format!("{sig} = {compact_body}");
+    if fits(&one_line, 0) {
+        return one_line;
+    }
+    let body = print_expr_wrapped(&m.body, Ctx::Expr(0), INDENT);
+    format!("{sig} =\n{}{body}", pad(INDENT))
+}
+
+/// A brace block whose items need no separator between them (trait and impl methods each
+/// start with their own `fn`, so a comma would break the next method's parse), laid out one
+/// per line, indented one level.
+
+fn wrap_brace(open: &str, items: &[String], close: &str) -> String {
+    let mut out = format!("{open}\n");
+    for item in items {
+        out.push_str(&pad(INDENT));
+        out.push_str(item);
+        out.push('\n');
+    }
+    out.push_str(close);
+    out
 }
 
 fn print_type(t: &TypeExpr) -> String {

@@ -1,8 +1,9 @@
 ---
 source: tests/backend_rust.rs
+assertion_line: 47
 expression: "format!(\"compiles (rust) ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles (rust) (239):
+compiles (rust) (240):
 adults
 all_basic
 all_empty
@@ -82,6 +83,7 @@ fizzbuzz
 fizzbuzz_arms
 flatten_basic
 flatten_empty
+fold_trait_scaffold
 forward_reference
 generic_enum_input
 generic_enum_match
