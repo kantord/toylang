@@ -1,0 +1,51 @@
+# land-lane-lock-sccache-inode-reuse-fix
+
+Board row: land-lane-lock-sccache-inode-reuse-fix (prio 2). No GitHub issue -- this is an
+in-repo tooling fix, tracked only in plans/board.yaml.
+
+Bug: `.claude/scripts/land-lane.sh` holds an flock on fd 8 (`~/.cache/toylang-drive/land.lock`)
+for the duration of each land. Inside the flock-held section it runs `just test`, which uses
+cargo/cargo-nextest/rustc with `RUSTC_WRAPPER=sccache`. sccache is spawned as a subprocess of
+that chain and inherits fd 8 (the lock fd) by default, then its daemon persists in the
+background after the land-lane.sh invocation that spawned it has already exited. If
+`~/.cache/toylang-drive/land.lock` is later deleted and recreated, a fresh inode in that
+high-churn directory can collide with the lingering sccache process's still-open fd 8 via inode
+reuse -- and every subsequent land-lane.sh queues behind it forever, because `flock -w 1800 8`
+times out without ever actually contending with another land-lane.sh (it's contending with a
+stray sccache daemon that will never release the fd).
+
+This is the same bug class already fixed once (commit 7e16104, moved the lock off /tmp) and
+manually cleared twice since (commit b535ad8 on 2026-09-07 01:19, and again ~2026-09-07 16:07
+against the new $LOG_DIR path -- that second recurrence stalled 4 queued land-lane.sh
+invocations for 20-29 minutes each before a drive tick found and killed the stray sccache PID to
+unblock it, see commit 55e618c). Manual kills are not a fix; this row is for a real one.
+
+Read `.claude/scripts/land-lane.sh` first to see exactly where the flock is acquired and where
+`just test` is invoked inside it. Also read `~/.cache/toylang-drive/land-cascade-1788788880.log`
+for live repro evidence of the stall (if that path is not visible from your sandbox, describe
+the mechanism from the script instead -- the fd-inheritance bug is visible directly in the
+script's flock/subshell structure).
+
+Fix options to evaluate (pick the one that actually closes the leak, don't just patch a symptom):
+1. Close fd 8 (`8>&-`) in the subshell/command that invokes `just test`, so sccache (and
+   anything else spawned by the test gate) never inherits the land lock fd in the first place --
+   the test gate itself doesn't need to hold the lock, only the land-lane.sh process wrapping it
+   does.
+2. Set `SCCACHE_IDLE_TIMEOUT` (short) or `SCCACHE_NO_DAEMON=1` for the land-lane.sh test-gate
+   invocation specifically, so no sccache daemon outlives the `just test` call that spawned it.
+3. Move `land.lock` to a directory nothing else touches / never gets deleted+recreated, so even
+   a leaked fd can't collide via inode reuse (this was tried before for a related reason, moving
+   off /tmp -- extend that reasoning instead of just kill-on-sight).
+
+Prefer option 1 if it's straightforward (closing an inherited fd before exec'ing a subprocess is
+a standard, narrow fix) -- only fall back to 2 or 3 if fd-closing doesn't fully close the leak
+(e.g. sccache re-opens or duplicates the fd some other way you can observe).
+
+Write a test or repro script if you can exercise the fd-inheritance behavior directly (e.g.
+spawn a mock long-lived subprocess under the lock and confirm it does NOT inherit fd 8 after
+your fix, versus does before). If a direct repro isn't practical in the sandbox, document in
+your PR/commit exactly how you verified the fix (code inspection of the fd table via
+`/proc/<pid>/fd` on a real invocation, etc).
+
+Do not touch any other lane's worktree or in-flight land. This is a fix to the shared script
+only.
