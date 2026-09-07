@@ -1,3 +1,8 @@
+- id: stuck-issue-draft-records-migration-investigation
+  kind: build
+  status: todo
+  needs: []
+  title: 'INVESTIGATE stuck lane issue-draft-records-migration (no activity 1h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-draft-records-migration-20260907/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: iteration-traits-scaffold-build
   title: 'RULED (iteration-traits-and-stdin-splitting round, wizard submission 2026-09-07): option B, build a monomorphic Iterable-style trait scaffold now, ahead of any second implementation to dispatch on -- maintainer note: "we have to realize this is cyclical -- we didn''t build the functions that would use it because we don''t have the trait, so now we cannot use the lack of such functions to explain why the trait is not needed." No existing definition unifies yet (Vec max stays its own body; there is still no Stream reducer at all -- verified `max(range(5))` still errors `` `max` needs a Vec of Int or Int64, found Stream<Int> ``). Scaffold a Fold-shaped trait (step/identity) and impl it for Vec<Int> only; a second impl arrives whenever stream reduction is designed.'
   kind: build

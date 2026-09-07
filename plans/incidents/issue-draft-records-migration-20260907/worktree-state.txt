@@ -1,0 +1,6 @@
+captured: 2026-09-07T11:14:31+0200
+state: {"ts": 1788772471, "lane": "issue-draft-records-migration", "ahead": 0, "tracked_dirty": 0, "live": false, "runs": 1, "last_activity": 1788767993}
+
+=== git status ===
+
+=== git diff --stat ===
