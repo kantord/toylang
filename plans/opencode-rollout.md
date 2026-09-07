@@ -1577,3 +1577,39 @@ Gap: land-failed markers don't record whether a retry is already in flight, so t
 just wait." Checking `ps aux | grep land-lane.sh` before redispatching is the cheap disk check
 that caught it this time; worth folding into the marker itself (e.g. a pid or timestamp) so a
 future tick doesn't have to re-derive it.
+
+## 2026-09-07 (later still): queue depth pushed two waiters past the 30-minute flock timeout
+
+Same six land-failed markers as the entry above, still unresolved. `ps -eo pid,ppid,etime,cmd`
+plus `fuser land.lock` showed the queue had NOT drained since the last check -- five
+`land-lane.sh land ...` invocations were queued on the shared flock at once: `draft-calls-modules-migration`
+(waiting 23+ min), the combined `iteration-traits-scaffold-build stuck-issue-draft-records-migration-investigation`
+run (actively holding the lock, mid-`just test`), `draft-prototype-findings-migration` (waiting
+~2 min, the retry queued by the previous tick entry), plus `draft-matching-migration` and
+`draft-str-adr`.
+
+The last two had *already given up*: `land-lane-draft-matching-migration.out` and
+`land-lane-draft-str-adr.out` both end with `[land] queue lock held 30+ min -- gave up (tick
+will retry)`, timestamped 13:29:55 -- i.e. `flock -w 1800 8` exhausted its wait and the script
+exited without ever reaching the success or failure path, so it never touched the
+`land-failed-issue-*` marker (that file write only happens on a real gate/merge failure inside
+the lock). The stale marker timestamps (12:45, 12:55) are from whatever attempt originally
+produced them, not this timeout.
+
+Did not requeue `draft-matching-migration` or `draft-str-adr` this tick. Re-dispatching into a
+lock queue that is already 3 deep (one running `just test`, two still waiting) would almost
+certainly repeat the same 30-minute give-up rather than land anything -- it's not a transient
+"busy/dirty" retry candidate, it's queue depth exceeding the wait budget. Left the three
+already-live attempts to drain; next tick should re-check `ps`/`fuser land.lock` and only queue
+these two once the queue has room.
+
+Gap, and a real one this time: `land-lane.sh`'s give-up-after-30-min path is silent to
+everything outside its own `.out` log -- it doesn't write a marker, doesn't retry itself, and
+doesn't get counted by the retry cap, so a lane can sit invisible to the board/trigger snapshot
+indefinitely if every tick just re-observes the same stale `land-failed` marker without reading
+the `.out` file underneath it. Two structural fixes worth considering: (a) cap how many
+`land-lane.sh` invocations may be queued on `land.lock` at once (the tick already knows the
+count via `fuser`/`pgrep`, so it could refuse to queue a 4th+ until depth drops), or (b) have
+the give-up path itself write a distinguishable marker (`land-timeout-issue-N`, say) instead of
+leaving the old `land-failed` marker looking unchanged, so a future tick's disk read doesn't
+have to reconstruct this from raw `.out` files and process timestamps.
