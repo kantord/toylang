@@ -1472,3 +1472,28 @@ Left the existing queue to drain serially; nothing was killed.
 
 Gap: nothing currently checks "is a land-lane.sh already in flight for this lane" before a tick
 queues another one. Worth a guard (e.g. pgrep the lane name before invoking) if this recurs.
+
+## 2026-09-07 (later same tick): root cause found -- two sibling drive-tick sessions running concurrently
+
+This tick started with 3 land-failed markers ("main checkout stayed busy/dirty") for
+`draft-calls-modules-migration`, `iteration-traits-scaffold-build`, and
+`stuck-issue-draft-records-migration-investigation`. Before re-running any of them, this tick
+queued `land-lane.sh land draft-calls-modules-migration` (mistake: did not check `ps` first,
+unlike the previous entry above) and immediately found via `ps aux` that a duplicate was already
+queued from 12:15 (PID 3514957). Worse, `ps` also showed **two live `claude -p` processes (PIDs
+3940586/3940588) both started at 12:35 with the byte-identical drive-tick trigger text** --
+i.e. not two ticks fired minutes apart, but two tick sessions genuinely running *at the same
+wall-clock time*. The sibling was independently working the board: it queued
+`land-lane.sh land draft-str-adr` (PID 3960497) during this investigation.
+
+This tick killed its own accidental duplicate (bash PID 3954680 + flock PID 3954682) and then
+stopped -- fired no further `land-lane.sh` or `sandbox_dispatch.py` calls, to avoid compounding
+the pileup while a sibling session is actively mutating the same lanes/board.yaml.
+
+Root cause is upstream of this skill: something is invoking the drive-tick loop twice
+concurrently (cron/scheduler overlap, or a retry firing before the prior invocation's `timeout
+2700s` wrapper exited). The land.lock guards the actual `git` mutation, so it isn't producing
+corrupted state -- but it produces exactly the "busy/dirty" land-failed markers seen here, and
+wastes a queue slot's worth of wall-clock per overlap. Needs a lock at the *tick* level (e.g. a
+pidfile/flock around the whole drive-tick invocation, not just around land-lane.sh), not
+something this skill can fix from inside one tick.
