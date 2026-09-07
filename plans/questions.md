@@ -61,7 +61,7 @@ its detail, because collapsing it would delete the only copy.
 
 [Multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) is the one
 question still capable of changing [the two-layer
-section](../draft.md#the-core-idea-two-layers), now that
+section](../docs/guides/cardinality.md#two-layers), now that
 [streams](#q1-streams-first-class-values-or-evaluation-level-multiplicity) are settled, so it
 should be resolved before that section is treated as stable.
 
@@ -189,7 +189,7 @@ Deciding when a projection lens can materialize instead
 
 SETTLED: it does not need to. `map` and `select` are the same operation with the multiplicity
 stored in different places, so the split never reaches the type system; see [the two-layer
-section](../draft.md#the-core-idea-two-layers).
+section](../docs/guides/cardinality.md#two-layers).
 
 ### Q12. On a type mismatch, does field access error, yield null, or something third?
 
@@ -373,7 +373,7 @@ name which flavor. See
 ### Q32. Does the dimension model subsume the effect layer?
 
 The two-layer section says multiplicity lives either in a value or in evaluation, and
-[the one-way shift](../draft.md#proposal-the-layer-shift-only-runs-one-way) narrows that to
+[the one-way shift](../docs/guides/cardinality.md#reify-the-one-crossing) narrows that to
 effect multiplicity being born from streaming input and never from a value. The
 [index-spec model](../docs/reference/operators/specs.md) says something that may be the same thing in different words: a value has an ordered
 list of dimensions, and a spec says what happens to each.
