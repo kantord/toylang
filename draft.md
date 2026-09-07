@@ -706,30 +706,6 @@ survive `Stream` later becoming an annotation rather than a type. The safe versi
 and stdout as opaque handles that only a small set of operations touch, so that the operations
 are what generalise and the type does not have to.
 
-## Strings are where platform independence actually costs something
-
-JavaScript strings are WTF-16: UTF-16 code units, lone surrogates permitted, with `length` and
-indexing measured in code units. If the same program must mean the same thing natively and on a
-JavaScript target, there are three honest options.
-
-**WTF-16 everywhere.** Exact JavaScript semantics, trivially identical across targets. Pays
-memory and a conversion on every C FFI call natively.
-
-**UTF-8 everywhere, with the JavaScript-shaped API emulated.** Cheap and idiomatic natively, but
-on the JavaScript target the strings cannot *be* JavaScript strings, which guts interop
-ergonomics and forces conversion at every boundary.
-
-**Design the difference away.** Do not expose code-unit indexing or a code-unit `length` at all.
-Offer iteration over scalar values and opaque indices instead. Then UTF-8 natively and UTF-16 on
-the web are both conforming implementations, because no program can observe which one it got.
-This is roughly Swift's move, it is the only option that is cheap on both sides, and it is a
-language-design commitment that has to be made early because it constrains the string API
-permanently.
-
-The same reasoning applies to numbers, where committing to `f64` everywhere means keeping
-floating-point contraction off so the optimizer does not fuse operations behind your back, and to
-object key ordering if JSON round-tripping is meant to be stable.
-
 ## Mutation
 
 Immutable values plus a small number of explicit mutable cells. Cycles can only form through a
