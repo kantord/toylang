@@ -444,30 +444,7 @@ pub fn parse(src: &str) -> Result<File, Error> {
 
     // Declarations in any order and any mix, since no kind can refer to another's position:
     // aliases and enums are resolved before any signature is read.
-    let mut defs = Vec::new();
-    let mut aliases = Vec::new();
-    let mut enums = Vec::new();
-    let mut traits = Vec::new();
-    let mut impls = Vec::new();
-    loop {
-        let (tok, _) = p.peek()?;
-        match tok {
-            Tok::Pub => {
-                p.advance()?;
-                match p.peek()?.0 {
-                    Tok::Enum => enums.push(p.enum_decl(true)?),
-                    Tok::Trait => traits.push(p.trait_decl(true)?),
-                    _ => defs.push(p.def(true)?),
-                }
-            }
-            Tok::Fn => defs.push(p.def(false)?),
-            Tok::Type => aliases.push(p.alias()?),
-            Tok::Enum => enums.push(p.enum_decl(false)?),
-            Tok::Trait => traits.push(p.trait_decl(false)?),
-            Tok::Impl => impls.push(p.impl_decl()?),
-            _ => break,
-        }
-    }
+    let (defs, aliases, enums, traits, impls) = p.declarations()?;
 
     let body = p.tail_pipe()?;
     let (rest, rest_span) = p.peek()?;
@@ -493,30 +470,21 @@ pub fn parse_module(src: &str) -> Result<Module, Error> {
         declined_cross_line: None,
         or_separates: false,
     };
-    let mut defs = Vec::new();
-    let mut enums = Vec::new();
-    loop {
-        let (tok, span) = p.peek()?;
-        match tok {
-            Tok::Pub => {
-                p.advance()?;
-                match p.peek()?.0 {
-                    Tok::Enum => enums.push(p.enum_decl(true)?),
-                    _ => defs.push(p.def(true)?),
-                }
-            }
-            Tok::Fn => defs.push(p.def(false)?),
-            Tok::Enum => enums.push(p.enum_decl(false)?),
-            Tok::Eof => break,
-            other => {
-                return Err(Error::new(
-                    span,
-                    format!("expected `fn` or end of module, found {other}"),
-                ));
-            }
-        }
+    let (defs, aliases, enums, traits, impls) = p.declarations()?;
+    let (tok, span) = p.peek()?;
+    if tok != Tok::Eof {
+        return Err(Error::new(
+            span,
+            format!("expected `fn` or end of module, found {tok}"),
+        ));
     }
-    Ok(Module { defs, enums })
+    Ok(Module {
+        defs,
+        aliases,
+        enums,
+        traits,
+        impls,
+    })
 }
 
 struct Cursor<'i> {
@@ -546,6 +514,38 @@ impl<'i> Cursor<'i> {
     fn peek(&self) -> Result<(Tok, Span), Error> {
         let mut probe = self.input;
         read_tok(&mut probe)
+    }
+
+    /// Declarations in any order and any mix, stopping at the first token that is not one. A
+    /// module is declarations only; a file has a body after them.
+    fn declarations(
+        &mut self,
+    ) -> Result<(Vec<Def>, Vec<Alias>, Vec<EnumDecl>, Vec<TraitDecl>, Vec<ImplDecl>), Error> {
+        let mut defs = Vec::new();
+        let mut aliases = Vec::new();
+        let mut enums = Vec::new();
+        let mut traits = Vec::new();
+        let mut impls = Vec::new();
+        loop {
+            let (tok, _) = self.peek()?;
+            match tok {
+                Tok::Pub => {
+                    self.advance()?;
+                    match self.peek()?.0 {
+                        Tok::Enum => enums.push(self.enum_decl(true)?),
+                        Tok::Trait => traits.push(self.trait_decl(true)?),
+                        _ => defs.push(self.def(true)?),
+                    }
+                }
+                Tok::Fn => defs.push(self.def(false)?),
+                Tok::Type => aliases.push(self.alias()?),
+                Tok::Enum => enums.push(self.enum_decl(false)?),
+                Tok::Trait => traits.push(self.trait_decl(false)?),
+                Tok::Impl => impls.push(self.impl_decl()?),
+                _ => break,
+            }
+        }
+        Ok((defs, aliases, enums, traits, impls))
     }
 
     fn advance(&mut self) -> Result<(Tok, Span), Error> {

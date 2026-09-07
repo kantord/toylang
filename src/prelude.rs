@@ -32,7 +32,10 @@ pub fn module() -> Module {
     }
     Module {
         defs: module.defs,
+        aliases: module.aliases,
         enums: module.enums.into_iter().filter(|e| e.is_pub).collect(),
+        traits: module.traits,
+        impls: module.impls,
     }
 }
 

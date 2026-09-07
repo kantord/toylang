@@ -274,7 +274,10 @@ pub struct File {
 #[derive(Debug)]
 pub struct Module {
     pub defs: Vec<Def>,
+    pub aliases: Vec<Alias>,
     pub enums: Vec<EnumDecl>,
+    pub traits: Vec<TraitDecl>,
+    pub impls: Vec<ImplDecl>,
 }
 
 #[derive(Debug)]
