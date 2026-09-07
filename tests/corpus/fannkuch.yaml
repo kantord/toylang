@@ -35,7 +35,7 @@ program: |
           | length(p) <= 1 -> 0 or
                 (length(tail(p)! | select(. < p[0]!)) + invs(tail(p)!)) % 2
 
-  fn step({p, acc}: {p: Vec<Int>, acc: {checksum: Int, max: Int}}) -> {checksum: Int, max: Int} =
+  fn fk_step({p, acc}: {p: Vec<Int>, acc: {checksum: Int, max: Int}}) -> {checksum: Int, max: Int} =
       let f = flips(p)
       {
           checksum: acc.checksum + (invs(p) == 0 | . -> f or 0 - f),
@@ -45,7 +45,7 @@ program: |
   fn fold({v, acc}: {v: Vec<Vec<Int>>, acc: {checksum: Int, max: Int}}) -> {checksum: Int, max: Int} =
       v
           | length(v) == 0 -> acc or
-                fold({v: tail(v)!, acc: step({p: v[0]!, acc: acc})})
+                fold({v: tail(v)!, acc: fk_step({p: v[0]!, acc: acc})})
 
   fn fk(n: Int) -> Str =
       let r = fold({v: perms(collect(range(n)) | map(. + 1)), acc: {checksum: 0, max: 0}})

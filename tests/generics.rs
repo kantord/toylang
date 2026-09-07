@@ -141,3 +141,33 @@ fn trait_impl_and_alias_parse_in_a_module() {
     assert_eq!(module.impls.len(), 1);
     assert_eq!(module.aliases.len(), 1);
 }
+
+/// The trait scaffold:an impl block's methods are checked against the trait's signatures (with
+/// `Self` substituted by the impl's target type)and synthesized into ordinary prelude functions,
+/// the same path a hand-written prelude `fn` takes. The defs are what `prelude::inject` hands
+/// the program's checker, and the funcs are what the build checks once.
+#[test]
+fn an_impl_block_synthesizes_its_methods_as_functions() {
+    let module = toylang::parse::parse_module(
+        "trait Fold {\n    fn identity() -> Self\n    fn step(p: {acc: Self, x: Int}) -> Self\n}\n\nimpl Fold for Vec<Int> {\n    fn identity() -> Self = []\n    fn step(p: {acc: Self, x: Int}) -> Self = p.acc + [p.x]\n}\n",
+    ).unwrap();
+    let (funcs, _) = toylang::check::check_module(module).unwrap();
+    assert_eq!(
+        funcs.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+        vec!["identity", "step"]
+    );
+}
+
+/// An impl method must repeat its trait's signature exactly,with `Self` meaning the impl's
+/// target type;a method that re-types one is refused. The trait is what the impl is checked
+/// against, not just a name the impl borrows.
+
+#[test]
+fn an_impl_method_must_match_its_trait_signature() {
+    let module = toylang::parse::parse_module(
+        "trait Fold {\n    fn identity() -> Self\n}\n\nimpl Fold for Vec<Int> {\n    fn identity() -> Int = 0\n}\n",
+    ).unwrap();
+    insta::assert_snapshot!(
+        toylang::check::check_module(module).map(|_| ()).unwrap_err().to_string()
+    );
+}

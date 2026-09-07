@@ -83,7 +83,7 @@ impl std::fmt::Display for LogicOp {
 }
 
 /// A type as written in source, before it is resolved to a `Type`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TypeExpr {
     Named {
         name: String,
@@ -115,6 +115,36 @@ impl TypeExpr {
             | TypeExpr::Vec { span, .. }
             | TypeExpr::Stream { span, .. }
             | TypeExpr::Record { span, .. } => *span,
+        }
+    }
+
+    /// The trait scaffold's `Self`-for-target substitution: rewrite the reserved spelling
+    /// `Self` (with no type arguments) wherever it appears, so an impl method's
+    /// signature can resolve in the ordinary type environment the way a written one does.
+    /// The impl's target type arrives already written as a `TypeExpr`, so the substitution is
+    /// purely textual and nothing here needs the checker's resolution machinery.
+    pub fn substitute_self(&self, self_ty: &TypeExpr) -> TypeExpr {
+        match self {
+            TypeExpr::Named { name, args, span } if name == "Self" && args.is_empty() => {
+                (*self_ty).clone()
+            }
+            TypeExpr::Named { name, args, span } => TypeExpr::Named {
+                name: name.clone(),
+                args: args.iter().map(|a| a.substitute_self(self_ty)).collect(),
+                span: *span,
+            },
+            TypeExpr::Vec { elem, span } => TypeExpr::Vec {
+                elem: Box::new(elem.substitute_self(self_ty)),
+                span: *span,
+            },
+            TypeExpr::Stream { elem, span } => TypeExpr::Stream {
+                elem: Box::new(elem.substitute_self(self_ty)),
+                span: *span,
+            },
+            TypeExpr::Record { fields, span } => TypeExpr::Record {
+                fields: fields.iter().map(|(n, t)| (n.clone(), t.substitute_self(self_ty))).collect(),
+                span: *span,
+            },
         }
     }
 }
@@ -208,8 +238,8 @@ pub struct Variant {
 
 /// `trait Name { fn sig(param: Type) -> Type }`:a named collection of method signatures,
 /// with no bodies. The receiver type is spelled `Self` in a signature, and binds to whatever
-/// concrete type an `impl` block targets. Parsed only for now: checking and dispatch are later
-/// slices.
+/// concrete type an `impl` block targets. Checked at build time when the prelude ships one
+/// (`check::check_module`); dispatch is the later trait-interface row's.
 #[derive(Debug)]
 pub struct TraitDecl {
     pub name: String,
@@ -232,8 +262,9 @@ pub struct TraitMethodSig {
 }
 
 /// `impl Trait for Type { fn sig(param: Type) -> Type = body }`: concrete bodies for one
-/// trait's methods, one block per (trait, type) pair. Parsed only for now:the checker does
-/// not use this yet.
+/// trait's methods, one block per (trait, type) pair. The checker synthesizes an ordinary
+/// `fn` per method (`module_impl_defs`), with `Self` substituted by the target type, so the
+/// bodies check through the same path a prelude function's does.
 #[derive(Debug)]
 pub struct ImplDecl {
     pub trait_name: String,
@@ -522,4 +553,34 @@ impl Expr {
             | Expr::Let { span, .. } => *span,
         }
     }
+}
+
+/// The trait scaffold's method synthesis:every `impl` block's methods become ordinary
+/// `fn` defs, named by the method name, with the impl's target type substituted for `Self`.
+/// `is_pub` and `origin` are fixed the way a prelude function's would be:the methods are
+/// callable from any program,checked once at build time (`check::check_module`). A second
+/// impl for the same trait would synthesize same-named defs and collide in `signatures`, which
+/// is the honest refusal until the trait-interface dispatch row lands.
+pub fn module_impl_defs(impls: Vec<ImplDecl>) -> Vec<Def> {
+    let mut out = Vec::new();
+    for imp in impls {
+        for m in imp.methods {
+            let param = m.param.map(|p| Param {
+                shape: p.shape,
+                ty: p.ty.substitute_self(&imp.ty),
+                span: p.span,
+            });
+            out.push(Def {
+                name: m.name,
+                param,
+                ret: Some(m.ret.substitute_self(&imp.ty)),
+                body: m.body,
+                span: m.span,
+                is_pub: true,
+                origin: Origin::Prelude,
+                hoisted: false,
+            });
+        }
+    }
+    out
 }

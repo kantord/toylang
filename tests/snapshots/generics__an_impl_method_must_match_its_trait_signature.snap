@@ -1,0 +1,6 @@
+---
+source: tests/generics.rs
+assertion_line: 170
+expression: "toylang::check::check_module(module).map(|_| ()).unwrap_err().to_string()"
+---
+impl method `identity`'s signature does not match trait `Fold`'s; found () -> Int, expected () -> Vec<Int> (at byte 71)

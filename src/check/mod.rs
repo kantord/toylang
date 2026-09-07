@@ -560,29 +560,105 @@ fn check_defs<'a>(
 /// of it. Every declaration is kept: reachability is the calling file's question, decided once
 /// program and prelude are merged (`check` above, via `prune_unreachable`).
 pub fn check_module(
-    module: &crate::ast::Module,
+    module: crate::ast::Module,
 ) -> Result<(Vec<tir::Func>, ty::Enums), Error> {
-    let (_, enums, variant_owners, mut sigs, visibility) =
-        resolve_defs(&[], &module.enums, &module.defs, Origin::Prelude)?;
+    let crate::ast::Module { defs, aliases, enums, traits, impls } = module;
+    let (env, enum_tys, variant_owners, mut sigs, mut visibility) =
+        resolve_defs(&aliases, &enums, &defs, Origin::Prelude)?;
     let input = RefCell::new(None);
     let inputs = RefCell::new(None);
     let lines_used = Cell::new(false);
     let dsv = RefCell::new(None);
     let next_local = Cell::new(0);
     let cells = Cells {
-        input: &input,
-        inputs: &inputs,
-        lines_used: &lines_used,
-        dsv: &dsv,
-        next_local: &next_local,
+        input:&input,
+        inputs:&inputs,
+        lines_used:&lines_used,
+        dsv:&dsv,
+        next_local:&next_local,
     };
-    let ctx = cells.ctx(&sigs, &enums, &variant_owners, &visibility, Origin::Prelude);
-    for (name, sig) in infer_hoisted(&ctx, module.defs.iter())? {
+    let ctx = cells.ctx(&sigs, &enum_tys, &variant_owners, &visibility, Origin::Prelude);
+    for (name, sig)in infer_hoisted(&ctx, defs.iter())? {
         sigs.insert(name, sig);
     }
-    let ctx = cells.ctx(&sigs, &enums, &variant_owners, &visibility, Origin::Prelude);
-    let funcs = check_defs(module.defs.iter(), &ctx)?;
-    Ok((funcs, enums))
+    // The trait scaffold:an impl block's methods are checked against the trait's signatures
+    // (with `Self` substituted by the impl's target type)and synthesized into ordinary prelude
+    // functions, the same path a hand-written prelude `fn` takes. The check lives here,at
+    // build time,because programs never see the prelude's trait/impl nodes -- `prelude::inject`
+    // hands them over as the defs `module_impl_defs` synthesizes,in their already-substituted
+    // form.
+    for imp in &impls {
+        let Some(trait_decl) = traits.iter().find(|t| t.name == imp.trait_name) else {
+            return Err(Error::new(
+                imp.span,
+                format!("trait `{}` is not declared", imp.trait_name),
+            ));
+        };
+        for m in &imp.methods {
+            let Some(tm) = trait_decl.methods.iter().find(|tm| tm.name == m.name) else {
+                return Err(Error::new(
+                    m.span,
+                    format!("`{}` is not a method of trait `{}`", m.name, imp.trait_name),
+                ));
+            };
+            let self_ty = &imp.ty;
+            let impl_param = m
+                .param
+                .as_ref()
+                .map(|p| resolve(&p.ty.substitute_self(self_ty), &env, &mut Vec::new()))
+                .transpose()?;
+            let impl_ret = resolve(&m.ret.substitute_self(self_ty), &env, &mut Vec::new())?;
+            let trait_param = tm
+                .param
+                .as_ref()
+                .map(|p| resolve(&p.ty.substitute_self(self_ty), &env, &mut Vec::new()))
+                .transpose()?;
+            let trait_ret = resolve(&tm.ret.substitute_self(self_ty), &env, &mut Vec::new())?;
+            if impl_param != trait_param || impl_ret != trait_ret {
+                let show = |p: &Option<Type>| p.as_ref().map_or("()".to_string(), |t| t.to_string());
+                return Err(Error::new(
+                    m.span,
+                    format!(
+                        "impl method `{}`'s signature does not match trait `{}`'s; found {} -> {}, \
+                         expected {} -> {}",
+                        m.name,
+                        imp.trait_name,
+                        show(&impl_param),
+                        impl_ret,
+                        show(&trait_param),
+                        trait_ret,
+                    ),
+                ));
+            }
+        }
+        for tm in &trait_decl.methods {
+            if !imp.methods.iter().any(|m| m.name == tm.name) {
+                return Err(Error::new(
+                    imp.span,
+                    format!("impl of trait `{}` is missing method `{}`", imp.trait_name, tm.name),
+                ));
+            }
+        }
+    }
+    let impl_defs = crate::ast::module_impl_defs(impls);
+    let impl_sigs = signatures(&impl_defs, &env)?;
+    for (name, sig)in impl_sigs {
+        // A method name that collides with a prelude function is the same duplicate a
+        // hand-written prelude `fn` would be;`signatures` already refused the same name
+        // appearing twice inside one impl_defs list.
+        if sigs.insert(name.clone(), sig).is_some() {
+            let span = impl_defs
+                .iter()
+                .find(|d| d.name == name)
+                .expect("an impl sig came from an impl def")
+                .span;
+            return Err(Error::new(span, format!("`{name}` is defined twice")));
+        }
+    }
+    visibility.extend(impl_defs.iter().map(|d| (d.name.clone(), (Origin::Prelude, d.is_pub))));
+    let ctx = cells.ctx(&sigs, &enum_tys, &variant_owners, &visibility, Origin::Prelude);
+    let funcs = check_defs(defs.iter().chain(impl_defs.iter()), &ctx)?;
+    Ok((funcs, enum_tys))
 }
 
 /// A signature may spell Stream now, which un-does the trick the Lines design leaned on (a
