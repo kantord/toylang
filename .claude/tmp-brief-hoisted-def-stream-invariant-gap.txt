@@ -1,0 +1,27 @@
+# hoisted-def-stream-invariant-gap
+
+Board row: hoisted-def-stream-invariant-gap (prio 3). GitHub issue: gh:152 (read it first for
+full context on the fusion/pipeline invariant this protects).
+
+Post-land review finding (commit 8a0fd90, issue-152 step 3/4): `signatures` in
+src/check/types.rs skips the "a stream is born only at a source" check
+(`if !def.hoisted && matches!(sig.ret, Type::Stream(_)) ...`) for every hoisted def
+(`fn name = Msg(...)`), because at that point the return is still the provisional enum
+placeholder, never a stream. But `infer_hoisted` in src/check/mod.rs later replaces that
+provisional return with whatever the match arms actually synthesize -- and that inferred type
+is never re-checked against the stream invariant. A hoisted def whose arm body produces a
+stream (e.g. an arm that calls a stream source like `csv(...)`) would type-check with a stream
+return and a plain-enum parameter, bypassing the fusion/pipeline invariant the non-hoisted path
+still enforces.
+
+Task:
+1. Add a corpus/step_3-style test asserting this case is refused (a hoisted def with an arm
+   whose body produces a `Stream(_)` type should be a checker error, same as the non-hoisted
+   stream-invariant violation is).
+2. Fix `infer_hoisted` (src/check/mod.rs) and/or the stream-invariant check (src/check/types.rs)
+   so the check re-runs (or is moved to run) after `infer_hoisted` resolves the real return
+   type, so hoisted defs get the same "stream is born only at a source" enforcement as
+   non-hoisted defs.
+
+Keep the change scoped to this invariant gap -- do not refactor unrelated parts of
+`infer_hoisted` or the checker. Run `just test` before finishing.
