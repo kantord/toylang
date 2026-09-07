@@ -1550,3 +1550,30 @@ but not (a) whether the lane's worktree already carries unlanded commits, or (b)
 sandbox-blocker round is already pending for that row. Both are cheap disk checks
 (`git log main..issue-<id>`, `ls docs/.grill/<id>-sandbox-blocker.round.yaml`) that would have
 prevented this without a model needing to notice. Worth adding to whatever builds the ready list.
+
+## 2026-09-07 (later still): five land-failed markers, four already had live retries queued
+
+Trigger repeated the same "ready to dispatch" list (`draft-records-migration`,
+`draft-matching-migration`, `draft-prototype-findings-migration`) and reported
+`issue-draft-calls-modules-migration` as "looks landable (worker exited)". Disk disagreed on both:
+
+- All three "ready" rows still carry the same unlanded-worktree / unanswered-round blockers
+  documented in the entry above -- nothing changed since then. No dispatch this tick.
+- `ps aux` showed four `land-lane.sh` processes already running (queued on the shared
+  `land.lock` flock, not stuck): `draft-matching-migration`, `draft-str-adr`,
+  `draft-calls-modules-migration`, and a combined `iteration-traits-scaffold-build
+  stuck-issue-draft-records-migration-investigation` run. Each of those four lanes also had a
+  land-failed marker on disk, but the marker predates (or matches) an already-in-flight retry --
+  redispatching any of them would have queued a second `land-lane.sh` for the same lane against
+  the same flock, serving no purpose. Left all four alone.
+- `draft-prototype-findings-migration` had a land-failed marker (13:25) with no live process --
+  its queued retry from the entry above had already finished and hit the same transient
+  "main checkout stayed busy/dirty" outcome (no LAND-FAILURE.txt, so not a real conflict/test
+  failure -- this doesn't burn the retry cap per land-lane.sh's own comment). Queued one more
+  detached retry for it; nothing else to do.
+
+Gap: land-failed markers don't record whether a retry is already in flight, so the trigger/snapshot
+(and a reader of the marker alone) can't distinguish "needs a redispatch" from "already queued,
+just wait." Checking `ps aux | grep land-lane.sh` before redispatching is the cheap disk check
+that caught it this time; worth folding into the marker itself (e.g. a pid or timestamp) so a
+future tick doesn't have to re-derive it.
