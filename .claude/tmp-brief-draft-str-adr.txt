@@ -1,0 +1,27 @@
+# draft-str-adr
+
+Board row: draft-str-adr (prio 3, draft-split). Source of truth: `plans/draft-split.md`, section
+"draft-str-adr" (around line 141).
+
+Section in `draft.md` to work through: "Strings are where platform independence actually costs
+something" (around line 709).
+
+The string-type-spike (gh:100, `plans/string-type-spike.md`) already concluded the contract --
+this is a RECORDING task, not a design task. Read the spike's recommendation 1 and write an ADR
+per that recommendation: scalar-value sequence, codepoint ordering, I-JSON wire form, surrogates
+refused at edges. Follow the existing ADR format/tone -- see `docs/adr/0009-enums-are-json-native-single-key-wrappers.md`
+or `docs/adr/0010-int64-is-a-second-integer-type.md` for the house style. The next free ADR number
+is `0011` (check `docs/adr/` yourself before writing in case something landed after this brief was
+written).
+
+Once the ADR is written, delete the "Strings are where platform independence actually costs
+something" section from `draft.md` -- its three-options analysis is superseded by the spike's
+fuller one. Do not delete anything else from `draft.md`.
+
+Soft-blocked (non-blocking) on `lines-utf8-edge` (gh:102): if that edge case is already settled
+somewhere in the docs site or research-log, the ADR can pin it in the same breath; if not, don't
+block on it -- just record the string contract as scoped above.
+
+Read AGENTS.md first for house conventions. Do not fetch/merge origin/main mid-task -- your
+checkout is already branched from the current tip; verify prerequisites by reading your own
+checkout.

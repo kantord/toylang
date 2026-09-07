@@ -1448,3 +1448,27 @@ Board: reset `module-routing-syntax-build` to `status: todo` (never actually lan
 board-archived `draft-access-model-migration` (genuinely landed as `b78fdad`, but its board row
 had been stuck at `status: todo` since its *own* earlier `green-but-no-patch` reset on 2026-09-06
 and was never flipped back to `delegated`/archived across its successful redispatch).
+
+## 2026-09-07: land.lock pileup -- duplicate land-lane.sh instances queued
+
+At tick time (12:24), `ps` showed **6 concurrent `land-lane.sh` processes** all blocked on the
+same `~/.cache/toylang-drive/land.lock` flock, including duplicate queued attempts for the same
+lane fired ~10 minutes apart by different ticks:
+
+- `land draft-calls-modules-migration`: PID 3294081 (started 12:05, still running) AND PID
+  3514957 (started 12:15) -- a second tick queued the identical lane before the first attempt
+  had even acquired the lock.
+- `land iteration-traits-scaffold-build`: PID 3294746 (12:05) AND PID 3516358 (12:16), same
+  pattern.
+- Also queued: `land stuck-issue-draft-records-migration-investigation` (11:50, holding the lock
+  and running a `just check` via `sccache`), `land draft-matching-migration` (12:15).
+
+Both land-failed markers this tick ("main checkout stayed busy/dirty") were almost certainly
+caused by this contention -- one queued attempt finding the checkout mid-use by another queued
+attempt for a different lane, not a real per-lane problem. Given 2 attempts were already queued
+for each of the two flagged lanes, this tick did **not** fire a 3rd redundant `land-lane.sh` for
+either -- that would only deepen the backlog against the 30-minute `flock -w 1800` timeout.
+Left the existing queue to drain serially; nothing was killed.
+
+Gap: nothing currently checks "is a land-lane.sh already in flight for this lane" before a tick
+queues another one. Worth a guard (e.g. pgrep the lane name before invoking) if this recurs.
