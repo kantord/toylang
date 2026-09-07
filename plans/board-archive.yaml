@@ -1967,3 +1967,26 @@
   needs: []
   prio: 4
   status: done
+
+- id: hoisted-def-stream-invariant-gap
+  issue: gh:152
+  title: 'Post-land review finding (commit 8a0fd90, issue-152 step 3/4): `signatures` in src/check/types.rs skips the "a stream is born only at a source" check (`if !def.hoisted && matches!(sig.ret, Type::Stream(_)) ...`) for every hoisted def (`fn name = Msg(...)`), because at that point the return is still the provisional enum placeholder, never a stream. But `infer_hoisted` in src/check/mod.rs later replaces that provisional return with whatever the match arms actually synthesize -- and that inferred type is never re-checked against the stream invariant. A hoisted def whose arm body produces a stream (e.g. an arm that calls a stream source like `csv(...)`) would type-check with a stream return and a plain-enum parameter, bypassing the fusion/pipeline invariant the non-hoisted path still enforces. Add a corpus/step_3 test asserting this is refused, and re-run (or move) the stream-return check after `infer_hoisted` resolves the real return type.'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: iteration-traits-scaffold-build
+  title: 'RULED (iteration-traits-and-stdin-splitting round, wizard submission 2026-09-07): option B, build a monomorphic Iterable-style trait scaffold now, ahead of any second implementation to dispatch on -- maintainer note: "we have to realize this is cyclical -- we didn''t build the functions that would use it because we don''t have the trait, so now we cannot use the lack of such functions to explain why the trait is not needed." No existing definition unifies yet (Vec max stays its own body; there is still no Stream reducer at all -- verified `max(range(5))` still errors `` `max` needs a Vec of Int or Int64, found Stream<Int> ``). Scaffold a Fold-shaped trait (step/identity) and impl it for Vec<Int> only; a second impl arrives whenever stream reduction is designed.'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: draft-calls-modules-migration
+  title: Migrate bare application and the prelude module system into the syntax/prelude reference, delete (draft-split)
+  kind: build
+  needs: []
+  soft: [draft-intro-migration, draft-questions-home]
+  prio: 4
+  status: done
