@@ -312,7 +312,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: search-and-fold-design
   title: 'Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split). Round 1 leaned depth-first for `..` (Q7) but answer was "also research the performance implications before we fully commit"; round 2 needed that research before re-asking. Q7 was re-asked in the signature-matching-and-search-cut round and RULED provisional: `..` promises depth-first order (jq-compatible), flagged for reevaluation once recursive-descent-order-research lands. recursive-descent-order-research landed (2026-09-07): every real precedent surveyed (jq, XPath, JSONPath/RFC 9535) treats depth-first pre-order as load-bearing, recommending Q7 close as ratified with no reevaluation -- so Q7 drops out of this row''s remaining scope entirely, nothing left to re-ask on it. Round 4 answers (search-vocab-choice-cut-fold, no picks made): Q search-choice-point-syntax -- no pick, maintainer asks whether the choice-point operator should instead be spelled parallel to match syntax rather than a new infix operator; needs search-choice-point-match-syntax-research before re-ask. Q search-cut-semantics -- no pick, maintainer leans "first should be a real prelude function" (tentative, not ratified -- re-ask against that framing, i.e. option B reworded as an ordinary stdlib fn rather than compiler-magic sugar). Q applicative-fold-block-syntax -- no pick, maintainer questions whether fold is needed at all ("fold is basically the same as reduce... reduce is usually too low level, a code smell, results in confusing code"); before continuing fold syntax design, next round must first ask whether applicative-fold-block-syntax should be justified or dropped.'
@@ -327,7 +327,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: offload-boundary-design
   title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled. Round 3 answer, parallel-primitive-basis (Q23): RATIFIED option A -- full basis now (map/scan/reduce/gather/scatter + segmented forms), fold and general recursion demoted to convenience leaves, future stdlib additions checked against the third-homomorphism theorem. Q22 (dense-masked-distinguishable/select representation): maintainer proposed a fourth shape (Vec-typed view, materialized only on strong reference -- ties to mutation-semantics-spike) that none of A/B/C covered; spun off select-materialization-research (gh:176) to ground a re-ask instead of re-presenting the same options. Round 4 answer, Q21 (batch-invariance-enforcement, rewritten with the mean/naive-average-of-averages worked example): RATIFIED option B -- compiler requires a declared associative combiner at every batch boundary, same enforcement posture as sort''s element-type check. Maintainer''s answer went further than the three options though, proposing the enforcement should ride on a richer effect type rather than a bare compiler gate: a distinct `Stream<Batch<T>>` (vs plain `Stream<T>`), an explicit `[Stream<T>, N] -> Stream<Batch<T, N>>` batching function, and an open question of what *initiates* batching -- explicit marker, implicit at certain constructs, or forced/unavoidable for certain operations. Spun off batch-type-design-research to ground a re-ask of that shape. Round 5 answers (wizard submission, 2026-09-07), both threads now RATIFIED: Q22 (select-materialization) -- RULED option B, the maintainer''s own proposal worked out: select keeps returning Vec; behind the name is a {source, mask-or-selection} pair, indexable via a lazily-built selection vector or mask+popcount table (O(1) per access after one O(n) build over mask bits only), compacting on the first strong reference (reusing input storage if uniquely referenced) -- the same provably-one-reference condition mutation-semantics-spike already uses. Maintainer''s follow-up, NOT yet answered: should this mask/selection-backed representation apply only to Vec, or also to streams or some other shared trait they''d both implement -- needs its own follow-up decide row before this finding gets built. Q21 follow-up (batch-type-design) -- RULED option A: opaque Batch<T> with NO operations at all (no length, indexing, equality), batch(s, n) takes n as a runtime-value hint (not a type parameter -- type-level naturals would make batch size observable/exact, defeating the unobservability round 4''s law protects), forced at the reader and at any whole-input/two-level-reduction operation, explicit everywhere else -- closes the observability hole by construction rather than a growing per-operation gate list.'
@@ -386,7 +386,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: http-query-sugar-research
   issue: gh:171
