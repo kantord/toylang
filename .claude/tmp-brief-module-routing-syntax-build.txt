@@ -1,0 +1,50 @@
+# module-routing-syntax-build (fresh restart, attempt 3)
+
+Board row: module-routing-syntax-build (prio 5). GitHub issue: gh:167 (read it first).
+
+NOTE on prior attempts: attempt 1 died abruptly mid-run (sandbox got evicted, no surviving
+diff). Attempt 2 completed but produced ZERO real work -- its extracted "result" turned out to
+be someone else's already-landed commit (draft-access-model-migration's), not new code, and
+land-lane.sh correctly refused to land it ("nothing ahead of main"). Both attempts are
+worthless; this is a from-scratch restart, not a continuation.
+
+Working theory for attempt 2's failure: the agent may have run `git fetch`/`git merge
+origin/main` (or similar) mid-task, which is unnecessary and actively harmful here -- your
+checkout is ALREADY branched from the current tip of origin/main at boot. Do NOT fetch or merge
+origin/main during this task. If you believe a prerequisite is already landed, verify it by
+reading the code in your own checkout, not by pulling from origin. Commit only work you
+personally wrote for this task.
+
+Implement `@(path)` module-as-function routing-arm syntax. See plans/module-routing-research.md
+for background. Prerequisite (file-visibility-tracking-build, gh:166) has already landed and is
+present in your checkout already -- read the relevant checker code directly to confirm, don't
+fetch to check.
+
+Syntax: RULED (module-routing-and-erlang-target round, question module-as-function-routing-design)
+-- option C, a dedicated routing-arm form, spelled `@(route-groups/baz.toy)` (parenthesized,
+because it encloses the path expression -- not the round's original bare `@path`).
+
+Semantics: RULED (module-routing-semantics round, wizard submission 2026-09-07), all four
+questions:
+
+1. Entry-point convention: option C -- implement as a fixed entry-fn name, e.g. `handle`.
+   (A way to address a *specific* non-entry function by name is wanted eventually but is
+   out of scope here -- do not block on it.)
+2. Dispatch strictness: option A -- full strict statically-typed call. `check_module` the
+   target file, unify the entry fn's signature against the arm's subject/return type exactly
+   like any other call site. No coercion.
+3. Def visibility: option A -- full merge, prelude-style. Widen `Origin` from the fixed
+   2-variant `Copy` enum to `Origin::Module(PathBuf)` (no longer `Copy` -- every
+   `HashMap<_, (Origin, bool)>` site needs updating). Prepend the routed module's `pub` defs
+   to the program's def list the way `prelude::inject` does.
+4. Enum-variant collision policy: option B -- submodule enum variants are ALWAYS qualified,
+   never bare-resolvable from the caller. Do NOT fold them into the shared `variant_owners`
+   bare-lookup table the way (3) folds defs -- this asymmetry between defs and enum variants
+   is deliberate, not an oversight.
+
+Gate: `just check` green, including corpus/example coverage for the new routing-arm form.
+
+Commit incrementally as you make real progress (parser change, then checker change, then
+corpus fixtures) rather than holding everything uncommitted until the end.
+
+Read AGENTS.md first for provenance/commit conventions.

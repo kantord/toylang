@@ -1,0 +1,20 @@
+# draft-prototype-findings-migration
+
+Source of truth: `plans/draft-split.md`, section "draft-prototype-findings-migration" (around
+line 132).
+
+Section in `draft.md` to work through: "What the prototype showed".
+
+Every subsection already ends in a research-log link, and the statuses it hedges about ("still
+yours to move") have since been settled -- Q1 settled, records built, `lines` replaced. For each
+finding: verify it's genuinely captured in `research-log/` (or superseded by later decisions
+elsewhere in the docs site), then delete the finding from `draft.md`. This section is the file's
+most fully-paid-out one -- expect this to be close to a clean delete-after-verify, not new
+writing.
+
+If any finding is NOT actually in research-log and not superseded, don't invent the writeup --
+leave it in `draft.md` and flag it rather than silently dropping real content.
+
+Gate: `just check` green.
+
+Read AGENTS.md first for provenance/commit conventions.

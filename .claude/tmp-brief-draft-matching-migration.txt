@@ -1,0 +1,28 @@
+# draft-matching-migration
+
+Source of truth: `plans/draft-split.md`, section "draft-matching-migration" (around line 118).
+
+Sections in `draft.md` to work through:
+- "Pattern matching is decoding"
+- "One combinator algebra for trees, strings, and streams"
+- "DECIDED: match arms compose with `or`, and a guard chain may be honestly partial"
+- "DECIDED: enums, nominal and JSON-native"
+
+The ratified layer (arm syntax, totality hybrid, enums, generic enums, Opt-as-enum, matchers as
+first-class values) is already covered by `docs/guides/matching.md`, `docs/guides/enums.md`,
+ADR 0009, and the #47/#62 issue records -- verify it's genuinely there, then delete those parts
+from `draft.md`.
+
+The unratified layer -- the codec/decoder threads, combinator-algebra claims (Q30), string
+patterns (Q31), deep matching (Q28) -- is tracker material, not docs material. Confirm each is
+already reflected in `plans/questions.md` (or add it if missing), then delete from `draft.md`
+without inventing new answers to still-open questions.
+
+Note: this section is conceptually soft-blocked on two matcher decide rows currently being
+re-grilled (gh:122) -- migrate only the settled/ratified content confidently; if a part reads as
+actively in flux rather than merely undecided, leave it in `draft.md` and note why rather than
+forcing a migration that would need rework.
+
+Gate: `just check` green.
+
+Read AGENTS.md first for provenance/commit conventions.

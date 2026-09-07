@@ -1,0 +1,22 @@
+# draft-calls-modules-migration
+
+Source of truth: `plans/draft-split.md`, section "draft-calls-modules-migration" (around line 108).
+
+Verify these two DECIDED sections in `draft.md` against the real docs site, salvage missing
+rationale, then delete them from `draft.md`:
+
+- "DECIDED: `f x` reads as `f(x)`, but only where an expression begins fresh"
+- "DECIDED: a rudimentary module system, one prelude file and `pub`"
+
+Destination: `docs/reference/syntax/functions.md` (or `programs.md`) for bare application --
+the same-line rule, the `-` and capitalized-callee exclusions -- and `docs/reference/prelude/`
+(or a small modules page) for the prelude story. Q36's remainder (imports, privacy) is already
+tracked separately in `plans/questions.md` -- do not re-litigate it here, just point to it if a
+cross-reference is needed.
+
+Reconcile against existing docs coverage rather than duplicating narrative that's already there.
+Delete the two sections from `draft.md` once their content is verified present on the docs site.
+
+Gate: `just check` green.
+
+Read AGENTS.md first for provenance/commit conventions.
