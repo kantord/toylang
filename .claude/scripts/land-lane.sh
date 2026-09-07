@@ -51,6 +51,10 @@ worker_free() { # $1: dir that must have no live worker
 # child inheriting it keeps the whole queue locked for its own lifetime -- a
 # retriggered WORKER held the lock through its 20-minute run and three lands
 # queued behind it (2026-09-01, the same disease as the tick's fd-9 leak).
+# The test-gate subshells (just check, cargo nextest, just test) need it too:
+# sccache, spawned as RUSTC_WRAPPER down that chain, persists as a daemon after
+# them and would hold the lock fd forever (2026-09-07: it stalled the queue
+# via inode reuse when land.lock was deleted+recreated).
 fire_tick() {
   (nohup "$SCRIPTS/drive-tick.sh" >>"$LOG_DIR/event-ticks.log" 2>&1 &) 8>&-
 }
@@ -127,7 +131,7 @@ land)
       # land it. A red check means genuinely unfinished: skip, the rebrief
       # path owns it.
       CHECK_LOG="$LOG_DIR/land-autocommit-issue-$n.log"
-      (cd "$d" && just check) >"$CHECK_LOG" 2>&1
+      (cd "$d" && just check) >"$CHECK_LOG" 2>&1 8>&-
       CHECK_RC=$?
       if [ "$CHECK_RC" -ne 0 ]; then
         # A worktree that has sat through several merges can carry a stale
@@ -141,7 +145,7 @@ land)
                     tests/snapshots/backend_rust__rust_agrees_where_it_compiles.snap; do
           [ -f "$d/$snap.new" ] && mv "$d/$snap.new" "$d/$snap"
         done
-        (cd "$d" && just check) >"$CHECK_LOG" 2>&1
+        (cd "$d" && just check) >"$CHECK_LOG" 2>&1 8>&-
         CHECK_RC=$?
       fi
       if [ "$CHECK_RC" -eq 0 ]; then
@@ -202,7 +206,7 @@ Written by the lane worker; committed by land-lane.sh."
         git -C "$PDIR" add $CONFLICTED
         if (cd "$PDIR" && cargo nextest run -E "$REGEN_TESTS" >/dev/null 2>&1; \
             cargo insta accept >/dev/null 2>&1; \
-            cargo nextest run -E "$REGEN_TESTS") >>"$GATE_LOG" 2>&1; then
+            cargo nextest run -E "$REGEN_TESTS") 8>&- >>"$GATE_LOG" 2>&1; then
           git -C "$PDIR" add $CONFLICTED
           git -C "$PDIR" commit -q --no-edit -F "$MSG_FILE"
         else
@@ -222,7 +226,7 @@ Written by the lane worker; committed by land-lane.sh."
         continue
       fi
     fi
-    if ! (cd "$PDIR" && just test) >>"$GATE_LOG" 2>&1; then
+    if ! (cd "$PDIR" && just test) >>"$GATE_LOG" 2>&1 8>&-;then
       tail -n 60 "$GATE_LOG" >"$GATE_LOG.tail" && mv "$GATE_LOG.tail" "$GATE_LOG"
       cleanup_tmp
       retrigger "$n" "the full test suite went red" "$GATE_LOG"
