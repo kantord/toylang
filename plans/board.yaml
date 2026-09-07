@@ -1,10 +1,3 @@
-- id: land-lane-lock-sccache-inode-reuse-fix
-  kind: build
-  status: todo
-  needs: []
-  prio: 2
-  title: 'FIX land-lane.sh queue lock recurring stall: sccache (spawned as RUSTC_WRAPPER during the just test gate) inherits fd 8 (the land flock) through just -> cargo-nextest -> cargo -> rustc -> sccache, and its daemon persists after the land-lane.sh invocation that spawned it exits. If ~/.cache/toylang-drive/land.lock is later deleted+recreated, a fresh inode can collide with this lingering sccache fd via inode reuse in that high-churn directory, and every subsequent land-lane.sh queues behind it forever (flock -w 1800 8 always times out, never actually contends with another land-lane.sh). This is the same bug class already fixed once (commit 7e16104, moved off /tmp) and manually cleared once before (commit b535ad8, 2026-09-07 01:19) -- it recurred again the same day (2026-09-07 ~16:07, this time against the new $LOG_DIR path), stalling 4 queued land-lane.sh invocations for 20-29 minutes each before this tick found and killed the stray sccache PID to unblock it. Needs a real fix, not another manual kill: options include closing fd 8 (`8>&-`) before invoking `just test` inside the flock-held section (test gate does not need to inherit the lock fd, only the land-lane.sh process itself needs to hold it), setting SCCACHE_IDLE_TIMEOUT / SCCACHE_NO_DAEMON for the land test-gate invocation so the daemon does not outlive the build, or moving land.lock into a directory nothing else touches. See ~/.cache/toylang-drive/land-cascade-1788788880.log and `lsof ~/.cache/toylang-drive/land.lock` (repeatable while a land is running) for live repro evidence.'
-
 - id: stuck-issue-draft-records-migration-investigation
   kind: build
   status: delegated
