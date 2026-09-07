@@ -388,14 +388,6 @@
   prio: 3
   status: delegated
 
-- id: http-query-sugar-research
-  issue: gh:171
-  title: 'Research spike ahead of the http-query-sugar-design round: survey each backend''s existing I/O/effect capabilities (what a source/sink already looks like per backend, and whether any backend has network primitives today) and Python requests'' minimal surface (get/post, headers, body, response shape). Produce 2-3 concrete syntax candidates for HTTP query sugar as toylang code, each grounded in what the current sink/source vocabulary already supports, so the design round can ask a real question instead of a green-field one. Write findings to plans/.'
-  kind: build
-  needs: []
-  prio: 4
-  status: todo
-
 - id: brief-phrasing-experiment
   title: 'Tracked in-repo per maintainer ruling (coordinator-escalation-brief-phrasing-experiment round, 2026-09-01: gh issue create was blocked by the permission classifier; no gh issue, no retry). Maintainer note (composed 2026-08-31): generic non-informational reassurance phrasing ("its much simpler than you think") in dispatch briefs seems to help planning agents find better plans -- experiment on at least 10 issues, then report progress and grill on the results.'
   kind: build
