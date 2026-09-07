@@ -156,3 +156,15 @@ fn hoisted_def_unknown_enum() {
 
 nope(1)"#));
 }
+
+/// The stream invariant holds for the inferred return too: a hoisted body cannot conjure
+/// a stream without taking one in through a parameter, same as a written signature (gh:152).
+#[test]
+fn hoisted_def_cannot_conjure_a_stream() {
+    insta::assert_snapshot!(err(
+        r#"enum Msg { Ping }
+fn render = Msg(Ping -> range(3))
+
+collect(render(Msg.ping))"#
+    ));
+}
