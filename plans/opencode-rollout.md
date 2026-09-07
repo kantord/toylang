@@ -1613,3 +1613,35 @@ count via `fuser`/`pgrep`, so it could refuse to queue a 4th+ until depth drops)
 the give-up path itself write a distinguishable marker (`land-timeout-issue-N`, say) instead of
 leaving the old `land-failed` marker looking unchanged, so a future tick's disk read doesn't
 have to reconstruct this from raw `.out` files and process timestamps.
+
+## 2026-09-07 (queue draining): one lane requeued, two left live
+
+Re-checked `ps`/`fuser land.lock` as the last entry suggested. Queue had drained from 5 deep to
+2 real contenders: the combined `iteration-traits-scaffold-build stuck-issue-draft-records-migration-investigation`
+cascade (still holding the lock, now on its second lane -- `land-gate-issue-iteration-traits-scaffold-build.log`
+shows its `just test` already passed 412/412 at 13:32 and a fresh `land-failed-issue-iteration-traits-scaffold-build`
+marker at 13:35 shows that lane's merge hit the busy/dirty 3-minute retry ceiling, so it moved on
+to the second lane, whose gate log finished 409/409 at 13:38 and was in the merge-retry window
+at check time) and `draft-prototype-findings-migration` (still waiting on the flock, 11+ min in,
+well inside the 30-minute budget). `fuser land.lock` also listed two extra PIDs: one was
+`sccache` (inherited the lock fd from a `just test` child, not a real queue contender) and one
+had already exited by the time it was checked (stale fuser cache entry) -- neither counts toward
+queue depth.
+
+`draft-matching-migration` and `draft-str-adr` confirmed via their `.out` logs to have already
+hit the 30-minute give-up (unchanged since the last entry, `[land] queue lock held 30+ min --
+gave up`) -- left both alone again rather than requeue into the same two live attempts; still
+not worth the risk of a second cascade timeout for a queue depth of only 2.
+
+`draft-calls-modules-migration` was different: its `.out` log (`land-draft-calls-modules-migration-retry2.log`)
+shows the same 30-minute give-up, and the trigger named it explicitly as "looks landable (worker
+exited)". Queued one detached `land-lane.sh land draft-calls-modules-migration` retry (pid
+1191964) -- queue depth becomes 3, all bounded by the same 1800s flock wait, and the give-up
+path doesn't burn the retry cap since it never reaches a real gate/conflict failure.
+
+No fresh sandbox dispatch: `draft-records-migration`, `draft-matching-migration`, and
+`draft-prototype-findings-migration` are still the same near-miss traps as the last two entries
+-- each still has a live lane worktree with unlanded commits and an unanswered
+`*-sandbox-blocker.round.yaml`, not a clean slot to dispatch into. Nothing on disk changed there
+since the last check. No new round composed either -- 6 rounds already pending, well past the
+"keep two buffered" target.
