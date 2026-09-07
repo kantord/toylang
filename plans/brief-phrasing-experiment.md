@@ -49,3 +49,5 @@ is superseded by this one.
 
 | lane | reassurance | outcome | note |
 |------|-------------|---------|------|
+| land-lane-lock-sccache-inode-reuse-fix | yes ("It's much simpler than you think.") | pending | dispatched 2026-09-07 |
+| native-backend-rust-ergonomics-research | no (control) | pending | dispatched 2026-09-07 |
