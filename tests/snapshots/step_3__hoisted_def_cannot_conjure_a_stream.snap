@@ -1,0 +1,5 @@
+---
+source: tests/step_3.rs
+expression: "err(r#\"enum Msg { Ping }\nfn render = Msg(Ping -> range(3))\n\ncollect(render(Msg.ping))\"#)"
+---
+a match cannot yield a stream; pass each arm to `collect` first (at byte 42)

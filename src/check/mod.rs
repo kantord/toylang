@@ -14,8 +14,8 @@ mod types;
 
 use linearity::{StreamBinding, check_linear, field_used, local_used, param_used, prune_unreachable};
 use types::{
-    TypeEnv, alias_map, constructor_of, enum_map, is_constructor_of, matcher_of, resolve,
-    resolve_enum, signatures,
+    TypeEnv, alias_map, check_sig_invariants, constructor_of, enum_map, is_constructor_of,
+    matcher_of, resolve, resolve_enum, signatures,
 };
 
 struct Ctx<'a> {
@@ -1830,13 +1830,15 @@ fn infer_hoisted<'a>(
             continue;
         }
         let func = check_hoisted_def(ctx, def)?;
-        refined.insert(
-            def.name.clone(),
-            Sig {
-                param: func.param_ty.clone(),
-                ret: func.body.ty.clone(),
-            },
-        );
+        let sig = Sig {
+            param: func.param_ty.clone(),
+            ret: func.body.ty.clone(),
+        };
+        // The stream/sink invariants apply to the inferred signature too: `signatures`
+        // skipped them for hoisted defs (the return was still the provisional enum), and
+        // nothing has re-checked them since the real return was inferred (gh:152).
+        check_sig_invariants(&def.name, def.span, &sig)?;
+        refined.insert(def.name.clone(), sig);
     }
     Ok(refined)
 }

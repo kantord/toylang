@@ -323,35 +323,35 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
                 },
             }
         };
-        // A stream is born only at a source, so a function cannot conjure one: a stream result
-        // flows in through a stream parameter, and the pipeline stays one chain fusion can
-        // read. Refusing is the reversible direction.
-        if !def.hoisted
-            && matches!(sig.ret, Type::Stream(_))
-            && !matches!(sig.param, Some(Type::Stream(_)))
-        {
-            return Err(Error::new(
-                def.span,
-                format!(
-                    "`{}` returns {} without taking a stream; a stream is born only at a source",
-                    def.name, sig.ret
-                ),
-            ));
-        }
-        // A sink is not a value, so nothing can be passed one: `Sink` is legal as a return
-        // type, and nowhere else in a signature.
-        if !def.hoisted && matches!(sig.param, Some(Type::Sink)) {
-            return Err(Error::new(
-                def.span,
-                format!(
-                    "`{}` cannot take a Sink parameter; a sink has no value to pass",
-                    def.name
-                ),
-            ));
-        }
+        check_sig_invariants(&def.name, def.span, &sig)?;
         sigs.insert(def.name.clone(), sig);
     }
     Ok(sigs)
+}
+
+pub(super) fn check_sig_invariants(name: &str, span: Span, sig: &Sig) -> Result<(), Error> {
+    // A stream is born only at a source, so a function cannot conjure one: a stream result
+    // flows in through a stream parameter, and the pipeline stays one chain fusion can
+    // read. Refusing is the reversible direction.
+
+    if matches!(sig.ret, Type::Stream(_)) && !matches!(sig.param, Some(Type::Stream(_))) {
+        return Err(Error::new(
+            span,
+            format!(
+                "`{}` returns {} without taking a stream; a stream is born only at a source",
+                name, sig.ret
+            ),
+        ));
+    }
+    // A sink is not a value, so nothing can be passed one: `Sink` is legal as a return
+    // type, and nowhere else in a signature.
+    if matches!(sig.param, Some(Type::Sink)) {
+        return Err(Error::new(
+            span,
+            format!("`{}` cannot take a Sink parameter; a sink has no value to pass", name),
+        ));
+    }
+    Ok(())
 }
 
 /// `seen` is the chain of names currently being expanded, each with the arguments it was
