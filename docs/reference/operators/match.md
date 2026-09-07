@@ -11,9 +11,9 @@ enum_match
 
 Four arm shapes:
 
-- `point -> ...`: a unit variant, by name.
-- `circle{r} -> r * r`: a payload variant with a record pattern, binding fields fresh.
-- `text -> .body`: a bare payload arm; `.` rebinds to the payload, so a scalar payload is
+- `Point -> ...`: a unit variant, by name.
+- `Circle{r} -> r * r`: a payload variant with a record pattern, binding fields fresh.
+- `Text -> .body`: a bare payload arm; `.` rebinds to the payload, so a scalar payload is
   used whole and a record payload is projected into.
 - `. % 3 == 0 -> "Fizz"`: a guard arm, matching when the Bool is true; `.` stays the
   subject in both the guard and the body.

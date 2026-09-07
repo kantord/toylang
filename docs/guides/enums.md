@@ -48,7 +48,7 @@ else.
 
 ## Payloads are any single type
 
-A record payload (`text{body: Str}`) is declared in braces and destructured in the arm. A
+A record payload (`Text{body: Str}`) is declared in braces and destructured in the arm. A
 scalar or `Vec` payload is declared in parens, constructed like a call, and bound whole to
 `.` in its arm:
 
