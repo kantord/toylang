@@ -1,9 +1,7 @@
-- id: iteration-traits-design
-  title: 'Decide whether to add iteration traits (see iteration-traits-research)
-    and, if so, their shape -- language-design change, needs a maintainer round
-    before any implementation.'
-  kind: decide
-  needs: [iteration-traits-research]
+- id: iteration-traits-scaffold-build
+  title: 'RULED (iteration-traits-and-stdin-splitting round, wizard submission 2026-09-07): option B, build a monomorphic Iterable-style trait scaffold now, ahead of any second implementation to dispatch on -- maintainer note: "we have to realize this is cyclical -- we didn''t build the functions that would use it because we don''t have the trait, so now we cannot use the lack of such functions to explain why the trait is not needed." No existing definition unifies yet (Vec max stays its own body; there is still no Stream reducer at all -- verified `max(range(5))` still errors `` `max` needs a Vec of Int or Int64, found Stream<Int> ``). Scaffold a Fold-shaped trait (step/identity) and impl it for Vec<Int> only; a second impl arrives whenever stream reduction is designed.'
+  kind: build
+  needs: []
   prio: 3
   status: todo
 
@@ -25,16 +23,16 @@
 
 - id: variant-types-flip
   issue: gh:165
-  title: 'Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference). Lane issue-165 stalled here (0 commits, renamed aside as issue-165-contaminated-20260831): the brief claims checker enforcement "already done via gh:156" but variant-checker-capital-first was still status: todo -- added as a real needs edge below so the migration cannot be dispatched again until the checker actually enforces the rule.'
+  title: 'Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference). Lane issue-165 stalled here (0 commits, renamed aside as issue-165-contaminated-20260831): the brief claims checker enforcement "already done via gh:156" but variant-checker-capital-first was still status: todo -- added as a real needs edge below so the migration cannot be dispatched again until the checker actually enforces the rule. Needs edges now all satisfied -- redispatched via sandbox_dispatch.py 2026-09-07, brief at ~/.cache/toylang-drive/briefs/variant-types-flip.md.'
   kind: build
   needs: [matcher-totality-and-alt-design, variant-checker-capital-first, doc-migrate-capital-variants]
   prio: 2
   model: fable
-  status: todo
+  status: delegated
 
 - id: shell-out-build
   issue: gh:158
-  title: Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect (shell-out-design ruling, gh:158, depends on Q35's stdout/stderr effect model)
+  title: 'Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect. Output side RULED (stream-merge-tagged-design): a fixed stdlib enum (e.g. PipeLine{ Stdout, Stderr }) tags each relayed line, `pipe_through(cmd: Str, args: Vec<Str>) -> Stream<Line>`. Input side RULED (stdin-stdout-splitting-design, wizard submission 2026-09-07): option A, symmetric Stream<Str> stdin argument -- `pipe_through(cmd: Str, args: Vec<Str>, stdin: Stream<Str>) -> Stream<Line>`. Needs a new "write a Stream out to an external sink" mechanism (nothing existing does this; jsonlines only targets toylang''s own stdout) alongside the relay-in side.'
   kind: build
   needs: [stream-merge-tagged-design]
   status: todo
@@ -52,13 +50,6 @@
   kind: decide
   needs: [shell-out-stderr-relay-design]
   status: done
-
-- id: stdin-stdout-splitting-design
-  issue: gh:158
-  title: 'How pipe_through''s *input* side works (writing to a subprocess''s stdin) -- flagged as possibly distinct from the stdout/stderr tagged-merge question (Q35, stdout-stderr-effect-model-design, shell-out-stderr-relay-design) across three rounds now, never actually asked. Ground it against the now-settled tagged-enum output shape (stream-merge-tagged-design, RULED option A) and the opaque-plumbing effect model (stdout-stderr-effect-model-design, RULED option A), then produce the concrete pipe_through input-side signature.'
-  kind: decide
-  needs: [stream-merge-tagged-design]
-  status: todo
 
 - id: stdout-stderr-effect-model-design
   title: 'Decide Q35 (plans/questions.md#q35): what are stdout/stderr, and does a program write or return? Two commitless runs on shell-out-build (gh:158, issue-158, 2026-09-01) both spent their full budget rediscovering that pipe_through cannot be implemented until this effect model exists, then produced no code. Round 1 answer: no pick -- maintainer''s freeText pulled two directions at once ("well i would say real type, but isn''t it already the same types that we are using for our own program''s own inputs and outputs?") and flagged a second open question riding along, how stdin/stdout splitting works. Round 2 answer (wizard submission, 2026-09-07): RULED option A, opaque plumbing -- a second single-instance sink alongside jsonlines, symmetric in every rule, no sequencing form. Maintainer''s note: "not sure, but i lean towards A." This is against the research doc''s thesis (which leaned B, Sink<T> plus a sequencing form, since A structurally cannot relay two streams at once) -- so shell-out-build''s pipe_through need (relay a subprocess''s stdout AND stderr in one run) stays unresolved under A and will need its own follow-up if/when that need becomes concrete. stdin/stdout splitting for pipe_through was flagged as possibly a distinct question, not answered here -- open a follow-up decide row for it when shell-out-build is dispatched.'
@@ -231,18 +222,14 @@
 
 - id: module-routing-syntax-build
   issue: gh:167
-  title: 'Implement `@(path)` module-as-function routing-arm syntax -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C (dedicated routing-arm form) chosen; maintainer refined the spelling from the round''s bare `@path` to parenthesized `@(route-groups/baz.toy)` because it encloses the path expression. See plans/module-routing-research.md. Reshaped (stuck-lane investigation, plans/opencode-rollout.md 2026-09-06): the syntax is ruled but the semantics are not -- a build dispatch here stalls on real open questions, not a capability gap. Blocked on module-routing-semantics-design until those are ruled.'
+  title: 'Implement `@(path)` module-as-function routing-arm syntax -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C (dedicated routing-arm form) chosen; maintainer refined the spelling from the round''s bare `@path` to parenthesized `@(route-groups/baz.toy)` because it encloses the path expression. See plans/module-routing-research.md. Semantics RULED (module-routing-semantics round, wizard submission 2026-09-07), all four questions:
+    (1) entry-point convention: option C, maintainer freeText leaned toward "the module''s main entry point" (functionally option A''s single fixed-name convention -- implement as a fixed name, e.g. `handle`) while flagging that a way to address a *specific* non-entry function by name is wanted eventually; that is out of scope for this build, do not block on it.
+    (2) dispatch strictness: option A, full strict statically-typed call -- check_module the target file, unify the entry fn''s signature against the arm''s subject/return type exactly like any other call site, no coercion.
+    (3) def visibility: option A, full merge prelude-style -- widen `Origin` from the fixed 2-variant `Copy` enum to `Origin::Module(PathBuf)` (no longer `Copy`; every `HashMap<_, (Origin, bool)>` site needs updating), and prepend the routed module''s `pub` defs to the program''s def list the way `prelude::inject` does.
+    (4) enum-variant collision policy: option B, submodule enum variants are ALWAYS qualified, never bare-resolvable from the caller -- do NOT fold them into the shared `variant_owners` bare-lookup table the way (3) folds defs; this is a deliberate asymmetry between defs and enum variants, not an oversight.'
   kind: build
-  needs: [file-visibility-tracking-build, module-routing-semantics-design]
-  prio: 5
-  status: todo
-
-- id: module-routing-semantics-design
-  issue: gh:167
-  title: 'Follow-up from the stuck issue-167 lane investigation (plans/opencode-rollout.md, 2026-09-06): module-routing-syntax-build stalled with 0 commits across 62 read-only tool calls because the ruled `@(path)` syntax has no ruled semantics underneath it. Rule: (1) the entry-point convention for a submodule dispatch target (module-routing-research.md sketches a `handle` convention for candidates 1/3, but this was never actually ruled); (2) whether dispatch is a full statically-typed function call (the research doc leans strict, to keep all 8 backends agreeing); (3) whether a submodule''s definitions merge into the caller the way the prelude''s do, and how `Origin` (landed via file-visibility-tracking-build) widens to carry a module path; (4) the enum-collision policy when a merged submodule''s enum names collide with the caller''s.'
-  kind: decide
   needs: [file-visibility-tracking-build]
-  prio: 4
+  prio: 5
   status: todo
 
 - id: erlang-target-consideration
@@ -272,14 +259,6 @@
 
 - id: draft-records-migration
   title: Migrate the three record decisions (literals-and-arguments, declared order, order-not-identity) into the record reference, delete (draft-split)
-  kind: build
-  needs: []
-  soft: [draft-intro-migration, draft-questions-home]
-  prio: 4
-  status: todo
-
-- id: draft-streams-migration
-  title: Migrate the five stream/stdin decision sections against ADR 0001, the streams guide, and the sources reference; delete (draft-split)
   kind: build
   needs: []
   soft: [draft-intro-migration, draft-questions-home]

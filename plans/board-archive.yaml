@@ -1908,3 +1908,37 @@
     the coordinator should do -- a contributing factor to the collision. Board bookkeeping fixed
     directly, 2026-09-07, in response to a user question about why board status kept lagging
     reality.'
+
+- id: iteration-traits-design
+  title: 'Decide whether to add iteration traits (see iteration-traits-research)
+    and, if so, their shape -- language-design change, needs a maintainer round
+    before any implementation. RULED (iteration-traits-and-stdin-splitting round,
+    wizard submission 2026-09-07): option B, build a monomorphic trait scaffold now.
+    Split into iteration-traits-scaffold-build.'
+  kind: decide
+  needs: [iteration-traits-research]
+  prio: 3
+  status: done
+
+- id: stdin-stdout-splitting-design
+  issue: gh:158
+  title: 'How pipe_through''s *input* side works (writing to a subprocess''s stdin) -- flagged as possibly distinct from the stdout/stderr tagged-merge question (Q35, stdout-stderr-effect-model-design, shell-out-stderr-relay-design) across three rounds now, never actually asked. RULED (iteration-traits-and-stdin-splitting round, wizard submission 2026-09-07): option A, a Stream<Str> stdin argument symmetric with the tagged output stream -- `pipe_through(cmd: Str, args: Vec<Str>, stdin: Stream<Str>) -> Stream<Line>`. Folded into shell-out-build.'
+  kind: decide
+  needs: [stream-merge-tagged-design]
+  status: done
+
+- id: module-routing-semantics-design
+  issue: gh:167
+  title: 'Follow-up from the stuck issue-167 lane investigation (plans/opencode-rollout.md, 2026-09-06): module-routing-syntax-build stalled with 0 commits across 62 read-only tool calls because the ruled `@(path)` syntax has no ruled semantics underneath it. RULED (module-routing-semantics round, wizard submission 2026-09-07): (1) entry-point convention -- option C/freeText, interpreted as a fixed-name single entry point (option A-equivalent, e.g. `handle`), with specific-name addressing flagged as future scope, not blocking; (2) dispatch strictness -- option A, full strict call; (3) def visibility -- option A, full merge prelude-style via widened `Origin::Module(PathBuf)`; (4) enum-variant collision -- option B, always qualified, never merged bare (asymmetric with (3) by design). Folded into module-routing-syntax-build.'
+  kind: decide
+  needs: [file-visibility-tracking-build]
+  prio: 4
+  status: done
+
+- id: draft-streams-migration
+  title: Migrate the five stream/stdin decision sections against ADR 0001, the streams guide, and the sources reference; delete (draft-split)
+  kind: build
+  needs: []
+  soft: [draft-intro-migration, draft-questions-home]
+  prio: 4
+  status: done
