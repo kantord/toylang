@@ -1,0 +1,41 @@
+# native-backend-rust-ergonomics-research
+
+Board row: native-backend-rust-ergonomics-research (prio 4). No GitHub issue -- tracked
+only in plans/board.yaml. This is a research row: write findings, do not change the
+compiler or runtime.
+
+Maintainer note (composed 2026-09-04): investigate whether the native/LLVM backend is
+properly ergonomic today, in the sense that we should be using well-established Rust
+libraries for this rather than hand-writing everything in raw LLVM IR/C -- ideally
+gaining the ability to write integrated code directly in Rust, or even import
+functionality from other crates, instead of manually authoring it in
+runtime/toylang.c or src/emit_llvm.rs.
+
+Survey what an inkwell-based (or similar) LLVM codegen layer and/or a thin Rust runtime
+crate (in place of hand-rolled C in runtime/toylang.c) would buy in ergonomics and
+correctness versus the current hand-written approach, and what it would cost in build
+complexity/toolchain deps.
+
+Concrete recent evidence worth grounding the survey in: the issue-177 lane
+(sort_by/max_by) spent much of a 193-step run hand-patching runtime/toylang.c with
+oldString-not-found edit failures and a self-introduced combining-character corruption
+bug while adding four keyed C helper functions -- exactly the kind of hand-authored-C
+friction the note is asking about. Read that lane's history (git log for issue-177) if
+still reachable, or describe the friction class from runtime/toylang.c's current shape
+if not.
+
+Read `src/emit_llvm.rs` and `runtime/toylang.c` first to see today's actual shape
+(what's hand-rolled LLVM IR text/C vs. what a codegen library would replace). Check
+whether `inkwell` (or an equivalent safe LLVM-builder crate) is a viable dependency
+here -- version compatible with the LLVM the build already targets, license, maturity --
+and separately whether replacing runtime/toylang.c's C helpers with a Rust runtime
+crate is even compatible with how native binaries are currently linked/emitted.
+
+Write findings (with concrete code comparisons -- e.g. a real snippet of
+runtime/toylang.c or emit_llvm.rs today next to what the inkwell/Rust-crate equivalent
+would look like) to plans/native-backend-rust-ergonomics-research.md, then compose a
+design round in docs/.grill/ so the maintainer can rule on whether to pursue this.
+
+This is a sandbox_dispatch.py row: plan-decompose, do the research, verify, then land
+via land-lane.sh yourself as the brief's automated cycle does. AGENTS.md is the working
+agreement -- read it first.
