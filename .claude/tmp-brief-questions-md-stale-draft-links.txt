@@ -1,0 +1,19 @@
+# questions-md-stale-draft-links
+
+It's much simpler than you think -- this is a two-line link fix.
+
+`plans/questions.md` has two dead links left behind by the (already-landed)
+draft-core-model-migration row, which deleted the headings they pointed at:
+
+- Q11 -> `../draft.md#the-core-idea-two-layers`
+- Q32 -> `../draft.md#proposal-the-layer-shift-only-runs-one-way`
+
+See `ESCALATION.md` in that landed commit for background if useful.
+
+Repoint both links to `docs/guides/cardinality.md` instead (adjust the relative path from
+`plans/questions.md`'s location). Do not touch anything else in `draft.md` -- this row is
+plans/-only, per the "do not touch plans/" constraint the migration row left in place for it.
+
+Gate: `just check` green.
+
+Read AGENTS.md first for provenance/commit conventions.

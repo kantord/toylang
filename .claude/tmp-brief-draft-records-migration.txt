@@ -1,0 +1,24 @@
+# draft-records-migration
+
+It's much simpler than you think -- this is a well-scoped, mechanical migration.
+
+Source of truth: `plans/draft-split.md`, section "draft-records-migration" (around line 84).
+
+Verify these three DECIDED sections in `draft.md` against the real docs site, salvage missing
+rationale, then delete them from `draft.md`:
+
+- "DECIDED: records can be built, and a record is how several arguments travel"
+- "DECIDED: record fields keep their declared order"
+- "DECIDED: record field order is not type identity"
+
+Destination: `docs/reference/types/record.md` and `docs/reference/syntax/functions.md` (the
+unary-functions/record-argument story is shared with the already-landed
+draft-access-model-migration row -- reconcile, don't duplicate). The punning refusal and its
+reason deserve to survive on the docs site.
+
+Reconcile against existing docs coverage rather than duplicating narrative that's already there.
+Delete the three sections from `draft.md` once their content is verified present on the docs site.
+
+Gate: `just check` green.
+
+Read AGENTS.md first for provenance/commit conventions.
