@@ -339,9 +339,11 @@ capital name (kantord/toylang#47). See [the enums guide](../docs/guides/enums.md
 
 OPEN. `..` composed with a matcher already finds a shape anywhere in a tree without naming its
 path, and `as` already binds one submatch to a name for reuse within the same arm. Neither needs
-unification. What would: finding a node `A` and a separate node `B` elsewhere such that `B`
+unification. A `..` rest-marker for matching a subset of a closed type's fields, leaving fields out being
+a compile error by default,is likewise unbuilt sketch. What would: finding a node `A` and a
+separate node `B` elsewhere such that `B`
 refers to `A`, which is full Prolog-style unification with backtracking over bindings, not a
-bigger version of `as`. See [Pattern matching is decoding](../draft.md#pattern-matching-is-decoding).
+bigger version of `as`.
 
 ### Q29. What is the default discriminant convention for a derived enum codec?
 
@@ -349,10 +351,14 @@ SUPERSEDED: there is no derived codec picking a representation, because the repr
 *is* the value. [ADR 0009](../docs/adr/0009-enums-are-json-native-single-key-wrappers.md)
 records the decision, and why the tag-field and shape-matched alternatives lost.
 
+The wider derived-codec thread -- a `Json -> T` decode, a `T -> Json` encode, and a JSON
+Schema projection, all falling out of one structural description -- is deferred to the
+codec layer ADR 0009 names, with nothing settled there.
+
 ### Q30. Do the base-functor generics double as parser combinators, across trees, strings, and streams?
 
 LEANING yes. `Seq`, `Alt`, `Star`, and `Opt` are already in the document as [the regex-over-types algebra](#q4-can-the-type-express-ordering-over-heterogeneous-streams)
-and as the shape [Pattern matching is decoding](../draft.md#pattern-matching-is-decoding) builds `Matcher<T>` from; naming them as parser
+and as the shape [the matcher decision](#q27-does-pattern-matching-need-a-separate-matcher-type-distinct-from-result) builds `Matcher<T>` from; naming them as parser
 combinators only makes the precedent explicit (Hutton and Meijer; Wadler; parsing with
 derivatives). OPEN: whether this is one trait with implementations that differ by receiver (a
 parsed tree needs no backtracking, a string needs an actual parsing engine), the same shape as
@@ -363,7 +369,7 @@ parsed tree needs no backtracking, a string needs an actual parsing engine), the
 
 OPEN. A URL-route-style syntax with named, typed captures composing through the existing
 `int(.)`-style codec syntax is one candidate, with Swift's `Regex` builder and route-pattern DSLs
-such as Express's `path-to-regexp` as the closest prior art. [The arm-list's `//` semantics](../draft.md#pattern-matching-is-decoding) already
+such as Express's `path-to-regexp` as the closest prior art. [The ordered arm list](../docs/guides/matching.md) already
 commit any such language to ordered, PEG-style choice, which is compatible with PCRE/Perl-style
 regex and not with POSIX leftmost-longest regex, so "extends to regular expressions" needs to
 name which flavor. See
