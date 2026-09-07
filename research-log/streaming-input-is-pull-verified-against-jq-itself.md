@@ -45,7 +45,7 @@ Pull plus "no branching fan-out" needed zero new runtime machinery anywhere, whi
 push-based design, or a pull design that allowed multiple consumers, would not have gotten for
 free.
 
-See [a minimal cut of streaming input](../draft.md#decided-a-minimal-cut-of-streaming-input-pull-based-one-new-keyword)
+See [the effect-layer ADR](../docs/adr/0001-stream-is-the-effect-layer-typed.md#pull-not-push)
 for what got built on top of this, and
 [a sixth instance of the backend having rules the checker does not](a-sixth-backend-rule-the-checker-did-not-know.md)
 for what verifying each backend's own line-splitting against this model turned up.

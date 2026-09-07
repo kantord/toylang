@@ -4,7 +4,7 @@ Research spike for [Q35](questions.md#q35-what-are-stdout-and-stderr-and-does-a-
 requested after round 1 of the `stdout-stderr-effect-model` grill split the maintainer between
 "a real type" (option C, Effect/IO) and noting the program already has Stream-typed inputs and
 outputs (option B, extend the decided [Stream is the effect
-layer](../draft.md#decided-stream-is-the-effect-layer-typed) model), while flagging stdin/stdout
+layer](../docs/adr/0001-stream-is-the-effect-layer-typed.md) model), while flagging stdin/stdout
 splitting as a second open question riding along. This writes up what each of round 1's three
 named options (opaque plumbing, Stream-carries-writes, real Effect/IO type) would concretely mean,
 against what the language actually has today, verified by running real programs rather than
@@ -186,7 +186,7 @@ fixed pair of streams, and name what would force it (a real program needing that
 the same way the fused `jsonlines(f(inputs))` loop forced `Stream` itself) rather than building it
 speculatively now.
 
-Derived: the `Stream`/`Sink` rules from [the effect-layer decision](../draft.md#decided-stream-is-the-effect-layer-typed)
+Derived: the `Stream`/`Sink` rules from [the effect-layer decision](../docs/adr/0001-stream-is-the-effect-layer-typed.md)
 and `docs/reference/builtins/jsonlines.md`; `or`'s positional-overload precedent from
 `docs/reference/operators/boolean.md` and `docs/reference/operators/match.md`. Agent-invented:
 the three worked-out option shapes

@@ -15,6 +15,26 @@ in a record, a `Vec`, or another `Stream`. This settles draft.md's Q1 as "evalua
 typed": the silent streaming cliff becomes a checked property, and eager consumption of stdin
 gets a visible spelling, `collect(inputs)`.
 
+## Pull, not push
+
+The model is pull: nothing runs until asked, so backpressure is a consequence of the calling
+convention rather than a second protocol to bolt on. Every mature abstraction whose job is not
+letting a producer outrun its consumer is pull -- Rust's `Iterator`, Python's generators, JavaScript's
+async iterators, and jq itself, verified empirically(`limit(3; range(100000000000))` returns three
+values instantly). Push designs need a second, explicit protocol to recover the same property
+(Node's `pause`/`resume`, Reactive Streams' `request(n)` demand signal), which is exactly the
+backpressure footgun Node's raw `Readable` in flowing mode is famous for.
+
+A pull chain compiles to one ordinary loop on every backend including native, which has no
+coroutine or event-loop runtime to build a push design on top of. The two costs are named non-goals
+rather than gaps found later: a pulled item is consumed once, so using one stream in two places
+(fan-out) means `collect`-ing it into a `Vec` first; and a pull chain never runs ahead of the
+consumer, so pipeline stages never overlap. What is not lost is cross-process overlap, the kind
+`grep foo | wc -l` gets from the kernel, which is a property of not pre-reading stdin before a
+subprocess backend runs, not a language feature. See
+[streaming input is pull, verified against jq itself](../../research-log/streaming-input-is-pull-verified-against-jq-itself.md)
+for the full comparison.
+
 ## Considered options
 
 - First-class `Stream<T>` values, storable and nestable. Rejected: a held value of genuinely
