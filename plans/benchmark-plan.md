@@ -120,8 +120,19 @@ what a 32-bit or even 64-bit accumulator holds; the spigot algorithm's usual unb
 shape has no home in a language with no bignum type, so it is blocked the same way the float
 tasks are, on a type the language does not have yet.
 
-Of the eight, `binary-trees` and `fasta` are landed; `fannkuch-redux` (fully numeric, no decode
-needed) is the next real candidate; `mandelbrot` needs float support
+`fannkuch-redux` is landed (`benches/programs/fannkuch-redux.toy`, correctness pinned at
+`tests/corpus/fannkuch.yaml`): for N, generate every permutation of [1..N], and for each one
+flip the leading block of length equal to its first element until that element is 1, counting
+flips; track the maximum and a checksum, each permutation's flips signed by its parity. The
+parity is inversion parity, so the sign is order-independent rather than a property of the
+enumeration order; that makes the checksum differ from the CLBG site's index-based one, which
+this recursive generation (build permutations by inserting the first element at every position
+of each permutation of the rest) does not reproduce. Both verify that all N! permutations were
+visited, and the maximum flip count, the benchmark's real number, matches CLBG. Every backend
+runs it -- none of the seven refuses, since it needs only the `Vec<Int>` slice, reverse, and
+index operations every backend already carries.
+
+Of the eight, `binary-trees`, `fasta`, and `fannkuch-redux` are landed; `mandelbrot` needs float support
 most backends don't have yet, the same gate n-body/spectral-norm are already behind; `pidigits`
 needs a bignum type; `reverse-complement`, `k-nucleotide`, and `regex-redux` need `Str`
 slicing or a `Char -> Str` builtin, neither of which exists.

@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (238):
+compiles natively (239):
 adults
 all_basic
 all_empty
@@ -68,6 +68,7 @@ enum_unit_variant
 enum_variant_at_runtime
 enum_vec_payload
 escapes
+fannkuch
 fasta_generate
 field_key_case_is_significant
 fields_basic
