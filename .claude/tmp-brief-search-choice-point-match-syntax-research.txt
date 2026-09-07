@@ -1,0 +1,32 @@
+# search-choice-point-match-syntax-research
+
+Source of truth: `plans/board.yaml` row `search-choice-point-match-syntax-research`
+(blocks the `search-vocab-choice-cut-fold` decide row's `search-choice-point-syntax`
+question from the search-vocab-choice-cut-fold round 4 answers).
+
+Task: the maintainer asked for a deeper design pass on whether toylang's choice-point
+operator ("branch wider, explore every alternative" -- currently sketched as a new infix
+operator such as `;`, `branch(...)`, or folding into `//`) should instead be spelled
+parallel to toylang's existing match syntax.
+
+Survey how other languages with pattern-matching-flavored search/logic constructs express
+this kind of nondeterministic branching:
+
+- Prolog disjunction (`;` / clause backtracking)
+- Icon/Curry generators (implicit backtracking over generated values)
+- List-monad comprehensions (Haskell list monad / do-notation as search)
+
+Produce 2-3 concrete syntax candidates with real toylang code examples for each -- pick a
+small worked example (e.g. picking a pair of values satisfying a constraint) and show it
+under every candidate. Explicitly include one candidate that reuses toylang's match syntax
+rather than introducing a new operator, since that's the specific framing the maintainer
+asked about.
+
+Write findings to `plans/search-choice-point-match-syntax-research.md`, following the shape
+of existing research docs like `plans/recursive-descent-order-research.md` (findings +
+concrete recommendation). This is a research spike: no code changes to the toylang
+implementation itself.
+
+Gate: `just check` green.
+
+Read AGENTS.md first for provenance/commit conventions.

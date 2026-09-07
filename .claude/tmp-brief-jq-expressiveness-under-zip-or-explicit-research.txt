@@ -1,0 +1,28 @@
+# jq-expressiveness-under-zip-or-explicit-research
+
+Source of truth: `plans/board.yaml` row `jq-expressiveness-under-zip-or-explicit-research`
+(issue gh:169), which blocks the `binary-op-multiplicity-design` decide row (Q2 of the
+multiplicity-and-offload-round2 grill round).
+
+Task: survey real jq idioms that rely on the cartesian-product default for `Vec op Vec`
+(the multiplicity behavior toylang's option A would preserve), and work out concretely
+what breaks or becomes more verbose under:
+
+- Option B: a zip/broadcast default instead of cartesian.
+- Option C: no default multiplicity at all -- explicit `zip`/`cross` calls required.
+
+Use real jq snippets (pull from jq's own docs/manual and common idiom collections) and
+write their toylang-under-B and toylang-under-C equivalents so the comparison is concrete
+code, not abstract description. Cover at least: the classic `.a[] * .b[]` cartesian
+combination pattern, and any idiom where broadcast (option B) would silently produce a
+different result than cartesian (option A) rather than just an error.
+
+Write findings to `plans/jq-expressiveness-under-zip-or-explicit-research.md`, following
+the shape of existing research docs like `plans/recursive-descent-order-research.md` or
+`plans/dense-tensor-design-research.md` (findings + concrete recommendation, not just raw
+notes). This is a research spike: no code changes to the toylang implementation itself.
+
+Gate: `just check` green (docs/build tooling only -- there's no implementation change to
+test here beyond the new research file being well-formed markdown).
+
+Read AGENTS.md first for provenance/commit conventions.
