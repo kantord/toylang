@@ -21,5 +21,5 @@ join([])
 
 ```
 
-`join` is not a builtin: it is toylang source, defined in `prelude.toy` as an ordinary
+`join` is not a builtin: it is toylang source, defined in the [prelude](index.md) file, `prelude.toy`,as an ordinary
 recursive function, and it compiles the way any user function does.
