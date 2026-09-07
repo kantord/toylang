@@ -49,7 +49,7 @@ fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0
 {"a":0,"b":9}
 ```
 
-`circle{r}` binds the payload's field; a unit arm is just the name. Leave a variant out and
+`Circle{r}` binds the payload's field; a unit arm is just the name. Leave a variant out and
 the program is refused at compile time, naming what is missing -- unless the chain ends in
 `any()`, the explicit way to say "everything else":
 
@@ -57,7 +57,7 @@ the program is refused at compile time, naming what is missing -- unless the cha
 enum_match_default
 ```
 
-The payload can be any single type, not only a record -- `celsius(Int)`, `some(Vec<Int>)` --
+The payload can be any single type, not only a record -- `Celsius(Int)`, `some(Vec<Int>)` --
 and in a bare payload arm `.` becomes the payload itself. The
 [guide on enums](../guides/enums.md) works through typing a real wire format with these.
 

@@ -16,7 +16,7 @@ enum Shape { Point, Circle{r: Int} }
 
 A unit variant carries nothing and is a bare string on the wire. A payload variant carries
 one type and is the single-key wrapper. The payload can be any single type: a record
-declared in braces (`circle{r: Int}`), or anything else in parens the way a call passes a
+declared in braces (`Circle{r: Int}`), or anything else in parens the way a call passes a
 non-record argument:
 
 ```case
@@ -62,7 +62,7 @@ is a heap indirection rather than a value with no end.
 enum_recursive_value
 ```
 
-The rule is per occurrence, not per declaration, so `enum E { safe(Vec<E>), bad(E) }` accepts
+The rule is per occurrence, not per declaration, so `enum E { Safe(Vec<E>), Bad(E) }` accepts
 `safe` and still refuses `bad`: a bare self-reference is a layout that contains itself.
 
 ```toylang
