@@ -302,7 +302,7 @@ the absence it exposed is not, and heterogeneous data is not a corner of a data 
 Related: an alternation over types is also what the ordering question needs, so these may be one
 piece of machinery rather than two.
 
-Partly settled by [the enum decision](../draft.md#decided-enums-nominal-and-json-native): closed nominal
+Partly settled by [the enum decision](../docs/guides/enums.md): closed nominal
 sums now exist, and they serve both this question's motivating case (heterogeneous data) and the
 ordering question's `Alt` (a stream of several message kinds is `Stream<SomeEnum>`). What
 remains absent is the anonymous structural union, `Str | Int` with no declaration -- a
@@ -332,8 +332,7 @@ between functions in practice), not on this slot in isolation.
 ### Q27. Does pattern matching need a separate `Matcher` type, distinct from `Result`?
 
 SETTLED yes: matchers are first-class, tagged, and or-composable, derived per type under the
-capital name (kantord/toylang#47). See [the enum decision's construction and naming
-section](../draft.md#construction-and-naming) and
+capital name (kantord/toylang#47). See [the enums guide](../docs/guides/enums.md) and
 [guides/matching.md](../docs/guides/matching.md).
 
 ### Q28. Does deep matching need cross-match unification of logic variables?
@@ -483,7 +482,7 @@ Not free, in rough order of how much they decide:
 Worth being explicit that cheapness is not an argument. What is recorded here is that the cost of
 identity is lower than it looked, not that the language wants it.
 
-[The enum decision](../draft.md#decided-enums-nominal-and-json-native) has since answered every bullet for
+[The enum decision](../docs/guides/enums.md) has since answered every bullet for
 enums specifically: they are identities (exhaustiveness requires it), `enum` is the declaration
 form, and variant constructors land in the value namespace with bare-until-ambiguous
 resolution. Records are deliberately not carried along; the alias-or-identity question stays
