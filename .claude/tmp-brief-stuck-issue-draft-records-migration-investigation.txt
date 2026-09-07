@@ -1,0 +1,22 @@
+# stuck-issue-draft-records-migration-investigation
+
+INVESTIGATE the stuck lane `issue-draft-records-migration`: no activity for 1h, 1 run(s), 0 commits.
+
+Evidence is frozen in `plans/incidents/issue-draft-records-migration-20260907/` (worktree-state.txt) --
+read it, then read the lane worktree itself at
+`/home/kantord/.local/share/toylang-lanes/issue-draft-records-migration`.
+
+There is also a separate, earlier, already-pending maintainer escalation about this same task in
+`docs/.grill/draft-records-migration-sandbox-blocker.round.yaml` -- that one describes a DIFFERENT
+run that got close to green with an extracted patch. This investigation is about a LATER run that
+produced zero commits and went silent; do not conflate the two, but note the earlier round's
+existence in your report since it may be relevant context.
+
+Report your findings in `plans/opencode-rollout.md`: was this brief clarity, a capability gap, a
+tooling/permission trap, or task shape? Propose whether the lane needs a rebrief (and with what
+brief) or a reshape (e.g. splitting the task).
+
+Do NOT attempt the original draft-records-migration task yourself. Do NOT edit `draft.md` or the
+docs site. This is an investigation-only row.
+
+Read AGENTS.md first for provenance/commit conventions.
