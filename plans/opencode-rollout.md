@@ -1522,3 +1522,31 @@ Did not touch round composition (`inbox_records=0`, no under-filled buffer named
 dispatch new sandbox rows (2 free slots, `draft-records-migration`/`draft-prototype-findings-migration`
 already have unanswered sandbox-blocker rounds pending -- redispatching either would repeat the
 prior near-miss, and this tick's bound was already spent on landing).
+
+## 2026-09-07 (later): near-miss redispatch of draft-records-migration, caught mid-flight
+
+Trigger's "ready" dispatch list named `draft-records-migration`, `draft-matching-migration`,
+`draft-prototype-findings-migration` as safe to freshly dispatch (board status: todo, needs met).
+Disk state disagreed on two counts:
+
+- `draft-matching-migration` and `draft-prototype-findings-migration` each had real unlanded
+  commits sitting in their existing lane worktree (3 and 1 commits ahead of main respectively).
+  `sandbox_dispatch.py`'s `reset_lane_worktree()` force-removes the existing worktree before
+  recreating it -- dispatching either fresh would have destroyed that unlanded work. Landed them
+  instead via `land-lane.sh land <lane>` (queued alongside the two land-failed reruns; retry caps
+  were all fresh, 0 prior attempts).
+- `draft-records-migration` has an *unanswered* `docs/.grill/draft-records-migration-sandbox-blocker.round.yaml`
+  from a prior attempt that got a verified patch to 408/408 green but stalled on a `just check`
+  hurdle, and the round explicitly asks the maintainer to choose between stronger-model resume /
+  human handoff / land-as-is. A plain redispatch would have silently ignored that in-flight
+  decision and repeated the exact near-miss an earlier tick's log entry already flagged. Caught
+  this after already firing `sandbox_dispatch.py draft-records-migration` and getting as far as
+  booting sandbox `sd-draft-records-migration` and starting build turn 1 -- killed the process,
+  `msb rm -f`'d the container, and removed the tmp clone/brief/log. No board or main state was
+  touched.
+
+Gap: the "ready" list (computed upstream of this tick's snapshot) checks board status and `needs`
+but not (a) whether the lane's worktree already carries unlanded commits, or (b) whether a
+sandbox-blocker round is already pending for that row. Both are cheap disk checks
+(`git log main..issue-<id>`, `ls docs/.grill/<id>-sandbox-blocker.round.yaml`) that would have
+prevented this without a model needing to notice. Worth adding to whatever builds the ready list.
