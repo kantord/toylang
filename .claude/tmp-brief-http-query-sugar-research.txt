@@ -1,0 +1,21 @@
+# http-query-sugar-research
+
+Board row: http-query-sugar-research (prio 4). GitHub issue: gh:171 (read it first).
+
+Kind: research spike (build row, no lane merge concerns -- write findings to plans/, land as a
+normal small commit).
+
+Task: survey each backend's existing I/O/effect capabilities -- what a source/sink already looks
+like per backend today, and whether any backend already has network primitives. Separately,
+survey Python's `requests` library minimal surface (get/post, headers, body, response shape) as
+a reference point for what "sugar" usually looks like in a scripting-flavored language.
+
+Produce 2-3 concrete syntax candidates for HTTP query sugar as real toylang code, each grounded
+in what the current sink/source vocabulary already supports (don't invent capabilities the
+backends don't have yet). The goal is to let the http-query-sugar-design grill round ask a real,
+concrete question instead of a green-field one.
+
+Write findings to plans/ (a new markdown file, e.g. plans/http-query-sugar-research.md).
+
+Do not fetch or merge origin/main during this task -- your checkout is already branched from the
+current tip. Commit only work you personally wrote for this task.
