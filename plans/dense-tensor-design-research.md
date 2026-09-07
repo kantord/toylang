@@ -19,7 +19,7 @@ separate customers.
 The first is **shape safety**: rectangular data, known extent per dimension, and a check that
 you actually have it. This needs no new value kind. The design already names it twice,
 `as_tensor : Vec<Vec<Num>> -> Result<Tensor<Num, [n, m]>, ShapeError>` (draft.md:240 and
-draft.md:468), and [every dimension gets a spec](../draft.md#proposal-every-dimension-gets-a-spec)
+draft.md:468), and [index specs](../docs/reference/operators/specs.md)
 already handles rectangular data without a second scheme: "a tensor is not a second scheme
 with its own syntax; it is the same scheme over a type whose extents happen to be uniform",
 and "rectangularity becomes a refinement rather than a gate". On the access side the tensor is
@@ -152,7 +152,7 @@ type-carrying one.
 The round's phrasing is jq's, but the language dissolved `.[]` into index specs before Q18 was
 asked, so the question has to be restated: there is no `.[]` stream, only `[]` meaning "keep a
 dimension at full extent" ([index specs](../docs/reference/operators/specs.md)). Under
-[every dimension gets a spec](../draft.md#proposal-every-dimension-gets-a-spec), a type has an
+[index specs](../docs/reference/operators/specs.md), a type has an
 ordered list of dimensions and an access gives each one a spec, left to right. So on a rank-2
 tensor `v[]` keeps dimension 0 and yields rank-1 rows, and `v[][0]` keeps dimension 0 and
 collapses dimension 1 to scalars. "Rows" is not a choice the spec model leaves open; it is the

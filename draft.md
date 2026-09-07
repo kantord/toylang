@@ -3,133 +3,6 @@
 **Status: exploratory. Everything here is provisional.** This is a thinking document, not a
 specification. Syntax is illustrative; several core decisions are still open (see the end).
 
-## Functions are unary
-
-Multi-argument means "takes a struct", with inline construction so it stays invisible:
-
-```
-fn adults(db: Db) -> Stream<User> =
-    db.users[] | select(.age >= 18)
-
-fn limit(a: {count: Int, over: Stream<T>}) -> Stream<T> = ...
-
-limit {count: 3, over: repeat(1)}        # -> 1, 1, 1
-```
-
-A consequence worth noting: jq needs `;` to separate filter arguments because `,` is already
-the effect-layer operator. With only unary functions there is no argument list to disambiguate,
-so `,` stays free and `;` is unnecessary.
-
-### Annotation rule: named functions declare, lambdas never do
-
-**Named functions must annotate their parameter and return types. Lambdas must not, and
-cannot.** A lambda gets its type from the position it appears in.
-
-This is **bidirectional type checking**, which has two modes. *Synthesis* works bottom-up:
-given an expression, work out its type, so `42` synthesises `Int`. *Checking* works top-down:
-given an expression and an expected type, verify it fits.
-
-Annotations on named functions are the seeds that synthesis starts from. Lambdas are always in
-checking mode, because a lambda only ever appears somewhere that already knows what it wants:
-
-```
-fn map(a: {over: Vec<A>, with: A -> B}) -> Vec<B> = ...
-
-users | map(|u| u.name)
-#           ^^^^^^^^^^ checked against `A -> B`
-#                      A = User is known from `over`, so `u : User` needs no annotation
-#                      B = Str is learned from the body
-```
-
-Nothing is inferred in the hard sense. The signature of `map` already fixed the shape; the
-lambda is only verified against it.
-
-Most lambdas are unnecessary anyway, because `.` is the implicit subject:
-
-```
-users | map(.name)        # no lambda at all
-users | map(|u| u.name)   # identical, just named
-```
-
-When there is no expected type, it is an error rather than a guess:
-
-```
-let f = |x| x + 1                  # ERROR: nothing here says what x is
-let f: Int -> Int = |x| x + 1      # fine, the annotation supplies it
-```
-
-This is the deliberate part. A language that guessed here would have to invent a type from the
-body, which is where inference becomes unpredictable and error messages start pointing at the
-wrong line.
-
-Nesting propagates inward without any extra machinery:
-
-```
-groups | map(|g| g.items | filter(|i| i.ok))
-#              ^ from map's signature   ^ from filter's signature
-```
-
-Returning a lambda works because the named function's return annotation supplies the type:
-
-```
-fn adder(n: Int) -> (Int -> Int) = |x| x + n
-#                   ^^^^^^^^^^^^ this is what types the lambda
-```
-
-Named functions are required to annotate for two reasons. The first is recursion. Inferring the
-type of a recursive function without a declared signature requires polymorphic-recursion
-inference, which is undecidable in general, and the standard fix used by OCaml and Haskell is
-exactly this annotation requirement.
-
-```
-fn depth(t: Tree) -> Int =            # `-> Int` is what makes this checkable at all
-    1 + max(t.children[] | depth)
-```
-
-The second is that it keeps checking **local**. Every function can be checked knowing only the
-signatures of what it calls, never their bodies. That means fast compilation, and error
-messages that point at the mistake rather than at some distant unification failure.
-
-None of this costs terseness, because annotations only ever appear at named-function
-boundaries, which one-liners do not have:
-
-```
-stdin.lines | parse_json? | select(.level == "ERROR") | .service
-```
-
-Not one type annotation, and every step is still fully checked.
-
-## Field access is a lens
-
-A **lens** is a first-class reference to a *position inside* a structure, not the value there
-but the place itself. Because it names a place, it supports reading, writing, and being
-reported as a path, all from one expression.
-
-A path expression is therefore simultaneously a getter, a setter, and a path witness. That is
-what makes update-in-place (`|=`), deletion, and path enumeration possible over the same
-syntax, so `.foo` desugars to a lens rather than a getter:
-
-```
-trait Field<K> {
-    fn get(self, k: K) -> Self
-    fn path(self, k: K) -> PathPart
-    fn set(self, k: K, v: Self) -> Self
-}
-```
-
-jq conflates "missing" with "type error": `null.a.b.c` yields `null` but `1 | .a` raises. Those
-are genuinely different outcomes and the language should distinguish them:
-
-```
-user.name           # User has `name` -> typechecks, exactly one Str
-user.nmae           # COMPILE ERROR, no such field
-json.name           # Json's fields are all optional -> Opt<Json>
-json.name!          # unwrap, or propagate the error
-```
-
-Three distinguishable outcomes: a value, a *specific* absence, a *specific* error. See
-[Pattern matching is decoding](#pattern-matching-is-decoding) for how these three outcomes extend into a full decode syntax.
-
 ## Pattern matching is decoding
 
 The matcher surface's first cut is decided; see
@@ -155,7 +28,7 @@ mean "read field x off the subject" and leaving bare `x` to mean "bind a fresh n
 convention showing up in a new spot, not a special case invented for matching.
 
 `.` as the shorthand for "the matched value" is likewise already spoken for. `json.name!` in
-[the field-access section](#field-access-is-a-lens) is the existing idiom for "give me the value or propagate the failure," and
+[unwrap](docs/reference/operators/unwrap.md) is the existing idiom for "give me the value or propagate the failure," and
 `int(.) -> .` is the same shape: run the decode, keep what comes out unchanged. No new symbol is
 needed, since `.` was already "the current subject" before matching existed.
 
@@ -210,12 +83,12 @@ shape nobody wrote a case for is a live possibility, so it needs `any()` or a `R
 compile to different things behind one shared arm syntax.
 
 `.` shadowing the wider value inside a matched arm is correct, and it is [the same rule the document
-already has](#annotation-rule-named-functions-declare-lambdas-never-do) for block-scoped `.`:
+already has](docs/reference/syntax/functions.md) for block-scoped `.`:
 `map(.name)` rebinds `.` to each element already, so a matched arm rebinding `.` to the narrowed
 type is that rule applying once more, not a new one. Inside `int(.) -> ...`, `.` has type `Int`,
 not `Json`, and the wider `Json` is not reachable by name.
 
-Convenient unwrap-to-error already has its syntax: `.name!`, from [the field-access section](#field-access-is-a-lens),
+Convenient unwrap-to-error already has its syntax: `.name!`, from [unwrap](docs/reference/operators/unwrap.md),
 already turns absence or error into a propagated failure, and composes directly with a matcher --
 `int(json.name!) -> ...` decodes only after the field access has already committed to failing
 loudly rather than quietly.
@@ -229,7 +102,7 @@ closed.
 
 Overloading is real, and it is the total/partial split again rather than a third axis. `Json -> T`
 decode, `T -> Json` encode, and `Str -> T` parse are three instances of one trait family, picked
-by which types the codec sits between -- the same way [`Field<K>`](#field-access-is-a-lens) already picks an
+by which types the codec sits between -- the same way the [lens trait](plans/questions.md#q40-is-a-fieldk-lens-trait-part-of-the-design) would pick an
 implementation by `K`. Encode is still blocked on the same construction gap named above.
 
 TODO (user): Given a large structure, the matcher should be able to name only the parts it cares
@@ -319,7 +192,7 @@ rather than leaving it anonymous.
 The `Json -> T` codec is a second, separate artifact, and "free" is conditional rather than
 unconditional the way the constructor is. It is free exactly when every field's own type already
 has a codec -- true by definition for the built-ins, and true recursively for any type built only
-out of things that already have one, the same structural composition [`Field<K>`](#field-access-is-a-lens) already uses
+out of things that already have one, the same structural composition the [lens trait](plans/questions.md#q40-is-a-fieldk-lens-trait-part-of-the-design) would use
 per field. Most declared types are exactly this case, so deriving the pair mechanically, rather
 than requiring it be hand-written, is the right default. Precedent: Rust's
 `#[derive(Serialize, Deserialize)]`, Haskell's generic `aeson` deriving, Scala's circe
@@ -389,7 +262,7 @@ One thing the name does not give away for free: a `Json` tree is already fully p
 recursing through it needs no backtracking and no notion of position, while a string or byte
 stream needs an actual parsing engine underneath, because "does `a*` match here" can require
 trying more than one length before the surrounding pattern succeeds. So this is one algebra with
-at least two implementations, the same shape [`Field<K>`](#field-access-is-a-lens) already has for indexable versus
+at least two implementations, the same shape the [lens trait](plans/questions.md#q40-is-a-fieldk-lens-trait-part-of-the-design) would have for indexable versus
 iterable receivers. What would need stating, and is not yet, is the law the two implementations
 have to share to count as the same trait -- in the spirit of
 [the batch-invariance law](#the-admissible-input-set-and-where-batching-comes-from), but for "matches the same shape" rather than "commutes with
@@ -919,116 +792,6 @@ itself resolve the cardinality question.
 Leaning towards B, because it makes the hazard a type error rather than a naming problem, and
 the explicit form already exists and reads better. But this interacts with open question 2,
 whether binary operators are cartesian, zipped, or explicit, so it should not be settled alone.
-
-## PROPOSAL: every dimension gets a spec
-
-This replaces an earlier proposal that a projection is its own type. That one was built on the
-idea that `[]` licenses a lifting, which needed a `Proj<T>` to carry the licence. The lifting
-framing turned out to be wrong, and with it the type.
-
-### Where it came from
-
-Prototype 1 let field access distribute over a `Vec` by itself, so `db.users.name` returned every
-name with no `[]` anywhere, and `[]` had nothing left to do. Running the same cases through jq
-showed why the operator went inert:
-[jq's item-wise access is the effect layer wearing brackets](research-log/jqs-item-wise-access-is-the-effect-layer-wearing-brackets.md). `[.[][1]]` applies its
-second bracket per element while `.[1][2]` applies the same token to the container, and what
-separates them is that a stream came first. jq's `[]` is not the item-wise operator; it is the
-usual way into the layer where everything already is. Remove the layer and nothing is left.
-
-### The proposal
-
-A type has an ordered list of **dimensions**, fixed by the type. An access says one thing about
-each of them -- a **spec** -- and may then select a **field**:
-
-```
-value[spec][spec]...field
-```
-
-Three specs. **Keep**, written `[]`, leaves a dimension at full extent. **Narrow**, such as a
-mask, reduces it. **Collapse**, such as an index, removes it.
-
-`db.users.name` is an error because dimension 0 was never given a spec. `db.users[].name` gives
-it one. That is the crossing being written down, and it is required by the grammar rather than by
-a rule about lifting.
-
-### What follows without further stipulation
-
-**Nesting needs no rule.** One spec per dimension, so `db.groups[].members[].name` opens two and
-`db.groups[].members.name` does not typecheck.
-
-**The `Vec` and `Stream` promise falls out.** Keep and narrow are streamable, since neither has to
-consume anything to know what it did. Collapse is not: finding entry three means passing the
-first three, so on a stream it destroys what it passed. The difference between the two collection
-types is the difference between the specs they admit.
-
-**Rectangularity becomes a refinement rather than a gate.** Collapsing an inner dimension of
-ragged data is perfectly meaningful, and jq does it: `[.[][1]]` on `[[1,2],[3]]` yields
-`[2,null]`. What rectangularity buys is that there is no hole. So it does not decide whether the
-operation exists, only whether the result is `Opt`.
-
-**There is one access model, not two.** A tensor is not a second scheme with its own syntax; it is
-the same scheme over a type whose extents happen to be uniform.
-
-**A record is not a dimension.** Its field names are type-level, so iterating it would flatten
-them into positional order and lose them, which is the erasure principle 1 forbids. `to_entries`
-is the written-down version of that crossing, not a workaround for a missing feature. This holds
-whether or not the fields share a type, so it is not a question of finding a common cell type.
-
-### Consequences to accept
-
-**`Map<K,V>` becomes a distinct type.** A record's keys are known to the compiler; a map's are
-known only to the program. Collapsing them is what forces jq to treat an object as a struct and a
-dictionary at once, which is where its own `.[]` ambiguity comes from. Accepted.
-
-**Five deliberate divergences from jq**, all measured rather than assumed:
-
-| | jq | here |
-|---|---|---|
-| `.[]` on an object | iterates values | error; use `to_entries` |
-| `.[]` at top level | many outputs | one value; there is no stream |
-| `.[9]` out of range | `null` | `Opt` |
-| `null \| .[0]` | `null` | error |
-| `[.[] + .[]]` | cartesian, `[2,3,3,4]` | not expressible by accident |
-
-### Settled
-
-**One bracket per dimension**, left to right: `v[3][]`, not `v[3, ]`. This is already jq's
-spelling, and it composes with nesting, which is the general case here; a shape-first
-comma-separated form can be added later as sugar over it if rank-3 tensors turn out to be common.
-
-**Negative indices are a spec.** `[-1]` counts from the end. It collapses, so it was already not
-streamable, and out of range yields `Opt` exactly as a positive index does.
-
-Built, and the ragged case comes out identical to jq: `[[1,2],[3]][][1]` is `[2,null]` on all
-three backends, which is `[.[][1]]` there. Keeping one dimension and collapsing the next is the
-same query, arrived at from dimensions rather than from streams.
-
-**A `Str` has no dimension.** It is a scalar, so no spec applies to it and `"abc"[0]` is an
-error. jq is incoherent on this, allowing `"abc"[0:2]` while rejecting `"abc"[0]`; a string is
-one value here, and reaching into it is a library operation rather than an access.
-
-### Unwrapping
-
-`!` insists a value is there and stops the program if it is not, which is the spelling this
-document already sketched as `json.name!`. It brings the first abort into the language: every
-backend now has a way to refuse, and what has to agree across them is that they all refuse rather
-than what each says while refusing.
-
-The type is what decides whether output is raw, so unwrapping changes it. `["ada","bo"][0]` is
-`Opt<Str>` and prints `"ada"`; `["ada","bo"][0]!` is `Str` and prints `ada`.
-
-`Opt` now has a spelling in the type syntax: a function can declare one as a parameter or
-return type, which is what lets it hand an absence back rather than being forced to insist.
-It nests the same way `Vec` and a record field already did -- `Opt<Opt<T>>` typechecks, since
-nothing singled out one level before this either -- and the stream containment ban extends to
-it: `Opt<Stream<T>>` is refused, matching `Vec<Stream<T>>` and a `Stream<T>` record field.
-
-### Still open, and none of it blocks building this
-
-Whether records are open or closed, which the input rule already prejudges by ignoring
-undeclared fields. Whether a view and an owned buffer differ in the type. Whether there are
-union types at all.
 
 ## What the prototype showed
 
