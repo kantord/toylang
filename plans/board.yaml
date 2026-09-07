@@ -221,7 +221,7 @@
   kind: build
   needs: [file-visibility-tracking-build]
   prio: 5
-  status: todo
+  status: delegated
 
 - id: erlang-target-consideration
   issue: gh:163
@@ -254,7 +254,7 @@
   needs: []
   soft: [draft-intro-migration, draft-questions-home]
   prio: 4
-  status: todo
+  status: delegated
 
 - id: draft-matching-migration
   title: Migrate the matching/enums sections -- ratified parts to guides and ADR 0009, codec threads to the tracker (draft-split)
