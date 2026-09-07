@@ -1,0 +1,63 @@
+# The core of the CLBG fannkuch-redux task (kantord/toylang benchmark suite): for N, generate
+# every permutation of [1..N], and for each one repeatedly flip the leading block of length
+# equal to its first element until that element is 1, counting flips. Track the maximum flip
+# count and a checksum -- the sum of each permutation's flip count signed by its parity. The
+# sign is inversion parity, so it is order-independent; that makes this checksum differ from
+# the CLBG site's index-based one (which is a property of its factoradic enumeration order,
+# not reproduced here), but both verify that all N! permutations were visited, and the maximum
+# flip count, the benchmark's real number, matches CLBG. This is the correctness fixture for
+# benches/programs/fannkuch-redux.toy, at an N small enough to run fast on every backend; the
+# benchmark input under benches/inputs/ uses a larger N for real timing.
+#
+# Derived: Computer Language Benchmarks Game fannkuch-redux task, BSD-3-Clause,
+# https://benchmarksgame-team.pages.debian.net/benchmarksgame/ -- reimplemented from the task's
+# plain description (flip the leading block, count flips, take the max and a parity-signed sum),
+# not copied from any reference source.
+program: |
+  fn insert_each({x, p}: {x: Int, p: Vec<Int>}) -> Vec<Vec<Int>> =
+      p
+          | length(p) == 0 -> [[x]] or
+                [[x] + p] + (insert_each({x: x, p: tail(p)!}) | map([p[0]!] + .))
+
+  fn build_perms({x, ps}: {x: Int, ps: Vec<Vec<Int>>}) -> Vec<Vec<Int>> =
+      ps
+          | length(ps) == 0 -> [] or
+                insert_each({x: x, p: ps[0]!}) + build_perms({x: x, ps: tail(ps)!})
+
+  fn perms(v: Vec<Int>) -> Vec<Vec<Int>> =
+      v | length(v) == 0 -> [[]] or build_perms({x: v[0]!, ps: perms(tail(v)!)})
+
+  fn flips(p: Vec<Int>) -> Int =
+      p | p[0]! == 1 -> 0 or 1 + flips(reverse(p[:p[0]!]) + p[p[0]!:])
+
+  fn invs(p: Vec<Int>) -> Int =
+      p
+          | length(p) <= 1 -> 0 or
+                (length(tail(p)! | select(. < p[0]!)) + invs(tail(p)!)) % 2
+
+  fn step({p, acc}: {p: Vec<Int>, acc: {checksum: Int, max: Int}}) -> {checksum: Int, max: Int} =
+      let f = flips(p)
+      {
+          checksum: acc.checksum + (invs(p) == 0 | . -> f or 0 - f),
+          max: f > acc.max | . -> f or acc.max
+      }
+
+  fn fold({v, acc}: {v: Vec<Vec<Int>>, acc: {checksum: Int, max: Int}}) -> {checksum: Int, max: Int} =
+      v
+          | length(v) == 0 -> acc or
+                fold({v: tail(v)!, acc: step({p: v[0]!, acc: acc})})
+
+  fn fk(n: Int) -> Str =
+      let r = fold({v: perms(collect(range(n)) | map(. + 1)), acc: {checksum: 0, max: 0}})
+      str(r.checksum) + "\nPfannkuchen(" + str(n) + ") = " + str(r.max)
+
+  fk(parse(stdin))
+
+input: |
+  6
+
+output: |
+  13
+  Pfannkuchen(6) = 10
+
+node_types: [application, arith.add, arith.rem, arith.sub, builtin.collect, builtin.length, builtin.range, builtin.reverse, builtin.str, builtin.tail, compare.eq, compare.gt, compare.le, compare.lt, concat, input, int, local, map-over, match, pipe, projection, record-literal, selection.collapse, selection.narrow, str, unwrap, var, vec-literal]
