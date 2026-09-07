@@ -3,7 +3,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: dsv-partials-migration
   issue: gh:136
@@ -20,15 +20,6 @@
   needs: [docs-slow-fragment-tier]
   prio: 3
   status: todo
-
-- id: variant-types-flip
-  issue: gh:165
-  title: 'Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference). Lane issue-165 stalled here (0 commits, renamed aside as issue-165-contaminated-20260831): the brief claims checker enforcement "already done via gh:156" but variant-checker-capital-first was still status: todo -- added as a real needs edge below so the migration cannot be dispatched again until the checker actually enforces the rule. Needs edges now all satisfied -- redispatched via sandbox_dispatch.py 2026-09-07, brief at ~/.cache/toylang-drive/briefs/variant-types-flip.md.'
-  kind: build
-  needs: [matcher-totality-and-alt-design, variant-checker-capital-first, doc-migrate-capital-variants]
-  prio: 2
-  model: fable
-  status: delegated
 
 - id: shell-out-build
   issue: gh:158
@@ -230,7 +221,7 @@
   kind: build
   needs: [file-visibility-tracking-build]
   prio: 5
-  status: todo
+  status: delegated
 
 - id: erlang-target-consideration
   issue: gh:163

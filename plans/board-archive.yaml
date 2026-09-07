@@ -1942,3 +1942,12 @@
   soft: [draft-intro-migration, draft-questions-home]
   prio: 4
   status: done
+
+- id: variant-types-flip
+  issue: gh:165
+  title: 'Variants become capitalized types with lowercase constructors, per the auto-matchers ratification -- subtype rules planned first, then the migration (corpus, examples, README, and docs/guides+tutorial+reference). Lane issue-165 stalled here (0 commits, renamed aside as issue-165-contaminated-20260831): the brief claims checker enforcement "already done via gh:156" but variant-checker-capital-first was still status: done -- added as a real needs edge below so the migration cannot be dispatched again until the checker actually enforces the rule. Needs edges now all satisfied -- redispatched via sandbox_dispatch.py 2026-09-07, brief at ~/.cache/toylang-drive/briefs/variant-types-flip.md.'
+  kind: build
+  needs: [matcher-totality-and-alt-design, variant-checker-capital-first, doc-migrate-capital-variants]
+  prio: 2
+  model: fable
+  status: done
