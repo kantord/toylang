@@ -1997,3 +1997,41 @@
   needs: []
   prio: 2
   title: 'FIX land-lane.sh queue lock recurring stall: sccache (spawned as RUSTC_WRAPPER during the just test gate) inherits fd 8 (the land flock) through just -> cargo-nextest -> cargo -> rustc -> sccache, and its daemon persists after the land-lane.sh invocation that spawned it exits. If ~/.cache/toylang-drive/land.lock is later deleted+recreated, a fresh inode can collide with this lingering sccache fd via inode reuse in that high-churn directory, and every subsequent land-lane.sh queues behind it forever (flock -w 1800 8 always times out, never actually contends with another land-lane.sh). This is the same bug class already fixed once (commit 7e16104, moved off /tmp) and manually cleared once before (commit b535ad8, 2026-09-07 01:19) -- it recurred again the same day (2026-09-07 ~16:07, this time against the new $LOG_DIR path), stalling 4 queued land-lane.sh invocations for 20-29 minutes each before this tick found and killed the stray sccache PID to unblock it. Needs a real fix, not another manual kill: options include closing fd 8 (`8>&-`) before invoking `just test` inside the flock-held section (test gate does not need to inherit the lock fd, only the land-lane.sh process itself needs to hold it), setting SCCACHE_IDLE_TIMEOUT / SCCACHE_NO_DAEMON for the land test-gate invocation so the daemon does not outlive the build, or moving land.lock into a directory nothing else touches. See ~/.cache/toylang-drive/land-cascade-1788788880.log and `lsof ~/.cache/toylang-drive/land.lock` (repeatable while a land is running) for live repro evidence.'
+
+- id: draft-prototype-findings-migration
+  title: Verify every prototype-showed finding lives in research-log or is superseded, then delete the section (draft-split)
+  kind: build
+  needs: []
+  soft: [draft-intro-migration, draft-questions-home]
+  prio: 4
+  status: done
+
+- id: draft-str-adr
+  title: Record the Str contract as an ADR per the string spike's recommendation, then delete the draft's strings section (draft-split)
+  kind: build
+  needs: []
+  soft: [draft-intro-migration, lines-utf8-edge]
+  prio: 3
+  status: done
+
+- id: jq-expressiveness-under-zip-or-explicit-research
+  issue: gh:169
+  title: 'Research spike (round answer, multiplicity-and-offload-round2, question binary-op-default-multiplicity): survey real jq idioms that rely on the cartesian default for `Vec op Vec` (option A in binary-op-multiplicity-design), and work out concretely what breaks or gets more verbose under a zip/broadcast default (option B) versus no default at all, explicit `zip`/`cross` (option C). Use real jq snippets and their toylang-under-B and toylang-under-C equivalents so the comparison is concrete, not abstract. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: questions-md-stale-draft-links
+  title: 'Repoint two dead links in plans/questions.md left by draft-core-model-migration: Q11 -> ../draft.md#the-core-idea-two-layers and Q32 -> ../draft.md#proposal-the-layer-shift-only-runs-one-way both point at headings that migration deleted (see ESCALATION.md in that landed commit). Point them at docs/guides/cardinality.md instead. Left alone by that row under the "do not touch plans/" hard constraint.'
+  kind: build
+  needs: []
+  prio: 5
+  status: done
+
+- id: search-choice-point-match-syntax-research
+  title: 'Research spike (round answer, search-vocab-choice-cut-fold, question search-choice-point-syntax): maintainer asks for a deeper design pass on whether the choice-point ("branch wider, explore every alternative") operator should be spelled parallel to toylang''s match syntax instead of a new infix operator (`;`, `branch(...)`, or folding into `//`). Survey how other languages with pattern-matching-flavored search/logic constructs (Prolog disjunction, Icon/Curry generators, list-monad comprehensions) express this, and produce 2-3 concrete syntax candidates with real toylang code examples, explicitly including a match-parallel option. Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
+  status: done

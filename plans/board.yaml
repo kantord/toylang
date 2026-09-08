@@ -1,6 +1,6 @@
 - id: stuck-issue-draft-records-migration-investigation
   kind: build
-  status: delegated
+  status: todo
   needs: []
   title: 'INVESTIGATE stuck lane issue-draft-records-migration (no activity 1h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-draft-records-migration-20260907/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: dsv-partials-migration
@@ -244,7 +244,7 @@
   needs: []
   soft: [draft-intro-migration, draft-questions-home]
   prio: 4
-  status: delegated
+  status: todo
 
 - id: draft-matching-migration
   title: Migrate the matching/enums sections -- ratified parts to guides and ADR 0009, codec threads to the tracker (draft-split)
@@ -252,23 +252,7 @@
   needs: []
   soft: [draft-intro-migration, draft-questions-home, matcher-model-clarification, matcher-totality-and-alt-design]
   prio: 4
-  status: delegated
-
-- id: draft-prototype-findings-migration
-  title: Verify every prototype-showed finding lives in research-log or is superseded, then delete the section (draft-split)
-  kind: build
-  needs: []
-  soft: [draft-intro-migration, draft-questions-home]
-  prio: 4
-  status: delegated
-
-- id: draft-str-adr
-  title: Record the Str contract as an ADR per the string spike's recommendation, then delete the draft's strings section (draft-split)
-  kind: build
-  needs: []
-  soft: [draft-intro-migration, lines-utf8-edge]
-  prio: 3
-  status: delegated
+  status: todo
 
 - id: draft-mutation-migration
   title: Record the mutation decisions once they land and delete both mutation sections (draft-split)
@@ -284,14 +268,6 @@
   prio: 3
   status: todo
 
-- id: jq-expressiveness-under-zip-or-explicit-research
-  issue: gh:169
-  title: 'Research spike (round answer, multiplicity-and-offload-round2, question binary-op-default-multiplicity): survey real jq idioms that rely on the cartesian default for `Vec op Vec` (option A in binary-op-multiplicity-design), and work out concretely what breaks or gets more verbose under a zip/broadcast default (option B) versus no default at all, explicit `zip`/`cross` (option C). Use real jq snippets and their toylang-under-B and toylang-under-C equivalents so the comparison is concrete, not abstract. Write findings to plans/.'
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
 - id: search-and-fold-design
   title: 'Grill the search vocabulary (choice, cut, .., ordering) and the applicative fold block -- unratified draft sections (draft-split). Round 1 leaned depth-first for `..` (Q7) but answer was "also research the performance implications before we fully commit"; round 2 needed that research before re-asking. Q7 was re-asked in the signature-matching-and-search-cut round and RULED provisional: `..` promises depth-first order (jq-compatible), flagged for reevaluation once recursive-descent-order-research lands. recursive-descent-order-research landed (2026-09-07): every real precedent surveyed (jq, XPath, JSONPath/RFC 9535) treats depth-first pre-order as load-bearing, recommending Q7 close as ratified with no reevaluation -- so Q7 drops out of this row''s remaining scope entirely, nothing left to re-ask on it. Round 4 answers (search-vocab-choice-cut-fold, no picks made): Q search-choice-point-syntax -- no pick, maintainer asks whether the choice-point operator should instead be spelled parallel to match syntax rather than a new infix operator; needs search-choice-point-match-syntax-research before re-ask. Q search-cut-semantics -- no pick, maintainer leans "first should be a real prelude function" (tentative, not ratified -- re-ask against that framing, i.e. option B reworded as an ordinary stdlib fn rather than compiler-magic sugar). Q applicative-fold-block-syntax -- no pick, maintainer questions whether fold is needed at all ("fold is basically the same as reduce... reduce is usually too low level, a code smell, results in confusing code"); before continuing fold syntax design, next round must first ask whether applicative-fold-block-syntax should be justified or dropped.'
   kind: decide
@@ -299,13 +275,6 @@
   soft: [first-search-cut, recursive-descent-order-research]
   prio: 4
   status: todo
-
-- id: search-choice-point-match-syntax-research
-  title: 'Research spike (round answer, search-vocab-choice-cut-fold, question search-choice-point-syntax): maintainer asks for a deeper design pass on whether the choice-point ("branch wider, explore every alternative") operator should be spelled parallel to toylang''s match syntax instead of a new infix operator (`;`, `branch(...)`, or folding into `//`). Survey how other languages with pattern-matching-flavored search/logic constructs (Prolog disjunction, Icon/Curry generators, list-monad comprehensions) express this, and produce 2-3 concrete syntax candidates with real toylang code examples, explicitly including a match-parallel option. Write findings to plans/.'
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
 
 - id: offload-boundary-design
   title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled. Round 3 answer, parallel-primitive-basis (Q23): RATIFIED option A -- full basis now (map/scan/reduce/gather/scatter + segmented forms), fold and general recursion demoted to convenience leaves, future stdlib additions checked against the third-homomorphism theorem. Q22 (dense-masked-distinguishable/select representation): maintainer proposed a fourth shape (Vec-typed view, materialized only on strong reference -- ties to mutation-semantics-spike) that none of A/B/C covered; spun off select-materialization-research (gh:176) to ground a re-ask instead of re-presenting the same options. Round 4 answer, Q21 (batch-invariance-enforcement, rewritten with the mean/naive-average-of-averages worked example): RATIFIED option B -- compiler requires a declared associative combiner at every batch boundary, same enforcement posture as sort''s element-type check. Maintainer''s answer went further than the three options though, proposing the enforcement should ride on a richer effect type rather than a bare compiler gate: a distinct `Stream<Batch<T>>` (vs plain `Stream<T>`), an explicit `[Stream<T>, N] -> Stream<Batch<T, N>>` batching function, and an open question of what *initiates* batching -- explicit marker, implicit at certain constructs, or forced/unavoidable for certain operations. Spun off batch-type-design-research to ground a re-ask of that shape. Round 5 answers (wizard submission, 2026-09-07), both threads now RATIFIED: Q22 (select-materialization) -- RULED option B, the maintainer''s own proposal worked out: select keeps returning Vec; behind the name is a {source, mask-or-selection} pair, indexable via a lazily-built selection vector or mask+popcount table (O(1) per access after one O(n) build over mask bits only), compacting on the first strong reference (reusing input storage if uniquely referenced) -- the same provably-one-reference condition mutation-semantics-spike already uses. Maintainer''s follow-up, NOT yet answered: should this mask/selection-backed representation apply only to Vec, or also to streams or some other shared trait they''d both implement -- needs its own follow-up decide row before this finding gets built. Q21 follow-up (batch-type-design) -- RULED option A: opaque Batch<T> with NO operations at all (no length, indexing, equality), batch(s, n) takes n as a runtime-value hint (not a type parameter -- type-level naturals would make batch size observable/exact, defeating the unobservability round 4''s law protects), forced at the reader and at any whole-input/two-level-reduction operation, explicit everywhere else -- closes the observability hole by construction rather than a growing per-operation gate list.'
@@ -336,13 +305,6 @@
   prio: 4
   status: todo
 
-- id: questions-md-stale-draft-links
-  title: 'Repoint two dead links in plans/questions.md left by draft-core-model-migration: Q11 -> ../draft.md#the-core-idea-two-layers and Q32 -> ../draft.md#proposal-the-layer-shift-only-runs-one-way both point at headings that migration deleted (see ESCALATION.md in that landed commit). Point them at docs/guides/cardinality.md instead. Left alone by that row under the "do not touch plans/" hard constraint.'
-  kind: build
-  needs: []
-  prio: 5
-  status: delegated
-
 - id: http-query-sugar-design
   issue: gh:171
   title: 'Maintainer note (composed 2026-08-31): design minimal HTTP query support (Python-requests-like) as sugar over whatever backend already provides -- needs a grilling round on surface area before it becomes build work'
@@ -364,21 +326,21 @@
   kind: build
   needs: []
   prio: 3
-  status: delegated
+  status: todo
 
 - id: brief-phrasing-experiment
   title: 'Tracked in-repo per maintainer ruling (coordinator-escalation-brief-phrasing-experiment round, 2026-09-01: gh issue create was blocked by the permission classifier; no gh issue, no retry). Maintainer note (composed 2026-08-31): generic non-informational reassurance phrasing ("its much simpler than you think") in dispatch briefs seems to help planning agents find better plans -- experiment on at least 10 issues, then report progress and grill on the results.'
   kind: build
   needs: []
   prio: 5
-  status: todo
+  status: delegated
 
 - id: native-backend-rust-ergonomics-research
   title: 'Maintainer note (composed 2026-09-04): investigate whether the native/LLVM backend is properly ergonomic today, in the sense that we should be using well-established Rust libraries for this rather than hand-writing everything in raw LLVM IR/C -- ideally gaining the ability to write integrated code directly in Rust, or even import functionality from other crates, instead of manually authoring it in runtime/toylang.c or src/emit_llvm.rs. Survey what an inkwell-based (or similar) LLVM codegen layer and/or a thin Rust runtime crate (in place of hand-rolled C in runtime/toylang.c) would buy in ergonomics and correctness versus the current hand-written approach, and what it would cost in build complexity/toolchain deps. Concrete recent evidence worth grounding the survey in: the issue-177 lane (sort_by/max_by) spent much of a 193-step run hand-patching runtime/toylang.c with oldString-not-found edit failures and a self-introduced combining-character corruption bug while adding four keyed C helper functions -- exactly the kind of hand-authored-C friction the note is asking about. Write findings (with concrete code comparisons) to plans/, then compose a design round.'
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: trait-interface-dispatch-build
   issue: gh:174
@@ -395,7 +357,7 @@
   kind: build
   needs: []
   prio: 3
-  status: todo
+  status: delegated
 
 - id: js-web-escape-hatch-build
   issue: gh:160
