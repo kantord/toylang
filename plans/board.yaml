@@ -101,7 +101,7 @@
     radius blamed for the original 7-backend-blob corruption.'
   kind: build
   needs: [sort-by-max-by-checkpoint-1]
-  status: todo
+  status: delegated
 
 - id: sort-by-max-by-checkpoint-go
   issue: gh:177
