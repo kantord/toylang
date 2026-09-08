@@ -233,22 +233,6 @@
 
 
 
-- id: draft-records-migration
-  title: Migrate the three record decisions (literals-and-arguments, declared order, order-not-identity) into the record reference, delete (draft-split)
-  kind: build
-  needs: []
-  soft: [draft-intro-migration, draft-questions-home]
-  prio: 4
-  status: delegated
-
-- id: draft-matching-migration
-  title: Migrate the matching/enums sections -- ratified parts to guides and ADR 0009, codec threads to the tracker (draft-split)
-  kind: build
-  needs: []
-  soft: [draft-intro-migration, draft-questions-home, matcher-model-clarification, matcher-totality-and-alt-design]
-  prio: 4
-  status: delegated
-
 - id: draft-mutation-migration
   title: Record the mutation decisions once they land and delete both mutation sections (draft-split)
   kind: build
@@ -313,23 +297,6 @@
   title: 'Round 5 answer (wizard submission, 2026-09-02): tensor-value-kind-justified picked C (defer the flat-buffer kind) but the freeText leans further -- not a new value kind at all, but formalizing Vec itself as the dataframe/tensor-capable type, with a minimal set of dataframe primitives layered over it; open sub-question (not covered by any of A/B/C) is whether that needs an explicit multi-dimensional type-design change or can ride the current simple Vec type. tensor-construction-syntax/-transpose-view/-null-handling are all contingent on building the kind, so moot under the C ruling -- their leanings (C single tensor(n;m) constructor, A transpose in scope now, null-handling left unanswered) are kept here as breadcrumbs for whenever this reopens. Spun off vec-as-dataframe-type-research to ground a re-ask on the maintainer''s actual framing instead of re-presenting A/B/C.'
   kind: decide
   needs: [vec-as-dataframe-type-research]
-  prio: 3
-  status: todo
-
-- id: trait-interface-dispatch-build
-  issue: gh:174
-  title: 'Periodic-audit finding (2026-09-06): trait-interface-build (archived, gh:174) is marked
-    done but only delivered declaration parsing -- tests/corpus/trait_impl_parse.yaml says so
-    explicitly ("the checker does not yet do anything with them: no dispatch, no method
-    checking, no codegen"), and grep confirms zero references to TraitDecl/ImplDecl outside
-    src/ast.rs and the parser. Finish the system per the trait-interface-design ruling: checker
-    resolution of colon-only method calls (`x:foo(y)`, no plain-call fallback) to the matching
-    `impl Name for Type` block, plus codegen for every backend. Builtin operators (Int+Int,
-    Str+Str, ...) tentatively become source-written prelude impls where practical, checker-
-    generated only where that provably costs real performance (maintainer explicitly declined
-    to fully commit either way pending build experience).'
-  kind: build
-  needs: []
   prio: 3
   status: todo
 

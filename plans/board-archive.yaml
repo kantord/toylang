@@ -2068,3 +2068,36 @@
   needs: []
   prio: 4
   status: done
+
+- id: draft-matching-migration
+  title: Migrate the matching/enums sections -- ratified parts to guides and ADR 0009, codec threads to the tracker (draft-split)
+  kind: build
+  needs: []
+  soft: [draft-intro-migration, draft-questions-home, matcher-model-clarification, matcher-totality-and-alt-design]
+  prio: 4
+  status: done
+
+- id: draft-records-migration
+  title: Migrate the three record decisions (literals-and-arguments, declared order, order-not-identity) into the record reference, delete (draft-split)
+  kind: build
+  needs: []
+  soft: [draft-intro-migration, draft-questions-home]
+  prio: 4
+  status: done
+
+- id: trait-interface-dispatch-build
+  issue: gh:174
+  title: 'Periodic-audit finding (2026-09-06): trait-interface-build (archived, gh:174) is marked
+    done but only delivered declaration parsing -- tests/corpus/trait_impl_parse.yaml says so
+    explicitly ("the checker does not yet do anything with them: no dispatch, no method
+    checking, no codegen"), and grep confirms zero references to TraitDecl/ImplDecl outside
+    src/ast.rs and the parser. Finish the system per the trait-interface-design ruling: checker
+    resolution of colon-only method calls (`x:foo(y)`, no plain-call fallback) to the matching
+    `impl Name for Type` block, plus codegen for every backend. Builtin operators (Int+Int,
+    Str+Str, ...) tentatively become source-written prelude impls where practical, checker-
+    generated only where that provably costs real performance (maintainer explicitly declined
+    to fully commit either way pending build experience).'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
