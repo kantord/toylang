@@ -321,20 +321,6 @@
   prio: 3
   status: todo
 
-- id: vec-as-dataframe-type-research
-  title: 'Research spike spun off dense-tensor-type round 5 (maintainer freeText, 2026-09-02): the maintainer''s lean is not a new flat-buffer tensor value kind, but treating Vec itself as inherently the dataframe/tensor-capable type -- a bare-minimum set of dataframe primitives (reshape, transpose, broadcast, reduce) implemented over the existing simple Vec<Vec<Num>> layout. Investigate whether that needs an explicit type-design change (formally making Vec a multi-dimensional type) or can be built as stdlib primitives over the current simple type unchanged, run both against the sensor-pipeline example from plans/dense-tensor-design-research.md, and note the transpose sub-question (single vs generalized multi-dimensional). Write findings to plans/.'
-  kind: build
-  needs: []
-  prio: 3
-  status: delegated
-
-- id: brief-phrasing-experiment
-  title: 'Tracked in-repo per maintainer ruling (coordinator-escalation-brief-phrasing-experiment round, 2026-09-01: gh issue create was blocked by the permission classifier; no gh issue, no retry). Maintainer note (composed 2026-08-31): generic non-informational reassurance phrasing ("its much simpler than you think") in dispatch briefs seems to help planning agents find better plans -- experiment on at least 10 issues, then report progress and grill on the results.'
-  kind: build
-  needs: []
-  prio: 5
-  status: todo
-
 - id: native-backend-rust-ergonomics-research
   title: 'Maintainer note (composed 2026-09-04): investigate whether the native/LLVM backend is properly ergonomic today, in the sense that we should be using well-established Rust libraries for this rather than hand-writing everything in raw LLVM IR/C -- ideally gaining the ability to write integrated code directly in Rust, or even import functionality from other crates, instead of manually authoring it in runtime/toylang.c or src/emit_llvm.rs. Survey what an inkwell-based (or similar) LLVM codegen layer and/or a thin Rust runtime crate (in place of hand-rolled C in runtime/toylang.c) would buy in ergonomics and correctness versus the current hand-written approach, and what it would cost in build complexity/toolchain deps. Concrete recent evidence worth grounding the survey in: the issue-177 lane (sort_by/max_by) spent much of a 193-step run hand-patching runtime/toylang.c with oldString-not-found edit failures and a self-introduced combining-character corruption bug while adding four keyed C helper functions -- exactly the kind of hand-authored-C friction the note is asking about. Write findings (with concrete code comparisons) to plans/, then compose a design round.'
   kind: build

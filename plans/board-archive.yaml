@@ -2035,3 +2035,17 @@
   needs: []
   prio: 3
   status: done
+
+- id: vec-as-dataframe-type-research
+  title: 'Research spike spun off dense-tensor-type round 5 (maintainer freeText, 2026-09-02): the maintainer''s lean is not a new flat-buffer tensor value kind, but treating Vec itself as inherently the dataframe/tensor-capable type -- a bare-minimum set of dataframe primitives (reshape, transpose, broadcast, reduce) implemented over the existing simple Vec<Vec<Num>> layout. Investigate whether that needs an explicit type-design change (formally making Vec a multi-dimensional type) or can be built as stdlib primitives over the current simple type unchanged, run both against the sensor-pipeline example from plans/dense-tensor-design-research.md, and note the transpose sub-question (single vs generalized multi-dimensional). Write findings to plans/.'
+  kind: build
+  needs: []
+  prio: 3
+  status: done
+
+- id: brief-phrasing-experiment
+  title: 'Tracked in-repo per maintainer ruling (coordinator-escalation-brief-phrasing-experiment round, 2026-09-01: gh issue create was blocked by the permission classifier; no gh issue, no retry). Maintainer note (composed 2026-08-31): generic non-informational reassurance phrasing ("its much simpler than you think") in dispatch briefs seems to help planning agents find better plans -- experiment on at least 10 issues, then report progress and grill on the results.'
+  kind: build
+  needs: []
+  prio: 5
+  status: done
