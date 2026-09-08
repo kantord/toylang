@@ -299,22 +299,6 @@
   prio: 3
   status: todo
 
-- id: js-web-escape-hatch-build
-  issue: gh:160
-  title: 'Follow-up split from js-node-web-split-build (archived, gh:160 ruling "one system, all
-    four together"; dispatch scoped down to the Node/Web split slice only, deferring the other
-    three as separate follow-ups -- this is one of them). Build the builtin-replacement escape
-    hatch: a way for a toylang program (or its build config) to supply a different JS
-    implementation for a builtin under the Web target instead of the Node-only default (e.g.
-    `tl_collect_lines` in src/emit_js.rs, which reads stdin through node''s `fs` and is already
-    correctly refused at compile time for Web -- see `reads_stdin`/`is_web` in src/emit_js.rs --
-    but has no substitute mechanism for a Web build that wants equivalent behavior via browser
-    APIs instead of erroring out).'
-  kind: build
-  needs: []
-  prio: 4
-  status: todo
-
 - id: toylang-conf-yaml-build
   issue: gh:160
   title: 'Follow-up split from js-node-web-split-build (archived, gh:160 ruling): add
