@@ -42,13 +42,24 @@ python3 "$REPO/.claude/scripts/stuck-watch.py" >>"$LOG_DIR/stuck-watch.log" 2>&1
 python3 "$REPO/.claude/scripts/sandbox_dispatch_status.py" --gc >>"$LOG_DIR/sandbox-gc.log" 2>&1 || true
 
 # The maintainer's mail UI depends on the dev server; revive it if a reboot ate it.
-# 9>&- sits on the SUBSHELL, not just the pnpm command: with it only on the inner
-# nohup, the backgrounded subshell itself kept the tick lock fd -- one hung there
-# for 42 minutes on 2026-09-01 and every tick yielded to it. setsid fully detaches
-# so no child can ever pin the lock again.
+# A `( cmd & ) 9>&-` subshell does NOT reliably detach: bash's subshell-elision
+# optimization can fork the backgrounded job directly off THIS shell (no
+# intermediate subshell process at all), so the dev server ends up a literal
+# child of drive-tick.sh, and the wrapper never exits again once the tick's own
+# work is done -- confirmed live, 2026-09-09: a tick's real work (visible in its
+# own log) finished cleanly but the bash process itself sat hung 5+ hours
+# afterward with only the dev server as a descendant. The 2026-09-01 fix
+# (setsid) only stopped it from pinning the tick LOCK; it never stopped the
+# wrapper process itself from hanging. `bash -c '...' &` forks a genuine,
+# independent child (standard fork+exec, no elision to worry about);
+# `disown` drops it from this shell's job table so nothing can ever wait on
+# it; `9>&-` on that command still closes the lock fd in the child before
+# exec, verified via /proc/<pid>/fd that it does not leak through setsid's
+# in-place exec chain.
 if ! curl -s -o /dev/null --max-time 3 http://localhost:5173/toylang/dev/; then
-  (cd "$REPO/site" && setsid nohup pnpm dev --port 5173 --strictPort \
-    >>"$LOG_DIR/devserver.log" 2>&1 &) 9>&-
+  bash -c 'cd "$1" && exec setsid nohup pnpm dev --port 5173 --strictPort </dev/null >>"$2" 2>&1' \
+    _ "$REPO/site" "$LOG_DIR/devserver.log" 9>&- &
+  disown
 fi
 
 # Decide in bash whether this tick needs a model at all, and which one. A tick
