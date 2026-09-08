@@ -1,7 +1,10 @@
 # Match
 
 A match is a chain of produce-or-decline arms over the subject `.`: the subject arrives
-through a pipe, arms compose with `or`, and the first arm that matches wins. An arm's left
+through a pipe, arms compose with `or`, and the first arm that matches wins. The pre-`or`
+arm separator `//` is retired
+([kantord/toylang#96](https://github.com/kantord/toylang/issues/96)).
+An arm's left
 side is a variant pattern of an [enum](../types/enum.md) subject, or a Bool guard over any
 subject.
 

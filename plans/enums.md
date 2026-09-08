@@ -1,6 +1,6 @@
 # Enums: the first slice
 
-Implements the design in draft.md's "DECIDED: enums, nominal and JSON-native" and ADR 0009.
+Implements the design in ADR 0009 and the [enums guide](../docs/guides/enums.md).
 Everything semantic is already decided there; this plan only orders the build and names where
 the effort actually is. Prioritized ahead of the stream type-system work, per that decision.
 
