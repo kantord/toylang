@@ -994,6 +994,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 let names: Vec<String> = fields.iter().map(|(n, _)| js_string(n)).collect();
                 format!("({}, [{}])", expr(enums, arg), names.join(", "))
             }
+            _ => unreachable!("not yet implemented for this backend"),
         },
         Kind::Compare { op, lhs, rhs } => compare(enums, *op, lhs, rhs),
         Kind::Bind {

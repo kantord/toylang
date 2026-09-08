@@ -1402,6 +1402,7 @@ impl Emitter<'_> {
                         names.join(", ")
                     )
                 }
+                _ => unreachable!("not yet implemented for this backend"),
             },
             Kind::Compare { op, lhs, rhs } => {
                 format!("({} {} {})", self.expr(lhs), rs_op(*op), self.expr(rhs))

@@ -209,7 +209,7 @@ pub struct MatchArm {
 /// The functions the language provides. Each is unary, and so is every user function: something
 /// wanting two arguments takes a record, which is what a record literal is for in argument
 /// position.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Builtin {
     /// `str(n)`, rendering an Int the way the printer does but reachable from a program.
     IntToStr,
