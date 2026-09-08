@@ -1645,3 +1645,30 @@ No fresh sandbox dispatch: `draft-records-migration`, `draft-matching-migration`
 `*-sandbox-blocker.round.yaml`, not a clean slot to dispatch into. Nothing on disk changed there
 since the last check. No new round composed either -- 6 rounds already pending, well past the
 "keep two buffered" target.
+
+## 2026-09-08: root cause of the "18 stalled lanes" was OpenRouter credits, not disk or a key rotation
+
+The `opencode-api-key-expired.round.yaml` escalation (fresh redispatch of the 3 unblocked
+lanes -- `brief-phrasing-experiment`, `native-backend-rust-ergonomics-research`,
+`trait-interface-dispatch-build` -- all failing build turn 1 in under a minute on `API key
+expired`) got answered: the OpenRouter key itself was never invalid (`/auth/key` showed
+`expires_at 2026-09-15`, auth succeeded); the account had run out of credit balance. Credits
+topped up (`/api/v1/credits`: 160 total, ~130 used, ~30 remaining at answer time), confirmed
+live against the real endpoint, not inferred from the error text. Maintainer answer: redispatch
+all 18 affected lanes (the 3 above plus the other 15 left at `status: todo`) from their original
+briefs, no rebrief needed -- the briefs were never the problem.
+
+Deleted the 3 `*-sandbox-blocker.round.yaml` escalations for the already-attempted lanes as
+moot: each asked "how should this blocker move forward" (stronger model / hand to human / land
+as-is) on the premise of a real partial patch, but the verify tail in all three was actually
+`opencode never attempted the task -- matched fatal pattern 'API key expired'` -- there was no
+patch, no gap, nothing to choose between. All 18 lanes stay at `status: todo`; WIP was already
+3/3 at capture time, so no immediate dispatch -- future ticks pick them up as slots free,
+respecting the 3-concurrent cap rather than bursting all 18 at once.
+
+Claude-proof? No -- an exhausted prepaid credit balance surfaces the same way regardless of
+which model/vendor is behind `opencode`; the fix (top up credits) is account-level, not a
+worker or brief defect. Process gap worth naming: the ORIGINAL 18-lane stall was first
+misdiagnosed as disk-full (2026-09-07), and only a second, more skeptical redispatch surfaced
+the real cause -- a `FATAL_API_PATTERNS`-style fast-fail on `insufficient_quota`/`402` distinct
+from `key expired` would have shortened that detour.
