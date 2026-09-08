@@ -137,7 +137,10 @@ fn float_printing_matches_at_notation_boundaries() {
 fn js_targets_split_on_stdin() {
     let stdin_program = toylang::compile("collect stdin\n").expect("compiles");
     let node = toylang::emit_js::emit(&stdin_program, toylang::emit_js::JsTarget::Node).unwrap();
-    assert!(node.contains("require(\"fs\")"), "node reads stdin through fs");
+    assert!(
+        node.contains("require(\"fs\")"),
+        "node reads stdin through fs"
+    );
     insta::assert_snapshot!(node);
     assert!(
         toylang::emit_js::emit(&stdin_program, toylang::emit_js::JsTarget::Web).is_err(),
@@ -145,8 +148,142 @@ fn js_targets_split_on_stdin() {
     );
 
     let plain_program = toylang::compile("str(1 + 2)\n").expect("compiles");
-    let node_plain = toylang::emit_js::emit(&plain_program, toylang::emit_js::JsTarget::Node).unwrap();
-    let web_plain = toylang::emit_js::emit(&plain_program, toylang::emit_js::JsTarget::Web).unwrap();
-    assert_eq!(node_plain, web_plain, "the two targets share every non-stdin code path");
-    assert!(!web_plain.contains("require(\"fs\")"), "web code has no node fs:\n{web_plain}");
+    let node_plain =
+        toylang::emit_js::emit(&plain_program, toylang::emit_js::JsTarget::Node).unwrap();
+    let web_plain =
+        toylang::emit_js::emit(&plain_program, toylang::emit_js::JsTarget::Web).unwrap();
+    assert_eq!(
+        node_plain, web_plain,
+        "the two targets share every non-stdin code path"
+    );
+    assert!(
+        !web_plain.contains("require(\"fs\")"),
+        "web code has no node fs:\n{web_plain}"
+    );
+}
+
+// The web target's escape hatch (gh:160): a build may supply a browser-side implementation
+// for a stdin-reading helper, and the emitted code calls it instead of node's `fs`. Each shape
+// needs the reader its emission actually calls: a `lines` program needs `tl_collect_lines`, an
+// `input` program `tl_read_input`,and a fused `lines` pipeline `tl_read_line`. The wrong
+// override for a shape does not satisfy its gate, so a program still compiles for Web only when
+// the substitute its emitted code would actually call is present.
+
+/// Runs emitted JS through node, returning stdout. The web target's output carries no `fs`
+/// dependency, so this is what proves a substitute actually runs.
+fn run_js(source: &str) -> String {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("program.js");
+    std::fs::write(&path, source).expect("write program.js");
+    let out = std::process::Command::new("node")
+        .arg(&path)
+        .output()
+        .expect("node runs");
+    assert!(
+        out.status.success(),
+        "node failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).expect("node stdout is UTF-8")
+}
+
+#[test]
+fn web_escape_hatch_replaces_tl_collect_lines() {
+    let program = toylang::compile("collect stdin\n").expect("compiles");
+    let web = toylang::config::Web {
+        lines: Some(
+            "function tl_collect_lines() { return [\"ada\", \"bo\", \"cy\"]; }\n".to_string(),
+        ),
+        ..Default::default()
+    };
+    // The node target never consults the web config, so its output is byte-identical either way.
+
+    let node = toylang::emit_js::emit(&program, toylang::emit_js::JsTarget::Node).unwrap();
+    let node_with =
+        toylang::emit_js::emit_with(&program, toylang::emit_js::JsTarget::Node, &web).unwrap();
+    assert_eq!(node, node_with, "node ignores the web escape hatch");
+    assert!(
+        node.contains("require(\"fs\")"),
+        "node reads stdin through fs"
+    );
+
+    let emitted = toylang::emit_js::emit_with(&program, toylang::emit_js::JsTarget::Web, &web)
+        .expect("the web target compiles a lines program when the substitute is supplied");
+    assert!(
+        !emitted.contains("require(\"fs\")"),
+        "web code has no node fs:\n{emitted}"
+    );
+    assert_eq!(run_js(&emitted), "[\"ada\",\"bo\",\"cy\"]\n");
+
+    // A reader the emitted code does not call does not satisfy the gate.
+
+    let read_line_only = toylang::config::Web {
+        read_line: Some("function tl_read_line() { return null; }\n".to_string()),
+        ..Default::default()
+    };
+    assert!(
+        toylang::emit_js::emit_with(&program, toylang::emit_js::JsTarget::Web, &read_line_only)
+            .is_err(),
+        "a read_line substitute does not satisfy a non-fused lines program"
+    );
+}
+
+#[test]
+fn web_escape_hatch_replaces_tl_read_input() {
+    let program = toylang::compile("fn twice(x: Int) -> Int = x * 2\n\ntwice(parse(stdin))\n")
+        .expect("compiles");
+    let web = toylang::config::Web {
+        input: Some("function tl_read_input() { return \"21\"; }\n".to_string()),
+        ..Default::default()
+    };
+    // An override for a different reader does not satisfy this shape's gate: an `input`
+    // program emits `tl_read_input`, not `tl_collect_lines`.
+    let wrong = toylang::config::Web {
+        lines: Some("function tl_collect_lines() { return []; }\n".to_string()),
+        ..Default::default()
+    };
+    assert!(
+        toylang::emit_js::emit_with(&program, toylang::emit_js::JsTarget::Web, &wrong).is_err(),
+        "a collect_lines substitute does not satisfy an input program"
+    );
+    let emitted = toylang::emit_js::emit_with(&program, toylang::emit_js::JsTarget::Web, &web)
+        .expect("the web target compiles an input program when the substitute is supplied");
+    assert!(
+        !emitted.contains("require(\"fs\")"),
+        "web code has no node fs:\n{emitted}"
+    );
+    assert_eq!(run_js(&emitted), "42\n");
+}
+
+#[test]
+fn web_escape_hatch_replaces_tl_read_line() {
+    let program = toylang::compile(
+        "fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + \"!\")\n\njsonlines(shout(stdin))\n",
+    )
+    .expect("compiles");
+    let web = toylang::config::Web {
+        read_line: Some(
+            "let tl_lines = [\"ada\", \"bo\"];\nfunction tl_read_line() { return tl_lines.length ? tl_lines.shift() : null; }\n"
+                .to_string(),
+        ),
+        ..Default::default()
+    };
+    // A fused `lines` loop reads through `tl_read_line`, so a `tl_collect_lines` substitute
+    // does not satisfy it -- the trap a blind `used.collect` relaxation would fall into.
+
+    let wrong = toylang::config::Web {
+        lines: Some("function tl_collect_lines() { return [\"ada\", \"bo\"]; }\n".to_string()),
+        ..Default::default()
+    };
+    assert!(
+        toylang::emit_js::emit_with(&program, toylang::emit_js::JsTarget::Web, &wrong).is_err(),
+        "a collect_lines substitute does not satisfy a fused lines loop"
+    );
+    let emitted = toylang::emit_js::emit_with(&program, toylang::emit_js::JsTarget::Web, &web)
+        .expect("the web target compiles a fused lines program when the substitute is supplied");
+    assert!(
+        !emitted.contains("require(\"fs\")"),
+        "web code has no node fs:\n{emitted}"
+    );
+    assert_eq!(run_js(&emitted), "\"ada!\"\n\"bo!\"\n");
 }

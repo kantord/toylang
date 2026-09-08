@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod check;
+pub mod config;
 pub mod emit_go;
 pub mod emit_jq;
 pub mod emit_js;

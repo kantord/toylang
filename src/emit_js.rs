@@ -1,4 +1,5 @@
 use crate::ast::{BinOp, LogicOp};
+use crate::config::Web;
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
 use crate::ty::{self, Enums, Type};
 
@@ -241,22 +242,30 @@ function tl_max(v) {
 ";
 
 pub fn emit(program: &Program, target: JsTarget) -> Result<String, String> {
+    emit_with(program, target, &Web::default())
+}
+
+/// The web target's escape hatch (gh:160):`Web` may supply browser-side implementations for
+/// the stdin-reading helpers, so a Web build can opt into working code instead of the compile-time
+/// refusal. Node never consults any of it, so these substitutions are additive only for Web.
+pub fn emit_with(program: &Program, target: JsTarget, web: &Web) -> Result<String, String> {
     let enums = &program.enums;
+
     let mut out = String::new();
     let fused = tir::fusion(program);
+    let fused_source = fused.as_ref().map(|f| f.source);
 
     let used = used_helpers(program);
     let join = matches!(program.body.ty, Type::Vec(_))
         || contains_vec(enums, &program.body.ty)
         || used.jsonlines;
-
-    if target.is_web() && reads_stdin(program, fused.as_ref(), used.collect) {
-        return Err(
-            "the web target has no stdin: `input`, `inputs`, `lines`, `dsv`, and stream-typed \
-             pipelines all read through node's `fs`"
-                .to_string(),
-        );
-    }
+    web_stdin_error(target, program, fused_source, used.collect, web)?;
+    let read_input_call = match (target, web.input.as_deref()) {
+        (JsTarget::Web, Some(_)) => "tl_read_input()",
+        _ => "require(\"fs\").readFileSync(0, \"utf8\")",
+    };
+    let collect_text = collect_text(target, fused_source, web);
+    emit_web_read_input(&mut out, target, program, fused_source, web);
     for (on, text) in [
         (used.select, SELECT_HELPER),
         (used.field, FIELD_HELPER),
@@ -270,7 +279,7 @@ pub fn emit(program: &Program, target: JsTarget) -> Result<String, String> {
         (used.unwrap, UNWRAP_HELPER),
         (used.arith, ARITH_HELPER),
         (used.arith64, ARITH64_HELPER),
-        (used.collect, COLLECT_HELPER),
+        (used.collect, collect_text),
         (used.jsonlines, JSONLINES_HELPER),
         (used.str_cmp, STR_CMP_HELPER),
         (used.chars, CHARS_HELPER),
@@ -318,18 +327,20 @@ pub fn emit(program: &Program, target: JsTarget) -> Result<String, String> {
     }
 
     if let Some(fusion) = fused {
-        out.push_str(&fused_main(program, &fusion));
+        let read_line = match (target, web.read_line.as_deref()) {
+            (JsTarget::Web, Some(text)) => Some(text),
+            _ => None,
+        };
+        out.push_str(&fused_main(program, &fusion, read_line));
         return Ok(out);
     }
 
     if program.input.is_some() {
-        out.push_str(&format!(
-            "const {INPUT} = JSON.parse(require(\"fs\").readFileSync(0, \"utf8\"));\n"
-        ));
+        out.push_str(&format!("const {INPUT} = JSON.parse({read_input_call});\n"));
     }
     if program.inputs.is_some() {
         out.push_str(&format!(
-            "const {INPUTS} = require(\"fs\").readFileSync(0, \"utf8\").split(\"\\n\").filter((l) => l.length > 0).map((l) => JSON.parse(l));\n"
+            "const {INPUTS} = {read_input_call}.split(\"\\n\").filter((l) => l.length > 0).map((l) => JSON.parse(l));\n"
         ));
     }
 
@@ -346,20 +357,86 @@ pub fn emit(program: &Program, target: JsTarget) -> Result<String, String> {
     Ok(out)
 }
 
-/// Whether the program reads stdin through node's `fs`, which is what the Web target has to
-/// refuse. `used.collect` covers an eager `lines`/`dsv`;a fused program's source decides
-/// instead, so the two are checked separately.
-fn reads_stdin(program: &Program, fused: Option<&tir::Fusion>, collect: bool) -> bool {
-    if program.input.is_some() || program.inputs.is_some() {
-        return true;
+/// Whether a Web build without a substitute for the reader its emission actually calls still
+/// has to refuse. `input` and eager `inputs` read through `tl_read_input`; non-fused
+/// `lines`/`dsv` through `tl_collect_lines`;and fused stdin loops through `tl_read_line`. A
+/// fused `lines` loop also sets `used.collect` -- its `lines` base is walked for helpers -- but
+/// never calls `tl_collect_lines`, so the config's `lines` override does not satisfy it.
+fn web_stdin_refusal(
+    program: &Program,
+    fused_source: Option<tir::Source<'_>>,
+    collect_read: bool,
+    web: &Web,
+) -> bool {
+    let fused_inputs = matches!(fused_source, Some(tir::Source::Inputs));
+    let fused_lines = matches!(fused_source, Some(tir::Source::Lines));
+    (program.input.is_some() && web.input.is_none())
+        || (program.inputs.is_some() && {
+            if fused_inputs {
+                web.read_line.is_none()
+            } else {
+                web.input.is_none()
+            }
+        })
+        || (collect_read && web.lines.is_none())
+        || (fused_lines && web.read_line.is_none())
+}
+
+/// The refusal a Web build with a still-unmet stdin reader gets, propagated as the compile
+/// error. `Ok(())` when every shape's substitute is present (or no stdin is read at all).
+fn web_stdin_error(
+    target: JsTarget,
+    program: &Program,
+    fused_source: Option<tir::Source<'_>>,
+    collect: bool,
+    web: &Web,
+) -> Result<(), String> {
+    let collect_read = collect && !matches!(fused_source, Some(tir::Source::Lines));
+    if target.is_web() && web_stdin_refusal(program, fused_source, collect_read, web) {
+        return Err(
+            "the web target has no stdin: `input`, `inputs`, `lines`, `dsv`,and stream-typed \
+             pipelines all read through node's `fs`"
+                .to_string(),
+        );
     }
-    if collect {
-        return true;
+    Ok(())
+}
+
+/// The `tl_collect_lines` text the helper loop emits. Under the Web target a fused `lines`
+/// loop sets `used.collect` (its `lines` base is walked for helpers) but never calls
+/// `tl_collect_lines`, so there the substitution is skipped entirely rather than emitting the
+/// node-only default a browser build could not bundle. Node keeps the default either way.
+fn collect_text<'a>(
+    target: JsTarget,
+    fused_source: Option<tir::Source<'a>>,
+    web: &'a Web,
+) -> &'a str {
+    match (target, web.lines.as_deref()) {
+        (JsTarget::Web, Some(text)) => text,
+        (JsTarget::Web, None) if matches!(fused_source, Some(tir::Source::Lines)) => "",
+
+        _ => COLLECT_HELPER,
     }
-    matches!(
-        fused.map(|f| f.source),
-        Some(tir::Source::Inputs | tir::Source::Lines)
-    )
+}
+
+/// Emits the substitute `tl_read_input` definition when the eager `input`/`inputs` emission will
+/// call it. A fused `inputs` loop reads through `tl_read_line` instead, so it does not count.
+fn emit_web_read_input(
+    out: &mut String,
+    target: JsTarget,
+    program: &Program,
+    fused_source: Option<tir::Source<'_>>,
+    web: &Web,
+) {
+    let eager_inputs =
+        program.inputs.is_some() && !matches!(fused_source, Some(tir::Source::Inputs));
+    if let Some(text) = web
+        .input
+        .as_deref()
+        .filter(|_| target.is_web() && (program.input.is_some() || eager_inputs))
+    {
+        out.push_str(text);
+    }
 }
 
 /// A stream-typed `jsonlines` program, compiled as a loop reading one line at a time off the
@@ -370,12 +447,15 @@ fn reads_stdin(program: &Program, fused: Option<&tir::Fusion>, collect: bool) ->
 /// *synchronous* read that blocks the whole event loop, which risks stopping a queued write from
 /// ever reaching the pipe before the process blocks again. `tests/streaming.rs`'s `js_streams`
 /// checks this directly against a live pipe rather than assuming either way.
-fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
+fn fused_main(program: &Program, fusion: &tir::Fusion, read_line: Option<&str>) -> String {
     let enums = &program.enums;
     let mut out = String::new();
     let (mut current, mut current_ty) = match fusion.source {
         tir::Source::Inputs => {
-            out.push_str(&read_line_helper());
+            match read_line {
+                Some(text) => out.push_str(text),
+                None => out.push_str(&read_line_helper()),
+            }
             out.push_str("for (;;) {\n");
             out.push_str("  const t_line_raw = tl_read_line();\n");
             out.push_str("  if (t_line_raw === null) break;\n");
@@ -389,7 +469,10 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
         }
         // A raw line is already the element, blank ones included: `lines` keeps them.
         tir::Source::Lines => {
-            out.push_str(&read_line_helper());
+            match read_line {
+                Some(text) => out.push_str(text),
+                None => out.push_str(&read_line_helper()),
+            }
             out.push_str("for (;;) {\n");
             out.push_str("  const t_line_raw = tl_read_line();\n");
             out.push_str("  if (t_line_raw === null) break;\n");
@@ -451,7 +534,9 @@ fn read_line_helper() -> String {
     out.push_str("    const n = fs.readSync(0, chunk, 0, chunk.length, null);\n");
     out.push_str("    if (n === 0) { tl_stdin_eof = true; continue; }\n");
     out.push_str("    try {\n");
-    out.push_str("      tl_stdin_buf += tl_decoder.decode(chunk.subarray(0, n), { stream: true });\n");
+    out.push_str(
+        "      tl_stdin_buf += tl_decoder.decode(chunk.subarray(0, n), { stream: true });\n",
+    );
     out.push_str("    } catch (e) {\n");
     out.push_str("      throw new Error(\"toylang: stdin is not valid UTF-8\");\n");
     out.push_str("    }\n");

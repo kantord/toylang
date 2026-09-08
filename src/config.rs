@@ -5,7 +5,7 @@
 //! one and finds no replacement is refused at compile time for the Web target, rather than
 //! emitting code that would silently break in a browser. Node never consults any of this.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::Deserialize;
 
@@ -43,11 +43,12 @@ impl Config {
             None => Ok(Config::default()),
             Some(path) => {
                 let text = std::fs::read_to_string(&path).map_err(|e| {
-                    format!("{}: could not read the compiler config: {e}", path.display())
+                    format!(
+                        "{}: could not read the compiler config: {e}",
+                        path.display()
+                    )
                 })?;
-                serde_norway::from_str(&text).map_err(|e| {
-                    format!("{}: {e}", path.display())
-                })
+                serde_norway::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
             }
         }
     }
@@ -77,6 +78,6 @@ mod tests {
             "web:\n  input: |\n    function tl_read_input() { return \"\"; }\n",
         )
         .expect("parses");
-        assert!(cfg.web.input.is_some();
+        assert!(cfg.web.input.is_some());
     }
 }
