@@ -2,6 +2,8 @@ pub enum Opt<T> { some(T), none }
 
 pub enum Result<T, E> { ok(T), err(E) }
 
+pub enum PipeLine { Stdout{text: Str}, Stderr{text: Str} }
+
 fn join_parts(v: Vec<Str>) -> Str =
     v | length(v) == 0 -> "" or v[0]! + join_parts(tail(v)!)
 

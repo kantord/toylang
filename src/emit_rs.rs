@@ -615,6 +615,82 @@ const JSONLINES_HELPER: &str = r#"fn tl_jsonlines<T>(v: &[T], f: fn(&T) -> Strin
 }
 "#;
 
+/// Streams stdin's lines into a subprocess's stdin and relays its stdout/stderr lines back,
+/// each tagged by origin. stdout streams out as it arrives; stderr lines are drained
+/// concurrently by a thread (so neither pipe can fill up and stall the child)and emitted after
+/// stdout closes, so the two streams' relative order is deterministic. The child's exit status
+/// is ignored: a filter like `grep` exits nonzero on "no matches", which is a normal outcome
+/// for the shape this builtin exists to express. The two closures build the tagged output value,
+/// which is what lets the helper stay generic over the `PipeLine` enum each program emits as its
+/// own type.
+
+const PIPE_HELPER: &str = r#"fn tl_pipe_through<T>(cmd: String, args: Vec<String>, stdin_lines: Vec<String>, mut to_stdout: impl FnMut(String) -> T, mut to_stderr: impl FnMut(String) -> T) -> Vec<T> {
+    use std::io::{BufRead, Write};
+    let mut child = match std::process::Command::new(cmd)
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn() {
+        Ok(c) => c,
+        Err(e) => tl_fail(&format!("cannot spawn subprocess: {e}")),
+    };
+    let mut stdin_w = child.stdin.take().expect("piped");
+    let stderr_w = child.stderr.take().expect("piped");
+    let feed = std::thread::spawn(move || {
+        let mut w = std::io::BufWriter::new(stdin_w);
+        for line in stdin_lines {
+            match w.write_all(line.as_bytes()).and_then(|_| w.write_all(b"\n")) {
+                Ok(()) => {}
+                // A child that closes its stdin early (head, sort -u, ...) is normal, not an error.
+
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => break,
+                Err(e) => tl_fail(&format!("could not write subprocess stdin: {e}")),
+            }
+        }
+    });
+    let stderr = std::thread::spawn(move || {
+        let mut out = Vec::new();
+        let mut line = String::new();
+        let mut r = std::io::BufReader::new(stderr_w);
+        loop {
+            line.clear();
+            match r.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    // `lines` splits on `\n` only, keeping a `\r`, so the relay does too.
+
+                    if line.ends_with('\n') { line.pop(); }
+                    out.push(line.clone());
+                }
+                Err(e) => tl_fail(&format!("could not read subprocess stderr: {e}")),
+            }
+        }
+        out
+    });
+    let mut out: Vec<T> = Vec::new();
+    let mut line = String::new();
+    let mut r = std::io::BufReader::new(child.stdout.take().expect("piped"));
+    loop {
+        line.clear();
+        match r.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {
+                if line.ends_with('\n') { line.pop(); }
+                out.push(to_stdout(line.clone()));
+            }
+            Err(e) => tl_fail(&format!("could not read subprocess stdout: {e}")),
+        }
+    }
+    let _ = feed.join();
+    let _ = child.wait();
+    for line in stderr.join().expect("the stderr thread finished") {
+        out.push(to_stderr(line));
+    }
+    out
+}
+"#;
+
 /// The derive line every emitted record and enum carries. `PartialEq` is unconditional: it is
 /// the structural equality the other backends have to hand-write (kantord/toylang#68), and
 /// gating it on the program actually comparing something would cost a traversal to save a line
@@ -802,6 +878,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_quote("), QUOTE_HELPER),
         (uses("tl_join("), JOIN_HELPER),
         (used.jsonlines, JSONLINES_HELPER),
+        (uses("tl_pipe_through("), PIPE_HELPER),
     ] {
         if on {
             helpers.push_str(text);
@@ -1370,6 +1447,41 @@ impl Emitter<'_> {
                 }
                 // The source already materialized, so the exit has nothing left to do.
                 Builtin::Collect => self.expr(arg),
+                Builtin::PipeThrough => {
+                    let Kind::RecordLit { fields, .. } = &arg.kind else {
+                        unreachable!("pipe_through's argument is checked to be the record literal")
+                    };
+                    let field = |name: &str| {
+                        fields
+                            .iter()
+                            .find(|(n, _)| n == name)
+                            .map(|(_, v)| v)
+                            .expect("pipe_through's record is checked to carry all three fields")
+                    };
+                    let enum_ty = tir::runtime_elem(&t.ty).expect("pipe_through returns a stream");
+                    let variants = ty::variants(self.registry, enum_ty);
+                    let text_ty = variants
+                        .iter()
+                        .find(|(n, _)| n == "Stdout")
+                        .and_then(|(_, p)| p.as_ref())
+                        .expect("the prelude's PipeLine carries a `Stdout{text: Str}` payload");
+                    let tag = |tag: &str| {
+                        format!(
+                            "|l| {}::V_{tag}({} {{ {}: l }})",
+                            self.rs_type(enum_ty),
+                            self.rs_type(text_ty),
+                            rs_field("text")
+                        )
+                    };
+                    format!(
+                        "tl_pipe_through({}, {}, {}, {}, {})",
+                        self.expr(&field("cmd")),
+                        self.expr(&field("args")),
+                        self.expr(&field("lines")),
+                        tag("Stdout"),
+                        tag("Stderr")
+                    )
+                }
                 Builtin::Length => format!("(({}).len() as i32)", self.expr(arg)),
                 Builtin::Tail => format!("tl_tail(&{})", self.expr(arg)),
                 Builtin::First => format!("tl_first(&{})", self.expr(arg)),

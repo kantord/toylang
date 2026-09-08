@@ -903,21 +903,21 @@ fn compare_helpers(op: BinOp, operand: &Type, used: &mut Helpers) {
 /// One helper per builtin whose Lua spelling is a function rather than an operator. `arg.ty` is
 /// needed for `sum` alone: `tl_sum` narrows through `tl_i32` when the element is an Int, so the
 /// helper that defines it has to be present alongside.
-fn builtin_helpers(which: Builtin, arg_ty: &Type, used: &mut Helpers) {
-    used.range |= which == Builtin::Range;
-    used.jsonlines |= which == Builtin::JsonLines;
-    used.tail |= which == Builtin::Tail;
-    used.first |= which == Builtin::First;
-    used.any |= which == Builtin::Any;
-    used.all |= which == Builtin::All;
-    used.flatten |= which == Builtin::Flatten;
-    used.chars |= which == Builtin::Chars;
-    used.sort |= which == Builtin::Sort;
-    used.reverse |= which == Builtin::Reverse;
-    used.sum |= which == Builtin::Sum;
-    used.max |= which == Builtin::Max;
-    used.parse |= which == Builtin::Parse;
-    used.arith |= which == Builtin::Sum && tir::runtime_elem(arg_ty) == Some(&Type::Int);
+fn builtin_helpers(which: &Builtin, arg_ty: &Type, used: &mut Helpers) {
+    used.range |= matches!(which, Builtin::Range);
+    used.jsonlines |= matches!(which, Builtin::JsonLines);
+    used.tail |= matches!(which, Builtin::Tail);
+    used.first |= matches!(which, Builtin::First);
+    used.any |= matches!(which, Builtin::Any);
+    used.all |= matches!(which, Builtin::All);
+    used.flatten |= matches!(which, Builtin::Flatten);
+    used.chars |= matches!(which, Builtin::Chars);
+    used.sort |= matches!(which, Builtin::Sort);
+    used.reverse |= matches!(which, Builtin::Reverse);
+    used.sum |= matches!(which, Builtin::Sum);
+    used.max |= matches!(which, Builtin::Max);
+    used.parse |= matches!(which, Builtin::Parse);
+    used.arith |= matches!(which, Builtin::Sum) && tir::runtime_elem(arg_ty) == Some(&Type::Int);
 }
 
 fn used_helpers(program: &Program) -> Helpers {
@@ -994,7 +994,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(base, used);
             }
             Kind::Builtin { which, arg } => {
-                builtin_helpers(*which, &arg.ty, used);
+                builtin_helpers(which, &arg.ty, used);
                 walk(arg, used);
             }
             Kind::Arith { op, lhs, rhs } => {
@@ -1149,6 +1149,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                     expr(enums, arg)
                 )
             }
+            _ => unreachable!("not yet implemented for this backend"),
         },
         Kind::Compare { op, lhs, rhs } => compare(enums, *op, lhs, rhs),
         // Lua has no expression-level `let`, so the binding becomes a call.

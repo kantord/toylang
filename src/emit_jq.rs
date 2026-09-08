@@ -703,6 +703,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 let names: Vec<String> = fields.iter().map(|(n, _)| jq_string(n)).collect();
                 format!("({} | [{}])", expr(enums, arg), names.join(", "))
             }
+            _ => unreachable!("not yet implemented for this backend"),
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(enums, lhs), jq_op(*op), expr(enums, rhs))

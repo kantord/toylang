@@ -933,24 +933,8 @@ impl Collect<'_> {
                             tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                         self.used.jsonlines_has_scalar |= has_scalar(self.registry, elem);
                     }
-                    // Purely textually gated below, like tlAt and tlRange: nothing here needs
-                    // the element type, so there is nothing to record on the walk.
                     Builtin::Parse => self.used.json_parse = true,
-                    Builtin::IntToI64
-                    | Builtin::Range
-                    | Builtin::Collect
-                    | Builtin::Length
-                    | Builtin::Flatten
-                    | Builtin::Tail
-                    | Builtin::Fields
-                    | Builtin::Chars
-                    | Builtin::Sort
-                    | Builtin::Reverse
-                    | Builtin::Sum
-                    | Builtin::Max
-                    | Builtin::First
-                    | Builtin::Any
-                    | Builtin::All => {}
+                    _ => {}
                 }
                 self.walk(arg);
             }
@@ -1322,6 +1306,7 @@ impl Emitter<'_> {
                         self.expr(arg)
                     )
                 }
+                _ => unreachable!("not yet implemented for this backend"),
             },
             Kind::Compare { op, lhs, rhs } => self.compare(*op, lhs, rhs),
             Kind::Bind {
