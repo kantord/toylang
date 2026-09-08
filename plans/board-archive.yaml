@@ -2055,3 +2055,9 @@
   status: done
   needs: []
   title: 'INVESTIGATE stuck lane issue-draft-records-migration (no activity 1h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-draft-records-migration-20260907/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
+
+- id: stuck-issue-draft-matching-migration-investigation
+  kind: build
+  status: done
+  needs: []
+  title: 'INVESTIGATE stuck lane issue-draft-matching-migration (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-draft-matching-migration-20260908/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'

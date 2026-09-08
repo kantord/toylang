@@ -1726,3 +1726,36 @@ Recommendation:
   shared monolith keep producing (the merge-conflict retries the 2026-09-08 entry above
   describes). It is a sequencing change, not a scope change -- no section list or destination
   changes, so no row's brief needs rewriting, only the order its worker is told to do things in.
+
+## 2026-09-08 (later): three sandbox-blocker rulings applied -- two redispatched, one already moot
+
+Maintainer wizard answers, all "A. Stronger model, same patch as the starting point", captured
+2026-09-08 19:13:57 and applied same tick:
+
+- `draft-records-migration-sandbox-blocker`: covered both the sandbox build blocker AND the
+  `land-lane.sh` land-failed marker (same conflict, same evidence -- three landing attempts all
+  hit `CONFLICT (content)` in `draft.md` against `origin/main`, retry cap reached). Redispatched
+  via `sandbox_dispatch.py draft-records-migration --model openrouter/z-ai/glm-5.2` (fresh diff
+  against current main, not a literal patch resume -- `sandbox_dispatch.py` resets every lane
+  from `origin/main` per invocation, so "same patch as starting point" was applied as "same task,
+  same near-miss context carried in-brief" rather than a literal `git am` of the old patch).
+  Cleared `land-failed-issue-draft-records-migration` and `land-retries-issue-draft-records-migration`.
+- `draft-matching-migration-sandbox-blocker`: build reached GREEN (412/412) twice but `git am -3`
+  failed applying its own extracted patch onto a freshly reset lane -- genuine conflict, not a
+  build problem. Same redispatch treatment, same model.
+- `stuck-issue-draft-records-migration-investigation-sandbox-blocker`: **stale by the time it was
+  answered** -- a later, third dispatch of this same row (not visible to the maintainer when they
+  answered) already reached green and landed cleanly (`847afa9`/`27ab9c5`, archived `2f29002`).
+  Cleared the round with no action; the ruling was moot.
+
+Also archived `stuck-issue-draft-matching-migration-investigation` (board-filed after the failed
+`git am -3` left that lane at `ahead=0 dirty=0 live=0`) as redundant: the sandbox-dispatch log for
+`draft-matching-migration` already gives a conclusive diagnosis (green build, landing-time
+conflict) -- a fresh investigation dispatch would only re-derive it, same shape as the
+2026-09-02 and 2026-09-08(earlier) precedents above.
+
+Not yet applied to either redispatch brief: this file's own "additive-salvage-first, then
+subtractive-delete" sequencing recommendation (previous entry) for reducing landing-time
+`draft.md` conflicts between sibling draft-split rows. Both redispatches above were already
+in flight before that recommendation was cross-referenced here; whichever row picks up the next
+undispatched draft-split migration should carry the sequencing instruction in its brief.

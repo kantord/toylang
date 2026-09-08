@@ -1,8 +1,3 @@
-- id: stuck-issue-draft-matching-migration-investigation
-  kind: build
-  status: todo
-  needs: []
-  title: 'INVESTIGATE stuck lane issue-draft-matching-migration (no activity 0h, 1 run(s), 0 commits): evidence frozen in plans/incidents/issue-draft-matching-migration-20260908/ -- read it plus the lane worktree, then report in plans/opencode-rollout.md whether this was brief clarity, a capability gap, a tooling/permission trap, or task shape, and propose the rebrief or reshape. Do NOT attempt the original task.'
 - id: dsv-partials-migration
   issue: gh:136
   title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet.'
@@ -244,7 +239,7 @@
   needs: []
   soft: [draft-intro-migration, draft-questions-home]
   prio: 4
-  status: todo
+  status: delegated
 
 - id: draft-matching-migration
   title: Migrate the matching/enums sections -- ratified parts to guides and ADR 0009, codec threads to the tracker (draft-split)
@@ -252,7 +247,7 @@
   needs: []
   soft: [draft-intro-migration, draft-questions-home, matcher-model-clarification, matcher-totality-and-alt-design]
   prio: 4
-  status: todo
+  status: delegated
 
 - id: draft-mutation-migration
   title: Record the mutation decisions once they land and delete both mutation sections (draft-split)
