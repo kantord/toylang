@@ -27,6 +27,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The `.d.ts` done-gate runs a real `tsc --noEmit`, so the test job needs a TypeScript
+      # compiler the way it needs go, lua, python, and jq.
+
+      - run: npm install -g typescript@5.6.3
       - run: sudo apt-get update && sudo apt-get install -y lua5.4 python3 jq libzstd-dev
       - run: |
           wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
