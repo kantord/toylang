@@ -143,10 +143,18 @@ def dispatch_trigger(cap: int = DEFAULT_CAP) -> str | None:
     # function's original "absent from live board" check (matching the
     # board's own documented issue-#113 shorthand) treated it as satisfied.
     # Board-archive.yaml is the actual, unambiguous record of "genuinely
-    # landed" -- require presence there instead.
+    # landed" -- require presence there. But `board-archive.py` only ever
+    # archives landed `build` rows with a worktree to confirm against --
+    # `decide` rows finish by sitting at `status: done` directly in
+    # board.yaml forever and never get archived. Found live, 2026-09-08:
+    # 4 build rows (dsv-partials-migration, shell-out-build, sort-by-max-by-go,
+    # draft-md-cleanup-review) each `needs` a decide row that was long since
+    # ratified, yet were permanently unready because this set only ever
+    # checked the archive. A row's own `status: done` on the live board is
+    # just as unambiguous as archival -- count both.
     with open(REPO / "plans/board-archive.yaml") as f:
         archived = yaml.safe_load(f) or []
-    done = {r["id"] for r in archived}
+    done = {r["id"] for r in archived} | {r["id"] for r in rows if r.get("status") == "done"}
     # A standing "do not redispatch" hold -- the dispatch-worker.sh-era
     # escalated-<lane> marker convention, still actively maintained by hand
     # (confirmed live, 2026-09-07: euler-slow-fragments-2's own title
