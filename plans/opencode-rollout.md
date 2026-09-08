@@ -1759,3 +1759,56 @@ subtractive-delete" sequencing recommendation (previous entry) for reducing land
 `draft.md` conflicts between sibling draft-split rows. Both redispatches above were already
 in flight before that recommendation was cross-referenced here; whichever row picks up the next
 undispatched draft-split migration should carry the sequencing instruction in its brief.
+
+## 2026-09-09: coordinator self-inflicted container collision on module-routing-syntax-build
+
+The trigger's "ready" list named a row (`module-routing-syntax-build`) that turned out to
+already have a live `sandbox_dispatch.py` process running (started ~23:52 the previous tick,
+right after that tick wrote its brief) -- the process was alive and mid build-turn-3, but
+nothing in `board.yaml` (`status: todo`, no `delegated` flag) or `msb list`'s STATUS column
+signaled that. The coordinator this tick did not check for a live process before dispatching a
+second one on the same row id. `sandbox_dispatch.py` names its container `sd-<issue_id>` and
+boots with `msb run --replace`, and `prepare_clone`'s workdir is also keyed only by issue id
+(`/tmp/sandbox-dispatch-<issue_id>/repo`, unconditionally `rmtree`'d and re-cloned) -- both are
+shared, unguarded resources per row id, not per-process. The duplicate dispatch was killed within
+~5-8 seconds of starting, but that was enough time for its `prepare_clone` to `rmtree` and
+re-clone the host-side workdir the live process depended on. The live process's next turn
+(build-turn-3) then reported "ZERO file changes... HEAD never moved from the starting commit"
+and escalated after exhausting its retry cap -- indistinguishable in the log from a genuine
+stuck build, except that turns 0-2 had real prior activity (`opencode-run-build-0.log`,
+`opencode-run-build-2.log` both non-trivial) that the escalation's own template ("converged close
+to green") assumed was still live progress. Deleted the resulting
+`module-routing-syntax-build-sandbox-blocker.round.yaml` as an artifact of this collision, not a
+real blocker -- board row is untouched (`status: todo`), safe to redispatch clean next tick.
+
+Lesson: before dispatching a row, check for a live process on it (`pgrep -f
+"sandbox_dispatch.py <issue_id> "` or equivalent), not just `board.yaml` status or `msb list`'s
+STATUS column -- neither reliably reflects "someone is already running this."
+
+## 2026-09-09 (same tick): OPENROUTER_API_KEY failing -- both dispatches this tick went red instantly
+
+After cleaning up the collision above, dispatched `toylang-conf-yaml-build` (never touched by the
+collision) and a fresh clean redispatch of `module-routing-syntax-build`. Both reached their
+retry cap and escalated within ~1-4 minutes total -- far too fast for even one real
+`just check` cycle (a partial 14/398-test run alone took 6+ seconds in the pre-collision
+`module-routing-syntax-build` log; a full green run takes much longer). `toylang-conf-yaml-build`'s
+log makes the cause explicit and unambiguous: `FATAL opencode invocation failure on build turn 1
+(matched 'API key expired') -- not retrying, this needs the key/quota fixed, not another attempt`.
+The script's own fast-fail detection fired on turn 1, then (interleaved oddly in the shared log
+file, but confirmed by a second full "preparing disposable clone" cycle appearing right after)
+something re-ran it and it escalated again with a generic "zero file changes" verdict on the
+second pass. `module-routing-syntax-build`'s clean redispatch never logged the literal "API key
+expired" string but converged to the same "zero file changes, cap reached" outcome in a
+comparably short time -- almost certainly the same underlying auth/quota failure, just without
+the exact string match that triggers the FATAL fast-path.
+
+Deleted both resulting `*-sandbox-blocker.round.yaml` files -- neither reflects a real per-task
+design gap, both are artifacts of the sandbox pipeline being unable to call the LLM at all right
+now. Left both board rows at `status: todo`, safe to redispatch once the key is fixed. Did NOT
+write a design-shaped escalation round for this (nothing about it is a maintainer decision
+between options) -- flagged directly to Daniel instead in the tick's chat summary.
+
+**Action needed from Daniel: check/renew the `OPENROUTER_API_KEY` secret `msb run --secret
+OPENROUTER_API_KEY@openrouter.ai` resolves at dispatch time.** Until that's fixed, every sandbox
+dispatch this pipeline attempts will burn a build-turn retry cap and produce a misleading
+"zero file changes" escalation instead of doing real work.
