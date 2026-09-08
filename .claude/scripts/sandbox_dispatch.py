@@ -26,6 +26,7 @@ Usage:
   sandbox_dispatch.py <board-row-id> --brief path/to/brief.txt
       [--model openrouter/deepseek/deepseek-v4-flash-0731]
       [--retry-cap 2] [--snapshot toylang-toolchain-v2] [--keep-sandbox]
+      [--reassurance "It's much simpler than you think."]
 """
 
 from __future__ import annotations
@@ -606,17 +607,23 @@ def run_build_cycle(issue_id: str, name: str, first_message_guest: str, model: s
 
 def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str,
                         build_model: str, critic_model: str, env: dict, workdir: Path,
-                        base_commit: str, max_plan_rounds: int) -> tuple[str, bool]:
+                        base_commit: str, max_plan_rounds: int) -> tuple[str, bool, list[dict]]:
     """Runs up to max_plan_rounds of evaluate-then-refactor before the real
     build attempt. Returns (next_build_message_guest_path, session_already_started).
     Every dispatch here continues the SAME session, so the eventual build
-    phase inherits all of this exploration/refactor context for free."""
+    phase inherits all of this exploration/refactor context for free. The
+    third element is a per-round record of plan-quality signals (verdict
+    kind,and for refactor rounds the verified net line delta)for the
+    dispatch log's summary JSON."""
     started = False
     refactor_evidence = ""
+    plan_rounds: list[dict] = []
     for round_no in range(max_plan_rounds):
         rounds_left = max_plan_rounds - round_no - 1
         print(f"== {issue_id}: plan round {round_no + 1}/{max_plan_rounds} "
               f"({rounds_left} left after this) ==", file=sys.stderr)
+        rec = {"round": round_no + 1, "verdict": None}
+        plan_rounds.append(rec)
         verdict = plan_phase(name, task_text, plan_model, env, workdir, round_no, rounds_left,
                               prior_refactor_evidence=refactor_evidence)
         started = True
@@ -675,6 +682,7 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
             print(f"== {issue_id}: devil's advocate agrees ==", file=sys.stderr)
 
         kind = verdict.get("verdict")
+        rec["verdict"] = kind
         print(f"== {issue_id}: verdict = {kind} -- {verdict.get('reasoning', '')[:300]} ==",
               file=sys.stderr)
 
@@ -693,6 +701,8 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
             # build failure, rather than trusting a self-reported estimate.
             ins, dels = diff_line_delta(name, base_commit, env)
             net = ins - dels
+            rec["refactor_net"] = net
+            rec["refactor_verify_ok"] = ok
             print(f"== {issue_id}: refactor round {round_no + 1} verify: "
                   f"{'green' if ok else 'red'}, net lines so far: {net:+d} "
                   f"(+{ins}/-{dels}) ==", file=sys.stderr)
@@ -722,7 +732,7 @@ def run_plan_decompose(issue_id: str, name: str, task_text: str, plan_model: str
     final_guest = "/root/build-final.txt"
     send_text(name, final_guest, BUILD_AFTER_DECOMPOSE if started else task_text,
               workdir, env, "build-final-sent")
-    return final_guest, started
+    return final_guest, started, plan_rounds
 
 
 def sync_real_lane(issue_id: str, env: dict) -> Path:
@@ -783,6 +793,11 @@ def main() -> int:
     ap.add_argument("--critic-model", default=DEFAULT_MODEL,
                      help="devil's-advocate reviewer of the plan verdict -- cheap by design, "
                           "since it never inherits context, only the stated verdict + task scope")
+    ap.add_argument("--reassurance", default=None, metavar="SENTENCE",
+                     help="prepend a generic, content-free reassurance sentence (one of the four "
+                          "brief-phrasing-experiment rotation-pool variants, see plans/brief-phrasing-experiment.md)"
+                          "to the brief text the worker sees, and record it in the summary JSON -- the arm tag "
+                          "lives there, never as a marker line in the brief file itself")
     ap.add_argument("--max-plan-rounds", type=int, default=2,
                      help="0 disables the plan-decompose phase entirely")
     ap.add_argument("--retry-cap", type=int, default=2)
@@ -806,14 +821,18 @@ def main() -> int:
     boot_sandbox(name, clone_dir, cfg_path, opencode_bin, args.snapshot, env)
 
     task_text = args.brief.read_text()
+    reassurance = args.reassurance
+    if reassurance:
+        task_text = f"{reassurance}\n\n{task_text}"
     brief_guest = "/root/brief.txt"
     send_text(name, brief_guest, task_text, workdir, env, "brief-sent")
 
     attempts: list[Attempt] = []
     result_patch = None
+    plan_rounds: list[dict] = []
     try:
         if args.max_plan_rounds > 0:
-            first_build_guest, session_started = run_plan_decompose(
+            first_build_guest, session_started, plan_rounds = run_plan_decompose(
                 args.issue_id, name, task_text, args.plan_model, args.model, args.critic_model,
                 env, workdir, base_commit, args.max_plan_rounds)
         else:
@@ -867,6 +886,8 @@ def main() -> int:
         "attempts": len(attempts),
         "green": green,
         "landed": landed,
+        "reassurance": reassurance,
+        "plan_rounds": plan_rounds,
         "result_patch": str(result_patch) if result_patch else None,
         "escalation": str(escalation_path) if escalation_path else None,
         "workdir": str(workdir),
