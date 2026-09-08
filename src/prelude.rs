@@ -33,7 +33,7 @@ pub fn module() -> Module {
     for def in &mut module.defs {
         def.origin = Origin::Prelude;
     }
-    let mut impl_defs = crate::ast::module_impl_defs(module.impls);
+    let mut impl_defs = crate::ast::module_impl_defs(module.impls, Origin::Prelude);
     module.defs.append(&mut impl_defs);
     Module {
         defs: module.defs,

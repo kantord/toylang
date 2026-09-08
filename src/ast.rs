@@ -557,11 +557,12 @@ impl Expr {
 
 /// The trait scaffold's method synthesis:every `impl` block's methods become ordinary
 /// `fn` defs, named by the method name, with the impl's target type substituted for `Self`.
-/// `is_pub` and `origin` are fixed the way a prelude function's would be:the methods are
-/// callable from any program,checked once at build time (`check::check_module`). A second
-/// impl for the same trait would synthesize same-named defs and collide in `signatures`, which
-/// is the honest refusal until the trait-interface dispatch row lands.
-pub fn module_impl_defs(impls: Vec<ImplDecl>) -> Vec<Def> {
+/// `is_pub` is fixed the way a prelude function's would be:the methods are callable from
+/// any program,checked once at build time (`check::check_module`). `origin` is passed in
+/// by the caller (`check_module` hands `Origin::Prelude`). A second impl for the same trait
+/// would synthesize same-named defs and collide in `signatures`, which is the honest refusal
+/// until the trait-interface dispatch row lands.
+pub fn module_impl_defs(impls: Vec<ImplDecl>, origin: Origin) -> Vec<Def> {
     let mut out = Vec::new();
     for imp in impls {
         for m in imp.methods {
@@ -577,7 +578,7 @@ pub fn module_impl_defs(impls: Vec<ImplDecl>) -> Vec<Def> {
                 body: m.body,
                 span: m.span,
                 is_pub: true,
-                origin: Origin::Prelude,
+                origin,
                 hoisted: false,
             });
         }
