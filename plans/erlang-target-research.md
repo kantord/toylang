@@ -58,7 +58,7 @@ has.
 **Ordered arm matching is the same machinery as Erlang clause matching.** Toylang's
 matcher is first-match-wins over an ordered arm list with guards, an `or`
 composition, and a `partial` flag that types an honest chain as `Opt`
-([guides/matching](../docs/guides/matching.md), [pattern matching is decoding](../draft.md#pattern-matching-is-decoding)).
+([guides/matching](../docs/guides/matching.md)).
 Erlang's clause and `receive` matching is the same ordered, single-pass, no-unification
 walk. This confirms two decisions rather than challenging them. The no-unification
 stance ([Q28](../plans/questions.md#q28-does-deep-matching-need-cross-match-unification-of-logic-variables))

@@ -302,7 +302,7 @@ the absence it exposed is not, and heterogeneous data is not a corner of a data 
 Related: an alternation over types is also what the ordering question needs, so these may be one
 piece of machinery rather than two.
 
-Partly settled by [the enum decision](../draft.md#decided-enums-nominal-and-json-native): closed nominal
+Partly settled by [the enum decision](../docs/guides/enums.md): closed nominal
 sums now exist, and they serve both this question's motivating case (heterogeneous data) and the
 ordering question's `Alt` (a stream of several message kinds is `Stream<SomeEnum>`). What
 remains absent is the anonymous structural union, `Str | Int` with no declaration -- a
@@ -332,17 +332,18 @@ between functions in practice), not on this slot in isolation.
 ### Q27. Does pattern matching need a separate `Matcher` type, distinct from `Result`?
 
 SETTLED yes: matchers are first-class, tagged, and or-composable, derived per type under the
-capital name (kantord/toylang#47). See [the enum decision's construction and naming
-section](../draft.md#construction-and-naming) and
+capital name (kantord/toylang#47). See [the enums guide](../docs/guides/enums.md) and
 [guides/matching.md](../docs/guides/matching.md).
 
 ### Q28. Does deep matching need cross-match unification of logic variables?
 
 OPEN. `..` composed with a matcher already finds a shape anywhere in a tree without naming its
 path, and `as` already binds one submatch to a name for reuse within the same arm. Neither needs
-unification. What would: finding a node `A` and a separate node `B` elsewhere such that `B`
+unification. A `..` rest-marker for matching a subset of a closed type's fields, leaving fields out being
+a compile error by default,is likewise unbuilt sketch. What would: finding a node `A` and a
+separate node `B` elsewhere such that `B`
 refers to `A`, which is full Prolog-style unification with backtracking over bindings, not a
-bigger version of `as`. See [Pattern matching is decoding](../draft.md#pattern-matching-is-decoding).
+bigger version of `as`.
 
 ### Q29. What is the default discriminant convention for a derived enum codec?
 
@@ -350,10 +351,17 @@ SUPERSEDED: there is no derived codec picking a representation, because the repr
 *is* the value. [ADR 0009](../docs/adr/0009-enums-are-json-native-single-key-wrappers.md)
 records the decision, and why the tag-field and shape-matched alternatives lost.
 
+The wider derived-codec thread -- a `Json -> T` decode,a `T -> Json` encode,and a `Str -> T`
+parse, plus the JSON Schema projection, all falling out of one structural description -- is
+deferred to the codec layer ADR 0009 names,with nothing settled there.The three codec
+directions are one trait family picked by which types the codec sits between (the same shape as
+[`Field<K>`](#q40-is-a-fieldk-lens-trait-part-of-the-design),and the decode-vs-encode split is the
+total/partial split again: decode, and parse can fail,and encode cannot.
+
 ### Q30. Do the base-functor generics double as parser combinators, across trees, strings, and streams?
 
 LEANING yes. `Seq`, `Alt`, `Star`, and `Opt` are already in the document as [the regex-over-types algebra](#q4-can-the-type-express-ordering-over-heterogeneous-streams)
-and as the shape [Pattern matching is decoding](../draft.md#pattern-matching-is-decoding) builds `Matcher<T>` from; naming them as parser
+and as the shape [the matcher decision](#q27-does-pattern-matching-need-a-separate-matcher-type-distinct-from-result) builds `Matcher<T>` from; naming them as parser
 combinators only makes the precedent explicit (Hutton and Meijer; Wadler; parsing with
 derivatives). OPEN: whether this is one trait with implementations that differ by receiver (a
 parsed tree needs no backtracking, a string needs an actual parsing engine), the same shape as
@@ -364,7 +372,7 @@ parsed tree needs no backtracking, a string needs an actual parsing engine), the
 
 OPEN. A URL-route-style syntax with named, typed captures composing through the existing
 `int(.)`-style codec syntax is one candidate, with Swift's `Regex` builder and route-pattern DSLs
-such as Express's `path-to-regexp` as the closest prior art. [The arm-list's `//` semantics](../draft.md#pattern-matching-is-decoding) already
+such as Express's `path-to-regexp` as the closest prior art. [The ordered arm list](../docs/guides/matching.md) already
 commit any such language to ordered, PEG-style choice, which is compatible with PCRE/Perl-style
 regex and not with POSIX leftmost-longest regex, so "extends to regular expressions" needs to
 name which flavor. See
@@ -483,7 +491,7 @@ Not free, in rough order of how much they decide:
 Worth being explicit that cheapness is not an argument. What is recorded here is that the cost of
 identity is lower than it looked, not that the language wants it.
 
-[The enum decision](../draft.md#decided-enums-nominal-and-json-native) has since answered every bullet for
+[The enum decision](../docs/guides/enums.md) has since answered every bullet for
 enums specifically: they are identities (exhaustiveness requires it), `enum` is the declaration
 form, and variant constructors land in the value namespace with bare-until-ambiguous
 resolution. Records are deliberately not carried along; the alias-or-identity question stays

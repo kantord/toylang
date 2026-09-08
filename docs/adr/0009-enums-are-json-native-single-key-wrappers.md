@@ -42,7 +42,7 @@ unique within their enum.
   no codec choosing a representation, because the representation is the value.
 - The sibling decisions -- variant constructors, bare-until-ambiguous naming with
   `Shape.circle` qualification, exhaustive matching through the shared arm syntax,
-  monomorphic first cut -- are recorded in draft.md's
-  "DECIDED: enums, nominal and JSON-native" section, which is the primary record.
+  generic enums -- are recorded in [the enums guide](../guides/enums.md);
+  this ADR remains the primary record for the representation decision itself.
 - Tag-field data joins custom representations in the deferred codec layer; deciding enums
   this way is what gives that layer its first two concrete customers.
