@@ -30,7 +30,7 @@ is superseded by this one.
   sees that text, and a "no" marker is itself a phrasing intervention on the
   control arm. The tag lives here: create the tracking row below at dispatch
   time (lane, reassurance, note), with the outcome column filled in when the
-  lane resolves. Also mention the tag in the board commit message for that tick,:
+  lane resolves. Also mention the tag in the board commit message for that tick, :
   so the commit trail independently records which arm each dispatch was on.
 
 - **Outcome vocabulary** (fill once the lane resolves):`landed clean` /
@@ -40,8 +40,51 @@ is superseded by this one.
 
 - **Stop condition**:at 10 filled rows, stop adding trials, write up the
   results against the un-reassured baseline (see the incident log in
-  plans/opencode-rollout.md)and open a docs/.grill/ round asking whether to
+  plans/opencode-rollout.md) and open a docs/.grill/ round asking whether to
   keep, drop, or refine the technique.
+
+
+
+## Measurement
+
+The per-dispatch record is the summary JSON `sandbox_dispatch.py` prints as its last
+stdout line, captured to `~/.cache/toylang-drive/sandbox-dispatch-<row-id>.log` by
+whoever launches the dispatch (land-lane.sh's re-dispatch redirects there, and
+drive-tick.sh greps the same file for its landing check:`tail -20 | grep '"issue_id"'`).
+With the instrumentation below it carries the arm tag and the plan-phase signals, so both
+arms are greppable from the log in one pass. The outcome vocabulary's convergence and
+over-scoping proxies are, then:
+- `attempts` (build turns to green) and `landed`:the outcome column;
+- `plan_rounds`:the plan-quality signals (verdict kind per round, refactor net line
+  delta, rounds used), machine-readable instead of prose.
+
+
+
+lane-telemetry.py's lanes.csv, keyed by lane name, records turns, output_tokens,
+peak_context, and wall_seconds for claude sessions (coordinator ticks, and legacy enwiro
+worker lanes). Whether the sandboxed opencode sessions hit it depends on the opencode
+hook config, not verifiable from this checkout, so the summary JSON is the
+authoritative per-dispatch record for this experiment.
+
+
+
+## Instrumentation
+
+`sandbox_dispatch.py` takes `--reassurance "<sentence>"`. When passed, it prepends the
+sentence to the in-memory brief text the worker sees (plan prompts, build prompts, and
+escalation round all inherit it via `task_text`), and records it as `reassurance` in the
+summary JSON. The brief file itself is never touched -- a marker line in the brief
+file would itself be a phrasing intervention on the control arm, so the arm tag lives in
+the summary JSON, per the tagging rule above. Use exactly one of the four rotation-pool
+sentences, and never the same one twice in a row: pass it at dispatch time, and also
+record it in the board commit message for that tick, as the methodology already requires.
+Control: plain dispatch, no flag, `"reassurance": null`.
+
+The summary's `plan_rounds` list records one entry per plan-decompose round: the verdict
+kind(`trivial` / `refactor-first` / `split`, or null when no verdict.json was produced), and
+for refactor rounds, the verified net line delta(`refactor_net`) and whether `just check`
+passed(`refactor_verify_ok`). That is the "planner's verdict, plan-decompose rounds" the
+outcome vocabulary asks the note column to capture, machine-readable instead of prose.
 
 
 
