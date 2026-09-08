@@ -358,7 +358,7 @@
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: toylang-conf-yaml-build
   issue: gh:160
