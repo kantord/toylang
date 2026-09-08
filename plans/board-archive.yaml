@@ -2112,3 +2112,13 @@
   needs: []
   prio: 4
   status: done
+
+- id: sort-by-max-by-go
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- emit for the Go backend only (src/emit_go.rs). One
+    backend per commit per the checkpoint-1 ruling (wizard submission, 2026-09-07, option B):
+    even the prior 4-backend scripting group would recreate a smaller version of the blast
+    radius blamed for the original 7-backend-blob corruption.'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-1]
+  status: done
