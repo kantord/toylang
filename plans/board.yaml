@@ -316,17 +316,6 @@
   prio: 4
   status: todo
 
-- id: ts-type-generation-build
-  issue: gh:160
-  title: 'Follow-up split from js-node-web-split-build (archived, gh:160 ruling): generate
-    TypeScript type declarations alongside emitted JS output (Node and/or Web target), so
-    consumers get real types instead of plain JS. No board row or code currently exists for
-    this.'
-  kind: build
-  needs: []
-  prio: 4
-  status: delegated
-
 - id: toylang-conf-yaml-build
   issue: gh:160
   title: 'Follow-up split from js-node-web-split-build (archived, gh:160 ruling): add
