@@ -152,8 +152,9 @@ where expressions compose.
 ### Candidate C: `//`, the retired arm separator resurrected
 
 `//` is not available for this job without a fight. It was toylang's arm separator until
-`or` replaced it ([draft.md](../draft.md#pattern-matching-is-decoding), "retired `//` in
-favor of `or`"), and the parser confirms it is no longer a token ([parse.rs](../src/parse.rs)).
+`or` replaced it ([match reference](../docs/reference/operators/match.md), "the pre-`or`
+arm separator `//` is retired"), and the parser confirms it is no longer a token
+([parse.rs](../src/parse.rs)).
 Its heritage is jq's `//` -- but jq's `//` means *default-on-absent*, first non-empty wins, not
 explore-every-alternative, so adopting it for branch-wider would either redefine it away from
 the cited heritage or import the opposite of the desired semantics. And
