@@ -2,8 +2,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, MatchArm, Origin, Param, ParamShape,
-    Pattern, Span,
+    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, MatchArm, Origin, Param, ParamShape,
+    Pattern, Span, TraitDecl,
 };
 use crate::error::Error;
 use crate::tir::{self, Kind, LocalId, Tir};
@@ -555,38 +555,21 @@ fn check_defs<'a>(
     Ok(funcs)
 }
 
-/// Checks a module's own `pub` declarations in isolation -- `prelude.toy`'s, at build time
-/// (`build.rs`), before there is any file for them to be merged into and nothing yet calling any
-/// of it. Every declaration is kept: reachability is the calling file's question, decided once
-/// program and prelude are merged (`check` above, via `prune_unreachable`).
-pub fn check_module(
-    module: crate::ast::Module,
-) -> Result<(Vec<tir::Func>, ty::Enums), Error> {
-    let crate::ast::Module { defs, aliases, enums, traits, impls } = module;
-    let (env, enum_tys, variant_owners, mut sigs, mut visibility) =
-        resolve_defs(&aliases, &enums, &defs, Origin::Prelude)?;
-    let input = RefCell::new(None);
-    let inputs = RefCell::new(None);
-    let lines_used = Cell::new(false);
-    let dsv = RefCell::new(None);
-    let next_local = Cell::new(0);
-    let cells = Cells {
-        input:&input,
-        inputs:&inputs,
-        lines_used:&lines_used,
-        dsv:&dsv,
-        next_local:&next_local,
-    };
-    let ctx = cells.ctx(&sigs, &enum_tys, &variant_owners, &visibility, Origin::Prelude);
-    for (name, sig)in infer_hoisted(&ctx, defs.iter())? {
-        sigs.insert(name, sig);
-    }
-    // The trait scaffold:an impl block's methods are checked against the trait's signatures
-    // (with `Self` substituted by the impl's target type)and synthesized into ordinary prelude
-    // functions, the same path a hand-written prelude `fn` takes. The check lives here,at
-    // build time,because programs never see the prelude's trait/impl nodes -- `prelude::inject`
-    // hands them over as the defs `module_impl_defs` synthesizes,in their already-substituted
-    // form.
+/// The trait scaffold:an impl block's methods are checked against the trait's signatures
+/// (with `Self` substituted by the impl's target type)and synthesized into ordinary prelude
+/// functions, the same path a hand-written prelude `fn` takes. Shared so the caller that
+/// merges impl methods into a module -- `check_module` today, and the trait-interface dispatch
+/// path `check` will add -- gets the synthesized-name scheme,the sig-merging duplicate check,
+/// the visibility extension,and the Self-substituted signature comparison from one source of
+/// truth rather than a second copy that must agree.
+fn collect_impls(
+    traits: &[TraitDecl],
+    impls: Vec<ImplDecl>,
+    env: &TypeEnv,
+    sigs: &mut HashMap<String, Sig>,
+    visibility: &mut HashMap<String, (Origin, bool)>,
+    origin: Origin,
+) -> Result<Vec<Def>, Error> {
     for imp in &impls {
         let Some(trait_decl) = traits.iter().find(|t| t.name == imp.trait_name) else {
             return Err(Error::new(
@@ -605,15 +588,15 @@ pub fn check_module(
             let impl_param = m
                 .param
                 .as_ref()
-                .map(|p| resolve(&p.ty.substitute_self(self_ty), &env, &mut Vec::new()))
+                .map(|p| resolve(&p.ty.substitute_self(self_ty), env, &mut Vec::new()))
                 .transpose()?;
-            let impl_ret = resolve(&m.ret.substitute_self(self_ty), &env, &mut Vec::new())?;
+            let impl_ret = resolve(&m.ret.substitute_self(self_ty), env, &mut Vec::new())?;
             let trait_param = tm
                 .param
                 .as_ref()
-                .map(|p| resolve(&p.ty.substitute_self(self_ty), &env, &mut Vec::new()))
+                .map(|p| resolve(&p.ty.substitute_self(self_ty), env, &mut Vec::new()))
                 .transpose()?;
-            let trait_ret = resolve(&tm.ret.substitute_self(self_ty), &env, &mut Vec::new())?;
+            let trait_ret = resolve(&tm.ret.substitute_self(self_ty), env, &mut Vec::new())?;
             if impl_param != trait_param || impl_ret != trait_ret {
                 let show = |p: &Option<Type>| p.as_ref().map_or("()".to_string(), |t| t.to_string());
                 return Err(Error::new(
@@ -640,8 +623,8 @@ pub fn check_module(
             }
         }
     }
-    let impl_defs = crate::ast::module_impl_defs(impls);
-    let impl_sigs = signatures(&impl_defs, &env)?;
+    let impl_defs = crate::ast::module_impl_defs(impls, origin);
+    let impl_sigs = signatures(&impl_defs, env)?;
     for (name, sig)in impl_sigs {
         // A method name that collides with a prelude function is the same duplicate a
         // hand-written prelude `fn` would be;`signatures` already refused the same name
@@ -655,7 +638,37 @@ pub fn check_module(
             return Err(Error::new(span, format!("`{name}` is defined twice")));
         }
     }
-    visibility.extend(impl_defs.iter().map(|d| (d.name.clone(), (Origin::Prelude, d.is_pub))));
+    visibility.extend(impl_defs.iter().map(|d| (d.name.clone(), (origin, d.is_pub))));
+    Ok(impl_defs)
+}
+
+/// Checks a module's own `pub` declarations in isolation -- `prelude.toy`'s, at build time
+/// (`build.rs`), before there is any file for them to be merged into and nothing yet calling any
+/// of it. Every declaration is kept: reachability is the calling file's question, decided once
+/// program and prelude are merged (`check` above, via `prune_unreachable`).
+pub fn check_module(
+    module: crate::ast::Module,
+) -> Result<(Vec<tir::Func>, ty::Enums), Error> {
+    let crate::ast::Module { defs, aliases, enums, traits, impls } = module;
+    let (env, enum_tys, variant_owners, mut sigs, mut visibility) =
+        resolve_defs(&aliases, &enums, &defs, Origin::Prelude)?;
+    let input = RefCell::new(None);
+    let inputs = RefCell::new(None);
+    let lines_used = Cell::new(false);
+    let dsv = RefCell::new(None);
+    let next_local = Cell::new(0);
+    let cells = Cells {
+        input:&input,
+        inputs:&inputs,
+        lines_used:&lines_used,
+        dsv:&dsv,
+        next_local:&next_local,
+    };
+    let ctx = cells.ctx(&sigs, &enum_tys, &variant_owners, &visibility, Origin::Prelude);
+    for (name, sig)in infer_hoisted(&ctx, defs.iter())? {
+        sigs.insert(name, sig);
+    }
+    let impl_defs = collect_impls(&traits, impls, &env, &mut sigs, &mut visibility, Origin::Prelude)?;
     let ctx = cells.ctx(&sigs, &enum_tys, &variant_owners, &visibility, Origin::Prelude);
     let funcs = check_defs(defs.iter().chain(impl_defs.iter()), &ctx)?;
     Ok((funcs, enum_tys))
