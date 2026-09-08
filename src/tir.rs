@@ -290,6 +290,12 @@ pub enum Builtin {
     /// `all(v)`, `Vec<Bool> -> Bool`: whether every entry is true. The universal cut: an
     /// empty Vec has no false entry, so it is true (vacuously).
     All,
+    /// `pipe_through({cmd, args, lines}})`, `{cmd: Str, args: Vec<Str>, lines: Stream<Str>} ->
+    /// `Stream<PipeLine>`: stream stdin's lines into a subprocess's stdin, relaying its stdout/stderr
+    /// lines back tagged by origin. Streaming on the stdout side; stderr lines are drained
+    /// concurrently and emitted after stdout closes, so the two streams' relative order is
+    /// deterministic (see `tl_pipe_through` in emit_rs).
+    PipeThrough,
 }
 
 pub struct Func {
