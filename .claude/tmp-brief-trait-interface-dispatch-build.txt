@@ -1,0 +1,38 @@
+# trait-interface-dispatch-build
+
+Periodic-audit finding (2026-09-06): trait-interface-build (archived, gh:174) is marked done but
+only delivered declaration parsing. `tests/corpus/trait_impl_parse.yaml` says so explicitly ("the
+checker does not yet do anything with them: no dispatch, no method checking, no codegen"), and
+`TraitDecl`/`ImplDecl` (declared in `src/ast.rs`, structs at ~line 244 and ~line 269) have zero
+references outside `src/ast.rs` and the parser.
+
+Design source of truth: `plans/trait-interface-research.md`. Key ruling points from that doc:
+- A trait is a dispatch table: compile-time dispatch by `(trait, type)` lookup, monomorphic to
+  start.
+- Dispatch is static name resolution at the call site, matched against the concrete type (see the
+  doc's discussion of `substitute` in `src/ty.rs:379`).
+- Calls use colon syntax: `x:foo(y)` resolves to the matching `impl Name for Type` block. No
+  plain-call fallback.
+
+Your task:
+1. Read `plans/trait-interface-research.md` in full, and `src/ast.rs`'s `TraitDecl`/`ImplDecl`
+   definitions plus how the parser currently populates `traits`/`impls` (search `module_impl_defs`
+   at `src/ast.rs:564` for how impls currently get folded into ordinary `Def`s).
+2. Add checker resolution of colon-only method calls (`x:foo(y)`) to the matching `impl Name for
+   Type` block: look up by `(trait, concrete type of x)`, error if no matching impl exists, error
+   if the method isn't part of the trait.
+3. Add codegen for every backend (see `src/emit_llvm.rs`, `src/emit_js.rs`, runtime C backend,
+   etc. -- whichever set of backends this repo currently ships) so a resolved trait method call
+   compiles to a direct call into the matching impl's body, per the "ordinary call into the impl's
+   body" ruling.
+4. Builtin operators (Int+Int, Str+Str, ...): per the maintainer's explicit non-commitment
+   ("tentatively become source-written prelude impls where practical, checker-generated only
+   where that provably costs real performance"), default to NOT touching the existing builtin
+   operator implementation in this pass unless it's clearly free to do so -- this sub-question is
+   deliberately left open pending build experience, so don't force a resolution here.
+5. Add corpus tests exercising: a working single-impl dispatch call, a missing-impl error, and a
+   method-not-in-trait error, across backends.
+
+Gate: `just check` green.
+
+Read AGENTS.md first for provenance/commit conventions.

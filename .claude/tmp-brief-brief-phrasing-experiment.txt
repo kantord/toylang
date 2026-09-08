@@ -1,38 +1,31 @@
 # brief-phrasing-experiment
 
-Board row: brief-phrasing-experiment (prio 5). No GitHub issue -- tracked in-repo per maintainer
-ruling (coordinator-escalation-brief-phrasing-experiment round, 2026-09-01): escalation/decision
-tracking for this note lives in files committed to the repo, not a gh issue.
+Tracked in-repo per maintainer ruling (coordinator-escalation-brief-phrasing-experiment round,
+2026-09-01: `gh issue create` was blocked by the permission classifier, so this has no gh issue
+and no retry attempt should be made to file one).
 
-Maintainer note (composed 2026-08-31): generic non-informational reassurance phrasing (example
-given: "its much simpler than you think") in dispatch briefs seems to help planning agents find
-better plans. The maintainer wants this tested on at least 10 issues, with progress reported and
-a grilling round on the results.
+Maintainer note (composed 2026-08-31): generic non-informational reassurance phrasing (e.g. "it's
+much simpler than you think") in dispatch briefs seems to help planning agents find better plans.
 
-This is a one-shot sandbox build, not the actual 10-issue experiment -- you cannot yourself
-dispatch and observe 10 real lane builds inside this single session. Your deliverable is the
-scaffolding that lets the coordinator (the recurring drive tick) actually run that experiment
-over the next 10+ dispatches, plus a place to record results:
+Your task:
+1. Find the dispatch brief template(s) used to hand work to sandboxed/delegated build agents in
+   this repo (look at `.claude/scripts/sandbox_dispatch.py` and any brief-writing conventions in
+   `.claude/skills/enwiro-delegate/SKILL.md`).
+2. Design a controlled experiment: add the reassurance phrasing to briefs for at least 10 issues
+   (a mix of build/research rows), keep a control group without it, and record outcomes (did the
+   agent converge faster, find a simpler plan, avoid over-scoping, etc.) for each.
+3. Since you cannot literally dispatch 10 other lanes yourself from inside this task, instead:
+   research how such an experiment would be measured (what signal in existing dispatch logs under
+   `~/.cache/toylang-drive/` and `plans/` already indicates plan quality/convergence speed), then
+   either (a) run a retrospective comparison over already-completed dispatch logs that happen to
+   have used the phrasing vs not, or (b) write up the experiment design plus a data-collection
+   mechanism (e.g. a field in the brief template plus a log line to grep for later) so future
+   dispatches can be tagged and compared automatically.
+4. Write findings (or the experiment-design + instrumentation, if not enough historical data
+   exists yet) to `plans/`, then compose a design/decide round reporting progress and asking the
+   maintainer how to proceed.
 
-1. Read plans/opencode-rollout.md for full context (search "brief-phrasing-experiment" and
-   "reassurance phrasing") and read how briefs currently get composed and handed to
-   .claude/scripts/sandbox_dispatch.py (check the enwiro-delegate skill and the drive skill for
-   the brief-writing step).
-2. Design a minimal, low-friction way for the coordinator to A/B this on future briefs -- e.g. a
-   convention (a marker line in the brief file, or a coin-flip the coordinator performs and notes
-   in its board commit message) that tags each dispatched brief as "reassurance: yes/no", plus a
-   tracking log (a new plans/brief-phrasing-experiment.md is fine) where each of the next 10+
-   dispatches gets one row: lane id, reassurance yes/no, outcome (landed clean / land-failed /
-   commitless run / escalated), and a one-line note on plan quality if visible from the sandbox
-   log.
-3. Seed that tracking file with a short methodology section (what "reassurance phrasing" means
-   operationally, so future ticks apply it consistently) and an empty results table ready for the
-   coordinator to fill in as it dispatches.
-4. Do NOT change how sandbox_dispatch.py itself composes briefs -- the coordinator writes briefs
-   by hand per tick, so the mechanism is "coordinator remembers to alternate/tag", not code. Keep
-   this to docs/tracking, not a new script, unless you find the coordinator's brief-writing step
-   is itself scripted (check first; don't assume).
-5. Commit the tracking file and methodology note. There is no code change to land here beyond
-   that -- land-lane.sh should see a clean, real diff (the new plans/ file), not an empty one.
+This is exploratory: it's fine if the concrete answer is "here is the instrumentation, results
+need N more ticks to accumulate" rather than a final verdict.
 
-Do not fetch/merge origin/main mid-task; your checkout already branched from current main tip.
+Read AGENTS.md first for provenance/commit conventions.
