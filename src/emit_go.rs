@@ -166,6 +166,18 @@ const SORT_HELPER: &str = r#"func tlSort[T cmp.Ordered](v []T) []T {
 }
 "#;
 
+// `slices.Sort` is not guaranteed stable, so ties would take an order the spec does not promise.
+// `SortStableFunc` is the one stable sort Go ships, and `cmp.Ordered` is exactly the constraint
+// the checker's `orderable` restricts the projected key type to.
+const SORT_BY_HELPER: &str = r#"func tlSortBy[T any, K cmp.Ordered](v []T, key func(T) K) []T {
+	out := append([]T{}, v...)
+	slices.SortStableFunc(out, func(a, b T) int {
+		return cmp.Compare(key(a), key(b))
+	})
+	return out
+}
+"#;
+
 const REVERSE_HELPER: &str = r#"func tlReverse[T any](v []T) []T {
 	out := make([]T, len(v))
 	for i, x := range v {
@@ -203,6 +215,23 @@ const MAX_HELPER: &str = r#"func tlMax[T cmp.Ordered](v []T) tlOpt[T] {
 	m := v[0]
 	for _, x := range v[1:] {
 		if x > m {
+			m = x
+		}
+	}
+	return tlOpt[T]{true, m}
+}
+"#;
+
+// The same `key(x) > key(m)` shape `tlMax` uses, so of equal maxima the first entry wins. `Opt`
+// because an empty Vec has no maximum -- the same absence answer `max` gives.
+
+const MAX_BY_HELPER: &str = r#"func tlMaxBy[T any, K cmp.Ordered](v []T, key func(T) K) tlOpt[T] {
+	if len(v) == 0 {
+		return tlOpt[T]{}
+	}
+	m := v[0]
+	for _, x := range v[1:] {
+		if key(x) > key(m) {
 			m = x
 		}
 	}
@@ -657,9 +686,11 @@ pub fn emit(program: &Program) -> String {
         (uses("tlAll("), ALL_HELPER),
         (uses("tlFlatten("), FLATTEN_HELPER),
         (uses("tlSort("), SORT_HELPER),
+        (uses("tlSortBy("), SORT_BY_HELPER),
         (uses("tlReverse("), REVERSE_HELPER),
         (uses("tlSum(") || uses("tlSum64("), SUM_HELPER),
         (uses("tlMax("), MAX_HELPER),
+        (uses("tlMaxBy("), MAX_BY_HELPER),
         (unwrap, UNWRAP_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
@@ -698,8 +729,8 @@ pub fn emit(program: &Program) -> String {
         ),
         (uses("tlShowFloat(") || uses("tlFloat("), &["math"]),
         (uses("tlDsv(") || collect, &["unicode/utf8"]),
-        (uses("tlSort("), &["cmp", "slices"]),
-        (uses("tlMax("), &["cmp"]),
+        (uses("tlSort(") || uses("tlSortBy("), &["cmp", "slices"]),
+        (uses("tlMax(") || uses("tlMaxBy("), &["cmp"]),
         (uses("tlEq("), &["reflect"]),
         (
             used.itoa
@@ -1328,11 +1359,30 @@ impl Emitter<'_> {
                 self.go_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
                 self.expr(pred)
             ),
-            // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
-            // program produced one without its backend being taught to emit it yet.
-            Kind::SortBy { .. } | Kind::MaxBy { .. } => {
-                unreachable!("sort_by/max_by emission lands in a later step")
-            }
+            Kind::SortBy {
+                source,
+                param,
+                body,
+            } => format!(
+                "tlSortBy({}, func({} {}) {} {{ return {} }})",
+                self.expr(source),
+                self.local(*param),
+                self.go_type(tir::runtime_elem(&source.ty).expect("sort_by runs over a dimension")),
+                self.go_type(&body.ty),
+                self.expr(body)
+            ),
+            Kind::MaxBy {
+                source,
+                param,
+                body,
+            } => format!(
+                "tlMaxBy({}, func({} {}) {} {{ return {} }})",
+                self.expr(source),
+                self.local(*param),
+                self.go_type(tir::runtime_elem(&source.ty).expect("max_by runs over a dimension")),
+                self.go_type(&body.ty),
+                self.expr(body)
+            ),
             // Opt's reorder pass (kantord/toylang#66): the same `!o.ok`/`.v` shape tlUnwrap and
             // the printer already branch on, generalised to rebuild the tlOpt instead of
             // reading through it. `__srcOpt` binds the source once, so evaluating it twice (the
