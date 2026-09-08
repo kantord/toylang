@@ -19,7 +19,7 @@ its detail, because collapsing it would delete the only copy.
 | # | Question | Status |
 |---|---|---|
 | [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity) | Streams: first-class values, or evaluation-level multiplicity? | SETTLED, evaluation-level and typed: `Stream<T>` is the effect layer's type, not a value type |
-| [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | OPEN |
+| [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | SETTLED (wizard submission, 2026-09-08): option A, cartesian default |
 | [Q3](#q3-what-symbol-replaces--for-the-record-forming-update) | What symbol replaces `=` for the record-forming update? | LEANING, blocked on Q2 |
 | [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN, but the shape is decided (ADR 0008: Kleene patterns in effect position); enums now supply tagged alternation, leaving the matcher surface and spelling |
 | [Q5](#q5-stream-lowering-strategy-across-the-three-backends) | Stream-lowering strategy across the three backends | OPEN in general; all seven backends stream the fused pipeline shape, so only lowering beyond that shape remains |
@@ -34,9 +34,9 @@ its detail, because collapsing it would delete the only copy.
 | [Q14](#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy) | Does `select` return a masked view, a selection vector, or a copy? | OPEN |
 | [Q15](#q15-backend-llvm-via-inkwell-cranelift-or-both) | Backend: LLVM via inkwell, Cranelift, or both? | SETTLED, LLVM via inkwell, built and running |
 | [Q16](#q16-string-representation-given-wtf-16-on-the-js-target) | String representation, given WTF-16 on the JS target | OPEN, decides the string API permanently |
-| [Q17](#q17-is-there-a-dense-tensor-type-constructed-explicitly) | Is there a dense tensor type, constructed explicitly? | LEANING yes |
-| [Q18](#q18-does--on-a-rank-2-tensor-yield-rows-or-scalars) | Does `.[]` on a rank-2 tensor yield rows or scalars? | LEANING rows |
-| [Q19](#q19-how-are-nulls-carried-in-a-dense-typed-buffer) | How are nulls carried in a dense typed buffer? | LEANING, Arrow validity bitmask |
+| [Q17](#q17-is-there-a-dense-tensor-type-constructed-explicitly) | Is there a dense tensor type, constructed explicitly? | SETTLED (dense-tensor-type ruling, 2026-09-08): no separate type -- `Vec` itself is the tensor-capable type (rectangular, shape-checked), constructed via `tensor(n; m)`, no width commitment |
+| [Q18](#q18-does--on-a-rank-2-tensor-yield-rows-or-scalars) | Does `.[]` on a rank-2 tensor yield rows or scalars? | SETTLED rows; transpose/column-access view RULED in scope now (dense-tensor-type ruling, 2026-09-08) |
+| [Q19](#q19-how-are-nulls-carried-in-a-dense-typed-buffer) | How are nulls carried in a dense typed buffer? | SETTLED (dense-tensor-type ruling, 2026-09-08): hard-fail only, no bitmask -- reverses the earlier Arrow-bitmask leaning |
 | [Q20](#q20-how-are-blocking-operators-sort-group_by-joins-classified) | How are blocking operators (`sort`, `group_by`, joins) classified? | SETTLED, a trait with no lawful stream instance |
 | [Q21](#q21-what-guarantees-batch-size-is-unobservable-over-a-batched-stream) | What guarantees batch size is unobservable over a batched stream? | LEANING, the trait law that ops commute with reification |
 | [Q22](#q22-are-dense-and-masked-vectors-distinguishable-in-the-type) | Are dense and masked vectors distinguishable in the type? | OPEN, Q14 from the other side |
@@ -89,7 +89,11 @@ question (see [named functions kept an open question
 open](../research-log/named-functions-kept-an-open-question-open.md)); it survives under the name
 `flatten` for the case `+` cannot cover, an outer `Vec` whose length is not known at the call
 site. The general question -- what any *other* operator means when both operands are Vecs --
-is still open.
+is now SETTLED (wizard submission, multiplicity-choicepoint-http round, 2026-09-08): **option
+A, cartesian default**. `Vec op Vec` becomes legal for every operator (except `+`, already
+concatenation) and runs cartesian, matching jq's own default -- checked against a real jq
+1.8.2 binary: `echo '{"a":[2,3],"b":[10,20]}' | jq -c '[.a[] * .b[]]'` gives `[20,30,40,60]`,
+the full 2x2 outer product. No new builtin needed; `.a * .b` is legal and cartesian for free.
 
 Composite equality is settled without touching it. `==` on a record or an enum compares
 structurally, and is refused outright when the type carries a Vec anywhere inside it, so a
@@ -235,21 +239,32 @@ The three
 
 ### Q17. Is there a dense tensor type, constructed explicitly?
 
-`@f32` as a narrowing constructor
- that hard-fails rather than an inference, with `reshape` attaching shape. It is also the
- second number type, a deliberate lossy exit from the `f64` commitment.
+SETTLED (vec-as-dataframe-type-research +
+dense-tensor-type wizard ruling, 2026-09-08): no separate `Tensor` type -- `Vec` itself is the
+tensor/dataframe-capable type (rectangular, shape-checked), not a distinct value kind. `Float`
+does not exist yet, so construction does not bundle a number-type commitment: `tensor(n; m)` is
+one stage, narrows and shapes together, with no `@f32`-style width commitment (the earlier
+`@f32 | reshape(n; m)` two-stage sketch is dropped, since it presupposed `Float`).
 
 ### Q18. Does `.[]` on a rank-2 tensor yield rows or scalars?
 
-NumPy and APL both yield rows,
- which makes `map` rank-polymorphic and gives row sums as `map(fold(add; 0))` with no new
- syntax. Then rank-1 yields scalars and full linearization needs a separate flattening view.
+SETTLED rows.
+NumPy and APL both yield rows, which makes `map` rank-polymorphic and gives row sums as
+`map(fold(add; 0))` with no new syntax; rank-1 yields scalars and `flatten` already covers
+full linearization. RULED (dense-tensor-type wizard, 2026-09-08): a transpose/column-access
+view is built now, alongside the tensor type, rather than deferred -- `.counts | transpose |
+map(sum(.))` for per-column reductions.
 
 ### Q19. How are nulls carried in a dense typed buffer?
 
-JSON has null and an `f32` buffer does
- not. NaN as a sentinel collides with genuine NaN. Arrow's separate validity bitmask solves
- it and brings zero-copy interop with Polars, DuckDB and pandas.
+SETTLED (dense-tensor-type wizard,
+2026-09-08): **hard-fail only**, no bitmask -- construction refuses on any null, the caller
+resolves gaps (drop/fill) before construction, same as `@f32`/`tensor` already do. This
+reverses the earlier Arrow-validity-bitmask leaning; the maintainer's own note called the pick
+tentative ("not certain, but leaning this way"), so revisit if a real pipeline needs masked
+nulls through construction. JSON has null and an `f32` buffer does not; NaN as a sentinel
+collides with genuine NaN, which is why hard-fail (resolve before construction) is the only
+representation now in scope.
 
 ### Q20. How are blocking operators (`sort`, `group_by`, joins) classified?
 
