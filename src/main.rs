@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use toylang::Backend;
 use toylang::fmt_tree::{self, Mode};
 
-const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE\n       toylang fmt FILE\n       toylang fmt [--write]\n       toylang --explain-offload <run|emit|build> FILE [lua|js|jq|go|py|llvm]";
+const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE [js]\n       toylang fmt FILE\n       toylang fmt [--write]\n       toylang --explain-offload <run|emit|build> FILE [lua|js|jq|go|py|llvm]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -51,14 +51,14 @@ fn fmt_project(mode: Mode) -> ExitCode {
 /// Every command that names one file to read: `run`, `emit`, `build`, and `fmt`'s filter form.
 fn on_file(args: &[&str], explain: bool) -> ExitCode {
     let (cmd, path, backend) = match args {
-        [cmd, path] => (*cmd, *path, Backend::Lua),
+        [cmd, path] => (*cmd, *path, None),
         [cmd, path, name] => {
             let name = if *name == "llvm" { "native" } else { name };
             let Some(backend) = Backend::from_name(name) else {
                 eprintln!("{USAGE}");
                 return ExitCode::FAILURE;
             };
-            (*cmd, *path, backend)
+            (*cmd, *path, Some(backend))
         }
         _ => {
             eprintln!("{USAGE}");
@@ -77,19 +77,30 @@ fn on_file(args: &[&str], explain: bool) -> ExitCode {
     // The offload explanation is a diagnostic: it goes to stderr, so the command's own
     // output -- the run's stdout, the emitted source -- is left untouched. A compile that
     // fails is reported by the dispatch below; nothing is printed here.
-    if explain && matches!(cmd, "run" | "emit" | "build") {
-        if let Ok(program) = toylang::compile(&src) {
-            eprint!("{}", toylang::offload::explain(&program));
-        }
+    if explain
+        && matches!(cmd, "run" | "emit" | "build")
+        && let Ok(program) = toylang::compile(&src)
+    {
+        eprint!("{}", toylang::offload::explain(&program));
     }
 
+    let default_backend = |cmd: &str| {
+        if cmd == "build" {
+            Backend::Native
+        } else {
+            Backend::Lua
+        }
+    };
     let result = match cmd {
-        "run" => run(&src, backend),
+        "run" => run(&src, backend.unwrap_or_else(|| default_backend(cmd))),
         "emit" => match toylang::compile(&src) {
             Err(e) => Err(e.into()),
-            Ok(p) => backend.emit(&p).map_err(anyhow::Error::msg),
+            Ok(p) => backend
+                .unwrap_or_else(|| default_backend(cmd))
+                .emit(&p)
+                .map_err(anyhow::Error::msg),
         },
-        "build" => build(&src, path).map(|out| format!("{}\n", out.display())),
+        "build" => build(&src, path, backend.unwrap_or_else(|| default_backend(cmd))),
         "fmt" => toylang::fmt(&src).map_err(anyhow::Error::from),
         _ => {
             eprintln!("{USAGE}");
@@ -109,15 +120,40 @@ fn on_file(args: &[&str], explain: bool) -> ExitCode {
     }
 }
 
-/// Writes the binary next to where it was invoked, named after the source file.
-fn build(src: &str, path: &str) -> Result<PathBuf> {
+/// Writes the binary next to where it was invoked, named after the source file. A `js` build
+/// writes the emitted source plus its sibling `.d.ts` instead of linking, which is what makes a
+/// JS-target compile produce the declaration file the task's sibling pair names.
+fn build(src: &str, path: &str, backend: Backend) -> Result<String> {
     let stem = std::path::Path::new(path)
         .file_stem()
         .context("the source file has no name")?
         .to_owned();
-    let out = PathBuf::from(stem);
-    toylang::link(&toylang::compile(src)?, &out)?;
-    Ok(out)
+    match backend {
+        Backend::Js => {
+            let program = toylang::compile(src)?;
+            let mut js = PathBuf::from(&stem);
+            let mut dts = PathBuf::from(&stem);
+            js.set_extension("js");
+            dts.set_extension("d.ts");
+            std::fs::write(
+                &js,
+                toylang::emit_js::emit(&program, toylang::emit_js::JsTarget::Node)
+                    .map_err(anyhow::Error::msg)?,
+            )?;
+            std::fs::write(&dts, toylang::emit_js::emit_dts(&program))?;
+            Ok(format!("{}\n{}", js.display(), dts.display()))
+        }
+        Backend::Native => {
+            let out = PathBuf::from(&stem);
+            toylang::link(&toylang::compile(src)?, &out)?;
+            Ok(format!("{}\n", out.display()))
+        }
+        // The bench harness writes the interpreted backends' files itself;the CLI's `build`
+        // links one thing, and `emit` prints the rest, so no other backend has a build step here.
+        other => {
+            anyhow::bail!("build only links native (or emits js); {other:?} has no build step")
+        }
+    }
 }
 
 /// stdin is only read when the program says it reads input, so a program that does not is not

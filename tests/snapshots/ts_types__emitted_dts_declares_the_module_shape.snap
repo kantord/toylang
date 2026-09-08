@@ -1,0 +1,11 @@
+---
+source: tests/ts_types.rs
+expression: "toylang::emit_js::emit_dts(&program)"
+---
+export type Opt_Int = { some: number } | "none";
+export function v_add(x: number): number;
+export function v_greet(x: string): string;
+export function v_is_pos(x: number): boolean;
+export function v_total(x: Array<number>): number;
+export function v_area(x: { w: number, h: number }): number;
+export function v_bump(x: Opt_Int): Opt_Int;

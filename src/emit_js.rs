@@ -1209,6 +1209,120 @@ fn js_op(op: BinOp) -> &'static str {
     }
 }
 
+/// The TypeScript spelling of a toylang type, as the runtime JS shape the JS backend emits.
+/// One renderer serves both targets: the Node/Web split changes stdin handling only, never
+/// what a value looks like, so the `.d.ts` cannot differ between them.
+fn ts_type(ty: &Type) -> String {
+    match ty {
+        Type::Str => "string".to_string(),
+        // An Int wraps to 32 bits and a Float is a double, but both are JS numbers; a Char
+        // is its Unicode codepoint, another number, since `chars` produces numbers.
+        Type::Int | Type::Float | Type::Char => "number".to_string(),
+        // An Int64 is a BigInt at runtime (kantord/toylang#83), which TS spells `bigint`.
+        Type::Int64 => "bigint".to_string(),
+        Type::Bool => "boolean".to_string(),
+        // A Stream is materialized eagerly except inside a fused loop, so at a signature it is
+        // an array of its elements, the same runtime shape a Vec has.
+        Type::Vec(t) | Type::Stream(t) => format!("Array<{}>", ts_type(t)),
+        // A Sink produces no value: nothing a consumer can hold or pass on.
+        Type::Sink => "void".to_string(),
+        Type::Record(fields) => {
+            let parts: Vec<String> = fields
+                .iter()
+                .map(|(n, t)| format!("{n}: {}", ts_type(t)))
+                .collect();
+            format!("{{ {} }}", parts.join(", "))
+        }
+        // An enum is nominal: its emitted name (the type's ident, arguments embedded) is the
+        // alias the .d.ts declares for it, so the signature names it and the union lives elsewhere.
+        Type::Enum { .. } => ty.ident(),
+        Type::Param(_) => unreachable!("params are substituted before any backend runs"),
+    }
+}
+
+/// The union of runtime shapes a value of this enum can hold (ADR 0009): a unit variant
+/// is the bare variant-name string, a payload variant the single-key object. The variant list
+/// comes from the registry rather than off the type, exactly as everywhere else (kantord/toylang#94),
+/// so a recursive enum's payload leads back to the alias of itself, which is where the recursion
+/// in the type becomes recursion in the declaration.
+fn ts_enum_union(enums: &Enums, ty: &Type) -> String {
+    let parts: Vec<String> = ty::variants(enums, ty)
+        .iter()
+        .map(|(name, payload)| match payload {
+            None => js_string(name),
+            Some(p) => format!("{{ {name}: {} }}", ts_type(p)),
+        })
+        .collect();
+    parts.join(" | ")
+}
+
+/// Append every enum type reachable from `ty` to `out`, deduplicated by the name it will be emitted
+/// under (`Type::ident`). A signature's union references nested enums by those names, so what
+/// the alias bodies mention has to be declared before them, however deep.
+fn collect_enums(ty: &Type, enums: &Enums, seen: &mut Vec<String>, out: &mut Vec<Type>) {
+    match ty {
+        Type::Vec(e) | Type::Stream(e) => collect_enums(e, enums, seen, out),
+        Type::Record(fields) => {
+            for (_, t) in fields {
+                collect_enums(t, enums, seen, out);
+            }
+        }
+        Type::Enum { args, .. } => {
+            let id = ty.ident();
+            if seen.contains(&id) {
+                return;
+            }
+            seen.push(id);
+            for a in args {
+                collect_enums(a, enums, seen, out);
+            }
+            for (_, payload) in ty::variants(enums, ty) {
+                if let Some(p) = payload {
+                    collect_enums(&p, enums, seen, out);
+                }
+            }
+            out.push(ty.clone());
+        }
+        _ => {}
+    }
+}
+
+/// The `.d.ts` describing the module the JS backend emits: one `export function` per user
+/// function, at the name the `.js` actually defines (`v_<name>`), plus an `export type` alias per
+/// enum type the signatures reference. The module has no other exports: stdin reads and helper
+/// functions are implementation details, not part of its shape.
+///
+/// Purely additive relative to `emit`: nothing here changes what the `.js` contains, and both targets
+/// share the one generator, since the type surface does not differ between them.
+pub fn emit_dts(program: &Program) -> String {
+    let mut out = String::new();
+    let mut seen = Vec::new();
+    let mut used_enums = Vec::new();
+    for f in &program.funcs {
+        if let Some(p) = &f.param_ty {
+            collect_enums(p, &program.enums, &mut seen, &mut used_enums);
+        }
+        collect_enums(&f.body.ty, &program.enums, &mut seen, &mut used_enums);
+    }
+    for ty in &used_enums {
+        out.push_str(&format!(
+            "export type {} = {};\n",
+            ty.ident(),
+            ts_enum_union(&program.enums, ty)
+        ));
+    }
+    for f in &program.funcs {
+        let param = f.param_ty.as_ref().map(|t| format!("x: {}", ts_type(t)));
+        out.push_str(&format!(
+            "export function {}({}): {};\n",
+            user(&f.name),
+            param.as_deref().unwrap_or_default(),
+            ts_type(&f.body.ty)
+        ));
+    }
+    out
+}
+
 fn js_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
