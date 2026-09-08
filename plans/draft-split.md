@@ -129,6 +129,16 @@ tracker material. Soft-blocked on the two matcher decide rows because the concep
 being re-grilled (gh:122); migrating mid-flux invites rework, but nothing here is
 hard-blocked.
 
+Landed: the three ratified sections are deleted from `draft.md`; their content verified in
+`guides/matching.md`, `guides/enums.md`, `reference/operators/match.md`, `reference/types/enum.md`,
+`reference/types/opt.md`, and ADR 0009 (the #47 capital-name qualification convention, the #62
+generic-enum / Opt-as-enum amendment). The unratified threads are in
+[questions.md](questions.md): Q28 (deep matching), Q29 (codec discriminant, superseded by ADR
+0009), Q30 (combinator algebra), Q31 (string patterns). "One combinator algebra for trees,
+strings, and streams" stays in `draft.md` by its own preamble -- it is the live sketch Q30/Q31
+back-link to, and `matcher-totality-and-alt-design` (gh:122) is re-grilling Q30; deleting
+mid-flux would force rework.
+
 ### draft-prototype-findings-migration
 
 Sections: "What the prototype showed".
