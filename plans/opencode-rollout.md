@@ -1667,8 +1667,62 @@ patch, no gap, nothing to choose between. All 18 lanes stay at `status: todo`; W
 respecting the 3-concurrent cap rather than bursting all 18 at once.
 
 Claude-proof? No -- an exhausted prepaid credit balance surfaces the same way regardless of
-which model/vendor is behind `opencode`; the fix (top up credits) is account-level, not a
-worker or brief defect. Process gap worth naming: the ORIGINAL 18-lane stall was first
-misdiagnosed as disk-full (2026-09-07), and only a second, more skeptical redispatch surfaced
+which model/vendor is behind `opencode`;the fix (top up credits) is account-level, not a
+worker or brief defect. Process gap worth naming:the ORIGINAL 18-lane stall was first
+misdiagnosed as disk-full (2026-09-07),and only a second, more skeptical redispatch surfaced
 the real cause -- a `FATAL_API_PATTERNS`-style fast-fail on `insufficient_quota`/`402` distinct
 from `key expired` would have shortened that detour.
+
+## Investigation: stuck lane issue-draft-records-migration (2026-09-08)
+
+Lane stats at capture (frozen in `plans/incidents/issue-draft-records-migration-20260907/`):
+1 run, 0 commits, clean tree (`tracked_dirty`: 0, no untracked files, no diff), dead
+~1.25h (last activity 2.6h before the capture). The incident folder holds only the state
+capture -- no event-log tail survives, so what the single run actually did isn't recoverable from
+that evidence alone; the diagnosis below is inference from task shape and the successful redispatch,
+not a read of the run's own transcript.
+
+The brief (`plans/brief-draft-records-migration.md`) is specific: names the three draft.md
+sections ("records can be built, and a record is how several arguments travel", "record fields
+keep their declared order", "record field order is not type identity"),the destination pages
+(`reference/types/record.md`, with `reference/syntax/functions.md` for the unary-functions story),
+the load-bearing punning-refusal requirement,and a `just check` done-gate. At dispatch time
+(the original lane dispatch, 2026-09-06 23:42) draft.md was 2146 lines.
+
+The original stall is now moot:the lane was redispatched after the account-level OpenRouter credit
+outage ( the "18 stalled lanes" entry above) cleared,and that run produced `3e46c88`
+("Migrate record decisions out of draft.md"), now on main:the three sections deleted from
+draft.md (-162),the salvaged rationale into record.md (+15) and functions.md (+6),the still-open
+"narrowing a record" thread refiled as Q41 in plans/questions.md (+10),and every cross-
+reference (draft.md's parens-rule link,the research-log entry,the emuto-survey citations)
+repointed. The identical brief succeeded on redispatch, which rules out a brief-clarity or
+capability-gap cause for the original zero-commit run.
+
+Diagnosis, on the four categories:**task shape**, not brief clarity, not a capability gap, not a
+tooling/permission trap. The stall matches the step-budget-exhaustion-during-orientation shape
+already seen on issue-170 and issue-float-build-rust:the natural approach to this task --
+read the 2146-line monolith,the draft-split.md entry,the destination pages,verify coverage
+against the current implementation,then write -- burns most of a one-run budget before the first
+edit,and the clean tree (zero writes, no uncommitted work to salvage)is the shape of a run
+that ran out of steps during orientation, not one that abandoned good work. There is no
+mechanical code refactor that would shrink the per-call-site work:this is a prose-migration
+(move text between markdown files, delete three sections, repoint cross-references),and the only
+shared structure is draft.md itself, so there is no shared helper, flattened nesting, or removable
+special case to extract. Pre-splitting draft.md into per-section files would eliminate the
+landing-time line-offset conflicts that sibling draft-split rows are now causing,but that is a design
+change to the draft-split protocol rather than a small reversible simplification,and it is line-
+neutral, not a net reduction.
+
+Recommendation:
+- **No further action on this row**:the original stall's deliverable already landed (3e46c88,
+  on main);archive `stuck-issue-draft-records-migration-investigation` as moot -- a fourth
+  dispatch would only re-derive the same "already recovered" conclusion, exactly as issue-140 did.
+
+- **Rebrief the draft-split protocol's migration sequence** for the remaining queued migration rows:
+  sequence each migration as **additive-salvage-first, then subtractive-delete** -- commit the
+  destination-page additions (rationale folded in, committable, conflict-free)as its own
+  commit before deleting the sections from draft.md. This matches the standing commit-early
+  lesson,and it also shrinks the landing-time line-offset conflicts that concurrent deletions from the
+  shared monolith keep producing (the merge-conflict retries the 2026-09-08 entry above
+  describes). It is a sequencing change, not a scope change -- no section list or destination
+  changes, so no row's brief needs rewriting, only the order its worker is told to do things in.
