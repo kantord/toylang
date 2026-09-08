@@ -1847,3 +1847,47 @@ Deferred: `dense-tensor-type-build-sandbox-blocker` also ruled option A, but the
 already spent on the three redispatches above (ranked by board `prio`: module-routing-syntax-build
 5, draft-mutation-migration/toylang-conf-yaml-build 4 each, dense-tensor-type-build 3 lowest).
 Left its round file and inbox record in place for a future tick's free slot.
+
+## 2026-09-09 (later): dense-tensor-type-build's deferred ruling applied; two siblings escalated again
+
+The three redispatches from the entry above (`module-routing-syntax-build`,
+`draft-mutation-migration`, `toylang-conf-yaml-build`) did not all land clean:
+`module-routing-syntax-build` and `draft-mutation-migration` produced fresh
+`*-sandbox-blocker.round.yaml` escalations (mtimes 01:03), still unanswered in the maintainer's
+inbox as of this tick -- left alone rather than redispatched a third time without a new ruling,
+per the no-blind-redispatch rule. `toylang-conf-yaml-build` also still has an unanswered round
+from the same batch.
+
+Applied the deferred `dense-tensor-type-build-sandbox-blocker` ruling (option A) with a free WIP
+slot this tick: redispatched via `sandbox_dispatch.py dense-tensor-type-build --model
+openrouter/z-ai/glm-5.2`, same brief already on disk at `plans/brief-dense-tensor-type-build.md`
+(fresh diff against current main, same "stronger model" convention -- not a literal patch resume).
+Cleared the inbox record and deleted the round file.
+
+Skipped `dsv-partials-migration` despite the tick trigger listing it as a free-slot-ready row:
+its own title explicitly rules it "Blocked-open, not a live task yet" (csv/tsv move into
+`prelude.toy` pending `source_in_fn` AND a partial-application mechanism actually *built*, not
+just designed) -- `needs: [partial-application-system-design]` is satisfied (`status: done`), but
+that row only ruled the design direction, not a build; the real blocker isn't captured in `needs`
+at all. Board data-quality gap, not a dispatch decision: the `needs` graph under-represents this
+row's real dependency. Left `status: todo`, did not dispatch, did not file a follow-up row (out of
+this tick's scope).
+
+**The `dense-tensor-type-build` redispatch itself came back red within ~1 minute**, and worse than
+the original attempt it was meant to improve on: `plan round 1 produced no verdict.json, falling
+back to trivial`, then all 3 build turns made zero file changes and no patch was extracted at all
+(the first, pre-ruling attempt at least got a real 3.4MB patch close to green). This is the same
+"zero file changes, suspiciously fast" shape as the `OPENROUTER_API_KEY` incident logged earlier
+today, and it now spans three different rows in the same ~1-hour window
+(`module-routing-syntax-build`, `draft-mutation-migration`, `dense-tensor-type-build`) -- reads
+as a systemic infra problem, not three independent task-shape failures. Did not redispatch the
+now-answered `toylang-conf-yaml-build-sandbox-blocker` ruling (also option A) into the same
+possibly-broken pipeline; left its inbox record and round file in place rather than burning
+another slot on a likely-guaranteed repeat. Flagging to Daniel directly instead of composing
+another escalation round (nothing here is a maintainer decision between options).
+
+**Action needed from Daniel: check whether `OPENROUTER_API_KEY` (or the `opencode`/glm-5.2 path)
+is healthy right now** -- this is the second time today the pipeline produced fast, zero-change
+"escalations" indistinguishable from real task difficulty. Until confirmed healthy, further
+option-A redispatches risk wasting slots and misleading the maintainer inbox with bogus
+escalations.
