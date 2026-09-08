@@ -250,12 +250,21 @@ pub fn emit(program: &Program, target: JsTarget) -> Result<String, String> {
         || contains_vec(enums, &program.body.ty)
         || used.jsonlines;
 
-    if target.is_web() && reads_stdin(program, fused.as_ref(), used.collect) {
-        return Err(
-            "the web target has no stdin: `input`, `inputs`, `lines`, `dsv`, and stream-typed \
-             pipelines all read through node's `fs`"
-                .to_string(),
-        );
+    if target.is_web() {
+        let reads_stdin = program.input.is_some()
+            || program.inputs.is_some()
+            || used.collect
+            || matches!(
+                fused.as_ref().map(|f| f.source),
+                Some(tir::Source::Inputs | tir::Source::Lines)
+            );
+        if reads_stdin {
+            return Err(
+                "the web target has no stdin: `input`, `inputs`, `lines`, `dsv`,and stream-typed \
+                 pipelines all read through node's `fs`"
+                    .to_string(),
+            );
+        }
     }
     for (on, text) in [
         (used.select, SELECT_HELPER),
@@ -346,21 +355,6 @@ pub fn emit(program: &Program, target: JsTarget) -> Result<String, String> {
     Ok(out)
 }
 
-/// Whether the program reads stdin through node's `fs`, which is what the Web target has to
-/// refuse. `used.collect` covers an eager `lines`/`dsv`;a fused program's source decides
-/// instead, so the two are checked separately.
-fn reads_stdin(program: &Program, fused: Option<&tir::Fusion>, collect: bool) -> bool {
-    if program.input.is_some() || program.inputs.is_some() {
-        return true;
-    }
-    if collect {
-        return true;
-    }
-    matches!(
-        fused.map(|f| f.source),
-        Some(tir::Source::Inputs | tir::Source::Lines)
-    )
-}
 
 /// A stream-typed `jsonlines` program, compiled as a loop reading one line at a time off the
 /// real fd rather than `readFileSync(0)`'s read-everything-first.
