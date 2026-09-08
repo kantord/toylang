@@ -2122,3 +2122,10 @@
   kind: build
   needs: [sort-by-max-by-checkpoint-1]
   status: done
+
+- id: shell-out-build
+  issue: gh:158
+  title: 'Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect. Output side RULED (stream-merge-tagged-design): a fixed stdlib enum (e.g. PipeLine{ Stdout, Stderr }) tags each relayed line, `pipe_through(cmd: Str, args: Vec<Str>) -> Stream<Line>`. Input side RULED (stdin-stdout-splitting-design, wizard submission 2026-09-07): option A, symmetric Stream<Str> stdin argument -- `pipe_through(cmd: Str, args: Vec<Str>, stdin: Stream<Str>) -> Stream<Line>`. Needs a new "write a Stream out to an external sink" mechanism (nothing existing does this; jsonlines only targets toylang''s own stdout) alongside the relay-in side.'
+  kind: build
+  needs: [stream-merge-tagged-design]
+  status: done

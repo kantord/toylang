@@ -14,13 +14,6 @@
   prio: 3
   status: todo
 
-- id: shell-out-build
-  issue: gh:158
-  title: 'Build a streaming pipe-to-subprocess primitive for shell-out calls, e.g. lines | pipe_through("grep", [...]) | collect. Output side RULED (stream-merge-tagged-design): a fixed stdlib enum (e.g. PipeLine{ Stdout, Stderr }) tags each relayed line, `pipe_through(cmd: Str, args: Vec<Str>) -> Stream<Line>`. Input side RULED (stdin-stdout-splitting-design, wizard submission 2026-09-07): option A, symmetric Stream<Str> stdin argument -- `pipe_through(cmd: Str, args: Vec<Str>, stdin: Stream<Str>) -> Stream<Line>`. Needs a new "write a Stream out to an external sink" mechanism (nothing existing does this; jsonlines only targets toylang''s own stdout) alongside the relay-in side.'
-  kind: build
-  needs: [stream-merge-tagged-design]
-  status: todo
-
 - id: shell-out-stderr-relay-design
   issue: gh:158
   title: 'Q35 was RULED option A, opaque plumbing (stdout-stderr-effect-model-design, wizard submission 2026-09-07) -- a second single-instance sink alongside jsonlines, structurally unable to relay two streams (stdout and stderr) from one subprocess at once. But pipe_through''s whole point is exactly that: relay a subprocess''s stdout AND stderr in the same run. Decide how shell-out-build should actually spell this under option A before dispatching it -- e.g. two separate pipe_through-style calls each claiming one stream (never combined in one program, so a program picks stdout-relay xor stderr-relay), a merged single-stream relay that drops the distinction, or something else. Also settle the stdin/stdout splitting question flagged alongside Q35 as possibly distinct. Follow-up (wizard submission, 2026-09-07): RULED option C, merge before toylang sees them -- but the maintainer reinterpreted it away from a lossy OS-level 2>&1 merge: "it seems like all we need is a built in enum for creating combined tagged streams... so a merged stream of type A and type B is just a single stream where each item is either A or B." So pipe_through relays one Stream where each item is tagged Stdout or Stderr, not two indistinguishable byte streams. Spun off stream-merge-tagged-design to ground this against Q25''s existing Alt<A,B> sketch and produce the concrete mechanism. Stdin/stdout splitting was NOT addressed by this answer -- still open, carry it into the same follow-up.'
