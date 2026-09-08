@@ -314,7 +314,7 @@
   kind: build
   needs: [dense-tensor-type]
   prio: 3
-  status: delegated
+  status: todo
 
 - id: js-web-escape-hatch-build
   issue: gh:160
