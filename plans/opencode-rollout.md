@@ -1812,3 +1812,38 @@ between options) -- flagged directly to Daniel instead in the tick's chat summar
 OPENROUTER_API_KEY@openrouter.ai` resolves at dispatch time.** Until that's fixed, every sandbox
 dispatch this pipeline attempts will burn a build-turn retry cap and produce a misleading
 "zero file changes" escalation instead of doing real work.
+
+## 2026-09-09: five sandbox-blocker/decide rulings applied
+
+The API key issue above was evidently transient or already fixed by this tick: a later redispatch
+of `module-routing-syntax-build` and `toylang-conf-yaml-build` (mtimes 00:34/00:47) ran the real
+toolchain successfully (full `just check` output visible in the logs, real test failures/passes,
+not an instant FATAL) but still made zero file changes across all 3 build turns with
+`deepseek-v4-flash-0731`, producing fresh escalation rounds at the same paths. The maintainer's
+inbox answers for these two rows (captured 22:48:25 on 2026-09-08, before these fresh round files'
+mtimes) were for an earlier, since-deleted instance of the same question -- per the
+`draft-records-migration`/`draft-matching-migration` precedent above, applied as "same task, same
+ruling intent" rather than assuming staleness, since the fresh escalation carries the identical
+question shape and root cause (zero-change build turns) the maintainer already ruled on.
+
+Applied:
+- `search-and-fold-select-mechanism` round (3 questions): `search-cut-semantics` -> option B
+  (`first` as an ordinary prelude fn, generic over Vec/Stream, proper `Opt`); `applicative-fold-block-syntax`
+  -> option B (keep designing, next round needs real syntax options); `select-shared-mechanism-design`
+  -> option 1 with the maintainer's own hedge honored literally: filed `trait-multi-impl-dispatch-build`
+  to carry the real remaining scope, since the archived `trait-interface-dispatch-build` never
+  actually built multi-impl dispatch despite `status: done`.
+- `http-query-sugar-build-sandbox-blocker` -> option B, hand off to a privileged session.
+  Prompt at `plans/issue-171-privileged-agent-prompt.md`, `escalated-issue-171` marker set.
+- `draft-mutation-migration-sandbox-blocker`, `module-routing-syntax-build-sandbox-blocker`,
+  `toylang-conf-yaml-build-sandbox-blocker` -> option A, redispatched with
+  `--model openrouter/z-ai/glm-5.2` (fresh diff against current main, per the established
+  "stronger model" convention -- `sandbox_dispatch.py` resets every lane from `origin/main`, so
+  this is not a literal patch resume). `draft-mutation-migration` had no `plans/brief-*.md` on
+  disk (only the sandbox workdir's `brief-sent.txt`); copied it to
+  `plans/brief-draft-mutation-migration.md` for the redispatch and for the record.
+
+Deferred: `dense-tensor-type-build-sandbox-blocker` also ruled option A, but the WIP cap (3) was
+already spent on the three redispatches above (ranked by board `prio`: module-routing-syntax-build
+5, draft-mutation-migration/toylang-conf-yaml-build 4 each, dense-tensor-type-build 3 lowest).
+Left its round file and inbox record in place for a future tick's free slot.
