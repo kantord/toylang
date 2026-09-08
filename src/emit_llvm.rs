@@ -1537,6 +1537,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     Builtin::Max => self.call_rt(self.rt.vec_max, &[arg], "max")?,
                     // `arg` above ran only for whatever else it does; its value is unused here.
                     Builtin::Fields => self.fields_lit(&record_ty)?,
+                    _ => unreachable!("not yet implemented for this backend"),
                 }
             }
 

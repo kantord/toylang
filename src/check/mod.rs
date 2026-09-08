@@ -838,11 +838,12 @@ fn tail_pipe(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 
 /// Every function name the language itself provides, and therefore reserves. `str`, `range`,
 /// `chars`, and `i64` live in `builtin()`'s fixed table; `jsonlines`, `length`, `flatten`,
-/// `tail`, `collect`, `fields`, `sort`, `reverse`, `sum`, `max`, `parse`, `first`, `any`, and
+/// `tail`, `collect`, `fields`, `sort`, `reverse`, `sum`, `max`, `parse`, `pipe_through`, `first`, `any`, and
 /// `all` are polymorphic and checked from `synth`/`expect_inner`'s own arms; `select` and `map`
-/// rebind `.`,and `sort_by`/`max_by` do the same with an orderable projection. All twenty-two are reserved the same way, and the docs harness (tests/docs.rs) reads
-/// this list to insist each one has a reference page.
-pub const BUILTIN_NAMES: [&str; 22] = [
+/// rebind `.`,and `sort_by`/`max_by` do the same with an orderable projection. All
+/// twenty-three are reserved the same way, and the docs harness (tests/docs.rs) reads this list
+/// to insist each one has a reference page.
+pub const BUILTIN_NAMES: [&str; 23] = [
     "all",
     "any",
     "chars",
@@ -857,6 +858,7 @@ pub const BUILTIN_NAMES: [&str; 22] = [
     "max",
     "max_by",
     "parse",
+    "pipe_through",
     "range",
     "reverse",
     "select",
@@ -2405,6 +2407,15 @@ fn call(
     if func == "collect" {
         return collect(ctx, need_arg(arg, func, span)?, None);
     }
+    // `pipe_through({cmd, args, lines}})`, `{cmd: Str, args: Vec<Str>, lines: Stream<Str>} ->
+    // `Stream<PipeLine>`: stdin's lines stream into a subprocess's stdin, and its stdout/stderr
+    // lines come back tagged by origin. The one place a stream is legal inside a record: it is
+    // consumed by the subprocess, never stored, so it is checked here rather than through the
+    // record literal path, which refuses streams.
+
+    if func == "pipe_through" {
+        return pipe_through_call(ctx, arg, span);
+    }
     // Polymorphic over which record, the same reason `length` is checked here: the return type
     // (`Vec<Str>`) is fixed, but the argument's shape is not.
     if func == "fields" {
@@ -2540,6 +2551,89 @@ fn select_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
         },
     ))
 }
+
+/// `pipe_through({cmd, args, lines}})`, `{cmd: Str, args: Vec<Str>, lines: Stream<Str>} ->
+/// `Stream<PipeLine>`: stdin's lines stream into a subprocess's stdin,and its stdout/stderr
+/// lines come back tagged by origin. The `lines` field is the one place a stream is legal inside a
+/// record: it is consumed by the subprocess, never stored, so it is checked here rather than
+/// through the record literal path, which refuses streams. `cmd` and `args` are ordinary values,
+/// and the child's exit status is not an error: a filter like `grep` exits nonzero on "no
+/// matches", which is a normal outcome for the shape this builtin exists to express.
+fn pipe_through_call(ctx: &Ctx, arg: &Option<Box<Expr>>, span: Span) -> Result<Tir, Error> {
+    let Some(arg) = arg else {
+        return Err(Error::new(
+            span,
+            "`pipe_through` takes a record `{cmd, args, lines}`, but was called with no argument"
+                .to_string(),
+        ));
+    };
+    let arg_span = arg.span();
+    let Expr::RecordLit { fields, .. } = arg.as_ref() else {
+        let found = synth(ctx, arg)?;
+        return Err(Error::new(
+            arg_span,
+            format!(
+                "`pipe_through` needs a record `{{cmd: Str, args: Vec<Str>, lines: Stream<Str>}}`, \
+                 found {}",
+                found.ty
+            ),
+        ));
+    };
+    let (mut cmd,mut args,mut lines) = (None, None, None);
+    for (name,name_span,value)in fields {
+        match name.as_str() {
+            "cmd" => cmd = Some(value),
+            "args" => args = Some(value),
+            "lines" => lines = Some(value),
+            other => {
+                return Err(Error::new(
+                    *name_span,
+                    format!("`pipe_through`'s record has no field `{other}`; it takes `cmd`, `args`,and `lines`"),
+                ));
+            }
+        }
+    }
+    let (cmd, args, lines) = match (cmd, args, lines) {
+        (Some(c), Some(a), Some(s)) => (c,a,s),
+        _ => {
+            let missing: Vec<&str> = ["cmd", "args", "lines"]
+                .into_iter()
+                .zip([cmd.is_some(), args.is_some(), lines.is_some()])
+                .filter(|(_, present)| !present)
+                .map(|(n,_)| n)
+                .collect();
+            return Err(Error::new(
+                arg_span,
+                format!("`pipe_through`'s record is missing `{}`", missing.join(", `")),
+            ));
+        }
+    };
+    let cmd = expect(ctx, cmd,&Type::Str)?;
+    let args = expect(ctx, args,&Type::Vec(Box::new(Type::Str)))?;
+    let lines = expect(ctx, lines,&Type::Stream(Box::new(Type::Str)))?;
+    let pipeline = ctx.enums.get("PipeLine").expect("the prelude declares PipeLine").clone();
+    Ok(Tir::new(
+        Type::Stream(Box::new(pipeline)),
+        Kind::Builtin {
+            which: tir::Builtin::PipeThrough,
+            arg: Box::new(Tir::new(
+                Type::Record(vec![
+                    ("cmd".to_string(), Type::Str),
+                    ("args".to_string(), Type::Vec(Box::new(Type::Str))),
+                    ("lines".to_string(), Type::Stream(Box::new(Type::Str))),
+                ]),
+                Kind::RecordLit {
+                    fields: vec![
+                        ("cmd".to_string(), cmd),
+                        ("args".to_string(), args),
+                        ("lines".to_string(), lines),
+                    ],
+                },
+            )),
+        },
+    ))
+}
+
 
 /// `jsonlines(x)`, the one sink builtin, typed `Sink`. A sink is not a value, so a direct call
 /// survives only where `sink_call` recognized the sink position (the program's body or a

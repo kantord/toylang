@@ -145,7 +145,7 @@ fn tag(tir: &Tir) -> String {
         Kind::SortBy { .. } => "sort-by".into(),
         Kind::MaxBy { .. } => "max-by".into(),
         Kind::Field { .. } => "projection".into(),
-        Kind::Builtin { which, .. } => format!("builtin.{}", builtin_tag(*which)),
+        Kind::Builtin { which, .. } => format!("builtin.{}", builtin_tag(which)),
         Kind::Unwrap { .. } => "unwrap".into(),
         Kind::Index { .. } => "selection.collapse".into(),
         // A slice narrows by position where `select` narrows by predicate, so both are
@@ -172,7 +172,7 @@ fn binop_tag(op: BinOp) -> &'static str {
     }
 }
 
-fn builtin_tag(which: Builtin) -> &'static str {
+fn builtin_tag(which: &Builtin) -> &'static str {
     match which {
         Builtin::IntToStr => "str",
         Builtin::IntToI64 => "i64",
@@ -192,5 +192,6 @@ fn builtin_tag(which: Builtin) -> &'static str {
         Builtin::First => "first",
         Builtin::Any => "any",
         Builtin::All => "all",
+        _ => "pipe_through",
     }
 }

@@ -597,6 +597,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 let names: Vec<String> = fields.iter().map(|(n, _)| py_string(n)).collect();
                 format!("(lambda _: [{}])({})", names.join(", "), expr(enums, arg))
             }
+            _ => unreachable!("not yet implemented for this backend"),
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(enums, lhs), py_op(*op), expr(enums, rhs))

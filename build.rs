@@ -194,6 +194,7 @@ impl ToRust for tir::Builtin {
             tir::Builtin::First => "First",
             tir::Builtin::Any => "Any",
             tir::Builtin::All => "All",
+            tir::Builtin::PipeThrough => "PipeThrough",
         };
         format!("crate::tir::Builtin::{variant}")
     }
