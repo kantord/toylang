@@ -53,12 +53,41 @@ greeting()
 hello
 ```
 
-Several things travel as one record, and a record-literal argument may drop its parens, so
-`area {w: 3, h: 4}` reads as named arguments:
+Several things travel as one record. A function takes one parameter, so a second argument is
+a record: `fn join(a: {over: Vec<Str>, with: Str}) -> Str`. The alternative was real parameter
+lists, which would have touched the signature type, the call form, and every backend's
+emitter, and would then have left two ways to pass two things. What decided it was the call
+site: `join(", ")` in jq says nothing about which argument is which, and every two-argument
+builtin in every such language re-poses that question. A record answers it once and
+structurally -- fields are named and order does not matter -- so named arguments are not a
+feature bolted on but what passing a record already looks like.
+
+A record-literal argument may drop its parens, so `area {w: 3, h: 4}` reads as named arguments:
 
 ```case
 call_without_parens
 ```
+
+This is unambiguous because `{` can neither begin an expression nor follow one, so `ident {`
+was a syntax error before it was given a meaning. The rule is about the argument, not about
+calls: `map` and `select` are keyword forms with their own parens rather than calls, so a
+rule phrased about calls would have missed the case that motivated it. The same allowance
+lets `map` take a lambda whose body is a record literal without the parens:
+
+```toylang
+# fmt: syntax-example
+[{a: 1, b: 2}] | map {a: .a}
+```
+
+```output
+[{"a":1}]
+```
+
+Parens stay for everything else, so `map(.n)` and `str(x)` are unchanged. This sugar was
+accepted where [punning](../types/record.md) was refused: punning hides an unanswered
+question, while dropping the parens hides nothing, since it just makes the record the spelling
+of named arguments that the unary-function decision already settled. Two spellings for one
+call is the price, and the unary-function decision is worth less without it.
 
 Functions can call forward and can recurse; signatures are collected before any body is
 checked:

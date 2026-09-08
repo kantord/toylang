@@ -58,6 +58,8 @@ its detail, because collapsing it would delete the only copy.
 | [Q38](#q38-are-composites-ordered-at-all) | Are composites ordered at all? | OPEN |
 | [Q39](#q39-is-a-timestamp-type-worth-a-third-numeric-type) | Is a timestamp type worth a third numeric type? | OPEN |
 | [Q40](#q40-is-a-fieldk-lens-trait-part-of-the-design) | Is a `Field<K>` lens trait part of the design? | OPEN |
+| [Q41](#q41-is-narrowing-a-record-to-a-subset-of-its-fields-an-operation) | Is narrowing a record to a subset of its fields an operation? | OPEN |
+| [Q42](#q42-is-a-runtime-field-names-accessor-part-of-the-design) | Is a runtime field-names accessor part of the design? | OPEN |
 
 [Multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) is the one
 question still capable of changing [the two-layer
@@ -601,3 +603,23 @@ records the value/absence/error distinction, but neither carries the trait itsel
 what `set` promises about the path, whether `path` witnesses updates, deletions, or both,
 and how the receiver changes the implementation (indexable versus iterable) -- is unwritten.
 Recorded so the sketch survives the draft's deletion without being built.
+
+### Q41. Is narrowing a record to a subset of its fields an operation?
+
+Punning -- `{name}` for `{name: .name}` -- was refused for a reason that leaned on this
+question: narrowing a record to some of its fields is arguably its own operation, the way
+`select` narrows a dimension, and the language has not decided it, so sugar that quietly
+implements one answer makes the question harder to ask (see
+[Records](../docs/reference/types/record.md)). The refusal leaves the question open rather
+than answering it. What is unsettled is whether narrowing is a first-class operation at all,
+and if so what its spelling is -- a record literal already builds one, and projection already
+reads fields, but neither names the act of taking a subset. Recorded so the reason the
+shorthand was refused stays findable now that the draft section carrying it is gone.
+
+### Q42. Is a runtime field-names accessor part of the design?
+
+A record's declared field order is real data -- it drives printing and the native/Go columnar
+layouts (see [Records](../docs/reference/types/record.md)) -- and is meant to become a
+runtime-queryable accessor, a `field_names`-style builtin for serialization and friends. Its
+name and shape are not yet decided (kantord/toylang#63), and nothing is implemented. Recorded
+so the intent survives the draft section's deletion without being built.

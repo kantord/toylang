@@ -43,4 +43,4 @@ which is about expressions that cannot state their own type. This is the reverse
 expression at all.
 
 Closed: records can be built now, and the same literal is how a function takes more than one
-argument. See `## DECIDED: records can be built` in [draft.md](../draft.md).
+argument. See [Records](../docs/reference/types/record.md).
