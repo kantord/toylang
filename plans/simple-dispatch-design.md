@@ -55,10 +55,32 @@ primitive, which already worked and isn't the thing that was broken.
   wasted. This is the one bug class (blind redispatch into a dead account)
   the whole investigation identified as a real, recurring cost -- confirmed
   fixed under real conditions, not simulated ones.
-- **Not yet tested**: the actual multi-turn tool-calling loop against a live
-  model producing real edits, and the multi-row parallel fan-out under
-  `ThreadPoolExecutor`. Both require actual OpenRouter credit, which the
-  account does not currently have (per the same `/api/v1/credits` check).
-  Re-run once credits are added: `python3 .claude/scripts/simple_dispatch.py
-  <row> --brief-dir <dir> --parallel 3` with 3+ rows is the natural first
-  real test of both at once.
+- **Full real run, end to end, with actual credit**: after capping
+  `max_tokens` (see above), a real request to `deepseek/deepseek-v4-flash-0731`
+  went through despite the account showing negative balance -- the affordability
+  check evidently has some slack for small requests. `agent_loop.py` ran a
+  genuine multi-turn tool-calling session (attempt 1: 6 turns; the resulting
+  `just check` hit a real, pre-existing, unrelated flaky test -- missing
+  `tsc` binary in the snapshot -- and correctly reported RED with the real
+  tail) and, on retry with that real failure fed back as the next message
+  (attempt 2: 12 more turns), reached genuine GREEN. This is the core design
+  claim -- verify always drives the next step, in one continuous session --
+  validated under real conditions, not simulated ones.
+- **A second real bug found by this same run, now fixed**: the task
+  (`write_file` a root-level `hello.txt`) completed and verified green, but
+  the file was never committed inside the sandbox. Cause: the commit step
+  had copied `sandbox_dispatch.py`'s own `ensure_committed()` pattern
+  verbatim -- `git add -u` (tracked files only) plus a scan for untracked
+  files that filters on `grep /`, i.e. only picks up untracked files inside
+  a subdirectory. A root-level new file is invisible to both halves of that
+  pattern. Confirmed live (hello.txt sat as `??` in `git status` after the
+  "commit" step ran) and fixed by replacing the whole thing with a plain
+  `git add -A`. Re-verified directly against the still-running sandbox from
+  the failed run: `git add -A && git commit` picked up hello.txt correctly,
+  and `git format-patch` produced a clean, valid patch from it.
+- **Not yet tested**: multi-row parallel fan-out under `ThreadPoolExecutor`
+  (this run was a single row). The mechanism itself (independent per-row
+  locks, independent sandboxes, independent workdirs) has no shared state to
+  race on, so there's no reason to expect it behaves differently at N>1, but
+  that's an inference, not a demonstrated result -- worth an explicit test
+  with 3+ rows once there's more to dispatch.

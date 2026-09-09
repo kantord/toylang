@@ -194,9 +194,14 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         ok = "VERIFIED_GREEN" in tail
         fatal = "FATAL:" in tail
 
-        exec_in("cd /repo && "
-                "for f in $(git status --porcelain | awk '/^\\?\\?/{print $2}' | grep /); do "
-                "git add -- \"$f\"; done; git add -u; "
+        # `git add -A`, not `-u` plus a subdirectory-only untracked-file scan
+        # (the old harness's pattern, copied here initially then caught by
+        # this script's own first real smoke test): `-u` only stages already
+        # -tracked changes, and the old untracked-file scan filtered on
+        # paths containing "/", silently skipping any new file created at
+        # the repo root -- confirmed live, a `write_file("hello.txt", ...)`
+        # call was never committed under the old pattern.
+        exec_in("cd /repo && git add -A && "
                 "git commit -q -m 'agent_loop.py output' || true")
         exec_in(f"cd /repo && rm -f /root/*.patch; "
                 f"git format-patch {base_commit} -o /root/ >/root/format-patch.log 2>&1")
