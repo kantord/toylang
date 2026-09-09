@@ -27,7 +27,7 @@ Design goals (see plans/simple-dispatch-design.md for the full rationale):
 
 Usage:
   simple_dispatch.py ROW_ID [ROW_ID ...] --brief-dir plans/simple-briefs
-      [--model openrouter/deepseek/deepseek-v4-flash-0731] [--retry-cap 2]
+      [--model deepseek/deepseek-v4-flash-0731] [--retry-cap 2]
       [--parallel 3] [--snapshot toylang-toolchain-v2]
 """
 from __future__ import annotations
@@ -177,6 +177,12 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         sh([str(MSB_BIN), "copy", str(brief_path), f"{name}:/root/task.txt"], env=env)
         exec_in("cd /repo && git config user.name 'Daniel Kantor' && "
                 "git config user.email 'git@daniel-kantor.com'")
+        # The host-side clone is fully copied into the guest now -- drop it
+        # immediately rather than after the whole attempt finishes. Each
+        # dispatch clones the full repo; leaving these around is exactly the
+        # "disk fills from worktree target dirs" incident class from the old
+        # harness, just with a different directory name.
+        shutil.rmtree(clone_dir, ignore_errors=True)
 
         run_cmd = (
             f"cd /repo && export PATH=$HOME/.cargo/bin:/usr/lib/llvm-22/bin:$PATH && "
@@ -252,7 +258,14 @@ def main() -> int:
             for row, brief in jobs
         }
         for fut in as_completed(futs):
-            results.append(fut.result())
+            row = futs[fut]
+            try:
+                results.append(fut.result())
+            except Exception as e:
+                # One row's unexpected crash (e.g. a subprocess timeout)
+                # must not lose the summary for every other row still
+                # running in the pool.
+                results.append(Result(row, False, True, f"dispatch crashed: {e}", None))
 
     print("\n=== SUMMARY ===")
     for r in results:
