@@ -277,3 +277,51 @@ until every site has one." Line count went up again this round, but the
 shape of the fix changed from another one-off patch to a structural
 guarantee, which is the right direction for a codebase that's already grown
 past what three rounds of individual patches could keep track of by hand.
+
+## Skeptic round 5 (final, purely theoretical) -- 2 real bugs, verdict: ship after fixing
+
+This round's mandate was explicitly a ship/no-ship call, not just another
+bug hunt -- instructed not to manufacture a 6th round's worth of findings
+just to seem thorough. It found two real, narrow bugs, both in defenses
+*added by earlier rounds*, where the fix itself had an uncaught-exception
+gap:
+
+1. **A non-fatal HTTP error from OpenRouter (429 rate-limit, 500/502/503,
+   a transient 400) crashed the whole process instead of being retried.**
+   `call_openrouter`'s `HTTPError` branch called `check_fatal` (correctly)
+   but then did a bare `raise` of the original `HTTPError` -- and
+   `agent_turns` only catches `RuntimeError`, the type the *other* transient
+   -error branch (`URLError`/`OSError`/`TimeoutError`) already used. A single
+   429 -- plausible with `--parallel` hammering one shared key -- discarded
+   the whole sandbox attempt with an uncaught traceback, never wrote a
+   status file, and fell back to `simple_dispatch.py`'s RC-pattern guess,
+   landing on a plain misleading "RED". Fixed: the HTTPError branch now
+   wraps and raises `RuntimeError` too, exactly like its sibling branch.
+2. **`verify()`'s own timeout, capped by round 4's fix to whatever
+   wall-clock budget remains, raised an uncaught `subprocess.TimeoutExpired`
+   when a real slow build actually hit that cap** -- crashing the process
+   with no `write_status` call, in precisely the case that fix was written
+   to handle cleanly. Fixed: `main()` now catches `TimeoutExpired` around
+   the `verify()` call and reports it as `TIMEOUT`, same as every other path
+   into that outcome.
+
+A third, lower-severity note was also fixed: the setup calls in
+`_dispatch_one_locked` (git clone/fetch/checkout, the three `msb copy`
+calls, `git config`) never checked their exit code -- only the sandbox boot
+itself did. A failed copy fell through silently into running the agent
+against a broken environment, burning a full paid attempt on a setup bug
+indistinguishable from an ordinary RED. Fixed with a small `must()` helper
+(raises `SetupFailed`, caught once, turned into a `FATAL` `Result`) instead
+of six repeated manual checks.
+
+**Verdict, verbatim in spirit**: "not ready yet, but the gap is narrow and
+cheap to close... this does not warrant a 6th full review round, just apply
+these two fixes and ship." All three fixes applied and verified locally
+(`SetupFailed`/`must()` round-trip correctly; the `HTTPError`-to-`RuntimeError`
+wrap and the `TimeoutExpired` catch both confirmed present in source and
+their underlying exception mechanics independently verified). This closes
+the 5-round theoretical review. Total: 21 issues found and fixed across one
+live smoke test and 5 rounds, 557 -> 931 lines. Remaining known gap, stated
+plainly rather than glossed over: a full real multi-row parallel run is
+still untested, blocked on the account's credit balance, not on any
+remaining known code issue.

@@ -240,7 +240,16 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
         payload = e.read().decode(errors="replace")
         check_fatal(payload.lower(), payload)
         print(f"HTTP {e.code} calling OpenRouter: {payload[:1000]}", file=sys.stderr)
-        raise
+        # A non-fatal HTTP error (429 rate-limit, 500/502/503 gateway
+        # hiccup, a transient 400) is NOT the same as FATAL (already handled
+        # above via check_fatal/sys.exit) -- it's a normal retryable turn
+        # failure, same as the URLError/OSError branch below. Re-raising the
+        # bare HTTPError here instead of wrapping it meant agent_turns'
+        # `except RuntimeError` never caught it: the process crashed with an
+        # uncaught traceback mid-attempt, before verify() ever ran, wasting
+        # the whole sandbox run on what a single 429 (very plausible with
+        # --parallel hammering one shared key) should have just retried.
+        raise RuntimeError(f"HTTP {e.code} error: {payload[:500]}") from e
     except (urllib.error.URLError, OSError, TimeoutError) as e:
         # A transient network failure (DNS blip, connection reset, timeout)
         # is not fatal and not success -- surface it as a normal exception so
@@ -420,7 +429,21 @@ def main() -> int:
                       "another verify pass", file=sys.stderr)
                 write_status("TIMEOUT")
                 return 3
-            ok, tail = verify(args.verify_cmd, timeout=min(MAX_VERIFY_SECONDS, int(remaining)))
+            try:
+                ok, tail = verify(args.verify_cmd, timeout=min(MAX_VERIFY_SECONDS, int(remaining)))
+            except subprocess.TimeoutExpired:
+                # Capping verify()'s timeout to the remaining budget only
+                # protects the wall clock if this is actually caught --
+                # subprocess.run raises TimeoutExpired when the command
+                # really does run that long (a genuine slow `just check`,
+                # not a hang), and an uncaught exception here would crash
+                # the process with no write_status call at all, exactly the
+                # "TIMEOUT never actually gets reported" gap this whole
+                # mechanism exists to close.
+                print("OUT_OF_TIME: verify() itself exceeded the remaining "
+                      "wall-clock budget", file=sys.stderr)
+                write_status("TIMEOUT")
+                return 3
 
         print(f"== verify: {'GREEN' if ok else 'RED'} ==", file=sys.stderr)
         print(tail[-2000:], file=sys.stderr)

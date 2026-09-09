@@ -77,6 +77,26 @@ def sh(cmd: list, env=None, check=False, timeout=None) -> subprocess.CompletedPr
                            check=check, timeout=timeout)
 
 
+class SetupFailed(Exception):
+    """Raised by must() when a setup step (clone, copy, git config) fails.
+    Only the sandbox boot itself used to be checked for a nonzero exit --
+    a failed `msb copy` of agent_loop.py, for instance, fell through
+    silently into running the agent against a broken environment, wasting a
+    full paid attempt on a setup bug that would only ever surface as an
+    ordinary, indistinguishable RED."""
+
+    def __init__(self, what: str, stderr: str):
+        super().__init__(f"{what} failed: {stderr[:500]}")
+        self.what = what
+        self.stderr = stderr
+
+
+def must(r: subprocess.CompletedProcess, what: str) -> subprocess.CompletedProcess:
+    if r.returncode != 0:
+        raise SetupFailed(what, r.stderr)
+    return r
+
+
 def msb_env() -> dict:
     env = os.environ.copy()
     env["PATH"] = f"{Path.home() / '.local/bin'}:{env.get('PATH', '')}"
@@ -188,10 +208,10 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         # Explicit timeouts on every git call, matching the msb calls below --
         # without one, a network stall here hangs the worker thread (and the
         # row's flock) indefinitely with no recovery path.
-        sh(["git", "clone", "--no-hardlinks", "--quiet", str(REPO), str(clone_dir)], env=env, timeout=60)
-        sh(["git", "-C", str(clone_dir), "fetch", "origin", "-q"], env=env, timeout=60)
-        sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "-b", f"issue-{row_id}", "origin/main"], env=env, timeout=60)
-        base_commit = sh(["git", "-C", str(clone_dir), "rev-parse", "HEAD"], env=env, timeout=30).stdout.strip()
+        must(sh(["git", "clone", "--no-hardlinks", "--quiet", str(REPO), str(clone_dir)], env=env, timeout=60), "git clone")
+        must(sh(["git", "-C", str(clone_dir), "fetch", "origin", "-q"], env=env, timeout=60), "git fetch")
+        must(sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "-b", f"issue-{row_id}", "origin/main"], env=env, timeout=60), "git checkout")
+        base_commit = must(sh(["git", "-C", str(clone_dir), "rev-parse", "HEAD"], env=env, timeout=30), "git rev-parse").stdout.strip()
         logline(f"cloned at {base_commit}")
 
         args = [str(MSB_BIN), "run", "-m", memory, "-c", str(cpus), "--no-tty", "-d",
@@ -226,12 +246,12 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         # `flock` NEVER released, permanently blocking any future dispatch
         # of that row until the whole orchestrator process was killed by
         # hand.
-        exec_in("rm -rf /repo", timeout=30)
-        sh([str(MSB_BIN), "copy", str(clone_dir), f"{name}:/repo"], env=env, timeout=120)
-        sh([str(MSB_BIN), "copy", str(AGENT_LOOP), f"{name}:/root/agent_loop.py"], env=env, timeout=30)
-        sh([str(MSB_BIN), "copy", str(brief_path), f"{name}:/root/task.txt"], env=env, timeout=30)
-        exec_in("cd /repo && git config user.name 'Daniel Kantor' && "
-                "git config user.email 'git@daniel-kantor.com'", timeout=30)
+        must(exec_in("rm -rf /repo", timeout=30), "rm -rf /repo in guest")
+        must(sh([str(MSB_BIN), "copy", str(clone_dir), f"{name}:/repo"], env=env, timeout=120), "copy repo into guest")
+        must(sh([str(MSB_BIN), "copy", str(AGENT_LOOP), f"{name}:/root/agent_loop.py"], env=env, timeout=30), "copy agent_loop.py into guest")
+        must(sh([str(MSB_BIN), "copy", str(brief_path), f"{name}:/root/task.txt"], env=env, timeout=30), "copy brief into guest")
+        must(exec_in("cd /repo && git config user.name 'Daniel Kantor' && "
+                     "git config user.email 'git@daniel-kantor.com'", timeout=30), "git config in guest")
         # The host-side clone is fully copied into the guest now -- drop it
         # immediately rather than after the whole attempt finishes. Each
         # dispatch clones the full repo; leaving these around is exactly the
@@ -318,6 +338,9 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
             patch_path.write_text(patch_out)
 
         return Result(row_id, ok, fatal, timed_out, stuck, tail[-1500:], patch_path)
+    except SetupFailed as e:
+        logline(f"setup failed: {e}")
+        return Result(row_id, False, True, False, False, str(e), None)
     finally:
         # An explicit timeout here matters more than anywhere else in this
         # function: this is the ONE call that runs even when everything
