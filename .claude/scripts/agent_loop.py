@@ -105,6 +105,24 @@ MAX_CONVERSATION_CHARS = 200_000  # keeps context from growing without bound
                                    # across many turns/attempts on a long task
 
 
+STATUS_FILE = "/root/agent-status.txt"
+
+
+def write_status(status: str) -> None:
+    """The single source of truth simple_dispatch.py reads for outcome
+    classification -- NOT a substring grep over the shared stdout/stderr
+    log. That log can and does contain model-generated tool output (a
+    `grep`/`cat` over this very repo could echo back "VERIFIED_GREEN",
+    "FATAL:", or "RC=124" verbatim, and MAX_TOOL_OUTPUT=8000 is exactly the
+    size of simple_dispatch.py's classification window), so any substring
+    check against it is one unlucky tool call away from a false positive or
+    negative. This file's content is written ONLY by this function, never
+    by echoing anything the model or a tool produced, so an exact-match read
+    of it can't collide with arbitrary text."""
+    with open(STATUS_FILE, "w") as f:
+        f.write(status)
+
+
 def truncate(s: str, n: int = MAX_TOOL_OUTPUT) -> str:
     if len(s) <= n:
         return s
@@ -212,6 +230,7 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
         for pat in FATAL_PATTERNS:
             if pat in payload_lower:
                 print(f"FATAL: {pat} -- {payload[:500]}", file=sys.stderr)
+                write_status("FATAL")
                 sys.exit(2)
 
     try:
@@ -349,6 +368,7 @@ def main() -> int:
     api_key = os.environ.get(args.api_key_env)
     if not api_key:
         print(f"FATAL: {args.api_key_env} not set in environment", file=sys.stderr)
+        write_status("FATAL")
         return 2
 
     task_text = open(args.task_file).read()
@@ -360,6 +380,7 @@ def main() -> int:
     deadline = time.monotonic() + args.wall_clock_budget
     base_head = git_head()
     attempt = 0
+    prev_tail = None
     while True:
         attempt += 1
         print(f"== attempt {attempt}/{args.retry_cap + 1} ==", file=sys.stderr)
@@ -368,6 +389,7 @@ def main() -> int:
                                       args.max_tokens, deadline)
         except OutOfTime as e:
             print(f"OUT_OF_TIME: {e}", file=sys.stderr)
+            write_status("TIMEOUT")
             return 3
         if final_text is None:
             print("== ran out of turns without the model finishing ==", file=sys.stderr)
@@ -387,11 +409,31 @@ def main() -> int:
 
         if ok:
             print("VERIFIED_GREEN")
+            write_status("GREEN")
             return 0
+
+        # The exact failure this rewrite was built to explain, not just cap:
+        # the old harness burned its full retry budget hitting a
+        # byte-identical compiler error 3 times in a row with zero progress.
+        # Keeping the full message history across attempts (only trimmed by
+        # size) doesn't prevent that on its own -- a cheap, precise, direct
+        # check does: if the verify output hasn't changed AT ALL since the
+        # last attempt, another retry with the same context is not going to
+        # produce a different result. Stop immediately instead of spending
+        # the rest of retry_cap re-deriving the same dead end, and report it
+        # as its own distinct outcome so an operator can tell "genuinely
+        # stuck, needs a different approach" apart from "still iterating."
+        if tail == prev_tail:
+            print("STUCK: verify output identical to the previous attempt, "
+                  "not retrying further", file=sys.stderr)
+            write_status("STUCK")
+            return 1
+        prev_tail = tail
 
         if attempt > args.retry_cap:
             print("VERIFY_FAILED")
             print(tail)
+            write_status("RED")
             return 1
 
         feedback = (

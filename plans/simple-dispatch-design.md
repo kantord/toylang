@@ -184,3 +184,50 @@ validation rejects both a path-traversal and a shell-metacharacter payload;
 the lock, concurrency, and crash-isolation tests still pass with the new
 `Result.timed_out` field added; the background-process fix re-tested in
 isolation and confirmed the specific spawned child no longer survives.
+
+## Skeptic round 3 (purely theoretical) -- 4 more issues found and fixed
+
+1. **Status classification via unanchored substring match on a noisy,
+   truncatable log.** `ok = "VERIFIED_GREEN" in tail` etc. checked against
+   the last 8000 chars of a log that also contains model/tool output --
+   `MAX_TOOL_OUTPUT` in `agent_loop.py` is exactly that same 8000, so a
+   single `run_bash`/`read_file` call that happens to echo back one of
+   these literal strings (e.g. `grep`-ing this very repo, which contains
+   these scripts) could misclassify the outcome, and `"FATAL:"` collides
+   with an ordinary panic/log-level prefix independent of this script's own
+   use of it. Fixed: `agent_loop.py` now writes its outcome to a dedicated
+   `/root/agent-status.txt` file via `write_status()`, touched ONLY by the
+   harness itself, never by echoing model/tool content -- `simple_dispatch.py`
+   reads that file exactly instead of grepping the shared log. RC=124/137/143
+   is kept only as a fallback for the case the process was killed before it
+   could write its own status.
+2. **The identical-failure-repeats-across-retries risk -- the literal
+   original headline bug (a real row hit the byte-identical compiler error
+   3 times in a row) -- was bounded by `retry_cap` but never actually
+   addressed.** The retry loop kept the full message history and only added
+   a text instruction ("do not start over"), with no mechanism to detect or
+   react to a stuck attempt. Fixed with a direct, cheap check: if an
+   attempt's verify tail is byte-identical to the previous attempt's, stop
+   immediately with a new, distinct `STUCK` outcome rather than spending the
+   rest of the retry budget re-deriving the same dead end.
+3. **Several `exec_in`/`sh` calls had no timeout**, including -- most
+   seriously -- the teardown `msb rm -f` inside `_dispatch_one_locked`'s
+   `finally` block. A hang there (unresponsive sandbox, host under load from
+   concurrent dispatches) blocked the whole worker thread forever, which
+   meant `dispatch_one`'s own `finally` (releasing the row's `flock`) never
+   ran either -- permanently blocking redispatch of that row until the
+   orchestrator was killed by hand. Every such call now has an explicit
+   timeout.
+4. **First real multi-row parallel run is still untested**, and the
+   per-sandbox `-m 16G -c 4` was hardcoded, so `--parallel N` implies
+   `N*16G`/`N*4` vCPU demand with no host-capacity check. Not fixed by
+   testing (still blocked on real credit + a reason to run 3+ rows at once),
+   but `--memory`/`--cpus` are now CLI flags instead of hardcoded, so an
+   operator can size per-sandbox resources to what `--parallel` actually
+   needs for their host, and the `--parallel` help text says plainly that
+   this hasn't been exercised yet.
+
+All four verified locally where testable without live credit: `write_status`
+round-trips correctly, the identical-tail check fires on matching input, the
+lock/concurrency/crash-isolation tests pass with the new `Result.stuck`
+field and 9-argument `dispatch_one` signature.

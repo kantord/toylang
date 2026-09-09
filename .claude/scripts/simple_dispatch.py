@@ -67,6 +67,7 @@ class Result:
     ok: bool
     fatal: bool
     timed_out: bool
+    stuck: bool
     message: str
     patch_path: Path | None
 
@@ -145,29 +146,31 @@ def acquire_lock(row_id: str):
 
 
 def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
-                  snapshot: str, max_tokens: int, overall_timeout: int) -> Result:
+                  snapshot: str, max_tokens: int, overall_timeout: int,
+                  memory: str, cpus: int) -> Result:
     if not ROW_ID_RE.match(row_id):
         # row_id is interpolated into a lock file path, a sandbox name, a
         # git branch name, and a shell command string below -- an
         # unvalidated value containing "/", "..", or shell metacharacters
         # is a path-traversal or command-injection vector, not just a
         # cosmetic problem.
-        return Result(row_id, False, True, False,
+        return Result(row_id, False, True, False, False,
                        f"invalid row id {row_id!r}: must match {ROW_ID_RE.pattern}", None)
     lock = acquire_lock(row_id)
     if lock is None:
-        return Result(row_id, False, False, False,
+        return Result(row_id, False, False, False, False,
                        "another dispatch of this row is already running (lock held)", None)
     try:
         return _dispatch_one_locked(row_id, brief_path, model, retry_cap, snapshot,
-                                     max_tokens, overall_timeout)
+                                     max_tokens, overall_timeout, memory, cpus)
     finally:
         fcntl.flock(lock, fcntl.LOCK_UN)
         lock.close()
 
 
 def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: int,
-                          snapshot: str, max_tokens: int, overall_timeout: int) -> Result:
+                          snapshot: str, max_tokens: int, overall_timeout: int,
+                          memory: str, cpus: int) -> Result:
     run_id = uuid.uuid4().hex[:8]
     name = f"sd-{row_id}-{run_id}"  # unique per attempt -- never collides
     workdir = Path(tempfile.mkdtemp(prefix=f"simple-dispatch-{row_id}-"))
@@ -191,7 +194,7 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         base_commit = sh(["git", "-C", str(clone_dir), "rev-parse", "HEAD"], env=env, timeout=30).stdout.strip()
         logline(f"cloned at {base_commit}")
 
-        args = [str(MSB_BIN), "run", "-m", "16G", "-c", "4", "--no-tty", "-d",
+        args = [str(MSB_BIN), "run", "-m", memory, "-c", str(cpus), "--no-tty", "-d",
                  "--name", name, "--secret", "OPENROUTER_API_KEY@openrouter.ai",
                  # `--secret` only scopes the key to openrouter.ai; without an
                  # explicit --on-secret-violation, `msb run --help` documents
@@ -203,17 +206,24 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         r = sh(args, env=env, timeout=120)
         if r.returncode != 0:
             logline(f"boot failed: {r.stderr}")
-            return Result(row_id, False, True, False, f"sandbox boot failed: {r.stderr[:500]}", None)
+            return Result(row_id, False, True, False, False, f"sandbox boot failed: {r.stderr[:500]}", None)
 
         def exec_in(script: str, timeout=None):
             return sh([str(MSB_BIN), "exec", name, "--", "sh", "-c", script], env=env, timeout=timeout)
 
-        exec_in("rm -rf /repo")
-        sh([str(MSB_BIN), "copy", str(clone_dir), f"{name}:/repo"], env=env)
-        sh([str(MSB_BIN), "copy", str(AGENT_LOOP), f"{name}:/root/agent_loop.py"], env=env)
-        sh([str(MSB_BIN), "copy", str(brief_path), f"{name}:/root/task.txt"], env=env)
+        # Every call below now has an explicit timeout, including (most
+        # importantly) the teardown `msb rm -f` in the `finally` block --
+        # an unbounded call there used to mean a single unresponsive sandbox
+        # could hang this worker thread forever, and with it, the row's
+        # `flock` NEVER released, permanently blocking any future dispatch
+        # of that row until the whole orchestrator process was killed by
+        # hand.
+        exec_in("rm -rf /repo", timeout=30)
+        sh([str(MSB_BIN), "copy", str(clone_dir), f"{name}:/repo"], env=env, timeout=120)
+        sh([str(MSB_BIN), "copy", str(AGENT_LOOP), f"{name}:/root/agent_loop.py"], env=env, timeout=30)
+        sh([str(MSB_BIN), "copy", str(brief_path), f"{name}:/root/task.txt"], env=env, timeout=30)
         exec_in("cd /repo && git config user.name 'Daniel Kantor' && "
-                "git config user.email 'git@daniel-kantor.com'")
+                "git config user.email 'git@daniel-kantor.com'", timeout=30)
         # The host-side clone is fully copied into the guest now -- drop it
         # immediately rather than after the whole attempt finishes. Each
         # dispatch clones the full repo; leaving these around is exactly the
@@ -257,16 +267,26 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         tail = exec_in("tail -c 8000 /root/agent.log").stdout
         logline(tail[-3000:])
 
-        ok = "VERIFIED_GREEN" in tail
-        fatal = "FATAL:" in tail
-        # RC=124/137/143 is `timeout`(1) or a SIGKILL/SIGTERM having killed
-        # the process outright -- and OUT_OF_TIME is agent_loop.py's own
-        # clean self-report of the same underlying cause. Either way this is
-        # NOT a genuine "the model tried and failed" RED; report it as its
-        # own category so an operator doesn't read a budget problem as a
-        # capability problem.
-        timed_out = ("OUT_OF_TIME" in tail or "RC=124" in tail
-                     or "RC=137" in tail or "RC=143" in tail)
+        # Classify from agent_loop.py's own dedicated status file, NOT a
+        # substring search over the shared log -- that log can contain
+        # arbitrary model/tool output (a `grep`/`cat` over this very repo
+        # could echo "VERIFIED_GREEN" or "FATAL:" verbatim, and
+        # MAX_TOOL_OUTPUT=8000 in agent_loop.py is exactly the size of the
+        # old classification window), so a substring match was one unlucky
+        # tool call away from misclassifying a real outcome. RC=124/137/143
+        # (a raw `timeout`(1) or SIGKILL/SIGTERM) is kept as a fallback for
+        # the case agent_loop.py was killed before it could write its own
+        # status file at all.
+        status = exec_in("cat /root/agent-status.txt 2>/dev/null").stdout.strip()
+        if not status:
+            if "RC=124" in tail or "RC=137" in tail or "RC=143" in tail:
+                status = "TIMEOUT"
+            else:
+                status = "RED"
+        ok = status == "GREEN"
+        fatal = status == "FATAL"
+        timed_out = status == "TIMEOUT"
+        stuck = status == "STUCK"
 
         # `git add -A`, not `-u` plus a subdirectory-only untracked-file scan
         # (the old harness's pattern, copied here initially then caught by
@@ -276,10 +296,10 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         # the repo root -- confirmed live, a `write_file("hello.txt", ...)`
         # call was never committed under the old pattern.
         exec_in("cd /repo && git add -A && "
-                "git commit -q -m 'agent_loop.py output' || true")
+                "git commit -q -m 'agent_loop.py output' || true", timeout=30)
         exec_in(f"cd /repo && rm -f /root/*.patch; "
-                f"git format-patch {base_commit} -o /root/ >/root/format-patch.log 2>&1")
-        patch_out = exec_in("cat /root/*.patch 2>/dev/null").stdout
+                f"git format-patch {base_commit} -o /root/ >/root/format-patch.log 2>&1", timeout=30)
+        patch_out = exec_in("cat /root/*.patch 2>/dev/null", timeout=30).stdout
         patch_path = None
         if patch_out.strip():
             # Write into RESULT_DIR, not workdir -- workdir is removed below
@@ -289,9 +309,15 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
             patch_path = RESULT_DIR / f"{row_id}-{run_id}.patch"
             patch_path.write_text(patch_out)
 
-        return Result(row_id, ok, fatal, timed_out, tail[-1500:], patch_path)
+        return Result(row_id, ok, fatal, timed_out, stuck, tail[-1500:], patch_path)
     finally:
-        sh([str(MSB_BIN), "rm", "-f", name], env=env)
+        # An explicit timeout here matters more than anywhere else in this
+        # function: this is the ONE call that runs even when everything
+        # above failed, and it's inside dispatch_one's own `finally` that
+        # releases the row's flock -- an unbounded hang here used to mean a
+        # single unresponsive sandbox could keep that row permanently
+        # undispatchable.
+        sh([str(MSB_BIN), "rm", "-f", name], env=env, timeout=60)
         shutil.rmtree(workdir, ignore_errors=True)
         log.close()
 
@@ -309,7 +335,13 @@ def main() -> int:
                           "all verify passes) inside the sandbox; must comfortably exceed "
                           "(retry-cap+1) * a single verify pass, or the retry cap becomes "
                           "unreachable on real workloads")
-    ap.add_argument("--parallel", type=int, default=3)
+    ap.add_argument("--parallel", type=int, default=3,
+                     help="concurrent sandboxes. Each one requests --memory/--cpus -- this has "
+                          "only been exercised with a single sandbox so far; --parallel * "
+                          "--memory and --parallel * --cpus must actually fit the host, which "
+                          "this script does not check for you")
+    ap.add_argument("--memory", default="16G", help="per-sandbox memory (msb run -m)")
+    ap.add_argument("--cpus", type=int, default=4, help="per-sandbox vCPUs (msb run -c)")
     ap.add_argument("--snapshot", default=DEFAULT_SNAPSHOT)
     args = ap.parse_args()
 
@@ -332,7 +364,8 @@ def main() -> int:
     with ThreadPoolExecutor(max_workers=args.parallel) as pool:
         futs = {
             pool.submit(dispatch_one, row, brief, args.model, args.retry_cap,
-                        args.snapshot, args.max_tokens, args.overall_timeout): row
+                        args.snapshot, args.max_tokens, args.overall_timeout,
+                        args.memory, args.cpus): row
             for row, brief in jobs
         }
         for fut in as_completed(futs):
@@ -343,11 +376,13 @@ def main() -> int:
                 # One row's unexpected crash (e.g. a subprocess timeout)
                 # must not lose the summary for every other row still
                 # running in the pool.
-                results.append(Result(row, False, True, False, f"dispatch crashed: {e}", None))
+                results.append(Result(row, False, True, False, False, f"dispatch crashed: {e}", None))
 
     print("\n=== SUMMARY ===")
     for r in results:
-        if r.timed_out:
+        if r.stuck:
+            status = "STUCK"
+        elif r.timed_out:
             status = "TIMEOUT"
         elif r.fatal:
             status = "FATAL"
