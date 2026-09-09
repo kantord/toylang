@@ -423,9 +423,9 @@ impl<'ctx> Emitter<'ctx, '_> {
         };
         // Names are prefixed for the same reason the other backends prefix: `main` is a legal
         // toylang function name and is already spoken for here.
-        let value = self
-            .module
-            .add_function(&format!("v_{}", func.name), sig, None);
+        let value =
+            self.module
+                .add_function(&format!("v_{}", tir::escape_name(&func.name)), sig, None);
         self.funcs.insert(func.name.clone(), value);
         Ok(())
     }
@@ -1456,11 +1456,8 @@ impl<'ctx> Emitter<'ctx, '_> {
                     // already in hand instead of reading a stream.
                     Builtin::Parse => {
                         let descriptor = self.string_const(&descriptor(self.enums, &t.ty));
-                        let slot = self.call_rt(
-                            self.rt.parse_str,
-                            &[arg, descriptor.into()],
-                            "parse",
-                        )?;
+                        let slot =
+                            self.call_rt(self.rt.parse_str, &[arg, descriptor.into()], "parse")?;
                         self.read_slot(slot.into_int_value(), &t.ty)?
                     }
                     // An Int already lives in an i64 here (see `llvm_type`), so the bridge
@@ -1481,10 +1478,10 @@ impl<'ctx> Emitter<'ctx, '_> {
                     // runtime to gather it back, the same flag an Index collapse carries.
                     Builtin::First => {
                         let elem = elem_ty.expect("checked to be a Vec");
-                        let is_record = self.ctx.i32_type().const_int(
-                            matches!(elem, Type::Record(_)) as u64,
-                            false,
-                        );
+                        let is_record = self
+                            .ctx
+                            .i32_type()
+                            .const_int(matches!(elem, Type::Record(_)) as u64, false);
                         self.call_rt(self.rt.vec_first, &[arg, is_record.into()], "first")?
                     }
                     // The runtime answers in a slot (an i64), so the result is truncated to the
@@ -1497,11 +1494,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                         };
                         let call = self.call_rt(rt, &[arg], "cut")?;
                         self.builder
-                            .build_int_truncate(
-                                call.into_int_value(),
-                                self.ctx.bool_type(),
-                                "cut",
-                            )
+                            .build_int_truncate(call.into_int_value(), self.ctx.bool_type(), "cut")
                             .map_err(|e| e.to_string())?
                             .into()
                     }

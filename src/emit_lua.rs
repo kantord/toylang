@@ -834,7 +834,7 @@ fn contains_float(enums: &Enums, ty: &Type) -> bool {
 /// function called `print` or `end` would otherwise emit Lua that shadows the output function or
 /// does not parse.
 fn user(name: &str) -> String {
-    format!("v_{name}")
+    format!("v_{}", tir::escape_name(name))
 }
 
 fn local(id: LocalId) -> String {

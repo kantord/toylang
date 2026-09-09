@@ -1,0 +1,12 @@
+# `x:foo()` on a plain function is UFCS sugar for `foo(x)` (gh:174), the receiver filling the
+# function's one argument slot -- not trait-method dispatch, since `double` is an ordinary `fn`
+# with no impl involved.
+program: |
+  fn double(x: Int) -> Int = x * 2
+
+  3:double()
+
+output: |
+  6
+
+node_types: [application, arith.mul, int, var]

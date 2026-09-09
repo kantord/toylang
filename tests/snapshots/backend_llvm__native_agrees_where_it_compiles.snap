@@ -3,7 +3,7 @@ source: tests/backend_llvm.rs
 assertion_line: 46
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (240):
+compiles natively (241):
 adults
 all_basic
 all_empty
@@ -31,6 +31,7 @@ call_form_match_expression
 call_without_parens
 char_range_and_complement
 chars_unicode_honest
+colon_call_ufcs_sugar
 comparison_semantics
 concat
 concat_chain

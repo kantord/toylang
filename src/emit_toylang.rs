@@ -147,7 +147,13 @@ fn pad(n: usize) -> String {
 
 pub fn emit(file: &File) -> String {
     let mut out = String::new();
-    for decl in decls_in_source_order(&file.aliases, &file.enums, &file.traits, &file.impls, &file.defs) {
+    for decl in decls_in_source_order(
+        &file.aliases,
+        &file.enums,
+        &file.traits,
+        &file.impls,
+        &file.defs,
+    ) {
         out.push_str(&decl);
         out.push_str("\n\n");
     }
@@ -159,7 +165,13 @@ pub fn emit(file: &File) -> String {
 /// A module is the declarations alone: no trailing expression to separate them from, so they end
 /// the file rather than each being followed by a blank line the way `emit` writes them.
 pub fn emit_module(module: &Module) -> String {
-    let decls = decls_in_source_order(&[], &module.enums, &module.traits, &module.impls, &module.defs);
+    let decls = decls_in_source_order(
+        &[],
+        &module.enums,
+        &module.traits,
+        &module.impls,
+        &module.defs,
+    );
     if decls.is_empty() {
         return String::new();
     }
@@ -366,11 +378,20 @@ fn print_trait(t: &TraitDecl) -> String {
         return format!("{pub_prefix}trait {} {{}}", t.name);
     }
     let methods: Vec<String> = t.methods.iter().map(print_trait_method).collect();
-    format!("{pub_prefix}trait {} {}", t.name, wrap_brace("{", &methods, "}"))
+    format!(
+        "{pub_prefix}trait {} {}",
+        t.name,
+        wrap_brace("{", &methods, "}")
+    )
 }
 
 fn print_trait_method(m: &TraitMethodSig) -> String {
-    format!("fn {}({}) -> {}", m.name, print_param(&m.param), print_type(&m.ret))
+    format!(
+        "fn {}({}) -> {}",
+        m.name,
+        print_param(&m.param),
+        print_type(&m.ret)
+    )
 }
 
 fn print_impl(i: &ImplDecl) -> String {
@@ -387,7 +408,12 @@ fn print_impl(i: &ImplDecl) -> String {
 }
 
 fn print_impl_method(m: &ImplMethod) -> String {
-    let sig = format!("fn {}({}) -> {}", m.name, print_param(&m.param), print_type(&m.ret));
+    let sig = format!(
+        "fn {}({}) -> {}",
+        m.name,
+        print_param(&m.param),
+        print_type(&m.ret)
+    );
     let compact_body = print_expr_compact(&m.body, Ctx::Expr(0));
     let one_line = format!("{sig} = {compact_body}");
     if fits(&one_line, 0) {
@@ -545,6 +571,18 @@ fn print_expr_inner(e: &Expr) -> String {
                 format!(".{name}")
             } else {
                 format!("{base_str}.{name}")
+            }
+        }
+        Expr::ColonCall {
+            receiver,
+            method,
+            arg,
+            ..
+        } => {
+            let base = print_atom_base(receiver);
+            match arg {
+                None => format!("{base}:{method}()"),
+                Some(a) => format!("{base}:{method}({})", print_paren_arg(a)),
             }
         }
         Expr::Stdin { .. } => "stdin".to_string(),

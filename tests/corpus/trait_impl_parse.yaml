@@ -1,7 +1,11 @@
-# The parser accepts a trait declaration and an impl block, even though the checker does not
-# yet do anything with them: no dispatch, no method checking, no codegen. This program
-# only asserts that the declarations parse;the body is ordinary.
+# A trait declaration and an impl block that target a declared, resolvable type -- `Circle`, an
+# alias declared right here so this case does not depend on what the rest of the corpus happens
+# to declare. Exercises the whole path real resolution now takes: dispatch, method checking, and
+# codegen, not just parsing (an earlier version of this test impl'd an undeclared type and only
+# passed because nothing resolved it).
 program: |
+  type Circle = {r: Int}
+
   trait Area {
       fn area(s: Self) -> Int
   }
@@ -10,9 +14,9 @@ program: |
       fn area(s: Self) -> Int = s.r * s.r
   }
 
-  1
+  {r: 3}:area()
 
 output: |
-  1
+  9
 
-node_types: [int]
+node_types: [application, arith.mul, int, projection, record-literal, var]

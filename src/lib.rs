@@ -87,7 +87,7 @@ impl Backend {
 pub fn compile(src: &str) -> Result<Program, Error> {
     let mut file = parse::parse(src)?;
     prelude::inject(&mut file);
-    check::check(&file)
+    check::check(file)
 }
 
 /// Parses `src` and re-renders it in the canonical toylang style, without checking or injecting

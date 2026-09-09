@@ -238,7 +238,10 @@ pub(super) fn field_used(body: &Tir, pid: LocalId, name: &str) -> bool {
 /// lowered `Kind::Local` is produced only by reading its name in source, so its presence
 /// anywhere is a use.
 pub(super) fn local_used(body: &Tir, local: LocalId) -> bool {
-    any_node(body, &|t| matches!(&t.kind, Kind::Local(id) if *id == local))
+    any_node(
+        body,
+        &|t| matches!(&t.kind, Kind::Local(id) if *id == local),
+    )
 }
 
 /// Every function the program's body can actually reach, directly or through calls a reached

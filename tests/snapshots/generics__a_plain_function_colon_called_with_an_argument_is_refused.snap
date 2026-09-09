@@ -1,0 +1,6 @@
+---
+source: tests/generics.rs
+assertion_line: 201
+expression: "err(\"fn double(x: Int) -> Int = x * 2\\n\\n3:double(4)\")"
+---
+`double` takes one argument, already filled by the receiver before `:`; it cannot also take a separate argument (at byte 43)

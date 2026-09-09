@@ -1,0 +1,6 @@
+---
+source: tests/generics.rs
+assertion_line: 183
+expression: "err(\"trait Area {\\n    fn area(s: Self) -> Int\\n}\\n\\ntype Circle = {r: Int}\\n\\nimpl Area for Circle {\\n    fn area(s: Self) -> Int = s.r * s.r\\n}\\n\\n3:area()\")"
+---
+no impl provides `area` for Int (at byte 134)

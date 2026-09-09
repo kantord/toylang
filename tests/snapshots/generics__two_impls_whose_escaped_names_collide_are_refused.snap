@@ -1,0 +1,6 @@
+---
+source: tests/generics.rs
+assertion_line: 232
+expression: "err(\"enum R { RTag }\\n\\nenum Ba__R { BaRTag }\\n\\ntrait X {\\n    fn foo__Ba(s: Self) -> Int\\n}\\n\\ntrait Y {\\n    fn foo(s: Self) -> Int\\n}\\n\\nimpl X for R {\\n    fn foo__Ba(s: Self) -> Int = 1\\n}\\n\\nimpl Y for Ba__R {\\n    fn foo(s: Self) -> Int = 2\\n}\\n\\n1\")"
+---
+`foo__Ba::R` and `foo::Ba__R` both compile to the identifier `foo__Ba__R`, which no backend can tell apart (at byte 200)

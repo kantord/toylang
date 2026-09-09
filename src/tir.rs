@@ -299,11 +299,27 @@ pub enum Builtin {
 }
 
 pub struct Func {
+    /// A resolved impl method's internal name is `"{method}::{TypeName}"` (`check::collect_impls`,
+    /// e.g. `"add::Circle"`) -- `::` can never appear inside a lexed `Ident`
+    /// (`parse::Tok::Colon` always lexes as its own token), so this is unreachable by any
+    /// user-written name by construction. A backend still needs a legal target-language
+    /// identifier, so every one escapes through `escape_name` before rendering it, rather than
+    /// each carrying its own copy of the same substitution.
     pub name: String,
     /// `None` for a nullary function.
     pub param: Option<String>,
     pub param_ty: Option<Type>,
     pub body: Tir,
+}
+
+/// The one escaping rule every backend applies to a `Func.name` (or a `Kind::Call.func`) before
+/// rendering it as a target-language identifier: `::` becomes `__`. Shared so the six backends'
+/// otherwise-independent "user name" renderers (`emit_go`, `emit_rs`, `emit_js`, `emit_py`,
+/// `emit_lua`, `emit_jq`, plus the one inline call site in `emit_llvm`) stay one function rather
+/// than six copies that must be kept in sync by hand. A no-op on a plain user-written name, which
+/// can never contain `::` to begin with.
+pub fn escape_name(name: &str) -> String {
+    name.replace("::", "__")
 }
 
 pub struct Program {
@@ -560,7 +576,7 @@ fn reachable_enums(enums: &Enums, ty: &Type, seen: &mut Vec<Type>, found: &mut V
 /// Every node in the tree, `t` itself included, in no particular order. The backends each walk
 /// the tree their own way, gathering what their own target needs; this is for the questions
 /// that are the same on every target. Public so `offload::explain` can report on every
-/// sub-expression the same way. 
+/// sub-expression the same way.
 pub fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
     f(t);
     match &t.kind {
