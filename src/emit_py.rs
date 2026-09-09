@@ -495,7 +495,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
 }
 
 fn user(name: &str) -> String {
-    format!("v_{name}")
+    format!("v_{}", tir::escape_name(name))
 }
 
 fn local(id: LocalId) -> String {
@@ -631,7 +631,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 expr(enums, source)
             )
         }
-                Kind::Select {
+        Kind::Select {
             source,
             param,
             pred,

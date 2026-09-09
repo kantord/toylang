@@ -552,7 +552,7 @@ fn uses_arith(program: &Program) -> (bool, bool, bool) {
 }
 
 fn user(name: &str) -> String {
-    format!("v_{name}")
+    format!("v_{}", tir::escape_name(name))
 }
 
 fn local(id: LocalId) -> String {

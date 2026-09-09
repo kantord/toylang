@@ -952,7 +952,7 @@ struct Emitter<'a> {
 
 impl Emitter<'_> {
     fn user(&self, name: &str) -> String {
-        format!("v_{name}")
+        format!("v_{}", tir::escape_name(name))
     }
 
     fn local(&self, id: LocalId) -> String {

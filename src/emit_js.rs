@@ -662,7 +662,7 @@ fn contains_vec(enums: &Enums, ty: &Type) -> bool {
 }
 
 fn user(name: &str) -> String {
-    format!("v_{name}")
+    format!("v_{}", tir::escape_name(name))
 }
 
 fn local(id: LocalId) -> String {
