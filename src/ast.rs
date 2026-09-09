@@ -142,7 +142,10 @@ impl TypeExpr {
                 span: *span,
             },
             TypeExpr::Record { fields, span } => TypeExpr::Record {
-                fields: fields.iter().map(|(n, t)| (n.clone(), t.substitute_self(self_ty))).collect(),
+                fields: fields
+                    .iter()
+                    .map(|(n, t)| (n.clone(), t.substitute_self(self_ty)))
+                    .collect(),
                 span: *span,
             },
         }
@@ -262,9 +265,10 @@ pub struct TraitMethodSig {
 }
 
 /// `impl Trait for Type { fn sig(param: Type) -> Type = body }`: concrete bodies for one
-/// trait's methods, one block per (trait, type) pair. The checker synthesizes an ordinary
-/// `fn` per method (`module_impl_defs`), with `Self` substituted by the target type, so the
-/// bodies check through the same path a prelude function's does.
+/// trait's methods, one block per (trait, type) pair. `check::collect_impls` synthesizes an
+/// ordinary `fn` per method, with `Self` substituted by the target type and the internal name
+/// mangled to `"{method}::{TypeName}"`, so the bodies check through the same path a prelude
+/// function's does while staying distinct per concrete type.
 #[derive(Debug)]
 pub struct ImplDecl {
     pub trait_name: String,
@@ -273,6 +277,13 @@ pub struct ImplDecl {
     /// The method bodies, each against the trait's signature of the same name.
     pub methods: Vec<ImplMethod>,
     pub span: Span,
+    /// Which file this impl was written in: the parser gives every `impl` it reads
+    /// `Origin::Program`, and `prelude::module` overwrites that to `Origin::Prelude` for its
+    /// own, the same way `Def::origin` is stamped. Needed once `check::check` merges the
+    /// prelude's and the program's impls into one combined collection pass (`collect_impls`)
+    /// -- each synthesized method's `Def` carries its own impl's origin rather than one blanket
+    /// value for the whole call.
+    pub origin: Origin,
 }
 /// One method of an impl block:the same spine a trait signature has, plus the body that makes
 /// it a definition.
@@ -400,6 +411,20 @@ pub enum Expr {
     Field {
         base: Box<Expr>,
         name: String,
+        span: Span,
+    },
+    /// `receiver:method(arg)`, always parenthesized (`receiver:method()` for the nullary
+    /// spelling) -- CONTEXT.md's "Colon call". Resolved by `check::colon_call`, not here: two
+    /// readings share this one node, decided by what `method` names once the receiver's type is
+    /// known -- UFCS sugar for a plain function (`x:foo()` -> `foo(x)`), or dispatch to the
+    /// trait-method impl matching the receiver's concrete type. Plain call syntax can never
+    /// reach a trait method (gh:174), so this is that method's only spelling.
+    ColonCall {
+        receiver: Box<Expr>,
+        method: String,
+        method_span: Span,
+        /// `None` for `receiver:method()`.
+        arg: Option<Box<Expr>>,
         span: Span,
     },
     /// The raw lines of stdin, born `Stream<Str>`. The checker rejects a second read rather
@@ -541,6 +566,7 @@ impl Expr {
             | Expr::Neg { span, .. }
             | Expr::Not { span, .. }
             | Expr::Field { span, .. }
+            | Expr::ColonCall { span, .. }
             | Expr::Stdin { span }
             | Expr::Dsv { span, .. }
             | Expr::Variant { span, .. }
@@ -553,35 +579,4 @@ impl Expr {
             | Expr::Let { span, .. } => *span,
         }
     }
-}
-
-/// The trait scaffold's method synthesis:every `impl` block's methods become ordinary
-/// `fn` defs, named by the method name, with the impl's target type substituted for `Self`.
-/// `is_pub` is fixed the way a prelude function's would be:the methods are callable from
-/// any program,checked once at build time (`check::check_module`). `origin` is passed in
-/// by the caller (`check_module` hands `Origin::Prelude`). A second impl for the same trait
-/// would synthesize same-named defs and collide in `signatures`, which is the honest refusal
-/// until the trait-interface dispatch row lands.
-pub fn module_impl_defs(impls: Vec<ImplDecl>, origin: Origin) -> Vec<Def> {
-    let mut out = Vec::new();
-    for imp in impls {
-        for m in imp.methods {
-            let param = m.param.map(|p| Param {
-                shape: p.shape,
-                ty: p.ty.substitute_self(&imp.ty),
-                span: p.span,
-            });
-            out.push(Def {
-                name: m.name,
-                param,
-                ret: Some(m.ret.substitute_self(&imp.ty)),
-                body: m.body,
-                span: m.span,
-                is_pub: true,
-                origin,
-                hoisted: false,
-            });
-        }
-    }
-    out
 }

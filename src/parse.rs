@@ -516,11 +516,38 @@ impl<'i> Cursor<'i> {
         read_tok(&mut probe)
     }
 
+    /// Whether the upcoming tokens are exactly `:` `name` `(`, the one shape a colon call
+    /// commits to. Needed because a bare `:` is ambiguous with a slice's own separator
+    /// (`v[lo:hi]`): after parsing `lo` as the slice's start expression, `postfix`'s trailer
+    /// loop sees the same `:` a colon call would, and `hi` alone is a legal method name too, so
+    /// even one token of lookahead (`:` then an identifier) still can't tell the two apart --
+    /// only the `(` a colon call always requires settles it. Three full tokens, not two: cheap
+    /// (one throwaway probe, the same trick `peek` uses), and correct rather than a heuristic.
+    fn peek_colon_call(&self) -> bool {
+        let mut probe = self.input;
+        let Ok((Tok::Colon, _)) = read_tok(&mut probe) else {
+            return false;
+        };
+        let Ok((Tok::Ident(_), _)) = read_tok(&mut probe) else {
+            return false;
+        };
+        matches!(read_tok(&mut probe), Ok((Tok::LParen, _)))
+    }
+
     /// Declarations in any order and any mix, stopping at the first token that is not one. A
     /// module is declarations only; a file has a body after them.
     fn declarations(
         &mut self,
-    ) -> Result<(Vec<Def>, Vec<Alias>, Vec<EnumDecl>, Vec<TraitDecl>, Vec<ImplDecl>), Error> {
+    ) -> Result<
+        (
+            Vec<Def>,
+            Vec<Alias>,
+            Vec<EnumDecl>,
+            Vec<TraitDecl>,
+            Vec<ImplDecl>,
+        ),
+        Error,
+    > {
         let mut defs = Vec::new();
         let mut aliases = Vec::new();
         let mut enums = Vec::new();
@@ -815,6 +842,7 @@ impl<'i> Cursor<'i> {
             ty,
             methods,
             span: start.to(close),
+            origin: crate::ast::Origin::Program,
         })
     }
 
@@ -1479,6 +1507,42 @@ impl<'i> Cursor<'i> {
                     e = Expr::Field {
                         base: Box::new(e),
                         name,
+                        span,
+                    };
+                }
+                // `x:foo(y)`, the receiver-first call spelling (CONTEXT.md's "Colon call").
+                // Same same-line guard the `[` arm above uses, so a colon starting the next
+                // line is never swallowed into the previous line's expression. Always
+                // parenthesized -- `x:foo(y)` or the nullary `x:foo()` -- with no bare-argument
+                // form, since resolving it needs the receiver's checked type and cannot borrow
+                // the ordinary call grammar's line-sensitive rules. `peek_colon_call` commits to
+                // this reading only when a legal method-call shape genuinely follows -- a slice's
+                // own `[lo:hi]` colon reaches this same loop (`lo` is parsed as the slice's start
+                // expression through this very `postfix`) and must fall through untouched, which
+                // one token of lookahead cannot tell apart since `hi` alone is a legal method name
+                // too; only the `(` a colon call always requires settles it.
+                Tok::Colon => {
+                    let (_, cspan) = self.peek()?;
+                    if !self.same_line(e.span().end, cspan.start) || !self.peek_colon_call() {
+                        return Ok(e);
+                    }
+                    self.advance()?;
+                    let (method, method_span) = self.eat_ident("a method name")?;
+                    self.eat(Tok::LParen)?;
+                    let (next, _) = self.peek()?;
+                    let (arg, close) = if next == Tok::RParen {
+                        (None, self.advance()?.1)
+                    } else {
+                        let inner = self.expr(0)?;
+                        let close = self.eat(Tok::RParen)?;
+                        (Some(Box::new(inner)), close)
+                    };
+                    let span = e.span().to(close);
+                    e = Expr::ColonCall {
+                        receiver: Box::new(e),
+                        method,
+                        method_span,
+                        arg,
                         span,
                     };
                 }
