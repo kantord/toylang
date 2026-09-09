@@ -295,6 +295,19 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         tail = exec_in("tail -c 8000 /root/agent.log", timeout=30).stdout
         logline(tail[-3000:])
 
+        # Pull the FULL transcript out before the sandbox is torn down --
+        # found missing on this script's first real (non-smoke-test)
+        # dispatch: a 26-turn, 31K-prompt-token session that made zero file
+        # changes left nothing to debug afterward except per-turn token
+        # counts, because only the last 3000 of the last 8000 chars of
+        # agent.log survives past teardown. That's enough to classify the
+        # outcome but not enough to see what the model actually tried. The
+        # sandbox is gone by the time anyone reads the summary, so this is
+        # the only chance to keep it.
+        full_log_path = RESULT_DIR / f"{row_id}-{run_id}-full-agent.log"
+        sh([str(MSB_BIN), "copy", f"{name}:/root/agent.log", str(full_log_path)],
+           env=env, timeout=30, check=False)
+
         # Classify from agent_loop.py's own dedicated status file, NOT a
         # substring search over the shared log -- that log can contain
         # arbitrary model/tool output (a `grep`/`cat` over this very repo
