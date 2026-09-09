@@ -338,3 +338,55 @@ live smoke test and 5 rounds, 557 -> 931 lines. Remaining known gap, stated
 plainly rather than glossed over: a full real multi-row parallel run is
 still untested, blocked on the account's credit balance, not on any
 remaining known code issue.
+
+## A second review cycle: attacking the ANALYSIS as well as the code (3 rounds)
+
+The 5-round cycle above only ever attacked the code. A further cycle
+explicitly attacked the CAUSAL CLAIMS in this document too, reading primary
+sources directly rather than trusting the prior summary. It found and fixed
+three real issues, the third confirmed by direct reproduction, not just
+argument:
+
+1. **Two overstated/misattributed causal claims**, corrected inline above:
+   the discarded-verify() bug's real scope, and the credit-exhaustion /
+   expired-key double-count.
+2. **The design doc had credited "dropping the plan/critique/split
+   pipeline" with fixing the cost-blowup thrashing.** Corrected inline
+   above: that fix is actually STUCK detection plus correct per-turn verify
+   feedback, both in `agent_loop.py` -- a change that could equally have
+   been bolted onto the OLD `sandbox_dispatch.py`'s `run_build_cycle`
+   directly (verified: that function already tracks `attempts` with each
+   one's `verify_tail` available at exactly the point a STUCK check would
+   need it -- confirmed by a further skeptic round, which explicitly
+   checked whether this correction was ITSELF underselling how much
+   restructuring the old code would have needed, and found it wasn't).
+   Dropping the pipeline is a real, separate, still-defensible
+   simplification -- just not the thing that stopped the thrashing.
+3. **STUCK detection itself has a real, empirically-confirmed blind spot**:
+   it compared `verify()`'s raw tail for exact string equality, but
+   `cargo nextest` (what `just check` actually runs) does not produce
+   byte-stable output on a genuine repeat failure in this repo. Confirmed
+   directly, not theoretically: a deliberately-broken test was added to the
+   tree and `just check` run twice in a row against the unchanged, still
+   -broken tree. The two tails differed -- parallel test scheduling changes
+   which `PASS` lines land in the last 6000 characters at all (not just
+   their timings), so exact-tail-equality would very likely never have
+   fired on the exact "identical compiler error every attempt" pattern this
+   check exists to catch. Fixed with `normalize_for_stuck_check()`:
+   strips `PASS` lines, per-test timing brackets, the running position
+   counter, and the inevitable truncated first line (an artifact of
+   `verify()`'s fixed-size tail slice, not real content) before comparing.
+   Re-verified against the exact two real logs that exposed the bug: raw
+   tails differ, normalized tails match; two genuinely different synthetic
+   failures still compare as different after normalization, so this isn't
+   a change that would mask a real difference. The test artifact used to
+   reproduce this was removed from the repo afterward -- it was never
+   committed.
+
+This cycle's own overall verdict, direct: the code and the (now
+twice-corrected) design doc are honest and technically sound as far as this
+review went, but the review process itself is what caught STUCK detection
+being close to inert on this repo's real test command -- a gap two whole
+prior rounds of both code review and analysis review missed, because the
+first only read code and the second only read documents; neither actually
+reproduced the mechanism end to end until this round did.

@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -334,6 +335,43 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
     return None
 
 
+# Lines/tokens `cargo nextest` varies run-to-run even against a
+# byte-identical failing tree: PASS lines (which tests land in the tail at
+# all depends on parallel-completion order, not just which tests exist),
+# per-test timings, thread ids in panic lines, and the running "N/total"
+# position counter. Confirmed directly, not theoretically: two consecutive
+# `just check` runs against the SAME deliberately-broken test produced
+# different tails (different PASS lines preceding the FAIL, a different
+# passed-count in the Summary line) purely from parallel scheduling
+# nondeterminism -- which would have made the original exact-string STUCK
+# check silently never fire on exactly the "identical error 3 times" pattern
+# it exists to catch. Stripping this noise before comparing keeps the actual
+# diagnostic signal (FAIL lines, error/panic messages, summary counts of
+# passed/failed) while ignoring what's provably nondeterministic per run.
+_NOISE_LINE_RE = re.compile(r"^\s*PASS\b")
+_TIMING_RE = re.compile(r"\[\s*[\d.]+s\]")
+_POSITION_RE = re.compile(r"\(\s*\d+/\d+\)")
+_THREAD_ID_RE = re.compile(r"\(\d{3,}\)")
+
+
+def normalize_for_stuck_check(tail: str) -> str:
+    all_lines = tail.splitlines()
+    # The first line is very likely a mid-line fragment left by verify()'s
+    # fixed-size [-6000:] slice, not a complete PASS/FAIL line -- it never
+    # matches _NOISE_LINE_RE (which anchors on line start) and differs
+    # between runs purely because of WHERE in an arbitrary PASS line the
+    # slice happened to cut, not because of any real signal. Confirmed
+    # directly: this was the one remaining diff after filtering whole PASS
+    # lines out. Drop it; the content that matters is never at the very top
+    # of a tail this size.
+    lines = (l for l in all_lines[1:] if not _NOISE_LINE_RE.match(l))
+    text = "\n".join(lines)
+    text = _TIMING_RE.sub("[Ts]", text)
+    text = _POSITION_RE.sub("(N/N)", text)
+    text = _THREAD_ID_RE.sub("(PID)", text)
+    return text
+
+
 MAX_VERIFY_SECONDS = 1800
 
 
@@ -471,12 +509,22 @@ def main() -> int:
         # which is fully reachable within the default retry_cap=2 (3
         # attempts) and would otherwise burn the whole retry budget without
         # ever being recognized as the same dead end recurring.
-        if tail in seen_tails:
+        #
+        # Compared after normalize_for_stuck_check(), NOT the raw tail --
+        # confirmed directly against this repo's real `just check`: two runs
+        # of a byte-identical failing tree produced different raw tails
+        # (parallel test scheduling changes which PASS lines land in the
+        # last 6000 chars, plus per-test timings and the running position
+        # counter), which would have made exact-tail-equality never fire on
+        # the exact "identical error every attempt" pattern this check
+        # exists to catch.
+        normalized = normalize_for_stuck_check(tail)
+        if normalized in seen_tails:
             print("STUCK: verify output matches a previous attempt, "
                   "not retrying further", file=sys.stderr)
             write_status("STUCK")
             return 1
-        seen_tails.append(tail)
+        seen_tails.append(normalized)
 
         if attempt > args.retry_cap:
             print("VERIFY_FAILED")
