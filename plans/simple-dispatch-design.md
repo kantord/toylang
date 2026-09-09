@@ -127,3 +127,60 @@ primitive, which already worked and isn't the thing that was broken.
 All six fixed in code and re-verified locally (tool functions, lock
 exclusion, and the concurrent-dispatch-with-one-crash test all still pass
 after the changes).
+
+## Skeptic round 2 (purely theoretical) -- 5 more issues found and fixed
+
+1. **The outer OS-level `timeout` kill was indistinguishable from a real
+   RED** -- exactly the "operator can't tell why it failed" bug class this
+   rewrite exists to fix, just relocated. Fixed properly: `agent_loop.py`
+   now tracks its own wall-clock budget (`--wall-clock-budget`, checked
+   before every turn) and stops CLEANLY with a distinct `OUT_OF_TIME`
+   marker and exit code 3 well before the outer timeout would need to fire.
+   `simple_dispatch.py` computes that budget from its own `--overall-timeout`
+   (leaving room for one more verify() pass past the deadline) and passes
+   it through explicitly, and classifies `OUT_OF_TIME`/RC=124/137/143 as
+   their own `timed_out` category, never folded into plain RED.
+2. **`messages` grew unboundedly across turns AND retry attempts**, with
+   no trimming -- a long task could hit the model's own context limit,
+   silently burning the rest of the retry budget on calls that could never
+   succeed. Fixed with `trim_messages()`: once the conversation exceeds
+   200k chars, it drops the OLDEST complete turns (never the system prompt
+   or the original task message), a full assistant-message-plus-its-tool-
+   replies at a time so nothing is left orphaned.
+3. **`run_bash`'s 300s timeout never bounded a backgrounded process** --
+   `./server & disown` returned immediately and kept running across
+   retries. First fix attempt (`start_new_session=True` + `proc.communicate
+   (timeout=300)` + `os.killpg` after) had a real bug caught by directly
+   testing it, not just reasoning about it: `communicate()` blocks until
+   the pipe's write end is closed by EVERY process that inherited it,
+   including the backgrounded child -- confirmed live, a `sleep 30 &` job
+   made every such call hang for the full 300s even though the foreground
+   shell returned in milliseconds. Fixed by polling `proc.poll()` for the
+   foreground shell's own exit, killing its process group immediately, and
+   only then reading the now-EOF pipe. Verified directly: elapsed time back
+   down to ~0.05s, and the specific spawned child process (tracked by pid,
+   not by an ambiguous `pgrep -f` pattern that can match a test script's
+   own source text) confirmed dead afterward.
+4. **Unsanitized shell interpolation and no `row_id` validation** -- `model`
+   was embedded unquoted into a `sh -c` string, and `row_id` (used in a lock
+   file path, sandbox name, and git branch name) had no charset check, so a
+   value containing `/`, `..`, or shell metacharacters was a path-traversal
+   or command-injection vector. Fixed: `row_id` validated against
+   `^[A-Za-z0-9_-]+$` before anything else happens, `model` (and every other
+   interpolated value) passed through `shlex.quote()`.
+5. **A patch got produced and returned even for FATAL/RED/TIMEOUT runs**
+   with nothing marking it as such -- the same "data present, easy to
+   misuse" shape as the original discarded-`verify()` bug, just moved to the
+   consumer side. Fixed: the summary output now explicitly labels a non
+   -GREEN patch "(UNVERIFIED, do not land)".
+
+Minor: the per-row lock file was truncated (`open(path, "w")`) before even
+attempting to acquire it, wiping the current holder's PID for anyone
+inspecting it mid-contention. Fixed to open non-destructively and only
+truncate+write after the lock is actually held.
+
+All five (plus the minor one) fixed in code and re-verified: row-id
+validation rejects both a path-traversal and a shell-metacharacter payload;
+the lock, concurrency, and crash-isolation tests still pass with the new
+`Result.timed_out` field added; the background-process fix re-tested in
+isolation and confirmed the specific spawned child no longer survives.

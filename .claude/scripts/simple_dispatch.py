@@ -36,6 +36,8 @@ import argparse
 import fcntl
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -56,11 +58,15 @@ DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
 DEFAULT_SNAPSHOT = "toylang-toolchain-v2"
 
 
+ROW_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
 @dataclass
 class Result:
     row_id: str
     ok: bool
     fatal: bool
+    timed_out: bool
     message: str
     patch_path: Path | None
 
@@ -120,12 +126,19 @@ def acquire_lock(row_id: str):
     Returns an open file handle to keep the lock held, or None if another
     dispatch of this row is already running."""
     LOCK_DIR.mkdir(parents=True, exist_ok=True)
-    f = open(LOCK_DIR / f"{row_id}.lock", "w")
+    # "r+" so a lock held by someone else isn't truncated before we even
+    # know whether flock will succeed -- their PID (the useful debug
+    # content) would otherwise be wiped by our own failed attempt.
+    path = LOCK_DIR / f"{row_id}.lock"
+    path.touch(exist_ok=True)
+    f = open(path, "r+")
     try:
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         f.close()
         return None
+    f.seek(0)
+    f.truncate()
     f.write(str(os.getpid()))
     f.flush()
     return f
@@ -133,9 +146,17 @@ def acquire_lock(row_id: str):
 
 def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                   snapshot: str, max_tokens: int, overall_timeout: int) -> Result:
+    if not ROW_ID_RE.match(row_id):
+        # row_id is interpolated into a lock file path, a sandbox name, a
+        # git branch name, and a shell command string below -- an
+        # unvalidated value containing "/", "..", or shell metacharacters
+        # is a path-traversal or command-injection vector, not just a
+        # cosmetic problem.
+        return Result(row_id, False, True, False,
+                       f"invalid row id {row_id!r}: must match {ROW_ID_RE.pattern}", None)
     lock = acquire_lock(row_id)
     if lock is None:
-        return Result(row_id, False, False,
+        return Result(row_id, False, False, False,
                        "another dispatch of this row is already running (lock held)", None)
     try:
         return _dispatch_one_locked(row_id, brief_path, model, retry_cap, snapshot,
@@ -182,7 +203,7 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         r = sh(args, env=env, timeout=120)
         if r.returncode != 0:
             logline(f"boot failed: {r.stderr}")
-            return Result(row_id, False, True, f"sandbox boot failed: {r.stderr[:500]}", None)
+            return Result(row_id, False, True, False, f"sandbox boot failed: {r.stderr[:500]}", None)
 
         def exec_in(script: str, timeout=None):
             return sh([str(MSB_BIN), "exec", name, "--", "sh", "-c", script], env=env, timeout=timeout)
@@ -208,11 +229,26 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         # green, silently making the retry-cap unreachable. Default sized for
         # 2 verify passes plus real turn time with real slack, not just
         # rounded up from one verify call.
+        #
+        # agent_loop.py gets its OWN, smaller wall-clock budget and checks it
+        # before every turn, so it can stop cleanly and print OUT_OF_TIME
+        # instead of being SIGKILLed here with no VERIFIED_GREEN/VERIFY_FAILED
+        # marker ever printed -- that would be indistinguishable from a plain,
+        # unexplained RED. Leave room for one more verify() call (<=1800s)
+        # plus overhead past agent_loop.py's own deadline.
+        wall_clock_budget = max(60, overall_timeout - 1800 - 200)
+        # Every value below is either from argparse (still attacker/misconfig
+        # -controlled, no `choices=` constrains them) or, for row_id, already
+        # validated against ROW_ID_RE above -- shlex.quote() everything
+        # anyway rather than trust upstream validation to stay in sync with
+        # every interpolation site.
         run_cmd = (
             f"cd /repo && export PATH=$HOME/.cargo/bin:/usr/lib/llvm-22/bin:$PATH && "
             f"export CARGO_BUILD_JOBS=2 && "
-            f"timeout {overall_timeout} python3 /root/agent_loop.py --task-file /root/task.txt "
-            f"--model {model} --retry-cap {retry_cap} --max-tokens {max_tokens} "
+            f"timeout {overall_timeout} python3 /root/agent_loop.py "
+            f"--task-file /root/task.txt --model {shlex.quote(model)} "
+            f"--retry-cap {int(retry_cap)} --max-tokens {int(max_tokens)} "
+            f"--wall-clock-budget {wall_clock_budget} "
             f"> /root/agent.log 2>&1; "
             f"echo RC=$? >> /root/agent.log"
         )
@@ -223,6 +259,14 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
 
         ok = "VERIFIED_GREEN" in tail
         fatal = "FATAL:" in tail
+        # RC=124/137/143 is `timeout`(1) or a SIGKILL/SIGTERM having killed
+        # the process outright -- and OUT_OF_TIME is agent_loop.py's own
+        # clean self-report of the same underlying cause. Either way this is
+        # NOT a genuine "the model tried and failed" RED; report it as its
+        # own category so an operator doesn't read a budget problem as a
+        # capability problem.
+        timed_out = ("OUT_OF_TIME" in tail or "RC=124" in tail
+                     or "RC=137" in tail or "RC=143" in tail)
 
         # `git add -A`, not `-u` plus a subdirectory-only untracked-file scan
         # (the old harness's pattern, copied here initially then caught by
@@ -245,7 +289,7 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
             patch_path = RESULT_DIR / f"{row_id}-{run_id}.patch"
             patch_path.write_text(patch_out)
 
-        return Result(row_id, ok, fatal, tail[-1500:], patch_path)
+        return Result(row_id, ok, fatal, timed_out, tail[-1500:], patch_path)
     finally:
         sh([str(MSB_BIN), "rm", "-f", name], env=env)
         shutil.rmtree(workdir, ignore_errors=True)
@@ -299,12 +343,25 @@ def main() -> int:
                 # One row's unexpected crash (e.g. a subprocess timeout)
                 # must not lose the summary for every other row still
                 # running in the pool.
-                results.append(Result(row, False, True, f"dispatch crashed: {e}", None))
+                results.append(Result(row, False, True, False, f"dispatch crashed: {e}", None))
 
     print("\n=== SUMMARY ===")
     for r in results:
-        status = "FATAL" if r.fatal else ("GREEN" if r.ok else "RED")
-        print(f"{r.row_id}: {status}" + (f" -> {r.patch_path}" if r.patch_path else ""))
+        if r.timed_out:
+            status = "TIMEOUT"
+        elif r.fatal:
+            status = "FATAL"
+        elif r.ok:
+            status = "GREEN"
+        else:
+            status = "RED"
+        # A patch exists for FATAL/RED/TIMEOUT runs too (whatever the model
+        # got done before things went wrong) -- label it explicitly so
+        # nothing downstream mistakes an unverified patch for a landable one.
+        patch_note = ""
+        if r.patch_path:
+            patch_note = f" -> {r.patch_path}" + ("" if status == "GREEN" else " (UNVERIFIED, do not land)")
+        print(f"{r.row_id}: {status}{patch_note}")
     return 0 if all(r.ok for r in results) else 1
 
 

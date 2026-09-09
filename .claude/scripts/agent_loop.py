@@ -16,15 +16,20 @@ Usage:
 
 Exit codes: 0 = verified green. 1 = ran out of retries, still red (patch may
 still be worth extracting -- caller decides). 2 = FATAL (bad key, no credit,
-etc) -- do not retry this, something external needs fixing first.
+etc) -- do not retry this, something external needs fixing first. 3 = ran out
+of wall-clock budget mid-attempt -- distinct from a real RED; the task may
+need a bigger budget, not a different fix.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import shlex
+import signal
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -96,10 +101,33 @@ FATAL_PATTERNS = (
 )
 
 
+MAX_CONVERSATION_CHARS = 200_000  # keeps context from growing without bound
+                                   # across many turns/attempts on a long task
+
+
 def truncate(s: str, n: int = MAX_TOOL_OUTPUT) -> str:
     if len(s) <= n:
         return s
     return s[:n] + f"\n... [truncated, {len(s) - n} more chars]"
+
+
+def trim_messages(messages: list) -> None:
+    """Drops the OLDEST complete turns (never messages[0] system prompt or
+    messages[1] the original task) once the conversation gets too big,
+    instead of letting it grow unboundedly across many turns and retry
+    attempts until a request fails on the model's own context limit --
+    which would silently burn the rest of the retry budget on calls that
+    can never succeed. A "turn" is one assistant message plus every tool
+    reply that answers its tool_calls, or a single plain message; units are
+    dropped whole so a tool reply is never left orphaned from its call."""
+    while len(json.dumps(messages)) > MAX_CONVERSATION_CHARS and len(messages) > 3:
+        first = messages[2]
+        end = 3
+        n_calls = len(first.get("tool_calls") or [])
+        while n_calls > 0 and end < len(messages) and messages[end].get("role") == "tool":
+            end += 1
+            n_calls -= 1
+        del messages[2:end]
 
 
 def run_tool(name: str, args: dict) -> str:
@@ -116,11 +144,43 @@ def run_tool(name: str, args: dict) -> str:
                 f.write(args["content"])
             return f"wrote {len(args['content'])} bytes to {path}"
         if name == "run_bash":
-            r = subprocess.run(
+            # start_new_session=True puts the command (and anything it
+            # backgrounds with & or nohup) in its own process group, so a
+            # `./server & disown`-style call can be fully killed once the
+            # foreground shell exits, instead of leaking an orphaned process
+            # that holds a port/file across the rest of this attempt and
+            # into retries.
+            #
+            # Deliberately NOT proc.communicate(timeout=...): communicate()
+            # blocks until the pipe's write end is closed by EVERY process
+            # that inherited it, including a backgrounded child that never
+            # touches it again -- confirmed directly, a `sleep 30 &` job
+            # made communicate() hang for the full timeout even though the
+            # foreground shell returned in milliseconds. Poll for the
+            # foreground shell's own exit instead, kill its whole process
+            # group the moment it's done (or the timeout elapses), and only
+            # then read the pipe -- by then every writer is dead and the
+            # read reaches EOF immediately instead of blocking on a child
+            # the caller never waited for.
+            proc = subprocess.Popen(
                 args["command"], shell=True, cwd="/repo", text=True,
-                capture_output=True, timeout=300,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                start_new_session=True,
             )
-            out = f"$ {args['command']}\n(exit {r.returncode})\n{r.stdout}{r.stderr}"
+            deadline = time.monotonic() + 300
+            while proc.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.05)
+            timed_out = proc.poll() is None
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                out_text = proc.stdout.read() if proc.stdout else ""
+            except Exception:
+                out_text = ""
+            rc = "timeout" if timed_out else proc.returncode
+            out = f"$ {args['command']}\n(exit {rc})\n{out_text}"
             return truncate(out)
         return f"unknown tool: {name}"
     except Exception as e:
@@ -188,11 +248,27 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
     return parsed
 
 
-def agent_turns(api_key: str, model: str, messages: list, max_turns: int, max_tokens: int) -> str | None:
+class OutOfTime(Exception):
+    """Raised when the wall-clock budget runs out mid-attempt. Caught in
+    main() and reported as its own distinct outcome -- deliberately NOT the
+    same as a genuine RED, so an operator (or a future automated escalation)
+    can tell "the task is probably too big for this budget" apart from "the
+    model tried and failed." Letting the outer OS-level `timeout` SIGKILL the
+    process instead would produce neither VERIFIED_GREEN nor VERIFY_FAILED in
+    the log at all -- indistinguishable from a plain unexplained RED, exactly
+    the "operator can't tell why it failed" shape this rewrite exists to
+    avoid."""
+
+
+def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
+                 max_tokens: int, deadline: float) -> str | None:
     """Runs up to max_turns tool-call rounds. Returns the model's final text
     once it stops calling tools, or None if max_turns was exhausted without
-    the model finishing."""
+    the model finishing. Raises OutOfTime if the wall-clock deadline passes
+    first."""
     for turn in range(max_turns):
+        if time.monotonic() > deadline:
+            raise OutOfTime(f"wall-clock budget exhausted at turn {turn + 1}/{max_turns}")
         try:
             resp = call_openrouter(api_key, model, messages, max_tokens)
         except RuntimeError as e:
@@ -226,6 +302,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int, max_to
                 "tool_call_id": tc["id"],
                 "content": result,
             })
+        trim_messages(messages)
     return None
 
 
@@ -259,6 +336,14 @@ def main() -> int:
     ap.add_argument("--retry-cap", type=int, default=2)
     ap.add_argument("--verify-cmd", default="just check")
     ap.add_argument("--api-key-env", default="OPENROUTER_API_KEY")
+    ap.add_argument("--wall-clock-budget", type=int, default=3400,
+                     help="seconds for turns across ALL attempts combined, checked before "
+                          "each turn so this process can stop cleanly and report OUT_OF_TIME "
+                          "instead of being SIGKILLed by an outer OS-level timeout with no "
+                          "VERIFIED_GREEN/VERIFY_FAILED marker ever printed. The caller "
+                          "(simple_dispatch.py) sizes its own outer timeout to leave room "
+                          "for one more verify() call past this deadline -- keep this in sync "
+                          "if you change verify()'s own timeout")
     args = ap.parse_args()
 
     api_key = os.environ.get(args.api_key_env)
@@ -272,12 +357,18 @@ def main() -> int:
         {"role": "user", "content": f"TASK:\n{task_text}\n\nVerify with: `{args.verify_cmd}`"},
     ]
 
+    deadline = time.monotonic() + args.wall_clock_budget
     base_head = git_head()
     attempt = 0
     while True:
         attempt += 1
         print(f"== attempt {attempt}/{args.retry_cap + 1} ==", file=sys.stderr)
-        final_text = agent_turns(api_key, args.model, messages, args.max_turns, args.max_tokens)
+        try:
+            final_text = agent_turns(api_key, args.model, messages, args.max_turns,
+                                      args.max_tokens, deadline)
+        except OutOfTime as e:
+            print(f"OUT_OF_TIME: {e}", file=sys.stderr)
+            return 3
         if final_text is None:
             print("== ran out of turns without the model finishing ==", file=sys.stderr)
 
