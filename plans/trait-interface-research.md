@@ -361,6 +361,17 @@ Checker changes, in the order a build would land them:
   the dispatch table. Recorded as deferred, not dropped.
 - Makingthe polymorphic builtins (`length`, `sum`, `flatten`, ...) into trait
   instances:that is the generic-functions landing, not the monomorphic cut.
+- A per-backend native impl body, e.g. `impl Foobar for Xyz in Python`, naming a target
+  language directly so the body is written in the backend's own source rather than toylang --
+  raised as a future idea during the trait-multi-impl-dispatch-build grilling round
+  (2026-09-09) for building language bindings as traits. The maintainer notes the prelude
+  already wants this extensively: backend-specific helper bodies already exist today as
+  hand-written per-backend runtime code (e.g. the `*_HELPER` constants in `src/emit_js.rs`),
+  with no shared, trait-shaped mechanism naming them. Out of scope for the monomorphic
+  dispatch-table cut: it needs its own answer for what a native impl's signature checks
+  against at the toylang boundary, and it breaks the "every backend already emits `Kind::Call`
+  into the impl's body" assumption the dispatch mechanism above relies on -- a native-language
+  body is not a `Kind::Call` target the same way a toylang one is.
 
 
 
