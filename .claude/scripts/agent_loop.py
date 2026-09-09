@@ -1,0 +1,279 @@
+#!/usr/bin/env python3
+"""Minimal autonomous coding agent. Runs INSIDE a sandbox, talks directly to
+OpenRouter's chat-completions API (stdlib only, no `opencode` CLI). Replaces
+the opencode-based build loop that sandbox_dispatch.py drove, whose bugs all
+came from opencode's own session/CLI machinery: stdin hangs without
+`< /dev/null`, `--continue` reading stale on-disk sessions, OPENCODE_MODEL not
+persisting across invocations, `--agent plan/build` mode selection, canned
+per-phase prompt templates, and a discarded verify() result on the "split"
+path. None of that machinery exists here: one process, one in-memory message
+list, one verify loop. Verification always drives the next step because
+there is only one place it happens.
+
+Usage:
+  agent_loop.py --task-file brief.txt [--model openrouter/deepseek/deepseek-v4-flash-0731]
+      [--max-turns 30] [--retry-cap 2] [--verify-cmd "just check"]
+
+Exit codes: 0 = verified green. 1 = ran out of retries, still red (patch may
+still be worth extracting -- caller decides). 2 = FATAL (bad key, no credit,
+etc) -- do not retry this, something external needs fixing first.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+API_URL = "https://openrouter.ai/api/v1/chat/completions"
+MAX_TOOL_OUTPUT = 8000  # chars; keeps context from ballooning turn over turn
+
+SYSTEM_PROMPT = """You are an autonomous coding agent working in /repo (a git checkout).
+You have three tools: read_file, write_file, run_bash. Use run_bash to explore
+(ls, grep, cat) and to run the verification command yourself as often as you like.
+Use write_file to make edits -- it overwrites the whole file, so read it first if
+you're editing rather than creating.
+
+When you believe the task is fully done AND you have personally run the
+verification command and seen it pass, reply with no tool calls and a message
+starting with "DONE:". Do not claim DONE without having actually run and seen
+the verification command succeed in this session -- the harness re-runs it
+independently and will not take your word for it.
+"""
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read a file's full contents.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Overwrite a file with the given content (creates it if missing).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
+                },
+                "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_bash",
+            "description": "Run a shell command in /repo and get back stdout+stderr.",
+            "parameters": {
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+                "required": ["command"],
+            },
+        },
+    },
+]
+
+# Substrings meaning the API call itself failed for a reason no amount of
+# retrying will fix -- same class the old harness's FATAL_API_PATTERNS caught,
+# checked directly against the HTTP response instead of grepping an
+# opencode-authored log file.
+FATAL_PATTERNS = (
+    "insufficient_quota", "insufficient credit", "requires more credits",
+    "invalid_api_key", "api key expired", "no auth credentials found",
+)
+
+
+def truncate(s: str, n: int = MAX_TOOL_OUTPUT) -> str:
+    if len(s) <= n:
+        return s
+    return s[:n] + f"\n... [truncated, {len(s) - n} more chars]"
+
+
+def run_tool(name: str, args: dict) -> str:
+    try:
+        if name == "read_file":
+            with open(args["path"], "r", errors="replace") as f:
+                return truncate(f.read())
+        if name == "write_file":
+            path = args["path"]
+            d = os.path.dirname(path)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            with open(path, "w") as f:
+                f.write(args["content"])
+            return f"wrote {len(args['content'])} bytes to {path}"
+        if name == "run_bash":
+            r = subprocess.run(
+                args["command"], shell=True, cwd="/repo", text=True,
+                capture_output=True, timeout=300,
+            )
+            out = f"$ {args['command']}\n(exit {r.returncode})\n{r.stdout}{r.stderr}"
+            return truncate(out)
+        return f"unknown tool: {name}"
+    except Exception as e:
+        return f"tool error: {e}"
+
+
+def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -> dict:
+    body = json.dumps({
+        "model": model,
+        "messages": messages,
+        "tools": TOOLS,
+        "tool_choice": "auto",
+        # Without this, OpenRouter defaults max_tokens to the model's full
+        # context window and refuses the WHOLE call if the account can't
+        # cover that theoretical ceiling -- confirmed live: a request with no
+        # max_tokens was rejected as unaffordable at "up to 131072 tokens"
+        # even though a normal-sized completion would have fit easily.
+        "max_tokens": max_tokens,
+    }).encode()
+    req = urllib.request.Request(
+        API_URL, data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        payload = e.read().decode(errors="replace")
+        low = payload.lower()
+        for pat in FATAL_PATTERNS:
+            if pat in low:
+                print(f"FATAL: {pat} -- {payload[:500]}", file=sys.stderr)
+                sys.exit(2)
+        print(f"HTTP {e.code} calling OpenRouter: {payload[:1000]}", file=sys.stderr)
+        raise
+
+
+def agent_turns(api_key: str, model: str, messages: list, max_turns: int, max_tokens: int) -> str | None:
+    """Runs up to max_turns tool-call rounds. Returns the model's final text
+    once it stops calling tools, or None if max_turns was exhausted without
+    the model finishing."""
+    for turn in range(max_turns):
+        resp = call_openrouter(api_key, model, messages, max_tokens)
+        usage = resp.get("usage", {})
+        print(f"  turn {turn + 1}/{max_turns}: "
+              f"prompt={usage.get('prompt_tokens')} completion={usage.get('completion_tokens')}",
+              file=sys.stderr)
+        choice = resp["choices"][0]
+        msg = choice["message"]
+        messages.append(msg)
+        tool_calls = msg.get("tool_calls") or []
+        if not tool_calls:
+            return msg.get("content") or ""
+        for tc in tool_calls:
+            fn = tc["function"]["name"]
+            try:
+                fn_args = json.loads(tc["function"]["arguments"] or "{}")
+            except json.JSONDecodeError:
+                fn_args = {}
+            result = run_tool(fn, fn_args)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc["id"],
+                "content": result,
+            })
+    return None
+
+
+def verify(cmd: str) -> tuple[bool, str]:
+    r = subprocess.run(cmd, shell=True, cwd="/repo", text=True,
+                        capture_output=True, timeout=1800)
+    out = (r.stdout + r.stderr)[-6000:]
+    return r.returncode == 0, out
+
+
+def git_head(repo="/repo") -> str:
+    return subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
+                           text=True, capture_output=True).stdout.strip()
+
+
+def git_dirty(repo="/repo") -> bool:
+    r = subprocess.run(["git", "-C", repo, "status", "--porcelain"],
+                        text=True, capture_output=True)
+    return bool(r.stdout.strip())
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--task-file", required=True)
+    ap.add_argument("--model", default="deepseek/deepseek-v4-flash-0731")
+    ap.add_argument("--max-turns", type=int, default=30)
+    ap.add_argument("--max-tokens", type=int, default=4096,
+                     help="per-turn completion cap; keeps cost predictable and lets requests "
+                          "succeed on a small remaining balance instead of being rejected for "
+                          "the model's full context window")
+    ap.add_argument("--retry-cap", type=int, default=2)
+    ap.add_argument("--verify-cmd", default="just check")
+    ap.add_argument("--api-key-env", default="OPENROUTER_API_KEY")
+    args = ap.parse_args()
+
+    api_key = os.environ.get(args.api_key_env)
+    if not api_key:
+        print(f"FATAL: {args.api_key_env} not set in environment", file=sys.stderr)
+        return 2
+
+    task_text = open(args.task_file).read()
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"TASK:\n{task_text}\n\nVerify with: `{args.verify_cmd}`"},
+    ]
+
+    base_head = git_head()
+    attempt = 0
+    while True:
+        attempt += 1
+        print(f"== attempt {attempt}/{args.retry_cap + 1} ==", file=sys.stderr)
+        final_text = agent_turns(api_key, args.model, messages, args.max_turns, args.max_tokens)
+        if final_text is None:
+            print("== ran out of turns without the model finishing ==", file=sys.stderr)
+
+        moved = git_head() != base_head or git_dirty()
+        if not moved:
+            feedback = ("You made no file changes and did not run the verification "
+                        "command successfully. Actually edit the real target files "
+                        "now -- do not just explore.")
+            ok = False
+            tail = "(no changes, no verify run)"
+        else:
+            ok, tail = verify(args.verify_cmd)
+
+        print(f"== verify: {'GREEN' if ok else 'RED'} ==", file=sys.stderr)
+        print(tail[-2000:], file=sys.stderr)
+
+        if ok:
+            print("VERIFIED_GREEN")
+            return 0
+
+        if attempt > args.retry_cap:
+            print("VERIFY_FAILED")
+            print(tail)
+            return 1
+
+        feedback = (
+            "The verification command failed. Fix the SPECIFIC failures below --"
+            " do not start over or redo work that already passed. Re-run "
+            f"`{args.verify_cmd}` yourself before claiming DONE again.\n\n{tail}"
+        )
+        messages.append({"role": "user", "content": feedback})
+
+
+if __name__ == "__main__":
+    sys.exit(main())
