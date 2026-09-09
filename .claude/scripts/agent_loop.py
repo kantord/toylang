@@ -11,7 +11,7 @@ list, one verify loop. Verification always drives the next step because
 there is only one place it happens.
 
 Usage:
-  agent_loop.py --task-file brief.txt [--model openrouter/deepseek/deepseek-v4-flash-0731]
+  agent_loop.py --task-file brief.txt [--model deepseek/deepseek-v4-flash-0731]
       [--max-turns 30] [--retry-cap 2] [--verify-cmd "just check"]
 
 Exit codes: 0 = verified green. 1 = ran out of retries, still red (patch may
@@ -325,21 +325,24 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
     return None
 
 
-def verify(cmd: str) -> tuple[bool, str]:
+MAX_VERIFY_SECONDS = 1800
+
+
+def verify(cmd: str, timeout: int = MAX_VERIFY_SECONDS) -> tuple[bool, str]:
     r = subprocess.run(cmd, shell=True, cwd="/repo", text=True,
-                        capture_output=True, timeout=1800)
+                        capture_output=True, timeout=timeout)
     out = (r.stdout + r.stderr)[-6000:]
     return r.returncode == 0, out
 
 
 def git_head(repo="/repo") -> str:
     return subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
-                           text=True, capture_output=True).stdout.strip()
+                           text=True, capture_output=True, timeout=30).stdout.strip()
 
 
 def git_dirty(repo="/repo") -> bool:
     r = subprocess.run(["git", "-C", repo, "status", "--porcelain"],
-                        text=True, capture_output=True)
+                        text=True, capture_output=True, timeout=30)
     return bool(r.stdout.strip())
 
 
@@ -380,7 +383,7 @@ def main() -> int:
     deadline = time.monotonic() + args.wall_clock_budget
     base_head = git_head()
     attempt = 0
-    prev_tail = None
+    seen_tails = []
     while True:
         attempt += 1
         print(f"== attempt {attempt}/{args.retry_cap + 1} ==", file=sys.stderr)
@@ -396,13 +399,28 @@ def main() -> int:
 
         moved = git_head() != base_head or git_dirty()
         if not moved:
-            feedback = ("You made no file changes and did not run the verification "
-                        "command successfully. Actually edit the real target files "
-                        "now -- do not just explore.")
             ok = False
             tail = "(no changes, no verify run)"
         else:
-            ok, tail = verify(args.verify_cmd)
+            # verify()'s own ceiling used to always be the full
+            # MAX_VERIFY_SECONDS regardless of how much wall-clock budget
+            # was actually left -- simple_dispatch.py's outer timeout only
+            # ever reserved room for ONE such call, but retry_cap+1 attempts
+            # each call verify() once, so 3 slow-but-not-hung verify passes
+            # (each near its own cap) could blow past the total budget
+            # without ever tripping the OutOfTime check in agent_turns
+            # (which only runs before turns, not around verify()) --
+            # confirmed by re-deriving the arithmetic, not by hitting it
+            # live. Cap this call to whatever's actually left, and skip it
+            # entirely (clean TIMEOUT, not a mid-verify SIGKILL) if there
+            # isn't reasonably enough time to even try.
+            remaining = deadline - time.monotonic()
+            if remaining < 60:
+                print("OUT_OF_TIME: not enough wall-clock budget left to run "
+                      "another verify pass", file=sys.stderr)
+                write_status("TIMEOUT")
+                return 3
+            ok, tail = verify(args.verify_cmd, timeout=min(MAX_VERIFY_SECONDS, int(remaining)))
 
         print(f"== verify: {'GREEN' if ok else 'RED'} ==", file=sys.stderr)
         print(tail[-2000:], file=sys.stderr)
@@ -423,12 +441,19 @@ def main() -> int:
         # the rest of retry_cap re-deriving the same dead end, and report it
         # as its own distinct outcome so an operator can tell "genuinely
         # stuck, needs a different approach" apart from "still iterating."
-        if tail == prev_tail:
-            print("STUCK: verify output identical to the previous attempt, "
+        #
+        # Checked against every PRIOR tail seen this run, not just the last
+        # one -- comparing only to prev_tail misses an oscillating failure
+        # (attempt 1 fails with A, attempt 2 with B, attempt 3 with A again),
+        # which is fully reachable within the default retry_cap=2 (3
+        # attempts) and would otherwise burn the whole retry budget without
+        # ever being recognized as the same dead end recurring.
+        if tail in seen_tails:
+            print("STUCK: verify output matches a previous attempt, "
                   "not retrying further", file=sys.stderr)
             write_status("STUCK")
             return 1
-        prev_tail = tail
+        seen_tails.append(tail)
 
         if attempt > args.retry_cap:
             print("VERIFY_FAILED")

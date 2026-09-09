@@ -231,3 +231,49 @@ All four verified locally where testable without live credit: `write_status`
 round-trips correctly, the identical-tail check fires on matching input, the
 lock/concurrency/crash-isolation tests pass with the new `Result.stuck`
 field and 9-argument `dispatch_one` signature.
+
+## Skeptic round 4 (purely theoretical) -- 4 more issues, plus a structural
+## verdict on the growth itself
+
+By this round the codebase had grown from 557 to 852 lines across three fix
+rounds. This round's mandate was explicitly two-fold: find new bugs, AND
+give an honest verdict on whether that growth is still "as simple as
+possible" or has become a risk of its own.
+
+Bugs found:
+1. **Two more `exec_in` calls had no timeout** (the log-tail read and the
+   status-file read) -- the third round's own sweep, whose entire point was
+   closing this gap, still missed two sites. This is itself the evidence for
+   the structural verdict below: a per-call-site convention that needs
+   remembering has now failed three times in a row.
+2. **The wall-clock budget only accounted for ONE `verify()` call**, but
+   every attempt calls `verify()` once and `retry_cap+1` attempts can each
+   run a slow-but-not-hung verify near its own 1800s ceiling -- three such
+   calls could exceed the total budget without the `OutOfTime` check (which
+   only guards the turn loop, not `verify()`) ever catching it, landing back
+   on a raw SIGKILL with the coarse RC-code fallback instead of a clean
+   `TIMEOUT`.
+3. **`git_head()`/`git_dirty()` had no subprocess timeout**, inconsistent
+   with the rest of the file's hardening.
+4. **STUCK only compared to the immediately-previous attempt's tail** --
+   an oscillating failure (attempt 1 fails with A, attempt 2 with B, attempt
+   3 with A again, fully reachable within the default 3-attempt budget)
+   evaded detection entirely.
+
+Fixes: `exec_in`'s `timeout` parameter now has NO default (a forgotten
+timeout is an immediate `TypeError`, not a silent hang) and both missed
+sites got one; `verify()` now takes an explicit `timeout` and
+`agent_loop.py` caps it to whatever wall-clock budget is actually left
+(skipping straight to a clean `TIMEOUT` if under 60s remain, rather than
+risking a mid-verify SIGKILL); `git_head`/`git_dirty` gained a 30s timeout;
+STUCK now checks the current tail against EVERY previously-seen tail this
+run, not just the last one.
+
+**On the growth itself**: the round's verdict was "simplify the *mechanism*,
+don't add a fourth patch round" -- and the `exec_in` required-parameter
+change is exactly that: it replaces "remember to add timeout= at every call
+site" (which had already failed twice) with "the code cannot run at all
+until every site has one." Line count went up again this round, but the
+shape of the fix changed from another one-off patch to a structural
+guarantee, which is the right direction for a codebase that's already grown
+past what three rounds of individual patches could keep track of by hand.

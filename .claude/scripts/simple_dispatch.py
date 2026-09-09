@@ -208,7 +208,15 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
             logline(f"boot failed: {r.stderr}")
             return Result(row_id, False, True, False, False, f"sandbox boot failed: {r.stderr[:500]}", None)
 
-        def exec_in(script: str, timeout=None):
+        def exec_in(script: str, timeout: int):
+            # `timeout` deliberately has NO default. Three rounds of "add a
+            # timeout to this exec_in call" each still missed at least one
+            # site (most recently the log-tail and status-file reads below)
+            # -- an unbounded call here hangs this whole worker thread
+            # before the `finally` block ever runs, leaking the sandbox and
+            # holding the row's lock forever. Making the parameter required
+            # turns a forgotten timeout into an immediate TypeError instead
+            # of a silent production hang.
             return sh([str(MSB_BIN), "exec", name, "--", "sh", "-c", script], env=env, timeout=timeout)
 
         # Every call below now has an explicit timeout, including (most
@@ -264,7 +272,7 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         )
         logline("running agent_loop.py")
         exec_in(run_cmd, timeout=overall_timeout + 120)
-        tail = exec_in("tail -c 8000 /root/agent.log").stdout
+        tail = exec_in("tail -c 8000 /root/agent.log", timeout=30).stdout
         logline(tail[-3000:])
 
         # Classify from agent_loop.py's own dedicated status file, NOT a
@@ -277,7 +285,7 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         # (a raw `timeout`(1) or SIGKILL/SIGTERM) is kept as a fallback for
         # the case agent_loop.py was killed before it could write its own
         # status file at all.
-        status = exec_in("cat /root/agent-status.txt 2>/dev/null").stdout.strip()
+        status = exec_in("cat /root/agent-status.txt 2>/dev/null", timeout=30).stdout.strip()
         if not status:
             if "RC=124" in tail or "RC=137" in tail or "RC=143" in tail:
                 status = "TIMEOUT"
