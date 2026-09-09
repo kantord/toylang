@@ -107,6 +107,21 @@ MAX_CONVERSATION_CHARS = 200_000  # keeps context from growing without bound
 
 
 STATUS_FILE = "/root/agent-status.txt"
+COST_FILE = "/root/agent-cost.txt"
+
+# Accumulated across every OpenRouter call this process makes (all attempts,
+# all turns) -- a plain module-level global rather than threading a value
+# through call_openrouter/agent_turns/check_fatal's call chain, since this
+# is a single-purpose, single-process script and the alternative is
+# plumbing an accumulator through several function signatures just to
+# support a running total.
+total_cost_usd = 0.0
+
+
+def add_cost(resp: dict) -> None:
+    global total_cost_usd
+    usage = resp.get("usage") or {}
+    total_cost_usd += usage.get("cost") or 0.0
 
 
 def write_status(status: str) -> None:
@@ -122,6 +137,11 @@ def write_status(status: str) -> None:
     of it can't collide with arbitrary text."""
     with open(STATUS_FILE, "w") as f:
         f.write(status)
+    # Written alongside status, every time, regardless of outcome -- the
+    # CSV dispatch log needs a real cost even for FATAL/TIMEOUT/STUCK runs,
+    # not just GREEN ones.
+    with open(COST_FILE, "w") as f:
+        f.write(f"{total_cost_usd:.6f}")
 
 
 def truncate(s: str, n: int = MAX_TOOL_OUTPUT) -> str:
@@ -218,6 +238,11 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
         # max_tokens was rejected as unaffordable at "up to 131072 tokens"
         # even though a normal-sized completion would have fit easily.
         "max_tokens": max_tokens,
+        # Confirmed live: without this, `usage.cost` is absent from the
+        # response entirely. With it, every response reports the real
+        # dollar cost of that specific call -- this is what makes the CSV
+        # dispatch log's cost column real data instead of an estimate.
+        "usage": {"include": True},
     }).encode()
     req = urllib.request.Request(
         API_URL, data=body,
@@ -310,8 +335,10 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                   file=sys.stderr)
             return None
         usage = resp.get("usage", {})
+        add_cost(resp)
         print(f"  turn {turn + 1}/{max_turns}: "
-              f"prompt={usage.get('prompt_tokens')} completion={usage.get('completion_tokens')}",
+              f"prompt={usage.get('prompt_tokens')} completion={usage.get('completion_tokens')} "
+              f"cost=${usage.get('cost', 0):.6f} (running total ${total_cost_usd:.6f})",
               file=sys.stderr)
         choice = resp["choices"][0]
         msg = choice["message"]

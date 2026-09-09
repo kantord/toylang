@@ -33,6 +33,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
 import fcntl
 import json
 import os
@@ -47,6 +48,7 @@ import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path("/home/kantord/repos/toylang")
@@ -56,6 +58,15 @@ RESULT_DIR = Path.home() / ".cache" / "toylang-simple-dispatch" / "results"
 AGENT_LOOP = Path(__file__).parent / "agent_loop.py"
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
 DEFAULT_SNAPSHOT = "toylang-toolchain-v2"
+
+# Committed to the repo (not ~/.cache) specifically so dispatch history
+# survives across machines/sessions and can be examined the same way any
+# other project data is -- `git log -p` on this file is a real audit trail
+# of every run: what it cost, how long it took, what it was for.
+DISPATCH_LOG_PATH = REPO / "plans" / "dispatch-log.csv"
+DISPATCH_LOG_LOCK_PATH = Path.home() / ".cache" / "toylang-simple-dispatch" / "dispatch-log.lock"
+DISPATCH_LOG_FIELDS = ["run_id", "row_id", "model", "start_time", "end_time",
+                        "duration_s", "status", "cost_usd", "patch_path"]
 
 
 ROW_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -70,6 +81,7 @@ class Result:
     stuck: bool
     message: str
     patch_path: Path | None
+    cost_usd: float = 0.0
 
 
 def sh(cmd: list, env=None, check=False, timeout=None) -> subprocess.CompletedProcess:
@@ -95,6 +107,30 @@ def must(r: subprocess.CompletedProcess, what: str) -> subprocess.CompletedProce
     if r.returncode != 0:
         raise SetupFailed(what, r.stderr)
     return r
+
+
+def append_dispatch_log(row: dict) -> None:
+    """Append one row to the repo-committed CSV dispatch log. Locked with a
+    DEDICATED lock file, not a lock on the CSV itself, so opening the CSV to
+    read/inspect it never blocks (or gets blocked by) a concurrent writer.
+    Needed because multiple dispatches can genuinely run at once --
+    multiple threads in one process under --parallel, or two separate
+    invocations of this script -- and an unlocked concurrent append can
+    interleave partial writes into a corrupt row."""
+    DISPATCH_LOG_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DISPATCH_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lock_file = open(DISPATCH_LOG_LOCK_PATH, "w")
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        is_new = not DISPATCH_LOG_PATH.exists() or DISPATCH_LOG_PATH.stat().st_size == 0
+        with open(DISPATCH_LOG_PATH, "a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=DISPATCH_LOG_FIELDS)
+            if is_new:
+                writer.writeheader()
+            writer.writerow(row)
+    finally:
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        lock_file.close()
 
 
 def msb_env() -> dict:
@@ -173,25 +209,63 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
         # git branch name, and a shell command string below -- an
         # unvalidated value containing "/", "..", or shell metacharacters
         # is a path-traversal or command-injection vector, not just a
-        # cosmetic problem.
+        # cosmetic problem. Never actually dispatched anything -- no CSV row.
         return Result(row_id, False, True, False, False,
                        f"invalid row id {row_id!r}: must match {ROW_ID_RE.pattern}", None)
     lock = acquire_lock(row_id)
     if lock is None:
+        # Another dispatch of this row already owns the slot -- this call
+        # never itself ran anything, so it doesn't get a CSV row either.
         return Result(row_id, False, False, False, False,
                        "another dispatch of this row is already running (lock held)", None)
+    run_id = uuid.uuid4().hex[:8]
+    start_time = datetime.now(timezone.utc)
+    result: Result | None = None
     try:
-        return _dispatch_one_locked(row_id, brief_path, model, retry_cap, snapshot,
-                                     max_tokens, overall_timeout, memory, cpus)
+        result = _dispatch_one_locked(row_id, run_id, brief_path, model, retry_cap, snapshot,
+                                       max_tokens, overall_timeout, memory, cpus)
+        return result
     finally:
+        end_time = datetime.now(timezone.utc)
+        if result is None:
+            # _dispatch_one_locked raised something it didn't itself catch
+            # (SetupFailed is already handled inside it) -- log the crash
+            # rather than silently losing this run from the record. main()
+            # still sees the real exception; this doesn't swallow it.
+            status = "CRASH"
+            cost = 0.0
+            patch = None
+        else:
+            if result.stuck:
+                status = "STUCK"
+            elif result.timed_out:
+                status = "TIMEOUT"
+            elif result.fatal:
+                status = "FATAL"
+            elif result.ok:
+                status = "GREEN"
+            else:
+                status = "RED"
+            cost = result.cost_usd
+            patch = result.patch_path
+        append_dispatch_log({
+            "run_id": run_id,
+            "row_id": row_id,
+            "model": model,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "duration_s": f"{(end_time - start_time).total_seconds():.1f}",
+            "status": status,
+            "cost_usd": f"{cost:.6f}",
+            "patch_path": str(patch) if patch else "",
+        })
         fcntl.flock(lock, fcntl.LOCK_UN)
         lock.close()
 
 
-def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: int,
+def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str, retry_cap: int,
                           snapshot: str, max_tokens: int, overall_timeout: int,
                           memory: str, cpus: int) -> Result:
-    run_id = uuid.uuid4().hex[:8]
     name = f"sd-{row_id}-{run_id}"  # unique per attempt -- never collides
     workdir = Path(tempfile.mkdtemp(prefix=f"simple-dispatch-{row_id}-"))
     env = msb_env()
@@ -329,6 +403,17 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         timed_out = status == "TIMEOUT"
         stuck = status == "STUCK"
 
+        # Real dollar cost, accumulated inside agent_loop.py across every
+        # OpenRouter call this attempt made (all turns, all retries) and
+        # written to its own file the same way status is -- not an estimate,
+        # OpenRouter's own per-call `usage.cost` (confirmed live: requesting
+        # `usage: {include: true}` returns a real cost figure per response).
+        cost_str = exec_in("cat /root/agent-cost.txt 2>/dev/null", timeout=30).stdout.strip()
+        try:
+            cost_usd = float(cost_str) if cost_str else 0.0
+        except ValueError:
+            cost_usd = 0.0
+
         # `git add -A`, not `-u` plus a subdirectory-only untracked-file scan
         # (the old harness's pattern, copied here initially then caught by
         # this script's own first real smoke test): `-u` only stages already
@@ -350,7 +435,7 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
             patch_path = RESULT_DIR / f"{row_id}-{run_id}.patch"
             patch_path.write_text(patch_out)
 
-        return Result(row_id, ok, fatal, timed_out, stuck, tail[-1500:], patch_path)
+        return Result(row_id, ok, fatal, timed_out, stuck, tail[-1500:], patch_path, cost_usd)
     except SetupFailed as e:
         logline(f"setup failed: {e}")
         return Result(row_id, False, True, False, False, str(e), None)
@@ -440,7 +525,7 @@ def main() -> int:
         patch_note = ""
         if r.patch_path:
             patch_note = f" -> {r.patch_path}" + ("" if status == "GREEN" else " (UNVERIFIED, do not land)")
-        print(f"{r.row_id}: {status}{patch_note}")
+        print(f"{r.row_id}: {status} (${r.cost_usd:.4f}){patch_note}")
     return 0 if all(r.ok for r in results) else 1
 
 
