@@ -1,0 +1,6 @@
+---
+source: tests/generics.rs
+assertion_line: 209
+expression: "err(\"fn area(x: Int) -> Int = x\\n\\ntrait Area {\\n    fn area(s: Self) -> Int\\n}\\n\\ntype Circle = {r: Int}\\n\\nimpl Area for Circle {\\n    fn area(s: Self) -> Int = s.r * s.r\\n}\\n\\n1\")"
+---
+`area` is already a plain function; a trait method cannot share its name (at byte 123)

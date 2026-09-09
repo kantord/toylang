@@ -1,0 +1,6 @@
+---
+source: tests/generics.rs
+assertion_line: 192
+expression: "err(\"trait Area {\\n    fn area(s: Self) -> Int\\n}\\n\\ntype Circle = {r: Int}\\n\\nimpl Area for Circle {\\n    fn area(s: Self) -> Int = s.r * s.r\\n    fn perimeter(s: Self) -> Int = s.r * 4\\n}\\n\\n1\")"
+---
+`perimeter` is not a method of trait `Area` (at byte 135)

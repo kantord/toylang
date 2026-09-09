@@ -175,3 +175,61 @@ fn an_impl_method_must_match_its_trait_signature() {
             .to_string()
     );
 }
+
+/// A colon call dispatches by the receiver's concrete type; a type with no impl of the named
+/// trait is refused rather than silently reaching some other impl.
+#[test]
+fn a_colon_call_with_no_matching_impl_is_refused() {
+    insta::assert_snapshot!(err(
+        "trait Area {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int}\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n}\n\n3:area()"
+    ));
+}
+
+/// An impl's methods are exactly its trait's; one that is not among them is refused before the
+/// signature-match check ever runs, the same as calling a method a trait never declared.
+#[test]
+fn an_impl_method_not_named_by_its_trait_is_refused() {
+    insta::assert_snapshot!(err(
+        "trait Area {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int}\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n    fn perimeter(s: Self) -> Int = s.r * 4\n}\n\n1"
+    ));
+}
+
+/// `x:foo(y)` on a plain function is UFCS sugar for `foo(x)`, which has no room left for a
+/// separate `y`: no unary function can take a receiver and an argument at once (gh:174).
+#[test]
+fn a_plain_function_colon_called_with_an_argument_is_refused() {
+    insta::assert_snapshot!(err("fn double(x: Int) -> Int = x * 2\n\n3:double(4)"));
+}
+
+/// The plain-function namespace and the trait-method namespace cannot share a name: the old
+/// `collect_impls` got this "for free" as an accidental collision when it wrote impl methods
+/// into the same flat map plain functions used; the rewrite states it as an explicit check.
+#[test]
+fn an_impl_method_colliding_with_a_plain_function_is_refused() {
+    insta::assert_snapshot!(err(
+        "fn area(x: Int) -> Int = x\n\ntrait Area {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int}\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n}\n\n1"
+    ));
+}
+
+/// Two different traits' impls for the *same* concrete type still collide on a shared method
+/// name -- this is the actual bug the rewrite fixes: different *types* sharing a method name no
+/// longer collides (see `an_impl_block_synthesizes_its_methods_as_functions`'s two mangled
+/// names), but the same type genuinely cannot have two methods named the same regardless of
+/// which trait either comes from.
+#[test]
+fn two_impls_of_different_traits_for_the_same_type_and_method_collide() {
+    insta::assert_snapshot!(err(
+        "trait Area {\n    fn area(s: Self) -> Int\n}\n\ntrait Size {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int}\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n}\n\nimpl Size for Circle {\n    fn area(s: Self) -> Int = s.r\n}\n\n1"
+    ));
+}
+
+/// The `::` -> `__` backend escaping is not provably injective on its own: underscores already
+/// inside a method or type name can make two distinct `(method, Type)` pairs collide once
+/// escaped even though neither their method names nor their target types match. `foo__Ba` for
+/// `R` and `foo` for `Ba__R` both escape to `foo__Ba__R`.
+#[test]
+fn two_impls_whose_escaped_names_collide_are_refused() {
+    insta::assert_snapshot!(err(
+        "enum R { RTag }\n\nenum Ba__R { BaRTag }\n\ntrait X {\n    fn foo__Ba(s: Self) -> Int\n}\n\ntrait Y {\n    fn foo(s: Self) -> Int\n}\n\nimpl X for R {\n    fn foo__Ba(s: Self) -> Int = 1\n}\n\nimpl Y for Ba__R {\n    fn foo(s: Self) -> Int = 2\n}\n\n1"
+    ));
+}
