@@ -233,3 +233,74 @@ fn two_impls_whose_escaped_names_collide_are_refused() {
         "enum R { RTag }\n\nenum Ba__R { BaRTag }\n\ntrait X {\n    fn foo__Ba(s: Self) -> Int\n}\n\ntrait Y {\n    fn foo(s: Self) -> Int\n}\n\nimpl X for R {\n    fn foo__Ba(s: Self) -> Int = 1\n}\n\nimpl Y for Ba__R {\n    fn foo(s: Self) -> Int = 2\n}\n\n1"
     ));
 }
+
+// Generic impls over a type constructor (`impl<T> Trait for Vec<T>`): dispatch unifies the
+// receiver's concrete type against the impl's templated target instead of requiring exact
+// equality, and monomorphizes the method body lazily, the first time a concrete instantiation is
+// actually dispatched. The corpus's `generic_impl_two_instantiations` case carries the positive,
+// full-backend-agreement behaviour; these pin the checker's own claims about *when* checking
+// happens and what it refuses.
+
+/// A generic impl's methods are not synthesized into `Def`s the way a concrete impl's are --
+/// `collect_impls` only resolves the templated target type and each method's templated
+/// signature, and stops there. Nothing calls `peek` here, so nothing about its body -- which
+/// would need `T` bound to check at all -- is ever touched.
+#[test]
+fn a_generic_impl_synthesizes_nothing_until_dispatched() {
+    let module = toylang::parse::parse_module(
+        "trait Peek {\n    fn peek(s: Self) -> Self\n}\n\nimpl<T> Peek for Vec<T> {\n    fn peek(s: Self) -> Self = s\n}\n",
+    )
+    .unwrap();
+    let (funcs, _) = toylang::check::check_module(module).unwrap();
+    assert_eq!(
+        funcs.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+        Vec::<&str>::new()
+    );
+}
+
+/// The ruling's "structural use only" restriction -- a generic impl's body may store, pass, or
+/// match a `T`-typed value, but never hand one to an operator or another dispatch -- has no
+/// dedicated enforcement pass. It falls out for free from monomorphization being lazy: a
+/// method's body is only ever checked once `T` is already bound to one concrete type, so `s[0]!`
+/// (a bare `T`-typed value, extracted from `Self = Vec<T>`) reaching `+` is checked exactly like
+/// any other use of `+`, against whatever `T` turned out to be. Dispatched at `Vec<Int>`, `+`
+/// supports it and this compiles.
+#[test]
+fn a_generic_impls_operator_use_on_a_bound_parameter_is_checked_like_any_other() {
+    let program = "trait Doubled {\n    fn doubled(s: Self) -> Self\n}\n\nimpl<T> Doubled for Vec<T> {\n    fn doubled(s: Self) -> Self = [s[0]! + s[0]!]\n}\n\n[1, 2]:doubled()";
+    toylang::compile(program).unwrap();
+}
+
+/// The same impl and method as above, dispatched at `Vec<Bool>` instead: `+` does not support
+/// `Bool`, so this concrete instantiation is refused with the ordinary operator-mismatch error --
+/// no special "no operators on a bare T" check ever runs, because none exists. This is the
+/// negative half of the claim above: a generic impl does not universally forbid operator use on
+/// `T`, it just checks each instantiation on its own merits, the same as `Self`-substitution
+/// already does for a concrete impl.
+#[test]
+fn a_generic_impls_operator_use_is_refused_at_an_instantiation_that_does_not_support_it() {
+    insta::assert_snapshot!(err(
+        "trait Doubled {\n    fn doubled(s: Self) -> Self\n}\n\nimpl<T> Doubled for Vec<T> {\n    fn doubled(s: Self) -> Self = [s[0]! + s[0]!]\n}\n\n[1 == 1, 2 == 3]:doubled()"
+    ));
+}
+
+/// The plain-function-vs-trait-method cross-check applies to a generic impl's method name too,
+/// and eagerly: unlike the same-concrete-type collision (which needs a concrete type to even
+/// name), a name collision with a plain function does not depend on which type ever gets
+/// dispatched.
+#[test]
+fn a_generic_impl_method_colliding_with_a_plain_function_is_refused() {
+    insta::assert_snapshot!(err(
+        "fn peek(x: Int) -> Int = x\n\ntrait Peek {\n    fn peek(s: Self) -> Self\n}\n\nimpl<T> Peek for Vec<T> {\n    fn peek(s: Self) -> Self = s\n}\n\n1"
+    ));
+}
+
+/// A declared parameter that never appears in the impl's own target type could never be bound by
+/// `unify` at any dispatch site, so `collect_impls` refuses it up front rather than deferring to
+/// a `substitute` that would have nothing to substitute.
+#[test]
+fn a_generic_impls_parameter_must_appear_in_its_target_type() {
+    insta::assert_snapshot!(err(
+        "type Circle = {r: Int}\n\ntrait Foo {\n    fn f(s: Self) -> Int\n}\n\nimpl<T> Foo for Circle {\n    fn f(s: Self) -> Int = 1\n}\n\n1"
+    ));
+}

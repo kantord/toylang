@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"type Circle = {r: Int}\\n\\ntrait Foo {\\n    fn f(s: Self) -> Int\\n}\\n\\nimpl<T> Foo for Circle {\\n    fn f(s: Self) -> Int = 1\\n}\\n\\n1\")"
+---
+type parameter `T` does not appear in `{r: Int}`, so a dispatch could never bind it (at byte 69)
