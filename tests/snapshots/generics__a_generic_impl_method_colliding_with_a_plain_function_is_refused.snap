@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"fn peek(x: Int) -> Int = x\\n\\ntrait Peek {\\n    fn peek(s: Self) -> Self\\n}\\n\\nimpl<T> Peek for Vec<T> {\\n    fn peek(s: Self) -> Self = s\\n}\\n\\n1\")"
+---
+`peek` is already a plain function; a trait method cannot share its name (at byte 103)

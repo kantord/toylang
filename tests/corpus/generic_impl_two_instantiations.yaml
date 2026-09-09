@@ -1,0 +1,18 @@
+# One `impl<T> Peek for Vec<T>` block dispatched at two different concrete types, `Vec<Int>`
+# and `Vec<Str>`, from the same declaration -- the actual point of a generic impl over a type
+# constructor: monomorphization happens lazily, per concrete instantiation, rather than needing
+# a separate impl block per element type the way a non-generic impl would.
+program: |
+  trait Peek {
+      fn peek(s: Self) -> Self
+  }
+
+  impl<T> Peek for Vec<T> {
+      fn peek(s: Self) -> Self = reverse(s)
+  }
+
+  str([1, 2, 3]:peek()[0]!) + ["a", "b"]:peek()[0]!
+output: |
+  3b
+
+node_types: [application, builtin.reverse, builtin.str, concat, int, selection.collapse, str, unwrap, var, vec-literal]

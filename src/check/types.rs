@@ -144,13 +144,19 @@ pub(super) fn enum_map(enums: &[EnumDecl]) -> Result<HashMap<String, &EnumDecl>,
 /// `Opt<Opt<Int>>` is two honest levels, not a false cycle). `None` builds the registry
 /// template instead, each parameter standing for itself as `Type::Param` -- which is also the
 /// eager pass that validates a declaration nothing uses.
-pub(super) fn resolve_enum(
-    decl: &EnumDecl,
-    env: &TypeEnv,
-    seen: &mut Vec<(String, Vec<Type>)>,
-    args: Option<&[Type]>,
-) -> Result<Type, Error> {
-    for (i, (p, span)) in decl.params.iter().enumerate() {
+/// Validates one declaration's `<T, ...>` list, shared by `resolve_enum` and `collect_impls`'s
+/// generic-impl handling: a parameter is capitalized, is not a builtin type's name, and is not
+/// declared twice. `context` names the declaration for the duplicate-parameter message (an
+/// enum's own name, or an impl's).
+///
+/// A parameter may shadow a declared enum or alias -- resolve_named consults the parameter
+/// bindings first, so inside the declaration the name means the parameter, unambiguously, the
+/// same scoping Rust gives struct Foo<E> beside an enum E. Refusing the collision instead broke
+/// every program declaring enum E the moment the prelude gained Result<T, E>
+/// (kantord/toylang#85). Builtins stay off limits: Vec-the-parameter would make every Vec<...>
+/// in the payload mean the wrong thing at a distance.
+pub(super) fn check_type_params(params: &[(String, Span)], context: &str) -> Result<(), Error> {
+    for (i, (p, span)) in params.iter().enumerate() {
         if !p.chars().next().is_some_and(char::is_uppercase) {
             return Err(Error::new(
                 *span,
@@ -159,25 +165,29 @@ pub(super) fn resolve_enum(
                 ),
             ));
         }
-        // A parameter may shadow a declared enum or alias -- resolve_named consults the
-        // parameter bindings first, so inside the declaration the name means the parameter,
-        // unambiguously, the same scoping Rust gives struct Foo<E> beside an enum E. Refusing
-        // the collision instead broke every program declaring enum E the moment the prelude
-        // gained Result<T, E> (kantord/toylang#85). Builtins stay off limits: Vec-the-parameter
-        // would make every Vec<...> in the payload mean the wrong thing at a distance.
         if ty::is_builtin_type_name(p) {
             return Err(Error::new(
                 *span,
                 format!("type parameter `{p}` takes the name of a built-in type"),
             ));
         }
-        if decl.params[..i].iter().any(|(earlier, _)| earlier == p) {
+        if params[..i].iter().any(|(earlier, _)| earlier == p) {
             return Err(Error::new(
                 *span,
-                format!("type parameter `{p}` is declared twice in `{}`", decl.name),
+                format!("type parameter `{p}` is declared twice in `{context}`"),
             ));
         }
     }
+    Ok(())
+}
+
+pub(super) fn resolve_enum(
+    decl: &EnumDecl,
+    env: &TypeEnv,
+    seen: &mut Vec<(String, Vec<Type>)>,
+    args: Option<&[Type]>,
+) -> Result<Type, Error> {
+    check_type_params(&decl.params, &decl.name)?;
     let bound: Vec<Type> = match args {
         Some(args) => args.to_vec(),
         None => decl
@@ -378,6 +388,20 @@ pub(super) fn resolve(
     seen: &mut Vec<(String, Vec<Type>)>,
 ) -> Result<Type, Error> {
     resolve_bound(ty, env, seen, &HashMap::new(), false)
+}
+
+/// `resolve`, with `params` in scope: a generic impl's target type and method signatures
+/// (`impl<T> Trait for Vec<T>`) resolve a bare `T` to `Type::Param("T")` the same way a generic
+/// enum's own payloads do (`resolve_enum`'s `None`-args branch) -- `collect_impls` builds
+/// `params` the same way, one `Type::Param` per declared name, and passes it here instead of
+/// resolving through the empty-map `resolve` a concrete impl uses.
+pub(super) fn resolve_with_params(
+    ty: &TypeExpr,
+    env: &TypeEnv,
+    seen: &mut Vec<(String, Vec<Type>)>,
+    params: &HashMap<&str, &Type>,
+) -> Result<Type, Error> {
+    resolve_bound(ty, env, seen, params, false)
 }
 
 /// The arity-checked, resolved type arguments for `name`'s `<...>`, shared between an ordinary

@@ -264,15 +264,22 @@ pub struct TraitMethodSig {
     pub span: Span,
 }
 
-/// `impl Trait for Type { fn sig(param: Type) -> Type = body }`: concrete bodies for one
-/// trait's methods, one block per (trait, type) pair. `check::collect_impls` synthesizes an
-/// ordinary `fn` per method, with `Self` substituted by the target type and the internal name
-/// mangled to `"{method}::{TypeName}"`, so the bodies check through the same path a prelude
-/// function's does while staying distinct per concrete type.
+/// `impl Trait for Type { fn sig(param: Type) -> Type = body }`, or, with a type-constructor
+/// target, `impl<T, ...> Trait for Type<T, ...> { ... }`: concrete bodies for one trait's
+/// methods, one block per (trait, type) pair. `check::collect_impls` synthesizes an ordinary
+/// `fn` per method, with `Self` substituted by the target type and the internal name mangled to
+/// `"{method}::{TypeName}"`, so the bodies check through the same path a prelude function's does
+/// while staying distinct per concrete type. When `params` is non-empty, `ty` is a template
+/// (`Vec<T>`, say) rather than one concrete type, and `collect_impls` defers each method's body
+/// check to the first dispatch that actually instantiates it at a concrete type.
 #[derive(Debug)]
 pub struct ImplDecl {
     pub trait_name: String,
-    /// The concrete type the trait's `Self` substitutes to.
+    /// Type parameters, in declaration order: `impl<T> Trait for Vec<T> { ... }`. Empty for an
+    /// ordinary impl targeting one concrete type. Same shape and meaning as `EnumDecl::params`.
+    pub params: Vec<(String, Span)>,
+    /// The type the trait's `Self` substitutes to: one concrete type when `params` is empty, or
+    /// a template mentioning `params` otherwise.
     pub ty: TypeExpr,
     /// The method bodies, each against the trait's signature of the same name.
     pub methods: Vec<ImplMethod>,

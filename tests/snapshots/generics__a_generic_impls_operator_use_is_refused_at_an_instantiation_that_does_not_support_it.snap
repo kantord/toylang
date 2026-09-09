@@ -1,0 +1,5 @@
+---
+source: tests/generics.rs
+expression: "err(\"trait Doubled {\\n    fn doubled(s: Self) -> Self\\n}\\n\\nimpl<T> Doubled for Vec<T> {\\n    fn doubled(s: Self) -> Self = [s[0]! + s[0]!]\\n}\\n\\n[1 == 1, 2 == 3]:doubled()\")"
+---
+`+` needs Int, Str, or Vec, found Bool (at byte 115)

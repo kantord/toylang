@@ -801,9 +801,12 @@ impl<'i> Cursor<'i> {
 
     /// `impl Trait for Type { fn sig(param: Type) -> Type = body, ... }`:concrete bodies
     /// for one trait's methods, one block per (trait, type) pair. Like a trait's, each method
-    /// starts with its own `fn`, so the methods need no separator token between them.
+    /// starts with its own `fn`, so the methods need no separator token between them. Optionally
+    /// `impl<T, ...> Trait for Type<T, ...> { ... }`, reusing `enum_decl`'s own `<T, ...>`
+    /// grammar: the parameter list sits before the trait name, the same position Rust puts it.
     fn impl_decl(&mut self) -> Result<ImplDecl, Error> {
         let start = self.eat(Tok::Impl)?;
+        let params = self.type_params()?;
         let (trait_name, _) = self.eat_ident("a trait name")?;
         let (link, link_span) = self.eat_ident("`for`")?;
         if link != "for" {
@@ -839,6 +842,7 @@ impl<'i> Cursor<'i> {
         let close = self.eat(Tok::RBrace)?;
         Ok(ImplDecl {
             trait_name,
+            params,
             ty,
             methods,
             span: start.to(close),
@@ -981,15 +985,9 @@ impl<'i> Cursor<'i> {
         })
     }
 
-    /// `enum Shape { point, circle{r: Int}, celsius(Int) }`, optionally with type
-    /// parameters: `enum Opt<T> { some(T), none }`.
-    ///
-    /// A variant is a name, optionally followed by its payload type. The payload rule is any
-    /// single type, spelled the way a call spells its argument: a record type directly in
-    /// braces, or any type in parens.
-    fn enum_decl(&mut self, is_pub: bool) -> Result<EnumDecl, Error> {
-        let start = self.eat(Tok::Enum)?;
-        let (name, _) = self.eat_ident("an enum name")?;
+    /// `<T, ...>`, shared by every declaration that takes type parameters: `enum Opt<T> { ... }`
+    /// and `impl<T> Trait for Vec<T> { ... }`. Empty when no `<` follows.
+    fn type_params(&mut self) -> Result<Vec<(String, Span)>, Error> {
         let mut params = Vec::new();
         if self.peek()?.0 == Tok::Lt {
             self.advance()?;
@@ -1003,6 +1001,19 @@ impl<'i> Cursor<'i> {
             }
             self.eat(Tok::Gt)?;
         }
+        Ok(params)
+    }
+
+    /// `enum Shape { point, circle{r: Int}, celsius(Int) }`, optionally with type
+    /// parameters: `enum Opt<T> { some(T), none }`.
+    ///
+    /// A variant is a name, optionally followed by its payload type. The payload rule is any
+    /// single type, spelled the way a call spells its argument: a record type directly in
+    /// braces, or any type in parens.
+    fn enum_decl(&mut self, is_pub: bool) -> Result<EnumDecl, Error> {
+        let start = self.eat(Tok::Enum)?;
+        let (name, _) = self.eat_ident("an enum name")?;
+        let params = self.type_params()?;
         self.eat(Tok::LBrace)?;
         let mut variants = Vec::new();
         let (first, _) = self.peek()?;

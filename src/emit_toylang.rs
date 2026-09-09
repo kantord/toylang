@@ -352,15 +352,24 @@ fn print_variant_decl(v: &Variant) -> String {
     }
 }
 
-fn print_enum(e: &EnumDecl) -> String {
-    let pub_prefix = if e.is_pub { "pub " } else { "" };
-    let params = if e.params.is_empty() {
+/// `<T, ...>`, shared by an enum's and an impl's own declared type parameters: empty when there
+/// are none.
+fn print_type_params(params: &[(String, crate::ast::Span)]) -> String {
+    if params.is_empty() {
         String::new()
     } else {
-        let names: Vec<&str> = e.params.iter().map(|(n, _)| n.as_str()).collect();
+        let names: Vec<&str> = params.iter().map(|(n, _)| n.as_str()).collect();
         format!("<{}>", names.join(", "))
-    };
-    let head = format!("{pub_prefix}enum {}{params}", e.name);
+    }
+}
+
+fn print_enum(e: &EnumDecl) -> String {
+    let pub_prefix = if e.is_pub { "pub " } else { "" };
+    let head = format!(
+        "{pub_prefix}enum {}{}",
+        e.name,
+        print_type_params(&e.params)
+    );
     let variants: Vec<String> = e.variants.iter().map(print_variant_decl).collect();
     if variants.is_empty() {
         return format!("{head} {{}}");
@@ -395,12 +404,17 @@ fn print_trait_method(m: &TraitMethodSig) -> String {
 }
 
 fn print_impl(i: &ImplDecl) -> String {
+    let params = print_type_params(&i.params);
     if i.methods.is_empty() {
-        return format!("impl {} for {} {{}}", i.trait_name, print_type(&i.ty));
+        return format!(
+            "impl{params} {} for {} {{}}",
+            i.trait_name,
+            print_type(&i.ty)
+        );
     }
     let methods: Vec<String> = i.methods.iter().map(print_impl_method).collect();
     format!(
-        "impl {} for {} {}",
+        "impl{params} {} for {} {}",
         i.trait_name,
         print_type(&i.ty),
         wrap_brace("{", &methods, "}")
