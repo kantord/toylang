@@ -2154,3 +2154,11 @@
   needs: []
   prio: 4
   status: done
+
+- id: trait-generic-impls-over-type-constructors-design
+  issue: gh:176
+  title: 'Spun off from select-shared-mechanism-design (grilling round, 2026-09-09): the maintainer wants `impl<T> Trait for Vec<T>` to actually work, not just per-concrete-type impls -- "I think there will be stuff in the prelude that are implemented over a trait" (i.e. this is wanted beyond just unblocking select). Grounded before ruling: the checker''s existing `unify`/`substitute` pair (`src/check/mod.rs:1376`, `src/ty.rs:391`), built for generic enums, already handles `Type::Vec(Type::Param(_))` structurally -- `unify` has a `(Type::Vec(a), Type::Vec(b))` arm that recurses and binds params, `substitute` recurses through `Type::Vec`/`Type::Stream` the same way. The `<T>` param-list syntax also already exists verbatim on `EnumDecl` (`src/parse.rs:990-1005`, `enum Opt<T> { ... }`). So this is not building generics from scratch: extend `ImplDecl` with the same `params: Vec<(String, Span)>` field `EnumDecl` already has, parse `impl<T> Name for Type<T> { ... }` reusing the enum''s param-list grammar, and swap `collect_impls`''s exact-`Type`-equality dispatch for `unify` when an impl has params, substituting the binding through the method signature. RULED (same round, maintainer directed minimal bookkeeping only, no further grilling): a generic impl''s methods may use `T` only structurally -- store/pass/match a `T`-typed value (`Vec<T>`, a record field, an enum payload, an argument expecting `T`) -- never as the receiver of an operator or another dispatch, which needs bounds and stays deferred (same discipline `Self`-substitution already follows). Monomorphization is lazy and per concrete instantiation, memoized: at a dispatch site, unify the impl''s template type against the concrete receiver, substitute through the method signature, and check+synthesize a concrete `Def` the first time that combination is actually dispatched -- same shape as Rust monomorphization, and it avoids ever type-checking an abstract generic body, sidestepping the larger "generic functions with trait bounds" feature entirely.'
+  kind: build
+  needs: []
+  prio: 4
+  status: done
