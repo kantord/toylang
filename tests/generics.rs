@@ -143,9 +143,10 @@ fn trait_impl_and_alias_parse_in_a_module() {
 }
 
 /// The trait scaffold:an impl block's methods are checked against the trait's signatures (with
-/// `Self` substituted by the impl's target type)and synthesized into ordinary prelude functions,
-/// the same path a hand-written prelude `fn` takes. The defs are what `prelude::inject` hands
-/// the program's checker, and the funcs are what the build checks once.
+/// `Self` substituted by the impl's target type) and synthesized into ordinary functions, the
+/// same path a hand-written prelude `fn` takes -- named `"{method}::{TypeName}"`
+/// (`check::collect_impls`) rather than by the bare method name, so two impls of different
+/// types can share a method name without colliding.
 #[test]
 fn an_impl_block_synthesizes_its_methods_as_functions() {
     let module = toylang::parse::parse_module(
@@ -154,7 +155,7 @@ fn an_impl_block_synthesizes_its_methods_as_functions() {
     let (funcs, _) = toylang::check::check_module(module).unwrap();
     assert_eq!(
         funcs.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
-        vec!["identity", "step"]
+        vec!["identity::Vec_Int", "step::Vec_Int"]
     );
 }
 
@@ -168,6 +169,9 @@ fn an_impl_method_must_match_its_trait_signature() {
         "trait Fold {\n    fn identity() -> Self\n}\n\nimpl Fold for Vec<Int> {\n    fn identity() -> Int = 0\n}\n",
     ).unwrap();
     insta::assert_snapshot!(
-        toylang::check::check_module(module).map(|_| ()).unwrap_err().to_string()
+        toylang::check::check_module(module)
+            .map(|_| ())
+            .unwrap_err()
+            .to_string()
     );
 }
