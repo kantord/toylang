@@ -204,8 +204,12 @@ struct Cells<'a> {
     lines_used: &'a Cell<bool>,
     dsv: &'a RefCell<Option<String>>,
     next_local: &'a Cell<LocalId>,
-    /// The two growth points a generic impl's dispatch writes into, shared by every `Ctx` this
-    /// `Cells` builds -- see the fields of the same name on `Ctx`.
+    /// Every generic impl, and the two growth points a generic impl's dispatch writes into,
+    /// shared by every `Ctx` this `Cells` builds -- see the fields of the same name on `Ctx`.
+    /// Grouped here (rather than passed to `ctx()` like `impls`) purely to keep that method's
+    /// own argument count down; `generic_templates` does not vary between a caller's two `ctx()`
+    /// calls any more than `generic_synth`/`generic_funcs` do.
+    generic_templates: &'a [GenericImplTemplate],
     generic_synth: &'a RefCell<Vec<ImplEntry>>,
     generic_funcs: &'a RefCell<Vec<tir::Func>>,
 }
@@ -220,7 +224,6 @@ impl Cells<'_> {
         variant_owners: &'a HashMap<String, Vec<String>>,
         visibility: &'a HashMap<String, (Origin, bool)>,
         impls: &'a [ImplEntry],
-        generic_templates: &'a [GenericImplTemplate],
         file: Origin,
     ) -> Ctx<'a> {
         Ctx {
@@ -240,7 +243,7 @@ impl Cells<'_> {
             file,
             next_local: self.next_local,
             impls,
-            generic_templates,
+            generic_templates: self.generic_templates,
             generic_synth: self.generic_synth,
             generic_funcs: self.generic_funcs,
         }
@@ -286,6 +289,7 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
         lines_used: &lines_used,
         dsv: &dsv,
         next_local: &next_local,
+        generic_templates: &generic_templates,
         generic_synth: &generic_synth,
         generic_funcs: &generic_funcs,
     };
@@ -298,7 +302,6 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
         &variant_owners,
         &visibility,
         &impl_table,
-        &generic_templates,
         Origin::Program,
     );
     // Return-type inference for hoisted definitions (`fn name = expr`, gh:152): a hoisted
@@ -315,7 +318,6 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
         &variant_owners,
         &visibility,
         &impl_table,
-        &generic_templates,
         Origin::Program,
     );
 
@@ -499,33 +501,31 @@ fn check_defs<'a>(
     Ok(funcs)
 }
 
-/// One non-hoisted definition's body, checked against `sig` and lowered to a `tir::Func`: the
-/// machinery a plain top-level `fn` and a generic impl's freshly monomorphized method share
-/// alike, the only difference being where `sig` came from (`sig_of`'s lookup for the former,
-/// `unify`+`substitute` for the latter, in `find_or_monomorphize`). `name` is what the body's
-/// own error messages name and what the resulting `Func` is called; for an impl method this is
-/// already the mangled `"{method}::{Type}"` form.
-fn check_one_def(
+/// `Ctx::scope`'s own element type, named so `lower_param` can spell it as a return type without
+/// tripping clippy's `type_complexity` (the tuple itself is nothing new -- every `scope` in this
+/// file already carries it inline).
+type Scope = Vec<(String, Type, Option<LocalId>)>;
+
+/// The `(scope, lowered)` pair `check_one_def` needs before it can check a body: a plain-named
+/// parameter binds directly; a destructuring pattern (`{a, b}: T`) binds each named field to a
+/// fresh local off a hidden whole-record parameter the body never sees, which is what lets
+/// `let`-shadowing behave the same for either shape (kantord/toylang#144).
+fn lower_param(
     ctx: &Ctx,
     name: &str,
     param: Option<&Param>,
-    sig: &Sig,
-    body_expr: &Expr,
-) -> Result<tir::Func, Error> {
-    // A destructured parameter binds each named field to a fresh local, and its record arrives
-    // as a hidden single-name parameter the body never sees: the `Bind` chain below reads it off
-    // the backend's function argument, so a user name can never collide with it. The fields'
-    // `Some(local)` scope entries are what make `let` shadowing behave (kantord/toylang#144).
-    let (scope, lowered) = match (param, &sig.param) {
+    param_ty: &Option<Type>,
+) -> Result<(Scope, LoweredParam), Error> {
+    match (param, param_ty) {
         (Some(param), Some(param_ty)) => match &param.shape {
-            ParamShape::Name(pname, _) => (
+            ParamShape::Name(pname, _) => Ok((
                 vec![(pname.clone(), param_ty.clone(), None)],
                 LoweredParam {
                     name: pname.clone(),
                     record: None,
                     field_locals: Vec::new(),
                 },
-            ),
+            )),
             ParamShape::Fields(fields) => {
                 let Type::Record(pfields) = param_ty else {
                     return Err(Error::new(
@@ -573,26 +573,80 @@ fn check_one_def(
                     }
                 }
                 let pname = format!("__{name}_param");
-                (
+                Ok((
                     scope,
                     LoweredParam {
                         name: pname,
                         record: Some(record),
                         field_locals,
                     },
-                )
+                ))
             }
         },
-        (None, None) => (
+        (None, None) => Ok((
             Vec::new(),
             LoweredParam {
                 name: String::new(),
                 record: None,
                 field_locals: Vec::new(),
             },
-        ),
+        )),
         _ => unreachable!("a signature's param mirrors its definition's"),
-    };
+    }
+}
+
+/// A destructured parameter's record arrives as a hidden param and is bound to a fresh local,
+/// then each named field is projected off it -- the same `Bind` shape `let` uses, so every
+/// backend already knows how to run one. Field bindings wrap innermost-first so the record's
+/// own bind comes first.
+fn bind_destructured_fields(
+    record: LocalId,
+    param_ty: Type,
+    lowered: &LoweredParam,
+    body: Tir,
+) -> Tir {
+    let mut body = body;
+    for (fname, _, fid, fty) in lowered.field_locals.iter().rev() {
+        let base = Tir::new(param_ty.clone(), Kind::Local(record));
+        body = Tir::new(
+            body.ty.clone(),
+            Kind::Bind {
+                local: *fid,
+                value: Box::new(Tir::new(
+                    fty.clone(),
+                    Kind::Field {
+                        base: Box::new(base),
+                        name: fname.clone(),
+                    },
+                )),
+                body: Box::new(body),
+            },
+        );
+    }
+    Tir::new(
+        body.ty.clone(),
+        Kind::Bind {
+            local: record,
+            value: Box::new(Tir::new(param_ty, Kind::Var(lowered.name.clone()))),
+            body: Box::new(body),
+        },
+    )
+}
+
+/// One non-hoisted definition's body, checked against `sig` and lowered to a `tir::Func`: the
+/// machinery a plain top-level `fn` and a generic impl's freshly monomorphized method share
+/// alike, the only difference being where `sig` came from (`sig_of`'s lookup for the former,
+/// `unify`+`substitute` for the latter, in `find_or_monomorphize`). `name` is what the body's
+/// own error messages name and what the resulting `Func` is called; for an impl method this is
+/// already the mangled `"{method}::{Type}"` form.
+fn check_one_def(
+    ctx: &Ctx,
+    name: &str,
+    param: Option<&Param>,
+    sig: &Sig,
+    body_expr: &Expr,
+) -> Result<tir::Func, Error> {
+    let (scope, lowered) = lower_param(ctx, name, param, &sig.param)?;
     let def_ctx = Ctx {
         sigs: ctx.sigs,
         enums: ctx.enums,
@@ -643,40 +697,12 @@ fn check_one_def(
             Expected::Synthesised(body) => conform(&def_ctx, body, &sig.ret),
         }
     };
-    // A destructured parameter's record arrives as a hidden param and is bound to a fresh
-    // local, then each named field is projected off it -- the same `Bind` shape `let` uses, so
-    // every backend already knows how to run one. Field bindings wrap innermost-first so the
-    // record's own bind comes first.
     if let Some(record) = lowered.record {
         let param_ty = sig
             .param
             .clone()
             .expect("a destructured param's type is Some");
-        for (fname, _, fid, fty) in lowered.field_locals.iter().rev() {
-            let base = Tir::new(param_ty.clone(), Kind::Local(record));
-            body = Tir::new(
-                body.ty.clone(),
-                Kind::Bind {
-                    local: *fid,
-                    value: Box::new(Tir::new(
-                        fty.clone(),
-                        Kind::Field {
-                            base: Box::new(base),
-                            name: fname.clone(),
-                        },
-                    )),
-                    body: Box::new(body),
-                },
-            );
-        }
-        body = Tir::new(
-            body.ty.clone(),
-            Kind::Bind {
-                local: record,
-                value: Box::new(Tir::new(param_ty, Kind::Var(lowered.name.clone()))),
-                body: Box::new(body),
-            },
-        );
+        body = bind_destructured_fields(record, param_ty, &lowered, body);
     }
     if let Some(param) = param {
         check_param(&body, param, &lowered, &sig.param, name, body_expr.span())?;
@@ -877,12 +903,161 @@ fn check_impl_matches_trait(
     Ok(())
 }
 
+/// The concrete (non-generic) half of `collect_impls`'s per-impl handling: resolves `imp.ty` to
+/// one exact type, synthesizes a `Def` per method (`Self` substituted, name mangled to
+/// `"{method}::{Type}"`), and pushes both into the caller's accumulators. `seen_impls`/`defs`/
+/// `meta` are `collect_impls`'s own running state, threaded through rather than returned, since
+/// the duplicate-impl and same-type-same-method checks need to see every earlier impl already
+/// processed, generic or not.
+fn collect_concrete_impl(
+    imp: ImplDecl,
+    trait_decl: &TraitDecl,
+    env: &TypeEnv,
+    seen_impls: &mut Vec<(String, Type)>,
+    defs: &mut Vec<Def>,
+    meta: &mut Vec<(String, Type)>,
+) -> Result<(), Error> {
+    let self_ty = resolve(&imp.ty, env, &mut Vec::new())?;
+    if seen_impls
+        .iter()
+        .any(|(tn, ty)| tn == &imp.trait_name && *ty == self_ty)
+    {
+        return Err(Error::new(
+            imp.span,
+            format!("`{}` is already implemented for {self_ty}", imp.trait_name),
+        ));
+    }
+    seen_impls.push((imp.trait_name.clone(), self_ty.clone()));
+    check_impl_matches_trait(&imp, trait_decl, env, &HashMap::new())?;
+    for m in imp.methods {
+        // Collision only when two impls target the *same concrete type* with the *same*
+        // method name, regardless of trait: different types sharing a method name is fine,
+        // which is the fix over the old flat-`sigs` write.
+        if defs
+            .iter()
+            .any(|d| d.name == format!("{}::{}", m.name, self_ty.ident()))
+        {
+            return Err(Error::new(
+                m.span,
+                format!("`{}` is already implemented for {self_ty}", m.name),
+            ));
+        }
+        let param = m.param.map(|p| Param {
+            shape: p.shape,
+            ty: p.ty.substitute_self(&imp.ty),
+            span: p.span,
+        });
+        defs.push(Def {
+            name: format!("{}::{}", m.name, self_ty.ident()),
+            param,
+            ret: Some(m.ret.substitute_self(&imp.ty)),
+            body: m.body,
+            span: m.span,
+            is_pub: true,
+            origin: imp.origin,
+            hoisted: false,
+        });
+        meta.push((m.name, self_ty.clone()));
+    }
+    Ok(())
+}
+
+/// The generic half of `collect_impls`'s per-impl handling: `Self` resolves against `imp.ty`
+/// exactly as a concrete impl's does, except every declared parameter binds to `Type::Param`
+/// rather than a concrete argument -- the same registry-template shape `resolve_enum`'s own
+/// `None`-args branch builds for a generic enum. Nothing here checks a method's body: that
+/// happens only once a concrete dispatch instantiates it (`find_or_monomorphize`), since only
+/// then is every parameter bound to something real to check against.
+fn collect_generic_impl(
+    imp: ImplDecl,
+    trait_decl: &TraitDecl,
+    env: &TypeEnv,
+    seen_impls: &mut Vec<(String, Type)>,
+) -> Result<GenericImplTemplate, Error> {
+    check_type_params(&imp.params, &format!("impl {}", imp.trait_name))?;
+    let bound: Vec<Type> = imp
+        .params
+        .iter()
+        .map(|(p, _)| Type::Param(p.clone()))
+        .collect();
+    let params_map: HashMap<&str, &Type> = imp
+        .params
+        .iter()
+        .map(|(p, _)| p.as_str())
+        .zip(bound.iter())
+        .collect();
+    let self_ty = resolve_with_params(&imp.ty, env, &mut Vec::new(), &params_map)?;
+    for (p, span) in &imp.params {
+        if !type_mentions_param(&self_ty, p) {
+            return Err(Error::new(
+                *span,
+                format!(
+                    "type parameter `{p}` does not appear in `{self_ty}`, so a dispatch \
+                     could never bind it"
+                ),
+            ));
+        }
+    }
+    if seen_impls
+        .iter()
+        .any(|(tn, ty)| tn == &imp.trait_name && *ty == self_ty)
+    {
+        return Err(Error::new(
+            imp.span,
+            format!("`{}` is already implemented for {self_ty}", imp.trait_name),
+        ));
+    }
+    seen_impls.push((imp.trait_name.clone(), self_ty.clone()));
+    check_impl_matches_trait(&imp, trait_decl, env, &params_map)?;
+    let origin = imp.origin;
+    let mut methods = Vec::new();
+    for m in imp.methods {
+        let param_ty = m
+            .param
+            .as_ref()
+            .map(|p| {
+                resolve_with_params(
+                    &p.ty.substitute_self(&imp.ty),
+                    env,
+                    &mut Vec::new(),
+                    &params_map,
+                )
+            })
+            .transpose()?;
+        let ret_ty = resolve_with_params(
+            &m.ret.substitute_self(&imp.ty),
+            env,
+            &mut Vec::new(),
+            &params_map,
+        )?;
+        methods.push(GenericImplMethod {
+            name: m.name,
+            param: m.param,
+            param_ty,
+            ret_ty,
+            body: m.body,
+            span: m.span,
+            origin,
+        });
+    }
+    Ok(GenericImplTemplate {
+        receiver: self_ty,
+        methods,
+    })
+}
+
+/// `collect_impls`'s three outputs, named so its signature does not trip clippy's
+/// `type_complexity`: the concrete impls' synthesized `Def`s (still to be checked, same as any
+/// plain function's), the dispatch table built from them, and every generic impl, still
+/// templated.
+type CollectedImpls = (Vec<Def>, Vec<ImplEntry>, Vec<GenericImplTemplate>);
+
 fn collect_impls(
     traits: &[TraitDecl],
     impls: Vec<ImplDecl>,
     env: &TypeEnv,
     sigs: &HashMap<String, Sig>,
-) -> Result<(Vec<Def>, Vec<ImplEntry>, Vec<GenericImplTemplate>), Error> {
+) -> Result<CollectedImpls, Error> {
     for (i, t) in traits.iter().enumerate() {
         if traits[..i].iter().any(|earlier| earlier.name == t.name) {
             return Err(Error::new(
@@ -914,127 +1089,10 @@ fn collect_impls(
             ));
         };
         if imp.params.is_empty() {
-            let self_ty = resolve(&imp.ty, env, &mut Vec::new())?;
-            if seen_impls
-                .iter()
-                .any(|(tn, ty)| tn == &imp.trait_name && *ty == self_ty)
-            {
-                return Err(Error::new(
-                    imp.span,
-                    format!("`{}` is already implemented for {self_ty}", imp.trait_name),
-                ));
-            }
-            seen_impls.push((imp.trait_name.clone(), self_ty.clone()));
-            check_impl_matches_trait(&imp, trait_decl, env, &HashMap::new())?;
-            for m in imp.methods {
-                // Collision only when two impls target the *same concrete type* with the *same*
-                // method name, regardless of trait: different types sharing a method name is fine,
-                // which is the fix over the old flat-`sigs` write.
-                if defs
-                    .iter()
-                    .any(|d| d.name == format!("{}::{}", m.name, self_ty.ident()))
-                {
-                    return Err(Error::new(
-                        m.span,
-                        format!("`{}` is already implemented for {self_ty}", m.name),
-                    ));
-                }
-                let param = m.param.map(|p| Param {
-                    shape: p.shape,
-                    ty: p.ty.substitute_self(&imp.ty),
-                    span: p.span,
-                });
-                defs.push(Def {
-                    name: format!("{}::{}", m.name, self_ty.ident()),
-                    param,
-                    ret: Some(m.ret.substitute_self(&imp.ty)),
-                    body: m.body,
-                    span: m.span,
-                    is_pub: true,
-                    origin: imp.origin,
-                    hoisted: false,
-                });
-                meta.push((m.name, self_ty.clone()));
-            }
-            continue;
+            collect_concrete_impl(imp, trait_decl, env, &mut seen_impls, &mut defs, &mut meta)?;
+        } else {
+            generics.push(collect_generic_impl(imp, trait_decl, env, &mut seen_impls)?);
         }
-
-        // A generic impl: `Self` resolves against `imp.ty` exactly as a concrete impl's does,
-        // except every declared parameter binds to `Type::Param` rather than a concrete
-        // argument -- the same registry-template shape `resolve_enum`'s own `None`-args branch
-        // builds for a generic enum. Nothing here checks a method's body: that happens only once
-        // a concrete dispatch instantiates it (`find_or_monomorphize`), since only then is every
-        // parameter bound to something real to check against.
-        check_type_params(&imp.params, &format!("impl {}", imp.trait_name))?;
-        let bound: Vec<Type> = imp
-            .params
-            .iter()
-            .map(|(p, _)| Type::Param(p.clone()))
-            .collect();
-        let params_map: HashMap<&str, &Type> = imp
-            .params
-            .iter()
-            .map(|(p, _)| p.as_str())
-            .zip(bound.iter())
-            .collect();
-        let self_ty = resolve_with_params(&imp.ty, env, &mut Vec::new(), &params_map)?;
-        for (p, span) in &imp.params {
-            if !type_mentions_param(&self_ty, p) {
-                return Err(Error::new(
-                    *span,
-                    format!(
-                        "type parameter `{p}` does not appear in `{self_ty}`, so a dispatch \
-                         could never bind it"
-                    ),
-                ));
-            }
-        }
-        if seen_impls
-            .iter()
-            .any(|(tn, ty)| tn == &imp.trait_name && *ty == self_ty)
-        {
-            return Err(Error::new(
-                imp.span,
-                format!("`{}` is already implemented for {self_ty}", imp.trait_name),
-            ));
-        }
-        seen_impls.push((imp.trait_name.clone(), self_ty.clone()));
-        check_impl_matches_trait(&imp, trait_decl, env, &params_map)?;
-        let origin = imp.origin;
-        let mut methods = Vec::new();
-        for m in imp.methods {
-            let param_ty = m
-                .param
-                .as_ref()
-                .map(|p| {
-                    resolve_with_params(
-                        &p.ty.substitute_self(&imp.ty),
-                        env,
-                        &mut Vec::new(),
-                        &params_map,
-                    )
-                })
-                .transpose()?;
-            let ret_ty = resolve_with_params(
-                &m.ret.substitute_self(&imp.ty),
-                env,
-                &mut Vec::new(),
-                &params_map,
-            )?;
-            methods.push(GenericImplMethod {
-                name: m.name,
-                param: m.param,
-                param_ty,
-                ret_ty,
-                body: m.body,
-                span: m.span,
-                origin,
-            });
-        }
-        generics.push(GenericImplTemplate {
-            receiver: self_ty,
-            methods,
-        });
     }
     let impl_sigs = signatures(&defs, env)?;
     let table: Vec<ImplEntry> = defs
@@ -1155,6 +1213,7 @@ pub fn check_module(module: crate::ast::Module) -> Result<(Vec<tir::Func>, ty::E
         lines_used: &lines_used,
         dsv: &dsv,
         next_local: &next_local,
+        generic_templates: &generic_templates,
         generic_synth: &generic_synth,
         generic_funcs: &generic_funcs,
     };
@@ -1164,7 +1223,6 @@ pub fn check_module(module: crate::ast::Module) -> Result<(Vec<tir::Func>, ty::E
         &variant_owners,
         &visibility,
         &impl_table,
-        &generic_templates,
         Origin::Prelude,
     );
     for (name, sig) in infer_hoisted(&ctx, defs.iter())? {
@@ -1176,7 +1234,6 @@ pub fn check_module(module: crate::ast::Module) -> Result<(Vec<tir::Func>, ty::E
         &variant_owners,
         &visibility,
         &impl_table,
-        &generic_templates,
         Origin::Prelude,
     );
     let mut funcs = check_defs(defs.iter().chain(impl_defs.iter()), &ctx)?;
