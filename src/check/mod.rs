@@ -301,13 +301,41 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
     funcs.extend(check_defs(impl_defs.iter(), &ctx)?);
 
     let body = check_program_body(&ctx, &program_body)?;
+    let (input, inputs, dsv) =
+        check_result_and_stdin(&body, program_body.span(), input, inputs, &lines_used, dsv)?;
+    Ok(tir::Program {
+        funcs: prune_unreachable(funcs, &body),
+        body,
+        input,
+        inputs,
+        uses_lines: lines_used.get(),
+        dsv,
+        enums,
+    })
+}
+
+/// `check`'s validation once the program's result and every stdin-reading form are known: the
+/// program's own result cannot be a stream (nothing to print; `collect` first) or a Char (no
+/// wire form), and `input`/`lines`/`inputs`/`dsv` are four different ways of reading the one
+/// real stdin, mutually exclusive because the backends force it -- Python's `input` reads stdin
+/// to EOF before parsing, and jq needs a different invocation flag (`-R -n` vs `-n`) for raw
+/// lines than for parsed JSON, so no one process can run with more than one of them requested.
+/// Returns the resolved `input`/`inputs`/`dsv` `tir::Program` carries once every check passes.
+fn check_result_and_stdin(
+    body: &Tir,
+    body_span: Span,
+    input: RefCell<Option<Type>>,
+    inputs: RefCell<Option<Type>>,
+    lines_used: &Cell<bool>,
+    dsv: RefCell<Option<String>>,
+) -> Result<(Option<Type>, Option<Type>, Option<String>), Error> {
     // A stream cannot be printed, having nothing to show: it is not a value, and collect() is
     // what turns it into one. A function body catches this for free, since its return
     // annotation can never spell Stream and so can never match a body that contains one; the
     // program's own result has no annotation to check against, so it needs asking directly.
     if body.ty.contains_stream() {
         return Err(Error::new(
-            program_body.span(),
+            body_span,
             "the program's result contains a stream, which has nothing to print; pass it to \
              `collect` first"
                 .to_string(),
@@ -317,20 +345,15 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
     // hand one to the printer either -- it has to build a Str first.
     if body.ty.contains_char() {
         return Err(Error::new(
-            program_body.span(),
+            body_span,
             "the program's result contains a Char, which has no wire form to print".to_string(),
         ));
     }
     let input = input.into_inner();
     let inputs = inputs.into_inner();
-    // Forced by the backends, not chosen: Python's `input` reads all of stdin to EOF before
-    // parsing, leaving nothing for anything else to read afterward, and jq needs a different
-    // invocation flag for raw lines (`-R -n`) than for parsed JSON values (`-n` alone) -- one
-    // process cannot run with both. So all three ways of reading the same real stdin are
-    // mutually exclusive, not just `input` and `lines` as before.
     if input.is_some() && lines_used.get() {
         return Err(Error::new(
-            program_body.span(),
+            body_span,
             "a program cannot use both `input` and `lines`; they read the same real stdin two \
              different ways"
                 .to_string(),
@@ -338,7 +361,7 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
     }
     if input.is_some() && inputs.is_some() {
         return Err(Error::new(
-            program_body.span(),
+            body_span,
             "a program cannot use both `input` and `inputs`; they read the same real stdin two \
              different ways"
                 .to_string(),
@@ -346,7 +369,7 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
     }
     if lines_used.get() && inputs.is_some() {
         return Err(Error::new(
-            program_body.span(),
+            body_span,
             "a program cannot use both `lines` and `inputs`; they read the same real stdin two \
              different ways"
                 .to_string(),
@@ -362,7 +385,7 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
     ] {
         if dsv.is_some() && other {
             return Err(Error::new(
-                program_body.span(),
+                body_span,
                 format!(
                     "a program cannot use both `dsv` and {name}; they read the same real stdin \
                      two different ways"
@@ -370,15 +393,7 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
             ));
         }
     }
-    Ok(tir::Program {
-        funcs: prune_unreachable(funcs, &body),
-        body,
-        input,
-        inputs,
-        uses_lines: lines_used.get(),
-        dsv,
-        enums,
-    })
+    Ok((input, inputs, dsv))
 }
 
 /// What `check_defs` made of a definition's parameter: the TIR param name the backends bind
@@ -391,12 +406,6 @@ struct LoweredParam {
     field_locals: Vec<(String, Span, LocalId, Type)>,
 }
 
-/// Signatures are collected before any body is checked, so a definition may call one that
-/// appears later in `defs`. This is also what recursion needs. No reachability pruning happens
-/// here: that needs the whole program's body, which `check_module` never has and `check` only
-/// gets once this returns, so both call this and prune afterward, over the combined result.
-/// `ctx`'s own per-def fields (`scope`, `subject`, `in_fn`, ...) are ignored -- each def gets its
-/// own, built from its signature exactly as `check` always has.
 /// A checked def's `Sig`: a plain function's lives in `ctx.sigs` as always, an impl method's in
 /// `ctx.impls` instead (`collect_impls` keeps the two apart entirely -- see its doc comment), so
 /// `check_defs` asks whichever one actually has `name` rather than assuming its own name never
@@ -413,6 +422,12 @@ fn sig_of<'a>(ctx: &'a Ctx, name: &str) -> &'a Sig {
         .sig
 }
 
+/// Signatures are collected before any body is checked, so a definition may call one that
+/// appears later in `defs`. This is also what recursion needs. No reachability pruning happens
+/// here: that needs the whole program's body, which `check_module` never has and `check` only
+/// gets once this returns, so both call this and prune afterward, over the combined result.
+/// `ctx`'s own per-def fields (`scope`, `subject`, `in_fn`, ...) are ignored -- each def gets its
+/// own, built from its signature exactly as `check` always has.
 fn check_defs<'a>(
     defs: impl IntoIterator<Item = &'a crate::ast::Def>,
     ctx: &Ctx<'a>,
@@ -674,6 +689,66 @@ struct ImplEntry {
 /// synthesized names collide once escaped, checked both against each other and against every
 /// plain function name (escaping a name with no `::` is a no-op, so this is the same comparison
 /// as asking whether a user's own function is literally named `add__Circle`).
+/// One impl block against the trait it names: every method it gives a body matches that trait
+/// method's signature exactly (`Self` substituted by the impl's own target), and every trait
+/// method got a body -- neither direction optional. Pulled out of `collect_impls`'s main loop
+/// since it is a complete, self-contained question ("does this impl actually implement this
+/// trait?") independent of the dispatch table `collect_impls` builds from the answer.
+fn check_impl_matches_trait(
+    imp: &ImplDecl,
+    trait_decl: &TraitDecl,
+    env: &TypeEnv,
+) -> Result<(), Error> {
+    for m in &imp.methods {
+        let Some(tm) = trait_decl.methods.iter().find(|tm| tm.name == m.name) else {
+            return Err(Error::new(
+                m.span,
+                format!("`{}` is not a method of trait `{}`", m.name, imp.trait_name),
+            ));
+        };
+        let impl_param = m
+            .param
+            .as_ref()
+            .map(|p| resolve(&p.ty.substitute_self(&imp.ty), env, &mut Vec::new()))
+            .transpose()?;
+        let impl_ret = resolve(&m.ret.substitute_self(&imp.ty), env, &mut Vec::new())?;
+        let trait_param = tm
+            .param
+            .as_ref()
+            .map(|p| resolve(&p.ty.substitute_self(&imp.ty), env, &mut Vec::new()))
+            .transpose()?;
+        let trait_ret = resolve(&tm.ret.substitute_self(&imp.ty), env, &mut Vec::new())?;
+        if impl_param != trait_param || impl_ret != trait_ret {
+            let show = |p: &Option<Type>| p.as_ref().map_or("()".to_string(), |t| t.to_string());
+            return Err(Error::new(
+                m.span,
+                format!(
+                    "impl method `{}`'s signature does not match trait `{}`'s; found {} -> {}, \
+                     expected {} -> {}",
+                    m.name,
+                    imp.trait_name,
+                    show(&impl_param),
+                    impl_ret,
+                    show(&trait_param),
+                    trait_ret,
+                ),
+            ));
+        }
+    }
+    for tm in &trait_decl.methods {
+        if !imp.methods.iter().any(|m| m.name == tm.name) {
+            return Err(Error::new(
+                imp.span,
+                format!(
+                    "impl of trait `{}` is missing method `{}`",
+                    imp.trait_name, tm.name
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn collect_impls(
     traits: &[TraitDecl],
     impls: Vec<ImplDecl>,
@@ -714,54 +789,7 @@ fn collect_impls(
             ));
         }
         seen_impls.push((imp.trait_name.clone(), self_ty.clone()));
-        for m in &imp.methods {
-            let Some(tm) = trait_decl.methods.iter().find(|tm| tm.name == m.name) else {
-                return Err(Error::new(
-                    m.span,
-                    format!("`{}` is not a method of trait `{}`", m.name, imp.trait_name),
-                ));
-            };
-            let impl_param = m
-                .param
-                .as_ref()
-                .map(|p| resolve(&p.ty.substitute_self(&imp.ty), env, &mut Vec::new()))
-                .transpose()?;
-            let impl_ret = resolve(&m.ret.substitute_self(&imp.ty), env, &mut Vec::new())?;
-            let trait_param = tm
-                .param
-                .as_ref()
-                .map(|p| resolve(&p.ty.substitute_self(&imp.ty), env, &mut Vec::new()))
-                .transpose()?;
-            let trait_ret = resolve(&tm.ret.substitute_self(&imp.ty), env, &mut Vec::new())?;
-            if impl_param != trait_param || impl_ret != trait_ret {
-                let show =
-                    |p: &Option<Type>| p.as_ref().map_or("()".to_string(), |t| t.to_string());
-                return Err(Error::new(
-                    m.span,
-                    format!(
-                        "impl method `{}`'s signature does not match trait `{}`'s; found {} -> {}, \
-                         expected {} -> {}",
-                        m.name,
-                        imp.trait_name,
-                        show(&impl_param),
-                        impl_ret,
-                        show(&trait_param),
-                        trait_ret,
-                    ),
-                ));
-            }
-        }
-        for tm in &trait_decl.methods {
-            if !imp.methods.iter().any(|m| m.name == tm.name) {
-                return Err(Error::new(
-                    imp.span,
-                    format!(
-                        "impl of trait `{}` is missing method `{}`",
-                        imp.trait_name, tm.name
-                    ),
-                ));
-            }
-        }
+        check_impl_matches_trait(&imp, trait_decl, env)?;
         for m in imp.methods {
             // Collision only when two impls target the *same concrete type* with the *same*
             // method name, regardless of trait: different types sharing a method name is fine,
@@ -808,9 +836,22 @@ fn collect_impls(
         })
         .collect();
 
-    // The plain-function-vs-trait-method cross-check: the old flat-map write got this "for
-    // free" as an accidental collision; a `Vec`-scan table needs it stated outright.
-    for entry in &table {
+    check_name_collisions(&defs, &table, sigs)?;
+    Ok((defs, table))
+}
+
+/// The three name-collision checks `collect_impls` needs once its dispatch table is built: the
+/// plain-function-vs-trait-method cross-check (the old flat-map write got this "for free" as an
+/// accidental collision; a `Vec`-scan table needs it stated outright), and the two escaped-name
+/// checks -- impl-vs-plain-function and impl-vs-impl -- since the `::` -> `__` backend escaping
+/// (`tir::escape_name`) is not provably injective on its own (underscores in a method or type
+/// name can make two distinct `(method, Type)` pairs escape identically).
+fn check_name_collisions(
+    defs: &[Def],
+    table: &[ImplEntry],
+    sigs: &HashMap<String, Sig>,
+) -> Result<(), Error> {
+    for entry in table {
         if sigs.contains_key(&entry.method) {
             return Err(Error::new(
                 entry.span,
@@ -821,9 +862,9 @@ fn collect_impls(
             ));
         }
     }
-    // Impl-vs-plain-function escaped-name collision: escaping a name with no `::` is a no-op,
-    // so this is exactly asking whether the escaped form already names a plain function.
-    for d in &defs {
+    // Escaping a name with no `::` is a no-op, so this is exactly asking whether the escaped
+    // form already names a plain function.
+    for d in defs {
         let escaped = crate::tir::escape_name(&d.name);
         if sigs.contains_key(&escaped) {
             return Err(Error::new(
@@ -836,9 +877,6 @@ fn collect_impls(
             ));
         }
     }
-    // Impl-vs-impl escaped-name collision: the `::` -> `__` escaping is not provably injective
-    // on its own (underscores in a method or type name can make two distinct `(method, Type)`
-    // pairs escape identically), so every pair of synthesized names is compared too.
     for (i, a) in defs.iter().enumerate() {
         let esc_a = crate::tir::escape_name(&a.name);
         for b in &defs[i + 1..] {
@@ -854,7 +892,7 @@ fn collect_impls(
             }
         }
     }
-    Ok((defs, table))
+    Ok(())
 }
 
 /// Checks a module's own `pub` declarations in isolation -- `prelude.toy`'s, at build time
@@ -2779,24 +2817,12 @@ fn call_arg(
     }
 }
 
-/// `x:foo(y)`. Two resolutions, decided by what `foo` names -- `collect_impls`'s cross-check
-/// already refuses a name shared by both a plain function and any impl method, so the two
-/// cannot overlap:
-///
-/// - `foo` is a plain function: UFCS sugar. `x:foo()` desugars to `foo(x)`, the receiver filling
-///   the function's one argument slot. `x:foo(y)` -- receiver *and* a separate argument -- is a
-///   checker error: no unary function has room for both at once, so this shape is illegal
-///   outright rather than silently misrouted. A truly nullary `foo` (no parameter at all) called
-///   as `x:foo()` is the same error: there is still no slot for the receiver.
-/// - `foo` is a trait method name: real dispatch. `(foo, receiver's concrete type)` is looked up
-///   in `ctx.impls`; the receiver's role is to select the impl (substituted as `Self`), not
-///   necessarily to supply the underlying function's argument -- `y`, if present, is passed as
-///   that argument instead, and only when `y` is absent does the receiver itself fill it (the
-///   shape every colon-called nullary trait method, like `c:area()`, needs to work at all).
-///
-/// Plain call syntax can never reach a trait method (gh:174: colon-only, no fallback either
-/// direction), so this is that method's only spelling, and a name that is neither a plain
-/// function nor a trait method is simply not defined.
+/// `x:foo(y)`. Two resolutions, decided by what `foo` names -- `colon_call_ufcs` for a plain
+/// function, `colon_call_dispatch` for a trait method -- and `collect_impls`'s cross-check
+/// already refuses a name shared by both, so the two cannot overlap. Plain call syntax can
+/// never reach a trait method (gh:174: colon-only, no fallback either direction), so dispatch
+/// is that method's only spelling, and a name that is neither a plain function nor a trait
+/// method is simply not defined.
 fn colon_call(
     ctx: &Ctx,
     receiver: &Expr,
@@ -2805,47 +2831,76 @@ fn colon_call(
     arg: &Option<Box<Expr>>,
     span: Span,
 ) -> Result<Tir, Error> {
-    if let Some(sig) = ctx.sigs.get(method) {
-        if let Some(y) = arg {
-            return Err(Error::new(
-                y.span(),
-                format!(
-                    "`{method}` takes one argument, already filled by the receiver before `:`; \
-                     it cannot also take a separate argument"
-                ),
-            ));
-        }
-        if let Some((origin, is_pub)) = ctx.visibility.get(method)
-            && !is_pub
-            && *origin != ctx.file
-        {
-            return Err(Error::new(
-                method_span,
-                format!("`{method}` is not `pub`, so it can only be called from its own file"),
-            ));
-        }
-        let Some(param_ty) = &sig.param else {
-            return Err(Error::new(
-                span,
-                format!("`{method}` takes no argument, so it cannot be called with a receiver"),
-            ));
-        };
-        let arg_tir = expect(ctx, receiver, param_ty)?;
-        return Ok(Tir::new(
-            sig.ret.clone(),
-            Kind::Call {
-                func: method.to_string(),
-                arg: Some(Box::new(arg_tir)),
-            },
+    if ctx.sigs.contains_key(method) {
+        return colon_call_ufcs(ctx, receiver, method, method_span, arg, span);
+    }
+    if ctx.impls.iter().any(|e| e.method == method) {
+        return colon_call_dispatch(ctx, receiver, method, method_span, arg);
+    }
+    Err(Error::new(
+        method_span,
+        format!("`{method}` is not defined"),
+    ))
+}
+
+/// The plain-function half of `colon_call`: `x:foo()` desugars to `foo(x)`, the receiver
+/// filling `foo`'s one argument slot. `x:foo(y)` -- receiver *and* a separate argument -- is a
+/// checker error regardless of `foo`'s own arity: no unary function has room for both at once.
+fn colon_call_ufcs(
+    ctx: &Ctx,
+    receiver: &Expr,
+    method: &str,
+    method_span: Span,
+    arg: &Option<Box<Expr>>,
+    span: Span,
+) -> Result<Tir, Error> {
+    let sig = &ctx.sigs[method];
+    if let Some(y) = arg {
+        return Err(Error::new(
+            y.span(),
+            format!(
+                "`{method}` takes one argument, already filled by the receiver before `:`; it \
+                 cannot also take a separate argument"
+            ),
         ));
     }
-
-    if !ctx.impls.iter().any(|e| e.method == method) {
+    if let Some((origin, is_pub)) = ctx.visibility.get(method)
+        && !is_pub
+        && *origin != ctx.file
+    {
         return Err(Error::new(
             method_span,
-            format!("`{method}` is not defined"),
+            format!("`{method}` is not `pub`, so it can only be called from its own file"),
         ));
     }
+    let Some(param_ty) = &sig.param else {
+        return Err(Error::new(
+            span,
+            format!("`{method}` takes no argument, so it cannot be called with a receiver"),
+        ));
+    };
+    let arg_tir = expect(ctx, receiver, param_ty)?;
+    Ok(Tir::new(
+        sig.ret.clone(),
+        Kind::Call {
+            func: method.to_string(),
+            arg: Some(Box::new(arg_tir)),
+        },
+    ))
+}
+
+/// The trait-method half of `colon_call`: `(method, receiver's concrete type)` is looked up in
+/// `ctx.impls`; the receiver's role is to select the impl (substituted as `Self`), not
+/// necessarily to supply the underlying function's argument -- `y`, if present, is passed as
+/// that argument instead, and only when `y` is absent does the receiver itself fill it (the
+/// shape every colon-called nullary trait method, like `c:area()`, needs to work at all).
+fn colon_call_dispatch(
+    ctx: &Ctx,
+    receiver: &Expr,
+    method: &str,
+    method_span: Span,
+    arg: &Option<Box<Expr>>,
+) -> Result<Tir, Error> {
     let receiver_tir = synth(ctx, receiver)?;
     let Some(entry) = ctx
         .impls

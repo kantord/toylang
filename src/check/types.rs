@@ -293,7 +293,12 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
             // hoisted-inference pass in `check::check` before any body is checked, so no call
             // ever relies on the provisional value. The stream/sink rules below do not apply: a
             // hoisted function's return is whatever its arms synthesise, not a written type.
-            let Expr::MatchCall { enum_name, enum_span, .. } = &def.body else {
+            let Expr::MatchCall {
+                enum_name,
+                enum_span,
+                ..
+            } = &def.body
+            else {
                 return Err(Error::new(
                     def.span,
                     format!(
@@ -303,8 +308,15 @@ pub(super) fn signatures(defs: &[Def], env: &TypeEnv) -> Result<HashMap<String, 
                     ),
                 ));
             };
-            let enum_ty =
-                resolve_named(enum_name, &[], *enum_span, env, &mut Vec::new(), &HashMap::new(), false)?;
+            let enum_ty = resolve_named(
+                enum_name,
+                &[],
+                *enum_span,
+                env,
+                &mut Vec::new(),
+                &HashMap::new(),
+                false,
+            )?;
             Sig {
                 param: Some(enum_ty.clone()),
                 ret: enum_ty,
@@ -348,7 +360,10 @@ pub(super) fn check_sig_invariants(name: &str, span: Span, sig: &Sig) -> Result<
     if matches!(sig.param, Some(Type::Sink)) {
         return Err(Error::new(
             span,
-            format!("`{}` cannot take a Sink parameter; a sink has no value to pass", name),
+            format!(
+                "`{}` cannot take a Sink parameter; a sink has no value to pass",
+                name
+            ),
         ));
     }
     Ok(())

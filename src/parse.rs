@@ -1526,29 +1526,36 @@ impl<'i> Cursor<'i> {
                     if !self.same_line(e.span().end, cspan.start) || !self.peek_colon_call() {
                         return Ok(e);
                     }
-                    self.advance()?;
-                    let (method, method_span) = self.eat_ident("a method name")?;
-                    self.eat(Tok::LParen)?;
-                    let (next, _) = self.peek()?;
-                    let (arg, close) = if next == Tok::RParen {
-                        (None, self.advance()?.1)
-                    } else {
-                        let inner = self.expr(0)?;
-                        let close = self.eat(Tok::RParen)?;
-                        (Some(Box::new(inner)), close)
-                    };
-                    let span = e.span().to(close);
-                    e = Expr::ColonCall {
-                        receiver: Box::new(e),
-                        method,
-                        method_span,
-                        arg,
-                        span,
-                    };
+                    e = self.colon_call(e)?;
                 }
                 _ => return Ok(e),
             }
         }
+    }
+
+    /// `x:foo(y)`, once `postfix`'s `peek_colon_call` guard has confirmed the shape genuinely
+    /// follows: the method name, then always-parenthesized argument (or the empty `()` for the
+    /// nullary spelling), wrapping `e` as the receiver.
+    fn colon_call(&mut self, e: Expr) -> Result<Expr, Error> {
+        self.advance()?;
+        let (method, method_span) = self.eat_ident("a method name")?;
+        self.eat(Tok::LParen)?;
+        let (next, _) = self.peek()?;
+        let (arg, close) = if next == Tok::RParen {
+            (None, self.advance()?.1)
+        } else {
+            let inner = self.expr(0)?;
+            let close = self.eat(Tok::RParen)?;
+            (Some(Box::new(inner)), close)
+        };
+        let span = e.span().to(close);
+        Ok(Expr::ColonCall {
+            receiver: Box::new(e),
+            method,
+            method_span,
+            arg,
+            span,
+        })
     }
 
     /// What a name means once read: a qualified variant (`Shape.circle`), a call when an

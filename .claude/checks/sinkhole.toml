@@ -65,15 +65,23 @@ other kind now: if the allow is ever deleted, this entry reports itself stale.
 [[exemption]]
 kind = "too-many-lines"
 path = "src/check/mod.rs"
-function = "synth"
-line = 925
+function = "synth_inner"
+line = 2227
 justification = """
 Inherited, never caused, by the same history as check() above --
-.claude/skills/code-style/lints/too-many-lines.md records synth() at every measurement from 560
-lines (its first appearance in the lesson) down to today's count -- net downward, with the
-recorded upticks belonging to sessions the lesson classifies as inheriting, not causing. It is the one large match over every Expr variant
-(plans/checker-structure.md's bidirectional-checker axis): a type checker enumerates the
-language's grammar exactly once, with no per-area repetition to hang a split on the way the
-backends get one file per target for free. research-log/merging-passes-turns-redundant-traversals-into-bugs.md
-is why checking and lowering stay fused inside it rather than becoming two smaller passes.
+.claude/skills/code-style/lints/too-many-lines.md records synth()/synth_inner() at every
+measurement from 560 lines (its first appearance in the lesson) down to today's count -- net
+downward, with the recorded upticks belonging to sessions the lesson classifies as inheriting,
+not causing. It is the one large match over every Expr variant (plans/checker-structure.md's
+bidirectional-checker axis): a type checker enumerates the language's grammar exactly once,
+with no per-area repetition to hang a split on the way the backends get one file per target for
+free. research-log/merging-passes-turns-redundant-traversals-into-bugs.md is why checking and
+lowering stay fused inside it rather than becoming two smaller passes.
+
+This entry originally named the function `synth`: at some point before the
+trait-multi-impl-dispatch-build session, a `synth` wrapper (16 lines, the `contains_sink`
+position check every result still needs) was split off the front of the fused match, leaving the
+actual exempted body under a new name, `synth_inner`, without updating this entry to match --
+`stale-sinkhole-entry` caught the drift (the wrapper alone stays well under budget), not a new
+decision to make; the exemption itself is unchanged, only the name it should have tracked.
 """
