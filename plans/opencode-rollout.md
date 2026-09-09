@@ -1891,3 +1891,26 @@ is healthy right now** -- this is the second time today the pipeline produced fa
 "escalations" indistinguishable from real task difficulty. Until confirmed healthy, further
 option-A redispatches risk wasting slots and misleading the maintainer inbox with bogus
 escalations.
+
+## 2026-09-09 (later still): root cause confirmed -- OpenRouter account out of credits, not a model/auth issue
+
+The maintainer answered all four pending sandbox-blocker escalations (`toylang-conf-yaml-build`,
+`module-routing-syntax-build`, `draft-mutation-migration`, `dense-tensor-type-build`) with option A
+again (stronger model, same starting point) before the infra-outage flag above was likely seen --
+the flag lives only in this file, not in the round content shown to the maintainer. Rather than
+burning the 3 free WIP slots on another blind redispatch, ran a direct host-side probe first:
+`opencode run "reply with exactly: OK" -m openrouter/z-ai/glm-5.2` fails immediately with
+`This request requires more credits, or fewer max_tokens. You requested up to 32000 tokens, but
+can only afford 1282.` This is a definitive, account-level balance error -- it will reproduce
+identically for any model and explains every "zero file changes, no real check.log output" fast
+failure across all three rows today (the sandbox script misreports this as build-turn failure,
+not infra failure).
+
+Did NOT dispatch any of the four rows this tick: doing so would guarantee four more near-instant
+failures and four more misleading escalation rounds, spending the WIP budget on nothing. Cleared
+the four now-superseded round files and inbox records (their premise -- "which model" -- no longer
+applies) and composed a new consolidated round, `opencode-credits-exhausted`, asking Daniel to
+either add credits (https://openrouter.ai/settings/credits) and the four original option-A
+redispatches will proceed with no further questions, or explicitly pause dispatch, or specify a
+different provider/account. Also skipped step-4 dispatch of any other ready row this tick since
+the same account-level outage blocks every sandbox regardless of which row it targets.
