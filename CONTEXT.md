@@ -147,3 +147,24 @@ _Avoid_: printer, writer, output function
 The named spelling of reify at the stream boundary: `Stream<T> -> Vec<T>`, the one explicit way
 a `Stream` becomes a value. Not a third layer shifter.
 _Avoid_: materialize, realize, to_vec
+
+### Extending a type
+
+**Trait**:
+A named set of method signatures, each written against `Self`, that a type can provide.
+_Avoid_: interface, protocol, typeclass
+
+**Impl**:
+One trait's concrete method bodies for one type.
+_Avoid_: instance, conformance, implementation
+
+**Colon call**:
+The receiver-first call spelling, `x:foo(y)`. For a trait method it is the only spelling that
+reaches it — no plain-call fallback — and it resolves by the receiver's type to the matching
+impl. For an ordinary function it is sugar for `foo(x, y)`, nothing more.
+_Avoid_: method call, dot call, UFCS
+
+**Dispatch**:
+Choosing which impl a colon call reaches. Decided once, at compile time, from the receiver's
+concrete type — never at evaluation time, and never through a stored function reference.
+_Avoid_: virtual call, late binding, vtable
