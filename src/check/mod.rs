@@ -301,17 +301,26 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
     funcs.extend(check_defs(impl_defs.iter(), &ctx)?);
 
     let body = check_program_body(&ctx, &program_body)?;
-    let (input, inputs, dsv) =
+    let stdin =
         check_result_and_stdin(&body, program_body.span(), input, inputs, &lines_used, dsv)?;
     Ok(tir::Program {
         funcs: prune_unreachable(funcs, &body),
         body,
-        input,
-        inputs,
+        input: stdin.input,
+        inputs: stdin.inputs,
         uses_lines: lines_used.get(),
-        dsv,
+        dsv: stdin.dsv,
         enums,
     })
+}
+
+/// What `check_result_and_stdin` resolves `input`/`inputs`/`dsv` to, for `tir::Program` to carry
+/// -- named so the function's own return type is not a bare three-`Option` tuple nothing
+/// distinguishes at the call site.
+struct StdinReaders {
+    input: Option<Type>,
+    inputs: Option<Type>,
+    dsv: Option<String>,
 }
 
 /// `check`'s validation once the program's result and every stdin-reading form are known: the
@@ -320,7 +329,6 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
 /// real stdin, mutually exclusive because the backends force it -- Python's `input` reads stdin
 /// to EOF before parsing, and jq needs a different invocation flag (`-R -n` vs `-n`) for raw
 /// lines than for parsed JSON, so no one process can run with more than one of them requested.
-/// Returns the resolved `input`/`inputs`/`dsv` `tir::Program` carries once every check passes.
 fn check_result_and_stdin(
     body: &Tir,
     body_span: Span,
@@ -328,7 +336,7 @@ fn check_result_and_stdin(
     inputs: RefCell<Option<Type>>,
     lines_used: &Cell<bool>,
     dsv: RefCell<Option<String>>,
-) -> Result<(Option<Type>, Option<Type>, Option<String>), Error> {
+) -> Result<StdinReaders, Error> {
     // A stream cannot be printed, having nothing to show: it is not a value, and collect() is
     // what turns it into one. A function body catches this for free, since its return
     // annotation can never spell Stream and so can never match a body that contains one; the
@@ -393,7 +401,7 @@ fn check_result_and_stdin(
             ));
         }
     }
-    Ok((input, inputs, dsv))
+    Ok(StdinReaders { input, inputs, dsv })
 }
 
 /// What `check_defs` made of a definition's parameter: the TIR param name the backends bind
