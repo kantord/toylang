@@ -405,3 +405,130 @@ The receiver-spelling dependency on the colon call form (ruled gh:119, unbuilt)
 is the one feature the minimal mechanism cannot avoid;every other piece of the
 scoped shape above is checker-internal and can land without new surface syntax.
 .
+
+## Ruled during trait-multi-impl-dispatch-build grilling (2026-09-09)
+
+Grilling round with the maintainer, then three rounds of adversarial skeptic review (each
+round re-verified every claim against the live codebase, not against this doc's prior
+draft). This section supersedes the "Open questions" section above wherever the two
+disagree; it is the design a build should follow. `CONTEXT.md`'s "Extending a type" section
+carries the settled glossary terms (Trait, Impl, Colon call, Dispatch).
+
+### The gap is bigger than "add dispatch": check() does not see traits or impls at all
+
+Verified by reading the real pipeline, not assumed: `check()` (`src/check/mod.rs:215`), the
+path every real program compiles through, destructures only `file.aliases`, `file.enums`,
+`file.defs`, and `file.body` -- `file.traits`/`file.impls` are silently dropped and never
+reach `collect_impls`. Only `check_module` calls `collect_impls`, and that function is used
+solely for `prelude.toy` at build time. Worse, `prelude::module()` (`src/prelude.rs:31-46`)
+immediately flattens its own impls into bare-named `Def`s via `module_impl_defs`, discarding
+which type each method was impl'd for, before appending them into `module.defs` -- so even
+prelude-declared impls carry no type identity by the time anything downstream sees them. A
+trait/impl block written in an actual program is inert today: parsed, then thrown away.
+`tests/corpus/trait_impl_parse.yaml` confirms this is deliberate ("the checker does not yet
+do anything with them: no dispatch, no method checking, no codegen") and impls a type
+(`Circle`) that is never declared anywhere -- harmless only because nothing resolves it
+today. Once real resolution lands this becomes a guaranteed first-build red; update or
+replace that test as part of this build, don't discover it mid-build.
+
+This build therefore has three connected parts, not one:
+
+0. **Wire it up.** Make `check()` actually collect and check a program file's own
+   `traits`/`impls`, reusing the "eager first pass resolves everything before any body is
+   checked" structure the checker already applies to aliases/enums/signatures. Rework
+   `prelude::module()`/`prelude::inject()` so prelude's own impls flow through the *same*
+   mechanism as program-file impls -- one shared code path, not two -- preserving each
+   impl's target type end to end instead of pre-flattening. `collect_impls`/
+   `module_impl_defs` currently take one blanket `Origin` per call; merging prelude's and
+   the program's impls into one combined set for one collection pass needs per-impl origin
+   tracking, the same way `Def::origin` already varies per item.
+
+1. **Grammar.** Add a `Tok::Colon` arm to `postfix()`'s loop (`src/parse.rs:1392-1488`), at
+   the same precedence and chaining level as `.field`/`!`/`[index]`, with the same
+   `same_line` guard the `[` arm already uses (so a colon starting the next line is never
+   swallowed). Colon-call always requires parens -- `x:foo(y)`, `c:area()` for nullary --
+   no bare-argument form. Parses to a new AST node carrying (receiver expr, method name,
+   optional single arg expr); resolution cannot happen at parse time since it depends on
+   the receiver's checked type.
+
+2. **Semantics.** `x:foo(y)` has two resolutions, decided by what `foo` names and, for the
+   plain-function case, by arity (forced by toylang's universal single-parameter rule --
+   every `Def`/`ImplMethod`/`TraitMethodSig` carries exactly one `Option<Param>`):
+   - `x:foo()` (nullary) where `foo` is a plain function -> UFCS sugar, desugars to
+     `foo(x)` (the receiver becomes the function's one argument).
+   - `x:foo(y)` (with an argument) where `foo` is a plain function -> a checker error. No
+     unary function has room for a receiver and a separate argument at once, so this shape
+     is simply illegal, not silently misrouted.
+   - `x:foo()` or `x:foo(y)` where `foo` is a trait method name -> real dispatch: look up
+     `(method_name, concrete-type-of-x)` in the impl table; the receiver selects which impl
+     (substituted as `Self`), and `y`, if present, is passed as the method's own single
+     parameter (itself possibly a destructured record, `ParamShape::Fields`, when a method
+     needs more than one further input). Error if no impl exists for `x`'s type; error if
+     `foo` names neither a trait method nor a plain function.
+   Plain function-call syntax can never reach a trait method (ruled, gh:174: colon-only, no
+   plain-call fallback, either direction).
+
+3. **Impl table, visibility, and the cross-check.** Impl methods -- both the program file's
+   own and prelude's, per step 0 -- are kept out of the flat `sigs: HashMap<String, Sig>`
+   and the flat `visibility: HashMap<String, (Origin, bool)>` entirely: today's collision
+   bug is `collect_impls` writing straight into `sigs` (`src/check/mod.rs:632`), and this is
+   a rewrite of that logic, not new plumbing bolted beside it. A new table, keyed by
+   `(method_name: String, receiver_type: Type)`, holds impl methods instead. `Type` has no
+   `Hash` (`src/ty.rs:331-380` is `PartialEq` only), so this is a `Vec`-scan using existing
+   `==`, not a literal `HashMap` -- an implementation detail, not a design constraint.
+   Collision rule: an error only when two impls target the *same* concrete type with the
+   same method name, regardless of trait -- different types sharing a method name is now
+   fine, which is the actual bug fix. Visibility for impl methods is tracked with the same
+   `(method_name, Type)` keying, for the same reason: a flat-by-name map would silently let
+   one type's impl clobber another's visibility entry for the same method name. After the
+   combined plain-function set and the combined impl-table set are both known, an explicit
+   cross-check refuses to compile if any name is used by both a plain function and any impl
+   (prelude or program file) -- this replaces the collision that used to happen "for free"
+   when everything shared one map. Also restate, since it is easy to drop when rewriting
+   this logic: two impls of the *same* trait for the *same* type are still an error (the
+   duplicate-definition rule, unchanged), and a duplicate trait *declaration* name must
+   become a real error too -- `collect_impls` today resolves a trait name via
+   `traits.iter().find(...)`, first match wins silently, so a program declaring a trait
+   `Add` that shadows a prelude trait `Add` currently masks the shadowed one instead of
+   being refused. The original well-formedness list above already names this rule; it is
+   restated here so a build doesn't drop it while rewriting `collect_impls`.
+
+4. **Codegen naming.** Each resolved impl method gets an internal `Func.name` of
+   `"{method}::{TypeName}"` (e.g. `"add::Circle"`). `::` can never appear inside a single
+   lexed `Ident` token, since `:` always lexes as a standalone `Tok::Colon`
+   (`src/parse.rs:220`) -- this internal name is unreachable by any user-written function
+   name by construction. Backends need a legal target identifier, so all of them apply one
+   *shared* escaping (`::` -> `__`) through a single common helper -- today each backend
+   (`emit_go.rs`, `emit_rs.rs`, `emit_js.rs`, `emit_py.rs`, `emit_lua.rs`, `emit_jq.rs`, plus
+   `emit_llvm.rs` inline) has its own independent name-escaper with no shared module, so
+   this needs an actual shared function, not six copies kept in sync by hand. Two collision
+   checks are needed against that escaped form, not one: the escaped form (`add__Circle`)
+   is a syntactically legal plain function name a user could independently write (only an
+   identifier's first character is casing-constrained), so the checker must refuse to
+   compile (loud error, not silently wrong emitted code) if an impl's escaped name collides
+   with a plain function's name. Separately, the `::` -> `__` escaping is *not* provably
+   injective among impls themselves: because identifiers can contain arbitrary underscores,
+   method `foo__Ba` for type `R` and method `foo` for type `Ba__R` both escape to
+   `foo__Ba__R` -- two legitimately distinct `(method, Type)` table entries could silently
+   collide in emitted output. The collision check must cover impl-vs-impl escaped names as
+   well as impl-vs-plain-function.
+
+### Out of scope, not reversing any existing ruling
+
+Operator overloading via traits (`a + b` for user types) is deferred to a later build:
+`binary`/`plus` (`src/check/mod.rs:2430`, `2535`) stay untouched, and the
+`trait-interface-design` round's tentative, unresolved call on builtin-operator
+representation (source-written prelude impls "where practical", checker-generated
+otherwise, pending build experience) is left exactly as ruled -- this build doesn't attempt
+it and doesn't supply the build experience that ruling is waiting on. This narrows this
+doc's own "Checker changes" section above (which originally bundled operator dispatch and
+colon-call dispatch into one step) down to colon-call only, because the concrete trigger for
+this build (`select-shared-mechanism-design`, gh:176) only needs named-method dispatch.
+Also still deferred: generic functions/impls, trait type parameters, associated types, and
+per-backend native impl bodies (`impl Foo for Bar in Python`, for building language bindings
+as traits -- a real future idea, recorded in the "Out of scope" section above, not this cut).
+
+No reusable work-in-progress exists for this build: two prior sandboxed attempts
+(2026-09-08, `~/.cache/toylang-drive/sandbox-dispatch-trait-interface-dispatch-build.log`)
+produced nothing beyond the `collect_impls` consolidation already landed on `main`
+(commits `c4aa929`/`873ae4d`) -- this is a build from scratch.
