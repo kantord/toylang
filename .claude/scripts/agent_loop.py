@@ -148,18 +148,44 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
         },
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        payload = e.read().decode(errors="replace")
-        low = payload.lower()
+    def check_fatal(payload_lower: str, payload: str):
         for pat in FATAL_PATTERNS:
-            if pat in low:
+            if pat in payload_lower:
                 print(f"FATAL: {pat} -- {payload[:500]}", file=sys.stderr)
                 sys.exit(2)
+
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as e:
+        payload = e.read().decode(errors="replace")
+        check_fatal(payload.lower(), payload)
         print(f"HTTP {e.code} calling OpenRouter: {payload[:1000]}", file=sys.stderr)
         raise
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
+        # A transient network failure (DNS blip, connection reset, timeout)
+        # is not fatal and not success -- surface it as a normal exception so
+        # the caller's retry-cap loop can treat it the same as any other
+        # attempt that didn't reach GREEN, instead of crashing the process
+        # with no VERIFIED_GREEN/VERIFY_FAILED/FATAL marker at all (which the
+        # host side would otherwise silently read as a plain, unexplained RED).
+        print(f"transient network error calling OpenRouter: {e}", file=sys.stderr)
+        raise RuntimeError(f"transient network error: {e}") from e
+
+    # OpenRouter can return HTTP 200 with an embedded {"error": ...} body
+    # (e.g. an upstream provider failure) -- this must be checked BEFORE
+    # indexing choices[0], or an out-of-credit condition surfacing this way
+    # crashes with an unhandled KeyError instead of being classified at all,
+    # silently reintroducing the exact "dispatch into a dead account"
+    # failure mode this script exists to catch.
+    text = raw.decode(errors="replace")
+    parsed = json.loads(text)
+    if isinstance(parsed, dict) and parsed.get("error"):
+        err = parsed["error"]
+        msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+        check_fatal(msg.lower(), msg)
+        raise RuntimeError(f"OpenRouter returned an error body on HTTP 200: {msg}")
+    return parsed
 
 
 def agent_turns(api_key: str, model: str, messages: list, max_turns: int, max_tokens: int) -> str | None:
@@ -167,7 +193,17 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int, max_to
     once it stops calling tools, or None if max_turns was exhausted without
     the model finishing."""
     for turn in range(max_turns):
-        resp = call_openrouter(api_key, model, messages, max_tokens)
+        try:
+            resp = call_openrouter(api_key, model, messages, max_tokens)
+        except RuntimeError as e:
+            # Transient network failure or a 200-with-error-body from
+            # OpenRouter -- not fatal (that already exited via sys.exit(2)
+            # inside call_openrouter), just this turn failing. Stop this
+            # attempt here and let main()'s retry-cap loop treat it like any
+            # other incomplete attempt, rather than crashing the process.
+            print(f"  turn {turn + 1}/{max_turns}: call failed ({e}), ending this attempt",
+                  file=sys.stderr)
+            return None
         usage = resp.get("usage", {})
         print(f"  turn {turn + 1}/{max_turns}: "
               f"prompt={usage.get('prompt_tokens')} completion={usage.get('completion_tokens')}",

