@@ -178,8 +178,40 @@ def check_credit_balance(api_key: str) -> tuple[bool, str]:
     return True, f"OpenRouter balance OK, remaining=${remaining:.4f}"
 
 
+def _patch_ground_truth(patch_text: str) -> str:
+    """A short, PROGRAMMATICALLY-derived (not LLM-derived) fact about
+    whether real edits exist, for propose_narrower_task to reconcile its
+    answer against. Exists because trusting the reviewer's own read of the
+    conversation, alone, already produced a real, confirmed-wrong verdict:
+    a genuinely completed toylang-conf-yaml-build run (verified afterward
+    by actually applying its patch and running the full suite: 436/436
+    pass) got reviewed as "never made a single repo change" -- not because
+    the model reasoned badly, but because the specific 60K-char window of
+    the transcript it was shown didn't happen to include the edit. Fixing
+    the truncation direction (see propose_narrower_task) reduces how often
+    that happens but can't eliminate it -- any fixed-size window can still
+    miss the relevant part of an arbitrarily long conversation. This fact
+    doesn't depend on the conversation window at all, so it can't be
+    truncated away."""
+    if not patch_text.strip():
+        return "NO PATCH was extracted -- confirmed no committed file changes exist."
+    files = len(re.findall(r"^diff --git ", patch_text, re.MULTILINE))
+    added = len(re.findall(r"^\+(?!\+\+)", patch_text, re.MULTILINE))
+    removed = len(re.findall(r"^-(?!--)", patch_text, re.MULTILINE))
+    return (f"A REAL PATCH WAS EXTRACTED: {files} file(s) changed, "
+            f"+{added}/-{removed} lines -- this is confirmed, not inferred from the "
+            f"conversation below. If you conclude no edits were made, you are "
+            f"contradicting this fact; reconcile your answer with it.")
+
+
+_NO_EDITS_CLAIM_RE = re.compile(
+    r"\b(no|never|didn'?t|did not|zero)\b[^.]{0,40}\b(edit|chang|writ|modif)",
+    re.IGNORECASE,
+)
+
+
 def propose_narrower_task(api_key: str, model: str, task_text: str, verify_tail: str,
-                           messages: list) -> dict:
+                           messages: list, patch_text: str = "") -> dict:
     """One cheap, single-shot (no tool loop, no sandbox) call reviewing a
     STUCK/RED run: given the original brief, the failure evidence, and the
     real persisted conversation (what was actually tried), asks whether a
@@ -204,11 +236,15 @@ def propose_narrower_task(api_key: str, model: str, task_text: str, verify_tail:
     # where it did"; the original task is already passed separately above,
     # so the early history isn't needed twice.
     messages_summary = json.dumps(messages)[-60_000:]
+    ground_truth = _patch_ground_truth(patch_text)
     prompt = (
         "You are reviewing a failed autonomous coding attempt that ran out of "
         "retries without succeeding. Decide whether a NARROWER, more achievable "
         "slice of the original task exists, informed by what was actually tried "
         "below -- not by guessing blind.\n\n"
+        f"CONFIRMED GROUND TRUTH (computed directly from the repo, not from reading "
+        f"the conversation -- trust this over your own read of the transcript if "
+        f"they ever seem to disagree): {ground_truth}\n\n"
         f"ORIGINAL TASK:\n{task_text}\n\n"
         f"LAST VERIFICATION FAILURE:\n{verify_tail[-3000:]}\n\n"
         f"WHAT WAS ACTUALLY TRIED (the real conversation; if truncated, the "
@@ -227,18 +263,39 @@ def propose_narrower_task(api_key: str, model: str, task_text: str, verify_tail:
     body = json.dumps({
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        # 2048, not 1024 -- confirmed live this model tier can spend a
+        # 4096, not 2048 -- confirmed live this model tier can spend a
         # large chunk of its completion budget on reasoning tokens before
         # emitting any visible content (real build turns in this same
-        # dispatch run logged over 2500 reasoning_tokens on a single turn).
-        # At 1024 a reasoning-heavy response can exhaust the whole budget
-        # on reasoning and return message.content == None, which crashed
-        # this function's `.strip()` call below (real, confirmed: a
-        # dense-tensor-type-build recovery call failed exactly this way --
-        # 'NoneType' object has no attribute 'strip'). This call is
-        # negligible cost either way ($0.0001-ish), so there's no real
-        # reason to keep the budget tight.
-        "max_tokens": 2048,
+        # dispatch run logged over 2500 reasoning_tokens on a single turn),
+        # and the ground-truth injection above makes this WORSE, not
+        # better, when the transcript and the confirmed fact genuinely
+        # conflict: confirmed live, feeding the reviewer a real patch fact
+        # alongside a misleading transcript window made it correctly start
+        # reasoning through the contradiction ("ground truth says a patch
+        # exists... but transcript shows no edits... need reconcile...") --
+        # exactly the intended effect -- but it ran out of the 2048-token
+        # budget mid-reasoning and returned content=null, finish_reason
+        # "length", before ever emitting the JSON answer. Raising the
+        # budget doesn't fix a bug so much as give the correctly-triggered
+        # extra reasoning enough room to finish. This call is negligible
+        # cost either way ($0.0001-0.002-ish), so there's no real reason to
+        # keep the budget tight.
+        "max_tokens": 4096,
+        # Confirmed live: even at max_tokens=4096, this model can still
+        # occasionally exhaust the whole budget on reasoning tokens alone
+        # (finish_reason "length", content=null) -- raising max_tokens
+        # further only pushes the same failure mode out, it doesn't close
+        # it, since this model's reasoning verbosity for a genuinely
+        # confusing case (e.g. reconciling the ground-truth fact above
+        # against a misleading transcript) isn't bounded by a fixed
+        # multiple. `reasoning: {"effort": "low"}` reliably fixed this in
+        # direct testing (finish_reason went from "length" to "stop",
+        # reasoning_tokens dropped from unbounded to ~1500, valid JSON
+        # every time) without visibly degrading the actual answer quality
+        # on the real correct-transcript case this mechanism exists for --
+        # this call only needs to state a conclusion, not deeply reason
+        # through novel problems the way the main build loop does.
+        "reasoning": {"effort": "low"},
         "usage": {"include": True},
     }).encode()
     req = urllib.request.Request(
@@ -268,6 +325,25 @@ def propose_narrower_task(api_key: str, model: str, task_text: str, verify_tail:
         if not isinstance(proposal, dict):
             raise ValueError("reviewer did not return a JSON object")
         proposal["_reviewer_cost_usd"] = cost
+        # Deterministic, non-LLM safety net on top of the ground-truth
+        # prompt injection above: an LLM can still ignore or misread the
+        # ground truth it was given (prompt injection reduces this, it
+        # doesn't guarantee it). If a real patch exists but the reviewer's
+        # own reasoning claims no edits happened, flag the contradiction
+        # EXPLICITLY rather than silently trusting the prose -- this is
+        # exactly the failure this whole mechanism exists to catch, so
+        # don't let it happen invisibly a second time. Not silently
+        # overridden: a human should see both the reviewer's claim and the
+        # fact it contradicts, not have one guess quietly replace another.
+        reasoning_text = str(proposal.get("reasoning") or "")
+        if patch_text.strip() and _NO_EDITS_CLAIM_RE.search(reasoning_text):
+            proposal["ground_truth_contradiction"] = (
+                "REVIEWER CLAIM CONTRADICTS A CONFIRMED FACT: a real patch was "
+                "extracted from this run (real committed changes exist), but the "
+                "reviewer's reasoning above claims no edits were made. Do not trust "
+                "the reasoning text as-is -- read the actual patch and transcript "
+                "yourself before deciding anything."
+            )
         return proposal
     except Exception as e:
         return {"narrowable": False, "reasoning": f"reviewer call failed: {e}",
@@ -583,7 +659,8 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
                     persisted = json.loads(messages_out.read_text())
                     proposal = propose_narrower_task(
                         env["OPENROUTER_API_KEY"], model,
-                        brief_path.read_text(), tail, persisted.get("messages", []))
+                        brief_path.read_text(), tail, persisted.get("messages", []),
+                        patch_out)
                     cost_usd += proposal.pop("_reviewer_cost_usd", 0.0)
                     proposal_path = RESULT_DIR / f"{row_id}-{run_id}-recovery-proposal.json"
                     proposal_path.write_text(json.dumps(proposal, indent=2))
@@ -603,6 +680,14 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
                     else:
                         recovery_note = (f" -- reviewer: {reasoning} "
                                          f"(see {proposal_path})")
+                    # Printed in the terminal SUMMARY line itself, not just
+                    # left in the JSON file a human has to think to open --
+                    # this is the exact class of problem this whole
+                    # mechanism exists to catch (a wrong "why it got stuck"
+                    # story going unnoticed), so it needs to be
+                    # impossible to miss, not merely recorded.
+                    if proposal.get("ground_truth_contradiction"):
+                        recovery_note += " !! CONTRADICTS KNOWN FACTS, DO NOT TRUST !!"
                 except Exception as e:
                     logline(f"recovery proposal failed (non-fatal): {e}")
 
