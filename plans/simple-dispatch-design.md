@@ -754,3 +754,78 @@ waste found; round 3's correctness changes (`repo_state_signature`,
 `moved`, the verify() skip on `not moved`) are all local/free, re-verified
 against real diff sizes in this repo (492B-9.7KB) and real `git diff`
 timing (2ms). The one nit above was noted as code-quality, not cost.
+
+### Round 5 (final)
+
+**Cost track**: explicit convergence verdict, no new findings -- a third
+round in a row. Specifically re-checked whether round 4's
+`attempt_start_len` watermark (preserving an earlier attempt's real
+transcript instead of always resetting to a fixed index) could reintroduce
+the original carry-forward cost bug across a longer chain of
+edit/stall/reset attempts: structurally bounded by `--retry-cap` (default
+2 -> max 3 attempts total, at most 2 attempt transitions), independently
+bounded again by the 200K-char `trim_messages()` regardless of attempt
+boundaries. A fresh pass over the rest of the pipeline (not just the
+no-progress/reset mechanism rounds 1-4 focused on) found no redundant
+OpenRouter calls and confirmed `--max-tokens`/`MAX_CONVERSATION_CHARS`/
+`MAX_TOOL_OUTPUT`/`propose_narrower_task`'s summary cap are all still
+in-tune against real logs.
+
+**Correctness track**: asked explicitly for a genuine convergence verdict
+rather than a forced fifth finding -- two more real bugs turned up anyway,
+both second-order bugs in round 4's own fixes:
+1. Round 4's `attempt_start_len` was a captured absolute index -- but
+   `trim_messages()` runs every turn and can delete whole turns starting
+   at index 2 mid-attempt (if a single attempt's own tool output pushes
+   past `MAX_CONVERSATION_CHARS`), shifting every later index down without
+   `attempt_start_len` ever being adjusted. Reproduced directly: a 40-turn
+   attempt-2 with large tool output forces repeated trims; the later
+   `del messages[attempt_start_len:]` would then cut mid-turn, leaving an
+   assistant `tool_calls` message with no matching `tool` reply --
+   OpenRouter rejects that on the next call, corrupting every remaining
+   attempt with an unrelated, spurious failure. Also reachable on attempt 1
+   of a `--resume-from` run, whose loaded history can already be large
+   before the marker is even captured. Fixed: the marker is now the actual
+   last message OBJECT at attempt-start (`attempt_start_marker = messages[-1]`),
+   looked up by IDENTITY (`is`) at reset time rather than by a stored
+   index -- an object reference survives being shifted, and
+   `trim_messages()` only ever removes WHOLE turns, so any surviving
+   message is always still a valid turn boundary to cut after. If the
+   marker itself was trimmed away (only possible if this attempt's own
+   growth was extreme enough to out-trim its own starting point -- rare
+   given `--max-turns-without-progress` should end a truly unproductive
+   attempt long before that much output accumulates), the reset is skipped
+   entirely rather than guessing at an unsafe boundary: carrying the
+   already trim-bounded history forward is safe, corrupting it is not.
+   Verified by reproducing the exact corruption scenario (40-turn
+   large-output attempt-2, trims firing repeatedly mid-attempt) and
+   confirming zero orphaned `tool_calls` messages after the reset, where
+   the old index-based version would have produced one.
+2. `normalize_for_stuck_check()`'s `_NOISE_LINE_RE` PASS-line filter still
+   ran on the single-line fallback body round 4 introduced -- a
+   single-line SUMMARY that happens to start with "PASS" (e.g.
+   `"PASS: 5 FAIL: 2"`) matches the same per-test-PASS-line pattern and
+   gets filtered to nothing, so two different such summaries
+   (`"PASS: 5 FAIL: 2"` vs `"PASS: 3 FAIL: 9"`) both normalized to `""`
+   and compared equal -- same false-STUCK-match failure mode round 4
+   fixed, one case narrower. Fixed: never let filtering erase ALL the
+   signal -- fall back to the unfiltered body when the filtered result is
+   empty but the input wasn't. Verified: the two example summaries now
+   normalize differently; identical single-line tails still compare equal
+   (no regression).
+
+**Overall verdict after 5 rounds**: genuine convergence was NOT reached in
+the sense of "a round found nothing" on the correctness track -- every
+round found at least one real, reproduced bug, several of them in the
+immediately preceding round's own fix (rounds 2, 3, and 5 each found a
+bug specifically in the mechanism the previous round(s) had just changed).
+The cost track, by contrast, converged clearly and stayed converged for
+three straight rounds (3, 4, 5) after its one real finding in round 1-2.
+This asymmetry is itself informative: the no-progress/reset mechanism
+turned out to have more interacting edge cases (attempt boundaries, turn
+boundaries, message-list identity, trim timing) than its cost profile did,
+and each fix round's own review is what surfaced the next layer -- exactly
+the value this adversarial process is for. No further rounds were run
+beyond the 5 requested; if the mechanism is touched again, a follow-up
+round specifically re-attacking `attempt_start_marker`/`trim_messages`
+interaction would be the highest-value next check, not a blanket re-review.

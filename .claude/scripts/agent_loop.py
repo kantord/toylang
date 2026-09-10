@@ -522,7 +522,21 @@ def normalize_for_stuck_check(tail: str) -> str:
     # real difference as STUCK. The truncation-fragment assumption only
     # holds when there's more than one line to begin with.
     body_lines = all_lines[1:] if len(all_lines) > 1 else all_lines
-    lines = (l for l in body_lines if not _NOISE_LINE_RE.match(l))
+    # Same class of bug as the first-line drop above, one filter further:
+    # _NOISE_LINE_RE strips lines that look like a per-test PASS
+    # announcement, but a single-line SUMMARY that happens to start with
+    # the word "PASS" (e.g. "PASS: 5 FAIL: 2") matches it too. Confirmed
+    # directly: two different single-line tails, "PASS: 5 FAIL: 2" and
+    # "PASS: 3 FAIL: 9", both filtered down to nothing and compared equal --
+    # the same false-STUCK-match failure mode the first-line fix closed,
+    # one case narrower. Never let filtering erase ALL the signal: fall
+    # back to the unfiltered body when the filtered result is empty but the
+    # input wasn't -- on genuinely all-PASS-line input (rare and, if truly
+    # identical, still compares correctly either way) this changes nothing
+    # observable; on a single differing PASS-prefixed line it preserves the
+    # real difference instead of discarding it.
+    filtered = [l for l in body_lines if not _NOISE_LINE_RE.match(l)]
+    lines = filtered if filtered else body_lines
     text = "\n".join(lines)
     text = _TIMING_RE.sub("[Ts]", text)
     text = _POSITION_RE.sub("(N/N)", text)
@@ -652,21 +666,30 @@ def main() -> int:
     while True:
         attempt += 1
         print(f"== attempt {attempt}/{args.retry_cap + 1} ==", file=sys.stderr)
-        # Watermark of how many messages existed BEFORE this attempt --
-        # used below to discard only THIS attempt's own additions on a
-        # no-progress outcome, never anything from an earlier attempt.
-        # Discarding back to a fixed index (2, or messages[2:]) was a real
-        # bug found by adversarial review: if attempt 1 makes a genuine,
-        # proven-valuable edit (moved=True, RED, kept) and attempt 2 builds
-        # on it but adds nothing further of its own (moved=False relative
-        # to ATTEMPT 2's own start), resetting to a fixed index-2 wiped out
-        # attempt 1's entire real transcript too, not just attempt 2's
-        # fruitless one -- leaving attempt 3 with no memory that an edit
-        # already exists and, unlike --resume-from, no "check git state
-        # first" instruction to compensate. This watermark makes the reset
-        # symmetric with `moved`'s own per-attempt scoping: it only ever
-        # discards what THIS attempt itself added.
-        attempt_start_len = len(messages)
+        # Marker for where THIS attempt's own additions begin -- used below
+        # to discard only those on a no-progress outcome, never anything
+        # from an earlier attempt. Discarding back to a fixed index (2, or
+        # messages[2:]) was a real bug found by adversarial review: if
+        # attempt 1 makes a genuine, proven-valuable edit (moved=True, RED,
+        # kept) and attempt 2 builds on it but adds nothing further of its
+        # own (moved=False relative to ATTEMPT 2's own start), resetting to
+        # a fixed index-2 wiped out attempt 1's entire real transcript too.
+        #
+        # Stored as the LAST MESSAGE OBJECT itself (identity, via `is`),
+        # not its numeric index -- a second real bug, found on the very
+        # next adversarial round: `trim_messages()` runs every turn and can
+        # delete whole turns starting at index 2 mid-attempt, shifting
+        # every later index down. A captured absolute index doesn't move
+        # with it; reproduced directly: a long attempt's own tool output
+        # pushes the conversation past MAX_CONVERSATION_CHARS, trims fire
+        # mid-attempt, and `del messages[stale_index:]` then cuts in the
+        # middle of a turn -- leaving an assistant `tool_calls` message
+        # with no matching `tool` reply, which OpenRouter rejects on the
+        # NEXT call, corrupting every remaining attempt with the same
+        # unrelated failure. An object reference survives being shifted;
+        # `trim_messages()` only ever removes WHOLE turns, so any surviving
+        # message is always still a valid turn boundary to cut after.
+        attempt_start_marker = messages[-1]
         try:
             final_text, moved = agent_turns(api_key, args.model, messages, args.max_turns,
                                              args.max_tokens, deadline,
@@ -791,7 +814,7 @@ def main() -> int:
             # attempt-2 no-progress window (turns 1-12, identical outcome
             # to attempt-1's) cost $0.049085 vs attempt-1's $0.014439 for
             # the SAME zero-progress result -- 3.4x more, purely from
-            # carried context. Reset back to `attempt_start_len` -- NOT a
+            # carried context. Reset back to `attempt_start_marker` -- NOT a
             # fixed `messages[2:]` -- so the next attempt starts cheap
             # instead of re-billing a transcript that led nowhere, without
             # also discarding any EARLIER attempt's real, proven-valuable
@@ -808,7 +831,24 @@ def main() -> int:
             # write_status() calls would have persisted an already-gutted
             # messages list for the very attempt whose failure is being
             # reported -- confirmed as a real bug by adversarial review.
-            del messages[attempt_start_len:]
+            #
+            # Looked up by IDENTITY, not a stored index -- trim_messages()
+            # may have shifted everything since the marker was captured. If
+            # the marker itself is gone (only possible if THIS attempt's
+            # own growth was large enough that trim_messages() discarded
+            # even its own starting point -- an extreme case given
+            # --max-turns-without-progress should end a truly unproductive
+            # attempt long before that much output accumulates), there is
+            # no longer a safe, turn-aligned boundary that discards ONLY
+            # this attempt's content without risking an orphaned
+            # `tool_calls` message -- confirmed as a real, reproduced bug
+            # when this used a stale absolute index instead. Skip the reset
+            # entirely rather than guess: carrying the (already
+            # trim-bounded) history forward is safe, corrupting it is not.
+            for _i, _m in enumerate(messages):
+                if _m is attempt_start_marker:
+                    del messages[_i + 1:]
+                    break
             feedback = (
                 "Your previous attempt ended without making any repo changes at all "
                 "(either it never edited anything, or it hit the no-progress cutoff). "
