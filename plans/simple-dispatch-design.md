@@ -829,3 +829,67 @@ the value this adversarial process is for. No further rounds were run
 beyond the 5 requested; if the mechanism is touched again, a follow-up
 round specifically re-attacking `attempt_start_marker`/`trim_messages`
 interaction would be the highest-value next check, not a blanket re-review.
+
+## Fourth review cycle: 3 more rounds, testing whether the design has
+## actually stabilized after the 5-round series above
+
+Requested explicitly to check how well the 5-round series held up, with
+round 1 specifically re-attacking `attempt_start_marker`/`trim_messages`
+(the exact thing round 5 flagged as the highest-value next check) plus a
+genuinely fresh full-file pass on both tracks.
+
+### Round 1
+
+**Correctness track**: the specific `attempt_start_marker`-across-a-
+resume-boundary hypothesis (does `--resume-from`'s `json.load` mint a new,
+`==`-but-not-`is` duplicate that could break identity lookup) was checked
+and found FALSE -- traced the exact lifecycle: the marker is always set to
+a message object created live by THIS process after the resume load, never
+to one of the deserialized objects themselves, so there's no second
+JSON round-trip to break identity against. One new real finding instead:
+`repo_state_signature()`'s three `subprocess.run(..., timeout=30)` calls
+(called up to ~90 times per run: 30 turns x 3 attempts) were never wrapped
+in any try/except, anywhere up the call chain -- confirmed with a direct
+repro that an uncaught `subprocess.TimeoutExpired` from an unguarded
+caller propagates straight through and crashes the process. `main()`'s
+only exception guard around the retry loop is `except OutOfTime`; a
+crash here means `write_status()` never runs, and `simple_dispatch.py`'s
+fallback classifier (which only recognizes `RC=124/137/143` as TIMEOUT)
+would misclassify this as a plain, unexplained RED -- exactly the failure
+class this whole rewrite exists to eliminate, just relocated to a spot
+the existing `verify()`-timeout handling doesn't cover. A real trigger is
+plausible given the model's unrestricted `run_bash`: `.git/index.lock`
+contention, a backgrounded `git gc`, or a huge generated/binary file
+slowing `git diff HEAD`. Fixed: added `safe_repo_state_signature()`
+(catches `subprocess.SubprocessError`/`OSError`, returns `None` instead of
+raising) and `_sig_changed(a, b)` (treats either side being `None` as
+"changed" -- fails toward assuming progress happened, since that's the
+safer wrong guess: worst case is one skipped optimization, never a wrong
+STUCK/no-progress classification or a wrongly-discarded real transcript).
+Every `agent_turns()` call site now goes through these instead of the raw
+functions. Verified: a monkeypatched `repo_state_signature()` that always
+raises `TimeoutExpired` no longer crashes `agent_turns()` -- it completes
+normally, logs a warning each time, and correctly defaults `moved=True`.
+
+**Cost track**: no new mechanism-level waste (re-confirmed rounds 3-5's
+convergence: exactly one signature computation per turn plus one at
+attempt-start, `trim_messages()`'s per-turn `json.dumps` length check is
+CPU not $, `simple_dispatch.py`'s cost surface unchanged). One real,
+partially-open finding: real per-turn numbers from
+`dense-tensor-type-build-71c68601-full-agent.log` show $/1k-tokens
+swinging ~4x turn-to-turn (turn 27: $0.0383/1k at 49,263 tokens; turn 29:
+$0.1404/1k at 48,371 tokens, a *smaller* completion) with no
+prompt/completion-count explanation -- but the code never captured
+anything beyond `cost`/`prompt_tokens`/`completion_tokens` from `usage`,
+so there's no way to tell whether this is provider-routing variance or
+unlogged cache/reasoning-token billing from the existing data. Proposed
+pinning `provider: {sort: price}` was NOT applied -- that's an
+unverified guess at the cause, and forcing routing changes behavior
+(potentially trading cost for reliability/speed) on a hypothesis, not a
+confirmed diagnosis, which this project's whole standard explicitly rejects.
+Applied instead: every turn now also logs the FULL `usage` dict to stderr
+(captured in the existing full-agent.log pull, zero added cost -- it's a
+print, not an extra call), specifically so a future round has the actual
+cache/reasoning-token fields to diagnose this with real data instead of
+guessing. The `provider` question stays open until a fresh dispatch
+produces that data.

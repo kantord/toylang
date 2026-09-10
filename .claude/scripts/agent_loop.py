@@ -380,6 +380,48 @@ def repo_state_signature(repo: str = "/repo") -> str:
     return hashlib.sha256(blob.encode(errors="replace")).hexdigest()
 
 
+def safe_repo_state_signature(repo: str = "/repo") -> str | None:
+    """repo_state_signature(), but never raises. Its three subprocess.run()
+    calls carry a timeout (30s each) but nothing up the call chain ever
+    caught a resulting TimeoutExpired/SubprocessError -- confirmed by
+    adversarial review with a direct repro: an uncaught exception here
+    propagates straight past agent_turns and main()'s only exception guard
+    (`except OutOfTime`), killing the whole process before write_status()
+    ever runs. simple_dispatch.py's fallback classifier only recognizes
+    RC=124/137/143 (a raw `timeout`(1)/SIGKILL) as TIMEOUT, so a plain
+    uncaught-Python-exception exit falls through to an indistinguishable
+    "RED" -- exactly the "operator can't tell why it failed" failure class
+    this whole rewrite exists to eliminate, just relocated to a spot the
+    existing verify()-timeout handling doesn't cover. A real trigger is
+    plausible given this design's own admitted constraints: the model has
+    unrestricted run_bash and could leave `.git/index.lock` contention,
+    background a `git gc`, or write a huge generated/binary file that makes
+    `git diff HEAD` slow. Returns None on failure; callers must treat None
+    as "unknown this check," never as a real signature value."""
+    try:
+        return repo_state_signature(repo)
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"  warning: repo_state_signature() failed ({e}) -- "
+              "treating progress as unknown for this check rather than "
+              "crashing the process", file=sys.stderr)
+        return None
+
+
+def _sig_changed(a: str | None, b: str | None) -> bool:
+    """True iff two signatures are KNOWN to differ. If either is None (a
+    transient git failure -- see safe_repo_state_signature), returns True:
+    failing toward 'something changed' rather than toward 'nothing
+    changed' avoids two bad outcomes on a mere hiccup -- wrongly advancing
+    the no-progress-turns counter toward an early exit that has nothing to
+    do with the model's actual behavior, and wrongly reporting `not moved`
+    (which would discard this attempt's real transcript on a false
+    premise). Worst case on a transient failure is one skipped
+    optimization, never a wrong classification."""
+    if a is None or b is None:
+        return True
+    return a != b
+
+
 def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                  max_tokens: int, deadline: float,
                  max_turns_without_progress: int) -> tuple[str | None, bool]:
@@ -414,18 +456,18 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
     previously noticed "N turns have gone by with no write_file taking
     effect" mid-attempt; the check was only ever done AFTER the full
     attempt (all max_turns) was already exhausted."""
-    initial_sig = repo_state_signature()
+    initial_sig = safe_repo_state_signature()
 
     def moved() -> bool:
-        return repo_state_signature() != initial_sig
+        return _sig_changed(safe_repo_state_signature(), initial_sig)
 
     no_progress_turns = 0
     last_sig = initial_sig
     for turn in range(max_turns):
         if time.monotonic() > deadline:
             raise OutOfTime(f"wall-clock budget exhausted at turn {turn + 1}/{max_turns}")
-        sig = repo_state_signature()
-        if sig != last_sig:
+        sig = safe_repo_state_signature()
+        if _sig_changed(sig, last_sig):
             no_progress_turns = 0
             last_sig = sig
         else:
@@ -434,7 +476,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                 print(f"  no repo changes for {no_progress_turns} consecutive turns, "
                       "ending this attempt early instead of spending the rest of "
                       "max_turns on further unproductive exploration", file=sys.stderr)
-                return None, sig != initial_sig
+                return None, _sig_changed(sig, initial_sig)
         try:
             resp = call_openrouter(api_key, model, messages, max_tokens)
         except RuntimeError as e:
@@ -449,13 +491,25 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             # instead of calling moved() again -- nothing between there and
             # here touches the filesystem (call_openrouter is a network
             # call), so it's already the freshest possible value.
-            return None, sig != initial_sig
+            return None, _sig_changed(sig, initial_sig)
         usage = resp.get("usage", {})
         add_cost(resp)
         print(f"  turn {turn + 1}/{max_turns}: "
               f"prompt={usage.get('prompt_tokens')} completion={usage.get('completion_tokens')} "
               f"cost=${usage.get('cost', 0):.6f} (running total ${total_cost_usd:.6f})",
               file=sys.stderr)
+        # Full usage dict, not just the three fields above -- a real
+        # cost-review pass found $/1k-token swinging ~4x turn-to-turn in a
+        # persisted log with no explanation from prompt/completion token
+        # counts alone (e.g. dense-tensor-type-build turns 27 vs 29), and
+        # couldn't tell whether that's provider-routing variance or
+        # unlogged cache/reasoning-token billing because nothing captured
+        # the rest of `usage` (cache read/write tokens, reasoning tokens,
+        # which provider actually served the call). This is pulled into
+        # RESULT_DIR via the existing full-agent.log copy, at zero added
+        # cost (print, not an extra call) -- purely so the next round has
+        # real data instead of guessing.
+        print(f"    usage detail: {json.dumps(usage)}", file=sys.stderr)
         choice = resp["choices"][0]
         msg = choice["message"]
         messages.append(msg)
@@ -464,7 +518,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             # Same reasoning as the RuntimeError-catch return above: no
             # tool_calls means nothing ran that could have touched the
             # filesystem this turn, so `sig` is still accurate.
-            return msg.get("content") or "", sig != initial_sig
+            return msg.get("content") or "", _sig_changed(sig, initial_sig)
         for tc in tool_calls:
             fn = tc["function"]["name"]
             try:
