@@ -1,0 +1,6 @@
+captured: 2026-09-09T19:31:49+0200
+state: {"ts": 1788975109, "lane": "issue-module-routing-syntax-build", "ahead": 0, "tracked_dirty": 0, "live": false, "runs": 1, "last_activity": 1788908633}
+
+=== git status ===
+
+=== git diff --stat ===
