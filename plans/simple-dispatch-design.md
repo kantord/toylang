@@ -472,3 +472,71 @@ being close to inert on this repo's real test command -- a gap two whole
 prior rounds of both code review and analysis review missed, because the
 first only read code and the second only read documents; neither actually
 reproduced the mechanism end to end until this round did.
+
+## Third review cycle: 5 rounds, split into correctness skeptic + "cost
+## optimizer maniac" tracks, run in parallel each round
+
+Requested explicitly to re-validate the design after the STUCK-recovery
+feature (persist + reviewer + `--resume-from`) landed, since none of the
+prior rounds had looked at that code from a pure cost lens.
+
+### Round 1
+
+**Cost track** -- one real, well-quantified finding: nothing detects
+"exploring but never editing" mid-attempt. `agent_turns()` only checked
+`git_head()`/`git_dirty()` *after* `max_turns` was fully exhausted. Real
+number: `dense-tensor-type-build` burned $0.174245 across 60 turns (both
+full 30-turn attempts) with **zero file changes in either one** -- almost
+as expensive as `toylang-conf-yaml-build`'s successful $0.160455 GREEN run,
+for no deliverable at all. The other three cost-track suspects
+(`propose_narrower_task`'s 60K-char summary, `--max-tokens 4096`, STUCK
+needing 2 attempts to fire) were checked against real numbers/prior
+reasoning and correctly dropped as already-justified or measured-negligible
+(the reviewer call's real cost is $0.000115).
+
+Fixed: `agent_turns()` now takes `base_head` and `--max-turns-without-progress`
+(default 12) and checks `git_head()`/`git_dirty()` every turn, not just at
+the end of an attempt -- `max_turns_without_progress` consecutive turns
+with no repo change ends the attempt early (same `None`-return path as
+exhausting `max_turns`, so it flows into the existing RED/STUCK
+classification with zero new states). Verified with a monkeypatched test:
+threshold=5 correctly stopped after the 6th no-op turn without making a
+7th API call.
+
+**Correctness track** -- two real bugs, one minor:
+1. `--resume-from` restored the conversation but never reapplied the prior
+   run's own extracted patch -- the fresh clone starts at `origin/main`, so
+   a resumed session's history could claim specific edits were made that
+   are not actually present, risking the model spiraling over a "fix" that
+   isn't there or skipping work it believes is already done. Real gap on
+   any RED resume (not just a zero-change STUCK), which the recovery path
+   explicitly targets both of. Fixed two ways: (a) new optional
+   `--resume-patch` reapplies the prior patch via `git am` before the
+   resumed session runs, refusing (via the existing `must()`/`SetupFailed`
+   path) rather than silently continuing if it doesn't apply cleanly; (b)
+   defense in depth regardless of (a) -- the resume continuation message no
+   longer asserts "continue from your existing progress," it now tells the
+   model this is a fresh checkout and to verify actual state via
+   `git log`/`git diff`/`git status` before acting on memory of previous
+   tool results.
+2. A 200 response with missing/empty `choices` (seen from upstream
+   providers on moderation blocks) sailed past the existing error-body
+   check and crashed `agent_turns`'s `resp["choices"][0]` with an uncaught
+   KeyError/IndexError -- past the `except RuntimeError` net, killing the
+   process with a bare traceback and no `write_status` call, exactly the
+   "operator can't tell why it failed" shape this rewrite exists to avoid.
+   Confirmed directly (`{}["choices"][0]`, `{"choices":[]}["choices"][0]`
+   both raise). Fixed: `call_openrouter` now raises the same `RuntimeError`
+   the sibling error-body case does when `choices` is missing/empty.
+3. Minor, already non-fatal: `proposal.get("reasoning", "")[:150]` crashes
+   with `TypeError` if the model returns a literal JSON `null` for
+   `reasoning` (`.get(key, default)` only substitutes on a missing key, not
+   a `None` value) -- was already caught by `_dispatch_one_locked`'s own
+   broad `except Exception`, just silently dropping the note. Fixed with
+   `(proposal.get("reasoning") or "")[:150]`.
+
+All four fixes verified: two with monkeypatched unit-style tests
+(empty-choices RuntimeError, no-progress early exit), one by direct
+argparse invocation (`--resume-patch` without `--resume-from` rejected),
+one by `python3 -m py_compile` plus code inspection (the `reasoning: None`
+guard is a one-line defensive change with an obvious correct form).

@@ -318,6 +318,16 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
         msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
         check_fatal(msg.lower(), msg)
         raise RuntimeError(f"OpenRouter returned an error body on HTTP 200: {msg}")
+    # A 200 with no error field can still carry an empty/missing `choices`
+    # (seen from upstream providers on content-moderation blocks and other
+    # provider-side hiccups) -- confirmed directly: `{}["choices"][0]` and
+    # `{"choices": []}["choices"][0]` both raise uncaught KeyError/IndexError
+    # in agent_turns, past its `except RuntimeError`, killing the process
+    # with a bare traceback before write_status ever runs. Raise the same
+    # RuntimeError the sibling error-body case does so this is just another
+    # ordinary retryable turn failure instead of an uncaught crash.
+    if not isinstance(parsed, dict) or not parsed.get("choices"):
+        raise RuntimeError(f"OpenRouter response missing choices: {text[:500]}")
     return parsed
 
 
@@ -334,14 +344,40 @@ class OutOfTime(Exception):
 
 
 def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
-                 max_tokens: int, deadline: float) -> str | None:
+                 max_tokens: int, deadline: float, base_head: str,
+                 max_turns_without_progress: int) -> str | None:
     """Runs up to max_turns tool-call rounds. Returns the model's final text
-    once it stops calling tools, or None if max_turns was exhausted without
-    the model finishing. Raises OutOfTime if the wall-clock deadline passes
-    first."""
+    once it stops calling tools, or None if max_turns was exhausted (or
+    max_turns_without_progress consecutive turns passed with no actual repo
+    change) without the model finishing. Raises OutOfTime if the wall-clock
+    deadline passes first.
+
+    The no-progress cutoff exists because real data showed the ordinary
+    per-turn budget alone doesn't catch the expensive failure shape: the
+    real dense-tensor-type-build STUCK run burned $0.174 across 60 turns
+    (2 full 30-turn attempts) and made ZERO file changes in either one --
+    almost as expensive as a real shipped patch (toylang-conf-yaml-build's
+    successful run cost $0.160), for no deliverable at all. Nothing
+    previously noticed "N turns have gone by with no write_file taking
+    effect" mid-attempt; the check was only ever done AFTER the full
+    attempt (all max_turns) was already exhausted. Checking git_dirty()
+    directly (the same ground-truth signal main() already uses to decide
+    whether to even call verify()) rather than pattern-matching on which
+    tool was called avoids trying to guess from tool names alone whether a
+    given run_bash call mutated a file."""
+    no_progress_turns = 0
     for turn in range(max_turns):
         if time.monotonic() > deadline:
             raise OutOfTime(f"wall-clock budget exhausted at turn {turn + 1}/{max_turns}")
+        if git_head() != base_head or git_dirty():
+            no_progress_turns = 0
+        else:
+            no_progress_turns += 1
+            if no_progress_turns > max_turns_without_progress:
+                print(f"  no repo changes for {no_progress_turns} consecutive turns, "
+                      "ending this attempt early instead of spending the rest of "
+                      "max_turns on further unproductive exploration", file=sys.stderr)
+                return None
         try:
             resp = call_openrouter(api_key, model, messages, max_tokens)
         except RuntimeError as e:
@@ -449,6 +485,13 @@ def main() -> int:
                           "succeed on a small remaining balance instead of being rejected for "
                           "the model's full context window")
     ap.add_argument("--retry-cap", type=int, default=2)
+    ap.add_argument("--max-turns-without-progress", type=int, default=12,
+                     help="end an attempt early if this many consecutive turns pass with no "
+                          "repo change at all (no new commit, nothing dirty) -- catches the "
+                          "expensive failure shape a real run showed: 60 turns burning $0.174 "
+                          "with zero file changes in either attempt, almost the cost of a real "
+                          "shipped patch for no deliverable. Set higher than --max-turns to "
+                          "disable")
     ap.add_argument("--verify-cmd", default="just check")
     ap.add_argument("--api-key-env", default="OPENROUTER_API_KEY")
     ap.add_argument("--wall-clock-budget", type=int, default=3400,
@@ -522,7 +565,12 @@ def main() -> int:
             "role": "user",
             "content": (
                 "Your task has been rescoped based on what you already learned in this "
-                f"session:\n\n{task_text}\n\nContinue from your existing progress above."
+                f"session:\n\n{task_text}\n\n"
+                "IMPORTANT: this is a fresh checkout. Any edits you believe you made above "
+                "may or may not actually be present in this repo -- the caller may or may not "
+                "have reapplied your prior patch. Run `git log` / `git diff` / `git status` "
+                "yourself FIRST and act on what you actually find, not on memory of previous "
+                "write_file results."
             ),
         })
         _task_hash = expected_hash
@@ -542,7 +590,8 @@ def main() -> int:
         print(f"== attempt {attempt}/{args.retry_cap + 1} ==", file=sys.stderr)
         try:
             final_text = agent_turns(api_key, args.model, messages, args.max_turns,
-                                      args.max_tokens, deadline)
+                                      args.max_tokens, deadline, base_head,
+                                      args.max_turns_without_progress)
         except OutOfTime as e:
             print(f"OUT_OF_TIME: {e}", file=sys.stderr)
             write_status("TIMEOUT", messages)

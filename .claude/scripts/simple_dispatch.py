@@ -270,7 +270,8 @@ def acquire_lock(row_id: str):
 def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                   snapshot: str, max_tokens: int, overall_timeout: int,
                   memory: str, cpus: int, resume_from: Path | None = None,
-                  original_task_file: Path | None = None) -> Result:
+                  original_task_file: Path | None = None,
+                  resume_patch: Path | None = None) -> Result:
     if not ROW_ID_RE.match(row_id):
         # row_id is interpolated into a lock file path, a sandbox name, a
         # git branch name, and a shell command string below -- an
@@ -291,7 +292,7 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
     try:
         result = _dispatch_one_locked(row_id, run_id, brief_path, model, retry_cap, snapshot,
                                        max_tokens, overall_timeout, memory, cpus,
-                                       resume_from, original_task_file)
+                                       resume_from, original_task_file, resume_patch)
         return result
     finally:
         end_time = datetime.now(timezone.utc)
@@ -334,7 +335,8 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
 def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str, retry_cap: int,
                           snapshot: str, max_tokens: int, overall_timeout: int,
                           memory: str, cpus: int, resume_from: Path | None = None,
-                          original_task_file: Path | None = None) -> Result:
+                          original_task_file: Path | None = None,
+                          resume_patch: Path | None = None) -> Result:
     name = f"sd-{row_id}-{run_id}"  # unique per attempt -- never collides
     workdir = Path(tempfile.mkdtemp(prefix=f"simple-dispatch-{row_id}-"))
     env = msb_env()
@@ -356,6 +358,26 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
         must(sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "-b", f"issue-{row_id}", "origin/main"], env=env, timeout=60), "git checkout")
         base_commit = must(sh(["git", "-C", str(clone_dir), "rev-parse", "HEAD"], env=env, timeout=30), "git rev-parse").stdout.strip()
         logline(f"cloned at {base_commit}")
+
+        # A real bug found by adversarial review of --resume-from: the fresh
+        # clone above starts from origin/main, but the persisted message
+        # history being resumed contains write_file tool results claiming
+        # SPECIFIC edits were already made and verified. Without this,
+        # agent_loop.py's resume path told the model it had "existing
+        # progress" while the actual repo was clean -- the model could
+        # spiral trying to explain why a "fix" it believed existed wasn't
+        # taking effect, or skip redoing work it thought was already done.
+        # Reapplying the prior run's own extracted patch (via `git am`,
+        # which preserves it as a real commit) makes the guest repo's
+        # actual state match what the resumed conversation believes
+        # happened. Refuses to proceed with a silently-wrong state on
+        # failure (a conflicting/stale patch) rather than resuming into a
+        # repo that matches neither a clean baseline nor the model's
+        # believed history.
+        if resume_patch:
+            must(sh(["git", "-C", str(clone_dir), "am", str(resume_patch)], env=env, timeout=60),
+                 "git am --resume-patch (reapplying prior run's extracted patch)")
+            logline(f"reapplied prior patch {resume_patch}")
 
         args = [str(MSB_BIN), "run", "-m", memory, "-c", str(cpus), "--no-tty", "-d",
                  "--name", name, "--secret", "OPENROUTER_API_KEY@openrouter.ai",
@@ -535,12 +557,21 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
                     cost_usd += proposal.pop("_reviewer_cost_usd", 0.0)
                     proposal_path = RESULT_DIR / f"{row_id}-{run_id}-recovery-proposal.json"
                     proposal_path.write_text(json.dumps(proposal, indent=2))
+                    # `.get(key, "")` only substitutes the default when the
+                    # KEY is absent -- a model that returns a literal JSON
+                    # null for "reasoning" (valid JSON, seen from real model
+                    # output) sails past that and crashes `[:150]` on None.
+                    # Confirmed directly: `{'reasoning': None}.get('reasoning',
+                    # '')[:150]` raises TypeError. Was non-fatal in practice
+                    # (caught by this function's own broad `except Exception`
+                    # below, just silently dropping the note) but worth
+                    # closing properly rather than leaning on that net.
+                    reasoning = (proposal.get("reasoning") or "")[:150]
                     if proposal.get("narrowable"):
-                        recovery_note = (f" -- narrower retry possible: "
-                                         f"{proposal.get('reasoning', '')[:150]} "
+                        recovery_note = (f" -- narrower retry possible: {reasoning} "
                                          f"(see {proposal_path})")
                     else:
-                        recovery_note = (f" -- reviewer: {proposal.get('reasoning', '')[:150]} "
+                        recovery_note = (f" -- reviewer: {reasoning} "
                                          f"(see {proposal_path})")
                 except Exception as e:
                     logline(f"recovery proposal failed (non-fatal): {e}")
@@ -594,6 +625,13 @@ def main() -> int:
     ap.add_argument("--original-task-file", type=Path, default=None,
                      help="required with --resume-from: the ORIGINAL brief the resumed run "
                           "was for (used only to verify --resume-from points at the right row)")
+    ap.add_argument("--resume-patch", type=Path, default=None,
+                     help="optional with --resume-from: the prior run's own extracted patch "
+                          "(RESULT_DIR/<row>-<run>.patch), reapplied via `git am` onto the "
+                          "fresh clone before the resumed session runs. Without this, the "
+                          "resumed conversation's history claims edits were made that are not "
+                          "actually present in the new sandbox -- if the prior run's status "
+                          "was RED (not a zero-change STUCK) and left a patch, pass it here")
     args = ap.parse_args()
 
     if args.resume_from:
@@ -603,6 +641,9 @@ def main() -> int:
         if not args.original_task_file:
             print("[error] --resume-from requires --original-task-file", file=sys.stderr)
             return 2
+    elif args.resume_patch:
+        print("[error] --resume-patch only makes sense together with --resume-from", file=sys.stderr)
+        return 2
 
     env = msb_env()
     ok, msg = check_credit_balance(env["OPENROUTER_API_KEY"])
@@ -624,7 +665,8 @@ def main() -> int:
         futs = {
             pool.submit(dispatch_one, row, brief, args.model, args.retry_cap,
                         args.snapshot, args.max_tokens, args.overall_timeout,
-                        args.memory, args.cpus, args.resume_from, args.original_task_file): row
+                        args.memory, args.cpus, args.resume_from, args.original_task_file,
+                        args.resume_patch): row
             for row, brief in jobs
         }
         for fut in as_completed(futs):
