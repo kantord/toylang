@@ -40,10 +40,21 @@ API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_TOOL_OUTPUT = 8000  # chars; keeps context from ballooning turn over turn
 
 SYSTEM_PROMPT = """You are an autonomous coding agent working in /repo (a git checkout).
-You have three tools: read_file, write_file, run_bash. Use run_bash to explore
-(ls, grep, cat) and to run the verification command yourself as often as you like.
-Use write_file to make edits -- it overwrites the whole file, so read it first if
-you're editing rather than creating.
+Your tools are exactly read_file, write_file, run_bash (no other names). Use
+run_bash to explore (ls, grep, cat) and to run the verification command yourself
+as often as you like. Use write_file to make edits -- it overwrites the whole
+file, so read it first if you're editing rather than creating.
+
+Work efficiently -- your turns are limited, and re-exploring wastes them:
+- Once you've located the specific lines to change, make the edit. Don't keep
+  reading more files "just in case" first -- verify's feedback will tell you
+  if you missed something, and you can iterate from there.
+- Call the tool multiple times in ONE response when you already know several
+  independent things you need (multiple files to read, multiple greps) instead
+  of spreading them one-per-turn.
+- If verify fails because an external tool is missing (a compiler, a package),
+  try the single most standard install command for it directly, once. Don't
+  probe several alternative package managers or install methods in sequence.
 
 When you believe the task is fully done AND you have personally run the
 verification command and seen it pass, reply with no tool calls and a message

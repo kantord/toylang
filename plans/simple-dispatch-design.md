@@ -1119,3 +1119,44 @@ in repeated testing -- without visibly degrading answer quality on the
 real correct-transcript case (re-verified: the detailed, accurate,
 ground-truth-reconciled answer for the real toylang-conf-yaml-build
 transcript is unchanged in substance with low reasoning effort).
+
+## Worker system prompt: minimal, evidence-based additions
+
+Also requested: prompt the BUILD-LOOP model itself better, at the system
+prompt level, kept small (this text is re-sent every single turn, so size
+has a real recurring cost) -- not a general "be a good coding agent"
+essay, specifically targeting the failure shapes this session's real
+dispatches actually showed:
+
+1. **Sequential exploration with no self-imposed stopping point.**
+   `http-query-sugar-build`'s and `dense-tensor-type-build`'s real
+   reasoning traces showed a strict "let me look at X, then let me look
+   at Y" chain for the ENTIRE turn budget of both attempts, with the SAME
+   next-step ("check how the parser handles `tensor(n;m)`'s semicolon")
+   restated three times in a row without ever being completed or acted
+   on -- never a turn where the model decided it knew enough to write.
+2. **Flailing through alternatives instead of trying the standard fix
+   once.** Fixing a missing `tsc` involved trying `pnpm install`, then
+   `npm install` (rejected: "configured to use pnpm"), then probing for
+   `corepack`/`node` paths by hand, then a `/tmp` install, then finally a
+   direct `npm-cli.js install` in `site/` -- 5 different approaches
+   across ~15 turns before landing on what worked (plain `npm install`
+   with an explicit path, tried third).
+3. **A hallucinated tool name** (`bash` instead of `run_bash`) wasted one
+   full turn in the same real transcript.
+
+Added to `SYSTEM_PROMPT` (agent_loop.py): tool names stated as exact (no
+other names accepted); "once you've located the specific lines to change,
+make the edit" instead of continuing to read more "just in case";
+encouragement to batch multiple independent tool calls into one turn
+instead of one-per-turn; "try the single most standard install command
+... once" instead of probing alternatives in sequence. Kept to ~1400
+chars (~350 tokens) total including the pre-existing text -- negligible
+against the 20-40K-token contexts these real runs already reach.
+
+**Validated with a real dispatch, not just trusted as a hopeful prompt
+edit**: redispatched `dense-tensor-type-build` under the new prompt --
+this exact row already has two real STUCK data points under the OLD
+prompt (the original validation run and this review series' batch
+dispatch), giving a genuine same-task before/after comparison rather than
+a one-off anecdote. See the dispatch-log/results for the outcome.
