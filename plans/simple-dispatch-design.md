@@ -1159,4 +1159,33 @@ edit**: redispatched `dense-tensor-type-build` under the new prompt --
 this exact row already has two real STUCK data points under the OLD
 prompt (the original validation run and this review series' batch
 dispatch), giving a genuine same-task before/after comparison rather than
-a one-off anecdote. See the dispatch-log/results for the outcome.
+a one-off anecdote.
+
+**Honest result: still STUCK ($0.0114), and the specific behaviors
+targeted did not visibly change.** The new transcript (run `78353c1b`)
+shows the exact same pattern as before the prompt change: 11 turns, every
+single one a lone tool call (no batching -- `tool_calls per turn: [1, 1,
+1, 1, 1, 1, 1, 1, 1, 1, 1]`), zero `write_file` calls, cut off by the
+no-progress cutoff same as always. The prompt guidance did not make this
+particular hard, wide-reaching task (the same `tensor(n; m)` two-arg
+call-form complexity documented above) converge. Reporting this plainly
+rather than as a success: a ~1400-char prompt addition is not shown to
+fix a genuine multi-file design-complexity wall on this model tier for
+this specific task shape. It may still help the narrower failure modes it
+targeted (the tool-name hallucination, flailing through install
+alternatives) in cases where those specific behaviors would otherwise
+occur -- this run's transcript simply didn't include either behavior to
+test against. No conclusion drawn beyond what was actually observed.
+
+**What DID work, and is the more direct answer to "ship a smaller
+version"**: the reviewer's own recovery proposal for this exact STUCK run
+correctly diagnosed the real blocker (the `tensor(n; m)` two-argument
+call form doesn't fit the existing unary-`Builtin` pattern, unlike
+`transpose`) and proposed a genuinely achievable narrower slice --
+`transpose` alone, deferring `tensor` construction. No
+`ground_truth_contradiction` was raised (correct: there truly is no
+patch here, confirming the grounding fix doesn't cry wolf on a genuine
+no-edit case either). Dispatched this narrower task for real
+(`dense-tensor-transpose-only`) to test whether "ship a smaller version"
+actually resolves it, not just whether the reviewer can suggest one --
+see the next section for the outcome.
