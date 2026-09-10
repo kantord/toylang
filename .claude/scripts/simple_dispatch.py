@@ -191,9 +191,19 @@ def propose_narrower_task(api_key: str, model: str, task_text: str, verify_tail:
     that's already finished."""
     # A single reasoning call over a written transcript, not an agent
     # session -- doesn't need the full detail agent_loop.py itself would;
-    # a generous prefix is enough context for "what was tried" without
-    # this call's own size ballooning.
-    messages_summary = json.dumps(messages)[:60_000]
+    # a generous SUFFIX is enough context for "what was tried" without this
+    # call's own size ballooning. Deliberately the LAST N chars, not the
+    # first -- a real production run found this the wrong way round: a
+    # 197K-char persisted transcript sliced with [:60_000] captured only
+    # the first 20 of 90 messages (pure early exploration, before any edit
+    # ever happened), and the reviewer confidently reported "never made a
+    # single repo change" for a run that had, in fact, made a real edit
+    # AND fixed a real sandbox environment gap (a missing `tsc`) later in
+    # the SAME conversation -- both entirely outside the truncated window.
+    # Recency is what's actually diagnostic for "why did THIS attempt end
+    # where it did"; the original task is already passed separately above,
+    # so the early history isn't needed twice.
+    messages_summary = json.dumps(messages)[-60_000:]
     prompt = (
         "You are reviewing a failed autonomous coding attempt that ran out of "
         "retries without succeeding. Decide whether a NARROWER, more achievable "
@@ -201,7 +211,10 @@ def propose_narrower_task(api_key: str, model: str, task_text: str, verify_tail:
         "below -- not by guessing blind.\n\n"
         f"ORIGINAL TASK:\n{task_text}\n\n"
         f"LAST VERIFICATION FAILURE:\n{verify_tail[-3000:]}\n\n"
-        f"WHAT WAS ACTUALLY TRIED (the real conversation, possibly truncated):\n"
+        f"WHAT WAS ACTUALLY TRIED (the real conversation; if truncated, the "
+        f"EARLY part is missing and this starts partway through -- what's "
+        f"shown is the END of the transcript, closest to why the attempt "
+        f"actually ended):\n"
         f"{messages_summary}\n\n"
         "Reply with ONLY a JSON object, no other text:\n"
         '{"narrowable": true or false, "new_task": "...", "deferred_scope": "...", '

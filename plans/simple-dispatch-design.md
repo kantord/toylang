@@ -998,3 +998,67 @@ the cost fixes work as designed: the OLD pre-fix cost profile for a
 STUCK run was $0.174 for ONE task; this dispatch got 3 real STUCK
 classifications, each investigated via its real transcript rather than
 assumed, for well under half that combined.
+
+## Resuming toylang-conf-yaml-build: what "not self-resolving" actually meant
+
+Per this project's own STUCK-recovery design, resumed
+`toylang-conf-yaml-build` from its persisted session with a directive
+nudge ("stop exploring, you already found everything, write the edits
+now") -- exactly the manual-only mechanism this whole feature exists for.
+Result: STUCK again ($0.0873), but investigating the real transcript this
+time (not accepting the classification) found something categorically
+different from the first two dispatches. THE TASK WAS ACTUALLY COMPLETED:
+a real, correct, complete patch exists (`Config.target` field with a Node
+default, all three JS emission call sites wired through `Config::load()`/
+`emit_with`, a real `tests/backend_js.rs` proving `target: web` changes
+emission). Verified directly against the patch content -- not inferred
+from a status flag.
+
+**Why it still reported STUCK -- two compounding, now-fixed bugs:**
+
+1. `repo_state_signature()`'s progress detection (`git status --porcelain`
+   + `git diff HEAD`) is structurally blind to gitignored paths. The
+   model's remaining real work after the code fix was installing a
+   working `tsc` into `site/node_modules` (gitignored, confirmed via
+   `git check-ignore`) to satisfy a pre-existing sandbox environment gap
+   (`tsc` missing, unrelated to the model's actual change -- the same
+   failure the earlier, separately-run successful dispatch of this row
+   also hit and separately fixed). That real, necessary work was
+   completely invisible to the no-progress counter -- git saw nothing
+   change turn over turn -- so `--max-turns-without-progress` correctly
+   detected "no TRACKED file changes" but incorrectly implied "no
+   progress at all," and cut the attempt off mid-repair. Not fixed in
+   this round (see below for why).
+2. Independently, `propose_narrower_task`'s own diagnosis was WRONG:
+   `messages_summary = json.dumps(messages)[:60_000]` truncates from the
+   FRONT. This run's full transcript was 197,515 chars -- the 60K-char
+   prefix captured only the first 20 of 90 messages, pure early
+   exploration before the real edit ever happened. The reviewer
+   confidently reported "never made a single repo change," which is
+   factually false, verified against the real patch. Fixed: slice the
+   LAST 60K chars instead (`[-60_000:]`) -- recency, not the original
+   task restated (already passed separately), is what's diagnostic for
+   "why did THIS attempt end where it did." Re-ran the reviewer against
+   this EXACT real transcript with the fix applied: it now correctly
+   reports the task is complete and the blocker was environmental, not
+   scope -- verified with a real OpenRouter call, not just structurally.
+
+**Bug 1 (progress detection blind to gitignored paths) was deliberately
+NOT fixed in this round.** It's real, but the fix isn't obviously safe:
+naively counting activity as "progress" whenever ANY tool call succeeds
+(regardless of git-visible effect) would reopen exactly the cost blowup
+`--max-turns-without-progress` was built to close -- a model doing 12
+turns of pure exploration (the http-query-sugar-build/dense-tensor-
+type-build shape, confirmed real and current this same dispatch) would
+look identical to a model doing 12 turns of genuine gitignored-directory
+repair. Distinguishing them needs a more careful design (e.g. tracking
+whether `verify()`-adjacent commands succeed, or giving dependency-install
+commands a separate, smaller allowance) than a quick patch -- flagged as
+a real, specific follow-up, not built speculatively.
+
+**Immediate next step, not yet done**: verify the real patch locally
+(this host has a working `tsc`, confirmed) to close the loop on whether
+`just check` fully passes outside the sandbox's tsc gap, and/or bake a
+working `tsc` into the `toylang-toolchain-v2` snapshot so this exact
+environment gap stops producing false STUCK/RED classifications for any
+future dispatch that touches TypeScript-adjacent tests.

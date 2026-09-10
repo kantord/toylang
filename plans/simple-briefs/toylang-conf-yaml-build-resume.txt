@@ -1,0 +1,19 @@
+You have already explored everything you need for this task. From your own prior exploration:
+- `src/config.rs` already defines `Config { web: Web }` with `Config::load()`.
+- The three hardcoded `JsTarget::Node` call sites are in `src/main.rs` and `src/lib.rs`.
+- `emit_js.rs`'s `emit_with(program, target, web)` already accepts the `target`/`web` parameters
+  you need to pass through.
+
+Stop exploring. Make the edits now, in this order:
+1. Add a `target` field (e.g. `JsTarget` or an equivalent node/web enum) to `Config` in
+   `src/config.rs`, defaulting to `Node` when absent so existing/missing config files keep
+   today's behavior exactly.
+2. At each JS emission call site you already found in `src/main.rs`/`src/lib.rs`, call
+   `Config::load()` and pass its `target` (and `web`) through `emit_with` instead of the
+   hardcoded `JsTarget::Node` / implicit `Web::default()`.
+3. Add or point to a real `.toy` program plus a `toylang.conf.yaml` with `target: web` that
+   demonstrates the emitted JS backend's target actually changes -- a compiler test or a
+   documented manual run, your choice, but pick one and do it.
+4. Run `just check` yourself and confirm it passes before claiming DONE.
+
+Do not re-read files you have already read. Write the edits directly.
