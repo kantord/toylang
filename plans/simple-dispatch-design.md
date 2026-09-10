@@ -893,3 +893,56 @@ print, not an extra call), specifically so a future round has the actual
 cache/reasoning-token fields to diagnose this with real data instead of
 guessing. The `provider` question stays open until a fresh dispatch
 produces that data.
+
+### Round 2
+
+**Correctness track** -- two real bugs, both confirmed by direct
+reproduction. The user then redirected from "3 more review rounds" to
+"actually dispatch 3 real tasks" -- these two were fixed anyway before
+dispatching, since real money was about to run through this exact code:
+1. The round-1 fix's own tie-break has a real, reproduced cost: `_sig_changed`
+   fails toward "changed" whenever either signature is `None`, which is
+   correct for a single transient git hiccup but wrong for SUSTAINED
+   failure -- if `safe_repo_state_signature()` returns `None` every turn
+   (corrupted `.git`, disk full so every git call ENOSPCs, a model-induced
+   `.git/index.lock` that never clears), `_sig_changed(None, None)` is
+   `True` every turn, `no_progress_turns` resets to 0 forever, and the
+   no-progress cutoff can never fire -- silently reintroducing the exact
+   "explore forever, burn the whole budget, never detected" shape the
+   cutoff exists to close, just triggered by broken git instead of literal
+   zero-progress. Reproduced directly: 20 turns of an always-raising
+   `repo_state_signature()` ran all 20 turns instead of stopping at
+   `max_turns_without_progress=3`. Fixed: a separate `sig_failures`
+   counter tracks CONSECUTIVE signature failures (independent of the
+   no-progress counter, which still gets the safe "assume changed"
+   treatment for an occasional hiccup); once it reaches
+   `max_turns_without_progress`, the attempt ends early with `moved=True`
+   (can't know either way, so default to not discarding anything).
+   Verified: the same always-raising monkeypatch now stops after 2 calls
+   instead of running all 20.
+2. `call_openrouter` had two more response-handling gaps in the same class
+   already fixed for HTTPError/empty-choices: `json.loads(text)` sat
+   OUTSIDE every try/except, so a 200 response with a non-JSON body (an
+   HTML error page from a proxy/CDN in front of OpenRouter, a truncated
+   stream) raised an uncaught `JSONDecodeError`; and `resp.read()` can
+   raise `http.client.IncompleteRead` on a connection dropped mid-body,
+   which is NOT a subclass of `OSError`/`URLError`/`TimeoutError` and so
+   wasn't caught by the existing clause either. Both crashed the process
+   before `write_status()` ran, same failure class as everything else
+   fixed in this mechanism. Fixed: both now raise `RuntimeError`, same
+   treatment as every other OpenRouter-response failure mode. Verified
+   with direct mocked-response tests for both cases.
+
+**Cost track**: converged a second time in this series (5 straight
+converged rounds counting the prior series' last 3). Confirmed the
+`safe_repo_state_signature`/`_sig_changed` mechanism's worst case (before
+the fix above) was bounded by pre-existing `--max-turns`/`--retry-cap`
+caps, not a new unbounded cost class -- same order of magnitude as the
+original STUCK run this whole mechanism was built to cap. Confirmed the
+new per-turn `usage` dict logging is genuinely free (stderr print, never
+appended to `messages`, doesn't disturb tail-based status classification).
+No new dollar-cost waste found in a fresh full-file pass.
+
+Only 2 of the planned 3 rounds ran in this series -- the user redirected
+mid-round-2 wrap-up to actually dispatching real tasks through the
+pipeline instead of continuing pure review. No round 3.

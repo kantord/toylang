@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -281,6 +282,16 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
     try:
         with urllib.request.urlopen(req, timeout=180) as resp:
             raw = resp.read()
+    except http.client.IncompleteRead as e:
+        # A connection dropped mid-body AFTER the 200 headers already sent
+        # is not an HTTPError and not an OSError/URLError/TimeoutError (
+        # confirmed: IncompleteRead subclasses neither), so it fell through
+        # every existing except clause here uncaught, past agent_turns'
+        # `except RuntimeError`, crashing the process before write_status()
+        # ever ran -- the same failure class already fixed for HTTPError,
+        # transient network errors, and empty/missing choices below.
+        print(f"incomplete response reading from OpenRouter: {e}", file=sys.stderr)
+        raise RuntimeError(f"incomplete response: {e}") from e
     except urllib.error.HTTPError as e:
         payload = e.read().decode(errors="replace")
         check_fatal(payload.lower(), payload)
@@ -312,7 +323,18 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
     # silently reintroducing the exact "dispatch into a dead account"
     # failure mode this script exists to catch.
     text = raw.decode(errors="replace")
-    parsed = json.loads(text)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as e:
+        # A 200 response whose body isn't valid JSON at all (an HTML error
+        # page from a proxy/CDN sitting in front of OpenRouter, a stream
+        # truncated in a way that still decodes as bytes but not as JSON)
+        # raised this uncaught -- json.loads() was outside every try/except
+        # in this function, past agent_turns' `except RuntimeError`,
+        # crashing the process before write_status() ever ran. Same
+        # treatment as every other OpenRouter-response failure mode here.
+        print(f"non-JSON response from OpenRouter: {text[:500]}", file=sys.stderr)
+        raise RuntimeError(f"non-JSON response: {e}") from e
     if isinstance(parsed, dict) and parsed.get("error"):
         err = parsed["error"]
         msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
@@ -462,11 +484,37 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
         return _sig_changed(safe_repo_state_signature(), initial_sig)
 
     no_progress_turns = 0
+    sig_failures = 0
     last_sig = initial_sig
     for turn in range(max_turns):
         if time.monotonic() > deadline:
             raise OutOfTime(f"wall-clock budget exhausted at turn {turn + 1}/{max_turns}")
         sig = safe_repo_state_signature()
+        # `_sig_changed` deliberately fails toward "changed" whenever a
+        # signature is None -- correct for a single transient git hiccup,
+        # but adversarial review found a real, reproduced consequence: if
+        # git fails on EVERY turn (a corrupted .git, disk full so every git
+        # call ENOSPCs, a model-induced index.lock that never clears),
+        # `_sig_changed(None, None)` is True every turn, `no_progress_turns`
+        # resets to 0 forever, and the no-progress cutoff can never fire --
+        # silently reintroducing the exact "explore forever, burn the whole
+        # budget, never detected" shape this cutoff exists to close, just
+        # triggered by SUSTAINED git failure instead of literal
+        # zero-progress. Reproduced directly: 20 turns of an always-raising
+        # repo_state_signature() ran all 20 turns instead of stopping at
+        # max_turns_without_progress=3. Track sustained failures separately
+        # and cut the attempt short on the same threshold once git itself
+        # is the thing not working -- a single or occasional hiccup still
+        # gets the safe "assume changed" treatment below.
+        if sig is None:
+            sig_failures += 1
+            if sig_failures >= max_turns_without_progress:
+                print(f"  repo state has been unreadable for {sig_failures} consecutive "
+                      "turns (git itself appears broken), ending this attempt early -- "
+                      "cannot verify progress either way", file=sys.stderr)
+                return None, True
+        else:
+            sig_failures = 0
         if _sig_changed(sig, last_sig):
             no_progress_turns = 0
             last_sig = sig
