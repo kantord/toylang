@@ -339,6 +339,88 @@ plainly rather than glossed over: a full real multi-row parallel run is
 still untested, blocked on the account's credit balance, not on any
 remaining known code issue.
 
+## STUCK-recovery: persist context, propose a narrower retry, human decides
+
+Real validation (a 3-way parallel dispatch, `plans/dispatch-log.csv`) found
+`dense-tensor-type-build` hit STUCK: 60 turns, $0.174245, and confirmed
+(by reading the persisted log) it made ZERO file changes -- explored all 7
+backend files extensively and never converged on an edit. That exploration
+was previously thrown away entirely on any non-GREEN exit.
+
+Went through 4 rounds of adversarial design review (not code review --
+nothing existed yet) before implementing:
+- **v1** (autonomous: persist -> reviewer call -> auto-edit board.yaml ->
+  auto-redispatch) was killed: the resumed-attempt cost was underestimated
+  (a seeded 150-200K-char context sits near `MAX_CONVERSATION_CHARS` for
+  the WHOLE resumed run, unlike the original run which grows into it
+  gradually, so real cost was likely $0.35-0.70+ on top of the original
+  $0.17, not "cheap"); "explored but never wrote a file" isn't evidence a
+  narrower task would succeed (confirmed by a real project precedent,
+  `sort-by-max-by-checkpoint-1` in `plans/board.yaml`, where a human
+  diagnosed an identical multi-backend-task failure as a scope problem via
+  manual judgment); and most seriously, it would have added a second,
+  completely UNLOCKED writer to `plans/board.yaml`, which has exactly one
+  serialized writer path today (`land-lane.sh`'s `flock` on `land.lock`).
+- **v2** (route the same proposal through the existing `docs/.grill/`
+  human-escalation mechanism instead of auto-editing) was ALSO killed:
+  `simple_dispatch.py` has zero board.yaml awareness, and `drive-tick.sh`'s
+  POLICY string hardcodes how to act on each EXISTING round type by name --
+  a new round type needs that integration too, which doesn't exist yet.
+- **v3** (ship only what's buildable now: persist + pull + one cheap
+  reviewer call + print/log the proposal, human decides by hand, zero
+  automation) converged. One addition from that round's own review: trigger
+  the reviewer on both STUCK and RED (retry-cap exhausted), not STUCK
+  alone -- both are "gave up without succeeding," and RED may in fact be a
+  *better* candidate (still finding new failures each attempt, unlike
+  STUCK's proven dead end).
+
+A further, small addition (`--resume-from`) went through its own focused
+round: lets a human manually resume a persisted session with a new,
+narrower instruction, specifically to catch the likely-short-lived
+provider-side prompt-cache window if they act quickly -- confirmed the
+round-trip is safe (every non-GREEN exit happens between turns/attempts,
+never mid-turn, so a persisted `messages` list always ends on a clean role
+boundary) but found a real gap: the persisted file carries no identifying
+metadata, so pointing `--resume-from` at the wrong row's file under time
+pressure (many similar-looking artifacts side by side in `RESULT_DIR` from
+parallel dispatches) would have fed a fresh checkout a stale, unrelated
+history -- worse than a cold start. Fixed with a `task_hash`
+(sha256 of the original brief) persisted alongside the messages and checked
+against `--original-task-file` before anything runs; a mismatch is FATAL,
+not a silent guess.
+
+**What actually shipped:**
+- `agent_loop.py` persists its full `messages` list (plus `task_hash`) to
+  `/root/agent-messages.json` on any non-GREEN exit (`write_status`'s
+  existing single choke point, extended -- no new call sites needed beyond
+  passing `messages` through).
+- `simple_dispatch.py` pulls that file into `RESULT_DIR` on STUCK/RED, same
+  pattern as the existing full-agent-log pull, then makes one single-shot,
+  no-tool-loop, host-side reviewer call (task brief + verify tail + the
+  real persisted conversation) asking `{narrowable, new_task,
+  deferred_scope, reasoning}`. Best-effort throughout -- any failure here
+  (network, malformed output) never blocks or delays the real dispatch
+  result, matched by a real live test: a wrong/unreachable key returns a
+  clean `{"narrowable": false, "reasoning": "reviewer call failed: ..."}`
+  rather than raising.
+- The proposal is written to `RESULT_DIR` and folded into the printed
+  SUMMARY line. No board.yaml edits, no auto-redispatch, no new
+  escalation/round-composition code path.
+- `--resume-from`/`--original-task-file`, manual-only, threaded through
+  `simple_dispatch.py`'s CLI (requires exactly one row id) down to
+  `agent_loop.py`, which validates the `task_hash` before loading anything.
+
+**Verified with real data, not just unit tests**: fed the reviewer a
+synthetic-but-realistic stand-in of the actual dense-tensor-type-build
+transcript (explored 7 backends, wrote nothing) against the real API --
+it correctly answered `narrowable: false`, reasoning that this "is not a
+scope problem... no implementation attempt was made at all," matching
+exactly the concern round 1 of the design review raised about this failure
+mode. Real cost: $0.000115. The `--resume-from` hash guard was verified
+directly: a correct `--original-task-file` resumes cleanly (reaches the
+real retry loop); a wrong one FATALs immediately with a clear message,
+before any network call.
+
 ## A second review cycle: attacking the ANALYSIS as well as the code (3 rounds)
 
 The 5-round cycle above only ever attacked the code. A further cycle

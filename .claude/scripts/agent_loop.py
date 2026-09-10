@@ -23,6 +23,7 @@ need a bigger budget, not a different fix.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -108,6 +109,7 @@ MAX_CONVERSATION_CHARS = 200_000  # keeps context from growing without bound
 
 STATUS_FILE = "/root/agent-status.txt"
 COST_FILE = "/root/agent-cost.txt"
+MESSAGES_FILE = "/root/agent-messages.json"
 
 # Accumulated across every OpenRouter call this process makes (all attempts,
 # all turns) -- a plain module-level global rather than threading a value
@@ -117,6 +119,13 @@ COST_FILE = "/root/agent-cost.txt"
 # support a running total.
 total_cost_usd = 0.0
 
+# Identifies which original task this session's persisted messages belong
+# to (see write_status()'s messages persistence and --resume-from below) --
+# set once in main(), read wherever write_status() is called, including
+# from inside call_openrouter's nested check_fatal(), which has no other
+# way to know it.
+_task_hash = ""
+
 
 def add_cost(resp: dict) -> None:
     global total_cost_usd
@@ -124,7 +133,7 @@ def add_cost(resp: dict) -> None:
     total_cost_usd += usage.get("cost") or 0.0
 
 
-def write_status(status: str) -> None:
+def write_status(status: str, messages: list | None = None) -> None:
     """The single source of truth simple_dispatch.py reads for outcome
     classification -- NOT a substring grep over the shared stdout/stderr
     log. That log can and does contain model-generated tool output (a
@@ -142,6 +151,16 @@ def write_status(status: str) -> None:
     # not just GREEN ones.
     with open(COST_FILE, "w") as f:
         f.write(f"{total_cost_usd:.6f}")
+    # On any non-GREEN exit, persist the full conversation so the $ already
+    # spent exploring isn't silently thrown away -- a human can inspect why
+    # it failed, or resume it later with --resume-from while the
+    # provider-side prompt cache might still be warm. Never for GREEN --
+    # nothing to recover from a success. task_hash lets --resume-from
+    # refuse to load the wrong row's file instead of silently acting on an
+    # unrelated session's history.
+    if messages is not None and status != "GREEN":
+        with open(MESSAGES_FILE, "w") as f:
+            json.dump({"task_hash": _task_hash, "messages": messages}, f)
 
 
 def truncate(s: str, n: int = MAX_TOOL_OUTPUT) -> str:
@@ -256,7 +275,7 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
         for pat in FATAL_PATTERNS:
             if pat in payload_lower:
                 print(f"FATAL: {pat} -- {payload[:500]}", file=sys.stderr)
-                write_status("FATAL")
+                write_status("FATAL", messages)
                 sys.exit(2)
 
     try:
@@ -440,7 +459,21 @@ def main() -> int:
                           "(simple_dispatch.py) sizes its own outer timeout to leave room "
                           "for one more verify() call past this deadline -- keep this in sync "
                           "if you change verify()'s own timeout")
+    ap.add_argument("--resume-from", default=None,
+                     help="path to a previously-persisted agent-messages.json (written by a "
+                          "prior non-GREEN run). When set, --task-file is the NEW follow-up "
+                          "instruction appended to that history, not a fresh task -- and "
+                          "--original-task-file must also be given, so the loaded file's "
+                          "task_hash can be checked against it. A mismatch means this points "
+                          "at the wrong row's file; refuses to run rather than silently "
+                          "acting on an unrelated session's history.")
+    ap.add_argument("--original-task-file", default=None,
+                     help="required with --resume-from: the ORIGINAL brief the resumed "
+                          "session was for, used only to verify --resume-from points at the "
+                          "right file")
     args = ap.parse_args()
+
+    global _task_hash
 
     api_key = os.environ.get(args.api_key_env)
     if not api_key:
@@ -449,10 +482,56 @@ def main() -> int:
         return 2
 
     task_text = open(args.task_file).read()
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"TASK:\n{task_text}\n\nVerify with: `{args.verify_cmd}`"},
-    ]
+
+    if args.resume_from:
+        if not args.original_task_file:
+            print("FATAL: --resume-from requires --original-task-file", file=sys.stderr)
+            write_status("FATAL")
+            return 2
+        original_task_text = open(args.original_task_file).read()
+        expected_hash = hashlib.sha256(original_task_text.encode()).hexdigest()
+        try:
+            with open(args.resume_from) as f:
+                loaded = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"FATAL: --resume-from file unreadable/invalid JSON: {e}", file=sys.stderr)
+            write_status("FATAL")
+            return 2
+        if not isinstance(loaded, dict) or "messages" not in loaded or "task_hash" not in loaded:
+            print("FATAL: --resume-from file is not a valid persisted session "
+                  "(missing task_hash/messages)", file=sys.stderr)
+            write_status("FATAL")
+            return 2
+        if loaded["task_hash"] != expected_hash:
+            print("FATAL: --resume-from task_hash does not match --original-task-file -- "
+                  "this looks like a DIFFERENT row/task's persisted session. Refusing to "
+                  "resume with unrelated history rather than guessing.", file=sys.stderr)
+            write_status("FATAL")
+            return 2
+        messages = loaded["messages"]
+        if not isinstance(messages, list) or not all(
+            isinstance(m, dict) and "role" in m for m in messages
+        ):
+            print("FATAL: --resume-from messages are malformed", file=sys.stderr)
+            write_status("FATAL")
+            return 2
+        print(f"== resuming {len(messages)} persisted messages -- any provider-side prompt "
+              "cache benefit depends on how long ago the original run ended; if it's been a "
+              "while, this may cost as much as a fresh start ==", file=sys.stderr)
+        messages.append({
+            "role": "user",
+            "content": (
+                "Your task has been rescoped based on what you already learned in this "
+                f"session:\n\n{task_text}\n\nContinue from your existing progress above."
+            ),
+        })
+        _task_hash = expected_hash
+    else:
+        _task_hash = hashlib.sha256(task_text.encode()).hexdigest()
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"TASK:\n{task_text}\n\nVerify with: `{args.verify_cmd}`"},
+        ]
 
     deadline = time.monotonic() + args.wall_clock_budget
     base_head = git_head()
@@ -466,7 +545,7 @@ def main() -> int:
                                       args.max_tokens, deadline)
         except OutOfTime as e:
             print(f"OUT_OF_TIME: {e}", file=sys.stderr)
-            write_status("TIMEOUT")
+            write_status("TIMEOUT", messages)
             return 3
         if final_text is None:
             print("== ran out of turns without the model finishing ==", file=sys.stderr)
@@ -492,7 +571,7 @@ def main() -> int:
             if remaining < 60:
                 print("OUT_OF_TIME: not enough wall-clock budget left to run "
                       "another verify pass", file=sys.stderr)
-                write_status("TIMEOUT")
+                write_status("TIMEOUT", messages)
                 return 3
             try:
                 ok, tail = verify(args.verify_cmd, timeout=min(MAX_VERIFY_SECONDS, int(remaining)))
@@ -507,7 +586,7 @@ def main() -> int:
                 # mechanism exists to close.
                 print("OUT_OF_TIME: verify() itself exceeded the remaining "
                       "wall-clock budget", file=sys.stderr)
-                write_status("TIMEOUT")
+                write_status("TIMEOUT", messages)
                 return 3
 
         print(f"== verify: {'GREEN' if ok else 'RED'} ==", file=sys.stderr)
@@ -549,14 +628,14 @@ def main() -> int:
         if normalized in seen_tails:
             print("STUCK: verify output matches a previous attempt, "
                   "not retrying further", file=sys.stderr)
-            write_status("STUCK")
+            write_status("STUCK", messages)
             return 1
         seen_tails.append(normalized)
 
         if attempt > args.retry_cap:
             print("VERIFY_FAILED")
             print(tail)
-            write_status("RED")
+            write_status("RED", messages)
             return 1
 
         feedback = (

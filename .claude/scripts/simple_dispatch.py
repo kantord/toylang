@@ -178,6 +178,72 @@ def check_credit_balance(api_key: str) -> tuple[bool, str]:
     return True, f"OpenRouter balance OK, remaining=${remaining:.4f}"
 
 
+def propose_narrower_task(api_key: str, model: str, task_text: str, verify_tail: str,
+                           messages: list) -> dict:
+    """One cheap, single-shot (no tool loop, no sandbox) call reviewing a
+    STUCK/RED run: given the original brief, the failure evidence, and the
+    real persisted conversation (what was actually tried), asks whether a
+    narrower, achievable slice of the task exists. This is a REVIEW, not a
+    decision -- nothing downstream acts on the result automatically; a
+    human reads it. Best-effort by design: any failure here (network,
+    malformed model output) must not break or delay the real dispatch
+    result, since this only ever runs on the failure path of something
+    that's already finished."""
+    # A single reasoning call over a written transcript, not an agent
+    # session -- doesn't need the full detail agent_loop.py itself would;
+    # a generous prefix is enough context for "what was tried" without
+    # this call's own size ballooning.
+    messages_summary = json.dumps(messages)[:60_000]
+    prompt = (
+        "You are reviewing a failed autonomous coding attempt that ran out of "
+        "retries without succeeding. Decide whether a NARROWER, more achievable "
+        "slice of the original task exists, informed by what was actually tried "
+        "below -- not by guessing blind.\n\n"
+        f"ORIGINAL TASK:\n{task_text}\n\n"
+        f"LAST VERIFICATION FAILURE:\n{verify_tail[-3000:]}\n\n"
+        f"WHAT WAS ACTUALLY TRIED (the real conversation, possibly truncated):\n"
+        f"{messages_summary}\n\n"
+        "Reply with ONLY a JSON object, no other text:\n"
+        '{"narrowable": true or false, "new_task": "...", "deferred_scope": "...", '
+        '"reasoning": "..."}\n'
+        "If nothing smaller and genuinely achievable exists -- or the transcript shows "
+        "this isn't a scope problem at all (e.g. it never attempted an edit despite "
+        "having everything it needed) -- set narrowable to false and say why in "
+        "reasoning; leave new_task and deferred_scope empty."
+    )
+    body = json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 1024,
+        "usage": {"include": True},
+    }).encode()
+    req = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions", data=body,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            parsed = json.loads(resp.read())
+        content = parsed["choices"][0]["message"]["content"].strip()
+        cost = (parsed.get("usage") or {}).get("cost", 0.0) or 0.0
+        # Model output isn't guaranteed to be bare JSON -- strip common
+        # markdown-fence wrapping, same defensive posture used everywhere
+        # else this project parses model output.
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+        proposal = json.loads(content)
+        if not isinstance(proposal, dict):
+            raise ValueError("reviewer did not return a JSON object")
+        proposal["_reviewer_cost_usd"] = cost
+        return proposal
+    except Exception as e:
+        return {"narrowable": False, "reasoning": f"reviewer call failed: {e}",
+                "new_task": "", "deferred_scope": "", "_reviewer_cost_usd": 0.0}
+
+
 def acquire_lock(row_id: str):
     """A real OS-level lock, not a status flag anywhere that can go stale.
     Returns an open file handle to keep the lock held, or None if another
@@ -203,7 +269,8 @@ def acquire_lock(row_id: str):
 
 def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                   snapshot: str, max_tokens: int, overall_timeout: int,
-                  memory: str, cpus: int) -> Result:
+                  memory: str, cpus: int, resume_from: Path | None = None,
+                  original_task_file: Path | None = None) -> Result:
     if not ROW_ID_RE.match(row_id):
         # row_id is interpolated into a lock file path, a sandbox name, a
         # git branch name, and a shell command string below -- an
@@ -223,7 +290,8 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
     result: Result | None = None
     try:
         result = _dispatch_one_locked(row_id, run_id, brief_path, model, retry_cap, snapshot,
-                                       max_tokens, overall_timeout, memory, cpus)
+                                       max_tokens, overall_timeout, memory, cpus,
+                                       resume_from, original_task_file)
         return result
     finally:
         end_time = datetime.now(timezone.utc)
@@ -265,7 +333,8 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
 
 def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str, retry_cap: int,
                           snapshot: str, max_tokens: int, overall_timeout: int,
-                          memory: str, cpus: int) -> Result:
+                          memory: str, cpus: int, resume_from: Path | None = None,
+                          original_task_file: Path | None = None) -> Result:
     name = f"sd-{row_id}-{run_id}"  # unique per attempt -- never collides
     workdir = Path(tempfile.mkdtemp(prefix=f"simple-dispatch-{row_id}-"))
     env = msb_env()
@@ -324,6 +393,11 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
         must(sh([str(MSB_BIN), "copy", str(clone_dir), f"{name}:/repo"], env=env, timeout=120), "copy repo into guest")
         must(sh([str(MSB_BIN), "copy", str(AGENT_LOOP), f"{name}:/root/agent_loop.py"], env=env, timeout=30), "copy agent_loop.py into guest")
         must(sh([str(MSB_BIN), "copy", str(brief_path), f"{name}:/root/task.txt"], env=env, timeout=30), "copy brief into guest")
+        if resume_from:
+            must(sh([str(MSB_BIN), "copy", str(resume_from), f"{name}:/root/resume-messages.json"],
+                    env=env, timeout=30), "copy resume-from file into guest")
+            must(sh([str(MSB_BIN), "copy", str(original_task_file), f"{name}:/root/original-task.txt"],
+                    env=env, timeout=30), "copy original-task-file into guest")
         must(exec_in("cd /repo && git config user.name 'Daniel Kantor' && "
                      "git config user.email 'git@daniel-kantor.com'", timeout=30), "git config in guest")
         # The host-side clone is fully copied into the guest now -- drop it
@@ -354,13 +428,17 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
         # validated against ROW_ID_RE above -- shlex.quote() everything
         # anyway rather than trust upstream validation to stay in sync with
         # every interpolation site.
+        resume_flags = (
+            "--resume-from /root/resume-messages.json --original-task-file /root/original-task.txt "
+            if resume_from else ""
+        )
         run_cmd = (
             f"cd /repo && export PATH=$HOME/.cargo/bin:/usr/lib/llvm-22/bin:$PATH && "
             f"export CARGO_BUILD_JOBS=2 && "
             f"timeout {overall_timeout} python3 /root/agent_loop.py "
             f"--task-file /root/task.txt --model {shlex.quote(model)} "
             f"--retry-cap {int(retry_cap)} --max-tokens {int(max_tokens)} "
-            f"--wall-clock-budget {wall_clock_budget} "
+            f"--wall-clock-budget {wall_clock_budget} {resume_flags}"
             f"> /root/agent.log 2>&1; "
             f"echo RC=$? >> /root/agent.log"
         )
@@ -435,7 +513,40 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
             patch_path = RESULT_DIR / f"{row_id}-{run_id}.patch"
             patch_path.write_text(patch_out)
 
-        return Result(row_id, ok, fatal, timed_out, stuck, tail[-1500:], patch_path, cost_usd)
+        # On a genuine "gave up" outcome, pull the persisted conversation
+        # out and get one cheap, single-shot opinion on whether a narrower
+        # slice of the task would have a real shot -- informed by what was
+        # actually tried, not a blind guess. No automation beyond this:
+        # nothing here edits board.yaml or redispatches anything. A human
+        # reads the proposal (in RESULT_DIR and in the printed summary) and
+        # decides by hand, exactly like every other non-GREEN outcome in
+        # this pipeline.
+        recovery_note = ""
+        if status in ("STUCK", "RED"):
+            messages_out = RESULT_DIR / f"{row_id}-{run_id}-messages.json"
+            msg_copy = sh([str(MSB_BIN), "copy", f"{name}:/root/agent-messages.json",
+                           str(messages_out)], env=env, timeout=30, check=False)
+            if msg_copy.returncode == 0 and messages_out.exists():
+                try:
+                    persisted = json.loads(messages_out.read_text())
+                    proposal = propose_narrower_task(
+                        env["OPENROUTER_API_KEY"], model,
+                        brief_path.read_text(), tail, persisted.get("messages", []))
+                    cost_usd += proposal.pop("_reviewer_cost_usd", 0.0)
+                    proposal_path = RESULT_DIR / f"{row_id}-{run_id}-recovery-proposal.json"
+                    proposal_path.write_text(json.dumps(proposal, indent=2))
+                    if proposal.get("narrowable"):
+                        recovery_note = (f" -- narrower retry possible: "
+                                         f"{proposal.get('reasoning', '')[:150]} "
+                                         f"(see {proposal_path})")
+                    else:
+                        recovery_note = (f" -- reviewer: {proposal.get('reasoning', '')[:150]} "
+                                         f"(see {proposal_path})")
+                except Exception as e:
+                    logline(f"recovery proposal failed (non-fatal): {e}")
+
+        return Result(row_id, ok, fatal, timed_out, stuck, tail[-1500:] + recovery_note,
+                       patch_path, cost_usd)
     except SetupFailed as e:
         logline(f"setup failed: {e}")
         return Result(row_id, False, True, False, False, str(e), None)
@@ -472,7 +583,26 @@ def main() -> int:
     ap.add_argument("--memory", default="16G", help="per-sandbox memory (msb run -m)")
     ap.add_argument("--cpus", type=int, default=4, help="per-sandbox vCPUs (msb run -c)")
     ap.add_argument("--snapshot", default=DEFAULT_SNAPSHOT)
+    ap.add_argument("--resume-from", type=Path, default=None,
+                     help="manual-only recovery: path to a persisted agent-messages.json "
+                          "(from RESULT_DIR, written on a prior STUCK/RED run) to resume from. "
+                          "Requires exactly one row id and --original-task-file. Nothing "
+                          "triggers this automatically -- it exists so a human can act "
+                          "quickly, while the provider-side prompt cache might still be "
+                          "warm; if it's been a while since the original run, this may cost "
+                          "as much as a fresh dispatch anyway")
+    ap.add_argument("--original-task-file", type=Path, default=None,
+                     help="required with --resume-from: the ORIGINAL brief the resumed run "
+                          "was for (used only to verify --resume-from points at the right row)")
     args = ap.parse_args()
+
+    if args.resume_from:
+        if len(args.rows) != 1:
+            print("[error] --resume-from only makes sense for exactly one row", file=sys.stderr)
+            return 2
+        if not args.original_task_file:
+            print("[error] --resume-from requires --original-task-file", file=sys.stderr)
+            return 2
 
     env = msb_env()
     ok, msg = check_credit_balance(env["OPENROUTER_API_KEY"])
@@ -494,7 +624,7 @@ def main() -> int:
         futs = {
             pool.submit(dispatch_one, row, brief, args.model, args.retry_cap,
                         args.snapshot, args.max_tokens, args.overall_timeout,
-                        args.memory, args.cpus): row
+                        args.memory, args.cpus, args.resume_from, args.original_task_file): row
             for row, brief in jobs
         }
         for fut in as_completed(futs):
