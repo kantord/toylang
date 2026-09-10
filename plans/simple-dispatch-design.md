@@ -619,3 +619,72 @@ dropped:
    so STUCK still fires after exactly 2 attempts. A theoretical risk
    remains for a task needing >12 read-only turns before its first edit;
    flagged as unverified (no real data shows it happening), not acted on.
+
+### Round 3
+
+**Correctness track** -- three real bugs found, all in round-1/round-2's
+OWN code (the review's own tightening is now finding second-order gaps in
+each fix, not new gaps in the original design):
+1. `main()`'s `moved = git_head() != base_head or git_dirty()` (round 1's
+   original code, untouched by round 2) used the EXACT fixed-baseline
+   anti-pattern round 2 had just fixed one level down for the no-progress
+   counter: `base_head` was captured once before the whole retry loop, so
+   `git_dirty()` goes permanently true the instant any attempt makes a real
+   edit -- meaning `moved` stayed True for every LATER attempt regardless
+   of whether THAT attempt did anything further. Consequence: round 2's own
+   messages-reset (`del messages[2:]` on `not moved`) never fired past the
+   first attempt with a real edit, silently reintroducing the exact
+   cost-bleed round 2 closed, just at attempt granularity. Fixed:
+   `agent_turns()` now returns `(final_text, moved)` where `moved` is a
+   fresh `repo_state_signature()` comparison against THAT call's own
+   starting signature, computed at every return point (not reused from the
+   last per-turn check inside the loop, which lags one turn behind and
+   would miss progress made on the final turn of an attempt) -- `main()`
+   uses this instead of any fixed baseline. `base_head`/`git_head()`/
+   `git_dirty()` are gone entirely now (no remaining callers).
+2. `del messages[2:]` ran immediately upon detecting `not moved`, BEFORE
+   the `write_status()` calls further down that persist the outcome (STUCK
+   at not-yet-retry-capped attempts, RED at the final attempt) -- so if the
+   attempt that triggers a terminal STUCK/RED outcome is ITSELF a
+   zero-progress one, its own transcript was gutted to just system+task
+   before being "persisted," directly defeating `write_status`'s stated
+   purpose (preserving the $ already spent for a human or
+   `propose_narrower_task` to inspect) on exactly the dense-tensor-type-build
+   shape (zero changes in every attempt) that motivated building it. Fixed:
+   the reset now happens only once the loop has decided to actually
+   CONTINUE to another attempt (right before appending the next-attempt
+   feedback message), never before a `write_status()` call. Verified with
+   a full `main()`-level integration test: a terminal RED on a
+   zero-progress final attempt now persists the real 15-message transcript,
+   not a gutted 2-message stub.
+3. `--resume-patch`'s teardown-adjacent finding (in `simple_dispatch.py`,
+   not `agent_loop.py`): the `finally` block's first statement (`msb rm -f`
+   with a 60s timeout) can itself raise `subprocess.TimeoutExpired` on a
+   genuinely unresponsive sandbox -- since it's the FIRST statement in
+   `finally`, an uncaught raise there skipped the two cleanup statements
+   after it (`shutil.rmtree(workdir)`, `log.close()`), leaking the
+   per-dispatch temp dir (the same "disk fills from worktree target dirs"
+   incident class) on precisely the case the timeout exists to guard
+   against. Fixed: wrapped in its own try/except, logging and continuing to
+   the remaining cleanup rather than leaving it skipped.
+
+Also fixed proactively (not a "bug" exactly, a real precision gap):
+`repo_state_signature()`'s diff was capped at 50K chars before hashing,
+which could make two genuinely different large diffs sharing an identical
+first 50KB hash identically and be misclassified as "no progress."
+Confirmed this signature never leaves the process (nothing here is sent to
+OpenRouter or appended to `messages`), so there was no cost reason for the
+cap in the first place -- removed it; hashing a full diff locally is
+millisecond-cheap regardless of size.
+
+**Cost track**: nothing new found. Checked and dropped: per-turn
+`repo_state_signature()` cost (confirmed zero -- local git calls only,
+never reaches the model); whether a partial-progress multi-attempt RED
+still carries a growing transcript unbounded until the 200K-char trim
+(real, but no real log yet exists that hits it -- the existing trim already
+bounds the worst case, flagged as "watch for it" rather than built
+speculatively); the `--max-turns-without-progress`/`--max-turns`
+interaction for a genuinely-succeeding task (confirmed sound -- the
+condition only fires on zero repo change, so it cannot pressure a
+progressing attempt). Explicit verdict from this round: two rounds of real
+fixes have captured the realistic waste; nothing rose to a fix-now finding.

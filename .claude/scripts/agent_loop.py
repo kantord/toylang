@@ -346,38 +346,64 @@ class OutOfTime(Exception):
 def repo_state_signature(repo: str = "/repo") -> str:
     """A cheap fingerprint of the ACTUAL current repo content -- HEAD plus
     the full working-tree diff (tracked-file changes) and status
-    (untracked/staged files) -- capped so a huge diff can't balloon this
-    call's own cost. Used to detect real turn-to-turn progress instead of a
-    single fixed baseline (see agent_turns): comparing against a FIXED
-    `base_head`/`git_dirty()` pair, captured once before the retry loop,
-    turned out to be permanently defeated the moment the tree first went
-    dirty -- confirmed directly by simulating the loop: `git_dirty()` stays
-    true forever once ANY edit lands and is never fully reverted (nothing
-    resets the working tree between attempts by design), which resets the
-    no-progress counter to 0 every single turn from then on regardless of
-    whether the model does anything at all. Comparing this signature
-    turn-to-turn instead of to a frozen baseline still resets correctly on
-    a REAL further edit, but keeps counting when the model does nothing new
-    to an already-dirty tree -- including into a second or third retry
-    attempt that inherits an earlier attempt's leftover, uncommitted edit."""
+    (untracked/staged files). Used to detect real turn-to-turn (and, via
+    agent_turns' `moved()`, real attempt-to-attempt) progress instead of a
+    single fixed baseline: comparing against a FIXED `base_head`/
+    `git_dirty()` pair captured once and never refreshed turned out to be
+    permanently defeated the moment the tree first went dirty -- confirmed
+    directly by simulating the loop: `git_dirty()` stays true forever once
+    ANY edit lands and is never fully reverted (nothing resets the working
+    tree between attempts by design), which reset the no-progress counter
+    to 0 every single turn (or, for the equivalent bug one level up in
+    main(), every single ATTEMPT) from then on regardless of whether
+    anything further actually happened. Comparing this signature instead of
+    a frozen baseline still resets correctly on a real further change, but
+    keeps counting when nothing new happens to an already-dirty tree.
+
+    The diff is hashed WITHOUT truncating it first -- this signature never
+    leaves the process (nothing here is sent to OpenRouter or appended to
+    `messages`, confirmed: it's hashed locally and discarded), so there is
+    no token/dollar cost to capping it, only a correctness risk: an earlier
+    version capped the diff at 50K chars before hashing, so two genuinely
+    different large diffs sharing an identical first 50KB (e.g. the same
+    already-modified file edited again further down) would have hashed
+    identically and been misclassified as "no progress." Hashing locally is
+    cheap regardless of size (sha256 over a few MB takes milliseconds), so
+    there's no real reason to cap it."""
     r_head = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
                              text=True, capture_output=True, timeout=30)
     r_status = subprocess.run(["git", "-C", repo, "status", "--porcelain"],
                                text=True, capture_output=True, timeout=30)
     r_diff = subprocess.run(["git", "-C", repo, "diff", "HEAD"],
                              text=True, capture_output=True, timeout=30)
-    blob = r_head.stdout + r_status.stdout + r_diff.stdout[:50_000]
+    blob = r_head.stdout + r_status.stdout + r_diff.stdout
     return hashlib.sha256(blob.encode(errors="replace")).hexdigest()
 
 
 def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                  max_tokens: int, deadline: float,
-                 max_turns_without_progress: int) -> str | None:
-    """Runs up to max_turns tool-call rounds. Returns the model's final text
-    once it stops calling tools, or None if max_turns was exhausted (or
-    max_turns_without_progress consecutive turns passed with no actual repo
-    change) without the model finishing. Raises OutOfTime if the wall-clock
-    deadline passes first.
+                 max_turns_without_progress: int) -> tuple[str | None, bool]:
+    """Runs up to max_turns tool-call rounds. Returns (final_text, moved):
+    final_text is the model's final text once it stops calling tools, or
+    None if max_turns was exhausted (or max_turns_without_progress
+    consecutive turns passed with no actual repo change) without the model
+    finishing; moved is True iff the repo's actual content differs at all
+    between the START of THIS call and now. Raises OutOfTime if the
+    wall-clock deadline passes first.
+
+    `moved` is computed fresh (a direct repo_state_signature() comparison
+    against this call's own starting signature) at every return point,
+    deliberately NOT derived from the last per-turn signature seen inside
+    the loop below -- that value always lags one turn behind (each turn
+    checks progress made by the PREVIOUS turn, before running the current
+    one), so reusing it here would silently miss progress made by the
+    final turn of the attempt. main() uses this return value instead of
+    its own `git_head()`/`git_dirty()` check against a fixed baseline --
+    confirmed as a real, separate instance of the exact bug repo_state_signature()
+    already fixed for the no-progress counter: a baseline fixed once before
+    the WHOLE retry loop goes permanently 'moved' after the first real edit
+    lands in ANY attempt, silently defeating the next attempt's own
+    no-progress messages-reset even when that attempt itself does nothing.
 
     The no-progress cutoff exists because real data showed the ordinary
     per-turn budget alone doesn't catch the expensive failure shape: the
@@ -388,8 +414,13 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
     previously noticed "N turns have gone by with no write_file taking
     effect" mid-attempt; the check was only ever done AFTER the full
     attempt (all max_turns) was already exhausted."""
+    initial_sig = repo_state_signature()
+
+    def moved() -> bool:
+        return repo_state_signature() != initial_sig
+
     no_progress_turns = 0
-    last_sig = repo_state_signature()
+    last_sig = initial_sig
     for turn in range(max_turns):
         if time.monotonic() > deadline:
             raise OutOfTime(f"wall-clock budget exhausted at turn {turn + 1}/{max_turns}")
@@ -403,7 +434,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                 print(f"  no repo changes for {no_progress_turns} consecutive turns, "
                       "ending this attempt early instead of spending the rest of "
                       "max_turns on further unproductive exploration", file=sys.stderr)
-                return None
+                return None, sig != initial_sig
         try:
             resp = call_openrouter(api_key, model, messages, max_tokens)
         except RuntimeError as e:
@@ -414,7 +445,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             # other incomplete attempt, rather than crashing the process.
             print(f"  turn {turn + 1}/{max_turns}: call failed ({e}), ending this attempt",
                   file=sys.stderr)
-            return None
+            return None, moved()
         usage = resp.get("usage", {})
         add_cost(resp)
         print(f"  turn {turn + 1}/{max_turns}: "
@@ -426,7 +457,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
         messages.append(msg)
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
-            return msg.get("content") or ""
+            return msg.get("content") or "", moved()
         for tc in tool_calls:
             fn = tc["function"]["name"]
             try:
@@ -440,7 +471,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                 "content": result,
             })
         trim_messages(messages)
-    return None
+    return None, moved()
 
 
 # Lines/tokens `cargo nextest` varies run-to-run even against a
@@ -488,17 +519,6 @@ def verify(cmd: str, timeout: int = MAX_VERIFY_SECONDS) -> tuple[bool, str]:
                         capture_output=True, timeout=timeout)
     out = (r.stdout + r.stderr)[-6000:]
     return r.returncode == 0, out
-
-
-def git_head(repo="/repo") -> str:
-    return subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
-                           text=True, capture_output=True, timeout=30).stdout.strip()
-
-
-def git_dirty(repo="/repo") -> bool:
-    r = subprocess.run(["git", "-C", repo, "status", "--porcelain"],
-                        text=True, capture_output=True, timeout=30)
-    return bool(r.stdout.strip())
 
 
 def main() -> int:
@@ -608,16 +628,15 @@ def main() -> int:
         ]
 
     deadline = time.monotonic() + args.wall_clock_budget
-    base_head = git_head()
     attempt = 0
     seen_tails = []
     while True:
         attempt += 1
         print(f"== attempt {attempt}/{args.retry_cap + 1} ==", file=sys.stderr)
         try:
-            final_text = agent_turns(api_key, args.model, messages, args.max_turns,
-                                      args.max_tokens, deadline,
-                                      args.max_turns_without_progress)
+            final_text, moved = agent_turns(api_key, args.model, messages, args.max_turns,
+                                             args.max_tokens, deadline,
+                                             args.max_turns_without_progress)
         except OutOfTime as e:
             print(f"OUT_OF_TIME: {e}", file=sys.stderr)
             write_status("TIMEOUT", messages)
@@ -625,26 +644,20 @@ def main() -> int:
         if final_text is None:
             print("== ran out of turns without the model finishing ==", file=sys.stderr)
 
-        moved = git_head() != base_head or git_dirty()
+        # `moved` comes from agent_turns' own per-ATTEMPT signature
+        # comparison now, not a `git_head()`/`git_dirty()` check against a
+        # baseline fixed once before this whole while-loop -- that fixed
+        # baseline was a real, separate instance of the exact bug
+        # repo_state_signature() already fixed for the no-progress counter:
+        # once ANY attempt made a real edit, `git_dirty()` stayed true
+        # forever, so `moved` was permanently True for every LATER attempt
+        # too, even one that itself changed nothing -- silently defeating
+        # the messages-reset below for every attempt after the first real
+        # edit. Confirmed by adversarial review as a direct re-occurrence of
+        # the bug fixed one level down.
         if not moved:
             ok = False
             tail = "(no changes, no verify run)"
-            # An attempt that made ZERO repo changes has a fruitless
-            # exploration history with proven zero value -- nothing was
-            # kept, there is no diff, there is nothing for the next attempt
-            # to build on. Carrying it forward only re-pays for it: real
-            # numbers from dense-tensor-type-build's persisted log show its
-            # attempt-2 no-progress window (turns 1-12, identical outcome
-            # to attempt-1's) cost $0.049085 vs attempt-1's $0.014439 for
-            # the SAME zero-progress result -- 3.4x more, purely from
-            # carried context. Reset to system+task (never touching
-            # messages[0]/[1], same invariant trim_messages() keeps) so the
-            # next attempt starts cheap instead of re-billing a transcript
-            # that led nowhere. This does NOT apply when moved is True
-            # (see the else branch) -- a genuine RED with real edits keeps
-            # its full history, since that feedback loop has actual proven
-            # value and is not what this finding is about.
-            del messages[2:]
         else:
             # verify()'s own ceiling used to always be the full
             # MAX_VERIFY_SECONDS regardless of how much wall-clock budget
@@ -736,14 +749,35 @@ def main() -> int:
                 f"`{args.verify_cmd}` yourself before claiming DONE again.\n\n{tail}"
             )
         else:
-            # messages[2:] was just discarded above -- this is now the
-            # first message after the original task, not a continuation of
-            # a transcript the model can no longer see.
+            # An attempt that made ZERO repo changes has a fruitless
+            # exploration history with proven zero value -- nothing was
+            # kept, there is no diff, there is nothing for the next attempt
+            # to build on. Carrying it forward only re-pays for it: real
+            # numbers from dense-tensor-type-build's persisted log show its
+            # attempt-2 no-progress window (turns 1-12, identical outcome
+            # to attempt-1's) cost $0.049085 vs attempt-1's $0.014439 for
+            # the SAME zero-progress result -- 3.4x more, purely from
+            # carried context. Reset to system+task (never touching
+            # messages[0]/[1], same invariant trim_messages() keeps) so the
+            # next attempt starts cheap instead of re-billing a transcript
+            # that led nowhere.
+            #
+            # Deliberately done HERE -- only once we know this run is
+            # actually continuing to another attempt -- and not immediately
+            # after computing `moved` above: this exact attempt's own
+            # transcript still needs to reach write_status() (STUCK/RED)
+            # untouched on every EXIT path above (including the final
+            # attempt's own STUCK/RED), so a human or propose_narrower_task
+            # can see what was actually tried. Resetting before those
+            # write_status() calls would have persisted an already-gutted
+            # messages list for the very attempt whose failure is being
+            # reported -- confirmed as a real bug by adversarial review.
+            del messages[2:]
             feedback = (
                 "Your previous attempt ended without making any repo changes at all "
                 "(either it never edited anything, or it hit the no-progress cutoff). "
                 "Try a different, more direct approach this time -- start by editing, "
-                "not just exploring.\n\nORIGINAL TASK:\n" + task_text
+                "not just exploring.\n\nTASK:\n" + task_text
             )
         messages.append({"role": "user", "content": feedback})
 

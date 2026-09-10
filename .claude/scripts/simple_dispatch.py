@@ -588,7 +588,23 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
         # releases the row's flock -- an unbounded hang here used to mean a
         # single unresponsive sandbox could keep that row permanently
         # undispatchable.
-        sh([str(MSB_BIN), "rm", "-f", name], env=env, timeout=60)
+        #
+        # Wrapped in its own try/except: `sh()` can still raise
+        # TimeoutExpired on a genuinely unresponsive sandbox even WITH the
+        # timeout (that's what a timeout means -- it raises, it doesn't
+        # silently give up). Since this is the first statement in a
+        # `finally` block, an uncaught raise here used to skip the two
+        # statements after it -- `shutil.rmtree(workdir, ...)` and
+        # `log.close()` -- on exactly the unresponsive-sandbox case the
+        # timeout exists to guard against, leaking the per-dispatch temp
+        # dir (the same "disk fills from worktree target dirs" incident
+        # class) and a file handle every time it fires. Caught here so
+        # teardown always finishes cleaning up the host-side state even
+        # when the guest-side `msb rm` itself couldn't be confirmed.
+        try:
+            sh([str(MSB_BIN), "rm", "-f", name], env=env, timeout=60)
+        except subprocess.TimeoutExpired as e:
+            logline(f"sandbox teardown (msb rm) timed out, leaving it for manual cleanup: {e}")
         shutil.rmtree(workdir, ignore_errors=True)
         log.close()
 
