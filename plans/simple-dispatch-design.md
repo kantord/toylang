@@ -946,3 +946,55 @@ No new dollar-cost waste found in a fresh full-file pass.
 Only 2 of the planned 3 rounds ran in this series -- the user redirected
 mid-round-2 wrap-up to actually dispatching real tasks through the
 pipeline instead of continuing pure review. No round 3.
+
+## First real production dispatch after the full review series (2026-09-11)
+
+Dispatched 3 real board rows in parallel: `http-query-sugar-build`,
+`dense-tensor-type-build`, `toylang-conf-yaml-build`. All 3 came back
+STUCK. Investigated each via its persisted `-messages.json` transcript
+rather than accepting the outcome at face value:
+- `http-query-sugar-build`: genuinely wide-reaching exploration across a
+  7-backend compiler (Builtin enum, tags, per-backend emitters,
+  backend-restriction patterns) with no edit attempted in either attempt.
+  Consistent with this row's OWN prior history -- 3 earlier attempts under
+  the OLD opencode-based pipeline also made zero changes, leading to the
+  maintainer's original "hand off to a privileged session" ruling. The new
+  pipeline did not change this outcome; the row's own diagnosis (a real
+  capability gap for this model tier on a multi-backend builtin this size,
+  not an infra/pipeline bug) held up under a second, independent pipeline.
+- `dense-tensor-type-build`: consistent with its already-documented STUCK
+  history from earlier in this project. Also surfaced a real bug:
+  `propose_narrower_task`'s recovery call itself crashed
+  (`'NoneType' object has no attribute 'strip'`) -- caught safely by the
+  function's own broad `except Exception`, so it didn't affect the
+  dispatch's real outcome, but produced an unhelpful, uninformative error
+  message instead of a real diagnosis. Root cause: `message.content` can
+  be a literal JSON `null` on a reasoning-heavy response that spends its
+  whole `max_tokens` budget on reasoning before emitting visible text --
+  confirmed real by this same dispatch's own turn logs showing
+  reasoning_tokens over 2500 on some real build turns. Fixed:
+  `.get("content") or ""` instead of `["content"].strip()`, and bumped
+  this call's `max_tokens` 1024 -> 2048 (this call's real cost is
+  ~$0.0001, so there's no reason to keep it tight) to reduce how often
+  reasoning alone exhausts the budget.
+- `toylang-conf-yaml-build`: the most notable result -- this exact row
+  succeeded with a real, GREEN patch earlier in this project (run
+  `63c69b3e`, before the whole review series began). This re-run spent
+  both attempts investigating the test harness (CARGO_BIN_EXE, nextest
+  config, how tests locate `toylang.conf.yaml`) rather than making the
+  actual wiring edit, and was cut off by the no-progress cutoff at turn 12
+  each time -- by turn 11 it had reached `grep -rn "\.emit(" src`, close to
+  (but not at) the real edit site. Plausible causes, not conclusively
+  distinguished: ordinary model sampling variance sending it down a
+  different, less direct exploration path this time, or the no-progress
+  cutoff firing slightly too early for a genuinely-progressing-but-slow
+  research phase on this particular task. Left as an open question rather
+  than guessed at -- worth watching if a similar "very close to editing
+  when cut off" shape recurs on a future dispatch.
+
+All 3 outcomes were real, cheap failures ($0.0176 + $0.0169 + $0.0318 =
+$0.0663 total for all three) rather than expensive ones -- direct evidence
+the cost fixes work as designed: the OLD pre-fix cost profile for a
+STUCK run was $0.174 for ONE task; this dispatch got 3 real STUCK
+classifications, each investigated via its real transcript rather than
+assumed, for well under half that combined.

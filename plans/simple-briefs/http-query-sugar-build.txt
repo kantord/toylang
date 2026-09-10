@@ -1,0 +1,42 @@
+Board row `http-query-sugar-build` (gh:171). Build HTTP query sugar per `http-query-sugar-design`'s
+ruling (2026-09-08):
+
+1. **Scope: 3 backends only.** `fetch(url)` is implemented on the 3 TLS-capable backends --
+   Go (`net/http`), JS (`fetch`), Python (`urllib.request` + `ssl`) -- with zero new
+   dependencies. Lua, jq, Rust-source, and native/LLVM have no TLS-capable HTTP client
+   available; make `fetch` a compile-time refusal on those four backends (matching how other
+   backend-restricted builtins are refused elsewhere in the compiler -- grep for an existing
+   backend-restriction check in `src/check/mod.rs` to follow the established pattern rather
+   than inventing a new one).
+2. **Surface: a real response record, not a bare body.** `fetch(url)` returns the FULL response
+   (status/headers/body) as a proper typed value -- structs/enums, not an ad hoc record. This
+   needs:
+   - A new response type (status code, headers, body) added the same way other structured
+     builtin return types are represented in `src/ty.rs`.
+   - A header representation. toylang has no Map type yet -- do not build a general-purpose Map
+     as part of this row; a minimal, purpose-built representation for HTTP headers only (e.g. a
+     Vec of key/value pairs, or whatever the smallest thing that lets a caller look up a header
+     by name) is in scope; a full Map type is not.
+   - A body-field typing rule (the body is raw text/bytes -- decide and document what type it
+     gets, matching how existing string/bytes-producing builtins are typed).
+3. **New builtin, seven-backend fan-out.** Follow the existing `Builtin` enum pattern
+   (`src/tir.rs:213` `pub enum Builtin`, tagged in `src/tags.rs`, implemented per-backend in
+   `src/emit_*.rs`) the same way other builtins are added -- implement real HTTP calls in
+   `emit_go.rs`/`emit_js.rs`/`emit_py.rs`, and a clear compile-time refusal in
+   `emit_lua.rs`/`emit_jq.rs`/`emit_rs.rs`/`emit_llvm.rs`.
+4. Out of scope, explicitly: extending HTTP to the remaining 4 backends (file a follow-up row
+   instead, do not attempt it here), and building a general-purpose Map type (only the minimal
+   header representation described above is in scope).
+
+History: 3 earlier automated attempts against the OLD dispatch pipeline all made ZERO file
+changes each time (not a toolchain/infra failure -- the toolchain ran fine every round) and were
+escalated. This is a fresh attempt on a rebuilt dispatch pipeline. Start by identifying the
+concrete edit sites before doing open-ended exploration: `src/tir.rs`'s `Builtin` enum, the
+per-backend `emit_*.rs` files listed above, and `src/ty.rs` for the new response type are the
+real target files -- an actual edit to at least one of them should happen early, not after
+extensive read-only exploration.
+
+Done-gate: a real `.toy` program calls `fetch(url)` against a real HTTP endpoint, reads the
+response's status/headers/body through the new typed value, and produces the correct answer
+identically on Go, JS, and Python. Lua/jq/Rust-source/native refuse any program using `fetch`
+with a clear compile-time error, not a runtime crash. `just check` passes with no regressions.

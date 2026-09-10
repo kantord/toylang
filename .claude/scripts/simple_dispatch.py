@@ -214,7 +214,18 @@ def propose_narrower_task(api_key: str, model: str, task_text: str, verify_tail:
     body = json.dumps({
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 1024,
+        # 2048, not 1024 -- confirmed live this model tier can spend a
+        # large chunk of its completion budget on reasoning tokens before
+        # emitting any visible content (real build turns in this same
+        # dispatch run logged over 2500 reasoning_tokens on a single turn).
+        # At 1024 a reasoning-heavy response can exhaust the whole budget
+        # on reasoning and return message.content == None, which crashed
+        # this function's `.strip()` call below (real, confirmed: a
+        # dense-tensor-type-build recovery call failed exactly this way --
+        # 'NoneType' object has no attribute 'strip'). This call is
+        # negligible cost either way ($0.0001-ish), so there's no real
+        # reason to keep the budget tight.
+        "max_tokens": 2048,
         "usage": {"include": True},
     }).encode()
     req = urllib.request.Request(
@@ -225,7 +236,13 @@ def propose_narrower_task(api_key: str, model: str, task_text: str, verify_tail:
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             parsed = json.loads(resp.read())
-        content = parsed["choices"][0]["message"]["content"].strip()
+        # `.get("content") or ""`, not `["content"].strip()` directly --
+        # confirmed live: a reasoning-heavy response can return a literal
+        # JSON null for `content` (not just an absent key), which crashed
+        # here uncaught before this function's own try/except turned it
+        # into an unhelpful "'NoneType' object has no attribute 'strip'"
+        # instead of a real parse-failure message.
+        content = (parsed["choices"][0]["message"].get("content") or "").strip()
         cost = (parsed.get("usage") or {}).get("cost", 0.0) or 0.0
         # Model output isn't guaranteed to be bare JSON -- strip common
         # markdown-fence wrapping, same defensive posture used everywhere
