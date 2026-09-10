@@ -540,3 +540,82 @@ All four fixes verified: two with monkeypatched unit-style tests
 argparse invocation (`--resume-patch` without `--resume-from` rejected),
 one by `python3 -m py_compile` plus code inspection (the `reasoning: None`
 guard is a one-line defensive change with an obvious correct form).
+
+### Round 2
+
+**Correctness track** -- one real bug in round 1's OWN fix, one cosmetic
+nit:
+1. The no-progress early-exit was comparing against a FIXED baseline
+   (`base_head`, captured once before the whole retry loop) via
+   `git_head() != base_head or git_dirty()`. Nothing resets the working
+   tree between attempts by design, so `git_dirty()` goes true the moment
+   ANY edit lands and stays true forever after -- resetting the no-progress
+   counter to 0 every single turn from then on, regardless of whether the
+   model does anything at all. Consequence: an attempt that edits once at
+   turn 3 then does nothing for 27 turns burns all 30; a later retry
+   attempt that does nothing further after an earlier attempt left the
+   tree dirty also burns all 30 -- reintroducing the exact cost-bleed shape
+   round 1 was written to close, for the majority of the retry budget
+   (every attempt after the first genuinely-partial edit). Round 1's own
+   regression test didn't catch this because it only exercised a single
+   attempt with a permanently-clean tree, never a carry-over-dirty case.
+   Fixed: replaced the fixed-baseline check with `repo_state_signature()`
+   (HEAD + `git status --porcelain` + a capped `git diff HEAD`, hashed),
+   compared TURN-TO-TURN rather than to a frozen baseline -- a real further
+   edit still resets the counter, but a tree that stops changing (dirty or
+   not) keeps counting toward the cutoff. Verified by directly reproducing
+   the bug scenario the skeptic described (signature constant, then one
+   real change, then constant forever after): the old fixed-baseline logic
+   would run all 30 turns; the new logic stops 5 turns (the test's
+   threshold) after the last real change, confirmed by assertion.
+2. Cosmetic-only: the threshold check used `>` instead of `>=` against
+   `--max-turns-without-progress`, firing after N+1 no-progress turns
+   instead of the documented N. Fixed as part of the same edit (now `>=`).
+
+Nothing else new: `--resume-patch`'s `git am` failure paths, multi-commit
+patches, fcntl locking across the whole file, and the resume message's
+guidance were all re-checked and hold.
+
+**Cost track** -- one real, quantified finding; three suspects checked and
+dropped:
+1. A no-progress attempt's fruitless transcript was still carried forward
+   into the NEXT attempt untouched (only one feedback message appended,
+   same as a real RED retry) -- so the second no-progress window re-paid
+   for the first one's entire dead context on top of its own. Real numbers
+   from `dense-tensor-type-build`'s persisted log: attempt-1's first 12
+   turns (round 1's new default cutoff) cost $0.014439; attempt-2's
+   equivalent 12-turn no-progress window cost $0.049085 -- 3.4x more for
+   an IDENTICAL zero-progress outcome, purely from carried context (no
+   cache-discount signature visible in the real per-call cost data).
+   Fixed: on the `not moved` branch specifically (zero repo changes this
+   attempt -- NOT the genuine-RED branch, whose full history has real,
+   proven value and is untouched), `messages[2:]` is discarded before the
+   next attempt, replaced with a short "you explored without editing, try
+   differently" note instead of appending on top of the dead transcript.
+   `messages[0]`/`[1]` (system/task) are never touched, same invariant
+   `trim_messages()` already keeps. Verified two ways: a monkeypatched unit
+   test reproducing the exact scenario, and a full `main()`-level
+   integration test (two consecutive no-progress attempts, retry-cap=1) --
+   confirms STUCK detection still fires correctly (tail-text comparison is
+   unaffected, it never depended on `messages` content) while the message
+   list stays flat (length 2 at the point STUCK is written) instead of
+   accumulating attempt-1's whole tool-call transcript into attempt 2.
+2. Per-turn `git_head()`/`git_dirty()` calls (round 1): confirmed
+   negligible -- at most ~60 extra local subprocess spawns per attempt,
+   each a few ms, against a 3400s wall-clock budget and multi-second LLM
+   round-trips. Dropped.
+3. `--resume-from`/`--resume-patch` cost risk: already fully covered by
+   the v1-rejection analysis earlier in this doc (the exact "$0.35-0.70+ if
+   resumed near the size cap" risk was already computed and answered by
+   making it manual-only, single-row, with the runtime cache-staleness
+   warning). No new finding; a suggestion to log OpenRouter's
+   cache-related usage fields per turn (not currently captured) was noted
+   as a nice-to-have for a future round to settle the cache-TTL question
+   with real numbers instead of a hedge -- not acted on now, out of scope
+   for this round.
+4. retry-cap=2 interacting with the new early-exit: checked against the
+   real STUCK run's numbers, no bug found -- the early exit reaches the
+   same classification point the old full-30-turn attempt eventually did,
+   so STUCK still fires after exactly 2 attempts. A theoretical risk
+   remains for a task needing >12 read-only turns before its first edit;
+   flagged as unverified (no real data shows it happening), not acted on.
