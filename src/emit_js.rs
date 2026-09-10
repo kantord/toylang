@@ -1,3 +1,5 @@
+use serde::Deserialize;
+
 use crate::ast::{BinOp, LogicOp};
 use crate::config::Web;
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
@@ -11,10 +13,17 @@ const INPUTS: &str = "t_inputs";
 /// The two JavaScript runtimes the JS backend emits for. Node reads stdin through its own
 /// `fs`; a browser has no stdin, so the Web target refuses the stdin-reading shapes rather
 /// than emitting code that would break there.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum JsTarget {
     Node,
     Web,
+}
+
+impl Default for JsTarget {
+    fn default() -> Self {
+        JsTarget::Node
+    }
 }
 
 impl JsTarget {

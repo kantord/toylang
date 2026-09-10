@@ -287,3 +287,64 @@ fn web_escape_hatch_replaces_tl_read_line() {
     );
     assert_eq!(run_js(&emitted), "\"ada!\"\n\"bo!\"\n");
 }
+
+/// The `target` field of `toylang.conf.yaml` (gh:160) selects which `JsTarget` the JS backend
+/// emits for, and the config's `web` escape hatch rides along. This drives the real CLI from a
+/// directory holding the config, so `Config::load()`'s upward walk is exercised end to end: a
+/// `target: web` config changes the emitted JS, while a target-less config (and no config at
+/// all) keep today's Node emission.
+#[test]
+fn conf_target_web_changes_the_js_backend() {
+    let emit = |dir: &std::path::Path| {
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_toylang"))
+            .arg("emit")
+            .arg("program.toy")
+            .arg("js")
+            .current_dir(dir)
+            .output()
+            .expect("the toylang binary runs");
+        assert!(
+            out.status.success(),
+            "emit failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).expect("utf-8 stdout")
+    };
+
+    let program = "collect stdin\n";
+    let web_lines = "function tl_collect_lines() { return [\"ada\"]; }\n";
+
+    // `target: web` plus the escape hatch: the emitted JS calls the browser-side reader and
+    // carries no node `fs`.
+    let web_dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(web_dir.path().join("program.toy"), program).expect("write program");
+    std::fs::write(
+        web_dir.path().join("toylang.conf.yaml"),
+        format!("target: web\nweb:\n  lines: |\n    {web_lines}\n"),
+    )
+    .expect("write config");
+    let web_js = emit(web_dir.path());
+    assert!(
+        web_js.contains("tl_collect_lines()") && !web_js.contains("require(\"fs\")"),
+        "a target: web config changes the emitted target:\n{web_js}"
+    );
+
+    // A target-less config keeps today's Node emission.
+    let node_dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(node_dir.path().join("program.toy"), program).expect("write program");
+    std::fs::write(node_dir.path().join("toylang.conf.yaml"), "web: {}\n").expect("write config");
+    let node_js = emit(node_dir.path());
+    assert!(
+        node_js.contains("require(\"fs\")"),
+        "a target-less config still emits for node:\n{node_js}"
+    );
+
+    // No config file at all compiles identically to a target-less one.
+    let bare_dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(bare_dir.path().join("program.toy"), program).expect("write program");
+    let bare_js = emit(bare_dir.path());
+    assert_eq!(
+        bare_js, node_js,
+        "no config file compiles identically to a target-less one"
+    );
+}

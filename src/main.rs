@@ -135,9 +135,10 @@ fn build(src: &str, path: &str, backend: Backend) -> Result<String> {
             let mut dts = PathBuf::from(&stem);
             js.set_extension("js");
             dts.set_extension("d.ts");
+            let cfg = toylang::config::Config::load().map_err(anyhow::Error::msg)?;
             std::fs::write(
                 &js,
-                toylang::emit_js::emit(&program, toylang::emit_js::JsTarget::Node)
+                toylang::emit_js::emit_with(&program, cfg.target, &cfg.web)
                     .map_err(anyhow::Error::msg)?,
             )?;
             std::fs::write(&dts, toylang::emit_js::emit_dts(&program))?;

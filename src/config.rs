@@ -9,6 +9,8 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+use crate::emit_js::JsTarget;
+
 /// What a Web-target compile may supply in place of a node-only stdin reader. The text
 /// is emitted verbatim, so it has to define the function name the emitted code calls.
 #[derive(Deserialize, Default)]
@@ -30,6 +32,11 @@ pub struct Web {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Which JS runtime the JS backend emits for. Defaults to `Node` when absent, so a
+    /// target-less `toylang.conf.yaml` (or no config file at all) keeps today's behavior
+    /// exactly.
+    #[serde(default)]
+    pub target: JsTarget,
     #[serde(default)]
     pub web: Web,
 }
@@ -79,5 +86,18 @@ mod tests {
         )
         .expect("parses");
         assert!(cfg.web.input.is_some());
+        assert_eq!(cfg.target, JsTarget::Node);
+    }
+
+    #[test]
+    fn a_target_config_parses() {
+        let cfg: Config = serde_norway::from_str("target: web\n").expect("parses");
+        assert_eq!(cfg.target, JsTarget::Web);
+    }
+
+    #[test]
+    fn a_targetless_config_defaults_to_node() {
+        let cfg: Config = serde_norway::from_str("web: {}\n").expect("parses");
+        assert_eq!(cfg.target, JsTarget::Node);
     }
 }
