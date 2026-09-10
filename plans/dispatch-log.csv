@@ -1,0 +1,2 @@
+run_id,row_id,model,start_time,end_time,duration_s,status,cost_usd,patch_path
+32584be0,csv-log-validation-test,deepseek/deepseek-v4-flash-0731,2026-09-09T22:47:49.875171+00:00,2026-09-09T22:52:39.501306+00:00,289.6,GREEN,0.006111,/home/kantord/.cache/toylang-simple-dispatch/results/csv-log-validation-test-32584be0.patch
