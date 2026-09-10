@@ -445,7 +445,11 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             # other incomplete attempt, rather than crashing the process.
             print(f"  turn {turn + 1}/{max_turns}: call failed ({e}), ending this attempt",
                   file=sys.stderr)
-            return None, moved()
+            # Reuses `sig` (computed at the top of this same iteration)
+            # instead of calling moved() again -- nothing between there and
+            # here touches the filesystem (call_openrouter is a network
+            # call), so it's already the freshest possible value.
+            return None, sig != initial_sig
         usage = resp.get("usage", {})
         add_cost(resp)
         print(f"  turn {turn + 1}/{max_turns}: "
@@ -457,7 +461,10 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
         messages.append(msg)
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
-            return msg.get("content") or "", moved()
+            # Same reasoning as the RuntimeError-catch return above: no
+            # tool_calls means nothing ran that could have touched the
+            # filesystem this turn, so `sig` is still accurate.
+            return msg.get("content") or "", sig != initial_sig
         for tc in tool_calls:
             fn = tc["function"]["name"]
             try:
@@ -503,7 +510,19 @@ def normalize_for_stuck_check(tail: str) -> str:
     # directly: this was the one remaining diff after filtering whole PASS
     # lines out. Drop it; the content that matters is never at the very top
     # of a tail this size.
-    lines = (l for l in all_lines[1:] if not _NOISE_LINE_RE.match(l))
+    #
+    # BUT only when there's a second line to fall back on -- a genuinely
+    # single-line tail (an early build/config error, a shell syntax error in
+    # --verify-cmd, any crash before real test output starts, or even the
+    # literal "(no changes, no verify run)" placeholder) has no truncation
+    # fragment to drop; unconditionally dropping "line 0" left `all_lines[1:]`
+    # empty, normalizing EVERY single-line tail to the same "" regardless of
+    # actual content. Confirmed directly: two completely unrelated one-line
+    # failures both normalized to "" and compared equal, misclassifying a
+    # real difference as STUCK. The truncation-fragment assumption only
+    # holds when there's more than one line to begin with.
+    body_lines = all_lines[1:] if len(all_lines) > 1 else all_lines
+    lines = (l for l in body_lines if not _NOISE_LINE_RE.match(l))
     text = "\n".join(lines)
     text = _TIMING_RE.sub("[Ts]", text)
     text = _POSITION_RE.sub("(N/N)", text)
@@ -633,6 +652,21 @@ def main() -> int:
     while True:
         attempt += 1
         print(f"== attempt {attempt}/{args.retry_cap + 1} ==", file=sys.stderr)
+        # Watermark of how many messages existed BEFORE this attempt --
+        # used below to discard only THIS attempt's own additions on a
+        # no-progress outcome, never anything from an earlier attempt.
+        # Discarding back to a fixed index (2, or messages[2:]) was a real
+        # bug found by adversarial review: if attempt 1 makes a genuine,
+        # proven-valuable edit (moved=True, RED, kept) and attempt 2 builds
+        # on it but adds nothing further of its own (moved=False relative
+        # to ATTEMPT 2's own start), resetting to a fixed index-2 wiped out
+        # attempt 1's entire real transcript too, not just attempt 2's
+        # fruitless one -- leaving attempt 3 with no memory that an edit
+        # already exists and, unlike --resume-from, no "check git state
+        # first" instruction to compensate. This watermark makes the reset
+        # symmetric with `moved`'s own per-attempt scoping: it only ever
+        # discards what THIS attempt itself added.
+        attempt_start_len = len(messages)
         try:
             final_text, moved = agent_turns(api_key, args.model, messages, args.max_turns,
                                              args.max_tokens, deadline,
@@ -757,10 +791,12 @@ def main() -> int:
             # attempt-2 no-progress window (turns 1-12, identical outcome
             # to attempt-1's) cost $0.049085 vs attempt-1's $0.014439 for
             # the SAME zero-progress result -- 3.4x more, purely from
-            # carried context. Reset to system+task (never touching
-            # messages[0]/[1], same invariant trim_messages() keeps) so the
-            # next attempt starts cheap instead of re-billing a transcript
-            # that led nowhere.
+            # carried context. Reset back to `attempt_start_len` -- NOT a
+            # fixed `messages[2:]` -- so the next attempt starts cheap
+            # instead of re-billing a transcript that led nowhere, without
+            # also discarding any EARLIER attempt's real, proven-valuable
+            # progress (messages[0]/[1] are never touched either way, same
+            # invariant trim_messages() keeps).
             #
             # Deliberately done HERE -- only once we know this run is
             # actually continuing to another attempt -- and not immediately
@@ -772,7 +808,7 @@ def main() -> int:
             # write_status() calls would have persisted an already-gutted
             # messages list for the very attempt whose failure is being
             # reported -- confirmed as a real bug by adversarial review.
-            del messages[2:]
+            del messages[attempt_start_len:]
             feedback = (
                 "Your previous attempt ended without making any repo changes at all "
                 "(either it never edited anything, or it hit the no-progress cutoff). "

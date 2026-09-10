@@ -688,3 +688,69 @@ interaction for a genuinely-succeeding task (confirmed sound -- the
 condition only fires on zero repo change, so it cannot pressure a
 progressing attempt). Explicit verdict from this round: two rounds of real
 fixes have captured the realistic waste; nothing rose to a fix-now finding.
+
+### Round 4
+
+Explicitly asked to hunt for a THIRD occurrence of the "capture once,
+compare forever" fixed-baseline pattern that rounds 2 and 3 each found one
+level further up the call stack. None found -- `initial_sig`/`moved()` in
+`agent_turns()` and the `moved` plumbing in `main()` are both correctly
+attempt-scoped now, confirmed by re-tracing every `write_status(...,
+messages)` call site (FATAL, TIMEOUT via both paths, STUCK, RED). That
+absence is itself the round's first real result: the pattern has been
+fully hunted down, not just fixed once and assumed gone.
+
+**Correctness track** -- two new, different-in-kind bugs, both real:
+1. The relocated `del messages[2:]` (round 3) reset to a FIXED index
+   regardless of how many attempts' worth of real history sat there. A
+   `not moved` attempt's premise -- "this attempt's transcript proved zero
+   value" -- only covers what THAT attempt itself added, not any earlier
+   attempt's genuinely productive work. Concrete failure: attempt 1 makes a
+   real edit (`moved=True`, RED, correctly kept); attempt 2 builds on it
+   but adds nothing further of its own (`moved=False` relative to attempt
+   2's OWN start, per round 3's correct per-attempt scoping); resetting to
+   a fixed `messages[2:]` wiped out attempt 1's entire real transcript too
+   -- the very reasoning behind an edit already sitting, uncommitted, in
+   the repo -- leaving attempt 3 with no memory it exists and (unlike
+   `--resume-from`) no "check git state first" instruction to compensate.
+   This is exactly the STUCK-run failure shape (a partial success followed
+   by stalling) that motivated the reset in the first place. Fixed:
+   `attempt_start_len = len(messages)` is captured at the top of each
+   retry-loop iteration; the reset is now `del messages[attempt_start_len:]`
+   -- symmetric with `moved`'s own per-attempt scoping, discarding only
+   what THIS attempt added. Verified by direct reproduction: attempt 1's
+   real 4-message transcript (2 turns of tool calls) now survives attempt
+   2's no-progress reset, confirmed present (8 total messages, including
+   attempt 1's real turns) right before attempt 3 starts.
+2. `normalize_for_stuck_check()` unconditionally dropped `all_lines[0]`
+   (justified for the common case: a truncation fragment from verify()'s
+   fixed-size tail slice) -- but a genuinely SINGLE-LINE tail (an early
+   build/config error, a shell syntax error in `--verify-cmd`, any crash
+   before real test output starts, or the literal
+   `"(no changes, no verify run)"` placeholder) has no fragment to drop;
+   `all_lines[1:]` on a one-line input is simply `[]`, so every single-line
+   tail normalized to the same empty string regardless of actual content --
+   confirmed directly (`"failure A"` and `"failure B"` both normalize to
+   `""`). Consequence: two attempts with completely unrelated one-line
+   failures would misclassify as STUCK on a false match. Fixed: only drop
+   the first line when a second one exists to fall back on (`all_lines[1:]
+   if len(all_lines) > 1 else all_lines`). Verified: two different
+   single-line failures now normalize differently; the existing multi-line
+   truncation-fragment-dropping behavior is unchanged (confirmed with a
+   same-body-different-garbage-first-line pair still normalizing equal).
+
+Also folded in a trivial code-quality nit the cost-maniac pass flagged
+(not a cost issue -- confirmed negligible either way, but free to fix):
+two of `agent_turns()`'s three non-fallthrough return points were calling
+the `moved()` closure (a fresh `repo_state_signature()` call) when the
+turn's already-computed `sig` was still accurate (nothing between
+computing it and returning touches the filesystem) -- now reuses `sig`
+directly at those two sites; the actual fallthrough return (where the
+final turn's tool calls could have changed the repo since `sig` was last
+computed) still uses `moved()`.
+
+**Cost track**: convergence confirmed a second time. No new dollar-cost
+waste found; round 3's correctness changes (`repo_state_signature`,
+`moved`, the verify() skip on `not moved`) are all local/free, re-verified
+against real diff sizes in this repo (492B-9.7KB) and real `git diff`
+timing (2ms). The one nit above was noted as code-quality, not cost.
