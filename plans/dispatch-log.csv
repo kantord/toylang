@@ -1,2 +1,5 @@
 run_id,row_id,model,start_time,end_time,duration_s,status,cost_usd,patch_path
 32584be0,csv-log-validation-test,deepseek/deepseek-v4-flash-0731,2026-09-09T22:47:49.875171+00:00,2026-09-09T22:52:39.501306+00:00,289.6,GREEN,0.006111,/home/kantord/.cache/toylang-simple-dispatch/results/csv-log-validation-test-32584be0.patch
+71c68601,dense-tensor-type-build,deepseek/deepseek-v4-flash-0731,2026-09-10T20:57:41.812742+00:00,2026-09-10T21:03:45.044967+00:00,363.2,STUCK,0.174245,
+6fb79ad3,parallel-smoke-test,deepseek/deepseek-v4-flash-0731,2026-09-10T20:57:41.812229+00:00,2026-09-10T21:04:56.424277+00:00,434.6,GREEN,0.011385,/home/kantord/.cache/toylang-simple-dispatch/results/parallel-smoke-test-6fb79ad3.patch
+63c69b3e,toylang-conf-yaml-build,deepseek/deepseek-v4-flash-0731,2026-09-10T20:57:41.812407+00:00,2026-09-10T21:07:34.097713+00:00,592.3,GREEN,0.160455,/home/kantord/.cache/toylang-simple-dispatch/results/toylang-conf-yaml-build-63c69b3e.patch
