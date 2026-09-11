@@ -59,7 +59,10 @@ in bash.
   today (`board-archive.py`, `board-lint.py`, `dispatch-state.py`'s
   `dispatch_trigger()`). Everything else (`urllib`, `subprocess`, `fcntl`, `json`,
   `csv`, `argparse`) is stdlib.
-- `uv.lock` committed alongside, so every invocation resolves identically.
+- `uv.lock` committed alongside, so every invocation resolves identically. `.gitignore`
+  needs a `.venv` entry added (round-3 review: confirmed by direct reproduction that
+  `uv run --project <dir> <script>` creates `<dir>/.venv` on first run; the repo's
+  current `.gitignore` has no Python-related entry at all beyond `__pycache__/`).
 - Each script keeps its CURRENT filename, `.sh` -> `.py`, in the SAME directory --
   NOT reorganized into an installable package (`src/toylang_tools/...`) with
   `[project.scripts]` console entries. Reasoning, not just inertia: dozens of existing
@@ -77,6 +80,28 @@ in bash.
   `uv run --project /home/kantord/repos/toylang/.claude/scripts
   /home/kantord/repos/toylang/.claude/scripts/X.py` (or a `$SCRIPTS`-relative
   equivalent inside scripts that already carry that variable).
+  - **Explicit carve-out (round-3 review, important)**: `agent_loop.py`'s OWN runtime
+    invocation must NOT be converted. `simple_dispatch.py` (`msb copy`, then
+    `timeout ... python3 /root/agent_loop.py ...`, confirmed at
+    `simple_dispatch.py:389,433`) runs it inside a disposable microVM guest that has
+    no `uv`, no `.claude/scripts`, no `pyproject.toml` at all -- a mechanical
+    find-and-convert-every-`python3 .claude/scripts/X.py`-site sweep would break
+    dispatch outright if applied here. Safe only because `agent_loop.py` is
+    confirmed stdlib-only (no PyYAML, no third-party imports) so it doesn't actually
+    need `uv`'s environment inside the guest. Leave this one invocation as plain
+    `python3` on purpose; do not "fix" it during the cross-reference sweep.
+  - **`simple_dispatch.py`'s OWN invocation form also needs updating** (round-3
+    review) even though its filename isn't changing: it's a bare `python3
+    .claude/scripts/simple_dispatch.py` call embedded as literal, copy-executed text
+    in three places the coordinator LLM and human operators actually run verbatim --
+    `drive-tick.sh`'s own `POLICY` string (line 216, `nohup python3
+    .claude/scripts/simple_dispatch.py ROW-ID-1 ROW-ID-2 ROW-ID-3 --brief-dir
+    plans/simple-briefs --parallel 3 &`), `.claude/skills/drive/SKILL.md` (the same
+    command), and `.claude/skills/enwiro-delegate/SKILL.md` (`nohup python3
+    .claude/scripts/simple_dispatch.py <row-id> --brief-dir <dir> &`). These are
+    invisible to a "grep for retired filenames" sweep since `simple_dispatch.py`
+    isn't being renamed -- must be found and converted separately, by grepping for
+    `python3 .claude/scripts/` specifically, not just for the 5 renamed filenames.
 
 ## Per-file migration
 
@@ -219,6 +244,16 @@ names and `uv run` invocation form:
   3 historical mentions of `drive-tick.sh`/`land-lane.sh`/`dispatch-worker.sh` inside
   archived board rows -- belongs in the same "historical record, leave as-is" bucket
   as `ONE_OFF_FIXES.md` below, just previously missing from either bucket's list.
+- `.claude/tmp-brief-*.txt` (round-3 review finding): a whole tracked-file class the
+  plan's "grep for retired filenames" methodology never enumerated as a class, only
+  found ad hoc. Two exist today: `tmp-brief-land-lane-lock-sccache-inode-reuse-fix.txt`
+  (documents an already-fixed, already-archived bug -- pure history, leave as-is) and
+  `tmp-brief-module-routing-syntax-build.txt` (narrates a past `land-lane.sh` refusal
+  for board row `module-routing-syntax-build`, which is STILL ACTIVE on
+  `plans/board.yaml`, not yet archived -- so this one isn't purely dead history the
+  way the others are, though its content is still safe to leave as a past-tense
+  narration). Check this whole filename pattern during the cross-reference sweep, not
+  just the two files known today -- more may exist by implementation time.
 - `ONE_OFF_FIXES.md`, `plans/opencode-rollout.md`, `plans/prompt-efficiency-review.md`,
   `plans/brief-phrasing-experiment.md`, `plans/worker-pool.md` -- re-check each: most
   of these are dated incident logs (historical record), not live instructions: verify
