@@ -1475,3 +1475,41 @@ left a clean, well-formed list, no orphaning, since
 trim, with no trim call between capture and the exception);
 `attempt_start_marker` on the first attempt of a `--resume-from` run
 (symmetric with the fresh-start case).
+
+## Real dispatch settles round 1's open cost question (2026-09-11)
+
+Ran a real `dense-tensor-transpose-only` dispatch (run `5e5bfb78`) after
+rounds 1-3's fixes landed, both to exercise them end to end and because
+the cache-miss question genuinely needed real data, not more reasoning.
+Two real, significant results:
+
+**The cache-miss concern is settled: it was NOT systematic.** The
+self-report call in this run logged (via round 1's own usage-logging
+fix): `prompt=44468 completion=331 cost=$0.002798 finish_reason=stop`,
+with `cached_tokens: 32000` -- a **72% cache hit rate**. This directly
+refutes round 1's hypothesis (based on the one dispatch that existed at
+the time, where two self-report calls both showed 0 cached tokens) that
+`tool_choice: "none"` systematically breaks the cache. It doesn't, or at
+least not reliably -- the original observation was more likely
+provider-routing variance (OpenRouter can serve different calls from
+different upstream providers, and a cache hit requires landing on the
+same one) than a structural effect of the request shape change. No code
+change needed; the risk documented in round 1 as "open, bounded" is now
+better understood as "not a real systematic problem," confirmed with
+real data instead of assumed either way.
+
+**The self-report + self-healing mechanism produced its first-ever real
+edit on this task shape.** Every prior dispatch of `dense-tensor-type-build`/
+`dense-tensor-transpose-only` (5 total across this whole session) made
+ZERO tracked file changes. This run's final self-report: *"I had only
+added the enum variant, tag, and build.rs arm, but hadn't yet written the
+checker logic or any backend emission code."* -- confirmed true against
+the actual extracted patch (`build.rs`, `src/tags.rs`, `src/tir.rs`, 7
+lines, adding the `Transpose` `Builtin` variant end-to-end through the
+enum/tag/build-script layer, genuinely correct as far as it goes, just
+incomplete). Status: RED (a real patch exists, `(UNVERIFIED, do not
+land)`), not STUCK -- this is real, if partial, forward motion on a task
+that had been completely stuck for the entire session up to this point.
+Not claimed as proof the self-report mechanism "fixes" this task shape
+(one data point, and the task still isn't done) -- reported as exactly
+what it is: the first real edit ever produced here, worth knowing.
