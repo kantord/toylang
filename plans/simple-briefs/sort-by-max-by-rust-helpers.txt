@@ -57,3 +57,17 @@ is expected and fine.
 Done-gate: the two new helper functions exist in `src/emit_rs.rs` as standalone `const` string
 literals following the existing helper pattern, and `just check` (or `cargo build`) still
 passes -- an unused `const` is not a compile error, so this should be a clean, low-risk addition.
+
+Note on a prior attempt at this exact brief: it correctly wrote both helpers (matching this
+spec almost verbatim) but then hit a `tsc`-missing failure in `just check` that was specific to
+that sandbox clone, not to this change -- confirmed via `git stash` that the same failure
+happens on a clean tree. If you hit the same thing: (1) confirm with `git stash` that it's
+pre-existing and unrelated to your edit before spending turns on it, (2) do NOT spend the bulk
+of your budget building a workaround (downloading a `tsc` tarball, etc.) -- a couple of `run_bash`
+checks is enough to confirm it's environmental, then move on and finish verifying the parts of
+`just check` that do matter for this change (`cargo build`, the Rust test suite), (3) say so
+plainly and separately in your final summary ("tsc gate failed, confirmed pre-existing/unrelated,
+rest of the suite is green") rather than silently declaring the whole gate green off a manual
+workaround. Make your edit first -- a real file write in the first couple of turns -- before any
+exploration beyond what's already given here; this brief already names the exact functions,
+signatures, and file locations, so there should be nothing left to discover before writing.

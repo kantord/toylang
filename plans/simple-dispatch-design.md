@@ -1836,3 +1836,69 @@ for by the time the redispatch finished ("split into 3 tasks," not "redispatch u
 The redispatch wasn't wrong given what was checked, but what was checked was incomplete --
 `docs/.grill/` needs to be scanned for BOTH `*.round.yaml` and `*.forest.yaml` before deciding
 a STUCK row's next action, not just the wizard-round form.
+
+**Incident (2026-09-11): `round_starvation_trigger()` still only globs `*.round.yaml`, so it
+double-counted content already live in a forest file.** This tick's trigger claimed the round
+buffer was under-filled with "2 decide rows ready" (`search-and-fold-design`,
+`infinite-streams-design`, per `drive_tick.py`'s own ready-row check). `infinite-streams-design`
+is genuinely covered by the one pending `fold-and-infinite-streams.round.yaml` (2 questions,
+matches the board note's two threads). But `search-and-fold-design`'s only remaining
+sub-question (fold-block syntax) already has a live, un-answered node at
+`docs/.grill/applicative-fold-block-syntax-retry.forest.yaml` -- the pending round's own intro
+says so explicitly ("already has a live wizard round open... so it's not repeated here"). So
+both "ready" rows already have real content in front of the maintainer; composing a second
+`*.round.yaml` this tick would have re-asked a question already live. Skipped composing one.
+The earlier-noted process gap above (forest files invisible to the maintainer-input scan) is
+the same root cause hitting the starvation side too: `round_starvation_trigger()` in
+`drive_tick.py` needs to count live (non-`answered`, non-`draft`) forest nodes toward the
+2-buffered target, not just `*.round.yaml` files, or it will keep flagging under-filled when a
+forest file already has the maintainer's next question queued.
+
+**Incident (2026-09-11): `sort-by-max-by-rust-helpers` (the narrowed step-1 slice) went STUCK
+even though its first internal attempt produced a correct patch.** Run `2d5d2c8e` ran 3 internal
+attempts; attempt 1's transcript (`-messages.json`) shows it read the brief, wrote the two
+helpers via a `python3` heredoc through `run_bash` (not the `write_file` tool -- functionally
+fine, but it's why a naive "count `write_file` calls" check would misread this attempt as the
+same zero-edit failure as before), hit a `tsc`-missing failure on `just check`, confirmed via
+`git stash` that the failure was pre-existing/unrelated to its change, downloaded a real `tsc`
+tarball to `/tmp`, re-ran `TSC=/tmp/... just check` and got 436/438 green, and declared DONE.
+The emitted `.patch` (`sort-by-max-by-rust-helpers-2d5d2c8e.patch`) is a clean 22-line diff that
+matches the brief's spec exactly (comments, generic bounds, tie-handling). But the row's overall
+result is STUCK: attempts 2 and 3 both show "(no changes, no verify run)" -- the harness's own
+verify step (plain `just check`, no env override) doesn't see attempt 1's manual `TSC=` workaround,
+so attempt 1 likely still scored RED on the *official* gate despite the agent's own manual check
+passing, and the resumed attempts 2-3 then made zero edits at all (the same recurring
+zero-progress shape). Two separate things worth separating next time this row (or a sibling)
+goes STUCK: (a) `just check`'s `tsc` gate is still sandbox-flaky (this is the second time --
+see the `draft-mutation-migration` incident above -- but this time in a sandbox where *other*
+concurrent rows' clones had `tsc` working fine, so it's a per-clone flake, not systemic); (b)
+a self-report/transcript that shows real, correct `write_file`-equivalent edits and a
+locally-green gate should not be discarded as identical to a genuine zero-edit STUCK just
+because the final classifier's string-match happened to land on the same "STUCK" bucket --
+worth teaching `agent_loop.py`'s STUCK classifier (or at least the self-report) to distinguish
+"made a correct change, official gate flaked" from "never started." Not fixed here (redispatched
+unchanged instead, since the brief is already proven achievable) -- worth revisiting if this row
+goes STUCK a second time.
+
+**Incident (2026-09-11): 2 of the 3 "ready build rows" the dispatcher's own ready-check named
+this tick were not actually dispatchable, for reasons invisible to `needs`/`status`.**
+`dispatch_state.py`'s `dispatch_trigger()` only checks `status == "todo"`, `kind == "build"`, and
+`needs` ids not currently `todo`/`delegated` -- it can't see free-text caveats embedded in a
+row's own `title`. Two of the three named rows failed on inspection of that text: (1)
+`euler-slow-fragments-2`'s title carries a standing maintainer ruling, "hand off to a privileged
+manual session rather than redispatch" (2026-09-01) -- nothing in its `status`/`needs` fields
+reflects this, so it will keep reappearing in every future ready-list forever unless something
+changes its `status` away from `todo` or removes it from the board. (2)
+`module-routing-syntax-build`'s title says outright "Do NOT redispatch this row again until that
+forest question is answered," referring to `stuck-row-triage-module-routing-syntax-build.forest.yaml`,
+which is still `status: live` (unanswered) -- also invisible to `dispatch_trigger()`. A third,
+`dsv-partials-migration`, is nominally unblocked by `needs` (its one listed dependency,
+`partial-application-system-design`, is `status: done`) but its own title says it needs BOTH
+that design ratified AND `source_in_fn` (stream sources inside function bodies) AND partial
+application actually BUILT -- neither a `source_in_fn` build row nor a
+`partial-application-system-build` row exists anywhere on the board, so there is nothing to
+depend on yet and `needs` structurally cannot express this gap. All three were skipped this
+tick rather than dispatched. Not fixed here (would mean either teaching `dispatch_trigger()` to
+parse free-text caveats -- fragile -- or, better, giving the board schema a real `status` value
+for "ready-looking but explicitly blocked" so these rows stop round-tripping through every
+future ready-list): worth fixing before the ready-list is trusted at face value again.
