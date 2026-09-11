@@ -1793,3 +1793,20 @@ tell the agent to do it FIRST, before other edits, so a turn-budget cutoff doesn
 mid-fix) -- flagged for whoever reshapes `draft-mutation-migration`'s brief next, and worth
 watching for on other rows that go STUCK with an unrelated-looking `ts_types` failure in their
 verify tail.
+
+**Incident (2026-09-11): self-report says "just needed more time," transcript says zero
+`write_file` calls across two attempts.** `sort-by-max-by-rust` went STUCK twice back to back
+(`a6ca45e8`, then `b3feba5b` -- a resume seeded with attempt 1's own self-report). Both attempts'
+`-messages.json` show only `run_bash`/`read_file` tool calls, never `write_file`; both hit "no
+repo changes for 12 consecutive turns" and got classified `STUCK: verify output matches a
+previous attempt`. Both self-reports claim "I had gathered everything and was about to make the
+edits, only blocked by session time" -- but attempt 2 started with that exact claim already in
+context (nothing left to gather) and still produced zero edits over its full 30-turn budget. The
+self-report's stated blocker (time) does not match the observed behavior (never starting to
+write). `module-routing-syntax-build`'s same-cycle STUCK (`6bc1de70`) shows the identical
+mechanical shape -- zero writes, 12-turn no-progress cutoff -- but its self-report is honest
+about still being in exploration, so it's plausibly just an under-budgeted first attempt rather
+than the same masking pattern. Not fixed here (raised as `stuck-row-triage` round instead, since
+changing turn budget or brief-shaping strategy is a dispatch-mechanism call, not a per-row one):
+worth checking whether other STUCK rows' self-reports similarly claim a different blocker than
+what their tool-call sequence shows before trusting a self-report at face value.
