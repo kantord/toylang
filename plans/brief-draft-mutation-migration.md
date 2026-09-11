@@ -1,3 +1,11 @@
+**Before anything else**: run `pnpm install` in `site/` (or otherwise make a real `tsc` available,
+e.g. `npm install -g typescript`, or point `$TSC` at one) so `tests/ts_types.rs`'s
+`tsc_accepts_the_declaration_and_consumer` gate does not fail `just check` for reasons unrelated
+to this row's own change. A prior attempt (simple_dispatch.py run 724e4eb6, 2026-09-11) reached
+`just check` with a correct-looking change and failed here, then ran out of turn budget fixing it
+mid-flight -- do this step first, before touching draft.md, so a turn-budget cutoff can't strand
+you mid-fix again.
+
 Board row `draft-mutation-migration`: this is only a **partial** migration -- read carefully,
 do not delete more than what is actually ratified.
 

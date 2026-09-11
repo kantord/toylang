@@ -89,10 +89,13 @@
 - id: sort-by-max-by-checkpoint-go
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Go commit landed clean before
-    starting Rust-source.'
+    starting Rust-source. RULED (wizard submission, sort-by-checkpoint-and-fold-syntax round,
+    2026-09-11): option A, proceed -- verified `git show 1456d9f -- src/emit_go.rs` is a clean
+    +64/-7 diff, `tests/backend_go.rs` gained 4 real tests, full `just test` 423/423 passed. No
+    corruption markers. Dispatch sort-by-max-by-rust next.'
   kind: decide
   needs: [sort-by-max-by-go]
-  status: todo
+  status: done
 
 - id: sort-by-max-by-rust
   issue: gh:177
@@ -189,15 +192,26 @@
 
 - id: module-routing-syntax-build
   issue: gh:167
-  title: 'Implement `@(path)` module-as-function routing-arm syntax -- ruled (module-routing-and-erlang-target round, question module-as-function-routing-design): option C (dedicated routing-arm form) chosen; maintainer refined the spelling from the round''s bare `@path` to parenthesized `@(route-groups/baz.toy)` because it encloses the path expression. See plans/module-routing-research.md. Semantics RULED (module-routing-semantics round, wizard submission 2026-09-07), all four questions:
-    (1) entry-point convention: option C, maintainer freeText leaned toward "the module''s main entry point" (functionally option A''s single fixed-name convention -- implement as a fixed name, e.g. `handle`) while flagging that a way to address a *specific* non-entry function by name is wanted eventually; that is out of scope for this build, do not block on it.
-    (2) dispatch strictness: option A, full strict statically-typed call -- check_module the target file, unify the entry fn''s signature against the arm''s subject/return type exactly like any other call site, no coercion.
-    (3) def visibility: option A, full merge prelude-style -- widen `Origin` from the fixed 2-variant `Copy` enum to `Origin::Module(PathBuf)` (no longer `Copy`; every `HashMap<_, (Origin, bool)>` site needs updating), and prepend the routed module''s `pub` defs to the program''s def list the way `prelude::inject` does.
-    (4) enum-variant collision policy: option B, submodule enum variants are ALWAYS qualified, never bare-resolvable from the caller -- do NOT fold them into the shared `variant_owners` bare-lookup table the way (3) folds defs; this is a deliberate asymmetry between defs and enum variants, not an oversight.
+  title: 'Implement `@(path)` module-as-function routing-arm syntax, PARSING-STUB SCOPE ONLY -- narrowed by wizard ruling (module-routing-syntax-build-scope, 2026-09-11, option A) after the full-scope attempt went STUCK (simple_dispatch.py run 18b20ca4, $0.020025): the agent''s own breadth analysis (5 subsystems -- AST, parser, checker, a non-Copy `Origin` widen rippling through every `HashMap<_, (Origin, bool)>` site, and prelude-style module-def merging) reads as structural, a poor fit for a single-shot dispatch. This row now covers ONLY the agent''s own proposed slice: add the AST variant and make the checker refuse cleanly, no resolution yet.
+    ```
+    // AST: new Expr variant, path stored as a raw string (no resolution yet)
+    Expr::ModuleRoute { path: String, span: Span }
 
-    STUCK (simple_dispatch.py run 18b20ca4, 2026-09-11, $0.020025): agent''s own report says the row is a multi-hour, five-subsystem change (AST, parser, checker, non-Copy Origin widen across every HashMap site, module-def merge) that a single-shot dispatch cannot do in one pass; a narrower parsing-only slice would pass `just check` but not this row''s done-gate. Escalated to maintainer: docs/.grill/module-routing-syntax-build-scope.round.yaml (split vs. park vs. retry as-is). Parked pending that ruling -- do not redispatch.'
+    // checker: refuse cleanly instead of unifying/dispatching
+    Expr::ModuleRoute { .. } =>
+        Err(CheckError::new(span, "module routing not yet implemented")),
+    ```
+    Done-gate: parses `@(path)` into the new AST variant, `just check` passes (the checker rejects it with the message above rather than panicking/unifying), a negative test pins the rejection. Full semantics (dispatch strictness, def-visibility merge, enum-variant collision policy -- all four already ruled, see module-routing-semantics round 2026-09-07 for the record) are OUT of scope here; they move to the new follow-on row `module-routing-semantics-build` below.'
   kind: build
   needs: [file-visibility-tracking-build]
+  prio: 5
+  status: todo
+
+- id: module-routing-semantics-build
+  issue: gh:167
+  title: 'Follow-on from module-routing-syntax-build''s scope split (wizard ruling, module-routing-syntax-build-scope, 2026-09-11, option A): the checker path, the `Origin` widen (`Copy` 2-variant enum -> `Origin::Module(PathBuf)`, no longer `Copy`, every `HashMap<_, (Origin, bool)>` site needs updating), and prelude-style module-def merging for `@(path)` routing. All four semantics questions are already ruled (module-routing-semantics round, wizard submission 2026-09-07): (1) entry-point convention -- fixed name `handle`; (2) dispatch strictness -- full strict statically-typed call, check_module + unify against the entry fn signature, no coercion; (3) def visibility -- full merge prelude-style via the widened `Origin`; (4) enum-variant collision policy -- submodule enum variants always qualified, never folded into the bare `variant_owners` lookup. This row turns those rulings into the real dispatch/merge implementation on top of the parsing stub.'
+  kind: build
+  needs: [module-routing-syntax-build]
   prio: 5
   status: todo
 
@@ -219,11 +233,11 @@
 
 
 - id: draft-mutation-migration
-  title: Record the mutation decisions once they land and delete both mutation sections (draft-split)
+  title: 'Record the mutation decisions once they land and delete both mutation sections (draft-split). STUCK 3/3 attempts (simple_dispatch.py run 724e4eb6, 2026-09-11, $0.043085): attempt 1 got as far as `just check`, which failed on an unrelated gate -- `tsc_accepts_the_declaration_and_consumer` needs a real TypeScript compiler, not installed in the disposable sandbox clone (no `site/node_modules`, no system tsc); the agent had started installing TypeScript into `site/node_modules` to fix it but ran out of turns before re-verifying. Attempts 2 and 3 made zero repo changes for 12 consecutive turns each and were cut short. Decision: narrower redispatch, not escalation -- this is not a scope problem (brief plans/brief-draft-mutation-migration.md is already narrow and well-scoped, per its own done-gate), it is a sandbox environment gap plus turn-budget pressure. Reshape the brief before redispatching: instruct the agent to provision `tsc` FIRST (e.g. `pnpm install` in `site/`, or point `$TSC` at a system install) before touching draft.md, so `just check` does not fail on an unrelated gate late in the run. See plans/simple-dispatch-design.md for the tsc-gap note (affects any row whose sandbox clone runs `just check` without `site/` deps installed).'
   kind: build
   needs: [mutation-semantics-spike, binary-op-multiplicity-design]
   prio: 4
-  status: delegated
+  status: todo
 
 - id: binary-op-multiplicity-design
   title: 'Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update''s spelling -- Q2/Q3 (draft-split). Round 2 answers (multiplicity-and-offload-round2): Q3 RATIFIED -- option B, require One on the right of `=`, forking becomes explicit; maintainer caveat: drop the `$c`-prefixed alias in the option''s preview, "never agreed to prefacing variable names with $" (applies to whatever alias/binding syntax eventually lands, not specific to this row). Q2 still no pick -- maintainer leans B (zip/broadcast) or C (no default, explicit) but wants to understand how much of jq''s magic/expressive power would be lost either way before choosing; needs jq-expressiveness-under-zip-or-explicit-research before a round 3 re-ask. RATIFIED (wizard submission, multiplicity-choicepoint-http round, 2026-09-08): Q2 -- option A, cartesian default. `Vec op Vec` becomes legal and cartesian for every operator (matches jq''s own default, verified against jq 1.8.2), no new builtin. Both Q2 and Q3 now settled; nothing left open for this row.'
@@ -310,6 +324,25 @@
     built, wires in ts-type-generation-build and js-web-escape-hatch-build''s settings). No
     board row or code currently exists for this.'
   kind: build
+  needs: []
+  prio: 4
+  status: todo
+
+- id: infinite-streams-design
+  title: 'Maintainer note (composed 2026-09-09, verbatim): "we need to think about the concept
+    of infinite streams, as distinct types form finite streams. that would solve our issues with
+    the lack of loops by gaining a counter() function that just yield i at each iteration,
+    starting at zero. with that, it is possible to instantly replace while loops (just ignore the
+    value) and for i loops as well (sth like takeUntil, and map); at the same time we would want
+    to be sure that functions that expect a finite stream only accept a finite one; and i guess
+    this may somehow be connected also the ''main loop'' and async concepts?" Needs a grilling
+    round before it becomes build work: whether finite/infinite is a real type-level distinction
+    (a new `Stream<T>` vs `InfiniteStream<T>`, or a marker/effect on the existing `Stream<T>`),
+    what `counter()` and a `takeUntil`-shaped terminator actually look like given toylang has no
+    closures/currying (functions.md: one param max), how a function''s signature states "this
+    only accepts a finite stream," and whether/how this connects to the still-open main-loop and
+    async questions the note itself flags as uncertain.'
+  kind: decide
   needs: []
   prio: 4
   status: todo
