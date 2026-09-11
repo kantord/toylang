@@ -231,35 +231,76 @@
   needs: [sort-by-max-by-checkpoint-jq]
   status: todo
 
-- id: module-routing-syntax-build
+- id: module-routing-syntax-build-ast
   issue: gh:167
-  title: 'Implement `@(path)` module-as-function routing-arm syntax, PARSING-STUB SCOPE ONLY -- narrowed by wizard ruling (module-routing-syntax-build-scope, 2026-09-11, option A) after the full-scope attempt went STUCK (simple_dispatch.py run 18b20ca4, $0.020025): the agent''s own breadth analysis (5 subsystems -- AST, parser, checker, a non-Copy `Origin` widen rippling through every `HashMap<_, (Origin, bool)>` site, and prelude-style module-def merging) reads as structural, a poor fit for a single-shot dispatch. This row now covers ONLY the agent''s own proposed slice: add the AST variant and make the checker refuse cleanly, no resolution yet.
+  title: 'Implement `@(path)` module-as-function routing-arm syntax, step 1/3 -- split from the
+    single `module-routing-syntax-build` row per maintainer ruling (inbox answer on
+    `stuck-row-triage-module-routing-syntax-build.forest.yaml`, 2026-09-11, freeform answer "try
+    to split into a sequence of steps instead of one single big issue" -- same treatment as the
+    sibling `sort-by-max-by-rust` row, ruled identically the same day) after 2 STUCK dispatch
+    attempts (6bc1de70, 301af3a9) both made zero `write_file` calls despite a 30-turn budget,
+    both self-reports saying "still in the exploration phase (reading ast.rs/parse.rs), not
+    blocked" -- reading, not writing, because the full narrowed scope still required locating
+    every place `Expr` is matched exhaustively before touching any of them.
+    This step only: add the bare AST variant, then let the compiler -- not manual grepping --
+    enumerate every touch site.
     ```
     // AST: new Expr variant, path stored as a raw string (no resolution yet)
     Expr::ModuleRoute { path: String, span: Span }
-
-    // checker: refuse cleanly instead of unifying/dispatching
-    Expr::ModuleRoute { .. } =>
-        Err(CheckError::new(span, "module routing not yet implemented")),
     ```
-    Done-gate: parses `@(path)` into the new AST variant, `just check` passes (the checker rejects it with the message above rather than panicking/unifying), a negative test pins the rejection. Full semantics (dispatch strictness, def-visibility merge, enum-variant collision policy -- all four already ruled, see module-routing-semantics round 2026-09-07 for the record) are OUT of scope here; they move to the new follow-on row `module-routing-semantics-build` below.
-    STUCK 2/2 attempts at this narrowed scope (6bc1de70, 301af3a9): both zero `write_file` calls,
-    both cut at "no repo changes for 12 consecutive turns," both self-reports say "still in the
-    exploration phase (reading ast.rs/parse.rs), not blocked." Live triage question open at
-    `docs/.grill/stuck-row-triage-module-routing-syntax-build.forest.yaml` (its own option C:
-    hold for the sibling row''s ruling) -- `sort-by-max-by-rust` hit the identical symptom and was
-    ruled "split into 3 tasks in a sequence" (stuck-row-triage-sort-by-max-by-rust forest,
-    2026-09-11). Do NOT redispatch this row again until that forest question is answered.'
+    Add this variant to `src/ast.rs`, then run `cargo build` (or `just check`) and fix each
+    resulting "non-exhaustive patterns" error one at a time by adding a minimal placeholder arm
+    at that site (e.g. `Expr::ModuleRoute { .. } => unreachable!("module routing: AST-only stub,
+    not wired yet")`, or whatever idiom the surrounding match already uses for stub arms) --
+    known sites include `src/emit_toylang.rs` and 4 separate `match expr {` blocks in
+    `src/check/mod.rs` (lines ~2529, ~3943, ~4078, ~4670), but do not hand-derive the full list;
+    let each compile error name the next site. Nothing constructs the variant yet (no parser
+    change), so this step changes no runtime behavior. Done-gate: `cargo build` / `just check`
+    compiles clean with the new variant present and unreachable.'
   kind: build
   needs: [file-visibility-tracking-build]
   prio: 5
   status: todo
 
+- id: module-routing-syntax-build-parse
+  issue: gh:167
+  title: 'Implement `@(path)` module-as-function routing-arm syntax, step 2/3 -- add lexer/parser
+    support so `@("path")` parses into the `Expr::ModuleRoute { path, span }` variant added in
+    `module-routing-syntax-build-ast`. No checker change here; whatever placeholder arm step 1
+    left in `src/check/mod.rs` will now become reachable once parsing constructs the variant, so
+    this step must also swap that specific placeholder for a real (still stub-level) arm that
+    does not panic -- it can stay a plain `Err(...)` refusal at this point since the exact wording
+    lands in step 3. Done-gate: `just check` passes; a parse-only test confirms `@("path")`
+    parses into the new AST node without panicking end-to-end.'
+  kind: build
+  needs: [module-routing-syntax-build-ast]
+  prio: 5
+  status: todo
+
+- id: module-routing-syntax-build-checker
+  issue: gh:167
+  title: 'Implement `@(path)` module-as-function routing-arm syntax, step 3/3 -- replace the
+    checker''s stub arm from step 2 with the real clean-refusal error and pin it with a test.
+    ```
+    // checker: refuse cleanly instead of unifying/dispatching
+    Expr::ModuleRoute { .. } =>
+        Err(CheckError::new(span, "module routing not yet implemented")),
+    ```
+    Done-gate: `just check` passes (the checker rejects `@(path)` with the message above rather
+    than panicking/unifying), a negative test pins the rejection. Full semantics (dispatch
+    strictness, def-visibility merge, enum-variant collision policy -- all four already ruled,
+    see module-routing-semantics round 2026-09-07) are OUT of scope here; they stay with
+    `module-routing-semantics-build` below.'
+  kind: build
+  needs: [module-routing-syntax-build-parse]
+  prio: 5
+  status: todo
+
 - id: module-routing-semantics-build
   issue: gh:167
-  title: 'Follow-on from module-routing-syntax-build''s scope split (wizard ruling, module-routing-syntax-build-scope, 2026-09-11, option A): the checker path, the `Origin` widen (`Copy` 2-variant enum -> `Origin::Module(PathBuf)`, no longer `Copy`, every `HashMap<_, (Origin, bool)>` site needs updating), and prelude-style module-def merging for `@(path)` routing. All four semantics questions are already ruled (module-routing-semantics round, wizard submission 2026-09-07): (1) entry-point convention -- fixed name `handle`; (2) dispatch strictness -- full strict statically-typed call, check_module + unify against the entry fn signature, no coercion; (3) def visibility -- full merge prelude-style via the widened `Origin`; (4) enum-variant collision policy -- submodule enum variants always qualified, never folded into the bare `variant_owners` lookup. This row turns those rulings into the real dispatch/merge implementation on top of the parsing stub.'
+  title: 'Follow-on from module-routing-syntax-build-checker''s scope split (wizard ruling, module-routing-syntax-build-scope, 2026-09-11, option A): the checker path, the `Origin` widen (`Copy` 2-variant enum -> `Origin::Module(PathBuf)`, no longer `Copy`, every `HashMap<_, (Origin, bool)>` site needs updating), and prelude-style module-def merging for `@(path)` routing. All four semantics questions are already ruled (module-routing-semantics round, wizard submission 2026-09-07): (1) entry-point convention -- fixed name `handle`; (2) dispatch strictness -- full strict statically-typed call, check_module + unify against the entry fn signature, no coercion; (3) def visibility -- full merge prelude-style via the widened `Origin`; (4) enum-variant collision policy -- submodule enum variants always qualified, never folded into the bare `variant_owners` lookup. This row turns those rulings into the real dispatch/merge implementation on top of the parsing stub.'
   kind: build
-  needs: [module-routing-syntax-build]
+  needs: [module-routing-syntax-build-checker]
   prio: 5
   status: todo
 
