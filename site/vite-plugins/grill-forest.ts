@@ -240,15 +240,18 @@ export function grillForest(): Plugin {
           res.end(`${file} is not valid YAML: ${e instanceof Error ? e.message : String(e)}`)
           return
         }
+        // Unlike a YAML parse failure (above), a validation failure means the file parsed fine
+        // but its content doesn't match the schema -- a real authoring mistake, not a momentary
+        // mid-write race. Falling back to `lastGood` here was tried and is wrong: a coordinator
+        // writing an `answer` in the wrong shape (a bare string instead of the
+        // `{sourceOption, content, wasEdited, answeredAt}` object) parsed as valid YAML, so this
+        // branch ran, found a cached "live" response, and silently kept serving THAT forever --
+        // the client never saw the node as answered, never saw an error either, and the human's
+        // own already-submitted local pending answer just sat showing "Sending..." with nothing
+        // on screen to explain why. A parseable-but-invalid file gets a real error every time,
+        // not a silent stale substitute.
         const error = validateForest(parsed)
         if (error) {
-          const cached = lastGood.get(topic)
-          if (cached) {
-            res.statusCode = 200
-            res.setHeader("Content-Type", "application/json")
-            res.end(JSON.stringify(cached))
-            return
-          }
           res.statusCode = 400
           res.end(`${file}: ${error}`)
           return
