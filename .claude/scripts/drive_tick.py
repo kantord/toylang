@@ -127,6 +127,61 @@ def safe_signal(label: str, fn, *args, default=None):
         return default
 
 
+def _process_delegated_row(row_id: str, live_rows: set[str]) -> tuple[str, list[str]]:
+    """One delegated row's contribution to trigger/state. Kept as its own
+    function -- and called through safe_signal() per row, not once for the
+    whole loop -- because bash ran EACH row's status lookup as its own
+    subprocess: a schema-drift crash on one row_id (e.g. a dispatch-log.csv
+    row missing a column) produced empty output for that row only, while
+    every other row_id's independent subprocess still succeeded. Wrapping
+    the whole loop in one safe_signal (round-1 fix) only isolated the
+    delegated-row SIGNAL as a unit -- one bad row would still have silently
+    erased every OTHER healthy row's trigger (e.g. a real GREEN-row landing
+    instruction) for that tick. This restores bash's actual per-row
+    granularity."""
+    if row_id in live_rows:
+        return "", [f"[{row_id}: dispatch still running]"]  # still building -- not landed, not stuck
+    row = dispatch_state.latest_row(row_id)
+    if row is None:
+        # Delegated, no live dispatch process, and no dispatch-log.csv row
+        # at all for this row -- the dispatcher itself was killed abruptly
+        # (reboot, OOM, kill -9) before it ever reached its own finally
+        # block (which always appends a row, even on CRASH).
+        return (f"row {row_id} was delegated but no dispatch ever completed "
+                "(dispatcher likely killed abruptly) -- reset status: todo "
+                "so it redispatches fresh"), []
+    status, cost = row["status"], row["cost_usd"]
+    report_path = dispatch_state.self_report_path_for(row_id, row["run_id"])
+    state = [f"[{row_id}: {status} ${cost}]"]
+    if status == "GREEN":
+        return (f"row {row_id} is GREEN with a verified patch at "
+                f"{row.get('patch_path', '')} -- land it: uv run --project "
+                f".claude/scripts .claude/scripts/land_lane.py land-patch "
+                f"{row_id} {row.get('patch_path', '')}"), state
+    if status in ("STUCK", "RED"):
+        # The model's own real-time explanation of what blocked it -- read
+        # directly, no transcript reconstruction needed (see agent_loop.py's
+        # self_report_blocker and plans/simple-dispatch-design.md's "Course
+        # correction" section for why this replaced a separate LLM reviewer).
+        self_report = ""
+        if report_path and Path(report_path).is_file():
+            self_report = f" -- agent's own report: {Path(report_path).read_text(errors='replace')}"
+        return (f"row {row_id} is {status} (cost ${cost}){self_report} -- "
+                "decide: narrower redispatch per the report, or a decide-row escalation"), state
+    if status == "TIMEOUT":
+        return (f"row {row_id} timed out (cost ${cost}) -- likely an undersized "
+                "budget, not unsolvable; consider one retry with a larger "
+                "--overall-timeout before escalating"), state
+    if status == "SETUP_FAILED":
+        return (f"row {row_id} failed to even start (host/sandbox setup issue, "
+                f"cost ${cost}) -- plausibly transient (network, sandbox boot); "
+                "worth one plain retry"), state
+    if status == "FATAL":
+        return (f"row {row_id} hit FATAL (bad key or no OpenRouter credit) -- "
+                "fix the account before redispatching anything"), state
+    return "", state
+
+
 def _delegated_row_signal() -> tuple[str, list[str]]:
     # Delegated-row state, read directly from simple_dispatch.py's own plain
     # surfaces (plans/dispatch-log.csv + ~/.cache/toylang-simple-dispatch/results/)
@@ -143,61 +198,12 @@ def _delegated_row_signal() -> tuple[str, list[str]]:
     delegated = [r["id"] for r in board_rows if r.get("status") == "delegated"]
     live_rows = set(dispatch_state.live_row_ids())
     for row_id in delegated:
-        if row_id in live_rows:
-            state_parts.append(f"[{row_id}: dispatch still running]")
-            continue  # still building -- not landed, not stuck
-        row = dispatch_state.latest_row(row_id)
-        if row is None:
-            # Delegated, no live dispatch process, and no dispatch-log.csv
-            # row at all for this row -- the dispatcher itself was killed
-            # abruptly (reboot, OOM, kill -9) before it ever reached its own
-            # finally block (which always appends a row, even on CRASH).
-            trigger = join_trigger(
-                trigger,
-                f"row {row_id} was delegated but no dispatch ever completed "
-                "(dispatcher likely killed abruptly) -- reset status: todo "
-                "so it redispatches fresh")
-            continue
-        status, cost = row["status"], row["cost_usd"]
-        report_path = dispatch_state.self_report_path_for(row_id, row["run_id"])
-        state_parts.append(f"[{row_id}: {status} ${cost}]")
-        if status == "GREEN":
-            trigger = join_trigger(
-                trigger,
-                f"row {row_id} is GREEN with a verified patch at "
-                f"{row.get('patch_path', '')} -- land it: uv run --project "
-                f".claude/scripts .claude/scripts/land_lane.py land-patch "
-                f"{row_id} {row.get('patch_path', '')}")
-        elif status in ("STUCK", "RED"):
-            # The model's own real-time explanation of what blocked it --
-            # read directly, no transcript reconstruction needed (see
-            # agent_loop.py's self_report_blocker and
-            # plans/simple-dispatch-design.md's "Course correction" section
-            # for why this replaced a separate LLM reviewer).
-            self_report = ""
-            if report_path and Path(report_path).is_file():
-                self_report = f" -- agent's own report: {Path(report_path).read_text(errors='replace')}"
-            trigger = join_trigger(
-                trigger,
-                f"row {row_id} is {status} (cost ${cost}){self_report} -- "
-                "decide: narrower redispatch per the report, or a decide-row escalation")
-        elif status == "TIMEOUT":
-            trigger = join_trigger(
-                trigger,
-                f"row {row_id} timed out (cost ${cost}) -- likely an undersized "
-                "budget, not unsolvable; consider one retry with a larger "
-                "--overall-timeout before escalating")
-        elif status == "SETUP_FAILED":
-            trigger = join_trigger(
-                trigger,
-                f"row {row_id} failed to even start (host/sandbox setup issue, "
-                f"cost ${cost}) -- plausibly transient (network, sandbox boot); "
-                "worth one plain retry")
-        elif status == "FATAL":
-            trigger = join_trigger(
-                trigger,
-                f"row {row_id} hit FATAL (bad key or no OpenRouter credit) -- "
-                "fix the account before redispatching anything")
+        row_trigger, row_state = safe_signal(
+            f"delegated row {row_id}", _process_delegated_row, row_id, live_rows,
+            default=("", [f"[{row_id}: status lookup failed, see stderr]"]))
+        if row_trigger:
+            trigger = join_trigger(trigger, row_trigger)
+        state_parts += row_state
     return trigger, state_parts
 
 

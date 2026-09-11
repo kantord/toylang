@@ -71,12 +71,30 @@ def run_worker(model: str, brief: str, lane: str, log_path: Path) -> int:
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=errf,
             text=True, env=env, start_new_session=True,
         )
-        with open(log_path, "w") as log:
-            for line in proc.stdout:
-                log.write(line)
-                log.flush()
-                opencode_peek.process_line(line)
-    proc.wait()
+        try:
+            with open(log_path, "w") as log:
+                for line in proc.stdout:
+                    log.write(line)
+                    log.flush()
+                    try:
+                        opencode_peek.process_line(line)
+                    except Exception as e:
+                        # Must not crash this loop: under bash this ran as
+                        # its own pipeline stage (`tee ... | python3
+                        # opencode-peek.py`), so a crash there was contained
+                        # to that stage and the shell still waited for
+                        # `opencode run` to fully exit before continuing.
+                        # In-process, an uncaught exception here would skip
+                        # proc.wait() below (leaving `opencode run` an
+                        # orphaned, unreaped process) and crash before
+                        # append_telemetry() ever runs, silently dropping
+                        # the run's lanes.csv row -- something bash always
+                        # wrote regardless of rendering hiccups.
+                        print(f"[opencode-worker] opencode_peek.process_line failed "
+                              f"on one line (non-fatal): {e}", file=sys.stderr)
+        finally:
+            proc.stdout.close()
+            proc.wait()
     return proc.returncode
 
 

@@ -433,3 +433,40 @@ originals: flock/fd/CLOEXEC semantics, the `claude -p` bounding and live
 in-process draining, `git status --porcelain -z` NUL-splitting, the
 generated-file regen idiom, the 36x5s busy-checkout retry, every
 cross-reference site. `just check`: 436/436 pass after the fixes.
+
+### Implementation-review round 2 of 2 (final)
+
+Two real findings, both the same crash-isolation bug class round 1 already
+fixed once, found in two places round 1 didn't reach:
+
+1. **MEDIUM-HIGH**: round 1's `safe_signal()` wrap around the whole
+   delegated-row loop isolated at the wrong granularity -- bash ran EACH
+   row's status lookup as its own subprocess, so one malformed
+   dispatch-log.csv row (missing `start_time`, say) only zeroed out THAT
+   row; every other row_id's independent subprocess still succeeded and
+   could still trigger a real GREEN-row landing. Wrapping the whole loop in
+   one `safe_signal` meant one bad row silently erased every OTHER healthy
+   row's trigger for that tick too. Fixed: extracted the per-row body into
+   `_process_delegated_row()` and moved the `safe_signal()` call inside the
+   loop, one call per row_id -- restores bash's actual per-row isolation.
+   Verified with a direct repro: a crash on a synthetic "bad-row" no longer
+   drops two other real "good-row" GREEN triggers processed in the same
+   loop.
+2. **HIGH**: `opencode_worker.py` (still live -- invoked directly by the
+   `enwiro-delegate` skill, not dead code) had the identical gap round 1
+   fixed in `drive_tick.py`: the in-process `opencode_peek.process_line()`
+   call inside `run_worker()`'s stdout-draining loop had no exception
+   boundary. Under bash this ran as a separate pipeline stage
+   (`tee ... | python3 opencode-peek.py`), so a crash there was contained
+   and the shell still waited for `opencode run` to fully exit before
+   continuing. In-process, an uncaught exception there skipped
+   `proc.wait()` (orphaning the still-running `opencode run` process,
+   bounded only by its own 3600s+30s external timeout) and crashed before
+   `append_telemetry()` ever ran, silently dropping the run's `lanes.csv`
+   row. Fixed with the same try/except-and-continue pattern, plus a
+   `try/finally` around the drain loop so `proc.stdout.close()`/`proc.wait()`
+   always run regardless of what happens while rendering a line.
+
+Both fixes verified (real repro for the per-row isolation; syntax + ruff +
+full `just check` for both). No further findings after this pass -- both
+rounds of implementation review are complete.
