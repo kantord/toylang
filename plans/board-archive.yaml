@@ -2162,3 +2162,14 @@
   needs: []
   prio: 4
   status: done
+
+- id: toylang-conf-yaml-build
+  issue: gh:160
+  title: 'Follow-up split from js-node-web-split-build (archived, gh:160 ruling): add
+    `toylang.conf.yaml` as the compiler config file (selects JS target Node vs Web, and once
+    built, wires in ts-type-generation-build and js-web-escape-hatch-build''s settings). No
+    board row or code currently exists for this.'
+  kind: build
+  needs: []
+  prio: 4
+  status: done
