@@ -97,19 +97,54 @@
   needs: [sort-by-max-by-go]
   status: done
 
-- id: sort-by-max-by-rust
+- id: sort-by-max-by-rust-helpers
   issue: gh:177
-  title: 'sort_by and max_by (gh:177) -- emit for the Rust-source backend only (src/emit_rs.rs).'
+  title: 'sort_by and max_by (gh:177), Rust-source backend, step 1/3 -- split from the single
+    `sort-by-max-by-rust` row per maintainer ruling (stuck-row-triage-sort-by-max-by-rust forest,
+    2026-09-11, freeform answer "split into 3 tasks in a sequence") after 3 STUCK dispatch
+    attempts (a6ca45e8, b3feba5b, 7bb48a6c) all made zero `write_file` calls despite self-reports
+    claiming full readiness -- including a resumed attempt fed the prior self-report verbatim,
+    which still produced nothing across a full 30-turn budget. Maintainer thesis: the model keeps
+    re-deriving context every attempt and never crosses into edit mode; a smaller single-purpose
+    slice is the fix. This step only: add `tl_sort_by<T: Clone, K: Ord>` and
+    `tl_max_by<T: Clone, K: Ord>` helper functions to `src/emit_rs.rs` (model on the existing
+    `tl_sort`/`tl_max` helpers near lines 189/215; `tl_sort_by` stable-sorts by a projected key
+    via `slice::sort_by_key`, `tl_max_by` does a tie-aware fold picking the first max on ties, per
+    the landed Go commit `1456d9f`). No wiring into the emitter''s TIR cases yet, no tests yet --
+    just the two helper functions compiling standalone.'
   kind: build
   needs: [sort-by-max-by-checkpoint-go]
-  status: delegated
+  status: todo
+
+- id: sort-by-max-by-rust-wiring
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), Rust-source backend, step 2/3 -- wire the helpers from
+    `sort-by-max-by-rust-helpers` into the emitter: add `tl_sort_by`/`tl_max_by` to the
+    conditional-inclusion table (~src/emit_rs.rs:866-869) and replace the two
+    `unreachable!("sort_by/max_by emission lands in a later step")` arms (~line 1587,
+    `Kind::SortBy`/`Kind::MaxBy`) with real codegen calling the new helpers. No tests yet -- this
+    step is done when the emitter compiles and no longer panics on `sort_by`/`max_by` TIR nodes.'
+  kind: build
+  needs: [sort-by-max-by-rust-helpers]
+  status: todo
+
+- id: sort-by-max-by-rust-tests
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), Rust-source backend, step 3/3 -- add the four backend
+    tests to `tests/backend_rust.rs` mirroring the landed Go commit''s tests (`git show 1456d9f --
+    tests/backend_go.rs` for the reference set), covering `sort_by`/`max_by` including the
+    tie-breaking (first-on-ties) case. Run `just test` to verify against `sort-by-max-by-rust-wiring`''s
+    codegen.'
+  kind: build
+  needs: [sort-by-max-by-rust-wiring]
+  status: todo
 
 - id: sort-by-max-by-checkpoint-rust
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Rust-source commit landed clean
     before starting Lua.'
   kind: decide
-  needs: [sort-by-max-by-rust]
+  needs: [sort-by-max-by-rust-tests]
   status: todo
 
 - id: sort-by-max-by-lua
@@ -201,11 +236,18 @@
     Expr::ModuleRoute { .. } =>
         Err(CheckError::new(span, "module routing not yet implemented")),
     ```
-    Done-gate: parses `@(path)` into the new AST variant, `just check` passes (the checker rejects it with the message above rather than panicking/unifying), a negative test pins the rejection. Full semantics (dispatch strictness, def-visibility merge, enum-variant collision policy -- all four already ruled, see module-routing-semantics round 2026-09-07 for the record) are OUT of scope here; they move to the new follow-on row `module-routing-semantics-build` below.'
+    Done-gate: parses `@(path)` into the new AST variant, `just check` passes (the checker rejects it with the message above rather than panicking/unifying), a negative test pins the rejection. Full semantics (dispatch strictness, def-visibility merge, enum-variant collision policy -- all four already ruled, see module-routing-semantics round 2026-09-07 for the record) are OUT of scope here; they move to the new follow-on row `module-routing-semantics-build` below.
+    STUCK 2/2 attempts at this narrowed scope (6bc1de70, 301af3a9): both zero `write_file` calls,
+    both cut at "no repo changes for 12 consecutive turns," both self-reports say "still in the
+    exploration phase (reading ast.rs/parse.rs), not blocked." Live triage question open at
+    `docs/.grill/stuck-row-triage-module-routing-syntax-build.forest.yaml` (its own option C:
+    hold for the sibling row''s ruling) -- `sort-by-max-by-rust` hit the identical symptom and was
+    ruled "split into 3 tasks in a sequence" (stuck-row-triage-sort-by-max-by-rust forest,
+    2026-09-11). Do NOT redispatch this row again until that forest question is answered.'
   kind: build
   needs: [file-visibility-tracking-build]
   prio: 5
-  status: delegated
+  status: todo
 
 - id: module-routing-semantics-build
   issue: gh:167
@@ -233,11 +275,19 @@
 
 
 - id: draft-mutation-migration
-  title: 'Record the mutation decisions once they land and delete both mutation sections (draft-split). STUCK 3/3 attempts (simple_dispatch.py run 724e4eb6, 2026-09-11, $0.043085): attempt 1 got as far as `just check`, which failed on an unrelated gate -- `tsc_accepts_the_declaration_and_consumer` needs a real TypeScript compiler, not installed in the disposable sandbox clone (no `site/node_modules`, no system tsc); the agent had started installing TypeScript into `site/node_modules` to fix it but ran out of turns before re-verifying. Attempts 2 and 3 made zero repo changes for 12 consecutive turns each and were cut short. Decision: narrower redispatch, not escalation -- this is not a scope problem (brief plans/brief-draft-mutation-migration.md is already narrow and well-scoped, per its own done-gate), it is a sandbox environment gap plus turn-budget pressure. Reshape the brief before redispatching: instruct the agent to provision `tsc` FIRST (e.g. `pnpm install` in `site/`, or point `$TSC` at a system install) before touching draft.md, so `just check` does not fail on an unrelated gate late in the run. See plans/simple-dispatch-design.md for the tsc-gap note (affects any row whose sandbox clone runs `just check` without `site/` deps installed).'
+  title: 'Record the mutation decisions once they land and delete both mutation sections (draft-split). STUCK 3/3 attempts (simple_dispatch.py run 724e4eb6, 2026-09-11, $0.043085): attempt 1 got as far as `just check`, which failed on an unrelated gate -- `tsc_accepts_the_declaration_and_consumer` needs a real TypeScript compiler, not installed in the disposable sandbox clone (no `site/node_modules`, no system tsc); the agent had started installing TypeScript into `site/node_modules` to fix it but ran out of turns before re-verifying. Attempts 2 and 3 made zero repo changes for 12 consecutive turns each and were cut short. Decision: narrower redispatch, not escalation -- this is not a scope problem (brief plans/brief-draft-mutation-migration.md is already narrow and well-scoped, per its own done-gate), it is a sandbox environment gap plus turn-budget pressure. Reshape the brief before redispatching: instruct the agent to provision `tsc` FIRST (e.g. `pnpm install` in `site/`, or point `$TSC` at a system install) before touching draft.md, so `just check` does not fail on an unrelated gate late in the run. See plans/simple-dispatch-design.md for the tsc-gap note (affects any row whose sandbox clone runs `just check` without `site/` deps installed).
+    STUCK 4/4 (b209bcab, 2026-09-11, $0.013): the tsc reshape worked -- self-report confirms it
+    unpacked TypeScript into site/node_modules/.bin/tsc and verified the gate passes -- but it
+    still ran out of turns before making any draft.md/reference-doc edits, same "no repo changes
+    for 12 consecutive turns" cutoff as the sibling STUCK rows this cycle. This is now the same
+    zero-write shape flagged for `sort-by-max-by-rust`/`module-routing-syntax-build` (see
+    plans/simple-dispatch-design.md); do not redispatch unchanged a 5th time without applying
+    whatever fix those rows'' triage settles on (smaller single-purpose slice, edit-first brief
+    ordering).'
   kind: build
   needs: [mutation-semantics-spike, binary-op-multiplicity-design]
   prio: 4
-  status: delegated
+  status: todo
 
 - id: binary-op-multiplicity-design
   title: 'Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update''s spelling -- Q2/Q3 (draft-split). Round 2 answers (multiplicity-and-offload-round2): Q3 RATIFIED -- option B, require One on the right of `=`, forking becomes explicit; maintainer caveat: drop the `$c`-prefixed alias in the option''s preview, "never agreed to prefacing variable names with $" (applies to whatever alias/binding syntax eventually lands, not specific to this row). Q2 still no pick -- maintainer leans B (zip/broadcast) or C (no default, explicit) but wants to understand how much of jq''s magic/expressive power would be lost either way before choosing; needs jq-expressiveness-under-zip-or-explicit-research before a round 3 re-ask. RATIFIED (wizard submission, multiplicity-choicepoint-http round, 2026-09-08): Q2 -- option A, cartesian default. `Vec op Vec` becomes legal and cartesian for every operator (matches jq''s own default, verified against jq 1.8.2), no new builtin. Both Q2 and Q3 now settled; nothing left open for this row.'

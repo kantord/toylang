@@ -1810,3 +1810,29 @@ than the same masking pattern. Not fixed here (raised as `stuck-row-triage` roun
 changing turn budget or brief-shaping strategy is a dispatch-mechanism call, not a per-row one):
 worth checking whether other STUCK rows' self-reports similarly claim a different blocker than
 what their tool-call sequence shows before trusting a self-report at face value.
+
+**Incident (2026-09-11): the same zero-`write_file` shape now spans 3 unrelated rows, and it
+survived a targeted brief fix.** This cycle's batch redispatched `sort-by-max-by-rust`,
+`module-routing-syntax-build`, and `draft-mutation-migration` together; all three came back
+STUCK again with the identical "no repo changes for 12 consecutive turns" cutoff.
+`draft-mutation-migration` is the interesting data point: its brief was reshaped this same
+cycle to fix a confirmed real blocker (no `tsc` in the sandbox), and the self-report confirms
+the fix worked -- it unpacked TypeScript and verified the gate passes -- but it *still* ran out
+of turns before writing anything. So this isn't (only) the tsc gap, and it isn't (only) a
+scope problem on any one row: three different rows, three different edits, same shape. Reads
+now like a `deepseek/deepseek-v4-flash-0731` (the cheap tier) pattern -- burns its turn budget
+re-deriving/re-reading context and rarely crosses into edit mode -- rather than anything
+row-specific. Applied for `sort-by-max-by-rust` per the maintainer's own forest ruling (split
+into 3 single-purpose sequential rows, see `sort-by-max-by-rust-helpers/-wiring/-tests` in
+plans/board.yaml); `module-routing-syntax-build`'s own forest question is still open pending
+whether the same fix applies there; `draft-mutation-migration` has no forest ruling at all yet
+and was left STUCK-and-not-redispatched this tick rather than reshaped blind a 5th time.
+
+**Process gap this same tick: the maintainer-input check only scanned `*.round.yaml`, missing
+`*.forest.yaml`.** The `sort-by-max-by-rust` batch redispatch above was launched based on the
+row's own self-report (plausible-looking, "just needed more time") without noticing a live
+forest-round triage on the exact same question, which a maintainer answer had already landed
+for by the time the redispatch finished ("split into 3 tasks," not "redispatch unchanged").
+The redispatch wasn't wrong given what was checked, but what was checked was incomplete --
+`docs/.grill/` needs to be scanned for BOTH `*.round.yaml` and `*.forest.yaml` before deciding
+a STUCK row's next action, not just the wizard-round form.

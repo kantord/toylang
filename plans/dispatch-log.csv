@@ -17,3 +17,6 @@ e1575164,toylang-conf-yaml-build,deepseek/deepseek-v4-flash-0731,2026-09-10T22:5
 a6ca45e8,sort-by-max-by-rust,deepseek/deepseek-v4-flash-0731,2026-09-11T12:34:00.840215+00:00,2026-09-11T12:37:00.151797+00:00,179.3,STUCK,0.014168,
 6bc1de70,module-routing-syntax-build,deepseek/deepseek-v4-flash-0731,2026-09-11T12:44:44.824139+00:00,2026-09-11T12:45:56.474287+00:00,71.7,STUCK,0.013585,
 b3feba5b,sort-by-max-by-rust,deepseek/deepseek-v4-flash-0731,2026-09-11T12:44:44.823930+00:00,2026-09-11T12:48:03.696386+00:00,198.9,STUCK,0.023195,
+301af3a9,module-routing-syntax-build,deepseek/deepseek-v4-flash-0731,2026-09-11T14:54:04.287776+00:00,2026-09-11T14:55:37.815346+00:00,93.5,STUCK,0.009226,
+7bb48a6c,sort-by-max-by-rust,deepseek/deepseek-v4-flash-0731,2026-09-11T14:54:04.287342+00:00,2026-09-11T14:56:54.465859+00:00,170.2,STUCK,0.016960,
+b209bcab,draft-mutation-migration,deepseek/deepseek-v4-flash-0731,2026-09-11T14:54:04.288847+00:00,2026-09-11T14:56:54.954541+00:00,170.7,STUCK,0.012986,
