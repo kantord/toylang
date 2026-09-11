@@ -1,0 +1,204 @@
+# .claude/scripts/ as a proper uv-managed Python project -- plan
+
+Explicit user directive: make the project's tooling scripts (`.claude/scripts/`) a
+proper Python project managed with `uv`, with no shell scripts left. This document is
+the PLAN, reviewed adversarially before any code changes (per the user's explicit
+process: 3 rounds of skeptic review on this plan, then implementation, then 2 more
+rounds of skeptic review on the implementation).
+
+## Current state (surveyed directly, not assumed)
+
+`.claude/scripts/` today:
+
+Python already (keep as `.py`, migrate into the new project structure, no logic change
+unless a review round finds a real reason to):
+- `agent_loop.py`, `simple_dispatch.py`, `dispatch-state.py` -- this session's own work
+- `board-archive.py`, `board-lint.py` -- generic board hygiene
+- `lane-telemetry.py` -- a live `SessionEnd` hook (`.claude/settings.json`), generic
+  session telemetry, unrelated to dispatch
+- `opencode-peek.py` -- live-view renderer, used only by `opencode-worker.sh`
+- `tick-stream.py` -- colorizes `drive-tick.sh`'s `claude -p --output-format
+  stream-json` feed; load-bearing for the coordinator loop
+
+Shell, to be converted to Python:
+- `drive-loop.sh` (821 bytes) -- trivial `while true` wrapper firing `drive-tick.sh`
+  on an interval, with periodic `audit` ticks
+- `drive-tick.sh` (~600 lines as of the 2026-09-11 rewrite) -- the coordinator's own
+  mechanical preamble: lock acquisition, dev-server revival, delegated-row state via
+  `dispatch-state.py`, trigger computation, the `claude -p` invocation piped through
+  `tick-stream.py`, coordinator-auth-failure detection
+- `land-lane.sh` (~370 lines as of the 2026-09-11 `land-patch` addition) -- the
+  serial landing queue: flock, worktree/branch materialization, the full `just test`
+  gate in a throwaway worktree, generated-file conflict auto-resolution, bounded-retry
+  merge into the busy main checkout, push, retry/escalation on failure
+- `opencode-worker.sh` (~150 lines) -- launches one `opencode run` turn for the
+  explicit visible-kitty-window delegation variant (`enwiro-delegate` skill), pipes
+  through `opencode-peek.py`, fires `land-lane.sh land` on exit
+- `tick-peek.sh` (443 bytes) -- trivial: tails the coordinator's own tick transcript
+  through `tick-stream.py` for a human watching live
+
+Real complexity to preserve, not simplify away by accident: `land-lane.sh` and
+`drive-tick.sh` are both the product of many real, individually-cited incidents (fd
+leaks, flock stalls, subshell-elision hangs, bash/pgrep race conditions) -- every one
+of those comments is a real, previously-hit bug, not decoration. The migration's job
+is to preserve every one of those fixes' actual EFFECT in Python, not just their shape
+in bash.
+
+## Proposed project structure
+
+- `pyproject.toml` at `.claude/scripts/` (making that directory a real `uv` project
+  root, not the repo root -- the repo root's own Rust/Cargo project should not gain an
+  unrelated Python project file mixed into it).
+- `dependencies = ["pyyaml"]` -- the only real third-party dependency actually used
+  today (`board-archive.py`, `board-lint.py`, `dispatch-state.py`'s
+  `dispatch_trigger()`). Everything else (`urllib`, `subprocess`, `fcntl`, `json`,
+  `csv`, `argparse`) is stdlib.
+- `uv.lock` committed alongside, so every invocation resolves identically.
+- Each script keeps its CURRENT filename, `.sh` -> `.py`, in the SAME directory --
+  NOT reorganized into an installable package (`src/toylang_tools/...`) with
+  `[project.scripts]` console entries. Reasoning, not just inertia: dozens of existing
+  references across skills/docs/scripts hardcode paths like
+  `.claude/scripts/drive-tick.sh` and `nohup python3 .claude/scripts/X.py`; keeping
+  the same directory and an analogous filename (`drive-tick.sh` -> `drive_tick.py`,
+  matching Python's own module-naming convention) means every reference needs a
+  mechanical rename, not a structural rewrite, and every script stays trivially
+  runnable via `python3 <path>` exactly like today -- `uv` governs the environment
+  and dependency resolution, not the invocation shape.
+- Invocation: `uv run --project .claude/scripts <path-to-script>.py <args>` from
+  anywhere (an absolute `--project` path, resolved once per call site, works
+  regardless of caller cwd -- confirmed this is how `uv run` expects to be pointed at
+  a non-cwd project). Every current `python3 .claude/scripts/X.py` call site becomes
+  `uv run --project /home/kantord/repos/toylang/.claude/scripts
+  /home/kantord/repos/toylang/.claude/scripts/X.py` (or a `$SCRIPTS`-relative
+  equivalent inside scripts that already carry that variable).
+
+## Per-file migration
+
+1. **`drive_loop.py`** (from `drive-loop.sh`): trivial. A `while True` loop calling
+   `subprocess.run` on `drive_tick.py` (via `uv run`) at `DRIVE_INTERVAL`, with a
+   periodic audit tick. Preserve: the exact interval/audit-cadence logic already in
+   the bash version (read it fresh at implementation time, don't guess the numbers).
+
+2. **`land_lane.py`** (from `land-lane.sh`): the highest-risk conversion. Preserve
+   exactly:
+   - The `flock`-on-`land.lock` serialization (`fcntl.flock` in Python has the same
+     underlying semantics; the `-w 1800` bounded wait becomes a `signal.alarm`-based
+     timeout or a manual retry-with-deadline loop around a non-blocking
+     `LOCK_EX | LOCK_NB` attempt -- needs a real decision, flagged for review below).
+   - `fire_tick()`'s detached-background invariant: bash's `(cmd &) 8>&-` pattern
+     (spawn detached, explicitly close the inherited lock fd in the child) becomes
+     `subprocess.Popen(..., start_new_session=True, close_fds=True)` -- `close_fds`
+     defaults to `True` in Python 3 already (unlike bash, which inherits fds by
+     default), which needs to be confirmed as an ACTUAL equivalent, not assumed
+     during review, since the whole comment trail in `land-lane.sh` exists because
+     fd inheritance bugs were hit for real multiple times.
+   - `worker_free()`'s `pgrep`+`/proc/<pid>/cwd` scan: straightforward
+     `subprocess.run(["pgrep", ...])` + `os.readlink(f"/proc/{pid}/cwd")`.
+   - The generated-file conflict auto-resolution, the bounded 36x5s retry around a
+     busy main checkout, the `git worktree`/`git branch` lifecycle -- all direct
+     `subprocess.run` translations of the existing git commands, no behavior change.
+   - `retrigger()`'s brief-writing and `simple_dispatch.py` re-invocation.
+   - The new `land-patch` mode (git am onto a fresh branch, fall through to the same
+     landing logic) -- refactor the shared logic into a real Python function
+     (`land_one(row_id) -> bool`) exactly as it already is a shared bash function.
+
+3. **`drive_tick.py`** (from `drive-tick.sh`): second-highest risk.
+   - The tick-lock (`flock -n 9`), dev-server revival (`curl` health check +
+     detached `pnpm dev`), `dispatch-state.py` calls (already Python -- becomes a
+     direct function call or import instead of a subprocess round-trip, a real
+     simplification opportunity worth taking since `dispatch-state.py` is already
+     pure Python with no reason to shell out to itself).
+   - The whole TRIGGER/STATE computation (inbox polling, round-buffer starvation
+     check, delegated-row state, land-failed markers) -- direct translation of the
+     already-simplified 2026-09-11 logic (verified working via the dry-run test
+     during that change) into real Python control flow instead of bash string
+     concatenation. This should get MORE readable in Python, not just equivalent --
+     the existing bash's `TRIGGER="${TRIGGER:+$TRIGGER; }..."` accumulator pattern
+     is exactly what real code (a list of trigger strings, joined once) does better.
+   - The POLICY/CORE prompt text: unchanged strings (still natural-language
+     instructions for the per-tick `claude -p` session), just Python string
+     variables instead of bash.
+   - Piping `claude -p --output-format stream-json` through `tick-stream.py`:
+     `subprocess.Popen` with `stdout=PIPE` feeding into a call to `tick-stream.py`'s
+     existing functions directly (in-process, not a second subprocess -- another
+     real simplification, since `tick-stream.py` is already Python).
+   - The coordinator-auth-failure streak detection: direct translation, a small
+     state file read/write.
+
+4. **`opencode_worker.py`** (from `opencode-worker.sh`): direct translation --
+   `subprocess.Popen` for the `opencode run` call, piping through `opencode-peek.py`
+   in-process (same simplification as above), a `lanes.csv` telemetry append on exit,
+   firing `land-lane.sh land` (now `land_lane.py`) on success.
+
+5. **`tick_peek.py`** (from `tick-peek.sh`): trivial, a `tail -f`-equivalent piped
+   through `tick-stream.py`'s existing render function, in-process.
+
+## Cross-reference updates (every one confirmed by a real grep, not assumed complete)
+
+Files that reference the old `.sh` names by path and need updating to the new `.py`
+names and `uv run` invocation form:
+- `.claude/skills/drive/SKILL.md`
+- `.claude/skills/enwiro-delegate/SKILL.md`
+- `.claude/skills/land-delegated-work/SKILL.md`
+- `plans/simple-dispatch-design.md`, `plans/simple-dispatch-rollout-plan.md` (historical
+  sections that name the old scripts -- update only where they describe CURRENT
+  behavior, leave historical/dated entries describing what was true at the time
+  untouched, matching this whole project's own provenance discipline)
+- `.claude/scripts/tick-stream.py`, `.claude/scripts/dispatch-state.py` internal
+  comments mentioning sibling script names
+- `ONE_OFF_FIXES.md`, `plans/opencode-rollout.md`, `plans/prompt-efficiency-review.md`,
+  `plans/brief-phrasing-experiment.md`, `plans/worker-pool.md` -- re-check each: most
+  of these are dated incident logs (historical record), not live instructions: verify
+  case by case whether a given mention is "what happened on this date" (leave as
+  historical record with the old filename, since that's literally what ran that day)
+  versus "what to do now" (update). Do not blanket-rename every historical mention --
+  that would misrepresent what actually ran on a past date, the exact failure mode
+  AGENTS.md's provenance section warns against for a different kind of record.
+
+## Open questions, flagged for the skeptic rounds rather than pre-decided
+
+1. **`flock -w N` (bounded wait) in Python**: `fcntl.flock` has no built-in timeout.
+   Options: (a) a manual poll loop (`LOCK_EX | LOCK_NB` in a `while` with `time.sleep`
+   and a deadline), (b) `signal.alarm` + `SIGALRM` handler interrupting a blocking
+   `flock`, (c) a third-party lock library. Recommend (a) -- simplest, no signal
+   interaction with subprocess handling elsewhere in the same script -- but this is
+   exactly the kind of "looks fine, has a real subtlety" translation the skeptic
+   rounds should pressure-test (a poll loop's sleep granularity changes the exact
+   wait semantics; confirm it doesn't matter here).
+2. **Detached background process fd hygiene**: bash's `(cmd &) 8>&-` pattern has a
+   documented, real incident trail in this exact codebase (the fd-9/fd-8 leak bugs
+   cited throughout `drive-tick.sh`/`land-lane.sh`'s comments). `subprocess.Popen`'s
+   default `close_fds=True` (Python 3.4+) claims to close inherited fds above stdin/
+   stdout/stderr automatically in the child -- this needs to be CONFIRMED against the
+   specific fds these scripts hold open (the `land.lock`/`drive-tick.lock` file
+   descriptors), not assumed equivalent to the bash pattern, before this is trusted
+   for unattended, unsupervised operation.
+3. **Preserving `set -uo pipefail` discipline**: bash's `set -u` (undefined-variable
+   crash) is exactly what caught 2 real bugs in the drive-tick.sh rewrite a few
+   commits ago. Python has no direct equivalent, but static analysis (mypy/pyright
+   with strict settings, or just consistent type hints) plus real dry-run testing
+   (the same technique that caught those 2 bugs) should substitute. Decide during
+   planning review whether to add a type checker to the `uv` project's dev
+   dependencies specifically for this reason.
+4. **How `uv run --project` gets invoked from EVERY call site** without hardcoding a
+   fragile absolute path in many places -- a single shared constant/wrapper (e.g. one
+   small `_uv.py` helper other scripts import, or a shell-free equivalent of the
+   current `$SCRIPTS` bash variable) versus repeating the invocation shape in each
+   caller. Decide during planning review.
+5. **Testing/verification strategy before cutover**: given `land_lane.py` and
+   `drive_tick.py` drive REAL, LIVE autonomous git history changes, the implementation
+   phase must include real verification, not just code review -- reusing the
+   isolated bare-clone test harness already built earlier this session for
+   `land-lane.sh land-patch`'s own validation, run again against the NEW `land_lane.py`
+   with the exact same real patch, comparing outcomes. `drive_tick.py`'s trigger
+   computation should get the same dry-run-against-the-real-repo treatment its bash
+   predecessor already got.
+6. **Rollout discipline**: the user's words ("no shell scripts and such") read as a
+   full, immediate replacement, not a parallel-run trial window the way
+   `simple_dispatch.py`'s own rollout used one -- but deleting `land-lane.sh`/
+   `drive-tick.sh` before their Python replacements are REALLY verified working would
+   repeat the exact "trusted without checking" mistake this whole session has
+   otherwise been careful to avoid. Recommend: implement the `.py` versions, verify
+   them for real (the isolated-clone test, a real dry-run), THEN delete the `.sh`
+   originals in the same commit that lands the verified replacement -- no lingering
+   both-still-present state, but also no unverified deletion.
