@@ -111,16 +111,25 @@ export function GrillForestApp({ segments }: { segments: string[] }) {
       </aside>
       <main className="min-h-0 overflow-y-auto rounded-md border p-4">
         {!selected && !topicsLoading && <p className="text-sm text-muted-foreground">Select a topic.</p>}
-        {selected && isLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
-        {selected && error && (
+        {/* An error takes priority over `round` even when `round` is non-null: React Query keeps
+            the last successful result around across a failed background refetch, so once a topic
+            has loaded successfully once, a LATER poll failing (the file went bad after an edit)
+            would otherwise still render the stale chain right alongside, or instead of, the error
+            -- exactly the "still shows the old content, error nowhere to be seen" bug this
+            branch order exists to rule out. */}
+        {selected && error ? (
           <div className="rounded-sm border-l-4 border-destructive py-1 pl-2 text-xs text-destructive">
             {error instanceof Error ? error.message : String(error)}
           </div>
-        )}
-        {selected && round && (
-          <ChainBoundary key={selected} topic={selected}>
-            <GrillChain topic={selected} round={round} scrollToNodeId={nodeFromUrl} />
-          </ChainBoundary>
+        ) : selected && isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : (
+          selected &&
+          round && (
+            <ChainBoundary key={selected} topic={selected}>
+              <GrillChain topic={selected} round={round} scrollToNodeId={nodeFromUrl} />
+            </ChainBoundary>
+          )
         )}
       </main>
     </div>

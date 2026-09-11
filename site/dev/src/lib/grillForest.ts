@@ -62,19 +62,33 @@ export function forestPagePath(topic: string): string {
 /** Every `.forest.yaml` topic on disk, polled -- a new file the coordinator writes shows up in the
  *  rail without a reload. Default `refetchOnWindowFocus` stays on: a stateless polled GET has no
  *  per-connection lifecycle, so switching back to this tab (or opening the same URL elsewhere on
- *  the LAN) resyncs immediately instead of waiting out the interval. */
+ *  the LAN) resyncs immediately instead of waiting out the interval. `retry: false` -- React
+ *  Query's default (3 attempts, exponential backoff) fought the ~1.2s poll interval in practice: a
+ *  persistently-invalid file (a real 400, not a network blip) kept the query retrying for several
+ *  seconds per attempt while a NEW poll tick fired on top of it, so `isLoading` never settled and
+ *  the error this endpoint deliberately returns (see grill-forest.ts's validateForest) never
+ *  reached the screen -- the exact silent-stall failure this whole feature has been fixing
+ *  elsewhere, just moved into the query layer. The next poll tick retries naturally regardless;
+ *  a client-side retry-with-backoff on top of that is redundant and actively hides the error. */
 export function useForestTopics() {
-  return useQuery({ queryKey: ["grill-forest", "topics"], queryFn: fetchForestTopics, refetchInterval: POLL_INTERVAL_MS })
+  return useQuery({
+    queryKey: ["grill-forest", "topics"],
+    queryFn: fetchForestTopics,
+    refetchInterval: POLL_INTERVAL_MS,
+    retry: false,
+  })
 }
 
 /** One topic's forest, polled the same way. The sole steady-state data source for the chain view
- *  -- there is no separate inbox query on the client (see the module doc). */
+ *  -- there is no separate inbox query on the client (see the module doc). Same `retry: false`
+ *  reasoning as `useForestTopics`. */
 export function useForestRound(topic: string) {
   return useQuery({
     queryKey: ["grill-forest", "round", topic],
     queryFn: () => fetchForestRound(topic),
     refetchInterval: POLL_INTERVAL_MS,
     enabled: topic !== "",
+    retry: false,
   })
 }
 
@@ -91,6 +105,7 @@ export function useOpenGrillCount(): number {
       queryKey: ["grill-forest", "round", topic],
       queryFn: () => fetchForestRound(topic),
       refetchInterval: POLL_INTERVAL_MS,
+      retry: false,
     })),
   })
   return rounds.filter((r) => r.data && threadStatus(r.data) === "waiting").length
