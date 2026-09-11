@@ -23,15 +23,21 @@ unless a review round finds a real reason to):
 Shell, to be converted to Python:
 - `drive-loop.sh` (821 bytes) -- trivial `while true` wrapper firing `drive-tick.sh`
   on an interval, with periodic `audit` ticks
-- `drive-tick.sh` (~600 lines as of the 2026-09-11 rewrite) -- the coordinator's own
-  mechanical preamble: lock acquisition, dev-server revival, delegated-row state via
-  `dispatch-state.py`, trigger computation, the `claude -p` invocation piped through
-  `tick-stream.py`, coordinator-auth-failure detection
-- `land-lane.sh` (~370 lines as of the 2026-09-11 `land-patch` addition) -- the
-  serial landing queue: flock, worktree/branch materialization, the full `just test`
-  gate in a throwaway worktree, generated-file conflict auto-resolution, bounded-retry
-  merge into the busy main checkout, push, retry/escalation on failure
-- `opencode-worker.sh` (~150 lines) -- launches one `opencode run` turn for the
+- `drive-tick.sh` (281 lines, `wc -l` re-checked in round 2 -- the plan's own earlier
+  "~600" figure was wrong: it was computed from the doc's own draft-authoring time,
+  which was actually AFTER commit `a504736` had already cut the file from 383 to 281
+  lines removing the old worktree/pgrep/ESCALATION.md archaeology; never accurate) --
+  the coordinator's own mechanical preamble: lock acquisition, dev-server revival,
+  delegated-row state via `dispatch-state.py`, trigger computation, the `claude -p`
+  invocation piped through `tick-stream.py`, coordinator-auth-failure detection
+- `land-lane.sh` (353 lines, re-checked in round 2; close to the earlier "~370"
+  estimate, not a real error) -- the serial landing queue: flock, worktree/branch
+  materialization, the full `just test` gate in a throwaway worktree, generated-file
+  conflict auto-resolution, bounded-retry merge into the busy main checkout, push,
+  retry/escalation on failure
+- `opencode-worker.sh` (113 lines, re-checked in round 2 -- the earlier "~150" was a
+  plain miscount, not staleness: the file hasn't changed since 2026-09-06) -- launches
+  one `opencode run` turn for the
   explicit visible-kitty-window delegation variant (`enwiro-delegate` skill), pipes
   through `opencode-peek.py`, fires `land-lane.sh land` on exit
 - `tick-peek.sh` (443 bytes) -- trivial: tails the coordinator's own tick transcript
@@ -134,14 +140,34 @@ in bash.
      guarantee (round-1 review: this is literally how the 90-minute lock-stall
      incident of 2026-08-31 got bounded) -- it does not go away just because
      tick-stream.py's own logic moves in-process. The `claude -p` subprocess call
-     itself must keep an equivalent hard bound in the Python version (e.g. still
-     shell out through `timeout`, or use `subprocess.Popen` + a real deadline with
-     `proc.kill()`/`os.killpg` on timeout, matching `agent_loop.py`'s OWN already
-     -proven pattern for exactly this problem -- see `run_tool()`'s `run_bash`
-     handling, which already solved "bound a subprocess, kill its whole group on
-     timeout" once in this exact codebase). Decide explicitly which approach during
-     implementation; do not let this guarantee silently disappear because the
-     PIPE side of the equation got simpler.
+     itself must keep an equivalent hard bound in the Python version.
+     **`agent_loop.py`'s `run_bash`/`run_tool` pattern is NOT a drop-in template for
+     this specific case** (round-2 review, correcting round 1's own recommendation):
+     `run_bash` polls `proc.poll()`/a deadline WITHOUT touching `proc.stdout` at all,
+     then reads the whole output ONCE after the process is already dead (its own
+     comment explains this dodges a different bug: a backgrounded child holding the
+     pipe open makes `communicate()` hang). `tick-stream.py`'s actual job is the
+     opposite -- it must consume and render each JSON line WHILE `claude -p` is still
+     running, which is the entire point of "keeps the loop terminal a live, readable
+     trace" (drive-tick.sh's own comment). Reusing `run_bash`'s shape naively (poll
+     without draining, read stdout only after killing) would either delay all output
+     until the process ends/is killed, or risk `claude -p` blocking on a full pipe
+     since nothing drains it during the poll-sleep. Decide explicitly between (a) a
+     reader thread draining `proc.stdout` line-by-line concurrently with a separate
+     deadline-timer thread that kills the process group on timeout, or (b) keeping the
+     external `timeout` wrapper as a literal subprocess specifically BECAUSE it avoids
+     this drain problem for free -- do not assume `run_bash`'s pattern transfers here.
+     Separately, **`tick-stream.py`'s early-exit-on-terminal-event behavior must be
+     preserved** (round-2 review, previously unflagged): it breaks out of its read
+     loop the instant a `"result"` event arrives, deliberately NOT waiting for stdin
+     EOF (its own comment: a leaked background-task fd can withhold EOF forever --
+     this is a second, independent defense against the same 2026-08-31 hang class,
+     not just the outer `timeout`). A naive `for line in proc.stdout: render(line)`
+     merge into `drive_tick.py`'s own consuming loop would silently drop this early
+     break, making every tick depend solely on the 2700s/30s outer bound to terminate
+     promptly instead of exiting the moment the real answer is known -- a quiet
+     regression of "fast when done" behavior. The in-process merge must keep an
+     explicit break on the terminal event, not just iterate the stream to EOF.
    - The coordinator-auth-failure streak detection: direct translation, a small
      state file read/write.
 
@@ -171,6 +197,28 @@ names and `uv run` invocation form:
   acts on every tick, not comments -- see the `drive_tick.py` migration note above.
   After editing, grep the FINAL prompt strings for every retired filename as a
   real verification step, not a trusted-from-memory check.
+- **`justfile`** (round-2 review finding, critical -- missed by round 1's own
+  invocation-site inventory): `just drive`/`just tick`/`just peek` invoke
+  `.claude/scripts/drive-loop.sh`/`drive-tick.sh`/`tick-peek.sh` by bare executable
+  path (shebang + exec bit, no `python3`/`uv run` prefix) -- exactly the bare-path
+  bug class open question 4 already describes, and this is the PRIMARY human entry
+  point for starting the drive loop (the recipe's own comment: "Run ONE"). Must be
+  rewritten to the `uv run --project ...` form in the same commit as the rename.
+- **`.claude/checks/run.sh`** (round-2 review finding): invokes
+  `python3 .claude/scripts/board-lint.py` on the same surface the Stop hook runs --
+  a bare `python3`-prefixed call, not `uv run --project`, so it inherits the exact
+  "silent version drift / ImportError on a host without global pyyaml" risk open
+  question 4 warns about, just for a `python3`-prefixed site instead of a
+  bare-shebang one. Convert this call site too, even though it isn't one of the
+  5 renamed scripts.
+- **`.claude/settings.json`**'s `SessionEnd` hook (round-2 review finding): calls
+  `python3 "${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/lane-telemetry.py"` on every
+  session end, also bare `python3`, also needs conversion to `uv run --project` for
+  the same reason.
+- `plans/board-archive.yaml` (round-2 review finding): a tracked, 2164-line file with
+  3 historical mentions of `drive-tick.sh`/`land-lane.sh`/`dispatch-worker.sh` inside
+  archived board rows -- belongs in the same "historical record, leave as-is" bucket
+  as `ONE_OFF_FIXES.md` below, just previously missing from either bucket's list.
 - `ONE_OFF_FIXES.md`, `plans/opencode-rollout.md`, `plans/prompt-efficiency-review.md`,
   `plans/brief-phrasing-experiment.md`, `plans/worker-pool.md` -- re-check each: most
   of these are dated incident logs (historical record), not live instructions: verify
