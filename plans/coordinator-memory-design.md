@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Coordinator memory: a capped fact pool for `drive_tick.py`

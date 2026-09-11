@@ -205,7 +205,7 @@
   kind: build
   needs: [file-visibility-tracking-build]
   prio: 5
-  status: todo
+  status: delegated
 
 - id: module-routing-semantics-build
   issue: gh:167
@@ -273,9 +273,18 @@
   issue: gh:176
   title: 'Follow-up from select-materialization-scope''s ruling (wizard submission, 2026-09-07, option B with a hedge): the maintainer wants select generic over Vec and Stream via one shared, generic, reusable mechanism -- explicitly NOT a bespoke single-method "Selectable" trait, and only if the complexity can genuinely be hidden behind it. Blocked until trait-interface-dispatch-build lands enough of the trait/dispatch system to know what a generic mechanism can actually look like in toylang; then work out the concrete shape and produce select''s real signature. RULED (wizard submission, search-fold-select-mechanism round, 2026-09-09): flagged first that `trait-interface-dispatch-build` (archived done) did NOT actually deliver multi-impl dispatch -- impl methods still lower to plain global functions keyed by name, so a second `impl Selectable for Stream` would collide with `impl Selectable for Vec`''s same-named method (collision-refusal comment still present verbatim, `src/ast.rs:562-564`). Maintainer picked option 1 (build the Selectable trait now anyway) but freeText immediately qualifies it: "we actually have to land the minimal trait features for this first" -- i.e. the real dependency is not optional, option 1 is only viable once dispatch exists. Filed `trait-multi-impl-dispatch-build` to carry that real remaining scope (the archived row is not being reopened); this row''s `needs` now points there instead.
 
-    Follow-up (grilling round, 2026-09-09, now that trait-multi-impl-dispatch-build is landed): a literal `trait Selectable { ... } impl Selectable for Vec<T>` still can''t be written -- the just-landed mechanism dispatches by one *concrete* type per impl block, no generic impls over a type constructor (verified: prelude.toy''s one real precedent, `impl Fold for Vec<Int>`, is exactly one instantiation, no `impl<T> Fold for Vec<T>`). Maintainer''s call: fix this properly rather than route around it for `select` alone, since more of the prelude will want the same shape. Filed `trait-generic-impls-over-type-constructors-design` to carry that scope; this row''s `needs` now also includes it.'
+    Follow-up (grilling round, 2026-09-09, now that trait-multi-impl-dispatch-build is landed): a literal `trait Selectable { ... } impl Selectable for Vec<T>` still can''t be written -- the just-landed mechanism dispatches by one *concrete* type per impl block, no generic impls over a type constructor (verified: prelude.toy''s one real precedent, `impl Fold for Vec<Int>`, is exactly one instantiation, no `impl<T> Fold for Vec<T>`). Maintainer''s call: fix this properly rather than route around it for `select` alone, since more of the prelude will want the same shape. Filed `trait-generic-impls-over-type-constructors-design` to carry that scope; this row''s `needs` now also includes it.
+
+    Checkpoint (both prerequisites now landed) found that `select` already has the shared mechanism through `select_call` (`src/check/mod.rs:3372-3398`, subject-context dispatch, no trait), not through a trait -- an option-A/option-B re-ask (select-shared-mechanism-checkpoint). RULED (wizard submission, 2026-09-11): option B -- the Selectable-shaped trait mechanism is real and already compiles today (verified, `tests/generics.rs:270-271`, a generic `impl<T> Doubled for Vec<T>` typechecks and runs), so option 1 stands confirmed rather than needing new work; `select` itself is NOT reversed onto it and stays on `select_call` (option B''s own text: "select itself stays on select_call, this row retargets to a DIFFERENT prelude function"). No specific different function was named in the ruling, so per option B''s own fallback this closes as a confirmed, ready-to-use template for whenever a future prelude function wants the trait shape -- no new build work follows from this row. Q22''s lazy mask/selection representation for `select` (unaffected by A vs B, both agree select stays on select_call) is real remaining scope, spun off as `select-lazy-materialization-build`.
   kind: decide
   needs: [trait-multi-impl-dispatch-build, trait-generic-impls-over-type-constructors-design]
+  status: done
+
+- id: select-lazy-materialization-build
+  issue: gh:176
+  title: 'Spun off from select-shared-mechanism-design''s checkpoint ruling (wizard submission, 2026-09-11): implement offload-boundary-design''s Q22 ruling (RATIFIED, 2026-09-07) for `select` -- replace every backend''s eager `tlSelect`-style filter (e.g. `src/emit_go.rs:1336-1345`) with a lazily-built mask/selection-vector representation behind the same `Vec` (O(1) indexed access via a selection vector or mask+popcount table built once over mask bits), compacting only on the first strong reference (reusing input storage if uniquely referenced, per the same provably-one-reference condition mutation-semantics-spike already uses). Same `Kind::Select` AST/checker node throughout -- no syntax change, no checker change; `xs | select(pred)` keeps its current meaning across all 7 backends.'
+  kind: build
+  needs: []
   status: todo
 
 - id: draft-md-cleanup-review
@@ -345,5 +354,27 @@
   kind: decide
   needs: []
   prio: 4
+  status: todo
+
+- id: coordinator-memory-pool-build
+  title: 'Implement plans/coordinator-memory-design.md (approved via maintainer annotation,
+    2026-09-11, no notes -- design''s open questions are all marked cosmetic/fine-as-guessed
+    in the doc itself, so build per the doc''s own defaults): (1) delete the dead "Stall
+    diagnosis, learned the hard way" section from `.claude/skills/drive/SKILL.md`, replacing
+    the header with a one-line pointer to `plans/simple-dispatch-design.md`, as its own commit;
+    (2) add `plans/coordinator-memory.yaml` (`version: 1`, `cap: 8`, `slots: []`); add
+    `_memory_slot_state()`/`_memory_signal()` to `.claude/scripts/drive_tick.py` near the other
+    `_*_signal` functions, wired into `compute_trigger_and_state()` via
+    `state_parts += safe_signal("coordinator memory", _memory_signal, default=[])`; append the
+    audit paragraph to `AUDIT_POLICY` and the write-path paragraph to `TICK_POLICY` (immediately
+    before the existing incident-note sentence); add `lint_memory()` to
+    `.claude/scripts/board-lint.py`''s `main()` alongside its existing two lint calls -- as one
+    commit. Before locking `cap: 8`, check whether the tick''s state snapshot has confirmed
+    headroom for the ~500-token worst case (8 slots x ~62 tokens); shrink the cap if it does
+    not. No forced first slot -- the pool ships with `slots: []` and fills the first time a real
+    tick trips over a footprint conflict or fact worth caching, per the design doc''s own
+    rollout.'
+  kind: build
+  needs: []
   status: todo
 
