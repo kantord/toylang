@@ -1,0 +1,56 @@
+Board row `draft-mutation-migration`: record the mutation decisions that have actually been
+ratified and delete only the matching draft.md section. This is a PARTIAL migration -- read
+carefully, do not delete more than what is actually ratified.
+
+`draft.md` has two sections under scope, in different states:
+
+1. "UNDECIDED: what to call the record-forming update" (draft.md:489-537) -- RATIFIED, retire it.
+   This is exactly `binary-op-multiplicity-design`'s Q2/Q3, both now ratified (see that row's
+   title in plans/board.yaml or plans/board-archive.yaml):
+   - Q3: option B -- `=` typechecks only when its right-hand side yields exactly one value
+     (`One<T>`); forking to a record requires an explicit bind first, e.g.
+     `("red","blue") as c | db.color = c`. Do NOT use a `$`-prefixed alias in any example --
+     the maintainer explicitly rejected prefacing variable names with `$`; use a plain bound
+     name.
+   - Q2: option A -- `Vec op Vec` is cartesian by default for every binary operator (matches jq
+     1.8.2's own default), no new builtin needed.
+
+   Document the settled behavior (the `One`-typed `=`, the explicit-bind-to-fork idiom, and the
+   `Vec op Vec` cartesian default) in the appropriate reference page(s) under `reference/`,
+   following the existing convention for operator/update documentation there. Verify with a
+   small `just check` repro that `db.color = ("red","blue")` is in fact rejected and the
+   bind-then-assign form works, if the feature is actually implemented; if `One`-typed `=` is
+   not yet implemented, say so plainly in the reference page (ratified design, not yet built)
+   rather than documenting aspirational behavior as real.
+
+   Once documented, delete the "UNDECIDED: what to call the record-forming update" subsection
+   (draft.md:489-537) including its options A-E list. The parent "## Mutation" section's intro
+   (draft.md:476-487, the cell/shadow example) stays -- it is not part of this UNDECIDED
+   subsection and is already-settled behavior, not a draft.
+
+2. "Mutation as an optimization: privileged and shared references" (draft.md:539-570) -- NOT
+   ratified, do NOT delete. Board's `needs: [mutation-semantics-spike, binary-op-multiplicity-design]`
+   looks satisfied (both rows show `status: done`), but `mutation-semantics-spike`'s own ruling
+   text (plans/board-archive.yaml, plans/mutation-semantics-spike.md) says it was a *spike*
+   only -- "will not ratify without prototyping -- spike the 'provably one reference exists'
+   static analysis... before a real decide row reopens this." No decide row for the
+   privileged/shared-reference mutation design itself has ever run.
+
+   Leave draft.md:539-570 exactly as is. Instead, add a new board row to plans/board.yaml:
+   `kind: decide`, `status: todo`, `needs: [mutation-semantics-spike]`, id
+   `mutation-semantics-design`, title summarizing: grill privileged/shared-reference
+   mutation-as-optimization now that the spike (plans/mutation-semantics-spike.md) has grounded
+   the "provably one reference" analysis -- this decide row is what this section has been
+   waiting on. This makes the real remaining gap trackable on the board instead of silently
+   missing.
+
+Done-gate:
+- draft.md no longer contains the "UNDECIDED: what to call the record-forming update"
+  subsection; its ratified content is salvaged into the reference docs.
+- draft.md still contains "Mutation as an optimization: privileged and shared references",
+  unchanged.
+- `just check` passes.
+- A new `mutation-semantics-design` board row exists in plans/board.yaml (todo, decide,
+  needs: [mutation-semantics-spike]).
+- Note explicitly in your summary that this is a partial migration -- the remaining work is
+  carried forward by the new `mutation-semantics-design` row, not finished here.

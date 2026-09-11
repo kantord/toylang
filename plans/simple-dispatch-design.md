@@ -1756,3 +1756,22 @@ dispatch` instead of trusting the script's parsed output. Not fixed here
 (out of a router tick's scope) -- `live_row_ids()` needs a narrower match
 (e.g. anchor on the script being the actual argv[0]/interpreter target,
 not a prose substring anywhere in the cmdline).
+
+**Incident (2026-09-11): stale opencode-era escalation round outlived the pipeline retirement.**
+`docs/.grill/opencode-credits-exhausted.round.yaml` was still sitting in the pending-rounds
+buffer (unanswered) after the same-day ruling that made `simple_dispatch.py` the only dispatch
+mechanism and retired `sandbox_dispatch.py`/opencode entirely. The round's own content confirmed
+it was dead: it named `draft-mutation-migration` as one of four rows blocked on OpenRouter
+account credits, but that same row showed up as a live "ready build row" under the new pipeline
+in this very tick's trigger -- proof the old blocker no longer applies to anything. Deleted the
+round file rather than leave a stale question in the maintainer's queue; nothing else referenced
+it. Also confirmed (again) that `dispatch_state.py`'s "ready build row" list is purely mechanical
+(a `needs` id is satisfied the moment it's not `todo`/`delegated`, including when it doesn't
+exist as a row at all e.g. archived) and does not read row titles -- `dsv-partials-migration`
+(still blocked-open per its own title pending an unbuilt partial-application mechanism) and
+`euler-slow-fragments-2` (parked for a manual session per a 2026-09-01 maintainer ruling) were
+both in this tick's "ready" list and both correctly skipped, consistent with the same skip
+logged in plans/opencode-rollout.md around 2026-09-09. Only `draft-mutation-migration` was
+actually dispatched this tick, using the pre-existing prep at
+plans/brief-draft-mutation-migration.md (copied into plans/simple-briefs/draft-mutation-migration.txt,
+the filename simple_dispatch.py requires).
