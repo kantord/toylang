@@ -102,7 +102,7 @@
   title: 'sort_by and max_by (gh:177) -- emit for the Rust-source backend only (src/emit_rs.rs).'
   kind: build
   needs: [sort-by-max-by-checkpoint-go]
-  status: todo
+  status: delegated
 
 - id: sort-by-max-by-checkpoint-rust
   issue: gh:177

@@ -1,0 +1,46 @@
+Board row `sort-by-max-by-rust` (gh:177). Emit `sort_by`/`max_by` for the Rust-source backend
+only -- `src/emit_rs.rs`. This is step 3/8 of a one-backend-per-commit rollout (each backend
+followed by its own reevaluation checkpoint); the Go backend already landed clean
+(`sort-by-max-by-checkpoint-go` ruling, commit 1456d9f, verified `just test` 423/423, no
+corruption). Rust-source is the second backend -- mirror the Go approach exactly, translated to
+Rust idiom.
+
+Current state in `src/emit_rs.rs`:
+- `SortBy`/`MaxBy` TIR cases at line ~1587 currently `unreachable!("sort_by/max_by emission
+  lands in a later step")` -- replace both with real codegen.
+- `tl_sort<T: Clone + Ord>` (SORT_HELPER, ~line 189) and `tl_max<T: Clone + Ord>` (MAX_HELPER,
+  ~line 215) are the existing plain `sort`/`max` helpers to model the new ones on.
+- Line ~1028 already has a `Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. }`
+  arm elsewhere in the file (type-inference/traversal side) -- read it to see the field shape
+  before writing the codegen arm.
+
+What to build, mirroring the landed Go commit (`git show 1456d9f -- src/emit_go.rs` for the
+reference diff):
+1. `tl_sort_by<T: Clone, K: Ord>(v: &[T], key: impl Fn(&T) -> K) -> Vec<T>` -- stable sort by a
+   projected key. Rust's `slice::sort_by_key` is already stable (unlike Go's `slices.Sort`, which
+   is why Go needed `SortStableFunc` explicitly) -- use `sort_by_key` directly, no custom compare
+   needed.
+2. `tl_max_by<T: Clone, K: Ord>(v: &[T], key: impl Fn(&T) -> K) -> Option<T>` -- of equal maxima
+   the *first* entry must win (same tie-break `tl_max`/Go's `tlMaxBy` use), so do not reach for
+   `Iterator::max_by_key`, which keeps the *last* max on ties. Write it as an explicit fold/loop
+   comparing `key(x) > key(m)`, same shape as Go's `MAX_BY_HELPER`.
+3. Wire both helpers into the same conditional-inclusion table pattern the existing
+   `(uses("tl_sort("), SORT_HELPER)` / `(uses("tl_max("), MAX_HELPER)` entries use (~line 866-869)
+   so they only get emitted into generated Rust when the program actually calls sort_by/max_by.
+4. Replace the two `unreachable!` arms (~line 1587) with real codegen emitting calls to
+   `tl_sort_by(...)` / `tl_max_by(...)`, following the same expr-formatting shape the Go
+   `Kind::SortBy`/`Kind::MaxBy` arms use (source expr, a closure over the bound param, the
+   projected-key body expr).
+
+Add tests to `tests/backend_rust.rs` mirroring the 4 tests the Go commit added to
+`tests/backend_go.rs` (`git show 1456d9f -- tests/backend_go.rs` for the reference) -- sort_by
+ascending by a projected key, sort_by stability on ties, max_by picks first on ties, max_by on an
+empty Vec returns the empty-Opt answer.
+
+Done-gate: `just test` passes in full (423+ tests, no regressions), and a real toylang program
+using `sort_by`/`max_by` produces the correct answer when compiled through the Rust-source
+backend specifically, matching the already-landed Go backend's output on the same program.
+
+Do not touch any other backend (`emit_go.rs`, `emit_lua.rs`, `emit_js.rs`, `emit_py.rs`,
+`emit_jq.rs`, `emit_llvm.rs`) -- those are separate, later board rows, each with its own
+reevaluation checkpoint before the next one starts.
