@@ -115,13 +115,33 @@ in bash.
      concatenation. This should get MORE readable in Python, not just equivalent --
      the existing bash's `TRIGGER="${TRIGGER:+$TRIGGER; }..."` accumulator pattern
      is exactly what real code (a list of trigger strings, joined once) does better.
-   - The POLICY/CORE prompt text: unchanged strings (still natural-language
-     instructions for the per-tick `claude -p` session), just Python string
-     variables instead of bash.
+   - The POLICY/CORE prompt text: unchanged STRUCTURE, but the CONTENT is a LIVE
+     reference to script names, not documentation -- found by round-1 review, real
+     and critical: the text says verbatim `run .claude/scripts/land-lane.sh
+     land-patch ROW-ID PATCH-PATH` and lists "the four scripts (simple_dispatch.py,
+     land-lane.sh, board-archive.py, round files)". This is read and acted on by the
+     coordinator LLM every single tick -- missing this update means every tick after
+     cutover instructs the autonomous coordinator to shell out to a file that no
+     longer exists. Must be updated in the SAME commit as the rename, and re-verified
+     by grepping the final POLICY/CORE strings for every old filename after editing,
+     not just trusted from memory of what was changed.
    - Piping `claude -p --output-format stream-json` through `tick-stream.py`:
      `subprocess.Popen` with `stdout=PIPE` feeding into a call to `tick-stream.py`'s
      existing functions directly (in-process, not a second subprocess -- another
-     real simplification, since `tick-stream.py` is already Python).
+     real simplification, since `tick-stream.py` is already Python). BUT: the
+     external `timeout --kill-after=30s 2700s` wrapper around the WHOLE
+     `claude -p | tick-stream.py` pipeline is a real, load-bearing hard-kill
+     guarantee (round-1 review: this is literally how the 90-minute lock-stall
+     incident of 2026-08-31 got bounded) -- it does not go away just because
+     tick-stream.py's own logic moves in-process. The `claude -p` subprocess call
+     itself must keep an equivalent hard bound in the Python version (e.g. still
+     shell out through `timeout`, or use `subprocess.Popen` + a real deadline with
+     `proc.kill()`/`os.killpg` on timeout, matching `agent_loop.py`'s OWN already
+     -proven pattern for exactly this problem -- see `run_tool()`'s `run_bash`
+     handling, which already solved "bound a subprocess, kill its whole group on
+     timeout" once in this exact codebase). Decide explicitly which approach during
+     implementation; do not let this guarantee silently disappear because the
+     PIPE side of the equation got simpler.
    - The coordinator-auth-failure streak detection: direct translation, a small
      state file read/write.
 
@@ -146,6 +166,11 @@ names and `uv run` invocation form:
   untouched, matching this whole project's own provenance discipline)
 - `.claude/scripts/tick-stream.py`, `.claude/scripts/dispatch-state.py` internal
   comments mentioning sibling script names
+- **`drive-tick.sh`'s own `POLICY`/`CORE` prompt strings** (round-1 review finding,
+  critical): these are natural-language instructions the coordinator LLM reads and
+  acts on every tick, not comments -- see the `drive_tick.py` migration note above.
+  After editing, grep the FINAL prompt strings for every retired filename as a
+  real verification step, not a trusted-from-memory check.
 - `ONE_OFF_FIXES.md`, `plans/opencode-rollout.md`, `plans/prompt-efficiency-review.md`,
   `plans/brief-phrasing-experiment.md`, `plans/worker-pool.md` -- re-check each: most
   of these are dated incident logs (historical record), not live instructions: verify
@@ -165,26 +190,46 @@ names and `uv run` invocation form:
    exactly the kind of "looks fine, has a real subtlety" translation the skeptic
    rounds should pressure-test (a poll loop's sleep granularity changes the exact
    wait semantics; confirm it doesn't matter here).
-2. **Detached background process fd hygiene**: bash's `(cmd &) 8>&-` pattern has a
-   documented, real incident trail in this exact codebase (the fd-9/fd-8 leak bugs
-   cited throughout `drive-tick.sh`/`land-lane.sh`'s comments). `subprocess.Popen`'s
-   default `close_fds=True` (Python 3.4+) claims to close inherited fds above stdin/
-   stdout/stderr automatically in the child -- this needs to be CONFIRMED against the
-   specific fds these scripts hold open (the `land.lock`/`drive-tick.lock` file
-   descriptors), not assumed equivalent to the bash pattern, before this is trusted
-   for unattended, unsupervised operation.
-3. **Preserving `set -uo pipefail` discipline**: bash's `set -u` (undefined-variable
-   crash) is exactly what caught 2 real bugs in the drive-tick.sh rewrite a few
-   commits ago. Python has no direct equivalent, but static analysis (mypy/pyright
-   with strict settings, or just consistent type hints) plus real dry-run testing
-   (the same technique that caught those 2 bugs) should substitute. Decide during
-   planning review whether to add a type checker to the `uv` project's dev
-   dependencies specifically for this reason.
-4. **How `uv run --project` gets invoked from EVERY call site** without hardcoding a
-   fragile absolute path in many places -- a single shared constant/wrapper (e.g. one
-   small `_uv.py` helper other scripts import, or a shell-free equivalent of the
-   current `$SCRIPTS` bash variable) versus repeating the invocation shape in each
-   caller. Decide during planning review.
+2. **Detached background process fd hygiene** -- RESOLVED (round-1 review): bash's
+   `(cmd &) 8>&-` pattern has a documented, real incident trail in this exact codebase
+   (the fd-9/fd-8 leak bugs cited throughout `drive-tick.sh`/`land-lane.sh`'s comments).
+   Confirmed via a real test (`/proc/self/fd` inspection in the child): `subprocess.
+   Popen`'s default `close_fds=True` (Python 3.4+) really does close an `flock`'d fd
+   in the child process, unlike naive bash backgrounding, which needs the explicit
+   `9>&-`/`8>&-` dance. No special handling needed beyond just using `Popen` normally
+   with `start_new_session=True` for detachment.
+3. **Preserving `set -uo pipefail` discipline** -- RESOLVED/clarified (round-1 review):
+   bash's `set -u` (undefined-variable crash) is exactly what caught 2 real bugs in the
+   drive-tick.sh rewrite a few commits ago. Confirmed via matching real repros in both
+   languages that Python's `NameError`/`UnboundLocalError` already reproduce the exact
+   same runtime-only "only fails when the unset name is referenced" semantics as bash's
+   `set -u` -- no special substitute is strictly required to match bash's guarantee.
+   `ruff --select F821` does BETTER than bash, though: static (compile-time) undefined-
+   name detection, not just a matching runtime crash. Decision: add `ruff` (with at
+   least `F821` selected) as a dev dependency -- free extra safety beyond bash's own
+   guarantee, cheap to add, no reason not to.
+4. **How `uv run --project` gets invoked from EVERY call site** -- partly resolved,
+   partly a NEW finding (round-1 review). Confirmed by real test: `uv run --project`
+   works correctly from an arbitrary cwd, costs ~35-48ms warm invocation overhead, and
+   showed no contention across 8 concurrent cold+warm invocations -- cheap enough to
+   call directly at every site rather than needing a caching daemon or similar. BUT a
+   more serious, previously-unnoticed problem surfaced while checking call sites for
+   real: `land-lane.sh`'s `fire_tick()` (which calls `drive-tick.sh`), `drive-loop.sh`
+   (which calls `drive-tick.sh audit`), and `opencode-worker.sh`'s `fire_next()` (which
+   calls `land-lane.sh land ...`) all invoke sibling scripts by BARE EXECUTABLE PATH
+   (e.g. `"$SCRIPTS/drive-tick.sh"`), relying on the shebang + exec bit, NOT via
+   `python3 <path>` or any wrapper. A naive `.sh` -> `.py` rename that preserves this
+   bare-path invocation shape would silently bypass `uv run --project` entirely and
+   fall back to whatever global `python3` happens to be on `PATH` -- undermining this
+   plan's own stated goal that `uv.lock` makes every invocation resolve identically.
+   Dangerous specifically because it would NOT fail loudly on this machine (global
+   `python3 -c "import yaml"` already succeeds here, confirmed by round-1's own test)
+   -- it would only surface as silent version drift, or an `ImportError` on a host
+   without global `pyyaml` installed. New explicit plan item: during implementation,
+   inventory EVERY script-to-script invocation site (not just the ones already using
+   `python3 <path>` today) and rewrite each to the `uv run --project <abs-project-dir>
+   <abs-script-path>` form -- a single small shared shell/Python snippet or wrapper is
+   fine, but every call site must be checked, not assumed fixed by the rename alone.
 5. **Testing/verification strategy before cutover**: given `land_lane.py` and
    `drive_tick.py` drive REAL, LIVE autonomous git history changes, the implementation
    phase must include real verification, not just code review -- reusing the
