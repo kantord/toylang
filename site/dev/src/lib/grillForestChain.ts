@@ -50,19 +50,36 @@ export interface ForestRound {
 
 export type ChainEntry = { kind: "node"; node: ForestNode } | { kind: "activity"; note: string }
 
+/** The lowest-id node among `nodes` whose `parent` is exactly `parentId` -- the one tie-break
+ *  rule, reused for picking a root (`parentId: null`) and a node's children, so root selection
+ *  can't drift from the same determinism sibling selection already has. */
+function pickAmong(nodes: ForestNode[], parentId: string | null): ForestNode | undefined {
+  return nodes
+    .filter((n) => n.parent === parentId)
+    .sort((a, b) => a.id.localeCompare(b.id))[0]
+}
+
 /**
- * Walks the first root the file contains (v1 scope: one file is one thread -- a root-switcher for
- * the rarer multi-root case isn't built) down through answered children to whichever comes next:
- * a trailing `live` question awaiting the human, a `superseded` dead end, or an `activity` entry
- * if the agent is between an answer and its next live node.
+ * Walks the lowest-id root the file contains (v1 scope: one file is one thread -- a
+ * root-switcher for the rarer multi-root case isn't built) down through answered children to
+ * whichever comes next: a trailing `live` question awaiting the human, a `superseded` dead end,
+ * or an `activity` entry if the agent is between an answer and its next live node.
  *
- * If more than one non-draft child sits under one node -- the schema doesn't forbid it, though
- * the agent should only ever promote one branch per answer -- the lowest-id child wins,
- * consistently, so this should-never-happen case fails as a stable, boring choice rather than
- * flickering between renders.
+ * A superseded *non-root* node isn't necessarily the end of its thread: the agent may have
+ * retracted it and promoted a replacement sibling under the same parent instead of a child (a
+ * replacement continues the same question slot, it doesn't answer the superseded one) -- the walk
+ * follows that sibling so the chain doesn't stall on a dead node forever. A superseded *root* has
+ * no parent to look for a sibling under, so it's a true dead end here -- deliberately not
+ * resolved into "pick another root instead," which would blur the line with the deferred
+ * multi-root case rather than fix the supersede-and-replace scenario this exists for.
+ *
+ * If more than one non-draft node ever ties for the same slot (a root, or children of one node)
+ * -- the schema doesn't forbid it, though the agent should only ever promote one branch per
+ * answer -- the lowest-id one wins, consistently, so this should-never-happen case fails as a
+ * stable, boring choice rather than flickering between renders.
  */
 export function activePath(nodes: ForestNode[], activity: ForestActivityEntry[]): ChainEntry[] {
-  const root = nodes.find((n) => n.parent === null) ?? null
+  const root = pickAmong(nodes, null)
   if (!root) {
     // No root node exists yet -- the only thing that can be showing is a brand-new thread's very
     // first question being drafted.
@@ -74,15 +91,29 @@ export function activePath(nodes: ForestNode[], activity: ForestActivityEntry[])
   let current: ForestNode | undefined = root
   while (current) {
     path.push({ kind: "node", node: current })
-    if (current.status !== "answered") break
-    const children = nodes.filter((n) => n.parent === current!.id).sort((a, b) => a.id.localeCompare(b.id))
-    if (children.length > 0) {
-      current = children[0]
-      continue
+    if (current.status === "answered") {
+      const child = pickAmong(nodes, current.id)
+      if (child) {
+        current = child
+        continue
+      }
+      const waiting = activity.find((a) => a.parent === current!.id)
+      if (waiting) path.push({ kind: "activity", note: waiting.note })
+      current = undefined
+    } else if (current.status === "superseded" && current.parent !== null) {
+      const replacement = nodes
+        .filter((n) => n.parent === current!.parent && n.id !== current!.id)
+        .sort((a, b) => a.id.localeCompare(b.id))[0]
+      if (replacement) {
+        current = replacement
+        continue
+      }
+      const waiting = activity.find((a) => a.parent === current!.parent)
+      if (waiting) path.push({ kind: "activity", note: waiting.note })
+      current = undefined
+    } else {
+      current = undefined
     }
-    const waiting = activity.find((a) => a.parent === current!.id)
-    if (waiting) path.push({ kind: "activity", note: waiting.note })
-    current = undefined
   }
   return path
 }

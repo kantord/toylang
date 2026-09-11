@@ -56,16 +56,23 @@ function validateForest(parsed: unknown): string | null {
   const nodes = (parsed as RawForest).nodes
   if (!Array.isArray(nodes) || nodes.length === 0) return `needs a non-empty top-level "nodes" list`
 
-  const ids = new Set<string>()
+  const byId = new Map<string, RawNode>()
   for (const raw of nodes as RawNode[]) {
     if (typeof raw.id !== "string" || raw.id === "") return `every node needs a string "id"`
-    if (ids.has(raw.id)) return `duplicate node id "${raw.id}"`
-    ids.add(raw.id)
+    if (byId.has(raw.id)) return `duplicate node id "${raw.id}"`
+    byId.set(raw.id, raw)
   }
   for (const raw of nodes as RawNode[]) {
     if (raw.parent !== null && raw.parent !== undefined) {
-      if (typeof raw.parent !== "string" || !ids.has(raw.parent)) {
+      if (typeof raw.parent !== "string" || !byId.has(raw.parent)) {
         return `node "${raw.id as string}": "parent" does not resolve to any node in this file`
+      }
+      // A non-draft node's parent must be non-draft too -- otherwise the child is unreachable
+      // (not a root, and not any served node's child once `filterDrafts` strips its draft
+      // parent), disappearing silently instead of erroring the way this validator otherwise
+      // promises to.
+      if (raw.status !== "draft" && byId.get(raw.parent)?.status === "draft") {
+        return `node "${raw.id as string}": parent "${raw.parent}" is still a draft -- a non-draft node cannot have a draft parent`
       }
     }
     if (typeof raw.status !== "string" || !(STATUSES as readonly string[]).includes(raw.status)) {
@@ -81,6 +88,21 @@ function validateForest(parsed: unknown): string | null {
       const answer = raw.answer as RawAnswer | undefined
       if (typeof answer !== "object" || answer === null || typeof answer.content !== "string" || answer.content === "") {
         return `node "${raw.id as string}": status "answered" needs an "answer" with a "content" string`
+      }
+    }
+    if (raw.options !== undefined) {
+      if (!Array.isArray(raw.options)) return `node "${raw.id as string}": "options" must be a list`
+      for (const opt of raw.options as unknown[]) {
+        const o = opt as { label?: unknown; content?: unknown } | null
+        if (
+          typeof o !== "object" ||
+          o === null ||
+          typeof o.label !== "string" ||
+          o.label === "" ||
+          typeof o.content !== "string"
+        ) {
+          return `node "${raw.id as string}": every option needs a non-empty "label" and a "content" string`
+        }
       }
     }
   }

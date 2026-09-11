@@ -31,10 +31,44 @@ test("walks through answered nodes to the trailing live question", () => {
   ])
 })
 
-test("a superseded node ends the chain with no further activity check", () => {
+test("a superseded root ends the chain -- no sibling-of-a-root resolution, that's the deferred multi-root case", () => {
   const root = node({ id: "root", parent: null, status: "superseded", supersededNote: "no longer relevant" })
   const path = activePath([root], [{ parent: "root", note: "should never show", since: "2026-01-01" }])
   assert.deepEqual(path, [{ kind: "node", node: root }])
+})
+
+test("a superseded non-root node's replacement sibling continues the chain instead of stalling", () => {
+  const root = node({ id: "root", parent: null, status: "answered" })
+  const superseded = node({
+    id: "child-a",
+    parent: "root",
+    status: "superseded",
+    supersededNote: "no longer relevant, asking something else instead",
+  })
+  const replacement = node({ id: "child-b", parent: "root", status: "live" })
+  const path = activePath([root, superseded, replacement], [])
+  assert.deepEqual(path, [
+    { kind: "node", node: root },
+    { kind: "node", node: superseded },
+    { kind: "node", node: replacement },
+  ])
+})
+
+test("a superseded non-root node with no replacement yet shows its own thread's activity", () => {
+  const root = node({ id: "root", parent: null, status: "answered" })
+  const superseded = node({
+    id: "child-a",
+    parent: "root",
+    status: "superseded",
+    supersededNote: "no longer relevant",
+  })
+  const activity = [{ parent: "root", note: "Drafting a replacement...", since: "2026-01-01" }]
+  const path = activePath([root, superseded], activity)
+  assert.deepEqual(path, [
+    { kind: "node", node: root },
+    { kind: "node", node: superseded },
+    { kind: "activity", note: "Drafting a replacement..." },
+  ])
 })
 
 test("an activity entry appends after an answered leaf with no live child yet", () => {
@@ -56,6 +90,13 @@ test("multiple non-draft children under one node: the lowest id wins, determinis
     { kind: "node", node: root },
     { kind: "node", node: childA },
   ])
+})
+
+test("multiple roots (the deferred multi-root case): the lowest id wins too, same tie-break as siblings", () => {
+  const rootB = node({ id: "root-b", parent: null, status: "live" })
+  const rootA = node({ id: "root-a", parent: null, status: "live" })
+  const path = activePath([rootB, rootA], [])
+  assert.deepEqual(path, [{ kind: "node", node: rootA }])
 })
 
 test("threadStatus: idle with nothing in flight", () => {

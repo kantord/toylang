@@ -72,7 +72,7 @@ export function GrillChain({ topic, round, scrollToNodeId }: { topic: string; ro
     <div ref={scrollRef} onScroll={onScroll} className="max-h-full space-y-4 overflow-y-auto">
       {path.map((entry, i) => {
         if (entry.kind === "activity") {
-          return <ThinkingBubble key={`activity-${i}`} />
+          return <ThinkingBubble key={`activity-${i}`} note={entry.note} />
         }
 
         const node = entry.node
@@ -144,12 +144,15 @@ function AnswerBubble({
   )
 }
 
-function ThinkingBubble() {
+function ThinkingBubble({ note }: { note: string }) {
   return (
-    <div className="mr-auto flex w-fit items-center gap-1 rounded-lg border bg-card p-3">
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
+    <div className="mr-auto flex max-w-2xl items-center gap-2 rounded-lg border bg-card p-3">
+      <div className="flex shrink-0 items-center gap-1">
+        <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
+        <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
+        <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
+      </div>
+      {note && <span className="text-xs text-muted-foreground">{note}</span>}
     </div>
   )
 }

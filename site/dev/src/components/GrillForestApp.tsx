@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 
 import { GrillChain } from "@dev/components/GrillChain"
 import { activePath, threadStatus, useForestRound, useForestTopics, type ThreadStatus } from "@dev/lib/grillForest"
@@ -43,12 +43,22 @@ export function GrillForestApp({ segments }: { segments: string[] }) {
 
   // Keeps the URL naming the current node, not just the topic, without a full navigation --
   // `replaceState` (not `location.hash =`) so this never re-triggers DevApp's own hashchange
-  // listener and loops.
+  // listener and loops. Only follows the tail FORWARD as real progress happens (a new node id we
+  // haven't synced to yet): an explicit link to an earlier node (`nodeFromUrl` on load) has to
+  // stay put rather than getting silently overwritten by the very next poll tick, which fires
+  // every ~1.2s regardless of whether anything actually changed.
+  // Keyed by topic too, not just node id -- ids are only unique within one topic file, so two
+  // topics can coincidentally share a tail id and would otherwise be indistinguishable here.
+  const lastSyncedKey = useRef<string | null>(topicFromUrl && nodeFromUrl ? `${topicFromUrl}:${nodeFromUrl}` : null)
   useEffect(() => {
     if (!round) return
     const path = activePath(round.nodes, round.activity)
     const tail = [...path].reverse().find((e) => e.kind === "node")
-    const nextHash = tail?.kind === "node" ? `#/grill/${round.topic}/${tail.node.id}` : `#/grill/${round.topic}`
+    const tailId = tail?.kind === "node" ? tail.node.id : null
+    const key = tailId ? `${round.topic}:${tailId}` : round.topic
+    if (key === lastSyncedKey.current) return
+    lastSyncedKey.current = key
+    const nextHash = tailId ? `#/grill/${round.topic}/${tailId}` : `#/grill/${round.topic}`
     if (location.hash !== nextHash) history.replaceState(null, "", nextHash)
   }, [round])
 
