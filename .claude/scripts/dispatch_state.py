@@ -94,7 +94,14 @@ def live_row_ids() -> list[str]:
             if tok.startswith("-"):
                 break
             ids.append(tok)
-    return ids
+    # `uv run --project ... simple_dispatch.py ...` is two matching
+    # processes (the `uv` supervisor plus the venv python3 it execs), both
+    # carrying the same row ids in argv -- confirmed live, 2026-09-11: real
+    # dispatches print doubled. Every real caller already tolerates this
+    # (a `set()` or a truthiness check), but the CLI's own docstring
+    # promises "one per line," so dedupe here once instead of leaving it to
+    # every caller.
+    return list(dict.fromkeys(ids))
 
 
 def latest_row(row_id: str) -> dict | None:
