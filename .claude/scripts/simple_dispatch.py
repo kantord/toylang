@@ -644,7 +644,19 @@ def main() -> int:
         patch_note = ""
         if r.patch_path:
             patch_note = f" -> {r.patch_path}" + ("" if status == "GREEN" else " (UNVERIFIED, do not land)")
-        print(f"{r.row_id}: {status} (${r.cost_usd:.4f}){patch_note}")
+        # `r.message` (which carries the self-report/recovery note appended
+        # in _dispatch_one_locked, or a setup-failure reason) was computed
+        # on every non-GREEN Result but never actually printed anywhere --
+        # a real bug found by adversarial review: the design doc's own
+        # claim that the self-report is "surfaced in the terminal summary"
+        # was only half true (it reached the file, never the terminal).
+        # Printed here as the last ~300 chars, since the self-report note
+        # is appended at the END of `message` and that's what's most
+        # actionable to see at a glance.
+        message_note = ""
+        if status != "GREEN" and r.message:
+            message_note = f"\n    {r.message[-300:]}"
+        print(f"{r.row_id}: {status} (${r.cost_usd:.4f}){patch_note}{message_note}")
     return 0 if all(r.ok for r in results) else 1
 
 

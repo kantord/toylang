@@ -165,15 +165,15 @@ def write_status(status: str, messages: list | None = None) -> None:
             json.dump({"task_hash": _task_hash, "messages": messages}, f)
 
 
-def write_self_report(self_report: str) -> None:
+def write_self_report(self_report: str | None) -> None:
     """The model's own direct explanation of what blocked it (see
     self_report_blocker), pulled by simple_dispatch.py the same simple way
     as STATUS_FILE/COST_FILE -- a plain file read, no separate API call, no
-    transcript to reconstruct intent from. Only written when non-empty:
-    a genuine RED where the model thought it was done (and said so in its
+    transcript to reconstruct intent from. Only written when not None: a
+    genuine RED where the model thought it was done (and said so in its
     own final message, already captured in the transcript) never asked for
     a self-report in the first place, so there's nothing useful to write."""
-    if self_report:
+    if self_report is not None:
         with open(SELF_REPORT_FILE, "w") as f:
             f.write(self_report)
 
@@ -367,7 +367,7 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
     return parsed
 
 
-def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: int = 800) -> str:
+def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: int = 800) -> str | None:
     """Ask the model DIRECTLY, in-context (the same conversation it's
     already in, full context still loaded, likely cache-warm), why it
     hasn't completed the task -- instead of reconstructing the reason
@@ -400,8 +400,13 @@ def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: in
     refusing to introspect, preferring to keep exploring instead. Appended
     to a COPY of `messages`, not mutated in place, since this is a side
     query, not a real turn in the attempt. Best-effort: any failure here
-    must not break the real outcome, so this returns a short failure note
-    instead of raising."""
+    must not break the real outcome, so this returns None instead of
+    raising -- NOT a string starting with "(", which was the original
+    convention here and a real bug: nothing stopped a genuine model answer
+    from itself starting with a parenthetical ("(Note: the main blocker
+    is...)"), which callers would then misclassify as a failure note and
+    silently discard. `None` can't collide with real model output; a
+    caller checks `is not None`, not a string prefix."""
     ask = list(messages) + [{
         "role": "user",
         "content": (
@@ -432,10 +437,22 @@ def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: in
         with urllib.request.urlopen(req, timeout=60) as resp:
             parsed = json.loads(resp.read())
         add_cost(parsed)
+        # Logged the same way a normal turn's usage is (agent_turns, right
+        # after its own add_cost() call) -- without this, a real cost
+        # review found the only way to see this call's actual token/cache
+        # behavior was subtracting agent-cost.txt from the sum of logged
+        # per-turn lines, which only tells you THAT something unlogged
+        # happened, not what.
+        usage = parsed.get("usage") or {}
+        print(f"  self-report call: prompt={usage.get('prompt_tokens')} "
+              f"completion={usage.get('completion_tokens')} cost=${usage.get('cost', 0):.6f}",
+              file=sys.stderr)
+        print(f"    usage detail: {json.dumps(usage)}", file=sys.stderr)
         content = (parsed["choices"][0]["message"].get("content") or "").strip()
-        return content or "(model returned no text for its own self-report)"
+        return content or None
     except Exception as e:
-        return f"(self-report call failed, non-fatal: {e})"
+        print(f"  self-report call failed, non-fatal: {e}", file=sys.stderr)
+        return None
 
 
 class OutOfTime(Exception):
@@ -531,7 +548,7 @@ def _sig_changed(a: str | None, b: str | None) -> bool:
 
 def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                  max_tokens: int, deadline: float,
-                 max_turns_without_progress: int) -> tuple[str | None, bool, str]:
+                 max_turns_without_progress: int) -> tuple[str | None, bool, str | None]:
     """Runs up to max_turns tool-call rounds. Returns (final_text, moved,
     self_report): final_text is the model's final text once it stops
     calling tools, or None if max_turns was exhausted (or
@@ -604,7 +621,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                 print(f"  repo state has been unreadable for {sig_failures} consecutive "
                       "turns (git itself appears broken), ending this attempt early -- "
                       "cannot verify progress either way", file=sys.stderr)
-                return None, True, ""
+                return None, True, None
         else:
             sig_failures = 0
         if _sig_changed(sig, last_sig):
@@ -617,7 +634,8 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                       "ending this attempt early instead of spending the rest of "
                       "max_turns on further unproductive exploration", file=sys.stderr)
                 self_report = self_report_blocker(api_key, model, messages)
-                print(f"  self-report: {self_report}", file=sys.stderr)
+                if self_report is not None:
+                    print(f"  self-report: {self_report}", file=sys.stderr)
                 return None, _sig_changed(sig, initial_sig), self_report
         try:
             resp = call_openrouter(api_key, model, messages, max_tokens)
@@ -635,7 +653,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             # call), so it's already the freshest possible value. No
             # self-report here -- a transient network/API failure isn't a
             # reasoning question the model can usefully explain.
-            return None, _sig_changed(sig, initial_sig), ""
+            return None, _sig_changed(sig, initial_sig), None
         usage = resp.get("usage", {})
         add_cost(resp)
         print(f"  turn {turn + 1}/{max_turns}: "
@@ -664,7 +682,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             # filesystem this turn, so `sig` is still accurate. No
             # self-report needed -- the model stopped on its own and
             # already said whatever it wanted to say in `content`.
-            return msg.get("content") or "", _sig_changed(sig, initial_sig), ""
+            return msg.get("content") or "", _sig_changed(sig, initial_sig), None
         for tc in tool_calls:
             fn = tc["function"]["name"]
             try:
@@ -679,7 +697,8 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             })
         trim_messages(messages)
     self_report = self_report_blocker(api_key, model, messages)
-    print(f"  self-report: {self_report}", file=sys.stderr)
+    if self_report is not None:
+        print(f"  self-report: {self_report}", file=sys.stderr)
     return None, moved(), self_report
 
 
@@ -903,6 +922,19 @@ def main() -> int:
         if final_text is None:
             print("== ran out of turns without the model finishing ==", file=sys.stderr)
 
+        # Written once per attempt, unconditionally, right after it's
+        # available -- not scattered across each individual write_status()
+        # call site below. A real bug found by adversarial review: the
+        # OLD per-site placement meant a self_report computed on a `moved`
+        # (real-edit) attempt was silently discarded, since that branch
+        # had no write_self_report() call at all -- the API call happened
+        # and was billed, but the answer went nowhere. Writing it here
+        # covers every exit path uniformly; a later attempt's call simply
+        # overwrites the file, which is correct -- the most recent
+        # attempt's self-report is the relevant one regardless of which
+        # exit path this attempt takes.
+        write_self_report(self_report)
+
         # `moved` comes from agent_turns' own per-ATTEMPT signature
         # comparison now, not a `git_head()`/`git_dirty()` check against a
         # baseline fixed once before this whole while-loop -- that fixed
@@ -915,6 +947,20 @@ def main() -> int:
         # edit. Confirmed by adversarial review as a direct re-occurrence of
         # the bug fixed one level down.
         if not moved:
+            # A real bug found by adversarial review: this branch never
+            # rechecked the wall-clock deadline before falling through to
+            # the STUCK/RED classification below, unlike the sibling
+            # `else` branch's own `remaining < 60` check just below. An
+            # attempt that hits the no-progress cutoff right as the
+            # deadline is expiring would be classified RED/STUCK instead
+            # of TIMEOUT -- a real, if narrow, misclassification of "ran
+            # out of budget" as "gave up on the merits." Same check, same
+            # threshold, same TIMEOUT outcome as the `else` branch.
+            if deadline - time.monotonic() < 60:
+                print("OUT_OF_TIME: wall-clock budget expired right at the "
+                      "no-progress cutoff", file=sys.stderr)
+                write_status("TIMEOUT", messages)
+                return 3
             ok = False
             tail = "(no changes, no verify run)"
         else:
@@ -934,7 +980,6 @@ def main() -> int:
             if remaining < 60:
                 print("OUT_OF_TIME: not enough wall-clock budget left to run "
                       "another verify pass", file=sys.stderr)
-                write_self_report(self_report)
                 write_status("TIMEOUT", messages)
                 return 3
             try:
@@ -950,7 +995,6 @@ def main() -> int:
                 # mechanism exists to close.
                 print("OUT_OF_TIME: verify() itself exceeded the remaining "
                       "wall-clock budget", file=sys.stderr)
-                write_self_report(self_report)
                 write_status("TIMEOUT", messages)
                 return 3
 
@@ -993,7 +1037,6 @@ def main() -> int:
         if normalized in seen_tails:
             print("STUCK: verify output matches a previous attempt, "
                   "not retrying further", file=sys.stderr)
-            write_self_report(self_report)
             write_status("STUCK", messages)
             return 1
         seen_tails.append(normalized)
@@ -1001,7 +1044,6 @@ def main() -> int:
         if attempt > args.retry_cap:
             print("VERIFY_FAILED")
             print(tail)
-            write_self_report(self_report)
             write_status("RED", messages)
             return 1
 
@@ -1011,6 +1053,20 @@ def main() -> int:
                 " do not start over or redo work that already passed. Re-run "
                 f"`{args.verify_cmd}` yourself before claiming DONE again.\n\n{tail}"
             )
+            # A real edit happened this attempt AND a self-report exists --
+            # only reachable via the max_turns-exhausted fallthrough (the
+            # no-progress cutoff never fires when moved=True), meaning the
+            # model was still actively working when its turn budget ran
+            # out. A real bug found by adversarial review: this branch
+            # never referenced `self_report` at all, so that answer (asked
+            # for, computed, and billed) was printed once to stderr and
+            # then silently discarded -- the only branch of the three
+            # possible outcomes here that dropped it entirely. Appended
+            # rather than replacing the verify tail: unlike the `not
+            # moved` case, there's real verify feedback here too and both
+            # are useful.
+            if self_report is not None:
+                feedback += f"\n\nYou also said this about your progress:\n\n{self_report}"
         else:
             # An attempt that made ZERO repo changes has a fruitless
             # exploration history with proven zero value -- nothing was
@@ -1032,11 +1088,11 @@ def main() -> int:
             # after computing `moved` above: this exact attempt's own
             # transcript still needs to reach write_status() (STUCK/RED)
             # untouched on every EXIT path above (including the final
-            # attempt's own STUCK/RED), so a human or propose_narrower_task
-            # can see what was actually tried. Resetting before those
-            # write_status() calls would have persisted an already-gutted
-            # messages list for the very attempt whose failure is being
-            # reported -- confirmed as a real bug by adversarial review.
+            # attempt's own STUCK/RED), so a human can see what was
+            # actually tried. Resetting before those write_status() calls
+            # would have persisted an already-gutted messages list for the
+            # very attempt whose failure is being reported -- confirmed as
+            # a real bug by adversarial review.
             #
             # Looked up by IDENTITY, not a stored index -- trim_messages()
             # may have shifted everything since the marker was captured. If
@@ -1068,7 +1124,17 @@ def main() -> int:
             # retry budget, no extra sandbox or human step needed. Falls
             # back to the old generic wording only if no self-report was
             # captured (e.g. a self-report call itself failed).
-            if self_report and not self_report.startswith("("):
+            #
+            # `is not None`, not a string-prefix check -- a real bug found
+            # by adversarial review: self_report_blocker used to signal
+            # its own failure by returning a string starting with "(",
+            # and nothing stopped a genuine model answer from itself
+            # starting with a parenthetical ("(Note: the main blocker
+            # is..."), which this check would have misclassified as a
+            # failure note and silently discarded. self_report_blocker now
+            # returns None on failure instead, which can't collide with
+            # real output.
+            if self_report is not None:
                 feedback = (
                     "Your previous attempt ended without making any repo changes. "
                     f"You said this about what was blocking you:\n\n{self_report}\n\n"

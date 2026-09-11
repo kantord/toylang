@@ -1266,3 +1266,76 @@ correction moved away from. Kept only the one direct, confirmed-bug fix
 (tool names stated as exact, addressing the observed `bash`-instead-of-
 `run_bash` hallucination) since that targets an actually-observed defect,
 not a hoped-for behavior change.
+
+## Third review cycle: 5 rounds on the self-report mechanism
+
+Requested explicitly, repeating the paired skeptic + cost-maniac pattern,
+this time against the brand-new, previously-unreviewed self-report code.
+
+### Round 1
+
+**Cost track**: real, quantified finding -- self-report calls (which
+happen once per attempt that gives up, up to `retry_cap+1` times per
+dispatch, not once per dispatch like the old reviewer) appear to cost
+close to a fully-uncached rate even at the same context depth normal
+turns show heavy cache hits at (real numbers from the one dispatch that
+exercised this: two self-report calls averaged $0.0021 each against
+~17.8K-token contexts, vs $0.000744 for a normal turn at the same depth
+with 13312 cached tokens). Investigated directly with a live A/B test
+(`tool_choice: "auto"` called twice back-to-back, then `"none"`) -- result
+was inconclusive: even the "should cache" control showed 0 cached tokens,
+meaning OpenRouter's cache behavior here depends on provider-routing
+factors this quick test couldn't control for, not something confidently
+attributable to `tool_choice` alone. Not fixed speculatively; documented
+as an open, real cost risk instead (bounded currently, since contexts are
+still ~18K tokens; the risk scales toward `MAX_CONVERSATION_CHARS`'s
+~50K-token ceiling if a task's context grows that large before giving
+up). Fixed instead: the self-report call itself never logged its own
+`usage` detail (unlike every normal turn), so this cost was only visible
+by subtracting `agent-cost.txt` from the sum of logged per-turn lines --
+now logs a `usage detail` line identically to normal turns.
+
+**Correctness track** -- five findings, all real:
+1. `Result.message` (which carries the self-report note) was computed on
+   every non-GREEN dispatch but NEVER actually printed anywhere -- the
+   terminal SUMMARY loop only ever printed row/status/cost/patch-note.
+   The design doc's own claim that the self-report is "surfaced in the
+   terminal summary" was only half true: file persistence worked, the
+   terminal never did, for the self-report AND every other failure
+   reason that flows through `Result.message` (boot failures, setup
+   failures, crashes). Fixed: the SUMMARY loop now prints the last 300
+   chars of `r.message` for any non-GREEN status.
+2. `self_report` was silently discarded whenever `moved=True` -- reachable
+   whenever the model made a real edit but still ran out of turns before
+   finishing (the max_turns-exhausted fallthrough, not the no-progress
+   cutoff, which never fires when moved=True). The `if moved:` feedback
+   branch never referenced `self_report` at all, and `write_self_report()`
+   was only called from the TIMEOUT/STUCK/final-RED sites, not this one --
+   so the API call happened, was billed, and its answer went nowhere.
+   Fixed by restructuring: `write_self_report(self_report)` now runs
+   ONCE per attempt, unconditionally, right after `agent_turns()` returns,
+   covering every exit path uniformly (a later attempt's call simply
+   overwrites the file, which is correct); the `if moved:` feedback branch
+   now appends `self_report` to the verify-failure feedback when present.
+3. The failure-signaling convention (`self_report_blocker` returning a
+   string starting with `"("` to mean "this failed") could collide with a
+   genuine model answer that itself starts with a parenthetical (e.g.
+   "(Note: the main blocker is..."), which would then be misclassified as
+   a failure note and silently discarded. Fixed: `self_report_blocker`
+   now returns `str | None` -- `None` on any failure, which can't collide
+   with real text -- and every caller checks `is not None`.
+4. The `if not moved:` branch (no-progress cutoff) never rechecked the
+   wall-clock deadline before falling through to STUCK/RED classification,
+   unlike its sibling `else` branch's own `remaining < 60` check just
+   below it -- an attempt hitting the no-progress cutoff right as the
+   deadline expires would be classified RED/STUCK instead of TIMEOUT.
+   Fixed with the same check, same threshold, same TIMEOUT outcome.
+5. A stale comment still referenced `propose_narrower_task`, deleted in
+   the immediately preceding commit. Fixed.
+
+All fixes verified with real reproduction tests: a genuine "(...)"-shaped
+answer no longer misclassified; a genuine failure now returns `None`; a
+self-report is now persisted when `moved=True` (previously silently
+dropped); a deadline expiring exactly at the no-progress cutoff now
+correctly reports TIMEOUT instead of falling through to RED/STUCK; the
+terminal SUMMARY line now actually shows the self-report note.
