@@ -164,10 +164,33 @@ separate mechanism. If a live question stops applying before it's answered, set
 rather than just abandoning it: a stale ask quietly resurfacing once made the maintainer "actively
 angry" (see the retired page-anchored design above), and a superseded node must say so.
 
+**Superseding is precise about where the replacement goes -- get this wrong and the chain silently
+stalls with no error, because there is nothing to validate against (the tools app just shows
+"Superseded" forever and the coordinator has no way to notice from disk alone):**
+
+- **The replacement is a SIBLING of the superseded node, not a child of it.** It must carry the
+  exact same `parent` as the superseded node -- write it as another node under that same `parent`
+  id, `status: live`, same as any other promoted node. A child of the superseded node is invisible:
+  the chain only ever looks for a replacement among nodes sharing the superseded node's `parent`,
+  never among its own children (a superseded node's own answer never comes, so it has no children
+  to walk into). "Replace this question with a better one" reads naturally as authoring a child --
+  it is not one here.
+- **A supersede's own `activity` entry (if used) needs `parent` set to the superseded node's
+  `parent`, not its id** -- the tools app looks for a thinking indicator under that same parent
+  value, matching where the eventual replacement sibling will land.
+- **Superseding the ROOT node of a thread is a dead end with no recovery in the same file.** A
+  root has no parent for a replacement to share, so this is a deliberate, unhandled case, not an
+  oversight (see the code comment on `activePath` in `grillForestChain.ts` if you want the full
+  reasoning). If the very first question in a topic turns out wrong, don't supersede the root --
+  either edit its still-`live` content directly if the human hasn't answered it yet, or abandon
+  this topic file and start a fresh one (these files are ephemeral and disposable, same as any
+  other round file in this directory).
+
 **Progress feedback**: append an `activity` entry (`parent`: the node whose follow-up is being
 drafted, or `null` for a brand-new thread's first question) the moment an answer is picked up,
 before the real follow-up exists; remove it in the same edit that adds the real `live` node. The
-tools app shows this as a "thinking" indicator.
+tools app shows this as a "thinking" indicator. The same `parent`-not-id rule above applies when
+the entry is for a supersede-and-replace rather than a fresh answer.
 
 **Answering**: the human's answer posts to the same inbox door as everything else
 (`POST /__annotations/save`, `page` = the forest file's path, `block` = the answered node's own

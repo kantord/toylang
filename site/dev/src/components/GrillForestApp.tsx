@@ -56,14 +56,18 @@ export function GrillForestApp({ segments }: { segments: string[] }) {
   // switch and immediately clear the pin this effect exists to hold.
   const lastSyncedTopic = useRef<string | null>(topicFromUrl ?? null)
   useEffect(() => {
-    if (pinnedToExplicitNode.current) return
     if (!round) return
     // A topic switch (via the rail) resets the pin for the newly selected topic -- `nodeFromUrl`
-    // was only ever meaningful for the topic the page first loaded with.
+    // was only ever meaningful for the topic the page first loaded with. This has to run BEFORE
+    // the pin check below, not after: `GrillForestApp` isn't remounted on a hash change (`DevApp`
+    // renders it unkeyed), so once pinned, a check ordered the other way around can never reach
+    // the code that would unpin it -- dead code that looked like it worked because nothing
+    // exercised a topic switch while testing the pin itself.
     if (round.topic !== lastSyncedTopic.current) {
       pinnedToExplicitNode.current = false
       lastSyncedTopic.current = round.topic
     }
+    if (pinnedToExplicitNode.current) return
     const path = activePath(round.nodes, round.activity)
     const tail = [...path].reverse().find((e) => e.kind === "node")
     const nextHash = tail?.kind === "node" ? `#/grill/${round.topic}/${tail.node.id}` : `#/grill/${round.topic}`

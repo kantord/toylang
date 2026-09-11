@@ -90,7 +90,16 @@ export function AnswerComposer({ topic, node, onSubmitted }: { topic: string; no
       // with no way back to this composer or its error the moment any poll tick re-renders it --
       // the pending record existing is what drives that swap, not whether the send succeeded.
       clearPendingAnswer(topic, node.id)
-      setSubmitError(e instanceof Error ? e.message : String(e))
+      const message = e instanceof Error ? e.message : String(e)
+      // Persist directly, not just via `setSubmitError` -- if a poll tick already swapped
+      // `GrillChain` to the pending bubble before this POST settled (a real race on any submit
+      // slower than one poll interval), this component is already unmounted by the time the
+      // catch runs, `setSubmitError` is a no-op on an unmounted fiber, and the `useEffect` below
+      // that would otherwise persist `lastError` into the draft never fires -- the error would be
+      // silently dropped on exactly the submits worth surfacing most. `saveDraft` is a plain
+      // localStorage write, unaffected by whether this component is still mounted.
+      saveDraft(key, { selected, boxes, lastError: message } satisfies SavedDraft)
+      setSubmitError(message)
     } finally {
       setSubmitting(false)
     }

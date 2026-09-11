@@ -3,7 +3,7 @@ import { useEffect, useReducer, useRef } from "react"
 import { AnswerComposer, hasInProgressDraft } from "@dev/components/AnswerComposer"
 import { Section } from "@dev/components/GrillWizard"
 import { MessageCard } from "@dev/components/MessageCard"
-import { activePath, clearPendingAnswer, loadPendingAnswer, type ForestRound } from "@dev/lib/grillForest"
+import { activePath, clearPendingAnswer, loadPendingAnswer, type ChainEntry, type ForestRound } from "@dev/lib/grillForest"
 
 const EXCERPT_MAX_LEN = 140
 
@@ -47,15 +47,20 @@ export function GrillChain({ topic, round, scrollToNodeId }: { topic: string; ro
     if (wasNearBottom.current) el.scrollTop = el.scrollHeight
   }, [path.length, scrollToNodeId])
 
-  // Once a node stops being `live`, its local pending record has served whatever purpose it still
-  // could -- `answered` means the coordinator durably processed it (the node's own `answer` now
-  // carries the same content); `superseded` means the question was retracted before the
-  // coordinator ever got to it, so the submitted answer is moot. Either way, clear it rather than
-  // leaving it to leak in localStorage forever (a superseded node is never `live` again, so
-  // nothing else would ever clear it).
+  // Once the coordinator has durably processed an answer (the node itself now says `answered`,
+  // carrying the same content), the local pending record has served its purpose -- clear it. A
+  // node that goes straight to `superseded` with a pending record is different: nothing ever
+  // confirms it, so there's no "processed, safe to clear" moment to wait for. Clearing it here
+  // too was tried and reverted -- `path` is a fresh array every render (it's a fresh
+  // `activePath(...)` call above), so this effect re-runs and re-clears on every poll tick, not
+  // just the render where the node actually became superseded, which meant the "sent, but
+  // retracted" acknowledgment below only ever survived to the very next poll (~1.2s) before
+  // vanishing again -- the exact silent-disappearance bug this was meant to fix, just delayed.
+  // Leaving a superseded node's pending record in place is a few bytes of localStorage, and it's
+  // what keeps that acknowledgment visible for good instead of flashing once.
   useEffect(() => {
     for (const entry of path) {
-      if (entry.kind === "node" && entry.node.status !== "live") clearPendingAnswer(topic, entry.node.id)
+      if (entry.kind === "node" && entry.node.status === "answered") clearPendingAnswer(topic, entry.node.id)
     }
   }, [topic, path])
 
@@ -79,8 +84,16 @@ export function GrillChain({ topic, round, scrollToNodeId }: { topic: string; ro
         }
 
         const node = entry.node
-        const prevEntry = i > 0 ? path[i - 1] : null
-        const parent = prevEntry?.kind === "node" ? prevEntry.node : null
+        // The nearest preceding node that actually has an answer to quote -- not just
+        // `path[i-1]`, which for a supersede-and-replace continuation is the superseded sibling
+        // itself (no `.answer`, since it was retracted before being answered), not the node whose
+        // answer this question is really following up on. Walking back past it finds that node
+        // regardless of how many retractions sit in between.
+        const parent =
+          path
+            .slice(0, i)
+            .reverse()
+            .find((e): e is Extract<ChainEntry, { kind: "node" }> => e.kind === "node" && !!e.node.answer)?.node ?? null
         // Read for `superseded` too, not just `live`: a node can go straight from live to
         // superseded with a submitted-but-not-yet-processed answer still sitting in local storage
         // (the coordinator retracted the question before ever getting to it) -- this is the one
