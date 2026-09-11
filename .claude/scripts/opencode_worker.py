@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import opencode_peek
@@ -71,6 +71,7 @@ def run_worker(model: str, brief: str, lane: str, log_path: Path) -> int:
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=errf,
             text=True, env=env, start_new_session=True,
         )
+        assert proc.stdout is not None  # guaranteed by stdout=PIPE above; typeshed can't see that
         try:
             with open(log_path, "w") as log:
                 for line in proc.stdout:
@@ -127,7 +128,7 @@ def append_telemetry(log_path: Path, lane: str, start: int, end: int) -> None:
         if new:
             w.writerow(["ended_at", "kind", "lane", "session_id", "model",
                         "turns", "output_tokens", "peak_context", "wall_seconds"])
-        w.writerow([datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        w.writerow([datetime.now(UTC).isoformat(timespec="seconds"),
                     "worker", lane, sid, model or "deepseek-v4-flash-0731",
                     steps, out_tok, peak_ctx, end - start])
     print(f"[opencode-worker] done: {steps} steps, ${cost:.4f}, telemetry row appended")

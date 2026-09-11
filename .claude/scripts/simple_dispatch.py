@@ -48,7 +48,7 @@ import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path("/home/kantord/repos/toylang")
@@ -233,7 +233,7 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
         return Result(row_id, False, False, False, False,
                        "another dispatch of this row is already running (lock held)", None)
     run_id = uuid.uuid4().hex[:8]
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
     result: Result | None = None
     try:
         result = _dispatch_one_locked(row_id, run_id, brief_path, model, retry_cap, snapshot,
@@ -241,7 +241,7 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                                        resume_from, original_task_file, resume_patch)
         return result
     finally:
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
         if result is None:
             # _dispatch_one_locked raised something it didn't itself catch
             # (SetupFailed is already handled inside it) -- log the crash

@@ -58,7 +58,13 @@ limit=$(grep -oE '^max_file_lines[[:space:]]*=[[:space:]]*[0-9]+' .claude/checks
 # a wall nobody reads. Corpus YAML stays out: case shape is already enforced
 # harder than a hook could (unknown keys are errors, and tag_corpus.rs
 # rewrites node_types on every run).
-readonly OWNED=('*.rs' '*.md' '*.sh')
+# '*.sh' kept even though .claude/scripts/ has no more shell scripts
+# (2026-09-11 uv migration): a future stray shell script anywhere else in
+# the repo should still be covered. '*.py' added the same day -- its
+# absence was a real, silent blind spot the migration created: uncommitted
+# Python changes and oversized Python files stopped being caught by this
+# gate entirely the moment the tooling scripts became .py instead of .sh.
+readonly OWNED=('*.rs' '*.md' '*.sh' '*.py')
 
 # AGENTS.md has sessions commit their own work; ending a turn with a diff
 # still sitting in the tree is the politeness stall (issue #18), not a

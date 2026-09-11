@@ -1775,3 +1775,21 @@ logged in plans/opencode-rollout.md around 2026-09-09. Only `draft-mutation-migr
 actually dispatched this tick, using the pre-existing prep at
 plans/brief-draft-mutation-migration.md (copied into plans/simple-briefs/draft-mutation-migration.txt,
 the filename simple_dispatch.py requires).
+
+**Incident (2026-09-11): `just check`'s tsc gate can fail purely from sandbox setup, unrelated
+to the row's actual change.** `draft-mutation-migration` (run `724e4eb6`, $0.043085) went STUCK
+after 3/3 internal attempts. Attempt 1's real verify output shows why: `just check` failed on
+`tests/ts_types.rs::tsc_accepts_the_declaration_and_consumer`, whose panic message is explicit --
+"tsc is not installed, and the .d.ts gate needs a real TypeScript compiler." The sandbox clone
+has no `site/node_modules` and no system `tsc`; the agent had started fixing it (`pnpm install`-
+equivalent into `site/node_modules`) but ran out of turn budget before re-verifying. Attempts 2
+and 3 made zero repo changes for 12 consecutive turns each -- plausibly discouraged by the same
+known-red gate, though that's inference, not confirmed from the transcript. This is a sandbox
+provisioning gap, not a brief-scope problem: `just check` runs the FULL suite regardless of what
+a row actually touches, so ANY row dispatched into a fresh clone without `site/` deps installed
+can hit this same false-STUCK, independent of whether its own change is correct. Not fixed here
+(would need `simple_dispatch.py`'s sandbox prep step to provision `site/` deps, or the brief to
+tell the agent to do it FIRST, before other edits, so a turn-budget cutoff doesn't strand it
+mid-fix) -- flagged for whoever reshapes `draft-mutation-migration`'s brief next, and worth
+watching for on other rows that go STUCK with an unrelated-looking `ts_types` failure in their
+verify tail.

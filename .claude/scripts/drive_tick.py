@@ -21,15 +21,37 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 import dispatch_state
 import tick_stream
-import yaml
 
 REPO = Path("/home/kantord/repos/toylang")
 LANES = Path.home() / ".local" / "share" / "toylang-lanes"  # land_lane.py's throwaway landing worktrees
 LOG_DIR = Path.home() / ".cache" / "toylang-drive"
 SCRIPTS = Path(__file__).resolve().parent
 MODEL = "sonnet"
+
+
+def log(msg: str) -> None:
+    """Every operational status line (tick start/skip/lock-yield, signal
+    failures, auth-streak state) used to go ONLY to stdout -- fine for `just
+    peek` or a terminal someone happens to be watching, but confirmed as a
+    real gap, 2026-09-11: if the loop runs unattended with nothing capturing
+    its stdout (a systemd unit, a closed terminal, output accidentally sent
+    to /dev/null), there is NO durable record that the loop is even alive,
+    what a given tick decided, or when it last ran -- a skipped ("nothing to
+    do") tick left zero trace anywhere, since the per-tick JSON result file
+    is only written for ticks that actually invoke claude -p. Appends to a
+    persistent file in addition to printing, so `just drive`'s own operator
+    can always answer "is this still running, and what did it last do" from
+    disk alone, independent of whatever happens to be attached to stdout."""
+    print(msg)
+    try:
+        with open(LOG_DIR / "drive-tick.log", "a") as f:
+            f.write(msg + "\n")
+    except OSError:
+        pass  # best-effort: the console print above already happened
 
 
 def join_trigger(trigger: str, addition: str) -> str:
@@ -53,10 +75,10 @@ def revive_dev_server() -> None:
     except (subprocess.CalledProcessError, OSError):
         pass
     devserver_log = LOG_DIR / "devserver.log"
-    with open(devserver_log, "a") as log:
+    with open(devserver_log, "a") as devlog:  # not `log` -- shadows the module-level log() helper
         subprocess.Popen(
             ["pnpm", "dev", "--port", "5173", "--strictPort"],
-            cwd=REPO / "site", stdin=subprocess.DEVNULL, stdout=log,
+            cwd=REPO / "site", stdin=subprocess.DEVNULL, stdout=devlog,
             stderr=subprocess.STDOUT, start_new_session=True,
         )
 
@@ -122,8 +144,8 @@ def safe_signal(label: str, fn, *args, default=None):
     try:
         return fn(*args)
     except Exception as e:
-        print(f"[drive-tick] signal '{label}' failed (non-fatal, treated as "
-              f"no signal): {e}", file=sys.stderr)
+        log(f"[drive-tick] signal '{label}' failed (non-fatal, treated as "
+            f"no signal): {e}")
         return default
 
 
@@ -408,6 +430,7 @@ def run_tick(prompt: str, out_path: Path) -> None:
              "--output-format", "stream-json", "--verbose", prompt],
             stdout=subprocess.PIPE, stderr=errf, text=True,
         )
+        assert proc.stdout is not None  # guaranteed by stdout=PIPE above; typeshed can't see that
         try:
             for line in proc.stdout:
                 try:
@@ -419,8 +442,8 @@ def run_tick(prompt: str, out_path: Path) -> None:
                     # be isolated for free by tick-stream.py running as a
                     # separate subprocess under bash; rendering in-process
                     # now needs the same isolation explicitly.
-                    print(f"[drive-tick] tick_stream.process_line failed on "
-                          f"one line (non-fatal): {e}", file=sys.stderr)
+                    log(f"[drive-tick] tick_stream.process_line failed on "
+                        f"one line (non-fatal): {e}")
         finally:
             proc.stdout.close()
             try:
@@ -457,8 +480,8 @@ def check_coordinator_auth(out_path: Path) -> None:
             down_file.write_text(
                 f"{datetime.now().astimezone().isoformat()}: {streak} consecutive "
                 "coordinator auth failures -- run `claude /login`\n")
-            print(f"[drive-tick] {datetime.now():%H:%M:%S} {streak} consecutive "
-                  f"auth failures -- wrote {down_file}")
+            log(f"[drive-tick] {datetime.now():%H:%M:%S} {streak} consecutive "
+                f"auth failures -- wrote {down_file}")
             if first_detection:
                 env = dict(os.environ)
                 # bash's ${DISPLAY:-:0} treats an empty-but-set DISPLAY the
@@ -487,8 +510,8 @@ def main() -> int:
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        print(f"[drive-tick] {datetime.now():%H:%M:%S} another tick holds the "
-              "lock (event-driven landing, most likely) -- yielded")
+        log(f"[drive-tick] {datetime.now():%H:%M:%S} another tick holds the "
+            "lock (event-driven landing, most likely) -- yielded")
         return 0
 
     os.environ["PATH"] = (f"{Path.home()}/.local/bin:{Path.home()}/.local/share/pnpm:"
@@ -501,29 +524,40 @@ def main() -> int:
     # process died before its own `finally` block ever ran. Mechanical, no
     # model involved. Called directly, not via subprocess: dispatch_state is
     # already Python, in the same project.
+    # Always writes ONE line, even when nothing was removed -- a real
+    # observability gap, confirmed 2026-09-11: the old version only wrote on
+    # an actual removal, so "GC ran and found nothing to clean" and "GC
+    # silently stopped running entirely" were indistinguishable from the log
+    # alone (both leave the file untouched). A per-tick heartbeat closes
+    # that: the file's own mtime now proves execution regardless of outcome.
     sandbox_gc_log = LOG_DIR / "sandbox-gc.log"
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
+        removed = dispatch_state.gc_orphaned_sandboxes()
         with open(sandbox_gc_log, "a") as f:
-            for line in dispatch_state.gc_orphaned_sandboxes():
-                f.write(f"removed orphaned sandbox: {line}\n")
+            if removed:
+                for line in removed:
+                    f.write(f"{ts} removed orphaned sandbox: {line}\n")
+            else:
+                f.write(f"{ts} gc ran, 0 orphaned sandboxes\n")
     except Exception as e:
         with open(sandbox_gc_log, "a") as f:
-            f.write(f"gc failed (non-fatal): {e}\n")
+            f.write(f"{ts} gc failed (non-fatal): {e}\n")
 
     revive_dev_server()
 
     trigger, state = compute_trigger_and_state(mode)
     if not trigger:
-        print(f"[drive-tick] {datetime.now():%H:%M:%S} nothing to do (workers "
-              "grinding, no input) -- skipped, zero tokens")
+        log(f"[drive-tick] {datetime.now():%H:%M:%S} nothing to do (workers "
+            "grinding, no input) -- skipped, zero tokens")
         return 0
 
     policy = AUDIT_POLICY if mode == "audit" else TICK_POLICY
 
     ts = time.strftime("%Y%m%d-%H%M%S")
     out_path = LOG_DIR / f"{ts}-{mode}-{MODEL}.json"
-    print(f"[drive-tick] {datetime.now():%H:%M:%S} {mode} starting on {MODEL} "
-          f"-- {trigger} (log: {out_path})")
+    log(f"[drive-tick] {datetime.now():%H:%M:%S} {mode} starting on {MODEL} "
+        f"-- {trigger} (log: {out_path})")
 
     try:
         inbox_n = str(len(json.loads((REPO / "docs/.annotations/inbox.json").read_text())

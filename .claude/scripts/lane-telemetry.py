@@ -16,7 +16,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 try:
     hook = json.load(sys.stdin)
@@ -53,11 +53,13 @@ try:
     if turns == 0:
         sys.exit(0)
 
+    def parse_ts(t: str) -> datetime:
+        return datetime.fromisoformat(t.replace("Z", "+00:00"))
+
     wall = 0
     if first_ts and last_ts:
         try:
-            p = lambda t: datetime.fromisoformat(t.replace("Z", "+00:00"))
-            wall = int((p(last_ts) - p(first_ts)).total_seconds())
+            wall = int((parse_ts(last_ts) - parse_ts(first_ts)).total_seconds())
         except ValueError:
             pass
 
@@ -79,7 +81,7 @@ try:
         if new:
             w.writerow(["ended_at", "kind", "lane", "session_id", "model",
                         "turns", "output_tokens", "peak_context", "wall_seconds"])
-        w.writerow([datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        w.writerow([datetime.now(UTC).isoformat(timespec="seconds"),
                     kind, lane, sid, model, turns, out_tok, peak_ctx, wall])
 except Exception:
     pass

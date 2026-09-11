@@ -28,7 +28,6 @@ import http.client
 import json
 import os
 import re
-import shlex
 import signal
 import subprocess
 import sys
@@ -171,28 +170,37 @@ def write_self_report(self_report: str | None) -> None:
     as STATUS_FILE/COST_FILE -- a plain file read, no separate API call, no
     transcript to reconstruct intent from.
 
-    ALWAYS acts (writes or deletes), even when `self_report` is None --
-    never silently skips. A real bug found by adversarial review: an
-    earlier version only wrote when non-None and did nothing otherwise,
-    on the theory that "no report this attempt" only happens when the
-    model thought it was done and already explained itself elsewhere. But
-    `self_report` is also None on a sustained-git-failure cutoff and on a
-    transient-network/RuntimeError turn failure -- neither means "nothing
-    useful to write," they mean "this attempt didn't ask." Skipping the
-    write in those cases let an EARLIER attempt's real self-report survive
-    on disk and get misattributed to a later, unrelated final outcome --
-    reproduced directly: attempt 1's real diagnosis stayed on disk and was
-    reported as explaining attempt 2's unrelated network-failure RED.
-    Deleting the file on None closes this: "no report this attempt" now
-    always means no file, never a stale one from a previous attempt."""
-    if self_report is not None:
-        with open(SELF_REPORT_FILE, "w") as f:
-            f.write(self_report)
-    else:
+    Three states, not two -- `self_report` is `None`, `""`, or real content,
+    and each means something different:
+    - `None`: this attempt never ASKED (a sustained-git-failure cutoff, a
+      transient-network/RuntimeError turn failure, or a clean finish that
+      needed no report at all) -- DELETE the file. An earlier attempt's
+      real self-report surviving here would get misattributed to this
+      attempt's unrelated outcome (reproduced directly, adversarial
+      review: attempt 1's real diagnosis stayed on disk and was reported
+      as explaining attempt 2's unrelated network-failure RED).
+    - `""`: this attempt DID ask, but the call itself failed or got
+      truncated before producing content (self_report_blocker's own
+      failure return) -- LEAVE the file untouched. Confirmed live,
+      2026-09-11: a real dispatch's final attempt hit exactly this
+      (finish_reason="length"), and the earlier two-state version deleted
+      attempts 1 and 2's real, on-topic self-reports along with it,
+      leaving a STUCK outcome with NO diagnostic information at all even
+      though two earlier attempts had already explained it clearly. An
+      empty/failed call carries strictly less information than whatever
+      is already on disk, so it must never overwrite or delete it.
+    - anything else: real content -- WRITE it, overwriting whatever was
+      there (a later attempt's real report IS more relevant than an
+      earlier one's, when it actually has one)."""
+    if self_report is None:
         try:
             os.remove(SELF_REPORT_FILE)
         except FileNotFoundError:
             pass
+    elif self_report:
+        with open(SELF_REPORT_FILE, "w") as f:
+            f.write(self_report)
+    # else: self_report == "" -- a failed/truncated call, leave the file as-is
 
 
 def truncate(s: str, n: int = MAX_TOOL_OUTPUT) -> str:
@@ -223,7 +231,7 @@ def trim_messages(messages: list) -> None:
 def run_tool(name: str, args: dict) -> str:
     try:
         if name == "read_file":
-            with open(args["path"], "r", errors="replace") as f:
+            with open(args["path"], errors="replace") as f:
                 return truncate(f.read())
         if name == "write_file":
             path = args["path"]
@@ -384,7 +392,7 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
     return parsed
 
 
-def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: int = 800) -> str | None:
+def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: int = 800) -> str:
     """Ask the model DIRECTLY, in-context (the same conversation it's
     already in, full context still loaded, likely cache-warm), why it
     hasn't completed the task -- instead of reconstructing the reason
@@ -486,10 +494,21 @@ def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: in
               file=sys.stderr)
         print(f"    usage detail: {json.dumps(usage)}", file=sys.stderr)
         content = (parsed["choices"][0]["message"].get("content") or "").strip()
-        return content or None
+        # `""`, not `None`, when a call was attempted but produced nothing
+        # (e.g. finish_reason="length" truncating before any content) --
+        # confirmed live, 2026-09-11: a real dispatch's 3rd (final) attempt
+        # hit exactly this, and because write_self_report() (see its own
+        # docstring) treated this identically to "not asked," it deleted
+        # attempts 1 and 2's real, on-topic self-reports, leaving the
+        # operator with NOTHING to explain a STUCK outcome that two earlier
+        # attempts had already diagnosed clearly. `None` is reserved for
+        # when this function is never called at all (the caller's own
+        # "not asked" case); `write_self_report` treats the two
+        # differently -- see its docstring.
+        return content or ""
     except Exception as e:
         print(f"  self-report call failed, non-fatal: {e}", file=sys.stderr)
-        return None
+        return ""
 
 
 class OutOfTime(Exception):
@@ -671,7 +690,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                       "ending this attempt early instead of spending the rest of "
                       "max_turns on further unproductive exploration", file=sys.stderr)
                 self_report = self_report_blocker(api_key, model, messages)
-                if self_report is not None:
+                if self_report:
                     print(f"  self-report: {self_report}", file=sys.stderr)
                 return None, _sig_changed(sig, initial_sig), self_report
         try:
@@ -789,7 +808,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             return None, _sig_changed(sig, initial_sig), None
         trim_messages(messages)
     self_report = self_report_blocker(api_key, model, messages)
-    if self_report is not None:
+    if self_report:
         print(f"  self-report: {self_report}", file=sys.stderr)
     return None, moved(), self_report
 
@@ -848,7 +867,7 @@ def normalize_for_stuck_check(tail: str) -> str:
     # identical, still compares correctly either way) this changes nothing
     # observable; on a single differing PASS-prefixed line it preserves the
     # real difference instead of discarding it.
-    filtered = [l for l in body_lines if not _NOISE_LINE_RE.match(l)]
+    filtered = [line for line in body_lines if not _NOISE_LINE_RE.match(line)]
     lines = filtered if filtered else body_lines
     text = "\n".join(lines)
     text = _TIMING_RE.sub("[Ts]", text)
@@ -1190,7 +1209,9 @@ def main() -> int:
             # rather than replacing the verify tail: unlike the `not
             # moved` case, there's real verify feedback here too and both
             # are useful.
-            if self_report is not None:
+            if self_report:  # truthy, not `is not None` -- self_report_blocker
+                             # returns "" (not None) on a failed/truncated call,
+                             # which carries nothing worth appending
                 feedback += f"\n\nYou also said this about your progress:\n\n{self_report}"
         else:
             # An attempt that made ZERO repo changes has a fruitless
@@ -1250,16 +1271,18 @@ def main() -> int:
             # back to the old generic wording only if no self-report was
             # captured (e.g. a self-report call itself failed).
             #
-            # `is not None`, not a string-prefix check -- a real bug found
-            # by adversarial review: self_report_blocker used to signal
-            # its own failure by returning a string starting with "(",
-            # and nothing stopped a genuine model answer from itself
-            # starting with a parenthetical ("(Note: the main blocker
-            # is..."), which this check would have misclassified as a
-            # failure note and silently discarded. self_report_blocker now
-            # returns None on failure instead, which can't collide with
-            # real output.
-            if self_report is not None:
+            # Truthy, not a string-prefix check -- a real bug found by
+            # adversarial review: self_report_blocker used to signal its
+            # own failure by returning a string starting with "(", and
+            # nothing stopped a genuine model answer from itself starting
+            # with a parenthetical ("(Note: the main blocker is..."),
+            # which this check would have misclassified as a failure note
+            # and silently discarded. self_report_blocker now returns ""
+            # on a failed/truncated call (distinct from `None`, which means
+            # "never asked" -- see write_self_report's docstring), and a
+            # plain truthy check treats both "never asked" and "asked but
+            # got nothing" the same way here: fall back to generic wording.
+            if self_report:
                 feedback = (
                     "Your previous attempt ended without making any repo changes. "
                     f"You said this about what was blocking you:\n\n{self_report}\n\n"

@@ -2,7 +2,6 @@
 """Watch what the current coordinator tick is doing, live: tail its session
 transcript through the same colorizer the loop terminal uses. Ctrl-C to stop
 (detaches the viewer only; the tick is untouched)."""
-import glob
 import time
 from pathlib import Path
 
