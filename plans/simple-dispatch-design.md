@@ -1513,3 +1513,71 @@ that had been completely stuck for the entire session up to this point.
 Not claimed as proof the self-report mechanism "fixes" this task shape
 (one data point, and the task still isn't done) -- reported as exactly
 what it is: the first real edit ever produced here, worth knowing.
+
+### Round 4
+
+**Self-report mechanism itself: converged.** Fully parsed the real
+113-message `5e5bfb78` transcript programmatically -- every assistant
+`tool_calls` message has an exactly-matching, correctly-ordered run of
+`tool` replies across all 3 attempts (no orphaned entries anywhere);
+both attempt-transition feedback messages contain a distinct,
+attempt-specific self-report with no duplication or drop; `moved` is
+confirmed computed per-attempt, not cumulatively (attempt 1's real edit
+registers `moved=True` even though a LATER 12-turn window on its own made
+no further changes); status classification traced end to end (RED, not
+STUCK, correctly forced by `attempt > retry_cap` on the true final no-op
+attempt); `simple_dispatch.py`'s self-report pull and terminal-summary
+note match the real file byte-for-byte; cost reconciliation (summing
+every logged call) matches the CSV total to rounding. No defects found
+in the mechanism rounds 1-3 built and fixed -- it holds up against real,
+substantial production data.
+
+**Cost track**: also converged (4th straight round). Broke down the real
+run's $0.064364 by attempt (34%/29%/37%) and self-report call (3 calls,
+cache hit rates 0%/47%/72%, consistent with "provider-routing variance,
+not systematic" from the prior section) -- no anomaly. One informational
+observation, explicitly $0 impact on this run: attempt 3's self-report
+was nearly verbatim-identical to attempt 2's (same "~12 files, narrow to
+Go backend" diagnosis) -- a "whack-a-mole" task shape where each attempt
+fixes one missing match arm, exposes an identical-shaped error in the
+next file, and defeats `normalize_for_stuck_check`'s tail-equality test
+since the tail text differs by file:line even though the root cause
+repeats. `retry_cap=2` already bounds this run at 3 attempts, so there
+was no attempt-4 to save money on -- noted as a candidate lever for a
+higher-retry_cap dispatch hitting the same pattern, not built
+speculatively without evidence of real dollar impact.
+
+**Correctness track** -- two new real bugs, outside the self-report
+mechanism (which itself converged), found on a fresh top-to-bottom pass:
+1. `FATAL` status conflated two unrelated failure classes: a genuine
+   `agent_loop.py`-reported FATAL (explicitly defined there as "bad key,
+   no credit -- do not retry") and a host-side SETUP failure (a transient
+   network blip during `git clone`/`msb copy`, or a slow sandbox boot,
+   raised as `SetupFailed`) both mapped to the same `"FATAL"` status --
+   indistinguishable to an operator, exactly the misclassification class
+   this whole pipeline exists to eliminate. A one-off network hiccup
+   during setup is very plausibly worth retrying; "the account is out of
+   money" is not. Fixed: added a separate `setup_failed: bool` field to
+   `Result` (distinct from `fatal`), a new `"SETUP_FAILED"` status in
+   both classification sites (`dispatch_one`'s finally block and `main()`'s
+   SUMMARY loop), and updated the two `SetupFailed`/boot-failure call
+   sites to set it instead of `fatal`. Verified: the two failure classes
+   now classify distinctly.
+2. `dispatch_one`'s `finally` block called `append_dispatch_log(...)`
+   BEFORE releasing the row's `flock` -- if the CSV append itself raised
+   (disk full on the repo-committed CSV path, which this repo has a
+   recorded ENOSPC history for), the exception would propagate out of the
+   `finally` block and skip the flock release entirely, leaking the row's
+   lock for the rest of the process's life (blocking every future
+   dispatch of that row until the whole process was killed by hand).
+   Fixed: wrapped the log-append in its own nested `try/finally` so the
+   flock release always runs regardless of what happens during logging.
+   Verified: a simulated raising log-append still releases the lock
+   (confirmed by a second handle successfully acquiring it afterward).
+
+Also noted, informational only, no code change (not a regression, matches
+an already-documented design-doc caveat): `check_credit_balance` runs
+once before `--parallel` sandboxes start, not per-dispatch, so N parallel
+sandboxes could all pass preflight and jointly exhaust the balance
+mid-run -- `agent_loop.py`'s own per-call FATAL check still catches real
+exhaustion inside each dispatch regardless.

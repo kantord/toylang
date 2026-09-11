@@ -82,6 +82,18 @@ class Result:
     message: str
     patch_path: Path | None
     cost_usd: float = 0.0
+    # Distinct from `fatal` -- a real bug found by adversarial review:
+    # both a genuine agent_loop.py FATAL (explicitly defined there as "bad
+    # key, no credit -- do not retry") and a host-side setup failure (a
+    # transient network blip during `git clone`/`msb copy`, or a slow
+    # sandbox boot) mapped to the SAME "FATAL" status, indistinguishable
+    # to an operator -- exactly the misclassification class this whole
+    # pipeline exists to eliminate. A one-off network hiccup during setup
+    # is very plausibly worth retrying; "the account is out of money" is
+    # not. Kept as a separate field rather than overloading `fatal`'s
+    # meaning, so existing `fatal` checks (agent_loop.py's own real FATAL)
+    # are untouched.
+    setup_failed: bool = False
 
 
 def sh(cmd: list, env=None, check=False, timeout=None) -> subprocess.CompletedProcess:
@@ -243,6 +255,8 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                 status = "STUCK"
             elif result.timed_out:
                 status = "TIMEOUT"
+            elif result.setup_failed:
+                status = "SETUP_FAILED"
             elif result.fatal:
                 status = "FATAL"
             elif result.ok:
@@ -251,18 +265,27 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                 status = "RED"
             cost = result.cost_usd
             patch = result.patch_path
-        append_dispatch_log({
-            "run_id": run_id,
-            "row_id": row_id,
-            "model": model,
-            "start_time": start_time.isoformat(),
-            "end_time": end_time.isoformat(),
-            "duration_s": f"{(end_time - start_time).total_seconds():.1f}",
-            "status": status,
-            "cost_usd": f"{cost:.6f}",
-            "patch_path": str(patch) if patch else "",
-        })
-        fcntl.flock(lock, fcntl.LOCK_UN)
+        # Wrapped so a failure WRITING the log (e.g. disk full on the
+        # repo-committed CSV path -- this repo has a recorded ENOSPC
+        # history) can never skip the lock release below. A real bug
+        # found by adversarial review: `append_dispatch_log` used to be
+        # the last statement before the flock release, so an exception
+        # here would propagate out of this `finally` block and leave the
+        # row's lock held for the rest of this process's life.
+        try:
+            append_dispatch_log({
+                "run_id": run_id,
+                "row_id": row_id,
+                "model": model,
+                "start_time": start_time.isoformat(),
+                "end_time": end_time.isoformat(),
+                "duration_s": f"{(end_time - start_time).total_seconds():.1f}",
+                "status": status,
+                "cost_usd": f"{cost:.6f}",
+                "patch_path": str(patch) if patch else "",
+            })
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
         lock.close()
 
 
@@ -325,7 +348,8 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
         r = sh(args, env=env, timeout=120)
         if r.returncode != 0:
             logline(f"boot failed: {r.stderr}")
-            return Result(row_id, False, True, False, False, f"sandbox boot failed: {r.stderr[:500]}", None)
+            return Result(row_id, False, False, False, False,
+                           f"sandbox boot failed: {r.stderr[:500]}", None, setup_failed=True)
 
         def exec_in(script: str, timeout: int):
             # `timeout` deliberately has NO default. Three rounds of "add a
@@ -511,7 +535,7 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
                        patch_path, cost_usd)
     except SetupFailed as e:
         logline(f"setup failed: {e}")
-        return Result(row_id, False, True, False, False, str(e), None)
+        return Result(row_id, False, False, False, False, str(e), None, setup_failed=True)
     finally:
         # An explicit timeout here matters more than anywhere else in this
         # function: this is the ONE call that runs even when everything
@@ -632,6 +656,8 @@ def main() -> int:
             status = "STUCK"
         elif r.timed_out:
             status = "TIMEOUT"
+        elif r.setup_failed:
+            status = "SETUP_FAILED"
         elif r.fatal:
             status = "FATAL"
         elif r.ok:
