@@ -8,3 +8,5 @@ c14723b9,dense-tensor-type-build,deepseek/deepseek-v4-flash-0731,2026-09-10T22:5
 e1575164,toylang-conf-yaml-build,deepseek/deepseek-v4-flash-0731,2026-09-10T22:59:56.889723+00:00,2026-09-10T23:04:38.892912+00:00,282.0,STUCK,0.031778,
 64a0432c,toylang-conf-yaml-build,deepseek/deepseek-v4-flash-0731,2026-09-10T23:15:30.152840+00:00,2026-09-10T23:23:53.750219+00:00,503.6,STUCK,0.087285,/home/kantord/.cache/toylang-simple-dispatch/results/toylang-conf-yaml-build-64a0432c.patch
 78353c1b,dense-tensor-type-build,deepseek/deepseek-v4-flash-0731,2026-09-10T23:45:54.649393+00:00,2026-09-10T23:47:42.428055+00:00,107.8,STUCK,0.011393,
+6493df78,dense-tensor-transpose-only,deepseek/deepseek-v4-flash-0731,2026-09-10T23:48:49.055247+00:00,2026-09-10T23:50:14.139701+00:00,85.1,STUCK,0.012922,
+856fcb60,dense-tensor-transpose-only,deepseek/deepseek-v4-flash-0731,2026-09-10T23:51:54.260428+00:00,2026-09-10T23:54:09.758644+00:00,135.5,STUCK,0.023121,

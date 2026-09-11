@@ -178,178 +178,6 @@ def check_credit_balance(api_key: str) -> tuple[bool, str]:
     return True, f"OpenRouter balance OK, remaining=${remaining:.4f}"
 
 
-def _patch_ground_truth(patch_text: str) -> str:
-    """A short, PROGRAMMATICALLY-derived (not LLM-derived) fact about
-    whether real edits exist, for propose_narrower_task to reconcile its
-    answer against. Exists because trusting the reviewer's own read of the
-    conversation, alone, already produced a real, confirmed-wrong verdict:
-    a genuinely completed toylang-conf-yaml-build run (verified afterward
-    by actually applying its patch and running the full suite: 436/436
-    pass) got reviewed as "never made a single repo change" -- not because
-    the model reasoned badly, but because the specific 60K-char window of
-    the transcript it was shown didn't happen to include the edit. Fixing
-    the truncation direction (see propose_narrower_task) reduces how often
-    that happens but can't eliminate it -- any fixed-size window can still
-    miss the relevant part of an arbitrarily long conversation. This fact
-    doesn't depend on the conversation window at all, so it can't be
-    truncated away."""
-    if not patch_text.strip():
-        return "NO PATCH was extracted -- confirmed no committed file changes exist."
-    files = len(re.findall(r"^diff --git ", patch_text, re.MULTILINE))
-    added = len(re.findall(r"^\+(?!\+\+)", patch_text, re.MULTILINE))
-    removed = len(re.findall(r"^-(?!--)", patch_text, re.MULTILINE))
-    return (f"A REAL PATCH WAS EXTRACTED: {files} file(s) changed, "
-            f"+{added}/-{removed} lines -- this is confirmed, not inferred from the "
-            f"conversation below. If you conclude no edits were made, you are "
-            f"contradicting this fact; reconcile your answer with it.")
-
-
-_NO_EDITS_CLAIM_RE = re.compile(
-    r"\b(no|never|didn'?t|did not|zero)\b[^.]{0,40}\b(edit|chang|writ|modif)",
-    re.IGNORECASE,
-)
-
-
-def propose_narrower_task(api_key: str, model: str, task_text: str, verify_tail: str,
-                           messages: list, patch_text: str = "") -> dict:
-    """One cheap, single-shot (no tool loop, no sandbox) call reviewing a
-    STUCK/RED run: given the original brief, the failure evidence, and the
-    real persisted conversation (what was actually tried), asks whether a
-    narrower, achievable slice of the task exists. This is a REVIEW, not a
-    decision -- nothing downstream acts on the result automatically; a
-    human reads it. Best-effort by design: any failure here (network,
-    malformed model output) must not break or delay the real dispatch
-    result, since this only ever runs on the failure path of something
-    that's already finished."""
-    # A single reasoning call over a written transcript, not an agent
-    # session -- doesn't need the full detail agent_loop.py itself would;
-    # a generous SUFFIX is enough context for "what was tried" without this
-    # call's own size ballooning. Deliberately the LAST N chars, not the
-    # first -- a real production run found this the wrong way round: a
-    # 197K-char persisted transcript sliced with [:60_000] captured only
-    # the first 20 of 90 messages (pure early exploration, before any edit
-    # ever happened), and the reviewer confidently reported "never made a
-    # single repo change" for a run that had, in fact, made a real edit
-    # AND fixed a real sandbox environment gap (a missing `tsc`) later in
-    # the SAME conversation -- both entirely outside the truncated window.
-    # Recency is what's actually diagnostic for "why did THIS attempt end
-    # where it did"; the original task is already passed separately above,
-    # so the early history isn't needed twice.
-    messages_summary = json.dumps(messages)[-60_000:]
-    ground_truth = _patch_ground_truth(patch_text)
-    prompt = (
-        "You are reviewing a failed autonomous coding attempt that ran out of "
-        "retries without succeeding. Decide whether a NARROWER, more achievable "
-        "slice of the original task exists, informed by what was actually tried "
-        "below -- not by guessing blind.\n\n"
-        f"CONFIRMED GROUND TRUTH (computed directly from the repo, not from reading "
-        f"the conversation -- trust this over your own read of the transcript if "
-        f"they ever seem to disagree): {ground_truth}\n\n"
-        f"ORIGINAL TASK:\n{task_text}\n\n"
-        f"LAST VERIFICATION FAILURE:\n{verify_tail[-3000:]}\n\n"
-        f"WHAT WAS ACTUALLY TRIED (the real conversation; if truncated, the "
-        f"EARLY part is missing and this starts partway through -- what's "
-        f"shown is the END of the transcript, closest to why the attempt "
-        f"actually ended):\n"
-        f"{messages_summary}\n\n"
-        "Reply with ONLY a JSON object, no other text:\n"
-        '{"narrowable": true or false, "new_task": "...", "deferred_scope": "...", '
-        '"reasoning": "..."}\n'
-        "If nothing smaller and genuinely achievable exists -- or the transcript shows "
-        "this isn't a scope problem at all (e.g. it never attempted an edit despite "
-        "having everything it needed) -- set narrowable to false and say why in "
-        "reasoning; leave new_task and deferred_scope empty."
-    )
-    body = json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        # 4096, not 2048 -- confirmed live this model tier can spend a
-        # large chunk of its completion budget on reasoning tokens before
-        # emitting any visible content (real build turns in this same
-        # dispatch run logged over 2500 reasoning_tokens on a single turn),
-        # and the ground-truth injection above makes this WORSE, not
-        # better, when the transcript and the confirmed fact genuinely
-        # conflict: confirmed live, feeding the reviewer a real patch fact
-        # alongside a misleading transcript window made it correctly start
-        # reasoning through the contradiction ("ground truth says a patch
-        # exists... but transcript shows no edits... need reconcile...") --
-        # exactly the intended effect -- but it ran out of the 2048-token
-        # budget mid-reasoning and returned content=null, finish_reason
-        # "length", before ever emitting the JSON answer. Raising the
-        # budget doesn't fix a bug so much as give the correctly-triggered
-        # extra reasoning enough room to finish. This call is negligible
-        # cost either way ($0.0001-0.002-ish), so there's no real reason to
-        # keep the budget tight.
-        "max_tokens": 4096,
-        # Confirmed live: even at max_tokens=4096, this model can still
-        # occasionally exhaust the whole budget on reasoning tokens alone
-        # (finish_reason "length", content=null) -- raising max_tokens
-        # further only pushes the same failure mode out, it doesn't close
-        # it, since this model's reasoning verbosity for a genuinely
-        # confusing case (e.g. reconciling the ground-truth fact above
-        # against a misleading transcript) isn't bounded by a fixed
-        # multiple. `reasoning: {"effort": "low"}` reliably fixed this in
-        # direct testing (finish_reason went from "length" to "stop",
-        # reasoning_tokens dropped from unbounded to ~1500, valid JSON
-        # every time) without visibly degrading the actual answer quality
-        # on the real correct-transcript case this mechanism exists for --
-        # this call only needs to state a conclusion, not deeply reason
-        # through novel problems the way the main build loop does.
-        "reasoning": {"effort": "low"},
-        "usage": {"include": True},
-    }).encode()
-    req = urllib.request.Request(
-        "https://openrouter.ai/api/v1/chat/completions", data=body,
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            parsed = json.loads(resp.read())
-        # `.get("content") or ""`, not `["content"].strip()` directly --
-        # confirmed live: a reasoning-heavy response can return a literal
-        # JSON null for `content` (not just an absent key), which crashed
-        # here uncaught before this function's own try/except turned it
-        # into an unhelpful "'NoneType' object has no attribute 'strip'"
-        # instead of a real parse-failure message.
-        content = (parsed["choices"][0]["message"].get("content") or "").strip()
-        cost = (parsed.get("usage") or {}).get("cost", 0.0) or 0.0
-        # Model output isn't guaranteed to be bare JSON -- strip common
-        # markdown-fence wrapping, same defensive posture used everywhere
-        # else this project parses model output.
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        proposal = json.loads(content)
-        if not isinstance(proposal, dict):
-            raise ValueError("reviewer did not return a JSON object")
-        proposal["_reviewer_cost_usd"] = cost
-        # Deterministic, non-LLM safety net on top of the ground-truth
-        # prompt injection above: an LLM can still ignore or misread the
-        # ground truth it was given (prompt injection reduces this, it
-        # doesn't guarantee it). If a real patch exists but the reviewer's
-        # own reasoning claims no edits happened, flag the contradiction
-        # EXPLICITLY rather than silently trusting the prose -- this is
-        # exactly the failure this whole mechanism exists to catch, so
-        # don't let it happen invisibly a second time. Not silently
-        # overridden: a human should see both the reviewer's claim and the
-        # fact it contradicts, not have one guess quietly replace another.
-        reasoning_text = str(proposal.get("reasoning") or "")
-        if patch_text.strip() and _NO_EDITS_CLAIM_RE.search(reasoning_text):
-            proposal["ground_truth_contradiction"] = (
-                "REVIEWER CLAIM CONTRADICTS A CONFIRMED FACT: a real patch was "
-                "extracted from this run (real committed changes exist), but the "
-                "reviewer's reasoning above claims no edits were made. Do not trust "
-                "the reasoning text as-is -- read the actual patch and transcript "
-                "yourself before deciding anything."
-            )
-        return proposal
-    except Exception as e:
-        return {"narrowable": False, "reasoning": f"reviewer call failed: {e}",
-                "new_task": "", "deferred_scope": "", "_reviewer_cost_usd": 0.0}
-
-
 def acquire_lock(row_id: str):
     """A real OS-level lock, not a status flag anywhere that can go stale.
     Returns an open file handle to keep the lock held, or None if another
@@ -641,55 +469,43 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
             patch_path = RESULT_DIR / f"{row_id}-{run_id}.patch"
             patch_path.write_text(patch_out)
 
-        # On a genuine "gave up" outcome, pull the persisted conversation
-        # out and get one cheap, single-shot opinion on whether a narrower
-        # slice of the task would have a real shot -- informed by what was
-        # actually tried, not a blind guess. No automation beyond this:
-        # nothing here edits board.yaml or redispatches anything. A human
-        # reads the proposal (in RESULT_DIR and in the printed summary) and
-        # decides by hand, exactly like every other non-GREEN outcome in
-        # this pipeline.
+        # Pulled unconditionally on any non-GREEN outcome (agent_loop.py
+        # itself only ever writes this file on non-GREEN, see write_status)
+        # -- this is what a human passes to --resume-from later, and is
+        # independent of whatever recovery note this function derives
+        # below; keep it even if that derivation changes or fails.
+        sh([str(MSB_BIN), "copy", f"{name}:/root/agent-messages.json",
+            str(RESULT_DIR / f"{row_id}-{run_id}-messages.json")],
+           env=env, timeout=30, check=False)
+
+        # On a genuine "gave up" outcome, read the model's OWN direct
+        # explanation of what blocked it -- asked for by agent_loop.py
+        # itself, in-context, at the moment it gave up (see
+        # self_report_blocker in agent_loop.py) -- rather than have a
+        # SEPARATE process reconstruct intent from a saved transcript
+        # afterward. That reconstruction approach was tried first and
+        # produced a real, confirmed-wrong diagnosis (claimed a run "never
+        # made a single repo change" when it actually had, verified
+        # against the real patch) purely from which slice of a long
+        # conversation the reviewer happened to be shown -- and needed
+        # several rounds of increasingly complex fixes (truncation
+        # direction, ground-truth injection, contradiction detection,
+        # reasoning-token budget tuning) trying to make it reliable. This
+        # is simpler and more direct: the model that was actually doing
+        # the work already knows why it's stuck; agent_loop.py just asks
+        # it and writes the answer to a file, the same plain way status
+        # and cost are written. No extra API call needed here at all. No
+        # automation beyond reading it: nothing here edits board.yaml or
+        # redispatches anything -- a human reads it and decides by hand,
+        # exactly like every other non-GREEN outcome in this pipeline.
         recovery_note = ""
-        if status in ("STUCK", "RED"):
-            messages_out = RESULT_DIR / f"{row_id}-{run_id}-messages.json"
-            msg_copy = sh([str(MSB_BIN), "copy", f"{name}:/root/agent-messages.json",
-                           str(messages_out)], env=env, timeout=30, check=False)
-            if msg_copy.returncode == 0 and messages_out.exists():
-                try:
-                    persisted = json.loads(messages_out.read_text())
-                    proposal = propose_narrower_task(
-                        env["OPENROUTER_API_KEY"], model,
-                        brief_path.read_text(), tail, persisted.get("messages", []),
-                        patch_out)
-                    cost_usd += proposal.pop("_reviewer_cost_usd", 0.0)
-                    proposal_path = RESULT_DIR / f"{row_id}-{run_id}-recovery-proposal.json"
-                    proposal_path.write_text(json.dumps(proposal, indent=2))
-                    # `.get(key, "")` only substitutes the default when the
-                    # KEY is absent -- a model that returns a literal JSON
-                    # null for "reasoning" (valid JSON, seen from real model
-                    # output) sails past that and crashes `[:150]` on None.
-                    # Confirmed directly: `{'reasoning': None}.get('reasoning',
-                    # '')[:150]` raises TypeError. Was non-fatal in practice
-                    # (caught by this function's own broad `except Exception`
-                    # below, just silently dropping the note) but worth
-                    # closing properly rather than leaning on that net.
-                    reasoning = (proposal.get("reasoning") or "")[:150]
-                    if proposal.get("narrowable"):
-                        recovery_note = (f" -- narrower retry possible: {reasoning} "
-                                         f"(see {proposal_path})")
-                    else:
-                        recovery_note = (f" -- reviewer: {reasoning} "
-                                         f"(see {proposal_path})")
-                    # Printed in the terminal SUMMARY line itself, not just
-                    # left in the JSON file a human has to think to open --
-                    # this is the exact class of problem this whole
-                    # mechanism exists to catch (a wrong "why it got stuck"
-                    # story going unnoticed), so it needs to be
-                    # impossible to miss, not merely recorded.
-                    if proposal.get("ground_truth_contradiction"):
-                        recovery_note += " !! CONTRADICTS KNOWN FACTS, DO NOT TRUST !!"
-                except Exception as e:
-                    logline(f"recovery proposal failed (non-fatal): {e}")
+        if status in ("STUCK", "RED", "TIMEOUT"):
+            self_report = exec_in("cat /root/agent-self-report.txt 2>/dev/null",
+                                   timeout=30).stdout.strip()
+            if self_report:
+                report_path = RESULT_DIR / f"{row_id}-{run_id}-self-report.txt"
+                report_path.write_text(self_report)
+                recovery_note = f" -- agent's own report: {self_report[:200]} (see {report_path})"
 
         return Result(row_id, ok, fatal, timed_out, stuck, tail[-1500:] + recovery_note,
                        patch_path, cost_usd)

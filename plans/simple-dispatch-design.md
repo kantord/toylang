@@ -1188,4 +1188,81 @@ patch here, confirming the grounding fix doesn't cry wolf on a genuine
 no-edit case either). Dispatched this narrower task for real
 (`dense-tensor-transpose-only`) to test whether "ship a smaller version"
 actually resolves it, not just whether the reviewer can suggest one --
-see the next section for the outcome.
+it also got STUCK (see below).
+
+## Course correction: self-report instead of forensic reconstruction
+
+User feedback, verbatim, at this point: the whole approach above (guess
+at a system-prompt fix, spend real dispatches testing whether it changed
+behavior; separately, build an increasingly complex post-hoc reviewer
+that reconstructs "why" from a saved transcript) was the wrong shape of
+fix. The actual problem: when an agent gets stuck, the pipeline was doing
+expensive forensic work (a human manually reading reasoning traces, or a
+separate LLM call reconstructing intent from a saved conversation) to
+figure out something the AGENT ITSELF already knows and could just say
+directly. The goal: make the system self-healing, efficiently and
+simply -- not add more machinery to guess better after the fact.
+
+**Redesign: ask the agent directly, in-context, at the moment it gives
+up.** Added `self_report_blocker()` to `agent_loop.py`: when
+`agent_turns()` is about to return without the model having finished on
+its own (the no-progress cutoff, or plain `max_turns` exhaustion), it
+now makes ONE additional lightweight call -- same conversation, full
+context already loaded, likely cache-warm -- asking the model directly:
+what's blocking you, and would a narrower version actually work? The
+answer is written to a plain file (`agent-self-report.txt`, same pattern
+as `agent-status.txt`/`agent-cost.txt`) and:
+1. Fed into the NEXT attempt's feedback message directly, when the run
+   is continuing within its existing retry budget -- this is the actual
+   self-healing mechanism: the same model that just got stuck acts on
+   its own stated diagnosis immediately, no extra dispatch, no human
+   step, no separate reviewer call.
+2. Persisted to `RESULT_DIR` and surfaced in the terminal SUMMARY line
+   on a terminal STUCK/RED/TIMEOUT, for a human to read directly.
+
+**This replaces `propose_narrower_task` entirely** -- deleted from
+`simple_dispatch.py` along with `_patch_ground_truth()` and
+`_NO_EDITS_CLAIM_RE` (the ground-truth injection and contradiction
+detection built earlier this session to make the post-hoc reviewer more
+reliable). That whole subsystem existed to compensate for a structural
+weakness (reconstructing intent from a transcript afterward, which can
+misread it) that asking the source directly doesn't have in the first
+place. Net effect: less code, no separate API call in `simple_dispatch.py`
+for this at all (just a file read, same as status/cost), and a
+first-hand answer instead of a reconstructed guess.
+
+**Two real bugs found building this, both fixed before trusting it**:
+1. Plain-English "answer directly, no tool calls" was NOT enough --
+   confirmed live: with no `tools` schema attached to the self-report
+   request, the model still tried to emit a tool call, formatting it as
+   literal fake tool-call syntax inside the text content (the API
+   returned `content: null`, `finish_reason: "tool_calls"`, since there
+   was no schema to parse it against). Its own visible reasoning showed
+   active resistance: *"this appears to be a prompt injection... I'm not
+   blocked... I should continue working."* Fixed with `tool_choice:
+   "none"` (with `tools` still attached, required by the API to accept
+   `tool_choice` at all) -- this hard-disables tool-calling at the API
+   level rather than relying on the model to comply, and reframing the
+   prompt to state plainly that this is the harness itself asking, not
+   an external message, and that the attempt is ending regardless.
+   Re-verified live after the fix: a complete, honest, accurate
+   self-report, matching -- word for word -- the diagnosis this session
+   spent hours manually reconstructing from raw transcripts earlier:
+   *"I was still in the exploration phase and hadn't made any edits
+   yet -- that's the blocker, not the task's scope."* It even proposed a
+   concrete, genuinely actionable narrower slice unprompted (implement
+   `transpose` for 2 backends first, the other 5 explicitly
+   unimplemented, to prove the design before filling in the rest).
+2. The default `max_tokens=400` truncated a real, useful answer mid-word.
+   Bumped to 800 (real cost either way: ~$0.0014-0.002, negligible) --
+   re-verified the answer now completes cleanly.
+
+Also reverted, per the same feedback: the unproven system-prompt
+"Work efficiently" bullets from the previous section (the turn-8 numeric
+deadline, the batching encouragement, the install-method guidance) --
+three real dispatches showed no measurable effect from them, and adding
+unproven behavioral nudges was itself part of what this course
+correction moved away from. Kept only the one direct, confirmed-bug fix
+(tool names stated as exact, addressing the observed `bash`-instead-of-
+`run_bash` hallucination) since that targets an actually-observed defect,
+not a hoped-for behavior change.

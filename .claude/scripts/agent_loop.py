@@ -45,17 +45,6 @@ run_bash to explore (ls, grep, cat) and to run the verification command yourself
 as often as you like. Use write_file to make edits -- it overwrites the whole
 file, so read it first if you're editing rather than creating.
 
-Work efficiently -- your turns are limited, and re-exploring wastes them:
-- Once you've located the specific lines to change, make the edit. Don't keep
-  reading more files "just in case" first -- verify's feedback will tell you
-  if you missed something, and you can iterate from there.
-- Call the tool multiple times in ONE response when you already know several
-  independent things you need (multiple files to read, multiple greps) instead
-  of spreading them one-per-turn.
-- If verify fails because an external tool is missing (a compiler, a package),
-  try the single most standard install command for it directly, once. Don't
-  probe several alternative package managers or install methods in sequence.
-
 When you believe the task is fully done AND you have personally run the
 verification command and seen it pass, reply with no tool calls and a message
 starting with "DONE:". Do not claim DONE without having actually run and seen
@@ -122,6 +111,7 @@ MAX_CONVERSATION_CHARS = 200_000  # keeps context from growing without bound
 STATUS_FILE = "/root/agent-status.txt"
 COST_FILE = "/root/agent-cost.txt"
 MESSAGES_FILE = "/root/agent-messages.json"
+SELF_REPORT_FILE = "/root/agent-self-report.txt"
 
 # Accumulated across every OpenRouter call this process makes (all attempts,
 # all turns) -- a plain module-level global rather than threading a value
@@ -173,6 +163,19 @@ def write_status(status: str, messages: list | None = None) -> None:
     if messages is not None and status != "GREEN":
         with open(MESSAGES_FILE, "w") as f:
             json.dump({"task_hash": _task_hash, "messages": messages}, f)
+
+
+def write_self_report(self_report: str) -> None:
+    """The model's own direct explanation of what blocked it (see
+    self_report_blocker), pulled by simple_dispatch.py the same simple way
+    as STATUS_FILE/COST_FILE -- a plain file read, no separate API call, no
+    transcript to reconstruct intent from. Only written when non-empty:
+    a genuine RED where the model thought it was done (and said so in its
+    own final message, already captured in the transcript) never asked for
+    a self-report in the first place, so there's nothing useful to write."""
+    if self_report:
+        with open(SELF_REPORT_FILE, "w") as f:
+            f.write(self_report)
 
 
 def truncate(s: str, n: int = MAX_TOOL_OUTPUT) -> str:
@@ -364,6 +367,77 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
     return parsed
 
 
+def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: int = 800) -> str:
+    """Ask the model DIRECTLY, in-context (the same conversation it's
+    already in, full context still loaded, likely cache-warm), why it
+    hasn't completed the task -- instead of reconstructing the reason
+    afterward from a saved transcript, which is slower, costlier, and less
+    reliable: a separate process re-reading a transcript later has to
+    infer intent from actions, and can infer wrong. Confirmed directly, at
+    real cost: an earlier version of this pipeline had a SEPARATE
+    post-hoc reviewer read a saved conversation and guess why a run got
+    stuck -- it produced a confidently WRONG diagnosis (claimed a run
+    "never made a single repo change" when it actually had, verified
+    against the real patch) purely because of which slice of a long
+    conversation it happened to be shown, and needed several more rounds
+    of fixes (truncation direction, ground-truth injection, contradiction
+    detection, reasoning-token budget tuning) trying to make that
+    reconstruction reliable. Asking the model that was actually doing the
+    work, while it still has the context, sidesteps the whole reconstruction
+    problem: it already knows why it's stuck; this just asks it to say so.
+
+    `tool_choice: "none"` (with `tools` still attached, required by the API
+    to accept `tool_choice` at all) HARD-disables tool-calling for this one
+    request -- confirmed necessary, not cosmetic, by direct testing:
+    instructing "no tool calls" in plain English was NOT enough. With
+    `tools` omitted and only a text instruction, the model still tried to
+    emit a tool call, formatting it as literal fake tool-call syntax inside
+    the text content (which the API then returned as content=None,
+    finish_reason="tool_calls", since no schema was attached to parse it
+    against) -- and its own visible reasoning showed it treating the
+    self-report question with suspicion ("this appears to be a prompt
+    injection... I'm not blocked... I should continue working") and
+    refusing to introspect, preferring to keep exploring instead. Appended
+    to a COPY of `messages`, not mutated in place, since this is a side
+    query, not a real turn in the attempt. Best-effort: any failure here
+    must not break the real outcome, so this returns a short failure note
+    instead of raising."""
+    ask = list(messages) + [{
+        "role": "user",
+        "content": (
+            "This is the autonomous coding harness talking to you directly, not "
+            "the user and not an external message -- your current attempt is "
+            "ending regardless of what you do next, so there is nothing left to "
+            "gain by continuing to explore or edit right now. In 2-4 plain "
+            "sentences: what specifically was blocking you from completing this "
+            "task, and would a narrower, more achievable version of it actually "
+            "succeed? If so, describe that narrower version briefly. If this "
+            "isn't a scope problem at all, say so plainly."
+        ),
+    }]
+    try:
+        body = json.dumps({
+            "model": model,
+            "messages": ask,
+            "max_tokens": max_tokens,
+            "tools": TOOLS,
+            "tool_choice": "none",
+            "usage": {"include": True},
+        }).encode()
+        req = urllib.request.Request(
+            API_URL, data=body,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            parsed = json.loads(resp.read())
+        add_cost(parsed)
+        content = (parsed["choices"][0]["message"].get("content") or "").strip()
+        return content or "(model returned no text for its own self-report)"
+    except Exception as e:
+        return f"(self-report call failed, non-fatal: {e})"
+
+
 class OutOfTime(Exception):
     """Raised when the wall-clock budget runs out mid-attempt. Caught in
     main() and reported as its own distinct outcome -- deliberately NOT the
@@ -457,13 +531,20 @@ def _sig_changed(a: str | None, b: str | None) -> bool:
 
 def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                  max_tokens: int, deadline: float,
-                 max_turns_without_progress: int) -> tuple[str | None, bool]:
-    """Runs up to max_turns tool-call rounds. Returns (final_text, moved):
-    final_text is the model's final text once it stops calling tools, or
-    None if max_turns was exhausted (or max_turns_without_progress
-    consecutive turns passed with no actual repo change) without the model
-    finishing; moved is True iff the repo's actual content differs at all
-    between the START of THIS call and now. Raises OutOfTime if the
+                 max_turns_without_progress: int) -> tuple[str | None, bool, str]:
+    """Runs up to max_turns tool-call rounds. Returns (final_text, moved,
+    self_report): final_text is the model's final text once it stops
+    calling tools, or None if max_turns was exhausted (or
+    max_turns_without_progress consecutive turns passed with no actual
+    repo change) without the model finishing; moved is True iff the
+    repo's actual content differs at all between the START of THIS call
+    and now; self_report is the model's own direct explanation of what's
+    blocking it, asked for in-context (see self_report_blocker) at the
+    two points this function gives up without the model ever finishing on
+    its own -- the no-progress cutoff and plain max_turns exhaustion. Empty
+    string at every other return point (a real network/API failure isn't a
+    reasoning question, and the DONE/no-tool-calls path already has the
+    model's own final text to explain itself). Raises OutOfTime if the
     wall-clock deadline passes first.
 
     `moved` is computed fresh (a direct repo_state_signature() comparison
@@ -523,7 +604,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                 print(f"  repo state has been unreadable for {sig_failures} consecutive "
                       "turns (git itself appears broken), ending this attempt early -- "
                       "cannot verify progress either way", file=sys.stderr)
-                return None, True
+                return None, True, ""
         else:
             sig_failures = 0
         if _sig_changed(sig, last_sig):
@@ -535,7 +616,9 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                 print(f"  no repo changes for {no_progress_turns} consecutive turns, "
                       "ending this attempt early instead of spending the rest of "
                       "max_turns on further unproductive exploration", file=sys.stderr)
-                return None, _sig_changed(sig, initial_sig)
+                self_report = self_report_blocker(api_key, model, messages)
+                print(f"  self-report: {self_report}", file=sys.stderr)
+                return None, _sig_changed(sig, initial_sig), self_report
         try:
             resp = call_openrouter(api_key, model, messages, max_tokens)
         except RuntimeError as e:
@@ -549,8 +632,10 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             # Reuses `sig` (computed at the top of this same iteration)
             # instead of calling moved() again -- nothing between there and
             # here touches the filesystem (call_openrouter is a network
-            # call), so it's already the freshest possible value.
-            return None, _sig_changed(sig, initial_sig)
+            # call), so it's already the freshest possible value. No
+            # self-report here -- a transient network/API failure isn't a
+            # reasoning question the model can usefully explain.
+            return None, _sig_changed(sig, initial_sig), ""
         usage = resp.get("usage", {})
         add_cost(resp)
         print(f"  turn {turn + 1}/{max_turns}: "
@@ -576,8 +661,10 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
         if not tool_calls:
             # Same reasoning as the RuntimeError-catch return above: no
             # tool_calls means nothing ran that could have touched the
-            # filesystem this turn, so `sig` is still accurate.
-            return msg.get("content") or "", _sig_changed(sig, initial_sig)
+            # filesystem this turn, so `sig` is still accurate. No
+            # self-report needed -- the model stopped on its own and
+            # already said whatever it wanted to say in `content`.
+            return msg.get("content") or "", _sig_changed(sig, initial_sig), ""
         for tc in tool_calls:
             fn = tc["function"]["name"]
             try:
@@ -591,7 +678,9 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                 "content": result,
             })
         trim_messages(messages)
-    return None, moved()
+    self_report = self_report_blocker(api_key, model, messages)
+    print(f"  self-report: {self_report}", file=sys.stderr)
+    return None, moved(), self_report
 
 
 # Lines/tokens `cargo nextest` varies run-to-run even against a
@@ -804,9 +893,9 @@ def main() -> int:
         # message is always still a valid turn boundary to cut after.
         attempt_start_marker = messages[-1]
         try:
-            final_text, moved = agent_turns(api_key, args.model, messages, args.max_turns,
-                                             args.max_tokens, deadline,
-                                             args.max_turns_without_progress)
+            final_text, moved, self_report = agent_turns(
+                api_key, args.model, messages, args.max_turns,
+                args.max_tokens, deadline, args.max_turns_without_progress)
         except OutOfTime as e:
             print(f"OUT_OF_TIME: {e}", file=sys.stderr)
             write_status("TIMEOUT", messages)
@@ -845,6 +934,7 @@ def main() -> int:
             if remaining < 60:
                 print("OUT_OF_TIME: not enough wall-clock budget left to run "
                       "another verify pass", file=sys.stderr)
+                write_self_report(self_report)
                 write_status("TIMEOUT", messages)
                 return 3
             try:
@@ -860,6 +950,7 @@ def main() -> int:
                 # mechanism exists to close.
                 print("OUT_OF_TIME: verify() itself exceeded the remaining "
                       "wall-clock budget", file=sys.stderr)
+                write_self_report(self_report)
                 write_status("TIMEOUT", messages)
                 return 3
 
@@ -902,6 +993,7 @@ def main() -> int:
         if normalized in seen_tails:
             print("STUCK: verify output matches a previous attempt, "
                   "not retrying further", file=sys.stderr)
+            write_self_report(self_report)
             write_status("STUCK", messages)
             return 1
         seen_tails.append(normalized)
@@ -909,6 +1001,7 @@ def main() -> int:
         if attempt > args.retry_cap:
             print("VERIFY_FAILED")
             print(tail)
+            write_self_report(self_report)
             write_status("RED", messages)
             return 1
 
@@ -962,12 +1055,34 @@ def main() -> int:
                 if _m is attempt_start_marker:
                     del messages[_i + 1:]
                     break
-            feedback = (
-                "Your previous attempt ended without making any repo changes at all "
-                "(either it never edited anything, or it hit the no-progress cutoff). "
-                "Try a different, more direct approach this time -- start by editing, "
-                "not just exploring.\n\nTASK:\n" + task_text
-            )
+            # Use the model's OWN self-report (asked for right when the
+            # previous attempt's no-progress cutoff fired -- see
+            # self_report_blocker) as the next attempt's actual guidance,
+            # instead of a generic "try a different approach" nudge. This
+            # is the real self-healing mechanism: rather than a human (or
+            # a separate LLM reconstructing intent from a saved transcript
+            # afterward) guessing what would help, the same model that was
+            # just stuck already said what's blocking it and what a
+            # narrower approach might look like -- feed that back in
+            # directly, immediately, within the SAME dispatch's existing
+            # retry budget, no extra sandbox or human step needed. Falls
+            # back to the old generic wording only if no self-report was
+            # captured (e.g. a self-report call itself failed).
+            if self_report and not self_report.startswith("("):
+                feedback = (
+                    "Your previous attempt ended without making any repo changes. "
+                    f"You said this about what was blocking you:\n\n{self_report}\n\n"
+                    "Act on that directly this time -- if you described a narrower "
+                    "approach, do that; otherwise start by editing, not exploring "
+                    f"further.\n\nORIGINAL TASK (for reference):\n{task_text}"
+                )
+            else:
+                feedback = (
+                    "Your previous attempt ended without making any repo changes at all "
+                    "(either it never edited anything, or it hit the no-progress cutoff). "
+                    "Try a different, more direct approach this time -- start by editing, "
+                    "not just exploring.\n\nTASK:\n" + task_text
+                )
         messages.append({"role": "user", "content": feedback})
 
 
