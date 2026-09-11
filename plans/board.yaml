@@ -237,7 +237,7 @@
   kind: build
   needs: [mutation-semantics-spike, binary-op-multiplicity-design]
   prio: 4
-  status: todo
+  status: delegated
 
 - id: binary-op-multiplicity-design
   title: 'Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update''s spelling -- Q2/Q3 (draft-split). Round 2 answers (multiplicity-and-offload-round2): Q3 RATIFIED -- option B, require One on the right of `=`, forking becomes explicit; maintainer caveat: drop the `$c`-prefixed alias in the option''s preview, "never agreed to prefacing variable names with $" (applies to whatever alias/binding syntax eventually lands, not specific to this row). Q2 still no pick -- maintainer leans B (zip/broadcast) or C (no default, explicit) but wants to understand how much of jq''s magic/expressive power would be lost either way before choosing; needs jq-expressiveness-under-zip-or-explicit-research before a round 3 re-ask. RATIFIED (wizard submission, multiplicity-choicepoint-http round, 2026-09-08): Q2 -- option A, cartesian default. `Vec op Vec` becomes legal and cartesian for every operator (matches jq''s own default, verified against jq 1.8.2), no new builtin. Both Q2 and Q3 now settled; nothing left open for this row.'
