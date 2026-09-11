@@ -1339,3 +1339,76 @@ self-report is now persisted when `moved=True` (previously silently
 dropped); a deadline expiring exactly at the no-progress cutoff now
 correctly reports TIMEOUT instead of falling through to RED/STUCK; the
 terminal SUMMARY line now actually shows the self-report note.
+
+### Round 2
+
+**Cost track**: round 1's cache-miss finding remains genuinely
+unconfirmed -- no new dispatch has run since round 1's own fix (usage
+logging for self-report calls) landed, so there is zero real data with
+`cached_tokens`/`reasoning_tokens` actually captured for a self-report
+call yet. Re-derived the same $0.00209/call figure from the old,
+worse subtraction method against the same stale run -- consistent, but
+not new evidence either way. Correctly reported as still-open rather
+than claimed-settled. One real, actionable finding: `self_report_blocker`
+had neither `reasoning: {"effort": "low"}` nor `finish_reason` logging,
+and real turn-level data shows this model tier can burn 700-3800+
+reasoning tokens even on ordinary 4096-token-budget turns -- self-report's
+own 800-token cap is narrower than turns that already got
+reasoning-starved at 4096, and self-report can now fire up to
+`retry_cap+1` times per dispatch (not once, like the old reviewer it
+replaced). Fixed proactively, applying the same fix already proven for
+the deleted `propose_narrower_task` (commit f5df47d): added
+`reasoning: {"effort": "low"}` and `finish_reason` logging. Verified with
+a real API call: `finish_reason=stop`, `reasoning_tokens=509` (well under
+budget), a complete, useful answer.
+
+**Correctness track** -- two more real bugs, both in round 1's own fixes:
+1. `write_self_report()` only acted (wrote or, before this round, did
+   nothing) when `self_report is not None` -- but `self_report` is also
+   `None` on a sustained-git-failure cutoff and a transient-network turn
+   failure, neither of which means "nothing useful to write," they mean
+   "this attempt didn't ask." Skipping the write in those cases let an
+   EARLIER attempt's real self-report survive on disk and get
+   misattributed to a later, unrelated final outcome -- reproduced
+   directly: writing a real report then writing `None` left the real
+   report on disk unchanged. Round 1's own claim ("a later attempt's call
+   overwrites the file, which is correct") was false for exactly these
+   two paths. Fixed: `write_self_report(None)` now deletes the file
+   (`os.remove`, tolerating `FileNotFoundError`) instead of doing
+   nothing, so "no report this attempt" always means no file, never a
+   stale one.
+2. `resp["choices"][0]["message"]` and each `tool_calls` entry's
+   `function`/`name`/`arguments`/`id` fields were all direct dict
+   indexing with no defensive handling -- a malformed response (a
+   `tool_calls` entry missing `id` or `arguments`, a `choice` missing
+   `message`) raised an uncaught `KeyError` past every exception handler
+   above it, crashing the process before `write_status()` ever ran. Same
+   failure class already fixed at the HTTP-response layer in
+   `call_openrouter` (missing `choices`, non-JSON body, `IncompleteRead`)
+   left unfixed one layer up, at the per-tool-call level. Confirmed by
+   adversarial review with a direct repro (`{"function": {"name":
+   "run_bash"}}`, no `id`/`arguments` -> uncaught `KeyError: 'arguments'`).
+   Fixed: wrapped in a `try/except (KeyError, TypeError)`, treated as an
+   ordinary retryable turn failure like the sibling `RuntimeError` branch
+   -- AND rolled back to the message-list length captured before this
+   turn's mutations on failure, not left as-is: a crash partway through
+   the `tool_calls` loop would otherwise leave the assistant's
+   `tool_calls` message appended with fewer matching `tool` replies than
+   OpenRouter requires, corrupting `messages` for every subsequent call --
+   the exact orphaned-tool_calls corruption class already fixed once this
+   session for a different root cause (stale `trim_messages()` indices).
+   Verified with two direct repros: a single malformed entry, and a
+   two-entry case (first valid, second malformed) specifically testing
+   the mid-loop partial-corruption scenario -- both leave `messages`
+   exactly as long as before the turn, no orphaned entries.
+
+Also explicitly checked and ruled out (traced, not just reasoned about):
+`self_report` referencing an unassigned name in the `OutOfTime`
+except-branch (that branch returns before ever reaching
+`write_self_report`); garbled/duplicated feedback across retries when
+`moved=True` (each attempt appends its own self-report exactly once);
+`tool_choice: "none"` still yielding a tool-call-shaped response (already
+degrades correctly to `None`); a file read/write race between
+`agent_loop.py` and `simple_dispatch.py` (the guest-side `exec_in` call
+blocks until `agent_loop.py` has already exited, closing its writes,
+before `simple_dispatch.py` ever reads the file).

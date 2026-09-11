@@ -169,13 +169,30 @@ def write_self_report(self_report: str | None) -> None:
     """The model's own direct explanation of what blocked it (see
     self_report_blocker), pulled by simple_dispatch.py the same simple way
     as STATUS_FILE/COST_FILE -- a plain file read, no separate API call, no
-    transcript to reconstruct intent from. Only written when not None: a
-    genuine RED where the model thought it was done (and said so in its
-    own final message, already captured in the transcript) never asked for
-    a self-report in the first place, so there's nothing useful to write."""
+    transcript to reconstruct intent from.
+
+    ALWAYS acts (writes or deletes), even when `self_report` is None --
+    never silently skips. A real bug found by adversarial review: an
+    earlier version only wrote when non-None and did nothing otherwise,
+    on the theory that "no report this attempt" only happens when the
+    model thought it was done and already explained itself elsewhere. But
+    `self_report` is also None on a sustained-git-failure cutoff and on a
+    transient-network/RuntimeError turn failure -- neither means "nothing
+    useful to write," they mean "this attempt didn't ask." Skipping the
+    write in those cases let an EARLIER attempt's real self-report survive
+    on disk and get misattributed to a later, unrelated final outcome --
+    reproduced directly: attempt 1's real diagnosis stayed on disk and was
+    reported as explaining attempt 2's unrelated network-failure RED.
+    Deleting the file on None closes this: "no report this attempt" now
+    always means no file, never a stale one from a previous attempt."""
     if self_report is not None:
         with open(SELF_REPORT_FILE, "w") as f:
             f.write(self_report)
+    else:
+        try:
+            os.remove(SELF_REPORT_FILE)
+        except FileNotFoundError:
+            pass
 
 
 def truncate(s: str, n: int = MAX_TOOL_OUTPUT) -> str:
@@ -427,6 +444,21 @@ def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: in
             "max_tokens": max_tokens,
             "tools": TOOLS,
             "tool_choice": "none",
+            # This exact model tier has a confirmed, real history of
+            # reasoning tokens alone exhausting a fixed max_tokens budget
+            # before any visible content is emitted (the deleted
+            # propose_narrower_task needed this same fix, commit f5df47d,
+            # after repeatedly hitting finish_reason="length" with
+            # content=None). A later cost-review pass found real turn-level
+            # evidence this model can burn 700-3800+ reasoning tokens even
+            # on ordinary turns with a 4096-token budget -- self-report's
+            # own 800-token cap is narrower than turns that already got
+            # reasoning-starved at 4096, and self-report can fire up to
+            # retry_cap+1 times per dispatch. "low" effort worked without
+            # visibly degrading answer quality when verified for the
+            # deleted reviewer; applying the same fix here preemptively
+            # rather than waiting to reproduce the failure live.
+            "reasoning": {"effort": "low"},
             "usage": {"include": True},
         }).encode()
         req = urllib.request.Request(
@@ -442,10 +474,15 @@ def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: in
         # review found the only way to see this call's actual token/cache
         # behavior was subtracting agent-cost.txt from the sum of logged
         # per-turn lines, which only tells you THAT something unlogged
-        # happened, not what.
+        # happened, not what. `finish_reason` also logged here (and not
+        # anywhere in this file for normal turns either) specifically so a
+        # future round can tell a truncated-by-length answer apart from a
+        # clean stop, instead of only being able to infer it indirectly.
         usage = parsed.get("usage") or {}
+        finish_reason = (parsed.get("choices") or [{}])[0].get("finish_reason")
         print(f"  self-report call: prompt={usage.get('prompt_tokens')} "
-              f"completion={usage.get('completion_tokens')} cost=${usage.get('cost', 0):.6f}",
+              f"completion={usage.get('completion_tokens')} cost=${usage.get('cost', 0):.6f} "
+              f"finish_reason={finish_reason}",
               file=sys.stderr)
         print(f"    usage detail: {json.dumps(usage)}", file=sys.stderr)
         content = (parsed["choices"][0]["message"].get("content") or "").strip()
@@ -672,29 +709,60 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
         # cost (print, not an extra call) -- purely so the next round has
         # real data instead of guessing.
         print(f"    usage detail: {json.dumps(usage)}", file=sys.stderr)
-        choice = resp["choices"][0]
-        msg = choice["message"]
-        messages.append(msg)
-        tool_calls = msg.get("tool_calls") or []
-        if not tool_calls:
-            # Same reasoning as the RuntimeError-catch return above: no
-            # tool_calls means nothing ran that could have touched the
-            # filesystem this turn, so `sig` is still accurate. No
-            # self-report needed -- the model stopped on its own and
-            # already said whatever it wanted to say in `content`.
-            return msg.get("content") or "", _sig_changed(sig, initial_sig), None
-        for tc in tool_calls:
-            fn = tc["function"]["name"]
-            try:
-                fn_args = json.loads(tc["function"]["arguments"] or "{}")
-            except json.JSONDecodeError:
-                fn_args = {}
-            result = run_tool(fn, fn_args)
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc["id"],
-                "content": result,
-            })
+        # Every field access below (`choices[0]`, `message`, and each
+        # `tool_calls` entry's `function`/`name`/`arguments`/`id`) is
+        # direct dict indexing with no defensive `.get()` -- a malformed
+        # response (a `tool_calls` entry missing `arguments` or `id`, a
+        # `choice` missing `message`) raised an uncaught KeyError here,
+        # past every exception handler above, crashing the process before
+        # write_status() ever ran. Same failure class already fixed at the
+        # HTTP-response layer in call_openrouter (missing choices,
+        # non-JSON body, IncompleteRead) -- confirmed by adversarial
+        # review with a direct repro: a `tool_calls` entry shaped like
+        # `{"function": {"name": "run_bash"}}` (no `id`, no `arguments`)
+        # raised `KeyError: 'arguments'` uncaught. Wrapped in the same
+        # "treat as an ordinary retryable turn failure" shape as the
+        # RuntimeError branch above, not a crash -- and rolled back to
+        # `messages_len_before_turn` on failure, not left as-is: a crash
+        # partway through the `tool_calls` loop below would otherwise
+        # leave `messages` with the assistant's `tool_calls` message
+        # appended but fewer matching `tool` replies than OpenRouter
+        # requires -- an orphaned-tool_calls corruption that would then
+        # break every SUBSEQUENT call on this same messages list, the
+        # exact class of bug already fixed once this session for a
+        # different cause (stale trim_messages() indices). A malformed
+        # response deserves a normal failed-turn outcome, not a
+        # corrupted conversation on top of it.
+        messages_len_before_turn = len(messages)
+        try:
+            choice = resp["choices"][0]
+            msg = choice["message"]
+            messages.append(msg)
+            tool_calls = msg.get("tool_calls") or []
+            if not tool_calls:
+                # Same reasoning as the RuntimeError-catch return above: no
+                # tool_calls means nothing ran that could have touched the
+                # filesystem this turn, so `sig` is still accurate. No
+                # self-report needed -- the model stopped on its own and
+                # already said whatever it wanted to say in `content`.
+                return msg.get("content") or "", _sig_changed(sig, initial_sig), None
+            for tc in tool_calls:
+                fn = tc["function"]["name"]
+                try:
+                    fn_args = json.loads(tc["function"]["arguments"] or "{}")
+                except json.JSONDecodeError:
+                    fn_args = {}
+                result = run_tool(fn, fn_args)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": result,
+                })
+        except (KeyError, TypeError) as e:
+            del messages[messages_len_before_turn:]
+            print(f"  turn {turn + 1}/{max_turns}: malformed response from OpenRouter "
+                  f"({e}), ending this attempt", file=sys.stderr)
+            return None, _sig_changed(sig, initial_sig), None
         trim_messages(messages)
     self_report = self_report_blocker(api_key, model, messages)
     if self_report is not None:
