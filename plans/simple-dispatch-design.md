@@ -1412,3 +1412,66 @@ degrades correctly to `None`); a file read/write race between
 `agent_loop.py` and `simple_dispatch.py` (the guest-side `exec_in` call
 blocks until `agent_loop.py` has already exited, closing its writes,
 before `simple_dispatch.py` ever reads the file).
+
+### Round 3
+
+**Cost track**: converged, third straight round. No new dispatch has run
+since round 1's usage-logging fix landed, so the cache-miss question
+genuinely still has zero real data (confirmed again via a fresh grep for
+`"self-report call:"` across every log -- zero matches) -- correctly
+reported as still-open rather than reasoned about further without data.
+Traced every `urlopen()` call site in both files (3 total: `call_openrouter`
+once per turn, `self_report_blocker` at most once per attempt via two
+mutually-exclusive early-return branches, `check_credit_balance` once per
+`main()` invocation) -- no duplicated or redundant calls found anywhere.
+All budget constants re-verified mutually consistent.
+
+**Correctness track** -- two more real bugs, one in round 2's own fix,
+one pre-existing and newly surfaced:
+1. Round 2's `except (KeyError, TypeError)` didn't cover every realistic
+   malformed shape: OpenRouter/an upstream provider can return
+   `"message": null` (e.g. a content-moderation block) or a non-dict
+   `message` in principle. `messages.append(msg)` succeeds either way,
+   silently corrupting `messages`, and the VERY NEXT line
+   (`msg.get("tool_calls")`) then raises `AttributeError` -- neither
+   `KeyError` nor `TypeError`, so it escaped the except clause entirely
+   and crashed the process uncaught, past every handler, exactly the
+   "operator can't tell why it failed" shape this whole mechanism exists
+   to close. Confirmed by direct repro: `message: None` and
+   `message: "plain text"` both raised uncaught `AttributeError`. Fixed
+   with an explicit `isinstance(msg, dict)` check BEFORE the append
+   (raising `TypeError` if not, caught by the existing clause) rather
+   than only widening the except tuple -- this means `messages` is never
+   corrupted in the first place for this specific case, no rollback
+   needed. `AttributeError` was also added to the except tuple anyway, as
+   defense in depth for other attribute access within the same block.
+   Verified with both malformed shapes: clean failure, zero corruption.
+2. `trim_messages()` only ever runs AFTER a turn's tool-processing
+   succeeds, inside the main turn loop -- never before the FIRST call of
+   an attempt. Harmless for a fresh run (starts at ~200 bytes), but not
+   for `--resume-from`: the loaded history was itself kept right at
+   `MAX_CONVERSATION_CHARS` by this same function during the ORIGINAL
+   failed attempt (that's why it was large enough to persist), and the
+   rescope message appended on load adds more on top -- pushing the very
+   FIRST resumed call over the cap before the turn loop ever gets a
+   chance to trim. Reproduced directly: a persisted history built to
+   198,397 chars (trim-bounded, as a real prior attempt would leave it)
+   plus the rescope append came to 203,498 chars on the first resumed
+   call -- over the enforced limit, and per `call_openrouter`'s own
+   documented affordability behavior, a plausible way for a resumed run's
+   very first turn to spuriously hit the FATAL/insufficient-credit path
+   from persisted size alone, independent of the real account balance.
+   Fixed: `trim_messages(messages)` now runs once in the `--resume-from`
+   branch, right after the rescope append, instead of relying only on the
+   turn loop's later trims. Verified with a real reproduction matching
+   the skeptic's own numbers: the first resumed call now stays at 196,496
+   chars, under the 200,000 cap.
+
+Also explicitly checked and ruled out: the round-2 rollback interacting
+badly with `trim_messages()` shifting indices around the same region
+(reproduced 3 real trims followed by a malformed 4th turn -- rollback
+left a clean, well-formed list, no orphaning, since
+`messages_len_before_turn` is always captured fresh, after any prior
+trim, with no trim call between capture and the exception);
+`attempt_start_marker` on the first attempt of a `--resume-from` run
+(symmetric with the fresh-start case).

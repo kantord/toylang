@@ -737,6 +737,24 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
         try:
             choice = resp["choices"][0]
             msg = choice["message"]
+            # Validated BEFORE appending, not caught after -- a real
+            # malformed shape found by adversarial review: OpenRouter/an
+            # upstream provider can return `"message": null` (e.g. a
+            # content-moderation block) or, in principle, a non-dict
+            # message. `messages.append(msg)` would succeed either way,
+            # silently corrupting `messages` with a bad entry, and the
+            # NEXT line (`msg.get(...)`) raises `AttributeError` --
+            # neither `KeyError` nor `TypeError`, so it slipped past the
+            # except clause below entirely and crashed the process
+            # uncaught. Confirmed by direct repro: `message: None` and
+            # `message: "plain text"` both raised
+            # `AttributeError: '...' object has no attribute 'get'`.
+            # Raising here, before the append, means the except clause
+            # catches it AND `messages` is never corrupted in the first
+            # place -- no rollback needed for this specific case, unlike
+            # the tool_calls-loop case below.
+            if not isinstance(msg, dict):
+                raise TypeError(f"message field is not a dict: {msg!r}")
             messages.append(msg)
             tool_calls = msg.get("tool_calls") or []
             if not tool_calls:
@@ -758,7 +776,13 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                     "tool_call_id": tc["id"],
                     "content": result,
                 })
-        except (KeyError, TypeError) as e:
+        except (KeyError, TypeError, AttributeError) as e:
+            # AttributeError added after the isinstance(msg, dict) check
+            # above closed the specific case that motivated it (a non-dict
+            # `message` reaching `.get()`) -- kept in the except tuple
+            # anyway as defense in depth for any other `.get()`/attribute
+            # access on unexpectedly-shaped data within this block that a
+            # future change might introduce.
             del messages[messages_len_before_turn:]
             print(f"  turn {turn + 1}/{max_turns}: malformed response from OpenRouter "
                   f"({e}), ending this attempt", file=sys.stderr)
@@ -941,6 +965,27 @@ def main() -> int:
                 "write_file results."
             ),
         })
+        # A real bug found by adversarial review: trim_messages() only
+        # ever runs AFTER a turn's tool-processing succeeds (inside the
+        # main turn loop), never before the FIRST call of an attempt. For
+        # a fresh run this is harmless (starts at ~200 bytes). For
+        # --resume-from it isn't: the loaded history was itself kept right
+        # at MAX_CONVERSATION_CHARS by this same function during the
+        # ORIGINAL failed attempt (that's why it was large enough to
+        # persist in the first place), and the rescope message just
+        # appended above adds more on top -- pushing the very first
+        # resumed call over the cap before agent_turns()/call_openrouter()
+        # ever gets a chance to trim. Reproduced directly: a persisted
+        # history built to 198,397 chars (trim-bounded, as a real prior
+        # attempt would leave it) plus the rescope append came to 203,498
+        # chars actually sent on the first resumed call -- over the
+        # enforced limit, and (per call_openrouter's own documented
+        # affordability behavior) a plausible way for a resumed run's very
+        # first turn to spuriously hit the FATAL/insufficient-credit path
+        # from persisted size alone, independent of the real account
+        # balance. Trim once here, right after the rescope append,
+        # instead of only relying on the turn loop's own later trims.
+        trim_messages(messages)
         _task_hash = expected_hash
     else:
         _task_hash = hashlib.sha256(task_text.encode()).hexdigest()
