@@ -37,6 +37,12 @@ interface RawNode {
   answer?: unknown
 }
 
+interface RawActivityEntry {
+  parent?: unknown
+  note?: unknown
+  since?: unknown
+}
+
 interface RawForest {
   topic?: unknown
   activity?: unknown
@@ -49,8 +55,12 @@ const STATUSES = ["draft", "live", "answered", "superseded"] as const
  *  surfacing) before any filtering happens. Returns a message naming the specific problem, or
  *  `null` when the file is servable -- mirrors grill-rounds.ts's own "reject a round missing
  *  `questions`, or a question missing `question`" discipline, extended for the extra ways a node
- *  tree can be broken that a flat list can't (duplicate ids, a dangling `parent`, an unrecognized
- *  `status`, a `superseded` node with no `supersededNote`, an `answered` node with no `answer`). */
+ *  tree can be broken that a flat list can't. Every field the client renders unconditionally has
+ *  to be checked here, not just the ones a first pass happened to think of: a field this validator
+ *  misses still parses and caches cleanly, then crashes `GrillChain` at render with no server-side
+ *  signal at all -- `title` and `answer.sourceOption`/`wasEdited` were both missed this way before
+ *  a review round caught it, so treat "does the client render this without a guard" as the actual
+ *  checklist, not the fields that happened to matter for an earlier bug. */
 function validateForest(parsed: unknown): string | null {
   if (typeof parsed !== "object" || parsed === null) return "must be a YAML mapping"
   const nodes = (parsed as RawForest).nodes
@@ -62,8 +72,10 @@ function validateForest(parsed: unknown): string | null {
     if (byId.has(raw.id)) return `duplicate node id "${raw.id}"`
     byId.set(raw.id, raw)
   }
+  const liveChildrenOf = new Map<string | null, string>() // parentId -> first non-draft child id seen
   for (const raw of nodes as RawNode[]) {
     if (raw.parent !== null && raw.parent !== undefined) {
+      if (raw.parent === raw.id) return `node "${raw.id as string}": "parent" cannot be its own id`
       if (typeof raw.parent !== "string" || !byId.has(raw.parent)) {
         return `node "${raw.id as string}": "parent" does not resolve to any node in this file`
       }
@@ -78,6 +90,7 @@ function validateForest(parsed: unknown): string | null {
     if (typeof raw.status !== "string" || !(STATUSES as readonly string[]).includes(raw.status)) {
       return `node "${raw.id as string}": unrecognized "status" (must be one of ${STATUSES.join(", ")})`
     }
+    if (typeof raw.title !== "string" || raw.title === "") return `node "${raw.id as string}": needs a "title" string`
     if (typeof raw.question !== "string" || raw.question === "") {
       return `node "${raw.id as string}": needs a "question" string`
     }
@@ -88,6 +101,12 @@ function validateForest(parsed: unknown): string | null {
       const answer = raw.answer as RawAnswer | undefined
       if (typeof answer !== "object" || answer === null || typeof answer.content !== "string" || answer.content === "") {
         return `node "${raw.id as string}": status "answered" needs an "answer" with a "content" string`
+      }
+      if (answer.sourceOption !== null && typeof answer.sourceOption !== "string") {
+        return `node "${raw.id as string}": "answer.sourceOption" must be a string or null`
+      }
+      if (typeof answer.wasEdited !== "boolean") {
+        return `node "${raw.id as string}": "answer.wasEdited" must be a boolean`
       }
     }
     if (raw.options !== undefined) {
@@ -109,6 +128,33 @@ function validateForest(parsed: unknown): string | null {
         if (labels.has(o.label)) return `node "${raw.id as string}": duplicate option label "${o.label}"`
         labels.add(o.label)
       }
+    }
+    // The agent should only ever promote one branch per answer (documented, not built as a UI
+    // constraint -- see the design plan's Deferred section) -- but two `live`/`answered` nodes
+    // sharing a parent by mistake would otherwise just silently vanish one of them from the chain
+    // with nothing on disk to say why, the same "no signal to notice by" failure class supersede's
+    // own sibling rule exists to avoid. `superseded` is deliberately excluded from this check: a
+    // superseded node coexisting with a `live` replacement under the SAME parent is the correct,
+    // intended shape (see the supersede-and-replace note above), not a conflict.
+    if ((raw.status === "live" || raw.status === "answered") && raw.parent !== undefined) {
+      const parentKey = (raw.parent ?? null) as string | null
+      const existing = liveChildrenOf.get(parentKey)
+      if (existing) {
+        return `node "${raw.id as string}" and "${existing}" are both ${raw.status} under the same parent -- promote only one branch`
+      }
+      liveChildrenOf.set(parentKey, raw.id as string)
+    }
+  }
+
+  if ((parsed as RawForest).activity !== undefined) {
+    const activity = (parsed as RawForest).activity
+    if (!Array.isArray(activity)) return `"activity" must be a list`
+    for (const raw of activity as RawActivityEntry[]) {
+      if (raw.parent !== null && (typeof raw.parent !== "string" || !byId.has(raw.parent))) {
+        return `an "activity" entry's "parent" must be null or resolve to a node in this file`
+      }
+      if (typeof raw.note !== "string" || raw.note === "") return `an "activity" entry needs a non-empty "note" string`
+      if (typeof raw.since !== "string" || raw.since === "") return `an "activity" entry needs a "since" string`
     }
   }
   return null

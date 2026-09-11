@@ -1,8 +1,35 @@
-import { useEffect, useRef } from "react"
+import { Component, useEffect, useRef, type ReactNode } from "react"
 
 import { GrillChain } from "@dev/components/GrillChain"
 import { activePath, threadStatus, useForestRound, useForestTopics, type ThreadStatus } from "@dev/lib/grillForest"
 import { cn } from "@/lib/utils"
+
+/** Catches a render-time crash from one malformed forest file (mirrors `RoundBoundary` in
+ *  `MailApp.tsx`, same reasoning) -- `validateForest` on the server rejects the shapes it knows to
+ *  check, but every field it doesn't check yet (a bare `title`, a mis-shaped `answer.sourceOption`)
+ *  is rendered unconditionally by `GrillChain`, and there is no boundary anywhere up to
+ *  `main.tsx`'s bare `createRoot(...).render(<DevApp/>)` otherwise -- a single bad node crashes the
+ *  whole tools app to a blank screen, every topic, until the file is hand-fixed, not just the one
+ *  card. Keyed by topic in the caller so switching topics clears a stale error. */
+class ChainBoundary extends Component<{ topic: string; children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="space-y-2 rounded-sm border-l-4 border-destructive py-1 pl-2 text-xs text-destructive">
+          <p>{this.state.error.message}</p>
+          <p className="text-muted-foreground">
+            docs/.grill/{this.props.topic}.forest.yaml could not be rendered. Fix the file to get this thread back.
+          </p>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const STATUS_DOT: Record<ThreadStatus, string> = {
   waiting: "bg-primary",
@@ -90,7 +117,11 @@ export function GrillForestApp({ segments }: { segments: string[] }) {
             {error instanceof Error ? error.message : String(error)}
           </div>
         )}
-        {selected && round && <GrillChain topic={selected} round={round} scrollToNodeId={nodeFromUrl} />}
+        {selected && round && (
+          <ChainBoundary key={selected} topic={selected}>
+            <GrillChain topic={selected} round={round} scrollToNodeId={nodeFromUrl} />
+          </ChainBoundary>
+        )}
       </main>
     </div>
   )
