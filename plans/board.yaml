@@ -114,7 +114,7 @@
     just the two helper functions compiling standalone.'
   kind: build
   needs: [sort-by-max-by-checkpoint-go]
-  status: todo
+  status: delegated
 
 - id: sort-by-max-by-rust-wiring
   issue: gh:177

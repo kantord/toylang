@@ -1,0 +1,59 @@
+Board row `sort-by-max-by-rust-helpers` (gh:177). Add two standalone helper functions to
+`src/emit_rs.rs`: `tl_sort_by` and `tl_max_by`. This step only adds the helpers -- no wiring
+into the emitter's TIR cases, no tests. Those are separate follow-up rows
+(`sort-by-max-by-rust-wiring`, `sort-by-max-by-rust-tests`); do not attempt them here.
+
+Background: this is step 1 of 3, split from a single row that got STUCK three times in a row
+(three dispatch attempts, including one resumed with its own prior self-report fed back in
+verbatim, all made zero `write_file` calls despite claiming to be ready). The maintainer's
+ruling was to cut it into single-purpose slices so an attempt reaches `write_file` on turn 1
+instead of re-deriving context. Keep this attempt narrow: two functions, nothing else.
+
+`src/emit_rs.rs` already has the pattern to model this on:
+
+```rust
+// near line 189
+const SORT_HELPER: &str = r#"fn tl_sort<T: Clone + Ord>(v: &[T]) -> Vec<T> {
+    let mut out = v.to_vec();
+    out.sort();
+    out
+}
+"#;
+
+// near line 215
+const MAX_HELPER: &str = r#"fn tl_max<T: Clone + Ord>(v: &[T]) -> Option<T> {
+    v.iter().cloned().max()
+}
+"#;
+```
+
+The reference semantics already landed in the Go backend (commit `1456d9f`, `src/emit_go.rs`):
+`tlSortBy` is a *stable* sort by a projected key (Go uses `slices.SortStableFunc` because
+`slices.Sort` isn't guaranteed stable); `tlMaxBy` folds over the slice keeping the first element
+on ties (`key(x) > key(m)`, strictly greater, so an equal key does not replace the current max).
+
+Concretely, add two new `const` string helpers to `src/emit_rs.rs`, placed near the existing
+`SORT_HELPER`/`MAX_HELPER`:
+
+1. `TL_SORT_BY_HELPER` (or similar name matching this file's existing naming convention) --
+   `fn tl_sort_by<T: Clone, K: Ord>(v: &[T], key: impl Fn(&T) -> K) -> Vec<T>` that stable-sorts
+   a cloned copy of `v` by the projected key. Rust's `slice::sort_by_key` is already stable, so
+   `out.sort_by_key(|x| key(x)); out` (or `sort_by(|a, b| key(a).cmp(&key(b)))`) is sufficient --
+   no need for Go's stable-sort workaround since Rust's default is already stable.
+
+2. `TL_MAX_BY_HELPER` (or similar) -- `fn tl_max_by<T: Clone, K: Ord>(v: &[T], key: impl Fn(&T)
+   -> K) -> Option<T>` that returns the first element with the maximum projected key on ties
+   (mirror the Go fold: only replace the running max on strictly-greater key, never on equal).
+
+Match this file's existing style: a short comment above each helper explaining any non-obvious
+choice (see the existing comments above `SORT_HELPER`/`MAX_HELPER` for the tone), `r#"..."#` raw
+string literals, `Clone + `-bounded generics consistent with the rest of the file.
+
+Do NOT add these helpers to the `uses(...)` conditional-inclusion table (~line 866-869) and do
+NOT touch the `unreachable!(...)` arms for `Kind::SortBy`/`Kind::MaxBy` (~line 1587) -- that
+wiring is the next row's job. This step's helpers will not be referenced by anything yet, which
+is expected and fine.
+
+Done-gate: the two new helper functions exist in `src/emit_rs.rs` as standalone `const` string
+literals following the existing helper pattern, and `just check` (or `cargo build`) still
+passes -- an unused `const` is not a compile error, so this should be a clean, low-risk addition.
