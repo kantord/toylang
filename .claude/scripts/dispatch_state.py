@@ -55,24 +55,43 @@ DEFAULT_CAP = 3
 
 def live_row_ids() -> list[str]:
     """Row ids currently being processed by a live simple_dispatch.py
-    invocation, found by reading real process cmdlines from /proc --
-    not a state file, which can go stale exactly like the old
-    board.yaml-status/msb-list staleness this whole design already
-    learned to distrust once."""
+    invocation, found by reading each process's REAL argv tokens directly
+    from /proc/<pid>/cmdline -- not a state file, which can go stale
+    exactly like the old board.yaml-status/msb-list staleness this whole
+    design already learned to distrust once.
+
+    Deliberately NOT `pgrep -af simple_dispatch.py`: that matches as a
+    substring against the WHOLE command line joined into one string, which
+    false-positives on any process whose command line merely MENTIONS
+    "simple_dispatch.py" in prose. Confirmed live, 2026-09-11: a running
+    `claude -p` tick's own POLICY prompt text quotes "simple_dispatch.py"
+    verbatim many times as ONE giant argv string -- calling this function
+    from within that tick's own turn (a real Bash tool call the coordinator
+    made to check dispatcher status) matched the tick's own PID and parsed
+    its entire prompt into garbage row-id tokens. Reading real, NUL-
+    separated argv per process and requiring an EXACT token match (the
+    literal script name, not a substring anywhere in a longer argument)
+    can't collide with prose that merely contains the same words."""
     ids: list[str] = []
-    try:
-        r = subprocess.run(["pgrep", "-af", "simple_dispatch.py"],
-                            text=True, capture_output=True, timeout=10)
-    except (subprocess.SubprocessError, OSError):
-        return ids
-    for line in r.stdout.splitlines():
-        parts = line.split()[1:]  # drop the pid
-        if "simple_dispatch.py" not in " ".join(parts):
+    for pid_dir in Path("/proc").glob("[0-9]*"):
+        try:
+            raw = pid_dir.joinpath("cmdline").read_bytes()
+        except OSError:
+            continue  # process exited between the glob and the read
+        argv = [a.decode(errors="replace") for a in raw.split(b"\0") if a]
+        script_at = next((i for i, tok in enumerate(argv)
+                           if tok == "simple_dispatch.py" or tok.endswith("/simple_dispatch.py")),
+                          None)
+        if script_at is None:
             continue
-        for tok in parts:
-            if tok.startswith("-") or tok.endswith("simple_dispatch.py") or tok in ("python3", "python"):
-                continue
-            if "--brief-dir" in parts and parts.index(tok) >= parts.index("--brief-dir"):
+        # Row ids are simple_dispatch.py's own positional args, which always
+        # come immediately after the script path and before its first flag
+        # (--brief-dir, --parallel, ...) -- this correctly ignores whatever
+        # precedes the script path (a bare `python3`, or `uv run --project
+        # <dir>`), without needing to special-case every possible launcher
+        # prefix by name.
+        for tok in argv[script_at + 1:]:
+            if tok.startswith("-"):
                 break
             ids.append(tok)
     return ids
