@@ -1581,3 +1581,68 @@ once before `--parallel` sandboxes start, not per-dispatch, so N parallel
 sandboxes could all pass preflight and jointly exhaust the balance
 mid-run -- `agent_loop.py`'s own per-call FATAL check still catches real
 exhaustion inside each dispatch regardless.
+
+### Round 5 (final)
+
+Explicitly the last round -- asked for a genuine verdict, not a forced
+fifth finding. **Cost track: real, well-reasoned convergence.** Traced
+every billed `urlopen()` site fresh (still exactly 3, unchanged since
+round 3), re-verified every budget constant against both real dispatch
+logs, and specifically checked round 4's lock-release fix for a cost
+angle (a leaked lock makes a row look permanently BUSY via `flock`
+semantics, not permanently available -- the opposite of a
+double-dispatch/double-billing risk, so the old bug was never a cost
+problem, only an availability one). Fourth straight converged round.
+
+**Correctness track: NOT fully converged** -- three more real bugs found,
+none in the self-report mechanism itself (round 4 already validated that
+against real production data and it held), all in parts of the pipeline
+this whole 5-round series hadn't focused on:
+1. `verify()`'s `subprocess.run(..., text=True, capture_output=True)`
+   decodes strictly as UTF-8, with no `errors="replace"` -- the one place
+   in `agent_loop.py` that decodes untrusted external bytes without it
+   (every other site already has it). Reproduced directly: a single
+   invalid byte (`0xff`) in subprocess output raises an uncaught
+   `UnicodeDecodeError`. This is exactly the kind of output (a real
+   build/test tool's stdout/stderr) that can legitimately contain
+   non-UTF-8 bytes (a compiler ICE dump, a binary-fixture diff) --
+   crashing before `write_status()` ever runs, silently reported as a
+   plain RED by `simple_dispatch.py`'s fallback classifier. Fixed: added
+   `errors="replace"`, matching the pattern everywhere else in the file.
+2. `all(r.ok for r in results)` is `True` on an EMPTY list in Python --
+   if every requested row got skipped (a typo'd row id, a wrong
+   `--brief-dir`), `main()` returned exit code 0, a fully "successful"
+   exit despite dispatching nothing at all, with no row even shown in the
+   SUMMARY. Fixed: an empty `jobs` list after the skip loop now prints a
+   clear error and returns exit code 2 instead of silently succeeding.
+3. Round 4's own lock-release fix (a nested `try/finally` around
+   `append_dispatch_log`) turned out to only be lock-safe, not
+   RESULT-safe: the `finally` still had no `except`, so a CSV-append
+   failure (disk full) would propagate past the WHOLE `finally` block --
+   and since the enclosing `try` had already done `result = ...; return
+   result`, Python's own semantics mean an exception raised in `finally`
+   REPLACES that return value entirely. Reproduced directly: a real,
+   already-computed GREEN `Result` (with a real patch) was silently
+   discarded and replaced by the generic "dispatch crashed" fallback
+   `main()`'s `ThreadPoolExecutor` callback uses on any exception --
+   losing the real outcome from both the terminal SUMMARY and the CSV
+   both, over a failure in the LOGGING step, not the dispatch itself.
+   Fixed: the CSV append is now caught and reported (a clear stderr
+   warning naming the row), not re-raised -- the CSV row for that one run
+   is genuinely missing (a real, visible, honestly-reported loss), but
+   the actual dispatch result is never sacrificed for it. Verified with a
+   direct repro: a real GREEN result with a patch now survives a
+   simulated CSV-append failure intact, returned exactly as computed.
+
+**Overall verdict after this 5-round series**: cost converged cleanly (4
+straight rounds after 1 real, later-settled question). Correctness did
+NOT reach a clean final round -- the self-report mechanism itself fully
+converged by round 4, but the final round's fresh look at
+previously-unexamined pipeline code (verify()'s decoding, the
+all-rows-skipped exit code, round 4's own lock-release fix) found three
+more real, previously-unknown bugs. This matches the pattern from the
+FIRST 5-round series on this same codebase: adversarial review keeps
+finding real things as long as it keeps looking at genuinely new
+surface area, and a "converged" verdict on one track (cost, or one
+specific mechanism) doesn't mean the whole file has stopped needing
+scrutiny.

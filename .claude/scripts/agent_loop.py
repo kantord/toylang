@@ -861,8 +861,20 @@ MAX_VERIFY_SECONDS = 1800
 
 
 def verify(cmd: str, timeout: int = MAX_VERIFY_SECONDS) -> tuple[bool, str]:
+    # `errors="replace"`, matching every OTHER place in this file that
+    # decodes untrusted external bytes -- this was the one spot that
+    # didn't, found by adversarial review. `text=True` decodes strictly as
+    # UTF-8 by default, and this is exactly the kind of output (a
+    # build/test tool's real stdout/stderr) that can legitimately contain
+    # non-UTF-8 bytes (a compiler ICE dump, a binary-fixture diff).
+    # Reproduced directly: one invalid byte (0xff) in subprocess output
+    # raised an uncaught UnicodeDecodeError here, past the only other
+    # catch in this function's caller (`except subprocess.TimeoutExpired`
+    # only) -- crashing before write_status() ever ran, which
+    # simple_dispatch.py's fallback classifier then silently reports as a
+    # plain, unexplained RED.
     r = subprocess.run(cmd, shell=True, cwd="/repo", text=True,
-                        capture_output=True, timeout=timeout)
+                        capture_output=True, timeout=timeout, errors="replace")
     out = (r.stdout + r.stderr)[-6000:]
     return r.returncode == 0, out
 

@@ -265,13 +265,24 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                 status = "RED"
             cost = result.cost_usd
             patch = result.patch_path
-        # Wrapped so a failure WRITING the log (e.g. disk full on the
-        # repo-committed CSV path -- this repo has a recorded ENOSPC
-        # history) can never skip the lock release below. A real bug
-        # found by adversarial review: `append_dispatch_log` used to be
-        # the last statement before the flock release, so an exception
-        # here would propagate out of this `finally` block and leave the
-        # row's lock held for the rest of this process's life.
+        # Best-effort, not just lock-safe: a real bug found by adversarial
+        # review, one level past the first fix. Wrapping only in
+        # try/finally (no except) still let a CSV-append failure (disk
+        # full -- this repo has a recorded ENOSPC history) propagate past
+        # this WHOLE finally block once the flock was released -- and
+        # since `result = ...; return result` already ran in the `try`
+        # above, Python's own semantics mean an exception raised in
+        # `finally` REPLACES that return value entirely. Confirmed by
+        # direct reproduction: a real, already-computed GREEN Result (with
+        # a real patch) was silently discarded and replaced by the
+        # generic "dispatch crashed" Result the `ThreadPoolExecutor`
+        # callback in main() falls back to on any exception -- losing the
+        # real outcome from the terminal SUMMARY and the CSV row both,
+        # over a failure in the LOGGING step, not the dispatch itself.
+        # Caught and reported instead of re-raised: the CSV row for this
+        # one run is missing (a real, visible loss, printed clearly), but
+        # the actual dispatch result -- the thing that cost real money and
+        # produced a real answer -- is never sacrificed for it.
         try:
             append_dispatch_log({
                 "run_id": run_id,
@@ -284,6 +295,10 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                 "cost_usd": f"{cost:.6f}",
                 "patch_path": str(patch) if patch else "",
             })
+        except Exception as e:
+            print(f"[{row_id}] WARNING: failed to append to dispatch-log.csv "
+                  f"(non-fatal, the real result below is still returned): {e}",
+                  file=sys.stderr)
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
         lock.close()
@@ -630,6 +645,18 @@ def main() -> int:
             print(f"skip {row}: no brief at {brief}", file=sys.stderr)
             continue
         jobs.append((row, brief))
+
+    if not jobs:
+        # A real bug found by adversarial review: `all(r.ok for r in
+        # results)` on an EMPTY list is `True` in Python, so if every
+        # requested row got skipped above (a typo'd row id, a wrong
+        # --brief-dir), main() would return exit code 0 -- a fully
+        # "successful" exit despite dispatching nothing at all, with no
+        # row even shown in the SUMMARY. Fail loudly and distinctly
+        # instead of silently succeeding at doing nothing.
+        print("[error] no valid rows to dispatch (every row was skipped -- "
+              "check row ids and --brief-dir)", file=sys.stderr)
+        return 2
 
     results: list[Result] = []
     with ThreadPoolExecutor(max_workers=args.parallel) as pool:
