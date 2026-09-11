@@ -197,7 +197,7 @@
   kind: build
   needs: [file-visibility-tracking-build]
   prio: 5
-  status: todo
+  status: delegated
 
 - id: erlang-target-consideration
   issue: gh:163

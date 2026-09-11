@@ -1734,3 +1734,25 @@ actual ask. `lane-telemetry.py` (a live `SessionEnd` hook logging generic
 session telemetry, confirmed wired in `.claude/settings.json`) was also
 left alone -- not dispatch-mechanism-specific, a separate keep-or-drop
 decision nobody asked to make here.
+
+**Incident (2026-09-11): `dispatch_state.py --live` self-matches its own
+tick.** `live_row_ids()` runs `pgrep -af simple_dispatch.py`, a plain
+substring match against the FULL command line, not the process name.
+The drive-tick prompt itself (the one this very script is embedded in)
+quotes `simple_dispatch.py` literally many times as prose. When a tick
+invokes `dispatch_state.py --live` from inside its own `claude -p ...`
+process, `pgrep -af` matches that prompt text and reports the tick's own
+PID as a "live row", parsed into garbage row-id tokens (the whole prompt
+split on whitespace). The trigger's own "dispatcher free" line is still
+trustworthy -- it's computed by `drive_tick.py` before the `claude -p`
+subprocess (and its prompt-embedded string) exists -- but re-checking
+`--live` from inside the spawned tick is not, and will false-positive
+every single time a tick's prompt mentions the literal string
+`simple_dispatch.py`. Confirmed via `ps aux`: the only two matching PIDs
+were the tick's own `timeout ... claude -p ...` wrapper and the `claude`
+process itself, no real `simple_dispatch.py` invocation running. Worked
+around this tick by cross-checking with plain `ps aux | grep -i
+dispatch` instead of trusting the script's parsed output. Not fixed here
+(out of a router tick's scope) -- `live_row_ids()` needs a narrower match
+(e.g. anchor on the script being the actual argv[0]/interpreter target,
+not a prose substring anywhere in the cmdline).
