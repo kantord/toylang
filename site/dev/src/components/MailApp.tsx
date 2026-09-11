@@ -478,7 +478,7 @@ function MessageHeader({ item }: { item: MailItem }) {
 }
 
 class RoundBoundary extends Component<{ topic: string; children: ReactNode }, { error: Error | null }> {
-  state = { error: null }
+  state: { error: Error | null } = { error: null }
   static getDerivedStateFromError(error: Error) {
     return { error }
   }
