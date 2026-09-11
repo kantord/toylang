@@ -1,6 +1,7 @@
 /target
 *.snap.new
 __pycache__/
+.claude/scripts/.venv/
 .claude/settings.local.json
 .claude/settings.local.json.tmp.*
 site/node_modules

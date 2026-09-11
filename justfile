@@ -44,12 +44,12 @@ checks:
 
 # The autonomous drive loop: a tick every 600s, live colorized output, Ctrl-C to stop. Run ONE.
 drive:
-    .claude/scripts/drive-loop.sh
+    uv run --project .claude/scripts .claude/scripts/drive_loop.py
 
 # Fire one coordinator tick right now (zero tokens if there is nothing to do).
 tick:
-    .claude/scripts/drive-tick.sh
+    uv run --project .claude/scripts .claude/scripts/drive_tick.py
 
 # Watch the current coordinator tick live (detaches with Ctrl-C, tick untouched).
 peek:
-    .claude/scripts/tick-peek.sh
+    uv run --project .claude/scripts .claude/scripts/tick_peek.py

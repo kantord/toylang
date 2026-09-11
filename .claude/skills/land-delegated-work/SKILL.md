@@ -55,10 +55,12 @@ What review IS now:
 One lane at a time, straight onto main, behind the full `just test` -- the suite is
 about three minutes, so batching lanes into accumulators bought nothing and cost
 blame ambiguity (a red batch could not name its breaking lane). All plumbing lives
-in `.claude/scripts/land-lane.sh`:
+in `.claude/scripts/land_lane.py` (2026-09-11: `uv run --project .claude/scripts
+.claude/scripts/land_lane.py ...`, a proper uv-managed Python project, no shell
+scripts left):
 
 - **Landing is event-driven and deterministic.** A worker's exit fires
-  `land-lane.sh land <N>` by itself (opencode-worker.sh's EXIT trap); no model sits
+  `land_lane.py land <N>` by itself (opencode_worker.py's own exit handling); no model sits
   in the happy path, and the merge message is generated from the lane's own commit
   subjects. To land manually, run the same command -- detached with nohup when you
   do not want to wait on the suite. Lands serialize on a flock.

@@ -38,7 +38,7 @@ fi
 # blanked the whole kanban. Every writer runs board-lint before committing;
 # this is the backstop for sessions that edited the board by hand.
 if [ -f plans/board.yaml ]; then
-  lint_out=$(python3 .claude/scripts/board-lint.py 2>&1) || {
+  lint_out=$(uv run --project .claude/scripts .claude/scripts/board-lint.py 2>&1) || {
     {
       echo "Board schema invalid (board-lint.py):"
       echo "$lint_out"

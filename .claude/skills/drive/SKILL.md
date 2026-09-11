@@ -8,9 +8,11 @@ description: Drive development autonomously from plans/board.yaml - the ordered 
 
 ## How ticks arrive (since 2026-08-30: the drive loop, not session crons)
 
-Orchestration is externally scheduled: the maintainer starts
-`.claude/scripts/drive-loop.sh` by hand (and stops it by killing the process). The loop
-fires `.claude/scripts/drive-tick.sh` every DRIVE_INTERVAL seconds -- each tick a fresh,
+Orchestration is externally scheduled: the maintainer starts `just drive` (runs
+`.claude/scripts/drive_loop.py` via `uv run`) by hand and stops it by killing the
+process. The loop fires `.claude/scripts/drive_tick.py` every DRIVE_INTERVAL seconds
+(also `uv run`-invoked, 2026-09-11: the whole `.claude/scripts/` tree is a proper
+`uv`-managed Python project now, no shell scripts left) -- each tick a fresh,
 standalone `claude -p` request in auto permission mode (no cross-tick --resume, dropped
 2026-08-31: it saved well under a cent/tick and both of that night's flakiest ticks
 happened on a resumed session). The script also picks the model (sonnet routinely, fable
@@ -58,7 +60,7 @@ plain surfaces: `plans/dispatch-log.csv` (one row per run: status, cost, patch p
 `~/.cache/toylang-simple-dispatch/results/<row>-<run_id>-*` files (the extracted patch,
 the full agent log, and -- the real diagnosis surface -- `-self-report.txt`: the model's
 own direct explanation of what blocked it, asked for in-context at the moment it gave
-up, not reconstructed afterward from a transcript). `.claude/scripts/dispatch-state.py`
+up, not reconstructed afterward from a transcript). `.claude/scripts/dispatch_state.py`
 reads both surfaces for you; a tick's own trigger text already carries the self-report
 verbatim for any STUCK/RED/TIMEOUT/SETUP_FAILED/FATAL row -- read that directly instead
 of digging through logs. See `plans/simple-dispatch-design.md` for the full design
@@ -76,7 +78,7 @@ when nothing else said what a worker was doing.
 **The coordinator is a router (maintainer direction, 2026-08-30).** The asymptote every
 change moves toward: a tick spends its turns on DECISIONS -- what to dispatch, what to
 land, what to surface to the maintainer -- executed through the four mechanical
-surfaces (simple_dispatch.py, land-lane.sh, board-archive.py, round files), and reads
+surfaces (simple_dispatch.py, land_lane.py, board-archive.py, round files), and reads
 results rather than exploring. sandbox_dispatch.py, dispatch-worker.sh, and every
 opencode-based worker are retired (2026-09-11 ruling: simple_dispatch.py + agent_loop.py
 is the only dispatch mechanism) -- never invoke any of them. The gate script hands each
@@ -160,7 +162,7 @@ provenance ("self-originated, idle board" on the row/issue):
    simple_dispatch.py's own `ThreadPoolExecutor` fan-out (`--parallel`, default cap 3)
    IS the concurrency -- one process handles up to 3 rows at once and only exits once
    every row in that batch has a final status. "Occupied" is therefore binary, not a
-   slot count: `dispatch-state.py --live` reads real process cmdlines directly, never
+   slot count: `dispatch_state.py --live` reads real process cmdlines directly, never
    board.yaml's `status: delegated` (which can go stale on an escalated row exactly the
    way it already did under the old model) or `msb list`'s VM status (which also shows
    sandboxes mid-teardown). Never launch a second batch while one is already live. When
@@ -173,18 +175,19 @@ provenance ("self-originated, idle board" on the row/issue):
      none), write a brief per the enwiro-delegate skill to `plans/simple-briefs/ROW-ID.txt`
      (this exact filename -- simple_dispatch.py requires `--brief-dir`/`<row_id>.txt`),
      then dispatch a batch of up to 3 ready rows in ONE call, DETACHED --
-     `nohup python3 .claude/scripts/simple_dispatch.py ROW-ID-1 ROW-ID-2 ROW-ID-3
-     --brief-dir plans/simple-briefs --parallel 3 &` -- and set each row's `status:
+     `nohup uv run --project .claude/scripts .claude/scripts/simple_dispatch.py
+     ROW-ID-1 ROW-ID-2 ROW-ID-3 --brief-dir plans/simple-briefs --parallel 3 &` -- and set each row's `status:
      delegated` in the same commit as writing its brief. Every dispatch runs FULLY
      unsupervised end to end: real edits, its own `just check` verify with retries, a
      self-report if it gives up, and a real extracted patch on any outcome that made
      edits -- but it does NOT self-land (a deliberate design choice, staying a pure
      dispatch primitive; see `plans/simple-dispatch-design.md`). Landing a GREEN result
-     is the tick's own job: `land-lane.sh land-patch ROW-ID PATCH-PATH`, DETACHED, same
+     is the tick's own job: `uv run --project .claude/scripts .claude/scripts/land_lane.py
+     land-patch ROW-ID PATCH-PATH`, DETACHED, same
      as any other landing (duty 4 in "Monitor and land" below). A non-GREEN outcome
      (STUCK, RED, TIMEOUT, SETUP_FAILED, FATAL) carries the agent's OWN real-time
      explanation of what blocked it, verbatim, already surfaced in the tick's trigger
-     text (`dispatch-state.py --status ROW-ID`, or read
+     text (`dispatch_state.py --status ROW-ID`, or read
      `~/.cache/toylang-simple-dispatch/results/ROW-ID-*-self-report.txt` directly) --
      there is no transcript to reconstruct and no separate escalation-composition step;
      decide directly from what the agent already said: a narrower redispatch per its own
@@ -200,10 +203,10 @@ provenance ("self-originated, idle board" on the row/issue):
      Efficiency/process improvements are prio work by standing rule -- schedule them
      ahead of ordinary rows so no time is spent working the old way.
 4. **Monitor and land.** A dispatched batch reports a final status per row when it exits
-   (`dispatch-state.py --status ROW-ID`); a GREEN row lands via `land-lane.sh land-patch
-   ROW-ID PATCH-PATH` DETACHED -- the gate (full `just test` in a throwaway worktree) is
-   the WHOLE pre-merge check, deterministic, no model reads the diff before merging (see
-   land-lane.sh's own header). Move the landed row to `plans/board-archive.yaml` with
+   (`dispatch_state.py --status ROW-ID`); a GREEN row lands via `uv run --project
+   .claude/scripts .claude/scripts/land_lane.py land-patch ROW-ID PATCH-PATH` DETACHED --
+   the gate (full `just test` in a throwaway worktree) is the WHOLE pre-merge check,
+   deterministic, no model reads the diff before merging (see land_lane.py's own header). Move the landed row to `plans/board-archive.yaml` with
    `status: done` (issue #113: never flip it in place), commit the board change with the
    merge, and go to step 1. Post-land review (reading the new commit's diff for real
    follow-up problems, filing rows for them) happens AFTER landing, asynchronously, per

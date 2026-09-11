@@ -330,3 +330,63 @@ names and `uv run` invocation form:
    them for real (the isolated-clone test, a real dry-run), THEN delete the `.sh`
    originals in the same commit that lands the verified replacement -- no lingering
    both-still-present state, but also no unverified deletion.
+
+## Implementation (2026-09-11, after all 3 plan-review rounds)
+
+All 5 shell scripts converted and deleted in one commit, per open question 6's
+rollout discipline: `drive_loop.py`, `land_lane.py`, `drive_tick.py`,
+`opencode_worker.py`, `tick_peek.py`. `pyproject.toml` + `uv.lock` added at
+`.claude/scripts/`, `.gitignore` gained `.claude/scripts/.venv/`.
+
+**One deliberate deviation from the plan's own "keep current filename" rule**:
+three already-Python files -- `tick-stream.py`, `dispatch-state.py`,
+`opencode-peek.py` -- were ALSO renamed to underscore form (`tick_stream.py`,
+`dispatch_state.py`, `opencode_peek.py`) and refactored to expose a reusable
+`process_line()`/direct-call API. This wasn't in the plan's stated file list
+(which only named the 5 shell conversions), but it's required by the plan's
+own explicitly-stated goal for these exact files -- "another real
+simplification, since tick-stream.py is already Python" (in-process piping)
+and "a real simplification opportunity worth taking" for dispatch-state.py
+(direct function calls instead of a subprocess round-trip): a plain Python
+`import` statement cannot import a module whose filename contains a hyphen.
+`board-archive.py`, `board-lint.py`, `lane-telemetry.py` were NOT renamed --
+nothing imports them directly (they're invoked as external processes/hooks
+only), so the plan's "keep current filename" default applies to them
+unchanged.
+
+**`claude -p | tick-stream.py` bounding, resolved**: kept the external
+`timeout --kill-after=30s 2700s` as a literal `subprocess.Popen` argument
+wrapping `claude -p` directly (option (b) from the round-2 correction), with
+`drive_tick.py` reading `proc.stdout` in a plain `for line in proc.stdout:`
+loop -- this drains the pipe live while the process runs (no separate reader
+thread needed) and still breaks on `tick_stream.process_line()`'s terminal
+"result" event without waiting for EOF, exactly preserving both the outer
+hard-kill guarantee and the early-exit optimization round 2 flagged.
+
+**Every finding from all 3 plan-review rounds was applied**: the POLICY/CORE
+prompt strings were rewritten and re-grepped for every retired filename
+(clean); `justfile`, `.claude/checks/run.sh`, `.claude/settings.json`'s
+SessionEnd hook, and `simple_dispatch.py`'s own embedded invocation text (in
+`drive_tick.py`'s POLICY, `drive/SKILL.md`, `enwiro-delegate/SKILL.md`) were
+all converted to the `uv run --project` form; `agent_loop.py`'s sandbox-guest
+invocation was explicitly left as bare `python3` (no uv inside the microVM
+guest); every historical/dated document (`ONE_OFF_FIXES.md`,
+`plans/opencode-rollout.md`, `plans/prompt-efficiency-review.md`,
+`plans/brief-phrasing-experiment.md`, `plans/worker-pool.md`,
+`plans/simple-dispatch-rollout-plan.md`, `plans/simple-dispatch-design.md`'s
+own dated sections, `plans/board-archive.yaml`, `.claude/tmp-brief-*.txt`,
+every `plans/incidents/*.jsonl.tail`) was re-checked and left untouched,
+since each names the script that literally ran on that date.
+
+**Verification performed for real, not just code review**: `ruff check`
+(F821 + defaults) clean across every new file; `drive_tick.py`'s
+`compute_trigger_and_state()` dry-run against the real repo (both `tick` and
+`audit` modes) produced sensible, non-crashing trigger/state text matching
+the bash predecessor's own dry-run from the previous `/goal`;
+`land_lane.py`'s bounded-wait flock helper tested directly (acquire, timed
+timeout, release, re-acquire); `land_lane.py land-patch` run end-to-end
+against the SAME isolated bare-clone harness used to validate the bash
+version -- a real patch, the real `just test` suite, a real merge, pushed to
+a throwaway local origin, with the resulting commit's content verified byte
+-for-byte correct. `board-lint.py`'s new `uv run` invocation exercised for
+real via `bash .claude/checks/run.sh`. Full `just check`: 436/436 tests pass.

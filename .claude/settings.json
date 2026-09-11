@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/lane-telemetry.py\""
+            "command": "uv run --project \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts\" \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/lane-telemetry.py\""
           }
         ]
       }

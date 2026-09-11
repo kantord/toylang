@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Colorize a claude -p stream-json feed for the drive-loop terminal.
 
-Reads events on stdin, prints a readable live trace, and writes the final
-result event as JSON to argv[1] (drive-tick.sh's context watch reads it).
+process_line() is the reusable core: drive_tick.py calls it in-process while
+reading a live claude -p subprocess's stdout, and tick_peek.py calls it while
+tailing a session transcript file. main() below keeps the old
+`some-producer | python3 tick_stream.py OUT` CLI shape working for anyone
+invoking this file directly.
+
 Prefixes: [tick] session line, "->" tool call, "." narration, "x" tool error,
 "ok" final verdict.
 """
 import json
 import sys
-
-OUT = sys.argv[1]
 
 
 def c(code, s):
@@ -20,14 +22,18 @@ def one_line(s, n):
     return " ".join(str(s).split())[:n]
 
 
-for line in sys.stdin:
+def process_line(line: str, out_path: str) -> bool:
+    """Render one stream-json line. Returns True if this was the terminal
+    "result" event -- the caller must stop reading right away rather than
+    waiting for EOF, which a leaked background-task fd can withhold forever
+    (held the tick lock 90+ min, 2026-08-31, blocking every subsequent tick)."""
     line = line.strip()
     if not line:
-        continue
+        return False
     try:
         e = json.loads(line)
     except json.JSONDecodeError:
-        continue
+        return False
     t = e.get("type")
     if t == "system" and e.get("subtype") == "init":
         sid = (e.get("session_id") or "?")[:8]
@@ -50,12 +56,22 @@ for line in sys.stdin:
                     txt = " ".join(x.get("text", "") for x in txt if isinstance(x, dict))
                 print(c("31", "x ") + one_line(txt, 200))
     elif t == "result":
-        with open(OUT, "w") as f:
+        with open(out_path, "w") as f:
             json.dump(e, f)
         verdict = one_line(e.get("result") or "", 300)
         print(c("1", f"ok {verdict}" if verdict else "ok done"))
         sys.stdout.flush()
-        break  # result is terminal; don't wait on stdin EOF, which a leaked
-        # background-task fd can withhold forever (held the tick lock
-        # 90+ min, 2026-08-31, blocking every subsequent tick)
+        return True
     sys.stdout.flush()
+    return False
+
+
+def main() -> None:
+    out_path = sys.argv[1]
+    for line in sys.stdin:
+        if process_line(line, out_path):
+            break
+
+
+if __name__ == "__main__":
+    main()

@@ -25,7 +25,7 @@ loop dispatches.
 
 The one dispatch mechanism now:
 
-    nohup python3 .claude/scripts/simple_dispatch.py <row-id> --brief-dir <dir-containing-row-id.txt> &
+    nohup uv run --project .claude/scripts .claude/scripts/simple_dispatch.py <row-id> --brief-dir <dir-containing-row-id.txt> &
 
 `--brief-dir` must contain a file named exactly `<row-id>.txt` -- not a `--brief <path>`
 flag with an arbitrary filename. That runs the FULL cycle unsupervised in a disposable,
@@ -34,14 +34,14 @@ with retries against the actual failure evidence, and a self-report if it gives 
 typically 5-20 minutes end to end, never waited on inline. It does NOT land on success
 by itself (a deliberate design choice -- staying a pure dispatch primitive): check
 `plans/dispatch-log.csv` for the row's final status once it exits, and on GREEN, run
-`.claude/scripts/land-lane.sh land-patch <row-id> <patch-path>` yourself. Concurrency is
+`uv run --project .claude/scripts .claude/scripts/land_lane.py land-patch <row-id> <patch-path>` yourself. Concurrency is
 a single global batch, not a slot count: `simple_dispatch.py`'s own `--parallel` (default
 3) fans multiple rows out INSIDE one call; check whether a dispatch is already running
-with `.claude/scripts/dispatch-state.py --live` (real process cmdlines, not `msb list`'s
+with `.claude/scripts/dispatch_state.py --live` (real process cmdlines, not `msb list`'s
 VM status, which stays "running" for a sandbox mid-teardown, and not board.yaml's
 `status: delegated`, which can go stale on an escalated row) before launching another.
 Orphaned sandboxes from an abruptly-killed dispatcher are reclaimed by
-`dispatch-state.py --gc`, run automatically every drive tick -- no action needed for a
+`dispatch_state.py --gc`, run automatically every drive tick -- no action needed for a
 dispatch launched through the normal drive loop; run it by hand after a manually-killed
 one-off dispatch.
 
@@ -50,7 +50,7 @@ the sandbox is fully permissive by construction. A run that gives up (STUCK, RED
 TIMEOUT, SETUP_FAILED, FATAL) carries the model's OWN real-time explanation of what
 blocked it, verbatim, in
 `~/.cache/toylang-simple-dispatch/results/<row-id>-<run-id>-self-report.txt`
-(`dispatch-state.py --status <row-id>` prints its path directly) -- read that first,
+(`dispatch_state.py --status <row-id>` prints its path directly) -- read that first,
 there is no transcript to reconstruct and no escalation composed automatically; decide
 directly from what the agent already said (a narrower redispatch per its own
 suggestion, or write the question into a `docs/.grill/` round yourself if it says this
@@ -73,7 +73,7 @@ the anyhow work once). Before dispatching: push local main (standing authorizati
 Default: `simple_dispatch.py` (section 0). `--model` picks the build model (default
 `deepseek/deepseek-v4-flash-0731`; the board's `model:` field is dormant for builds) --
 there is no separate plan-decompose or critic phase, one continuous session drives the
-whole attempt. It does NOT land on success itself -- run `land-lane.sh land-patch` by
+whole attempt. It does NOT land on success itself -- run `land_lane.py land-patch` by
 hand once you see GREEN in `plans/dispatch-log.csv`.
 
 For the explicitly-requested enwiro variant only:
@@ -82,7 +82,8 @@ For the explicitly-requested enwiro variant only:
 prev=$(i3-msg -t get_workspaces | jq -r '.[] | select(.focused).name')
 enw activate 'toylang#12'
 enw wrap kitty 'toylang#12' -- --detach \
-  /home/kantord/repos/toylang/.claude/scripts/opencode-worker.sh '<the brief>'
+  uv run --project /home/kantord/repos/toylang/.claude/scripts \
+    /home/kantord/repos/toylang/.claude/scripts/opencode_worker.py '<the brief>'
 sleep 4   # let the window map on the env workspace; verify the worker is live
 i3-msg "workspace \"$prev\"" >/dev/null
 ```
@@ -109,7 +110,7 @@ inside the sandbox, same as before.
 
 A blocker the dispatch itself cannot resolve is the model's OWN direct explanation of
 why, written to `<row-id>-<run-id>-self-report.txt` in
-`~/.cache/toylang-simple-dispatch/results/` -- read it yourself (`dispatch-state.py
+`~/.cache/toylang-simple-dispatch/results/` -- read it yourself (`dispatch_state.py
 --status <row-id>` prints the path); nothing composes a maintainer round for you
 automatically for an ad-hoc dispatch outside the drive loop.
 
@@ -134,7 +135,7 @@ docs-only change). `--model` can lift a hard question to a stronger model per-di
 
 ## 2b. Update the board
 
-Set the row's `status: delegated`. `dispatch-state.py` resolves everything from
+Set the row's `status: delegated`. `dispatch_state.py` resolves everything from
 `plans/dispatch-log.csv` and the row id directly -- there is no worktree to name or
 resolve, and the `lane:` field is legacy, set on no new row. A delegation without a
 board row means the task skipped planning -- add the row.

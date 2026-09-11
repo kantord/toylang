@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""State/liveness helper for simple_dispatch.py, used by drive-tick.sh.
+"""State/liveness helper for simple_dispatch.py, imported directly by
+drive_tick.py (same process, no subprocess round-trip -- both are plain
+Python in the same uv project now) and also runnable standalone for a human
+via `uv run --project .claude/scripts .claude/scripts/dispatch_state.py ...`.
 
 Replaces sandbox_dispatch_status.py, which was keyed entirely to the old
 sandbox_dispatch.py/opencode pipeline's conventions (one process per row,
@@ -12,24 +15,24 @@ full log, self-report, persisted messages). This script reads those
 directly instead of reconstructing state from worktrees/pgrep/markers.
 
 Usage:
-  dispatch-state.py --live
+  uv run --project .claude/scripts .claude/scripts/dispatch_state.py --live
       Prints the row ids currently being processed by a live
       simple_dispatch.py invocation (found by scanning cmdlines), one per
       line. Empty output means no dispatch is running right now -- the
       dispatcher is a single global batch, not a per-row slot pool, so
       "busy or free" is the whole WIP model; --parallel controls fan-out
       INSIDE one call, not how many calls can run at once.
-  dispatch-state.py --status ROW_ID
+  uv run --project .claude/scripts .claude/scripts/dispatch_state.py --status ROW_ID
       Prints the latest plans/dispatch-log.csv row for ROW_ID as
       "status cost_usd patch_path self_report_path" (space-separated,
       paths empty-string if absent), or nothing if no row exists yet.
-  dispatch-state.py --dispatch-trigger [--cap N]
+  uv run --project .claude/scripts .claude/scripts/dispatch_state.py --dispatch-trigger [--cap N]
       Prints a one-line trigger message if no dispatch is currently live
       AND at least one ready `build` row exists in plans/board.yaml
       (status: todo, kind: build, every `needs` id either absent from the
       live board or not still todo/delegated) -- naming up to N of them.
       Empty output otherwise.
-  dispatch-state.py --gc
+  uv run --project .claude/scripts .claude/scripts/dispatch_state.py --gc
       Removes any `msb` sandbox whose name matches the sd-<row>-<runid>
       pattern but has no corresponding live simple_dispatch.py process.
       simple_dispatch.py's own teardown already does this in the normal
