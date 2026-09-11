@@ -47,7 +47,10 @@ import { cn } from "@/lib/utils"
 
 interface InboxRecord {
   page: string
-  block: number
+  // A forest node's own string id (kantord/toylang#grill-forest) alongside the legacy positional
+  // index every other inbox writer still uses -- both dedup the same way via template-literal
+  // string keys below, so widening this doesn't change any of this file's own logic.
+  block: number | string
 }
 
 type Tab = Folder | "board"

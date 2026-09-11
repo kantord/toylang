@@ -150,13 +150,15 @@ function IntroScreen({ round, onBegin }: { round: Round; onBegin: () => void }) 
 // MessageCard's regex-driven sentence splitting. Text colors stay hand-written: FLOW only
 // exports them fused into badge (bg plus text), and unbundling that for three labels would
 // cost more than the duplication it saves -- if they drift, this comment is the pointer.
-const SECTION: Record<"Background" | "Thesis" | "Question", { border: string; text: string }> = {
+export const SECTION: Record<"Background" | "Thesis" | "Question", { border: string; text: string }> = {
   Background: { border: FLOW.status.border, text: "text-sky-700 dark:text-sky-300" },
   Thesis: { border: FLOW.round.border, text: "text-violet-700 dark:text-violet-300" },
   Question: { border: FLOW.question.border, text: "text-fuchsia-700 dark:text-fuchsia-300" },
 }
 
-function Section({ label, markdown }: { label: keyof typeof SECTION; markdown: string }) {
+/** Exported for GrillChain.tsx (kantord/toylang#grill-forest), which reuses this same
+ *  Background/Thesis/Question color-coded treatment for a forest node's card. */
+export function Section({ label, markdown }: { label: keyof typeof SECTION; markdown: string }) {
   const s = SECTION[label]
   return (
     <div className={cn("space-y-2 rounded-sm border-l-4 py-1 pl-3", s.border)}>

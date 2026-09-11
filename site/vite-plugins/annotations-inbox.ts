@@ -3,9 +3,12 @@ import path from "node:path"
 
 import type { Plugin } from "vite"
 
+// `block` is a positional array index for ordinary annotations and wizard-round answers, but a
+// forest node's own id (a string slug, not guaranteed numeric-looking) for grill-forest answers
+// (kantord/toylang#grill-forest) -- widened from `number` so both fit the same record shape.
 interface AnnotationRecord {
   page: string
-  block: number
+  block: number | string
   original: string
   edited: string
 }
@@ -121,7 +124,11 @@ export function annotationsInbox(): Plugin {
             await mkdir(dir, { recursive: true })
             await withInboxLock(async () => {
               const inbox = await readInbox(file)
-              const records = inbox.records.filter((r) => !(r.page === page && r.block === block))
+              // String comparison, not `===`: a legacy numeric index and a forest node's string
+              // id both dedup correctly this way, and a digit-looking id (e.g. "2") still matches
+              // itself -- coercing the query side to Number() instead would fail that case, since
+              // the stored value stays a JSON string while Number("2") is a number.
+              const records = inbox.records.filter((r) => !(r.page === page && String(r.block) === String(block)))
               records.push({ page, block, original, edited })
               const next: Inbox = { last_edit: new Date().toISOString(), records }
               await writeFile(file, JSON.stringify(next, null, 2))
@@ -147,9 +154,11 @@ export function annotationsInbox(): Plugin {
         }
         const query = new URLSearchParams((req.url ?? "").split("?")[1] ?? "")
         const page = query.get("page")
-        const block = Number(query.get("block"))
+        const block = query.get("block") ?? ""
         const inbox = await readInbox(file)
-        const record = inbox.records.find((r) => r.page === page && r.block === block) ?? null
+        // String comparison throughout (see the POST handler above) -- a `Number()` coercion here
+        // would silently fail to rehydrate a digit-looking forest node id.
+        const record = inbox.records.find((r) => r.page === page && String(r.block) === block) ?? null
         res.statusCode = 200
         res.setHeader("Content-Type", "application/json")
         res.end(JSON.stringify({ record }))

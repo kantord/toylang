@@ -2,15 +2,15 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
-import { annotationsInbox } from "./vite-plugins/annotations-inbox.ts"
-import { grillRounds } from "./vite-plugins/grill-rounds.ts"
-
 export default defineConfig({
   // The site is published at kantord.github.io/toylang/, so assets resolve under the repo name
   // rather than the domain root. `pnpm dev` overrides nothing: Vite serves this prefix locally
   // too, which is what stops a path working in development and 404ing once deployed.
   base: "/toylang/",
-  plugins: [react(), tailwindcss(), annotationsInbox(), grillRounds()],
+  // annotationsInbox()/grillRounds()/grillForest() moved to vite.tools.config.ts (`pnpm
+  // dev:tools`): this config's dev server is a prerendered static docs site that never calls
+  // `/__annotations/*` or `/__grill*` at runtime, so it doesn't need to serve them either.
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: { "@": import.meta.dirname + "/src", "@dev": import.meta.dirname + "/dev/src" },
   },

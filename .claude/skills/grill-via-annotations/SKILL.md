@@ -119,10 +119,84 @@ it shows up, ignoring the quiet-period wait below.** The wizard already withheld
 until the maintainer pressed Submit; waiting five more minutes on top of that would be waiting
 on nothing.
 
+## Forest rounds (chain/tree, live) (kantord/toylang#grill-forest)
+
+For a back-and-forth that can't be fully planned up front, or that genuinely branches on the
+answer -- neither a markdown round's one discursive thread nor a wizard's fixed batch of separable
+decisions fits that -- write a forest round: `docs/.grill/<topic>.forest.yaml` (gitignored,
+ephemeral, a distinct extension from `.round.yaml` so the two never collide). Rendered live in the
+tools app's own Grill section (`pnpm dev:tools`, a separate process from `pnpm dev` -- see
+"Running the tools app" below), not the mail app.
+
+Schema:
+
+```yaml
+topic: my-topic
+activity:                  # optional list -- one entry per thread currently "in progress"
+  - parent: <node id> | null  # null = a brand-new root/thread's first question being drafted
+    note: Drafting a follow-up...
+    since: <ISO timestamp>
+nodes:
+  - id: unique-slug         # required, unique within this file (not globally)
+    parent: null            # null = a root (a new conversation thread); otherwise another node's id
+    status: live             # draft | live | answered | superseded
+    supersededNote: |         # REQUIRED when status: superseded -- why this question no longer stands
+    title: Short label
+    flow: question            # question | escalation | status, default question
+    background: |             # optional markdown -- also where "why this follow-up" framing belongs
+    thesis: |                 # optional markdown
+    question: |               # required markdown, the direct ask
+    options:                   # 0-4 proposed options; the human's UI always adds one more empty editor (cap 5)
+      - label: Option name
+        content: |              # markdown "mini user story" pre-filled into its editor
+    answer:                     # present only once status: answered -- see "Answering" below
+      sourceOption: Option name | null
+      content: |
+      wasEdited: true|false
+      answeredAt: <ISO timestamp>
+```
+
+**Lifecycle**: append/edit nodes as `status: draft` freely -- the server never serves a draft node
+to the browser, so this is where planning several questions ahead, and revising them as more
+context arrives, actually lives. Flip a node to `status: live` to promote it: one plain edit, no
+separate mechanism. If a live question stops applying before it's answered, set
+`status: superseded` with a `supersededNote` (required -- a superseded node with none is rejected)
+rather than just abandoning it: a stale ask quietly resurfacing once made the maintainer "actively
+angry" (see the retired page-anchored design above), and a superseded node must say so.
+
+**Progress feedback**: append an `activity` entry (`parent`: the node whose follow-up is being
+drafted, or `null` for a brand-new thread's first question) the moment an answer is picked up,
+before the real follow-up exists; remove it in the same edit that adds the real `live` node. The
+tools app shows this as a "thinking" indicator.
+
+**Answering**: the human's answer posts to the same inbox door as everything else
+(`POST /__annotations/save`, `page` = the forest file's path, `block` = the answered node's own
+string id) the moment they submit -- process it immediately, same carve-out already given to
+`.round.yaml` submissions, no quiet period. Processing means **writing the answer into the node
+itself**, in this order:
+
+1. Set the node's `status: answered` and fill in `answer` (`sourceOption`, `content`, `wasEdited`,
+   `answeredAt`) -- write this to the forest file FIRST.
+2. Only then clear the inbox record.
+
+This order matters: the inbox is not durable storage here either (it gets cleared once consumed,
+same as everywhere else in this system) -- the forest file is the only permanent record of the
+answer. If a tick died between the two steps, the inbox record is still there next time, and
+reprocessing it just rewrites the same answer, a harmless no-op; reversing the order would risk
+losing the answer outright. Branching off a new answer: write the follow-up as a `draft` (or
+several, one per branch under consideration), then promote exactly one to `live` once decided.
+
+**Running the tools app**: `pnpm dev:tools` in `site/` is a separate Vite dev server/process from
+`pnpm dev` (the docs site) -- `annotationsInbox()`, `grillRounds()`, and `grillForest()` all moved
+there entirely, so the plain docs dev server no longer serves any of this. Start it the same way
+as any other dev-server task the coordinator owns (background, verified free port) if it isn't
+already running.
+
 ## When not to use it
 
 A single quick ratification with no code context still goes through `AskUserQuestion` (with
 previews). The annotations page (markdown round) earns its setup cost when a round carries one
 discursive thread with real program listings; the wizard earns its when the round is really
 several separable decisions that read better one at a time, each with its own options to weigh
-side by side.
+side by side; a forest round earns its when the round branches on the answer or can't be planned
+in full up front.

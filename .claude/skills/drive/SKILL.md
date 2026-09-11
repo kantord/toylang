@@ -39,6 +39,11 @@ Every tick:
    `docs/.grill/` process immediately. An inbox record whose `page` is a
    `docs/.grill/*.round.yaml` is a wizard SUBMISSION -- an explicit click, applied at once,
    no quiet period (the quiet rule protects half-typed compose notes, not button presses).
+   A record whose `page` is a `docs/.grill/*.forest.yaml` (grill-via-annotations skill,
+   "Forest rounds") is the same kind of explicit-click submission -- process immediately, and
+   processing means writing the answer into the node (`status: answered`, the `answer` block)
+   FIRST, then clearing the inbox record second: the inbox isn't durable, so that order is what
+   makes a mid-tick death reprocess safely instead of losing the answer.
    Grilling runs CONCURRENTLY with build work: keep TWO rounds buffered in `docs/.grill/`
    whenever ready decides remain (compose the second before the first is answered, never
    duplicating a pending round's questions), so the maintainer can answer back-to-back
