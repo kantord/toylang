@@ -94,6 +94,12 @@ def worker_free(d: Path) -> bool:
 
 
 def fire_tick() -> None:
+    # sys.executable, not "uv run --project" again: this process is itself
+    # only ever started via `uv run --project .claude/scripts land_lane.py`,
+    # so sys.executable already IS that project's own venv interpreter
+    # (confirmed: it resolves with pyyaml importable) -- no need to pay
+    # uv's resolution overhead a second time for a sibling script in the
+    # same project. See drive_loop.py's matching comment.
     log_path = LOG_DIR / "event-ticks.log"
     with open(log_path, "a") as log:
         subprocess.Popen(
@@ -135,6 +141,7 @@ def retrigger(n: str, kind: str, evidence_path: Path) -> None:
     )
     (briefs_dir / f"{n}.txt").write_text(brief_text)
     dispatch_log = LOG_DIR / f"simple-dispatch-issue-{n}.log"
+    # sys.executable, not "uv run --project": see fire_tick()'s comment above.
     with open(dispatch_log, "a") as log:
         subprocess.Popen(
             [sys.executable, str(SCRIPTS / "simple_dispatch.py"), n,

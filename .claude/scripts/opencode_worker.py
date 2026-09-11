@@ -35,6 +35,10 @@ def fire_next(lane: str) -> None:
     # handles conflict/red re-dispatch, and fires the tick when it is done.
     # cwd matters: a nohup child keeping cwd in this worktree would block its
     # removal, so this spawns from "/" like the bash version did.
+    # sys.executable, not "uv run --project": this process is itself only
+    # ever started via `uv run --project .claude/scripts opencode_worker.py`,
+    # so sys.executable already IS that project's own venv interpreter --
+    # see drive_loop.py's/land_lane.py's matching comments.
     print(f"[opencode-worker] firing landing: {lane}")
     log_path = DRIVE_LOG_DIR / "land.log"
     with open(log_path, "a") as log:

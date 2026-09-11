@@ -108,10 +108,26 @@ def exhaustion_trigger() -> str | None:
     return None
 
 
-def compute_trigger_and_state(mode: str) -> tuple[str, str]:
-    trigger = ""
-    state_parts: list[str] = []
+def safe_signal(label: str, fn, *args, default=None):
+    """Isolates one signal computation from the others. Under bash, each of
+    these ran as its own `python3 -c ...` subprocess (most piped through
+    `2>/dev/null`), so a crash in one -- a malformed board.yaml row, a
+    dispatch-log.csv schema drift -- only zeroed out THAT check; every other
+    signal, and the tick itself, kept working. A single shared Python
+    process has no such isolation for free: an uncaught exception here would
+    otherwise crash compute_trigger_and_state() (and the whole stateless,
+    re-run-every-tick process) on every subsequent tick identically, with no
+    escalation -- silently halting the autonomous coordinator. This restores
+    the bash version's isolation explicitly."""
+    try:
+        return fn(*args)
+    except Exception as e:
+        print(f"[drive-tick] signal '{label}' failed (non-fatal, treated as "
+              f"no signal): {e}", file=sys.stderr)
+        return default
 
+
+def _delegated_row_signal() -> tuple[str, list[str]]:
     # Delegated-row state, read directly from simple_dispatch.py's own plain
     # surfaces (plans/dispatch-log.csv + ~/.cache/toylang-simple-dispatch/results/)
     # via dispatch_state -- not reconstructed from a worktree, a pgrep match,
@@ -121,6 +137,8 @@ def compute_trigger_and_state(mode: str) -> tuple[str, str]:
     # temp dir torn down inside the sandbox run itself), so "no worktree" is
     # not a signal here the way it was under the old model -- there is
     # never a worktree to find in the first place.
+    trigger = ""
+    state_parts: list[str] = []
     board_rows = yaml.safe_load(open(REPO / "plans" / "board.yaml"))
     delegated = [r["id"] for r in board_rows if r.get("status") == "delegated"]
     live_rows = set(dispatch_state.live_row_ids())
@@ -180,7 +198,10 @@ def compute_trigger_and_state(mode: str) -> tuple[str, str]:
                 trigger,
                 f"row {row_id} hit FATAL (bad key or no OpenRouter credit) -- "
                 "fix the account before redispatching anything")
+    return trigger, state_parts
 
+
+def _land_failed_signal() -> tuple[str, list[str]]:
     # Landing failures (serial queue, 2026-09-01): land_lane.py handles its
     # own conflict/red re-dispatches (cap 2); a marker here means the cap is
     # spent (or the main checkout stayed busy) and the tick must route it.
@@ -189,6 +210,7 @@ def compute_trigger_and_state(mode: str) -> tuple[str, str]:
     # starved behind dead-lane rebriefs all night, 2026-08-31).
     dead_priority = -1
     dead_trigger = ""
+    state_parts: list[str] = []
     for marker in sorted(LOG_DIR.glob("land-failed-issue-*")):
         n = marker.name.removeprefix("land-failed-issue-")
         content = marker.read_text(errors="replace").strip()
@@ -196,12 +218,28 @@ def compute_trigger_and_state(mode: str) -> tuple[str, str]:
         if 6 > dead_priority:
             dead_priority = 6
             dead_trigger = f"landing of issue-{n} is stuck ({content}) -- route it"
+    return dead_trigger, state_parts
+
+
+def compute_trigger_and_state(mode: str) -> tuple[str, str]:
+    trigger = ""
+    state_parts: list[str] = []
+
+    delegated_trigger, delegated_state = safe_signal(
+        "delegated-row state", _delegated_row_signal, default=("", []))
+    if delegated_trigger:
+        trigger = join_trigger(trigger, delegated_trigger)
+    state_parts += delegated_state
+
+    dead_trigger, land_failed_state = safe_signal(
+        "land-failed markers", _land_failed_signal, default=("", []))
+    state_parts += land_failed_state
     if not trigger and dead_trigger:
         trigger = dead_trigger
 
     # Maintainer input always runs the tick (the 5-minute quiet rule is
     # judged inside).
-    if maintainer_input_pending():
+    if safe_signal("maintainer input", maintainer_input_pending, default=False):
         trigger = trigger or "maintainer input pending"
 
     # Decide starvation: the maintainer keeps checking an empty inbox while
@@ -210,7 +248,7 @@ def compute_trigger_and_state(mode: str) -> tuple[str, str]:
     # maintainer drained both buffered rounds in ten minutes with nothing
     # refilling) -- an under-filled round buffer ALWAYS joins the trigger,
     # alongside whatever else the tick has.
-    starve = round_starvation_trigger()
+    starve = safe_signal("round starvation", round_starvation_trigger)
     if starve:
         trigger = join_trigger(trigger, starve)
 
@@ -221,7 +259,8 @@ def compute_trigger_and_state(mode: str) -> tuple[str, str]:
     # simple_dispatch.py's own ThreadPoolExecutor pool size IS the
     # concurrency limit for one call, so "occupied" is now a simple binary
     # (a live simple_dispatch.py process, or not) rather than a slot count.
-    dispatch = dispatch_state.dispatch_trigger(dispatch_state.DEFAULT_CAP)
+    dispatch = safe_signal("dispatch trigger", dispatch_state.dispatch_trigger,
+                            dispatch_state.DEFAULT_CAP)
     if dispatch:
         trigger = join_trigger(trigger, dispatch)
 
@@ -229,7 +268,7 @@ def compute_trigger_and_state(mode: str) -> tuple[str, str]:
     # exception (drive skill) lets the tick self-originate one or two
     # exploration rows.
     if not trigger:
-        exhausted = exhaustion_trigger()
+        exhausted = safe_signal("exhaustion", exhaustion_trigger)
         if exhausted:
             trigger = exhausted
 
@@ -365,8 +404,17 @@ def run_tick(prompt: str, out_path: Path) -> None:
         )
         try:
             for line in proc.stdout:
-                if tick_stream.process_line(line, str(out_path)):
-                    break
+                try:
+                    if tick_stream.process_line(line, str(out_path)):
+                        break
+                except Exception as e:
+                    # A malformed line must not crash the whole tick (and
+                    # skip check_coordinator_auth() for it) -- this used to
+                    # be isolated for free by tick-stream.py running as a
+                    # separate subprocess under bash; rendering in-process
+                    # now needs the same isolation explicitly.
+                    print(f"[drive-tick] tick_stream.process_line failed on "
+                          f"one line (non-fatal): {e}", file=sys.stderr)
         finally:
             proc.stdout.close()
             try:
@@ -407,7 +455,11 @@ def check_coordinator_auth(out_path: Path) -> None:
                   f"auth failures -- wrote {down_file}")
             if first_detection:
                 env = dict(os.environ)
-                env.setdefault("DISPLAY", ":0")
+                # bash's ${DISPLAY:-:0} treats an empty-but-set DISPLAY the
+                # same as unset; env.setdefault would not (it only fires
+                # when the key is absent), silently handing notify-send an
+                # empty display it fails against with stderr discarded.
+                env["DISPLAY"] = os.environ.get("DISPLAY") or ":0"
                 subprocess.run(
                     ["notify-send", "toylang coordinator down",
                      f"{streak} consecutive auth failures -- run 'claude /login'"],

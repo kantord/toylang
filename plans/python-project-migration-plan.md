@@ -390,3 +390,46 @@ version -- a real patch, the real `just test` suite, a real merge, pushed to
 a throwaway local origin, with the resulting commit's content verified byte
 -for-byte correct. `board-lint.py`'s new `uv run` invocation exercised for
 real via `bash .claude/checks/run.sh`. Full `just check`: 436/436 tests pass.
+
+### Implementation-review round 1 of 2
+
+Found 3 real bugs, all fixed, plus one documentation nit:
+
+1. **HIGH -- lost crash isolation** (`drive_tick.py`'s `compute_trigger_and_state`):
+   bash ran each signal (delegated-row state, round starvation, dispatch
+   trigger, exhaustion) as its own `python3 -c` subprocess, most piped
+   through `2>/dev/null` -- a crash in one (a malformed `board.yaml` row, a
+   `dispatch-log.csv` schema drift) zeroed out only that check; the tick
+   kept going. The Python rewrite merged everything into one function, one
+   process, no isolation -- an uncaught exception there would crash the
+   WHOLE stateless, re-run-every-tick process identically on every
+   subsequent tick, silently halting the coordinator with no escalation
+   sentinel (unlike the auth-failure-streak path). Fixed: extracted each
+   signal into its own function and wrapped every one in a new
+   `safe_signal()` helper (catch, log to stderr, return a safe default) --
+   restores the bash version's per-signal isolation explicitly. Verified
+   with a real induced crash: `safe_signal` correctly logs and falls back
+   without touching the other signals.
+2. **MEDIUM, same root cause** (`drive_tick.py`'s `run_tick`): the in-process
+   `tick_stream.process_line()` call (a deliberate simplification -- no
+   longer a separate subprocess) had no exception boundary of its own,
+   losing the isolation bash got for free from running `tick-stream.py` as
+   its own process. Fixed: wrapped the call in a narrow try/except that
+   logs the bad line and continues instead of crashing the tick and
+   skipping `check_coordinator_auth()`.
+3. **LOW** (`check_coordinator_auth`): `env.setdefault("DISPLAY", ":0")`
+   only fires when the key is absent; bash's `${DISPLAY:-:0}` also fires
+   when it's set-but-empty. Fixed to `os.environ.get("DISPLAY") or ":0"`.
+4. **Documentation nit, verified NOT a bug**: `land_lane.py`/
+   `opencode_worker.py` spawn sibling scripts via `[sys.executable, ...]`
+   rather than `uv run --project` -- confirmed correct (these processes are
+   themselves only ever started via `uv run --project`, so `sys.executable`
+   already IS that project's own venv interpreter, pyyaml importable and
+   all), matching `drive_loop.py`'s existing rationale. Added the same
+   comment to the two call sites that were missing it.
+
+Everything else held up under a full line-by-line diff against the bash
+originals: flock/fd/CLOEXEC semantics, the `claude -p` bounding and live
+in-process draining, `git status --porcelain -z` NUL-splitting, the
+generated-file regen idiom, the 36x5s busy-checkout retry, every
+cross-reference site. `just check`: 436/436 pass after the fixes.
