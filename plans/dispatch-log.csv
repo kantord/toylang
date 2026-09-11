@@ -20,3 +20,5 @@ b3feba5b,sort-by-max-by-rust,deepseek/deepseek-v4-flash-0731,2026-09-11T12:44:44
 301af3a9,module-routing-syntax-build,deepseek/deepseek-v4-flash-0731,2026-09-11T14:54:04.287776+00:00,2026-09-11T14:55:37.815346+00:00,93.5,STUCK,0.009226,
 7bb48a6c,sort-by-max-by-rust,deepseek/deepseek-v4-flash-0731,2026-09-11T14:54:04.287342+00:00,2026-09-11T14:56:54.465859+00:00,170.2,STUCK,0.016960,
 b209bcab,draft-mutation-migration,deepseek/deepseek-v4-flash-0731,2026-09-11T14:54:04.288847+00:00,2026-09-11T14:56:54.954541+00:00,170.7,STUCK,0.012986,
+2d5d2c8e,sort-by-max-by-rust-helpers,deepseek/deepseek-v4-flash-0731,2026-09-11T15:22:22.431255+00:00,2026-09-11T15:31:46.317932+00:00,563.9,STUCK,0.033850,/home/kantord/.cache/toylang-simple-dispatch/results/sort-by-max-by-rust-helpers-2d5d2c8e.patch
+6ad359c8,sort-by-max-by-rust-helpers,deepseek/deepseek-v4-flash-0731,2026-09-11T15:40:09.778406+00:00,2026-09-11T15:49:41.256109+00:00,571.5,STUCK,0.028642,/home/kantord/.cache/toylang-simple-dispatch/results/sort-by-max-by-rust-helpers-6ad359c8.patch

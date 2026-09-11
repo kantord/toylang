@@ -1902,3 +1902,21 @@ tick rather than dispatched. Not fixed here (would mean either teaching `dispatc
 parse free-text caveats -- fragile -- or, better, giving the board schema a real `status` value
 for "ready-looking but explicitly blocked" so these rows stop round-tripping through every
 future ready-list): worth fixing before the ready-list is trusted at face value again.
+
+**Incident (2026-09-11): `sort-by-max-by-rust-helpers` went STUCK a second time (`6ad359c8`),
+confirming the prior tick's suspicion that the STUCK classifier itself is the problem, not the
+code.** The reshaped brief (commit `3deb7db`) told the next attempt to skip the `tsc` workaround
+and write first. It did: transcript shows `tsc` was already present in this sandbox, `just check`
+ran to completion at 436/436, and the agent reported DONE plainly, no manual override this time.
+The extracted `.patch` is a clean 23-line add-only diff matching the brief exactly -- essentially
+the same diff `2d5d2c8e` produced independently the first time. Yet the dispatch log still shows
+`== verify: RED ==` / `(no changes, no verify run)` / `STUCK: verify output matches a previous
+attempt, not retrying further` for this run's final internal attempt. Two independent runs now
+agree on the correct code; the STUCK signal both times is coming from the harness's own verify
+step or its "matches a previous attempt" dedup short-circuit, not from anything wrong with the
+brief or the model's output. Not investigated further here (this session can't edit dispatch
+scripts) -- escalated instead via `docs/.grill/sort-by-max-by-rust-helpers-stuck.round.yaml`,
+retry budget for this row marked spent, board row set back to `status: todo` with a "do NOT
+redispatch" note so it doesn't get retried a third time before the ruling lands. Whoever picks up
+the classifier fix should start from these two patches (`2d5d2c8e`, `6ad359c8`) as known-good
+inputs that were wrongly scored STUCK.

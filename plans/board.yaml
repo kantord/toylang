@@ -111,10 +111,16 @@
     `tl_sort`/`tl_max` helpers near lines 189/215; `tl_sort_by` stable-sorts by a projected key
     via `slice::sort_by_key`, `tl_max_by` does a tie-aware fold picking the first max on ties, per
     the landed Go commit `1456d9f`). No wiring into the emitter''s TIR cases yet, no tests yet --
-    just the two helper functions compiling standalone.'
+    just the two helper functions compiling standalone.
+
+    STUCK 2/2 attempts at this narrowed scope (2d5d2c8e, 6ad359c8) -- but both independently
+    produced a correct, add-only patch matching this spec exactly, each confirmed green by the
+    agent''s own `just check` run (436/436 on the second). The STUCK label traces to the dispatch
+    harness''s own verify/dedup step, not to the code. Retry budget spent -- do NOT redispatch
+    again. Escalated to maintainer: `docs/.grill/sort-by-max-by-rust-helpers-stuck.round.yaml`.'
   kind: build
   needs: [sort-by-max-by-checkpoint-go]
-  status: delegated
+  status: todo
 
 - id: sort-by-max-by-rust-wiring
   issue: gh:177
