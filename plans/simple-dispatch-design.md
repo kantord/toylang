@@ -1646,3 +1646,91 @@ finding real things as long as it keeps looking at genuinely new
 surface area, and a "converged" verdict on one track (cost, or one
 specific mechanism) doesn't mean the whole file has stopped needing
 scrutiny.
+
+## Wired up as the board's ONLY driver, old pipeline deleted (2026-09-11)
+
+Explicit user directive: replace `sandbox_dispatch.py` in the live
+autonomous `drive-tick.sh` loop, make `simple_dispatch.py` the only
+dispatch mechanism anywhere in the project, and delete the superseded
+files. Mapped every script's real role first (a fork, not guesswork) to
+avoid deleting something load-bearing for something UNRELATED to
+dispatch (the decide-row/grilling/wizard-round/mail-app flow is a
+completely separate mechanism and was untouched).
+
+**Landing needed a real design decision, not just a search-and-replace.**
+`land-lane.sh`'s `land` mode operates on a pre-existing `$LANES/issue-$n`
+worktree with a live branch -- `simple_dispatch.py` never creates one (it
+clones into a disposable temp dir, produces a plain `git format-patch`
+file, and deliberately does not self-land). Added a new `land-patch`
+mode: materializes the SAME worktree/branch convention `land`'s core
+logic already expects (`git am` the patch onto a fresh branch off main),
+then falls through to the EXACT SAME proven gate/merge/push/retry logic
+unchanged (extracted into a shared `land_one()` function so both modes
+use it identically). Verified end-to-end for real: built an isolated
+bare-clone test environment (a real toylang clone, pushing only to a
+throwaway local bare "origin," never the real GitHub remote) and ran
+`land-lane.sh land-patch` against a real patch -- full `just test` suite
+ran for real, merged, pushed; confirmed the resulting commit on the
+isolated origin has the exact right content.
+
+**Delegated-row state reconstruction was rebuilt from scratch, not
+patched.** The old worktree/pgrep/ESCALATION.md/opencode-event-log
+archaeology (~160 lines of `drive-tick.sh`) has nothing to reconstruct
+under `simple_dispatch.py` -- there is no persistent worktree per
+dispatch at all. Replaced with a new `dispatch-state.py` (mirrors
+`sandbox_dispatch_status.py`'s CLI shape: `--live`, `--status ROW_ID`,
+`--dispatch-trigger`, `--gc`) that reads `plans/dispatch-log.csv` and
+`~/.cache/toylang-simple-dispatch/results/` directly -- a row is either
+"a live `simple_dispatch.py` process is handling it" or "here is its
+real, structured, final status" (GREEN/STUCK/RED/TIMEOUT/SETUP_FAILED/
+FATAL), never inferred from file mtimes or process liveness heuristics.
+For a non-GREEN outcome, the trigger text surfaces the model's own
+self-report verbatim -- no transcript reconstruction, no escalation
+composition, matching the "Course correction" design from earlier in
+this doc. Verified with real reproduction: dry-ran the entire trigger-
+computation portion of `drive-tick.sh` against the real repo (confirmed
+no crashes, sensible output for both "nothing delegated" and "a real RED
+row with a self-report" cases) and unit-tested `dispatch-state.py`
+against the real `dispatch-log.csv`.
+
+**Two real bugs found and fixed in my own first pass** at the
+`drive-tick.sh` rewrite, caught by dry-running rather than trusting
+`bash -n`: `$DELEGATED` and `$DEAD_PRIORITY`/`$DEAD_TRIGGER` were
+initialized by code I had just deleted, and `set -u` would have crashed
+the whole tick on the first unset-variable reference the next time it
+ran for real. Both re-added properly (a fresh `DELEGATED` computed
+directly from `board.yaml`'s `status: delegated` rows; `DEAD_PRIORITY`/
+`DEAD_TRIGGER` initialized for the land-failed-marker loop, which is
+real and dispatch-mechanism-agnostic and was kept unchanged).
+
+**Also updated, for consistency** (not part of the strict ask, but left
+broken otherwise): the `enwiro-delegate` skill documented
+`sandbox_dispatch.py` as its own default for ad-hoc/research dispatches
+outside the board loop -- updated to `simple_dispatch.py` throughout,
+including documenting `--resume-from`/`--resume-patch` as a real
+continuation option the old pipeline never had. The "Monitor and land"
+step in the `drive` skill was already stale/self-contradictory before
+this change (described a pre-merge review gate that `land-lane.sh`'s own
+header explicitly says doesn't exist) -- fixed for consistency while
+already deep in that document.
+
+**Deleted** (confirmed dead via the mapping fork, zero remaining
+references anywhere in the repo after the above edits):
+`sandbox_dispatch.py`, `sandbox_dispatch_status.py`, `dispatch-worker.sh`
+(already retired before this change), `lane-context.py`, `lane-watch.sh`
+(both orphaned relics of an even older enwiro-pool-worker model),
+`stuck-watch.py` (its entire scan logic was keyed to the worktree/lane
+model that no longer exists).
+
+**Deliberately KEPT, not garbage**: `opencode-worker.sh` and
+`opencode-peek.py` -- these serve a genuinely separate, still-referenced
+capability (the `enwiro-delegate` skill's explicit "visible kitty window"
+one-off variant for when a human wants to watch a worker live, also
+referenced by `land-delegated-work`), not the autonomous board-dispatch
+pipeline this change replaces. Conflating "replace the board driver"
+with "delete every script that ever touched opencode" would have broken
+a real, distinct, human-facing feature for no reason connected to the
+actual ask. `lane-telemetry.py` (a live `SessionEnd` hook logging generic
+session telemetry, confirmed wired in `.claude/settings.json`) was also
+left alone -- not dispatch-mechanism-specific, a separate keep-or-drop
+decision nobody asked to make here.

@@ -6,49 +6,55 @@ description: Delegate a task to a worker session in its own enwiro environment (
 
 # Delegate a task to a new enwiro environment
 
-Workers run **opencode + DeepSeek V4 Flash / GLM** inside a disposable, fully-permissive
-microsandbox microVM via `.claude/scripts/sandbox_dispatch.py` (kanban ruling,
-2026-09-06 -- `dispatch-worker.sh` and claude-code delegation are both retired; see
-[plans/opencode-rollout.md](../../../plans/opencode-rollout.md) for the full history).
-No permission allow-list to maintain: the sandbox is throwaway and fully permissive by
-construction, which is the whole reason this superseded the plain-worktree path rather
-than extending its `KNOWN DENIALS` list further. Every rollout incident still gets
-recorded in the rollout log -- that observability is not optional.
+Workers run **DeepSeek V4 Flash** (or whatever `--model` names) talking directly to
+OpenRouter, no CLI middleman, inside a disposable, fully-permissive microsandbox
+microVM via `.claude/scripts/simple_dispatch.py` (2026-09-11 ruling: the only dispatch
+mechanism anywhere in this project, replacing `sandbox_dispatch.py` and every
+opencode-based path; see
+[plans/simple-dispatch-design.md](../../../plans/simple-dispatch-design.md) for the
+full design history, [plans/opencode-rollout.md](../../../plans/opencode-rollout.md)
+for what it replaced). No permission allow-list to maintain: the sandbox is throwaway
+and fully permissive by construction. Real incidents worth remembering go in
+`plans/simple-dispatch-design.md`, not a new file.
 
-The explicit enwiro variant below (a visible kitty window via `opencode-worker.sh`)
-remains for the rare one-off the user wants visually navigable in the window manager;
-it is not what the autonomous loop dispatches.
+The explicit enwiro variant below (a visible kitty window) remains for the rare one-off
+the user wants visually navigable in the window manager; it is not what the autonomous
+loop dispatches.
 
-## 0. The default dispatch: a disposable sandbox, no enwiro at all (kanban ruling, 2026-09-06)
+## 0. The default dispatch: a disposable sandbox, no enwiro at all (2026-09-11)
 
-`dispatch-worker.sh` is retired -- the plain worktree-plus-background-process model it
-implemented is a strict subset of what the sandbox does, and every permission-wall
-failure on that path needed a sandboxed rescue anyway. The one dispatch mechanism now:
+The one dispatch mechanism now:
 
-    nohup python3 .claude/scripts/sandbox_dispatch.py <row-id> --brief <path-to-brief-file> &
+    nohup python3 .claude/scripts/simple_dispatch.py <row-id> --brief-dir <dir-containing-row-id.txt> &
 
-That runs the FULL cycle unsupervised in a disposable, fully-permissive microsandbox
-microVM: plan-decompose (search for a simplifying refactor before writing code),
-build, its own real `just check` verify with retries against the actual failure
-evidence, patch extraction, `git am -3` onto a fresh `~/.local/share/toylang-lanes/issue-<row-id>`
-lane, then `land-lane.sh land` directly -- 15-40 minutes end to end, never waited on
-inline. Sandbox concurrency is capped at 3 (kanban ruling, 2026-09-06 -- measured
-`lane-history.jsonl` data showed the practical concurrency ceiling was 3, not the old
-plain-lane cap of 8); count truly in-progress dispatches with
-`.claude/scripts/sandbox_dispatch_status.py --count` (a live host process), never
-`msb list` (its "running" status stays true for a sandbox kept alive for anomaly
-debugging long after the dispatch that owned it has already exited) or board.yaml's
-`status: delegated` (never flipped back on an escalated row). Orphaned kept-for-debugging
-sandboxes are reclaimed automatically every tick, no action needed.
+`--brief-dir` must contain a file named exactly `<row-id>.txt` -- not a `--brief <path>`
+flag with an arbitrary filename. That runs the FULL cycle unsupervised in a disposable,
+fully-permissive microsandbox microVM: real edits, its own real `just check` verify
+with retries against the actual failure evidence, and a self-report if it gives up --
+typically 5-20 minutes end to end, never waited on inline. It does NOT land on success
+by itself (a deliberate design choice -- staying a pure dispatch primitive): check
+`plans/dispatch-log.csv` for the row's final status once it exits, and on GREEN, run
+`.claude/scripts/land-lane.sh land-patch <row-id> <patch-path>` yourself. Concurrency is
+a single global batch, not a slot count: `simple_dispatch.py`'s own `--parallel` (default
+3) fans multiple rows out INSIDE one call; check whether a dispatch is already running
+with `.claude/scripts/dispatch-state.py --live` (real process cmdlines, not `msb list`'s
+VM status, which stays "running" for a sandbox mid-teardown, and not board.yaml's
+`status: delegated`, which can go stale on an escalated row) before launching another.
+Orphaned sandboxes from an abruptly-killed dispatcher are reclaimed by
+`dispatch-state.py --gc`, run automatically every drive tick -- no action needed for a
+dispatch launched through the normal drive loop; run it by hand after a manually-killed
+one-off dispatch.
 
 No env, no workspace, no focus dance, no permission-wall boilerplate to teach around --
-the sandbox is fully permissive by construction, which is the whole reason
-`dispatch-worker.sh`'s `KNOWN DENIALS` accumulation is gone rather than extended
-further. Unresolved runs (retry cap reached, a genuine `git am -3` conflict, an
-extraction anomaly) route to the maintainer's mailbox automatically via
-`compose_escalation()` (`docs/.grill/<row-id>-sandbox-blocker.round.yaml`) -- read and
-act on these like any other wizard round, never by blindly redispatching while one is
-still open.
+the sandbox is fully permissive by construction. A run that gives up (STUCK, RED,
+TIMEOUT, SETUP_FAILED, FATAL) carries the model's OWN real-time explanation of what
+blocked it, verbatim, in
+`~/.cache/toylang-simple-dispatch/results/<row-id>-<run-id>-self-report.txt`
+(`dispatch-state.py --status <row-id>` prints its path directly) -- read that first,
+there is no transcript to reconstruct and no escalation composed automatically; decide
+directly from what the agent already said (a narrower redispatch per its own
+suggestion, or write the question into a `docs/.grill/` round yourself if it says this
+isn't a scope problem at all).
 
 The full enwiro flow below (env + workspace + kitty window) remains available for the
 rare one-off the user explicitly wants visually navigable in the window manager; a
@@ -64,11 +70,11 @@ the anyhow work once). Before dispatching: push local main (standing authorizati
 
 ## 2. Launch
 
-Default: `sandbox_dispatch.py` (section 0). It picks its own models (`--model` for the
-build turn, `--plan-model` for plan-decompose, `--critic-model` for the devil's-advocate
-review; the board's `model:` field is dormant for builds) and lands directly on success
--- no separate "wrapper fires a drive tick" step, `sandbox_dispatch.py` calls
-`land-lane.sh land` itself before its process exits.
+Default: `simple_dispatch.py` (section 0). `--model` picks the build model (default
+`deepseek/deepseek-v4-flash-0731`; the board's `model:` field is dormant for builds) --
+there is no separate plan-decompose or critic phase, one continuous session drives the
+whole attempt. It does NOT land on success itself -- run `land-lane.sh land-patch` by
+hand once you see GREEN in `plans/dispatch-log.csv`.
 
 For the explicitly-requested enwiro variant only:
 
@@ -83,69 +89,79 @@ i3-msg "workspace \"$prev\"" >/dev/null
 
 (`enw activate` yanks focus: capture the workspace BEFORE and switch back last.)
 
-### The brief: a plain task description, no boilerplate to wrap (2026-09-06)
+### The brief: a plain task description, no boilerplate to wrap (2026-09-11)
 
-`sandbox_dispatch.py` has no permission-wall boilerplate to teach around (the sandbox is
+`simple_dispatch.py` has no permission-wall boilerplate to teach around (the sandbox is
 fully permissive by construction), so there is no `KNOWN DENIALS` list and no
-`ESCALATION.md`-in-the-worktree convention to wrap the brief in either -- the brief file
-passed to `--brief` is just the task description, plain text, written directly:
+`ESCALATION.md`-in-the-worktree convention to wrap the brief in either -- the file at
+`<brief-dir>/<row-id>.txt` is just the task description, plain text, written directly:
 
 - pointers to the in-repo source of truth (files, the ruling issue, existing patterns
   to read first);
 - for a research task: exactly where to write findings (e.g. `plans/<name>.md`) and
   that it should be committed;
-- any extra done-gates beyond `just check` passing.
+- any extra done-gates beyond `just check` passing (state the exact verify command with
+  `--verify-cmd` if it isn't `just check`).
 
-Two to eight sentences is normal; `sandbox_dispatch.py` itself supplies the
-plan-decompose and build prompts around it (`PLAN_PROMPT_TEMPLATE`,
-`BUILD_AFTER_DECOMPOSE` in the script). AGENTS.md is read natively by the opencode
-session inside the sandbox, same as before.
+Two to eight sentences is normal; the worker reads it as its whole task, no
+plan-decompose or critic phase wrapping it. AGENTS.md is read natively by the agent
+inside the sandbox, same as before.
 
-A blocker the dispatch itself cannot resolve reaches the maintainer automatically --
-`compose_escalation()` writes `docs/.grill/<row-id>-sandbox-blocker.round.yaml` and the
-sandbox's own exit is the trigger, no `ESCALATION.md`-in-the-worktree convention needed.
+A blocker the dispatch itself cannot resolve is the model's OWN direct explanation of
+why, written to `<row-id>-<run-id>-self-report.txt` in
+`~/.cache/toylang-simple-dispatch/results/` -- read it yourself (`dispatch-state.py
+--status <row-id>` prints the path); nothing composes a maintainer round for you
+automatically for an ad-hoc dispatch outside the drive loop.
 
-### Research dispatches (2026-09-06): diagnosis is worker work too
+### Research dispatches: diagnosis is worker work too
 
-A deep dive -- why a backend misbehaves, why a lane died mid-task, what an odd test
-failure means -- is DELEGATED, never done by the coordinator in its own session:
+A deep dive -- why a backend misbehaves, why a dispatch failed mid-task, what an odd
+test failure means -- is DELEGATED, never done by the coordinator in its own session:
 coordinator time is the expensive tier now, and reading a codebase is exactly what a
-cheap worker does well. Same `sandbox_dispatch.py`, same brief shape as any other
-dispatch -- there is no separate raw-vs-wrapped mode to choose, since there is no build
-boilerplate being wrapped in the first place. State the question plainly and where to
-write the answer:
+cheap worker does well. Same `simple_dispatch.py`, same brief shape as any other
+dispatch. State the question plainly and where to write the answer:
 
 > Board row `<row-id>`: this is a RESEARCH task, no compiler code changes expected.
 > [the precise question, with every symptom already known -- failing command, error
 > text, suspect files]. Investigate freely (read code, run `just check`, reproduce).
 > Write findings to `plans/<name>.md` and commit it.
 
-`sandbox_dispatch.py` runs its normal cycle against this brief (plan-decompose still
-fires, usually converges to "trivial" fast for a pure research task) and lands the
-committed findings file exactly like a code change -- `--max-plan-rounds 0` skips
-plan-decompose entirely for a brief that is already this precise. `--model`/`--plan-model`
-can lift a hard question to a stronger model per-dispatch.
+`simple_dispatch.py` runs its normal cycle against this brief and verifies+extracts the
+committed findings file exactly like a code change (it still runs `--verify-cmd`, so
+point it at something that actually passes once the findings file is committed, e.g.
+`--verify-cmd "test -f plans/<name>.md"` if `just check` alone would not notice a
+docs-only change). `--model` can lift a hard question to a stronger model per-dispatch.
 
 ## 2b. Update the board
 
-Set the row's `status: delegated`. The tick scripts resolve the worktree from the
-issue number (`~/.local/share/toylang-lanes/issue-<N>` first, the legacy enwiro base as
-fallback); the `lane:` field is legacy and set on no new row. A delegation without a
+Set the row's `status: delegated`. `dispatch-state.py` resolves everything from
+`plans/dispatch-log.csv` and the row id directly -- there is no worktree to name or
+resolve, and the `lane:` field is legacy, set on no new row. A delegation without a
 board row means the task skipped planning -- add the row.
 
-## 3. Steering a running sandbox dispatch
+## 3. Steering a running dispatch
 
-There is no SendMessage into a sandboxed dispatch, and no session-resume primitive
-either (unlike the retired `dispatch-worker.sh` path, sandbox dispatch is stateless
-per attempt by design -- every fresh dispatch branches clean from `origin/main`, never
-continuing a prior attempt's state). A run in progress cannot be redirected: let it
-finish (green and landed, or escalated to `docs/.grill/`) rather than killing it
-mid-flight. Feedback on a FAILED build turn is already automatic within one dispatch
--- `run_build_cycle()` feeds the real `just check` failure back to the same opencode
-session on retry (`--continue`), up to `--retry-cap`. Once a dispatch has fully exited
-(landed, or escalated), the only way to correct its course is a fresh dispatch with a
-sharper brief -- there is no log-and-resume step, since the escalation round or the
-landed diff already carries the evidence needed to write one.
+There is no SendMessage into a running dispatch. A run in progress cannot be
+redirected: let it finish (GREEN, or a terminal STUCK/RED/TIMEOUT/SETUP_FAILED/FATAL)
+rather than killing it mid-flight. Feedback on a failed verify attempt is already
+automatic WITHIN one dispatch -- `agent_loop.py` feeds the real `just check` failure
+back to the same in-process conversation on retry, up to `--retry-cap`, and if it gives
+up, its own self-report is fed into the very next retry attempt's instructions too (the
+built-in self-healing loop -- see `plans/simple-dispatch-design.md`'s "Course
+correction" section).
+
+Once a dispatch has fully exited, TWO ways to continue it exist, unlike the old
+opencode-based pipeline (which was stateless per attempt with no resume at all):
+- **Fresh dispatch, sharper brief** -- the default. Read the self-report, write a
+  narrower or more specific brief, dispatch again as a new row/run.
+- **`--resume-from`/`--resume-patch`** -- continue the EXACT SAME session (its full
+  conversation, and optionally its prior patch reapplied via `git am`) with a new,
+  narrower instruction, while the provider-side prompt cache might still be warm. Manual
+  only, single row: `simple_dispatch.py <row-id> --brief-dir <dir-with-new-instruction>
+  --resume-from <results-dir>/<row-id>-<run-id>-messages.json --original-task-file
+  <the-original-brief> [--resume-patch <results-dir>/<row-id>-<run-id>.patch]`. Worth it
+  shortly after the original run ended (before the cache goes cold); if it's been a
+  while, a fresh dispatch costs about the same anyway.
 
 ## Cleanup
 

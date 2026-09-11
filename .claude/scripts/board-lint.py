@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Schema validator for plans/board.yaml and plans/board-archive.yaml.
 
-The board has several deterministic writers now (ticks, stuck-watch.py,
-board-archive.py, humans), and the site renders whatever they wrote: a row
+The board has several deterministic writers now (ticks, board-archive.py,
+humans), and the site renders whatever they wrote: a row
 missing a field the UI dereferences blanked the whole kanban to empty
 (needs-less rows, 2026-09-01). Parsing is not validity -- this is the schema
 gate, run by every writer before committing and by .claude/checks at Stop.

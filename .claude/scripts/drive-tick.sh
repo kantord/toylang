@@ -13,8 +13,7 @@
 # the coordinator reads diffs itself. `audit` as $1 runs the audit prompt.
 set -uo pipefail
 REPO=/home/kantord/repos/toylang
-WORKTREES=/home/kantord/.local/share/enwiro/worktrees/pr/toylang-1234138d
-LANES="$HOME/.local/share/toylang-lanes"  # enwiro-free lanes (dispatch-worker.sh)
+LANES="$HOME/.local/share/toylang-lanes"  # land-lane.sh's throwaway landing worktrees
 LOG_DIR="$HOME/.cache/toylang-drive"
 mkdir -p "$LOG_DIR"
 
@@ -28,18 +27,12 @@ flock -n 9 || { echo "[drive-tick] $(date '+%H:%M:%S') another tick holds the lo
 export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin"
 cd "$REPO"
 
-# Deterministic stuck-lane watchdog (maintainer design, 2026-09-01): appends
-# the per-lane history ledger and mechanically converts a 6h-dead lane into a
-# top-priority investigation row with its evidence frozen -- no model involved.
-python3 "$REPO/.claude/scripts/stuck-watch.py" >>"$LOG_DIR/stuck-watch.log" 2>&1 || true
-
-# Reclaim kept-for-debugging sandboxes once they are provably done being
-# useful (no active dispatch process AND no open escalation round for them --
-# an anomaly-keep always writes a round right before its process exits, so
-# the round being gone means someone already consumed it). Mechanical, no
-# model involved -- otherwise these silently pile up (disk was at 96% full
-# once already) and, worse, count as occupied WIP slots forever (2026-09-06).
-python3 "$REPO/.claude/scripts/sandbox_dispatch_status.py" --gc >>"$LOG_DIR/sandbox-gc.log" 2>&1 || true
+# Reclaim any msb sandbox left behind by an abruptly-killed dispatcher
+# (reboot, OOM, kill -9) -- simple_dispatch.py's own teardown already
+# handles the normal case (round-4 review of the design hardened this),
+# this only catches the case where the whole process died before its own
+# `finally` block ever ran. Mechanical, no model involved.
+python3 "$REPO/.claude/scripts/dispatch-state.py" --gc >>"$LOG_DIR/sandbox-gc.log" 2>&1 || true
 
 # The maintainer's mail UI depends on the dev server; revive it if a reboot ate it.
 # A `( cmd & ) 9>&-` subshell does NOT reliably detach: bash's subshell-elision
@@ -70,166 +63,72 @@ fi
 MODEL=sonnet
 TRIGGER=""
 STATE=""
-# A delegated row names its worktree either by pool lane (lane: lane-N, the
-# gh:124 worker pool -- resolved through the stable enwiro env symlink) or by
-# a worktree slug. The classic flow names it after the gh issue number
-# (issue-177), but dispatch-worker.sh names multi-row-per-issue lanes after the
-# row id instead (float-build-* sharing gh:149 live at issue-float-build-*).
-# Resolve the watched path against disk: prefer the id-named worktree when it
-# exists, falling back to the gh-number one, so a row-id lane is watched at its
-# real path and a classic numeric lane is not misread (gh:178).
-DELEGATED=$(python3 -c "
-import os, sys, yaml
-lanes, worktrees = sys.argv[1], sys.argv[2]
-for r in yaml.safe_load(open('plans/board.yaml')):
-    if r.get('status') != 'delegated':
-        continue
-    if r.get('lane'):
-        print('lane:' + r['lane'])
-        continue
-    cands = []
-    if r.get('id'):
-        cands.append('issue-' + r['id'])
-    if str(r.get('issue', '')).startswith('gh:'):
-        cands.append('issue-' + r['issue'][3:])
-    if not cands:
-        continue
-    for c in cands:
-        if os.path.isdir(os.path.join(lanes, c)) or os.path.isdir(os.path.join(worktrees, c)):
-            print(c)
-            break
-    else:
-        print(cands[-1])
-" "$LANES" "$WORKTREES" | tr '\n' ' ')
-# Dead-lane triggers are picked by STALEST, not first-in-file-order: a soft-default
-# TRIGGER="${TRIGGER:-...}" inside this loop let whichever lane sorts first in
-# board.yaml claim every tick it was also dead, starving lanes later in the file
-# even past their own rebrief/escalate threshold (issue-153 sat 22h at runs=2
-# while issue-151, first in the file, kept re-claiming the slot, 2026-08-31).
-# DEAD_PRIORITY ranks tiers (3=escalate, 2=rebrief, 1=no-live-worker, 0=stalled-live);
-# ties break on commit_age, so the actually-oldest dead lane wins within a tier.
+# Delegated-row state, read directly from simple_dispatch.py's own plain
+# surfaces (plans/dispatch-log.csv + ~/.cache/toylang-simple-dispatch/results/)
+# via dispatch-state.py -- not reconstructed from a worktree, a pgrep match,
+# an ESCALATION.md file, or an opencode event log the way the old
+# sandbox_dispatch.py/opencode pipeline required. simple_dispatch.py creates
+# no persistent worktree at all (it clones into a disposable temp dir torn
+# down inside the sandbox run itself), so "no worktree" is not a signal here
+# the way it was under the old model -- there is never a worktree to find in
+# the first place.
+#
+# DEAD_PRIORITY/DEAD_TRIGGER: kept only for the land-failed-marker loop
+# below (still real and dispatch-mechanism-agnostic -- land-lane.sh's own
+# retry/cap logic, unrelated to which script produced the branch). The old
+# multi-tier lane-staleness ranking these once fed is gone: there is no
+# partial "gone quiet" state to detect anymore under simple_dispatch.py's
+# model (a row is either still dispatching, or has a definite terminal
+# status in dispatch-log.csv) -- so nothing here raises above the land-failed
+# tier (6) any longer.
 DEAD_PRIORITY=-1
 DEAD_TRIGGER=""
-DEAD_AGE=-1
-# A sandbox dispatch only creates its LANES worktree at the final landing step
-# (sync_real_lane() inside apply_and_land()) -- "no worktree" during the
-# plan/build/verify phase is the NORMAL, common state now, not evidence of a
-# landing. Without this check every in-progress sandbox row falsely read as
-# "it landed" on every single tick (found live, 2026-09-06: this is not an
-# edge case under the sandbox-only model, it is most of a dispatch's
-# lifetime). An escalated-without-landing row (retry cap reached before ever
-# reaching apply_and_land) never creates a worktree either -- that also is
-# not "it landed"; it is already surfaced through the pending_rounds state
-# duty (1) reads, so no separate trigger is needed for it here.
-ACTIVE_SANDBOX_IDS=$(python3 "$REPO/.claude/scripts/sandbox_dispatch_status.py" 2>/dev/null)
-for wt in $DELEGATED; do
-  case "$wt" in
-    lane:*) d="$HOME/.enwiro_envs/toylang@${wt#lane:}/toylang@${wt#lane:}" ;;
-    *) d="$LANES/$wt"; [ -d "$d" ] || d="$WORKTREES/$wt" ;;
-  esac
-  if [ ! -d "$d" ]; then
-    row_id="${wt#issue-}"
-    if printf '%s\n' "$ACTIVE_SANDBOX_IDS" | grep -qxF "$row_id"; then
-      continue  # still building in its sandbox -- not landed, not stuck
-    fi
-    if [ -f "$REPO/docs/.grill/${row_id}-sandbox-blocker.round.yaml" ]; then
-      continue  # escalated without ever landing -- duty (1) already surfaces this
-    fi
-    # An abrupt kill (reboot, OOM, kill -9) leaves NEITHER signal above: the
-    # process is gone (so it is not active) and it never reached its own
-    # finally block (so it never wrote an escalation either) -- identical,
-    # from here, to a row that genuinely landed and had its worktree cleaned
-    # up. The one thing an abrupt kill can never produce is the process's own
-    # final JSON summary line (main()'s last `print`), which only ever
-    # happens after a real, clean exit -- landed, escalated, or otherwise.
-    # Without this check, a reboot mid-dispatch would resurface exactly the
-    # false "it landed" bug this whole block exists to prevent (found live,
-    # 2026-09-07, reasoning through what a reboot does to an in-flight
-    # sandbox before it actually happened).
-    log="$LOG_DIR/sandbox-dispatch-${row_id}.log"
-    if [ -f "$log" ] && tail -20 "$log" | grep -q '"issue_id"'; then
-      TRIGGER="delegated row $wt has no worktree -- it landed (verify in main log, then board-archive the row)"
-    else
-      TRIGGER="delegated row $wt has no worktree, no active sandbox process, and its own dispatch log never reached a completion summary -- it died abruptly (reboot, OOM, kill), NOT landed; reset status: todo so it redispatches fresh, do not board-archive it"
-    fi
+DELEGATED=$(python3 -c "
+import yaml
+for r in yaml.safe_load(open('plans/board.yaml')):
+    if r.get('status') == 'delegated':
+        print(r['id'])" 2>/dev/null | tr '\n' ' ')
+LIVE_ROWS=$(python3 "$REPO/.claude/scripts/dispatch-state.py" --live 2>/dev/null)
+for row_id in $DELEGATED; do
+  if printf '%s\n' "$LIVE_ROWS" | grep -qxF "$row_id"; then
+    STATE="$STATE [$row_id: dispatch still running]"
+    continue  # still building -- not landed, not stuck
+  fi
+  RESULT=$(python3 "$REPO/.claude/scripts/dispatch-state.py" --status "$row_id" 2>/dev/null)
+  if [ -z "$RESULT" ]; then
+    # Delegated, no live dispatch process, and no dispatch-log.csv row at
+    # all for this row -- the dispatcher itself was killed abruptly
+    # (reboot, OOM, kill -9) before it ever reached its own finally block
+    # (which always appends a row, even on CRASH). Identical in effect to
+    # the old model's abrupt-kill case: not landed, reset to redispatch.
+    TRIGGER="${TRIGGER:+$TRIGGER; }row $row_id was delegated but no dispatch ever completed (dispatcher likely killed abruptly) -- reset status: todo so it redispatches fresh"
     continue
   fi
-  ahead=$(git -C "$d" rev-list --count main..HEAD 2>/dev/null || echo 0)
-  dirty=$(git -C "$d" status --porcelain 2>/dev/null | wc -l)
-  recent8=$(find "$d" -name .git -prune -o -name target -prune -o -type f \
-    -newermt '-8 minutes' -print -quit 2>/dev/null)
-  recent30=$(find "$d" -name .git -prune -o -name target -prune -o -type f \
-    -newermt '-30 minutes' -print -quit 2>/dev/null)
-  commit_age=$(( $(date +%s) - $(git -C "$d" log -1 --format=%ct 2>/dev/null || echo 0) ))
-  live=0
-  d_real=$(readlink -f "$d")  # /proc cwd is resolved; $d may be the env symlink
-  for p in $(pgrep -x claude 2>/dev/null; pgrep -x opencode 2>/dev/null); do
-    # opencode workers are the delegation default (rollout ruling, 2026-08-30);
-    # claude matches cover in-flight pre-ruling lanes until they land.
-    case "$(readlink /proc/$p/cwd 2>/dev/null)" in "$d_real"*) live=1 ;; esac
-  done
-  esc=""; [ -f "$d/ESCALATION.md" ] && esc=" ESCALATION.md"; [ -f "$d/RESEARCH.md" ] && esc="$esc RESEARCH.md"
-  # Failure streak: every run leaves a timestamped event log, so N logs with
-  # zero commits ahead IS an N-failure streak -- crash-proof, no state file.
-  # (issue-133 died five times on one sandbox edge, 2026-08-30, and every tick
-  # saw only "dead lane" with no memory that this was death #5.)
-  runs=$(ls "$LOG_DIR/opencode/"*"-$wt.jsonl" 2>/dev/null | wc -l)
-  STATE="$STATE [$wt: ahead=$ahead dirty=$dirty live=$live commit_age=${commit_age}s runs=$runs$esc]"
-  if [ "$ahead" -gt 0 ] && [ "$dirty" -eq 0 ] && [ "$live" -eq 0 ]; then
-    # A gone worker with committed clean work is done NOW -- opencode workers
-    # exit on finish (event-driven landing, 2026-08-30), so no quiet window.
-    TRIGGER="lane $wt looks landable (worker exited)"
-  elif [ "$ahead" -gt 0 ] && [ "$dirty" -eq 0 ] && [ -z "$recent8" ] && [ "$commit_age" -ge 480 ]; then
-    # A LIVE session that has gone quiet still needs the 8-minute window (a
-    # claude-era lane may idle after finishing). Both quiet signals matter:
-    # committing touches no working-tree mtimes, so a lane that edits, tests
-    # for ten minutes, then commits looks file-quiet.
-    TRIGGER="lane $wt looks landable"
-  elif [ "$live" -eq 0 ] && [ "$ahead" -eq 0 ] && [ "$runs" -ge 4 ]; then
-    # Streak cap: stop feeding the lane. Escalate to the maintainer's mail ONCE
-    # (the marker suppresses re-noise); their answer or a landing clears it.
-    if [ ! -f "$LOG_DIR/escalated-$wt" ] && [ 3 -gt "$DEAD_PRIORITY" ]; then
-      DEAD_PRIORITY=3; DEAD_AGE=$commit_age
-      DEAD_TRIGGER="lane $wt: $runs commitless runs -- STOP redispatching; escalate to the maintainer inbox"
-    fi
-  elif [ "$live" -eq 0 ] && [ "$ahead" -eq 0 ] && [ "$runs" -ge 2 ]; then
-    if [ 2 -gt "$DEAD_PRIORITY" ] || { [ 2 -eq "$DEAD_PRIORITY" ] && [ "$commit_age" -gt "$DEAD_AGE" ]; }; then
-      DEAD_PRIORITY=2; DEAD_AGE=$commit_age
-      DEAD_TRIGGER="lane $wt: $runs commitless runs -- diagnose the last event log and REBRIEF; never repeat a failed brief"
-    fi
-  elif [ "$live" -eq 0 ]; then
-    # Starvation guard: a quiet dead lane is the lowest tier, and under load it
-    # lost every tick for two days (gh:149/158/159, 2026-09-01). Dead 12+ hours
-    # jumps to escalation tier so age eventually beats churn.
-    t=1; [ "$commit_age" -ge 43200 ] && t=3
-    if [ "$t" -gt "$DEAD_PRIORITY" ] || { [ "$t" -eq "$DEAD_PRIORITY" ] && [ "$commit_age" -gt "$DEAD_AGE" ]; }; then
-      DEAD_PRIORITY=$t; DEAD_AGE=$commit_age
-      DEAD_TRIGGER="lane $wt has no live worker$([ "$t" -eq 3 ] && echo " -- dead 12+ hours, starvation guard: dispatch its continuation THIS tick")"
-    fi
-  elif [ -z "$recent30" ] && [ "$commit_age" -ge 1800 ]; then
-    if [ 0 -gt "$DEAD_PRIORITY" ] || { [ 0 -eq "$DEAD_PRIORITY" ] && [ "$commit_age" -gt "$DEAD_AGE" ]; }; then
-      DEAD_PRIORITY=0; DEAD_AGE=$commit_age
-      DEAD_TRIGGER="lane $wt silent 30+ minutes (stall diagnosis)"
-    fi
-  fi
-done
-# Landable lanes (unconditional TRIGGER above) always outrank a dead lane or a
-# blocked accumulator; the DEAD_TRIGGER backfill happens once, after the
-# accumulator loop below has also had a chance to raise DEAD_PRIORITY -- doing
-# it here instead would lock in a low-priority lane trigger before a RED
-# promotion or an over-limit accumulator (tiers 4-6) ever got compared.
-# Orphaned commits: a worktree ahead of main whose row is NOT delegated is
-# forgotten work (post-landing hook growth is the known producer). Pool lane
-# worktrees (gh:124) live under a different base and are cooked as
-# <lane>-<8 hex>, so both trees get swept.
-POOL_WORKTREES="$HOME/.local/share/enwiro/worktrees/toylang-1234138d"
-for d in "$WORKTREES"/*/ "$POOL_WORKTREES"/*/ "$LANES"/*/; do
-  [ -d "$d" ] || continue
-  wt=$(basename "$d")
-  lane=$(printf '%s' "$wt" | sed -E 's/-[0-9a-f]{8}$//')
-  case " $DELEGATED " in *" $wt "* | *" lane:$lane "*) continue ;; esac
-  ahead=$(git -C "$d" rev-list --count main..HEAD 2>/dev/null || echo 0)
-  [ "$ahead" -gt 0 ] && TRIGGER="${TRIGGER:-non-delegated worktree $wt is $ahead ahead of main}"
+  read -r RSTATUS RCOST RPATCH RREPORT <<<"$RESULT"
+  STATE="$STATE [$row_id: $RSTATUS \$$RCOST]"
+  case "$RSTATUS" in
+    GREEN)
+      TRIGGER="${TRIGGER:+$TRIGGER; }row $row_id is GREEN with a verified patch at $RPATCH -- land it: land-lane.sh land-patch $row_id $RPATCH"
+      ;;
+    STUCK|RED)
+      # The model's own real-time explanation of what blocked it -- read
+      # directly, no transcript reconstruction needed (see agent_loop.py's
+      # self_report_blocker and plans/simple-dispatch-design.md's "Course
+      # correction" section for why this replaced a separate LLM reviewer).
+      SELF_REPORT=""
+      [ -n "$RREPORT" ] && [ -f "$RREPORT" ] && SELF_REPORT=" -- agent's own report: $(cat "$RREPORT")"
+      TRIGGER="${TRIGGER:+$TRIGGER; }row $row_id is $RSTATUS (cost \$$RCOST)$SELF_REPORT -- decide: narrower redispatch per the report, or a decide-row escalation"
+      ;;
+    TIMEOUT)
+      TRIGGER="${TRIGGER:+$TRIGGER; }row $row_id timed out (cost \$$RCOST) -- likely an undersized budget, not unsolvable; consider one retry with a larger --overall-timeout before escalating"
+      ;;
+    SETUP_FAILED)
+      TRIGGER="${TRIGGER:+$TRIGGER; }row $row_id failed to even start (host/sandbox setup issue, cost \$$RCOST) -- plausibly transient (network, sandbox boot); worth one plain retry"
+      ;;
+    FATAL)
+      TRIGGER="${TRIGGER:+$TRIGGER; }row $row_id hit FATAL (bad key or no OpenRouter credit) -- fix the account before redispatching anything"
+      ;;
+  esac
 done
 # Landing failures (serial queue, 2026-09-01): land-lane.sh handles its own
 # conflict/red re-dispatches (cap 2); a marker here means the cap is spent (or
@@ -278,18 +177,17 @@ if ready:
     print(f'round buffer under-filled with {len(ready)} decide rows ready -- compose a grill round')" 2>/dev/null)
   [ -n "$STARVE" ] && TRIGGER="${TRIGGER:+$TRIGGER; }$STARVE"
 fi
-# A free sandbox slot with a ready row means dispatch is due. This JOINS the
+# A free dispatcher with a ready row means dispatch is due. This JOINS the
 # trigger instead of being a fallback: as a fallback it starved 2h behind the
-# streak/starvation triggers while lanes sat idle (2026-08-30). Cap is 3, not
-# the old plain-lane cap of 8 (dispatch-worker.sh is retired -- sandbox-only
-# kanban ruling, 2026-09-06), and occupancy is counted by whether a
-# sandbox_dispatch.py process is actually still running, not by board.yaml's
-# `status: delegated` -- that field never gets flipped back on an escalated
-# sandbox row (the old escalated-marker-file scheme was dispatch-worker.sh's,
-# sandbox_dispatch.py writes none), so counting it starved dispatch behind
-# zombie delegated rows exactly the way the old escalated-marker check was
-# meant to prevent (found live, 2026-09-06).
-DISPATCH=$(python3 "$REPO/.claude/scripts/sandbox_dispatch_status.py" --dispatch-trigger 2>/dev/null)
+# streak/starvation triggers while lanes sat idle (2026-08-30, under the old
+# model -- the reasoning still applies). simple_dispatch.py's own
+# ThreadPoolExecutor pool size IS the concurrency limit for one call, so
+# "occupied" is now a simple binary (a live simple_dispatch.py process, or
+# not) rather than a slot count -- dispatch-state.py --live is the single
+# source of truth for this, read directly from real process cmdlines, not
+# board.yaml's `status: delegated` (which can go stale exactly the way it
+# already did under the old model).
+DISPATCH=$(python3 "$REPO/.claude/scripts/dispatch-state.py" --dispatch-trigger 2>/dev/null)
 [ -n "$DISPATCH" ] && TRIGGER="${TRIGGER:+$TRIGGER; }$DISPATCH"
 # Exhaustion: nothing delegated, nothing ready to build -- the idle exception
 # (drive skill) lets the tick self-originate one or two exploration rows.
@@ -313,9 +211,9 @@ fi
 # The POLICY is sent fresh every tick (no cross-tick resume). Keep it
 # apostrophe-free -- it sits in single quotes.
 if [ "${1:-tick}" = "audit" ]; then
-  POLICY='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has a live or accounted-for lane; no worktree holds unmerged commits the board thinks landed; no falsely-stuck lanes. Fix what is mechanical, file issues for the rest. End quietly if clean.'
+  POLICY='Periodic audit (drive skill, "The periodic audit" section) for toylang at /home/kantord/repos/toylang. Reconstruct everything from disk; trust disk over anything remembered from earlier ticks. Check: every open GitHub issue maps to a board row; every delegated row has either a live simple_dispatch.py process (dispatch-state.py --live) or a real dispatch-log.csv row explaining its status; no GREEN row sits unlanded; plans/dispatch-log.csv and the real msb sandbox list (msb list) agree with each other, no orphans. Fix what is mechanical, file issues for the rest. End quietly if clean.'
 else
-  POLICY='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. This policy stands for every tick of this session; later ticks send only their trigger and snapshot. Trust disk over memory. ORDER: (1) Maintainer input first: poll docs/.annotations/inbox.json AND notes.json -- apply entries older than 5 minutes, clear at capture; records whose page is a docs/.grill/*.round.yaml are wizard submissions: apply IMMEDIATELY, delete the round file at capture. (2) If the trigger names an under-filled round buffer, compose the next wizard round BEFORE any landing (an empty maintainer inbox outranks lane plumbing): read pending rounds first and never re-ask them; keep two buffered; write docs/.grill/<topic>.round.yaml -- 3-5 ready decide rows batched by theme, every option carrying real verified code examples (delegate heavy example prep to a research worker) -- and ALWAYS verify the finished file both parses (python3 yaml.safe_load) AND serves clean (curl -s http://localhost:5173/__grill/round?topic=<topic>, expect 200) before the tick ends -- yaml.safe_load alone missed a round with valid YAML but no "question" string per question, which the mail UI rejected and which, until the isolation fix (kantord/toylang#164), blanked every OTHER pending round too, 2026-08-31. (3) Landing is DETERMINISTIC and automatic (serial queue, 2026-09-01): a worker exit fires .claude/scripts/land-lane.sh land <N> -- full just test gate in a throwaway worktree, straight onto main, pushed; a merge conflict or red gate re-dispatches the lane worker with the evidence in LAND-FAILURE.txt, cap 2, then leaves a land-failed marker. You NEVER fold, promote, read diffs pre-merge, or compose merge messages. Your landing duties instead: (a) a delegated row whose WORKTREE IS GONE has landed -- verify the Land commit in main log, board-archive.py the row; if the trigger instead says its dispatch log never reached a completion summary, it died abruptly (reboot, OOM, kill) mid-sandbox and did NOT land -- reset status: todo instead, never board-archive it; (b) a landable lane the event missed (trigger says so): run land-lane.sh land <N> DETACHED with nohup; (c) a land-failed marker in the trigger: if it says re-run land, do exactly that (detached); if the retry cap is spent, write one escalation question into a docs/.grill/ round (the lane, the LAND-FAILURE.txt evidence, options: rebrief with stronger model, reshape, drop) and rm the marker when acting on the ruling; (d) post-land review, AFTER other duties: read the newest Land commit diff on main and file follow-up board rows for real problems -- never edit main yourself. (4) Dispatch ready build rows into the sandbox pool, WIP-limited to 3 concurrent (kanban ruling, 2026-09-06 -- the old dispatch-worker.sh plain path is retired; run `python3 .claude/scripts/sandbox_dispatch_status.py --count` to count truly in-progress dispatches -- NOT msb list, which also shows kept-for-debugging anomaly sandboxes whose dispatch process already exited (found live, 2026-09-06: this silently exhausted the cap), and NOT board.yaml status: delegated, which never gets flipped back on an escalated sandbox row either): if fewer than 3 are active, write a brief for the highest-priority unblocked todo build row (decide rows use no lane, unchanged) per the enwiro-delegate skill to a file, then launch it DETACHED -- nohup python3 .claude/scripts/sandbox_dispatch.py ROW-ID --brief PATH-TO-BRIEF, output redirected to append onto ~/.cache/toylang-drive/sandbox-dispatch-ROW-ID.log, backgrounded with an ampersand -- it runs the full cycle unsupervised (plan-decompose, build, its own verify, then land-lane.sh directly) and takes 15-40 minutes, so never wait on it inline. Orphaned kept-for-debugging sandboxes are reclaimed automatically every tick (sandbox_dispatch_status.py --gc, bash-level, no model involved) once their escalation round is gone -- you never need to msb rm one yourself unless actively investigating it. Record every rollout incident in plans/opencode-rollout.md.RULES: never edit a lane worktree file yourself -- a dead or half-done lane gets a continuation or research dispatch, however small the fix looks. A permission denial is a ruling, not an obstacle: NEVER re-attempt a blocked change through another channel (sed after a blocked Edit, a worker dispatched to make the same change, any workaround) -- write the proposed change as a question into a docs/.grill/ round for the maintainer and move on (maintainer rule, 2026-08-30). The docs dev server is the maintainers process: never start, stop, or restart it from a tick (a foreground restart wedged the tick lock 46 minutes) -- if it looks down, note that in the mail and move on. Never write an unbounded wait for a background task (lock, sentinel file, subagent): use a bounded primitive with an explicit give-up path -- the flock -w 1800 8 in land-lane.sh is the house pattern -- an ad hoc flock -x plus an infinite sentinel-file poll loop held a lock 90+ minutes and stalled every later tick, 2026-08-31. FAILURE STREAKS (snapshot carries runs= per lane): at 2-3 commitless runs read the last event log in ~/.cache/toylang-drive/opencode/ and rebrief with the actual root cause, never a repeat of a failed brief; at 4+ STOP -- no redispatch; write one escalation question into a docs/.grill/ round (the lane, the repeated root cause, options: stronger OPENCODE_MODEL, reshape, drop), touch ~/.cache/toylang-drive/escalated-issue-<N>, rm the marker when acting on the ruling. BOUND: one round composition plus one landing, or up to three landings (a cascade is one), then END the session even if more work is visible. Nothing changed: end quietly.'
+  POLICY='Drive tick (drive skill, monitoring phase) for toylang at /home/kantord/repos/toylang. This policy stands for every tick of this session; later ticks send only their trigger and snapshot. Trust disk over memory. simple_dispatch.py + agent_loop.py is the ONLY dispatch mechanism (2026-09-11 ruling) -- no opencode, no lanes, no worktree-per-row; a dispatch clones into a disposable temp dir inside a disposable msb sandbox and reports through plans/dispatch-log.csv plus files under ~/.cache/toylang-simple-dispatch/results/, nothing else. ORDER: (1) Maintainer input first: poll docs/.annotations/inbox.json AND notes.json -- apply entries older than 5 minutes, clear at capture; records whose page is a docs/.grill/*.round.yaml are wizard submissions: apply IMMEDIATELY, delete the round file at capture. (2) If the trigger names an under-filled round buffer, compose the next wizard round BEFORE any landing (an empty maintainer inbox outranks dispatch plumbing): read pending rounds first and never re-ask them; keep two buffered; write docs/.grill/<topic>.round.yaml -- 3-5 ready decide rows batched by theme, every option carrying real verified code examples (delegate heavy example prep to a research worker) -- and ALWAYS verify the finished file both parses (python3 yaml.safe_load) AND serves clean (curl -s http://localhost:5173/__grill/round?topic=<topic>, expect 200) before the tick ends -- yaml.safe_load alone missed a round with valid YAML but no "question" string per question, which the mail UI rejected and which, until the isolation fix (kantord/toylang#164), blanked every OTHER pending round too, 2026-08-31. (3) Landing: a GREEN row in the trigger names its own verified patch path -- run .claude/scripts/land-lane.sh land-patch ROW-ID PATCH-PATH DETACHED with nohup (materializes a throwaway worktree from the patch, then the existing serial queue: full just test gate, straight onto main, pushed on green; a merge conflict or red gate re-dispatches automatically through simple_dispatch.py with the evidence in the brief, cap 2, then leaves a land-failed marker). You NEVER fold, promote, read diffs pre-merge, or compose merge messages. Your landing duties: (a) act on every GREEN row the trigger names, immediately; (b) a land-failed marker in the trigger: if it says re-run land, do exactly that (detached, same land-patch form -- the patch file is untouched by a failed land attempt); if the retry cap is spent, write one escalation question into a docs/.grill/ round (the row, the gate evidence, options: rebrief narrower per the agents own self-report, reshape, drop) and rm the marker when acting on the ruling; (c) post-land review, AFTER other duties: read the newest Land commit diff on main and file follow-up board rows for real problems -- never edit main yourself. (4) Dispatch: the trigger names ready build rows whenever dispatch-state.py --live is empty (the dispatcher is a single global batch, not a per-row slot pool -- never launch a second batch while one is already running). Write a brief for each ready row as plans/simple-briefs/ROW-ID.txt (enwiro-delegate skill content, this exact filename -- simple_dispatch.py requires it), then launch ONE call covering every ready row at once (up to 3), DETACHED -- nohup python3 .claude/scripts/simple_dispatch.py ROW-ID-1 ROW-ID-2 ROW-ID-3 --brief-dir plans/simple-briefs --parallel 3 >>~/.cache/toylang-drive/simple-dispatch.log 2>&1 & -- not one nohup per row: its own internal ThreadPoolExecutor IS the concurrency, and the whole process exits only once every row in the batch has a final status. It runs the full cycle unsupervised (real edits, its own just check verify with retries, patch extraction) and takes roughly 5-20 minutes, so never wait on it inline; set every row you dispatch to status: delegated in the same commit as writing its brief. A non-GREEN outcome (STUCK, RED, TIMEOUT, SETUP_FAILED, FATAL) already carries the agents own real explanation of what blocked it, verbatim, in the trigger text -- read that directly and act on the per-status guidance already there; there is no event log or ESCALATION.md to reconstruct anymore. FATAL means the account itself needs fixing -- flag it plainly, do not redispatch anything until it is. Record a real, surprising incident (a wrong self-report, a repeated failure shape, a cost anomaly) as a note in plans/simple-dispatch-design.md, not a new file. RULES: never edit a repo file yourself to fix a build row -- reshape the brief and redispatch, however small the fix looks (a dispatch is stateless per attempt and has nothing to build on from a hand-edit). A permission denial is a ruling, not an obstacle: NEVER re-attempt a blocked change through another channel (sed after a blocked Edit, a redispatch to make the same change, any workaround) -- write the proposed change as a question into a docs/.grill/ round for the maintainer and move on (maintainer rule, 2026-08-30). The docs dev server is the maintainers process: never start, stop, or restart it from a tick (a foreground restart wedged the tick lock 46 minutes) -- if it looks down, note that in the mail and move on. Never write an unbounded wait for a background task (lock, sentinel file, subagent): use a bounded primitive with an explicit give-up path -- the flock -w 1800 8 in land-lane.sh is the house pattern -- an ad hoc flock -x plus an infinite sentinel-file poll loop held a lock 90+ minutes and stalled every later tick, 2026-08-31. BOUND: one round composition plus one landing, or up to three landings (a cascade is one), or one dispatch batch, then END the session even if more work is visible. Nothing changed: end quietly.'
 fi
 
 TS=$(date +%Y%m%d-%H%M%S)
@@ -326,7 +224,7 @@ import json
 d=json.load(open('docs/.annotations/inbox.json'))
 print(len(d.get('records',[])))" 2>/dev/null || echo '?')
 ROUNDS=$(ls docs/.grill/*.round.yaml 2>/dev/null | xargs -rn1 basename | tr '\n' ' ')
-CORE="Trigger: $TRIGGER. Snapshot (from disk this second -- act on it, re-verify only what you modify):${STATE:- no delegated lanes} [inbox_records=$INBOX_N pending_rounds=${ROUNDS:-none}]. You are a ROUTER: turns are for decisions and the four scripts (sandbox_dispatch.py, land-lane.sh, board-archive.py, round files), never exploration. dispatch-worker.sh is retired -- never invoke it."
+CORE="Trigger: $TRIGGER. Snapshot (from disk this second -- act on it, re-verify only what you modify):${STATE:- no delegated rows} [inbox_records=$INBOX_N pending_rounds=${ROUNDS:-none}]. You are a ROUTER: turns are for decisions and the four scripts (simple_dispatch.py, land-lane.sh, board-archive.py, round files), never exploration. Nothing else dispatches build work -- sandbox_dispatch.py, dispatch-worker.sh, and opencode are retired."
 
 run_tick() { # $1: prompt
   # stream-json + the colorizer keeps the loop terminal a live, readable trace.

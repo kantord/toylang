@@ -50,36 +50,40 @@ Every tick:
 
 ## Stall diagnosis, learned the hard way
 
-The dead-worker signature (claude-era lanes, still live during the rollout transition):
-the newest file in the session's tool-results dir is its own session-start hook message --
-the worker died (usually machine suspend) and a fresh idle session auto-spawned. A worktree
-whose tree is fully STAGED by a dead worker may be verified (suite + build) and committed by
-the coordinator directly, with the commit message saying so; uncommitted half-done work gets
-a continuation dispatch into the same env whose brief says to read ALL issue comments and
-assess the existing diff. File-write mtimes and commit times are the truth; transcript
-timestamps lie.
+Superseded, 2026-09-11: the diagnosis below (worktree mtimes, ESCALATION.md, opencode
+event logs) described the old sandbox_dispatch.py/opencode pipeline, kept here only as
+history. Under simple_dispatch.py there is no worktree per dispatch, no ESCALATION.md
+channel, and no opencode event log to read -- a dispatch reports through exactly two
+plain surfaces: `plans/dispatch-log.csv` (one row per run: status, cost, patch path) and
+`~/.cache/toylang-simple-dispatch/results/<row>-<run_id>-*` files (the extracted patch,
+the full agent log, and -- the real diagnosis surface -- `-self-report.txt`: the model's
+own direct explanation of what blocked it, asked for in-context at the moment it gave
+up, not reconstructed afterward from a transcript). `.claude/scripts/dispatch-state.py`
+reads both surfaces for you; a tick's own trigger text already carries the self-report
+verbatim for any STUCK/RED/TIMEOUT/SETUP_FAILED/FATAL row -- read that directly instead
+of digging through logs. See `plans/simple-dispatch-design.md` for the full design
+history and why this replaced a separate post-hoc reviewer entirely.
 
-An opencode worker's process exiting IS its turn ending -- there is no idle session left
-behind. FIRST check the worktree for a committed `ESCALATION.md`: that is the worker's
-designed channel for decisions its brief did not settle (workers cannot file GitHub
-issues by permission design) -- turn it into the real issue/board row/decide entry, and
-remove the file from the branch before any merge; it never lands on main. Otherwise
-diagnose from the event log (`~/.cache/toylang-drive/opencode/*-<lane>.jsonl`): the
-last events say what it was doing. Uncommitted work continues via
-`opencode run --session <sessionID>` with a correction message (full context retained);
-anything that smells like a worker-quality problem gets a row in
-plans/opencode-rollout.md's incident table -- that log is the rollout's evidence base.
+Historical record of the retired pipeline's diagnosis, preserved for context: the
+dead-worker signature (claude-era lanes) was the newest file in the session's
+tool-results dir being its own session-start hook message -- the worker died (usually
+machine suspend) and a fresh idle session auto-spawned. An opencode worker's process
+exiting was its turn ending -- there was no idle session left behind; a committed
+`ESCALATION.md` was the worker's channel for decisions its brief did not settle, and the
+event log (`~/.cache/toylang-drive/opencode/*-<lane>.jsonl`) was the diagnosis source
+when nothing else said what a worker was doing.
 
 **The coordinator is a router (maintainer direction, 2026-08-30).** The asymptote every
 change moves toward: a tick spends its turns on DECISIONS -- what to dispatch, what to
 land, what to surface to the maintainer -- executed through the four mechanical
-surfaces (sandbox_dispatch.py, land-lane.sh, board-archive.py, round files), and reads
-results rather than exploring. dispatch-worker.sh is retired (kanban ruling, 2026-09-06)
--- never invoke it. The gate script hands each tick a pre-computed state
-snapshot in the prompt: act on it instead of re-reading the board, re-checking lanes,
-and re-polling stores; re-verify only what you are about to modify. The deliberate
-exception, for now, is the landing diff read -- that judgment stays in-tick until the
-rollout review prices a cheap-model alternative.
+surfaces (simple_dispatch.py, land-lane.sh, board-archive.py, round files), and reads
+results rather than exploring. sandbox_dispatch.py, dispatch-worker.sh, and every
+opencode-based worker are retired (2026-09-11 ruling: simple_dispatch.py + agent_loop.py
+is the only dispatch mechanism) -- never invoke any of them. The gate script hands each
+tick a pre-computed state snapshot in the prompt: act on it instead of re-reading the
+board, re-checking lanes, and re-polling stores; re-verify only what you are about to
+modify. The deliberate exception, for now, is the landing diff read -- that judgment
+stays in-tick until the rollout review prices a cheap-model alternative.
 
 The tick's diagnosis budget is the event log, git state, and the suite output --
 ROUTING evidence. The moment understanding requires reading source files or
@@ -152,52 +156,60 @@ provenance ("self-originated, idle board" on the row/issue):
    third, operational one: a delegated session with no commits and no transcript activity
    for ~30 minutes -- go read its state (worktree diff, last transcript entry) and either
    finish its work by hand, relaunch it, or escalate; do not just wait.
-3. **Fill the sandbox pool: up to THREE concurrent** (kanban ruling, 2026-09-06, down
-   from the old plain-lane cap of eight -- `dispatch-worker.sh` is retired,
-   `sandbox_dispatch.py` is the only dispatch mechanism. The old cap was never a real
-   constraint: measured `lane-history.jsonl` data across a full session showed the
-   practical concurrency ceiling was 3, and high lane counts reflected accumulated
-   stuck/idle backlog, not genuine parallel throughput). Occupancy is counted by live
-   `sandbox_dispatch.py` host processes (`.claude/scripts/sandbox_dispatch_status.py
-   --count`), never by board.yaml's `status: delegated` or `msb list`'s VM status --
-   both go stale on an escalated or kept-for-debugging row and silently starve the pool
-   behind zombies (found live, 2026-09-06). When several ready rows share a file
-   footprint (the draft.md migration family, say), dispatch ONE of the family per cycle
-   and record the `soft` edges between the rest -- parallel same-file lanes just
-   manufacture merge conflicts.
+3. **Dispatch is a single batched call, not a per-row slot pool** (2026-09-11 ruling:
+   simple_dispatch.py's own `ThreadPoolExecutor` fan-out (`--parallel`, default cap 3)
+   IS the concurrency -- one process handles up to 3 rows at once and only exits once
+   every row in that batch has a final status. "Occupied" is therefore binary, not a
+   slot count: `dispatch-state.py --live` reads real process cmdlines directly, never
+   board.yaml's `status: delegated` (which can go stale on an escalated row exactly the
+   way it already did under the old model) or `msb list`'s VM status (which also shows
+   sandboxes mid-teardown). Never launch a second batch while one is already live. When
+   several ready rows share a file footprint (the draft.md migration family, say),
+   dispatch ONE of the family per batch and record the `soft` edges between the rest --
+   parallel same-file dispatches just manufacture merge conflicts.
    - `decide` entries in the ready set: queue for the user, batched into wizard/mail rounds
-     where they carry code; they occupy attention, not a sandbox slot.
+     where they carry code; they occupy attention, not a dispatch slot.
    - `build` entries: make sure a GitHub issue carries the spec (file one if the row has
-     none), write a brief per the enwiro-delegate skill, then dispatch DETACHED --
-     `nohup python3 .claude/scripts/sandbox_dispatch.py ROW-ID --brief PATH-TO-BRIEF &`
-     -- and set `status: delegated`. Every sandbox loop runs FULLY unsupervised end to
-     end: plan-decompose, build, its own `just check` verify, patch extraction,
-     `git am -3` onto a fresh lane, then `land-lane.sh land` directly -- no cheap-first
-     attempt, no human review gate (the house philosophy already had none for the path
-     this replaced), and no claude-code-vs-opencode re-evaluation gate (that
-     distinction, and the `opencode-rollout-review` checkpoint built around it, is
-     superseded by the sandbox-only ruling: every dispatch already runs the strongest
-     available cheap model inside a disposable, fully-permissive microVM, so there is
-     no weaker fallback tier left to compare against). EVERY rollout incident (retry,
-     stall, review finding, abandoned lane) still gets a row in
-     plans/opencode-rollout.md's incident table -- that observability is not optional.
-     Unresolved runs (retry cap reached, `git am -3` conflict, extraction anomaly)
-     route to the maintainer's mailbox automatically via `compose_escalation()`
-     (`docs/.grill/<row-id>-sandbox-blocker.round.yaml`) -- read and act on these the
-     same way as any other wizard round (duty 1 above), never by blindly redispatching
-     while one is open. Footprint conflicts are SOFT BLOCKER
-     EDGES on the board (file-level -- a folder is not a footprint; that lesson cost a lane
-     of parallelism once), not ad-hoc judgment: when a conflict is discovered at dispatch
-     time, record the `soft` edge rather than just serializing silently. Picking a
-     soft-blocked task while its blocker is in flight is allowed only when no cleaner task
-     can fill the slot and the overlap is tolerable; otherwise leave the slot empty and say
-     so in the report. Efficiency/process improvements are prio work by standing rule --
-     schedule them ahead of ordinary rows so no time is spent working the old way.
-4. **Monitor and land.** Watch delegated work (a cron tick per active delegation is enough);
-   when a session finishes, run the `land-delegated-work` skill: suite, code-review,
-   style-review, fix-or-file, merge locally. Then move the row to `plans/board-archive.yaml`
-   with `status: done` (issue #113: never flip it in place), commit the board change with the
-   merge, and go to step 1.
+     none), write a brief per the enwiro-delegate skill to `plans/simple-briefs/ROW-ID.txt`
+     (this exact filename -- simple_dispatch.py requires `--brief-dir`/`<row_id>.txt`),
+     then dispatch a batch of up to 3 ready rows in ONE call, DETACHED --
+     `nohup python3 .claude/scripts/simple_dispatch.py ROW-ID-1 ROW-ID-2 ROW-ID-3
+     --brief-dir plans/simple-briefs --parallel 3 &` -- and set each row's `status:
+     delegated` in the same commit as writing its brief. Every dispatch runs FULLY
+     unsupervised end to end: real edits, its own `just check` verify with retries, a
+     self-report if it gives up, and a real extracted patch on any outcome that made
+     edits -- but it does NOT self-land (a deliberate design choice, staying a pure
+     dispatch primitive; see `plans/simple-dispatch-design.md`). Landing a GREEN result
+     is the tick's own job: `land-lane.sh land-patch ROW-ID PATCH-PATH`, DETACHED, same
+     as any other landing (duty 4 in "Monitor and land" below). A non-GREEN outcome
+     (STUCK, RED, TIMEOUT, SETUP_FAILED, FATAL) carries the agent's OWN real-time
+     explanation of what blocked it, verbatim, already surfaced in the tick's trigger
+     text (`dispatch-state.py --status ROW-ID`, or read
+     `~/.cache/toylang-simple-dispatch/results/ROW-ID-*-self-report.txt` directly) --
+     there is no transcript to reconstruct and no separate escalation-composition step;
+     decide directly from what the agent already said: a narrower redispatch per its own
+     suggestion, or a decide-row escalation if it says this isn't a scope problem at all.
+     Record a genuinely surprising incident (a wrong self-report, a repeated failure
+     shape, a real cost anomaly) as a note in `plans/simple-dispatch-design.md`, not a
+     new file. Footprint conflicts are SOFT BLOCKER EDGES on the board (file-level -- a
+     folder is not a footprint; that lesson cost a lane of parallelism once), not ad-hoc
+     judgment: when a conflict is discovered at dispatch time, record the `soft` edge
+     rather than just serializing silently. Picking a soft-blocked task while its
+     blocker is in flight is allowed only when no cleaner task can fill the slot and the
+     overlap is tolerable; otherwise leave the slot empty and say so in the report.
+     Efficiency/process improvements are prio work by standing rule -- schedule them
+     ahead of ordinary rows so no time is spent working the old way.
+4. **Monitor and land.** A dispatched batch reports a final status per row when it exits
+   (`dispatch-state.py --status ROW-ID`); a GREEN row lands via `land-lane.sh land-patch
+   ROW-ID PATCH-PATH` DETACHED -- the gate (full `just test` in a throwaway worktree) is
+   the WHOLE pre-merge check, deterministic, no model reads the diff before merging (see
+   land-lane.sh's own header). Move the landed row to `plans/board-archive.yaml` with
+   `status: done` (issue #113: never flip it in place), commit the board change with the
+   merge, and go to step 1. Post-land review (reading the new commit's diff for real
+   follow-up problems, filing rows for them) happens AFTER landing, asynchronously, per
+   duty (c) in step 3 above -- never a pre-merge gate.
+   (`land-delegated-work` is a DIFFERENT skill, for enwiro-delegate research/interactive
+   sessions, not board-driven build dispatches -- do not conflate the two.)
 5. **Report once per landing or decision-point,** per the standing protocol: what landed,
    what the reviews found, what is now unblocked, and which decide-tasks are waiting.
    No play-by-play.
