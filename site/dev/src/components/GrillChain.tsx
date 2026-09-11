@@ -1,8 +1,7 @@
 import { useEffect, useReducer, useRef } from "react"
 
 import { AnswerComposer, hasInProgressDraft } from "@dev/components/AnswerComposer"
-import { Section } from "@dev/components/GrillWizard"
-import { MessageCard } from "@dev/components/MessageCard"
+import { DevMarkdown } from "@dev/components/DevMarkdown"
 import { activePath, clearPendingAnswer, loadPendingAnswer, type ChainEntry, type ForestRound } from "@dev/lib/grillForest"
 
 const EXCERPT_MAX_LEN = 140
@@ -103,16 +102,20 @@ export function GrillChain({ topic, round, scrollToNodeId }: { topic: string; ro
 
         return (
           <div key={node.id} data-node-id={node.id} className="space-y-3">
+            {/* Background/thesis/question read as one flowing message, not labeled sections --
+                the old wizard's boxy "BACKGROUND"/"THESIS"/"QUESTION" cards (still right for a
+                paged form) read as a form here, not a conversation. Only the actual ask is set
+                apart, by weight, the way a person would naturally land on their real question
+                after some framing -- not a bureaucratic header. */}
             <div className="mr-auto max-w-2xl space-y-2 rounded-lg border bg-card p-3">
               {parent?.answer && (
                 <blockquote className="border-l-2 pl-2 text-xs text-muted-foreground">
                   {truncate(parent.answer.content, EXCERPT_MAX_LEN)}
                 </blockquote>
               )}
-              <MessageCard flow={node.flow ?? "question"} note={node.title} />
-              {node.background && <Section label="Background" markdown={node.background} />}
-              {node.thesis && <Section label="Thesis" markdown={node.thesis} />}
-              <Section label="Question" markdown={node.question} />
+              {node.background && <DevMarkdown text={node.background} className="text-sm" />}
+              {node.thesis && <DevMarkdown text={node.thesis} className="text-sm" />}
+              <DevMarkdown text={node.question} className="text-sm font-semibold" />
             </div>
 
             {node.status === "superseded" && (

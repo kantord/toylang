@@ -55,6 +55,12 @@ export function AnswerComposer({ topic, node, onSubmitted }: { topic: string; no
   const [selected, setSelected] = useState<number | null>(() => initialDraft?.selected ?? null)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(() => initialDraft?.lastError ?? null)
+  // Bumped on reset and folded into each box's `key` below -- `MarkdownEditor` deliberately only
+  // seeds its Tiptap instance from `content` once, on mount (that's what stops a background
+  // refresh from ever stomping in-progress typing), so setting `boxes` back to its initial value
+  // alone wouldn't actually change what's visibly in the editors. Forcing a remount is the only
+  // way to make a reset actually clear what's on screen, not just the state backing it.
+  const [resetCount, setResetCount] = useState(0)
 
   useEffect(() => {
     saveDraft(key, { selected, boxes, lastError: submitError } satisfies SavedDraft)
@@ -71,6 +77,15 @@ export function AnswerComposer({ topic, node, onSubmitted }: { topic: string; no
 
   const selectedBox = selected !== null ? boxes[selected] : null
   const ready = !!selectedBox && selectedBox.content.trim() !== ""
+  const hasAnythingToReset = selected !== null || boxes.some((b) => b.dirty) || !!submitError
+
+  const reset = () => {
+    setBoxes(initialBoxes(node))
+    setSelected(null)
+    setSubmitError(null)
+    clearDraft(key)
+    setResetCount((n) => n + 1)
+  }
 
   const submit = async () => {
     if (!selectedBox || !ready || submitting) return
@@ -132,7 +147,7 @@ export function AnswerComposer({ topic, node, onSubmitted }: { topic: string; no
           // let clicking in just to position a cursor silently reassign the selection -- the same
           // bug removing `onFocus` was meant to fix, just reachable by mouse instead of Tab.
           <div
-            key={i}
+            key={`${resetCount}-${i}`}
             className={cn(
               "space-y-2 rounded-lg border p-2 transition-colors",
               selected === i ? "border-primary ring-2 ring-primary/30 bg-primary/5" : "border-border hover:bg-muted/40",
@@ -149,7 +164,10 @@ export function AnswerComposer({ topic, node, onSubmitted }: { topic: string; no
         ))}
       </div>
       {submitError && <p className="text-sm text-destructive">Delivery failed: {submitError}. Your answer is kept -- retry.</p>}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={reset} disabled={!hasAnythingToReset || submitting}>
+          Reset
+        </Button>
         <Button onClick={submit} disabled={!ready || submitting}>
           {submitting ? "Submitting..." : "Submit"}
         </Button>
