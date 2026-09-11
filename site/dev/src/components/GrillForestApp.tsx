@@ -43,22 +43,30 @@ export function GrillForestApp({ segments }: { segments: string[] }) {
 
   // Keeps the URL naming the current node, not just the topic, without a full navigation --
   // `replaceState` (not `location.hash =`) so this never re-triggers DevApp's own hashchange
-  // listener and loops. Only follows the tail FORWARD as real progress happens (a new node id we
-  // haven't synced to yet): an explicit link to an earlier node (`nodeFromUrl` on load) has to
-  // stay put rather than getting silently overwritten by the very next poll tick, which fires
-  // every ~1.2s regardless of whether anything actually changed.
-  // Keyed by topic too, not just node id -- ids are only unique within one topic file, so two
-  // topics can coincidentally share a tail id and would otherwise be indistinguishable here.
-  const lastSyncedKey = useRef<string | null>(topicFromUrl && nodeFromUrl ? `${topicFromUrl}:${nodeFromUrl}` : null)
+  // listener and loops. This only runs at all when the page was opened WITHOUT a specific node in
+  // the URL: a link that names one (a bookmark, a share, `nodeFromUrl`) is a request to look at
+  // that exact point, and has to stay put in the address bar for the rest of this page's
+  // lifetime -- the chain itself still renders everything since, live updates included, only the
+  // URL stops following it. Captured once on mount so navigating between topics via the rail
+  // (which links to a bare `#/grill/<topic>`) still gets ordinary tail-following for the newly
+  // selected topic.
+  const pinnedToExplicitNode = useRef(!!nodeFromUrl)
+  // Seeded from the URL's own initial topic segment, not `null` -- otherwise the very first time
+  // `round` data arrives (any real topic differing from `null`) would look exactly like a topic
+  // switch and immediately clear the pin this effect exists to hold.
+  const lastSyncedTopic = useRef<string | null>(topicFromUrl ?? null)
   useEffect(() => {
+    if (pinnedToExplicitNode.current) return
     if (!round) return
+    // A topic switch (via the rail) resets the pin for the newly selected topic -- `nodeFromUrl`
+    // was only ever meaningful for the topic the page first loaded with.
+    if (round.topic !== lastSyncedTopic.current) {
+      pinnedToExplicitNode.current = false
+      lastSyncedTopic.current = round.topic
+    }
     const path = activePath(round.nodes, round.activity)
     const tail = [...path].reverse().find((e) => e.kind === "node")
-    const tailId = tail?.kind === "node" ? tail.node.id : null
-    const key = tailId ? `${round.topic}:${tailId}` : round.topic
-    if (key === lastSyncedKey.current) return
-    lastSyncedKey.current = key
-    const nextHash = tailId ? `#/grill/${round.topic}/${tailId}` : `#/grill/${round.topic}`
+    const nextHash = tail?.kind === "node" ? `#/grill/${round.topic}/${tail.node.id}` : `#/grill/${round.topic}`
     if (location.hash !== nextHash) history.replaceState(null, "", nextHash)
   }, [round])
 

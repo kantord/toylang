@@ -22,6 +22,15 @@ function draftKey(topic: string, nodeId: string): string {
   return `toylang-grill-forest-draft:${topic}:${nodeId}`
 }
 
+/** Whether the human had started typing an answer to this node when it stopped being live (e.g.
+ *  the agent superseded it) -- `GrillChain` uses this to acknowledge an in-progress draft that's
+ *  about to become unreachable (this composer unmounts once the node isn't `live` and `!pending`
+ *  anymore) rather than letting it just vanish with the question. */
+export function hasInProgressDraft(topic: string, nodeId: string): boolean {
+  const draft = loadDraft<SavedDraft | null>(draftKey(topic, nodeId), null)
+  return !!draft && draft.boxes.some((b) => b.dirty)
+}
+
 function initialBoxes(node: ForestNode): BoxState[] {
   const fromOptions = (node.options ?? []).slice(0, 4).map((o) => ({ label: o.label, content: o.content, dirty: false }))
   return [...fromOptions, { label: null, content: "", dirty: false }]
@@ -108,15 +117,24 @@ export function AnswerComposer({ topic, node, onSubmitted }: { topic: string; no
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
         {boxes.map((box, i) => (
+          // `onClick` deliberately lives on the label only, not this wrapping div: a click
+          // anywhere inside the Tiptap editor below bubbles up through ordinary DOM propagation
+          // (ProseMirror doesn't stop it), so putting the handler on the whole card would still
+          // let clicking in just to position a cursor silently reassign the selection -- the same
+          // bug removing `onFocus` was meant to fix, just reachable by mouse instead of Tab.
           <div
-            key={box.label ?? "__blank__"}
-            onClick={() => setSelected(i)}
+            key={i}
             className={cn(
               "space-y-2 rounded-lg border p-2 transition-colors",
               selected === i ? "border-primary ring-2 ring-primary/30 bg-primary/5" : "border-border hover:bg-muted/40",
             )}
           >
-            <div className="text-xs font-medium text-muted-foreground">{box.label ?? "Write your own"}</div>
+            <div
+              onClick={() => setSelected(i)}
+              className="cursor-pointer text-xs font-medium text-muted-foreground"
+            >
+              {box.label ?? "Write your own"}
+            </div>
             <MarkdownEditor content={box.content} onChange={(md) => setBoxContent(i, md)} />
           </div>
         ))}

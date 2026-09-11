@@ -54,6 +54,24 @@ test("a superseded non-root node's replacement sibling continues the chain inste
   ])
 })
 
+test("a chain of two retracted siblings still terminates and reaches the eventual live tail", () => {
+  // Reproduces a real infinite loop: excluding only `current.id` (not every node already shown)
+  // let the walk bounce backward from child-b to the already-superseded child-a forever, since
+  // child-a always sorted lowest among "everyone but myself." Excluding all visited nodes fixes
+  // it -- this test is the regression guard for that specific bug, not just the general shape.
+  const root = node({ id: "root", parent: null, status: "answered" })
+  const first = node({ id: "child-a", parent: "root", status: "superseded", supersededNote: "retracted" })
+  const second = node({ id: "child-b", parent: "root", status: "superseded", supersededNote: "retracted again" })
+  const third = node({ id: "child-c", parent: "root", status: "live" })
+  const path = activePath([root, first, second, third], [])
+  assert.deepEqual(path, [
+    { kind: "node", node: root },
+    { kind: "node", node: first },
+    { kind: "node", node: second },
+    { kind: "node", node: third },
+  ])
+})
+
 test("a superseded non-root node with no replacement yet shows its own thread's activity", () => {
   const root = node({ id: "root", parent: null, status: "answered" })
   const superseded = node({

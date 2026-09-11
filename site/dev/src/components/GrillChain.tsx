@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef } from "react"
 
-import { AnswerComposer } from "@dev/components/AnswerComposer"
+import { AnswerComposer, hasInProgressDraft } from "@dev/components/AnswerComposer"
 import { Section } from "@dev/components/GrillWizard"
 import { MessageCard } from "@dev/components/MessageCard"
 import { activePath, clearPendingAnswer, loadPendingAnswer, type ForestRound } from "@dev/lib/grillForest"
@@ -47,12 +47,15 @@ export function GrillChain({ topic, round, scrollToNodeId }: { topic: string; ro
     if (wasNearBottom.current) el.scrollTop = el.scrollHeight
   }, [path.length, scrollToNodeId])
 
-  // Once the coordinator has durably processed an answer (the node itself now says `answered`),
-  // the local pending record has served its purpose -- clear it rather than leaving it to survive
-  // a future refresh with nothing left to reconcile it against.
+  // Once a node stops being `live`, its local pending record has served whatever purpose it still
+  // could -- `answered` means the coordinator durably processed it (the node's own `answer` now
+  // carries the same content); `superseded` means the question was retracted before the
+  // coordinator ever got to it, so the submitted answer is moot. Either way, clear it rather than
+  // leaving it to leak in localStorage forever (a superseded node is never `live` again, so
+  // nothing else would ever clear it).
   useEffect(() => {
     for (const entry of path) {
-      if (entry.kind === "node" && entry.node.status === "answered") clearPendingAnswer(topic, entry.node.id)
+      if (entry.kind === "node" && entry.node.status !== "live") clearPendingAnswer(topic, entry.node.id)
     }
   }, [topic, path])
 
@@ -78,7 +81,12 @@ export function GrillChain({ topic, round, scrollToNodeId }: { topic: string; ro
         const node = entry.node
         const prevEntry = i > 0 ? path[i - 1] : null
         const parent = prevEntry?.kind === "node" ? prevEntry.node : null
-        const pending = node.status === "live" ? loadPendingAnswer(topic, node.id) : null
+        // Read for `superseded` too, not just `live`: a node can go straight from live to
+        // superseded with a submitted-but-not-yet-processed answer still sitting in local storage
+        // (the coordinator retracted the question before ever getting to it) -- this is the one
+        // render where that's still visible, before the effect above clears it.
+        const pending = node.status !== "answered" ? loadPendingAnswer(topic, node.id) : null
+        const orphanedDraft = node.status === "superseded" && !pending && hasInProgressDraft(topic, node.id)
 
         return (
           <div key={node.id} data-node-id={node.id} className="space-y-3">
@@ -98,6 +106,11 @@ export function GrillChain({ topic, round, scrollToNodeId }: { topic: string; ro
               <div className="mr-auto max-w-2xl space-y-1 rounded-lg border border-dashed p-3 opacity-60">
                 <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Superseded</div>
                 <p className="text-sm text-muted-foreground">{node.supersededNote}</p>
+                {orphanedDraft && (
+                  <p className="text-xs text-muted-foreground">
+                    You had an unsent draft answer here -- it's kept but no longer needed for this retracted question.
+                  </p>
+                )}
               </div>
             )}
 
@@ -110,8 +123,14 @@ export function GrillChain({ topic, round, scrollToNodeId }: { topic: string; ro
               />
             )}
 
-            {node.status === "live" && pending && (
-              <AnswerBubble content={pending.content} sourceOption={pending.sourceOption} edited={pending.wasEdited} sending />
+            {pending && (
+              <AnswerBubble
+                content={pending.content}
+                sourceOption={pending.sourceOption}
+                edited={pending.wasEdited}
+                sending={node.status === "live"}
+                supersededBeforeProcessed={node.status === "superseded"}
+              />
             )}
 
             {node.status === "live" && !pending && i === path.length - 1 && (
@@ -129,17 +148,22 @@ function AnswerBubble({
   sourceOption,
   edited,
   sending,
+  supersededBeforeProcessed = false,
 }: {
   content: string
   sourceOption: string | null
   edited: boolean
   sending: boolean
+  supersededBeforeProcessed?: boolean
 }) {
   return (
     <div className="ml-auto max-w-2xl space-y-1 rounded-lg bg-primary/10 p-3">
       {edited && sourceOption && <div className="text-xs font-medium text-muted-foreground">Edited from {sourceOption}</div>}
       <p className="whitespace-pre-wrap text-sm">{content}</p>
       {sending && <div className="text-xs text-muted-foreground">Sending...</div>}
+      {supersededBeforeProcessed && (
+        <div className="text-xs text-muted-foreground">Sent, but this question was retracted before it was processed.</div>
+      )}
     </div>
   )
 }

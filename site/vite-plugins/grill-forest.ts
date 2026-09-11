@@ -92,6 +92,7 @@ function validateForest(parsed: unknown): string | null {
     }
     if (raw.options !== undefined) {
       if (!Array.isArray(raw.options)) return `node "${raw.id as string}": "options" must be a list`
+      const labels = new Set<string>()
       for (const opt of raw.options as unknown[]) {
         const o = opt as { label?: unknown; content?: unknown } | null
         if (
@@ -103,6 +104,10 @@ function validateForest(parsed: unknown): string | null {
         ) {
           return `node "${raw.id as string}": every option needs a non-empty "label" and a "content" string`
         }
+        // Labels double as the answer's `sourceOption` and the composer's React key -- a
+        // duplicate would make two different options indistinguishable in the submitted answer.
+        if (labels.has(o.label)) return `node "${raw.id as string}": duplicate option label "${o.label}"`
+        labels.add(o.label)
       }
     }
   }

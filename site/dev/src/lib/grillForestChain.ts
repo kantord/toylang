@@ -88,11 +88,21 @@ export function activePath(nodes: ForestNode[], activity: ForestActivityEntry[])
   }
 
   const path: ChainEntry[] = []
+  // Every node the walk has already placed -- required, not just tidy: two or more superseded
+  // siblings under one parent can otherwise bounce the walk backward to an earlier one (excluding
+  // only the current node, not the ones already shown, doesn't stop it revisiting them) and never
+  // terminate. Excluding everything in `visited` when picking the next node guarantees each loop
+  // iteration either adds a genuinely new node or ends the walk -- there are finitely many nodes,
+  // so it always terminates.
+  const visited = new Set<string>()
   let current: ForestNode | undefined = root
-  while (current) {
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id)
     path.push({ kind: "node", node: current })
     if (current.status === "answered") {
-      const child = pickAmong(nodes, current.id)
+      const child = nodes
+        .filter((n) => n.parent === current!.id && !visited.has(n.id))
+        .sort((a, b) => a.id.localeCompare(b.id))[0]
       if (child) {
         current = child
         continue
@@ -102,7 +112,7 @@ export function activePath(nodes: ForestNode[], activity: ForestActivityEntry[])
       current = undefined
     } else if (current.status === "superseded" && current.parent !== null) {
       const replacement = nodes
-        .filter((n) => n.parent === current!.parent && n.id !== current!.id)
+        .filter((n) => n.parent === current!.parent && !visited.has(n.id))
         .sort((a, b) => a.id.localeCompare(b.id))[0]
       if (replacement) {
         current = replacement
