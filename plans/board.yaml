@@ -489,3 +489,10 @@
   needs: []
   status: todo
 
+- id: mutation-semantics-design
+  title: 'Grill privileged/shared-reference mutation-as-optimization now that the spike
+    (plans/mutation-semantics-spike.md) has grounded the "provably one reference" analysis --
+    this is the decide row draft-mutation-migration''s partial migration has been waiting on.'
+  kind: decide
+  needs: [mutation-semantics-spike]
+  status: todo
