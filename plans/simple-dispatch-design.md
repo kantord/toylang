@@ -1975,3 +1975,20 @@ launch a third/fourth attempt this tick -- `acquire_land_lock` has a 1800s bound
 through the lock. Takeaway for the next tick: before re-running a land-failed row, always
 `pgrep -af land_lane.py` first -- a land-failed marker on disk does not mean the retry it names
 hasn't already been launched by an earlier tick.
+
+**Incident (2026-09-12, same rollout, root cause of the "busy/dirty" markers above): the
+"main checkout stayed busy/dirty" text in every `land-failed-issue-*` marker was misleading.**
+The checkout wasn't transiently busy -- `plans/dispatch-log.csv` had been accumulating dispatch
+results (`GREEN`/`STUCK` rows appended by `simple_dispatch.py` itself) uncommitted since
+`e307aa8`, so `git status --porcelain` in the main REPO checkout was never clean, and
+`land_one()`'s 36x5s (3 minute) wait-for-clean loop always timed out no matter how long a land
+attempt was given. Confirmed via `ps`: `module-routing-syntax-build-ast` and
+`draft-mutation-migration`'s land-patch processes were still alive and mid-attempt (gate green,
+into the merge-retry loop) when this was found; committing `plans/dispatch-log.csv` in place, with
+no merge in progress (`.git/MERGE_HEAD` absent), let their *already-running* attempts succeed on
+their next 5s poll -- no relaunch needed for those two. `fold-order-dependence-convention-research`
+had already exited with a fresh `land-failed` marker moments earlier (no process left running for
+it), so that one row alone got a fresh detached `land-patch` retry with its untouched patch.
+Nothing currently commits `plans/dispatch-log.csv` after a dispatch batch finishes -- if this
+recurs, check `git status --short` in the main checkout before assuming a `busy/dirty` marker means
+"try again later"; it may mean "something needs committing first."
