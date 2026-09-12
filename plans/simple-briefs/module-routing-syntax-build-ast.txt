@@ -1,6 +1,15 @@
-Board row `module-routing-syntax-build-ast` (gh:167). Step 1 of 3 for `@(path)` module-as-
-function routing-arm syntax. This step only: add a bare AST variant, no parser change, no
-runtime behavior change.
+Board row `module-routing-syntax-build-ast` (gh:167). Retry after a STUCK attempt (`a503c7db`)
+whose own self-report says the change was actually complete and `just check` passed 436/436 --
+the harness's official verify likely didn't see that sandbox's manual `tsc` fix. Step 1 of 3 for
+`@(path)` module-as-function routing-arm syntax. This step only: add a bare AST variant, no
+parser change, no runtime behavior change.
+
+Step 0, before anything else: `just check` requires a real `tsc` in `site/node_modules` (test
+`tsc_accepts_the_declaration_and_consumer`) or it fails regardless of your actual change,
+unrelated to this row. Provision it FIRST: download `typescript` from the npm registry into
+`site/node_modules/typescript` (or install via the cached pnpm store) so `find_tsc()` resolves
+it, and confirm with a quick `just check` before starting the real edit -- don't leave this for
+the end where a turn-budget cutoff can strand you mid-fix.
 
 Background: the single `module-routing-syntax-build` row got STUCK twice (6bc1de70, 301af3a9),
 both attempts making zero `write_file` calls across a full 30-turn budget, both self-reports

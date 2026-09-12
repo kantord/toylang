@@ -1,5 +1,17 @@
-Board row `fold-order-dependence-convention-research`. This is a research row: produce a
-markdown writeup, no compiler/toylang code changes.
+Board row `fold-order-dependence-convention-research`. Retry after a STUCK attempt (`01dc100b`)
+that ran out of turn budget partway through writing the research file. This is a research row:
+produce a markdown writeup, no compiler/toylang code changes.
+
+Step 0, before anything else: `just check` requires a real `tsc` in `site/node_modules` (test
+`tsc_accepts_the_declaration_and_consumer`) or it fails regardless of your actual change. The
+prior attempt confirmed the fix: download `typescript` from the npm registry into
+`site/node_modules/typescript` and provide a `.bin/tsc` shim so `find_tsc()` resolves it. Do
+this FIRST, verify with a quick `just check` run, then move to the real task below -- don't
+leave it for the end where a turn-budget cutoff can strand you mid-fix.
+
+The prior attempt also over-scoped the research. Write ONLY the narrower version below -- it
+already meets the done-gate. Do not attempt the full Haskell/OCaml/Rust-`Sum` survey from an
+earlier draft of this brief.
 
 Background: `search-and-fold-design`'s open sub-question (applicative fold-block syntax) got a
 maintainer answer that leaned toward "reduce is the generic, order-sensitive primitive; fold is
@@ -11,27 +23,15 @@ mechanism to statically check that a combiner is associative/commutative, and th
 already assumes that's out of reach for the type system -- so this research is about
 *convention*, not type-checking.
 
-Task: write `plans/fold-order-dependence-convention-research.md` surveying how real languages
-and libraries handle the distinction between an order-dependent fold (sequential, left-to-right
-or right-to-left, result can differ by order) and an order-independent one (associative/
-commutative combiner, order-parallelizable), when it is NOT enforced by the type system. Ground
-every claim in the actual documented behavior of a real language/library -- verify by checking
-official docs or specs, don't rely on general impressions. Suggested angles (use what you can
-verify, drop what you can't):
+Task: write `plans/fold-order-dependence-convention-research.md` covering exactly these two
+verified precedents (both already confirmed real by the prior attempt -- cite them, don't
+re-derive):
 
-- Rust's `Iterator::fold`: does its documentation make an explicit left-to-right order
-  guarantee? Compare to `Iterator::sum`/`Iterator::product`, which assume associativity/
-  commutativity for parallel iterators (Rayon) -- how does Rayon's docs describe the caller's
-  obligation when providing a non-associative combiner to a parallel fold?
-- Haskell's `Foldable` type class: `foldl` vs `foldr` vs `fold`/`foldMap` (which requires a
-  `Monoid`, i.e. an associative operation with identity, encoded in the type via the `Monoid`
-  constraint) -- this is a real example of a *type-level* (not just convention) distinction
-  worth citing even though toylang's case is conceded to be convention-only.
-- OCaml's `List.fold_left` vs `List.fold_right`: two distinctly-named functions rather than one
-  polymorphic-order one -- does the naming-as-documentation approach avoid needing an
-  associativity check at all?
-- Any real-world footgun/bug report you can find (in release notes, issue trackers, or language
-  docs themselves) caused by assuming a fold was associative when it wasn't, or vice versa.
+- Rust's `Iterator::fold`: its documentation gives an explicit left-associative, left-to-right
+  order guarantee.
+- Rayon's `reduce`/`fold`: the docs warn "the order in which `op` will be applied to reduce the
+  result is not fully specified. So `op` should be associative or else the results will be
+  non-deterministic."
 
 Then write a short "implications for toylang" section: given toylang cannot check
 associativity, what naming/documentation/API-shape choices (if any) reduce the risk of a caller
@@ -39,11 +39,10 @@ misusing a fold-shaped builtin with a non-associative combiner? Do not propose n
 syntax or make a design decision -- that is the job of the next grilling round, not this
 research. Stay descriptive: what other languages do and why, not what toylang should do.
 
-Done-gate: `plans/fold-order-dependence-convention-research.md` exists, cites at least two real
-language/library precedents with specifics you actually verified (function names, real
-documented guarantees, not invented), and ends with a short "implications for toylang" section
-that stops short of prescribing new syntax. `just check` still passes (no compiler code
-changed).
+Done-gate: `plans/fold-order-dependence-convention-research.md` exists, cites the two precedents
+above with specifics (function names, real documented guarantees), and ends with a short
+"implications for toylang" section that stops short of prescribing new syntax. `just check`
+still passes (no compiler code changed).
 
 Write the file first -- your first edit should be creating this markdown file with a rough
 outline, then fill it in -- rather than spending the whole budget researching before writing

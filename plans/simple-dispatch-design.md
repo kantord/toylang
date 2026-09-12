@@ -1946,3 +1946,19 @@ Takeaway for the next person who hits this: `proposed` is only safe to use on a 
 depends on. For a row with a real dependent, gate it with a `needs`-linked placeholder `decide`
 row instead (mark that placeholder `done` the same tick the real blocker resolves) -- don't
 reach for a bare status flip without checking `grep -n "needs:.*<row-id>"` first.
+
+**Incident (2026-09-12): `module-routing-syntax-build-ast`'s first STUCK (`a503c7db`) self-report
+claims full success -- `cargo build` passed, `just check` 436/436 -- yet the row scored STUCK
+with a patch file marked UNVERIFIED.** Same shape as the `sort-by-max-by-rust-helpers` classifier
+incident above (2026-09-11): a per-clone `tsc` fix the agent applies manually isn't visible to
+whatever the harness's own official verify runs afterward, so a genuinely-passing attempt can
+still land as STUCK/UNVERIFIED. Not escalated yet since this is only the row's first STUCK (the
+`sort-by-max-by-rust-helpers` precedent escalated only after a *second* STUCK reproduced the
+identical correct diff) -- redispatched instead with the same tsc-provisioning-first instruction
+baked into the brief so the fix isn't rediscovered from scratch. `fold-order-dependence-
+convention-research`'s STUCK (`01dc100b`) the same tick was a genuine scope/turn-budget issue,
+not a classifier flake -- its own self-report never claimed the file was finished, and the
+research scope was narrowed in the reshaped brief accordingly. Worth watching: if
+`module-routing-syntax-build-ast` goes STUCK a second time with another self-report claiming full
+success, treat it as confirmed classifier flake and escalate via a `docs/.grill/` round rather
+than redispatching a third time.
