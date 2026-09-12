@@ -407,7 +407,7 @@
   title: 'Spun off from select-shared-mechanism-design''s checkpoint ruling (wizard submission, 2026-09-11): implement offload-boundary-design''s Q22 ruling (RATIFIED, 2026-09-07) for `select` -- replace every backend''s eager `tlSelect`-style filter (e.g. `src/emit_go.rs:1336-1345`) with a lazily-built mask/selection-vector representation behind the same `Vec` (O(1) indexed access via a selection vector or mask+popcount table built once over mask bits), compacting only on the first strong reference (reusing input storage if uniquely referenced, per the same provably-one-reference condition mutation-semantics-spike already uses). Same `Kind::Select` AST/checker node throughout -- no syntax change, no checker change; `xs | select(pred)` keeps its current meaning across all 7 backends.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
@@ -446,7 +446,7 @@
   kind: build
   needs: [dense-tensor-type]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: infinite-streams-design
   title: 'Maintainer note (composed 2026-09-09, verbatim): "we need to think about the concept

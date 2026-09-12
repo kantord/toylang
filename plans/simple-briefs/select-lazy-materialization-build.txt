@@ -1,0 +1,66 @@
+Board row `select-lazy-materialization-build` (gh:176). Builds offload-boundary-design's Q22
+ruling (RATIFIED, 2026-09-07, reconfirmed by select-shared-mechanism-design's checkpoint,
+wizard submission 2026-09-11): `select` keeps its current `Kind::Select` AST/checker node and
+its current meaning (`xs | select(pred)` unchanged across all 7 backends, no syntax change, no
+checker change) -- only the *representation* changes, from an eager filtered copy to a lazy
+mask/selection-vector.
+
+## Current state (eager, what you are replacing)
+
+Every backend implements `Kind::Select` by eagerly building a new filtered collection right
+away. Example, Go (`src/emit_go.rs`):
+
+```go
+func tlSelect[T any](src []T, pred func(T) bool) []T {
+	out := []T{}
+	for _, e := range src {
+		if pred(e) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+```
+
+called at the `Kind::Select` emit site (`src/emit_go.rs:1336-1345`). Every other backend
+(`emit_js.rs`, `emit_py.rs`, `emit_lua.rs`, `emit_rs.rs`, `emit_jq.rs`, `emit_llvm.rs`) has the
+same shape: a helper that walks the source once and materializes a new, shorter collection
+immediately, before anyone asks for an element.
+
+## What to build instead
+
+Replace the eager filter with a lazy pair behind the same `Vec`-shaped value: `{source, mask}`,
+where `mask` is a selection vector or a bitmask + popcount table built once (O(n) over the mask
+bits, O(1) per indexed access afterward). Do NOT build a new `Type::Vec`-adjacent value kind or
+change `Kind::Select`'s AST/checker shape -- this is purely a change to how each backend's
+`Kind::Select` emit site represents the *result*, mirroring how `tensor` stays a plain `Vec`
+underneath (see the sibling `dense-tensor-type-build` row) rather than a new type.
+
+Compaction: only when the selected value gets its first strong (non-transient) reference --
+reuse the input's storage in place if the source is uniquely referenced at that point, copy
+otherwise. This is the same provably-one-reference condition `mutation-semantics-spike`
+(`plans/mutation-semantics-spike.md`) already established for the fused-loop/copy-elision
+analysis: a name with exactly one use, that use consuming, no use following it, decidable from
+the TIR's occurrence-counting scope walk (see that file's "(2) Is the rule decidable from the
+current TIR?" section) without a borrow checker. Reuse that same analysis/pattern rather than
+inventing a second reference-counting mechanism.
+
+Scope: change the representation and compaction timing only, across all 7 backends
+(`emit_go.rs`, `emit_js.rs`, `emit_py.rs`, `emit_lua.rs`, `emit_rs.rs`, `emit_jq.rs`,
+`emit_llvm.rs`) -- the corpus harness requires every backend to agree on a program's output.
+`Kind::Select`'s AST node, the checker, and `select`'s observable semantics (what elements come
+out, in what order) do not change; only when/how the underlying storage is materialized changes.
+If a backend cannot express deferred materialization cleanly (e.g. `jq`'s own native filter is
+already lazy in its evaluation model -- confirm this before assuming work is needed there), say
+so in the self-report rather than forcing an artificial rewrite.
+
+Out of scope: no new value kind, no syntax change, no checker change, no change to `select`'s
+result order or elements -- this is a backend-representation optimization only.
+
+Done-gate: a program that does `xs | select(pred) | .[i]` for an index that would previously
+have forced full eager materialization now only forces work up to what's needed to answer that
+index (verify via a case large enough that eager-vs-lazy is observable, e.g. timing or an
+element that would error under strict eager evaluation if reached, on backends where that is
+meaningful) -- AND the full corpus-conformance suite still agrees identically across all 7
+backends on existing `select` programs (no behavior change, only a representation change).
+`just check` passes.

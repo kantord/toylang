@@ -1,67 +1,105 @@
-A previous dispatch completed this task, but landing the branch on main
-FAILED: the full test suite went red (landing attempt 1 of 3). The exact evidence:
+This is redispatch attempt 5 on this row. The previous attempt (63fdadcd) got the actual
+work right and self-verified it, but ran out of turn budget before finishing the full `just
+check` gate because it spent too long improvising a TypeScript install. This brief gives you
+the exact already-working fix and the exact already-working tsc install, in that order, so you
+can spend your turns on running the full check rather than rediscovering either.
 
-        PASS [   1.161s] (426/437) toylang::ts_types tsc_accepts_the_declaration_and_consumer
-        PASS [  14.184s] (427/437) toylang::corpus every_backend_agrees_and_is_right_shard_5
-        PASS [  10.565s] (428/437) toylang::corpus every_backend_agrees_and_is_right_shard_7
-        PASS [  15.977s] (429/437) toylang::corpus every_backend_agrees_and_is_right_shard_4
-        PASS [  16.283s] (430/437) toylang::corpus every_backend_agrees_and_is_right_shard_3
-        PASS [  10.846s] (431/437) toylang::corpus every_backend_agrees_and_is_right_shard_6
-        PASS [  16.788s] (432/437) toylang::corpus every_backend_agrees_and_is_right_shard_2
-        PASS [  16.849s] (433/437) toylang::corpus every_backend_agrees_and_is_right_shard_1
-        PASS [  16.997s] (434/437) toylang::corpus every_backend_agrees_and_is_right_shard_0
-        PASS [  30.742s] (435/437) toylang::backend_llvm native_agrees_where_it_compiles
-        PASS [  34.719s] (436/437) toylang::backend_rust rust_agrees_where_it_compiles
-        SLOW [> 60.000s] (───────) toylang::docs every_fragment_is_a_real_program
-        SLOW [>120.000s] (───────) toylang::docs every_fragment_is_a_real_program
-        FAIL [ 150.599s] (437/437) toylang::docs every_fragment_is_a_real_program
-  stdout ───
+Do these in order. Do NOT explore or redesign anything -- every content decision below is
+already final.
 
-    running 1 test
-    test every_fragment_is_a_real_program has been running for over 60 seconds
-    test every_fragment_is_a_real_program ... FAILED
+## Step 1: provision tsc first (fast path, already verified to work)
 
-    failures:
+The sandbox has no npm and corepack's pnpm shim is broken, so `just check`'s
+`tsc_accepts_the_declaration_and_consumer` test has no compiler to run. Fix: download the
+TypeScript npm tarball and unpack it directly, no package manager needed:
 
-    failures:
-        every_fragment_is_a_real_program
+```
+mkdir -p site/node_modules/typescript
+curl -sL https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz | tar xz -C site/node_modules/typescript --strip-components=1
+mkdir -p site/node_modules/.bin
+ln -sf ../typescript/bin/tsc site/node_modules/.bin/tsc
+site/node_modules/.bin/tsc --version
+```
 
-    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 150.58s
+Confirm the version print works before moving on. `site/node_modules` is gitignored, so this
+is sandbox-local setup, not a repo change -- do not add it to the patch.
 
-  stderr ───
+## Step 2: replace docs/reference/operators/update.md with this exact final content
 
-    thread 'every_fragment_is_a_real_program' (3371499) panicked at tests/docs.rs:108:5:
-    21 of 173 docs fragments failed:
-    BROKEN  docs/reference/operators/update.md:8: lua could not run: expected end of program, found `as` (at byte 30)
-    BROKEN  docs/reference/operators/update.md:8: js could not run: expected end of program, found `as` (at byte 30)
-    BROKEN  docs/reference/operators/update.md:8: native could not run: expected end of program, found `as` (at byte 30)
-    BROKEN  docs/reference/operators/update.md:8: jq could not run: expected end of program, found `as` (at byte 30)
-    BROKEN  docs/reference/operators/update.md:8: go could not run: expected end of program, found `as` (at byte 30)
-    BROKEN  docs/reference/operators/update.md:8: py could not run: expected end of program, found `as` (at byte 30)
-    BROKEN  docs/reference/operators/update.md:8: rust could not run: expected end of program, found `as` (at byte 30)
-    BROKEN  docs/reference/operators/update.md:24: lua could not run: expected `)`, found `,` (at byte 6)
-    BROKEN  docs/reference/operators/update.md:24: js could not run: expected `)`, found `,` (at byte 6)
-    BROKEN  docs/reference/operators/update.md:24: native could not run: expected `)`, found `,` (at byte 6)
-    BROKEN  docs/reference/operators/update.md:24: jq could not run: expected `)`, found `,` (at byte 6)
-    BROKEN  docs/reference/operators/update.md:24: go could not run: expected `)`, found `,` (at byte 6)
-    BROKEN  docs/reference/operators/update.md:24: py could not run: expected `)`, found `,` (at byte 6)
-    BROKEN  docs/reference/operators/update.md:24: rust could not run: expected `)`, found `,` (at byte 6)
-    BROKEN  docs/reference/operators/update.md:39: lua could not run: `*` does not apply to Vec<Int> (at byte 0)
-    BROKEN  docs/reference/operators/update.md:39: js could not run: `*` does not apply to Vec<Int> (at byte 0)
-    BROKEN  docs/reference/operators/update.md:39: native could not run: `*` does not apply to Vec<Int> (at byte 0)
-    BROKEN  docs/reference/operators/update.md:39: jq could not run: `*` does not apply to Vec<Int> (at byte 0)
-    BROKEN  docs/reference/operators/update.md:39: go could not run: `*` does not apply to Vec<Int> (at byte 0)
-    BROKEN  docs/reference/operators/update.md:39: py could not run: `*` does not apply to Vec<Int> (at byte 0)
-    BROKEN  docs/reference/operators/update.md:39: rust could not run: `*` does not apply to Vec<Int> (at byte 0)
-    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Create (or overwrite) `docs/reference/operators/update.md` with exactly this text -- this
+content is already confirmed by a prior attempt to pass
+`cargo nextest run -E 'test(every_fragment_is_a_real_program)'`:
 
-  Cancelling due to test failure: 
-────────────
-     Summary [ 158.189s] 437 tests run: 436 passed, 1 failed, 1 skipped
-        FAIL [ 150.599s] (437/437) toylang::docs every_fragment_is_a_real_program
-error: test run failed
-error: recipe `test` failed on line 7 with exit code 100
+```
+# The record-forming update
 
+`db.color = color` writes a field into a record, producing a new record with that field
+(re)bound. Mutation is a value out, not a side effect: the input record is left alone and
+the result is a fresh record sharing its unchanged fields, the same way projection and
+every other operator produce values.
 
-Your job now is ONLY to make this branch land: fix whatever the evidence above
-shows failing, and re-run the verify command yourself. Do not start new feature work.
+> **Ratified design, not yet built.** The record-forming update below is the settled design
+> for how record-forming updates typecheck and combine, but the compiler does not implement
+> it yet. It is documented here so the decision is not lost, not as behavior that already
+> runs.
+
+## `=` is `One`-typed
+
+`=` typechecks only when its right-hand side yields exactly one value ([`One<T>`](../types/stream.md)).
+Its right-hand side is an ordinary expression, so if it yields several values the whole
+update would fork into several results; the `One` requirement makes that hazard a type
+error rather than a naming problem. When the right-hand side does fork, bind it to a plain
+name first and then assign that name:
+
+    ("red", "blue") as color | db.color = color
+
+## `Vec op Vec` is cartesian
+
+For every binary operator, `Vec op Vec` is cartesian by default -- each value on the left
+meets each value on the right -- matching jq 1.8.2's own default. No new builtin is needed
+to opt into that behavior:
+
+    [1, 2] * [10, 100]
+```
+
+Note the two example blocks are deliberately plain indented text, NOT ```toylang fenced code
+blocks -- the design is ratified but not implemented, so there is nothing runnable to fence.
+Fencing them as `toylang` is what breaks `every_fragment_is_a_real_program` (the harness tries
+to execute every fenced block across all 7 backends).
+
+## Step 3: delete the now-redundant section from draft.md
+
+In `draft.md`, delete the entire `### UNDECIDED: what to call the record-forming update`
+section (from that heading down to, but not including, the next `##`-level heading
+`## Mutation as an optimization: privileged and shared references`). That content has been
+superseded by the new docs page above.
+
+## Step 4: add the board follow-up row
+
+Append this row to the end of `plans/board.yaml`:
+
+```yaml
+- id: mutation-semantics-design
+  title: 'Grill privileged/shared-reference mutation-as-optimization now that the spike
+    (plans/mutation-semantics-spike.md) has grounded the "provably one reference" analysis --
+    this is the decide row draft-mutation-migration''s partial migration has been waiting on.'
+  kind: decide
+  needs: [mutation-semantics-spike]
+  status: todo
+```
+
+## Step 5: verify and extract patch
+
+Run, in this order, leaving as much turn budget as possible for the full run:
+
+```
+cargo nextest run -E 'test(every_fragment_is_a_real_program)'
+just check
+```
+
+Both must pass. `just check` runs the full suite (~150s) -- let it run to completion, do not
+cancel it early. Once green, extract the patch as usual (repo-tracked files only -- do not
+include `site/node_modules`).
+
+Done-gate: `just check` exits 0, and the patch touches only
+`docs/reference/operators/update.md`, `draft.md`, and `plans/board.yaml`.
