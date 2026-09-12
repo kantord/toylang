@@ -1,0 +1,49 @@
+Board row `module-routing-syntax-build-ast` (gh:167). Step 1 of 3 for `@(path)` module-as-
+function routing-arm syntax. This step only: add a bare AST variant, no parser change, no
+runtime behavior change.
+
+Background: the single `module-routing-syntax-build` row got STUCK twice (6bc1de70, 301af3a9),
+both attempts making zero `write_file` calls across a full 30-turn budget, both self-reports
+saying "still in the exploration phase (reading ast.rs/parse.rs), not blocked" -- reading, not
+writing, because the old full-scope brief required locating every exhaustive-match site before
+touching any of them. The maintainer's ruling was to split into single-purpose steps. Make your
+first tool call a `write_file` (or edit) on `src/ast.rs` -- do not spend turns re-deriving
+context that's already given below.
+
+Step 1, concretely:
+
+1. Add this variant to the `Expr` enum in `src/ast.rs`:
+
+```rust
+// AST: new Expr variant, path stored as a raw string (no resolution yet)
+Expr::ModuleRoute { path: String, span: Span }
+```
+
+Match the existing `Expr` variant style in that file (field naming, `Span` usage) -- look at a
+neighboring variant for the exact convention, but do this look-up AFTER adding the variant
+skeleton, not before.
+
+2. Run `cargo build` (or `just check`). It will fail with "non-exhaustive patterns" at every
+`match expr { ... }` (or equivalent) site that doesn't yet handle `Expr::ModuleRoute`. Fix each
+one, one at a time, by adding a minimal placeholder arm, e.g.:
+
+```rust
+Expr::ModuleRoute { .. } => unreachable!("module routing: AST-only stub, not wired yet"),
+```
+
+(or whatever idiom the surrounding match already uses for a stub/unimplemented arm -- match the
+local convention at each site rather than a single copy-pasted line everywhere).
+
+Known sites likely include `src/emit_toylang.rs` and 4 separate `match expr {` blocks in
+`src/check/mod.rs` (roughly lines 2529, 3943, 4078, 4670 as of this writing -- line numbers may
+have drifted, let the compiler tell you the real current sites rather than trusting these).
+Do NOT hand-derive the full list by grepping first -- let each compile error name the next site,
+that is the whole point of this step's approach.
+
+3. Nothing constructs `Expr::ModuleRoute` yet (no parser change in this step), so this change
+must not alter any existing program's behavior. Do not touch the parser, the checker's real type
+rules, or any emit backend's codegen beyond the placeholder stub arms.
+
+Done-gate: `cargo build` (or `just check`) compiles clean with the new `Expr::ModuleRoute`
+variant present, referenced only by placeholder/unreachable arms, and no existing test's
+behavior changes.

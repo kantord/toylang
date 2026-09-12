@@ -1,64 +1,78 @@
-**Before anything else**: run `pnpm install` in `site/` (or otherwise make a real `tsc`
-available, e.g. `npm install -g typescript`, or point `$TSC` at one) so
-`tests/ts_types.rs`'s `tsc_accepts_the_declaration_and_consumer` gate does not fail `just check`
-for reasons unrelated to this row's own change. A prior attempt (simple_dispatch.py run
-724e4eb6, 2026-09-11) reached `just check` with a correct-looking change and failed here, then
-ran out of turn budget fixing it mid-flight -- do this step first, before touching draft.md, so
-a turn-budget cutoff can't strand you mid-fix again.
+Board row `draft-mutation-migration`. STUCK 4/4 attempts so far, all on the same shape: zero
+repo changes for 12+ consecutive turns before the turn budget ran out. The last reshape (put
+`tsc` provisioning first) fixed the earlier "ran out of turns mid-fix on an unrelated gate"
+failure but did NOT fix the zero-write problem -- the agent still never got to the actual
+draft.md edit. This brief flips the order: make the documentation edit FIRST, verify last.
 
-Board row `draft-mutation-migration`: record the mutation decisions that have actually been
-ratified and delete only the matching draft.md section. This is a PARTIAL migration -- read
-carefully, do not delete more than what is actually ratified.
+Make your first tool call an edit to `draft.md`. Do not read other files, grep the codebase, or
+plan out loud first -- everything you need to make the edit is below.
 
-`draft.md` has two sections under scope, in different states:
+This is a **partial** migration -- do not delete more than what is actually ratified. `draft.md`
+has two relevant sections in different states:
 
-1. "UNDECIDED: what to call the record-forming update" (draft.md:489-537) -- RATIFIED, retire it.
-   This is exactly `binary-op-multiplicity-design`'s Q2/Q3, both now ratified (see that row's
-   title in plans/board.yaml or plans/board-archive.yaml):
-   - Q3: option B -- `=` typechecks only when its right-hand side yields exactly one value
-     (`One<T>`); forking to a record requires an explicit bind first, e.g.
-     `("red","blue") as c | db.color = c`. Do NOT use a `$`-prefixed alias in any example --
-     the maintainer explicitly rejected prefacing variable names with `$`; use a plain bound
-     name.
-   - Q2: option A -- `Vec op Vec` is cartesian by default for every binary operator (matches jq
-     1.8.2's own default), no new builtin needed.
+## 1. "UNDECIDED: what to call the record-forming update" (draft.md:489-537) -- RATIFIED, retire it
 
-   Document the settled behavior (the `One`-typed `=`, the explicit-bind-to-fork idiom, and the
-   `Vec op Vec` cartesian default) in the appropriate reference page(s) under `reference/`,
-   following the existing convention for operator/update documentation there. Verify with a
-   small `just check` repro that `db.color = ("red","blue")` is in fact rejected and the
-   bind-then-assign form works, if the feature is actually implemented; if `One`-typed `=` is
-   not yet implemented, say so plainly in the reference page (ratified design, not yet built)
-   rather than documenting aspirational behavior as real.
+This is `binary-op-multiplicity-design`'s Q2/Q3, both ratified:
 
-   Once documented, delete the "UNDECIDED: what to call the record-forming update" subsection
-   (draft.md:489-537) including its options A-E list. The parent "## Mutation" section's intro
-   (draft.md:476-487, the cell/shadow example) stays -- it is not part of this UNDECIDED
-   subsection and is already-settled behavior, not a draft.
+- Q3: option B -- `=` typechecks only when its right-hand side yields exactly one value
+  (`One<T>`); forking to a record requires an explicit bind first, e.g.
+  `("red","blue") as color | db.color = color`. Do NOT use a `$`-prefixed name in any example --
+  the maintainer explicitly rejected `$`-prefixed variable names. Use a plain bound name.
+- Q2: option A -- `Vec op Vec` is cartesian by default for every binary operator (matches jq
+  1.8.2's own default), no new builtin needed.
 
-2. "Mutation as an optimization: privileged and shared references" (draft.md:539-570) -- NOT
-   ratified, do NOT delete. Board's `needs: [mutation-semantics-spike, binary-op-multiplicity-design]`
-   looks satisfied (both rows show `status: done`), but `mutation-semantics-spike`'s own ruling
-   text (plans/board-archive.yaml, plans/mutation-semantics-spike.md) says it was a *spike*
-   only -- "will not ratify without prototyping -- spike the 'provably one reference exists'
-   static analysis... before a real decide row reopens this." No decide row for the
-   privileged/shared-reference mutation design itself has ever run.
+Edit steps:
+a. Find the right `reference/` page for operator/update documentation (follow the existing
+   convention there for how operators and mutation are documented -- check the directory
+   listing under `docs/reference/` if you need to confirm the file, but do this quickly, not as
+   an open-ended exploration).
+b. Add the settled behavior there: the `One`-typed `=`, the explicit-bind-to-fork idiom (with an
+   example using a plain bound name, not `$color`), and the `Vec op Vec` cartesian default. If
+   `One`-typed `=` is not actually implemented in the compiler yet (check quickly), say so
+   plainly in the reference page ("ratified design, not yet built") rather than documenting
+   aspirational behavior as if it already runs.
+c. Delete the "UNDECIDED: what to call the record-forming update" subsection from `draft.md`
+   (lines 489-537 as of this writing -- confirm the exact current range before deleting),
+   including its options A-E list. Leave the parent "## Mutation" section's intro
+   (draft.md:476-487, the cell/shadow example) untouched -- it is separate, already-settled
+   content, not part of this UNDECIDED subsection.
 
-   Leave draft.md:539-570 exactly as is. Instead, add a new board row to plans/board.yaml:
-   `kind: decide`, `status: todo`, `needs: [mutation-semantics-spike]`, id
-   `mutation-semantics-design`, title summarizing: grill privileged/shared-reference
-   mutation-as-optimization now that the spike (plans/mutation-semantics-spike.md) has grounded
-   the "provably one reference" analysis -- this decide row is what this section has been
-   waiting on. This makes the real remaining gap trackable on the board instead of silently
-   missing.
+## 2. "Mutation as an optimization: privileged and shared references" (draft.md:539-570) -- NOT ratified, do NOT delete
+
+`needs: [mutation-semantics-spike, binary-op-multiplicity-design]` looks satisfied on the board
+(both show done), but `mutation-semantics-spike` was a *spike* only -- it explicitly said it
+will not ratify without a real decide row reopening the question, and no such decide row has
+ever run. Leave `draft.md:539-570` exactly as is. Instead, append a new row to `plans/board.yaml`:
+
+```yaml
+- id: mutation-semantics-design
+  title: 'Grill privileged/shared-reference mutation-as-optimization now that the spike
+    (plans/mutation-semantics-spike.md) has grounded the "provably one reference" analysis --
+    this is the decide row draft-mutation-migration''s partial migration has been waiting on.'
+  kind: decide
+  needs: [mutation-semantics-spike]
+  status: todo
+```
+
+Run the existing `plans/simple-briefs` YAML/board conventions (single-quoted strings, `''` for
+literal apostrophes) if you adjust the wording -- but keep the row id and needs/kind/status
+fields exactly as above.
+
+## Then, and only then: verify
+
+Run `just check`. If `tests/ts_types.rs`'s `tsc_accepts_the_declaration_and_consumer` fails for
+lack of a real `tsc`, run `pnpm install` in `site/` (or `npm install -g typescript`, or point
+`$TSC` at an existing install) to fix it -- but do this AFTER your draft.md/reference-doc edits
+and the board.yaml addition are already made and saved, not before. If you run low on turn
+budget while fixing an unrelated `tsc` gate, stop and report your documentation edit as done
+with the gate failure noted separately, rather than leaving the edit itself unmade.
 
 Done-gate:
-- draft.md no longer contains the "UNDECIDED: what to call the record-forming update"
-  subsection; its ratified content is salvaged into the reference docs.
-- draft.md still contains "Mutation as an optimization: privileged and shared references",
+- `draft.md` no longer contains the "UNDECIDED: what to call the record-forming update"
+  subsection; its ratified content is captured in the appropriate reference page(s).
+- `draft.md` still contains "Mutation as an optimization: privileged and shared references",
   unchanged.
-- `just check` passes.
-- A new `mutation-semantics-design` board row exists in plans/board.yaml (todo, decide,
-  needs: [mutation-semantics-spike]).
-- Note explicitly in your summary that this is a partial migration -- the remaining work is
-  carried forward by the new `mutation-semantics-design` row, not finished here.
+- `plans/board.yaml` has a new `mutation-semantics-design` row (todo, decide) as above.
+- `just check` passes (or, if only the `tsc` gate fails and you've confirmed via `git stash`
+  that it's pre-existing/environmental, say so plainly rather than silently treating it as
+  green).

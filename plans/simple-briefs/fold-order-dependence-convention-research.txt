@@ -1,0 +1,50 @@
+Board row `fold-order-dependence-convention-research`. This is a research row: produce a
+markdown writeup, no compiler/toylang code changes.
+
+Background: `search-and-fold-design`'s open sub-question (applicative fold-block syntax) got a
+maintainer answer that leaned toward "reduce is the generic, order-sensitive primitive; fold is
+reduce restricted to operations where order doesn't matter (associative combiners)." The
+maintainer's own words: "i think it's more complex than that because there is also the question
+of associativity... but this definitely sounds like something that is too complex to represent
+in the type system, so i am wondering what is the good way to deal with that." toylang has no
+mechanism to statically check that a combiner is associative/commutative, and the maintainer
+already assumes that's out of reach for the type system -- so this research is about
+*convention*, not type-checking.
+
+Task: write `plans/fold-order-dependence-convention-research.md` surveying how real languages
+and libraries handle the distinction between an order-dependent fold (sequential, left-to-right
+or right-to-left, result can differ by order) and an order-independent one (associative/
+commutative combiner, order-parallelizable), when it is NOT enforced by the type system. Ground
+every claim in the actual documented behavior of a real language/library -- verify by checking
+official docs or specs, don't rely on general impressions. Suggested angles (use what you can
+verify, drop what you can't):
+
+- Rust's `Iterator::fold`: does its documentation make an explicit left-to-right order
+  guarantee? Compare to `Iterator::sum`/`Iterator::product`, which assume associativity/
+  commutativity for parallel iterators (Rayon) -- how does Rayon's docs describe the caller's
+  obligation when providing a non-associative combiner to a parallel fold?
+- Haskell's `Foldable` type class: `foldl` vs `foldr` vs `fold`/`foldMap` (which requires a
+  `Monoid`, i.e. an associative operation with identity, encoded in the type via the `Monoid`
+  constraint) -- this is a real example of a *type-level* (not just convention) distinction
+  worth citing even though toylang's case is conceded to be convention-only.
+- OCaml's `List.fold_left` vs `List.fold_right`: two distinctly-named functions rather than one
+  polymorphic-order one -- does the naming-as-documentation approach avoid needing an
+  associativity check at all?
+- Any real-world footgun/bug report you can find (in release notes, issue trackers, or language
+  docs themselves) caused by assuming a fold was associative when it wasn't, or vice versa.
+
+Then write a short "implications for toylang" section: given toylang cannot check
+associativity, what naming/documentation/API-shape choices (if any) reduce the risk of a caller
+misusing a fold-shaped builtin with a non-associative combiner? Do not propose new toylang
+syntax or make a design decision -- that is the job of the next grilling round, not this
+research. Stay descriptive: what other languages do and why, not what toylang should do.
+
+Done-gate: `plans/fold-order-dependence-convention-research.md` exists, cites at least two real
+language/library precedents with specifics you actually verified (function names, real
+documented guarantees, not invented), and ends with a short "implications for toylang" section
+that stops short of prescribing new syntax. `just check` still passes (no compiler code
+changed).
+
+Write the file first -- your first edit should be creating this markdown file with a rough
+outline, then fill it in -- rather than spending the whole budget researching before writing
+anything to disk.

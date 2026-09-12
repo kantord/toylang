@@ -3,23 +3,23 @@
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: dsv-partials-migration
   issue: gh:136
-  title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet.'
+  title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet. Neither source_in_fn nor a partial-application-system-build row exists on the board, so `needs` structurally cannot express the real gap -- status set to `proposed` (2026-09-12) so this stops false-reporting as a ready build row (flagged as a recurring false-ready incident, plans/simple-dispatch-design.md, 2026-09-11); set back to `todo` once the real prerequisite rows exist and land.'
   kind: build
   needs: [partial-application-system-design]
   prio: 5
-  status: todo
+  status: proposed
 
 - id: euler-slow-fragments-2
   issue: gh:93
-  title: 'Apply the slow-fragment tier to batch 3''s correct-but-slow problems (gh:90 ruling). Parked after 4 commitless automated runs -- maintainer ruling (2026-09-01): hand off to a privileged manual session rather than redispatch. Prompt drafted at plans/issue-93-privileged-agent-prompt.md. Lane stays escalated (~/.cache/toylang-drive/escalated-issue-93 kept) until that session lands it.'
+  title: 'Apply the slow-fragment tier to batch 3''s correct-but-slow problems (gh:90 ruling). Parked after 4 commitless automated runs -- maintainer ruling (2026-09-01): hand off to a privileged manual session rather than redispatch. Prompt drafted at plans/issue-93-privileged-agent-prompt.md. Lane stays escalated (~/.cache/toylang-drive/escalated-issue-93 kept) until that session lands it. Status set to `proposed` (2026-09-12) since `status: todo` kept round-tripping through every tick''s ready-build-row list despite the do-not-redispatch ruling (flagged as a recurring false-ready incident, plans/simple-dispatch-design.md, 2026-09-11); set back to `todo` once the privileged session lands it or a new ruling supersedes this one.'
   kind: build
   needs: [docs-slow-fragment-tier]
   prio: 3
-  status: todo
+  status: proposed
 
 - id: shell-out-stderr-relay-design
   issue: gh:158
@@ -124,9 +124,27 @@
     produced a correct, add-only patch matching this spec exactly, each confirmed green by the
     agent''s own `just check` run (436/436 on the second). The STUCK label traces to the dispatch
     harness''s own verify/dedup step, not to the code. Retry budget spent -- do NOT redispatch
-    again. Escalated to maintainer: `docs/.grill/sort-by-max-by-rust-helpers-stuck.round.yaml`.'
+    again. Escalated to maintainer: `docs/.grill/sort-by-max-by-rust-helpers-stuck.round.yaml`.
+    Gated on `sort-by-max-by-rust-helpers-stuck-ruling` (added 2026-09-12) instead of a status
+    flip: a `proposed` status here would also have satisfied `sort-by-max-by-rust-wiring`''s own
+    `needs` check (dispatch_state.py''s live-check only excludes `todo`/`delegated`, so anything
+    else reads as "done" to a dependent) -- wrong, since the helpers have not actually landed.
+    A blocking decide row keeps both this row and its dependent correctly un-ready until the
+    round is answered.'
   kind: build
-  needs: [sort-by-max-by-checkpoint-go]
+  needs: [sort-by-max-by-checkpoint-go, sort-by-max-by-rust-helpers-stuck-ruling]
+  status: todo
+
+- id: sort-by-max-by-rust-helpers-stuck-ruling
+  issue: gh:177
+  title: 'Placeholder decide row so `sort-by-max-by-rust-helpers`''s `needs` can correctly gate
+    it (and its dependent, `sort-by-max-by-rust-wiring`) as not-ready while
+    `docs/.grill/sort-by-max-by-rust-helpers-stuck.round.yaml` is unanswered (options: land the
+    already-verified patch directly, fix the dispatch harness''s STUCK classifier first, redispatch
+    a third time, or fold the helpers into the wiring row). Mark this row `status: done` the same
+    tick the round is ruled -- it carries no work of its own.'
+  kind: decide
+  needs: []
   status: todo
 
 - id: sort-by-max-by-rust-wiring
@@ -267,7 +285,7 @@
   kind: build
   needs: [file-visibility-tracking-build]
   prio: 5
-  status: todo
+  status: delegated
 
 - id: module-routing-syntax-build-parse
   issue: gh:167
@@ -341,7 +359,7 @@
   kind: build
   needs: [mutation-semantics-spike, binary-op-multiplicity-design]
   prio: 4
-  status: todo
+  status: delegated
 
 - id: binary-op-multiplicity-design
   title: 'Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update''s spelling -- Q2/Q3 (draft-split). Round 2 answers (multiplicity-and-offload-round2): Q3 RATIFIED -- option B, require One on the right of `=`, forking becomes explicit; maintainer caveat: drop the `$c`-prefixed alias in the option''s preview, "never agreed to prefacing variable names with $" (applies to whatever alias/binding syntax eventually lands, not specific to this row). Q2 still no pick -- maintainer leans B (zip/broadcast) or C (no default, explicit) but wants to understand how much of jq''s magic/expressive power would be lost either way before choosing; needs jq-expressiveness-under-zip-or-explicit-research before a round 3 re-ask. RATIFIED (wizard submission, multiplicity-choicepoint-http round, 2026-09-08): Q2 -- option A, cartesian default. `Vec op Vec` becomes legal and cartesian for every operator (matches jq''s own default, verified against jq 1.8.2), no new builtin. Both Q2 and Q3 now settled; nothing left open for this row.'

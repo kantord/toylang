@@ -1920,3 +1920,29 @@ retry budget for this row marked spent, board row set back to `status: todo` wit
 redispatch" note so it doesn't get retried a third time before the ruling lands. Whoever picks up
 the classifier fix should start from these two patches (`2d5d2c8e`, `6ad359c8`) as known-good
 inputs that were wrongly scored STUCK.
+
+**Incident (2026-09-12): the same false-ready pattern from the 2026-09-11 note recurred unfixed,
+plus a real bug found in the fix this note originally suggested.** All three rows named in this
+tick's `dispatch_trigger()` output (`dsv-partials-migration`, `euler-slow-fragments-2`,
+`sort-by-max-by-rust-helpers`) were, on inspection, not actually dispatchable -- same root cause
+as the prior incident, `needs`/`status` structurally can't see free-text caveats in `title`.
+`sort-by-max-by-rust-helpers` had newly joined this list because its escalation round
+(`sort-by-max-by-rust-helpers-stuck.round.yaml`) is still unanswered, same shape as the other two.
+
+Tried the fix the prior note suggested -- flip `status` to `proposed` (already a valid value in
+`board-lint.py`'s `STATUSES`, but never used anywhere on the board) -- for all three. This
+worked cleanly for `dsv-partials-migration` and `euler-slow-fragments-2` (neither has any
+dependent row). It was WRONG for `sort-by-max-by-rust-helpers`: `dispatch_state.py`'s
+`is_ready()` treats any `needs` id NOT in `live_ids` (`status` in `todo`/`delegated`) as
+satisfied -- so flipping the blocked row to `proposed` made `sort-by-max-by-rust-wiring` (which
+`needs: [sort-by-max-by-rust-helpers]`) read as ready too, even though the helpers have not
+actually landed. Reverted: `sort-by-max-by-rust-helpers` stays `status: todo`, gated instead by
+a new zero-work placeholder decide row (`sort-by-max-by-rust-helpers-stuck-ruling`, `needs: []`,
+`status: todo`) added to its `needs` list -- a `todo` decide row is real, own-purpose scope-free
+"live" state that correctly keeps both the blocked row and its dependent out of the ready list
+via the existing `todo`/`delegated` liveness check, no script change required.
+
+Takeaway for the next person who hits this: `proposed` is only safe to use on a row nothing else
+depends on. For a row with a real dependent, gate it with a `needs`-linked placeholder `decide`
+row instead (mark that placeholder `done` the same tick the real blocker resolves) -- don't
+reach for a bare status flip without checking `grep -n "needs:.*<row-id>"` first.
