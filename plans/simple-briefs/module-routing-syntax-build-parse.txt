@@ -1,3 +1,10 @@
+REDISPATCH NOTE: a prior attempt on this row went STUCK not from a scope problem but from
+running out of budget mid-exploration -- it independently confirmed every location cited below
+(the `Tok` enum and `read_tok` in `src/parse.rs`, the `atom()` function around line 1663, and
+the checker's placeholder arm at `src/check/mod.rs:2924`) and reported nothing blocking, just
+not enough turns left to edit. Trust the line numbers and snippets below without re-verifying
+them first; go straight to editing.
+
 Board row `module-routing-syntax-build-parse` (gh:167), step 2/3 of `@(path)` module-routing
 syntax. Step 1 (`module-routing-syntax-build-ast`) already landed the AST variant:
 

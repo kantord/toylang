@@ -1,3 +1,10 @@
+REDISPATCH NOTE: a prior attempt on this row went STUCK not from a scope problem but from
+running out of budget mid-exploration -- it independently confirmed every location cited below
+(SKILL.md section at line 58, `_land_failed_signal` at line 246, `compute_trigger_and_state` at
+266, `AUDIT_POLICY` at 324, `TICK_POLICY` at 337, and `board-lint.py`'s current content) and
+reported nothing blocking, just not enough turns left to edit. Trust the line numbers below
+without re-verifying them first; go straight to editing.
+
 Board row `coordinator-memory-pool-build`. Implement `plans/coordinator-memory-design.md`
 (status: approved, maintainer annotation 2026-09-11) -- read that file in full first, it is the
 spec. This brief restates the concrete steps and gives you verified-against-today's-tree line
