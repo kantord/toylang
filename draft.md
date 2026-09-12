@@ -486,56 +486,6 @@ c <- c.get() + 1                       # in-place write
 
 Orthogonal to cardinality.
 
-### UNDECIDED: what to call the record-forming update
-
-In jq, `=` is not assignment. Its right-hand side is an ordinary expression, so if it yields
-several values, the whole update yields several results:
-
-```
-{} | .a = (1,2)        # -> {a:1}, {a:2}      TWO objects, not one object with two values
-```
-
-That is genuinely useful. It gives config-matrix expansion, variant generation, and
-property-test input enumeration for free. The problem is purely that `=` *looks* like mutation
-while behaving like a record, and the multiplicity is invisible at the call site.
-
-Compounding it, jq's `=` and `|=` disagree about cardinality and say nothing about it:
-
-```
-{a:1} | .a =  (1,2)      # -> {a:1}, {a:2}    cartesian
-{a:1} | .a |= (.,.+10)   # -> {a:1}           silently keeps only the first
-```
-
-Options under consideration:
-
-**A. Keep `=`.** Familiar to anyone arriving from jq, with zero migration cost. But it
-preserves exactly the readability problem, and the `=` versus `|=` mismatch stays a trap.
-
-**B. Require `One` on the right, and make forking explicit.** `=` typechecks only when its
-right-hand side yields exactly one value, so the surprising case becomes a compile error. When
-a record is wanted, it is written out:
-
-```
-db.color = "red"                        # ok
-db.color = ("red", "blue")              # ERROR: expected One<Str>, found 2 values
-("red","blue") as $c | db.color = $c    # explicit; jq already supports this and it reads better
-```
-
-**C. Two distinct operators.** `=` for the single-valued case, and a visually distinct one for
-the deliberate record, such as `.color =* ("red","blue")` or `.color each= (...)`. Keeps both
-without either being silent, at the cost of more surface.
-
-**D. Drop `=` entirely and keep only `|=`.** All updates go through the update operator, and
-records come from an explicit `cross` or `for` construct. Smallest core, largest departure.
-
-**E. Rename to a functional-update keyword.** `db with .color = "red"`, in the spirit of record
-update in ML-family languages. Removes the mutation reading, but adds a keyword and does not by
-itself resolve the cardinality question.
-
-Leaning towards B, because it makes the hazard a type error rather than a naming problem, and
-the explicit form already exists and reads better. But this interacts with open question 2,
-whether binary operators are cartesian, zipped, or explicit, so it should not be settled alone.
-
 ## Mutation as an optimization: privileged and shared references
 
 TODO (user, 2026-08-28), queued for its own grilling. `Vec` is immutable and should likely
