@@ -58,29 +58,43 @@ def join_trigger(trigger: str, addition: str) -> str:
     return f"{trigger}; {addition}" if trigger else addition
 
 
+def _revive_if_down(check_url: str, cmd: list[str], log_name: str) -> None:
+    try:
+        subprocess.run(["curl", "-s", "-o", os.devnull, "--max-time", "3", check_url], check=True)
+        return
+    except (subprocess.CalledProcessError, OSError):
+        pass
+    with open(LOG_DIR / log_name, "a") as devlog:  # not `log` -- shadows the module-level log() helper
+        subprocess.Popen(
+            cmd, cwd=REPO / "site", stdin=subprocess.DEVNULL, stdout=devlog,
+            stderr=subprocess.STDOUT, start_new_session=True,
+        )
+
+
 def revive_dev_server() -> None:
-    """The maintainer's mail UI depends on the dev server; revive it if a
-    reboot ate it. `subprocess.Popen(..., start_new_session=True)` gives a
-    genuine, independent child via a real fork+exec -- no bash
+    """The maintainer's mail UI (and, since the grill-forest split, 2026-09-11,
+    the separate tools app it moved onto) depends on these dev servers; revive
+    whichever one a reboot ate. `subprocess.Popen(..., start_new_session=True)`
+    gives a genuine, independent child via a real fork+exec -- no bash
     subshell-elision to worry about (bash's `(cmd &) 9>&-` optimization can
     fork the backgrounded job directly off the CURRENT shell with no
     intermediate subshell process at all, which is what made the dev server
     end up a literal child of drive-tick.sh and hung the wrapper 5+ hours,
     2026-09-09 -- Popen's own child process is never the calling process, so
-    this failure mode does not exist here)."""
-    try:
-        subprocess.run(["curl", "-s", "-o", os.devnull, "--max-time", "3",
-                         "http://localhost:5173/toylang/dev/"], check=True)
-        return
-    except (subprocess.CalledProcessError, OSError):
-        pass
-    devserver_log = LOG_DIR / "devserver.log"
-    with open(devserver_log, "a") as devlog:  # not `log` -- shadows the module-level log() helper
-        subprocess.Popen(
-            ["pnpm", "dev", "--port", "5173", "--strictPort"],
-            cwd=REPO / "site", stdin=subprocess.DEVNULL, stdout=devlog,
-            stderr=subprocess.STDOUT, start_new_session=True,
-        )
+    this failure mode does not exist here). Two independent processes, two
+    independent checks: the tools app is deliberately its own Vite config/port
+    (site/vite.tools.config.ts), not something `pnpm dev` on 5173 also serves
+    anymore, so reviving one says nothing about whether the other is up."""
+    _revive_if_down(
+        "http://localhost:5173/toylang/dev/",
+        ["pnpm", "dev", "--port", "5173", "--strictPort"],
+        "devserver.log",
+    )
+    _revive_if_down(
+        "http://localhost:5180/dev/",
+        ["pnpm", "dev:tools"],
+        "toolsserver.log",
+    )
 
 
 def maintainer_input_pending() -> bool:
