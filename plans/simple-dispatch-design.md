@@ -1962,3 +1962,16 @@ research scope was narrowed in the reshaped brief accordingly. Worth watching: i
 `module-routing-syntax-build-ast` goes STUCK a second time with another self-report claiming full
 success, treat it as confirmed classifier flake and escalate via a `docs/.grill/` round rather
 than redispatching a third time.
+
+**Incident (2026-09-12): three redundant `land_lane.py land-patch` processes already queued on
+`land.lock` for the two GREEN rows this tick's trigger named to land.** Found `fold-order-
+dependence-convention-research` (1 process, 6:31 elapsed) and `module-routing-syntax-build-ast`
+(2 duplicate processes, 11:51 and 6:26 elapsed) all fighting over the same flock, despite each
+row already carrying a `land-failed-issue-*` marker from an earlier "main checkout stayed
+busy/dirty" attempt. Some earlier tick (or ticks) re-ran the re-run-land instruction without
+checking `pgrep -af land_lane.py` first, so the same row got launched more than once. Did NOT
+launch a third/fourth attempt this tick -- `acquire_land_lock` has a 1800s bounded wait
+(`land_lane.py:363`), these are 6-12 minutes in, well inside that budget, and will self-serialize
+through the lock. Takeaway for the next tick: before re-running a land-failed row, always
+`pgrep -af land_lane.py` first -- a land-failed marker on disk does not mean the retry it names
+hasn't already been launched by an earlier tick.
