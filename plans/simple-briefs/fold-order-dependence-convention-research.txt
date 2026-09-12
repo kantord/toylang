@@ -1,49 +1,15 @@
-Board row `fold-order-dependence-convention-research`. Retry after a STUCK attempt (`01dc100b`)
-that ran out of turn budget partway through writing the research file. This is a research row:
-produce a markdown writeup, no compiler/toylang code changes.
+A previous dispatch completed this task, but landing the branch on main
+FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 2 of 3). The exact evidence:
 
-Step 0, before anything else: `just check` requires a real `tsc` in `site/node_modules` (test
-`tsc_accepts_the_declaration_and_consumer`) or it fails regardless of your actual change. The
-prior attempt confirmed the fix: download `typescript` from the npm registry into
-`site/node_modules/typescript` and provide a `.bin/tsc` shim so `find_tsc()` resolves it. Do
-this FIRST, verify with a quick `just check` run, then move to the real task below -- don't
-leave it for the end where a turn-budget cutoff can strand you mid-fix.
+error: plans/fold-order-dependence-convention-research.md: already exists in index
+hint: Use 'git am --show-current-patch=diff' to see the failed patch
+hint: When you have resolved this problem, run "git am --continue".
+hint: If you prefer to skip this patch, run "git am --skip" instead.
+hint: To restore the original branch and stop patching, run "git am --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Applying: agent_loop.py output
+Patch failed at 0001 agent_loop.py output
 
-The prior attempt also over-scoped the research. Write ONLY the narrower version below -- it
-already meets the done-gate. Do not attempt the full Haskell/OCaml/Rust-`Sum` survey from an
-earlier draft of this brief.
 
-Background: `search-and-fold-design`'s open sub-question (applicative fold-block syntax) got a
-maintainer answer that leaned toward "reduce is the generic, order-sensitive primitive; fold is
-reduce restricted to operations where order doesn't matter (associative combiners)." The
-maintainer's own words: "i think it's more complex than that because there is also the question
-of associativity... but this definitely sounds like something that is too complex to represent
-in the type system, so i am wondering what is the good way to deal with that." toylang has no
-mechanism to statically check that a combiner is associative/commutative, and the maintainer
-already assumes that's out of reach for the type system -- so this research is about
-*convention*, not type-checking.
-
-Task: write `plans/fold-order-dependence-convention-research.md` covering exactly these two
-verified precedents (both already confirmed real by the prior attempt -- cite them, don't
-re-derive):
-
-- Rust's `Iterator::fold`: its documentation gives an explicit left-associative, left-to-right
-  order guarantee.
-- Rayon's `reduce`/`fold`: the docs warn "the order in which `op` will be applied to reduce the
-  result is not fully specified. So `op` should be associative or else the results will be
-  non-deterministic."
-
-Then write a short "implications for toylang" section: given toylang cannot check
-associativity, what naming/documentation/API-shape choices (if any) reduce the risk of a caller
-misusing a fold-shaped builtin with a non-associative combiner? Do not propose new toylang
-syntax or make a design decision -- that is the job of the next grilling round, not this
-research. Stay descriptive: what other languages do and why, not what toylang should do.
-
-Done-gate: `plans/fold-order-dependence-convention-research.md` exists, cites the two precedents
-above with specifics (function names, real documented guarantees), and ends with a short
-"implications for toylang" section that stops short of prescribing new syntax. `just check`
-still passes (no compiler code changed).
-
-Write the file first -- your first edit should be creating this markdown file with a rough
-outline, then fill it in -- rather than spending the whole budget researching before writing
-anything to disk.
+Your job now is ONLY to make this branch land: fix whatever the evidence above
+shows failing, and re-run the verify command yourself. Do not start new feature work.

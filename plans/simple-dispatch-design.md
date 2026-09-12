@@ -1992,3 +1992,23 @@ it), so that one row alone got a fresh detached `land-patch` retry with its unto
 Nothing currently commits `plans/dispatch-log.csv` after a dispatch batch finishes -- if this
 recurs, check `git status --short` in the main checkout before assuming a `busy/dirty` marker means
 "try again later"; it may mean "something needs committing first."
+
+**Incident (2026-09-12): a stale dispatch batch redispatched three rows minutes after they
+already landed, producing three false STUCK results.** `fold-order-dependence-convention-research`,
+`module-routing-syntax-build-ast`, and `draft-mutation-migration` all landed via `land_lane.py
+land-patch` between 16:17 and 16:22 UTC (merge commits `85d4f9d`/`aadc5db`, `7837afc`/`1b4e19d`,
+`151d4fa` -- the duplicate pairs are the already-documented redundant-`land_lane.py`-process
+incident above, not a new problem). A dispatch batch launched at 16:25 UTC, cloning from `151d4fa`
+(already past all three landings), redispatched the same three row IDs anyway and got STUCK on
+every one -- each self-report shows "no repo changes for 12 consecutive turns", because the work
+the brief described was already merged and there was nothing left to do. Root cause: the board
+rows still carried `status: delegated` (never flipped to `done`/archived after landing), so
+whatever queued the 16:25 batch still saw them as live/pending. Fix applied this tick: archived
+all three rows with `board-archive.py` (their landed diffs were reviewed and match each row's
+scope, so this is a genuine post-land archive, not a workaround) instead of redispatching or
+escalating -- there was no real STUCK to resolve. Takeaway for the next tick: before reshaping a
+STUCK row's brief, check whether the row's own title/scope already shows up landed on `main`
+(`git log --oneline -- <touched files>`) -- a STUCK result minutes after a same-row Land commit is
+a stale-batch artifact, not a real blocker. Board-status flip to `done`/archive should probably
+happen automatically at land time; it currently doesn't, and this is the second incident this
+rollout traceable to that gap (the first being the `busy/dirty` marker above).

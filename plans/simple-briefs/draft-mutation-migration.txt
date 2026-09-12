@@ -1,105 +1,19 @@
-This is redispatch attempt 5 on this row. The previous attempt (63fdadcd) got the actual
-work right and self-verified it, but ran out of turn budget before finishing the full `just
-check` gate because it spent too long improvising a TypeScript install. This brief gives you
-the exact already-working fix and the exact already-working tsc install, in that order, so you
-can spend your turns on running the full check rather than rediscovering either.
+A previous dispatch completed this task, but landing the branch on main
+FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 1 of 3). The exact evidence:
 
-Do these in order. Do NOT explore or redesign anything -- every content decision below is
-already final.
+error: docs/reference/operators/update.md: already exists in index
+error: patch failed: draft.md:486
+error: draft.md: patch does not apply
+error: patch failed: plans/board.yaml:489
+error: plans/board.yaml: patch does not apply
+hint: Use 'git am --show-current-patch=diff' to see the failed patch
+hint: When you have resolved this problem, run "git am --continue".
+hint: If you prefer to skip this patch, run "git am --skip" instead.
+hint: To restore the original branch and stop patching, run "git am --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Applying: agent_loop.py output
+Patch failed at 0001 agent_loop.py output
 
-## Step 1: provision tsc first (fast path, already verified to work)
 
-The sandbox has no npm and corepack's pnpm shim is broken, so `just check`'s
-`tsc_accepts_the_declaration_and_consumer` test has no compiler to run. Fix: download the
-TypeScript npm tarball and unpack it directly, no package manager needed:
-
-```
-mkdir -p site/node_modules/typescript
-curl -sL https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz | tar xz -C site/node_modules/typescript --strip-components=1
-mkdir -p site/node_modules/.bin
-ln -sf ../typescript/bin/tsc site/node_modules/.bin/tsc
-site/node_modules/.bin/tsc --version
-```
-
-Confirm the version print works before moving on. `site/node_modules` is gitignored, so this
-is sandbox-local setup, not a repo change -- do not add it to the patch.
-
-## Step 2: replace docs/reference/operators/update.md with this exact final content
-
-Create (or overwrite) `docs/reference/operators/update.md` with exactly this text -- this
-content is already confirmed by a prior attempt to pass
-`cargo nextest run -E 'test(every_fragment_is_a_real_program)'`:
-
-```
-# The record-forming update
-
-`db.color = color` writes a field into a record, producing a new record with that field
-(re)bound. Mutation is a value out, not a side effect: the input record is left alone and
-the result is a fresh record sharing its unchanged fields, the same way projection and
-every other operator produce values.
-
-> **Ratified design, not yet built.** The record-forming update below is the settled design
-> for how record-forming updates typecheck and combine, but the compiler does not implement
-> it yet. It is documented here so the decision is not lost, not as behavior that already
-> runs.
-
-## `=` is `One`-typed
-
-`=` typechecks only when its right-hand side yields exactly one value ([`One<T>`](../types/stream.md)).
-Its right-hand side is an ordinary expression, so if it yields several values the whole
-update would fork into several results; the `One` requirement makes that hazard a type
-error rather than a naming problem. When the right-hand side does fork, bind it to a plain
-name first and then assign that name:
-
-    ("red", "blue") as color | db.color = color
-
-## `Vec op Vec` is cartesian
-
-For every binary operator, `Vec op Vec` is cartesian by default -- each value on the left
-meets each value on the right -- matching jq 1.8.2's own default. No new builtin is needed
-to opt into that behavior:
-
-    [1, 2] * [10, 100]
-```
-
-Note the two example blocks are deliberately plain indented text, NOT ```toylang fenced code
-blocks -- the design is ratified but not implemented, so there is nothing runnable to fence.
-Fencing them as `toylang` is what breaks `every_fragment_is_a_real_program` (the harness tries
-to execute every fenced block across all 7 backends).
-
-## Step 3: delete the now-redundant section from draft.md
-
-In `draft.md`, delete the entire `### UNDECIDED: what to call the record-forming update`
-section (from that heading down to, but not including, the next `##`-level heading
-`## Mutation as an optimization: privileged and shared references`). That content has been
-superseded by the new docs page above.
-
-## Step 4: add the board follow-up row
-
-Append this row to the end of `plans/board.yaml`:
-
-```yaml
-- id: mutation-semantics-design
-  title: 'Grill privileged/shared-reference mutation-as-optimization now that the spike
-    (plans/mutation-semantics-spike.md) has grounded the "provably one reference" analysis --
-    this is the decide row draft-mutation-migration''s partial migration has been waiting on.'
-  kind: decide
-  needs: [mutation-semantics-spike]
-  status: todo
-```
-
-## Step 5: verify and extract patch
-
-Run, in this order, leaving as much turn budget as possible for the full run:
-
-```
-cargo nextest run -E 'test(every_fragment_is_a_real_program)'
-just check
-```
-
-Both must pass. `just check` runs the full suite (~150s) -- let it run to completion, do not
-cancel it early. Once green, extract the patch as usual (repo-tracked files only -- do not
-include `site/node_modules`).
-
-Done-gate: `just check` exits 0, and the patch touches only
-`docs/reference/operators/update.md`, `draft.md`, and `plans/board.yaml`.
+Your job now is ONLY to make this branch land: fix whatever the evidence above
+shows failing, and re-run the verify command yourself. Do not start new feature work.
