@@ -513,6 +513,11 @@ pub enum Expr {
         body: Box<Expr>,
         span: Span,
     },
+    // AST: new Expr variant, path stored as a raw string (no resolution yet)
+    ModuleRoute {
+        path: String,
+        span: Span,
+    },
 }
 
 #[derive(Debug)]
@@ -583,7 +588,8 @@ impl Expr {
             | Expr::TailPipe { span, .. }
             | Expr::Binary { span, .. }
             | Expr::Logic { span, .. }
-            | Expr::Let { span, .. } => *span,
+            | Expr::Let { span, .. }
+            | Expr::ModuleRoute { span, .. } => *span,
         }
     }
 }

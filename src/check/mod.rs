@@ -2918,6 +2918,10 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Expected::Checked(_) => unreachable!("synth has no want, so nothing is Checked"),
             Expected::Synthesised(tir) => Ok(tir),
         },
+
+        // A `@(path)` module-as-function routing arm is a new AST node with no parser wiring
+        // yet, so nothing constructs it; the arm exists only for the match to be total.
+        Expr::ModuleRoute { .. } => unreachable!("module routing: AST-only stub, not wired yet"),
     }
 }
 
