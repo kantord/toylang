@@ -1,0 +1,118 @@
+Board row `coordinator-memory-pool-build`. Implement `plans/coordinator-memory-design.md`
+(status: approved, maintainer annotation 2026-09-11) -- read that file in full first, it is the
+spec. This brief restates the concrete steps and gives you verified-against-today's-tree line
+numbers, but the design doc's own provenance note warns that an earlier panel round's line
+citations drifted ~20 lines from a same-day check, so treat every line number below (and in the
+doc) as a starting point to confirm with `grep -n`, not ground truth -- the repo has moved a day
+further since the doc was written.
+
+Do this as commit 1, independently:
+
+### Commit 1: delete the dead SKILL.md section
+
+`.claude/skills/drive/SKILL.md` has a `## Stall diagnosis, learned the hard way` section
+(verified today at line 58) that is explicitly superseded history about the retired
+sandbox_dispatch.py/opencode pipeline. Delete the historical content. Replace the header with a
+one-line pointer per the design doc's own suggested wording: "Stall diagnosis: read
+`plans/simple-dispatch-design.md`; nothing pipeline-specific belongs here." Keep this as its own
+commit -- it is independently justified regardless of the rest of this row.
+
+Then, as commit 2, the actual memory-pool feature (all of the below, one commit):
+
+### 1. `plans/coordinator-memory.yaml` (new file)
+
+```yaml
+version: 1
+cap: 8
+slots: []
+```
+
+Before finalizing `cap: 8`, check the open question the design doc raises: does the tick's
+state snapshot have confirmed headroom for the pool's worst case (8 slots x ~62 tokens each,
+~500 tokens)? You cannot fully answer this (no live tick to measure), so use judgment: if
+nothing in the codebase suggests the snapshot is anywhere near a hard size limit, `cap: 8` is
+fine as the doc's own starting guess. Ships with `slots: []` -- no seed data, no backfill from
+the deleted SKILL.md section (the design doc explains at length why seeding from it is wrong:
+wrong content category, already preserved better in `plans/simple-dispatch-design.md`).
+
+A filled slot, once a future tick writes one, looks like:
+
+```yaml
+- id: <short-slug>
+  kind: footprint-conflict | fact-check | other
+  summary: <one line -- the fact a tick would otherwise re-derive>
+  source: <file:line, or the artifact the fact anchors to>
+  written: <tick/date>
+  confirmed: <count of times a later tick relied on it and it still held>
+```
+
+You are not writing any slots yourself -- the pool ships empty, per the design doc's explicit
+"no forced first slot" rollout step.
+
+### 2. `.claude/scripts/drive_tick.py`: read path
+
+Add two functions near the other `_*_signal` functions (e.g. `_land_failed_signal`, currently
+around line 246 -- confirm with `grep -n "_land_failed_signal"`):
+
+- `_memory_slot_state() -> list[str]`: read `plans/coordinator-memory.yaml`, render each live
+  slot as a compact `[mem:<kind> <summary>]`-shaped line (match the terseness of other signal
+  lines already in this file, e.g. how `_land_failed_signal` renders its lines -- read that
+  function for the exact style to mirror). Empty file or missing file -> empty list, no error.
+- `_memory_signal() -> tuple[str, list[str]]`: the trigger-text/state-parts pair shape every
+  other `_*_signal` function in this file returns (mirror `_land_failed_signal`'s return shape
+  exactly).
+
+Wire it into `compute_trigger_and_state()` (grep for that function name; the design doc's last
+verified location was ~251-306 but confirm) alongside the existing `state_parts +=` lines:
+
+```python
+state_parts += safe_signal("coordinator memory", _memory_signal, default=[])
+```
+
+Follow the exact pattern of the adjacent `safe_signal(...)` calls already in that function (e.g.
+the `_land_failed_signal` wiring) -- same `safe_signal` wrapper, same `state_parts +=` shape, so
+one broken slot degrades to an empty signal rather than failing the tick.
+
+### 3. `.claude/scripts/drive_tick.py`: policy text
+
+Two small string edits to the existing `AUDIT_POLICY` and `TICK_POLICY` string constants
+(grep for `AUDIT_POLICY = (` and `TICK_POLICY = (` to find current locations):
+
+- Append one paragraph to `AUDIT_POLICY`: for every live slot in `plans/coordinator-memory.yaml`,
+  re-resolve its `source` and confirm the fact still holds; bump `confirmed` when it does, drop
+  the slot when it does not (the pool's one invalidation rule -- a slot whose `source` no longer
+  resolves to the claimed fact gets dropped, not left stale).
+- Append one paragraph to `TICK_POLICY`, placed immediately before the existing sentence that
+  begins "Record a real, surprising incident (a wrong self-report, a repeated failure shape, a
+  cost anomaly) as a note in plans/simple-dispatch-design.md, not a new file." (grep for that
+  exact phrase to find the insertion point). The new paragraph: a tick may write a slot to
+  `plans/coordinator-memory.yaml` only as a byproduct of real work already being done -- noticing
+  a footprint conflict or a fact worth not re-deriving -- never as a dedicated "check memory"
+  step; incident/procedure narrative still goes to `plans/simple-dispatch-design.md` per the
+  sentence that follows, footprint/fact-check notes go to the memory pool instead. Keep both
+  additions in this file's existing string-literal style (tuple of adjacent string literals,
+  matching quoting and line-wrapping already used throughout `AUDIT_POLICY`/`TICK_POLICY`).
+
+### 4. `.claude/scripts/board-lint.py`: lint
+
+Add `MEMORY_KINDS = {"footprint-conflict", "fact-check", "other"}` near the existing `KINDS`/
+`STATUSES` constants (currently lines 17-18). Add a `lint_memory(path)` function, modeled
+directly on the existing `lint(path, archived)` function in this file: parse the YAML, validate
+`version` and `cap` are present, validate each slot's `kind` is in `MEMORY_KINDS`, validate
+`len(slots) <= cap`. Return a list of error strings, same shape as `lint()`'s return. Wire it
+into `main()` as a third call alongside the existing two (currently lines 57-58):
+
+```python
+errs += lint_memory("plans/coordinator-memory.yaml")
+```
+
+### Done-gate
+
+`just check` passes. `python3 .claude/scripts/board-lint.py` exits 0 against the new
+`plans/coordinator-memory.yaml` (empty `slots: []` is valid). The drive tick script still
+imports/runs without error (a quick `python3 -c "import ast; ast.parse(open('.claude/scripts/drive_tick.py').read())"`
+or equivalent syntax check is enough if there's no fast way to run a real tick in this sandbox).
+
+Do not implement anything beyond what's specified here (no first slot, no extra memory
+categories, no changes to how `simple_dispatch.py` or `land_lane.py` work) -- this row is the
+plumbing only, per the design doc's own scope.

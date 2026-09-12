@@ -1,0 +1,97 @@
+Board row `module-routing-syntax-build-parse` (gh:167), step 2/3 of `@(path)` module-routing
+syntax. Step 1 (`module-routing-syntax-build-ast`) already landed the AST variant:
+
+```rust
+// src/ast.rs:516-519
+// AST: new Expr variant, path stored as a raw string (no resolution yet)
+ModuleRoute {
+    path: String,
+    span: Span,
+},
+```
+
+Your job: add lexer + parser support so `@("path")` parses into `Expr::ModuleRoute { path,
+span }`. No checker/emit change beyond one specific swap described below.
+
+### 1. Lexer: add an `@` token
+
+`src/parse.rs` has a hand-written `Tok` enum (~line 38) and a `read_tok` function (~line 160)
+that matches on the current character to produce single-char tokens, e.g.:
+
+```rust
+// src/parse.rs:214-220
+'(' => single(input, Tok::LParen),
+')' => single(input, Tok::RParen),
+'[' => single(input, Tok::LBracket),
+']' => single(input, Tok::RBracket),
+'{' => single(input, Tok::LBrace),
+'}' => single(input, Tok::RBrace),
+```
+
+Add a `Tok::At` variant to the `Tok` enum, a `Display` arm for it (see the other single-char
+arms in the `Display` impl right below the enum, e.g. `Tok::LParen => "`(`",` around line 124),
+and a lexer arm `'@' => single(input, Tok::At),` alongside the other `single(...)` arms above.
+
+### 2. Parser: recognize `@("path")` as a primary expression
+
+The `atom()` function (~line 1663) is where each leading token becomes an `Expr`. The closest
+existing pattern to copy is `Tok::Dsv`'s parenthesized-string-argument form (~line 1678-1692):
+
+```rust
+// src/parse.rs:1678-1692
+Tok::Dsv => {
+    self.eat(Tok::LParen)?;
+    let (tok, _) = self.advance()?;
+    let Tok::Str(delim) = tok else {
+        return Err(Error::new(
+            span,
+            "`dsv`'s delimiter must be a string literal, as in `dsv(\",\")`"
+                .to_string(),
+        ));
+    };
+    let close = self.eat(Tok::RParen)?;
+    Ok(Expr::Dsv {
+        delim,
+        span: span.to(close),
+    })
+}
+```
+
+Add a `Tok::At` arm in `atom()` with the same shape: eat `(`, require a string literal token
+(error out with a clear message if it's not a string, e.g. "`@` module routing needs a string
+path, as in `@(\"path\")`"), eat `)`, and build:
+
+```rust
+Ok(Expr::ModuleRoute {
+    path,
+    span: span.to(close),
+})
+```
+
+### 3. Swap the checker's placeholder for a non-panicking stub
+
+`src/check/mod.rs:2924` currently has:
+
+```rust
+Expr::ModuleRoute { .. } => unreachable!("module routing: AST-only stub, not wired yet"),
+```
+
+This is reachable now that parsing can construct the variant, so a real program containing
+`@("path")` would panic the compiler instead of erroring cleanly. Swap it for a plain refusal
+that returns an `Err(...)` (match this file's existing `Error::new(span, "...")` convention
+used elsewhere in the same match) instead of panicking -- the exact wording of the message is
+step 3's job, so keep it minimal, e.g. "module routing (`@(...)`) is not supported yet". Do NOT
+touch `src/emit_toylang.rs:667`'s matching `unreachable!(...)` arm -- that stays as-is since a
+program that fails type-checking never reaches emit.
+
+### Done-gate
+
+`just check` (or `cargo build` + `cargo test`) passes, and there is a parse-only test
+(`src/parse.rs` already has a `#[cfg(test)] mod tests` block -- add a test there, following the
+existing style of other parser tests in that module) confirming `@("path")` parses into
+`Expr::ModuleRoute { path: "path".to_string(), .. }` without panicking, and confirming a
+program containing `@("path")` fails type-checking with a clean error (not a panic) rather than
+succeeding, since the checker arm is still a refusal at this step.
+
+Do not implement any real module-routing semantics (resolution, checker acceptance, codegen) --
+that is out of scope, left for step 3 and beyond.

@@ -262,7 +262,7 @@
   kind: build
   needs: [module-routing-syntax-build-ast]
   prio: 5
-  status: todo
+  status: delegated
 
 - id: module-routing-syntax-build-checker
   issue: gh:167
@@ -373,11 +373,11 @@
 
 - id: http-query-sugar-build
   issue: gh:171
-  title: 'Build HTTP query sugar per http-query-sugar-design''s ruling (2026-09-08): `fetch(url)` on the 3 TLS-capable backends only (Go, JS, Python) -- full response record (status/headers/body) via proper structs/enums, not an ad hoc record; a new header representation is needed since toylang has no Map type yet. Lua/jq/Rust/native refuse this program class outright. Once this lands, file a follow-up row for extending HTTP support to the remaining 4 backends (maintainer flagged the design is not "really final" until all backends have it, but explicitly scoped that out of this build). Parked after 3 verified sandboxed build attempts all made zero file changes (not an infra failure -- toolchain ran fine each round) -- maintainer ruling (wizard submission, http-query-sugar-build-sandbox-blocker round, 2026-09-09): hand off to a privileged manual session rather than redispatch. Prompt drafted at plans/issue-171-privileged-agent-prompt.md. Lane stays escalated (~/.cache/toylang-drive/escalated-issue-171 kept) until that session lands it.'
+  title: 'Build HTTP query sugar per http-query-sugar-design''s ruling (2026-09-08): `fetch(url)` on the 3 TLS-capable backends only (Go, JS, Python) -- full response record (status/headers/body) via proper structs/enums, not an ad hoc record; a new header representation is needed since toylang has no Map type yet. Lua/jq/Rust/native refuse this program class outright. Once this lands, file a follow-up row for extending HTTP support to the remaining 4 backends (maintainer flagged the design is not "really final" until all backends have it, but explicitly scoped that out of this build). Parked after 3 verified sandboxed build attempts all made zero file changes (not an infra failure -- toolchain ran fine each round) -- maintainer ruling (wizard submission, http-query-sugar-build-sandbox-blocker round, 2026-09-09): hand off to a privileged manual session rather than redispatch. Prompt drafted at plans/issue-171-privileged-agent-prompt.md. Lane stays escalated (~/.cache/toylang-drive/escalated-issue-171 kept) until that session lands it. Status set to `proposed` (2026-09-12) since `status: todo` kept round-tripping through every tick''s ready-build-row list despite the do-not-redispatch ruling, same recurring-false-ready pattern already flagged for the batch-3 slow-fragment row (plans/simple-dispatch-design.md, 2026-09-11); set back to `todo` once the privileged session lands it or a new ruling supersedes this one.'
   kind: build
   needs: [http-query-sugar-design]
   prio: 4
-  status: todo
+  status: proposed
 
 - id: dense-tensor-type
   issue: gh:175
@@ -434,7 +434,7 @@
     rollout.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: mutation-semantics-design
   title: 'Grill privileged/shared-reference mutation-as-optimization now that the spike
