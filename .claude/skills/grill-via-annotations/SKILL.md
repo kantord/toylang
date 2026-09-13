@@ -215,11 +215,28 @@ there entirely, so the plain docs dev server no longer serves any of this. Start
 as any other dev-server task the coordinator owns (background, verified free port) if it isn't
 already running.
 
-## When not to use it
+## Choosing the mechanism
 
-A single quick ratification with no code context still goes through `AskUserQuestion` (with
-previews). The annotations page (markdown round) earns its setup cost when a round carries one
-discursive thread with real program listings; the wizard earns its when the round is really
-several separable decisions that read better one at a time, each with its own options to weigh
-side by side; a forest round earns its when the round branches on the answer or can't be planned
-in full up front.
+Four options, and the choice is easy to default away from under time pressure -- check this list
+deliberately, don't just reach for whatever was used last time:
+
+- **`AskUserQuestion`** (terminal, no code context): a single quick ratification, nothing to weigh
+  side by side, no real code needed in the ask itself.
+- **Markdown round** (`docs/.grill/<topic>-round-<n>.md`): one discursive thread carrying real
+  program listings, read start to finish.
+- **Wizard round** (`.round.yaml`): several genuinely SEPARABLE decisions, each answerable on its
+  own without needing the others' answers first -- a batch, read one screen at a time.
+- **Forest round** (`.forest.yaml`, see "Forest rounds" below):
+  the round BRANCHES on the answer, or can't be fully planned up front. **The concrete tell:
+  if the maintainer's answer to a wizard question asks for more exploration, raises a new
+  sub-question inline, or is anything other than a clean pick from the options offered, that
+  answer was asking for a forest, not another wizard round.** A real miss, 2026-09-12:
+  `fold-and-infinite-streams` went out as a wizard round; the maintainer's answer to it said,
+  in part, "i think we have to explore this a bit, how other languages do it" -- an explicit
+  request to keep going on the SAME thread, not a ratification of a bundled batch. That answer
+  should have spawned a forest node continuing the conversation, not sat as a finished wizard
+  question. Composing a follow-up as ANOTHER flat wizard round instead of a forest node is the
+  same mistake with different filenames -- it works, but it throws away the actual "why" behind
+  the follow-up (a forest node's `background` can quote exactly what prompted it; a fresh
+  wizard round starts cold) and it's the reason forest usage has stayed near zero despite being
+  built for exactly this shape of exchange.
