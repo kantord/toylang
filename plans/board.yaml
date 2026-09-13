@@ -141,10 +141,16 @@
     `docs/.grill/sort-by-max-by-rust-helpers-stuck.round.yaml` is unanswered (options: land the
     already-verified patch directly, fix the dispatch harness''s STUCK classifier first, redispatch
     a third time, or fold the helpers into the wiring row). Mark this row `status: done` the same
-    tick the round is ruled -- it carries no work of its own.'
+    tick the round is ruled -- it carries no work of its own.
+
+    RULED (wizard submission, sort-by-max-by-rust-helpers-stuck round, 2026-09-13): land the
+    already-verified patch directly, bypassing the automated gate for this row (the STUCK label
+    traced to the dispatch harness''s verify/dedup step, not the code -- both attempts produced
+    a correct, add-only patch independently confirmed green by `just check`). Landing
+    `sort-by-max-by-rust-helpers-6ad359c8.patch` via `land_lane.py land-patch` this tick.'
   kind: decide
   needs: []
-  status: todo
+  status: done
 
 - id: sort-by-max-by-rust-wiring
   issue: gh:177
@@ -264,11 +270,20 @@
     this step must also swap that specific placeholder for a real (still stub-level) arm that
     does not panic -- it can stay a plain `Err(...)` refusal at this point since the exact wording
     lands in step 3. Done-gate: `just check` passes; a parse-only test confirms `@("path")`
-    parses into the new AST node without panicking end-to-end.'
+    parses into the new AST node without panicking end-to-end.
+
+    STUCK 2/2 attempts at the reshaped brief (c3fa89a2, 0c18bd4d) -- both zero `write_file`
+    calls, both self-reports blaming pure budget exhaustion, not scope. Maintainer ruling
+    (wizard submission, stuck-zero-write-pattern-escalation round, 2026-09-13, option A):
+    redispatch narrower one more time -- hand over the exact 3 edits verbatim, tell the agent
+    not to re-derive locations, and drop the test-file requirement entirely (the brief''s prior
+    done-gate wrongly assumed `src/parse.rs` already had a `#[cfg(test)] mod tests` block to
+    extend; it does not). Brief reshaped accordingly in
+    `plans/simple-briefs/module-routing-syntax-build-parse.txt`.'
   kind: build
   needs: [module-routing-syntax-build-ast]
   prio: 5
-  status: delegated
+  status: todo
 
 - id: module-routing-syntax-build-checker
   issue: gh:167
@@ -357,10 +372,117 @@
 
 - id: select-lazy-materialization-build
   issue: gh:176
-  title: 'Spun off from select-shared-mechanism-design''s checkpoint ruling (wizard submission, 2026-09-11): implement offload-boundary-design''s Q22 ruling (RATIFIED, 2026-09-07) for `select` -- replace every backend''s eager `tlSelect`-style filter (e.g. `src/emit_go.rs:1336-1345`) with a lazily-built mask/selection-vector representation behind the same `Vec` (O(1) indexed access via a selection vector or mask+popcount table built once over mask bits), compacting only on the first strong reference (reusing input storage if uniquely referenced, per the same provably-one-reference condition mutation-semantics-spike already uses). Same `Kind::Select` AST/checker node throughout -- no syntax change, no checker change; `xs | select(pred)` keeps its current meaning across all 7 backends.'
+  title: 'Spun off from select-shared-mechanism-design''s checkpoint ruling (wizard submission, 2026-09-11): implement offload-boundary-design''s Q22 ruling (RATIFIED, 2026-09-07) for `select` -- replace every backend''s eager `tlSelect`-style filter (e.g. `src/emit_go.rs:1336-1345`) with a lazily-built mask/selection-vector representation behind the same `Vec` (O(1) indexed access via a selection vector or mask+popcount table built once over mask bits), compacting only on the first strong reference (reusing input storage if uniquely referenced, per the same provably-one-reference condition mutation-semantics-spike already uses). Same `Kind::Select` AST/checker node throughout -- no syntax change, no checker change; `xs | select(pred)` keeps its current meaning across all 7 backends.
+
+    STUCK (agent could only scope a Go-only slice, which it said would violate the
+    cross-backend done-gate as written). Maintainer ruling (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A): split into 7 per-backend
+    build rows below, same shared spec, sequenced by no particular order. This tracking row
+    closes once all 7 land; the cross-backend invariant is checked by the existing full-corpus
+    conformance suite once the last one lands, not by any single dispatch session.'
+  kind: build
+  needs: [select-lazy-materialization-build-go, select-lazy-materialization-build-js, select-lazy-materialization-build-py, select-lazy-materialization-build-lua, select-lazy-materialization-build-rust, select-lazy-materialization-build-jq, select-lazy-materialization-build-llvm]
+  status: todo
+
+- id: select-lazy-materialization-build-go
+  issue: gh:176
+  title: 'select-lazy-materialization, Go backend -- split from `select-lazy-materialization-build`
+    per maintainer ruling (wizard submission, stuck-cross-backend-scope-escalation round,
+    2026-09-13, option A). Replace this backend''s eager `tlSelect`-style filter (currently
+    `src/emit_go.rs:1336-1345`) with a lazily-built mask/selection-vector representation (O(1)
+    indexed access via a selection vector or mask+popcount table built once over mask bits),
+    compacting only on the first strong reference (reusing input storage if uniquely
+    referenced, per mutation-semantics-spike''s provably-one-reference condition). Same
+    `Kind::Select` AST/checker node -- no syntax/checker change; `xs | select(pred)` keeps its
+    current meaning. Per-backend builtin-wiring precedent: `src/emit_go.rs:192` (SUM_HELPER).
+    Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
   kind: build
   needs: []
-  status: delegated
+  status: todo
+
+- id: select-lazy-materialization-build-js
+  issue: gh:176
+  title: 'select-lazy-materialization, JS backend -- split from `select-lazy-materialization-build`
+    per the same ruling as the Go row above (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
+    `src/emit_js.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
+    representation, compacting only on first strong reference; same `Kind::Select` node, no
+    syntax/checker change. Confirm the current filter''s exact location with `grep -n` first --
+    see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
+    Done-gate: this backend''s own conformance tests pass.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: select-lazy-materialization-build-py
+  issue: gh:176
+  title: 'select-lazy-materialization, Python backend -- split from `select-lazy-materialization-build`
+    per the same ruling as the Go row above (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
+    `src/emit_py.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
+    representation, compacting only on first strong reference; same `Kind::Select` node, no
+    syntax/checker change. Confirm the current filter''s exact location with `grep -n` first --
+    see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
+    Done-gate: this backend''s own conformance tests pass.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: select-lazy-materialization-build-lua
+  issue: gh:176
+  title: 'select-lazy-materialization, Lua backend -- split from `select-lazy-materialization-build`
+    per the same ruling as the Go row above (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
+    `src/emit_lua.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
+    representation, compacting only on first strong reference; same `Kind::Select` node, no
+    syntax/checker change. Confirm the current filter''s exact location with `grep -n` first --
+    see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
+    Done-gate: this backend''s own conformance tests pass.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: select-lazy-materialization-build-rust
+  issue: gh:176
+  title: 'select-lazy-materialization, Rust backend -- split from `select-lazy-materialization-build`
+    per the same ruling as the Go row above (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
+    `src/emit_rs.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
+    representation, compacting only on first strong reference; same `Kind::Select` node, no
+    syntax/checker change. Per-backend builtin-wiring precedent: `src/emit_rs.rs:205`
+    (MAX_BY_HELPER). Done-gate: this backend''s own conformance tests pass.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: select-lazy-materialization-build-jq
+  issue: gh:176
+  title: 'select-lazy-materialization, jq backend -- split from `select-lazy-materialization-build`
+    per the same ruling as the Go row above (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
+    `src/emit_jq.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
+    representation where jq''s own semantics allow it, compacting only on first strong
+    reference; same `Kind::Select` node, no syntax/checker change. If jq''s language model makes
+    true laziness impossible for this construct, say so plainly in the self-report rather than
+    forcing a fake implementation -- this is the one backend where the maintainer may need a
+    follow-up ruling. Done-gate: this backend''s own conformance tests pass.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: select-lazy-materialization-build-llvm
+  issue: gh:176
+  title: 'select-lazy-materialization, LLVM backend -- split from `select-lazy-materialization-build`
+    per the same ruling as the Go row above (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
+    `src/emit_llvm.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
+    representation, compacting only on first strong reference; same `Kind::Select` node, no
+    syntax/checker change. Confirm the current filter''s exact location with `grep -n` first --
+    see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
+    Done-gate: this backend''s own conformance tests pass.'
+  kind: build
+  needs: []
+  status: todo
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
@@ -395,11 +517,53 @@
 
 - id: dense-tensor-type-build
   issue: gh:175
-  title: 'Build the dense tensor design per dense-tensor-type''s ruling (2026-09-08): no separate Tensor value kind -- Vec itself is the tensor-capable type (rectangular, shape-checked); `tensor(n; m)` constructor, one stage, no Float/width commitment (Float does not exist yet); `.[]` on a rank-2 tensor yields rows (Q18, already settled); a transpose/column-access view built now, not deferred; nulls hard-fail only at construction, no validity bitmask (maintainer flagged this pick as tentative -- revisit if a real pipeline needs masked nulls).'
+  title: 'Build the dense tensor design per dense-tensor-type''s ruling (2026-09-08): no separate Tensor value kind -- Vec itself is the tensor-capable type (rectangular, shape-checked); `tensor(n; m)` constructor, one stage, no Float/width commitment (Float does not exist yet); `.[]` on a rank-2 tensor yields rows (Q18, already settled); a transpose/column-access view built now, not deferred; nulls hard-fail only at construction, no validity bitmask (maintainer flagged this pick as tentative -- revisit if a real pipeline needs masked nulls).
+
+    STUCK (agent was still mapping the wiring pattern when budget ran out; flagged that
+    `transpose` alone reuses the existing Sum/Max unary-builtin pattern exactly and is
+    independently shippable, but `tensor(n; m)`''s new semicolon call syntax is the genuinely
+    hard, unmapped part). Maintainer ruling (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A): split now -- transpose
+    ships first on a pattern already proven 7 times over, `tensor(n; m)` becomes its own row
+    scoped around the actual hard part. This tracking row closes once both land.'
+  kind: build
+  needs: [dense-tensor-type, tensor-transpose-build, tensor-constructor-build]
+  prio: 3
+  status: todo
+
+- id: tensor-transpose-build
+  issue: gh:175
+  title: 'Implement the `transpose` builtin across all 7 backends (Go, JS, Python, Lua, Rust,
+    jq, LLVM) -- split from `dense-tensor-type-build` per maintainer ruling (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). No new call syntax --
+    reuses the existing unary-builtin wiring pattern exactly like `Sum`/`Max` (`Builtin` enum in
+    `src/tir.rs`, `src/check/mod.rs` type-checking, `src/tags.rs`, and each backend''s emit
+    file''s builtin dispatch table, e.g. `src/emit_rs.rs:868`''s `uses("tl_sum(")` pattern) with a
+    new `tl_transpose`-style helper per backend, signature `Vec<Vec<T>> -> Vec<Vec<T>>`. Since
+    the wiring pattern is already proven 7 times over for Sum/Max, this is a genuine
+    single-session cross-backend row. Done-gate: `just check` passes and transpose produces
+    identical output across all 7 backends on the existing corpus.'
   kind: build
   needs: [dense-tensor-type]
   prio: 3
-  status: delegated
+  status: todo
+
+- id: tensor-constructor-build
+  issue: gh:175
+  title: 'Implement the `tensor(n; m)` constructor builtin (new semicolon-separated call syntax)
+    across all 7 backends -- split from `dense-tensor-type-build` per the same ruling as
+    `tensor-transpose-build` (wizard submission, stuck-cross-backend-scope-escalation round,
+    2026-09-13, option A). This is the harder half: needs new parser/checker support for the
+    semicolon argument form (not yet mapped by any prior attempt) before backend wiring can
+    start. Per `dense-tensor-type`''s ruling: no separate Tensor value kind -- `Vec` itself is
+    the tensor-capable type (rectangular, shape-checked), one stage, no Float/width commitment;
+    nulls hard-fail only at construction, no validity bitmask. Dispatch once
+    `tensor-transpose-build` has landed and its per-backend wiring pattern is confirmed
+    reusable.'
+  kind: build
+  needs: [dense-tensor-type, tensor-transpose-build]
+  prio: 3
+  status: todo
 
 - id: infinite-streams-design
   title: 'Maintainer note (composed 2026-09-09, verbatim): "we need to think about the concept
@@ -437,10 +601,19 @@
     headroom for the ~500-token worst case (8 slots x ~62 tokens); shrink the cap if it does
     not. No forced first slot -- the pool ships with `slots: []` and fills the first time a real
     tick trips over a footprint conflict or fact worth caching, per the design doc''s own
-    rollout.'
+    rollout.
+
+    STUCK 2/2 attempts at the reshaped brief (80461db8, 6f3023bc) -- both zero `write_file`
+    calls; the second attempt did not even produce a self-report (spent its whole completion
+    budget on reasoning). Maintainer ruling (wizard submission,
+    stuck-zero-write-pattern-escalation round, 2026-09-13, option A): redispatch narrower one
+    more time -- hand over the exact confirmed locations verbatim, and split the combined
+    memory-pool commit into smaller per-file steps so a turn-budget cutoff mid-task still
+    leaves usable partial progress instead of an all-or-nothing commit. Brief reshaped
+    accordingly in `plans/simple-briefs/coordinator-memory-pool-build.txt`.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: mutation-semantics-design
   title: 'Grill privileged/shared-reference mutation-as-optimization now that the spike
@@ -448,4 +621,21 @@
     this is the decide row draft-mutation-migration''s partial migration has been waiting on.'
   kind: decide
   needs: [mutation-semantics-spike]
+  status: todo
+
+- id: corpus-implementation-style-review
+  title: 'Maintainer note (composed 2026-09-13, verbatim): "we need tasks to review every
+    current code puzzle implementation to check if our new features now allow for a better
+    implementation sytle, or if there are still problems to report from those." Scope: the
+    existing solved-puzzle programs under `tests/corpus/` (and `examples/`, per
+    `plans/euler-ergonomics.md`) -- re-read each one against whatever has landed since it was
+    first written (recent examples: the Go sort_by/max_by helpers, mutation-semantics landings,
+    dense-tensor/select-lazy work once those land) and check whether a since-added feature now
+    lets it be written more idiomatically, or whether it still exposes a real ergonomics
+    problem worth reporting. This is a review-and-report task, not a build: file follow-up
+    board rows (kind: decide for anything needing a ruling, kind: build for a clear mechanical
+    rewrite) for anything real found, rather than editing corpus programs directly here.'
+  kind: build
+  needs: []
+  prio: 5
   status: todo

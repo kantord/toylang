@@ -93,12 +93,12 @@ program that fails type-checking never reaches emit.
 
 ### Done-gate
 
-`just check` (or `cargo build` + `cargo test`) passes, and there is a parse-only test
-(`src/parse.rs` already has a `#[cfg(test)] mod tests` block -- add a test there, following the
-existing style of other parser tests in that module) confirming `@("path")` parses into
-`Expr::ModuleRoute { path: "path".to_string(), .. }` without panicking, and confirming a
-program containing `@("path")` fails type-checking with a clean error (not a panic) rather than
-succeeding, since the checker arm is still a refusal at this step.
+`just check` (or `cargo build`) passes -- that's it, no test required. Two prior attempts both
+burned their full budget without writing anything, so this attempt's only job is the 3
+mechanical edits above; do not add a test file. (A prior brief wrongly assumed `src/parse.rs`
+already had a `#[cfg(test)] mod tests` block to extend -- it does not, so that requirement is
+dropped here rather than redirected to `tests/`.)
 
 Do not implement any real module-routing semantics (resolution, checker acceptance, codegen) --
-that is out of scope, left for step 3 and beyond.
+that is out of scope, left for step 3 and beyond. Do not add tests -- out of scope for this
+attempt, per the maintainer ruling that dropped it.
