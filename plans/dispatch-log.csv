@@ -40,3 +40,7 @@ c3fa89a2,module-routing-syntax-build-parse,deepseek/deepseek-v4-flash-0731,2026-
 6f3023bc,coordinator-memory-pool-build,deepseek/deepseek-v4-flash-0731,2026-09-12T17:10:05.319490+00:00,2026-09-12T17:12:34.667244+00:00,149.3,STUCK,0.011642,
 6c720903,select-lazy-materialization-build-go,deepseek/deepseek-v4-flash-0731,2026-09-13T11:57:10.131844+00:00,2026-09-13T11:58:55.796038+00:00,105.7,STUCK,0.015839,
 5cd6ccfc,sort-by-max-by-rust-wiring,deepseek/deepseek-v4-flash-0731,2026-09-13T11:57:10.131615+00:00,2026-09-13T12:02:38.066226+00:00,327.9,STUCK,0.020347,/home/kantord/.cache/toylang-simple-dispatch/results/sort-by-max-by-rust-wiring-5cd6ccfc.patch
+01077efe,module-routing-syntax-build-parse,deepseek/deepseek-v4-flash-0731,2026-09-13T11:57:10.131665+00:00,2026-09-13T12:06:57.651777+00:00,587.5,STUCK,0.021467,/home/kantord/.cache/toylang-simple-dispatch/results/module-routing-syntax-build-parse-01077efe.patch
+0adf79ff,select-lazy-materialization-build-py,deepseek/deepseek-v4-flash-0731,2026-09-13T12:26:11.039012+00:00,2026-09-13T12:27:44.880081+00:00,93.8,STUCK,0.009990,
+f2628c7e,select-lazy-materialization-build-lua,deepseek/deepseek-v4-flash-0731,2026-09-13T12:26:11.038756+00:00,2026-09-13T12:28:37.116815+00:00,146.1,STUCK,0.016657,
+063c8fc1,select-lazy-materialization-build-js,deepseek/deepseek-v4-flash-0731,2026-09-13T12:26:11.038469+00:00,2026-09-13T12:28:53.051839+00:00,162.0,STUCK,0.019502,
