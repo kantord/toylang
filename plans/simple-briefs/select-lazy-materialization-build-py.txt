@@ -1,0 +1,77 @@
+Board row `select-lazy-materialization-build-py` (gh:176). Split from the original 7-backend row
+`select-lazy-materialization-build` per maintainer ruling (wizard submission,
+stuck-cross-backend-scope-escalation round, 2026-09-13, option A) -- that row kept going STUCK
+because "all 7 backends in one attempt" was too much surface for one dispatch. This row is
+Python only. Do not touch any other backend file.
+
+Note: the sibling Go row (`select-lazy-materialization-build-go`) already went STUCK once on
+this exact shape of work -- not because the idea was wrong, but because wiring the lazy
+representation into every existing consumer (index, slice, map, iteration, printing, fusion) in
+one pass was too much surface for one dispatch. If you find yourself facing that same breadth
+here, say so precisely in your summary (which consumers you converted, which you didn't, and
+why) rather than pushing through partially -- a clear partial report is more useful than a
+patch that silently drops a consumer.
+
+## What exists today (eager, what you're replacing)
+
+Unlike the Go/JS/Lua backends, Python has no standalone `tl_select`-style helper function --
+`Kind::Select` is emitted as an inline list comprehension at `src/emit_py.rs:634-642`:
+
+```rust
+Kind::Select {
+    source,
+    param,
+    pred,
+} => {
+    let p = local(*param);
+    format!(
+        "[{p} for {p} in {} if {}]",
+        expr(enums, source),
+        expr(enums, pred)
+    )
+}
+```
+
+This eagerly builds a new `list` before anyone asks for an element. There is no existing
+`SELECT_HELPER`-style constant or conditional-inclusion registration to model this on directly
+within `emit_py.rs`'s own Select path -- `src/emit_py.rs:224` (`SUM_HELPER`) and its registration
+at `src/emit_py.rs:365` are this file's precedent for how a *named* runtime helper is defined and
+conditionally included, which you will need since a lazy representation can no longer be a bare
+comprehension.
+
+## What to build instead
+
+Replace the inline comprehension with a call to a new runtime helper (following the
+`SUM_HELPER`/`uses("tl_sum(")` naming and registration precedent) that builds a mask/selection
+representation once (O(n) over the mask), then gives O(1) indexed access into it without copying
+filtered elements out yet. Compact (materialize a real `list`) only on the first strong
+(non-transient) reference -- reusing the source's underlying list in place if the source is
+uniquely referenced at that point, copying otherwise. This mirrors the same provably-one-reference
+condition `mutation-semantics-spike` (`plans/mutation-semantics-spike.md`, "(2) Is the rule
+decidable from the current TIR?") already established for fused-loop/copy-elision: a name with
+exactly one use, that use consuming, no use following it -- decidable from a TIR occurrence-count
+scope walk, no borrow checker, no runtime refcounting.
+
+Do NOT change `Kind::Select`'s AST/checker shape or its observable semantics -- `xs | select(pred)`
+must keep producing the exact same elements in the exact same order as today. This is purely a
+change to how the Python backend *represents* the result between the `select` call and whatever
+consumes it next (indexing, iteration, another pipe stage, printing, etc.).
+
+## Scope
+
+Python backend only (`src/emit_py.rs`). Do not touch `emit_go.rs`, `emit_js.rs`, `emit_lua.rs`,
+`emit_rs.rs`, `emit_jq.rs`, or `emit_llvm.rs` -- those are separate rows.
+
+## Done-gate
+
+This backend's own conformance tests pass (not the full 7-backend corpus suite -- other backends
+haven't been converted yet, so cross-backend agreement isn't the bar here). A program doing
+`xs | select(pred) | .[i]` for an index reachable without full materialization should only force
+work up to what's needed to answer that index -- verify this is actually true of your
+implementation (e.g. via a case where eager-vs-lazy is observable: timing, or an element that
+would error under strict eager evaluation if the whole thing were materialized). `just check`
+passes.
+
+Out of scope: no new `Type::Vec`-adjacent value kind, no syntax change, no checker change, no
+change to `select`'s result order or elements -- this is a backend-representation optimization
+only, scoped to Python.

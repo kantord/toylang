@@ -1,0 +1,90 @@
+Board row `select-lazy-materialization-build-lua` (gh:176). Split from the original 7-backend row
+`select-lazy-materialization-build` per maintainer ruling (wizard submission,
+stuck-cross-backend-scope-escalation round, 2026-09-13, option A) -- that row kept going STUCK
+because "all 7 backends in one attempt" was too much surface for one dispatch. This row is Lua
+only. Do not touch any other backend file.
+
+Note: the sibling Go row (`select-lazy-materialization-build-go`) already went STUCK once on
+this exact shape of work -- not because the idea was wrong, but because wiring the lazy
+representation into every existing consumer (index, slice, map, iteration, printing, fusion) in
+one pass was too much surface for one dispatch. If you find yourself facing that same breadth
+here, say so precisely in your summary (which consumers you converted, which you didn't, and
+why) rather than pushing through partially -- a clear partial report is more useful than a
+patch that silently drops a consumer.
+
+## What exists today (eager, what you're replacing)
+
+`src/emit_lua.rs:15-22`:
+
+```lua
+local function tl_select(src, pred)
+  local out = {}
+  for i = 1, #src do
+    if pred(src[i]) then out[#out + 1] = src[i] end
+  end
+  return out
+end
+```
+
+Registered in the conditional-inclusion table at `src/emit_lua.rs:542`:
+`(used.select, SELECT_HELPER),`
+
+Called at the `Kind::Select` emit site, `src/emit_lua.rs:1178-1186`:
+
+```rust
+Kind::Select {
+    source,
+    param,
+    pred,
+} => format!(
+    "tl_select({}, function({}) return {} end)",
+    expr(enums, source),
+    local(*param),
+    expr(enums, pred)
+),
+```
+
+Today, `tl_select` walks the source once and eagerly builds a new, shorter table before anyone
+asks for an element.
+
+## What to build instead
+
+Replace the eager filter with a lazily-built selection: build a mask/selection-vector once (O(n)
+over the mask bits), then give O(1) indexed access into it without copying the filtered elements
+out yet. Compact (materialize a real table) only on the first strong (non-transient) reference --
+reusing the source's underlying table in place if the source is uniquely referenced at that point,
+copying otherwise. This mirrors the same provably-one-reference condition
+`mutation-semantics-spike` (`plans/mutation-semantics-spike.md`, "(2) Is the rule decidable from
+the current TIR?") already established for fused-loop/copy-elision: a name with exactly one use,
+that use consuming, no use following it -- decidable from a TIR occurrence-count scope walk, no
+borrow checker, no runtime refcounting.
+
+Do NOT change `Kind::Select`'s AST/checker shape or its observable semantics -- `xs | select(pred)`
+must keep producing the exact same elements in the exact same order as today. This is purely a
+change to how the Lua backend *represents* the result between the `select` call and whatever
+consumes it next (indexing, iteration, another pipe stage, etc.). Note Lua tables are 1-indexed
+and use `#src`/`nil`-terminated length semantics -- keep your lazy representation consistent with
+how this file's other helpers (e.g. `tl_map`, `tl_field`) already handle Lua table indexing.
+
+Per-backend builtin-wiring precedent to follow (naming/registration convention):
+`src/emit_lua.rs:209` (`SUM_HELPER`, registered the same way `SELECT_HELPER` is, at
+`src/emit_lua.rs:561`).
+
+## Scope
+
+Lua backend only (`src/emit_lua.rs`). Do not touch `emit_go.rs`, `emit_js.rs`, `emit_py.rs`,
+`emit_rs.rs`, `emit_jq.rs`, or `emit_llvm.rs` -- those are separate rows.
+
+## Done-gate
+
+This backend's own conformance tests pass (not the full 7-backend corpus suite -- other backends
+haven't been converted yet, so cross-backend agreement isn't the bar here). A program doing
+`xs | select(pred) | .[i]` for an index reachable without full materialization should only force
+work up to what's needed to answer that index -- verify this is actually true of your
+implementation (e.g. via a case where eager-vs-lazy is observable: timing, or an element that
+would error under strict eager evaluation if the whole thing were materialized). `just check`
+passes.
+
+Out of scope: no new `Type::Vec`-adjacent value kind, no syntax change, no checker change, no
+change to `select`'s result order or elements -- this is a backend-representation optimization
+only, scoped to Lua.
