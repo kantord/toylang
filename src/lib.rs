@@ -16,6 +16,7 @@ pub mod input;
 pub mod offload;
 pub mod parse;
 pub mod prelude;
+pub mod syntax_gen;
 pub mod tags;
 pub mod tir;
 pub mod ty;
@@ -235,8 +236,7 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
         Backend::Js => {
             let cfg = config::Config::load().map_err(anyhow::Error::msg)?;
             run_node(
-                &emit_js::emit_with(&program, cfg.target, &cfg.web)
-                    .map_err(anyhow::Error::msg)?,
+                &emit_js::emit_with(&program, cfg.target, &cfg.web).map_err(anyhow::Error::msg)?,
                 &feed,
             )
         }

@@ -34,8 +34,11 @@ impl<'i> ParserError<Input<'i>> for Error {
     }
 }
 
+// `pub(crate)` rather than private: `syntax_gen` matches over every variant to derive the
+// syntax-highlighting grammar from this list directly, so a new token is a compile error there
+// until it is categorized, instead of a grammar file nobody remembered to update.
 #[derive(Debug, Clone, PartialEq)]
-enum Tok {
+pub(crate) enum Tok {
     Str(String),
     Int(i64),
     Float(f64),

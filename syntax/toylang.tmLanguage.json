@@ -1,0 +1,49 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "fileTypes": [
+    "toy"
+  ],
+  "name": "toylang",
+  "patterns": [
+    {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.toylang"
+    },
+    {
+      "begin": "\"",
+      "end": "\"",
+      "name": "string.quoted.double.toylang",
+      "patterns": [
+        {
+          "match": "\\\\[\"\\\\/ntr]",
+          "name": "constant.character.escape.toylang"
+        }
+      ]
+    },
+    {
+      "match": "\\b[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?\\b",
+      "name": "constant.numeric.toylang"
+    },
+    {
+      "match": "\\b(?:trait|type|enum|impl|pub|let|fn)\\b",
+      "name": "keyword.control.toylang"
+    },
+    {
+      "match": "\\b(?:stdin|dsv|csv|tsv)\\b",
+      "name": "keyword.other.toylang"
+    },
+    {
+      "match": "\\b(?:and|not|or)\\b",
+      "name": "keyword.operator.logical.toylang"
+    },
+    {
+      "match": "(?:\\|>|==|!=|<=|>=|->|\\+|-|\\*|/|%|\\||\\.|=|!|<|>)",
+      "name": "keyword.operator.toylang"
+    },
+    {
+      "match": "(?:,|\\(|\\)|\\[|\\]|\\{|\\}|:|;)",
+      "name": "punctuation.toylang"
+    }
+  ],
+  "scopeName": "source.toylang"
+}

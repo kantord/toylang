@@ -30,6 +30,12 @@ clippy:
 bench NAME:
     cargo run -q --bin bench -- {{NAME}}
 
+# Regenerate the syntax-highlighting grammar (syntax/, editors/vscode/) from src/parse.rs's own
+# token vocabulary. Run after adding/removing/renaming a keyword or operator in the lexer;
+# tests/syntax_grammar.rs fails `just test` until you do.
+gen-syntax:
+    cargo run -q --bin gen_syntax
+
 # Formatter check over every .toy file from the repo root down (exit 1 on drift).
 fmt:
     cargo run -q --bin toylang -- fmt
