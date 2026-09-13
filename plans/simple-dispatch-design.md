@@ -2084,3 +2084,24 @@ Appended a 4th question to the existing `stuck-row-triage-2.round.yaml` (still u
 to extend) rather than opening a `stuck-row-triage-3.round.yaml`, tying the new question explicitly
 to the pending Go one so one maintainer answer can settle all four backends. Buffer count held at
 2 pending `*.round.yaml` files, not 3.
+
+## 2026-09-13 (later tick still): 3 more STUCK rows, same task again -- extended the same question a 2nd time
+
+Next tick's trigger named 3 more STUCK rows on the identical split-out spec:
+`select-lazy-materialization-build-rust` (`1f1780aa`, $0.019815), `-jq` (`80b3d6d9`, $0.015507),
+`-llvm` (`7366d59a`, $0.012985). Checked all three transcripts directly (`grep -c '"write_file"'`
+against each `-messages.json`) before folding in, rather than trusting the trigger's truncated
+one-line summary -- confirmed zero `write_file` calls in each, the same shape as the js/py/lua
+batch already in the pending question.
+
+Extended `select-lazy-materialization-build-js-py-lua` in place to
+`select-lazy-materialization-build-js-py-lua-rust-jq-llvm` (id, title, background, thesis,
+question, and options all updated to "six" / "seven backends total including Go") rather than
+appending a 5th question -- a 2nd question on the same underlying task would just split the
+maintainer's attention across two nearly-identical asks with no new decision shape. Verified the
+edited round both `python3 yaml.safe_load`-parses and serves 200 from
+`/__grill/round?topic=stuck-row-triage-2` before ending the tick -- discovered along the way that
+the dev server's actual base URL is `/toylang/`, not `/`: a bare
+`localhost:5173/__grill/round?...` 404s with a plain-text hint ("did you mean to visit
+`/toylang/__grill/round?...`"), and the drive policy's literal curl example doesn't include that
+prefix. Buffer count held at 2 pending `*.round.yaml` files.

@@ -44,3 +44,6 @@ c3fa89a2,module-routing-syntax-build-parse,deepseek/deepseek-v4-flash-0731,2026-
 0adf79ff,select-lazy-materialization-build-py,deepseek/deepseek-v4-flash-0731,2026-09-13T12:26:11.039012+00:00,2026-09-13T12:27:44.880081+00:00,93.8,STUCK,0.009990,
 f2628c7e,select-lazy-materialization-build-lua,deepseek/deepseek-v4-flash-0731,2026-09-13T12:26:11.038756+00:00,2026-09-13T12:28:37.116815+00:00,146.1,STUCK,0.016657,
 063c8fc1,select-lazy-materialization-build-js,deepseek/deepseek-v4-flash-0731,2026-09-13T12:26:11.038469+00:00,2026-09-13T12:28:53.051839+00:00,162.0,STUCK,0.019502,
+7366d59a,select-lazy-materialization-build-llvm,deepseek/deepseek-v4-flash-0731,2026-09-13T15:55:36.765587+00:00,2026-09-13T15:57:21.193956+00:00,104.4,STUCK,0.012985,
+80b3d6d9,select-lazy-materialization-build-jq,deepseek/deepseek-v4-flash-0731,2026-09-13T15:55:36.765523+00:00,2026-09-13T15:59:09.203371+00:00,212.4,STUCK,0.015507,
+1f1780aa,select-lazy-materialization-build-rust,deepseek/deepseek-v4-flash-0731,2026-09-13T15:55:36.764353+00:00,2026-09-13T15:59:38.518039+00:00,241.8,STUCK,0.019815,
