@@ -556,7 +556,7 @@
   kind: build
   needs: [dense-tensor-type]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: tensor-constructor-build
   issue: gh:175
@@ -623,7 +623,7 @@
     accordingly in `plans/simple-briefs/coordinator-memory-pool-build.txt`.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: mutation-semantics-design
   title: 'Grill privileged/shared-reference mutation-as-optimization now that the spike
@@ -648,4 +648,4 @@
   kind: build
   needs: []
   prio: 5
-  status: todo
+  status: delegated

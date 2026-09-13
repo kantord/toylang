@@ -1,0 +1,27 @@
+Narrower slice of board row `dense-tensor-type-build` (gh:175), proposed by the automated
+STUCK-recovery reviewer after two full attempts at the whole row made zero edits (they got stuck
+exploring the two-argument `tensor(n; m)` construction builtin, which needs new call-form handling
+since it doesn't fit the existing unary-`Builtin` pattern).
+
+Scope for THIS task: implement `transpose` ONLY, as a new unary builtin over `Vec<Vec<T>>`,
+across all seven backends. Do NOT implement `tensor(n; m)` construction -- that is explicitly
+deferred to a separate follow-up row.
+
+Follow the existing `Builtin` enum pattern:
+- Add a `Transpose` variant to `src/tir.rs`'s `Builtin` enum (see `Sum`/`Max`/`Range` for the
+  shape: a unary builtin taking one `Vec` argument).
+- Tag it in `src/tags.rs` the same way other builtins are tagged.
+- Implement it per-backend in `src/emit_go.rs`, `src/emit_js.rs`, `src/emit_py.rs`,
+  `src/emit_lua.rs`, `src/emit_rs.rs`, `src/emit_jq.rs`, `src/emit_llvm.rs` -- follow the exact
+  call sites where `Builtin::Sum`/`Builtin::Max` are implemented in each of these seven files as
+  your reference pattern.
+- Add type-checking support in `src/check/mod.rs` following the existing pattern for
+  `contains_vec`-gated builtins: refuse (hard-fail) input that is not a rectangular
+  `Vec<Vec<T>>` with numeric elements, matching how other backend-restricted/shape-restricted
+  builtins already refuse invalid input elsewhere in this file.
+
+Done-gate: a real `.toy` program reads a nested array like `[[1,2,3],[4,5,6]]` and computes
+`transpose | map(sum(.))`, yielding the correct column sums `[5,7,9]` identically across all
+seven backends (the existing corpus-conformance harness in `just check` is the check). A program
+that calls `transpose` on a non-rectangular or non-numeric `Vec<Vec<T>>` is refused (compile-time
+or hard runtime failure) on every backend, not just some.
