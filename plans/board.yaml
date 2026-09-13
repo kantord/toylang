@@ -3,6 +3,9 @@
   title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet. Neither source_in_fn nor a partial-application-system-build row exists on the board, so `needs` structurally cannot express the real gap -- status set to `proposed` (2026-09-12) so this stops false-reporting as a ready build row (flagged as a recurring false-ready incident, plans/simple-dispatch-design.md, 2026-09-11); set back to `todo` once the real prerequisite rows exist and land.'
   kind: build
   needs: [partial-application-system-design]
+  blocked_by: source_in_fn and a partial-application-system-BUILD row (not just the design)
+    don't exist yet -- needs listing the design row only covers half the real gate; the
+    design landing done does not mean this is ready.
   prio: 5
   status: proposed
 
@@ -11,6 +14,9 @@
   title: 'Apply the slow-fragment tier to batch 3''s correct-but-slow problems (gh:90 ruling). Parked after 4 commitless automated runs -- maintainer ruling (2026-09-01): hand off to a privileged manual session rather than redispatch. Prompt drafted at plans/issue-93-privileged-agent-prompt.md. Lane stays escalated (~/.cache/toylang-drive/escalated-issue-93 kept) until that session lands it. Status set to `proposed` (2026-09-12) since `status: todo` kept round-tripping through every tick''s ready-build-row list despite the do-not-redispatch ruling (flagged as a recurring false-ready incident, plans/simple-dispatch-design.md, 2026-09-11); set back to `todo` once the privileged session lands it or a new ruling supersedes this one.'
   kind: build
   needs: [docs-slow-fragment-tier]
+  blocked_by: maintainer ruling (2026-09-01) hands this off to a privileged manual session,
+    not a redispatch -- docs-slow-fragment-tier being done is unrelated to this hold; only
+    the manual session landing it (or a new ruling) clears it.
   prio: 3
   status: proposed
 

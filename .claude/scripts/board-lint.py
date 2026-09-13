@@ -7,6 +7,20 @@ missing a field the UI dereferences blanked the whole kanban to empty
 (needs-less rows, 2026-09-01). Parsing is not validity -- this is the schema
 gate, run by every writer before committing and by .claude/checks at Stop.
 
+`blocked_by` (2026-09-13): a row can be genuinely not-dispatchable for a
+reason `needs:` can't express -- no other row id to point at (an unbuilt
+mechanism with no row of its own yet), a maintainer ruling to hand off
+manually, or similar. Before this field existed the only place that fact
+lived was the row's own free-text title, which `is_ready()` in
+dispatch_state.py never reads: dsv-partials-migration and
+euler-slow-fragments-2 both sat at status: todo (mechanically "ready",
+needs satisfied) for 6+ ticks across several hours, each one independently
+re-reading the title, agreeing it's blocked, and skipping -- without ever
+fixing the status field, so the next tick paid the same cost again. Setting
+`blocked_by` makes that fact structural instead of prose a human has to
+notice: if it's set, status must not be `todo` (enforced below), so a row
+can't silently sit "ready" while also declaring itself not ready.
+
 Exit 0 = valid. Exit 1 = findings on stderr, one per line.
 """
 
@@ -48,6 +62,16 @@ def lint(path, archived):
         if issue is not None and not (isinstance(issue, str)
                                       and issue.startswith("gh:")):
             errs.append(f"{where}: issue must look like gh:<number>")
+        blocked_by = r.get("blocked_by")
+        if blocked_by is not None:
+            if not (isinstance(blocked_by, str) and blocked_by.strip()):
+                errs.append(f"{where}: blocked_by must be a non-empty string when present")
+            if r.get("status") == "todo":
+                errs.append(
+                    f"{where}: status is todo but blocked_by is set -- "
+                    f"a row can't be both dispatch-ready and declare itself blocked; "
+                    f"set status to proposed or clear blocked_by"
+                )
         if r["id"] in seen:
             errs.append(f"{where}: duplicate id")
         seen.add(r.get("id"))

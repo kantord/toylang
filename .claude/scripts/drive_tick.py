@@ -561,6 +561,22 @@ def main() -> int:
     revive_dev_server()
 
     trigger, state = compute_trigger_and_state(mode)
+
+    # Cheap, deterministic, every tick (not just the audit) -- board_revival_check.py flags a
+    # parked row whose `needs` are now all done, purely on structured board data. It can't
+    # judge whether that's the SAME thing as the row's `blocked_by` reason actually clearing
+    # (see the script's own docstring), so it's folded into the trigger as a nudge for the tick
+    # to read and verify, never an instruction to just flip status on the finding alone.
+    try:
+        revival = subprocess.run(
+            [sys.executable, str(SCRIPTS / "board_revival_check.py")],
+            cwd=REPO, capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        revival = ""
+    if revival:
+        trigger = join_trigger(trigger, f"revival check: {revival}")
+
     if not trigger:
         log(f"[drive-tick] {datetime.now():%H:%M:%S} nothing to do (workers "
             "grinding, no input) -- skipped, zero tokens")

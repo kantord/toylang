@@ -54,6 +54,20 @@ Every tick:
    composing while a tick works, and a blanket `composed = []` deleted an unread 14:17 note
    on 2026-08-30 with no recovery path (the endpoint keeps no log).
 3. Verify push distance before any dispatch (worktrees branch from origin).
+4. A trigger carrying `revival check: ...` names a row that's `status: proposed` (or has
+   `blocked_by` set) whose `needs` are now all `status: done` -- `board_revival_check.py`
+   runs every tick, deterministically, cheaply, purely on structured board data. It cannot
+   judge whether `needs` being done is the SAME thing as the row's own `blocked_by` reason
+   actually clearing -- two real rows had a `needs` id that only partially or coincidentally
+   covered the true gate (2026-09-13: one pointed at a design-ratified row when the real gate
+   was the corresponding BUILD landing, still nonexistent; the other's `needs` was unrelated
+   to a maintainer-ruling hold). Read the row's own `blocked_by`/title before flipping
+   `status` back to `todo` on this signal alone -- the finding is "go look," not "go revive."
+   This exists because the reverse (a row sitting at `status: todo` while its own title says
+   it's blocked, silently re-discovered by 6+ separate ticks over several hours before one
+   finally fixed the status field, 2026-09-12) was worse: `board-lint.py` now hard-rejects
+   `status: todo` with `blocked_by` set, so that half of the gap can't recur silently, but
+   nothing un-parks a row automatically -- this trigger line is the other half.
 
 ## Stall diagnosis, learned the hard way
 
