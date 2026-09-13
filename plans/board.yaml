@@ -129,10 +129,16 @@
     `needs` check (dispatch_state.py''s live-check only excludes `todo`/`delegated`, so anything
     else reads as "done" to a dependent) -- wrong, since the helpers have not actually landed.
     A blocking decide row keeps both this row and its dependent correctly un-ready until the
-    round is answered.'
+    round is answered.
+
+    LANDED (2026-09-13, commit 9b006ff on main): per the ruling above, landed directly via
+    `land_lane.py land-patch` from the already-verified `6ad359c8.patch`, bypassing the
+    dispatch harness''s gate. Diff matches this row''s spec exactly (add-only
+    `tl_sort_by`/`tl_max_by` in `src/emit_rs.rs`, no wiring, no tests) -- reviewed post-land,
+    nothing else to file.'
   kind: build
   needs: [sort-by-max-by-checkpoint-go, sort-by-max-by-rust-helpers-stuck-ruling]
-  status: todo
+  status: done
 
 - id: sort-by-max-by-rust-helpers-stuck-ruling
   issue: gh:177
