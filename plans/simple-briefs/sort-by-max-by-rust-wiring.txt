@@ -1,0 +1,109 @@
+Board row `sort-by-max-by-rust-wiring` (gh:177), step 2/3 of the Rust backend's `sort_by`/`max_by`
+support. Step 1 (`sort-by-max-by-rust-helpers`) already landed the helpers in `src/emit_rs.rs`:
+
+```rust
+// src/emit_rs.rs:199
+const SORT_BY_HELPER: &str = r#"fn tl_sort_by<T: Clone, K: Ord>(v: &[T], key: impl Fn(&T) -> K) -> Vec<T> {
+    ...
+"#;
+
+// src/emit_rs.rs:232
+const MAX_BY_HELPER: &str = r#"fn tl_max_by<T: Clone, K: Ord>(v: &[T], key: impl Fn(&T) -> K) -> Option<T> {
+    ...
+"#;
+```
+
+Your job: wire them in. Two mechanical edits, both in `src/emit_rs.rs`.
+
+### 1. Add to the conditional-inclusion table
+
+Around `src/emit_rs.rs:885-895` there's a list of `(uses("tl_x("), X_HELPER)` pairs that decide
+which helper consts get emitted into the output program:
+
+```rust
+// src/emit_rs.rs:889-892
+(uses("tl_sort("), SORT_HELPER),
+(uses("tl_reverse("), REVERSE_HELPER),
+(uses("tl_sum(") || uses("tl_sum64("), SUM_HELPER),
+(uses("tl_max("), MAX_HELPER),
+```
+
+Add two more entries to this same list (right next to `SORT_HELPER`/`MAX_HELPER` is a natural
+spot):
+
+```rust
+(uses("tl_sort_by("), SORT_BY_HELPER),
+(uses("tl_max_by("), MAX_BY_HELPER),
+```
+
+### 2. Replace the `unreachable!` arm with real codegen
+
+`src/emit_rs.rs:1609-1612` currently has:
+
+```rust
+// `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
+// program produced one without its backend being taught to emit it yet.
+Kind::SortBy { .. } | Kind::MaxBy { .. } => {
+    unreachable!("sort_by/max_by emission lands in a later step")
+}
+```
+
+Replace it with two real arms, one per kind, following the exact call shape the Map/Select arms
+right above it already use (source, then a closure built from `param`/`body`). The already-landed
+Go backend (`src/emit_go.rs:1347-1368`) shows the target shape to mirror:
+
+```go
+// src/emit_go.rs:1350-1358 (Go, already landed -- mirror this shape in Rust)
+Kind::SortBy {
+    source,
+    param,
+    body,
+} => format!(
+    "tlSortBy({}, func({} {}) {} {{ return {} }})",
+    self.expr(source),
+    self.local(*param),
+    self.go_type(tir::runtime_elem(&source.ty).expect("sort_by runs over a dimension")),
+    self.go_type(&body.ty),
+    self.expr(body)
+),
+```
+
+In Rust this becomes a closure literal instead of a Go `func` literal. Model it on how
+`Kind::Map`/`Kind::Select` build their Rust closures a few lines above (`self.expr(source)`,
+`self.local(*param)`, `self.rs_type(...)`, `self.expr(body)`/`self.expr(pred)`) -- e.g.:
+
+```rust
+Kind::SortBy {
+    source,
+    param,
+    body,
+} => format!(
+    "tl_sort_by(&{}, |{}: &{}| {})",
+    self.expr(source),
+    self.local(*param),
+    self.rs_type(tir::runtime_elem(&source.ty).expect("sort_by runs over a dimension")),
+    self.expr(body)
+),
+Kind::MaxBy {
+    source,
+    param,
+    body,
+} => format!(
+    "tl_max_by(&{}, |{}: &{}| {})",
+    self.expr(source),
+    self.local(*param),
+    self.rs_type(tir::runtime_elem(&source.ty).expect("max_by runs over a dimension")),
+    self.expr(body)
+),
+```
+
+Adjust reference/borrow syntax (`&`, `.clone()`, etc.) as needed to satisfy the actual signature
+of `tl_sort_by`/`tl_max_by` (`v: &[T]`, `key: impl Fn(&T) -> K`) -- check against how the existing
+`SORT_HELPER`/`MAX_HELPER` call sites (`tl_sort(...)`, `tl_max(...)`) pass their arguments
+elsewhere in this file for the exact convention (owned `Vec` vs `&Vec` vs slice).
+
+Done-gate: `just check` (or `cargo build`) passes and no longer panics on `sort_by`/`max_by` TIR
+nodes. No tests required at this step -- that's `sort-by-max-by-rust-tests`, a separate row.
+
+Do not touch anything about the Go, JS, Python, Lua, or jq backends -- Rust only. Do not add
+tests. Do not add anything beyond these two edits.

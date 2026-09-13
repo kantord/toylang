@@ -168,7 +168,7 @@
     step is done when the emitter compiles and no longer panics on `sort_by`/`max_by` TIR nodes.'
   kind: build
   needs: [sort-by-max-by-rust-helpers]
-  status: todo
+  status: delegated
 
 - id: sort-by-max-by-rust-tests
   issue: gh:177
@@ -289,7 +289,7 @@
   kind: build
   needs: [module-routing-syntax-build-ast]
   prio: 5
-  status: todo
+  status: delegated
 
 - id: module-routing-syntax-build-checker
   issue: gh:167
@@ -404,7 +404,7 @@
     Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: select-lazy-materialization-build-js
   issue: gh:176
