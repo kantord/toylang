@@ -1,0 +1,115 @@
+Board row `select-lazy-materialization-build-llvm` (gh:176). Split from the original 7-backend row
+`select-lazy-materialization-build` per maintainer ruling (wizard submission,
+stuck-cross-backend-scope-escalation round, 2026-09-13, option A) -- that row kept going STUCK
+because "all 7 backends in one attempt" was too much surface for one dispatch. This row is LLVM
+only. Do not touch any other backend file.
+
+Note: sibling backend rows on this exact task have already gone STUCK twice over -- once
+(`select-lazy-materialization-build-go`) on genuine breadth (wiring the lazy representation into
+every existing consumer was too much surface for one dispatch), and three times
+(`-js`, `-py`, `-lua`) with zero edits at all despite their briefs handing over exact code
+locations verbatim. If you find yourself facing either shape here -- too much surface, or many
+turns spent re-reading files this brief already quotes -- say so precisely in your summary rather
+than pushing through partially.
+
+## What exists today -- read this carefully, it is NOT the same starting point as other backends
+
+Unlike every other backend, LLVM's `Select` emission (`fn select`, `src/emit_llvm.rs:725-760`,
+called from the `Kind::Select` match arm at `src/emit_llvm.rs:1383-1387`) already builds a mask
+rather than filtering element-by-element:
+
+```rust
+Kind::Select {
+    source,
+    param,
+    pred,
+} => self.select(source, *param, pred)?,
+```
+
+```rust
+fn select(
+    &mut self,
+    source: &Tir,
+    param: LocalId,
+    pred: &Tir,
+) -> Result<BasicValueEnum<'ctx>, String> {
+    let elem_ty = crate::tir::runtime_elem(&source.ty)
+        .ok_or_else(|| "select on something that has no dimension".to_string())?
+        .clone();
+
+    let src = self.expr(source)?.into_pointer_value();
+    let len = self
+        .call_rt(self.rt.vec_len, &[src.into()], "len")?
+        .into_int_value();
+    let mask = self
+        .call_rt(self.rt.mask_new, &[len.into()], "mask")?
+        .into_pointer_value();
+    let zero = self.ctx.i64_type().const_zero();
+
+    self.emit_loop(len, move |e, i| {
+        if matches!(elem_ty, Type::Record(_)) {
+            e.locals.insert(param, Slot::Cursor { vec: src, index: i });
+        } else {
+            let slot = e
+                .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                .into_int_value();
+            let elem = e.read_slot(slot, &elem_ty)?;
+            e.locals.insert(param, Slot::Value(elem));
+        }
+
+        let keep = e.expr(pred)?;
+        let keep = e.to_slot(keep, &Type::Bool)?;
+        e.builder
+            .build_call(e.rt.mask_set, &[mask.into(), i.into(), keep.into()], "")
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    })?;
+
+    self.call_rt(self.rt.vec_from_mask, &[src.into(), mask.into()], "kept")
+}
+```
+
+So the mask-building half of this row's spec is already done. The eager part is the last line:
+`vec_from_mask` runs immediately, unconditionally compacting the mask into a real `Vec` right
+after `select()` returns -- before the caller has asked for anything.
+
+First, confirm with `grep -n "vec_from_mask\|mask_new\|mask_set" src/` exactly what the
+`vec_from_mask`/`mask_new`/`mask_set` runtime functions do today (they are calls into the toylang
+runtime via `self.rt.*` / `self.call_rt`, not inline LLVM IR here) -- this tells you whether
+deferring compaction is a codegen-only change or needs a new runtime-side lazy vector
+representation.
+
+## What to build
+
+Defer the `vec_from_mask` compaction to the first strong (non-transient) reference to the result,
+the same provably-one-reference condition `mutation-semantics-spike`
+(`plans/mutation-semantics-spike.md`, "(2) Is the rule decidable from the current TIR?") already
+established for other backends: a name with exactly one use, that use consuming, no use following
+it -- decidable from a TIR occurrence-count scope walk. Until that point, indexing or iterating
+the result of `select` should only touch the mask + original source, not a fresh compacted `Vec`.
+
+Given this backend's runtime-call architecture, this may require a new runtime-side lazy
+vector/selection representation (e.g. a value carrying `{source, mask}` that `vec_get`/iteration
+know how to read through directly, with compaction only forced by whatever currently requires a
+concrete materialized `Vec`) rather than a pure codegen change. If that scope turns out too large
+for one dispatch, say so precisely and describe the runtime-side pieces that would be needed --
+that is a complete, useful outcome for this row.
+
+Do NOT change `Kind::Select`'s AST/checker shape or its observable semantics -- `xs | select(pred)`
+must keep producing the exact same elements in the exact same order as today.
+
+## Scope
+
+LLVM backend only (`src/emit_llvm.rs`, plus the runtime source only if a new lazy-vector runtime
+primitive is genuinely required -- confirm with `grep -n` first per above). Do not touch
+`emit_go.rs`, `emit_js.rs`, `emit_py.rs`, `emit_lua.rs`, `emit_rs.rs`, or `emit_jq.rs` -- those are
+separate rows.
+
+## Done-gate
+
+This backend's own conformance tests pass (not the full 7-backend corpus suite -- other backends
+haven't been converted yet, so cross-backend agreement isn't the bar here). `just check` passes.
+
+Out of scope: no new `Type::Vec`-adjacent value kind visible to the language itself (a new
+*runtime-internal* representation for deferred compaction is in scope if needed), no syntax
+change, no checker change, no change to `select`'s result order or elements.

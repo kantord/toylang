@@ -1,0 +1,93 @@
+Board row `select-lazy-materialization-build-jq` (gh:176). Split from the original 7-backend row
+`select-lazy-materialization-build` per maintainer ruling (wizard submission,
+stuck-cross-backend-scope-escalation round, 2026-09-13, option A) -- that row kept going STUCK
+because "all 7 backends in one attempt" was too much surface for one dispatch. This row is jq
+only. Do not touch any other backend file.
+
+Note: sibling backend rows on this exact task have already gone STUCK twice over -- once
+(`select-lazy-materialization-build-go`) on genuine breadth, and three times (`-js`, `-py`, `-lua`)
+with zero edits at all despite their briefs handing over exact code locations verbatim -- the
+cause there looks like over-exploration burning the turn budget before reaching edit mode. Start
+editing from the code quoted below; you should not need to go looking for it.
+
+## This backend is a special case -- read this before starting
+
+Unlike the other six backends, jq is not a language you generate imperative loops for -- it is
+itself a lazy, streaming filter language, and this row's own board spec already flags it: "If
+jq's language model makes true laziness impossible for this construct, say so plainly in the
+self-report rather than forcing a fake implementation."
+
+There are two separate `Select` emission sites, and they are already at different laziness levels:
+
+1. The fusion/streaming path, `src/emit_jq.rs:178-183` (used for `inputs`/`lines`/`range` sources
+   chained through `map`/`select`) is **already lazy** by construction -- the comment above it
+   explains why:
+
+   ```rust
+   // jq's own `inputs` is already lazy; the eager path below only becomes eager by wrapping
+   // it in `[...]`. Skipping that wrapper and running the whole `map`/`select` chain as one
+   // filter over the generator is what makes jq print each record as it arrives
+   // rather than after the last one, the same as running the equivalent `jq` program by
+   // hand would. `range(0; n)` is jq's own lazy counter, the same streaming shape for a
+   // `range` source.
+   ...
+   tir::Stage::Select { param, pred } => {
+       out.push_str(&format!(
+           " | . as {} | select({})",
+           local(*param),
+           expr(enums, pred)
+       ));
+   }
+   ```
+
+2. The non-fusion path, `src/emit_jq.rs:738-747`, wraps the whole filter in `[...]`, which forces
+   jq to drain the entire generator into an array before anything downstream can run:
+
+   ```rust
+   Kind::Select {
+       source,
+       param,
+       pred,
+   } => format!(
+       "[ {}[] | . as {} | select({}) ]",
+       expr(enums, source),
+       local(*param),
+       expr(enums, pred)
+   ),
+   ```
+
+## What to investigate and build
+
+Determine whether the non-fusion path's `[...]` wrapper can be deferred the same way the fusion
+path already avoids it -- i.e. whether a `Select` node not at the top of a fusion chain can still
+emit as a bare `{source}[] | . as {param} | select({pred})` stream expression, with the `[...]`
+materialization pushed out to whatever the *caller* of this `Select` node needs (indexing,
+another pipe stage, final output), rather than happening unconditionally inside `Select`'s own
+codegen. This mirrors the same provably-one-reference laziness `mutation-semantics-spike`
+(`plans/mutation-semantics-spike.md`) already established for other backends: only materialize
+when something outside this expression actually needs a concrete array.
+
+If, after actually trying this, jq's expression-tree codegen shape makes deferring the `[...]`
+correctly (without breaking whatever currently consumes this expression's result as a concrete
+array) impractical for this backend -- say so plainly and precisely in your self-report, including
+what you tried and exactly where it broke down. A clear "this backend's language model doesn't
+support the same trick" is a valid, complete outcome for this row; do not force a fake or partial
+implementation to avoid reporting that.
+
+Do NOT change `Kind::Select`'s AST/checker shape or its observable semantics -- `xs | select(pred)`
+must keep producing the exact same elements in the exact same order as today.
+
+## Scope
+
+jq backend only (`src/emit_jq.rs`). Do not touch `emit_go.rs`, `emit_js.rs`, `emit_py.rs`,
+`emit_lua.rs`, `emit_rs.rs`, or `emit_llvm.rs` -- those are separate rows.
+
+## Done-gate
+
+This backend's own conformance tests pass (not the full 7-backend corpus suite -- other backends
+haven't been converted yet, so cross-backend agreement isn't the bar here). `just check` passes.
+If the conclusion is "not practically possible for this backend," the done-gate is a precise
+self-report of that finding plus leaving the current (already-correct) codegen untouched.
+
+Out of scope: no new `Type::Vec`-adjacent value kind, no syntax change, no checker change, no
+change to `select`'s result order or elements.

@@ -459,7 +459,7 @@
     (MAX_BY_HELPER). Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: select-lazy-materialization-build-jq
   issue: gh:176
@@ -474,7 +474,7 @@
     follow-up ruling. Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: select-lazy-materialization-build-llvm
   issue: gh:176
@@ -488,7 +488,7 @@
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
