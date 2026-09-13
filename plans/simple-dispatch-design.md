@@ -2056,3 +2056,31 @@ trigger named (`sort-by-max-by-rust-wiring`, `module-routing-syntax-build-parse`
 inspection (same "STUCK is a harness artifact, not a code problem" shape as the
 `sort-by-max-by-rust-helpers` incident), one of which is a genuine scope-too-large blocker asking
 for the same type-then-consumers split that already worked for `sort-by-max-by-rust`.
+
+## 2026-09-13 (later tick): 3 more STUCK rows on the same task as an already-pending question -- folded in rather than a new round
+
+Next tick's trigger named 3 more STUCK rows: `select-lazy-materialization-build-js` (`063c8fc1`,
+$0.019502), `-py` (`0adf79ff`, $0.009990), `-lua` (`f2628c7e`, $0.016657). All three are the exact
+same split-out spec as `select-lazy-materialization-build-go` above (same brief text, same
+per-backend done-gate), which already had an unanswered escalation question pending in
+`stuck-row-triage-2.round.yaml`. Neither `*.round.yaml` nor `*.forest.yaml` had anything covering
+these three specifically, so this was a genuine under-filled-buffer case, not the false-positive
+kind from the incidents above -- but composing a brand-new round for them would have re-asked the
+same underlying architectural question (how to unstick this backend-conversion task) a second time
+in parallel with the Go question already awaiting an answer.
+
+Interesting new data point: unlike Go (which self-reported the real blocker -- consumer breadth --
+before going STUCK), these three's transcripts show *zero* `write_file` calls and pure exploration
+(reading their target `emit_*.rs`, the test suite, `justfile`, even the unrelated
+`select-materialization-research.md`) despite each brief already handing over the exact code to
+replace verbatim. So the failure shape here is closer to the 2026-09-11 "cheap model burns turn
+budget re-deriving context, rarely crosses into edit mode" incident than to Go's genuine-scope
+diagnosis -- worth watching whether the Go question's eventual answer (split vs. redispatch vs.
+hand-off) actually transfers cleanly to a row that never got far enough to self-diagnose the same
+blocker, or whether these three need the cheaper "skip exploration, brief already has everything"
+fix tried first instead.
+
+Appended a 4th question to the existing `stuck-row-triage-2.round.yaml` (still unanswered, so safe
+to extend) rather than opening a `stuck-row-triage-3.round.yaml`, tying the new question explicitly
+to the pending Go one so one maintainer answer can settle all four backends. Buffer count held at
+2 pending `*.round.yaml` files, not 3.
