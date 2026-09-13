@@ -2036,3 +2036,23 @@ all. Verified 200 against `:5180` instead. Both the board and `vite.tools.config
 than the trigger's fixed text -- worth teaching whatever composes the trigger to check the board's
 actual `needs` chain per decide row (not just its own `status`) and to use port 5180 for the
 grill-serve check.
+
+## 2026-09-13: trigger's "under-filled round buffer" only counted `.round.yaml`
+
+Trigger claimed "round buffer under-filled with 3 decide rows ready -- compose a grill round."
+Disk check found the buffer was NOT actually under-filled: alongside the one pending
+`mutation-semantics.round.yaml`, two `.forest.yaml` threads already had a live unanswered node
+each (`counter-and-takeuntil-shape.forest.yaml`, `fold-and-infinite-streams.forest.yaml`) --
+3 pending questions total, already at or above the "keep two buffered" target. Whatever composes
+the trigger's "3 decide rows ready" count is reading board rows (`search-and-fold-design`,
+`infinite-streams-design`, `mutation-semantics-design`) without cross-checking `docs/.grill/` for
+an in-flight forest thread already covering that topic -- same class of staleness as the port-5173
+note above, just on the "is this already asked" check instead of the "does this serve" check.
+
+Skipped composing a design-round this tick because of that. Used the tick's one round-composition
+slot instead on `stuck-row-triage-2.round.yaml`, escalating the 3 STUCK build rows the same
+trigger named (`sort-by-max-by-rust-wiring`, `module-routing-syntax-build-parse`,
+`select-lazy-materialization-build-go`) -- two of which left patches that look complete by
+inspection (same "STUCK is a harness artifact, not a code problem" shape as the
+`sort-by-max-by-rust-helpers` incident), one of which is a genuine scope-too-large blocker asking
+for the same type-then-consumers split that already worked for `sort-by-max-by-rust`.
