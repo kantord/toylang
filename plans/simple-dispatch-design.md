@@ -2012,3 +2012,27 @@ STUCK row's brief, check whether the row's own title/scope already shows up land
 a stale-batch artifact, not a real blocker. Board-status flip to `done`/archive should probably
 happen automatically at land time; it currently doesn't, and this is the second incident this
 rollout traceable to that gap (the first being the `busy/dirty` marker above).
+
+**Incident (2026-09-13): drive tick's own trigger overcounted "ready" decide rows, and named a
+stale grill-round port.** The tick's trigger claimed "round buffer under-filled with 3 decide rows
+ready." Reading the board directly turned up 8 `kind: decide` rows at `status: todo`, but 5 of them
+(`sort-by-max-by-checkpoint-rust/-lua/-js/-python/-jq`) each `needs` a build row (`sort-by-max-by-rust-tests`,
+`-lua`, `-js`, `-python`, `-jq`) that is itself still `status: todo` -- none of those checkpoints can
+honestly be asked yet, the same "needs-done isn't the real gate" shape already flagged for
+`dsv-partials-migration`/`euler-slow-fragments-2`/`http-query-sugar-build`, just on decide rows
+instead of build rows this time. Two more (`search-and-fold-design`, `infinite-streams-design`)
+already have LIVE unanswered nodes in existing forest files (`counter-and-takeuntil-shape.forest.yaml`,
+`fold-and-infinite-streams.forest.yaml`) -- composing a fresh wizard round on either topic would have
+been the exact "flat wizard round instead of a forest reply" mistake `grill-via-annotations` calls
+out by name. That left exactly one genuinely ready, not-already-in-flight row: `mutation-semantics-design`
+(its one real dependency is `plans/mutation-semantics-spike.md`, a doc, not a board row, and that doc
+is finished). Composed a 3-question wizard round for it alone
+(`docs/.grill/mutation-semantics.round.yaml`) rather than padding to hit a target count. Separately,
+verifying the round's serve-clean step against the trigger's literal `curl ... :5173/__grill/round`
+instruction 404'd -- `grillRounds()`/`grillForest()`/`annotationsInbox()` moved to the separate
+`pnpm dev:tools` server (`site/vite.tools.config.ts:52`, port 5180) at some point after that
+instruction was written; `:5173` still serves the plain docs site and no longer has this route at
+all. Verified 200 against `:5180` instead. Both the board and `vite.tools.config.ts` are more current
+than the trigger's fixed text -- worth teaching whatever composes the trigger to check the board's
+actual `needs` chain per decide row (not just its own `status`) and to use port 5180 for the
+grill-serve check.
