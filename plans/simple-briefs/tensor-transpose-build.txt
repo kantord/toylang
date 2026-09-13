@@ -1,27 +1,51 @@
-Narrower slice of board row `dense-tensor-type-build` (gh:175), proposed by the automated
-STUCK-recovery reviewer after two full attempts at the whole row made zero edits (they got stuck
-exploring the two-argument `tensor(n; m)` construction builtin, which needs new call-form handling
-since it doesn't fit the existing unary-`Builtin` pattern).
+REDISPATCH NOTE: the previous attempt (3076ba34, STUCK, $0.013504) made zero edits. Its own
+self-report: "The task was achievable, but I ran out of wall-clock time before I could write any
+edits -- the work requires touching 10 files ... and I spent my first turn exploring rather than
+editing." It independently confirmed every location below and found no architectural obstacle.
 
-Scope for THIS task: implement `transpose` ONLY, as a new unary builtin over `Vec<Vec<T>>`,
-across all seven backends. Do NOT implement `tensor(n; m)` construction -- that is explicitly
-deferred to a separate follow-up row.
+DO NOT spend a turn re-exploring the repo. The locations below are verified against today's tree
+(`grep -n` re-run just now). Go straight to editing, starting with commit 1.
 
-Follow the existing `Builtin` enum pattern:
-- Add a `Transpose` variant to `src/tir.rs`'s `Builtin` enum (see `Sum`/`Max`/`Range` for the
-  shape: a unary builtin taking one `Vec` argument).
-- Tag it in `src/tags.rs` the same way other builtins are tagged.
-- Implement it per-backend in `src/emit_go.rs`, `src/emit_js.rs`, `src/emit_py.rs`,
-  `src/emit_lua.rs`, `src/emit_rs.rs`, `src/emit_jq.rs`, `src/emit_llvm.rs` -- follow the exact
-  call sites where `Builtin::Sum`/`Builtin::Max` are implemented in each of these seven files as
-  your reference pattern.
-- Add type-checking support in `src/check/mod.rs` following the existing pattern for
-  `contains_vec`-gated builtins: refuse (hard-fail) input that is not a rectangular
-  `Vec<Vec<T>>` with numeric elements, matching how other backend-restricted/shape-restricted
-  builtins already refuse invalid input elsewhere in this file.
+Board row `tensor-transpose-build` (gh:175). Implement `transpose` as a new unary builtin over
+`Vec<Vec<T>>`, across all seven backends. Do NOT implement `tensor(n; m)` construction -- that is
+a separate row.
 
-Done-gate: a real `.toy` program reads a nested array like `[[1,2,3],[4,5,6]]` and computes
-`transpose | map(sum(.))`, yielding the correct column sums `[5,7,9]` identically across all
-seven backends (the existing corpus-conformance harness in `just check` is the check). A program
-that calls `transpose` on a non-rectangular or non-numeric `Vec<Vec<T>>` is refused (compile-time
-or hard runtime failure) on every backend, not just some.
+Commit after each step below -- do not wait until everything is done to commit the first time,
+so a turn-budget cutoff still leaves real progress.
+
+### Commit 1: `src/tir.rs` -- add the `Transpose` variant
+
+The `Builtin` enum has `Sum` at line 271. Add `Transpose` as a new unary-builtin variant next to
+it (same shape as `Sum`/`Max`/`Flatten` -- one `Vec` argument).
+
+### Commit 2: `src/tags.rs` -- tag it
+
+Line 189 has `Builtin::Sum => "sum",`. Add `Builtin::Transpose => "transpose",` in the same match
+arm list.
+
+### Commit 3: `src/check/mod.rs` -- type-checking
+
+Around line 3037-3040, `sum_call`/`max_call` are dispatched from the builtin-call match. Add a
+`transpose_call` dispatch arm the same way, and a `transpose_call(ctx: &Ctx, arg: &Expr) ->
+Result<Tir, Error>` function near `sum_call` (line 3690) / `max_call` (line 3716) / `flatten_call`
+(line 3602) -- follow their exact pattern. Hard-refuse (compile-time error, not a runtime panic)
+input that is not a rectangular `Vec<Vec<T>>` with numeric elements.
+
+### Commit 4-10: per-backend emit (one commit per backend, in this order)
+
+`src/emit_rs.rs` (line 1518 has the `Builtin::Sum =>` arm as your reference pattern), then
+`src/emit_go.rs`, `src/emit_js.rs`, `src/emit_py.rs`, `src/emit_lua.rs`, `src/emit_jq.rs`,
+`src/emit_llvm.rs` -- in each file, grep for `Builtin::Sum` to find that file's own dispatch arm
+and mirror it for `Builtin::Transpose`, calling a new `tl_transpose`-style helper.
+
+After EACH backend commit, run `just check` before moving to the next backend -- catching a
+type/IR mistake on `emit_rs.rs` early is cheaper than discovering it after all seven are written.
+
+### Done-gate
+
+A `.toy` program computing `transpose([[1,2,3],[4,5,6]]) | map(sum(.))` yields `[5,7,9]`
+identically across all seven backends (`just check`'s corpus-conformance harness verifies this).
+A non-rectangular or non-numeric `Vec<Vec<T>>` input is refused on every backend, not just some.
+
+If turn budget runs out partway through, that's fine -- each commit above is independently real
+progress even if the last backend or two never happen this attempt.

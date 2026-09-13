@@ -1,3 +1,14 @@
+REDISPATCH NOTE: the previous attempt (9247f06a, STUCK, $0.017422) burned its budget on
+re-exploration instead of triage. Its own self-report: "I'd read `euler-ergonomics.md` and the
+`sort-by-max-by` board rows before the end of the previous session, but this session I
+immediately re-read all 651 lines of `board.yaml`, the full ergonomics file again, ran
+`board-lint.py` as source, and asked for more cor[pus context]" -- i.e. it re-did already-settled
+groundwork instead of moving to actual page-by-page triage.
+
+DO NOT re-read `plans/board.yaml` in full, and DO NOT re-read `plans/euler-ergonomics.md` cover
+to cover. DO NOT run `board-lint.py` as a way to "get oriented" -- it's a validator, run it only
+at the end to check your own edit. Skip straight to opening the Euler pages and triaging them.
+
 Board row `corpus-implementation-style-review`. Maintainer note (composed 2026-09-13, verbatim):
 "we need tasks to review every current code puzzle implementation to check if our new features
 now allow for a better implementation sytle, or if there are still problems to report from
@@ -7,44 +18,32 @@ This is a REVIEW-AND-REPORT task, not a build. Do not edit any corpus or example
 directly. Your deliverable is new rows appended to `plans/board.yaml`.
 
 Scope: the 30 solved Euler-problem programs under `docs/examples/euler/` (`01-*.md` through
-`29-*.md`; skip `00-spoiler-warning.md`, it's not a solution). Read `plans/euler-ergonomics.md`
-first -- it is a prior ergonomics survey of this exact corpus and already names specific pain
-points per problem (e.g. problem 22/23/29 citing a missing `Vec` sort, problem 11's grid-max
-idiom, several `sum_*`/`col_sum`/`inner_sum` naming variants). Do not re-derive what that file
-already says; treat it as your starting map of known issues.
+`29-*.md`; skip `00-spoiler-warning.md`). To orient, `grep -n "sort\|missing" plans/euler-ergonomics.md`
+once for the known pain points instead of reading the whole file -- it already names specific
+problems (22/23/29 citing a missing `Vec` sort, problem 11's grid-max idiom, several
+`sum_*`/`col_sum`/`inner_sum` naming variants). Treat that grep output as your starting map.
 
-The one concrete since-added feature to check against: `sort_by`/`max_by` (Go backend fully
-landed; see board rows `sort-by-max-by-rust-helpers`/`-wiring` for the Rust side, which may still
-be in flight -- check `plans/board.yaml` for their current status before assuming Rust-side
-landed). For each Euler page `plans/euler-ergonomics.md` flags as blocked on "missing sort" or a
-manual sort/max workaround, check whether `sort_by`/`max_by` now removes that workaround, and
-whether the removal reads as a genuine ergonomics win worth rewriting the example for.
+The one concrete since-added feature to check against: `sort_by`/`max_by` (Go backend landed;
+`grep -n "^- id: sort-by-max-by-rust" plans/board.yaml` to check current Rust-side status before
+assuming it's landed too -- do not read the surrounding board.yaml context beyond that one grep).
+For each Euler page flagged as blocked on "missing sort" or a manual sort/max workaround, check
+whether `sort_by`/`max_by` now removes that workaround and reads as a genuine ergonomics win.
 
-Do NOT attempt to review against `dense-tensor`/`select-lazy-materialization` work -- neither has
-landed yet (both still in-progress board rows as of this writing), so there is nothing to check
-those examples against yet.
+Do NOT review against `dense-tensor`/`select-lazy-materialization` -- neither has landed.
 
-For each Euler page reviewed, decide one of three outcomes:
-1. No change needed -- already idiomatic, nothing since-landed helps it. Skip it, no board row.
-2. A since-added feature (sort_by/max_by, or anything else you find genuinely landed and
-   applicable) now enables a clearly better rewrite. File a new row in `plans/board.yaml` with
-   `kind: build`, a title citing the specific page and the specific improvement, `needs: []`,
-   `status: todo`.
-3. A real ergonomics problem remains (missing builtin, awkward workaround, unclear naming) that
-   no landed feature fixes yet. File a new row with `kind: decide`, a title describing the
-   problem concretely (cite the page and the awkward construct), `needs: []`, `status: todo`.
+Work page by page, in numeric order, starting at `01-*.md`. For each page, pick one of:
+1. No change needed -- skip, no board row.
+2. A since-landed feature enables a clearly better rewrite -- file `kind: build`, `needs: []`,
+   `status: todo`, title citing the specific page and improvement.
+3. A real ergonomics problem remains that nothing landed fixes -- file `kind: decide`,
+   `needs: []`, `status: todo`, title describing the concrete problem.
 
-Batch related findings into a single row where the underlying issue is the same across multiple
-pages (e.g. one row covering "problems 22/23/29 all still need the missing Vec sort workaround
-removed" rather than three near-duplicate rows) -- follow the existing board.yaml convention of
-one row per distinct piece of work, not one row per file.
+Batch related findings into one row (e.g. one row for "problems 22/23/29 all still need the
+missing Vec sort workaround removed") rather than one row per file.
 
-Done-gate: every one of the 30 pages has been read and triaged into one of the three outcomes
-above; any filed rows are appended to `plans/board.yaml` following the existing YAML shape
-exactly (see any existing entry for the exact field order/style); `python3
-.claude/scripts/board-lint.py` exits 0 against the modified file. Commit the board.yaml changes
-alone -- no other file should change as part of this row.
+Commit your `plans/board.yaml` additions incrementally -- e.g. after every 10 pages triaged --
+rather than holding everything until all 30 are done. Partial triage committed beats none.
 
-If turn budget runs out partway through, commit whatever rows you've already filed rather than
-holding everything until all 30 pages are reviewed -- partial triage committed is better than
-none.
+Done-gate: all 30 pages triaged into one of the three outcomes; filed rows follow existing
+board.yaml field order/style; `python3 .claude/scripts/board-lint.py` exits 0. Commit only
+`plans/board.yaml`.
