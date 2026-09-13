@@ -588,7 +588,37 @@
     what `counter()` and a `takeUntil`-shaped terminator actually look like given toylang has no
     closures/currying (functions.md: one param max), how a function''s signature states "this
     only accepts a finite stream," and whether/how this connects to the still-open main-loop and
-    async questions the note itself flags as uncertain.'
+    async questions the note itself flags as uncertain. Round answer (annotations capture,
+    counter-and-takeuntil-shape.forest.yaml, counter-and-takeuntil-terminator-shape,
+    2026-09-13T23:01:55Z, freeText, lightly cleaned up): maintainer pushes back on the round''s
+    own background/thesis, which leans on the `.`-rebinding mechanism `select`/`map`/`max_by`
+    share (a single expression evaluated per entry with `.` rebound) as what a `takeUntil`
+    predicate should plug into instead of a closure. Maintainer: that mechanism already IS "a
+    broken form of a lambda function/callback," and it was never meant as the permanent answer,
+    just a workaround -- it needs addressing before counter/takeUntil syntax is finalized, not
+    reused as-is. No option (A/B/C) picked. Spun off dot-rebinding-vs-lambda-design to ground
+    the next re-ask instead of re-presenting A/B/C unchanged.'
+  kind: decide
+  needs: [dot-rebinding-vs-lambda-design]
+  prio: 4
+  status: todo
+
+- id: dot-rebinding-vs-lambda-design
+  title: 'Spun off from infinite-streams-design''s counter-and-takeuntil-terminator-shape round
+    (annotations capture, 2026-09-13T23:01:55Z): maintainer says the `.`-rebinding mechanism
+    (`select`/`map`/`max_by`''s "evaluate an expression once per entry with `.` bound to that
+    entry") already is a lambda/callback in disguise -- "a broken form of a lambda function" --
+    and was only ever a workaround, not the intended long-term shape. This overlaps two rows
+    already ruled but not built: closures-first-class-functions-research (done, plans/closures-
+    first-class-functions-research.md) and partial-application-system-design (done, ruled option
+    C -- both partial-application shapes unify once functions are first-class), neither of which
+    has a build row yet (see dsv-partials-migration''s blocked_by: no partial-application-system-
+    build row exists on the board). Grill: once real closures/first-class functions exist, does
+    `.`-rebinding get superseded by them, kept as sugar that desugars to an implicit one-line
+    lambda, or left alone as a distinct point-free mechanism serving a different use case than a
+    general closure? The answer decides whether infinite-streams-design''s takeUntil predicate
+    should be spec''d against `.`-rebinding (its round''s options A/B) or deferred until closures
+    land.'
   kind: decide
   needs: []
   prio: 4
