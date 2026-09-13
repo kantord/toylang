@@ -193,6 +193,16 @@ const SORT_HELPER: &str = r#"fn tl_sort<T: Clone + Ord>(v: &[T]) -> Vec<T> {
 }
 "#;
 
+// `slice::sort_by_key` is already stable, so unlike the Go backend there is no stable-sort
+// workaround to reach for; `Ord` is exactly the constraint the checker's `orderable` restricts
+// the projected key type to.
+const SORT_BY_HELPER: &str = r#"fn tl_sort_by<T: Clone, K: Ord>(v: &[T], key: impl Fn(&T) -> K) -> Vec<T> {
+    let mut out = v.to_vec();
+    out.sort_by_key(|x| key(x));
+    out
+}
+"#;
+
 const REVERSE_HELPER: &str = r#"fn tl_reverse<T: Clone>(v: &[T]) -> Vec<T> {
     let mut out = v.to_vec();
     out.reverse();
@@ -214,6 +224,19 @@ fn tl_sum64(v: &[i64]) -> i64 {
 // `Option::max` is exactly the empty-is-absent answer, and `Ord` covers both integer widths.
 const MAX_HELPER: &str = r#"fn tl_max<T: Clone + Ord>(v: &[T]) -> Option<T> {
     v.iter().cloned().max()
+}
+"#;
+
+// The same `key(x) > key(m)` shape `tl_max` uses, so of equal maxima the first entry wins.
+// `Option` because an empty Vec has no maximum -- the same absence answer `max` gives.
+const MAX_BY_HELPER: &str = r#"fn tl_max_by<T: Clone, K: Ord>(v: &[T], key: impl Fn(&T) -> K) -> Option<T> {
+    let mut m = v.first()?;
+    for x in &v[1..] {
+        if key(x) > key(m) {
+            m = x;
+        }
+    }
+    Some(m.clone())
 }
 "#;
 
