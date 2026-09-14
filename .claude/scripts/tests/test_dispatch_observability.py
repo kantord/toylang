@@ -58,7 +58,7 @@ def test_health_alarm_on_harness_streak_and_zero_edits():
     healthy = [row(i, "model_done", 3, "GREEN") for i in range(5)]
     h = dispatch_state.health_from_rows(healthy, None, last=20)
     assert h["alarm"] is False and h["green"] == 5
-    streak = healthy + [row(10 + i, "dedup", 0) for i in range(3)]
+    streak = healthy + [row(10 + i, "no_progress_cutoff", 0) for i in range(3)]
     h = dispatch_state.health_from_rows(streak, None, last=20)
     assert h["alarm"] is True and h["harness_streak"] == 3
     # An ack drawn after the streak silences it; the old rows are history, not signal.
@@ -120,3 +120,6 @@ def test_truncated_empty_reply_is_not_model_done():
     assert not agent_loop.is_truncated_empty_reply(
         {"role": "assistant", "content": "", "tool_calls": [{"id": "x"}]}, "length")
     assert "reasoning_exhausted" in dispatch_state.HARNESS_ENDINGS
+    # A run that used its whole turn budget is a convergence problem, not a harness ending.
+    assert "max_turns" not in dispatch_state.HARNESS_ENDINGS
+    assert "dedup" not in dispatch_state.HARNESS_ENDINGS

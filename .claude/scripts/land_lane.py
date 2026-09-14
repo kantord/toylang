@@ -406,6 +406,30 @@ def cmd_land(args: list[str]) -> int:
     return 0 if any_green else 1
 
 
+def already_landed(n: str) -> bool:
+    r = run(["git", "log", "main", "--format=%h", "--grep", f"^Land issue-{n}:"], cwd=REPO,
+            capture_output=True, text=True)
+    return bool(r.stdout.strip())
+
+
+def other_land_process_for(n: str) -> bool:
+    """True if a land_lane.py process other than this one names row n in its
+    argv. Reads /proc directly (exact token match), same reasoning as
+    dispatch_state.live_row_ids()."""
+    me = os.getpid()
+    for pid_dir in Path("/proc").glob("[0-9]*"):
+        try:
+            pid = int(pid_dir.name)
+            argv = [a.decode(errors="replace") for a in pid_dir.joinpath("cmdline").read_bytes().split(b"\0") if a]
+        except (OSError, ValueError):
+            continue
+        if pid == me or not any(t.endswith("land_lane.py") for t in argv):
+            continue
+        if n in argv or f"issue-{n}" in argv:
+            return True
+    return False
+
+
 def cmd_land_patch(args: list[str]) -> int:
     if len(args) != 2:
         print("usage: land_lane.py land-patch <row-id> <patch-file>", file=sys.stderr)
@@ -414,6 +438,20 @@ def cmd_land_patch(args: list[str]) -> int:
     if not patch_file.is_file():
         print(f"[land] land-patch {n}: no such patch file {patch_file}", file=sys.stderr)
         return 2
+    # Two guards learned on 2026-09-14/15. A tick launched land-patch for
+    # rows whose landing was already running (three processes for one
+    # row), and a second landing of an already-merged row fails `git am`
+    # and RETRIGGERS a redispatch of finished work -- which produced a
+    # duplicate GREEN patch, another failed landing, and so on until the
+    # retry cap. Both are answered here, not in the tick's judgment.
+    if already_landed(n):
+        print(f"[land] land-patch {n}: a 'Land issue-{n}' commit is already on main -- nothing to do",
+              file=sys.stderr)
+        return 0
+    if other_land_process_for(n):
+        print(f"[land] land-patch {n}: another land_lane.py process for this row is live -- yielding",
+              file=sys.stderr)
+        return 0
     lock = acquire_land_lock(LOG_DIR / "land.lock")
     if lock is None:
         print("[land] queue lock held 30+ min -- gave up (tick will retry)", file=sys.stderr)

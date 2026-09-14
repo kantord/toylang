@@ -19,6 +19,8 @@ Usage:
       invocation (found by scanning cmdlines), one per line. Empty output
       means no dispatch is running right now -- the dispatcher is a single
       global batch, not a per-row slot pool.
+  dispatch_state.py --live-landings
+      Row ids named by a live land_lane.py process.
   dispatch_state.py --status ROW_ID
       Latest dispatch-log.csv row for ROW_ID as
       "status cost_usd patch_path self_report_path ended_by edits turns".
@@ -71,9 +73,14 @@ MSB_BIN = Path.home() / ".local/bin/msb"
 DEFAULT_CAP = 3
 KEEP_BUNDLES_PER_ROW = 3
 
-# Endings decided by the harness, not the model. Three of these in a row, or
-# a majority of zero-edit runs, is a pipeline defect until proven otherwise.
-HARNESS_ENDINGS = ("no_progress_cutoff", "dedup", "max_turns", "wall_clock", "reasoning_exhausted")
+# Endings where the harness stopped a run that still had budget on paper:
+# these say nothing about the task. `max_turns` and `dedup` are NOT here --
+# a run that used all 30 turns twice and changed nothing had its full
+# budget; that is a convergence problem for the coordinator's verbs (a)/(b),
+# as the select-lazy-materialization family showed on 2026-09-15 once the
+# real harness bugs were gone. Three of these in a row, or a majority of
+# zero-edit runs, is a pipeline defect until proven otherwise.
+HARNESS_ENDINGS = ("no_progress_cutoff", "wall_clock", "reasoning_exhausted")
 HEALTH_WINDOW = 20
 # `--health-ack` records "the harness was fixed at this time"; runs before
 # it no longer count toward the alarm (they still show in --show). Without
@@ -120,6 +127,24 @@ def live_row_ids() -> list[str]:
             ids.append(tok)
     # `uv run ... simple_dispatch.py` is two matching processes (the uv
     # supervisor plus the venv python it execs) with the same argv.
+    return list(dict.fromkeys(ids))
+
+
+def live_land_row_ids() -> list[str]:
+    """Rows named by a live land_lane.py process (land-patch <row> or land
+    <row>). The tick must not launch a second landing for these -- a tick
+    did, three times over, on 2026-09-14."""
+    ids: list[str] = []
+    for pid_dir in Path("/proc").glob("[0-9]*"):
+        try:
+            raw = pid_dir.joinpath("cmdline").read_bytes()
+        except OSError:
+            continue
+        argv = [a.decode(errors="replace") for a in raw.split(b"\0") if a]
+        at = next((i for i, t in enumerate(argv) if t.endswith("land_lane.py")), None)
+        if at is None or len(argv) < at + 3 or argv[at + 1] not in ("land", "land-patch"):
+            continue
+        ids.append(argv[at + 2].removeprefix("issue-"))
     return list(dict.fromkeys(ids))
 
 
@@ -470,6 +495,9 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     if "--live" in args:
         for row_id in live_row_ids():
+            print(row_id)
+    elif "--live-landings" in args:
+        for row_id in live_land_row_ids():
             print(row_id)
     elif "--status" in args:
         row_id = args[args.index("--status") + 1]

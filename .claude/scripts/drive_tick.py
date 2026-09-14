@@ -164,6 +164,12 @@ def safe_signal(label: str, fn, *args, default=None):
         return default
 
 
+def _already_landed(row_id: str) -> bool:
+    r = subprocess.run(["git", "log", "main", "--format=%h", "--grep", f"^Land issue-{row_id}:"],
+                       cwd=REPO, capture_output=True, text=True)
+    return bool(r.stdout.strip())
+
+
 def _process_delegated_row(row_id: str, live_rows: set[str]) -> tuple[str, list[str]]:
     """One delegated row's contribution to trigger/state. Kept as its own
     function -- and called through safe_signal() per row, not once for the
@@ -191,6 +197,11 @@ def _process_delegated_row(row_id: str, live_rows: set[str]) -> tuple[str, list[
     report_path = dispatch_state.self_report_path_for(row_id, row["run_id"])
     state = [f"[{row_id}: {status} ${cost}]"]
     if status == "GREEN":
+        if row_id in dispatch_state.live_land_row_ids():
+            return "", [f"[{row_id}: GREEN, landing in progress]"]
+        if _already_landed(row_id):
+            return (f"row {row_id} is GREEN and its Land commit is already on main -- archive it "
+                    f"(board-archive.py {row_id}), do NOT land again"), state
         return (f"row {row_id} is GREEN with a verified patch at "
                 f"{row.get('patch_path', '')} -- land it: uv run --project "
                 f".claude/scripts .claude/scripts/land_lane.py land-patch "
