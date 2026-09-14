@@ -1,0 +1,19 @@
+Follow-up to your previous session on tensor-transpose-build. Your earlier patch
+(the Transpose variant, tag, build.rs arm, checker, and the Rust, Go, JS, Python,
+Lua and jq emitter arms, with their `[5,7,9]` verification) has been reapplied to
+this checkout as real commits -- run `git log --oneline -12` and `git status`
+first and trust what you find over memory.
+
+Remaining work, in order, one commit each:
+1. `src/emit_llvm.rs`: add the `Builtin::Transpose` arm mirroring the landed
+   `Sum`/`Max` arms and the pattern you used in the other six emitters.
+2. Corpus cases in `tests/corpus/` per the original brief: one `output` case
+   whose program prints the transposed tensor on every backend, and
+   `refuses: true` cases for a ragged input and a non-numeric input. Follow the
+   existing case files' shape (`program`, `output` or `refuses`, block scalars).
+3. Run `just check`. `tsc` is now installed in this sandbox, so the
+   `tsc_accepts_the_declaration_and_consumer` test that failed before should
+   pass; if it does not, say so in your final message rather than working around
+   it.
+
+Reply DONE: only after `just check` has passed in your own run.

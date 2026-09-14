@@ -556,7 +556,7 @@
   kind: build
   needs: [dense-tensor-type]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: tensor-constructor-build
   issue: gh:175
