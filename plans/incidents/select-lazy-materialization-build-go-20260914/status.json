@@ -1,0 +1,38 @@
+{
+ "run_id": "35f62caa",
+ "row_id": "select-lazy-materialization-build-go",
+ "model": "deepseek/deepseek-v4-flash-0731",
+ "snapshot": "toylang-toolchain-v3",
+ "base_commit": "3aa7d7fa2efbf62cd65c1a8ef8c3669424ea6eae",
+ "start_time": "2026-09-14T21:36:14.469749+00:00",
+ "end_time": "2026-09-14T21:39:13.550187+00:00",
+ "duration_s": 179.1,
+ "status": "STUCK",
+ "cost_usd": 0.037437,
+ "ended_by": "dedup",
+ "edits": 0,
+ "turns": 25,
+ "attempts": [
+  {
+   "n": 1,
+   "ending": "model_done",
+   "moved": false,
+   "turns": 24,
+   "edits": 0,
+   "verify": "RED",
+   "verify_tail": "(no changes, no verify run)"
+  },
+  {
+   "n": 2,
+   "ending": "model_done",
+   "moved": false,
+   "turns": 1,
+   "edits": 0,
+   "verify": "RED",
+   "verify_tail": "(no changes, no verify run)"
+  }
+ ],
+ "self_report": null,
+ "patch": null,
+ "message": "t_cost\": 0.00142771, \"upstream_inference_completions_cost\": 2.268e-05}, \"completion_tokens_details\": {\"reasoning_tokens\": 0, \"image_tokens\": 0, \"audio_tokens\": 0}}\n  turn 24/30: prompt=43599 completion=4096 cost=$0.007251 (running total $0.034261)\n    usage detail: {\"prompt_tokens\": 43599, \"completion_tokens\": 4096, \"total_tokens\": 47695, \"cost\": 0.00725074, \"is_byok\": false, \"prompt_tokens_details\": {\"cached_tokens\": 0, \"cache_write_tokens\": 0, \"audio_tokens\": 0, \"video_tokens\": 0}, \"cost_details\": {\"upstream_inference_cost\": 0.00725074, \"upstream_inference_prompt_cost\": 0.00610386, \"upstream_inference_completions_cost\": 0.00114688}, \"completion_tokens_details\": {\"reasoning_tokens\": 4096, \"image_tokens\": 0, \"audio_tokens\": 0}}\n== verify: RED ==\n(no changes, no verify run)\n== attempt 2/3 ==\n  turn 1/30: prompt=48752 completion=4096 cost=$0.003176 (running total $0.037437)\n    usage detail: {\"prompt_tokens\": 48752, \"completion_tokens\": 4096, \"total_tokens\": 52848, \"cost\": 0.00317627, \"is_byok\": false, \"prompt_tokens_details\": {\"cached_tokens\": 43599, \"cache_write_tokens\": 0, \"audio_tokens\": 0, \"video_tokens\": 0}, \"cost_details\": {\"upstream_inference_cost\": 0.00317627, \"upstream_inference_prompt_cost\": 0.00202939, \"upstream_inference_completions_cost\": 0.00114688}, \"completion_tokens_details\": {\"reasoning_tokens\": 4096, \"image_tokens\": 0, \"audio_tokens\": 0}}\n== verify: RED ==\n(no changes, no verify run)\nSTUCK: verify output matches a previous attempt, not retrying further\nRC=1\n"
+}

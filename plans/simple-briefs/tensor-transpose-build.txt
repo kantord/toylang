@@ -1,18 +1,25 @@
 A previous dispatch completed this task, but landing the branch on main
-FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 2 of 3). The exact evidence:
+FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 1 of 3). The exact evidence:
 
-Applying: tir: add Transpose unary builtin (gh:175)
-Applying: tags: tag builtin.transpose (gh:175)
-Applying: check: type-check the transpose builtin (gh:175)
-error: patch failed: src/emit_rs.rs:890
+error: patch failed: build.rs:190
+error: build.rs: patch does not apply
+error: patch failed: src/check/mod.rs:3039
+error: src/check/mod.rs: patch does not apply
+error: patch failed: src/emit_go.rs:691
+error: src/emit_go.rs: patch does not apply
+error: patch failed: src/emit_rs.rs:892
 error: src/emit_rs.rs: patch does not apply
+error: patch failed: src/tags.rs:188
+error: src/tags.rs: patch does not apply
+error: patch failed: src/tir.rs:274
+error: src/tir.rs: patch does not apply
 hint: Use 'git am --show-current-patch=diff' to see the failed patch
 hint: When you have resolved this problem, run "git am --continue".
 hint: If you prefer to skip this patch, run "git am --skip" instead.
 hint: To restore the original branch and stop patching, run "git am --abort".
 hint: Disable this message with "git config set advice.mergeConflict false"
-Applying: emit_rs: emit the transpose builtin (gh:175)
-Patch failed at 0004 emit_rs: emit the transpose builtin (gh:175)
+Applying: agent_loop.py output
+Patch failed at 0001 agent_loop.py output
 
 
 Your job now is ONLY to make this branch land: fix whatever the evidence above
