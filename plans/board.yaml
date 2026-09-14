@@ -158,17 +158,6 @@
   needs: []
   status: done
 
-- id: sort-by-max-by-rust-tests
-  issue: gh:177
-  title: 'sort_by and max_by (gh:177), Rust-source backend, step 3/3 -- add the four backend
-    tests to `tests/backend_rust.rs` mirroring the landed Go commit''s tests (`git show 1456d9f --
-    tests/backend_go.rs` for the reference set), covering `sort_by`/`max_by` including the
-    tie-breaking (first-on-ties) case. Run `just test` to verify against `sort-by-max-by-rust-wiring`''s
-    codegen.'
-  kind: build
-  needs: [sort-by-max-by-rust-wiring]
-  status: delegated
-
 - id: sort-by-max-by-checkpoint-rust
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Rust-source commit landed clean
@@ -499,10 +488,16 @@
     model does not have to derive the representation from scratch inside its reasoning budget,
     (b) raise the completion-token budget or pick a lower-reasoning model for this task class,
     (c) hand the whole feature to a manual/privileged session, or (d) defer gh:176 outright. Mark
-    `status: done` and clear the `needs` gate on all 7 rows the same tick this is ruled.'
+    `status: done` and clear the `needs` gate on all 7 rows the same tick this is ruled.
+
+    RULED (maintainer session, 2026-09-15): option (b), as a harness fix rather than a per-family
+    setting. The 4096-token cap swallowed whole turns as hidden reasoning and agent_loop.py read the
+    resulting empty reply as model_done; it now nudges and continues, ends an attempt only after 3
+    such replies in a row (ended_by=reasoning_exhausted), and the default cap is 8192. The 7 rows are
+    ungated and redispatch normally; if they STUCK again the ending will say why.'
   kind: decide
   needs: []
-  status: proposed
+  status: done
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
@@ -566,11 +561,19 @@
     new `tl_transpose`-style helper per backend, signature `Vec<Vec<T>> -> Vec<Vec<T>>`. Since
     the wiring pattern is already proven 7 times over for Sum/Max, this is a genuine
     single-session cross-backend row. Done-gate: `just check` passes and transpose produces
-    identical output across all 7 backends on the existing corpus.'
+    identical output across all 7 backends on the existing corpus.
+
+    LANDED SO FAR (2026-09-14, commits baa3d76/3aa7d7f): Transpose variant, tag, build.rs arm,
+    checker, and the Rust and Go emitter arms -- the repair run after a merge conflict rebuilt only
+    those and went GREEN because no corpus case exercises transpose yet. REMAINING: the JS, Python,
+    Lua, jq and LLVM emitter arms, plus the corpus cases (one output case, refuses cases for ragged
+    and non-numeric input) so the gate actually covers the feature. Run 36d59b9d''s patch
+    (~/.cache/toylang-simple-dispatch/results/tensor-transpose-build-36d59b9d.patch) has working
+    arms for JS/Py/Lua/jq to crib from.'
   kind: build
   needs: [dense-tensor-type]
   prio: 3
-  status: delegated
+  status: todo
 
 - id: tensor-constructor-build
   issue: gh:175

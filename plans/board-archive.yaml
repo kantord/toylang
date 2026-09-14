@@ -2238,3 +2238,14 @@
   kind: build
   needs: [sort-by-max-by-rust-helpers]
   status: done
+
+- id: sort-by-max-by-rust-tests
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), Rust-source backend, step 3/3 -- add the four backend
+    tests to `tests/backend_rust.rs` mirroring the landed Go commit''s tests (`git show 1456d9f --
+    tests/backend_go.rs` for the reference set), covering `sort_by`/`max_by` including the
+    tie-breaking (first-on-ties) case. Run `just test` to verify against `sort-by-max-by-rust-wiring`''s
+    codegen.'
+  kind: build
+  needs: [sort-by-max-by-rust-wiring]
+  status: done
