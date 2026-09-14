@@ -700,7 +700,15 @@
     scratch under the fixed harness. `docs/.grill/stuck-row-triage-2.round.yaml`''s seven
     per-row escalation questions were retired as a symptom of this same bug (more than 4 STUCK
     rows in one round is a harness signal, not 4 scope decisions) -- this row is the one real
-    decision in their place.'
+    decision in their place.
+
+    RULED (maintainer, 2026-09-14, in session, mail flow skipped): implement the whole plan, both
+    parts. Landed the same day (commits e740140..1fda324): cutoff off by default, dedup only for
+    zero-edit attempts, snapshot toylang-toolchain-v3 with tsc and a GREEN preflight, per-run
+    bundles and ended_by/edits/turns, dispatch_state.py --show/--health/--capture, the tick''s
+    health alarm and third verb, the two lint checks, the dev-site run page, the memory pool with
+    a watch. Both salvageable patches acted on directly: sort-by-max-by-rust-wiring via
+    land_lane.py land-patch, tensor-transpose-build via --resume-from/--resume-patch.'
   kind: decide
   needs: []
-  status: todo
+  status: done
