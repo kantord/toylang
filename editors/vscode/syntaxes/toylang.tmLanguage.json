@@ -41,7 +41,7 @@
       "name": "keyword.operator.toylang"
     },
     {
-      "match": "(?:,|\\(|\\)|\\[|\\]|\\{|\\}|:|;)",
+      "match": "(?:,|\\(|\\)|\\[|\\]|\\{|\\}|:|;|@)",
       "name": "punctuation.toylang"
     }
   ],

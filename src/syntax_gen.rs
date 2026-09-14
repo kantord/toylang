@@ -85,6 +85,7 @@ const FIXED: &[Tok] = &[
     Tok::RBrace,
     Tok::Colon,
     Tok::Semicolon,
+    Tok::At,
     Tok::Arrow,
 ];
 
@@ -122,7 +123,8 @@ fn categorize(t: &Tok) -> Category {
         | Tok::LBrace
         | Tok::RBrace
         | Tok::Colon
-        | Tok::Semicolon => Category::Punctuation,
+        | Tok::Semicolon
+        | Tok::At => Category::Punctuation,
         Tok::Str(_) | Tok::Int(_) | Tok::Float(_) | Tok::Ident(_) | Tok::Eof => {
             unreachable!("not a fixed-spelling token; never constructed into FIXED")
         }

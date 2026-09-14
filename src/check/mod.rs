@@ -2919,9 +2919,14 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Expected::Synthesised(tir) => Ok(tir),
         },
 
-        // A `@(path)` module-as-function routing arm is a new AST node with no parser wiring
-        // yet, so nothing constructs it; the arm exists only for the match to be total.
-        Expr::ModuleRoute { .. } => unreachable!("module routing: AST-only stub, not wired yet"),
+        // A `@(path)` module-as-function routing arm parses now but is not yet supported: no
+        // resolution, acceptance, or codegen exists, so refuse cleanly instead of panicking.
+        Expr::ModuleRoute { span, .. } => {
+            return Err(Error::new(
+                *span,
+                "module routing (`@(...)`) is not supported yet".to_string(),
+            ))
+        }
     }
 }
 
