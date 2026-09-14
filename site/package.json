@@ -10,7 +10,7 @@
     "build": "tsc -b && vite build && node scripts/prerender.mjs",
     "preview": "vite preview",
     "check": "tsc -b && node scripts/check-runner.mjs",
-    "test": "node --test dev/src/lib/flow.test.ts dev/src/lib/grillForestChain.test.ts"
+    "test": "node --test dev/src/lib/flow.test.ts dev/src/lib/grillForestChain.test.ts dev/src/lib/dispatchSummary.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

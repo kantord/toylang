@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { DevDocsPage } from "@dev/components/DevDocsPage"
 import { GrillForestApp } from "@dev/components/GrillForestApp"
 import { MailApp } from "@dev/components/MailApp"
+import { RunPage } from "@dev/components/RunPage"
 import { useOpenGrillCount } from "@dev/lib/grillForest"
 import { loadCorpus, type Corpus } from "@/lib/corpus"
 import { cn } from "@/lib/utils"
@@ -82,6 +83,10 @@ export function DevApp() {
     // A `SECTIONS` entry alone would still fall through to `MailApp` below -- this branch is
     // what actually routes `#/grill` anywhere.
     body = <GrillForestApp segments={segments.slice(1)} />
+  } else if (section === "run" && segments.length === 3) {
+    // Reached from a delegated card's run link, not from the nav: a run page is a detail view of
+    // one board row, so it does not get a SECTIONS entry of its own.
+    body = <RunPage rowId={segments[1]} runId={segments[2]} />
   } else {
     body = <MailApp />
   }
