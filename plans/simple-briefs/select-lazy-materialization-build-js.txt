@@ -1,21 +1,13 @@
-Board row `select-lazy-materialization-build-js` (gh:176). Split from the original 7-backend row
-`select-lazy-materialization-build` per maintainer ruling (wizard submission,
-stuck-cross-backend-scope-escalation round, 2026-09-13, option A) -- that row kept going STUCK
-because "all 7 backends in one attempt" was too much surface for one dispatch. This row is JS
-only. Do not touch any other backend file.
-
-Note: the sibling Go row (`select-lazy-materialization-build-go`) already went STUCK once on
-this exact shape of work -- not because the idea was wrong, but because wiring the lazy
-representation into every existing consumer (index, slice, map, iteration, printing, fusion) in
-one pass was too much surface for one dispatch. If you find yourself facing that same breadth
-here, say so precisely in your summary (which consumers you converted, which you didn't, and
-why) rather than pushing through partially -- a clear partial report is more useful than a
-patch that silently drops a consumer.
+Board row `select-lazy-materialization-build-js` (gh:176). Two prior attempts (runs 063c8fc1,
+6bf3bbdf) both went STUCK at 0 edits, spending the whole turn budget reading `src/emit_js.rs` to
+map every consumer of `tl_select` before writing anything. This brief hands you that map already
+done, plus a design mirrored from the sibling Go row (`select-lazy-materialization-build-go`),
+which got a working version of this exact pattern to compile and pass all but a snapshot-accept
+step. Read this brief fully before touching the file; do not re-derive the design from scratch.
 
 ## What exists today (eager, what you're replacing)
 
-`src/emit_js.rs:35-40`:
-
+`src/emit_js.rs:35-41` (`SELECT_HELPER`):
 ```js
 function tl_select(src, pred) {
   const out = [];
@@ -23,66 +15,65 @@ function tl_select(src, pred) {
   return out;
 }
 ```
+Registered at `src/emit_js.rs:279` (`(used.select, SELECT_HELPER)`). Usage flagged at the `walk()`
+pass, `src/emit_js.rs:788` (`Kind::Select { .. } => used.select = true`). Emitted at the
+`Kind::Select` codegen site, `src/emit_js.rs:1119-1128`, as `tl_select(source, pred)`.
 
-Registered in the conditional-inclusion table at `src/emit_js.rs:279`:
-`(used.select, SELECT_HELPER),`
+## Every consumer that currently assumes `tl_select`'s result is a plain array
 
-Called at the `Kind::Select` emit site, `src/emit_js.rs:1119-1127`:
+- `Kind::Index`, `src/emit_js.rs:1158-1166`, emits `tl_at(base, index, depth)`. `tl_at` itself is
+  `OPT_HELPER`, `src/emit_js.rs:52-62` -- takes `v.length` and `v[i]` directly.
+- `Kind::Slice`, `src/emit_js.rs:1168-1181`, emits `tl_slice(base, lo, hi, depth)`. `tl_slice` is
+  `SLICE_HELPER`, `src/emit_js.rs:67-72` -- calls `v.slice(lo, hi)` and `v.map(...)` directly.
+- Anything else that reads a Select's result as a plain array (`.map`, printing/JSON output, a
+  chained pipe stage, `for...of`) -- grep for other helpers that take a bare array parameter and
+  check whether a Select can flow into them; if you find one, densify at that boundary the same
+  way as below.
 
-```rust
-Kind::Select {
-    source,
-    param,
-    pred,
-} => {
-    format!(
-        "tl_select({}, ({}) => {})",
-        expr(enums, source),
-        local(*param),
-        expr(enums, pred)
-    )
+## Design to build (mirrors the already-proven Go version; translate the shape, not the syntax)
+
+Make `tl_select` return a lazy handle instead of a plain array; build the selection vector once,
+on first use; give O(1) indexed access without copying survivors out. Any consumer that isn't
+plain indexing just densifies first (always correct, just not lazy for that path):
+
+```js
+function tl_sel_new(src, pred) {
+  return { __tlSel: true, src, pred, idx: null, dense: null };
+}
+function tl_sel_build(s) {
+  if (s.idx !== null) return;
+  const idx = [];
+  for (let i = 0; i < s.src.length; i++) if (s.pred(s.src[i])) idx.push(i);
+  s.idx = idx;
+}
+function tl_sel_dense(s) {
+  if (s.dense !== null) return s.dense;
+  tl_sel_build(s);
+  s.dense = s.idx.map((i) => s.src[i]);
+  return s.dense;
 }
 ```
 
-Today, `tl_select` walks the source once and eagerly builds a new, shorter array before anyone
-asks for an element.
+Then make `tl_at` and `tl_slice` polymorphic: if `v && v.__tlSel`, either answer directly from the
+selection vector (the actual laziness win, for `tl_at` at `depth === 0`: `tl_sel_build(v)`, apply
+the same negative-index/bounds logic against `v.idx.length`, return `{some: v.src[v.idx[i]]}` or
+`"none"`) or fall back to `tl_sel_dense(v)` then proceed with the existing plain-array logic
+unchanged (simplest correct option for `tl_slice` and the `depth > 0` recursive case in both
+helpers). Do the same densify-at-the-boundary check for any other consumer you find per the list
+above.
 
-## What to build instead
-
-Replace the eager filter with a lazily-built selection: build a mask/selection-vector once (O(n)
-over the mask bits), then give O(1) indexed access into it without copying the filtered elements
-out yet. Compact (materialize a real array) only on the first strong (non-transient) reference --
-reusing the source's underlying array in place if the source is uniquely referenced at that point,
-copying otherwise. This mirrors the same provably-one-reference condition
-`mutation-semantics-spike` (`plans/mutation-semantics-spike.md`, "(2) Is the rule decidable from
-the current TIR?") already established for fused-loop/copy-elision: a name with exactly one use,
-that use consuming, no use following it -- decidable from a TIR occurrence-count scope walk, no
-borrow checker, no runtime refcounting.
-
-Do NOT change `Kind::Select`'s AST/checker shape or its observable semantics -- `xs | select(pred)`
-must keep producing the exact same elements in the exact same order as today. This is purely a
-change to how the JS backend *represents* the result between the `select` call and whatever
-consumes it next (indexing, iteration, another pipe stage, etc.).
-
-Per-backend builtin-wiring precedent to follow (naming/registration convention):
-`src/emit_js.rs:230` (`SUM_HELPER`, registered the same way `SELECT_HELPER` is, at
-`src/emit_js.rs:295`).
+The in-place/reuse optimization (reusing the source's backing array when uniquely referenced) that
+the shared spec mentions is a perf nicety, not required for this row's done-gate -- skip it; a
+version that always copies on `tl_sel_dense` is correct and acceptable.
 
 ## Scope
 
-JS backend only (`src/emit_js.rs`). Do not touch `emit_go.rs`, `emit_py.rs`, `emit_lua.rs`,
-`emit_rs.rs`, `emit_jq.rs`, or `emit_llvm.rs` -- those are separate rows.
+JS backend only (`src/emit_js.rs`). Do not touch other backends.
 
 ## Done-gate
 
-This backend's own conformance tests pass (not the full 7-backend corpus suite -- other backends
-haven't been converted yet, so cross-backend agreement isn't the bar here). A program doing
-`xs | select(pred) | .[i]` for an index reachable without full materialization should only force
-work up to what's needed to answer that index -- verify this is actually true of your
-implementation (e.g. via a case where eager-vs-lazy is observable: timing, or an element that
-would error under strict eager evaluation if the whole thing were materialized). `just check`
-passes.
-
-Out of scope: no new `Type::Vec`-adjacent value kind, no syntax change, no checker change, no
-change to `select`'s result order or elements -- this is a backend-representation optimization
-only, scoped to JS.
+`just check` passes. The corpus snapshot tests for `*__js.snap` will need `cargo insta accept` (or
+this repo's existing insta-update workflow) once you've confirmed the new emitted output is
+behaviorally correct -- same elements, same order as the eager version. That snapshot diff is
+expected, not a regression; don't treat it as a bug. Same `Kind::Select` AST/checker node, no
+syntax/checker change, `xs | select(pred)` keeps its current meaning and element order.

@@ -1,77 +1,108 @@
-Board row `select-lazy-materialization-build-py` (gh:176). Split from the original 7-backend row
-`select-lazy-materialization-build` per maintainer ruling (wizard submission,
-stuck-cross-backend-scope-escalation round, 2026-09-13, option A) -- that row kept going STUCK
-because "all 7 backends in one attempt" was too much surface for one dispatch. This row is
-Python only. Do not touch any other backend file.
+Board row `select-lazy-materialization-build-py` (gh:176). Two prior attempts (runs 0adf79ff,
+80e8ef0a) both went STUCK at 0 edits in 60 turns, both self-reports calling the remaining work
+"too broad for one dispatch" (mapping index/slice/map/iteration/print/fused-main consumers plus a
+copy-elision rule). This brief hands you a design that makes the Python side of this genuinely
+smaller than it looks -- smaller than the sibling Go/JS versions of this same row, in fact -- by
+leaning on Python's iterator/sequence protocols instead of hand-wiring every consumer. Read this
+brief fully before touching the file; do not re-derive the design from scratch.
 
-Note: the sibling Go row (`select-lazy-materialization-build-go`) already went STUCK once on
-this exact shape of work -- not because the idea was wrong, but because wiring the lazy
-representation into every existing consumer (index, slice, map, iteration, printing, fusion) in
-one pass was too much surface for one dispatch. If you find yourself facing that same breadth
-here, say so precisely in your summary (which consumers you converted, which you didn't, and
-why) rather than pushing through partially -- a clear partial report is more useful than a
-patch that silently drops a consumer.
+## What's different about Python here (read this first)
 
-## What exists today (eager, what you're replacing)
+Unlike Go/JS, there is currently no `tl_select`-style helper function at all -- `Kind::Select` is
+emitted as an inline list comprehension at `src/emit_py.rs:634-644`:
+```python
+[p for p in source if pred]
+```
+(the codegen builds this as `format!("[{p} for {p} in {} if {}]", expr(source), expr(pred))`).
+That comprehension is eager -- it runs to completion the moment it's evaluated. You're replacing
+it with a lazy object.
 
-Unlike the Go/JS/Lua backends, Python has no standalone `tl_select`-style helper function --
-`Kind::Select` is emitted as an inline list comprehension at `src/emit_py.rs:634-642`:
+## Design: a class with `__iter__`/`__len__`/`__getitem__`, not per-consumer wiring
 
-```rust
-Kind::Select {
-    source,
-    param,
-    pred,
-} => {
-    let p = local(*param);
-    format!(
-        "[{p} for {p} in {} if {}]",
-        expr(enums, source),
-        expr(enums, pred)
-    )
-}
+Python lets an object act "list-like" everywhere (`for x in v`, `len(v)`, `v[i]`, unpacking,
+passing to another comprehension) just by implementing those three dunder methods. Route them all
+through the SAME densify-on-first-use logic, so every consumer that isn't the hot indexing path
+works automatically without you having to find and touch it:
+
+```python
+class TlSel:
+    __slots__ = ("src", "pred", "idx", "dense")
+
+    def __init__(self, src, pred):
+        self.src = src
+        self.pred = pred
+        self.idx = None
+        self.dense = None
+
+    def _build(self):
+        if self.idx is None:
+            self.idx = [i for i, e in enumerate(self.src) if self.pred(e)]
+
+    def _densify(self):
+        if self.dense is None:
+            self._build()
+            self.dense = [self.src[i] for i in self.idx]
+        return self.dense
+
+    def __len__(self):
+        self._build()
+        return len(self.idx)
+
+    def __iter__(self):
+        return iter(self._densify())
+
+    def __getitem__(self, key):
+        return self._densify()[key]
 ```
 
-This eagerly builds a new `list` before anyone asks for an element. There is no existing
-`SELECT_HELPER`-style constant or conditional-inclusion registration to model this on directly
-within `emit_py.rs`'s own Select path -- `src/emit_py.rs:224` (`SUM_HELPER`) and its registration
-at `src/emit_py.rs:365` are this file's precedent for how a *named* runtime helper is defined and
-conditionally included, which you will need since a lazy representation can no longer be a bare
-comprehension.
+Change the `Kind::Select` codegen to emit `TlSel(source, lambda p: pred)` instead of the inline
+comprehension (keep the same `local(*param)` name for the lambda's parameter, matching the
+existing `p` naming in that code).
 
-## What to build instead
+## The one consumer that needs an explicit fast path: `tl_at`
 
-Replace the inline comprehension with a call to a new runtime helper (following the
-`SUM_HELPER`/`uses("tl_sum(")` naming and registration precedent) that builds a mask/selection
-representation once (O(n) over the mask), then gives O(1) indexed access into it without copying
-filtered elements out yet. Compact (materialize a real `list`) only on the first strong
-(non-transient) reference -- reusing the source's underlying list in place if the source is
-uniquely referenced at that point, copying otherwise. This mirrors the same provably-one-reference
-condition `mutation-semantics-spike` (`plans/mutation-semantics-spike.md`, "(2) Is the rule
-decidable from the current TIR?") already established for fused-loop/copy-elision: a name with
-exactly one use, that use consuming, no use following it -- decidable from a TIR occurrence-count
-scope walk, no borrow checker, no runtime refcounting.
+`tl_at` (`src/emit_py.rs:139-149`) is the O(1)-index win this row is for -- give it an explicit
+branch so indexing a Select doesn't force a full `_densify()`:
+```python
+def tl_at(v, i, depth):
+    if depth > 0:
+        return [tl_at(e, i, depth - 1) for e in v]
+    if isinstance(v, TlSel):
+        v._build()
+        n = len(v.idx)
+        if i < 0:
+            i = n + i
+        if i < 0 or i >= n:
+            return "none"
+        return {"some": v.src[v.idx[i]]}
+    n = len(v)
+    if i < 0:
+        i = n + i
+    if i < 0 or i >= n:
+        return "none"
+    return {"some": v[i]}
+```
 
-Do NOT change `Kind::Select`'s AST/checker shape or its observable semantics -- `xs | select(pred)`
-must keep producing the exact same elements in the exact same order as today. This is purely a
-change to how the Python backend *represents* the result between the `select` call and whatever
-consumes it next (indexing, iteration, another pipe stage, printing, etc.).
+## Everything else
+
+`tl_slice` (`src/emit_py.rs:152-156`), any list comprehension consuming a Select's result
+(`Kind::Map`/`Kind::OptMap` etc.), printing, and any other place that iterates/indexes/measures a
+Select's output should work unchanged via `__iter__`/`__getitem__`/`__len__` -- verify this is
+actually true for this codebase's specific consumers rather than assuming it (e.g. if the printer
+does an `isinstance(v, list)` check anywhere instead of duck-typing, that would need its own
+branch -- grep for `isinstance` near print/serialize codegen to check). The in-place/reuse
+optimization (reusing the source's backing storage when uniquely referenced) that the shared spec
+mentions is a perf nicety, not required for this row's done-gate -- skip it; always allocating a
+fresh list in `_densify()` is correct and acceptable.
 
 ## Scope
 
-Python backend only (`src/emit_py.rs`). Do not touch `emit_go.rs`, `emit_js.rs`, `emit_lua.rs`,
-`emit_rs.rs`, `emit_jq.rs`, or `emit_llvm.rs` -- those are separate rows.
+Python backend only (`src/emit_py.rs`). Do not touch other backends.
 
 ## Done-gate
 
-This backend's own conformance tests pass (not the full 7-backend corpus suite -- other backends
-haven't been converted yet, so cross-backend agreement isn't the bar here). A program doing
-`xs | select(pred) | .[i]` for an index reachable without full materialization should only force
-work up to what's needed to answer that index -- verify this is actually true of your
-implementation (e.g. via a case where eager-vs-lazy is observable: timing, or an element that
-would error under strict eager evaluation if the whole thing were materialized). `just check`
-passes.
-
-Out of scope: no new `Type::Vec`-adjacent value kind, no syntax change, no checker change, no
-change to `select`'s result order or elements -- this is a backend-representation optimization
-only, scoped to Python.
+This backend's own conformance tests pass. `just check` passes. The corpus snapshot tests for
+`*__py.snap` will need `cargo insta accept` (or this repo's existing insta-update workflow) once
+you've confirmed the new emitted output is behaviorally correct -- same elements, same order as
+before. That snapshot diff is expected, not a regression. Same `Kind::Select` AST/checker node, no
+syntax/checker change, `xs | select(pred)` keeps its current meaning and element order.

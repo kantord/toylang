@@ -1,86 +1,104 @@
-Board row `select-lazy-materialization-build-go` (gh:176). Split from the original 7-backend row
-`select-lazy-materialization-build` per maintainer ruling (wizard submission,
-stuck-cross-backend-scope-escalation round, 2026-09-13, option A) -- that row kept going STUCK
-because "all 7 backends in one attempt" was too much surface for one dispatch. This row is Go
-only. Do not touch any other backend file.
+Board row `select-lazy-materialization-build-go` (gh:176). Redispatch after a prior attempt
+(run 9a7e0d2f, 2026-09-14) got very close -- 7 edits, `cargo build` passed, then `just check`
+failed on ONE thing: the `emitted_code_matches_the_snapshot` corpus test for `adults__go`, because
+the emitted Go source text legitimately changed (the whole point of this row). That is not a bug
+to redesign around -- it is an insta snapshot that needs reviewing/accepting once the new output
+is verified correct. Read this brief fully before writing any code; it hands you a proven design
+so you do not have to re-derive it from scratch.
+
+## The design that already worked (mirror this; you're rebuilding it from a clean checkout, not
+## resuming a branch)
+
+A `select` becomes a lazy handle: build a selection vector (survivor indices) once, on first use;
+answer indexing/length from that vector in O(1) without copying survivors out; only a strong
+consumer (something that needs a real `[]T`) forces a full materialization ("dense").
+
+```go
+type tlSel[T any] struct {
+	src     []T
+	pred    func(T) bool
+	idx     []int32
+	dense   []T
+	inPlace bool
+}
+
+func tlSelNew[T any](src []T, pred func(T) bool) *tlSel[T] {
+	return &tlSel[T]{src: src, pred: pred}
+}
+
+func (s *tlSel[T]) build() {
+	if s.idx != nil {
+		return
+	}
+	idx := make([]int32, 0, len(s.src))
+	for i, e := range s.src {
+		if s.pred(e) {
+			idx = append(idx, int32(i))
+		}
+	}
+	s.idx = idx
+}
+
+func tlSelAt[T any](s *tlSel[T], i int32) tlOpt[T] {
+	s.build()
+	n := int32(len(s.idx))
+	if i < 0 {
+		i = n + i
+	}
+	if i < 0 || i >= n {
+		return tlOpt[T]{}
+	}
+	return tlOpt[T]{true, s.src[s.idx[i]]}
+}
+
+func tlSelLen[T any](s *tlSel[T]) int32 {
+	s.build()
+	return int32(len(s.idx))
+}
+
+func tlSelDense[T any](s *tlSel[T]) []T {
+	if s.dense != nil {
+		return s.dense
+	}
+	s.build()
+	out := make([]T, len(s.idx))
+	for j, i := range s.idx {
+		out[j] = s.src[i]
+	}
+	s.dense = out
+	return out
+}
+```
+
+Wire every other consumer (slice, map, print, fusion, iteration) to call `tlSelDense` when it
+needs a real `[]T` -- that is always correct, just not lazy for that path. The `inPlace`/reuse
+variant (reusing the source's backing array when the source has exactly one use, per
+`mutation-semantics-spike`'s provably-one-reference condition) is a perf nicety, not a
+correctness requirement for this row's done-gate -- skip it if you're short on time; a plain
+`tlSelNew` that always copies on `tlSelDense` is a correct, acceptable implementation.
 
 ## What exists today (eager, what you're replacing)
 
-`src/emit_go.rs:50-58`:
-
-```go
-const SELECT_HELPER: &str = r#"func tlSelect[T any](src []T, pred func(T) bool) []T {
-	out := []T{}
-	for _, e := range src {
-		if pred(e) {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-"#;
-```
-
-Registered in the conditional-inclusion table at `src/emit_go.rs:680`:
-`(uses("tlSelect("), SELECT_HELPER),`
-
-Called at the `Kind::Select` emit site, `src/emit_go.rs:1336-1345`:
-
-```go
-Kind::Select {
-    source,
-    param,
-    pred,
-} => format!(
-    "tlSelect({}, func({} {}) bool {{ return {} }})",
-    self.expr(source),
-    self.local(*param),
-    self.go_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
-    self.expr(pred)
-),
-```
-
-Today, `tlSelect` walks the source once and eagerly builds a new, shorter `[]T` before anyone asks
-for an element.
-
-## What to build instead
-
-Replace the eager filter with a lazily-built selection: build a mask/selection-vector once (O(n)
-over the mask bits), then give O(1) indexed access into it without copying the filtered elements
-out yet. Compact (materialize a real `[]T`) only on the first strong (non-transient) reference --
-reusing the source's underlying array in place if the source is uniquely referenced at that point,
-copying otherwise. This mirrors the same provably-one-reference condition
-`mutation-semantics-spike` (`plans/mutation-semantics-spike.md`, "(2) Is the rule decidable from
-the current TIR?") already established for fused-loop/copy-elision: a name with exactly one use,
-that use consuming, no use following it -- decidable from a TIR occurrence-count scope walk, no
-borrow checker, no runtime refcounting.
-
-Do NOT change `Kind::Select`'s AST/checker shape or its observable semantics -- `xs | select(pred)`
-must keep producing the exact same elements in the exact same order as today. This is purely a
-change to how the Go backend *represents* the result between the `select` call and whatever
-consumes it next (indexing, iteration, another pipe stage, etc.) -- same spirit as how `tensor`
-stays a plain `Vec` underneath rather than becoming a new type (see the sibling
-`dense-tensor-type-build` row for that precedent).
-
-Per-backend builtin-wiring precedent to follow (naming/registration convention):
-`src/emit_go.rs:192` (`SUM_HELPER`, registered the same way `SELECT_HELPER` is).
+`src/emit_go.rs:50-58` (`SELECT_HELPER`), registered at `src/emit_go.rs:680`
+(`(uses("tlSelect("), SELECT_HELPER)`), called at the `Kind::Select` emit site,
+`src/emit_go.rs:1336-1345`. `grep -n "tlSelect" src/emit_go.rs` to find every call site that
+currently assumes a plain `[]T` and route each through `tlSelDense` (or `tlSelAt`/`tlSelLen` for
+direct index/length use, for the actual laziness win).
 
 ## Scope
 
-Go backend only (`src/emit_go.rs`). Do not touch `emit_js.rs`, `emit_py.rs`, `emit_lua.rs`,
-`emit_rs.rs`, `emit_jq.rs`, or `emit_llvm.rs` -- those are separate rows if/when this pattern gets
-extended.
+Go backend only (`src/emit_go.rs`). Do not touch other backends.
 
-## Done-gate
+## Done-gate, and the one thing to get right at the end
 
-This backend's own conformance tests pass (not the full 7-backend corpus suite -- other backends
-haven't been converted yet, so cross-backend agreement isn't the bar here). A program doing
-`xs | select(pred) | .[i]` for an index reachable without full materialization should only force
-work up to what's needed to answer that index -- verify this is actually true of your
-implementation (e.g. via a case where eager-vs-lazy is observable: timing, or an element that
-would error under strict eager evaluation if the whole thing were materialized). `just check`
-passes.
+`just check` passes. When you run it, the emitted Go source for the corpus tests WILL differ from
+the checked-in snapshots (`tests/snapshots/corpus__*__go.snap`) -- that is expected, not a
+regression. Once you've confirmed the new output is behaviorally correct (same elements, same
+order, same result as the eager version), accept the new snapshots (`cargo insta accept` or
+`cargo insta review` from the repo root, or `INSTA_UPDATE=always cargo test` per this repo's
+existing insta workflow -- check `justfile`/`Cargo.toml` if unsure of the exact invocation) and
+rerun `just check` to confirm it's green with the new snapshots committed. Do not hand-edit the
+`.snap` files yourself; use the insta tool so the format stays correct.
 
-Out of scope: no new `Type::Vec`-adjacent value kind, no syntax change, no checker change, no
-change to `select`'s result order or elements -- this is a backend-representation optimization
-only, scoped to Go.
+Out of scope: no `Kind::Select` AST/checker change, no change to `select`'s result order or
+elements.

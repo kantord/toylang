@@ -1,26 +1,161 @@
-A previous dispatch completed this task, but landing the branch on main
-FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 1 of 3). The exact evidence:
+Board row `tensor-transpose-build` (gh:175). The Rust and Go backend arms, the `Transpose` tag,
+`build.rs` arm, and checker (`transposeable`/`transpose_call` in `src/check/mod.rs`) already landed
+(commits baa3d76/3aa7d7f on main) -- do not touch those. REMAINING, and this dispatch's whole job:
+the JS, Python, Lua, jq, and LLVM emitter arms, plus real corpus test cases (today there are none,
+which is why `just check` currently passes trivially -- nothing exercises `Transpose` yet). This
+brief hands you working reference code for 4 of the 5 remaining backends (from an earlier attempt,
+run 36d59b9d) plus the exact runtime-C pattern for the 5th (LLVM), so you can go straight to
+wiring instead of spending your turn budget deriving the algorithm from scratch.
 
-error: patch failed: build.rs:190
-error: build.rs: patch does not apply
-error: patch failed: src/check/mod.rs:3039
-error: src/check/mod.rs: patch does not apply
-error: patch failed: src/emit_go.rs:691
-error: src/emit_go.rs: patch does not apply
-error: patch failed: src/emit_rs.rs:892
-error: src/emit_rs.rs: patch does not apply
-error: patch failed: src/tags.rs:188
-error: src/tags.rs: patch does not apply
-error: patch failed: src/tir.rs:274
-error: src/tir.rs: patch does not apply
-hint: Use 'git am --show-current-patch=diff' to see the failed patch
-hint: When you have resolved this problem, run "git am --continue".
-hint: If you prefer to skip this patch, run "git am --skip" instead.
-hint: To restore the original branch and stop patching, run "git am --abort".
-hint: Disable this message with "git config set advice.mergeConflict false"
-Applying: agent_loop.py output
-Patch failed at 0001 agent_loop.py output
+## Checker contract already in place (read-only, do not change)
 
+`src/check/mod.rs`'s `transpose_call`: refuses non-`Vec<Vec<Int|Int64>>` input at COMPILE time
+(`` `transpose` needs a Vec of Vecs of Int or Int64, found {ty} ``) -- so "non-numeric input" is
+already a checker-level refusal, not something backends need to guard. Raggedness (rows of
+unequal length) is NOT statically checked -- `Vec<Vec<T>>` doesn't carry per-row length in the
+type -- so every backend needs its own RUNTIME check, refusing ragged input the same way Go/Rust
+already do (`tlFail`/`tl_fail("transpose needs a rectangular Vec of Vecs")`, see
+`src/emit_go.rs:245-260` / the analogous Rust helper). Cross-backend agreement means a ragged input
+must be refused identically on all 7 backends, not silently produce garbage on some.
 
-Your job now is ONLY to make this branch land: fix whatever the evidence above
-shows failing, and re-run the verify command yourself. Do not start new feature work.
+## JS -- `src/emit_js.rs` (mirror `MAX_HELPER`'s registration exactly)
+
+```js
+// `vv[r][c]` becomes `out[c][r]`; every row has `vv[0].length` cells because the checker
+// refuses a ragged literal, and a zero-row or zero-column matrix transposes to the empty one.
+function tl_transpose(vv) {
+  if (vv.length === 0) return [];
+  for (const row of vv) {
+    if (row.length !== vv[0].length) throw new Error("transpose needs a rectangular Vec of Vecs");
+  }
+  const out = [];
+  for (let c = 0; c < vv[0].length; c++) {
+    const row = [];
+    for (let r = 0; r < vv.length; r++) row.push(vv[r][c]);
+    out.push(row);
+  }
+  return out;
+}
+```
+Register a `used.transpose` flag (follow `used.max` exactly) in the `Helpers` struct, the
+`walk()` pass, and the helper-emission list; wire `Builtin::Transpose => format!("tl_transpose({})", expr(enums, arg))`
+in the `expr()` match, alongside `Builtin::Max`.
+
+## Python -- `src/emit_py.rs` (mirror `MAX_HELPER`'s registration exactly)
+
+```python
+def tl_transpose(vv):
+    if len(vv) == 0:
+        return []
+    ncols = len(vv[0])
+    for row in vv:
+        if len(row) != ncols:
+            raise Exception("transpose needs a rectangular Vec of Vecs")
+    return [[vv[r][c] for r in range(len(vv))] for c in range(ncols)]
+```
+Same `used.transpose` / helper-list / `Builtin::Transpose` wiring pattern as `tl_max`.
+
+## Lua -- `src/emit_lua.rs` (mirror `MAX_HELPER`'s registration exactly)
+
+```lua
+local function tl_transpose(vv)
+  if #vv == 0 then return {} end
+  for r = 1, #vv do
+    if #vv[r] ~= #vv[1] then error("transpose needs a rectangular Vec of Vecs") end
+  end
+  local out = {}
+  for c = 1, #vv[1] do
+    local row = {}
+    for r = 1, #vv do
+      row[r] = vv[r][c]
+    end
+    out[c] = row
+  end
+  return out
+end
+```
+Same `used.transpose` / helper-list / `Builtin::Transpose` wiring pattern as `tl_max`.
+
+## jq -- `src/emit_jq.rs`
+
+jq's own `transpose` filter is exactly the rectangular transpose the checker already guarantees on
+element type, and it already errors on a ragged input on its own (no extra guard needed) and
+agrees on the empty-matrix case:
+```rust
+Builtin::Transpose => format!("({} | transpose)", expr(enums, arg)),
+```
+Add this arm to the `expr()` match alongside `Builtin::Max` -- no new helper, no `used.transpose`
+flag needed (jq builtins don't need conditional-inclusion registration the way the other backends
+do; check a neighboring simple builtin arm to confirm).
+
+## LLVM -- `src/emit_llvm.rs` + `runtime/toylang.c` (this is the one with no crib code -- new
+## runtime function required, follow `tl_vec_flatten`'s pattern for handling a Vec of Vecs)
+
+The LLVM backend calls into a C runtime (`runtime/toylang.c`) rather than emitting inline logic.
+`tl_vec_flatten` (`runtime/toylang.c:1331-1348`) is the closest existing precedent for operating on
+a `Vec<Vec<T>>`: the outer `tl_vec`'s single column (`cols[0]`) holds one `tl_vec*` pointer per
+row. Add, near `tl_vec_max`/`tl_vec_flatten`:
+
+```c
+/* `vv[r][c]` becomes `out[c][r]`; ragged input (rows of unequal length) is refused at runtime
+ * since Vec<Vec<T>> carries no per-row length in its type. */
+tl_vec *tl_vec_transpose(const tl_vec *vv) {
+    if (vv->len == 0) {
+        return tl_vec_new(0, 1);
+    }
+    const tl_vec *row0 = (const tl_vec *)vv->cols[0][0];
+    int64_t ncols = row0->len;
+    for (int64_t i = 0; i < vv->len; i++) {
+        const tl_vec *row = (const tl_vec *)vv->cols[0][i];
+        if (row->len != ncols) {
+            const char *msg = "toylang: transpose needs a rectangular Vec of Vecs\n";
+            (void)!write(2, msg, strlen(msg));
+            exit(1);
+        }
+    }
+    tl_vec *out = tl_vec_new(ncols, 1);
+    for (int64_t c = 0; c < ncols; c++) {
+        tl_vec *newrow = tl_vec_new(vv->len, 1);
+        for (int64_t r = 0; r < vv->len; r++) {
+            const tl_vec *row = (const tl_vec *)vv->cols[0][r];
+            newrow->cols[0][r] = row->cols[0][c];
+        }
+        out->cols[0][c] = (int64_t)newrow;
+    }
+    return out;
+}
+```
+(Follow `tl_div_by_zero`'s write(2, ...)+exit(1) pattern for the runtime error, as shown -- that's
+this codebase's existing convention for a hard runtime refusal, not an exception mechanism.)
+
+Then in `src/emit_llvm.rs`: declare the function the same way `vec_max` is declared
+(`emit_llvm.rs:87` field + `emit_llvm.rs:319` `module.add_function("tl_vec_transpose", ...)` --
+match `tl_vec_max`'s `ptr.fn_type(&[ptr.into()], false)` signature since transpose is also
+one-Vec-in-one-Vec-out), and add a `Builtin::Transpose => self.call_rt(self.rt.vec_transpose, &[arg], "transpose")?`
+arm next to `Builtin::Max` (around `emit_llvm.rs:1530`). Check whether the runtime C file needs a
+matching header/prototype declaration elsewhere (search for `tl_vec_max` and `tl_vec_flatten` by
+name across the repo, not just `toylang.c`, to find every place a runtime function has to be
+declared).
+
+## Corpus tests (none exist yet -- add real ones, per the row's own done-gate)
+
+Add to `tests/corpus/` (follow an existing small builtin's corpus case, e.g. grep for how `max`'s
+corpus case is structured, for the file-pair convention):
+1. One success case: a small rectangular `Vec<Vec<Int>>` literal piped through `transpose`,
+   asserting the transposed output, checked identical across all 7 backends.
+2. A ragged-input case that every backend refuses identically (runtime error, not a crash or
+   silently-wrong output) -- this is what exercises the new runtime guard in every arm above.
+3. A non-numeric-input case that the CHECKER refuses at compile time (this one doesn't need a
+   corpus/runtime case at all if this repo's checker-refusal tests live in a separate suite --
+   check `tests/` for how other checker-refusal messages, e.g. `orderable`'s errors, are pinned,
+   and follow that convention rather than inventing a new one).
+
+## Scope
+
+JS, Python, Lua, jq, LLVM emitter arms + corpus cases only. Do not touch `src/tir.rs`,
+`src/tags.rs`, `build.rs`, `src/check/mod.rs`, `src/emit_rs.rs`, or `src/emit_go.rs` -- all landed.
+
+## Done-gate
+
+`just check` passes, with the corpus test(s) above actually exercising `Transpose` on all 7
+backends (not another hollow green from zero coverage).
