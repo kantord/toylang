@@ -11,6 +11,13 @@ slots:
     source: plans/dispatch-self-healing-plan.md
     written: "2026-09-14"
     confirmed: 0
+  - id: go-select-helper-optype-gating
+    kind: fact-check
+    condition: "src/emit_go.rs helper inclusion (~line 672-705): OPT_TYPE is gated by scanning user-emitted `decls` for literal tlOpt/tlAt/tlTail/tlFirst/unwrap substrings, not by helper-to-helper dependency; SELECT_HELPER's own text (once rewritten to the lazy tlSel/tlSelAt/tlSelDense form) unconditionally defines tlSelAt returning tlOpt[T], so OPT_TYPE must also be gated on uses(\"tlSelNew(\") (SELECT_HELPER's own inclusion condition) or any program whose Select never gets a direct depth-0 index will emit `undefined: tlOpt`"
+    observation: "select-lazy-materialization-build-go run ed033203 (2026-09-14) failed just check this way on the type_alias corpus test; fix folded into plans/simple-briefs/select-lazy-materialization-build-go.txt for the next redispatch"
+    source: plans/simple-briefs/select-lazy-materialization-build-go.txt
+    written: "2026-09-15"
+    confirmed: 0
   - id: select-lazy-materialization-reasoning-loop
     kind: watch
     condition: "any select-lazy-materialization-build-* dispatch (go/js/py/lua/rust/jq/llvm): all 7 have independently ended STUCK/dedup/0-edits, model completion budget burned on reasoning_tokens before any write_file call -- RULED 2026-09-15 (reasoning-token cap fix in agent_loop.py, ended_by=reasoning_exhausted); if a select-lazy row STUCKs again with that ending, the cap or model is still the problem, not scope"

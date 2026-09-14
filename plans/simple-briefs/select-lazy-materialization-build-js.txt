@@ -1,9 +1,16 @@
-Board row `select-lazy-materialization-build-js` (gh:176). Two prior attempts (runs 063c8fc1,
-6bf3bbdf) both went STUCK at 0 edits, spending the whole turn budget reading `src/emit_js.rs` to
-map every consumer of `tl_select` before writing anything. This brief hands you that map already
-done, plus a design mirrored from the sibling Go row (`select-lazy-materialization-build-go`),
-which got a working version of this exact pattern to compile and pass all but a snapshot-accept
-step. Read this brief fully before touching the file; do not re-derive the design from scratch.
+Board row `select-lazy-materialization-build-js` (gh:176). Third attempt. Two earlier runs
+(063c8fc1, 6bf3bbdf) went STUCK at 0 edits just reading the file -- this brief already hands you
+the consumer map below so you don't repeat that. A third run (ec7b5d98, 2026-09-14) actually wrote
+the design (13 edits) and got the build compiling; it ran out of its 90-turn budget one step from
+green. Its own self-report: "I had just added densify guards to tl_field and tl_eq, but had not
+yet re-run the full verification cycle after those last edits. The build itself was already
+compiling and the only earlier failure was the expected snapshot diff in
+js_targets_split_on_stdin, which is meant to be accepted via `cargo insta accept`." Concretely,
+this run's remaining work is: (1) confirm the `tl_field`/`tl_eq` densify guards you (re)write per
+the design below are complete and correct, (2) run `just check`, (3) accept the expected snapshot
+diff(s) with `cargo insta accept` (do not hand-edit `.snap` files), (4) rerun `just check` to
+confirm green. Read the rest of this brief for the full design so you do not have to re-derive it
+from scratch.
 
 ## What exists today (eager, what you're replacing)
 

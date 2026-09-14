@@ -1,10 +1,28 @@
-Board row `select-lazy-materialization-build-go` (gh:176). Redispatch after a prior attempt
-(run 9a7e0d2f, 2026-09-14) got very close -- 7 edits, `cargo build` passed, then `just check`
-failed on ONE thing: the `emitted_code_matches_the_snapshot` corpus test for `adults__go`, because
-the emitted Go source text legitimately changed (the whole point of this row). That is not a bug
-to redesign around -- it is an insta snapshot that needs reviewing/accepting once the new output
-is verified correct. Read this brief fully before writing any code; it hands you a proven design
-so you do not have to re-derive it from scratch.
+Board row `select-lazy-materialization-build-go` (gh:176). Third attempt. Two prior runs
+(9a7e0d2f, ed033203, both 2026-09-14) used the exact design below and got real edits in, but both
+still failed `just check` -- read the bug diagnosis right below before writing any code, it is a
+one-line root cause, not a design problem.
+
+## Why the last run failed -- fix this specific thing
+
+Run ed033203 failed with `undefined: tlOpt` in the emitted Go for the `type_alias` corpus test
+(and possibly others). Root cause, found by reading `src/emit_go.rs:670-705` on the current
+checkout: helper inclusion is decided by scanning the emitted user code (`decls`) for literal
+substrings like `uses("tlSelAt(")` (see `let uses = |name: &str| decls.contains(name);` at line
+672). But `SELECT_HELPER`'s own text (once you rewrite it into the `tlSel`/`tlSelAt`/`tlSelDense`
+form below) *unconditionally* defines `tlSelAt`, whose signature returns `tlOpt[T]` -- so
+including `SELECT_HELPER` always requires `OPT_TYPE`, regardless of whether the user's own code
+happens to call `tlSelAt(` directly (e.g. a program that only ever calls `tlSelDense`/`tlSelLen`
+on a Select, never depth-0 indexes it, won't have `"tlSelAt("` in `decls` at all). Fix: add
+`|| uses("tlSelNew(")` to the `OPT_TYPE` gating condition at line 693 (the same line that already
+lists `uses("tlOpt[") || uses("tlAt(") || uses("tlTail(") || uses("tlFirst(") || unwrap`) --
+`tlSelNew(` is guaranteed to be in `decls` whenever `SELECT_HELPER` gets included (it's the
+registration condition for `SELECT_HELPER` itself, per the `helpers` loop a few lines below).
+After that one-line fix, re-run `just check`, accept the (expected, legitimate) snapshot diffs,
+and confirm green.
+
+Read the rest of this brief for the full design (already proven twice to compile and produce
+correct output) so you do not have to re-derive it from scratch.
 
 ## The design that already worked (mirror this; you're rebuilding it from a clean checkout, not
 ## resuming a branch)
