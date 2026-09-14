@@ -82,6 +82,7 @@ pub(crate) enum Tok {
     RBrace,
     Colon,
     Semicolon,
+    At,
     Arrow,
     Eof,
 }
@@ -132,6 +133,7 @@ impl std::fmt::Display for Tok {
             Tok::RBrace => "`}`",
             Tok::Colon => "`:`",
             Tok::Semicolon => "`;`",
+            Tok::At => "`@`",
             Tok::Arrow => "`->`",
             Tok::Eof => "end of program",
         };
@@ -222,6 +224,7 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
         '}' => single(input, Tok::RBrace),
         ':' => single(input, Tok::Colon),
         ';' => single(input, Tok::Semicolon),
+        '@' => single(input, Tok::At),
         other => {
             return Err(Error::new(
                 Span::new(start, start + 1),
@@ -1696,6 +1699,25 @@ impl<'i> Cursor<'i> {
                 let close = self.eat(Tok::RParen)?;
                 Ok(Expr::Dsv {
                     delim,
+                    span: span.to(close),
+                })
+            }
+
+            // `@(path)` module routing: the path is a string literal in parens. No resolution
+            // happens here -- the path stays a raw string for step 3's checker/emit work.
+            Tok::At => {
+                self.eat(Tok::LParen)?;
+                let (tok, _) = self.advance()?;
+                let Tok::Str(path) = tok else {
+                    return Err(Error::new(
+                        span,
+                        "`@` module routing needs a string path, as in `@(\"path\")`"
+                            .to_string(),
+                    ));
+                };
+                let close = self.eat(Tok::RParen)?;
+                Ok(Expr::ModuleRoute {
+                    path,
                     span: span.to(close),
                 })
             }
