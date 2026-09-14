@@ -1,0 +1,88 @@
+Board row `sort-by-max-by-rust-tests` (gh:177), step 3/3 of the Rust backend's `sort_by`/`max_by`
+support. `sort-by-max-by-rust-wiring` already landed working codegen in `src/emit_rs.rs` (the
+`SortBy`/`MaxBy` arms replacing the old `unreachable!`). Your job is test-only: add the same four
+tests that already exist for the Go backend to `tests/backend_rust.rs`, swapping `Backend::Go` for
+`Backend::Rust`.
+
+Reference commit `1456d9f` added these four tests to `tests/backend_go.rs` (`git show 1456d9f --
+tests/backend_go.rs` to see them verbatim). Port them as-is into `tests/backend_rust.rs`, changing
+only `Backend::Go` to `Backend::Rust` in each `toylang::run_on(...)` call -- the toylang source,
+assertions, and doc comments all stay identical:
+
+```rust
+/// `sort_by` orders by the projected key, stably: ties keep their original order.
+#[test]
+fn sort_by_orders_by_the_projected_key_stably() {
+    let src = r#"
+[{name: "b", age: 2}, {name: "a", age: 1}, {name: "c", age: 2}] | sort_by(.age)
+"#;
+    let out = toylang::run_on(src, None, Backend::Rust).unwrap();
+    assert_eq!(
+        out,
+        "[{\"name\":\"a\",\"age\":1},{\"name\":\"b\",\"age\":2},{\"name\":\"c\",\"age\":2}]\n"
+    );
+}
+
+/// `max_by` yields the entry with the greatest projected key, ties keeping the first.
+#[test]
+fn max_by_keeps_the_first_of_equal_maxima() {
+    let src = r#"
+[{name: "a", age: 1}, {name: "c", age: 2}, {name: "b", age: 2}] | max_by(.age)
+"#;
+    let out = toylang::run_on(src, None, Backend::Rust).unwrap();
+    assert_eq!(out, "{\"name\":\"c\",\"age\":2}\n");
+}
+
+/// An empty Vec has no maximum, so `max_by` yields the absent Opt, which prints as null, the
+/// same answer `max` gives. The empty Vec<{...}> comes from a declared return type.
+#[test]
+fn max_by_of_an_empty_vec_is_absent() {
+    let src = r#"
+fn nothing() -> Vec<{name: Str, age: Int}> = []
+nothing() | max_by(.age)
+"#;
+    let out = toylang::run_on(src, None, Backend::Rust).unwrap();
+    assert_eq!(out, "null\n");
+}
+
+/// The projection is restricted to the same natively-ordered scalars `sort` takes, so each of
+/// Str and Int64 gets an exercise here, beside the Int the tests above use.
+#[test]
+fn sort_by_and_max_by_handle_str_and_int64_keys() {
+    let strs = toylang::run_on(
+        r#"
+["cherry", "apple", "banana"] | sort_by(.)
+"#,
+        None,
+        Backend::Rust,
+    )
+    .unwrap();
+
+    let wide = toylang::run_on(
+        r#"
+fn wide(x: Int) -> Int64 = i64(x)
+
+[{v: wide(9), s: "x"}, {v: wide(2), s: "y"}] | max_by(.v)
+"#,
+        None,
+        Backend::Rust,
+    )
+    .unwrap();
+}
+```
+
+Check the top of `tests/backend_rust.rs` for how `Backend`/`toylang` are already imported in that
+file (it may already be `use toylang::Backend;` or fully-qualified `toylang::Backend::Rust` --
+match whatever's already there rather than introducing a new import style) and place the new tests
+at the end of the file.
+
+Note the last test (`sort_by_and_max_by_handle_str_and_int64_keys`) binds `strs`/`wide` but never
+asserts on them in the Go original either -- port it exactly as-is, don't add assertions that
+weren't there.
+
+Done-gate: `just test` passes, including these four new tests running against the Rust backend and
+agreeing with the already-landed Go backend's behavior (that's why the expected strings are
+identical to the Go test file).
+
+Do not touch `src/emit_rs.rs` or any backend codegen -- this row is tests only. Do not touch the
+Go, JS, Python, Lua, or jq test files. Do not add tests beyond these four.
