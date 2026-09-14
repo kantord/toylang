@@ -887,9 +887,11 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_all("), ALL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
         (uses("tl_sort("), SORT_HELPER),
+        (uses("tl_sort_by("), SORT_BY_HELPER),
         (uses("tl_reverse("), REVERSE_HELPER),
         (uses("tl_sum(") || uses("tl_sum64("), SUM_HELPER),
         (uses("tl_max("), MAX_HELPER),
+        (uses("tl_max_by("), MAX_BY_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
         (uses("tl_dsv("), DSV_HELPER),
@@ -1605,11 +1607,28 @@ impl Emitter<'_> {
                 self.rs_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
                 self.expr(pred)
             ),
-            // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
-            // program produced one without its backend being taught to emit it yet.
-            Kind::SortBy { .. } | Kind::MaxBy { .. } => {
-                unreachable!("sort_by/max_by emission lands in a later step")
-            }
+            Kind::SortBy {
+                source,
+                param,
+                body,
+            } => format!(
+                "tl_sort_by(&{}, |{}: &{}| {})",
+                self.expr(source),
+                self.local(*param),
+                self.rs_type(tir::runtime_elem(&source.ty).expect("sort_by runs over a dimension")),
+                self.expr(body)
+            ),
+            Kind::MaxBy {
+                source,
+                param,
+                body,
+            } => format!(
+                "tl_max_by(&{}, |{}: &{}| {})",
+                self.expr(source),
+                self.local(*param),
+                self.rs_type(tir::runtime_elem(&source.ty).expect("max_by runs over a dimension")),
+                self.expr(body)
+            ),
             Kind::Field { base, name } => {
                 let depth = tir::vec_depth(&base.ty);
                 self.distribute(&self.expr(base), &base.ty, &t.ty, depth, &|v| {
