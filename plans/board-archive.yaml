@@ -2226,3 +2226,15 @@
   needs: [mutation-semantics-spike, binary-op-multiplicity-design]
   prio: 4
   status: done
+
+- id: sort-by-max-by-rust-wiring
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), Rust-source backend, step 2/3 -- wire the helpers from
+    `sort-by-max-by-rust-helpers` into the emitter: add `tl_sort_by`/`tl_max_by` to the
+    conditional-inclusion table (~src/emit_rs.rs:866-869) and replace the two
+    `unreachable!("sort_by/max_by emission lands in a later step")` arms (~line 1587,
+    `Kind::SortBy`/`Kind::MaxBy`) with real codegen calling the new helpers. No tests yet -- this
+    step is done when the emitter compiles and no longer panics on `sort_by`/`max_by` TIR nodes.'
+  kind: build
+  needs: [sort-by-max-by-rust-helpers]
+  status: done
