@@ -2249,3 +2249,27 @@
   kind: build
   needs: [sort-by-max-by-rust-wiring]
   status: done
+
+- id: module-routing-syntax-build-parse
+  issue: gh:167
+  title: 'Implement `@(path)` module-as-function routing-arm syntax, step 2/3 -- add lexer/parser
+    support so `@("path")` parses into the `Expr::ModuleRoute { path, span }` variant added in
+    `module-routing-syntax-build-ast`. No checker change here; whatever placeholder arm step 1
+    left in `src/check/mod.rs` will now become reachable once parsing constructs the variant, so
+    this step must also swap that specific placeholder for a real (still stub-level) arm that
+    does not panic -- it can stay a plain `Err(...)` refusal at this point since the exact wording
+    lands in step 3. Done-gate: `just check` passes; a parse-only test confirms `@("path")`
+    parses into the new AST node without panicking end-to-end.
+
+    STUCK 2/2 attempts at the reshaped brief (c3fa89a2, 0c18bd4d) -- both zero `write_file`
+    calls, both self-reports blaming pure budget exhaustion, not scope. Maintainer ruling
+    (wizard submission, stuck-zero-write-pattern-escalation round, 2026-09-13, option A):
+    redispatch narrower one more time -- hand over the exact 3 edits verbatim, tell the agent
+    not to re-derive locations, and drop the test-file requirement entirely (the brief''s prior
+    done-gate wrongly assumed `src/parse.rs` already had a `#[cfg(test)] mod tests` block to
+    extend; it does not). Brief reshaped accordingly in
+    `plans/simple-briefs/module-routing-syntax-build-parse.txt`.'
+  kind: build
+  needs: [module-routing-syntax-build-ast]
+  prio: 5
+  status: done

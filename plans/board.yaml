@@ -244,30 +244,6 @@
   needs: [sort-by-max-by-checkpoint-jq]
   status: todo
 
-- id: module-routing-syntax-build-parse
-  issue: gh:167
-  title: 'Implement `@(path)` module-as-function routing-arm syntax, step 2/3 -- add lexer/parser
-    support so `@("path")` parses into the `Expr::ModuleRoute { path, span }` variant added in
-    `module-routing-syntax-build-ast`. No checker change here; whatever placeholder arm step 1
-    left in `src/check/mod.rs` will now become reachable once parsing constructs the variant, so
-    this step must also swap that specific placeholder for a real (still stub-level) arm that
-    does not panic -- it can stay a plain `Err(...)` refusal at this point since the exact wording
-    lands in step 3. Done-gate: `just check` passes; a parse-only test confirms `@("path")`
-    parses into the new AST node without panicking end-to-end.
-
-    STUCK 2/2 attempts at the reshaped brief (c3fa89a2, 0c18bd4d) -- both zero `write_file`
-    calls, both self-reports blaming pure budget exhaustion, not scope. Maintainer ruling
-    (wizard submission, stuck-zero-write-pattern-escalation round, 2026-09-13, option A):
-    redispatch narrower one more time -- hand over the exact 3 edits verbatim, tell the agent
-    not to re-derive locations, and drop the test-file requirement entirely (the brief''s prior
-    done-gate wrongly assumed `src/parse.rs` already had a `#[cfg(test)] mod tests` block to
-    extend; it does not). Brief reshaped accordingly in
-    `plans/simple-briefs/module-routing-syntax-build-parse.txt`.'
-  kind: build
-  needs: [module-routing-syntax-build-ast]
-  prio: 5
-  status: delegated
-
 - id: module-routing-syntax-build-checker
   issue: gh:167
   title: 'Implement `@(path)` module-as-function routing-arm syntax, step 3/3 -- replace the
@@ -380,7 +356,7 @@
     current meaning. Per-backend builtin-wiring precedent: `src/emit_go.rs:192` (SUM_HELPER).
     Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-convergence-ruling]
   status: delegated
 
 - id: select-lazy-materialization-build-js
@@ -394,7 +370,7 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-convergence-ruling]
   status: delegated
 
 - id: select-lazy-materialization-build-py
@@ -408,7 +384,7 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-convergence-ruling]
   status: delegated
 
 - id: select-lazy-materialization-build-lua
@@ -422,7 +398,7 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-convergence-ruling]
   status: todo
 
 - id: select-lazy-materialization-build-rust
@@ -435,7 +411,7 @@
     syntax/checker change. Per-backend builtin-wiring precedent: `src/emit_rs.rs:205`
     (MAX_BY_HELPER). Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-convergence-ruling]
   status: todo
 
 - id: select-lazy-materialization-build-jq
@@ -450,7 +426,7 @@
     forcing a fake implementation -- this is the one backend where the maintainer may need a
     follow-up ruling. Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-convergence-ruling]
   status: todo
 
 - id: select-lazy-materialization-build-llvm
@@ -464,7 +440,7 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-convergence-ruling]
   status: todo
 
 - id: select-lazy-materialization-harness-defect-ruling
@@ -729,3 +705,21 @@
   kind: decide
   needs: []
   status: done
+
+- id: select-lazy-materialization-convergence-ruling
+  issue: gh:176
+  title: 'Placeholder decide row gating the 7 select-lazy-materialization-build-* rows (go, js, py, lua,
+    rust, jq, llvm) as not-ready. With every known harness bug fixed (exploration cutoff off, reasoning
+    cap 8192 with nudges, tsc present), go/js/py were redispatched on 2026-09-15 and all three used their
+    full 60 turns across 2 attempts without a single edit: ended_by=dedup after two max_turns attempts,
+    self-report blocker_kind=harness_cutoff, narrower_would_succeed=true -- "still reading src/emit_js.rs
+    to map all consumers of tl_select (index, slice, map, print, fusion) before making any edit".
+    $0.18 per run. This is no longer the harness deciding; it is the model not converging on a change
+    that touches every consumer of a helper in one backend. Decide: (a) redispatch each backend with the
+    narrower slice the self-reports propose (replace only the select helper with a lazy wrapper, leave
+    consumers materializing, one commit), (b) hand one backend to a manual/privileged session to produce
+    a worked example the other six can mirror, (c) a stronger model for this family only, or (d) defer
+    gh:176. Mark done when ruled; the 7 rows'' needs point here.'
+  kind: decide
+  needs: []
+  status: todo
