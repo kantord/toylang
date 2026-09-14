@@ -166,6 +166,46 @@ line; this is writing the same fact to the structured surface. Every downstream
 consumer (`dispatch_state.py --status`, the tick trigger, the dev site) shows them.
 A STUCK with `ended_by=no_progress_cutoff edits=0` reads as what it is.
 
+### One bundle per run, one command to read it, and evidence that outlives the cache
+
+Today a run leaves six flat files in `~/.cache/toylang-simple-dispatch/results/`,
+distinguished only by suffix (`.log`, `-full-agent.log`, `-messages.json`, `.patch`,
+`-self-report.txt`), with no index, no retention rule, no link from the board or the dev
+site, and nothing in git. Reading a broken task means knowing that layout, and nobody
+who did not write `simple_dispatch.py` does. This incident was diagnosed with `grep`
+across forty of them; that is the process to replace.
+
+**Bundle.** Every run writes one directory, `results/<row>/<run_id>/`, holding what it
+already produces plus what part 2 adds: `brief.txt` (the exact task text sent), `status.json`
+(`ended_by`, `edits`, `turns`, attempts with each attempt's own ending and verify tail,
+cost, base commit, snapshot name, model), `agent.log`, `messages.json`, `self-report.json`
+(the structured answer) and `self-report.txt`, and `patch` when there is one. The
+`dispatch-log.csv` row gains `bundle_path`. Nothing here is new information; it is the
+same files given one address.
+
+**One command.** `dispatch_state.py --show ROW [RUN_ID]` prints `status.json`, each
+attempt's ending line, the self-report, and the last thirty lines of the agent log. It is
+the standard way to look at a broken task, for a tick and for a human, so nobody needs the
+layout. The tick's trigger text for a non-GREEN row names the command instead of pasting
+the self-report alone, and the drive skill's policy text says to run it before deciding.
+
+**Visible from the board.** A small vite plugin in `site/vite-plugins/`, following
+`annotations-inbox.ts`, serves `/__dispatch/run/<row>/<run_id>` from the bundle
+directory. The dev site's task card links its latest run; the run page shows
+`status.json` and the self-report inline and the agent log below. This is the piece that
+would have shown the maintainer twelve identical "no_progress_cutoff, 0 edits" cards
+instead of twelve "in progress" ones.
+
+**Retention.** Bundles stay out of git (a `messages.json` is 100 to 200 KB). Keep the
+last three per row and every bundle referenced by a row that is still `delegated` or is
+named in a pending round; `dispatch_state.py --gc` removes the rest alongside orphaned
+sandboxes. When a tick escalates a row or the health line fires, it copies that run's
+`status.json`, `self-report.json` and the last hundred lines of `agent.log` into
+`plans/incidents/<row>-<date>/`, the folder that already exists for this purpose, so the
+evidence for a decision survives cache cleanup and is readable by the next agent through
+git alone. The full log stays in the cache; the incident folder holds enough to see the
+shape.
+
 ### Give the tick a population view, and a third verb
 
 `dispatch_state.py --health` over the last 20 runs: the distribution of `ended_by`, the
