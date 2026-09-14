@@ -13,7 +13,7 @@ slots:
     confirmed: 0
   - id: go-select-helper-optype-gating
     kind: fact-check
-    condition: "src/emit_go.rs helper inclusion (~line 672-705): OPT_TYPE is gated by scanning user-emitted `decls` for literal tlOpt/tlAt/tlTail/tlFirst/unwrap substrings, not by helper-to-helper dependency; SELECT_HELPER's own text (once rewritten to the lazy tlSel/tlSelAt/tlSelDense form) unconditionally defines tlSelAt returning tlOpt[T], so OPT_TYPE must also be gated on uses(\"tlSelNew(\") (SELECT_HELPER's own inclusion condition) or any program whose Select never gets a direct depth-0 index will emit `undefined: tlOpt`"
+    summary: "src/emit_go.rs OPT_TYPE gate (~line 693) must also include uses(\"tlSelNew(\") -- SELECT_HELPER's lazy tlSel/tlSelAt text always defines tlSelAt returning tlOpt[T], so omitting it emits `undefined: tlOpt` whenever a Select never gets a direct depth-0 index"
     observation: "select-lazy-materialization-build-go run ed033203 (2026-09-14) failed just check this way on the type_alias corpus test; fix folded into plans/simple-briefs/select-lazy-materialization-build-go.txt for the next redispatch"
     source: plans/simple-briefs/select-lazy-materialization-build-go.txt
     written: "2026-09-15"
