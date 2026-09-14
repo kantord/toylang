@@ -773,7 +773,11 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             if sig is not None and last_sig is not None:
                 edits += 1
             last_sig = sig
-        else:
+        elif turn > 0:
+            # Turn 0 has no previous turn to judge; counting it made the
+            # cutoff fire one turn before max_turns even when set equal to
+            # it (run 7c6538f5 attempt 1: "no_progress_cutoff" at turn 29
+            # of 30 under the default meant to be off).
             no_progress_turns += 1
             if no_progress_turns >= max_turns_without_progress:
                 print(f"  no repo changes for {no_progress_turns} consecutive turns, "
