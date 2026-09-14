@@ -73,7 +73,7 @@ KEEP_BUNDLES_PER_ROW = 3
 
 # Endings decided by the harness, not the model. Three of these in a row, or
 # a majority of zero-edit runs, is a pipeline defect until proven otherwise.
-HARNESS_ENDINGS = ("no_progress_cutoff", "dedup", "max_turns", "wall_clock")
+HARNESS_ENDINGS = ("no_progress_cutoff", "dedup", "max_turns", "wall_clock", "reasoning_exhausted")
 HEALTH_WINDOW = 20
 # `--health-ack` records "the harness was fixed at this time"; runs before
 # it no longer count toward the alarm (they still show in --show). Without

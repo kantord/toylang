@@ -121,7 +121,14 @@ RUN_FILE = "/root/agent-run.json"
 # runs ending by `no_progress_cutoff` with zero edits, invisible because
 # the only recorded fact was the STUCK label the harness chose afterwards.
 ENDED_BY = ("model_done", "no_progress_cutoff", "max_turns", "dedup",
-            "wall_clock", "api_error", "setup", "crash")
+            "wall_clock", "api_error", "setup", "crash", "reasoning_exhausted")
+# A reply with no tool call and no text whose finish_reason is "length" is
+# the model spending the whole completion budget on hidden reasoning, not
+# a decision to stop. Nudge and continue; give up on the attempt only after
+# this many in a row. select-lazy-materialization-build-go 35f62caa ended
+# both attempts this way (4096 of 4096 tokens reasoning) and was recorded
+# as model_done, then STUCK by dedup.
+MAX_CONSECUTIVE_TRUNCATED = 3
 
 # Per-run record, filled in by main()/agent_turns() as the run proceeds and
 # dumped by write_status() on every exit path. A module global for the same
@@ -729,6 +736,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
     last_sig = initial_sig
     turns_done = 0
     edits = 0
+    truncated_in_a_row = 0
 
     def done(final_text, moved_flag, self_report, ending) -> AttemptOutcome:
         # The per-turn signature check only sees changes made by the
@@ -872,6 +880,21 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                 raise TypeError(f"message field is not a dict: {msg!r}")
             messages.append(msg)
             tool_calls = msg.get("tool_calls") or []
+            if not tool_calls and is_truncated_empty_reply(msg, choice.get("finish_reason")):
+                truncated_in_a_row += 1
+                print(f"  turn {turn + 1}/{max_turns}: empty reply, finish_reason=length "
+                      f"(reasoning used the whole budget) -- {truncated_in_a_row}/"
+                      f"{MAX_CONSECUTIVE_TRUNCATED} before giving up", file=sys.stderr)
+                if truncated_in_a_row >= MAX_CONSECUTIVE_TRUNCATED:
+                    self_report = self_report_blocker(api_key, model, messages)
+                    return done(None, _sig_changed(sig, initial_sig), self_report, "reasoning_exhausted")
+                messages.append({"role": "user", "content": (
+                    "Your last reply was cut off by the output token limit before it contained "
+                    "any text or tool call. Keep your reasoning short and respond with a tool "
+                    "call now: if you know the edit, make it; if not, read the one file you need.")})
+                trim_messages(messages)
+                continue
+            truncated_in_a_row = 0
             if not tool_calls:
                 # Same reasoning as the RuntimeError-catch return above: no
                 # tool_calls means nothing ran that could have touched the
@@ -973,6 +996,13 @@ def normalize_for_stuck_check(tail: str) -> str:
     return text
 
 
+def is_truncated_empty_reply(msg: dict, finish_reason: str | None) -> bool:
+    """No tool call, no visible text, and the provider says it stopped for
+    length: the budget went to reasoning. Not the model finishing."""
+    return not (msg.get("tool_calls") or []) and not (msg.get("content") or "").strip() \
+        and finish_reason == "length"
+
+
 def is_repeat_without_edits(moved: bool, normalized_tail: str, seen_tails: list[str]) -> bool:
     """The dedup rule's whole predicate, in one place so it can be tested:
     an attempt is a repeat only if it changed nothing AND printed a tail
@@ -1007,8 +1037,10 @@ def main() -> int:
     ap.add_argument("--task-file", required=True)
     ap.add_argument("--model", default="deepseek/deepseek-v4-flash-0731")
     ap.add_argument("--max-turns", type=int, default=30)
-    ap.add_argument("--max-tokens", type=int, default=4096,
-                     help="per-turn completion cap; keeps cost predictable and lets requests "
+    ap.add_argument("--max-tokens", type=int, default=8192,
+                     help="per-turn completion cap (8192: at 4096 this reasoning model spent the "
+                          "whole budget thinking on 14 of 1771 logged turns and ended two attempts "
+                          "with empty replies); keeps cost predictable and lets requests "
                           "succeed on a small remaining balance instead of being rejected for "
                           "the model's full context window")
     ap.add_argument("--retry-cap", type=int, default=2)

@@ -109,3 +109,14 @@ def test_require_green_preflight(tmp_path, monkeypatch):
     (tmp_path / "snap-x.json").write_text('{"ok": true, "time": "t", "commit": "abcdef1234"}')
     ok, msg = simple_dispatch.require_green_preflight("snap-x")
     assert ok is True
+
+
+def test_truncated_empty_reply_is_not_model_done():
+    # 35f62caa: content empty, finish_reason length, 4096 reasoning tokens -- recorded as model_done.
+    assert agent_loop.is_truncated_empty_reply({"role": "assistant", "content": None}, "length")
+    assert agent_loop.is_truncated_empty_reply({"role": "assistant", "content": "  "}, "length")
+    assert not agent_loop.is_truncated_empty_reply({"role": "assistant", "content": "DONE: ok"}, "length")
+    assert not agent_loop.is_truncated_empty_reply({"role": "assistant", "content": ""}, "stop")
+    assert not agent_loop.is_truncated_empty_reply(
+        {"role": "assistant", "content": "", "tool_calls": [{"id": "x"}]}, "length")
+    assert "reasoning_exhausted" in dispatch_state.HARNESS_ENDINGS

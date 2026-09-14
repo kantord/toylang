@@ -772,7 +772,7 @@ def main() -> int:
                      help="directory containing <row_id>.txt brief files (required unless --preflight)")
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--retry-cap", type=int, default=2)
-    ap.add_argument("--max-tokens", type=int, default=4096)
+    ap.add_argument("--max-tokens", type=int, default=8192)
     ap.add_argument("--overall-timeout", type=int, default=5400,
                      help="seconds allowed for the whole attempt loop (all retries, all turns, "
                           "all verify passes) inside the sandbox; must comfortably exceed "
