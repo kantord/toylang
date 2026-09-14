@@ -391,8 +391,8 @@
     current meaning. Per-backend builtin-wiring precedent: `src/emit_go.rs:192` (SUM_HELPER).
     Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
   kind: build
-  needs: []
-  status: delegated
+  needs: [select-lazy-materialization-harness-defect-ruling]
+  status: todo
 
 - id: select-lazy-materialization-build-js
   issue: gh:176
@@ -405,7 +405,7 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-harness-defect-ruling]
   status: todo
 
 - id: select-lazy-materialization-build-py
@@ -419,7 +419,7 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-harness-defect-ruling]
   status: todo
 
 - id: select-lazy-materialization-build-lua
@@ -433,7 +433,7 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-harness-defect-ruling]
   status: todo
 
 - id: select-lazy-materialization-build-rust
@@ -446,7 +446,7 @@
     syntax/checker change. Per-backend builtin-wiring precedent: `src/emit_rs.rs:205`
     (MAX_BY_HELPER). Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-harness-defect-ruling]
   status: todo
 
 - id: select-lazy-materialization-build-jq
@@ -461,7 +461,7 @@
     forcing a fake implementation -- this is the one backend where the maintainer may need a
     follow-up ruling. Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-harness-defect-ruling]
   status: todo
 
 - id: select-lazy-materialization-build-llvm
@@ -475,8 +475,34 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: []
+  needs: [select-lazy-materialization-harness-defect-ruling]
   status: todo
+
+- id: select-lazy-materialization-harness-defect-ruling
+  issue: gh:176
+  title: 'Placeholder decide row gating all 7 select-lazy-materialization-build-* per-backend
+    rows (go, js, py, lua, rust, jq, llvm) as not-ready. Every one of the 7 has independently
+    reproduced the identical failure shape: STUCK, ended_by=dedup, 0 edits, verify=RED unchanged
+    across 2-3 attempts (go 6c720903, py 0adf79ff, lua f2628c7e, js 063c8fc1, llvm 7366d59a, jq
+    80b3d6d9, rust 1f1780aa, all 2026-09-13; go again 35f62caa on 2026-09-14, AFTER the
+    no-progress-cutoff harness fix in `dispatch-no-progress-cutoff-harness-defect` landed --
+    that fix did not touch this shape). `dispatch_state.py --show select-lazy-materialization-build-go`
+    on 35f62caa: both attempts hit the model''s completion-token cap (3557 and 4096 tokens,
+    mostly `reasoning_tokens`) before any `write_file` call, then dedup''d identical "no changes,
+    no verify run" tails -- the model burns its whole completion budget reasoning about the
+    mask/selection-vector representation and never reaches a tool call, on every backend, every
+    attempt. This already survived one maintainer-ordered narrowing
+    (stuck-cross-backend-scope-escalation, 2026-09-13, split into these 7 rows) with no change in
+    outcome, so narrower scope is not the fix. Evidence captured:
+    `plans/incidents/select-lazy-materialization-build-{go,js,py,lua,rust,jq,llvm}-20260914/`.
+    Decide: (a) rewrite the shared brief with a concrete starter skeleton/worked example so the
+    model does not have to derive the representation from scratch inside its reasoning budget,
+    (b) raise the completion-token budget or pick a lower-reasoning model for this task class,
+    (c) hand the whole feature to a manual/privileged session, or (d) defer gh:176 outright. Mark
+    `status: done` and clear the `needs` gate on all 7 rows the same tick this is ruled.'
+  kind: decide
+  needs: []
+  status: proposed
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)

@@ -11,3 +11,10 @@ slots:
     source: plans/dispatch-self-healing-plan.md
     written: "2026-09-14"
     confirmed: 0
+  - id: select-lazy-materialization-reasoning-loop
+    kind: watch
+    condition: "any select-lazy-materialization-build-* dispatch (go/js/py/lua/rust/jq/llvm): all 7 have independently ended STUCK/dedup/0-edits, model completion budget burned on reasoning_tokens before any write_file call -- do not redispatch until select-lazy-materialization-harness-defect-ruling is answered"
+    observation: "7/7 backends STUCK identically 2026-09-13 (post per-backend split); go recurred 2026-09-14 (35f62caa) even after the no-progress-cutoff fix landed same day"
+    source: plans/board.yaml#select-lazy-materialization-harness-defect-ruling
+    written: "2026-09-14"
+    confirmed: 0
