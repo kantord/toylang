@@ -34,6 +34,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_TOOL_OUTPUT = 8000  # chars; keeps context from ballooning turn over turn
@@ -111,6 +112,22 @@ STATUS_FILE = "/root/agent-status.txt"
 COST_FILE = "/root/agent-cost.txt"
 MESSAGES_FILE = "/root/agent-messages.json"
 SELF_REPORT_FILE = "/root/agent-self-report.txt"
+SELF_REPORT_JSON_FILE = "/root/agent-self-report.json"
+RUN_FILE = "/root/agent-run.json"
+
+# Who decided the run was over. Written into RUN_FILE and, via
+# simple_dispatch.py, into dispatch-log.csv and the per-run bundle. The
+# 2026-09-14 incident (plans/dispatch-self-healing-plan.md) was 46 of 54
+# runs ending by `no_progress_cutoff` with zero edits, invisible because
+# the only recorded fact was the STUCK label the harness chose afterwards.
+ENDED_BY = ("model_done", "no_progress_cutoff", "max_turns", "dedup",
+            "wall_clock", "api_error", "setup", "crash")
+
+# Per-run record, filled in by main()/agent_turns() as the run proceeds and
+# dumped by write_status() on every exit path. A module global for the same
+# reason total_cost_usd is: one process, one run, and check_fatal() deep
+# inside call_openrouter() has no other way to reach it.
+run_record: dict = {"ended_by": None, "edits": 0, "turns": 0, "attempts": []}
 
 # Accumulated across every OpenRouter call this process makes (all attempts,
 # all turns) -- a plain module-level global rather than threading a value
@@ -152,6 +169,10 @@ def write_status(status: str, messages: list | None = None) -> None:
     # not just GREEN ones.
     with open(COST_FILE, "w") as f:
         f.write(f"{total_cost_usd:.6f}")
+    run_record["status"] = status
+    run_record["cost_usd"] = round(total_cost_usd, 6)
+    with open(RUN_FILE, "w") as f:
+        json.dump(run_record, f, indent=1)
     # On any non-GREEN exit, persist the full conversation so the $ already
     # spent exploring isn't silently thrown away -- a human can inspect why
     # it failed, or resume it later with --resume-from while the
@@ -164,7 +185,7 @@ def write_status(status: str, messages: list | None = None) -> None:
             json.dump({"task_hash": _task_hash, "messages": messages}, f)
 
 
-def write_self_report(self_report: str | None) -> None:
+def write_self_report(self_report: dict | None | str) -> None:
     """The model's own direct explanation of what blocked it (see
     self_report_blocker), pulled by simple_dispatch.py the same simple way
     as STATUS_FILE/COST_FILE -- a plain file read, no separate API call, no
@@ -193,14 +214,17 @@ def write_self_report(self_report: str | None) -> None:
       there (a later attempt's real report IS more relevant than an
       earlier one's, when it actually has one)."""
     if self_report is None:
-        try:
-            os.remove(SELF_REPORT_FILE)
-        except FileNotFoundError:
-            pass
-    elif self_report:
+        for path in (SELF_REPORT_FILE, SELF_REPORT_JSON_FILE):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+    elif isinstance(self_report, dict):
         with open(SELF_REPORT_FILE, "w") as f:
-            f.write(self_report)
-    # else: self_report == "" -- a failed/truncated call, leave the file as-is
+            f.write(self_report["explanation"])
+        with open(SELF_REPORT_JSON_FILE, "w") as f:
+            json.dump(self_report, f, indent=1)
+    # else: self_report == "" -- a failed/truncated call, leave the files as-is
 
 
 def truncate(s: str, n: int = MAX_TOOL_OUTPUT) -> str:
@@ -392,7 +416,41 @@ def call_openrouter(api_key: str, model: str, messages: list, max_tokens: int) -
     return parsed
 
 
-def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: int = 800) -> str:
+SELF_REPORT_KINDS = ("harness_cutoff", "environment", "scope", "unclear")
+
+
+def parse_self_report(content: str) -> dict:
+    """The model is asked for one JSON object (see self_report_blocker) but
+    this tier sometimes wraps it in prose or a code fence, so take the first
+    {...} span and fall back to treating the whole answer as prose with
+    blocker_kind "unclear" rather than losing the report over formatting.
+    The prose is what a human reads; blocker_kind is what dispatch_state.py
+    --health counts, and "unclear" is an honest count too."""
+    data = None
+    start, end = content.find("{"), content.rfind("}")
+    if 0 <= start < end:
+        try:
+            data = json.loads(content[start:end + 1])
+        except json.JSONDecodeError:
+            data = None
+    if not isinstance(data, dict):
+        return {"blocker_kind": "unclear", "narrower_would_succeed": None,
+                "explanation": content.strip()}
+    kind = data.get("blocker_kind")
+    if kind not in SELF_REPORT_KINDS:
+        kind = "unclear"
+    explanation = data.get("explanation")
+    if not isinstance(explanation, str) or not explanation.strip():
+        explanation = content.strip()
+    narrower = data.get("narrower_would_succeed")
+    if not isinstance(narrower, bool):
+        narrower = None
+    return {"blocker_kind": kind, "narrower_would_succeed": narrower,
+            "explanation": explanation.strip()}
+
+
+def self_report_blocker(api_key: str, model: str, messages: list,
+                        max_tokens: int = 1000) -> dict | str:
     """Ask the model DIRECTLY, in-context (the same conversation it's
     already in, full context still loaded, likely cache-warm), why it
     hasn't completed the task -- instead of reconstructing the reason
@@ -438,11 +496,17 @@ def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: in
             "This is the autonomous coding harness talking to you directly, not "
             "the user and not an external message -- your current attempt is "
             "ending regardless of what you do next, so there is nothing left to "
-            "gain by continuing to explore or edit right now. In 2-4 plain "
-            "sentences: what specifically was blocking you from completing this "
-            "task, and would a narrower, more achievable version of it actually "
-            "succeed? If so, describe that narrower version briefly. If this "
-            "isn't a scope problem at all, say so plainly."
+            "gain by continuing to explore or edit right now. Answer with ONE "
+            "JSON object and nothing else, with these keys: "
+            "\"blocker_kind\": one of \"harness_cutoff\" (the harness ended the "
+            "attempt while you were still working productively, e.g. you were "
+            "reading or about to edit and nothing was actually wrong), "
+            "\"environment\" (a missing tool, no network, or a test that fails "
+            "regardless of your change), \"scope\" (the task as written is too "
+            "large or too ill-defined for one session), or \"unclear\"; "
+            "\"narrower_would_succeed\": true or false; "
+            "\"explanation\": 2-4 plain sentences saying what specifically was "
+            "blocking you and, if a narrower version would succeed, what it is."
         ),
     }]
     try:
@@ -494,6 +558,8 @@ def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: in
               file=sys.stderr)
         print(f"    usage detail: {json.dumps(usage)}", file=sys.stderr)
         content = (parsed["choices"][0]["message"].get("content") or "").strip()
+        if content:
+            return parse_self_report(content)
         # `""`, not `None`, when a call was attempted but produced nothing
         # (e.g. finish_reason="length" truncating before any content) --
         # confirmed live, 2026-09-11: a real dispatch's 3rd (final) attempt
@@ -505,7 +571,7 @@ def self_report_blocker(api_key: str, model: str, messages: list, max_tokens: in
         # when this function is never called at all (the caller's own
         # "not asked" case); `write_self_report` treats the two
         # differently -- see its docstring.
-        return content or ""
+        return ""
     except Exception as e:
         print(f"  self-report call failed, non-fatal: {e}", file=sys.stderr)
         return ""
@@ -602,11 +668,21 @@ def _sig_changed(a: str | None, b: str | None) -> bool:
     return a != b
 
 
+@dataclass
+class AttemptOutcome:
+    final_text: str | None
+    moved: bool
+    self_report: dict | str | None
+    ending: str  # one of ENDED_BY: who decided this attempt was over
+    turns: int   # model calls actually made
+    edits: int   # turns after which the repo signature had changed
+
+
 def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                  max_tokens: int, deadline: float,
-                 max_turns_without_progress: int) -> tuple[str | None, bool, str | None]:
-    """Runs up to max_turns tool-call rounds. Returns (final_text, moved,
-    self_report): final_text is the model's final text once it stops
+                 max_turns_without_progress: int) -> AttemptOutcome:
+    """Runs up to max_turns tool-call rounds. Returns an AttemptOutcome
+    (final_text, moved, self_report, ending, turns, edits): final_text is the model's final text once it stops
     calling tools, or None if max_turns was exhausted (or
     max_turns_without_progress consecutive turns passed with no actual
     repo change) without the model finishing; moved is True iff the
@@ -651,6 +727,18 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
     no_progress_turns = 0
     sig_failures = 0
     last_sig = initial_sig
+    turns_done = 0
+    edits = 0
+
+    def done(final_text, moved_flag, self_report, ending) -> AttemptOutcome:
+        # The per-turn signature check only sees changes made by the
+        # PREVIOUS turn, so the last turn's edit has to be counted here.
+        nonlocal edits
+        fin = safe_repo_state_signature()
+        if fin is not None and last_sig is not None and fin != last_sig:
+            edits += 1
+        return AttemptOutcome(final_text, moved_flag, self_report, ending, turns_done, edits)
+
     for turn in range(max_turns):
         if time.monotonic() > deadline:
             raise OutOfTime(f"wall-clock budget exhausted at turn {turn + 1}/{max_turns}")
@@ -677,11 +765,13 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                 print(f"  repo state has been unreadable for {sig_failures} consecutive "
                       "turns (git itself appears broken), ending this attempt early -- "
                       "cannot verify progress either way", file=sys.stderr)
-                return None, True, None
+                return done(None, True, None, "crash")
         else:
             sig_failures = 0
         if _sig_changed(sig, last_sig):
             no_progress_turns = 0
+            if sig is not None and last_sig is not None:
+                edits += 1
             last_sig = sig
         else:
             no_progress_turns += 1
@@ -690,9 +780,10 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                       "ending this attempt early instead of spending the rest of "
                       "max_turns on further unproductive exploration", file=sys.stderr)
                 self_report = self_report_blocker(api_key, model, messages)
-                if self_report:
-                    print(f"  self-report: {self_report}", file=sys.stderr)
-                return None, _sig_changed(sig, initial_sig), self_report
+                if isinstance(self_report, dict):
+                    print(f"  self-report ({self_report['blocker_kind']}): "
+                          f"{self_report['explanation']}", file=sys.stderr)
+                return done(None, _sig_changed(sig, initial_sig), self_report, "no_progress_cutoff")
         try:
             resp = call_openrouter(api_key, model, messages, max_tokens)
         except RuntimeError as e:
@@ -709,9 +800,10 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             # call), so it's already the freshest possible value. No
             # self-report here -- a transient network/API failure isn't a
             # reasoning question the model can usefully explain.
-            return None, _sig_changed(sig, initial_sig), None
+            return done(None, _sig_changed(sig, initial_sig), None, "api_error")
         usage = resp.get("usage", {})
         add_cost(resp)
+        turns_done += 1
         print(f"  turn {turn + 1}/{max_turns}: "
               f"prompt={usage.get('prompt_tokens')} completion={usage.get('completion_tokens')} "
               f"cost=${usage.get('cost', 0):.6f} (running total ${total_cost_usd:.6f})",
@@ -782,7 +874,7 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
                 # filesystem this turn, so `sig` is still accurate. No
                 # self-report needed -- the model stopped on its own and
                 # already said whatever it wanted to say in `content`.
-                return msg.get("content") or "", _sig_changed(sig, initial_sig), None
+                return done(msg.get("content") or "", _sig_changed(sig, initial_sig), None, "model_done")
             for tc in tool_calls:
                 fn = tc["function"]["name"]
                 try:
@@ -805,12 +897,13 @@ def agent_turns(api_key: str, model: str, messages: list, max_turns: int,
             del messages[messages_len_before_turn:]
             print(f"  turn {turn + 1}/{max_turns}: malformed response from OpenRouter "
                   f"({e}), ending this attempt", file=sys.stderr)
-            return None, _sig_changed(sig, initial_sig), None
+            return done(None, _sig_changed(sig, initial_sig), None, "api_error")
         trim_messages(messages)
     self_report = self_report_blocker(api_key, model, messages)
-    if self_report:
-        print(f"  self-report: {self_report}", file=sys.stderr)
-    return None, moved(), self_report
+    if isinstance(self_report, dict):
+        print(f"  self-report ({self_report['blocker_kind']}): "
+              f"{self_report['explanation']}", file=sys.stderr)
+    return done(None, moved(), self_report, "max_turns")
 
 
 # Lines/tokens `cargo nextest` varies run-to-run even against a
@@ -876,6 +969,13 @@ def normalize_for_stuck_check(tail: str) -> str:
     return text
 
 
+def is_repeat_without_edits(moved: bool, normalized_tail: str, seen_tails: list[str]) -> bool:
+    """The dedup rule's whole predicate, in one place so it can be tested:
+    an attempt is a repeat only if it changed nothing AND printed a tail
+    already seen. Edits plus the same tail is work meeting the same wall."""
+    return not moved and normalized_tail in seen_tails
+
+
 MAX_VERIFY_SECONDS = 1800
 
 
@@ -908,13 +1008,15 @@ def main() -> int:
                           "succeed on a small remaining balance instead of being rejected for "
                           "the model's full context window")
     ap.add_argument("--retry-cap", type=int, default=2)
-    ap.add_argument("--max-turns-without-progress", type=int, default=12,
+    ap.add_argument("--max-turns-without-progress", type=int, default=30,
                      help="end an attempt early if this many consecutive turns pass with no "
-                          "repo change at all (no new commit, nothing dirty) -- catches the "
-                          "expensive failure shape a real run showed: 60 turns burning $0.174 "
-                          "with zero file changes in either attempt, almost the cost of a real "
-                          "shipped patch for no deliverable. Set higher than --max-turns to "
-                          "disable")
+                          "repo change at all (no new commit, nothing dirty). Defaults to "
+                          "--max-turns, i.e. off: at its old default of 12 this cutoff ended "
+                          "46 of 54 real runs mid-exploration (it fired on turn 11; the worker "
+                          "makes 1-2 tool calls a turn, so ~15 file reads before the first edit "
+                          "was fatal) and every one was then labelled STUCK -- see "
+                          "plans/dispatch-self-healing-plan.md. Re-enable with a number only "
+                          "once dispatch_state.py --health shows what exploration actually costs")
     ap.add_argument("--verify-cmd", default="just check")
     ap.add_argument("--api-key-env", default="OPENROUTER_API_KEY")
     ap.add_argument("--wall-clock-budget", type=int, default=3400,
@@ -1031,40 +1133,29 @@ def main() -> int:
     while True:
         attempt += 1
         print(f"== attempt {attempt}/{args.retry_cap + 1} ==", file=sys.stderr)
-        # Marker for where THIS attempt's own additions begin -- used below
-        # to discard only those on a no-progress outcome, never anything
-        # from an earlier attempt. Discarding back to a fixed index (2, or
-        # messages[2:]) was a real bug found by adversarial review: if
-        # attempt 1 makes a genuine, proven-valuable edit (moved=True, RED,
-        # kept) and attempt 2 builds on it but adds nothing further of its
-        # own (moved=False relative to ATTEMPT 2's own start), resetting to
-        # a fixed index-2 wiped out attempt 1's entire real transcript too.
-        #
-        # Stored as the LAST MESSAGE OBJECT itself (identity, via `is`),
-        # not its numeric index -- a second real bug, found on the very
-        # next adversarial round: `trim_messages()` runs every turn and can
-        # delete whole turns starting at index 2 mid-attempt, shifting
-        # every later index down. A captured absolute index doesn't move
-        # with it; reproduced directly: a long attempt's own tool output
-        # pushes the conversation past MAX_CONVERSATION_CHARS, trims fire
-        # mid-attempt, and `del messages[stale_index:]` then cuts in the
-        # middle of a turn -- leaving an assistant `tool_calls` message
-        # with no matching `tool` reply, which OpenRouter rejects on the
-        # NEXT call, corrupting every remaining attempt with the same
-        # unrelated failure. An object reference survives being shifted;
-        # `trim_messages()` only ever removes WHOLE turns, so any surviving
-        # message is always still a valid turn boundary to cut after.
-        attempt_start_marker = messages[-1]
         try:
-            final_text, moved, self_report = agent_turns(
+            outcome = agent_turns(
                 api_key, args.model, messages, args.max_turns,
                 args.max_tokens, deadline, args.max_turns_without_progress)
         except OutOfTime as e:
             print(f"OUT_OF_TIME: {e}", file=sys.stderr)
+            run_record["ended_by"] = "wall_clock"
             write_status("TIMEOUT", messages)
             return 3
+        final_text, moved, self_report = outcome.final_text, outcome.moved, outcome.self_report
+        # Recorded before classification so a crash further down still
+        # leaves the attempt's shape on disk; verify fields are filled in
+        # below once known.
+        attempt_record = {"n": attempt, "ending": outcome.ending, "moved": moved,
+                          "turns": outcome.turns, "edits": outcome.edits,
+                          "verify": None, "verify_tail": None}
+        run_record["attempts"].append(attempt_record)
+        run_record["turns"] += outcome.turns
+        run_record["edits"] += outcome.edits
+        run_record["ended_by"] = outcome.ending
         if final_text is None:
-            print("== ran out of turns without the model finishing ==", file=sys.stderr)
+            print(f"== attempt ended by {outcome.ending} without the model finishing ==",
+                  file=sys.stderr)
 
         # Written once per attempt, unconditionally, right after it's
         # available -- not scattered across each individual write_status()
@@ -1103,6 +1194,7 @@ def main() -> int:
             if deadline - time.monotonic() < 60:
                 print("OUT_OF_TIME: wall-clock budget expired right at the "
                       "no-progress cutoff", file=sys.stderr)
+                run_record["ended_by"] = "wall_clock"
                 write_status("TIMEOUT", messages)
                 return 3
             ok = False
@@ -1124,6 +1216,7 @@ def main() -> int:
             if remaining < 60:
                 print("OUT_OF_TIME: not enough wall-clock budget left to run "
                       "another verify pass", file=sys.stderr)
+                run_record["ended_by"] = "wall_clock"
                 write_status("TIMEOUT", messages)
                 return 3
             try:
@@ -1139,11 +1232,14 @@ def main() -> int:
                 # mechanism exists to close.
                 print("OUT_OF_TIME: verify() itself exceeded the remaining "
                       "wall-clock budget", file=sys.stderr)
+                run_record["ended_by"] = "wall_clock"
                 write_status("TIMEOUT", messages)
                 return 3
 
         print(f"== verify: {'GREEN' if ok else 'RED'} ==", file=sys.stderr)
         print(tail[-2000:], file=sys.stderr)
+        attempt_record["verify"] = "GREEN" if ok else "RED"
+        attempt_record["verify_tail"] = tail[-600:]
 
         if ok:
             print("VERIFIED_GREEN")
@@ -1177,10 +1273,18 @@ def main() -> int:
         # counter), which would have made exact-tail-equality never fire on
         # the exact "identical error every attempt" pattern this check
         # exists to catch.
+        # Only for attempts that changed nothing. An attempt that DID edit
+        # and still printed the same tail is real work meeting the same
+        # wall, and gets its remaining retries: the 2026-09-14 incident's
+        # worst single loss was tensor-transpose-build run 36d59b9d, three
+        # attempts of real backend work all failing the same environmental
+        # `tsc` test, classified STUCK by this rule with 5 of 7 backends
+        # done and a 20 KB patch on disk.
         normalized = normalize_for_stuck_check(tail)
-        if normalized in seen_tails:
+        if is_repeat_without_edits(moved, normalized, seen_tails):
             print("STUCK: verify output matches a previous attempt, "
                   "not retrying further", file=sys.stderr)
+            run_record["ended_by"] = "dedup"
             write_status("STUCK", messages)
             return 1
         seen_tails.append(normalized)
@@ -1209,54 +1313,18 @@ def main() -> int:
             # rather than replacing the verify tail: unlike the `not
             # moved` case, there's real verify feedback here too and both
             # are useful.
-            if self_report:  # truthy, not `is not None` -- self_report_blocker
-                             # returns "" (not None) on a failed/truncated call,
-                             # which carries nothing worth appending
-                feedback += f"\n\nYou also said this about your progress:\n\n{self_report}"
+            if isinstance(self_report, dict):  # "" (failed call) and None (not asked)
+                                               # both carry nothing worth appending
+                feedback += ("\n\nYou also said this about your progress:\n\n"
+                             f"{self_report['explanation']}")
         else:
-            # An attempt that made ZERO repo changes has a fruitless
-            # exploration history with proven zero value -- nothing was
-            # kept, there is no diff, there is nothing for the next attempt
-            # to build on. Carrying it forward only re-pays for it: real
-            # numbers from dense-tensor-type-build's persisted log show its
-            # attempt-2 no-progress window (turns 1-12, identical outcome
-            # to attempt-1's) cost $0.049085 vs attempt-1's $0.014439 for
-            # the SAME zero-progress result -- 3.4x more, purely from
-            # carried context. Reset back to `attempt_start_marker` -- NOT a
-            # fixed `messages[2:]` -- so the next attempt starts cheap
-            # instead of re-billing a transcript that led nowhere, without
-            # also discarding any EARLIER attempt's real, proven-valuable
-            # progress (messages[0]/[1] are never touched either way, same
-            # invariant trim_messages() keeps).
-            #
-            # Deliberately done HERE -- only once we know this run is
-            # actually continuing to another attempt -- and not immediately
-            # after computing `moved` above: this exact attempt's own
-            # transcript still needs to reach write_status() (STUCK/RED)
-            # untouched on every EXIT path above (including the final
-            # attempt's own STUCK/RED), so a human can see what was
-            # actually tried. Resetting before those write_status() calls
-            # would have persisted an already-gutted messages list for the
-            # very attempt whose failure is being reported -- confirmed as
-            # a real bug by adversarial review.
-            #
-            # Looked up by IDENTITY, not a stored index -- trim_messages()
-            # may have shifted everything since the marker was captured. If
-            # the marker itself is gone (only possible if THIS attempt's
-            # own growth was large enough that trim_messages() discarded
-            # even its own starting point -- an extreme case given
-            # --max-turns-without-progress should end a truly unproductive
-            # attempt long before that much output accumulates), there is
-            # no longer a safe, turn-aligned boundary that discards ONLY
-            # this attempt's content without risking an orphaned
-            # `tool_calls` message -- confirmed as a real, reproduced bug
-            # when this used a stale absolute index instead. Skip the reset
-            # entirely rather than guess: carrying the (already
-            # trim-bounded) history forward is safe, corrupting it is not.
-            for _i, _m in enumerate(messages):
-                if _m is attempt_start_marker:
-                    del messages[_i + 1:]
-                    break
+            # The transcript is kept. The old code reset it here on a
+            # zero-edit attempt to save re-billing "fruitless exploration";
+            # the 2026-09-14 incident showed that exploration was the
+            # useful part being thrown away, and attempt 2 re-reading the
+            # same files from zero was what made the two attempts identical
+            # enough to trip the dedup rule. What a zero-edit attempt
+            # learned is exactly what the next attempt needs.
             # Use the model's OWN self-report (asked for right when the
             # previous attempt's no-progress cutoff fired -- see
             # self_report_blocker) as the next attempt's actual guidance,
@@ -1282,10 +1350,10 @@ def main() -> int:
             # "never asked" -- see write_self_report's docstring), and a
             # plain truthy check treats both "never asked" and "asked but
             # got nothing" the same way here: fall back to generic wording.
-            if self_report:
+            if isinstance(self_report, dict):
                 feedback = (
                     "Your previous attempt ended without making any repo changes. "
-                    f"You said this about what was blocking you:\n\n{self_report}\n\n"
+                    f"You said this about what was blocking you:\n\n{self_report['explanation']}\n\n"
                     "Act on that directly this time -- if you described a narrower "
                     "approach, do that; otherwise start by editing, not exploring "
                     f"further.\n\nORIGINAL TASK (for reference):\n{task_text}"

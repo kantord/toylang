@@ -57,7 +57,15 @@ LOCK_DIR = Path.home() / ".cache" / "toylang-simple-dispatch" / "locks"
 RESULT_DIR = Path.home() / ".cache" / "toylang-simple-dispatch" / "results"
 AGENT_LOOP = Path(__file__).parent / "agent_loop.py"
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
-DEFAULT_SNAPSHOT = "toylang-toolchain-v2"
+# v3 = v2 plus a `tsc` on PATH outside /repo. Without it `just check` can
+# never go GREEN in the guest (tests/ts_types.rs panics "tsc is not
+# installed"), which is why every real-edit attempt before 2026-09-14
+# failed the same way and tripped agent_loop.py's dedup rule.
+DEFAULT_SNAPSHOT = "toylang-toolchain-v3"
+# One record per snapshot from `--preflight`: does a clean origin/main pass
+# `just check` inside that snapshot? Dispatch refuses to run without a
+# GREEN one -- a worker cannot be blamed for a gate the environment fails.
+PREFLIGHT_DIR = Path.home() / ".cache" / "toylang-simple-dispatch" / "preflight"
 
 # Committed to the repo (not ~/.cache) specifically so dispatch history
 # survives across machines/sessions and can be examined the same way any
@@ -65,8 +73,12 @@ DEFAULT_SNAPSHOT = "toylang-toolchain-v2"
 # of every run: what it cost, how long it took, what it was for.
 DISPATCH_LOG_PATH = REPO / "plans" / "dispatch-log.csv"
 DISPATCH_LOG_LOCK_PATH = Path.home() / ".cache" / "toylang-simple-dispatch" / "dispatch-log.lock"
+# bundle_path/ended_by/edits/turns added 2026-09-14: `status` alone said
+# STUCK for 45 runs whose real ending was the harness's own turn cutoff
+# with zero edits, and nothing recorded that fact anywhere structured.
 DISPATCH_LOG_FIELDS = ["run_id", "row_id", "model", "start_time", "end_time",
-                        "duration_s", "status", "cost_usd", "patch_path"]
+                        "duration_s", "status", "cost_usd", "patch_path",
+                        "bundle_path", "ended_by", "edits", "turns"]
 
 
 ROW_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -94,6 +106,13 @@ class Result:
     # meaning, so existing `fatal` checks (agent_loop.py's own real FATAL)
     # are untouched.
     setup_failed: bool = False
+    # Filled from agent_loop.py's own /root/agent-run.json; see ENDED_BY there.
+    ended_by: str = ""
+    edits: int = 0
+    turns: int = 0
+    base_commit: str = ""
+    attempts: list | None = None
+    self_report: dict | None = None
 
 
 def sh(cmd: list, env=None, check=False, timeout=None) -> subprocess.CompletedProcess:
@@ -135,14 +154,45 @@ def append_dispatch_log(row: dict) -> None:
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
         is_new = not DISPATCH_LOG_PATH.exists() or DISPATCH_LOG_PATH.stat().st_size == 0
+        if not is_new:
+            migrate_dispatch_log_header()
         with open(DISPATCH_LOG_PATH, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=DISPATCH_LOG_FIELDS)
             if is_new:
                 writer.writeheader()
-            writer.writerow(row)
+            writer.writerow({k: row.get(k, "") for k in DISPATCH_LOG_FIELDS})
     finally:
         fcntl.flock(lock_file, fcntl.LOCK_UN)
         lock_file.close()
+
+
+def migrate_dispatch_log_header() -> None:
+    """Rewrite the CSV with the current header when columns were added,
+    padding old rows with empty strings. Caller holds the log lock. Old
+    rows keep their meaning: an empty ended_by is "before this was
+    recorded", which dispatch_state.py --health reports as such rather
+    than guessing."""
+    with open(DISPATCH_LOG_PATH, newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        if header is None or header == DISPATCH_LOG_FIELDS:
+            return
+        rows = [dict(zip(header, r, strict=False)) for r in reader]
+    tmp = DISPATCH_LOG_PATH.with_suffix(".csv.tmp")
+    with open(tmp, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=DISPATCH_LOG_FIELDS)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow({k: r.get(k, "") for k in DISPATCH_LOG_FIELDS})
+    tmp.replace(DISPATCH_LOG_PATH)
+
+
+def bundle_dir(row_id: str, run_id: str) -> Path:
+    """Every artifact of one run lives here: dispatch.log, brief.txt,
+    agent.log, messages.json, self-report.{txt,json}, patch, status.json.
+    One address per run instead of six suffixes in a flat directory --
+    `dispatch_state.py --show ROW` reads it, so does the dev site."""
+    return RESULT_DIR / row_id / run_id
 
 
 def msb_env() -> dict:
@@ -234,10 +284,12 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                        "another dispatch of this row is already running (lock held)", None)
     run_id = uuid.uuid4().hex[:8]
     start_time = datetime.now(UTC)
+    bundle = bundle_dir(row_id, run_id)
+    bundle.mkdir(parents=True, exist_ok=True)
     result: Result | None = None
     try:
-        result = _dispatch_one_locked(row_id, run_id, brief_path, model, retry_cap, snapshot,
-                                       max_tokens, overall_timeout, memory, cpus,
+        result = _dispatch_one_locked(row_id, run_id, bundle, brief_path, model, retry_cap,
+                                       snapshot, max_tokens, overall_timeout, memory, cpus,
                                        resume_from, original_task_file, resume_patch)
         return result
     finally:
@@ -265,6 +317,37 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                 status = "RED"
             cost = result.cost_usd
             patch = result.patch_path
+        # agent_loop.py only knows endings it decided itself; the outer
+        # statuses map onto the same vocabulary here so the column is
+        # never empty for a new run.
+        ended_by = result.ended_by if result else ""
+        if not ended_by:
+            ended_by = {"TIMEOUT": "wall_clock", "SETUP_FAILED": "setup",
+                        "FATAL": "setup", "CRASH": "crash"}.get(status, "")
+        record = {
+            "run_id": run_id,
+            "row_id": row_id,
+            "model": model,
+            "snapshot": snapshot,
+            "base_commit": result.base_commit if result else "",
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "duration_s": round((end_time - start_time).total_seconds(), 1),
+            "status": status,
+            "cost_usd": round(cost, 6),
+            "ended_by": ended_by,
+            "edits": result.edits if result else 0,
+            "turns": result.turns if result else 0,
+            "attempts": (result.attempts if result else None) or [],
+            "self_report": result.self_report if result else None,
+            "patch": "patch" if patch else None,
+            "message": result.message[-1500:] if result else "dispatch crashed",
+        }
+        try:
+            (bundle / "status.json").write_text(json.dumps(record, indent=1))
+        except OSError as e:
+            print(f"[{row_id}] WARNING: could not write {bundle / 'status.json'}: {e}",
+                  file=sys.stderr)
         # Best-effort, not just lock-safe: a real bug found by adversarial
         # review, one level past the first fix. Wrapping only in
         # try/finally (no except) still let a CSV-append failure (disk
@@ -294,6 +377,10 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                 "status": status,
                 "cost_usd": f"{cost:.6f}",
                 "patch_path": str(patch) if patch else "",
+                "bundle_path": str(bundle),
+                "ended_by": ended_by,
+                "edits": str(record["edits"]),
+                "turns": str(record["turns"]),
             })
         except Exception as e:
             print(f"[{row_id}] WARNING: failed to append to dispatch-log.csv "
@@ -304,17 +391,17 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
         lock.close()
 
 
-def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str, retry_cap: int,
-                          snapshot: str, max_tokens: int, overall_timeout: int,
+def _dispatch_one_locked(row_id: str, run_id: str, bundle: Path, brief_path: Path, model: str,
+                          retry_cap: int, snapshot: str, max_tokens: int, overall_timeout: int,
                           memory: str, cpus: int, resume_from: Path | None = None,
                           original_task_file: Path | None = None,
                           resume_patch: Path | None = None) -> Result:
     name = f"sd-{row_id}-{run_id}"  # unique per attempt -- never collides
     workdir = Path(tempfile.mkdtemp(prefix=f"simple-dispatch-{row_id}-"))
     env = msb_env()
-    log_path = RESULT_DIR / f"{row_id}-{run_id}.log"
-    RESULT_DIR.mkdir(parents=True, exist_ok=True)
-    log = open(log_path, "w")
+    log = open(bundle / "dispatch.log", "w")
+    shutil.copyfile(brief_path, bundle / "brief.txt")
+    base_commit = ""
 
     def logline(s: str):
         print(s, file=log, flush=True)
@@ -428,8 +515,7 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
             if resume_from else ""
         )
         run_cmd = (
-            f"cd /repo && export PATH=$HOME/.cargo/bin:/usr/lib/llvm-22/bin:$PATH && "
-            f"export CARGO_BUILD_JOBS=2 && "
+            f"cd /repo && {GUEST_PATH} && "
             f"timeout {overall_timeout} python3 /root/agent_loop.py "
             f"--task-file /root/task.txt --model {shlex.quote(model)} "
             f"--retry-cap {int(retry_cap)} --max-tokens {int(max_tokens)} "
@@ -451,9 +537,18 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
         # outcome but not enough to see what the model actually tried. The
         # sandbox is gone by the time anyone reads the summary, so this is
         # the only chance to keep it.
-        full_log_path = RESULT_DIR / f"{row_id}-{run_id}-full-agent.log"
-        sh([str(MSB_BIN), "copy", f"{name}:/root/agent.log", str(full_log_path)],
+        sh([str(MSB_BIN), "copy", f"{name}:/root/agent.log", str(bundle / "agent.log")],
            env=env, timeout=30, check=False)
+        # agent_loop.py's structured account of the run: who ended each
+        # attempt, how many turns, how many edits. This is the fact the
+        # 2026-09-14 incident lacked.
+        run_json = exec_in("cat /root/agent-run.json 2>/dev/null", timeout=30).stdout
+        run_record: dict = {}
+        if run_json.strip():
+            try:
+                run_record = json.loads(run_json)
+            except json.JSONDecodeError:
+                logline("agent-run.json unparseable, recording ended_by as unknown")
 
         # Classify from agent_loop.py's own dedicated status file, NOT a
         # substring search over the shared log -- that log can contain
@@ -505,7 +600,7 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
             # on every path (clone_dir already is; the rest of workdir was
             # otherwise a permanent per-dispatch leak, same class as the
             # already-fixed clone_dir leak).
-            patch_path = RESULT_DIR / f"{row_id}-{run_id}.patch"
+            patch_path = bundle / "patch"
             patch_path.write_text(patch_out)
 
         # Pulled unconditionally on any non-GREEN outcome (agent_loop.py
@@ -514,7 +609,7 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
         # independent of whatever recovery note this function derives
         # below; keep it even if that derivation changes or fails.
         sh([str(MSB_BIN), "copy", f"{name}:/root/agent-messages.json",
-            str(RESULT_DIR / f"{row_id}-{run_id}-messages.json")],
+            str(bundle / "messages.json")],
            env=env, timeout=30, check=False)
 
         # On a genuine "gave up" outcome, read the model's OWN direct
@@ -538,19 +633,36 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
         # redispatches anything -- a human reads it and decides by hand,
         # exactly like every other non-GREEN outcome in this pipeline.
         recovery_note = ""
+        self_report_struct: dict | None = None
         if status in ("STUCK", "RED", "TIMEOUT"):
             self_report = exec_in("cat /root/agent-self-report.txt 2>/dev/null",
                                    timeout=30).stdout.strip()
             if self_report:
-                report_path = RESULT_DIR / f"{row_id}-{run_id}-self-report.txt"
-                report_path.write_text(self_report)
-                recovery_note = f" -- agent's own report: {self_report[:200]} (see {report_path})"
+                (bundle / "self-report.txt").write_text(self_report)
+                recovery_note = (f" -- agent's own report: {self_report[:200]} "
+                                 f"(uv run --project .claude/scripts .claude/scripts/dispatch_state.py "
+                                 f"--show {row_id} {run_id})")
+            report_json = exec_in("cat /root/agent-self-report.json 2>/dev/null",
+                                   timeout=30).stdout.strip()
+            if report_json:
+                (bundle / "self-report.json").write_text(report_json)
+                try:
+                    self_report_struct = json.loads(report_json)
+                except json.JSONDecodeError:
+                    self_report_struct = None
 
         return Result(row_id, ok, fatal, timed_out, stuck, tail[-1500:] + recovery_note,
-                       patch_path, cost_usd)
+                       patch_path, cost_usd,
+                       ended_by=str(run_record.get("ended_by") or ""),
+                       edits=int(run_record.get("edits") or 0),
+                       turns=int(run_record.get("turns") or 0),
+                       base_commit=base_commit,
+                       attempts=run_record.get("attempts"),
+                       self_report=self_report_struct)
     except SetupFailed as e:
         logline(f"setup failed: {e}")
-        return Result(row_id, False, False, False, False, str(e), None, setup_failed=True)
+        return Result(row_id, False, False, False, False, str(e), None, setup_failed=True,
+                       base_commit=base_commit)
     finally:
         # An explicit timeout here matters more than anywhere else in this
         # function: this is the ONE call that runs even when everything
@@ -579,11 +691,85 @@ def _dispatch_one_locked(row_id: str, run_id: str, brief_path: Path, model: str,
         log.close()
 
 
+GUEST_PATH = "export PATH=$HOME/.cargo/bin:/usr/lib/llvm-22/bin:$PATH && export CARGO_BUILD_JOBS=2"
+
+
+def preflight_record_path(snapshot: str) -> Path:
+    return PREFLIGHT_DIR / f"{snapshot}.json"
+
+
+def preflight(snapshot: str, memory: str, cpus: int, verify_cmd: str = "just check") -> bool:
+    """Boot the snapshot, copy in a clean origin/main, run the gate once, and
+    record the result. Answers the question nobody asked before 2026-09-14:
+    can this environment pass its own verify command with no worker change
+    at all? For toolchain-v2 the answer was no (no `tsc`), so every real
+    edit failed identically and looked like the model repeating itself."""
+    env = msb_env()
+    name = f"sd-preflight-{uuid.uuid4().hex[:8]}"
+    workdir = Path(tempfile.mkdtemp(prefix="simple-dispatch-preflight-"))
+    record = {"snapshot": snapshot, "time": datetime.now(UTC).isoformat(), "ok": False,
+              "commit": "", "verify_cmd": verify_cmd, "tail": ""}
+    try:
+        clone_dir = workdir / "repo"
+        must(sh(["git", "clone", "--no-hardlinks", "--quiet", str(REPO), str(clone_dir)], env=env, timeout=60), "git clone")
+        must(sh(["git", "-C", str(clone_dir), "fetch", "origin", "-q"], env=env, timeout=60), "git fetch")
+        must(sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "--detach", "origin/main"], env=env, timeout=60), "git checkout")
+        record["commit"] = must(sh(["git", "-C", str(clone_dir), "rev-parse", "HEAD"], env=env, timeout=30), "git rev-parse").stdout.strip()
+        r = sh([str(MSB_BIN), "run", "-m", memory, "-c", str(cpus), "--no-tty", "-d", "--name", name,
+                "--from-snapshot", snapshot, "--", "sh", "-c", "sleep infinity"], env=env, timeout=120)
+        if r.returncode != 0:
+            record["tail"] = f"sandbox boot failed: {r.stderr[:1000]}"
+            return False
+        must(sh([str(MSB_BIN), "exec", name, "--", "sh", "-c", "rm -rf /repo"], env=env, timeout=30), "rm -rf /repo")
+        must(sh([str(MSB_BIN), "copy", str(clone_dir), f"{name}:/repo"], env=env, timeout=120), "copy repo into guest")
+        shutil.rmtree(clone_dir, ignore_errors=True)
+        # The exit status travels through a marker line in the log rather
+        # than the exec's own return code: `msb exec` has not been observed
+        # to propagate the guest command's status reliably, and RC= is the
+        # same convention agent_loop.py's caller already trusts.
+        r2 = sh([str(MSB_BIN), "exec", name, "--", "sh", "-c",
+                 f"cd /repo && {GUEST_PATH} && {verify_cmd} >/root/preflight.log 2>&1; "
+                 f"echo RC=$? >> /root/preflight.log; tail -c 6000 /root/preflight.log"],
+                env=env, timeout=1900)
+        record["tail"] = r2.stdout[-6000:]
+        record["ok"] = record["tail"].rstrip().endswith("RC=0")
+        return record["ok"]
+    except SetupFailed as e:
+        record["tail"] = f"setup failed: {e}"
+        return False
+    finally:
+        try:
+            sh([str(MSB_BIN), "rm", "-f", name], env=env, timeout=60)
+        except subprocess.TimeoutExpired:
+            pass
+        shutil.rmtree(workdir, ignore_errors=True)
+        PREFLIGHT_DIR.mkdir(parents=True, exist_ok=True)
+        preflight_record_path(snapshot).write_text(json.dumps(record, indent=1))
+        print(f"[preflight] {snapshot} at {record['commit'][:9]}: {'GREEN' if record['ok'] else 'RED'} "
+              f"-> {preflight_record_path(snapshot)}", file=sys.stderr)
+
+
+def require_green_preflight(snapshot: str) -> tuple[bool, str]:
+    path = preflight_record_path(snapshot)
+    if not path.exists():
+        return False, (f"no preflight record for snapshot {snapshot}; run "
+                       f"`simple_dispatch.py --preflight --snapshot {snapshot}` once first")
+    try:
+        rec = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        return False, f"preflight record {path} unreadable: {e}"
+    if not rec.get("ok"):
+        return False, (f"snapshot {snapshot} failed its own gate at {rec.get('time')} "
+                       f"(baseline RED) -- fix the environment, re-run --preflight; "
+                       f"tail: {rec.get('tail', '')[-400:]}")
+    return True, f"preflight GREEN for {snapshot} at {str(rec.get('commit'))[:9]} ({rec.get('time')})"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("rows", nargs="+")
-    ap.add_argument("--brief-dir", required=True, type=Path,
-                     help="directory containing <row_id>.txt brief files")
+    ap.add_argument("rows", nargs="*")
+    ap.add_argument("--brief-dir", type=Path,
+                     help="directory containing <row_id>.txt brief files (required unless --preflight)")
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--retry-cap", type=int, default=2)
     ap.add_argument("--max-tokens", type=int, default=4096)
@@ -618,7 +804,25 @@ def main() -> int:
                           "resumed conversation's history claims edits were made that are not "
                           "actually present in the new sandbox -- if the prior run's status "
                           "was RED (not a zero-change STUCK) and left a patch, pass it here")
+    ap.add_argument("--preflight", action="store_true",
+                     help="instead of dispatching: boot --snapshot, copy a clean origin/main in, run "
+                          "`just check` once, record GREEN/RED under ~/.cache/toylang-simple-dispatch/preflight/. "
+                          "Dispatch refuses to run against a snapshot with no GREEN record")
+    ap.add_argument("--skip-preflight-check", action="store_true",
+                     help="dispatch even without a GREEN preflight record (debugging the harness itself)")
     args = ap.parse_args()
+
+    if args.preflight:
+        return 0 if preflight(args.snapshot, args.memory, args.cpus) else 1
+    if not args.rows or not args.brief_dir:
+        ap.error("row ids and --brief-dir are required (or --preflight)")
+    if not args.skip_preflight_check:
+        ok, msg = require_green_preflight(args.snapshot)
+        print(f"[preflight] {msg}", file=sys.stderr)
+        if not ok:
+            print("[preflight] refusing to dispatch into an environment that fails its own gate",
+                  file=sys.stderr)
+            return 2
 
     if args.resume_from:
         if len(args.rows) != 1:
