@@ -642,12 +642,17 @@ def main() -> int:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         removed = dispatch_state.gc_orphaned_sandboxes()
+        # Bundle retention rides the same heartbeat: keep the last 3 runs
+        # per row plus anything still delegated or named in a pending round.
+        removed_bundles = dispatch_state.gc_bundles()
         with open(sandbox_gc_log, "a") as f:
-            if removed:
+            if removed or removed_bundles:
                 for line in removed:
                     f.write(f"{ts} removed orphaned sandbox: {line}\n")
+                for line in removed_bundles:
+                    f.write(f"{ts} removed old bundle: {line}\n")
             else:
-                f.write(f"{ts} gc ran, 0 orphaned sandboxes\n")
+                f.write(f"{ts} gc ran, 0 orphaned sandboxes, 0 old bundles\n")
     except Exception as e:
         with open(sandbox_gc_log, "a") as f:
             f.write(f"{ts} gc failed (non-fatal): {e}\n")
