@@ -381,7 +381,7 @@
     Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: select-lazy-materialization-build-js
   issue: gh:176
@@ -395,7 +395,7 @@
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: select-lazy-materialization-build-py
   issue: gh:176
@@ -409,7 +409,7 @@
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: select-lazy-materialization-build-lua
   issue: gh:176
