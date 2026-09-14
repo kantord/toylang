@@ -2120,3 +2120,20 @@ slightly too early ... worth watching") was never read again. Full account and t
 `plans/dispatch-self-healing-plan.md`. The lesson for this file: a cheap zero-edit run is
 not a cheap failure, and a review cycle that has the code but not the aggregate cannot
 question the premise the code encodes.
+
+## 2026-09-14 (late): a duplicate land-patch launch, not a redispatch bug
+
+A tick's trigger listed three GREEN rows with verified patches (sort-by-max-by-rust-tests,
+module-routing-syntax-build-parse, tensor-transpose-build) and launched detached
+`land_lane.py land-patch` for all three -- without first checking `ps` for an
+already-running instance. Two of the three (module-routing-syntax-build-parse,
+tensor-transpose-build) turned out to already have a detached `land-patch` process in
+flight from ~9 minutes earlier, same row, same patch path, PPID 1. The queue's global
+flock prevented any worktree corruption, but module-routing-syntax-build-parse still hit a
+"main checkout stayed busy/dirty" defer that would not have happened at all without the
+second process contending for the same checkout window, and tensor-transpose-build's
+duplicate risked a spurious `git am` failure (patch no longer applies once the original
+already landed it) burning a real retry-cap slot on a row that was already done. Lesson:
+`ps aux | grep land_lane` (or an equivalent liveness check) before launching a land-patch a
+trigger names, the same way `dispatch_state.py --live` is already checked before a dispatch
+batch -- land-patch has no such built-in check of its own.
