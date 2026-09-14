@@ -227,9 +227,12 @@ def health_from_rows(rows: list[dict], ack: dict | None, last: int = HEALTH_WIND
         endings[r["ended_by"]] = endings.get(r["ended_by"], 0) + 1
     zero_edit = [r for r in recorded if (r.get("edits") or "0") == "0" and r["status"] != "GREEN"]
     green = [r for r in rows if r["status"] == "GREEN"]
+    # A GREEN run breaks the streak whatever ended its last attempt: a run
+    # that hit max_turns and then passed verify is a success, not a
+    # harness casualty (the first fixed-harness run did exactly that).
     streak = 0
     for r in reversed(recorded):
-        if r["ended_by"] in HARNESS_ENDINGS:
+        if r["ended_by"] in HARNESS_ENDINGS and r["status"] != "GREEN":
             streak += 1
         else:
             break

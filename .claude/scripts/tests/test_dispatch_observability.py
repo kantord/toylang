@@ -64,6 +64,10 @@ def test_health_alarm_on_harness_streak_and_zero_edits():
     # An ack drawn after the streak silences it; the old rows are history, not signal.
     h = dispatch_state.health_from_rows(streak, {"time": "2026-09-13T199", "note": "fixed"}, last=20)
     assert h["alarm"] is False and h["window"] == 0
+    # A GREEN run breaks the streak even if its last attempt hit max_turns.
+    broken = streak + [row(20, "max_turns", 5, "GREEN")]
+    h = dispatch_state.health_from_rows(broken, None, last=20)
+    assert h["harness_streak"] == 0 and h["alarm"] is False
     # Unrecorded rows never count as healthy.
     unrecorded = [dict(row(i, "", 0), ended_by="") for i in range(6)]
     h = dispatch_state.health_from_rows(unrecorded, None, last=20)
