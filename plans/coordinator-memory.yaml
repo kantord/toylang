@@ -1,0 +1,13 @@
+# Capped fact pool for drive_tick.py -- plans/coordinator-memory-design.md.
+# Written by a tick as a byproduct of real work, in that work's commit; read
+# into every tick's state snapshot. board-lint.py checks the shape.
+version: 1
+cap: 8
+slots:
+  - id: cutoff-near-edit-site
+    kind: watch
+    condition: "a non-GREEN run whose latest attempt ended by no_progress_cutoff or max_turns within 2 turns of a grep/read that located the edit site: the cutoff is too low, not the task too wide"
+    observation: "2026-09-11 toylang-conf-yaml-build run 64a0432c, and then 46 of 54 runs through 2026-09-13; see plans/dispatch-self-healing-plan.md"
+    source: plans/dispatch-self-healing-plan.md
+    written: "2026-09-14"
+    confirmed: 0

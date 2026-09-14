@@ -29,6 +29,7 @@ import tick_stream
 REPO = Path("/home/kantord/repos/toylang")
 LANES = Path.home() / ".local" / "share" / "toylang-lanes"  # land_lane.py's throwaway landing worktrees
 LOG_DIR = Path.home() / ".cache" / "toylang-drive"
+MEMORY = REPO / "plans" / "coordinator-memory.yaml"  # capped fact pool, plans/coordinator-memory-design.md
 SCRIPTS = Path(__file__).resolve().parent
 MODEL = "sonnet"
 
@@ -202,8 +203,23 @@ def _process_delegated_row(row_id: str, live_rows: set[str]) -> tuple[str, list[
         self_report = ""
         if report_path and Path(report_path).is_file():
             self_report = f" -- agent's own report: {Path(report_path).read_text(errors='replace')}"
-        return (f"row {row_id} is {status} (cost ${cost}){self_report} -- "
-                "decide: narrower redispatch per the report, or a decide-row escalation"), state
+        # Who ended the run is stated before the report, and the decision
+        # has three verbs, not two. Before 2026-09-14 a self-report saying
+        # "the harness cut me off, not scope" could only be routed as
+        # "redispatch narrower" or "escalate the row" -- 12 rows went to
+        # the maintainer that way for one harness bug.
+        ended_by = row.get("ended_by") or "unrecorded"
+        shape = (f"ended_by={ended_by} edits={row.get('edits') or '?'} "
+                 f"turns={row.get('turns') or '?'}")
+        harness = ended_by in dispatch_state.HARNESS_ENDINGS and (row.get("edits") or "0") == "0"
+        verdict = (" -- a harness ending with zero edits is the HARNESS's decision, not the "
+                   "model's: treat as a pipeline defect (see the dispatch health line), "
+                   "not a scope problem" if harness else "")
+        return (f"row {row_id} is {status} ({shape}, cost ${cost}){self_report}{verdict} -- "
+                f"read `uv run --project .claude/scripts .claude/scripts/dispatch_state.py --show "
+                f"{row_id}` first, then decide: (a) redispatch narrower per the report, (b) a "
+                "decide-row escalation if the report says scope, or (c) harness defect: hold "
+                "dispatch, --capture the run, one harness decide row"), state
     if status == "TIMEOUT":
         return (f"row {row_id} timed out (cost ${cost}) -- likely an undersized "
                 "budget, not unsolvable; consider one retry with a larger "
@@ -263,6 +279,45 @@ def _land_failed_signal() -> tuple[str, list[str]]:
     return dead_trigger, state_parts
 
 
+def _memory_slot_state(slot: dict) -> str:
+    # A watch is rendered as the condition itself, not a fact: the 2026-09-11
+    # "worth watching" note about the no-progress cutoff was correct and sat
+    # unread in plans/simple-dispatch-design.md while the shape recurred in
+    # 46 of the next 54 runs. Putting it in the snapshot is what makes a
+    # watch different from a note -- every tick re-reads it whether or not
+    # it meant to.
+    if slot["kind"] == "watch":
+        return f"[watch: {slot['condition']} -- {slot['observation']}]"
+    return f"[mem: {slot['kind']} {slot['id']}: {slot['summary']} ({slot['source']})]"
+
+
+def _memory_signal() -> list[str]:
+    slots = yaml.safe_load(open(MEMORY))["slots"]
+    # Per-slot isolation: one malformed slot logs and drops out, the rest
+    # still reach the snapshot (the same shape as _delegated_row_signal).
+    rendered = [safe_signal(f"memory slot {s.get('id', '?')}", _memory_slot_state, s)
+                for s in slots]
+    return [line for line in rendered if line]
+
+
+def _health_signal() -> tuple[str, str]:
+    h = dispatch_state.health()
+    line = dispatch_state.format_health(h)
+    alarm = dispatch_state.health_trigger() or ""
+    if alarm:
+        # Mechanical, so the evidence exists in git before any tick decides
+        # anything: capture the latest run of every zero-edit row named by
+        # the alarm. Idempotent per day (same destination directory).
+        captured = []
+        for row_id in dict.fromkeys(h["zero_edit_rows"]):
+            dest = safe_signal(f"capture {row_id}", dispatch_state.capture_incident, row_id, default=None)
+            if dest:
+                captured.append(str(dest.relative_to(REPO)))
+        if captured:
+            alarm += " -- evidence captured: " + " ".join(captured) + " (commit these)"
+    return line, alarm
+
+
 def compute_trigger_and_state(mode: str) -> tuple[str, str]:
     trigger = ""
     state_parts: list[str] = []
@@ -278,6 +333,18 @@ def compute_trigger_and_state(mode: str) -> tuple[str, str]:
     state_parts += land_failed_state
     if not trigger and dead_trigger:
         trigger = dead_trigger
+
+    state_parts += safe_signal("coordinator memory", _memory_signal, default=[])
+
+    # Population view of recent runs. ALWAYS in the state snapshot so a tick
+    # sees the shape of the last 20 runs, and JOINS the trigger when the
+    # alarm is on -- the 2026-09-14 incident was 46 runs with the same
+    # harness ending, each judged alone as a task problem.
+    health_line, health_alarm = safe_signal("dispatch health", _health_signal, default=("", ""))
+    if health_line:
+        state_parts.append(f"[{health_line}]")
+    if health_alarm:
+        trigger = join_trigger(trigger, health_alarm)
 
     # Maintainer input always runs the tick (the 5-minute quiet rule is
     # judged inside).
@@ -330,8 +397,12 @@ AUDIT_POLICY = (
     '.claude/scripts/dispatch_state.py --live) or a real dispatch-log.csv row '
     'explaining its status; no GREEN row sits unlanded; plans/dispatch-log.csv '
     'and the real msb sandbox list (msb list) agree with each other, no '
-    'orphans. Fix what is mechanical, file issues for the rest. End quietly '
-    'if clean.'
+    'orphans. Coordinator memory (plans/coordinator-memory.yaml): for every '
+    'slot, re-resolve its source and check the fact still holds -- bump '
+    'confirmed when it does, drop the slot when it does not (a watch is '
+    'dropped once its condition has been acted on or has stopped recurring); '
+    'a slot nobody ever confirms is the kill signal for the whole pool. Fix '
+    'what is mechanical, file issues for the rest. End quietly if clean.'
 )
 
 TICK_POLICY = (
@@ -392,15 +463,38 @@ TICK_POLICY = (
     'edits, its own just check verify with retries, patch extraction) and '
     'takes roughly 5-20 minutes, so never wait on it inline; set every row you '
     'dispatch to status: delegated in the same commit as writing its brief. A '
-    'non-GREEN outcome (STUCK, RED, TIMEOUT, SETUP_FAILED, FATAL) already '
-    'carries the agents own real explanation of what blocked it, verbatim, in '
-    'the trigger text -- read that directly and act on the per-status '
-    'guidance already there; there is no event log or ESCALATION.md to '
-    'reconstruct anymore. FATAL means the account itself needs fixing -- flag '
-    'it plainly, do not redispatch anything until it is. Record a real, '
-    'surprising incident (a wrong self-report, a repeated failure shape, a '
-    'cost anomaly) as a note in plans/simple-dispatch-design.md, not a new '
-    'file. RULES: never edit a repo file yourself to fix a build row -- '
+    'non-GREEN outcome (STUCK, RED, TIMEOUT, SETUP_FAILED, FATAL) names in the '
+    'trigger WHO ended it (ended_by: model_done, no_progress_cutoff, max_turns, '
+    'dedup, wall_clock, api_error, setup, crash), how many edits and turns it '
+    'made, and the agents own explanation; the standard way to look at any '
+    'such run is uv run --project .claude/scripts .claude/scripts/dispatch_state.py '
+    '--show ROW-ID -- run it before deciding, never grep the cache by hand. '
+    'THREE verbs, not two: (a) redispatch narrower per the report; (b) a '
+    'decide-row escalation when the report says scope; (c) HARNESS DEFECT when '
+    'ended_by is a harness ending with zero edits, or when the dispatch health '
+    'line in the snapshot says ALARM -- then hold dispatch, run dispatch_state.py '
+    '--capture ROW-ID for the evidence (commit plans/incidents/), and open or '
+    'update ONE harness decide row naming the common ended_by; never turn N '
+    'STUCK rows into N round questions (more than 4 escalation questions in a '
+    'round is a board-lint error). A run that cost little and changed nothing '
+    'is a zero, not a cheap failure: count zero-edit runs, not dollars. FATAL '
+    'means the account itself needs fixing -- flag it plainly, do not '
+    'redispatch anything until it is. The snapshot carries [mem: ...] and '
+    '[watch: ...] lines from plans/coordinator-memory.yaml: a mem line is a '
+    'fact a past tick already verified (do not re-derive it; re-check only '
+    'what you are about to modify); a watch line is a condition to hold every '
+    'non-GREEN run and the dispatch health line against -- when one matches, '
+    'name the watch in your reasoning and act as it says instead of judging '
+    'the run alone. WRITE to that file only as a byproduct of real work, in '
+    'the same commit: a footprint conflict or static fact you had to establish '
+    'while doing something else (kind footprint-conflict, fact-check, other), '
+    'or a hunch you would otherwise leave as "worth watching" in a note (kind '
+    'watch: one-line condition plus the observation with date and pointer); '
+    'never as a dedicated check-memory step, never over cap 8, and board-lint.py '
+    'rejects any other kind. Record a real, surprising incident (a '
+    'wrong self-report, a repeated failure shape, a cost anomaly) as a note in '
+    'plans/simple-dispatch-design.md, not a new file. RULES: never edit a repo '
+    'file yourself to fix a build row -- '
     'reshape the brief and redispatch, however small the fix looks (a '
     'dispatch is stateless per attempt and has nothing to build on from a '
     'hand-edit). A permission denial is a ruling, not an obstacle: NEVER '

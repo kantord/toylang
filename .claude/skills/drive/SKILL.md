@@ -69,30 +69,9 @@ Every tick:
    `status: todo` with `blocked_by` set, so that half of the gap can't recur silently, but
    nothing un-parks a row automatically -- this trigger line is the other half.
 
-## Stall diagnosis, learned the hard way
+## Stall diagnosis
 
-Superseded, 2026-09-11: the diagnosis below (worktree mtimes, ESCALATION.md, opencode
-event logs) described the old sandbox_dispatch.py/opencode pipeline, kept here only as
-history. Under simple_dispatch.py there is no worktree per dispatch, no ESCALATION.md
-channel, and no opencode event log to read -- a dispatch reports through exactly two
-plain surfaces: `plans/dispatch-log.csv` (one row per run: status, cost, patch path) and
-`~/.cache/toylang-simple-dispatch/results/<row>-<run_id>-*` files (the extracted patch,
-the full agent log, and -- the real diagnosis surface -- `-self-report.txt`: the model's
-own direct explanation of what blocked it, asked for in-context at the moment it gave
-up, not reconstructed afterward from a transcript). `.claude/scripts/dispatch_state.py`
-reads both surfaces for you; a tick's own trigger text already carries the self-report
-verbatim for any STUCK/RED/TIMEOUT/SETUP_FAILED/FATAL row -- read that directly instead
-of digging through logs. See `plans/simple-dispatch-design.md` for the full design
-history and why this replaced a separate post-hoc reviewer entirely.
-
-Historical record of the retired pipeline's diagnosis, preserved for context: the
-dead-worker signature (claude-era lanes) was the newest file in the session's
-tool-results dir being its own session-start hook message -- the worker died (usually
-machine suspend) and a fresh idle session auto-spawned. An opencode worker's process
-exiting was its turn ending -- there was no idle session left behind; a committed
-`ESCALATION.md` was the worker's channel for decisions its brief did not settle, and the
-event log (`~/.cache/toylang-drive/opencode/*-<lane>.jsonl`) was the diagnosis source
-when nothing else said what a worker was doing.
+Read `plans/simple-dispatch-design.md`; nothing pipeline-specific belongs here.
 
 **The coordinator is a router (maintainer direction, 2026-08-30).** The asymptote every
 change moves toward: a tick spends its turns on DECISIONS -- what to dispatch, what to
@@ -208,12 +187,27 @@ provenance ("self-originated, idle board" on the row/issue):
      explanation of what blocked it, verbatim, already surfaced in the tick's trigger
      text (`dispatch_state.py --status ROW-ID`, or read
      `~/.cache/toylang-simple-dispatch/results/ROW-ID-*-self-report.txt` directly) --
-     there is no transcript to reconstruct and no separate escalation-composition step;
-     decide directly from what the agent already said: a narrower redispatch per its own
-     suggestion, or a decide-row escalation if it says this isn't a scope problem at all.
-     Record a genuinely surprising incident (a wrong self-report, a repeated failure
-     shape, a real cost anomaly) as a note in `plans/simple-dispatch-design.md`, not a
-     new file. Footprint conflicts are SOFT BLOCKER EDGES on the board (file-level -- a
+     there is no transcript to reconstruct and no separate escalation-composition step.
+     The trigger also says WHO ended the run (`ended_by`: `model_done`,
+     `no_progress_cutoff`, `max_turns`, `dedup`, `wall_clock`, `api_error`, `setup`,
+     `crash`) and how many edits and turns it made. The standard way to look at any
+     non-GREEN run is `uv run --project .claude/scripts .claude/scripts/dispatch_state.py
+     --show ROW-ID` (status, per-attempt endings, self-report, log tail); run it before
+     deciding, never grep `~/.cache` by hand. Then one of THREE verbs: (a) a narrower
+     redispatch per the agent's own suggestion; (b) a decide-row escalation if the report
+     says this is a scope problem; (c) HARNESS DEFECT when `ended_by` is a harness ending
+     with zero edits, or the `dispatch health` line in the state snapshot says ALARM. For
+     (c): hold dispatch, `dispatch_state.py --capture ROW-ID` (writes
+     `plans/incidents/<row>-<date>/`, commit it), and open or update ONE harness `decide`
+     row naming the common `ended_by`. Never turn N STUCK rows into N round questions;
+     `board-lint.py` rejects more than 4 escalation questions in a round. A run that cost
+     little and changed nothing is a zero, not a cheap failure: count zero-edit runs, not
+     dollars. Why all this: on 2026-09-14 twelve rows were found STUCK by the harness's
+     own 12-turn exploration cutoff (46 of 54 runs), each self-report said so, and the
+     two-verb policy routed every one to the maintainer as a scope question
+     (`plans/dispatch-self-healing-plan.md`). Record a genuinely surprising incident (a
+     wrong self-report, a repeated failure shape, a real cost anomaly) as a note in
+     `plans/simple-dispatch-design.md`, not a new file. Footprint conflicts are SOFT BLOCKER EDGES on the board (file-level -- a
      folder is not a footprint; that lesson cost a lane of parallelism once), not ad-hoc
      judgment: when a conflict is discovered at dispatch time, record the `soft` edge
      rather than just serializing silently. Picking a soft-blocked task while its
