@@ -274,6 +274,12 @@ pub enum Builtin {
     /// same two integer element types `sum` takes, so a backend can reach for its native
     /// maximum.
     Max,
+    /// `transpose(vv)`, `Vec<Vec<T>> -> Vec<Vec<T>>`: the matrix transpose of a rectangular
+    /// `Vec<Vec<T>>` -- row `i` of the result is column `i` of the input. Restricted to the
+    /// same two integer element types `sum`/`max` take, so a backend can reach for its native
+    /// numeric transpose; a ragged input (rows of unequal length) is refused at runtime on
+    /// every backend.
+    Transpose,
     /// `parse(s)`, `Str -> T`: read `s` as one JSON value of the checked type `T`. The
     /// type-descriptor-driven reader every backend already uses for stdin, applied to a string
     /// in hand rather than to the whole of stdin. `parse(stdin)` and `stdin | map(parse(.))`

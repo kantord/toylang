@@ -240,6 +240,21 @@ const MAX_BY_HELPER: &str = r#"fn tl_max_by<T: Clone, K: Ord>(v: &[T], key: impl
 }
 "#;
 
+// `T: Copy` covers both integer widths (i32 and i64), the only element types the checker
+// lets `transpose` take. A ragged input -- rows of unequal length -- is refused the same way
+// every other runtime failure is, since the checker cannot see lengths.
+const TRANSPOSE_HELPER: &str = r#"fn tl_transpose<T: Copy>(vv: &[Vec<T>]) -> Vec<Vec<T>> {
+    if vv.is_empty() {
+        return Vec::new();
+    }
+    let ncols = vv[0].len();
+    if vv.iter().any(|row| row.len() != ncols) {
+        tl_fail("transpose needs a rectangular Vec of Vecs");
+    }
+    (0..ncols).map(|c| vv.iter().map(|row| row[c]).collect()).collect()
+}
+"#;
+
 const RANGE_HELPER: &str = r#"fn tl_range(n: i32) -> Vec<i32> {
     (0..n.max(0)).collect()
 }
@@ -892,6 +907,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_sum(") || uses("tl_sum64("), SUM_HELPER),
         (uses("tl_max("), MAX_HELPER),
         (uses("tl_max_by("), MAX_BY_HELPER),
+        (uses("tl_transpose("), TRANSPOSE_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
         (uses("tl_dsv("), DSV_HELPER),
@@ -1525,6 +1541,7 @@ impl Emitter<'_> {
                     }
                 }
                 Builtin::Max => format!("tl_max(&{})", self.expr(arg)),
+                Builtin::Transpose => format!("tl_transpose(&{})", self.expr(arg)),
                 // The names come from the checked type, not the struct value, so `arg` is
                 // evaluated only for whatever else it does (a division inside it must still
                 // trap) and its value discarded.
