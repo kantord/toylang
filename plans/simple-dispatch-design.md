@@ -2137,3 +2137,20 @@ already landed it) burning a real retry-cap slot on a row that was already done.
 `ps aux | grep land_lane` (or an equivalent liveness check) before launching a land-patch a
 trigger names, the same way `dispatch_state.py --live` is already checked before a dispatch
 batch -- land-patch has no such built-in check of its own.
+
+## 2026-09-15: a self-report that undersold its own progress
+
+`select-lazy-materialization-build-go` run `9a7e0d2f` (RED, `ended_by=max_turns`, 7 edits) self-
+reported "cargo build had just passed and I was about to run `just check`" -- narrower_would_
+succeed framing, as if the attempt ran out of turns before reaching verification. The actual
+`agent.log` showed `just check` HAD run, twice, and failed both times on the exact same thing:
+an insta snapshot mismatch (`emitted_code_matches_the_snapshot`, `adults__go`) because the newly
+emitted Go source legitimately differs from the checked-in snapshot -- the expected result of a
+real codegen change, not a bug. The diff itself showed 465 working insertions of a complete
+`tlSel`/`tlSelAt`/`tlSelDense` design. Taking the self-report at face value would have led to
+"give it more turns to reach `just check`"; reading the actual log showed the real remaining step
+was just `cargo insta accept`. Lesson: a self-report's own framing of *why* it stopped is not
+reliable evidence of *what state the work is actually in* -- `dispatch_state.py --show`'s
+attempt-by-attempt `verify_tail` is closer to ground truth than the prose summary sitting next to
+it, especially for anything insta/snapshot-shaped, where a real functional success and a real
+functional failure produce the same-looking "check failed" line.
