@@ -1,0 +1,1 @@
+The main blocker is the breadth of the required change: replacing `tlSelect` with a lazy proxy type forces every Go backend consumer (index, slice, map, iteration, printing, fusion
