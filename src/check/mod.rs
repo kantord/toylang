@@ -3039,6 +3039,9 @@ fn call(
     if func == "max" {
         return max_call(ctx, need_arg(arg, func, span)?);
     }
+    if func == "transpose" {
+        return transpose_call(ctx, need_arg(arg, func, span)?);
+    }
     // The three search cuts (draft.md#query-is-search): `first` takes any element type
     // the way `tail` does, `any` and `all` each take a Vec of Bool. All three are checked here
     // rather than through `builtin()`'s fixed table: their return types are the element type's
@@ -3732,6 +3735,44 @@ fn max_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
         opt_of(ctx, elem.clone()),
         Kind::Builtin {
             which: tir::Builtin::Max,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// `transpose(vv)`, `Vec<Vec<T>> -> Vec<Vec<T>>`: the matrix transpose of a rectangular
+/// `Vec<Vec<T>>` (gh:175) -- row `i` of the result is column `i` of the input. Restricted to
+/// the same two integer element types `sum`/`max` take, so a backend can reach for its native
+/// numeric transpose; a ragged input (rows of unequal length) is refused at runtime on every
+/// backend.
+fn transpose_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    let Some(inner) = arg.ty.elem().cloned() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`transpose` needs a Vec of Vecs, found {}", arg.ty),
+        ));
+    };
+    let Some(elem) = inner.elem() else {
+        return Err(Error::new(
+            arg_span,
+            format!("`transpose` needs a Vec of Vecs, found {}", arg.ty),
+        ));
+    };
+    if !reducible(elem) {
+        return Err(Error::new(
+            arg_span,
+            format!(
+                "`transpose` needs a Vec of Vecs of Int or Int64, found {}",
+                arg.ty
+            ),
+        ));
+    }
+    Ok(Tir::new(
+        Type::Vec(Box::new(Type::Vec(Box::new(elem.clone())))),
+        Kind::Builtin {
+            which: tir::Builtin::Transpose,
             arg: Box::new(arg),
         },
     ))

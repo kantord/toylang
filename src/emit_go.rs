@@ -239,6 +239,30 @@ const MAX_BY_HELPER: &str = r#"func tlMaxBy[T any, K cmp.Ordered](v []T, key fun
 }
 "#;
 
+// `int32`/`int64` are the only element types the checker lets through, so the generic covers
+// both widths. A ragged input -- rows of unequal length -- is refused the same way every other
+// runtime failure is, since the checker cannot see lengths.
+const TRANSPOSE_HELPER: &str = r#"func tlTranspose[T any](vv [][]T) [][]T {
+	if len(vv) == 0 {
+		return [][]T{}
+	}
+	ncols := len(vv[0])
+	for _, row := range vv {
+		if len(row) != ncols {
+			tlFail("transpose needs a rectangular Vec of Vecs")
+		}
+	}
+	out := make([][]T, ncols)
+	for c := 0; c < ncols; c++ {
+		out[c] = make([]T, len(vv))
+		for r, row := range vv {
+			out[c][r] = row[c]
+		}
+	}
+	return out
+}
+"#;
+
 /// Go's `int32` wraps on overflow by definition, and its `/` and `%` truncate toward zero, so
 /// only the zero divisor needs a guard. `MIN / -1` is defined to be `MIN` here, which is the
 /// wrapping answer the other backends were made to give.
@@ -691,6 +715,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tlSum(") || uses("tlSum64("), SUM_HELPER),
         (uses("tlMax("), MAX_HELPER),
         (uses("tlMaxBy("), MAX_BY_HELPER),
+        (uses("tlTranspose("), TRANSPOSE_HELPER),
         (unwrap, UNWRAP_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
@@ -1291,6 +1316,7 @@ impl Emitter<'_> {
                     }
                 }
                 Builtin::Max => format!("tlMax({})", self.expr(arg)),
+                Builtin::Transpose => format!("tlTranspose({})", self.expr(arg)),
                 // The names come from the checked type, not the struct value, so `arg` runs in
                 // an ignored parameter -- the same IIFE shape `Bind` uses -- purely for whatever
                 // else it does.
