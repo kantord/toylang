@@ -391,7 +391,7 @@
     current meaning. Per-backend builtin-wiring precedent: `src/emit_go.rs:192` (SUM_HELPER).
     Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
   kind: build
-  needs: [select-lazy-materialization-harness-defect-ruling]
+  needs: []
   status: todo
 
 - id: select-lazy-materialization-build-js
@@ -405,7 +405,7 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: [select-lazy-materialization-harness-defect-ruling]
+  needs: []
   status: todo
 
 - id: select-lazy-materialization-build-py
@@ -419,7 +419,7 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: [select-lazy-materialization-harness-defect-ruling]
+  needs: []
   status: todo
 
 - id: select-lazy-materialization-build-lua
@@ -433,7 +433,7 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: [select-lazy-materialization-harness-defect-ruling]
+  needs: []
   status: todo
 
 - id: select-lazy-materialization-build-rust
@@ -446,7 +446,7 @@
     syntax/checker change. Per-backend builtin-wiring precedent: `src/emit_rs.rs:205`
     (MAX_BY_HELPER). Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: [select-lazy-materialization-harness-defect-ruling]
+  needs: []
   status: todo
 
 - id: select-lazy-materialization-build-jq
@@ -461,7 +461,7 @@
     forcing a fake implementation -- this is the one backend where the maintainer may need a
     follow-up ruling. Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: [select-lazy-materialization-harness-defect-ruling]
+  needs: []
   status: todo
 
 - id: select-lazy-materialization-build-llvm
@@ -475,7 +475,7 @@
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
-  needs: [select-lazy-materialization-harness-defect-ruling]
+  needs: []
   status: todo
 
 - id: select-lazy-materialization-harness-defect-ruling
