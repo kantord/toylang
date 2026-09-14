@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: approved
 ---
 
 # Why 12 rows sat STUCK for two days, and what has to change so it cannot recur
@@ -117,6 +117,18 @@ saw twelve healthy workers where there were zero.
 GREEN inside the snapshot without the worker hand-installing TypeScript from the npm
 registry, which four separate self-reports describe doing. No preflight ever checked
 that a clean clone passes `just check` in the sandbox before dispatching work into it.
+
+Maintainer ruling, 2026-09-14: skip the mail flow, implement all of it. Landed the same
+day; the commit series is on main under this file's name. What each part became:
+`--max-turns-without-progress` defaults to `--max-turns`; the dedup rule is
+`is_repeat_without_edits`; snapshot `toylang-toolchain-v3` carries `tsc` and
+`simple_dispatch.py --preflight` gates on a GREEN baseline; every run writes a bundle under
+`results/<row>/<run>/` and four new CSV columns; `dispatch_state.py` gained `--show`,
+`--health`, `--health-ack`, `--capture`, `--backfill`, and bundle retention in `--gc`;
+`drive_tick.py` joins the health line to every snapshot and the alarm to the trigger, with
+the third verb in both the per-row text and the policy; `board-lint.py` rejects stale
+delegated rows and over-full escalation rounds; the dev site shows real dispatch state and
+a run page; the coordinator memory pool exists with a `watch` kind and one seeded watch.
 
 ## Plan, part 1: fix the defect (one session, about an hour)
 

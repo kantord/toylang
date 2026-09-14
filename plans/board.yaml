@@ -168,7 +168,7 @@
     step is done when the emitter compiles and no longer panics on `sort_by`/`max_by` TIR nodes.'
   kind: build
   needs: [sort-by-max-by-rust-helpers]
-  status: delegated
+  status: todo
 
 - id: sort-by-max-by-rust-tests
   issue: gh:177
@@ -289,7 +289,7 @@
   kind: build
   needs: [module-routing-syntax-build-ast]
   prio: 5
-  status: delegated
+  status: todo
 
 - id: module-routing-syntax-build-checker
   issue: gh:167
@@ -404,7 +404,7 @@
     Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: select-lazy-materialization-build-js
   issue: gh:176
@@ -418,7 +418,7 @@
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: select-lazy-materialization-build-py
   issue: gh:176
@@ -432,7 +432,7 @@
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: select-lazy-materialization-build-lua
   issue: gh:176
@@ -446,7 +446,7 @@
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: select-lazy-materialization-build-rust
   issue: gh:176
@@ -459,7 +459,7 @@
     (MAX_BY_HELPER). Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: select-lazy-materialization-build-jq
   issue: gh:176
@@ -474,7 +474,7 @@
     follow-up ruling. Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: select-lazy-materialization-build-llvm
   issue: gh:176
@@ -488,7 +488,7 @@
     Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
@@ -556,7 +556,7 @@
   kind: build
   needs: [dense-tensor-type]
   prio: 3
-  status: delegated
+  status: todo
 
 - id: tensor-constructor-build
   issue: gh:175
@@ -653,7 +653,7 @@
     accordingly in `plans/simple-briefs/coordinator-memory-pool-build.txt`.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: mutation-semantics-design
   title: 'Grill privileged/shared-reference mutation-as-optimization now that the spike
@@ -678,4 +678,29 @@
   kind: build
   needs: []
   prio: 5
-  status: delegated
+  status: todo
+
+- id: dispatch-no-progress-cutoff-harness-defect
+  title: '12 rows sat `status: delegated` for two days showing "in progress" while nothing
+    was running -- every one had a terminal STUCK in `plans/dispatch-log.csv` hours earlier.
+    Root cause per `plans/dispatch-self-healing-plan.md` (written 2026-09-14 from the raw
+    dispatch artifacts): two rules in `agent_loop.py` misclassify real harness limits as task
+    failures. The no-progress cutoff (`--max-turns-without-progress`, default 12) ends an
+    attempt mid-exploration on any task needing more than ~15 reads before its first write,
+    and discards that attempt''s transcript; the dedup rule then treats the next attempt''s
+    identical "no changes, no verify run" tail as repetition and calls the run STUCK after 2
+    of 3 attempts -- with zero edits made, zero signal about task scope. 46 of the last 54
+    dispatch runs hit this cutoff at least once. Two rows (`tensor-transpose-build`,
+    `sort-by-max-by-rust-wiring`) have real, verified, unlanded patches on disk that this same
+    bug misclassified as STUCK. Decide: approve the plan''s part-1 fix (raise/disable the
+    no-progress cutoff, never dedup an attempt that made edits, preflight the sandbox baseline
+    to GREEN -- about an hour, one commit per step) before any further dispatch of the 12
+    reset rows; separately rule on whether to land the two salvageable patches directly
+    (`land_lane.py land-patch` / `agent_loop.py --resume-from`) or let them redispatch from
+    scratch under the fixed harness. `docs/.grill/stuck-row-triage-2.round.yaml`''s seven
+    per-row escalation questions were retired as a symptom of this same bug (more than 4 STUCK
+    rows in one round is a harness signal, not 4 scope decisions) -- this row is the one real
+    decision in their place.'
+  kind: decide
+  needs: []
+  status: todo

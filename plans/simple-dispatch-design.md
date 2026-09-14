@@ -2105,3 +2105,18 @@ the dev server's actual base URL is `/toylang/`, not `/`: a bare
 `localhost:5173/__grill/round?...` 404s with a plain-text hint ("did you mean to visit
 `/toylang/__grill/round?...`"), and the drive policy's literal curl example doesn't include that
 prefix. Buffer count held at 2 pending `*.round.yaml` files.
+
+## 2026-09-14: the STUCK verdicts were the harness's, not the model's
+
+Reading every `-full-agent.log` at once (never done before; each run had been read alone)
+showed 46 of 54 runs ending at turn 11 by `--max-turns-without-progress` (default 12), the
+second attempt re-exploring from a discarded transcript and dying the same way, and the
+identical `(no changes, no verify run)` tails tripping the dedup rule. 35 runs never edited
+a file; 9 more had one real attempt followed by two cutoffs; `tensor-transpose-build`
+`36d59b9d` made real edits in all three attempts and was deduped on an identical
+environmental `tsc` RED (the v2 snapshot has no `tsc`). The self-reports had said
+"exploration, not scope" since 2026-09-11 and this file's own note that day ("cutoff firing
+slightly too early ... worth watching") was never read again. Full account and the fixes:
+`plans/dispatch-self-healing-plan.md`. The lesson for this file: a cheap zero-edit run is
+not a cheap failure, and a review cycle that has the code but not the aggregate cannot
+question the premise the code encodes.
