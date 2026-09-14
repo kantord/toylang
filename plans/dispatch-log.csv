@@ -47,3 +47,8 @@ f2628c7e,select-lazy-materialization-build-lua,deepseek/deepseek-v4-flash-0731,2
 7366d59a,select-lazy-materialization-build-llvm,deepseek/deepseek-v4-flash-0731,2026-09-13T15:55:36.765587+00:00,2026-09-13T15:57:21.193956+00:00,104.4,STUCK,0.012985,
 80b3d6d9,select-lazy-materialization-build-jq,deepseek/deepseek-v4-flash-0731,2026-09-13T15:55:36.765523+00:00,2026-09-13T15:59:09.203371+00:00,212.4,STUCK,0.015507,
 1f1780aa,select-lazy-materialization-build-rust,deepseek/deepseek-v4-flash-0731,2026-09-13T15:55:36.764353+00:00,2026-09-13T15:59:38.518039+00:00,241.8,STUCK,0.019815,
+3076ba34,tensor-transpose-build,deepseek/deepseek-v4-flash-0731,2026-09-13T16:20:52.476594+00:00,2026-09-13T16:22:13.693815+00:00,81.2,STUCK,0.013504,
+9247f06a,corpus-implementation-style-review,deepseek/deepseek-v4-flash-0731,2026-09-13T16:20:52.476753+00:00,2026-09-13T16:22:41.889227+00:00,109.4,STUCK,0.017422,
+b95aa5cd,coordinator-memory-pool-build,deepseek/deepseek-v4-flash-0731,2026-09-13T16:20:52.476713+00:00,2026-09-13T16:24:09.876138+00:00,197.4,STUCK,0.015245,
+8434218e,corpus-implementation-style-review,deepseek/deepseek-v4-flash-0731,2026-09-13T16:34:38.116509+00:00,2026-09-13T16:37:58.129268+00:00,200.0,STUCK,0.008862,
+36d59b9d,tensor-transpose-build,deepseek/deepseek-v4-flash-0731,2026-09-13T16:34:38.116307+00:00,2026-09-13T16:55:02.307800+00:00,1224.2,STUCK,0.163279,/home/kantord/.cache/toylang-simple-dispatch/results/tensor-transpose-build-36d59b9d.patch
