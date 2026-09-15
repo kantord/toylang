@@ -2318,3 +2318,28 @@
   kind: build
   needs: []
   status: done
+
+- id: tensor-transpose-build
+  issue: gh:175
+  title: 'Implement the `transpose` builtin across all 7 backends (Go, JS, Python, Lua, Rust,
+    jq, LLVM) -- split from `dense-tensor-type-build` per maintainer ruling (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). No new call syntax --
+    reuses the existing unary-builtin wiring pattern exactly like `Sum`/`Max` (`Builtin` enum in
+    `src/tir.rs`, `src/check/mod.rs` type-checking, `src/tags.rs`, and each backend''s emit
+    file''s builtin dispatch table, e.g. `src/emit_rs.rs:868`''s `uses("tl_sum(")` pattern) with a
+    new `tl_transpose`-style helper per backend, signature `Vec<Vec<T>> -> Vec<Vec<T>>`. Since
+    the wiring pattern is already proven 7 times over for Sum/Max, this is a genuine
+    single-session cross-backend row. Done-gate: `just check` passes and transpose produces
+    identical output across all 7 backends on the existing corpus.
+
+    LANDED SO FAR (2026-09-14, commits baa3d76/3aa7d7f): Transpose variant, tag, build.rs arm,
+    checker, and the Rust and Go emitter arms -- the repair run after a merge conflict rebuilt only
+    those and went GREEN because no corpus case exercises transpose yet. REMAINING: the JS, Python,
+    Lua, jq and LLVM emitter arms, plus the corpus cases (one output case, refuses cases for ragged
+    and non-numeric input) so the gate actually covers the feature. Run 36d59b9d''s patch
+    (~/.cache/toylang-simple-dispatch/results/tensor-transpose-build-36d59b9d.patch) has working
+    arms for JS/Py/Lua/jq to crib from.'
+  kind: build
+  needs: [dense-tensor-type]
+  prio: 3
+  status: done
