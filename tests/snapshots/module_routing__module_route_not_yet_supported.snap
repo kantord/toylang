@@ -1,0 +1,5 @@
+---
+source: tests/module_routing.rs
+expression: "toylang::compile(r#\"@(\"some/path\")\"#).map(|_| ()).unwrap_err().to_string()"
+---
+module routing not yet implemented (at byte 0)

@@ -2924,7 +2924,7 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         Expr::ModuleRoute { span, .. } => {
             return Err(Error::new(
                 *span,
-                "module routing (`@(...)`) is not supported yet".to_string(),
+                "module routing not yet implemented".to_string(),
             ))
         }
     }
