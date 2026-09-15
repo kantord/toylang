@@ -113,7 +113,7 @@ impl Ctx<'_> {
             in_mapper: self.in_mapper,
             in_fn: self.in_fn,
             visibility: self.visibility,
-            file: self.file,
+            file: self.file.clone(),
             next_local: self.next_local,
             impls: self.impls,
             generic_templates: self.generic_templates,
@@ -190,7 +190,7 @@ fn resolve_defs<'a>(
     let sigs = signatures(defs, &env)?;
     let visibility: HashMap<String, (Origin, bool)> = defs
         .iter()
-        .map(|d| (d.name.clone(), (d.origin, d.is_pub)))
+        .map(|d| (d.name.clone(), (d.origin.clone(), d.is_pub)))
         .collect();
     Ok((env, enums, variant_owners, sigs, visibility))
 }
@@ -661,7 +661,7 @@ fn check_one_def(
         in_mapper: false,
         in_fn: Some(name),
         visibility: ctx.visibility,
-        file: ctx.file,
+        file: ctx.file.clone(),
         next_local: ctx.next_local,
         impls: ctx.impls,
         generic_templates: ctx.generic_templates,
@@ -954,7 +954,7 @@ fn collect_concrete_impl(
             body: m.body,
             span: m.span,
             is_pub: true,
-            origin: imp.origin,
+            origin: imp.origin.clone(),
             hoisted: false,
         });
         meta.push((m.name, self_ty.clone()));
@@ -1037,7 +1037,7 @@ fn collect_generic_impl(
             ret_ty,
             body: m.body,
             span: m.span,
-            origin,
+            origin: origin.clone(),
         });
     }
     Ok(GenericImplTemplate {
@@ -1103,7 +1103,7 @@ fn collect_impls(
             receiver,
             def_name: d.name.clone(),
             sig: impl_sigs[&d.name].clone(),
-            origin: d.origin,
+            origin: d.origin.clone(),
             is_pub: d.is_pub,
             span: d.span,
         })
@@ -2456,7 +2456,7 @@ fn check_hoisted_def(ctx: &Ctx, def: &Def) -> Result<tir::Func, Error> {
         in_mapper: false,
         in_fn: Some(&def.name),
         visibility: ctx.visibility,
-        file: ctx.file,
+        file: ctx.file.clone(),
         next_local: ctx.next_local,
         impls: ctx.impls,
         generic_templates: ctx.generic_templates,
@@ -3328,7 +3328,7 @@ fn monomorphize(
         receiver: receiver.clone(),
         def_name,
         sig,
-        origin: gm.origin,
+        origin: gm.origin.clone(),
         is_pub: true,
         span: gm.span,
     };

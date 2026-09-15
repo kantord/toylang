@@ -178,15 +178,20 @@ pub struct Param {
     pub span: Span,
 }
 
-/// Which source file a definition came from. Only two exist today: the program's own file and
-/// the single prelude module. A non-`pub` definition is callable only from its own file, so
-/// this is what the checker keys visibility on at each call site (gh:166).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Which source file a definition came from. Three exist today: the program's own file, the
+/// single prelude module, and any module a program routes to with `@(path)`. A non-`pub`
+/// definition is callable only from its own file, so this is what the checker keys visibility
+/// on at each call site (gh:166). A routed module's `Module(PathBuf)` carries the path it was
+/// routed from, so visibility can tell one routed module's defs from another's. Not `Copy` (a
+/// `PathBuf` is heap-allocated), so clone it where a second owner is needed.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Origin {
     /// The program's own file.
     Program,
     /// The prelude module, `prelude.toy`.
     Prelude,
+    /// A module routed to by `@(path)`, tagged with the path it was resolved from.
+    Module(std::path::PathBuf),
 }
 
 #[derive(Debug)]
