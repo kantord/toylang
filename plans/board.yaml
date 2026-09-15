@@ -603,37 +603,6 @@
   prio: 4
   status: todo
 
-- id: coordinator-memory-pool-build
-  title: 'Implement plans/coordinator-memory-design.md (approved via maintainer annotation,
-    2026-09-11, no notes -- design''s open questions are all marked cosmetic/fine-as-guessed
-    in the doc itself, so build per the doc''s own defaults): (1) delete the dead "Stall
-    diagnosis, learned the hard way" section from `.claude/skills/drive/SKILL.md`, replacing
-    the header with a one-line pointer to `plans/simple-dispatch-design.md`, as its own commit;
-    (2) add `plans/coordinator-memory.yaml` (`version: 1`, `cap: 8`, `slots: []`); add
-    `_memory_slot_state()`/`_memory_signal()` to `.claude/scripts/drive_tick.py` near the other
-    `_*_signal` functions, wired into `compute_trigger_and_state()` via
-    `state_parts += safe_signal("coordinator memory", _memory_signal, default=[])`; append the
-    audit paragraph to `AUDIT_POLICY` and the write-path paragraph to `TICK_POLICY` (immediately
-    before the existing incident-note sentence); add `lint_memory()` to
-    `.claude/scripts/board-lint.py`''s `main()` alongside its existing two lint calls -- as one
-    commit. Before locking `cap: 8`, check whether the tick''s state snapshot has confirmed
-    headroom for the ~500-token worst case (8 slots x ~62 tokens); shrink the cap if it does
-    not. No forced first slot -- the pool ships with `slots: []` and fills the first time a real
-    tick trips over a footprint conflict or fact worth caching, per the design doc''s own
-    rollout.
-
-    STUCK 2/2 attempts at the reshaped brief (80461db8, 6f3023bc) -- both zero `write_file`
-    calls; the second attempt did not even produce a self-report (spent its whole completion
-    budget on reasoning). Maintainer ruling (wizard submission,
-    stuck-zero-write-pattern-escalation round, 2026-09-13, option A): redispatch narrower one
-    more time -- hand over the exact confirmed locations verbatim, and split the combined
-    memory-pool commit into smaller per-file steps so a turn-budget cutoff mid-task still
-    leaves usable partial progress instead of an all-or-nothing commit. Brief reshaped
-    accordingly in `plans/simple-briefs/coordinator-memory-pool-build.txt`.'
-  kind: build
-  needs: []
-  status: todo
-
 - id: mutation-semantics-design
   title: 'Grill privileged/shared-reference mutation-as-optimization now that the spike
     (plans/mutation-semantics-spike.md) has grounded the "provably one reference" analysis --
