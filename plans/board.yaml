@@ -661,3 +661,19 @@
   needs: []
   prio: 5
   status: todo
+
+- id: corpus-euler-adopt-sum-builtin
+  issue: gh:140
+  title: 'Corpus-implementation-style-review follow-up (problems 13, 17, 21, 28, 30): adopt the `sum` builtin (gh:140, landed 2026-08-30) now that it exists. Five pages still spell out a Vec-level sum by hand: 13 uses `col_sum` (a recursive fold down a column, plus carry), 17 the two-tier chunked letter-count sums `inner_sum`/`outer_sum`, 21 `sum_range` over [1, 10000), 28 `sum_rings` over the spiral rings, and 30 `sum_vec`/`total` walking a collected Vec of fifth-power matches. Each chunked, halved, or tail-recursive reducer exists purely to keep hand-rolled recursion shallow; `sum` (Vec<Int> -> Int, an empty Vec sums to 0) turns them into `sum(collect(range(...)) | map(...))` or a plain `sum(v)` call (e.g. 13 becomes `sum(p.nums | map(.[p.k]!))`, 30 becomes `sum(collect(...) | select(...) | select(...))`). Mechanical rewrite, no gaps -- the same missing-reductions row of the ergonomics doc.'
+  kind: build
+  needs: []
+  prio: 5
+  status: todo
+
+- id: corpus-euler-29-adopt-sort-builtin
+  issue: gh:86
+  title: 'Corpus-implementation-style-review follow-up (problem 29): adopt the `sort` builtin (gh:86, landed 2026-08-30) plus `sum` (gh:140) once the missing-Vec-sort gap the page was written around is gone. `distinct_count` still does the O(n^2) earlier-element scan (`is_dup`) over 9801 keys, kept tractable only by the six-bucket pairwise trick (594 comparisons at most), and the prose still cites gh:86 as the missing `Vec` sort. Keys are packed Ints (`root * 1000 + mult * b`), which `sort` accepts (Int, Int64, Str, Char), so the whole bucket tier collapses to one `sort(keys)` plus a run count (length minus the number of adjacent equal pairs, itself a `sum` over a Vec of 0/1 indicators); the six-root/48-million-comparisons preamble and the #86 reference evaporate too, and `sum_ints` becomes a `sum` call. Mechanical rewrite, no gaps remain.'
+  kind: build
+  needs: []
+  prio: 5
+  status: todo
