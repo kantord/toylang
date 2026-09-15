@@ -1,0 +1,70 @@
+Board row `module-routing-syntax-build-checker` (gh:167). SMALL, NARROW SCOPE -- this is step 3/3
+of the `@(path)` module-routing syntax split (steps 1/3 `module-routing-syntax-build-ast` and 2/3
+`module-routing-syntax-build-parse` already landed and are archived). Do not touch parsing, AST,
+or any backend emitter beyond the one stub arm named below.
+
+## Current state (verified against today's tree)
+
+`src/check/mod.rs:2922-2929` already has a checker arm refusing `Expr::ModuleRoute`:
+
+```rust
+// A `@(path)` module-as-function routing arm parses now but is not yet supported: no
+// resolution, acceptance, or codegen exists, so refuse cleanly instead of panicking.
+Expr::ModuleRoute { span, .. } => {
+    return Err(Error::new(
+        *span,
+        "module routing (`@(...)`) is not supported yet".to_string(),
+    ))
+}
+```
+
+This already refuses cleanly (no panic) -- the compile-time behavior is correct. Two things are
+missing per the row's done-gate:
+
+1. The row's own title pins an exact message string, `"module routing not yet implemented"`.
+   Change the message in the `Error::new(...)` call above to that exact text (keep the
+   `Error::new(*span, ...)` shape -- this codebase's checker errors use `crate::error::Error`,
+   not a `CheckError` type; the row's pseudocode used `CheckError::new` only as illustrative
+   shorthand, don't go looking for a type that doesn't exist).
+2. No test currently pins this rejection -- `grep -rn "ModuleRoute\|ModuleRoute\|module routing" tests/`
+   confirms zero hits. Add one.
+
+## Test to add
+
+Follow `tests/reductions.rs`'s `sort_by_projection_must_be_orderable` pattern (insta snapshot over
+a compile error), in whichever test file this repo's convention puts syntax/checker-refusal tests
+for a single new construct (check `tests/` for the most fitting existing file by name, e.g. a
+syntax- or parse-adjacent test file, before deciding whether to add a new one) -- a new
+`#[test]` looking like:
+
+```rust
+#[test]
+fn module_route_not_yet_supported() {
+    insta::assert_snapshot!(
+        toylang::compile(r#"@("some/path")"#)
+            .map(|_| ())
+            .unwrap_err()
+            .to_string()
+    );
+}
+```
+
+Confirm the exact `@(path)` source syntax accepted by the parser first (`grep -n "ModuleRoute"
+src/parse.rs`) before writing the test's source string -- use whatever literal form the parser
+actually accepts. Run the test once to generate/accept its `.snap` file (insta's normal flow --
+check how other tests in this repo accept a new snapshot, e.g. `cargo insta review` or
+`INSTA_UPDATE=always cargo test`, whichever this repo's existing tests/CI already rely on).
+
+## Explicitly out of scope
+
+Do NOT touch `src/ast.rs`, `src/parse.rs`, path resolution, `Origin` widening, or def-merging --
+all of that belongs to the separate `module-routing-semantics-build` row. Do NOT change
+`src/emit_toylang.rs`'s `unreachable!("module routing: AST-only stub, not wired yet")` arm -- it is
+correct as-is (module routing never reaches codegen since the checker always refuses it first).
+
+## Done-gate
+
+`just check` passes. The checker still rejects `@(path)` with the message
+`"module routing not yet implemented"` (updated from today's slightly different wording) rather
+than panicking or attempting to unify/dispatch. A new test pins this exact rejection. No
+regressions in the existing suite.

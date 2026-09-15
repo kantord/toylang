@@ -2154,3 +2154,17 @@ reliable evidence of *what state the work is actually in* -- `dispatch_state.py 
 attempt-by-attempt `verify_tail` is closer to ground truth than the prose summary sitting next to
 it, especially for anything insta/snapshot-shaped, where a real functional success and a real
 functional failure produce the same-looking "check failed" line.
+
+## 2026-09-15: FATAL -- OpenRouter API key expired, preflight correctly refused
+
+A drive tick tried to dispatch three ready rows (`module-routing-syntax-build-checker`,
+`tensor-transpose-build`, `coordinator-memory-pool-build`) with a fresh, freshly-written brief
+for the first and existing briefs for the other two. `simple_dispatch.py`'s preflight credit
+check hit `HTTP 401 API key expired` against OpenRouter and refused to dispatch anything, exiting
+before cloning any row -- `dispatch_state.py --live` confirmed empty seconds later, so this was a
+clean zero-dispatch refusal, not a partial/ambiguous state. The tick reverted the `status:
+delegated` writes it had already staged on `plans/board.yaml` (board-lint's own dispatch-recorded
+check caught the mismatch before any commit) and left the three rows at `status: todo` with their
+briefs intact for the next attempt. Per house policy this is the FATAL case, not a harness defect
+or a scope problem: the account itself needs fixing (rotate/renew the OpenRouter API key) before
+any further dispatch, build or otherwise, will do anything.
