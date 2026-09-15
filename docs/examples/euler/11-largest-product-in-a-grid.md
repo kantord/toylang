@@ -10,10 +10,10 @@ fragment below runs on a synthetic 4x4 grid and the real-sized check lives in
 
 Each of the four directions is a `(dr, dc)` step, and `row_products` bounds the starting column
 so no step reaches outside the grid. Every product each direction can form is collected, the four
-`Vec`s are concatenated, and `maximum_of` walks the flattened list once for the largest -- there
-is no `max` fold. The example grid is 1 to 16 in order, where the bottom row's 13*14*15*16 =
-43680 wins only because a row alone runs that far; the point of checking all four directions is
-that the real answer usually comes from a diagonal.
+`Vec`s are concatenated, and `max` reduces the concatenated list directly. The example grid is 1
+to 16 in order, where the bottom row's 13*14*15*16 = 43680 wins only because a row alone runs
+that far; the point of checking all four directions is that the real answer usually comes from a
+diagonal.
 
 ```toylang
 fn get(p: {g: Vec<Vec<Int>>, r: Int, c: Int}) -> Int = p.g[p.r]![p.c]!
@@ -45,56 +45,8 @@ fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax:
               )
     )
 
-fn maximum_of(p: {v: Vec<Int>, i: Int, best: Int}) -> Int =
-    p
-        | .i >= length(.v) -> p.best or
-              maximum_of({v: p.v, i: p.i + 1, best: p | .v[.i]! > .best -> p.v[p.i]! or p.best})
-
-fn maximum(v: Vec<Int>) -> Int = maximum_of({v: v, i: 1, best: v[0]!})
-
 fn largest_product(g: Vec<Vec<Int>>) -> Int =
-    maximum(
-        direction(
-            {
-                g: g,
-                dr: 0,
-                dc: 1,
-                rmax: length(g),
-                cmin: 0,
-                cmax: length(g[0]!) - 3
-            }
-        ) +
-            direction(
-                {
-                    g: g,
-                    dr: 1,
-                    dc: 0,
-                    rmax: length(g) - 3,
-                    cmin: 0,
-                    cmax: length(g[0]!)
-                }
-            ) +
-            direction(
-                {
-                    g: g,
-                    dr: 1,
-                    dc: 1,
-                    rmax: length(g) - 3,
-                    cmin: 0,
-                    cmax: length(g[0]!) - 3
-                }
-            ) +
-            direction(
-                {
-                    g: g,
-                    dr: 1,
-                    dc: -1,
-                    rmax: length(g) - 3,
-                    cmin: 3,
-                    cmax: length(g[0]!)
-                }
-            )
-    )
+    max(direction({g: g, dr: 0, dc: 1, rmax: length(g), cmin: 0, cmax: length(g[0]!) - 3}) + direction({g: g, dr: 1, dc: 0, rmax: length(g) - 3, cmin: 0, cmax: length(g[0]!)}) + direction({g: g, dr: 1, dc: 1, rmax: length(g) - 3, cmin: 0, cmax: length(g[0]!) - 3}) + direction({g: g, dr: 1, dc: -1, rmax: length(g) - 3, cmin: 3, cmax: length(g[0]!)}))!
 
 largest_product(parse(stdin))
 ```
@@ -106,8 +58,3 @@ largest_product(parse(stdin))
 ```output
 43680
 ```
-
-At real size this program stalls on one backend: `maximum_of`'s linear scan over the flattened
-~1258 products blows past the Python backend's 1000-frame recursion limit
-([kantord/toylang#132](https://github.com/kantord/toylang/issues/132)), a gap in `emit_py.rs`,
-not in the language. At this 4x4 scale the scan is ten frames, and every backend agrees.
