@@ -261,7 +261,7 @@
   kind: build
   needs: [module-routing-syntax-build-parse]
   prio: 5
-  status: todo
+  status: delegated
 
 - id: module-routing-semantics-build
   issue: gh:167
@@ -535,7 +535,7 @@
   kind: build
   needs: [dense-tensor-type]
   prio: 3
-  status: todo
+  status: delegated
 
 - id: tensor-constructor-build
   issue: gh:175
@@ -626,7 +626,7 @@
   kind: build
   needs: []
   prio: 5
-  status: todo
+  status: delegated
 
 - id: dispatch-no-progress-cutoff-harness-defect
   title: '12 rows sat `status: delegated` for two days showing "in progress" while nothing
