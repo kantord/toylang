@@ -13,17 +13,13 @@ without ever forming one. `root <= 100` and `mult * b <= 600` pack losslessly in
 key (`root * 1000 + mult * b`), which is where this stops being a `BigInt` problem
 ([contrast problem 25](25-1000-digit-fibonacci-number.md), which has no such trick available).
 
-That still leaves counting *distinct* keys among the 9801 `(a, b)` pairs, and the first
-attempt at it -- compare every key against every earlier one, roughly 48 million comparisons
--- ran fine on the compiled backends but did not return from jq inside two minutes: a real
-data point for [kantord/toylang#86](https://github.com/kantord/toylang/issues/86)'s missing
-`Vec` sort, the same gap [problem 22](22-names-scores.md) hits directly. Keys can only collide
-when their `root` matches, though, and only six roots in `[2, 100]` (`2, 3, 5, 6, 7, 10`) have
-more than one power in range at all -- every other `a` is already the smallest thing it's a
-power of, so its 99 values of `b` are 99 guaranteed-distinct keys with nothing to check
-against. Restricting the pairwise comparison to those six small buckets (594 pairs at most,
-for root 2's six powers) cuts the 48 million comparisons to a few hundred thousand, and jq
-comes back in under a second.
+That still leaves counting *distinct* keys among the 9801 `(a, b)` pairs, and the sort builtin
+makes that a direct job: pack all 9801 keys, sort them, and count the adjacent equal pairs. A
+duplicate in a sorted list always sits next to its twin, so subtracting that run count from
+the total length gives the distinct count. `keys_for_a` expands one base's 99 exponents,
+`all_keys` flattens those rows into the full 9801-key set, and `adjacent_dup_count` reduces
+the adjacent-equal indicators with `sum`, so no key is ever compared against more than its
+neighbor in the sorted order.
 
 ```toylang
 fn ipow(p: {r: Int, m: Int}) -> Int =
@@ -43,51 +39,29 @@ fn best_mult(p: {a: Int, m: Int}) -> {root: Int, mult: Int} =
 
 fn root_and_mult(a: Int) -> {root: Int, mult: Int} = best_mult({a: a, m: 6})
 
-fn is_primitive(a: Int) -> Bool = root_and_mult(a).mult == 1
+fn key_for(p: {a: Int, b: Int}) -> Int =
+    root_and_mult(p.a) | .root * 1000 + .mult * p.b
 
-fn is_dup(p: {v: Vec<Int>, i: Int}) -> Bool =
-    length(collect(range(p.i)) | select(p.v[.]! == p.v[p.i]!)) > 0
+fn keys_for_a(p: {a: Int, top: Int}) -> Vec<Int> =
+    collect(range(p.top - 1)) | map(. + 2) | map(key_for({a: p.a, b: .}))
 
-fn distinct_count(v: Vec<Int>) -> Int =
-    length(collect(range(length(v))) | select(not is_dup({v: v, i: .})))
-
-fn powers_from(p: {r: Int, val: Int, j: Int, top: Int}) -> Vec<Int> =
-    p
-        | .val > .top -> [] or
-              [.j] + powers_from({r: .r, val: .val * .r, j: .j + 1, top: .top})
-
-fn powers_of(p: {r: Int, top: Int}) -> Vec<Int> =
-    powers_from({r: p.r, val: p.r, j: 1, top: p.top})
-
-fn row_for_j(p: {j: Int, top: Int}) -> Vec<Int> =
-    collect(range(p.top - 1)) | map(. + 2) | map(p.j * .)
-
-fn exponents_for_root(p: {r: Int, top: Int}) -> Vec<Int> =
+fn all_keys(top: Int) -> Vec<Int> =
     flatten(
-        powers_of({r: p.r, top: p.top}) | map(row_for_j({j: ., top: p.top}))
+        collect(range(top - 1)) | map(. + 2) | map(keys_for_a({a: ., top: top}))
     )
 
-fn multi_root_contribution(p: {r: Int, top: Int}) -> Int =
-    distinct_count(exponents_for_root(p))
+fn is_adjacent_dup(p: {v: Vec<Int>, i: Int}) -> Int =
+    p | p.v[p.i + 1]! == p.v[p.i]! -> 1 or 0
 
-fn single_contrib(top: Int) -> Int =
-    length(
-        collect(range(top - 1))
-            | map(. + 2)
-            | select(is_primitive(.) and . * . > top)
-    ) *
-        (top - 1)
+fn adjacent_dup_count(sorted: Vec<Int>) -> Int =
+    sum(
+        collect(range(length(sorted) - 1))
+            | map(is_adjacent_dup({v: sorted, i: .}))
+    )
 
-fn multi_contribs(top: Int) -> Vec<Int> =
-    collect(range(top - 1))
-        | map(. + 2)
-        | select(. * . <= top and is_primitive(.))
-        | map(multi_root_contribution({r: ., top: top}))
+fn distinct_count(v: Vec<Int>) -> Int = length(v) - adjacent_dup_count(sort(v))
 
-fn sum_ints(v: Vec<Int>) -> Int =
-    v | length(.) == 0 -> 0 or v[0]! + sum_ints(tail(v)!)
-
-fn solve(top: Int) -> Int = single_contrib(top) + sum_ints(multi_contribs(top))
+fn solve(top: Int) -> Int = distinct_count(all_keys(top))
 
 solve(100)
 ```
