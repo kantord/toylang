@@ -1,0 +1,92 @@
+Board row `corpus-euler-adopt-sum-builtin` (gh:140). Corpus-implementation-style-review follow-up
+for problems 13, 17, 21, 28, 30: adopt the `sum` builtin (landed 2026-08-30, `docs/reference/
+builtins/sum.md`) now that it exists, retiring the hand-rolled Vec-sum helpers each page wrote
+before `sum` was available.
+
+`sum(v)` is `Vec<Int> -> Int` and `Vec<Int64> -> Int64` (an empty `Vec` sums to `0`, no `Opt`
+wrapping needed, unlike `max`). Several of these pages chunk or halve their recursion purely to
+keep a hand-rolled fold's call-stack depth shallow on every backend -- since `sum` is a builtin
+reduction (not user-space recursion), that depth concern goes away once `sum` does the reducing,
+so the chunking/halving helpers can usually be deleted outright, not just renamed.
+
+Edit these five files. Each is a real `.toylang` fragment inside a fenced code block in a prose
+`.md` page -- keep the prose accurate to the new code (drop sentences that describe a helper you
+delete, and correct any recursion-depth justification that no longer applies) and keep the
+`output`/`input` fenced blocks unchanged.
+
+## docs/examples/euler/13-large-sum.md
+
+Delete `col_sum` (the recursive per-row fold over one digit column). Replace its one call site in
+`column_total` with `sum`, mapping each row to its digit at column `k`:
+
+```toylang
+fn column_total(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int}) -> Int =
+    sum(p.nums | map(.[p.k]!)) + p.carry
+```
+
+Everything else (`empty`, `emit_carry`, `add_digits`, `first_ten`, `leading_digits`) stays as-is.
+Update the prose sentence describing `col_sum` (currently "adds one column of digits at a time
+from the right... at most a hundred nines plus a small carry") to say `column_total` now uses
+`sum` directly over each row's digit at that column. Output stays `[2,0,0,0,0,0,0,0,0,0]`.
+
+## docs/examples/euler/17-number-letter-counts.md
+
+Delete `inner_sum` and `outer_sum` (the two-tier chunked sum that existed only to keep recursion
+shallow). Replace the final `outer_sum(0)` call with a single flat `sum` over `letters(1)`
+through `letters(1000)`:
+
+```toylang
+sum(collect(range(1000)) | map(letters(1 + .)))
+```
+
+`ones_letters`, `teens_letters`, `tens_letters`, `under_hundred`, `letters` all stay as-is.
+Update the prose sentence "Summing `letters(1)` through `letters(1000)` by plain recursion would
+put 1000 frames on some backends' call stacks at once; chunking the sum into ten runs of a
+hundred keeps every backend's stack shallow" -- this justification no longer applies once `sum`
+is a builtin reduction rather than user recursion, so replace it with a sentence saying `sum`
+reduces the full 1-to-1000 range directly in one call. Output stays `21124`.
+
+## docs/examples/euler/21-amicable-numbers.md
+
+Delete `sum_range` (the halving recursive sum over amicable values 1..9999). Replace the final
+`sum_range({lo: 1, hi: 10000})` call:
+
+```toylang
+sum(collect(range(10000)) | select(. >= 1) | map(amicable_value(.)))
+```
+
+`divisor_contribution`, `sigma`, `proper_divisor_sum`, `is_amicable`, `amicable_value` all stay
+as-is. Update the prose sentence about `sum_range` halving "the same way [problem 90]'s sample
+programs do, keeping recursion depth at `log2(10000)` rather than one frame per number" to say
+`sum` now reduces the filtered range directly, no halving needed. Output stays `31626`.
+
+## docs/examples/euler/28-number-spiral-diagonals.md
+
+Delete `sum_rings` (the halving recursive sum over rings 1..500). Replace the final expression:
+
+```toylang
+1 + sum(collect(range(501)) | select(. >= 1) | map(ring_sum(.)))
+```
+
+`ring_sum` stays as-is. Update the prose sentence "`sum_rings` halves its way down from ring 1 to
+ring 500 the way [problem 21]'s does, rather than adding rings one at a time" to say `sum` now
+reduces the ring range directly. Output stays `669171001`.
+
+## docs/examples/euler/30-digit-fifth-powers.md
+
+Delete `sum_vec` and `total` (the halving recursive sum over the filtered candidate list).
+Replace the final expression:
+
+```toylang
+sum(collect(range(354295)) | select(. >= 2) | select(is_digit_power_sum(.)))
+```
+
+`fifth`, `digit_power_sum`, `is_digit_power_sum` all stay as-is. Update the prose sentence "the
+final total sum is `sum_vec`'s same halving recursion as [problem 21]'s, over however many
+numbers pass the filter" to say `sum` now reduces the filtered candidates directly. The trailing
+paragraph about jq being slow on this page (30 seconds scanning 354295 candidates) is about
+`select`/candidate generation, not the sum, and stays as-is. Output stays `443839`.
+
+Done-gate: `just check` passes (all five fragments type-check and emit identically across all 7
+backends via the corpus-conformance harness), and each page's stated `output` block is still the
+correct answer for its stated `input`.

@@ -1,0 +1,124 @@
+Board row `corpus-euler-adopt-max-builtin` (gh:140). Corpus-implementation-style-review follow-up
+for problems 04, 08, 11: adopt the `max` builtin (landed 2026-08-30, `docs/reference/builtins/
+max.md`) now that it exists, retiring the hand-rolled Vec-maximum helpers each page wrote before
+`max` was available.
+
+`max(v)` is `Vec<Int> -> Opt<Int>` and `Vec<Int64> -> Opt<Int64>` (an empty `Vec` has no maximum,
+so the result is `Opt<T>`; unwrap with `!` where the `Vec` is provably non-empty, matching how
+`docs/reference/builtins/max.md` and other corpus pages already use `!`).
+
+Edit these three files. Each is a real `.toylang` fragment inside a fenced code block in a
+prose `.md` page -- keep the prose accurate to the new code (drop sentences that describe a
+helper you delete) and keep the `output`/`input` fenced blocks unchanged (same answers, same
+synthetic input).
+
+## docs/examples/euler/04-largest-palindrome-product.md
+
+Delete `max2` and `max_vec` entirely. The `[0]` sentinel in `row_max` existed only so `max_vec`
+never ran out of entries on an empty per-row candidate list -- with `max` (which handles empty
+input as `Opt`), the sentinel is unneeded once every row's candidates are flattened into ONE list
+and reduced with a single `max` call, matching how `max.md`'s own examples treat absence.
+
+Rewrite `row_max` to return the row's raw candidate `Vec<Int>` (no fold), rename it to reflect
+that (e.g. `row_candidates`), drop the `[0] +` sentinel, then flatten every row's candidates with
+`flatten` (already used in problem 11, `Vec<Vec<Int>> -> Vec<T>`) and take one `max` over the
+flattened list:
+
+```toylang
+fn reverse_num(p: {n: Int, acc: Int}) -> Int =
+    p
+        | .n == 0 -> p.acc or
+              reverse_num({n: p.n / 10, acc: p.acc * 10 + p.n % 10})
+
+fn row_candidates(a: Int) -> Vec<Int> =
+    collect(range(1000))
+        | select(. >= a)
+        | map(a * .)
+        | select(. == reverse_num({n: ., acc: 0}))
+
+max(
+    flatten(
+        collect(range(1000)) | select(. >= 100) | map(row_candidates(.))
+    )
+)!
+```
+
+Update the prose paragraph above the code (currently explaining why `max_vec`/nesting/sentinel
+exist) to instead say there is now a `max` builtin, so every row's palindrome candidates are
+flattened into one list and reduced with a single `max` call -- no sentinel needed since an empty
+list of candidates just contributes nothing to the flattened whole. Output stays `906609`.
+
+## docs/examples/euler/08-largest-product-in-a-series.md
+
+Delete `max2` and `best` (the halving max-search existed only because there was no `max` fold).
+`window` stays as-is. Replace `best` with a plain `map` over every window start, then one `max`
+call:
+
+```toylang
+fn window(p: {v: Vec<Int>, i: Int, k: Int}) -> Int64 =
+    p
+        | .k == 0 -> 1 or
+              i64(p.v[p.i + p.k - 1]!) * window({v: p.v, i: p.i, k: p.k - 1})
+
+fn windows(v: Vec<Int>) -> Vec<Int64> =
+    collect(range(length(v) - 12)) | map(window({v: v, i: ., k: 13}))
+
+max(windows(parse(stdin)))!
+```
+
+Update the prose (currently explaining `best`'s halving recursion) to say `windows` maps every
+window start (0 up to `length(input) - 13`) to its product via `window`, and `max` picks the
+winner in one call. Keep the Int64 explanation (`9^13` past `Int`'s 32-bit ceiling) -- that part
+is unchanged. Output stays `2541865828329`.
+
+## docs/examples/euler/11-largest-product-in-a-grid.md
+
+Delete `maximum_of` and `maximum` (the hand-rolled linear scan). `direction`, `row_products`,
+`four`, `get` all stay as-is -- only the final reduction changes, from `maximum(...)` to
+`max(...)!`:
+
+```toylang
+fn largest_product(g: Vec<Vec<Int>>) -> Int =
+    max(
+        direction(
+            {g: g, dr: 0, dc: 1, rmax: length(g), cmin: 0, cmax: length(g[0]!) - 3}
+        ) +
+            direction(
+                {g: g, dr: 1, dc: 0, rmax: length(g) - 3, cmin: 0, cmax: length(g[0]!)}
+            ) +
+            direction(
+                {
+                    g: g,
+                    dr: 1,
+                    dc: 1,
+                    rmax: length(g) - 3,
+                    cmin: 0,
+                    cmax: length(g[0]!) - 3
+                }
+            ) +
+            direction(
+                {
+                    g: g,
+                    dr: 1,
+                    dc: -1,
+                    rmax: length(g) - 3,
+                    cmin: 3,
+                    cmax: length(g[0]!)
+                }
+            )
+    )!
+```
+
+Update the prose sentence "the four `Vec`s are concatenated, and `maximum_of` walks the flattened
+list once for the largest -- there is no `max` fold" to instead say `max` reduces the
+concatenated list directly. The trailing paragraph about the Python backend's 1000-frame
+recursion limit stalling `maximum_of`'s scan at real size
+([kantord/toylang#132](https://github.com/kantord/toylang/issues/132)) should be re-examined: if
+`max` is implemented as a native backend-level reduction rather than user-space recursion, that
+gap no longer applies to this page and the paragraph should be removed or corrected to say so --
+check `emit_py.rs`'s handling of the `max` builtin (or `Builtin::Max`/whatever tag it lowers to)
+before deciding which. Output stays `43680`.
+
+Done-gate: `just check` passes (all three fragments type-check and emit identically across all 7
+backends via the corpus-conformance harness), and each page's stated `output` block is still the
+correct answer for its stated `input`.

@@ -624,7 +624,7 @@
   kind: build
   needs: []
   prio: 5
-  status: todo
+  status: delegated
 
 - id: corpus-euler-adopt-sum-builtin
   issue: gh:140
@@ -632,7 +632,7 @@
   kind: build
   needs: []
   prio: 5
-  status: todo
+  status: delegated
 
 - id: corpus-euler-29-adopt-sort-builtin
   issue: gh:86

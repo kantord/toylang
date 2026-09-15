@@ -1,19 +1,32 @@
 Board row `tensor-constructor-build` (gh:175). Implements the `tensor(n; m)` constructor builtin
 -- split from `dense-tensor-type-build` per maintainer ruling (wizard submission,
-stuck-cross-backend-scope-escalation round, 2026-09-13, option A). `tensor-transpose-build`, the
-easier sibling half of that split, has already landed on main (commits baa3d76/3aa7d7f/1e023f2)
-using the plain unary-`Builtin` pattern -- do not copy its approach uncritically, because THIS row
-is the harder half specifically because `tensor(n; m)` needs a call form the parser does not have
-yet: two semicolon-separated arguments. Earlier whole-scope attempts at `dense-tensor-type-build`
-made zero edits getting stuck here, which is why this was split out on its own. This brief exists
-to unblock exactly that stuck point.
+stuck-cross-backend-scope-escalation round, 2026-09-13, option A).
 
-## What's new: parsing `f(a; b)`
+THIS IS A NARROWER RE-ATTEMPT. Three prior attempts in this row's last dispatch all ended
+RED/max_turns: attempt 1 made zero edits (still exploring), attempts 2 and 3 both got as far as
+adding a call site in `src/check/mod.rs` around line 2779 --
+`Expr::TensorNew { rows, cols, span } => tensor_new_call(ctx, rows, cols, *span)` -- but never
+defined `tensor_new_call`, so `cargo check` failed with `E0425: cannot find function
+'tensor_new_call' in this scope` both times. The agent's own self-report said the task was too
+wide for one session and suggested narrowing to parser + checker/TIR only, deferring all backend
+codegen. This brief does exactly that.
+
+## Scope for THIS attempt: parser + checker/TIR only. Do NOT touch any `emit_*.rs` file.
+
+Done-gate for this attempt is `just check` passing (typecheck + build), NOT a working end-to-end
+program on any backend. A `tensor(n; m)` call is allowed to fail at codegen/emit time (e.g. an
+explicit `todo!()`/unimplemented panic in each `emit_*.rs`'s dispatch, or simply not matched yet
+if the compiler doesn't require exhaustiveness there) -- confirm which by checking how a new TIR
+`Kind` variant is dispatched in `build.rs`/`src/tags.rs` before deciding. The backend wiring
+(all 7 `emit_*.rs` files) is explicitly OUT OF SCOPE and will be a separate follow-up dispatch
+once this lands.
+
+## Step 1: parsing `f(a; b)`
 
 Every call in this language today takes at most ONE argument -- `Expr::Call { func, arg:
 Option<Box<Expr>>, .. }` in `src/ast.rs`, parsed in `src/parse.rs` around line 1635-1669 (the
 function handling a bare identifier followed by `(`). There is no comma- or semicolon-separated
-multi-arg call anywhere in the grammar. However the LEXER already tokenizes `;` as `Tok::Semicolon`
+multi-arg call anywhere in the grammar. The LEXER already tokenizes `;` as `Tok::Semicolon`
 (`src/parse.rs:84,135,226`) -- it's just never consumed by the parser, so `tensor(n; m)` is
 currently a parse error.
 
@@ -21,8 +34,7 @@ The codebase's existing pattern for a new call *shape* is a dedicated `Expr` var
 generalized N-ary `Call` -- see `Expr::ColonCall` (`src/ast.rs:429`, `receiver:method(arg)`) and
 `Expr::Variant`/`match_call` (capitalized-name calls, `src/parse.rs:1614-1622`), both special-cased
 by name/shape in the same function that parses `Call`. Follow that precedent instead of widening
-`Expr::Call` itself (which would ripple into the checker and all 7 backends for every existing
-call site, not just this one):
+`Expr::Call` itself:
 
 1. Add `Expr::TensorNew { rows: Box<Expr>, cols: Box<Expr>, span: Span }` to `src/ast.rs` (near
    `ColonCall`), plus its `span()` match arm (`src/ast.rs:572-581` shows where existing variants
@@ -36,15 +48,21 @@ call site, not just this one):
    whether a name is treated as a call at all; check both for whether `tensor` needs adding, the
    same way every other builtin name already does.
 
-## Lowering and checking
+## Step 2: lowering to TIR and checking
 
 `src/tir.rs` has no unary-only restriction -- `Kind::Arith { op, lhs: Box<Tir>, rhs: Box<Tir> }`
 and `Kind::Concat(Box<Tir>, Box<Tir>)` (`src/tir.rs:81-90`) are the existing two-operand precedent.
-Add a `Kind::TensorNew { rows: Box<Tir>, cols: Box<Tir>, data: Box<Tir> }` (or fold rows/cols into
-a single `Builtin`-style tag if that fits the existing `Builtin` enum better once you're looking at
-it -- `Builtin::Transpose` is at `src/tir.rs:282`, tagged in `src/tags.rs:191`, dispatched in
-`build.rs:193`, checked in `src/check/mod.rs:3780`; use that four-file fan-out as your checklist
-for wiring the new node through, adjusted for the extra operand).
+Add a `Kind::TensorNew { rows: Box<Tir>, cols: Box<Tir>, data: Box<Tir> }`. Use
+`Builtin::Transpose` (`src/tir.rs:282`, tagged in `src/tags.rs:191`, checked in
+`src/check/mod.rs:3780`) as your checklist for how a comparable builtin is threaded through
+`src/ast.rs` -> `src/tir.rs` -> `src/check/mod.rs`, but STOP before `build.rs`/`emit_*.rs`
+dispatch -- that fan-out is next attempt's job, not this one.
+
+Whatever function the checker calls to validate/lower a `TensorNew` node (the prior attempt named
+it `tensor_new_call` at `src/check/mod.rs:2779` but never wrote its body) must actually be defined
+in this same attempt, in the same file, before the call site references it. Write the function
+first, or write call site and body in the same edit -- do not leave a dangling reference across
+turns the way the last two attempts did.
 
 Checker ruling to implement (`dense-tensor-type` design, `plans/dense-tensor-design-research.md`
 has the full trail):
@@ -54,21 +72,11 @@ has the full trail):
   each, one call, one failure point.
 - Hard-fail (compile-time where the shape is known, else a runtime refusal matching the posture of
   `contains_vec`-gated refusals already in `src/check/mod.rs`) on: a null element, a ragged input,
-  a non-numeric element, or an input whose length doesn't equal `n * m`. No validity bitmask --
-  this is a deliberate, previously-flagged-tentative pick; do not build one.
+  a non-numeric element, or an input whose length doesn't equal `n * m`. No validity bitmask.
 
-## Per-backend wiring
-
-Once the checker/TIR node exists, wire `TensorNew`/whatever you named it into all 7 backends
-(`src/emit_go.rs`, `src/emit_js.rs`, `src/emit_py.rs`, `src/emit_lua.rs`, `src/emit_rs.rs`,
-`src/emit_jq.rs`, `src/emit_llvm.rs`) the same way `Builtin::Transpose`'s call sites in each of
-those files already show for a builtin taking a `Vec` and producing a `Vec<Vec<T>>` -- the shape
-differs (two extra scalar operands `n`/`m` instead of zero) but the seven-file fan-out and the
-runtime-refusal-on-bad-shape pattern are identical to what's already landed for transpose.
-
-Done-gate: a real `.toy` program builds a tensor via `tensor(n; m)` from row-major flat input (e.g.
-`[1,2,3,4,5,6] | tensor(2; 3)` yielding `[[1,2,3],[4,5,6]]`), and a downstream reduction over it
-(e.g. `| map(sum(.))`) produces identical output across all 7 backends (the existing
-corpus-conformance harness in `just check` is the check). A program that calls `tensor(n; m)` with
-a null, ragged, non-numeric, or wrong-length input is refused identically on every backend, not
-just some -- same standard the landed `transpose` already meets.
+Done-gate for this attempt: `just check` (typecheck + `cargo build`/`cargo nextest run --no-run`)
+passes clean with the new `Expr::TensorNew` / `Kind::TensorNew` fully wired through parse and
+check, even though no backend can emit it yet. If `just check` requires every TIR `Kind` to have
+an emit arm on every backend (exhaustive match with no wildcard), add a minimal `todo!("tensor
+codegen: <backend>")` arm to each `emit_*.rs` rather than restructuring those files -- that still
+counts as "not touching" backend logic, just satisfying the compiler's exhaustiveness check.
