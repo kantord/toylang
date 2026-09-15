@@ -1,0 +1,116 @@
+Board row `module-routing-semantics-build` (gh:167). Follow-on from the already-landed
+`module-routing-syntax-build-checker` (step 3/3 of the syntax split; steps 1-2, AST and parsing,
+are also landed and archived). This row turns `@(path)` from "parses, checker cleanly refuses
+it" into a real, working feature: resolving the path, type-checking the target module, dispatching
+into it, and merging its definitions the way the prelude already does.
+
+## Four questions this row does NOT need to re-decide (already ruled, wizard submission,
+## module-routing-semantics round, 2026-09-07)
+
+1. **Entry-point convention**: the module file being routed to must define a function named
+   `handle` (fixed name, not configurable).
+2. **Dispatch strictness**: full strict statically-typed call -- `check_module` the target file,
+   unify its `handle` signature against the call site, no coercion. (`check_module` already
+   exists at `src/check/mod.rs:1192` and already does exactly the "parse a module and type-check
+   it standalone" half of this -- today it's only exercised by `tests/generics.rs`, never from
+   production code. Read it before designing anything; it is very likely most of what you need
+   for the "type-check the target file" half of this row.)
+3. **Def visibility**: full merge, prelude-style, via the widened `Origin` (below) -- a routed
+   module's `pub` defs become visible the same way `prelude.toy`'s do.
+4. **Enum-variant collision policy**: a routed module's enum variants are always qualified at the
+   merge point, never folded into the bare `variant_owners: HashMap<String, Vec<String>>` lookup
+   that program/prelude variants share (`src/check/mod.rs:169-195`). A submodule variant
+   colliding in name with an existing program or prelude variant must not become ambiguous or
+   silently shadow one.
+
+## Current state (verified against today's tree)
+
+- `Expr::ModuleRoute { path: String, span }` (`src/ast.rs:517`) -- parsed at `src/parse.rs:1719`
+  from `@("some/path")` syntax, path kept as a raw string, no resolution at parse time.
+- The checker currently refuses cleanly (`src/check/mod.rs:2922-2929`):
+  ```rust
+  // A `@(path)` module-as-function routing arm parses now but is not yet supported: no
+  // resolution, acceptance, or codegen exists, so refuse cleanly instead of panicking.
+  Expr::ModuleRoute { span, .. } => {
+      return Err(Error::new(*span, "module routing not yet implemented".to_string()))
+  }
+  ```
+  This arm is what you are replacing with real resolution/dispatch. `tests/module_routing.rs`
+  pins today's refusal via an insta snapshot (`module_route_not_yet_supported`) -- that test's
+  expectation changes once `@(path)` is accepted; update it to cover the new, real behavior
+  instead of deleting the coverage.
+- `Origin` (`src/ast.rs:185-189`) is today a `Copy` 2-variant enum: `Program`, `Prelude`. Widen it
+  to a third variant, `Module(PathBuf)`, and drop `#[derive(Copy)]` (a `PathBuf` isn't `Copy`) --
+  keep `Clone`. Every place that currently relies on `Origin` being implicitly copied (assignment,
+  a struct literal reusing a bound `Origin` value, etc.) will need an explicit `.clone()`; find
+  these via `cargo build` / `just check` compiler errors, not by grepping for them up front --
+  that's what the compiler is for.
+- `Origin` usage sites today, all of which may need touching:
+  - `src/ast.rs:209,293` -- `Def.origin` and `Impl.origin` fields.
+  - `src/parse.rs:715,743,855` -- three sites stamping `Origin::Program` on parsed defs/impls at
+    top-level parse time.
+  - `src/prelude.rs` -- `module()` (around line 30) stamps `Origin::Prelude` onto every def/impl
+    of a freshly-parsed `Module` (`crate::parse::parse_module(PRELUDE_SRC)`), and `inject(file:
+    &mut crate::ast::File)` prepends that module's defs/aliases/enums/traits/impls onto the
+    target file before `check::check` ever runs. **This `inject` function is the precedent for
+    ruling #3's "prelude-style merge"** -- read it in full before designing your own merge path;
+    do not reinvent a different merge mechanism.
+  - `src/check/mod.rs`'s `resolve_defs` (`~line 138-195`) builds `visibility: HashMap<String,
+    (Origin, bool)>` from each def's `(origin, is_pub)`, and separately builds
+    `variant_owners: HashMap<String, Vec<String>>` from enum variants with no origin tagging at
+    all today -- this is exactly the bare lookup ruling #4 says a routed module's variants must
+    not be folded into unqualified.
+- `parse_module(src: &str) -> Result<Module, Error>` already exists (`src/parse.rs:472`) and is
+  what both `prelude::module()` and `check_module` consume -- use it to parse the file at
+  `@(path)`'s `path`. Figure out (and document your choice in a comment, since nothing pins it
+  today) what `path` is relative to -- most likely the routing file's own location, matching how
+  every other language with a similar feature resolves relative import paths; there is no
+  existing convention in this codebase to copy since this is the first path-taking feature.
+
+## Design points this row DOES still need to resolve (ruled constraints above bound the answer,
+## but the concrete mechanism is yours to work out and verify against `just check`)
+
+- **How does a `handle` call receive its argument?** Every function in this language takes
+  exactly one parameter (`src/ast.rs`'s `Def`/`Param` shapes) and ordinary calls are by bare name
+  (`Expr::Call { func: String, arg: Option<Box<Expr>>, .. }`, `src/ast.rs:374`) -- there is no
+  first-class function value or call-through-an-arbitrary-expression mechanism in this language
+  today. Investigate whether `@(path)` is meant to sit in pipe position (`lhs | @(path)`, with
+  `.` -- the pipe's `lhs` -- becoming `handle`'s argument, matching how every other single-param
+  call in this language receives its subject) versus some other calling shape. Ruling #2's
+  "unify against the entry fn signature" only makes sense once you've pinned down what expression
+  supplies the argument being unified -- resolve this from the grammar/parser (`src/parse.rs`'s
+  pipe and postfix handling, `~line 1437` `fn postfix`) and existing single-param call
+  conventions, not by inventing a new calling convention unrelated to how the rest of the
+  language calls things.
+- **Codegen**: once the checker accepts `@(path)`, real codegen is needed in whichever backend(s)
+  this repo currently requires new language features to support (check `just check`'s definition
+  and CI target list for which backends are mandatory-green vs. best-effort before assuming you
+  need all seven). The merged-in module's `handle` (and anything it calls) should compile the
+  same way a prelude function does once merged in via the `Origin::Module` path.
+- `src/emit_toylang.rs:667` (the formatter, not a codegen backend -- it renders `ast::File` back
+  to toylang source, reachable via `format_source`/`just fmt` independent of whether the checker
+  accepts or rejects the program) has `Expr::ModuleRoute { .. } => unreachable!(...)`. This was
+  ruled out of scope for the prior checker-only row on the reasoning "module routing never
+  reaches codegen since the checker always refuses it first" -- but the formatter does not route
+  through the checker at all, so that reasoning does not actually protect this arm, and it may
+  already be a latent panic on any `@(path)` source today. Check whether `just check` (or
+  whatever runs `just fmt`/format tests over doc examples) exercises this path once `@(path)` is
+  real; if it panics, give it a real rendering (`@("path")`, mirroring the parser's own syntax) --
+  a checker-accepted program panicking the formatter is a real bug, not pre-existing scope creep.
+
+## Explicitly out of scope
+
+Do not touch `module-routing-and-erlang-target` (closed, gh:163, unrelated). Do not build an
+import/module system beyond exactly `@(path)` routing to a fixed `handle` entry point -- no
+namespacing syntax, no relative-vs-absolute path flags, no caching/memoizing repeated routes to
+the same path, unless something you find already ruled requires it.
+
+## Done-gate
+
+`just check` passes. `@(path)` compiles end-to-end for a real two-file example (write one as a
+test, e.g. under `tests/module_routing.rs`, alongside or replacing the existing
+`module_route_not_yet_supported` case): a program routes to a module file whose `handle` function
+does real work, the call type-checks strictly against `handle`'s signature with no coercion, a
+routed module's `pub` defs are visible/callable the way prelude defs are, and a routed module's
+enum variant sharing a name with an existing variant does not collide or get misattributed. No
+regressions in the existing suite.

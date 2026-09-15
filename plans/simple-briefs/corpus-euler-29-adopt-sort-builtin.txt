@@ -1,0 +1,81 @@
+Board row `corpus-euler-29-adopt-sort-builtin` (gh:86, gh:140). Rewrite
+`docs/examples/euler/29-distinct-powers.md` to use the now-landed `sort` and `sum` builtins,
+removing the O(n^2) pairwise-comparison workaround and the six-bucket restriction that existed
+only to keep that workaround tractable.
+
+## Why this row exists
+
+`sort(v: Vec<Int>|Vec<Int64>|Vec<Str>|Vec<Char>) -> Vec<...>` and `sum(v: Vec<Int>) -> Int` are
+real builtins today (confirmed: `src/tags.rs:187,189` define `Builtin::Sort`/`Builtin::Sum`, every
+backend emitter implements both, e.g. `src/emit_rs.rs:1532` `tl_sort(&...)`, `tests/reductions.rs`
+type-checks `sum(...)`, `tests/ts_types.rs:14` has `fn total(v: Vec<Int>) -> Int = sum(v)`). The
+doc's current prose still cites gh:86 as a missing feature and works around it with a hand-rolled
+`is_dup`/`distinct_count` doing an O(n^2) earlier-element scan, only kept fast enough by
+restricting it to the (at most 6) roots that have more than one power in range. `sort` makes
+distinct-counting the *entire* 9801-key set directly tractable, so that whole restriction
+structure (`is_primitive`, `single_contrib`, `multi_contribs`, `multi_root_contribution`,
+`exponents_for_root`, `row_for_j`, `powers_of`, `powers_from`) is no longer needed -- not just
+`is_dup`/`distinct_count`.
+
+## What stays unchanged (do not touch the reasoning, only reuse the code)
+
+The canonicalization trick that avoids ever computing `a^b` (which overflows any fixed-width int)
+is unrelated to the counting algorithm and must stay exactly as-is: `ipow`, `find_root_for_mult`,
+`best_mult`, `root_and_mult`. Keep their bodies verbatim from the current file.
+
+## Target rewrite
+
+Replace everything from `is_dup` through `solve` (current lines 48-90) with a direct build of all
+9801 `(a, b)` keys, one `sort`, and a run-count via `sum` over adjacent-equal indicators:
+
+```toylang
+fn key_for(p: {a: Int, b: Int}) -> Int =
+    root_and_mult(p.a) | .root * 1000 + .mult * p.b
+
+fn keys_for_a(p: {a: Int, top: Int}) -> Vec<Int> =
+    collect(range(p.top - 1)) | map(. + 2) | map(key_for({a: p.a, b: .}))
+
+fn all_keys(top: Int) -> Vec<Int> =
+    flatten(collect(range(top - 1)) | map(. + 2) | map(keys_for_a({a: ., top: top})))
+
+fn is_adjacent_dup(p: {v: Vec<Int>, i: Int}) -> Int =
+    p | p.v[p.i + 1]! == p.v[p.i]! -> 1 or 0
+
+fn adjacent_dup_count(sorted: Vec<Int>) -> Int =
+    sum(collect(range(length(sorted) - 1)) | map(is_adjacent_dup({v: sorted, i: .})))
+
+fn distinct_count(v: Vec<Int>) -> Int =
+    length(v) - adjacent_dup_count(sort(v))
+
+fn solve(top: Int) -> Int = distinct_count(all_keys(top))
+
+solve(100)
+```
+
+This is a template, not a mandate on exact syntax -- `root_and_mult(p.a) | .root * 1000 + .mult *
+p.b` and the `-> 1 or 0` ternary shape both follow patterns already used elsewhere in this same
+doc and in `docs/examples/euler/21-amicable-numbers.md:29` (`n | is_amicable(.) -> . or 0`), but
+verify every line against `just check` and adjust syntax as needed -- the compiler is the ground
+truth, not this brief. `sort` accepts `Vec<Int>` directly (the packed keys are plain `Int`), no
+conversion needed.
+
+Confirm the result still evaluates to `9183` (the doc's pinned `output` block) -- run the compiled
+program, don't just trust that the type-checker accepting it means the arithmetic is right.
+
+## Prose rewrite
+
+Update the markdown prose (currently lines 1-26) to match: drop the paragraph about the 48-million
+naive-comparison cost and the six-root/594-pair restriction (that reasoning no longer applies --
+`sort` handles the full 9801-key set directly), drop the `#86` reference. Keep the paragraph
+explaining the `root^mult` canonicalization trick (lines 6-14) -- that part is still exactly why
+this problem needs the rewrite it has. Follow this repo's doc-example conventions (check a couple
+of neighboring `docs/examples/euler/*.md` files, and `tests/docs.rs`/`tests/fmt_examples.rs`, for
+how the `output` block and code fence are validated) -- run whatever test/check step actually
+executes and validates these docs pages (`just check` and/or a docs-specific test target) before
+calling this done.
+
+## Done-gate
+
+`just check` passes. The `29-distinct-powers.md` example compiles, still evaluates to `9183`, no
+longer cites gh:86 as a missing feature, and no longer contains the O(n^2) `is_dup`/six-bucket
+machinery. No regressions in the existing suite.
