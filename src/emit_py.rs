@@ -134,11 +134,61 @@ const FIELD_HELPER: &str = r#"def tl_field(v, k, depth):
     return [tl_field(e, k, depth - 1) for e in v]
 "#;
 
+/// A `select` is lazy: a `TlSel` holds the source and predicate and only computes the
+/// matching indices on first use. It is list-like through `__iter__`/`__len__`/`__getitem__`,
+/// so every consumer that iterates, measures, or indexes a Select's result works without its
+/// own branch; `__add__`/`__radd__` densify for the `+` concatenation a Vec literal starts
+/// with. `tl_at` is the one consumer with an explicit fast path, so indexing a Select does
+/// not force a full densify.
+const TLSEL_HELPER: &str = r#"class TlSel:
+    __slots__ = ("src", "pred", "idx", "dense")
+
+    def __init__(self, src, pred):
+        self.src = src
+        self.pred = pred
+        self.idx = None
+        self.dense = None
+
+    def _build(self):
+        if self.idx is None:
+            self.idx = [i for i, e in enumerate(self.src) if self.pred(e)]
+
+    def _densify(self):
+        if self.dense is None:
+            self._build()
+            self.dense = [self.src[i] for i in self.idx]
+        return self.dense
+
+    def __len__(self):
+        self._build()
+        return len(self.idx)
+
+    def __iter__(self):
+        return iter(self._densify())
+
+    def __getitem__(self, key):
+        return self._densify()[key]
+
+    def __add__(self, other):
+        return self._densify() + other
+
+    def __radd__(self, other):
+        return other + self._densify()
+"#;
+
 /// An Opt is its enum's own runtime shape (ADR 0009): `{"some": v}` present, `"none"` absent.
 /// Tagged, so two levels of absence stay two values; only the printer flattens to null.
 const AT_HELPER: &str = r#"def tl_at(v, i, depth):
     if depth > 0:
         return [tl_at(e, i, depth - 1) for e in v]
+    if isinstance(v, TlSel):
+        v._build()
+        n = len(v.idx)
+        if i < 0:
+            i = n + i
+        if i < 0 or i >= n:
+            return "none"
+        return {"some": v.src[v.idx[i]]}
     n = len(v)
     if i < 0:
         i = n + i
@@ -352,6 +402,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_float("), FLOAT_HELPER),
         (uses("tl_divf("), DIVF_HELPER),
         (uses("tl_field("), FIELD_HELPER),
+        (uses("TlSel(") || uses("tl_at("), TLSEL_HELPER),
         (uses("tl_at("), AT_HELPER),
         (uses("tl_slice("), SLICE_HELPER),
         (uses("tl_tail("), TAIL_HELPER),
@@ -638,8 +689,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         } => {
             let p = local(*param);
             format!(
-                "[{p} for {p} in {} if {}]",
+                "TlSel({}, lambda {}: {})",
                 expr(enums, source),
+                p,
                 expr(enums, pred)
             )
         }

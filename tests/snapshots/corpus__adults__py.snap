@@ -14,6 +14,42 @@ def tl_field(v, k, depth):
     return [tl_field(e, k, depth - 1) for e in v]
 
 
+class TlSel:
+    __slots__ = ("src", "pred", "idx", "dense")
+
+    def __init__(self, src, pred):
+        self.src = src
+        self.pred = pred
+        self.idx = None
+        self.dense = None
+
+    def _build(self):
+        if self.idx is None:
+            self.idx = [i for i, e in enumerate(self.src) if self.pred(e)]
+
+    def _densify(self):
+        if self.dense is None:
+            self._build()
+            self.dense = [self.src[i] for i in self.idx]
+        return self.dense
+
+    def __len__(self):
+        self._build()
+        return len(self.idx)
+
+    def __iter__(self):
+        return iter(self._densify())
+
+    def __getitem__(self, key):
+        return self._densify()[key]
+
+    def __add__(self, other):
+        return self._densify() + other
+
+    def __radd__(self, other):
+        return other + self._densify()
+
+
 def tl_join(v, f):
     return "[" + ",".join(f(e) for e in v) + "]"
 
@@ -40,7 +76,7 @@ def tl_quote(s):
 
 
 def v_adults(v_db):
-    return (lambda t_2: tl_field(t_2, "name", 1))((lambda t_0: [t_1 for t_1 in t_0 if (t_1["age"] >= 18)])(v_db["users"]))
+    return (lambda t_2: tl_field(t_2, "name", 1))((lambda t_0: TlSel(t_0, lambda t_1: (t_1["age"] >= 18)))(v_db["users"]))
 
 
 t_input = json.loads(sys.stdin.buffer.read().decode("utf-8"))
