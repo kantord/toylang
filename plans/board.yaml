@@ -653,3 +653,39 @@
   kind: decide
   needs: []
   status: todo
+
+- id: corpus-euler-adopt-max-builtin
+  issue: gh:140
+  title: 'Corpus-implementation-style-review follow-up (problems 04, 08, 11): adopt the `max` builtin (gh:140, landed 2026-08-30) now that it exists. All three largest-* pages still hand-roll a Vec maximum the way they did when no `max` existed: 04 packs `max2` plus a recursive `max_vec` plus sentinel-0 padding around a nested per-row palindrome search, 08 runs `max2` at Int64 width under a divide-and-conquer `best` over 988 sliding-window products, 11 scans its 384 grid products through `maximum_of`/`maximum`. `max` (Vec<Int> -> Opt<Int>, Vec<Int64> -> Int64) replaces the whole comparator tier on each page: 08 can `collect(range(...)) | map(window(.))` over the window starts and take one `max` (the halving `best` exists only to keep hand-rolled recursion shallow, and `window` already yields one product per start), 11 becomes a straight `max(products)` call, and 04 drops the `[0]` sentinel too since empty per-row palindrome lists just contribute nothing to a flattened list and the resulting `Opt` collapses to the answer exactly as the max reference examples show. Mechanical rewrite, no feature gaps remain -- `max` is reference-documented with every-backend emit support. Same missing-reductions idiom the ergonomics doc ranked as erasing the most code from the most pages.'
+  kind: build
+  needs: []
+  prio: 5
+  status: todo
+
+- id: corpus-euler-adopt-sum-builtin
+  issue: gh:140
+  title: 'Corpus-implementation-style-review follow-up (problems 13, 17, 21, 28, 30): adopt the `sum` builtin (gh:140, landed 2026-08-30) now that it exists. Five pages still spell out a Vec-level sum by hand: 13 uses `col_sum` (a recursive fold down a column, plus carry), 17 the two-tier chunked letter-count sums `inner_sum`/`outer_sum`, 21 `sum_range` over [1, 10000), 28 `sum_rings` over the spiral rings, and 30 `sum_vec`/`total` walking a collected Vec of fifth-power matches. Each chunked, halved, or tail-recursive reducer exists purely to keep hand-rolled recursion shallow; `sum` (Vec<Int> -> Int, an empty Vec sums to 0) turns them into `sum(collect(range(...)) | map(...))` or a plain `sum(v)` call (e.g. 13 becomes `sum(p.nums | map(.[p.k]!))`, 30 becomes `sum(collect(...) | select(...) | select(...))`). Mechanical rewrite, no gaps -- the same missing-reductions row of the ergonomics doc.'
+  kind: build
+  needs: []
+  prio: 5
+  status: todo
+
+- id: corpus-euler-29-adopt-sort-builtin
+  issue: gh:86
+  title: 'Corpus-implementation-style-review follow-up (problem 29): adopt the `sort` builtin (gh:86, landed 2026-08-30) plus `sum` (gh:140) once the missing-Vec-sort gap the page was written around is gone. `distinct_count` still does the O(n^2) earlier-element scan (`is_dup`) over 9801 keys, kept tractable only by the six-bucket pairwise trick (594 comparisons at most), and the prose still cites gh:86 as the missing `Vec` sort. Keys are packed Ints (`root * 1000 + mult * b`), which `sort` accepts (Int, Int64, Str, Char), so the whole bucket tier collapses to one `sort(keys)` plus a run count (length minus the number of adjacent equal pairs, itself a `sum` over a Vec of 0/1 indicators); the six-root/48-million-comparisons preamble and the #86 reference evaporate too, and `sum_ints` becomes a `sum` call. Mechanical rewrite, no gaps remain.'
+  kind: build
+  needs: []
+  prio: 5
+  status: todo
+
+- id: corpus-euler-record-key-max-decide
+  title: 'Corpus-implementation-style-review follow-up (problems 14, 26): the hand-rolled record-key maxima `better` (by `len`, 14-longest-collatz) and `best_of` (by `len`, 26-reciprocal-cycles) survive because nothing landed can express them. `max` (gh:140) is defined only for Vec<Int>/Vec<Int64> and refuses record Vecs, and the designed fix for exactly these two pages, `max_by(.key)` (ergonomics row 7, gh:177), has landed only on the Go backend -- Rust-source and the rest of the matrix are still pending, so a rewrite would not be portable. Decide: (a) hold both rewrites until max_by lands everywhere (the current divide-and-conquer workaround is verified and correct), (b) adopt an Int64 score encoding (len * 1000000 + n style) to squeeze into the landed `max` at the cost of a worse idiom than today, or (c) leave the pages as-is and record that as the ruling. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: todo
+
+- id: corpus-euler-stale-sort-citations-decide
+  title: 'Corpus-implementation-style-review follow-up (problems 22, 23): the skipped pages still cite gh:86 missing-Vec-sort as the blocker -- 22 says toylang has no `Vec` sort and 23 cites #86 for its sorted-list sieve -- but `sort` has existed since 2026-08-30 and the ergonomics doc already flags both citations as stale. The real blockers are elsewhere and still unsolved: 22 has no external name data to load (the 46k licensed names are why it is skipped) and 23 pays an O(1e7)-pair membership cost on its abundant sums (the gh:93 slow-fragment ruling). `sort_by`/`max_by` change neither. Decide how to reword or re-scope both skip pages so the corpus stops citing a landed feature as missing -- e.g. cite the data blocker and gh:93 directly and drop the #86 references -- rather than treating the sort gap as a live dependency. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: todo
