@@ -677,3 +677,15 @@
   needs: []
   prio: 5
   status: todo
+
+- id: corpus-euler-record-key-max-decide
+  title: 'Corpus-implementation-style-review follow-up (problems 14, 26): the hand-rolled record-key maxima `better` (by `len`, 14-longest-collatz) and `best_of` (by `len`, 26-reciprocal-cycles) survive because nothing landed can express them. `max` (gh:140) is defined only for Vec<Int>/Vec<Int64> and refuses record Vecs, and the designed fix for exactly these two pages, `max_by(.key)` (ergonomics row 7, gh:177), has landed only on the Go backend -- Rust-source and the rest of the matrix are still pending, so a rewrite would not be portable. Decide: (a) hold both rewrites until max_by lands everywhere (the current divide-and-conquer workaround is verified and correct), (b) adopt an Int64 score encoding (len * 1000000 + n style) to squeeze into the landed `max` at the cost of a worse idiom than today, or (c) leave the pages as-is and record that as the ruling. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: todo
+
+- id: corpus-euler-stale-sort-citations-decide
+  title: 'Corpus-implementation-style-review follow-up (problems 22, 23): the skipped pages still cite gh:86 missing-Vec-sort as the blocker -- 22 says toylang has no `Vec` sort and 23 cites #86 for its sorted-list sieve -- but `sort` has existed since 2026-08-30 and the ergonomics doc already flags both citations as stale. The real blockers are elsewhere and still unsolved: 22 has no external name data to load (the 46k licensed names are why it is skipped) and 23 pays an O(1e7)-pair membership cost on its abundant sums (the gh:93 slow-fragment ruling). `sort_by`/`max_by` change neither. Decide how to reword or re-scope both skip pages so the corpus stops citing a landed feature as missing -- e.g. cite the data blocker and gh:93 directly and drop the #86 references -- rather than treating the sort gap as a live dependency. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: todo
