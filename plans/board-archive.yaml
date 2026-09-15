@@ -2273,3 +2273,17 @@
   needs: [module-routing-syntax-build-ast]
   prio: 5
   status: done
+
+- id: select-lazy-materialization-build-py
+  issue: gh:176
+  title: 'select-lazy-materialization, Python backend -- split from `select-lazy-materialization-build`
+    per the same ruling as the Go row above (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
+    `src/emit_py.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
+    representation, compacting only on first strong reference; same `Kind::Select` node, no
+    syntax/checker change. Confirm the current filter''s exact location with `grep -n` first --
+    see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
+    Done-gate: this backend''s own conformance tests pass.'
+  kind: build
+  needs: [select-lazy-materialization-convergence-ruling]
+  status: done
