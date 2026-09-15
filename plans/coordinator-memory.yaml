@@ -25,3 +25,10 @@ slots:
     source: plans/board.yaml#select-lazy-materialization-harness-defect-ruling
     written: "2026-09-14"
     confirmed: 0
+  - id: land-lane-self-conflict-guard-bug
+    kind: fact-check
+    summary: "land_lane.py's other_land_process_for() matched on any /proc process with a 'land_lane.py'-ending argv token -- the drive-tick claude -p session's own argv carries the whole prompt (which always quotes the exact land-patch command as advice), so every land-patch call self-detected as a live conflict and yielded without landing. Fixed by requiring the candidate's /proc/pid/comm be python3/python/uv, which excludes the claude/timeout/zsh wrapper processes."
+    observation: "select-lazy-materialization-build-py GREEN patch (5e7acc2d) failed to land 3x in a row with 'another land_lane.py process for this row is live -- yielding' though ps showed nothing; every prior successful land-patch commit presumably got lucky on argv shape, not on correct logic"
+    source: .claude/scripts/land_lane.py#other_land_process_for
+    written: "2026-09-15"
+    confirmed: 0

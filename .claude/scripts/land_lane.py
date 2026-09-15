@@ -421,7 +421,15 @@ def other_land_process_for(n: str) -> bool:
         try:
             pid = int(pid_dir.name)
             argv = [a.decode(errors="replace") for a in pid_dir.joinpath("cmdline").read_bytes().split(b"\0") if a]
+            comm = pid_dir.joinpath("comm").read_text().strip()
         except (OSError, ValueError):
+            continue
+        # A drive-tick `claude -p ...` session carries the whole prompt as
+        # argv, which routinely quotes this exact filename and row-id as
+        # advice text -- that self-matched every land-patch call and made
+        # landing impossible (2026-09-15). Only python/uv process images
+        # are real land_lane.py invocations.
+        if comm not in ("python3", "python", "uv"):
             continue
         if pid == me or not any(t.endswith("land_lane.py") for t in argv):
             continue
