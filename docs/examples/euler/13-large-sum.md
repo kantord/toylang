@@ -10,9 +10,10 @@ synthetic set of three ten-digit numbers, and the real-sized check lives in
 
 Neither the input nor the sum fits `Int`, which is 32 bits
 ([kantord/toylang#38](https://github.com/kantord/toylang/issues/38)), so `add_digits` adds one
-column of digits at a time from the right, the way it is done on paper. Every column total -- at
-most a hundred nines plus a small carry -- stays far inside `Int` even though the sum as a whole
-does not, and only the leading ten digits the problem asks for are kept, a `Vec<Int>` of digits
+column of digits at a time from the right, the way it is done on paper. `column_total` uses the
+`sum` builtin directly over each row's digit at that column; every column total -- at most a
+hundred nines plus a small carry -- stays far inside `Int` even though the sum as a whole does
+not, and only the leading ten digits the problem asks for are kept, a `Vec<Int>` of digits
 rather than a number nothing here could hold.
 [Problem 24](24-lexicographic-permutations.md) reaches for the same digits-in-a-`Vec`
 representation.
@@ -23,13 +24,8 @@ The example's three numbers, two of them all nines, ripple a carry all the way u
 ```toylang
 fn empty() -> Vec<Int> = []
 
-fn col_sum(p: {nums: Vec<Vec<Int>>, i: Int, k: Int}) -> Int =
-    p
-        | .i >= length(.nums) -> 0 or
-              p.nums[p.i]![p.k]! + col_sum({nums: p.nums, i: p.i + 1, k: p.k})
-
 fn column_total(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int}) -> Int =
-    col_sum({nums: p.nums, i: 0, k: p.k}) + p.carry
+    sum(p.nums | map(.[p.k]!)) + p.carry
 
 fn emit_carry(p: {carry: Int, acc: Vec<Int>}) -> Vec<Int> =
     p

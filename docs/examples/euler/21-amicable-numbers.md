@@ -7,9 +7,8 @@ Solves [Project Euler 21](https://projecteuler.net/problem=21). See the
 the same trick that keeps [problem 12](12-highly-divisible-triangular-number.md)'s divisor
 count cheap; subtracting `n` turns it into the sum of *proper* divisors the problem asks for.
 Two numbers are amicable when each is the other's proper-divisor sum and neither is itself
-(ruling out perfect numbers, which are their own answer). `sum_range` halves its way down to
-single numbers the same way [problem 90](https://github.com/kantord/toylang/issues/90)'s
-sample programs do, keeping recursion depth at `log2(10000)` rather than one frame per number.
+(ruling out perfect numbers, which are their own answer). `sum` now reduces the filtered range
+directly, no halving needed.
 
 ```toylang
 fn divisor_contribution(p: {n: Int, d: Int}) -> Int =
@@ -28,12 +27,7 @@ fn is_amicable(n: Int) -> Bool =
 
 fn amicable_value(n: Int) -> Int = n | is_amicable(.) -> . or 0
 
-fn sum_range(p: {lo: Int, hi: Int}) -> Int =
-    p
-        | .hi - .lo == 1 -> amicable_value(.lo) or
-              sum_range({lo: .lo, hi: (.lo + .hi) / 2}) + sum_range({lo: (.lo + .hi) / 2, hi: .hi})
-
-sum_range({lo: 1, hi: 10000})
+sum(collect(range(10000)) | select(. >= 1) | map(amicable_value(.)))
 ```
 
 ```output
