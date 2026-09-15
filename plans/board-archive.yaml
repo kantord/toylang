@@ -2395,3 +2395,11 @@
   needs: []
   prio: 5
   status: done
+
+- id: corpus-euler-adopt-max-builtin
+  issue: gh:140
+  title: 'Corpus-implementation-style-review follow-up (problems 04, 08, 11): adopt the `max` builtin (gh:140, landed 2026-08-30) now that it exists. All three largest-* pages still hand-roll a Vec maximum the way they did when no `max` existed: 04 packs `max2` plus a recursive `max_vec` plus sentinel-0 padding around a nested per-row palindrome search, 08 runs `max2` at Int64 width under a divide-and-conquer `best` over 988 sliding-window products, 11 scans its 384 grid products through `maximum_of`/`maximum`. `max` (Vec<Int> -> Opt<Int>, Vec<Int64> -> Int64) replaces the whole comparator tier on each page: 08 can `collect(range(...)) | map(window(.))` over the window starts and take one `max` (the halving `best` exists only to keep hand-rolled recursion shallow, and `window` already yields one product per start), 11 becomes a straight `max(products)` call, and 04 drops the `[0]` sentinel too since empty per-row palindrome lists just contribute nothing to a flattened list and the resulting `Opt` collapses to the answer exactly as the max reference examples show. Mechanical rewrite, no feature gaps remain -- `max` is reference-documented with every-backend emit support. Same missing-reductions idiom the ergonomics doc ranked as erasing the most code from the most pages.'
+  kind: build
+  needs: []
+  prio: 5
+  status: done
