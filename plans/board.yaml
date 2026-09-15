@@ -504,11 +504,37 @@
     the tensor-capable type (rectangular, shape-checked), one stage, no Float/width commitment;
     nulls hard-fail only at construction, no validity bitmask. Dispatch once
     `tensor-transpose-build` has landed and its per-backend wiring pattern is confirmed
-    reusable.'
+    reusable.
+
+    STUCK twice at this already-narrowed scope (run c3768587, 2026-09-15): gated on
+    `tensor-constructor-build-convergence-ruling` below, see that row.'
   kind: build
-  needs: [dense-tensor-type, tensor-transpose-build]
+  needs: [dense-tensor-type, tensor-transpose-build, tensor-constructor-build-convergence-ruling]
   prio: 3
-  status: delegated
+  status: todo
+
+- id: tensor-constructor-build-convergence-ruling
+  issue: gh:175
+  title: '`tensor-constructor-build` STUCK twice in a row (run c3768587, 2026-09-15, $0.244833)
+    at the scope already narrowed by the prior redispatch (parser + checker/TIR only, no backend
+    codegen): both attempts hit max_turns (30 each), edits=0, verify=RED (no changes, no verify
+    run), and the second was dedup''d against the first''s identical empty output. Self-report
+    tags [harness_cutoff, narrower_would_succeed=True] and lists AST, parser, TIR, checker, tags,
+    and linearity as the modules it was still reading -- but that list IS the already-narrowed
+    slice, not a wider one it strayed into, so the self-report''s own fix (narrow further) has
+    nothing left to cut without dropping subsystems the new syntax genuinely touches. Same shape
+    as `select-lazy-materialization-convergence-ruling`''s "harness bugs fixed, model still not
+    converging" pattern for a different family, on the same toylang-toolchain-v3 snapshot.
+    Decide: (a) split further into a parser-only row (lexer/grammar for `;`-separated args, AST
+    node) and a checker/TIR-only row (type + linearity rules for the new node) so each dispatch
+    reads one subsystem before its first edit, (b) hand the semicolon-parsing change to a
+    manual/privileged session directly, (c) accept and keep redispatching narrower per the
+    self-report at ~$0.24/attempt, or (d) hold this alongside
+    `select-lazy-materialization-convergence-ruling` and let one ruling settle both -- same
+    symptom, same fixed harness, same unconverged model.'
+  kind: decide
+  needs: []
+  status: todo
 
 - id: infinite-streams-design
   title: 'Maintainer note (composed 2026-09-09, verbatim): "we need to think about the concept
