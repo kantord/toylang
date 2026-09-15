@@ -412,11 +412,28 @@ def already_landed(n: str) -> bool:
     return bool(r.stdout.strip())
 
 
+def _ancestor_pids(pid: int) -> set[int]:
+    """Walk /proc/<pid>/stat's ppid chain up to pid 1."""
+    seen = set()
+    while pid > 1 and pid not in seen:
+        seen.add(pid)
+        try:
+            stat = Path(f"/proc/{pid}/stat").read_text()
+            # ppid is the field after the (possibly space-containing) comm,
+            # which is parenthesized -- split on the closing paren first.
+            ppid = int(stat.rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+        pid = ppid
+    return seen
+
+
 def other_land_process_for(n: str) -> bool:
-    """True if a land_lane.py process other than this one names row n in its
-    argv. Reads /proc directly (exact token match), same reasoning as
-    dispatch_state.live_row_ids()."""
+    """True if a land_lane.py process other than this one (or one of its own
+    ancestors) names row n in its argv. Reads /proc directly (exact token
+    match), same reasoning as dispatch_state.live_row_ids()."""
     me = os.getpid()
+    mine = _ancestor_pids(me)
     for pid_dir in Path("/proc").glob("[0-9]*"):
         try:
             pid = int(pid_dir.name)
@@ -431,7 +448,11 @@ def other_land_process_for(n: str) -> bool:
         # are real land_lane.py invocations.
         if comm not in ("python3", "python", "uv"):
             continue
-        if pid == me or not any(t.endswith("land_lane.py") for t in argv):
+        # `uv run ... land_lane.py ...` keeps the `uv` launcher alive as a
+        # separate pid with the same argv as its python child -- that
+        # parent self-matched every invocation and made landing impossible
+        # even after the claude-session fix above (2026-09-15).
+        if pid in mine or not any(t.endswith("land_lane.py") for t in argv):
             continue
         if n in argv or f"issue-{n}" in argv:
             return True
