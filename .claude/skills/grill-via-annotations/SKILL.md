@@ -125,13 +125,17 @@ the entry is for a supersede-and-replace rather than a fresh answer.
 
 **Answering**: the human's answer posts to the same inbox door as everything else
 (`POST /__annotations/save`, `page` = the forest file's path, `block` = the answered node's own
-string id) the moment they submit -- process it immediately, same carve-out already given to
-`.round.yaml` submissions, no quiet period. Processing means **writing the answer into the node
+string id) the moment they submit -- process it immediately, no quiet period. Processing means **writing the answer into the node
 itself**, in this order:
 
 1. Set the node's `status: answered` and fill in `answer` (`sourceOption`, `content`, `wasEdited`,
    `answeredAt`) -- write this to the forest file FIRST.
 2. Only then clear the inbox record.
+3. Act on it in the same tick -- board row, draft.md section, issue, or a child node that
+   continues the thread -- and write `applied: <date> <what>` on the node. Durable is not
+   applied: `seq-primitive-vs-existing-enum-machinery` was answered 2026-09-15 and written
+   into the node, and no tick turned it into work for a day. `drive_tick.py` now flags every
+   answered node that has neither an `applied:` line nor a child, on every tick, until it does.
 
 This order matters: the inbox is not durable storage here either (it gets cleared once consumed,
 same as everywhere else in this system) -- the forest file is the only permanent record of the

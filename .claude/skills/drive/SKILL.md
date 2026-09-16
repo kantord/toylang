@@ -43,7 +43,9 @@ Every tick:
    button presses), and processing means writing the answer into the node
    (`status: answered`, the `answer` block) FIRST, then clearing the inbox record second:
    the inbox isn't durable, so that order is what makes a mid-tick death reprocess safely
-   instead of losing the answer.
+   instead of losing the answer. Then ACT on it in the same tick and write
+   `applied: <date> <what>` on the node -- the tick flags every answered node with neither
+   an `applied:` line nor a child until it has one (a ruling sat unapplied for a day, 2026-09-15).
    Grilling runs CONCURRENTLY with build work: keep TWO forest rounds with a live node
    buffered in `docs/.grill/` whenever ready decides remain (compose the second before the
    first is answered, never duplicating a pending round's questions; one live root per

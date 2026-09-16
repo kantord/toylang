@@ -127,6 +127,33 @@ def open_forest_rounds() -> list[str]:
     return out
 
 
+def unapplied_answers_trigger() -> str | None:
+    """Answered forest nodes nobody acted on. An answer is written INTO the
+    node at capture, which is durable -- but durable is not the same as
+    applied: seq-primitive-vs-existing-enum-machinery was answered
+    2026-09-15T20:31Z and no tick turned it into a board row for a day
+    (found 2026-09-16). "Acted on" is structural: the node carries an
+    `applied:` line (what was done), or it has a child node (the thread
+    continued). Anything else is a decision sitting in a gitignored file."""
+    stale = []
+    for f in sorted((REPO / "docs" / ".grill").glob("*.forest.yaml")):
+        try:
+            d = yaml.safe_load(f.read_text())
+        except (OSError, yaml.YAMLError):
+            continue
+        nodes = [n for n in (d.get("nodes", []) if isinstance(d, dict) else []) if isinstance(n, dict)]
+        parents = {n.get("parent") for n in nodes}
+        for n in nodes:
+            if n.get("status") == "answered" and not n.get("applied") and n.get("id") not in parents:
+                stale.append(f"{f.name}:{n.get('id')}")
+    if not stale:
+        return None
+    return ("answered forest nodes with no `applied:` line and no follow-up child: "
+            + ", ".join(stale)
+            + " -- act on each answer (board row / draft.md / child node), then write "
+            "`applied: <date> <what>` on the node")
+
+
 def round_starvation_trigger() -> str | None:
     # Keep TWO rounds buffered (maintainer flow, 2026-08-30): grilling
     # happens WHILE workers grind, so finishing one round must always
@@ -381,6 +408,13 @@ def compute_trigger_and_state(mode: str) -> tuple[str, str]:
     if starve:
         trigger = join_trigger(trigger, starve)
 
+    # A captured answer that never became work is the quietest failure in
+    # the system: nothing is pending, nothing is red, the node just says
+    # "answered" forever. JOINS the trigger for the same reason starvation does.
+    unapplied = safe_signal("unapplied answers", unapplied_answers_trigger)
+    if unapplied:
+        trigger = join_trigger(trigger, unapplied)
+
     # A free dispatcher with a ready row means dispatch is due. This JOINS
     # the trigger instead of being a fallback: as a fallback it starved 2h
     # behind the streak/starvation triggers while lanes sat idle
@@ -438,7 +472,10 @@ TICK_POLICY = (
     'notes.json -- apply entries older than 5 minutes, clear at capture; '
     'records whose page is a docs/.grill/*.forest.yaml are forest-round '
     'submissions: apply IMMEDIATELY -- write the answer INTO the node first '
-    '(status: answered + answer block), clear the inbox record second. (2) If '
+    '(status: answered + answer block), clear the inbox record second, then ACT '
+    'on it in the same tick (board row / draft.md / child node) and write '
+    '`applied: <date> <what>` on the node -- an answered node with neither an '
+    'applied line nor a child is flagged every tick until it has one. (2) If '
     'the trigger names an under-filled round buffer, compose the next forest '
     'round BEFORE any landing (an empty maintainer inbox outranks dispatch '
     'plumbing): read pending rounds first and never re-ask them; keep two '
