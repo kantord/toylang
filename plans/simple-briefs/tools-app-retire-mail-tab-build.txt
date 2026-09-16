@@ -1,0 +1,37 @@
+Board row `tools-app-retire-mail-tab-build`. Maintainer ruling (2026-09-16, chat): remove the
+tools app's Mail tab altogether; the Board becomes its own top-level tab (`#/board`), and
+grilling lives ONLY in the Grill tab's forest rounds (this matches the coordinator side already
+landed the same day: drive skill, grill-via-annotations skill, drive_tick.py, board-lint.py,
+dispatch_state.py all speak forest-only now). This row is the site half.
+
+Note on paths: the row text says `DevApp.tsx` lives under `site/dev/src/components/` -- it
+actually lives at `site/dev/src/DevApp.tsx` (one level up, not in `components/`). Everything
+else the row names is exactly where it says.
+
+Concretely:
+1. Delete these files and their tests:
+   - site/dev/src/components/MailApp.tsx
+   - site/dev/src/components/GrillWizard.tsx
+   - site/dev/src/lib/grill.ts
+   - site/dev/src/lib/mail.ts
+   - site/vite-plugins/grill-rounds.ts
+   Also remove grill-rounds.ts's registration from site/vite.tools.config.ts.
+2. Add a `board` SECTIONS entry in site/dev/src/DevApp.tsx that renders BoardPage
+   (site/dev/src/components/BoardPage.tsx) directly as its own top-level tab (route
+   `#/board`), replacing the removed Mail tab's slot.
+3. Move plan approval (PlanReader's Approve / Needs changes controls, kantord/toylang#110,
+   same inbox record mechanism) into the Board tab's PlansPanel
+   (site/dev/src/components/board/PlansPanel.tsx) so no approval capability is lost when
+   MailApp.tsx (which currently hosts PlanReader) is deleted. Check how PlanReader
+   (site/dev/src/components/PlanReader.tsx) currently writes its approve/needs-changes
+   decision to the inbox and preserve that exact write path from inside PlansPanel.
+4. Leave the Annotations tab (AnnotateMode + notes) completely untouched -- it remains the
+   only maintainer input door besides forest answers.
+5. Update DevApp.tsx's WrongServerBanner and any comments/flow helpers (MessageCard etc.)
+   only as far as the deletions in step 1 require -- do not refactor beyond that.
+
+Done-gate: no references to the deleted files remain anywhere in site/ (grep clean), the Grill
+tab is the only place forest rounds render, the Board tab is a top-level section reachable at
+`#/board` with working plan approve/needs-changes, and `pnpm test` + `pnpm build` inside site/
+both pass green. Say in your summary exactly where you put the approve/needs-changes controls
+inside PlansPanel.

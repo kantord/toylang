@@ -181,7 +181,7 @@
   kind: build
   needs: []
   prio: 2
-  status: todo
+  status: delegated
 - id: sort-by-max-by-lua
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- emit for the Lua backend only (src/emit_lua.rs).'
