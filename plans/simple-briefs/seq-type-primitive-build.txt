@@ -1,0 +1,80 @@
+Board row `seq-type-primitive-build`. Give `Seq` its own `TypeExpr` variant, parser rule, and
+checker treatment, matching ADR 0008's `Seq<T, Stream<T>>` / `Seq<Star<T>, E>` notation
+(docs/adr/0008-stream-protocols-are-kleene-patterns.md) so the sequence-pattern algebra the ADR
+sketches becomes real code for the first time. This is the type-level half only: parser +
+checker + a corpus test. Emitting a runtime pair for a `Seq` value is a follow-up row -- do not
+build backend emission in this row.
+
+Read docs/adr/0008-stream-protocols-are-kleene-patterns.md in full first. Key facts from it:
+- `Seq<Head, Rest>` is a two-argument type constructor -- head-plus-remainder, e.g.
+  `Seq<T, Stream<T>>` (a provably nonempty stream) or `Seq<Star<T>, E>` (a stream with a typed
+  closing message). This is UNLIKE `Vec<T>`/`Stream<T>`, which each take exactly one type
+  argument -- `Seq` takes two.
+- `Star<T>` is `Stream<T>` under a different name in this algebra -- check with the maintainer's
+  ADR text whether `Star` is a spelling alias for `Stream` (likely: `Star<T>` in Kleene-algebra
+  terms IS `Stream<T>`, so no new `Star` constructor is needed -- reuse `TypeExpr::Stream`/
+  `Type::Stream` for it). Confirm this reading against the ADR before writing code; if the ADR
+  text is ambiguous about whether `Star` needs its own name or is purely notation for `Stream`,
+  pick the reading that reuses `Stream` (simpler) and say so explicitly in your summary.
+- Soundness condition from the ADR: `Stream` (and by extension any pattern containing one, i.e.
+  a `Seq` whose head or rest is/contains a `Stream`) never appears under a value constructor
+  (not inside a Vec, a record, another Stream, or -- by the same rule -- stored as a plain
+  value) and may appear freely under pattern constructors. `Seq` should inherit `Stream`'s
+  existing position restrictions wherever a `Seq` transitively contains a `Stream`, the same way
+  `Type::Stream` is already restricted (see below).
+
+Where `Stream` (the existing one-arg constructor) is wired today -- add the `Seq` two-arg
+constructor following the exact same shape, doubled:
+- `TypeExpr` enum, src/ast.rs:101-104 (`Stream { elem: Box<TypeExpr>, span: Span }`) -- add
+  `Seq { head: Box<TypeExpr>, rest: Box<TypeExpr>, span: Span }` alongside it. Also update the
+  `span()` match (src/ast.rs:116) and the AST-cloning/traversal match at src/ast.rs:140 for the
+  new variant.
+- Parser, src/parse.rs:900-946 (`type_expr`). Today `ty::takes_type_arg` (src/ty.rs:104-106)
+  gates `Vec`/`Stream` as the only two reserved one-arg constructors
+  (RESERVED_TYPE_NAMES, src/ty.rs:96), and src/parse.rs:930-945 requires exactly one type
+  argument (`args.len() != 1` is an error) before building the `TypeExpr::Vec`/`TypeExpr::Stream`
+  node. `Seq` needs its own path since it takes two arguments, not one -- either extend
+  `takes_type_arg`/`RESERVED_TYPE_NAMES` with an arity-aware variant, or add a parallel check
+  specifically for `"Seq"` requiring `args.len() == 2` before building `TypeExpr::Seq { head, rest, .. }`.
+  Whichever shape is simpler given the existing code, but do not silently accept `Seq` with the
+  wrong arity -- error the same way `Vec<A, B>` already errors today (src/parse.rs:932-936).
+- Checker resolution, src/check/types.rs:589-604 (`TypeExpr::Stream` arm inside `resolve_bound`,
+  the function's full match starts above :589 -- read enough context to place a new arm
+  correctly). Add a `TypeExpr::Seq { head, rest, .. }` arm that resolves both `head` and `rest`
+  recursively via the same `resolve_bound` calls, then builds a `Type::Seq(Box<Type>, Box<Type>)`
+  (new variant, add it next to `Type::Stream(Box<Type>)` in src/ty.rs, near the doc comment at
+  the `Stream` variant). Apply the ADR's soundness condition: if `head` or `rest` resolves to
+  (or contains) `Type::Stream`, only allow it in the same positions `Type::Stream` itself is
+  currently allowed (function signatures, not inside a Vec/Record/another container) -- reuse
+  whatever `contains_stream()`/position-check helpers `Type::Stream`'s own resolution already
+  calls (see the `inner.contains_stream()` check at src/check/types.rs:590-596 for the pattern
+  to mirror). A `Seq` with no `Stream` anywhere inside it (e.g. `Seq<Int, Str>`, if that's
+  meaningful per the ADR) should behave like an ordinary value type with no special position
+  restriction -- only the presence of `Stream` inside triggers the restriction.
+- `is_builtin_type_name` (src/ty.rs:98-100) and `takes_type_arg` (src/ty.rs:104-106): add `"Seq"`
+  so it can't be redeclared as a user alias/enum and so the parser recognizes it as a
+  constructor name.
+- Printing, src/emit_toylang.rs:465-466 (`print_type`): add a `TypeExpr::Seq { head, rest, .. }`
+  arm printing `Seq<{head}, {rest}>`, matching the existing `Vec<{}>`/`Stream<{}>` format
+  strings.
+
+Concretely:
+1. Add `Type::Seq(Box<Type>, Box<Type>)` to src/ty.rs next to `Type::Stream`.
+2. Add `TypeExpr::Seq { head: Box<TypeExpr>, rest: Box<TypeExpr>, span: Span }` to src/ast.rs,
+   updating every match already listed above (span, clone/traversal).
+3. Wire the parser (src/parse.rs) to accept `Seq<A, B>` with exactly two type arguments, erroring
+   on any other arity.
+4. Wire the checker (src/check/types.rs `resolve_bound`) to resolve `TypeExpr::Seq` into
+   `Type::Seq`, applying the `Stream`-containment position restriction described above.
+5. Wire printing (src/emit_toylang.rs) for round-tripping `Seq<A, B>` back to source text.
+6. Add a corpus test case: a function signature using `Seq<T, Stream<T>>` (a provably nonempty
+   stream) that must be destructured with both arms (head and rest) handled -- check how
+   existing `Stream`-typed function corpus tests are structured (grep the corpus directory for
+   an existing `Stream<` signature test) and mirror that shape. The test only needs to prove the
+   type checks and round-trips correctly; it does NOT need to run/emit against any backend
+   (emission is the explicit follow-up row).
+
+Done-gate: `just test` (or the project's standard test command) green, `Seq<A, B>` parses,
+resolves to `Type::Seq`, round-trips through printing, rejects the wrong arity with a clear
+error, and correctly inherits `Stream`'s position restrictions when it contains one. Say in your
+summary how you resolved the `Star` vs `Stream` naming question from the ADR.

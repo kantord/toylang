@@ -1,0 +1,64 @@
+Board row `mutation-rule-v1-build-rust`. Mutation-as-optimization v1: mutate a Vec/Str value in
+place at the consuming use, instead of copying, when a scope-walk proves no other use of that
+name observes it afterward. Rust-source backend only (src/emit_rs.rs). First of 7
+one-backend-per-commit steps (mutation-which-backends-first ruling expanded this to all 7
+backends: rust, lua, go, js, python, jq, native/LLVM -- this row is rust only, the rest are
+separate rows with a reevaluation checkpoint between each).
+
+Background, read before starting:
+- plans/mutation-semantics-spike.md is the full spike this row implements. Read it in full --
+  it already answers "where does the copy happen" and "is the rule decidable from the TIR" with
+  file:line evidence.
+- The rule (per the maintainer's mutation-rule-v1-vs-v2 ruling): strict single-use only. A name
+  qualifies for in-place mutation iff it has exactly one use in its scope, that use is a
+  consuming/mutating builtin call (sort/reverse/flatten, or `+`-concat on Vec/Str), and no other
+  use of the name follows it. This is v1 (strict), not v2 (lazy-copy, order-aware) -- do not
+  implement v2's relaxation; a separate row exists for that.
+- Refuse the optimization across `Call` boundaries (mutation-function-boundary ruling): if the
+  name is a function parameter, or the consuming use is inside a called function body reached
+  through inlining, do not apply the optimization -- fall back to the existing copy-on-read
+  behavior. Only apply it within a single function/lambda's own scope-walk.
+- The scope-walk is a straightforward occurrence count, per the spike's section 2: for a
+  `Bind { local, value, body }` count `Kind::Local(local)` in `body`; for `Map`/`Select`/`OptMap`
+  count the param in `body`/`pred`; for `Match` count the payload local in the arm `body`; for a
+  function count `Var(param)` in its body. Evaluation order is tree order, so "the consuming use
+  is the last use" is orderable from that walk -- no borrow-checker-style analysis needed.
+
+Where the copy happens today in src/emit_rs.rs (all sites the optimization should be able to
+skip when the rule fires):
+- `Kind::Var(name)` emits `{name}.clone()` (src/emit_rs.rs:1428).
+- `Kind::Local(id)` emits `{local}.clone()` (src/emit_rs.rs:1429).
+- `tl_sort` (SORT_HELPER, src/emit_rs.rs:189) takes `&[T]` and does `v.to_vec()` then sorts the
+  copy.
+- `tl_reverse` (REVERSE_HELPER, src/emit_rs.rs:206) is the same shape.
+- `tl_flatten` (FLATTEN_HELPER, src/emit_rs.rs:178) builds a fresh output by `.cloned()`.
+- `concat` on a `Vec` emits `[{l}, {r}].concat()`, copying both operands (grep `Builtin::` call
+  sites in src/emit_rs.rs's `expr` method for the exact concat emission).
+
+Concretely:
+1. Add the scope-walk analysis: given a `Bind`/`Map`/`Select`/`OptMap`/`Match` binding and its
+   body, determine whether the bound name has exactly one use, that use is the argument to a
+   consuming builtin (Sort/Reverse/Flatten/Vec-or-Str concat), and it is not reached across a
+   `Call` boundary.
+2. When the rule fires, emit the mutating builtin call without the `.clone()` on the read, and
+   have the helper (or a new in-place variant) mutate/consume its argument directly instead of
+   copying internally -- e.g. `tl_sort_in_place(&mut v)` returning nothing, sorting `v` itself,
+   rather than `tl_sort(&v.clone())` returning a new Vec. Decide the exact signature shape
+   (owned-arg helper vs `&mut` helper) based on what's simplest given the existing call sites;
+   document the choice in your summary.
+3. When the rule does not fire (multiple uses, use precedes another use, or across a Call
+   boundary), keep the existing copy-on-read + copy-in-helper behavior exactly as is -- this is
+   an optimization, not a semantics change, so the non-qualifying path must produce identical
+   output to today.
+4. Add a corpus test case (or extend an existing one under tests/ or wherever the corpus lives --
+   check how sort-by-max-by's corpus tests were structured for precedent) that exercises a
+   single-use Vec/Str feeding directly into sort/reverse/flatten/concat and confirms both (a) the
+   emitted Rust compiles and runs to the same output as before, and (b) ideally that the emitted
+   code no longer contains the now-unnecessary clone (a string-match assertion on the generated
+   Rust is fine for this if the corpus harness supports it; if not, correctness is the gate, not
+   emitted-code-shape).
+
+Done-gate: `just test` green (or the project's standard test command -- check justfile/README
+if `just test` doesn't exist), the strict single-use case skips the copy in emitted Rust, any
+multi-use or cross-Call case is emitted exactly as before (no regression), and v2 (lazy-copy)
+behavior is explicitly NOT implemented in this row.
