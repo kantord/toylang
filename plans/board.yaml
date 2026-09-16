@@ -625,11 +625,33 @@
     (function-boundary descent, maintainer, forest round, 2026-09-17): refuse across `Call`
     boundaries on the first landing -- the reversible choice, ships the decidable scope-walk
     alone rather than coupling to call-site specialization draft.md still treats as open TODO.
-    Full answer in `docs/.grill/mutation-function-boundary.forest.yaml`. Still live:
-    mutation-rule-v1-vs-v2, mutation-which-backends-first -- row stays `todo` until both land.'
+    Full answer in `docs/.grill/mutation-function-boundary.forest.yaml`. Sub-ruling 2 of 3
+    (rule strength, maintainer, forest round, 2026-09-17): ship v1 (strict single-use) first,
+    not v2 (lazy-copy, order-aware) directly -- v1 is not throwaway scaffolding, the maintainer
+    asked to pre-create the v2 follow-up now rather than treat it as free once v1 lands. Full
+    answer in `docs/.grill/mutation-rule-v1-vs-v2.forest.yaml`. Spun off
+    mutation-rule-v2-followup (status: proposed, blocked on a v1 build row that does not exist
+    yet). Still live: mutation-which-backends-first -- row stays `todo` until it lands too.'
   kind: decide
   needs: [mutation-semantics-spike]
   status: todo
+
+- id: mutation-rule-v2-followup
+  title: 'Pre-created per maintainer ruling (mutation-rule-v1-vs-v2 forest round, 2026-09-17):
+    v1 (strict single-use) ships first, but v2 (lazy-copy, order-aware -- mutate in place iff
+    the consuming use is the *last* use, earlier observing reads like an `Index` base or
+    `length(v)` are fine) is the actual target, not a nice-to-have -- landing v1 first must not
+    be treated as freeing v2 later. Build: extend the scope-walk pass from an occurrence count
+    to an order-aware walk (observing use before consuming use is fine; after is not), per
+    `docs/.grill/mutation-rule-v1-vs-v2.forest.yaml`''s norm/stats worked examples. See
+    `mutation-semantics-design` for the sibling sub-rulings this depends on.'
+  kind: build
+  needs: [mutation-semantics-design]
+  blocked_by: no v1 build row exists on the board yet to point `needs` at -- one still needs
+    creating once mutation-which-backends-first also lands and mutation-semantics-design
+    closes; v1 must actually land (not just be ruled) before this starts.
+  prio: 5
+  status: proposed
 
 - id: dispatch-no-progress-cutoff-harness-defect
   title: '12 rows sat `status: delegated` for two days showing "in progress" while nothing
