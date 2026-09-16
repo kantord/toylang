@@ -603,16 +603,30 @@
     lambda, or left alone as a distinct point-free mechanism serving a different use case than a
     general closure? The answer decides whether infinite-streams-design''s takeUntil predicate
     should be spec''d against `.`-rebinding (its round''s options A/B) or deferred until closures
-    land.'
+    land.
+
+    RULED (maintainer, forest round, 2026-09-17): option B, kept as sugar over an implicit
+    one-parameter closure -- the verified `select(.age >= 18)` spelling never changes; the
+    compiler lowers it to `fn(e) = e.age >= 18` once closures exist. Maintainer flagged an open
+    follow-up for whoever builds the desugaring: the closure parameter''s type must still derive
+    correctly through chained filters/calls on `.`, not just a direct field access -- a
+    type-inference concern for the build, not a re-ask of this question. Full answer in
+    `docs/.grill/dot-rebinding-vs-lambda.forest.yaml`.'
   kind: decide
   needs: []
   prio: 4
-  status: todo
+  status: done
 
 - id: mutation-semantics-design
   title: 'Grill privileged/shared-reference mutation-as-optimization now that the spike
     (plans/mutation-semantics-spike.md) has grounded the "provably one reference" analysis --
-    this is the decide row draft-mutation-migration''s partial migration has been waiting on.'
+    this is the decide row draft-mutation-migration''s partial migration has been waiting on.
+    Three sub-questions block landing it, each its own forest round. Sub-ruling 1 of 3
+    (function-boundary descent, maintainer, forest round, 2026-09-17): refuse across `Call`
+    boundaries on the first landing -- the reversible choice, ships the decidable scope-walk
+    alone rather than coupling to call-site specialization draft.md still treats as open TODO.
+    Full answer in `docs/.grill/mutation-function-boundary.forest.yaml`. Still live:
+    mutation-rule-v1-vs-v2, mutation-which-backends-first -- row stays `todo` until both land.'
   kind: decide
   needs: [mutation-semantics-spike]
   status: todo
