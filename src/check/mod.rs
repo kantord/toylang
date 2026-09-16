@@ -786,6 +786,9 @@ fn type_mentions_param(t: &Type, name: &str) -> bool {
     match t {
         Type::Param(p) => p == name,
         Type::Vec(inner) | Type::Stream(inner) => type_mentions_param(inner, name),
+        Type::Seq(head, rest) => {
+            type_mentions_param(head, name) || type_mentions_param(rest, name)
+        }
         Type::Record(fields) => fields.iter().any(|(_, t)| type_mentions_param(t, name)),
         Type::Enum { args, .. } => args.iter().any(|a| type_mentions_param(a, name)),
         Type::Str

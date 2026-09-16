@@ -603,6 +603,30 @@ fn resolve_bound(
             }
             Ok(Type::Stream(Box::new(inner)))
         }
+        // The sequence-pattern algebra's head-plus-remainder constructor (ADR 0008): a pattern
+        // constructor, not a value constructor, so a `Stream` may appear freely inside it
+        // (`Seq<T, Stream<T>>` is a provably nonempty stream). The soundness condition is the
+        // same one that keeps a `Stream` out of a stored position: a `Seq` that transitively
+        // contains a `Stream` must not itself sit under a value constructor, which the container
+        // arms below enforce by asking `contains_stream`. A `Seq` with no `Stream` inside it is
+        // an ordinary value type and carries no position restriction.
+        TypeExpr::Seq { head, rest, .. } => {
+            let head_ty = resolve_bound(head, env, seen, params, boxed)?;
+            let rest_ty = resolve_bound(rest, env, seen, params, boxed)?;
+            if head_ty.contains_sink() {
+                return Err(Error::new(
+                    head.span(),
+                    "a Seq cannot hold a sink, which has no value to store".to_string(),
+                ));
+            }
+            if rest_ty.contains_sink() {
+                return Err(Error::new(
+                    rest.span(),
+                    "a Seq cannot hold a sink, which has no value to store".to_string(),
+                ));
+            }
+            Ok(Type::Seq(Box::new(head_ty), Box::new(rest_ty)))
+        }
         TypeExpr::Record { fields, span } => {
             let mut out = Vec::new();
             for (name, ty) in fields {

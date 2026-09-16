@@ -1146,6 +1146,7 @@ impl Emitter<'_> {
     fn rs_type(&self, ty: &Type) -> String {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
             Type::Str => "String".to_string(),
             // A sink is a joined string at runtime, so a `-> Sink` function returns one here too.
             Type::Sink => "String".to_string(),
@@ -1176,6 +1177,7 @@ impl Emitter<'_> {
     fn parser_expr(&self, ty: &Type) -> String {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
             Type::Str => "tl_parse_str".to_string(),
             Type::Int => "tl_parse_i32".to_string(),
             // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.
@@ -1746,6 +1748,7 @@ impl Emitter<'_> {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+            Type::Seq(..) => unreachable!("a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"),
             // The checker refuses a program whose result contains a Char: it has no wire form.
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tl_quote(&{value})"),

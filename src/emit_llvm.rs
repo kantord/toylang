@@ -347,6 +347,7 @@ impl<'ctx> Emitter<'ctx, '_> {
     fn llvm_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, String> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
             // Materialized eagerly as the Vec of its entries, so it is the same pointer a Vec
             // is. Fusion is what will remove this materialization.
             Type::Stream(_) => self.ctx.ptr_type(AddressSpace::default()).into(),
@@ -459,6 +460,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
+            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
             Type::Sink => unreachable!("the grammar keeps a sink out of every slot"),
             Type::Int | Type::Int64 | Type::Char => value.into_int_value(),
             // A Float is the same 8 bytes as the i64 every other slot holds, reinterpreted
@@ -485,6 +487,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
+            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
             Type::Sink => unreachable!("the grammar keeps a sink out of every slot"),
             Type::Int | Type::Int64 | Type::Char => slot.into(),
             Type::Float => self
@@ -1005,6 +1008,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+            Type::Seq(..) => unreachable!("a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"),
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
             Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
@@ -2672,6 +2676,7 @@ fn descriptor(enums: &Enums, ty: &Type) -> String {
             // Stream is unspellable in a type annotation, so `input`'s declared type -- the only
             // thing this function is ever called on -- can never contain one.
             Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),
+            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
             Type::Sink => unreachable!("input cannot be a sink, refused by the checker"),
             Type::Str => "s".to_string(),
             Type::Int => "i".to_string(),

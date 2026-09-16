@@ -57,6 +57,17 @@ pub enum Type {
     /// -- born at a source (`lines` is `Stream<Str>`), consumed exactly once per binding, and
     /// exiting only through `collect`.
     Stream(Box<Type>),
+    /// The sequence-pattern algebra's head-plus-remainder constructor (ADR 0008): `Seq<Head, Rest>`
+    /// is a two-argument type constructor, the base-functor shape of a stream's structure.
+    /// `Seq<T, Stream<T>>` is a provably nonempty stream (Kleene plus), and `Seq<Star<T>, E>` is a
+    /// stream with a typed closing message. It is a pattern constructor, not a value constructor:
+    /// it may sit freely under other pattern constructors, and -- by the same soundness rule that
+    /// keeps a `Stream` out of a stored position -- a `Seq` that transitively contains a `Stream`
+    /// never appears under a value constructor (a Vec, a record, another Stream, or stored as a
+    /// plain value). A `Seq` with no `Stream` anywhere inside it is an ordinary value type. No
+    /// source produces a `Seq` value yet (emission is a follow-up); this row is the type-level
+    /// half -- parser, checker, and printing.
+    Seq(Box<Type>, Box<Type>),
     /// A sink: an expression that writes rather than producing a value, of which the only
     /// instance today is the `jsonlines` builtin (gh:138 ruling). Second-class by construction,
     /// the same way a `Stream` is -- a sink is not a value, so it never sits inside a Vec, a
@@ -93,7 +104,7 @@ pub enum Type {
 
 /// Names reserved for the built-in type constructors, on top of `Str`/`Int`/`Bool`
 /// (`Type::from_name`): a program cannot declare an alias or enum under any of these.
-const RESERVED_TYPE_NAMES: [&str; 2] = ["Vec", "Stream"];
+const RESERVED_TYPE_NAMES: [&str; 3] = ["Vec", "Stream", "Seq"];
 
 /// Whether `name` is a built-in type and so cannot be redefined as an alias or an enum.
 pub fn is_builtin_type_name(name: &str) -> bool {
@@ -104,7 +115,7 @@ pub fn is_builtin_type_name(name: &str) -> bool {
 /// `Opt` is no longer here: it is the prelude's enum, reached through the ordinary generic
 /// path like any declared name.
 pub fn takes_type_arg(name: &str) -> bool {
-    matches!(name, "Vec" | "Stream")
+    matches!(name, "Vec" | "Stream" | "Seq")
 }
 
 impl Type {
@@ -127,6 +138,7 @@ impl Type {
     pub fn contains_stream(&self) -> bool {
         match self {
             Type::Stream(_) => true,
+            Type::Seq(head, rest) => head.contains_stream() || rest.contains_stream(),
             Type::Vec(t) => t.contains_stream(),
             Type::Record(fields) => fields.iter().any(|(_, t)| t.contains_stream()),
             // An enum payload cannot hold a stream: resolve_enum refuses the declaration,
@@ -280,6 +292,7 @@ impl Type {
             Type::Char => "Char".to_string(),
             Type::Vec(t) => format!("Vec_{}", t.ident()),
             Type::Stream(t) => format!("Stream_{}", t.ident()),
+            Type::Seq(head, rest) => format!("Seq_{}_{}", head.ident(), rest.ident()),
             Type::Sink => "Sink".to_string(),
             Type::Record(fields) => {
                 let mut parts: Vec<String> = fields
@@ -312,6 +325,7 @@ impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Stream(t) => write!(f, "Stream<{t}>"),
+            Type::Seq(head, rest) => write!(f, "Seq<{head}, {rest}>"),
             Type::Sink => write!(f, "Sink"),
             Type::Str => write!(f, "Str"),
             Type::Int => write!(f, "Int"),
@@ -361,6 +375,7 @@ impl PartialEq for Type {
             | (Type::Char, Type::Char) => true,
             (Type::Vec(a), Type::Vec(b)) => a == b,
             (Type::Stream(a), Type::Stream(b)) => a == b,
+            (Type::Seq(a, b), Type::Seq(c, d)) => a == c && b == d,
             (Type::Sink, Type::Sink) => true,
             (Type::Record(a), Type::Record(b)) => {
                 a.len() == b.len() && a.iter().all(|field| b.contains(field))
@@ -396,6 +411,10 @@ pub fn substitute(t: &Type, map: &HashMap<String, Type>) -> Type {
             .unwrap_or_else(|| unreachable!("substitute runs only once every param is bound")),
         Type::Vec(e) => Type::Vec(Box::new(substitute(e, map))),
         Type::Stream(e) => Type::Stream(Box::new(substitute(e, map))),
+        Type::Seq(head, rest) => Type::Seq(
+            Box::new(substitute(head, map)),
+            Box::new(substitute(rest, map)),
+        ),
         Type::Record(fields) => Type::Record(
             fields
                 .iter()

@@ -102,6 +102,14 @@ pub enum TypeExpr {
         elem: Box<TypeExpr>,
         span: Span,
     },
+    /// `Seq<Head, Rest>` (ADR 0008): the sequence-pattern algebra's head-plus-remainder
+    /// constructor, a two-argument type constructor -- `Seq<T, Stream<T>>` is a provably
+    /// nonempty stream. Unlike `Vec`/`Stream` (one type argument), it takes two.
+    Seq {
+        head: Box<TypeExpr>,
+        rest: Box<TypeExpr>,
+        span: Span,
+    },
     Record {
         fields: Vec<(String, TypeExpr)>,
         span: Span,
@@ -114,6 +122,7 @@ impl TypeExpr {
             TypeExpr::Named { span, .. }
             | TypeExpr::Vec { span, .. }
             | TypeExpr::Stream { span, .. }
+            | TypeExpr::Seq { span, .. }
             | TypeExpr::Record { span, .. } => *span,
         }
     }
@@ -139,6 +148,11 @@ impl TypeExpr {
             },
             TypeExpr::Stream { elem, span } => TypeExpr::Stream {
                 elem: Box::new(elem.substitute_self(self_ty)),
+                span: *span,
+            },
+            TypeExpr::Seq { head, rest, span } => TypeExpr::Seq {
+                head: Box::new(head.substitute_self(self_ty)),
+                rest: Box::new(rest.substitute_self(self_ty)),
                 span: *span,
             },
             TypeExpr::Record { fields, span } => TypeExpr::Record {

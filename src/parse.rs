@@ -931,8 +931,22 @@ impl<'i> Cursor<'i> {
         }
         let close = self.eat(Tok::Gt)?;
         let span = span.to(close);
-        // The two built-in constructors keep their own nodes; their arity is the grammar's.
+        // The built-in constructors keep their own nodes; their arity is the grammar's.
+        // `Vec` and `Stream` take one type argument; `Seq` (ADR 0008) takes two -- head and
+        // remainder -- so it gets its own arity check before building its node.
         if ty::takes_type_arg(&name) {
+            if name == "Seq" {
+                if args.len() != 2 {
+                    return Err(Error::new(
+                        span,
+                        format!("`Seq` takes two type arguments, found {}", args.len()),
+                    ));
+                }
+                let mut it = args.into_iter();
+                let head = Box::new(it.next().expect("Seq arity is two"));
+                let rest = Box::new(it.next().expect("Seq arity is two"));
+                return Ok(TypeExpr::Seq { head, rest, span });
+            }
             if args.len() != 1 {
                 return Err(Error::new(
                     span,

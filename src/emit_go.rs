@@ -791,6 +791,7 @@ fn has_scalar(enums: &Enums, ty: &Type) -> bool {
             // Only ever called on the program's own result type, which the checker guarantees is
             // never a stream and never contains one.
             Type::Stream(_) => unreachable!("a stream cannot reach has_scalar"),
+            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
             // The checker refuses a program whose result contains a Char, the same as a stream.
             Type::Char => unreachable!("a Char cannot reach has_scalar"),
             Type::Int | Type::Int64 | Type::Bool => true,
@@ -986,6 +987,7 @@ impl Emitter<'_> {
 
     fn go_type(&self, ty: &Type) -> String {
         match ty {
+            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
             Type::Str => "string".to_string(),
             // A sink is a joined string at runtime, so a `-> Sink` function has one here too.
             Type::Sink => "string".to_string(),
@@ -1538,6 +1540,7 @@ impl Emitter<'_> {
             // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+            Type::Seq(..) => unreachable!("a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"),
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tlQuote({value})"),
             Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
