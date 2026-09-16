@@ -5,7 +5,6 @@ import { defineConfig, type Plugin } from "vite"
 import { annotationsInbox } from "./vite-plugins/annotations-inbox.ts"
 import { dispatchLog } from "./vite-plugins/dispatch.ts"
 import { grillForest } from "./vite-plugins/grill-forest.ts"
-import { grillRounds } from "./vite-plugins/grill-rounds.ts"
 
 // The dev-only tooling's own Vite config (kantord/toylang#grill-forest): split out of
 // vite.config.ts because the tooling and the docs site sharing one dev server meant a docs-page
@@ -39,7 +38,7 @@ export default defineConfig({
   // No `base: "/toylang/"` here -- that prefix exists only because the docs site deploys under
   // kantord.github.io/toylang/. This app is dev-only and never deployed, so the default root
   // base is correct.
-  plugins: [redirectRootToDev(), react(), tailwindcss(), annotationsInbox(), grillRounds(), grillForest(), dispatchLog()],
+  plugins: [redirectRootToDev(), react(), tailwindcss(), annotationsInbox(), grillForest(), dispatchLog()],
   resolve: {
     alias: { "@": import.meta.dirname + "/src", "@dev": import.meta.dirname + "/dev/src" },
   },
