@@ -4,8 +4,8 @@ import { GrillChain } from "@dev/components/GrillChain"
 import { activePath, threadStatus, useForestRound, useForestTopics, type ThreadStatus } from "@dev/lib/grillForest"
 import { cn } from "@/lib/utils"
 
-/** Catches a render-time crash from one malformed forest file (mirrors `RoundBoundary` in
- *  `MailApp.tsx`, same reasoning) -- `validateForest` on the server rejects the shapes it knows to
+/** Catches a render-time crash from one malformed forest file -- `validateForest` on the server
+ *  rejects the shapes it knows to
  *  check, but every field it doesn't check yet (a bare `title`, a mis-shaped `answer.sourceOption`)
  *  is rendered unconditionally by `GrillChain`, and there is no boundary anywhere up to
  *  `main.tsx`'s bare `createRoot(...).render(<DevApp/>)` otherwise -- a single bad node crashes the
@@ -57,8 +57,8 @@ function TopicRow({ topic, active }: { topic: string; active: boolean }) {
 /**
  * The grill-forest view (kantord/toylang#grill-forest): a topic rail (one entry per
  * `docs/.grill/*.forest.yaml` file) plus the selected topic's chain. v1 scope treats one file as
- * one thread -- there is no root-switcher for the rarer multi-root case. `MailApp.tsx` is
- * untouched; this is its own section of `DevApp.tsx`, not a tab inside the mail app.
+ * one thread -- there is no root-switcher for the rarer multi-root case. It is its own
+ * top-level section of `DevApp.tsx` (`#/grill`).
  */
 export function GrillForestApp({ segments }: { segments: string[] }) {
   const { data: topics = [], isLoading: topicsLoading } = useForestTopics()

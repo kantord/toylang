@@ -92,11 +92,12 @@ export const PLAN_ERRORS: string[] = loaded.errors
 
 export type Decision = "approve" | "needs-changes"
 
-/** Delivers a plan decision through the #30 inbox machinery, the same door a grilling round's
- *  answers go through (lib/grill.ts): `page` is the plan file itself and `block` is always 0 --
- *  a plan carries one decision, not a list of them -- so the coordinator's existing poll of
- *  `docs/.annotations/inbox.json` picks it up with no second store to read. `edited` is JSON for
- *  the same reason a round's is: the coordinator maps it mechanically rather than reading prose.
+/** Delivers a plan decision through the #30 inbox machinery, the same door a grill-forest
+ *  answer (lib/grillForest.ts) and the annotations themselves go through: `page` is the plan file
+ *  itself and `block` is always 0 -- a plan carries one decision, not a list of them -- so the
+ *  coordinator's existing poll of `docs/.annotations/inbox.json` picks it up with no second store
+ *  to read. `edited` is JSON for the same reason a forest answer's is: the coordinator maps it
+ *  mechanically rather than reading prose.
  */
 export function submitPlanDecision(plan: Plan, decision: Decision, notes: string): Promise<void> {
   return saveToInbox(

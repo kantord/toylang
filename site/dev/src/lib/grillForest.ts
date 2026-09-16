@@ -53,8 +53,7 @@ export function fetchForestRound(topic: string): Promise<ForestRound> {
   return fetch(`/__grill-forest/round?topic=${encodeURIComponent(topic)}`).then((r) => json<ForestRound>(r))
 }
 
-/** The inbox page identity a forest's answers are saved under -- mirrors `roundPagePath` in
- *  lib/grill.ts. */
+/** The inbox page identity a forest's answers are saved under. */
 export function forestPagePath(topic: string): string {
   return `docs/.grill/${topic}.forest.yaml`
 }
