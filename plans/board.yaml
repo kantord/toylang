@@ -629,11 +629,116 @@
     (rule strength, maintainer, forest round, 2026-09-17): ship v1 (strict single-use) first,
     not v2 (lazy-copy, order-aware) directly -- v1 is not throwaway scaffolding, the maintainer
     asked to pre-create the v2 follow-up now rather than treat it as free once v1 lands. Full
-    answer in `docs/.grill/mutation-rule-v1-vs-v2.forest.yaml`. Spun off
-    mutation-rule-v2-followup (status: proposed, blocked on a v1 build row that does not exist
-    yet). Still live: mutation-which-backends-first -- row stays `todo` until it lands too.'
+    answer in `docs/.grill/mutation-rule-v1-vs-v2.forest.yaml`. Sub-ruling 3 of 3 (backend
+    scope, maintainer, forest round, 2026-09-17): base pick "Split, Rust then Lua" -- one
+    backend per commit, matching the sort_by/max_by precedent (gh:177) unconditionally -- but
+    the maintainer edited the option to expand scope past the 2 originally commissioned
+    backends: land v1 on all 7 (rust, lua, go, js, python, jq, native/LLVM), not just Rust and
+    Lua. Full answer in `docs/.grill/mutation-which-backends-first.forest.yaml`. All three
+    sub-questions now answered -- row closes. Spun off mutation-rule-v1-build-rust through
+    -native (one row per backend with a reevaluation checkpoint between each, mirroring
+    sort-by-max-by-checkpoint-*) and repointed mutation-rule-v2-followup at the last of those.'
   kind: decide
   needs: [mutation-semantics-spike]
+  status: done
+
+- id: mutation-rule-v1-build-rust
+  title: 'Mutation-as-optimization v1 (strict single-use scope-walk; refuse across `Call`
+    boundaries per the mutation-function-boundary ruling) -- Rust-source backend only
+    (src/emit_rs.rs). First of 7 one-backend-per-commit steps per mutation-which-backends-first''s
+    ruling (expanded from the 2 originally commissioned backends to all 7, matching the
+    sort_by/max_by precedent, gh:177). Mutate in place at the consuming use
+    (sort/reverse/flatten/+-concat on Vec/Str) iff the scope-walk proves no other use of that
+    name observes it afterward, per plans/mutation-semantics-spike.md''s finding -- removes the
+    double-copy Rust pays today (once via `.clone()` on every read, once again inside the
+    helper''s `.to_vec()`).'
+  kind: build
+  needs: [mutation-semantics-design]
+  status: todo
+
+- id: mutation-rule-v1-checkpoint-rust
+  title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Rust-source commit landed
+    clean before starting Lua.'
+  kind: decide
+  needs: [mutation-rule-v1-build-rust]
+  status: todo
+
+- id: mutation-rule-v1-build-lua
+  title: 'Mutation-as-optimization v1 -- emit for the Lua backend only (src/emit_lua.rs). Lua
+    pays the copy cost once (a fresh `out` table built at the mutating builtins themselves,
+    since Lua tables are already reference types) -- same copy sites as Rust per the spike''s
+    finding.'
+  kind: build
+  needs: [mutation-rule-v1-checkpoint-rust]
+  status: todo
+
+- id: mutation-rule-v1-checkpoint-lua
+  title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Lua commit landed clean before
+    starting Go.'
+  kind: decide
+  needs: [mutation-rule-v1-build-lua]
+  status: todo
+
+- id: mutation-rule-v1-build-go
+  title: 'Mutation-as-optimization v1 -- emit for the Go backend only (src/emit_go.rs).'
+  kind: build
+  needs: [mutation-rule-v1-checkpoint-lua]
+  status: todo
+
+- id: mutation-rule-v1-checkpoint-go
+  title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Go commit landed clean before
+    starting JS.'
+  kind: decide
+  needs: [mutation-rule-v1-build-go]
+  status: todo
+
+- id: mutation-rule-v1-build-js
+  title: 'Mutation-as-optimization v1 -- emit for the JS backend only (src/emit_js.rs).'
+  kind: build
+  needs: [mutation-rule-v1-checkpoint-go]
+  status: todo
+
+- id: mutation-rule-v1-checkpoint-js
+  title: 'Mutation-as-optimization v1 -- reevaluate: confirm the JS commit landed clean before
+    starting Python.'
+  kind: decide
+  needs: [mutation-rule-v1-build-js]
+  status: todo
+
+- id: mutation-rule-v1-build-python
+  title: 'Mutation-as-optimization v1 -- emit for the Python backend only (src/emit_py.rs).'
+  kind: build
+  needs: [mutation-rule-v1-checkpoint-js]
+  status: todo
+
+- id: mutation-rule-v1-checkpoint-python
+  title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Python commit landed clean
+    before starting jq.'
+  kind: decide
+  needs: [mutation-rule-v1-build-python]
+  status: todo
+
+- id: mutation-rule-v1-build-jq
+  title: 'Mutation-as-optimization v1 -- emit for the jq backend only (src/emit_jq.rs).'
+  kind: build
+  needs: [mutation-rule-v1-checkpoint-python]
+  status: todo
+
+- id: mutation-rule-v1-checkpoint-jq
+  title: 'Mutation-as-optimization v1 -- reevaluate before the native/LLVM backend: it needs
+    hand-authored C in runtime/toylang.c, the same class of file the original sort_by/max_by
+    corruption was concentrated in.'
+  kind: decide
+  needs: [mutation-rule-v1-build-jq]
+  status: todo
+
+- id: mutation-rule-v1-build-native
+  title: 'Mutation-as-optimization v1, final step -- emit for the native/LLVM backend
+    (src/emit_llvm.rs + runtime/toylang.c). Last of the 7 one-backend-per-commit steps; once
+    this lands, v1 has landed on every backend and mutation-rule-v2-followup (the order-aware
+    v2 extension) can start.'
+  kind: build
+  needs: [mutation-rule-v1-checkpoint-jq]
   status: todo
 
 - id: mutation-rule-v2-followup
@@ -644,14 +749,13 @@
     be treated as freeing v2 later. Build: extend the scope-walk pass from an occurrence count
     to an order-aware walk (observing use before consuming use is fine; after is not), per
     `docs/.grill/mutation-rule-v1-vs-v2.forest.yaml`''s norm/stats worked examples. See
-    `mutation-semantics-design` for the sibling sub-rulings this depends on.'
+    `mutation-semantics-design` for the sibling sub-rulings this depends on. `needs` now points
+    at mutation-rule-v1-build-native (2026-09-17, mutation-which-backends-first ruling): v1 must
+    land on all 7 backends, not just be ruled, before this starts.'
   kind: build
-  needs: [mutation-semantics-design]
-  blocked_by: no v1 build row exists on the board yet to point `needs` at -- one still needs
-    creating once mutation-which-backends-first also lands and mutation-semantics-design
-    closes; v1 must actually land (not just be ruled) before this starts.
+  needs: [mutation-semantics-design, mutation-rule-v1-build-native]
   prio: 5
-  status: proposed
+  status: todo
 
 - id: dispatch-no-progress-cutoff-harness-defect
   title: '12 rows sat `status: delegated` for two days showing "in progress" while nothing
