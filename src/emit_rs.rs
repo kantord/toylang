@@ -184,12 +184,32 @@ const FLATTEN_HELPER: &str = r#"fn tl_flatten<T: Clone>(vv: &[Vec<T>]) -> Vec<T>
 }
 "#;
 
+// The in-place variant of `tl_flatten`: it takes the owned `Vec<Vec<T>>` and moves each inner
+// Vec's elements out, so no `.clone()` and no fresh element copies are involved. It is only
+// emitted where the v1 rule (a single-use Vec/Str local feeding a consuming builtin) holds.
+const FLATTEN_OWNED_HELPER: &str = r#"fn tl_flatten_owned<T>(vv: Vec<Vec<T>>) -> Vec<T> {
+    let mut out = Vec::new();
+    for v in vv {
+        out.extend(v);
+    }
+    out
+}
+"#;
+
 // `Ord` is exactly the constraint the checker's own `orderable` restricts `sort`'s element
 // type to (Int, Int64, Str, Char all implement it natively), so nothing here has to name them.
 const SORT_HELPER: &str = r#"fn tl_sort<T: Clone + Ord>(v: &[T]) -> Vec<T> {
     let mut out = v.to_vec();
     out.sort();
     out
+}
+"#;
+
+// In-place `sort`: takes the owned Vec, sorts it in place, and hands it back -- no `to_vec`
+// copy. Emitted only where the v1 rule lets the local be consumed.
+const SORT_OWNED_HELPER: &str = r#"fn tl_sort_owned<T: Ord>(mut v: Vec<T>) -> Vec<T> {
+    v.sort();
+    v
 }
 "#;
 
@@ -207,6 +227,13 @@ const REVERSE_HELPER: &str = r#"fn tl_reverse<T: Clone>(v: &[T]) -> Vec<T> {
     let mut out = v.to_vec();
     out.reverse();
     out
+}
+"#;
+
+// In-place `reverse`: takes the owned Vec, reverses it in place, and hands it back.
+const REVERSE_OWNED_HELPER: &str = r#"fn tl_reverse_owned<T>(mut v: Vec<T>) -> Vec<T> {
+    v.reverse();
+    v
 }
 "#;
 
@@ -777,10 +804,11 @@ pub fn emit(program: &Program) -> String {
         collect_wire(&program.enums, ty, &mut wire);
     }
 
-    let e = Emitter {
+    let mut e = Emitter {
         records,
         enums,
         registry: &program.enums,
+        mutables: Vec::new(),
     };
 
     let mut decls = String::new();
@@ -901,9 +929,12 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_any("), ANY_HELPER),
         (uses("tl_all("), ALL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
+        (uses("tl_flatten_owned("), FLATTEN_OWNED_HELPER),
         (uses("tl_sort("), SORT_HELPER),
+        (uses("tl_sort_owned("), SORT_OWNED_HELPER),
         (uses("tl_sort_by("), SORT_BY_HELPER),
         (uses("tl_reverse("), REVERSE_HELPER),
+        (uses("tl_reverse_owned("), REVERSE_OWNED_HELPER),
         (uses("tl_sum(") || uses("tl_sum64("), SUM_HELPER),
         (uses("tl_max("), MAX_HELPER),
         (uses("tl_max_by("), MAX_BY_HELPER),
@@ -1117,6 +1148,10 @@ struct Emitter<'a> {
     /// Every enum the program declared, for `ty::variants`: what a `Type::Enum` carries is a
     /// placeholder wherever a recursive enum's payload reaches back to itself.
     registry: &'a Enums,
+    /// Vec/Str locals whose single use is a consuming builtin (the v1 mutation rule), so that
+    /// one use may consume them in place instead of copying. A stack, because qualified
+    /// bindings can nest: each scope pushes its local and pops when its body is emitted.
+    mutables: Vec<LocalId>,
 }
 
 impl Emitter<'_> {
@@ -1291,7 +1326,7 @@ impl Emitter<'_> {
     /// stdout is fully buffered rather than line-buffered whenever it is not a terminal, which is
     /// exactly the case piping into another process needs, and buffering the whole run would
     /// defeat the one thing this loop exists for.
-    fn fused_main(&self, program: &Program, fusion: &tir::Fusion) -> String {
+    fn fused_main(&mut self, program: &Program, fusion: &tir::Fusion) -> String {
         let mut out = String::new();
         out.push_str("fn main() {\n");
         // A range source reads nothing, so it does not need `BufRead`; the stdin-based sources
@@ -1416,7 +1451,85 @@ impl Emitter<'_> {
         )
     }
 
-    fn expr(&self, t: &Tir) -> String {
+    /// The v1 mutation rule: does `body` hold exactly one use of `local`, and is that one use
+    /// the argument to a consuming builtin (Sort/Reverse/Flatten, or a Vec/Str `+`-concat)?
+    ///
+    /// The walk is a plain occurrence count over the body's tree (`tir::each_node`). It works
+    /// for every binding form because each form's parameter is a fresh, unique `LocalId`: a
+    /// `Bind`'s local, a `Map`/`Select`/`OptMap`'s param, or a `Match` arm's payload are all
+    /// just a `LocalId` to count in their body. A `Call` node holds only its argument, never a
+    /// callee's body, so a use reached through a called function is simply not in this tree and
+    /// cannot qualify -- the mutation-function-boundary ruling falls out of that shape rather
+    /// than needing a separate check.
+    fn single_consuming_use(&self, body: &Tir, local: LocalId) -> bool {
+        let mut count = 0usize;
+        let mut consuming = false;
+        tir::each_node(body, &mut |node| {
+            match &node.kind {
+                Kind::Local(id) if *id == local => count += 1,
+                Kind::Builtin { which, arg } => {
+                    if matches!(which, Builtin::Sort | Builtin::Reverse | Builtin::Flatten)
+                        && matches!(&arg.kind, Kind::Local(id) if *id == local)
+                    {
+                        consuming = true;
+                    }
+                }
+                // A Vec/Str `+`-concat consumes either operand.
+                Kind::Concat(l, r) => {
+                    if matches!(node.ty, Type::Vec(_) | Type::Str)
+                        && (matches!(&l.kind, Kind::Local(id) if *id == local)
+                            || matches!(&r.kind, Kind::Local(id) if *id == local))
+                    {
+                        consuming = true;
+                    }
+                }
+                _ => {}
+            }
+        });
+        count == 1 && consuming
+    }
+
+    /// If `arg` is a mutable local (bound earlier in this scope-walk and about to be consumed),
+    /// its id -- so the consuming builtin can take it by value instead of by clone.
+    fn owned(&self, arg: &Tir) -> Option<LocalId> {
+        match &arg.kind {
+            Kind::Local(id) if self.mutables.contains(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    /// Vec/Str `+`. The existing path copies both operands into a fresh `concat`; when one
+    /// operand is a mutable local the other side is folded into it instead, so no copy of that
+    /// operand happens. The owned side is the one the scope-walk proved has no later reader.
+    fn concat_owned(&mut self, ty: &Type, l: &Tir, r: &Tir) -> String {
+        if let Some(id) = self.owned(l) {
+            let r = self.expr(r);
+            return match ty {
+                Type::Vec(_) => format!(
+                    "({{ {} .extend({r}); {} }})",
+                    self.local(id),
+                    self.local(id)
+                ),
+                _ => format!("({} + &{r})", self.local(id)),
+            };
+        }
+        if let Some(id) = self.owned(r) {
+            let l = self.expr(l);
+            return match ty {
+                Type::Vec(_) => format!(
+                    "({{ let mut t_acc = {l}; t_acc.extend({}); t_acc }})",
+                    self.local(id)
+                ),
+                _ => format!(
+                    "({{ let mut t_acc = {l}; t_acc.push_str(&{}); t_acc }})",
+                    self.local(id)
+                ),
+            };
+        }
+        concat(ty, self.expr(l), self.expr(r))
+    }
+
+    fn expr(&mut self, t: &Tir) -> String {
         match &t.kind {
             Kind::Str(s) => rs_string(s),
             Kind::Int(n) => int_lit(&t.ty, *n),
@@ -1462,7 +1575,7 @@ impl Emitter<'_> {
                 self.user(func),
                 arg.as_deref().map_or_else(String::new, |a| self.expr(a))
             ),
-            Kind::Concat(l, r) => concat(&t.ty, self.expr(l), self.expr(r)),
+            Kind::Concat(l, r) => self.concat_owned(&t.ty, l, r),
             Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, self.expr(lhs), self.expr(rhs)),
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("({}).to_string()", self.expr(arg)),
@@ -1506,13 +1619,10 @@ impl Emitter<'_> {
                         .find(|(n, _)| n == "Stdout")
                         .and_then(|(_, p)| p.as_ref())
                         .expect("the prelude's PipeLine carries a `Stdout{text: Str}` payload");
-                    let tag = |tag: &str| {
-                        format!(
-                            "|l| {}::V_{tag}({} {{ {}: l }})",
-                            self.rs_type(enum_ty),
-                            self.rs_type(text_ty),
-                            rs_field("text")
-                        )
+                    let ename = self.rs_type(enum_ty);
+                    let text_ty = self.rs_type(text_ty);
+                    let tag = move |tag: &str| {
+                        format!("|l| {ename}::V_{tag}({text_ty} {{ {}: l }})", rs_field("text"))
                     };
                     format!(
                         "tl_pipe_through({}, {}, {}, {}, {})",
@@ -1528,9 +1638,18 @@ impl Emitter<'_> {
                 Builtin::First => format!("tl_first(&{})", self.expr(arg)),
                 Builtin::Any => format!("tl_any(&{})", self.expr(arg)),
                 Builtin::All => format!("tl_all(&{})", self.expr(arg)),
-                Builtin::Flatten => format!("tl_flatten(&{})", self.expr(arg)),
-                Builtin::Sort => format!("tl_sort(&{})", self.expr(arg)),
-                Builtin::Reverse => format!("tl_reverse(&{})", self.expr(arg)),
+                Builtin::Flatten => match self.owned(arg) {
+                    Some(id) => format!("tl_flatten_owned({})", self.local(id)),
+                    None => format!("tl_flatten(&{})", self.expr(arg)),
+                },
+                Builtin::Sort => match self.owned(arg) {
+                    Some(id) => format!("tl_sort_owned({})", self.local(id)),
+                    None => format!("tl_sort(&{})", self.expr(arg)),
+                },
+                Builtin::Reverse => match self.owned(arg) {
+                    Some(id) => format!("tl_reverse_owned({})", self.local(id)),
+                    None => format!("tl_reverse(&{})", self.expr(arg)),
+                },
                 // `i32` and `i64` are distinct types in Rust, so the fold is chosen by the
                 // element width.
                 Builtin::Sum => {
@@ -1577,25 +1696,64 @@ impl Emitter<'_> {
                 local: id,
                 value,
                 body,
-            } => format!(
-                "({{ let {}: {} = {}; {} }})",
-                self.local(*id),
-                self.rs_type(&value.ty),
-                self.expr(value),
-                self.expr(body)
-            ),
+            } => {
+                // v1 mutation rule: a Vec/Str local read exactly once by a consuming builtin
+                // is mutated in place rather than copied. Qualified bindings nest, so each one
+                // pushes its local onto the `mutables` stack and pops when its body is emitted.
+                let owned = matches!(value.ty, Type::Vec(_) | Type::Str)
+                    && self.single_consuming_use(body, *id);
+                if owned {
+                    self.mutables.push(*id);
+                }
+                let rendered = format!(
+                    "({{ let {}: {} = {}; {} }})",
+                    self.local(*id),
+                    self.rs_type(&value.ty),
+                    self.expr(value),
+                    self.expr(body)
+                );
+                if owned {
+                    self.mutables.pop();
+                }
+                rendered
+            }
             Kind::Map {
                 source,
                 param,
                 body,
-            } => format!(
-                "{}.iter().map(|{}: &{}| -> {} {{ {} }}).collect::<Vec<_>>()",
-                self.expr(source),
-                self.local(*param),
-                self.rs_type(tir::runtime_elem(&source.ty).expect("map runs over a dimension")),
-                self.rs_type(&body.ty),
-                self.expr(body)
-            ),
+            } => {
+                let elem = tir::runtime_elem(&source.ty).expect("map runs over a dimension");
+                // When the element is itself a single-use Vec/Str fed to a consuming builtin,
+                // map by value (`into_iter`) so that element can be consumed in place, instead
+                // of `iter().map` over references that have to be cloned.
+                let owned = matches!(elem, Type::Vec(_) | Type::Str)
+                    && self.single_consuming_use(body, *param);
+                if owned {
+                    self.mutables.push(*param);
+                }
+                let src = self.expr(source);
+                let rendered = if owned {
+                    format!(
+                        "{src}.into_iter().map(|{}: {}| -> {} {{ {} }}).collect::<Vec<_>>()",
+                        self.local(*param),
+                        self.rs_type(elem),
+                        self.rs_type(&body.ty),
+                        self.expr(body)
+                    )
+                } else {
+                    format!(
+                        "{src}.iter().map(|{}: &{}| -> {} {{ {} }}).collect::<Vec<_>>()",
+                        self.local(*param),
+                        self.rs_type(elem),
+                        self.rs_type(&body.ty),
+                        self.expr(body)
+                    )
+                };
+                if owned {
+                    self.mutables.pop();
+                }
+                rendered
+            }
             // Opt's reorder pass (kantord/toylang#66): `Option::map` is exactly the
             // present-preserving, absent-preserving rebuild it needs, since Opt already is
             // Rust's own `Option`.
@@ -1648,13 +1806,15 @@ impl Emitter<'_> {
             ),
             Kind::Field { base, name } => {
                 let depth = tir::vec_depth(&base.ty);
-                self.distribute(&self.expr(base), &base.ty, &t.ty, depth, &|v| {
+                let base_expr = self.expr(base);
+                self.distribute(&base_expr, &base.ty, &t.ty, depth, &|v| {
                     format!("{v}.{}", rs_field(name))
                 })
             }
             Kind::Unwrap { base } => {
                 let depth = tir::vec_depth(&base.ty);
-                self.distribute(&self.expr(base), &base.ty, &t.ty, depth, &|v| {
+                let base_expr = self.expr(base);
+                self.distribute(&base_expr, &base.ty, &t.ty, depth, &|v| {
                     format!("tl_unwrap({v})")
                 })
             }
@@ -1662,7 +1822,8 @@ impl Emitter<'_> {
                 base, index, depth, ..
             } => {
                 let i = self.expr(index);
-                self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
+                let base_expr = self.expr(base);
+                self.distribute(&base_expr, &base.ty, &t.ty, *depth, &|v| {
                     format!("tl_at(&{v}, {i})")
                 })
             }
@@ -1680,7 +1841,8 @@ impl Emitter<'_> {
                     Some(e) => self.expr(e),
                     None => "i32::MAX".to_string(),
                 };
-                self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
+                let base_expr = self.expr(base);
+                self.distribute(&base_expr, &base.ty, &t.ty, *depth, &|v| {
                     format!("tl_slice(&{v}, {lo}, {hi})")
                 })
             }
@@ -1700,11 +1862,30 @@ impl Emitter<'_> {
                 let mut rendered: Vec<String> = arms
                     .iter()
                     .map(|arm| {
+                        // An arm owns its payload, so a Vec/Str payload read exactly once by a
+                        // consuming builtin can be consumed in place the same way a `Bind`'s
+                        // local can.
+                        let owned_payload = arm.payload.map_or(false, |pid| {
+                            let payload_ty = ty::variants(self.registry, &subject.ty)
+                                .iter()
+                                .find(|(n, _)| arm.variant.as_deref() == Some(n.as_str()))
+                                .and_then(|(_, p)| p.clone());
+                            payload_ty.map_or(false, |p| {
+                                matches!(p, Type::Vec(_) | Type::Str)
+                                    && self.single_consuming_use(&arm.body, pid)
+                            })
+                        });
+                        if owned_payload {
+                            self.mutables.push(arm.payload.expect("owned implies a payload"));
+                        }
                         let body = if *partial {
                             format!("Some({})", self.expr(&arm.body))
                         } else {
                             self.expr(&arm.body)
                         };
+                        if owned_payload {
+                            self.mutables.pop();
+                        }
                         match (&arm.variant, &arm.guard) {
                             (None, Some(g)) => format!("_ if {} => {body}", self.expr(g)),
                             (None, None) => format!("_ => {body}"),
