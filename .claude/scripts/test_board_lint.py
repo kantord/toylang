@@ -10,6 +10,7 @@ terminal STUCK log row each (2026-09-13), and one round file grew to seven
 escalation questions about one harness bug.
 """
 import importlib.util
+import shutil
 import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
@@ -93,28 +94,33 @@ class StaleDelegated(unittest.TestCase):
 
 
 class EscalationCap(unittest.TestCase):
-    def round_file(self, flows):
-        tmp = tempfile.NamedTemporaryFile("w", suffix=".round.yaml", delete=False)
-        self.addCleanup(Path(tmp.name).unlink)
-        tmp.write("intro: |\n  x\nquestions:\n")
+    def forest_dir(self, flows):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
         for i, flow in enumerate(flows):
-            tmp.write(f"  - id: q{i}\n    flow: {flow}\n    question: |\n      why\n")
-        tmp.close()
-        return Path(tmp.name)
+            Path(d, f"t{i}.forest.yaml").write_text(
+                f"topic: t{i}\nnodes:\n  - id: t{i}\n    parent: null\n    status: live\n"
+                f"    flow: {flow}\n    question: |\n      why\n")
+        # An answered escalation no longer asks anything and must not count.
+        Path(d, "done.forest.yaml").write_text(
+            "topic: done\nnodes:\n  - id: done\n    parent: null\n    status: answered\n"
+            "    flow: escalation\n    question: |\n      why\n"
+            "    answer:\n      content: ok\n")
+        return d
 
     def test_more_than_cap_escalations_is_an_error(self):
-        errs = board_lint.lint_round_escalations(self.round_file(["escalation"] * 7))
+        errs = board_lint.lint_forest_escalations(self.forest_dir(["escalation"] * 7))
         self.assertEqual(len(errs), 1)
-        self.assertIn("7 escalation questions in one round", errs[0])
+        self.assertIn("7 live escalation questions", errs[0])
         self.assertIn("plans/dispatch-self-healing-plan.md", errs[0])
 
     def test_exactly_cap_is_allowed(self):
-        errs = board_lint.lint_round_escalations(self.round_file(["escalation"] * 4))
+        errs = board_lint.lint_forest_escalations(self.forest_dir(["escalation"] * 4))
         self.assertEqual(errs, [])
 
     def test_other_flows_do_not_count(self):
-        errs = board_lint.lint_round_escalations(
-            self.round_file(["escalation"] * 4 + ["question"] * 5))
+        errs = board_lint.lint_forest_escalations(
+            self.forest_dir(["escalation"] * 4 + ["question"] * 5))
         self.assertEqual(errs, [])
 
 

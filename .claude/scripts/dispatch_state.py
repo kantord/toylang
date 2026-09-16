@@ -427,7 +427,7 @@ def protected_row_ids() -> set[str]:
                 protected.add(r["id"])
     except (OSError, yaml.YAMLError):
         pass
-    for rf in ROUND_DIR.glob("*.round.yaml"):
+    for rf in ROUND_DIR.glob("*.forest.yaml"):
         try:
             text = rf.read_text()
         except OSError:

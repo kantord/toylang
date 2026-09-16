@@ -73,8 +73,8 @@ def _revive_if_down(check_url: str, cmd: list[str], log_name: str) -> None:
 
 
 def revive_dev_server() -> None:
-    """The maintainer's mail UI (and, since the grill-forest split, 2026-09-11,
-    the separate tools app it moved onto) depends on these dev servers; revive
+    """The maintainer's tools app (Grill + Board + Annotations, on its own
+    port since the grill-forest split, 2026-09-11) depends on these dev servers; revive
     whichever one a reboot ate. `subprocess.Popen(..., start_new_session=True)`
     gives a genuine, independent child via a real fork+exec -- no bash
     subshell-elision to worry about (bash's `(cmd &) 9>&-` optimization can
@@ -107,22 +107,31 @@ def maintainer_input_pending() -> bool:
             continue
         if d.get("records") or d.get("composed"):
             return True
-    # Outgoing *.round.yaml files WAIT on the maintainer -- only submissions
-    # and annotation records count as input.
-    grill_dir = REPO / "docs" / ".grill"
-    if grill_dir.is_dir():
-        for f in grill_dir.iterdir():
-            if not f.name.endswith(".round.yaml"):
-                return True
+    # Outgoing docs/.grill/*.forest.yaml rounds WAIT on the maintainer -- only
+    # submissions and annotation records count as input.
     return False
+
+
+def open_forest_rounds() -> list[str]:
+    """Forest rounds (docs/.grill/*.forest.yaml, the only grilling mechanism
+    since 2026-09-16) that still have a `live` node waiting on the maintainer."""
+    out = []
+    for f in sorted((REPO / "docs" / ".grill").glob("*.forest.yaml")):
+        try:
+            d = yaml.safe_load(f.read_text())
+        except (OSError, yaml.YAMLError):
+            continue
+        nodes = d.get("nodes", []) if isinstance(d, dict) else []
+        if any(isinstance(n, dict) and n.get("status") == "live" for n in nodes):
+            out.append(f.name)
+    return out
 
 
 def round_starvation_trigger() -> str | None:
     # Keep TWO rounds buffered (maintainer flow, 2026-08-30): grilling
     # happens WHILE workers grind, so finishing one round must always
     # reveal the next, not a wait.
-    rounds = list((REPO / "docs" / ".grill").glob("*.round.yaml"))
-    if len(rounds) >= 2:
+    if len(open_forest_rounds()) >= 2:
         return None
     rows = yaml.safe_load(open(REPO / "plans" / "board.yaml"))
     live = {r["id"] for r in rows}
@@ -131,7 +140,7 @@ def round_starvation_trigger() -> str | None:
              and all(n not in live for n in r.get("needs", []))]
     if not ready:
         return None
-    return f"round buffer under-filled with {len(ready)} decide rows ready -- compose a grill round"
+    return f"round buffer under-filled with {len(ready)} decide rows ready -- compose a forest round"
 
 
 def exhaustion_trigger() -> str | None:
@@ -427,19 +436,21 @@ TICK_POLICY = (
     '~/.cache/toylang-simple-dispatch/results/, nothing else. ORDER: '
     '(1) Maintainer input first: poll docs/.annotations/inbox.json AND '
     'notes.json -- apply entries older than 5 minutes, clear at capture; '
-    'records whose page is a docs/.grill/*.round.yaml are wizard submissions: '
-    'apply IMMEDIATELY, delete the round file at capture. (2) If the trigger '
-    'names an under-filled round buffer, compose the next wizard round BEFORE '
-    'any landing (an empty maintainer inbox outranks dispatch plumbing): read '
-    'pending rounds first and never re-ask them; keep two buffered; write '
-    'docs/.grill/<topic>.round.yaml -- 3-5 ready decide rows batched by theme, '
-    'every option carrying real verified code examples (delegate heavy example '
-    'prep to a research worker) -- and ALWAYS verify the finished file both '
-    'parses (python3 yaml.safe_load) AND serves clean (curl -s '
-    'http://localhost:5173/__grill/round?topic=<topic>, expect 200) before the '
-    'tick ends -- yaml.safe_load alone missed a round with valid YAML but no '
-    '"question" string per question, which the mail UI rejected and which, '
-    'until the isolation fix (kantord/toylang#164), blanked every OTHER '
+    'records whose page is a docs/.grill/*.forest.yaml are forest-round '
+    'submissions: apply IMMEDIATELY -- write the answer INTO the node first '
+    '(status: answered + answer block), clear the inbox record second. (2) If '
+    'the trigger names an under-filled round buffer, compose the next forest '
+    'round BEFORE any landing (an empty maintainer inbox outranks dispatch '
+    'plumbing): read pending rounds first and never re-ask them; keep two '
+    'buffered; write docs/.grill/<topic>.forest.yaml -- ONE live root node per '
+    'file (the validator rejects two live roots), one ready decide row per '
+    'topic, every option carrying real verified code examples (delegate heavy '
+    'example prep to a research worker) -- and ALWAYS verify the finished file '
+    'both parses (python3 yaml.safe_load) AND serves clean (curl -s '
+    'http://localhost:5180/__grill-forest/round?topic=<topic>, expect 200) '
+    'before the tick ends -- a parseable file the validator rejects shows the '
+    'maintainer an error card instead of a question, and until the isolation '
+    'fix (kantord/toylang#164) one bad file blanked every OTHER '
     'pending round too, 2026-08-31. (3) Landing: a GREEN row in the trigger '
     'names its own verified patch path -- run uv run --project .claude/scripts '
     '.claude/scripts/land_lane.py land-patch ROW-ID PATCH-PATH DETACHED with '
@@ -704,12 +715,12 @@ def main() -> int:
                           .get("records", [])))
     except (OSError, json.JSONDecodeError):
         inbox_n = "?"
-    rounds = " ".join(sorted(p.name for p in (REPO / "docs" / ".grill").glob("*.round.yaml")))
+    rounds = " ".join(open_forest_rounds())
     core = (f"Trigger: {trigger}. Snapshot (from disk this second -- act on it, "
             f"re-verify only what you modify):{state or ' no delegated rows'} "
             f"[inbox_records={inbox_n} pending_rounds={rounds or 'none'}]. You are "
             "a ROUTER: turns are for decisions and the four scripts "
-            "(simple_dispatch.py, land_lane.py, board-archive.py, round files), "
+            "(simple_dispatch.py, land_lane.py, board-archive.py, forest files), "
             "never exploration. Nothing else dispatches build work -- "
             "sandbox_dispatch.py, dispatch-worker.sh, and opencode are retired.")
 

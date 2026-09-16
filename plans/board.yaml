@@ -166,6 +166,22 @@
   needs: [sort-by-max-by-rust-tests]
   status: todo
 
+- id: tools-app-retire-mail-tab-build
+  title: 'Maintainer ruling (2026-09-16, chat): remove the tools app''s Mail tab altogether; the Board
+    becomes its own top-level tab (`#/board`), and grilling lives ONLY in the Grill tab''s forest rounds.
+    Build: (1) delete site/dev/src/components/MailApp.tsx, GrillWizard.tsx, site/dev/src/lib/grill.ts,
+    lib/mail.ts and site/vite-plugins/grill-rounds.ts (drop it from vite.tools.config.ts) plus their tests;
+    (2) add a `board` SECTIONS entry in DevApp.tsx rendering BoardPage directly, and move plan approval
+    (PlanReader''s Approve / Needs changes, kantord/toylang#110, same inbox record) into the Board tab''s
+    PlansPanel so no approval path is lost; (3) keep the Annotations tab (AnnotateMode + notes) untouched
+    -- it is the remaining maintainer input door besides forest answers; (4) update DevApp''s WrongServerBanner/comments
+    and MessageCard/flow helpers only as far as the deletions require; `pnpm test` + `pnpm build` in site/
+    green. The coordinator side (drive skill, grill-via-annotations skill, drive_tick.py, board-lint.py,
+    dispatch_state.py) already speaks forest-only as of the same day; this row is the site half.'
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
 - id: sort-by-max-by-lua
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- emit for the Lua backend only (src/emit_lua.rs).'

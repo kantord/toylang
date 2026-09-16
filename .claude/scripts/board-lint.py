@@ -25,9 +25,11 @@ Stale delegated rows and escalation caps (2026-09-14): 12 rows sat at
 `status: delegated` for two days while nothing was running -- each one's
 last plans/dispatch-log.csv row was a terminal STUCK, and no tick reset
 them because `delegated` reads as "someone else's problem" to every reader.
-In the same stretch docs/.grill/stuck-row-triage-2.round.yaml grew to seven
-escalation questions about one harness bug, because nothing capped how many
-STUCK rows a round may ask a human to rule on one by one. Both are now
+In the same stretch one grill round grew to seven escalation questions
+about one harness bug, because nothing capped how many STUCK rows the
+pending rounds may ask a human to rule on one by one (forest rounds since
+2026-09-16: one live root per file, so the cap counts live escalation
+nodes across every docs/.grill/*.forest.yaml). Both are now
 findings here; the reasoning is in plans/dispatch-self-healing-plan.md.
 
 Exit 0 = valid. Exit 1 = findings on stderr, one per line.
@@ -186,16 +188,26 @@ def lint_stale_delegated(rows, log_path, live_ids=live_dispatch_row_ids, now=Non
     return errs
 
 
-def lint_round_escalations(path):
-    doc = yaml.safe_load(open(path))
-    questions = doc.get("questions", []) if isinstance(doc, dict) else []
-    n = sum(1 for q in questions if isinstance(q, dict) and q.get("flow") == "escalation")
-    if n <= ESCALATION_CAP:
+def lint_forest_escalations(grill_dir):
+    """Cap live `flow: escalation` nodes across every forest round in
+    `grill_dir` -- one root per file, so the cap spans files."""
+    hits = []
+    for path in sorted(Path(grill_dir).glob("*.forest.yaml")):
+        try:
+            doc = yaml.safe_load(open(path))
+        except (OSError, yaml.YAMLError):
+            continue
+        nodes = doc.get("nodes", []) if isinstance(doc, dict) else []
+        hits += [f"{path}:{n.get('id')}" for n in nodes
+                 if isinstance(n, dict) and n.get("status") == "live"
+                 and n.get("flow") == "escalation"]
+    if len(hits) <= ESCALATION_CAP:
         return []
     return [
-        f"{path}: {n} escalation questions in one round -- more than {ESCALATION_CAP} STUCK "
-        f"rows at once is a harness signal, not {ESCALATION_CAP} scope decisions; open one "
-        f"harness decide row instead (see plans/dispatch-self-healing-plan.md)"
+        f"{grill_dir}: {len(hits)} live escalation questions across the forest rounds "
+        f"({', '.join(hits)}) -- more than {ESCALATION_CAP} STUCK rows at once is a "
+        f"harness signal, not {ESCALATION_CAP} scope decisions; open one harness "
+        f"decide row instead (see plans/dispatch-self-healing-plan.md)"
     ]
 
 
@@ -256,8 +268,7 @@ def main():
     # above may not even be mappings.
     if not board_errs:
         errs += lint_stale_delegated(yaml.safe_load(open(BOARD)), DISPATCH_LOG)
-    for round_path in sorted(GRILL_DIR.glob("*.round.yaml")):
-        errs += lint_round_escalations(round_path)
+    errs += lint_forest_escalations(GRILL_DIR)
     for e in errs:
         print(e, file=sys.stderr)
     sys.exit(1 if errs else 0)

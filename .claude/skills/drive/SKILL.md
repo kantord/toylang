@@ -34,24 +34,24 @@ Every tick:
    anything remembered from earlier ticks -- the maintainer or another session may have
    acted in between. Adopt healthy lanes, intervene on dead ones (see the stall guidance
    below), land finished ones.
-2. Poll `docs/.annotations/inbox.json` AND `docs/.annotations/notes.json` (compose messages
-   and span notes), applying entries 5+ minutes quiet or marked read; wizard rounds in
-   `docs/.grill/` process immediately. An inbox record whose `page` is a
-   `docs/.grill/*.round.yaml` is a wizard SUBMISSION -- an explicit click, applied at once,
-   no quiet period (the quiet rule protects half-typed compose notes, not button presses).
-   A record whose `page` is a `docs/.grill/*.forest.yaml` (grill-via-annotations skill,
-   "Forest rounds") is the same kind of explicit-click submission -- process immediately, and
-   processing means writing the answer into the node (`status: answered`, the `answer` block)
-   FIRST, then clearing the inbox record second: the inbox isn't durable, so that order is what
-   makes a mid-tick death reprocess safely instead of losing the answer.
-   Grilling runs CONCURRENTLY with build work: keep TWO rounds buffered in `docs/.grill/`
-   whenever ready decides remain (compose the second before the first is answered, never
-   duplicating a pending round's questions), so the maintainer can answer back-to-back
-   while workers grind. A record whose `page` is a `plans/*.md` file is a
+2. Poll `docs/.annotations/inbox.json` AND `docs/.annotations/notes.json` (span notes and
+   edits from the Annotations tab), applying entries 5+ minutes quiet or marked read. A
+   record whose `page` is a `docs/.grill/*.forest.yaml` (grill-via-annotations skill,
+   "Forest rounds" -- since 2026-09-16 the ONLY grilling mechanism; wizard `.round.yaml`
+   and markdown rounds are retired with the Mail tab) is an explicit-click SUBMISSION --
+   process immediately, no quiet period (the quiet rule protects half-typed notes, not
+   button presses), and processing means writing the answer into the node
+   (`status: answered`, the `answer` block) FIRST, then clearing the inbox record second:
+   the inbox isn't durable, so that order is what makes a mid-tick death reprocess safely
+   instead of losing the answer.
+   Grilling runs CONCURRENTLY with build work: keep TWO forest rounds with a live node
+   buffered in `docs/.grill/` whenever ready decides remain (compose the second before the
+   first is answered, never duplicating a pending round's questions; one live root per
+   file), so the maintainer can answer back-to-back while workers grind. A record whose `page` is a `plans/*.md` file is a
    plan decision: an explicit click, applied at once, no quiet period ("Plan approval"
    below). Clearing at capture is RE-READ, FILTER BY ID, WRITE -- one atomic step, printing
    what is removed. Never empty an array wholesale from a stale read: the maintainer keeps
-   composing while a tick works, and a blanket `composed = []` deleted an unread 14:17 note
+   annotating while a tick works, and a blanket `composed = []` deleted an unread 14:17 note
    on 2026-08-30 with no recovery path (the endpoint keeps no log).
 3. Verify push distance before any dispatch (worktrees branch from origin).
 4. A trigger carrying `revival check: ...` names a row that's `status: proposed` (or has
@@ -132,7 +132,7 @@ provenance ("self-originated, idle board" on the row/issue):
   round question instead.
 - Problems the coordinator discovered itself (a flaky test, a doc contradiction, a cost
   anomaly in lanes.csv, a suspicious pattern in a backend) go to the maintainer's inbox:
-  a decide row plus an `escalation`-flow question in the next wizard round, with the
+  a decide row plus an `escalation`-flow forest round, with the
   evidence attached. Discovery is welcome any time; SURFACING it always beats silently
   acting on it.
 
@@ -147,7 +147,7 @@ provenance ("self-originated, idle board" on the row/issue):
    3) sorts within a category; list position is only a tiebreak. The ready set is TWO
    queues, not one (maintainer fix, 2026-08-30 -- decides were crowding builds out of a
    shared top-five, leaving lanes empty): ALL ready `decide` rows queue for the
-   maintainer's grill/mail rounds, and the top ready `build` rows fill the free lanes
+   maintainer's forest rounds, and the top ready `build` rows fill the free lanes
    up to the cap. Soft order outweighs prio by construction, but among fully unblocked
    tasks prio alone decides.
 2. **Deadlock check, before anything else.** Two shapes, both reported to the user
@@ -167,8 +167,8 @@ provenance ("self-originated, idle board" on the row/issue):
    several ready rows share a file footprint (the draft.md migration family, say),
    dispatch ONE of the family per batch and record the `soft` edges between the rest --
    parallel same-file dispatches just manufacture merge conflicts.
-   - `decide` entries in the ready set: queue for the user, batched into wizard/mail rounds
-     where they carry code; they occupy attention, not a dispatch slot.
+   - `decide` entries in the ready set: queue for the user as forest rounds (one topic per
+     row, real code in the node); they occupy attention, not a dispatch slot.
    - `build` entries: make sure a GitHub issue carries the spec (file one if the row has
      none), write a brief per the enwiro-delegate skill to `plans/simple-briefs/ROW-ID.txt`
      (this exact filename -- simple_dispatch.py requires `--brief-dir`/`<row_id>.txt`),
@@ -252,7 +252,8 @@ new check) rather than only the instance -- every audit finding so far became a 
 ## Plan approval
 
 Research and planning output lands as `plans/<name>.md` carrying YAML frontmatter, and the
-maintainer rules on it in the mail app rather than in the terminal (kantord/toylang#110):
+maintainer rules on it in the tools app's Board tab rather than in the terminal
+(kantord/toylang#110; the Mail tab that first hosted this is retired as of 2026-09-16):
 
 ```yaml
 ---
@@ -261,9 +262,8 @@ issue: gh:104           # the issue that commissioned it, when one did
 ---
 ```
 
-A `proposed` plan is an inbox item in the mail app's "Plan approvals" folder, rendered in full,
-with Approve and Needs changes under it and a notes box; the board's plans panel shows where
-every statused plan stands. The maintainer's other channel is the file itself -- a plan is a
+A `proposed` plan opens from the Board tab's plans panel, rendered in full, with Approve and
+Needs changes under it and a notes box; the same panel shows where every statused plan stands. The maintainer's other channel is the file itself -- a plan is a
 committed markdown document, so changes they want made are written straight into it, and the
 notes box carries what an edit cannot say.
 

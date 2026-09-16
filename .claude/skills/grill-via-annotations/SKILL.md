@@ -1,123 +1,54 @@
 ---
 name: grill-via-annotations
-description: Run a grilling round through the docs site's annotations mode instead of terminal dialogs - full rendered code examples, inline answers, quiet-period delivery. Use when a grilling session needs real code context (syntax decisions especially), or when the user asks to grill via the annotations page.
+description: Run a grilling round through the tools app's Grill tab (forest rounds in docs/.grill/*.forest.yaml) instead of terminal dialogs - full rendered code examples, inline answers, explicit submit. Use when a grilling session needs real code context (syntax decisions especially), or when the user asks to grill via the site.
 ---
 
-# Grilling through the annotations page
+# Grilling through the tools app
 
 **RETIRED (2026-08-29): page-anchored standing questions.** Committed `@review`/`@comment`
-HTML anchors on docs pages re-surfaced forever in the mail app as fresh-looking asks --
-settled decisions got re-asked until the maintainer was, in his words, actively angry. A
-question now lives in EXACTLY ONE place with state: a wizard/markdown round (ephemeral,
-deleted the moment its answers are captured -- deletion is part of capture, verified, not
-optional) or the decide queue on the board. Never commit a question into docs source.
+HTML anchors on docs pages re-surfaced forever as fresh-looking asks -- settled decisions got
+re-asked until the maintainer was, in his words, actively angry. Never commit a question into
+docs source.
+
+**RETIRED (2026-09-16): markdown rounds (`docs/.grill/*-round-<n>.md`) and wizard rounds
+(`docs/.grill/*.round.yaml`), together with the Mail tab that rendered them.** The maintainer
+ruled that grilling moves entirely onto the Grill tab's forest rounds; the five wizard
+questions pending that day were migrated to one forest file each. A question now lives in
+EXACTLY ONE place with state: a forest round (ephemeral, gitignored, its answer written into
+the node the moment it is captured) or the decide queue on the board. `.round.yaml` files are
+not served, not counted toward the round buffer, and not read by any tick -- do not write one.
 
 The terminal collapses pre-question prose to a summary, so questions there cannot carry real
-code. The annotations mode can: a round is a rendered markdown page, the user answers inline,
-and the inbox delivers the whole round after five quiet minutes.
+code. The Grill tab can: a node is a rendered markdown card with background, thesis, the direct
+question, and option editors; the maintainer answers inline and submits explicitly.
 
-## Writing a round
+## Writing a node
 
-Write `docs/.grill/<topic>-round-<n>.md` (gitignored, ephemeral). It renders in the site's
-annotations mode and its annotations join the sidebar; it never appears in public nav. Rules:
+Content rules, inherited from every earlier mechanism and still binding:
 
-- Coordinator messages follow the maintainer's structure: sections labeled Background /
-  Thesis / Question (only the ones needed, in that order), and the direct action or response
-  needed from the human stated in ONE bold line -- first where possible, never buried. The
-  site renders these as color-coded left-bordered sections per flow type; the authoring side
-  supplies the labels. ADHD-communication rules apply: action first, scannable, bounded.
+- Follow the maintainer's structure: `background` / `thesis` / `question` (only the ones
+  needed, in that order), and the direct action or response needed from the human stated in
+  ONE bold line -- first where possible, never buried. ADHD-communication rules apply: action
+  first, scannable, bounded.
 - AGENTS.md prose rules apply. Every code fragment is real and was run -- the fence harness
   does not check `.grill` files, so honesty is manual here.
-- Each question is one annotated span: `<!-- @fill ... -->` where an answer gets typed,
-  `<!-- @review ... -->` where a recommendation needs confirming or vetoing,
-  `<!-- @comment ... -->` for coordinator commentary that frames a question.
 - Option cards are SHORT (maintainer ruling, function-signature-matching-syntax round 4,
-  2026-09-02: round 4's option blocks ran full code probes per option and drew explicit
-  complaint -- "at least 8 times shorter"). One line of tradeoff plus a one-line verdict per
-  option; no fenced code block inside `options[].description`. Put the shared code -- the
-  baseline, the probes, the evidence that differentiates the options -- in `thesis` ONCE,
-  referenced by each option rather than repeated per option. `background`/`thesis` still
-  carry full rendered code; only `options[].description` shrank.
+  2026-09-02: option blocks that ran full code probes per option drew explicit complaint --
+  "at least 8 times shorter"). One line of tradeoff plus a one-line verdict per option; no
+  fenced code block inside `options[].content`. Put the shared code -- the baseline, the
+  probes, the evidence that differentiates the options -- in `thesis` ONCE, referenced by each
+  option rather than repeated per option. `background`/`thesis` carry the full rendered code.
 - Frame forward, not just for the immediate pick: name how each option would interact with
   known future plans/ambitions in this design area, not only whether it parses today. The
   maintainer does not want to commit early to an option that closes off a direction -- surface
   that tension in `thesis` rather than presenting a bare pick.
-- End the page with a short "what happens on submit" note so the user knows what their
-  answers trigger.
-
-## Running it
-
-1. Start the dev server if not running (`pnpm dev` in `site/`), tell the user in ONE line
-   that a round is up and where. A port that answers is NOT proof: a delegated worker's own
-   dev server answers identically and dies with its worker mid-round (it lost round 1 of the
-   auto-matchers grill at submit). The server must be one the coordinator started from the
-   MAIN checkout, as a background task it owns -- if in doubt, check the listener's cwd or
-   just start your own on a verified-free port before announcing the round.
-2. Arm a poll: a cron tick every ~10 minutes reading `docs/.annotations/inbox.json`. The
-   round is ready when the inbox's `last_edit` is at least five minutes old and covers the
-   round's page. Do not process earlier -- partial answers are not answers.
-3. On ready: read the per-block edits, map them to the questions, then clear the inbox.
-   Ambiguous answers get a follow-up round, not a guess.
-4. Capture decisions exactly as any grilling: draft.md sections, board rows, issues. A
-   decision that lives only in `.grill` does not exist -- the directory is gitignored and
-   disposable. Delete or overwrite round files freely once captured.
-
-## Wizard rounds (kantord/toylang#34)
-
-For a session with several questions that each want their own screen -- one decision, its
-full context, its options with real code previews, next/back, a summary before submit -- write
-a structured round instead of a markdown one: `docs/.grill/<topic>.round.yaml` (gitignored,
-ephemeral, same directory as the markdown rounds above but a distinct `.round.yaml` extension
-so the two never collide). YAML over JSON because the rest of the repo's structured data
-(`plans/board.yaml`, the corpus) is already YAML, and block scalars (`|`) keep multi-line
-markdown and code fences legible in the file itself.
-
-Schema:
-
-```yaml
-intro: |                    # optional, markdown, shown on a "Begin" screen before Q1
-  # Round title
-  Framing prose.
-questions:
-  - id: unique-slug          # required, unique within the round; keys the wizard's answer
-                              # state only. The inbox record's `block` is the question's
-                              # array index -- `id` never reaches the inbox.
-    title: Short label        # required, shown in the flow badge and the summary
-    flow: question             # optional: question | escalation | status (default: question)
-    background: |              # optional, markdown, full code blocks allowed
-      ...
-    thesis: |                  # optional, markdown
-      ...
-    question: |                # required, markdown -- the direct ask
-      ...
-    options:                   # optional
-      - label: Option name
-        description: One-line tradeoff.
-        preview: |              # optional, real code as it would look under this option
-          ...
-        previewLang: toylang     # optional, defaults to toylang
-    freeText: true               # optional: true, or a string used as the placeholder for the
-                                  # free-text box. The box is always shown, options or not --
-                                  # writing your own option is never gated on the round author
-                                  # having added one (kantord/toylang#52).
-```
-
-The wizard renders each question's `background`/`thesis`/`question` as its own color-coded
-left-bordered section (the design-system comment on the issue), one question per screen, with
-a progress indicator, back/next, and a summary screen listing every answer before an explicit
-Submit. A round is a type of mail (kantord/toylang#52): it arrives as an inbox item in the dev
-server's mail app and is answered right there in the reading pane (`GrillWizard.tsx`, dev-only
-and tree-shaken out of `vite build` the same way `MailApp.tsx` is), written by the coordinator,
-read and answered by the maintainer -- no terminal round-trip in between.
-
-**Delivery**: Submit posts one `/__annotations/save` record per question, `page` set to
-`docs/.grill/<topic>.round.yaml` and `block` to the question's index, `edited` a small JSON blob
-(`{"option": "...", "notes": "..."}`) rather than prose, per the issue's "shaped so the
-coordinator can map answers to questions mechanically." **A record whose `page` ends in
-`.round.yaml` is a wizard submission, not an incremental annotation edit: process it as soon as
-it shows up, ignoring the quiet-period wait below.** The wizard already withheld the whole batch
-until the maintainer pressed Submit; waiting five more minutes on top of that would be waiting
-on nothing.
+- ONE live root per file: the server rejects two `live`/`answered` nodes under the same
+  parent, and a root's parent is `null`, so a batch of separable decisions is several topic
+  files, not one file with several roots. Name the topic after the decide row it serves.
+- Delete-on-capture is gone: the answer is written INTO the node (`status: answered`), and the
+  file stays as the thread's record until the row it serves is archived. A decision that lives
+  only in `.grill` still does not exist -- capture it into draft.md sections, board rows,
+  issues, exactly as any grilling.
 
 ## Forest rounds (chain/tree, live) (kantord/toylang#grill-forest)
 
@@ -217,26 +148,17 @@ already running.
 
 ## Choosing the mechanism
 
-Four options, and the choice is easy to default away from under time pressure -- check this list
-deliberately, don't just reach for whatever was used last time:
+Two options, and the choice is easy to default away from under time pressure -- check
+deliberately:
 
-- **`AskUserQuestion`** (terminal, no code context): a single quick ratification, nothing to weigh
-  side by side, no real code needed in the ask itself.
-- **Markdown round** (`docs/.grill/<topic>-round-<n>.md`): one discursive thread carrying real
-  program listings, read start to finish.
-- **Wizard round** (`.round.yaml`): several genuinely SEPARABLE decisions, each answerable on its
-  own without needing the others' answers first -- a batch, read one screen at a time.
-- **Forest round** (`.forest.yaml`, see "Forest rounds" below):
-  the round BRANCHES on the answer, or can't be fully planned up front. **The concrete tell:
-  if the maintainer's answer to a wizard question asks for more exploration, raises a new
-  sub-question inline, or is anything other than a clean pick from the options offered, that
-  answer was asking for a forest, not another wizard round.** A real miss, 2026-09-12:
-  `fold-and-infinite-streams` went out as a wizard round; the maintainer's answer to it said,
-  in part, "i think we have to explore this a bit, how other languages do it" -- an explicit
-  request to keep going on the SAME thread, not a ratification of a bundled batch. That answer
-  should have spawned a forest node continuing the conversation, not sat as a finished wizard
-  question. Composing a follow-up as ANOTHER flat wizard round instead of a forest node is the
-  same mistake with different filenames -- it works, but it throws away the actual "why" behind
-  the follow-up (a forest node's `background` can quote exactly what prompted it; a fresh
-  wizard round starts cold) and it's the reason forest usage has stayed near zero despite being
-  built for exactly this shape of exchange.
+- **`AskUserQuestion`** (terminal, no code context): a single quick ratification, nothing to
+  weigh side by side, no real code needed in the ask itself.
+- **Forest round** (`.forest.yaml`, above): everything else. Separable decisions are separate
+  topic files; a thread that branches on the answer, or can't be fully planned up front, is one
+  topic file whose follow-ups chain as child nodes. The concrete tell that a follow-up belongs in
+  the SAME file: the maintainer's answer asks for more exploration, raises a new sub-question
+  inline, or is anything other than a clean pick from the options offered. A real miss,
+  2026-09-12: `fold-and-infinite-streams`'s answer said, in part, "i think we have to explore
+  this a bit, how other languages do it" -- an explicit request to keep going on the SAME
+  thread. Composing that follow-up as a fresh cold topic throws away the actual "why" (a child
+  node's `background` can quote exactly what prompted it).
