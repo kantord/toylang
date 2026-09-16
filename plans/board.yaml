@@ -182,6 +182,22 @@
   needs: []
   prio: 2
   status: delegated
+- id: seq-type-primitive-build
+  title: 'Maintainer ruling (forest round fold-and-infinite-streams, node seq-primitive-vs-existing-enum-machinery,
+    answered 2026-09-15T20:31:51Z, option A picked unedited; applied to the board only on 2026-09-16 --
+    the answer was written into the node but no tick ever acted on it): give `Seq` its own `TypeExpr`
+    variant, parser rule, and checker treatment, matching ADR 0008''s existing `Seq<T, Stream<T>>` / `Seq<Star<T>,
+    E>` notation (docs/adr/0008-stream-protocols-are-kleene-patterns.md:13-16) so the algebra the ADR
+    sketches becomes real code for the first time. Same class of hardcoding `TypeExpr::Stream` already
+    carries (src/ast.rs:101-104, 4 match sites; src/check/types.rs:589-604), roughly doubled for the second
+    type argument. Scope: type syntax + checker + a corpus case that a `Seq<Stream<T>, TEnd>` value must
+    be destructured with both arms handled; emission of a runtime pair is a follow-up row once the checker
+    shape is landed. Rejected: desugaring onto enum + exhaustive match (option B). This is the type-level
+    half of infinite-streams-design; the counter/takeUntil predicate half still waits on dot-rebinding-vs-lambda-design.'
+  kind: build
+  needs: []
+  prio: 2
+  status: todo
 - id: sort-by-max-by-lua
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- emit for the Lua backend only (src/emit_lua.rs).'
