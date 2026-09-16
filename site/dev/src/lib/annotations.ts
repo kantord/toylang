@@ -62,7 +62,7 @@ export function annotationsIn(raw: string): { type: AnnotationType; anchor?: str
 }
 
 /** POSTs one record through the #30 inbox door (`/__annotations/save`) -- the shared shape under
- *  a grilling round's answers (lib/grill.ts), a grill-forest answer (lib/grillForest.ts, keyed by
+ *  a grill-forest answer (lib/grillForest.ts, keyed by
  *  a node's own string id rather than a positional index), and a plan decision (lib/plans.ts).
  *  `label` names the record in the failure message, since the callers' users are looking at
  *  different things when a submit fails. */

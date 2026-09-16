@@ -7,13 +7,9 @@ import { parse } from "yaml"
 /**
  * Dev-only endpoints backing the grill-forest chain UI (kantord/toylang#grill-forest): a forest
  * is a YAML file the coordinator writes to `docs/.grill/<topic>.forest.yaml` while the dev server
- * is already running, read fresh on every request (same reasoning as grill-rounds.ts: a coordinator
- * write mid-session must be visible without a restart). `apply: "serve"` keeps this, and the
+ * is already running, read fresh on every request: a coordinator write mid-session must be
+ * visible without a restart. `apply: "serve"` keeps this, and the
  * `docs/.grill/`/`docs/.annotations/` directories it touches, out of `vite build` entirely.
- *
- * No shared helper with grill-rounds.ts: the two formats (flat wizard questions vs. a node tree)
- * may still diverge, and sharing code between two young, possibly-diverging things is the wrong
- * abstraction to build first.
  */
 
 interface RawAnswer {
@@ -53,8 +49,8 @@ const STATUSES = ["draft", "live", "answered", "superseded"] as const
 
 /** Validates the whole file (drafts included -- a broken draft is still an authoring bug worth
  *  surfacing) before any filtering happens. Returns a message naming the specific problem, or
- *  `null` when the file is servable -- mirrors grill-rounds.ts's own "reject a round missing
- *  `questions`, or a question missing `question`" discipline, extended for the extra ways a node
+ *  `null` when the file is servable -- rejects a forest missing the shapes it needs to render,
+ *  extended for the extra ways a node
  *  tree can be broken that a flat list can't. Every field the client renders unconditionally has
  *  to be checked here, not just the ones a first pass happened to think of: a field this validator
  *  misses still parses and caches cleanly, then crashes `GrillChain` at render with no server-side
@@ -163,8 +159,8 @@ function validateForest(parsed: unknown): string | null {
 /** Strips every `draft` node -- the plan-ahead surface a draft is never served, initial fetch or
  *  otherwise. Activity entries pass through unchanged; they never carry draft content themselves.
  *  Deliberately doesn't return the file's own internal `topic:` field -- the response always uses
- *  the query-derived topic instead (see the caller), same trust-the-URL convention
- *  grill-rounds.ts uses, since a renamed file's internal field could go stale. */
+ *  the query-derived topic instead (see the caller), same trust-the-URL convention, since a
+ *  renamed file's internal field could go stale. */
 function filterDrafts(parsed: RawForest): { activity: unknown; nodes: RawNode[] } {
   const nodes = (parsed.nodes as RawNode[]).filter((n) => n.status !== "draft")
   return { activity: parsed.activity ?? [], nodes }
@@ -210,7 +206,7 @@ export function grillForest(): Plugin {
         const query = new URLSearchParams((req.url ?? "").split("?")[1] ?? "")
         const topic = query.get("topic") ?? ""
         // A topic is a URL query parameter with no other access control in front of it -- resolve
-        // through path.join and check it stays under `dir`, same guard grill-rounds.ts uses.
+        // through path.join and check it stays under `dir`, same guard the annotations inbox uses.
         const file = path.join(dir, `${topic}.forest.yaml`)
         if (!topic || path.dirname(file) !== dir) {
           res.statusCode = 400
