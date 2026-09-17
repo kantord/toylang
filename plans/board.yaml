@@ -788,6 +788,31 @@
   needs: []
   status: done
 
+- id: convergence-ruling-staleness-guards
+  title: 'Self-originated from a manual investigation (2026-09-17, plans/simple-dispatch-design.md, "a
+    convergence ruling composed from a snapshot three productive runs old"): the
+    select-lazy-materialization-convergence-ruling forest round told the maintainer the model was not
+    converging while dispatch-log.csv held a 13-edit near-green js run (ec7b5d98) and a diagnosed go run
+    (ed033203), and py had already landed. Four independent gaps let the stale premise survive four
+    days; close all four. (1) board-lint: error on any todo/proposed build row whose needs include an
+    open decide row AND whose latest dispatch-log.csv row has a patch_path (edits > 0) -- a gated row
+    with an unlanded patch means the gate''s premise needs re-checking. (2) simple_dispatch.py: write a
+    dispatch-log.csv row (status RUNNING) at clone time and overwrite it at the end, so a dispatcher
+    that dies mid-run shows up as RUNNING-with-no-live-process in dispatch_state.py (--show, --status,
+    latest_row) and board-lint, instead of silently falling back to the previous run. (3) drive skill,
+    non-GREEN verbs: verb (a) redispatch-narrower and verb (b) decide-row escalation are mutually
+    exclusive for one row -- choosing (a) while a gating decide row is open must retire that row (done
+    with a note) or drop the need in the same commit. (4) drive skill + grill-via-annotations skill,
+    round composition: a round for a decide row that gates build rows must run dispatch_state.py --show
+    on every gated row and quote each latest run (run id, status, edits, ended_by) in the background;
+    if any gated row''s latest run has a patch, the composer stops and reports that instead of
+    composing. Done-gate: board-lint fails on a fixture reproducing (1); a killed dispatcher reproduces
+    (2) as RUNNING-nothing-live in --show; skill text carries (3) and (4).'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
+
 - id: select-lazy-materialization-convergence-ruling
   issue: gh:176
   title: 'Placeholder decide row gating the 7 select-lazy-materialization-build-* rows (go, js, py, lua,

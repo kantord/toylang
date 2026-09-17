@@ -2168,3 +2168,40 @@ check caught the mismatch before any commit) and left the three rows at `status:
 briefs intact for the next attempt. Per house policy this is the FATAL case, not a harness defect
 or a scope problem: the account itself needs fixing (rotate/renew the OpenRouter API key) before
 any further dispatch, build or otherwise, will do anything.
+
+## 2026-09-17: a convergence ruling composed from a snapshot three productive runs old
+
+The maintainer opened the Grill tab on `select-lazy-materialization-convergence-ruling` and asked
+what was going on. The round's background said go/js/py had each burned 60 turns with zero edits
+and that the model was not converging. `plans/dispatch-log.csv` said otherwise: that describes
+the 22:10 UTC wave on 2026-09-14 only. A second wave 40 minutes later produced py GREEN (landed
+2026-09-15, row archived), js `ec7b5d98` with 13 edits and a compiling build that failed only on
+the expected insta snapshot diffs, and go `ed033203` with 9 edits and a one-line diagnosed bug
+(`OPT_TYPE` gating, already folded into the Go brief). Applying the js patch to current main and
+running `cargo insta accept` three times gave a fully green suite (443/443), no code changes.
+
+How the stale premise survived four days, tick by tick:
+
+1. The 00:31 tick gated the whole family behind a new decide row, text copied from the first
+   wave's self-reports ("without a single edit"). The second wave was 17 minutes from finishing.
+2. The 01:19 tick saw the second wave's near-green results, narrowed both briefs to the exact
+   remaining step, and launched a batch -- but left the decide row in place, gating the very rows
+   it was dispatching, and never revised the row's now-false text. Verb (a) and verb (b) of the
+   non-GREEN policy were both live for the same rows at once.
+3. That batch died right after `running agent_loop.py` (cause not recovered; the tick ran 421s,
+   so not the 2700s timeout). `simple_dispatch.py` writes its dispatch-log row only at the end,
+   so the death left no trace: `latest_row()` kept returning the previous run, and the 09:13 tick
+   read that as "terminal RED, redispatch", reset the rows to todo, and expected the next free
+   slot to pick them up. It never could -- `dispatch_trigger()`'s `is_ready` excludes rows whose
+   needs include a todo decide row -- and nothing flags a todo build row that is both gated and
+   carrying an unlanded patch.
+4. The 20:55 tick on 2026-09-17, topping up the two-round buffer, composed the forest round
+   from the board row's title plus a fresh read of `src/emit_js.rs`. It ran `dispatch_state.py
+   --live` (empty) but never `--show` on any gated row, so the 13-edit js run and the diagnosed
+   go run were invisible to it. The round then presented four options, none of which was the
+   real state ("the runs converged; land one, redispatch the other").
+
+The repeat of the 2026-09-15 lesson above is the point: a decide row's prose is a snapshot of
+dispatch state at composition time, and every later reader (board-lint, the tick, the round
+composer) trusted the prose over `dispatch-log.csv` and the results bundles. Guards go on the
+board as `convergence-ruling-staleness-guards`.
