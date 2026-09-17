@@ -32,6 +32,13 @@ slots:
     source: .claude/scripts/land_lane.py#other_land_process_for
     written: "2026-09-15"
     confirmed: 0
+  - id: forest-answer-nesting-mismatch-2026-09-17
+    kind: footprint-conflict
+    summary: "mutation-which-backends-first.forest.yaml had status/answer/applied written at the top level of the file (sibling to `nodes`), a shape RawForest in site/vite-plugins/grill-forest.ts doesn't read at all -- the node itself still had status: live. The file served status:answered/applied correctly to drive_tick.py's own eyeball but the actual /__grill-forest/round endpoint (and drive_tick.py's open_forest_rounds()/unapplied_answers_trigger(), both of which only check node.status) kept treating it as an open live question, invisible to the 'flagged every tick' safety net since that check requires status==answered first. Checked all other *.forest.yaml files: this was a one-off, not a pattern. Fixed by moving answer/applied onto the node."
+    observation: "Found 2026-09-17 while composing a new round and cross-checking the snapshot's pending_rounds claim against disk; snapshot said this file was still pending when the maintainer had already ruled and it had been fully applied to the board days-of-clock-time-equivalent earlier in the same tick chain."
+    source: docs/.grill/mutation-which-backends-first.forest.yaml
+    written: "2026-09-17"
+    confirmed: 0
   - id: openrouter-key-fixed-2026-09-15
     kind: fact-check
     summary: "The OpenRouter API key that returned HTTP 401 'API key expired' during the 20:05-21:05 FATAL incident is live again -- a direct /api/v1/credits check returned 200 with $15.62 remaining. No further account-fix action needed; the two board.yaml status: delegated reverts (ada646c/e684a77, 51ce9d8/5a92b8d) are resolved history, not an open blocker."
