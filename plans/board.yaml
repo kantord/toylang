@@ -612,7 +612,12 @@
 
 - id: mutation-rule-v1-checkpoint-rust
   title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Rust-source commit landed
-    clean before starting Lua.'
+    clean before starting Lua. Post-land review flag (2026-09-17): the only test the build
+    added, tests/scratch_mutation.rs''s scratch_dump, has zero assertions -- it just prints
+    which lines matched a substring filter and always passes regardless of output, so the v1
+    rule (single_consuming_use / owned-helper emission in src/emit_rs.rs) currently has no
+    real automated coverage. Decide whether to require an assertion-based test before Lua
+    starts, or accept scratch_dump as scaffolding and track real coverage separately.'
   kind: decide
   needs: [mutation-rule-v1-build-rust]
   status: todo
