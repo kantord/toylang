@@ -20,6 +20,23 @@
   prio: 3
   status: proposed
 
+- id: stale-branch-cleanup-decide
+  title: 'Self-originated, idle board (2026-09-17 periodic audit): `git branch --no-merged main`
+    lists 4 branches. Two are post-landing artifacts from an already-archived row --
+    `issue-module-routing-syntax-build-parse` and `land-tmp-module-routing-syntax-build-parse`,
+    both last touched 2026-09-15 by the Land/Archive commits for `module-routing-syntax-build-parse`
+    (archived, landed on main same day). Two are `rescue/*-wip` stashes from investigations that
+    concluded weeks ago: `rescue/issue-156-wip` (2026-09-02) -- issue-156''s real work landed via
+    `variant-checker-capital-first` and `doc-migrate-capital-variants`, both marked LANDED in
+    `plans/board-archive.yaml` -- and `rescue/issue-168-offload-wip` (2026-09-01) -- issue-168''s
+    stuck-lane investigation (`stuck-issue-168-investigation`) concluded and is archived. Push
+    distance to origin/main is 0/0, so this is not in-flight work. Branch deletion is destructive
+    and outside the coordinator''s standing authorization -- surfacing for a ruling rather than
+    deleting unilaterally (drive skill: "Discovery is welcome any time; SURFACING it always beats
+    silently acting on it").'
+  kind: decide
+  status: todo
+
 - id: shell-out-stderr-relay-design
   issue: gh:158
   title: 'Q35 was RULED option A, opaque plumbing (stdout-stderr-effect-model-design, wizard submission 2026-09-07) -- a second single-instance sink alongside jsonlines, structurally unable to relay two streams (stdout and stderr) from one subprocess at once. But pipe_through''s whole point is exactly that: relay a subprocess''s stdout AND stderr in the same run. Decide how shell-out-build should actually spell this under option A before dispatching it -- e.g. two separate pipe_through-style calls each claiming one stream (never combined in one program, so a program picks stdout-relay xor stderr-relay), a merged single-stream relay that drops the distinction, or something else. Also settle the stdin/stdout splitting question flagged alongside Q35 as possibly distinct. Follow-up (wizard submission, 2026-09-07): RULED option C, merge before toylang sees them -- but the maintainer reinterpreted it away from a lossy OS-level 2>&1 merge: "it seems like all we need is a built in enum for creating combined tagged streams... so a merged stream of type A and type B is just a single stream where each item is either A or B." So pipe_through relays one Stream where each item is tagged Stdout or Stderr, not two indistinguishable byte streams. Spun off stream-merge-tagged-design to ground this against Q25''s existing Alt<A,B> sketch and produce the concrete mechanism. Stdin/stdout splitting was NOT addressed by this answer -- still open, carry it into the same follow-up.'
