@@ -1,0 +1,67 @@
+Board row `convergence-guard-running-marker`. Part 2 of a 4-part task split after
+`convergence-ruling-staleness-guards` STUCK twice at max_turns (60 turns total, 0 edits) trying to
+do all 4 parts in one dispatch; the agent's own self-report said it was still exploring at turn 30
+of 30 both attempts and that a narrower scope (one part) would succeed. This brief is ONLY part 2.
+Do not touch board-lint.py, the drive skill, or the grill-via-annotations skill -- those are
+separate rows.
+
+## Background (why this matters)
+
+`.claude/scripts/simple_dispatch.py` runs one dispatch attempt per row: `dispatch_one()` (line
+~266) acquires a per-row lock, generates a `run_id`, creates a bundle dir, calls
+`_dispatch_one_locked()` to do the actual work (clone, checkout, run the agent, extract a patch),
+and in a `finally` block appends exactly ONE row to `plans/dispatch-log.csv` via
+`append_dispatch_log()` (line ~143) once everything is done -- see the `finally:` block starting
+around line 293 for the full record shape (`run_id`, `row_id`, `model`, `status`, `cost_usd`,
+`patch_path`, `bundle_path`, `ended_by`, `edits`, `turns`, etc, all in `DISPATCH_LOG_FIELDS`
+line ~76).
+
+The gap: if the dispatcher PROCESS itself dies mid-run (killed, OOM, host crash, `msb` sandbox
+lost) before that `finally` block runs, NO row is ever written for that attempt. Nothing about the
+attempt shows up in `dispatch-log.csv` at all -- `dispatch_state.py --show ROW-ID` and `--status`
+(which both read `latest_dispatch_rows()` / the CSV, see `dispatch_state.py`) silently fall back to
+whatever the row's PREVIOUS terminal run said, hiding the fact that a run happened and died. A human
+or tick reading the state has no way to distinguish "nothing has run since the last recorded result"
+from "something ran and the process died before it could report."
+
+## Task
+
+In `simple_dispatch.py`, write a dispatch-log.csv row with `status` = `"RUNNING"` immediately after
+the clone/checkout succeeds (i.e. once `run_id` and `base_commit` are known -- look at
+`_dispatch_one_locked()` around where `clone_dir`/`base_commit` get set, roughly line 415-420), via
+`append_dispatch_log()`, filling in what's known at that point (`run_id`, `row_id`, `model`,
+`start_time`, `base_commit`, `bundle_path`) and leaving the still-unknown fields (`status` =
+`"RUNNING"`, `end_time`, `duration_s`, `cost_usd`, `ended_by`, `edits`, `turns`, `patch_path`)
+either empty or placeholder. Then, when the SAME run reaches its real terminal state in the
+existing `finally:` block (line ~293 onward) and calls `append_dispatch_log()` again with the real
+final record, that final call must OVERWRITE the RUNNING row for this exact `run_id` rather than
+appending a second row for the same run -- `append_dispatch_log()` (line ~143) currently only ever
+appends; you need it (or a sibling function) to rewrite the CSV in place when a row with a matching
+`run_id` already exists, replacing that line, same locking discipline (the existing `flock` on
+`DISPATCH_LOG_LOCK_PATH`) so a concurrent reader never sees a half-written file. Mirror
+`migrate_dispatch_log_header()` (line ~169) for the "read all rows, rewrite the whole file"
+pattern -- it already does an atomic rewrite via a `.tmp` file + `.replace()`.
+
+Then, in `.claude/scripts/dispatch_state.py`: wherever it reads the latest row per row_id (used by
+`--show`, `--status`, and by `latest_row`/whatever `board-lint.py`'s stale-delegated check
+consumes), a `RUNNING` status row must be surfaced as itself, not silently treated as "no new
+information" -- if `--show` or `--status` is invoked while the matching dispatcher process for that
+`run_id`/`row_id` is NOT actually alive (check the same way `live_dispatch_row_ids()` in
+`board-lint.py`, line ~128, determines liveness -- grep process list / lock file), report it
+distinctly, e.g. `"RUNNING-nothing-live"`, rather than reporting the stale RUNNING status as if the
+run were still healthy.
+
+## Done-gate
+
+Manually reproduce: start a dispatch (or a minimal harness that calls into
+`_dispatch_one_locked`'s clone+RUNNING-write path and then simulates a crash, e.g. by raising
+before the `finally` block's real append), kill the process (or just don't let it reach the final
+append), then run `uv run --project .claude/scripts .claude/scripts/dispatch_state.py --show
+ROW-ID` and confirm it reports the RUNNING-nothing-live shape instead of falling back to a prior
+terminal run or crashing. A unit test exercising `append_dispatch_log`'s overwrite-by-run_id
+behavior directly (write RUNNING, then write GREEN for the same run_id, assert only one row
+remains for that run_id in the CSV and its final status is GREEN) is an acceptable and preferred
+way to make this reproducible in `just check`/CI rather than only a manual kill test -- add it if
+there's an existing test file for `simple_dispatch.py`, otherwise a small standalone test script is
+fine, but do not spend time building new test infrastructure beyond what's needed to prove this one
+behavior.

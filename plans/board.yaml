@@ -788,30 +788,61 @@
   needs: []
   status: done
 
-- id: convergence-ruling-staleness-guards
-  title: 'Self-originated from a manual investigation (2026-09-17, plans/simple-dispatch-design.md, "a
-    convergence ruling composed from a snapshot three productive runs old"): the
-    select-lazy-materialization-convergence-ruling forest round told the maintainer the model was not
-    converging while dispatch-log.csv held a 13-edit near-green js run (ec7b5d98) and a diagnosed go run
-    (ed033203), and py had already landed. Four independent gaps let the stale premise survive four
-    days; close all four. (1) board-lint: error on any todo/proposed build row whose needs include an
-    open decide row AND whose latest dispatch-log.csv row has a patch_path (edits > 0) -- a gated row
-    with an unlanded patch means the gate''s premise needs re-checking. (2) simple_dispatch.py: write a
-    dispatch-log.csv row (status RUNNING) at clone time and overwrite it at the end, so a dispatcher
-    that dies mid-run shows up as RUNNING-with-no-live-process in dispatch_state.py (--show, --status,
-    latest_row) and board-lint, instead of silently falling back to the previous run. (3) drive skill,
-    non-GREEN verbs: verb (a) redispatch-narrower and verb (b) decide-row escalation are mutually
-    exclusive for one row -- choosing (a) while a gating decide row is open must retire that row (done
-    with a note) or drop the need in the same commit. (4) drive skill + grill-via-annotations skill,
-    round composition: a round for a decide row that gates build rows must run dispatch_state.py --show
-    on every gated row and quote each latest run (run id, status, edits, ended_by) in the background;
-    if any gated row''s latest run has a patch, the composer stops and reports that instead of
-    composing. Done-gate: board-lint fails on a fixture reproducing (1); a killed dispatcher reproduces
-    (2) as RUNNING-nothing-live in --show; skill text carries (3) and (4).'
+- id: convergence-guard-lint-check
+  title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
+    4-part task, self-report: narrower would succeed -- 2026-09-17). Part 1 of 4, independent of the
+    other three. board-lint.py: error on any todo/proposed build row whose needs include an open
+    decide row AND whose latest plans/dispatch-log.csv row has a patch_path (edits > 0) -- a gated
+    row with an unlanded patch means the gate''s premise needs re-checking (this is what let the
+    select-lazy-materialization-convergence-ruling round go stale: dispatch-log.csv held a 13-edit
+    near-green js run (ec7b5d98) and a diagnosed go run (ed033203) while the round told the maintainer
+    the model was not converging). Done-gate: board-lint fails on a fixture reproducing this case, and
+    a test in test_board_lint.py covers it.'
   kind: build
   needs: []
   prio: 4
   status: delegated
+
+- id: convergence-guard-running-marker
+  title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
+    4-part task, self-report: narrower would succeed -- 2026-09-17). Part 2 of 4, independent of the
+    other three. simple_dispatch.py: write a plans/dispatch-log.csv row with status RUNNING at clone
+    time and overwrite that same row at the end of the attempt, so a dispatcher process that dies
+    mid-run shows up as RUNNING-with-no-live-process in dispatch_state.py (--show, --status,
+    latest_row) and in board-lint, instead of the tooling silently falling back to the previous
+    terminal run and hiding the death. Done-gate: killing a dispatcher mid-run reproduces
+    RUNNING-nothing-live in dispatch_state.py --show.'
+  kind: build
+  needs: []
+  prio: 4
+  status: delegated
+
+- id: convergence-guard-drive-verbs
+  title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
+    4-part task, self-report: narrower would succeed -- 2026-09-17). Part 3 of 4, independent of the
+    other three. drive skill text: verb (a) redispatch-narrower and verb (b) decide-row escalation
+    are mutually exclusive for one row -- choosing (a) while a gating decide row is still open must
+    retire that row (status: done with a note) or drop the need in the same commit, so a redispatch
+    can never leave a stale open decide row gating a row that has already moved on. Done-gate: the
+    drive skill text states this rule explicitly.'
+  kind: build
+  needs: []
+  prio: 4
+  status: delegated
+
+- id: convergence-guard-round-composition
+  title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
+    4-part task, self-report: narrower would succeed -- 2026-09-17). Part 4 of 4, independent of the
+    other three. drive skill + grill-via-annotations skill text: composing a round for a decide row
+    that gates build rows must first run dispatch_state.py --show on every gated row and quote each
+    one''s latest run (run id, status, edits, ended_by) in the round''s background section; if any
+    gated row''s latest run has a patch_path (edits > 0), the composer must stop and report that
+    instead of composing the round, since a landed or near-landed patch means the premise needs
+    re-checking, not a fresh question. Done-gate: both skill texts state this rule explicitly.'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
 
 - id: select-lazy-materialization-convergence-ruling
   issue: gh:176

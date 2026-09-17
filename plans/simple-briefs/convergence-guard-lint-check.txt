@@ -1,0 +1,68 @@
+Board row `convergence-guard-lint-check`. Part 1 of a 4-part task split after
+`convergence-ruling-staleness-guards` STUCK twice at max_turns (60 turns total, 0 edits) trying to
+do all 4 parts in one dispatch; the agent's own self-report said it was still exploring at turn 30
+of 30 both attempts and that a narrower scope (one part) would succeed. This brief is ONLY part 1.
+Do not touch simple_dispatch.py, the drive skill, or the grill-via-annotations skill -- those are
+separate rows.
+
+## Background (why this matters)
+
+`.claude/scripts/board-lint.py` validates `plans/board.yaml` (and `plans/board-archive.yaml`) --
+run by every writer before committing and by `.claude/checks` at Stop. It currently checks schema
+shape (`lint`, lines ~82-126), stale `delegated` rows with no live process (`lint_stale_delegated`,
+line ~159), forest escalation caps (`lint_forest_escalations`, line ~191), and coordinator-memory
+shape (`lint_memory`, line ~214). `main()` (line ~263) wires them together -- read it to see how
+each check function's errors get collected and printed.
+
+The gap: on 2026-09-17 a decide row (`select-lazy-materialization-convergence-ruling`, a forest
+round) told the maintainer "the model is not converging" while `plans/dispatch-log.csv` already
+held a 13-edit near-green js run (run `ec7b5d98`) and a diagnosed go run (run `ed033203`) gated
+behind that same decide row -- i.e. real progress had happened but the round's premise (still
+gated, still stuck) had gone stale days before anyone re-checked it. Nothing in board-lint caught
+this shape: a build row whose `needs:` includes an open `decide` row, where that build row's own
+latest dispatch-log.csv entry shows real edits happened (a `patch_path` is set).
+
+## Task
+
+Add a new check function to `.claude/scripts/board-lint.py`, following the existing pattern of
+`lint_stale_delegated` (same file) as your template for shape: it takes `rows` (the parsed board
+list) and a way to read the dispatch log, returns a list of error strings, and is wired into
+`main()` alongside the other checks.
+
+The check: for every row in the board where `kind == "build"` and `status` in `{"todo",
+"proposed"}`, look at its `needs:` list. For each id in `needs`, find that row in the board (search
+by `id`); if that row has `kind == "decide"` and its `status` is not `"done"` (i.e. still open),
+then look up the FIRST row's (the build row's) own latest `plans/dispatch-log.csv` entry (reuse or
+mirror `latest_dispatch_rows()`, line ~144, which already computes "latest row per row_id" from the
+CSV). If that latest entry has a non-empty `patch_path` column, emit an error naming the build row,
+the open decide row it's gated behind, and the run whose patch_path is set -- something like:
+`"{build_row_id}: gated on open decide row {decide_row_id}, but its latest dispatch run
+{run_id} has a patch_path ({patch_path}) -- the gate's premise needs re-checking, not
+another round"`. Match the terse, evidence-first tone of the existing error strings in this file
+(e.g. `lint_stale_delegated`'s error text) rather than writing a long explanation.
+
+Wire the new check into `main()` next to the other `lint_*` calls, same pattern (collect its
+returned list into the same `errs`/findings collection `main()` already builds, matching how
+`lint_forest_escalations` and `lint_memory` are already wired in).
+
+## Tests
+
+Add tests to `.claude/scripts/test_board_lint.py`, following the `StaleDelegated` test class (top
+of that file) as your template: a `setUp`/`tearDown` that builds a temp dispatch-log CSV via the
+existing `log_line()` helper, then calls your new check function directly (not through `main()`
+or subprocess) with constructed board rows. Cover at minimum:
+1. A build row gated on an open decide row whose latest dispatch-log entry has a `patch_path` set
+   -- expect exactly one error, and assert the error text names both row ids.
+2. The same shape but the decide row's `status` is `"done"` -- expect no error (gate already
+   resolved, not stale).
+3. The same shape but the build row's latest dispatch-log entry has an EMPTY `patch_path` (no
+   edits happened) -- expect no error (nothing to re-check yet).
+4. A build row with no `needs:` at all, or `needs:` pointing at a `kind: build` row -- expect no
+   error (not the shape this check targets).
+
+## Done-gate
+
+`uv run --project .claude/scripts .claude/scripts/board-lint.py` still exits 0 on the real
+`plans/board.yaml` (no false positives on real data), and `uv run --project .claude/scripts
+python .claude/scripts/test_board_lint.py` passes including your new tests. Do not modify
+`plans/board.yaml` itself as part of this task -- this is a validator change only.
