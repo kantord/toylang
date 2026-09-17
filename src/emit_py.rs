@@ -501,6 +501,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+        Type::Seq(..) => unreachable!("a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),

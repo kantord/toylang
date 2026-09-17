@@ -464,6 +464,9 @@ fn print_type(t: &TypeExpr) -> String {
         }
         TypeExpr::Vec { elem, .. } => format!("Vec<{}>", print_type(elem)),
         TypeExpr::Stream { elem, .. } => format!("Stream<{}>", print_type(elem)),
+        TypeExpr::Seq { head, rest, .. } => {
+            format!("Seq<{}, {}>", print_type(head), print_type(rest))
+        }
         TypeExpr::Record { fields, .. } => {
             let fields_str = fields
                 .iter()

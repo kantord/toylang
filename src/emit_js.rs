@@ -565,6 +565,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
+        Type::Seq(..) => unreachable!("a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("JSON.stringify({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
@@ -1309,6 +1310,7 @@ fn js_op(op: BinOp) -> &'static str {
 /// what a value looks like, so the `.d.ts` cannot differ between them.
 fn ts_type(ty: &Type) -> String {
     match ty {
+        Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
         Type::Str => "string".to_string(),
         // An Int wraps to 32 bits and a Float is a double, but both are JS numbers; a Char
         // is its Unicode codepoint, another number, since `chars` produces numbers.
