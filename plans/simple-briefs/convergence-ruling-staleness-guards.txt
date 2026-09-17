@@ -1,0 +1,73 @@
+Board row `convergence-ruling-staleness-guards`. Self-originated from a manual investigation
+(2026-09-17, plans/simple-dispatch-design.md) that found the select-lazy-materialization-
+convergence-ruling forest round told the maintainer "the model is not converging" from a
+snapshot that was three productive runs stale -- dispatch-log.csv already held a 13-edit
+near-green js run (ec7b5d98) and a diagnosed go run (ed033203), and py had already landed, by
+the time the round was composed. Four independent gaps let that stale premise survive four days
+undetected. Close all four; each is a separate, mostly independent change.
+
+(1) board-lint: error on staleness. In .claude/scripts/board-lint.py, add a check: for any
+board.yaml row with kind: build and status: todo or status: proposed, if any id in its `needs`
+list is a row with kind: decide and status other than done/answered (i.e. still open), AND the
+build row's latest plans/dispatch-log.csv row (matched by row_id, most recent by timestamp) has a
+non-empty patch_path (meaning edits > 0 happened on a prior attempt), that is a lint error. The
+message should say plainly: gated row X has an unlanded patch from run Y -- the open decide row's
+premise needs re-checking before the gate can be trusted. Read plans/dispatch-log.csv's header
+(DISPATCH_LOG_PATH / CSV field list in .claude/scripts/simple_dispatch.py around line 74-80) to
+know the exact column names (row_id, patch_path, timestamp/duration_s, status, etc). Add a test
+fixture reproducing this exact shape (a build row needing an open decide row, plus a fake
+dispatch-log.csv row with a patch_path) that board-lint currently misses and must now catch. Look
+at how board-lint.py's existing checks are structured and tested (there should be a tests
+directory or inline fixture pattern -- follow whatever convention the file already uses) so this
+new check matches the file's existing style.
+
+(2) simple_dispatch.py: write-then-overwrite dispatch-log row so a killed dispatcher shows up
+correctly. Currently append_dispatch_log() (around line 143) is only called once, at the end of a
+run, after status is fully known (see the call site around line 370-386 and the status
+classification logic above it, lines ~300-337). This means a dispatcher process that dies mid-run
+(killed, OOM, box crash) leaves NO trace in dispatch-log.csv at all -- dispatch_state.py and
+board-lint fall back silently to whatever the PREVIOUS run for that row said, hiding the crash
+entirely. Fix: at clone time (as soon as the row's sandbox/workdir is set up and the row_id is
+known, before agent_loop.py starts running), write a dispatch-log.csv row with status "RUNNING"
+and the real timestamp/row_id/other known fields (leave unknown fields like duration_s/cost_usd/
+patch_path empty at this point). Then, when the run actually finishes, write the SAME logical
+row again with the real final status (GREEN/RED/STUCK/etc, this is the existing call). Two rows
+for the same attempt is fine (dispatch_state.py already dedups by finding the latest row per
+row_id via timestamp, per its own "latest_row" logic -- read dispatch_state.py's relevant
+function to confirm and match its expectations). The net effect: if the dispatcher dies before
+the final write, dispatch-log.csv shows a RUNNING row with no matching live process, which
+dispatch_state.py's --show/--status output and the new board-lint check from part (1) can both
+recognize as an anomaly instead of silently reusing stale history. Add a test that simulates a
+crash between the two writes (write only the RUNNING row, no final row) and confirms
+dispatch_state.py --show (or its underlying function) reports it as RUNNING-with-no-live-process
+rather than silently returning an older row.
+
+(3) .claude/skills/drive/SKILL.md: make redispatch-narrower and decide-row-escalation mutually
+exclusive per row. Read the skill file's existing text describing the three non-GREEN verbs
+(redispatch narrower / decide-row escalation / harness defect). Add explicit text: if a build row
+is currently gated by an open decide row in its `needs` list, and the tick's verdict for that
+build row is (a) redispatch narrower, then in the SAME commit either mark the gating decide row
+done (with a note explaining why the gate no longer blocks) or remove it from the build row's
+`needs` list -- never leave both an open gating decide row AND a fresh redispatch of the row it
+gates in place at once, since that is exactly the stale-premise shape this whole board row exists
+to prevent. Word this as a hard rule the drive tick must follow, not a suggestion.
+
+(4) .claude/skills/grill-via-annotations/SKILL.md: round composition must check for unlanded
+patches before asking a staleness-relevant question. Read the skill's existing round-composition
+instructions. Add: before composing a round for a decide row that gates one or more build rows
+(i.e. some build row's `needs` includes this decide row), the composer must run
+`uv run --project .claude/scripts .claude/scripts/dispatch_state.py --show ROW-ID` for every
+gated build row and quote each one's latest run (run id, status, edit count, ended_by) in the
+round's background text. If ANY gated row's latest run has a non-empty patch (edits > 0, i.e. it
+made real progress since the premise being asked about was last true), the composer must STOP and
+report that finding instead of composing the round -- the premise likely needs re-checking first,
+not a maintainer vote on stale information.
+
+Done-gate: `just test` (or the project's standard test/check command) green; board-lint.py's new
+test fixture (part 1) fails before the fix and passes after; a simulated killed dispatcher (part
+2) shows up as RUNNING-with-no-live-process in dispatch_state.py --show, with a test proving it;
+.claude/skills/drive/SKILL.md and .claude/skills/grill-via-annotations/SKILL.md both carry the new
+rules from parts (3) and (4) in plain text. This is a multi-part row -- if any one part turns out
+to need a design decision only the maintainer can make (e.g. ambiguity in how dispatch_state.py's
+latest-row lookup works), say so explicitly in your summary rather than guessing silently, but
+still land the other parts.

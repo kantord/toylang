@@ -811,7 +811,7 @@
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated
 
 - id: select-lazy-materialization-convergence-ruling
   issue: gh:176
