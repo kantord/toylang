@@ -123,3 +123,7 @@ note nothing points at is a note nothing will find. Frontmatter follows the OKF 
   -- Every backend writes its printers and parsers by expanding a type inline, which works until
   the type contains itself; the fix is the same in all seven, and the placeholder standing in for
   the recursion had let each of them answer wrongly rather than fail.
+- [The widths a backend cannot fake become the type's contract](the-widths-a-backend-cannot-fake-become-the-types-contract.md)
+  -- Int64 landed with three different backend stories -- native width, a second representation,
+  and an honest precision boundary -- and the boundary had to move into the documented contract
+  because no emulation trick could reassemble 64-bit wrapping from doubles.

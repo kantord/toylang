@@ -37,6 +37,28 @@
   kind: decide
   status: todo
 
+- id: stale-worktree-cleanup-decide
+  title: 'Self-originated, idle board (2026-09-17 periodic audit, second finding this tick):
+    `git worktree list` shows 42 checkouts beyond the main repo -- 24 under
+    `~/.local/share/enwiro/worktrees/pr/toylang-1234138d/*` (726M) and 18 under
+    `~/.local/share/toylang-lanes/*` (4.3G), ~5GB total. Both directories are leftovers from
+    the per-row worktree-per-lane dispatch mechanism retired by the 2026-09-11 ruling
+    ("simple_dispatch.py + agent_loop.py is the ONLY dispatch mechanism ... no opencode, no
+    lanes, no worktree-per-row"; see `dispatch-no-progress-cutoff-harness-defect` and the
+    drive policy''s own "Nothing else dispatches build work -- sandbox_dispatch.py,
+    dispatch-worker.sh, and opencode are retired"). Checked every branch each worktree points
+    at against `main`: 41 of 42 are already merged (`git merge-base --is-ancestor <branch>
+    main`); the one unmerged branch, `issue-module-routing-syntax-build-parse`, is the same
+    post-landing artifact already surfaced in `stale-branch-cleanup-decide` (archived, landed
+    on main 2026-09-15) -- not new in-flight work. Worktree removal (`git worktree remove`)
+    and branch deletion are both destructive and outside the coordinator''s standing
+    authorization -- surfacing for a ruling rather than acting unilaterally, same as
+    `stale-branch-cleanup-decide`. Decide: approve bulk cleanup of all 42 (removing the
+    worktrees and deleting their now-fully-merged branches), or hold some back for a reason
+    not visible from git alone.'
+  kind: decide
+  status: todo
+
 - id: shell-out-stderr-relay-design
   issue: gh:158
   title: 'Q35 was RULED option A, opaque plumbing (stdout-stderr-effect-model-design, wizard submission 2026-09-07) -- a second single-instance sink alongside jsonlines, structurally unable to relay two streams (stdout and stderr) from one subprocess at once. But pipe_through''s whole point is exactly that: relay a subprocess''s stdout AND stderr in the same run. Decide how shell-out-build should actually spell this under option A before dispatching it -- e.g. two separate pipe_through-style calls each claiming one stream (never combined in one program, so a program picks stdout-relay xor stderr-relay), a merged single-stream relay that drops the distinction, or something else. Also settle the stdin/stdout splitting question flagged alongside Q35 as possibly distinct. Follow-up (wizard submission, 2026-09-07): RULED option C, merge before toylang sees them -- but the maintainer reinterpreted it away from a lossy OS-level 2>&1 merge: "it seems like all we need is a built in enum for creating combined tagged streams... so a merged stream of type A and type B is just a single stream where each item is either A or B." So pipe_through relays one Stream where each item is tagged Stdout or Stderr, not two indistinguishable byte streams. Spun off stream-merge-tagged-design to ground this against Q25''s existing Alt<A,B> sketch and produce the concrete mechanism. Stdin/stdout splitting was NOT addressed by this answer -- still open, carry it into the same follow-up.'
