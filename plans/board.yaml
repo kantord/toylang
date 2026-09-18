@@ -563,13 +563,6 @@
   status: proposed
   blocked_by: 'built directly by the coordinator session of 2026-09-18 on main, not by a dispatched worker; do not dispatch, archive when its commit lands'
 
-- id: binary-op-cartesian-build
-  title: 'Q2 was ratified cartesian-by-default (binary-op-multiplicity-design, 2026-09-08) but no build row was spun off: `binary` in src/check/mod.rs still refuses every `Vec op Vec` except `+`, and plans/questions.md says so. Build cartesian `Vec op Vec` for the remaining operators on all seven backends with corpus cases, matching jq 1.8.2 output. The `=` update with `One` on its right (Q3) is not this row; `One` has no design yet. Taken by the coordinator session of 2026-09-18 (maintainer: fix everything that needs no decision), not a dispatched worker.'
-  kind: build
-  needs: []
-  status: proposed
-  blocked_by: 'built directly by the coordinator session of 2026-09-18 on main, not by a dispatched worker; do not dispatch, archive when its commit lands'
-
 - id: closures-first-class-functions-design
   title: 'Three rulings wait on first-class functions with no row to deliver them: partial application (partial-application-system-design, option C, always explicit), `.`-rebinding as sugar over a one-parameter closure (dot-rebinding-vs-lambda-design), and dsv-partials-migration''s blocked_by. Grill the concrete shape -- a function type in the type grammar, closure syntax, what a residual function value looks like and how it stays visibly distinct from an array literal -- informed by plans/closures-first-class-functions-research.md, then spin off the build rows. Mark done when ruled.'
   kind: decide
