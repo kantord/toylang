@@ -2807,3 +2807,28 @@
   needs: []
   prio: 4
   status: done
+
+- id: float-jq-nested-in-container
+  issue: gh:149
+  title: 'jq backend: a Float nested in a Vec or record bypasses the top-level relayout, so it diverges from the other six on every notation boundary, not only the non-finite values -- `[1.0e-7, 1.0e21]` prints `[1E-7,1000000000000000000000]` and `{a: 1.0 / 0.0}` prints `1.7976931348623157e+308` (found by the docs harness, 2026-09-18; the non-finite half was pinned by tests/backend_jq.rs and left open by float-build-jq because the fix means jq abandoning its value-based JSON encoder for containers holding Float). Make it agree, or record in the research log why it cannot. Taken by the coordinator session of 2026-09-18 (maintainer: fix everything that needs no decision), not a dispatched worker.'
+  kind: build
+  needs: [float-corpus-cases]
+  status: done
+
+- id: unbuilt-builtin-arms-refuse-not-panic
+  title: 'A builtin with no arm on a backend (sort_by, max_by, transpose, pipe_through today) panics inside the emitter with `unreachable!("not yet implemented for this backend")` instead of refusing. Refuse cleanly before emission with the backend named, and pin one refusal per builtin in a test, so pages like docs/reference/builtins/pipe_through.md can state the limit truthfully. Self-originated, 2026-09-18 status audit. Taken by the coordinator session of 2026-09-18 (maintainer: fix everything that needs no decision), not a dispatched worker.'
+  kind: build
+  needs: []
+  status: done
+
+- id: docs-completeness-gates
+  title: 'tests/docs.rs gates only BUILTIN_NAMES against docs/reference/builtins, which is how Float shipped on seven backends with no reference page and no corpus case. Add three gates: every name Type::from_name knows has docs/reference/types/<name>.md; every tag in src/tags.rs appears in at least one corpus case node_types line (or an allowlist naming why not); README.md toylang fences run through the docs harness. Self-originated, 2026-09-18 status audit. Taken by the coordinator session of 2026-09-18 (maintainer: fix everything that needs no decision), not a dispatched worker.'
+  kind: build
+  needs: []
+  status: done
+
+- id: board-lint-done-in-live-board
+  title: 'board-lint.py rejects a non-done row in the archive but nothing rejects `status: done` in plans/board.yaml: 24 landed rows accumulated there before the 2026-09-18 audit archived them. Add that lint, and make dispatch_state.py''s live-row rule and the drive skill prose agree on whether a done-in-board id satisfies a `needs`. Self-originated, 2026-09-18 status audit. Taken by the coordinator session of 2026-09-18 (maintainer: fix everything that needs no decision), not a dispatched worker.'
+  kind: build
+  needs: []
+  status: done
