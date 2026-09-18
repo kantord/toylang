@@ -2845,3 +2845,10 @@
   kind: build
   needs: []
   status: done
+
+- id: module-routing-semantics-build-2
+  issue: gh:167
+  title: 'module-routing-semantics-build is archived done but only the `Origin` widening landed (56f66c9; the worker ended on max_turns after the mechanical half): `Origin::Module` is never constructed, `@(path)` is still refused as "module routing not yet implemented", and no resolution or module-definition merging exists. Build the remaining scope per the four rulings recorded on the archived row. Self-originated, 2026-09-18 status audit. Taken by the coordinator session of 2026-09-18 (maintainer: fix everything that needs no decision), not a dispatched worker.'
+  kind: build
+  needs: []
+  status: done

@@ -53,7 +53,7 @@ it would delete the only copy.
 | [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | RULED option C (partial-application-system-design, 2026-09-07): array-like and struct-like partial application are one mechanism once functions are first-class, and it must always be syntactically explicit; no build row exists yet |
 | [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN for records; enums decided identity for themselves, and `type X = ...` shipped as a pure alias (docs/reference/types/alias.md), so the declaration form exists and only the identity half remains |
 | [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | RULED in three steps (2026-09-07): opaque plumbing, then a merged stream where each item is tagged by origin, spelled as the prelude enum `PipeLine`; `pipe_through` builds that on Rust. Still open: how stdin and stdout are split |
-| [Q36](#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy) | Does a real module system need imports, multiple files, and enforced privacy? | OPEN for imports and multiple files; file-scoped privacy is built (a non-`pub` definition is callable only from its own file), and the `@(path)` routing spelling parses but is refused as unimplemented |
+| [Q36](#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy) | Does a real module system need imports, multiple files, and enforced privacy? | OPEN for named imports and exports; file-scoped privacy and `@(path)` module routing are built (docs/reference/syntax/modules.md) |
 | [Q37](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model) | How do floats print, and what are NaN and Infinity in a JSON-shaped value model? | SETTLED (gh:145, built under gh:149): NaN and Infinity are values printed by name, `Float` division by zero is Infinity, and printing is ECMA-262 `Number::toString` on all seven backends; see docs/reference/types/float.md |
 | [Q38](#q38-are-composites-ordered-at-all) | Are composites ordered at all? | OPEN |
 | [Q39](#q39-is-a-timestamp-type-worth-a-third-numeric-type) | Is a timestamp type worth a third numeric type? | OPEN |
@@ -652,10 +652,14 @@ function needing an internal helper, happened: `join` and `join_lines` share the
 from its own file, enforced by origin at each call site
 ([the prelude page](../docs/reference/prelude/index.md)). The prelude now holds two
 functions, three enums, and a trait with one impl, so the "one function out of seven
-backends" framing is gone too. On syntax: `@(path)` module routing lexes and parses, and the
-checker refuses it as not yet implemented; the semantics rulings are recorded on the archived
-`module-routing-semantics-build` row, but only the `Origin` widening landed, so the build is
-still open (`module-routing-semantics-build-2`).
+backends" framing is gone too. On syntax: `@(path)` module routing is built (2026-09-19,
+`module-routing-semantics-build-2`, on the four rulings recorded on the archived
+`module-routing-semantics-build` row): a routed file is loaded relative to the file that
+names it, merged prelude-style with its own `Origin`, and its `handle` is called with `.`
+checked strictly against the declared parameter; see
+[modules](../docs/reference/syntax/modules.md). That answers "more than one file" for the
+routing shape; a named import list and a program exporting for another file are still the
+open part.
 
 ### Q37. How do floats print, and what are NaN and Infinity in a JSON-shaped value model?
 
