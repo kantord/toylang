@@ -123,3 +123,62 @@ def test_truncated_empty_reply_is_not_model_done():
     # A run that used its whole turn budget is a convergence problem, not a harness ending.
     assert "max_turns" not in dispatch_state.HARNESS_ENDINGS
     assert "dedup" not in dispatch_state.HARNESS_ENDINGS
+
+
+def test_append_dispatch_log_overwrites_running_by_run_id(tmp_path, monkeypatch):
+    # The done-gate for the RUNNING-marker work (part 2): write a RUNNING
+    # row for a run, then the real terminal row for the SAME run_id, and
+    # the final CSV must hold exactly one row for that run_id with the
+    # terminal status -- never a duplicate RUNNING row next to it.
+    csv_path = tmp_path / "dispatch-log.csv"
+    lock_path = tmp_path / "dispatch-log.lock"
+    monkeypatch.setattr(simple_dispatch, "DISPATCH_LOG_PATH", csv_path)
+    monkeypatch.setattr(simple_dispatch, "DISPATCH_LOG_LOCK_PATH", lock_path)
+
+    simple_dispatch.append_dispatch_log({
+        "run_id": "abc123", "row_id": "row-x", "model": "m",
+        "start_time": "2026-09-17T00:00:00+00:00",
+        "base_commit": "deadbeef", "bundle_path": "/b",
+        "status": "RUNNING",
+    })
+    # An unrelated older terminal row for the same row must survive.
+    simple_dispatch.append_dispatch_log({
+        "run_id": "oldrun", "row_id": "row-x", "model": "m",
+        "start_time": "2026-09-16T00:00:00+00:00",
+        "end_time": "2026-09-16T00:10:00+00:00", "duration_s": "600.0",
+        "status": "STUCK", "cost_usd": "0.01", "ended_by": "max_turns",
+        "edits": "0", "turns": "30",
+    })
+    simple_dispatch.append_dispatch_log({
+        "run_id": "abc123", "row_id": "row-x", "model": "m",
+        "start_time": "2026-09-17T00:00:00+00:00",
+        "base_commit": "deadbeef", "bundle_path": "/b",
+        "end_time": "2026-09-17T01:00:00+00:00", "duration_s": "3600.0",
+        "status": "GREEN", "cost_usd": "1.23", "patch_path": "/b/patch",
+        "ended_by": "model_done", "edits": "3", "turns": "12",
+    })
+
+    with open(csv_path, newline="") as f:
+        rows = [r for r in csv.DictReader(f) if r.get("run_id")]
+    matches = [r for r in rows if r["run_id"] == "abc123"]
+    assert len(matches) == 1, f"expected 1 row for abc123, got {len(matches)}"
+    assert matches[0]["status"] == "GREEN"
+    assert matches[0]["base_commit"] == "deadbeef"
+    assert matches[0]["ended_by"] == "model_done"
+    # The unrelated old row is untouched and the header carries base_commit.
+    assert len([r for r in rows if r["run_id"] == "oldrun"]) == 1
+    assert [r["run_id"] for r in rows] == ["oldrun", "abc123"]
+    assert list(rows[0].keys()) == simple_dispatch.DISPATCH_LOG_FIELDS
+
+
+def test_effective_status_reports_dead_running_marker(monkeypatch):
+    # A RUNNING marker whose dispatcher process is gone must surface as
+    # RUNNING-nothing-live, not as if the run were still healthy.
+    monkeypatch.setattr(dispatch_state, "live_row_ids", lambda: {"other-row"})
+    dead = {"row_id": "row-x", "status": "RUNNING"}
+    assert dispatch_state.effective_status(dead) == "RUNNING-nothing-live"
+    # A genuinely live row reads as RUNNING; terminal statuses pass through.
+    live = {"row_id": "row-x", "status": "RUNNING"}
+    monkeypatch.setattr(dispatch_state, "live_row_ids", lambda: {"row-x"})
+    assert dispatch_state.effective_status(live) == "RUNNING"
+    assert dispatch_state.effective_status({"row_id": "row-x", "status": "STUCK"}) == "STUCK"
