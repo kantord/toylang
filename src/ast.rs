@@ -245,6 +245,10 @@ pub struct EnumDecl {
     pub span: Span,
     /// Same meaning as `Def::is_pub`: whether a module exports this declaration.
     pub is_pub: bool,
+    /// Which file declared this enum, stamped the same way `Def::origin` is. What the checker
+    /// keys the variant-collision policy on (gh:167): a routed module's variants never enter the
+    /// bare `variant_owners` lookup, so they are only reachable qualified (`Msg.ping`).
+    pub origin: Origin,
 }
 
 /// One alternative of an enum. Variant names are data (they appear as JSON keys and strings),
@@ -336,6 +340,14 @@ pub struct File {
     pub impls: Vec<ImplDecl>,
     pub defs: Vec<Def>,
     pub body: Expr,
+    /// Every `@(path)` the parser read in this file, unresolved. `modules::inject` drains them,
+    /// loads each module, and fills `routes` in their place.
+    pub route_refs: Vec<RouteRef>,
+    /// What each `@(path)` resolves to once the modules are loaded: keyed by the file the route
+    /// was written in and the path as written there, valued by the internal name of that
+    /// module's `handle`. Keyed by origin because the same spelling names a different file from
+    /// a different directory, and the checker knows a call site's file but not its directory.
+    pub routes: std::collections::HashMap<(Origin, String), String>,
 }
 
 /// What a module file holds: declarations only, no trailing expression.
@@ -346,6 +358,16 @@ pub struct Module {
     pub enums: Vec<EnumDecl>,
     pub traits: Vec<TraitDecl>,
     pub impls: Vec<ImplDecl>,
+    /// Same as `File::route_refs`: a routed module may route further, relative to its own file.
+    pub route_refs: Vec<RouteRef>,
+}
+
+/// One `@(path)` as written, before resolution. The span covers the whole `@(...)`, so a module
+/// that cannot be read or has no `handle` is reported at the route that asked for it.
+#[derive(Debug, Clone)]
+pub struct RouteRef {
+    pub path: String,
+    pub span: Span,
 }
 
 #[derive(Debug)]
@@ -532,7 +554,8 @@ pub enum Expr {
         body: Box<Expr>,
         span: Span,
     },
-    // AST: new Expr variant, path stored as a raw string (no resolution yet)
+    /// `@("path")`: the `handle` function of the module at `path`, applied to `.` (gh:167).
+    /// The path stays as written; `File::routes` maps it to the loaded module's entry name.
     ModuleRoute {
         path: String,
         span: Span,

@@ -1,0 +1,5 @@
+---
+source: tests/module_routing.rs
+expression: "refusal(r#\"\"bob\" | @(\"tests/modules/greet.toy\") | exclaim(.)\"#)"
+---
+`exclaim` is not `pub`, so it can only be called from its own file (at byte 39)

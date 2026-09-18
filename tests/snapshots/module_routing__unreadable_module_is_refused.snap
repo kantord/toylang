@@ -1,0 +1,5 @@
+---
+source: tests/module_routing.rs
+expression: "refusal(r#\"1 | @(\"tests/modules/missing.toy\")\"#)"
+---
+cannot read module `tests/modules/missing.toy`: No such file or directory (os error 2) (at byte 4)

@@ -74,12 +74,17 @@ fn on_file(args: &[&str], explain: bool) -> ExitCode {
         }
     };
 
+    // A `@(path)` route in the program resolves against the program file's own directory. A
+    // bare file name has an empty parent, which joins as the working directory, as it should.
+    let dir = Path::new(path).parent().unwrap_or(Path::new("."));
+    let compile = || toylang::compile_in(&src, dir);
+
     // The offload explanation is a diagnostic: it goes to stderr, so the command's own
     // output -- the run's stdout, the emitted source -- is left untouched. A compile that
     // fails is reported by the dispatch below; nothing is printed here.
     if explain
         && matches!(cmd, "run" | "emit" | "build")
-        && let Ok(program) = toylang::compile(&src)
+        && let Ok(program) = compile()
     {
         eprint!("{}", toylang::offload::explain(&program));
     }
@@ -92,8 +97,8 @@ fn on_file(args: &[&str], explain: bool) -> ExitCode {
         }
     };
     let result = match cmd {
-        "run" => run(&src, backend.unwrap_or_else(|| default_backend(cmd))),
-        "emit" => match toylang::compile(&src) {
+        "run" => run(&src, dir, backend.unwrap_or_else(|| default_backend(cmd))),
+        "emit" => match compile() {
             Err(e) => Err(e.into()),
             Ok(p) => backend
                 .unwrap_or_else(|| default_backend(cmd))
@@ -124,13 +129,15 @@ fn on_file(args: &[&str], explain: bool) -> ExitCode {
 /// writes the emitted source plus its sibling `.d.ts` instead of linking, which is what makes a
 /// JS-target compile produce the declaration file the task's sibling pair names.
 fn build(src: &str, path: &str, backend: Backend) -> Result<String> {
-    let stem = std::path::Path::new(path)
+    let path = Path::new(path);
+    let stem = path
         .file_stem()
         .context("the source file has no name")?
         .to_owned();
+    let dir = path.parent().unwrap_or(Path::new("."));
     match backend {
         Backend::Js => {
-            let program = toylang::compile(src)?;
+            let program = toylang::compile_in(src, dir)?;
             let mut js = PathBuf::from(&stem);
             let mut dts = PathBuf::from(&stem);
             js.set_extension("js");
@@ -146,7 +153,7 @@ fn build(src: &str, path: &str, backend: Backend) -> Result<String> {
         }
         Backend::Native => {
             let out = PathBuf::from(&stem);
-            toylang::link(&toylang::compile(src)?, &out)?;
+            toylang::link(&toylang::compile_in(src, dir)?, &out)?;
             Ok(format!("{}\n", out.display()))
         }
         // The bench harness writes the interpreted backends' files itself;the CLI's `build`
@@ -159,21 +166,21 @@ fn build(src: &str, path: &str, backend: Backend) -> Result<String> {
 
 /// stdin is only read when the program says it reads input, so a program that does not is not
 /// left waiting on a terminal.
-fn run(src: &str, backend: Backend) -> Result<String> {
+fn run(src: &str, dir: &Path, backend: Backend) -> Result<String> {
     // A program reading `lines` also takes the live branch: it needs the real stdin left alone,
     // not drained into a Rust String, so each backend can read it incrementally for itself.
     // `inputs` used to always need the same up-front read `input` does, since every backend
     // materialized it into a Vec before the program body ran; a backend whose generated code now
     // reads `inputs` for itself one record at a time (`streams_inputs`) gets the same live
     // treatment `lines` always had, and everything else still needs the whole thing in hand
-    // before `run_on` can validate it.
-    let program = toylang::compile(src)?;
+    // before `run_program` can validate it.
+    let program = toylang::compile_in(src, dir)?;
     let needs_upfront_read =
         program.input.is_some() || (program.inputs.is_some() && !toylang::streams_inputs(&program));
     if !needs_upfront_read {
-        return toylang::run_on(src, None, backend);
+        return toylang::run_program(&program, None, backend);
     }
     let mut stdin = String::new();
     std::io::stdin().read_to_string(&mut stdin)?;
-    toylang::run_on(src, Some(&stdin), backend)
+    toylang::run_program(&program, Some(&stdin), backend)
 }

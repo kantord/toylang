@@ -14,6 +14,7 @@ pub mod error;
 pub mod float;
 pub mod fmt_tree;
 pub mod input;
+pub mod modules;
 pub mod offload;
 pub mod parse;
 pub mod prelude;
@@ -90,8 +91,19 @@ impl Backend {
     }
 }
 
+/// Compiles a program given as text, with any `@(path)` it routes to resolved against the
+/// current directory: text has no file to be relative to, and the working directory is what the
+/// corpus and docs harnesses run from. A program read from a file goes through `compile_in`
+/// with that file's directory instead.
 pub fn compile(src: &str) -> Result<Program, Error> {
+    compile_in(src, std::path::Path::new("."))
+}
+
+/// Compiles `src` as if it were a file in `dir`: every `@(path)` in it resolves relative to
+/// `dir`, and a routed module's own routes resolve relative to that module's file in turn.
+pub fn compile_in(src: &str, dir: &std::path::Path) -> Result<Program, Error> {
     let mut file = parse::parse(src)?;
+    modules::inject(&mut file, dir)?;
     prelude::inject(&mut file);
     check::check(file)
 }
@@ -131,23 +143,28 @@ pub fn streams_inputs(program: &tir::Program) -> bool {
 /// is fine for every program whose result has statically known length, and is exactly the case
 /// `Feed::Live` exists for on the ones that no longer do.
 pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String> {
-    let program = compile(src)?;
+    run_program(&compile(src)?, stdin, backend)
+}
+
+/// `run_on` for an already-compiled program. Split out so the command line can compile once,
+/// with the program file's directory for its routes (`compile_in`), and run that, rather than
+/// recompiling from text with the directory lost.
+pub fn run_program(program: &Program, stdin: Option<&str>, backend: Backend) -> Result<String> {
     // The emitters below are called directly rather than through `Backend::emit`, so the
     // same refusal has to stand here or `toylang run` would still reach a missing arm.
-    backend_support::refuse_unbuilt(backend, &program).map_err(anyhow::Error::msg)?;
-
+    backend_support::refuse_unbuilt(backend, program).map_err(anyhow::Error::msg)?;
     // `stdin.is_none()` is the same convention `uses_lines` already uses below: nothing was
     // supplied, which only happens on the real command line, never from a test fixture. Only
     // then is there real live stdin worth handing straight to a subprocess backend rather than
     // something already sitting in memory to validate up front.
-    let live_inputs = stdin.is_none() && streams_inputs(&program);
+    let live_inputs = stdin.is_none() && streams_inputs(program);
     // Lua is the one backend with no subprocess of its own: `run_lua` itself decides how
     // `inputs` reaches the running chunk, by injecting either a pre-populated global or a
     // per-call function, and the emitted source commits to one of those two shapes purely from
     // `tir::fusion`, independent of whether a fixture or the real command line supplied the
     // bytes. So unlike `live_inputs` above, this also has to hold for a fixture-fed test, or
     // the host would inject the global while the fused source calls the function.
-    let lua_fused = matches!(backend, Backend::Lua) && streams_inputs(&program);
+    let lua_fused = matches!(backend, Backend::Lua) && streams_inputs(program);
 
     // The input is checked against the declared type once, here, rather than by each backend.
     // What a backend receives has already been parsed, so no backend re-decides what is valid.
@@ -214,7 +231,7 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
             None => Feed::Live,
         }
     } else if live_inputs {
-        live_inputs_feed(&program, backend)
+        live_inputs_feed(program, backend)
     } else if lua_fused {
         Feed::Text(stdin.map(str::to_string).unwrap_or_default())
     } else if let Some(values) = &inputs_values {
@@ -231,7 +248,7 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
 
     match backend {
         Backend::Lua => run_lua(
-            &emit_lua::emit(&program),
+            &emit_lua::emit(program),
             &program.enums,
             value.as_ref(),
             inputs_values.as_ref(),
@@ -241,12 +258,12 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
         Backend::Js => {
             let cfg = config::Config::load().map_err(anyhow::Error::msg)?;
             run_node(
-                &emit_js::emit_with(&program, cfg.target, &cfg.web).map_err(anyhow::Error::msg)?,
+                &emit_js::emit_with(program, cfg.target, &cfg.web).map_err(anyhow::Error::msg)?,
                 &feed,
             )
         }
         Backend::Jq => run_jq(
-            &emit_jq::emit(&program).map_err(anyhow::Error::msg)?,
+            &emit_jq::emit(program).map_err(anyhow::Error::msg)?,
             JqInvocation {
                 has_value: value.is_some(),
                 // A Str prints raw, and so does anything with a Float inside: its emitter
@@ -260,18 +277,18 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
             },
             &feed,
         ),
-        Backend::Go => run_go(&emit_go::emit(&program), &feed),
-        Backend::Py => run_py(&emit_py::emit(&program), &feed),
+        Backend::Go => run_go(&emit_go::emit(program), &feed),
+        Backend::Py => run_py(&emit_py::emit(program), &feed),
         Backend::Native => {
             let dir = tempfile::tempdir()?;
             let exe = dir.path().join("program");
-            link(&program, &exe)?;
+            link(program, &exe)?;
             run_binary(&exe, &feed)
         }
         Backend::Rust => {
             let dir = tempfile::tempdir()?;
             let exe = dir.path().join("program");
-            link_rust(&emit_rs::emit(&program), &exe)?;
+            link_rust(&emit_rs::emit(program), &exe)?;
             run_binary(&exe, &feed)
         }
     }
