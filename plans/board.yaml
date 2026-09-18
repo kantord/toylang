@@ -594,3 +594,21 @@
   kind: build
   needs: []
   status: todo
+
+- id: bool-literal-decide
+  title: 'There is no Bool literal: `true` is "not defined" (verified 2026-09-19), so a program that needs a Bool writes `1 == 1`, and the second benchmark wave carried its transpose flag as an Int. Decide the spelling (`true`/`false` as keywords is the obvious reading, but they are language surface) and whether they are reserved names. Found by benchmark-second-wave; mark done when ruled.'
+  kind: decide
+  needs: []
+  status: todo
+
+- id: float-sqrt-and-int-to-float-decide
+  title: 'The second benchmark wave (n-body, spectral-norm, mandelbrot) had to hand-write a Newton square root in toylang and carry parallel Int and Float loop counters, because there is no `sqrt` and no `Int -> Float` bridge (`i64` is the only numeric conversion). Decide which Float builtins the language admits first (sqrt at least; the parallel basis ruling on Q23 is the frame) and the spelling of the Int-to-Float conversion. plans/benchmark-plan.md records the workarounds. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: todo
+
+- id: fmt-preserve-interior-comments
+  title: '`toylang fmt` keeps only a leading comment banner (src/emit_toylang.rs module doc says so) and silently drops every comment between or inside declarations; benchmark-second-wave had to move all explanation into each program''s header to survive `fmt --write`. Preserve comments that sit on their own line between declarations, at least, with a test that a commented multi-function program formats to itself. Found by benchmark-second-wave.'
+  kind: build
+  needs: []
+  status: todo
