@@ -1,62 +1,43 @@
 Board row `convergence-guard-drive-verbs`. Part 3 of a 4-part task split after
 `convergence-ruling-staleness-guards` STUCK twice at max_turns (60 turns total, 0 edits) trying to
 do all 4 parts in one dispatch; the agent's own self-report said it was still exploring at turn 30
-of 30 both attempts and that a narrower scope (one part) would succeed. This brief is ONLY part 3:
-a documentation/skill-text change, not a code change. Do not touch board-lint.py,
-simple_dispatch.py, or the grill-via-annotations skill -- those are separate rows.
-
-## File to edit
-
-`.claude/skills/drive/SKILL.md`. The relevant passage is in step 3 of "Every tick" (around line
-196-205), which currently reads (paraphrased): a non-GREEN dispatch outcome gets one of THREE
-verbs: (a) a narrower redispatch per the agent's own suggestion; (b) a decide-row escalation if the
-report says this is a scope problem; (c) HARNESS DEFECT when `ended_by` is a harness ending with
-zero edits. Read that whole paragraph in context before editing (it also covers verb (c) and the
-escalation cap) so your addition fits the existing voice and doesn't duplicate what's already
-there.
+of 30 both attempts and that a narrower scope (one part) would succeed. This brief is ONLY part 3.
+Do not touch simple_dispatch.py, board-lint.py, or the round-composition text in the drive skill or
+grill-via-annotations skill -- those are separate rows (parts 1, 2, and 4).
 
 ## Background (why this matters)
 
-The gap this closes: on 2026-09-17 a decide row
-(`select-lazy-materialization-convergence-ruling`) gated several build rows, and a forest round
-told the maintainer "the model is not converging" — but by then two of the gated build rows had
-already had real progress (a 13-edit near-green run and a diagnosed run) from a PRIOR tick that
-chose verb (a) (narrower redispatch) on one of the gated rows without touching the decide row that
-was still gating it. The decide row and reality drifted apart: the decide row said "still stuck,
-please rule," while the board's actual dispatch history said "actually making progress." Verb (a)
-and verb (b) look independent per-row, but they interact through the SAME decide row when a build
-row is gated on one: choosing (a) for a row that's currently gated by an open decide row leaves
-that decide row's question stale the moment the redispatch produces a different outcome than what
-the round described.
+The `drive` skill (`.claude/skills/drive/SKILL.md`) describes, in its dispatch section (step 3 of
+"The loop"), the three verbs a tick uses on a non-GREEN dispatch outcome: (a) a narrower redispatch
+per the agent's own suggestion, (b) a decide-row escalation when the report says this is a scope
+problem, (c) a HARNESS DEFECT escalation. Verbs (a) and (b) are mutually exclusive for a single row:
+choosing (a) -- redispatching narrower -- only makes sense once any decide row that was gating the
+original row's scope has actually been resolved one way or another. Today the skill text does not
+say what to do with that gating decide row when a tick picks verb (a) instead of leaving it open.
+
+The failure mode this guards against: a tick redispatches a row narrower (verb a), the row lands,
+but a decide row that was created to gate the ORIGINAL (wider) scope is left sitting open in
+`plans/board.yaml`/a forest round with `needs` pointing at a row that has already moved on. The
+decide row becomes a stale question nobody will ever act on, or -- worse -- silently keeps gating
+something it no longer describes.
 
 ## Task
 
-Add a short, explicit rule to this passage (near where verbs (a)/(b)/(c) are described, not in a
-separate new section) stating: verb (a) (narrower redispatch) and verb (b) (decide-row escalation)
-are mutually exclusive FOR THE SAME ROW when that row is gated by an open decide row. Concretely: if
-a tick chooses to redispatch a row narrower (verb a) while that row's `needs:` still includes an
-open (not-`done`) decide row that a forest round already asked about, the tick must, in the SAME
-commit as writing the new brief / flipping the row to `delegated`, either (i) retire the gating
-decide row (`status: done`, with a short note on the row explaining why the redispatch resolved the
-question the round was asking), or (ii) remove that decide row's id from the redispatched build
-row's `needs:` list, if the decide row's question turns out to not actually apply to this narrower
-attempt. The point: a redispatch must never leave a gating decide row open and unchanged when the
-tick's own action (choosing to redispatch rather than escalate) already implicitly answered or
-mooted the question that decide row was asking. Cross-reference (by name, in prose, not a code
-link) `convergence-guard-lint-check` (a sibling board row, part 1 of this same split) as the
-mechanical backstop for this rule: it should be redundant with the disciplined behavior this
-paragraph describes, not the ONLY thing enforcing it.
+Edit `.claude/skills/drive/SKILL.md`, in the dispatch section where the three verbs (a)/(b)/(c) are
+described (step 3 of "The loop" -- search for "narrower redispatch" / "decide-row escalation"), to
+state this rule explicitly, matching the surrounding prose style (terse, imperative,
+evidence-first). Extend the existing verb (a) description in place; do not add a new heading or
+section:
 
-Keep the addition tight -- 4 to 8 sentences, matching the terse, evidence-dense prose style already
-used throughout this skill file (see how nearby paragraphs cite specific incidents and dates rather
-than writing abstract policy). Do not restructure the existing three-verb list or renumber
-anything; insert your addition as 1-2 sentences appended to the existing verb (a)/(b) description
-plus, if needed, one short standalone sentence right after.
+Choosing verb (a) -- a narrower redispatch -- while a decide row is still open and was created to
+gate that same row's scope must, in the SAME commit as the redispatch, either:
+- retire the gating decide row (`status: done`, with a note explaining the redispatch made it moot), or
+- drop the `needs`/gating edge between the decide row and the row being redispatched,
+
+so that a redispatch can never leave a stale open decide row gating a row that has already moved on
+to a narrower scope under its own steam.
 
 ## Done-gate
 
-The skill file states this rule explicitly and unambiguously enough that a future tick reading it
-would know exactly what to do in the scenario above. This is a text-only change: run `just check`
-if it exists and touches nothing you changed, but the actual verification here is that the added
-text is clear, correctly placed, and doesn't contradict or duplicate the existing three-verb
-paragraph. Do not modify `plans/board.yaml` as part of this task.
+`.claude/skills/drive/SKILL.md` states this rule explicitly in the verb (a) description. This is a
+documentation-only change -- no code, no board.yaml edits, no new forest files.
