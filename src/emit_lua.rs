@@ -536,8 +536,11 @@ pub fn emit(program: &Program) -> String {
     // `quote` and `join` do: a Float anywhere in what `show` walks needs it present. A stream
     // never reaches the printer directly, so its element is not a case here the way a jsonlines
     // callback's is on the backends that scan emitted text -- a Float inside `inputs` is reached
-    // through `fused_main`'s `current_ty`, which is `program.body.ty`'s element by then.
-    let show_float = structured && ty::contains_float(enums, &program.body.ty);
+    // through `fused_main`'s `current_ty`, which is `program.body.ty`'s element by then. A
+    // `jsonlines` program's body type is Sink, which says nothing about what its callback
+    // prints, so the helper rides along with `tl_jsonlines` the way `quote` and `join` do.
+    let show_float =
+        (structured && ty::contains_float(enums, &program.body.ty)) || used.jsonlines;
     for (on, text) in [
         (used.select, SELECT_HELPER),
         (used.field, FIELD_HELPER),
@@ -680,7 +683,9 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
-        Type::Seq(..) => unreachable!("a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"),
+        Type::Seq(..) => unreachable!(
+            "a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"
+        ),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),

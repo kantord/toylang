@@ -13,7 +13,6 @@ mod support;
 /// Tags with no corpus case yet, each with the board row that will add one. An entry here
 /// is a debt, not an exemption: it comes out when the row lands.
 const UNCOVERED: &[(&str, &str)] = &[
-    ("float", "float-corpus-cases"),
     (
         "sort-by",
         "sort-by-max-by-jq, the last of the per-backend rows",

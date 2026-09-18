@@ -1,0 +1,41 @@
+# CLBG mandelbrot: plot the Mandelbrot set on an N x N grid over the complex plane from
+# -1.5-1i to 0.5+1i, marking a point as inside when 50 iterations of z = z^2 + c never take
+# |z| past 2. CLBG writes the bits as a packed binary PBM (P4); this program writes the same
+# bits as the plain-text PBM (P1), one `1` or `0` per pixel, since a `Str` is the only byte
+# stream the language emits. The image is the same; the file is eight times larger.
+#
+# The pixel coordinate is a Float formula over the pixel index, and the language converts no
+# Int to a Float, so the row and column loops carry the index twice, an Int for the count and
+# a Float for the formula, both advanced by one per pixel. The grid size itself is needed as
+# a Float once, for the scale, and `to_float` counts up to it by repeated addition, which is
+# exact for any Int and costs one recursion per unit.
+#
+# Derived: Computer Language Benchmarks Game mandelbrot task, BSD-3-Clause,
+# https://benchmarksgame-team.pages.debian.net/benchmarksgame/ -- reimplemented from the
+# task's plain description (the iteration, the escape radius, the iteration limit, and the
+# plane it covers), not copied from any reference source.
+fn to_float(n: Int) -> Float = n | . == 0 -> 0.0 or 1.0 + to_float(. - 1)
+
+fn pixel({cr, ci, zr, zi, k}: {cr: Float, ci: Float, zr: Float, zi: Float, k: Int}) -> Str =
+    k
+        | . == 0 -> "1" or
+              zr * zr + zi * zi > 4.0 -> "0" or
+              pixel({cr: cr, ci: ci, zr: zr * zr - zi * zi + cr, zi: 2.0 * zr * zi + ci, k: . - 1})
+
+fn row({n, size, x, fx, ci, line}: {n: Int, size: Float, x: Int, fx: Float, ci: Float, line: Str}) -> Str =
+    n
+        | x == n -> line or
+              row({n: n, size: size, x: x + 1, fx: fx + 1.0, ci: ci, line: line + pixel({cr: 2.0 * fx / size - 1.5, ci: ci, zr: 0.0, zi: 0.0, k: 50})})
+
+fn rows({n, size, y, fy, lines}: {n: Int, size: Float, y: Int, fy: Float, lines: Vec<Str>}) -> Vec<Str> =
+    n
+        | y == n -> lines or
+              rows({n: n, size: size, y: y + 1, fy: fy + 1.0, lines: lines + [row({n: n, size: size, x: 0, fx: 0.0, ci: 2.0 * fy / size - 1.0, line: ""})]})
+
+fn plot(n: Int) -> Str =
+    join_lines(
+        ["P1", str(n) + " " + str(n)] +
+            rows({n: n, size: to_float(n), y: 0, fy: 0.0, lines: []})
+    )
+
+plot(parse(stdin))

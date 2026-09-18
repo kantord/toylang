@@ -1,0 +1,14 @@
+# A `jsonlines` over a Vec<Float> prints each entry the way a top-level Float prints. The Lua
+# backend used to lose the Float printer here: it includes `tl_show_float` by walking the
+# program's result type, and a sink's type is Sink, so a Float reached only through the
+# jsonlines callback called a helper that was never emitted.
+program: |
+  jsonlines([1.5, 0.1 + 0.2, 100.0, -0.25])
+
+output: |
+  1.5
+  0.30000000000000004
+  100
+  -0.25
+
+node_types: [arith.add, builtin.jsonlines, float, vec-literal]

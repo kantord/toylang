@@ -1,0 +1,64 @@
+# The core of the CLBG mandelbrot task (kantord/toylang benchmark suite): an N x N plot of
+# the Mandelbrot set over -1.5-1i to 0.5+1i, a point counting as inside when 50 iterations of
+# z = z^2 + c never take |z| past 2, written as a plain-text PBM (P1) since the language emits
+# no binary. The pixel coordinate is a Float formula over the pixel index, and the language
+# converts no Int to a Float, so each loop carries its index twice and the grid size is
+# counted up to once by repeated addition. This is the correctness fixture for
+# benches/programs/mandelbrot.toy at an N small enough to run fast on every backend; the
+# benchmark input under benches/inputs/ uses a larger N for real timing.
+#
+# Derived: Computer Language Benchmarks Game mandelbrot task, BSD-3-Clause,
+# https://benchmarksgame-team.pages.debian.net/benchmarksgame/ -- reimplemented from the
+# task's plain description (the iteration, the escape radius, the iteration limit, and the
+# plane it covers), not copied from any reference source.
+program: |
+  fn to_float(n: Int) -> Float = n | . == 0 -> 0.0 or 1.0 + to_float(. - 1)
+
+  fn pixel({cr, ci, zr, zi, k}: {cr: Float, ci: Float, zr: Float, zi: Float, k: Int}) -> Str =
+      k
+          | . == 0 -> "1" or
+                zr * zr + zi * zi > 4.0 -> "0" or
+                pixel({cr: cr, ci: ci, zr: zr * zr - zi * zi + cr, zi: 2.0 * zr * zi + ci, k: . - 1})
+
+  fn row({n, size, x, fx, ci, line}: {n: Int, size: Float, x: Int, fx: Float, ci: Float, line: Str}) -> Str =
+      n
+          | x == n -> line or
+                row({n: n, size: size, x: x + 1, fx: fx + 1.0, ci: ci, line: line + pixel({cr: 2.0 * fx / size - 1.5, ci: ci, zr: 0.0, zi: 0.0, k: 50})})
+
+  fn rows({n, size, y, fy, lines}: {n: Int, size: Float, y: Int, fy: Float, lines: Vec<Str>}) -> Vec<Str> =
+      n
+          | y == n -> lines or
+                rows({n: n, size: size, y: y + 1, fy: fy + 1.0, lines: lines + [row({n: n, size: size, x: 0, fx: 0.0, ci: 2.0 * fy / size - 1.0, line: ""})]})
+
+  fn plot(n: Int) -> Str =
+      join_lines(
+          ["P1", str(n) + " " + str(n)] +
+              rows({n: n, size: to_float(n), y: 0, fy: 0.0, lines: []})
+      )
+
+  plot(parse(stdin))
+
+input: |
+  16
+
+output: |
+  P1
+  16 16
+  0000000000001000
+  0000000000010000
+  0000000000010000
+  0000000001111100
+  0000000011111110
+  0000000111111110
+  0001100111111111
+  0001110111111110
+  1111111111111110
+  0001110111111110
+  0001100111111111
+  0000000111111110
+  0000000011111110
+  0000000001111100
+  0000000000010000
+  0000000000010000
+
+node_types: [application, arith.add, arith.div, arith.mul, arith.sub, builtin.length, builtin.str, builtin.tail, compare.eq, compare.gt, concat, float, input, int, local, match, pipe, projection, record-literal, selection.collapse, str, unwrap, var, vec-literal]
