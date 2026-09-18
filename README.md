@@ -129,7 +129,10 @@ given backend needs that toolchain installed. Lua is the default.
 `cargo build` produces the compiler; `just test` runs the suite (it needs `cargo-nextest`
 and the backend toolchains). `toylang run FILE [backend]` compiles and runs a program,
 `toylang emit FILE backend` prints the emitted source, and `toylang build FILE` links a
-standalone native binary.
+standalone native binary, or with `js` writes the emitted script beside a `.d.ts` declaring
+its functions. A `toylang.conf.yaml` up the tree retargets the JS backend at a browser, and a
+leading `--explain-offload` reports which stages vectorized; all of it is in
+[docs/reference/cli/](docs/reference/cli/index.md).
 
 `toylang fmt` is the formatter, in two forms. Given a file it prints that file formatted and
 changes nothing on disk. Given nothing it walks down from the current folder instead, listing
