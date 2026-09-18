@@ -15,5 +15,6 @@ subject is a `Vec` only, never a stream.
 The projection is the same `map(.name)` machinery already in the checker: `.` is rebound to
 each entry, and the projection's type must be one of those four scalars.
 
-Built on the Go and Rust backends so far, like [`sort_by`](sort_by.md); no runnable fragment
-or corpus case until the other five backends have an arm for it.
+Built on the Go and Rust backends so far, like [`sort_by`](sort_by.md), and refused the same
+way elsewhere; no runnable fragment or corpus case until the other five backends have an arm
+for it.

@@ -335,7 +335,11 @@ def dispatch_trigger(cap: int) -> str | None:
         return None
     import yaml
     rows = yaml.safe_load(open(REPO / "plans" / "board.yaml"))
-    live_ids = {r["id"] for r in rows if r.get("status") in ("todo", "delegated")}
+    # Any row still on the live board blocks a `needs` that names it, whatever its
+    # status: a done row never stays here (board-lint.py rejects it), and a
+    # `proposed` row is parked work, not landed work -- excluding it read a
+    # blocked_by hold as satisfied.
+    live_ids = {r["id"] for r in rows}
 
     def is_ready(r):
         if r.get("kind") != "build" or r.get("status") != "todo":

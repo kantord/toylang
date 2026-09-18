@@ -23,7 +23,9 @@ stream starts at `lines` and dies at `collect`, exactly the way any other stream
 
 
 The one backend where the primitive exists today is Rust (`std::process::Command` with piped
-stdin, stdout, and stderr). The other six backends have no arm for it, and today a program using
-`pipe_through` on one of them is not refused cleanly: the emitter hits an internal
-`not yet implemented for this backend` error. A clean refusal is tracked as the
-`unbuilt-builtin-arms-refuse-not-panic` row in plans/board.yaml.
+stdin, stdout, and stderr). The other six backends have no arm for it yet, so a program using
+`pipe_through` there is refused before anything is emitted:
+
+```
+`pipe_through` has no lua backend yet; today it runs on rust
+```

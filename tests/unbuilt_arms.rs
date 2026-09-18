@@ -1,0 +1,75 @@
+//! A builtin that has landed on some backends and not others is refused, not panicked on,
+//! everywhere it has not landed -- and the table that says where it has landed
+//! (`backend_support::LANDINGS`) is held to the emitters in both directions: every backend
+//! the table names must emit the program, and every backend it leaves out must refuse it
+//! with the same message the CLI prints. A landing row that adds an arm updates the table,
+//! and this test is what tells it so.
+
+use toylang::Backend;
+use toylang::backend_support::LANDINGS;
+
+/// One program per landing builtin, using nothing else that is backend-specific.
+fn program_using(name: &str) -> &'static str {
+    match name {
+        "sort_by" => "[3, 1, 2] | sort_by(.)\n",
+        "max_by" => "[3, 1, 2] | max_by(.)\n",
+        "transpose" => "transpose([[1, 2], [3, 4]])\n",
+        "pipe_through" => "collect(pipe_through({cmd: \"cat\", args: [], lines: stdin}))\n",
+        other => panic!("no program for landing builtin `{other}`; add one here"),
+    }
+}
+
+#[test]
+fn every_landing_builtin_emits_where_built_and_refuses_elsewhere() {
+    let mut failures = Vec::new();
+    for landing in LANDINGS {
+        let program = toylang::compile(program_using(landing.name))
+            .unwrap_or_else(|e| panic!("`{}` program does not compile: {e}", landing.name));
+        for backend in Backend::ALL {
+            let result = backend.emit(&program);
+            let built = landing.built_on.contains(&backend);
+            match (built, result) {
+                (true, Ok(_)) => {}
+                (true, Err(e)) => failures.push(format!(
+                    "`{}` is listed as built on {} but emitting fails: {e}",
+                    landing.name,
+                    backend.name()
+                )),
+                (false, Err(e)) => {
+                    let runs_on: Vec<&str> = landing.built_on.iter().map(|b| b.name()).collect();
+                    let expected = format!(
+                        "`{}` has no {} backend yet; today it runs on {}",
+                        landing.name,
+                        backend.name(),
+                        runs_on.join(" and ")
+                    );
+                    if e != expected {
+                        failures.push(format!(
+                            "`{}` on {}: refused with {e:?}, expected {expected:?}",
+                            landing.name,
+                            backend.name()
+                        ));
+                    }
+                }
+                (false, Ok(_)) => failures.push(format!(
+                    "`{}` emits on {} but the table says it is not built there; add it to LANDINGS",
+                    landing.name,
+                    backend.name()
+                )),
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// The refusal reaches a program that only uses the builtin inside a named function, not
+/// just at the top level -- the walk covers every function body.
+#[test]
+fn a_use_inside_a_function_is_refused_too() {
+    let program =
+        toylang::compile("fn f(v: Vec<Int>) -> Vec<Int> = v | sort_by(.)\n\nf([2, 1])\n").unwrap();
+    assert_eq!(
+        Backend::Lua.emit(&program).unwrap_err(),
+        "`sort_by` has no lua backend yet; today it runs on go and rust"
+    );
+}

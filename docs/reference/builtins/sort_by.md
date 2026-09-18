@@ -12,6 +12,7 @@ is a `Vec` only, never a stream.
 The projection is the same `map(.name)` machinery already in the checker: `.` is rebound to
 each entry, and the projection's type must be one of those four scalars.
 
-Built on the Go and Rust backends so far; the other five have no emitter arm yet, so this
-page carries no runnable fragment and there is no corpus case until they do (the
-`sort-by-max-by-*` rows in plans/board.yaml).
+Built on the Go and Rust backends so far; the other five have no emitter arm yet, so a
+program using it there is refused with `` `sort_by` has no lua backend yet; today it runs on
+go and rust ``, this page carries no runnable fragment, and there is no corpus case until
+they do (the `sort-by-max-by-*` rows in plans/board.yaml).

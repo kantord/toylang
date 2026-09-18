@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod backend_support;
 pub mod check;
 pub mod config;
 pub mod emit_go;
@@ -73,6 +74,7 @@ impl Backend {
     }
 
     pub fn emit(self, program: &Program) -> Result<String, String> {
+        backend_support::refuse_unbuilt(self, program)?;
         match self {
             Backend::Lua => Ok(emit_lua::emit(program)),
             Backend::Js => {

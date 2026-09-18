@@ -119,7 +119,9 @@ is priority. Each entry: `id`, `title`, `kind: build | decide`, `needs: [ids]`, 
 delegated`, optionally `issue: gh:N`. Landed rows do not stay here (issue #113): they move to
 `plans/board-archive.yaml`, same schema, `status: done`, append-only, kept for provenance only.
 A `needs`/`soft` id not found in the live board is satisfied -- it landed and was archived; the
-archive is never consulted to decide whether something is blocked. The maintainer's role is
+archive is never consulted to decide whether something is blocked, and any id still on the live
+board blocks, whatever its status (`board-lint.py` refuses a `done` row here, so "still live"
+and "not landed" mean the same thing). The maintainer's role is
 decide-tasks and goal-setting; everything else is yours to drive. Never invent tasks while
 real work remains: new work enters the board through a grilling/planning session or an
 explicit user request, and gets a row before it gets a branch.

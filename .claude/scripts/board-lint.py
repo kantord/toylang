@@ -102,6 +102,13 @@ def lint(path, archived):
             errs.append(f"{where}: status must be one of {sorted(STATUSES)}")
         if archived and r.get("status") != "done":
             errs.append(f"{where}: archive rows must be status: done")
+        # The mirror rule. A landed row is cut and appended to the archive by
+        # board-archive.py (issue #113), never flipped in place: 24 done rows had
+        # accumulated in the live board by 2026-09-18 with nothing rejecting them,
+        # and dispatch_state.py's "any live row blocks a needs" rule only stays true
+        # while done rows cannot be live.
+        if not archived and r.get("status") == "done":
+            errs.append(f"{where}: status: done in the live board; move it with board-archive.py")
         needs = r.get("needs", [])
         if not (isinstance(needs, list)
                 and all(isinstance(n, str) for n in needs)):
