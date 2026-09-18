@@ -1,0 +1,1 @@
+pub fn handle(k: Int) -> Int = k

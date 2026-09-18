@@ -446,6 +446,7 @@ pub fn parse(src: &str) -> Result<File, Error> {
         src,
         declined_cross_line: None,
         or_separates: false,
+        route_refs: Vec::new(),
     };
 
     // Declarations in any order and any mix, since no kind can refer to another's position:
@@ -464,6 +465,8 @@ pub fn parse(src: &str) -> Result<File, Error> {
         impls,
         defs,
         body,
+        route_refs: p.route_refs,
+        routes: std::collections::HashMap::new(),
     })
 }
 
@@ -475,6 +478,7 @@ pub fn parse_module(src: &str) -> Result<Module, Error> {
         src,
         declined_cross_line: None,
         or_separates: false,
+        route_refs: Vec::new(),
     };
     let (defs, aliases, enums, traits, impls) = p.declarations()?;
     let (tok, span) = p.peek()?;
@@ -490,6 +494,7 @@ pub fn parse_module(src: &str) -> Result<Module, Error> {
         enums,
         traits,
         impls,
+        route_refs: p.route_refs,
     })
 }
 
@@ -512,6 +517,10 @@ struct Cursor<'i> {
     /// nothing there is a chain's top level. This is the split kantord/toylang#96 set out to
     /// prove clean, and the one place a token's meaning depends on where it is read.
     or_separates: bool,
+    /// Every `@(path)` read so far, in source order. Collected while parsing rather than found
+    /// by a later walk, since the AST has no generic visitor and the loader only needs the
+    /// paths, not where in the tree they sit.
+    route_refs: Vec<crate::ast::RouteRef>,
 }
 
 impl<'i> Cursor<'i> {
@@ -1072,6 +1081,7 @@ impl<'i> Cursor<'i> {
             variants,
             span: start.to(close),
             is_pub,
+            origin: crate::ast::Origin::Program,
         })
     }
 
@@ -1718,22 +1728,24 @@ impl<'i> Cursor<'i> {
             }
 
             // `@(path)` module routing: the path is a string literal in parens. No resolution
-            // happens here -- the path stays a raw string for step 3's checker/emit work.
+            // happens here -- the path stays as written, and `modules::inject` resolves it
+            // against the directory of the file being parsed, which this parser never knows.
             Tok::At => {
                 self.eat(Tok::LParen)?;
                 let (tok, _) = self.advance()?;
                 let Tok::Str(path) = tok else {
                     return Err(Error::new(
                         span,
-                        "`@` module routing needs a string path, as in `@(\"path\")`"
-                            .to_string(),
+                        "`@` module routing needs a string path, as in `@(\"path\")`".to_string(),
                     ));
                 };
                 let close = self.eat(Tok::RParen)?;
-                Ok(Expr::ModuleRoute {
-                    path,
-                    span: span.to(close),
-                })
+                let span = span.to(close);
+                self.route_refs.push(crate::ast::RouteRef {
+                    path: path.clone(),
+                    span,
+                });
+                Ok(Expr::ModuleRoute { path, span })
             }
 
             // `.name` is field access on the subject, so the leading dot yields `.` and the

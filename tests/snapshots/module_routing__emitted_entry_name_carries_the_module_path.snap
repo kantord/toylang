@@ -1,0 +1,25 @@
+---
+source: tests/module_routing.rs
+expression: "toylang::Backend::Lua.emit(&program).unwrap()"
+---
+local TL_2_31 <const> = 2147483648
+local TL_2_32 <const> = 4294967296
+-- Lua integers are 64-bit, so an Int has to be brought back into 32 bits after every operation.
+-- `%` is floored here and the modulus is positive, so this is exact for negatives too.
+local function tl_i32(x)
+  return (x + TL_2_31) % TL_2_32 - TL_2_31
+end
+-- Lua's `//` floors and `%` is floored; toylang truncates, which math.fmod already does.
+local function tl_div(a, b)
+  if b == 0 then error("toylang: divided by zero", 0) end
+  return tl_i32((a - math.fmod(a, b)) // b)
+end
+local function tl_rem(a, b)
+  if b == 0 then error("toylang: divided by zero", 0) end
+  return tl_i32(math.fmod(a, b))
+end
+local v_handle__tests_modules_double_toy
+function v_handle__tests_modules_double_toy(v_n)
+  return tl_i32(v_n * 2)
+end
+print(tostring((function(t_0) return v_handle__tests_modules_double_toy(t_0) end)(21)))

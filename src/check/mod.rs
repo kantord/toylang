@@ -10,6 +10,7 @@ use crate::tir::{self, Kind, LocalId, Tir};
 use crate::ty::{self, Sig, Type};
 
 mod linearity;
+mod routing;
 mod types;
 
 use linearity::{
@@ -65,8 +66,12 @@ struct Ctx<'a> {
     /// the visibility rule (gh:166).
     visibility: &'a HashMap<String, (Origin, bool)>,
     /// Which file the code being checked was written in. The program's body and definitions are
-    /// `Program`; the prelude's definitions (checked at build time) are `Prelude`.
+    /// `Program`; the prelude's definitions (checked at build time) are `Prelude`; a routed
+    /// module's are `Module(path)`, set per definition by `check_defs` from `Def::origin`.
     file: Origin,
+    /// What each `@(path)` reaches, keyed by the file it was written in and the path as written:
+    /// `File::routes`, filled by `modules::inject`. Empty for a module checked on its own.
+    routes: &'a HashMap<(Origin, String), String>,
     next_local: &'a Cell<LocalId>,
     /// Every resolved impl method, `collect_impls`'s output: what a colon call
     /// (`Expr::ColonCall`, `x:foo(y)`) consults to dispatch by the receiver's concrete type.
@@ -114,12 +119,21 @@ impl Ctx<'_> {
             in_fn: self.in_fn,
             visibility: self.visibility,
             file: self.file.clone(),
+            routes: self.routes,
             next_local: self.next_local,
             impls: self.impls,
             generic_templates: self.generic_templates,
             generic_synth: self.generic_synth,
             generic_funcs: self.generic_funcs,
         }
+    }
+
+    /// The same context, but checking code written in `file`: what `check_defs` uses so a
+    /// routed module's definition is checked as that module, and its private helpers resolve.
+    fn in_file(&self, file: Origin) -> Ctx<'_> {
+        let mut ctx = self.rebuild(self.scope.clone(), self.subject.clone());
+        ctx.file = file;
+        ctx
     }
 
     fn fresh(&self) -> LocalId {
@@ -166,7 +180,14 @@ fn resolve_defs<'a>(
         );
     }
     let mut variant_owners: HashMap<String, Vec<String>> = HashMap::new();
-    for e in enum_decls {
+    // A routed module's variants never enter the bare lookup (the enum-variant collision
+    // ruling, gh:167): they are reachable only qualified, `Msg.ping`, through `enums` above.
+    // Asymmetric with defs, which merge bare, so that two modules sharing a variant name are
+    // never a collision the program has to resolve, inside those modules included.
+    for e in enum_decls
+        .iter()
+        .filter(|e| !matches!(e.origin, Origin::Module(_)))
+    {
         for v in &e.variants {
             variant_owners
                 .entry(v.name.clone())
@@ -211,6 +232,8 @@ struct Cells<'a> {
     generic_templates: &'a [GenericImplTemplate],
     generic_synth: &'a RefCell<Vec<ImplEntry>>,
     generic_funcs: &'a RefCell<Vec<tir::Func>>,
+    /// `File::routes`; grouped here for the same argument-count reason as `generic_templates`.
+    routes: &'a HashMap<(Origin, String), String>,
 }
 
 impl Cells<'_> {
@@ -240,6 +263,7 @@ impl Cells<'_> {
             in_fn: None,
             visibility,
             file,
+            routes: self.routes,
             next_local: self.next_local,
             impls,
             generic_templates: self.generic_templates,
@@ -257,6 +281,8 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
         impls: impl_decls,
         defs,
         body: program_body,
+        route_refs: _,
+        routes,
     } = file;
     let (env, enums, variant_owners, mut sigs, visibility) =
         resolve_defs(&aliases, &enum_decls, &defs)?;
@@ -291,6 +317,7 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
         generic_templates: &generic_templates,
         generic_synth: &generic_synth,
         generic_funcs: &generic_funcs,
+        routes: &routes,
     };
     // The first context carries `signatures`' provisional hoisted signatures (ret = the matched
     // enum), enough to check their bodies; the inference pass below replaces each provisional
@@ -480,22 +507,20 @@ fn check_defs<'a>(
 ) -> Result<Vec<tir::Func>, Error> {
     let mut funcs = Vec::new();
     for def in defs {
-        // A hoisted definition (`fn name = expr`, gh:152) is checked by its own path: the
-        // signature is inferred rather than written, so none of the annotated-param machinery
-        // below applies. `infer_hoisted` already checked it once to fix the return type; this
-        // second check produces the `Func` the backends emit.
-        if def.hoisted {
-            funcs.push(check_hoisted_def(ctx, def)?);
-            continue;
-        }
-        let sig = sig_of(ctx, &def.name);
-        funcs.push(check_one_def(
-            ctx,
-            &def.name,
-            def.param.as_ref(),
-            sig,
-            &def.body,
-        )?);
+        // Checked as the file it was written in, so a routed module's definition may call that
+        // module's private helpers and the program's may not (gh:167).
+        let ctx = ctx.in_file(def.origin.clone());
+        let checked = if def.hoisted {
+            // A hoisted definition (`fn name = expr`, gh:152) is checked by its own path: the
+            // signature is inferred rather than written, so none of the annotated-param
+            // machinery applies. `infer_hoisted` already checked it once to fix the return
+            // type; this second check produces the `Func` the backends emit.
+            check_hoisted_def(&ctx, def)
+        } else {
+            let sig = sig_of(&ctx, &def.name);
+            check_one_def(&ctx, &def.name, def.param.as_ref(), sig, &def.body)
+        };
+        funcs.push(checked.map_err(|e| routing::in_file(e, &def.origin))?);
     }
     Ok(funcs)
 }
@@ -661,6 +686,7 @@ fn check_one_def(
         in_fn: Some(name),
         visibility: ctx.visibility,
         file: ctx.file.clone(),
+        routes: ctx.routes,
         next_local: ctx.next_local,
         impls: ctx.impls,
         generic_templates: ctx.generic_templates,
@@ -785,9 +811,7 @@ fn type_mentions_param(t: &Type, name: &str) -> bool {
     match t {
         Type::Param(p) => p == name,
         Type::Vec(inner) | Type::Stream(inner) => type_mentions_param(inner, name),
-        Type::Seq(head, rest) => {
-            type_mentions_param(head, name) || type_mentions_param(rest, name)
-        }
+        Type::Seq(head, rest) => type_mentions_param(head, name) || type_mentions_param(rest, name),
         Type::Record(fields) => fields.iter().any(|(_, t)| type_mentions_param(t, name)),
         Type::Enum { args, .. } => args.iter().any(|a| type_mentions_param(a, name)),
         Type::Str
@@ -1198,6 +1222,7 @@ pub fn check_module(module: crate::ast::Module) -> Result<(Vec<tir::Func>, ty::E
         enums,
         traits,
         impls,
+        route_refs: _,
     } = module;
     let (env, enum_tys, variant_owners, mut sigs, visibility) =
         resolve_defs(&aliases, &enums, &defs)?;
@@ -1209,6 +1234,9 @@ pub fn check_module(module: crate::ast::Module) -> Result<(Vec<tir::Func>, ty::E
     let next_local = Cell::new(0);
     let generic_synth: RefCell<Vec<ImplEntry>> = RefCell::new(Vec::new());
     let generic_funcs: RefCell<Vec<tir::Func>> = RefCell::new(Vec::new());
+    // A module checked on its own has routed nothing: `@(path)` inside it is only meaningful
+    // once `modules::inject` has merged it into a program.
+    let routes = HashMap::new();
     let cells = Cells {
         input: &input,
         inputs: &inputs,
@@ -1218,6 +1246,7 @@ pub fn check_module(module: crate::ast::Module) -> Result<(Vec<tir::Func>, ty::E
         generic_templates: &generic_templates,
         generic_synth: &generic_synth,
         generic_funcs: &generic_funcs,
+        routes: &routes,
     };
     let ctx = cells.ctx(
         &sigs,
@@ -2459,6 +2488,7 @@ fn check_hoisted_def(ctx: &Ctx, def: &Def) -> Result<tir::Func, Error> {
         in_fn: Some(&def.name),
         visibility: ctx.visibility,
         file: ctx.file.clone(),
+        routes: ctx.routes,
         next_local: ctx.next_local,
         impls: ctx.impls,
         generic_templates: ctx.generic_templates,
@@ -2496,7 +2526,9 @@ fn infer_hoisted<'a>(
         if !def.hoisted {
             continue;
         }
-        let func = check_hoisted_def(ctx, def)?;
+        // As the file it was written in, for the same reason `check_defs` does it.
+        let func = check_hoisted_def(&ctx.in_file(def.origin.clone()), def)
+            .map_err(|e| routing::in_file(e, &def.origin))?;
         let sig = Sig {
             param: func.param_ty.clone(),
             ret: func.body.ty.clone(),
@@ -2921,14 +2953,7 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             Expected::Synthesised(tir) => Ok(tir),
         },
 
-        // A `@(path)` module-as-function routing arm parses now but is not yet supported: no
-        // resolution, acceptance, or codegen exists, so refuse cleanly instead of panicking.
-        Expr::ModuleRoute { span, .. } => {
-            return Err(Error::new(
-                *span,
-                "module routing not yet implemented".to_string(),
-            ))
-        }
+        Expr::ModuleRoute { path, span } => routing::route_call(ctx, path, *span),
     }
 }
 

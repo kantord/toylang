@@ -547,7 +547,11 @@ fn float_literal(n: f64) -> String {
         return format!("{n:e}");
     }
     let plain = crate::float::lit(n);
-    if plain.contains('.') { plain } else { format!("{plain}.0") }
+    if plain.contains('.') {
+        plain
+    } else {
+        format!("{plain}.0")
+    }
 }
 
 /// The outer parens decision (`needs_parens`) has already been made by `print_expr_compact`;
@@ -681,9 +685,7 @@ fn print_expr_inner(e: &Expr) -> String {
         // `print_def` emits a `let` block before reaching this match; a `Let` here is a
         // nested one the parser never produces (the block form is only a function body).
         Expr::Let { .. } => unreachable!("a `let` block is only ever a function body"),
-        // `@(path)` module routing has no parser wiring yet, so nothing ever reaches this arm;
-        // it exists only for the match to be total.
-        Expr::ModuleRoute { .. } => unreachable!("module routing: AST-only stub, not wired yet"),
+        Expr::ModuleRoute { path, .. } => format!("@(\"{}\")", escape_str(path)),
     }
 }
 

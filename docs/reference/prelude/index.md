@@ -26,8 +26,8 @@ same treatment an unused function the program wrote itself now also gets.
 
 ## What is not here yet
 
-Imports, a way for a program's file to export for another, and more than one file to import
-from are tracked as
+Imports and a way for a program's file to export for another are tracked as
 [Q36](../../../plans/questions.md#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy).
-The `@(path)` module-routing spelling parses today and is refused by the checker as not yet
-implemented.
+More than one file is here in one form: `@(path)` [routes to a module](../syntax/modules.md),
+which is merged the way the prelude is, with the same per-file visibility rule, and whose
+`handle` the route applies to `.`.

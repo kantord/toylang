@@ -1,6 +1,5 @@
 ---
 source: tests/step_6.rs
-assertion_line: 49
 expression: "parse(\"fn answer = 42\\nanswer\")"
 ---
 File {
@@ -36,4 +35,6 @@ File {
             end: 21,
         },
     },
+    route_refs: [],
+    routes: {},
 }

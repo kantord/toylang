@@ -1,0 +1,5 @@
+---
+source: tests/module_routing.rs
+expression: "refusal(r#\"1 | @(\"tests/modules/no_handle.toy\")\"#)"
+---
+module `tests/modules/no_handle.toy` has no `handle` function to route to (at byte 4)

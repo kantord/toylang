@@ -37,12 +37,16 @@ pub fn module() -> Module {
     for imp in &mut module.impls {
         imp.origin = Origin::Prelude;
     }
+    for e in &mut module.enums {
+        e.origin = Origin::Prelude;
+    }
     Module {
         defs: module.defs,
         aliases: module.aliases,
         enums: module.enums.into_iter().filter(|e| e.is_pub).collect(),
         traits: module.traits,
         impls: module.impls,
+        route_refs: module.route_refs,
     }
 }
 

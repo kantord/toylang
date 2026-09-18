@@ -306,8 +306,9 @@ pub enum Builtin {
 
 pub struct Func {
     /// A resolved impl method's internal name is `"{method}::{TypeName}"` (`check::collect_impls`,
-    /// e.g. `"add::Circle"`) -- `::` can never appear inside a lexed `Ident`
-    /// (`parse::Tok::Colon` always lexes as its own token), so this is unreachable by any
+    /// e.g. `"add::Circle"`), and a routed module's entry is `"handle::{path}"`
+    /// (`modules::entry_name`) -- `::` can never appear inside a lexed `Ident`
+    /// (`parse::Tok::Colon` always lexes as its own token), so these are unreachable by any
     /// user-written name by construction. A backend still needs a legal target-language
     /// identifier, so every one escapes through `escape_name` before rendering it, rather than
     /// each carrying its own copy of the same substitution.

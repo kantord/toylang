@@ -1,0 +1,5 @@
+---
+source: tests/module_routing.rs
+expression: "refusal(r#\"circle{r: 2} | @(\"tests/modules/shapes.toy\")\"#)"
+---
+`circle` is not a function (at byte 0)

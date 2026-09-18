@@ -1,6 +1,5 @@
 ---
 source: tests/step_6.rs
-assertion_line: 40
 expression: "parse(\"enum Shape { point, circle{r: Int} }\\nfn area(s: Shape) -> Int = s | circle{r} -> r * r or point -> 0\\narea(Shape.point)\")"
 ---
 File {
@@ -52,6 +51,7 @@ File {
                 end: 36,
             },
             is_pub: false,
+            origin: Program,
         },
     ],
     traits: [],
@@ -225,4 +225,6 @@ File {
             end: 118,
         },
     },
+    route_refs: [],
+    routes: {},
 }

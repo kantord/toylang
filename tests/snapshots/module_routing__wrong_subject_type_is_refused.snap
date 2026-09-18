@@ -1,0 +1,5 @@
+---
+source: tests/module_routing.rs
+expression: "refusal(r#\"\"x\" | @(\"tests/modules/double.toy\")\"#)"
+---
+module `tests/modules/double.toy`'s `handle` takes Int, but `.` here is Str (at byte 6)

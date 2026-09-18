@@ -1,6 +1,5 @@
 ---
 source: tests/step_6.rs
-assertion_line: 34
 expression: "parse(r#\"Msg(count > 3 -> \"big\" or count -> \"small\")\"#)"
 ---
 File {
@@ -79,4 +78,6 @@ File {
             end: 43,
         },
     },
+    route_refs: [],
+    routes: {},
 }
