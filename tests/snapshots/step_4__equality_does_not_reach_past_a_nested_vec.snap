@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(\"[[1]] == [[1]]\")"
+---
+`==` does not apply to Vec<Vec<Int>> (at byte 0)

@@ -1,0 +1,10 @@
+# `*` cannot tell the two loop orders apart on a 2x2 (both give a sequence that is at least
+# plausible), so `-` pins which operand is the outer loop: the right one, the way jq 1.8.2
+# orders `[.a[] - .b[]]`. `[-8,-18,-7,-17]` would be the left-outer order, and it is wrong.
+program: |
+  [2, 3] - [10, 20]
+
+output: |
+  [-8,-7,-18,-17]
+
+node_types: [arith.sub, builtin.flatten, int, local, map-over, pipe, vec-literal]

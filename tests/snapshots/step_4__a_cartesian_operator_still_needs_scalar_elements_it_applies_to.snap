@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(r#\"[\"a\"] * [\"b\"]\"#)"
+---
+`*` does not apply to Vec<Str> (at byte 0)

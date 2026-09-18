@@ -1,0 +1,9 @@
+# A comparison over two Vecs is a Vec<Bool> of every pair, in the same right-outer order as
+# the arithmetic product (jq 1.8.2, `[.a[] < .b[]]`).
+program: |
+  [1, 5] < [3, 4]
+
+output: |
+  [true,false,true,false]
+
+node_types: [builtin.flatten, compare.lt, int, local, map-over, pipe, vec-literal]

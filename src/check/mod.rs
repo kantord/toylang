@@ -4177,16 +4177,11 @@ fn expect_int_width(ctx: &Ctx, rhs: &Expr, width: &Type, op: BinOp) -> Result<Ti
 fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     let left = synth(ctx, lhs)?;
 
-    // The binary-operator multiplicity question (Q2 in plans/questions.md) was ruled
-    // cartesian-by-default on 2026-09-08, but that ruling is not built yet, so an operator
-    // over a Vec is still rejected rather than being silently given broadcast or zip
-    // semantics. `+` is the one exception: it concatenates two Vecs of the same type
-    // (kantord/toylang#97, the add-trait reading).
+    // Two Vecs under any operator but `+` run cartesian, jq's own default (Q2 in
+    // plans/questions.md, ruled 2026-09-08). `+` is the exception: it concatenates two Vecs
+    // of the same type (kantord/toylang#97, the add-trait reading), and `plus` owns that.
     if left.ty.elem().is_some() && op != BinOp::Add {
-        return Err(Error::new(
-            lhs.span(),
-            format!("`{op}` does not apply to {}", left.ty),
-        ));
+        return cartesian(ctx, op, lhs, left, rhs);
     }
 
     if op.is_comparison() {
@@ -4272,6 +4267,94 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     }
 
     plus(ctx, lhs, left, rhs)
+}
+
+/// `Vec op Vec`, every pair of elements combined and the results laid out in jq's order:
+/// the right operand is the outer loop, so `[2, 3] * [10, 20]` is `[20, 30, 40, 60]`
+/// (jq 1.8.2, `[.a[] * .b[]]`), not `[20, 40, 30, 60]`. Lowered to nodes every backend
+/// already emits rather than a node of its own: each side bound once (so neither is
+/// re-evaluated per pair), a `Map` over the right whose body maps the left, and `flatten`
+/// over the rows. What the element operator accepts is exactly what it accepts on scalars,
+/// so `Vec<Str> * Vec<Str>` is refused the way `Str * Str` is, and equality stops at a Vec
+/// one level down the same way it does on a bare composite (kantord/toylang#95). A Vec on
+/// one side only is not in the ruling and stays a type mismatch: nothing broadcasts.
+fn cartesian(ctx: &Ctx, op: BinOp, lhs: &Expr, left: Tir, rhs: &Expr) -> Result<Tir, Error> {
+    let elem = left.ty.elem().expect("caller checked for a Vec").clone();
+    if op.is_arithmetic() && !matches!(elem, Type::Int | Type::Int64 | Type::Float) {
+        return Err(Error::new(
+            lhs.span(),
+            format!("`{op}` does not apply to {}", left.ty),
+        ));
+    }
+    if op.is_comparison() && elem.contains_vec() {
+        return Err(Error::new(
+            lhs.span(),
+            format!("`{op}` does not apply to {}", left.ty),
+        ));
+    }
+    let want = left.ty.clone();
+    let right = expect(ctx, rhs, &want)?;
+
+    let (l, r, a, b) = (ctx.fresh(), ctx.fresh(), ctx.fresh(), ctx.fresh());
+    let pair = |id: LocalId| Box::new(Tir::new(elem.clone(), Kind::Local(id)));
+    let per_pair = if op.is_comparison() {
+        Tir::new(
+            Type::Bool,
+            Kind::Compare {
+                op,
+                lhs: pair(a),
+                rhs: pair(b),
+            },
+        )
+    } else {
+        Tir::new(
+            elem.clone(),
+            Kind::Arith {
+                op,
+                lhs: pair(a),
+                rhs: pair(b),
+            },
+        )
+    };
+    let row_ty = Type::Vec(Box::new(per_pair.ty.clone()));
+    let row = Tir::new(
+        row_ty.clone(),
+        Kind::Map {
+            source: Box::new(Tir::new(want.clone(), Kind::Local(l))),
+            param: a,
+            body: Box::new(per_pair),
+        },
+    );
+    let rows = Tir::new(
+        Type::Vec(Box::new(row_ty.clone())),
+        Kind::Map {
+            source: Box::new(Tir::new(want.clone(), Kind::Local(r))),
+            param: b,
+            body: Box::new(row),
+        },
+    );
+    let flat = Tir::new(
+        row_ty,
+        Kind::Builtin {
+            which: tir::Builtin::Flatten,
+            arg: Box::new(rows),
+        },
+    );
+    Ok(Tir::new(
+        flat.ty.clone(),
+        Kind::Bind {
+            local: l,
+            value: Box::new(left),
+            body: Box::new(Tir::new(
+                flat.ty.clone(),
+                Kind::Bind {
+                    local: r,
+                    value: Box::new(right),
+                    body: Box::new(flat),
+                },
+            )),
+        },
+    ))
 }
 
 /// `+` is the one operator whose meaning depends on its operands: addition on Int or Int64,

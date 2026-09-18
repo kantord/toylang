@@ -51,5 +51,21 @@ type:
 
 That is the whole overload. It does not mix types, so `"n=" + 3` is refused rather than
 coerced -- write `"n=" + str(3)`. Joining an unknown number of `Vec`s, such as one built by
-`map`, is [`flatten`](../builtins/flatten.md) instead; the open question of what other
-element-wise arithmetic over two `Vec`s should mean stays open.
+`map`, is [`flatten`](../builtins/flatten.md) instead.
+
+Every other arithmetic operator over two `Vec`s of the same numeric element type is
+cartesian, jq's own default ([the multiplicity
+question](../../../plans/questions.md#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit)):
+every pair of elements is combined, and the result is laid out in jq's order, right operand
+outermost, so the left side runs fastest:
+
+```toylang
+[2, 3] - [10, 20]
+```
+
+```output
+[-8,-7,-18,-17]
+```
+
+A `Vec` on one side only is a type mismatch, not a broadcast: `[2, 3] * 10` is refused. What
+a `Vec` meeting a scalar should mean is not decided.
