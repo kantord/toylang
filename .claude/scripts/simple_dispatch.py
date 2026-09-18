@@ -76,8 +76,10 @@ DISPATCH_LOG_LOCK_PATH = Path.home() / ".cache" / "toylang-simple-dispatch" / "d
 # bundle_path/ended_by/edits/turns added 2026-09-14: `status` alone said
 # STUCK for 45 runs whose real ending was the harness's own turn cutoff
 # with zero edits, and nothing recorded that fact anywhere structured.
-DISPATCH_LOG_FIELDS = ["run_id", "row_id", "model", "start_time", "end_time",
-                        "duration_s", "status", "cost_usd", "patch_path",
+# base_commit added 2026-09-17 with the RUNNING marker: the in-flight row
+# written right after clone can't say what it's running against without it.
+DISPATCH_LOG_FIELDS = ["run_id", "row_id", "model", "start_time", "base_commit",
+                        "end_time", "duration_s", "status", "cost_usd", "patch_path",
                         "bundle_path", "ended_by", "edits", "turns"]
 
 
@@ -141,26 +143,50 @@ def must(r: subprocess.CompletedProcess, what: str) -> subprocess.CompletedProce
 
 
 def append_dispatch_log(row: dict) -> None:
-    """Append one row to the repo-committed CSV dispatch log. Locked with a
-    DEDICATED lock file, not a lock on the CSV itself, so opening the CSV to
-    read/inspect it never blocks (or gets blocked by) a concurrent writer.
-    Needed because multiple dispatches can genuinely run at once --
-    multiple threads in one process under --parallel, or two separate
-    invocations of this script -- and an unlocked concurrent append can
-    interleave partial writes into a corrupt row."""
+    """Append one row to the repo-committed CSV dispatch log -- or, when a
+    row with the same run_id already exists (the RUNNING marker written
+    right after clone), overwrite that line in place instead of appending a
+    second row for the same run. Locked with a DEDICATED lock file, not a
+    lock on the CSV itself, so opening the CSV to read/inspect it never
+    blocks (or gets blocked by) a concurrent writer. Needed because
+    multiple dispatches can genuinely run at once -- multiple threads in
+    one process under --parallel, or two separate invocations of this
+    script -- and an unlocked concurrent append can interleave partial
+    writes into a corrupt row. The rewrite mirrors
+    migrate_dispatch_log_header(): read all rows, write the whole file to a
+    .tmp, then .replace() it, so a concurrent reader never sees a
+    half-written file."""
     DISPATCH_LOG_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
     DISPATCH_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     lock_file = open(DISPATCH_LOG_LOCK_PATH, "w")
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
+        fields = list(DISPATCH_LOG_FIELDS)
         is_new = not DISPATCH_LOG_PATH.exists() or DISPATCH_LOG_PATH.stat().st_size == 0
-        if not is_new:
-            migrate_dispatch_log_header()
-        with open(DISPATCH_LOG_PATH, "a", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=DISPATCH_LOG_FIELDS)
-            if is_new:
+        if is_new:
+            with open(DISPATCH_LOG_PATH, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fields)
                 writer.writeheader()
-            writer.writerow({k: row.get(k, "") for k in DISPATCH_LOG_FIELDS})
+                writer.writerow({k: row.get(k, "") for k in fields})
+            return
+        migrate_dispatch_log_header()
+        with open(DISPATCH_LOG_PATH, newline="") as f:
+            rows = [dict(r) for r in csv.DictReader(f)]
+        new_row = {k: row.get(k, "") for k in fields}
+        replaced = False
+        for i, r in enumerate(rows):
+            if r.get("run_id") == row.get("run_id"):
+                rows[i] = new_row
+                replaced = True
+        if not replaced:
+            rows.append(new_row)
+        tmp = DISPATCH_LOG_PATH.with_suffix(".csv.tmp")
+        with open(tmp, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fields)
+            writer.writeheader()
+            for r in rows:
+                writer.writerow({k: r.get(k, "") for k in fields})
+        tmp.replace(DISPATCH_LOG_PATH)
     finally:
         fcntl.flock(lock_file, fcntl.LOCK_UN)
         lock_file.close()
@@ -288,9 +314,9 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
     bundle.mkdir(parents=True, exist_ok=True)
     result: Result | None = None
     try:
-        result = _dispatch_one_locked(row_id, run_id, bundle, brief_path, model, retry_cap,
-                                       snapshot, max_tokens, overall_timeout, memory, cpus,
-                                       resume_from, original_task_file, resume_patch)
+        result = _dispatch_one_locked(row_id, run_id, start_time, bundle, brief_path, model,
+                                       retry_cap, snapshot, max_tokens, overall_timeout, memory,
+                                       cpus, resume_from, original_task_file, resume_patch)
         return result
     finally:
         end_time = datetime.now(UTC)
@@ -372,6 +398,7 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
                 "row_id": row_id,
                 "model": model,
                 "start_time": start_time.isoformat(),
+                "base_commit": result.base_commit if result else "",
                 "end_time": end_time.isoformat(),
                 "duration_s": f"{(end_time - start_time).total_seconds():.1f}",
                 "status": status,
@@ -391,9 +418,10 @@ def dispatch_one(row_id: str, brief_path: Path, model: str, retry_cap: int,
         lock.close()
 
 
-def _dispatch_one_locked(row_id: str, run_id: str, bundle: Path, brief_path: Path, model: str,
-                          retry_cap: int, snapshot: str, max_tokens: int, overall_timeout: int,
-                          memory: str, cpus: int, resume_from: Path | None = None,
+def _dispatch_one_locked(row_id: str, run_id: str, start_time: datetime, bundle: Path,
+                          brief_path: Path, model: str, retry_cap: int, snapshot: str,
+                          max_tokens: int, overall_timeout: int, memory: str, cpus: int,
+                          resume_from: Path | None = None,
                           original_task_file: Path | None = None,
                           resume_patch: Path | None = None) -> Result:
     name = f"sd-{row_id}-{run_id}"  # unique per attempt -- never collides
@@ -417,6 +445,27 @@ def _dispatch_one_locked(row_id: str, run_id: str, bundle: Path, brief_path: Pat
         must(sh(["git", "-C", str(clone_dir), "checkout", "--quiet", "-b", f"issue-{row_id}", "origin/main"], env=env, timeout=60), "git checkout")
         base_commit = must(sh(["git", "-C", str(clone_dir), "rev-parse", "HEAD"], env=env, timeout=30), "git rev-parse").stdout.strip()
         logline(f"cloned at {base_commit}")
+
+        # RUNNING marker: once the clone/checkout has succeeded (run_id and
+        # base_commit are both known), write a RUNNING dispatch-log row so a
+        # dispatcher-PROCESS death before dispatch_one()'s finally block
+        # (kill, OOM, host crash, lost msb sandbox) still leaves a trace in
+        # the CSV instead of silently hiding the run behind the row's
+        # previous terminal record. Best-effort like the terminal append
+        # below: a CSV write failure here must not kill a run that just paid
+        # for a sandbox.
+        try:
+            append_dispatch_log({
+                "run_id": run_id,
+                "row_id": row_id,
+                "model": model,
+                "start_time": start_time.isoformat(),
+                "base_commit": base_commit,
+                "bundle_path": str(bundle),
+                "status": "RUNNING",
+            })
+        except Exception as e:
+            logline(f"WARNING: could not write RUNNING marker to dispatch-log.csv: {e}")
 
         # A real bug found by adversarial review of --resume-from: the fresh
         # clone above starts from origin/main, but the persisted message
