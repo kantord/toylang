@@ -171,6 +171,13 @@ provenance ("self-originated, idle board" on the row/issue):
    parallel same-file dispatches just manufacture merge conflicts.
    - `decide` entries in the ready set: queue for the user as forest rounds (one topic per
      row, real code in the node); they occupy attention, not a dispatch slot.
+     A decide row that gates one or more build rows is only composed into a round
+     after `dispatch_state.py --show` on every row that has the decide row in its
+     `needs:` list -- quote each one's latest run (run id, status, edits, ended_by)
+     in the round node's `background`. If any gated row's latest run has a non-empty
+     `patch_path` (edits happened), STOP and report that instead of composing the
+     round: a landed or near-landed patch means the premise needs re-checking, not a
+     fresh question.
    - `build` entries: make sure a GitHub issue carries the spec (file one if the row has
      none), write a brief per the enwiro-delegate skill to `plans/simple-briefs/ROW-ID.txt`
      (this exact filename -- simple_dispatch.py requires `--brief-dir`/`<row_id>.txt`),
