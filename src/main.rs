@@ -82,10 +82,13 @@ fn on_file(args: &[&str], explain: bool) -> ExitCode {
     // The offload explanation is a diagnostic: it goes to stderr, so the command's own
     // output -- the run's stdout, the emitted source -- is left untouched. A compile that
     // fails is reported by the dispatch below; nothing is printed here.
-    if explain
-        && matches!(cmd, "run" | "emit" | "build")
-        && let Ok(program) = compile()
-    {
+    if explain && !matches!(cmd, "run" | "emit" | "build") {
+        // The flag has nothing to say about a formatter run; accepting it silently would
+        // let a typo pass as a report that happened to be empty.
+        eprintln!("{USAGE}");
+        return ExitCode::FAILURE;
+    }
+    if explain && let Ok(program) = compile() {
         eprint!("{}", toylang::offload::explain(&program));
     }
 
@@ -149,7 +152,7 @@ fn build(src: &str, path: &str, backend: Backend) -> Result<String> {
                     .map_err(anyhow::Error::msg)?,
             )?;
             std::fs::write(&dts, toylang::emit_js::emit_dts(&program))?;
-            Ok(format!("{}\n{}", js.display(), dts.display()))
+            Ok(format!("{}\n{}\n", js.display(), dts.display()))
         }
         Backend::Native => {
             let out = PathBuf::from(&stem);
