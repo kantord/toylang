@@ -555,14 +555,6 @@
   needs: []
   status: todo
 
-- id: benchmark-second-wave
-  issue: gh:146
-  title: 'Ruling gh:146 deferred n-body, spectral-norm and mandelbrot to a second benchmark wave "once Float exists". Float exists on all seven backends since 2026-09-06 and benchmark-suite-build (archived) still lists mandelbrot as blocked on it. Build the wave under the benchmark-suite harness. Self-originated, 2026-09-18 status audit. Taken by the coordinator session of 2026-09-18 (maintainer: fix everything that needs no decision), not a dispatched worker.'
-  kind: build
-  needs: []
-  status: proposed
-  blocked_by: 'built directly by the coordinator session of 2026-09-18 on main, not by a dispatched worker; do not dispatch, archive when its commit lands'
-
 - id: closures-first-class-functions-design
   title: 'Three rulings wait on first-class functions with no row to deliver them: partial application (partial-application-system-design, option C, always explicit), `.`-rebinding as sugar over a one-parameter closure (dot-rebinding-vs-lambda-design), and dsv-partials-migration''s blocked_by. Grill the concrete shape -- a function type in the type grammar, closure syntax, what a residual function value looks like and how it stays visibly distinct from an array literal -- informed by plans/closures-first-class-functions-research.md, then spin off the build rows. Mark done when ruled.'
   kind: decide
