@@ -107,5 +107,5 @@ map over Vec<{name: Str, age: Int}>: became an elementwise map kernel (One<{name
 ```
 
 A program with no `map` or `select` gets the fusion line alone. A program that does not
-compile gets no report: the compile error is printed as usual and nothing else. The flag is
-also accepted in front of `fmt`, where it is stripped and does nothing.
+compile gets no report: the compile error is printed as usual and nothing else. In front of
+`fmt` the flag is a usage error, since a formatter run has nothing to explain.
