@@ -480,20 +480,6 @@
   prio: 4
   status: delegated
 
-- id: convergence-guard-running-marker
-  title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
-    4-part task, self-report: narrower would succeed -- 2026-09-17). Part 2 of 4, independent of the
-    other three. simple_dispatch.py: write a plans/dispatch-log.csv row with status RUNNING at clone
-    time and overwrite that same row at the end of the attempt, so a dispatcher process that dies
-    mid-run shows up as RUNNING-with-no-live-process in dispatch_state.py (--show, --status,
-    latest_row) and in board-lint, instead of the tooling silently falling back to the previous
-    terminal run and hiding the death. Done-gate: killing a dispatcher mid-run reproduces
-    RUNNING-nothing-live in dispatch_state.py --show.'
-  kind: build
-  needs: []
-  prio: 4
-  status: delegated
-
 - id: convergence-guard-drive-verbs
   title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
     4-part task, self-report: narrower would succeed -- 2026-09-17). Part 3 of 4, independent of the
