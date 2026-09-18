@@ -85,7 +85,7 @@ Indexing a `Stream` does not exist: collapsing consumes to find the entry, and o
 that destroys what it passed. `collect` first.
 
 One spec per dimension, so nesting needs no rule:`groups[].members[].name` opens two
-dimensions,and `groups[].members.name` does not typecheck, because the members dimension was
+dimensions, and `groups[].members.name` does not typecheck, because the members dimension was
 never given a spec. A record is not a dimension:its field names are type-level, so iterating
 it would flatten them into positional order and lose them; [`fields`](../builtins/fields.md)
 is the written-down version of that crossing. A tensor is not a second scheme with its own

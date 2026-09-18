@@ -1,22 +1,23 @@
 # Streams and stdin
 
-Programs so far carried their data in the source. Real ones read stdin, and there are three
-ways in, at most one per program:
+Programs so far carried their data in the source. Real ones read stdin, and there is one way
+in: [`stdin`](../reference/sources/stdin.md), a stream of raw text lines, read at most once
+per program. Three spellings cover the three shapes input takes:
 
-- `input`: one JSON value, read whole.
-- `inputs`: a stream of JSON values, one per line.
-- `lines`: a stream of raw text lines.
+- `parse(stdin)`: one JSON value, read whole.
+- `stdin | map(parse(.))`: a stream of JSON values, one per line.
+- `stdin` on its own: a stream of raw text lines.
 
-A fourth source has no stdin behind it at all: [`range`](../reference/builtins/range.md) is
+A second source has no stdin behind it at all: [`range`](../reference/builtins/range.md) is
 a stream of integers, counted one at a time -- how the [Euler examples](../examples/euler/00-spoiler-warning.md)
 say "try every value in this range" without building the range first. It follows the same
 rules as the stdin sources: born at the source, single-use, dying at `collect` or the
 `jsonlines` sink.
 
-## One value: input
+## One value: parse(stdin)
 
-`input` is typed by where it is used, so hand it to a function whose signature says what
-stdin must be:
+`parse(stdin)` is typed by where it is used, so hand it to a function whose signature says
+what stdin must be:
 
 ```toylang
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
@@ -36,11 +37,11 @@ adults(parse(stdin))
 The value is validated against the declared type before the program runs -- a wrong shape
 is refused, not coerced.
 
-## Many values: inputs and lines
+## Many values: stdin | map(parse(.))
 
 When input arrives as records -- log lines, exported rows -- it may not fit in memory, and
-may not even end. `inputs` types stdin as a `Stream`: entries flow through the pipeline one
-at a time, and the type system keeps it that way. A `Stream<T>` parameter accepts it, and
+may not even end. `stdin | map(parse(.))` keeps it a `Stream`: entries flow through the
+pipeline one at a time, and the type system keeps it that way. A `Stream<T>` parameter accepts it, and
 the same `select`/`map`/projection spellings work on it:
 
 ```toylang
@@ -65,7 +66,7 @@ jsonlines(adults(stdin | map(parse(.))))
 arrives. This whole program compiles to a read-one, transform-one, write-one loop -- output
 starts before stdin closes.
 
-`lines` is the same shape for text that is not JSON; its entries are the raw lines, as
+Bare `stdin` is the same shape for text that is not JSON; its entries are the raw lines, as
 `Str`.
 
 ## Leaving the stream

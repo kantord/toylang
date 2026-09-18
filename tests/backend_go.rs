@@ -183,4 +183,6 @@ fn wide(x: Int) -> Int64 = i64(x)
         Backend::Go,
     )
     .unwrap();
+    assert_eq!(strs, "[\"apple\",\"banana\",\"cherry\"]\n");
+    assert_eq!(wide, "{\"v\":9,\"s\":\"x\"}\n");
 }

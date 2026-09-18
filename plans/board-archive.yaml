@@ -2459,3 +2459,323 @@
   kind: build
   needs: [mutation-semantics-design]
   status: done
+
+- id: stdout-stderr-effect-model-research
+  title: 'Landed directly (2026-09-04), not by a delegated worker: plans/stdout-stderr-effect-model-research.md. Lane had sat delegated 25 hours, 0 commits, last run burning its whole budget on read-only exploration before a blocked CLI call ended it. Core finding, verified by running real programs rather than reading docs: a toylang program is exactly one expression -- no sequencing construct exists at all -- so Q35 is not just "does stderr have a type," it is "can a program write more than once, anywhere." All three round-1 options worked through against that: A (opaque plumbing, one more single-instance sink alongside jsonlines) is real but cannot address shell-out-build''s actual need (relay a subprocess''s stdout and stderr in one run); B (extend Sink to Sink<T> plus a sequencing form, reusing `or`''s existing positional-overload precedent) is the smallest true extension and matches the maintainer''s own round-1 free text; C (a real IO<T> monad) needs a Unit type the language does not have and would leave two competing effect notations side by side. Ready for round 2.'
+  kind: build
+  needs: []
+  prio: 4
+  status: done
+
+- id: float-build-jq
+  issue: gh:149
+  title: 'Landed directly (2026-09-04), not by a delegated worker: full Float for jq -- lane had 4.3h-idle real progress (arithmetic, comparisons, input, a careful ESCALATION.md) stalled by the worker''s own model repeatedly corrupting a probe script with a stray Unicode combining character. Closed the escalation''s printing gap: jq''s tostring already gets the shortest round-trip digits right (verified against a ~5000-value fuzz run, matching float-build-c-escalation''s own verification), so its output is reparsed and relaid-out with the same notation rule runtime/toylang.c''s Native formatter uses, rather than needing a fresh Q37 decision round. One gap left open on purpose: a non-finite float nested in a Vec/Record diverges from JS (pinned by a test, not silently untested) -- fixing it means jq abandoning its value-based JSON encoder for hand-built string concatenation, a bigger change than this row''s scope.'
+  kind: build
+  needs: [float-build]
+  status: done
+
+- id: float-build-c-escalation
+  issue: gh:149
+  title: 'Landed directly (2026-09-04), not by a delegated worker: full Float support for Native/LLVM, not an escalation -- lane had sat delegated 23.5 hours, 0 commits, last run burned its whole budget re-deriving history before a blocked CLI call ended it. libc has no shortest-round-trip float formatter (the actual "usable native matching primitive" question), so one was built: increasing-precision search over %e for the digits, ECMA-262 Number::toString layout for the notation, verified against Node byte-for-byte across a ~5000-value fuzz run before landing in runtime/toylang.c. Also fixed a real Kind-mismatch bug in check/mod.rs''s `-x` desugaring (Float-typed zero built as Kind::Int(0)), general to every backend, that JS''s untyped runtime numbers were masking. Float still needs Go/Python/Rust/Lua before it can be a corpus case.'
+  kind: build
+  needs: [float-build]
+  status: done
+
+- id: benchmark-suite-build
+  title: 'Landed directly (2026-09-03), not by a delegated worker: the hyperfine harness (src/bin/bench.rs, just bench NAME) and binary-trees, the first of the 8 non-float CLBG tasks, per benchmark-plan.md''s Build status section. That section also corrects the suite spike''s "good fit today" claim: reverse-complement/k-nucleotide/regex-redux need Str slicing or Char -> Str, neither of which exists; pidigits needs a bignum type; mandelbrot needs float support most backends lack. fasta and fannkuch-redux are the two next real candidates (benchmark-fasta-build, benchmark-fannkuch-redux-build below); n-body/spectral-norm stay deferred (gh:146 ruling).'
+  kind: build
+  needs: []
+  prio: 4
+  status: done
+
+- id: benchmark-fasta-build
+  title: 'Build the CLBG fasta task in toylang (benchmark-plan.md Build status): generates DNA sequences from a small literal Str alphabet via a computed PRNG index, so it needs no Char -> Str conversion. Follows the pattern in benches/programs/binary-trees.toy -- program under benches/programs/, correctness pinned as a small-N tests/corpus/ case, a larger benches/inputs/ fixture for real timing.'
+  kind: build
+  needs: []
+  prio: 4
+  status: done
+
+- id: sort-by-max-by-rust-helpers
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), Rust-source backend, step 1/3 -- split from the single
+    `sort-by-max-by-rust` row per maintainer ruling (stuck-row-triage-sort-by-max-by-rust forest,
+    2026-09-11, freeform answer "split into 3 tasks in a sequence") after 3 STUCK dispatch
+    attempts (a6ca45e8, b3feba5b, 7bb48a6c) all made zero `write_file` calls despite self-reports
+    claiming full readiness -- including a resumed attempt fed the prior self-report verbatim,
+    which still produced nothing across a full 30-turn budget. Maintainer thesis: the model keeps
+    re-deriving context every attempt and never crosses into edit mode; a smaller single-purpose
+    slice is the fix. This step only: add `tl_sort_by<T: Clone, K: Ord>` and
+    `tl_max_by<T: Clone, K: Ord>` helper functions to `src/emit_rs.rs` (model on the existing
+    `tl_sort`/`tl_max` helpers near lines 189/215; `tl_sort_by` stable-sorts by a projected key
+    via `slice::sort_by_key`, `tl_max_by` does a tie-aware fold picking the first max on ties, per
+    the landed Go commit `1456d9f`). No wiring into the emitter''s TIR cases yet, no tests yet --
+    just the two helper functions compiling standalone.
+
+    STUCK 2/2 attempts at this narrowed scope (2d5d2c8e, 6ad359c8) -- but both independently
+    produced a correct, add-only patch matching this spec exactly, each confirmed green by the
+    agent''s own `just check` run (436/436 on the second). The STUCK label traces to the dispatch
+    harness''s own verify/dedup step, not to the code. Retry budget spent -- do NOT redispatch
+    again. Escalated to maintainer: `docs/.grill/sort-by-max-by-rust-helpers-stuck.round.yaml`.
+    Gated on `sort-by-max-by-rust-helpers-stuck-ruling` (added 2026-09-12) instead of a status
+    flip: a `proposed` status here would also have satisfied `sort-by-max-by-rust-wiring`''s own
+    `needs` check (dispatch_state.py''s live-check only excludes `todo`/`delegated`, so anything
+    else reads as "done" to a dependent) -- wrong, since the helpers have not actually landed.
+    A blocking decide row keeps both this row and its dependent correctly un-ready until the
+    round is answered.
+
+    LANDED (2026-09-13, commit 9b006ff on main): per the ruling above, landed directly via
+    `land_lane.py land-patch` from the already-verified `6ad359c8.patch`, bypassing the
+    dispatch harness''s gate. Diff matches this row''s spec exactly (add-only
+    `tl_sort_by`/`tl_max_by` in `src/emit_rs.rs`, no wiring, no tests) -- reviewed post-land,
+    nothing else to file.'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-go, sort-by-max-by-rust-helpers-stuck-ruling]
+  status: done
+
+- id: shell-out-stderr-relay-design
+  issue: gh:158
+  title: 'Q35 was RULED option A, opaque plumbing (stdout-stderr-effect-model-design, wizard submission 2026-09-07) -- a second single-instance sink alongside jsonlines, structurally unable to relay two streams (stdout and stderr) from one subprocess at once. But pipe_through''s whole point is exactly that: relay a subprocess''s stdout AND stderr in the same run. Decide how shell-out-build should actually spell this under option A before dispatching it -- e.g. two separate pipe_through-style calls each claiming one stream (never combined in one program, so a program picks stdout-relay xor stderr-relay), a merged single-stream relay that drops the distinction, or something else. Also settle the stdin/stdout splitting question flagged alongside Q35 as possibly distinct. Follow-up (wizard submission, 2026-09-07): RULED option C, merge before toylang sees them -- but the maintainer reinterpreted it away from a lossy OS-level 2>&1 merge: "it seems like all we need is a built in enum for creating combined tagged streams... so a merged stream of type A and type B is just a single stream where each item is either A or B." So pipe_through relays one Stream where each item is tagged Stdout or Stderr, not two indistinguishable byte streams. Spun off stream-merge-tagged-design to ground this against Q25''s existing Alt<A,B> sketch and produce the concrete mechanism. Stdin/stdout splitting was NOT addressed by this answer -- still open, carry it into the same follow-up.'
+  kind: decide
+  needs: [stdout-stderr-effect-model-design]
+  status: done
+
+- id: stream-merge-tagged-design
+  issue: gh:158
+  title: 'Follow-up from shell-out-stderr-relay-design''s Q35 follow-up ruling (wizard submission, 2026-09-07, option C reinterpreted): the maintainer wants pipe_through to relay stdout+stderr as one Stream whose items are tagged by origin (a built-in enum: "a merged stream of type A and type B is just a single stream where each item is either A or B"), not an OS-level 2>&1 byte merge and not two mutually-exclusive single-stream calls. Ground this against Q25''s existing Alt<A,B> sketch (already recorded for stream-ordering, plans/questions.md#q25) and the closed-nominal-enum mechanism from the enum decision -- work out whether Alt<A,B> is literally reusable here or needs its own shape, then produce the concrete pipe_through signature. Also still open: the stdin/stdout splitting question flagged since Q35 and re-flagged here, never answered by either round. RULED (wizard submission, 2026-09-07): option A, a fixed stdlib-predefined two-variant enum -- verified that an ordinary enum already produces the tagged shape with zero new type-system machinery (no Alt<A,B> needed): `enum Line { Out{text: Str}, Err{text: Str} }` over a mapped stream. pipe_through should tag with one fixed enum (e.g. PipeLine{ Stdout, Stderr }), same shape for every caller. Option B (generic over a caller-supplied enum) was not picked -- it depends on user-defined generic functions, which do not exist yet. Stdin/stdout splitting was still not addressed by this ruling -- spun off as its own row, stdin-stdout-splitting-design.'
+  kind: decide
+  needs: [shell-out-stderr-relay-design]
+  status: done
+
+- id: stdout-stderr-effect-model-design
+  title: 'Decide Q35 (plans/questions.md#q35): what are stdout/stderr, and does a program write or return? Two commitless runs on shell-out-build (gh:158, issue-158, 2026-09-01) both spent their full budget rediscovering that pipe_through cannot be implemented until this effect model exists, then produced no code. Round 1 answer: no pick -- maintainer''s freeText pulled two directions at once ("well i would say real type, but isn''t it already the same types that we are using for our own program''s own inputs and outputs?") and flagged a second open question riding along, how stdin/stdout splitting works. Round 2 answer (wizard submission, 2026-09-07): RULED option A, opaque plumbing -- a second single-instance sink alongside jsonlines, symmetric in every rule, no sequencing form. Maintainer''s note: "not sure, but i lean towards A." This is against the research doc''s thesis (which leaned B, Sink<T> plus a sequencing form, since A structurally cannot relay two streams at once) -- so shell-out-build''s pipe_through need (relay a subprocess''s stdout AND stderr in one run) stays unresolved under A and will need its own follow-up if/when that need becomes concrete. stdin/stdout splitting for pipe_through was flagged as possibly a distinct question, not answered here -- open a follow-up decide row for it when shell-out-build is dispatched.'
+  kind: decide
+  needs: [stdout-stderr-effect-model-research]
+  prio: 1
+  status: done
+
+- id: sort-by-max-by-checkpoint-1
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), step 2/6 -- RULED (wizard submission, 2026-09-07): option
+    B, reevaluate the grouping. TIR shape confirmed sound (mirrors Map, reuses max''s Opt<T>
+    answer), but the maintainer picked B over confirm-and-proceed: one backend per commit for
+    all six remaining backends rather than 2+4 groups, since even the 4-backend scripting group
+    recreates a smaller version of the blast radius blamed for the original 7-backend-blob
+    corruption. Board reshaped accordingly: sort-by-max-by-compiled-backends and
+    -scripting-backends replaced by one row per backend (sort-by-max-by-go/-rust/-lua/-js/
+    -python/-jq), each followed by its own reevaluation gate, ending in
+    sort-by-max-by-checkpoint-jq before the unchanged, standalone native/LLVM step.'
+  kind: decide
+  needs: [sort-by-max-by-tir]
+  status: done
+
+- id: sort-by-max-by-checkpoint-go
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Go commit landed clean before
+    starting Rust-source. RULED (wizard submission, sort-by-checkpoint-and-fold-syntax round,
+    2026-09-11): option A, proceed -- verified `git show 1456d9f -- src/emit_go.rs` is a clean
+    +64/-7 diff, `tests/backend_go.rs` gained 4 real tests, full `just test` 423/423 passed. No
+    corruption markers. Dispatch sort-by-max-by-rust next.'
+  kind: decide
+  needs: [sort-by-max-by-go]
+  status: done
+
+- id: sort-by-max-by-rust-helpers-stuck-ruling
+  issue: gh:177
+  title: 'Placeholder decide row so `sort-by-max-by-rust-helpers`''s `needs` can correctly gate
+    it (and its dependent, `sort-by-max-by-rust-wiring`) as not-ready while
+    `docs/.grill/sort-by-max-by-rust-helpers-stuck.round.yaml` is unanswered (options: land the
+    already-verified patch directly, fix the dispatch harness''s STUCK classifier first, redispatch
+    a third time, or fold the helpers into the wiring row). Mark this row `status: done` the same
+    tick the round is ruled -- it carries no work of its own.
+
+    RULED (wizard submission, sort-by-max-by-rust-helpers-stuck round, 2026-09-13): land the
+    already-verified patch directly, bypassing the automated gate for this row (the STUCK label
+    traced to the dispatch harness''s verify/dedup step, not the code -- both attempts produced
+    a correct, add-only patch independently confirmed green by `just check`). Landing
+    `sort-by-max-by-rust-helpers-6ad359c8.patch` via `land_lane.py land-patch` this tick.'
+  kind: decide
+  needs: []
+  status: done
+
+- id: erlang-target-consideration
+  issue: gh:163
+  title: 'Consider Erlang as an additional backend target, as a design stress test (maintainer note) -- round answer (module-routing-and-erlang-target round, question erlang-target-consideration): option C, spend more research and actually try the Erlang toolchain rather than accepting the desk-research-only finding (plans/erlang-target-research.md). Maintainer also flagged: concurrency will need to be supported by toylang regardless of this backend question -- worth surfacing as its own open item once this research lands. RULED (wizard submission, 2026-09-07): option A, close per the research recommendation -- erl/erlc/escript all absent from this host with no toolchain available to install them (plans/erlang-target-research.md, addendum), and the underlying recommendation (Erlang fails ADR 0002''s backend-admission test; its one distinct axis, concurrency, is unexercised by any toylang program) did not depend on that gap closing. Closed gh:163. Reopen only if toylang grows concurrency.'
+  kind: decide
+  needs: [erlang-toolchain-empirical-research]
+  prio: 5
+  status: done
+
+- id: partial-application-system-design
+  issue: gh:119
+  title: 'Grill array-like vs struct-like partial application for the colon method-call operator (gh:119 ruling spinoff), informed by closures-first-class-functions-research -- maintainer: "either five_plus(1) is correct (but still becomes curried) or five_plus [1, 2] is correct; also function will still always only have one parameter; a true curried function would be a function that returns another function; we may want to implement this, or perhaps consider instead thinking about formalizing at least the beginning of a partial application system which could either apply a partial array-like or a partial struct-like". RULED (wizard submission, 2026-09-07): option C, both unified as one mechanism once functions are first-class -- array-like (positional prefix) and struct-like (field subtraction) are two input shapes hitting the same application-returns-a-function mechanism, not two features to build separately. Maintainer added a hard requirement not covered by any option: partial application must always be syntactically explicit, never silently inferred from arity/shape -- e.g. a residual function value must be visibly distinct from a genuine array literal (`[1]` as a partial-application residual must not look the same as the array value `[1]`). This constrains whatever concrete syntax closures-first-class-functions-build lands: the colon call form and any partial-application spelling need a marker (or distinct type-level shape) that makes "this is a partial application, not a value" visible at the call site.'
+  kind: decide
+  needs: [closures-first-class-functions-research]
+  status: done
+
+- id: binary-op-multiplicity-design
+  title: 'Grill binary operators over multi-valued operands (cartesian, zip, or explicit) and the record-forming update''s spelling -- Q2/Q3 (draft-split). Round 2 answers (multiplicity-and-offload-round2): Q3 RATIFIED -- option B, require One on the right of `=`, forking becomes explicit; maintainer caveat: drop the `$c`-prefixed alias in the option''s preview, "never agreed to prefacing variable names with $" (applies to whatever alias/binding syntax eventually lands, not specific to this row). Q2 still no pick -- maintainer leans B (zip/broadcast) or C (no default, explicit) but wants to understand how much of jq''s magic/expressive power would be lost either way before choosing; needs jq-expressiveness-under-zip-or-explicit-research before a round 3 re-ask. RATIFIED (wizard submission, multiplicity-choicepoint-http round, 2026-09-08): Q2 -- option A, cartesian default. `Vec op Vec` becomes legal and cartesian for every operator (matches jq''s own default, verified against jq 1.8.2), no new builtin. Both Q2 and Q3 now settled; nothing left open for this row.'
+  kind: decide
+  needs: [jq-expressiveness-under-zip-or-explicit-research]
+  prio: 3
+  status: done
+
+- id: offload-boundary-design
+  title: 'Grill the offload/vectorization thesis -- kernel admissibility, batch invariance, parallel basis, tensors (draft-split). Round 2 answer (multiplicity-and-offload-round2, question vectorizability-visibility): silent/cardinality-derived vectorizability CONFIRMED (no type-level effect); the caveat''s discoverability mechanism is B now (opt-in `--explain-offload` compiler diagnostic) with C (editor/LSP hover) as a wanted future addition, not a near-term requirement. Spun off offload-explain-flag-build for B; LSP hover left unscheduled. Round 3 answer, parallel-primitive-basis (Q23): RATIFIED option A -- full basis now (map/scan/reduce/gather/scatter + segmented forms), fold and general recursion demoted to convenience leaves, future stdlib additions checked against the third-homomorphism theorem. Q22 (dense-masked-distinguishable/select representation): maintainer proposed a fourth shape (Vec-typed view, materialized only on strong reference -- ties to mutation-semantics-spike) that none of A/B/C covered; spun off select-materialization-research (gh:176) to ground a re-ask instead of re-presenting the same options. Round 4 answer, Q21 (batch-invariance-enforcement, rewritten with the mean/naive-average-of-averages worked example): RATIFIED option B -- compiler requires a declared associative combiner at every batch boundary, same enforcement posture as sort''s element-type check. Maintainer''s answer went further than the three options though, proposing the enforcement should ride on a richer effect type rather than a bare compiler gate: a distinct `Stream<Batch<T>>` (vs plain `Stream<T>`), an explicit `[Stream<T>, N] -> Stream<Batch<T, N>>` batching function, and an open question of what *initiates* batching -- explicit marker, implicit at certain constructs, or forced/unavoidable for certain operations. Spun off batch-type-design-research to ground a re-ask of that shape. Round 5 answers (wizard submission, 2026-09-07), both threads now RATIFIED: Q22 (select-materialization) -- RULED option B, the maintainer''s own proposal worked out: select keeps returning Vec; behind the name is a {source, mask-or-selection} pair, indexable via a lazily-built selection vector or mask+popcount table (O(1) per access after one O(n) build over mask bits only), compacting on the first strong reference (reusing input storage if uniquely referenced) -- the same provably-one-reference condition mutation-semantics-spike already uses. Maintainer''s follow-up, NOT yet answered: should this mask/selection-backed representation apply only to Vec, or also to streams or some other shared trait they''d both implement -- needs its own follow-up decide row before this finding gets built. Q21 follow-up (batch-type-design) -- RULED option A: opaque Batch<T> with NO operations at all (no length, indexing, equality), batch(s, n) takes n as a runtime-value hint (not a type parameter -- type-level naturals would make batch size observable/exact, defeating the unobservability round 4''s law protects), forced at the reader and at any whole-input/two-level-reduction operation, explicit everywhere else -- closes the observability hole by construction rather than a growing per-operation gate list.'
+  kind: decide
+  needs: [select-materialization-research, batch-type-design-research]
+  soft: [benchmark-goals]
+  prio: 5
+  status: done
+
+- id: select-materialization-scope
+  issue: gh:176
+  title: 'Follow-up from offload-boundary-design round 5''s Q22 ruling (mask/selection-backed select, compact on strong reference): the maintainer''s own proposal was framed around Vec, but asked in the same breath whether the representation should be Vec-only or shared with streams or some other trait they''d both implement. Ground this against what select-materialization-research already found (NumPy/Julia/Rust Cow/pandas survey) plus whatever Stream-side operations exist today, then re-ask. RULED (wizard submission, 2026-09-07): option B, a shared select-able mechanism over Vec and Stream -- but conditionally: "only if we can actually find out a way to basically hide this complexity... only actually one select implementation that uses a built in function or sth similar... probably not ''selectable'' in the sense of having a trait for a single method, but sth simpler but more reusable." Maintainer wants one generic mechanism select is the first user of, not a bespoke single-method trait. Spun off select-shared-mechanism-design to work out that shape once trait-interface-dispatch-build gives the checker something to build it on.'
+  kind: decide
+  needs: []
+  status: done
+
+- id: select-shared-mechanism-design
+  issue: gh:176
+  title: 'Follow-up from select-materialization-scope''s ruling (wizard submission, 2026-09-07, option B with a hedge): the maintainer wants select generic over Vec and Stream via one shared, generic, reusable mechanism -- explicitly NOT a bespoke single-method "Selectable" trait, and only if the complexity can genuinely be hidden behind it. Blocked until trait-interface-dispatch-build lands enough of the trait/dispatch system to know what a generic mechanism can actually look like in toylang; then work out the concrete shape and produce select''s real signature. RULED (wizard submission, search-fold-select-mechanism round, 2026-09-09): flagged first that `trait-interface-dispatch-build` (archived done) did NOT actually deliver multi-impl dispatch -- impl methods still lower to plain global functions keyed by name, so a second `impl Selectable for Stream` would collide with `impl Selectable for Vec`''s same-named method (collision-refusal comment still present verbatim, `src/ast.rs:562-564`). Maintainer picked option 1 (build the Selectable trait now anyway) but freeText immediately qualifies it: "we actually have to land the minimal trait features for this first" -- i.e. the real dependency is not optional, option 1 is only viable once dispatch exists. Filed `trait-multi-impl-dispatch-build` to carry that real remaining scope (the archived row is not being reopened); this row''s `needs` now points there instead.
+
+    Follow-up (grilling round, 2026-09-09, now that trait-multi-impl-dispatch-build is landed): a literal `trait Selectable { ... } impl Selectable for Vec<T>` still can''t be written -- the just-landed mechanism dispatches by one *concrete* type per impl block, no generic impls over a type constructor (verified: prelude.toy''s one real precedent, `impl Fold for Vec<Int>`, is exactly one instantiation, no `impl<T> Fold for Vec<T>`). Maintainer''s call: fix this properly rather than route around it for `select` alone, since more of the prelude will want the same shape. Filed `trait-generic-impls-over-type-constructors-design` to carry that scope; this row''s `needs` now also includes it.
+
+    Checkpoint (both prerequisites now landed) found that `select` already has the shared mechanism through `select_call` (`src/check/mod.rs:3372-3398`, subject-context dispatch, no trait), not through a trait -- an option-A/option-B re-ask (select-shared-mechanism-checkpoint). RULED (wizard submission, 2026-09-11): option B -- the Selectable-shaped trait mechanism is real and already compiles today (verified, `tests/generics.rs:270-271`, a generic `impl<T> Doubled for Vec<T>` typechecks and runs), so option 1 stands confirmed rather than needing new work; `select` itself is NOT reversed onto it and stays on `select_call` (option B''s own text: "select itself stays on select_call, this row retargets to a DIFFERENT prelude function"). No specific different function was named in the ruling, so per option B''s own fallback this closes as a confirmed, ready-to-use template for whenever a future prelude function wants the trait shape -- no new build work follows from this row. Q22''s lazy mask/selection representation for `select` (unaffected by A vs B, both agree select stays on select_call) is real remaining scope, spun off as `select-lazy-materialization-build`.'
+  kind: decide
+  needs: [trait-multi-impl-dispatch-build, trait-generic-impls-over-type-constructors-design]
+  status: done
+
+- id: select-lazy-materialization-harness-defect-ruling
+  issue: gh:176
+  title: 'Placeholder decide row gating all 7 select-lazy-materialization-build-* per-backend
+    rows (go, js, py, lua, rust, jq, llvm) as not-ready. Every one of the 7 has independently
+    reproduced the identical failure shape: STUCK, ended_by=dedup, 0 edits, verify=RED unchanged
+    across 2-3 attempts (go 6c720903, py 0adf79ff, lua f2628c7e, js 063c8fc1, llvm 7366d59a, jq
+    80b3d6d9, rust 1f1780aa, all 2026-09-13; go again 35f62caa on 2026-09-14, AFTER the
+    no-progress-cutoff harness fix in `dispatch-no-progress-cutoff-harness-defect` landed --
+    that fix did not touch this shape). `dispatch_state.py --show select-lazy-materialization-build-go`
+    on 35f62caa: both attempts hit the model''s completion-token cap (3557 and 4096 tokens,
+    mostly `reasoning_tokens`) before any `write_file` call, then dedup''d identical "no changes,
+    no verify run" tails -- the model burns its whole completion budget reasoning about the
+    mask/selection-vector representation and never reaches a tool call, on every backend, every
+    attempt. This already survived one maintainer-ordered narrowing
+    (stuck-cross-backend-scope-escalation, 2026-09-13, split into these 7 rows) with no change in
+    outcome, so narrower scope is not the fix. Evidence captured:
+    `plans/incidents/select-lazy-materialization-build-{go,js,py,lua,rust,jq,llvm}-20260914/`.
+    Decide: (a) rewrite the shared brief with a concrete starter skeleton/worked example so the
+    model does not have to derive the representation from scratch inside its reasoning budget,
+    (b) raise the completion-token budget or pick a lower-reasoning model for this task class,
+    (c) hand the whole feature to a manual/privileged session, or (d) defer gh:176 outright. Mark
+    `status: done` and clear the `needs` gate on all 7 rows the same tick this is ruled.
+
+    RULED (maintainer session, 2026-09-15): option (b), as a harness fix rather than a per-family
+    setting. The 4096-token cap swallowed whole turns as hidden reasoning and agent_loop.py read the
+    resulting empty reply as model_done; it now nudges and continues, ends an attempt only after 3
+    such replies in a row (ended_by=reasoning_exhausted), and the default cap is 8192. The 7 rows are
+    ungated and redispatch normally; if they STUCK again the ending will say why.'
+  kind: decide
+  needs: []
+  status: done
+
+- id: http-query-sugar-design
+  issue: gh:171
+  title: 'Maintainer note (composed 2026-08-31): design minimal HTTP query support (Python-requests-like) as sugar over whatever backend already provides -- needs a grilling round on surface area before it becomes build work. RULED (wizard submission, multiplicity-choicepoint-http round, 2026-09-08), both questions: (1) backend scope -- option A, the 3 TLS-capable backends only (Go net/http, JS fetch, Python urllib.request+ssl), zero new dependencies; Lua/jq/Rust/native refuse this whole program class. Maintainer flagged a follow-up: "the task is only really done, and design is only really final, once we have it implemented on all backends" -- file that as its own follow-up row once the 3-backend build lands, do not fold it into this build''s scope. (2) surface -- option B, `fetch(url)` returning the full response record (status/headers/body), NOT option A''s bare body-as-value `http(url)`; maintainer added a hard requirement not covered by any option text: build proper types for the response shape (structs/enums), not an ad hoc record. This needs a new response type, a header representation (toylang has no Map type yet), and a body-field typing rule, none of which exist today -- scope those as part of the build.'
+  kind: decide
+  needs: [http-query-sugar-research]
+  prio: 4
+  status: done
+
+- id: dense-tensor-type
+  issue: gh:175
+  title: 'Round 5 answer (wizard submission, 2026-09-02): tensor-value-kind-justified picked C (defer the flat-buffer kind) but the freeText leans further -- not a new value kind at all, but formalizing Vec itself as the dataframe/tensor-capable type, with a minimal set of dataframe primitives layered over it; open sub-question (not covered by any of A/B/C) is whether that needs an explicit multi-dimensional type-design change or can ride the current simple Vec type. tensor-construction-syntax/-transpose-view/-null-handling are all contingent on building the kind, so moot under the C ruling -- their leanings (C single tensor(n;m) constructor, A transpose in scope now, null-handling left unanswered) are kept here as breadcrumbs for whenever this reopens. Spun off vec-as-dataframe-type-research to ground a re-ask on the maintainer''s actual framing instead of re-presenting A/B/C. RULED (wizard submission, dense-tensor-construction-iteration-nulls round, 2026-09-08), all three sub-questions: (1) construction (Q17) -- option C, single `tensor(n; m)` constructor, one stage, no `Float`/width commitment; maintainer freeText flagged a real reservation not resolved by any option -- still not fully on board with a tensor concept separate from Vec, asking "can''t there be a single vector-tensor type?" -- which is in fact already the ruling from vec-as-dataframe-type-research (Vec itself is the tensor type, no separate value kind), so the reservation is answered by the prior research, not by this round; worth a one-line confirmation back to the maintainer next round rather than assuming it lands. (2) iteration/transpose (Q18 remainder) -- option A, build a transpose/column-access view now rather than deferring, alongside the tensor type. (3) nulls (Q19) -- option A, hard-fail only, no bitmask; maintainer noted this pick is tentative ("not certain, but leaning this way"), reversing the round''s own thesis lean toward option B (masked/dense pair) -- revisit if a real pipeline needs masked nulls through construction. All three sub-questions now closed; nothing left open for this row.'
+  kind: decide
+  needs: [vec-as-dataframe-type-research]
+  prio: 3
+  status: done
+
+- id: dot-rebinding-vs-lambda-design
+  title: 'Spun off from infinite-streams-design''s counter-and-takeuntil-terminator-shape round
+    (annotations capture, 2026-09-13T23:01:55Z): maintainer says the `.`-rebinding mechanism
+    (`select`/`map`/`max_by`''s "evaluate an expression once per entry with `.` bound to that
+    entry") already is a lambda/callback in disguise -- "a broken form of a lambda function" --
+    and was only ever a workaround, not the intended long-term shape. This overlaps two rows
+    already ruled but not built: closures-first-class-functions-research (done, plans/closures-
+    first-class-functions-research.md) and partial-application-system-design (done, ruled option
+    C -- both partial-application shapes unify once functions are first-class), neither of which
+    has a build row yet (see dsv-partials-migration''s blocked_by: no partial-application-system-
+    build row exists on the board). Grill: once real closures/first-class functions exist, does
+    `.`-rebinding get superseded by them, kept as sugar that desugars to an implicit one-line
+    lambda, or left alone as a distinct point-free mechanism serving a different use case than a
+    general closure? The answer decides whether infinite-streams-design''s takeUntil predicate
+    should be spec''d against `.`-rebinding (its round''s options A/B) or deferred until closures
+    land.
+
+    RULED (maintainer, forest round, 2026-09-17): option B, kept as sugar over an implicit
+    one-parameter closure -- the verified `select(.age >= 18)` spelling never changes; the
+    compiler lowers it to `fn(e) = e.age >= 18` once closures exist. Maintainer flagged an open
+    follow-up for whoever builds the desugaring: the closure parameter''s type must still derive
+    correctly through chained filters/calls on `.`, not just a direct field access -- a
+    type-inference concern for the build, not a re-ask of this question. Full answer in
+    `docs/.grill/dot-rebinding-vs-lambda.forest.yaml`.'
+  kind: decide
+  needs: []
+  prio: 4
+  status: done
+
+- id: mutation-semantics-design
+  title: 'Grill privileged/shared-reference mutation-as-optimization now that the spike
+    (plans/mutation-semantics-spike.md) has grounded the "provably one reference" analysis --
+    this is the decide row draft-mutation-migration''s partial migration has been waiting on.
+    Three sub-questions block landing it, each its own forest round. Sub-ruling 1 of 3
+    (function-boundary descent, maintainer, forest round, 2026-09-17): refuse across `Call`
+    boundaries on the first landing -- the reversible choice, ships the decidable scope-walk
+    alone rather than coupling to call-site specialization draft.md still treats as open TODO.
+    Full answer in `docs/.grill/mutation-function-boundary.forest.yaml`. Sub-ruling 2 of 3
+    (rule strength, maintainer, forest round, 2026-09-17): ship v1 (strict single-use) first,
+    not v2 (lazy-copy, order-aware) directly -- v1 is not throwaway scaffolding, the maintainer
+    asked to pre-create the v2 follow-up now rather than treat it as free once v1 lands. Full
+    answer in `docs/.grill/mutation-rule-v1-vs-v2.forest.yaml`. Sub-ruling 3 of 3 (backend
+    scope, maintainer, forest round, 2026-09-17): base pick "Split, Rust then Lua" -- one
+    backend per commit, matching the sort_by/max_by precedent (gh:177) unconditionally -- but
+    the maintainer edited the option to expand scope past the 2 originally commissioned
+    backends: land v1 on all 7 (rust, lua, go, js, python, jq, native/LLVM), not just Rust and
+    Lua. Full answer in `docs/.grill/mutation-which-backends-first.forest.yaml`. All three
+    sub-questions now answered -- row closes. Spun off mutation-rule-v1-build-rust through
+    -native (one row per backend with a reevaluation checkpoint between each, mirroring
+    sort-by-max-by-checkpoint-*) and repointed mutation-rule-v2-followup at the last of those.'
+  kind: decide
+  needs: [mutation-semantics-spike]
+  status: done
+
+- id: dispatch-no-progress-cutoff-harness-defect
+  title: '12 rows sat `status: done` for two days showing "in progress" while nothing
+    was running -- every one had a terminal STUCK in `plans/dispatch-log.csv` hours earlier.
+    Root cause per `plans/dispatch-self-healing-plan.md` (written 2026-09-14 from the raw
+    dispatch artifacts): two rules in `agent_loop.py` misclassify real harness limits as task
+    failures. The no-progress cutoff (`--max-turns-without-progress`, default 12) ends an
+    attempt mid-exploration on any task needing more than ~15 reads before its first write,
+    and discards that attempt''s transcript; the dedup rule then treats the next attempt''s
+    identical "no changes, no verify run" tail as repetition and calls the run STUCK after 2
+    of 3 attempts -- with zero edits made, zero signal about task scope. 46 of the last 54
+    dispatch runs hit this cutoff at least once. Two rows (`tensor-transpose-build`,
+    `sort-by-max-by-rust-wiring`) have real, verified, unlanded patches on disk that this same
+    bug misclassified as STUCK. Decide: approve the plan''s part-1 fix (raise/disable the
+    no-progress cutoff, never dedup an attempt that made edits, preflight the sandbox baseline
+    to GREEN -- about an hour, one commit per step) before any further dispatch of the 12
+    reset rows; separately rule on whether to land the two salvageable patches directly
+    (`land_lane.py land-patch` / `agent_loop.py --resume-from`) or let them redispatch from
+    scratch under the fixed harness. `docs/.grill/stuck-row-triage-2.round.yaml`''s seven
+    per-row escalation questions were retired as a symptom of this same bug (more than 4 STUCK
+    rows in one round is a harness signal, not 4 scope decisions) -- this row is the one real
+    decision in their place.
+
+    RULED (maintainer, 2026-09-14, in session, mail flow skipped): implement the whole plan, both
+    parts. Landed the same day (commits e740140..1fda324): cutoff off by default, dedup only for
+    zero-edit attempts, snapshot toylang-toolchain-v3 with tsc and a GREEN preflight, per-run
+    bundles and ended_by/edits/turns, dispatch_state.py --show/--health/--capture, the tick''s
+    health alarm and third verb, the two lint checks, the dev-site run page, the memory pool with
+    a watch. Both salvageable patches acted on directly: sort-by-max-by-rust-wiring via
+    land_lane.py land-patch, tensor-transpose-build via --resume-from/--resume-patch.'
+  kind: decide
+  needs: []
+  status: done

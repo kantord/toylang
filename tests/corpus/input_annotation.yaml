@@ -1,7 +1,7 @@
-# The `input <type>` annotation by itself: it declares what stdin holds before the body reads
-# it, and the body's `input` resolves against the declared type rather than borrowing one from
-# the function's signature. A use where nothing expects anything would refuse without one
-# ("cannot tell what `input` contains"); the declaration is that type (issue #150).
+# `parse(stdin)` typed by the parameter it is handed to: the checker reads the declared
+# parameter type and validates stdin against it. This case dates from the retired
+# `input <type>` annotation form (issue #150); the program was migrated to `parse(stdin)`
+# with the stdin redesign (gh:172) and the case now pins that the signature alone is enough.
 program: |
   fn f(p: {x: Int, y: Int}) -> Int = p.x * 2 + p.y * 3
 

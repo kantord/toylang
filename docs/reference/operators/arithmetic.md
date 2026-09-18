@@ -1,7 +1,8 @@
 # Arithmetic and +
 
 `+ - * / %` on `Int` (and on [Int64](../types/int64.md), with the same rules at twice the
-width -- the two never mix in one operator), with ordinary precedence (`*`, `/`, `%` bind
+width, and on [Float](../types/float.md), with IEEE rules instead -- no two of the three ever
+mix in one operator), with ordinary precedence (`*`, `/`, `%` bind
 tighter) and parentheses to override:
 
 ```toylang
@@ -23,8 +24,9 @@ str(-7 / 2) + "," + str(-7 % 3) + "," + str(7 % -3)
 -3,-1,1
 ```
 
-A zero divisor is the one way arithmetic can fail, and every backend refuses it at runtime
-rather than producing a value:
+A zero divisor is the one way integer arithmetic can fail, and every backend refuses it at
+runtime rather than producing a value (a `Float` divisor of zero is the IEEE answer instead;
+see [Float](../types/float.md)):
 
 ```toylang
 str(1 / 0)

@@ -1,9 +1,9 @@
 # pipe_through
 
-`pipe_through({cmd: Str, args: Vec<Str>, lines: Stream<Str>} -> Stream<PipeLine>`: streams the
+`pipe_through({cmd: Str, args: Vec<Str>, lines: Stream<Str>}) -> Stream<PipeLine>`: streams the
 lines of `lines` into a subprocess's stdin, and relays the subprocess's stdout and stderr lines back,
 each tagged by origin as a `PipeLine` value. `PipeLine` is the prelude's closed-nominal enum:
-`Stdout{text: Str}` for a line read from the child's stdout,and `Stderr{text: Str}` for one from its
+`Stdout{text: Str}` for a line read from the child's stdout, and `Stderr{text: Str}` for one from its
 stderr.
 
 The `lines` field is the one place a stream is legal inside a record: it is consumed by the subprocess,
@@ -13,7 +13,7 @@ nonzero on "no matches", which is a normal outcome for the shape this builtin ex
 
 
 
-As of the Rust backend, stdout lines stream out as they arrive,and stderr lines are drained concurrently
+As of the Rust backend, stdout lines stream out as they arrive, and stderr lines are drained concurrently
 so neither pipe can fill up and stall the child. The two streams' relative order is deterministic: all
 stdout lines come first, then all stderr lines, which is what keeps the tagged output reproducible. The
 stream starts at `lines` and dies at `collect`, exactly the way any other stream does.
@@ -22,6 +22,8 @@ stream starts at `lines` and dies at `collect`, exactly the way any other stream
 
 
 
-The one backend where the primitive exists today is Rust (`std::process::Command` with piped stdin,stdout,
-and stderr). the other backends' `Builtin` match arms carry an unimplemented arm for it, so a program
-using `pipe_through` refuses to compile there. Backend coverage is the row's business, not this page's.
+The one backend where the primitive exists today is Rust (`std::process::Command` with piped
+stdin, stdout, and stderr). The other six backends have no arm for it, and today a program using
+`pipe_through` on one of them is not refused cleanly: the emitter hits an internal
+`not yet implemented for this backend` error. A clean refusal is tracked as the
+`unbuilt-builtin-arms-refuse-not-panic` row in plans/board.yaml.

@@ -62,7 +62,7 @@ a thing. In toylang that is spelled `collect`:
 range_basic
 ```
 
-A `Stream` is born at a source -- `inputs`, `lines`, or `range` -- and dies at `collect` (or
+A `Stream` is born at a source -- `stdin` or `range` -- and dies at `collect` (or
 at a sink such as `jsonlines`). After `collect` it is a `Vec` with a known extent; [the
 streams guide](streams.md) and [ADR 0001](../adr/0001-stream-is-the-effect-layer-typed.md)
 cover the rules that hold the stream to that single use.
@@ -110,15 +110,15 @@ that wanted exactly one value.
 
 Making cardinality visible turns each into a type error at the point of the mistake: `if`
 requires exactly one `Bool`, a map key requires exactly one `Str`, and anything that runs an
-effect requires its arguments collapsed (`first`, `only`, `collect`). Multiplicity stays free
+effect requires its arguments collapsed (`first`, `collect`). Multiplicity stays free
 where it is useful, notably in structural positions, where `0..n` naturally means "this many
 children."
 
 ## What is still open
 
-The settled core above leaves several threads deliberately open, tracked in the question file
+The settled core above leaves two threads deliberately open, tracked in the question file
 rather than doctrine here: whether vectors are multidimensional ([Q9](../../plans/questions.md#q9-are-vectors-multidimensional-with--as-projection)),
-whether `select` returns a masked view, a selection vector, or a copy ([Q14](../../plans/questions.md#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy)),
-whether a lens ever materializes under uniqueness analysis ([Q10](../../plans/questions.md#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes)),
-whether a dense tensor type exists ([Q17](../../plans/questions.md#q17-is-there-a-dense-tensor-type-constructed-explicitly)), and whether
-the dimension model dissolves the two layers entirely ([Q32](../../plans/questions.md#q32-does-the-dimension-model-subsume-the-effect-layer)).
+and whether the dimension model dissolves the two layers entirely ([Q32](../../plans/questions.md#q32-does-the-dimension-model-subsume-the-effect-layer)).
+Two that used to be listed here are ruled and waiting to be built: `select` keeps returning
+a `Vec` backed by a lazy mask or selection vector ([Q14](../../plans/questions.md#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy)),
+and `Vec` itself is the tensor type, with no separate kind ([Q17](../../plans/questions.md#q17-is-there-a-dense-tensor-type-constructed-explicitly)).

@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use toylang::Backend;
 use toylang::fmt_tree::{self, Mode};
 
-const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|llvm]\n       toylang build FILE [js]\n       toylang fmt FILE\n       toylang fmt [--write]\n       toylang --explain-offload <run|emit|build> FILE [lua|js|jq|go|py|llvm]";
+const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|rust|llvm]\n       toylang build FILE [js]\n       toylang fmt FILE\n       toylang fmt [--write]\n       toylang --explain-offload <run|emit|build> FILE [lua|js|jq|go|py|rust|llvm]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

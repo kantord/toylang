@@ -22,3 +22,16 @@ and reduction semantics -- draft.md's vectorization sections already lean on `fo
 associativity to make reassociation legitimate, and on keeping floating-point contraction off,
 but those are operation questions, not representation ones. These are tracked as
 [draft.md's Q37](../../plans/questions.md#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model).
+
+## Amendment: printing and the non-finite values are decided (kantord/toylang#145, #149)
+
+The "not decided here" list above has since been decided and built. The ruling
+(kantord/toylang#145, 2026-08-30) admits `NaN` and `Infinity` as values a `Float` can hold,
+printed by name, and makes `Float` division by zero return `Infinity` per IEEE rather than
+failing the way `Int` division does. Printing is ECMA-262 `Number::toString`: shortest
+round-trip digits, fixed notation between `1e-7` and `1e21`, exponential outside it, no
+trailing `.0` on integral values. Every one of the seven backends (the count above says six;
+Rust-source joined later) renders the same double to the same bytes, verified against Node
+over a fuzz run of about five thousand values; the native runtime carries its own formatter
+in `runtime/toylang.c` because libc has no shortest-round-trip one. See
+[Float](../reference/types/float.md).

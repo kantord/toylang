@@ -13,34 +13,34 @@ Settled questions stay in the table. A tracker that only lists what is unresolve
 checked for completeness, and the settled entries are what stop a decision being relitigated.
 What a settled entry stops carrying is the argument: once an ADR or a decision section exists
 to point at, the detail collapses to a line and a link, and that record answers the question
-from then on. Where no such record exists yet -- Q20 is the only one today -- the entry keeps
-its detail, because collapsing it would delete the only copy.
+from then on. Where no such record exists yet the entry keeps its detail, because collapsing
+it would delete the only copy.
 
 | # | Question | Status |
 |---|---|---|
 | [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity) | Streams: first-class values, or evaluation-level multiplicity? | SETTLED, evaluation-level and typed: `Stream<T>` is the effect layer's type, not a value type |
-| [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | SETTLED (wizard submission, 2026-09-08): option A, cartesian default |
-| [Q3](#q3-what-symbol-replaces--for-the-record-forming-update) | What symbol replaces `=` for the record-forming update? | LEANING, blocked on Q2 |
-| [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN, but the shape is decided (ADR 0008: Kleene patterns in effect position); enums now supply tagged alternation, leaving the matcher surface and spelling |
+| [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | SETTLED (wizard submission, 2026-09-08): option A, cartesian default; not built yet, the checker still refuses every `Vec op Vec` except `+` |
+| [Q3](#q3-what-symbol-replaces--for-the-record-forming-update) | What symbol replaces `=` for the record-forming update? | RATIFIED (multiplicity-and-offload round 2): option B, keep `=` and require a `One` on its right, so forking is explicit; not built |
+| [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN in the general case; the shape is decided (ADR 0008: Kleene patterns in effect position), enums supply tagged alternation, and the `Seq<Head, Rest>` spelling is built as a checker type (`seq-type-primitive-build`); runtime-pair emission is still to come |
 | [Q5](#q5-stream-lowering-strategy-across-the-three-backends) | Stream-lowering strategy across the three backends | OPEN in general; all seven backends stream the fused pipeline shape, so only lowering beyond that shape remains |
 | [Q6](#q6-does-a-reconciler-belong-in-the-language-or-a-library) | Does a reconciler belong in the language or a library? | OPEN |
-| [Q7](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes) | Does `..` promise depth-first order, or only the set of nodes? | RULED provisional (signature-matching-and-search-cut round, 2026-09-01): promises depth-first order, jq-compatible; flagged for reevaluation once the columnar-fast-path alternative has a research brief |
-| [Q8](#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization) | Is vectorizability visible in the type system, or a silent optimization? | OPEN |
+| [Q7](#q7-does--promise-depth-first-order-or-only-the-set-of-nodes) | Does `..` promise depth-first order, or only the set of nodes? | RULED (2026-09-01, confirmed 2026-09-07): promises depth-first order, jq-compatible; the columnar-fast-path research brief landed and recommended closing without reevaluation. `..` itself is not implemented |
+| [Q8](#q8-is-vectorizability-visible-in-the-type-system-or-a-silent-optimization) | Is vectorizability visible in the type system, or a silent optimization? | CONFIRMED silent (offload-boundary-design round 2): no type-level effect; discoverability is the opt-in `--explain-offload` diagnostic, built |
 | [Q9](#q9-are-vectors-multidimensional-with--as-projection) | Are vectors multidimensional, with `[]` as projection? | OPEN, may merge with Q2 |
-| [Q10](#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes) | Is uniqueness analysis in scope, for deciding when a lens materializes? | LEANING yes, compiler-internal: see the privileged-references sketch |
+| [Q10](#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes) | Is uniqueness analysis in scope, for deciding when a lens materializes? | SETTLED yes, compiler-internal (mutation-semantics-design, 2026-09-17): v1 strict single-use, refusing across call boundaries, landing one backend at a time; Rust landed |
 | [Q11](#q11-how-does-the-querytransformation-split-manifest-in-the-type-system) | How does the query/transformation split manifest in the type system? | SETTLED |
 | [Q12](#q12-on-a-type-mismatch-does-field-access-error-yield-null-or-something-third) | On a type mismatch, does field access error, yield null, or something third? | SETTLED |
 | [Q13](#q13-does-the-layer-shift-run-only-one-way-with-no-value-to-effect-operator) | Does the layer shift run only one way, with no value-to-effect operator? | LEANING yes, and now load-bearing: born-at-sources, dies-at-exits is the `Stream<T>` typing rule |
-| [Q14](#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy) | Does `select` return a masked view, a selection vector, or a copy? | OPEN |
+| [Q14](#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy) | Does `select` return a masked view, a selection vector, or a copy? | RULED (offload-boundary-design round 5, 2026-09-07): `select` keeps returning `Vec`, backed by a lazy {source, mask-or-selection} pair that compacts on the first strong reference; per-backend build rows are on the board |
 | [Q15](#q15-backend-llvm-via-inkwell-cranelift-or-both) | Backend: LLVM via inkwell, Cranelift, or both? | SETTLED, LLVM via inkwell, built and running |
-| [Q16](#q16-string-representation-given-wtf-16-on-the-js-target) | String representation, given WTF-16 on the JS target | OPEN, decides the string API permanently |
+| [Q16](#q16-string-representation-given-wtf-16-on-the-js-target) | String representation, given WTF-16 on the JS target | SETTLED by ADR 0011 (2026-09-07): the third option, no length, no indexing, no splitting; `chars` is the only decomposition and codepoint order is the law |
 | [Q17](#q17-is-there-a-dense-tensor-type-constructed-explicitly) | Is there a dense tensor type, constructed explicitly? | SETTLED (dense-tensor-type ruling, 2026-09-08): no separate type -- `Vec` itself is the tensor-capable type (rectangular, shape-checked), constructed via `tensor(n; m)`, no width commitment |
-| [Q18](#q18-does--on-a-rank-2-tensor-yield-rows-or-scalars) | Does `.[]` on a rank-2 tensor yield rows or scalars? | SETTLED rows; transpose/column-access view RULED in scope now (dense-tensor-type ruling, 2026-09-08) |
+| [Q18](#q18-does--on-a-rank-2-tensor-yield-rows-or-scalars) | Does `.[]` on a rank-2 tensor yield rows or scalars? | SETTLED rows; transpose/column-access view RULED in scope (dense-tensor-type ruling, 2026-09-08) and built on Go and Rust only, with no corpus case yet |
 | [Q19](#q19-how-are-nulls-carried-in-a-dense-typed-buffer) | How are nulls carried in a dense typed buffer? | SETTLED (dense-tensor-type ruling, 2026-09-08): hard-fail only, no bitmask -- reverses the earlier Arrow-bitmask leaning |
 | [Q20](#q20-how-are-blocking-operators-sort-group_by-joins-classified) | How are blocking operators (`sort`, `group_by`, joins) classified? | SETTLED, a trait with no lawful stream instance |
-| [Q21](#q21-what-guarantees-batch-size-is-unobservable-over-a-batched-stream) | What guarantees batch size is unobservable over a batched stream? | LEANING, the trait law that ops commute with reification |
-| [Q22](#q22-are-dense-and-masked-vectors-distinguishable-in-the-type) | Are dense and masked vectors distinguishable in the type? | OPEN, Q14 from the other side |
-| [Q23](#q23-what-primitive-set-is-the-standard-library-defined-over) | What primitive set is the standard library defined over? | LEANING, the parallel basis |
+| [Q21](#q21-what-guarantees-batch-size-is-unobservable-over-a-batched-stream) | What guarantees batch size is unobservable over a batched stream? | RATIFIED (offload-boundary-design rounds 4 and 5): a declared associative combiner is required at every batch boundary, and batches are an opaque `Batch<T>` with no operations, made by `batch(s, n)` with `n` a runtime hint; not built |
+| [Q22](#q22-are-dense-and-masked-vectors-distinguishable-in-the-type) | Are dense and masked vectors distinguishable in the type? | RULED with Q14 (offload-boundary-design round 5): not distinguishable in the type; the mask lives behind `Vec` |
+| [Q23](#q23-what-primitive-set-is-the-standard-library-defined-over) | What primitive set is the standard library defined over? | RATIFIED option A (offload-boundary-design round 3): the full parallel basis (map, scan, reduce, gather, scatter, and segmented forms); `fold` and general recursion are convenience leaves |
 | [Q24](#q24-are-compile-time-macros-a-first-class-concept) | Are compile-time macros a first-class concept? | OPEN, not yet evaluated |
 | [Q25](#q25-does-the-language-have-union-types) | Does the language have union types? | PARTLY SETTLED: closed nominal sums exist (enums); anonymous structural unions remain an absence |
 | [Q26](#q26-is-jsxs-children-slot-a-closed-per-site-union-or-an-open-one) | Is JSX's children slot a closed per-site union, or an open one? | OPEN, deliberately deferred to last |
@@ -50,16 +50,16 @@ its detail, because collapsing it would delete the only copy.
 | [Q30](#q30-do-the-base-functor-generics-double-as-parser-combinators-across-trees-strings-and-streams) | Do the base-functor generics double as parser combinators, across trees, strings, and streams? | LEANING yes, implementation split still open |
 | [Q31](#q31-does-a-friendlier-string-pattern-language-belong-in-the-language-and-what-regex-flavor-does-it-extend-to) | Does a friendlier string-pattern language belong in the language, and what regex flavor does it extend to? | OPEN |
 | [Q32](#q32-does-the-dimension-model-subsume-the-effect-layer) | Does the dimension model subsume the effect layer? | OPEN, and it may dissolve Q13 rather than answer it |
-| [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | OPEN, and only expressible because arguments are a record |
-| [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN for records; enums decided identity for themselves, and enum declarations are the first declaration form |
-| [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | OPEN; `jsonlines` is now a top-level-only sink with no result type, which removes a placeholder answer without deciding the question |
-| [Q36](#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy) | Does a real module system need imports, multiple files, and enforced privacy? | OPEN, one always-on prelude file exists; nothing beyond it does |
-| [Q37](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model) | How do floats print, and what are NaN and Infinity in a JSON-shaped value model? | RULED (gh:145): admit NaN/Infinity, division by zero returns Infinity (matches IEEE). Printing format is still open per-backend conformance work; tracked at board row `float-build` |
+| [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | RULED option C (partial-application-system-design, 2026-09-07): array-like and struct-like partial application are one mechanism once functions are first-class, and it must always be syntactically explicit; no build row exists yet |
+| [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN for records; enums decided identity for themselves, and `type X = ...` shipped as a pure alias (docs/reference/types/alias.md), so the declaration form exists and only the identity half remains |
+| [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | RULED in three steps (2026-09-07): opaque plumbing, then a merged stream where each item is tagged by origin, spelled as the prelude enum `PipeLine`; `pipe_through` builds that on Rust. Still open: how stdin and stdout are split |
+| [Q36](#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy) | Does a real module system need imports, multiple files, and enforced privacy? | OPEN for imports and multiple files; file-scoped privacy is built (a non-`pub` definition is callable only from its own file), and the `@(path)` routing spelling parses but is refused as unimplemented |
+| [Q37](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model) | How do floats print, and what are NaN and Infinity in a JSON-shaped value model? | SETTLED (gh:145, built under gh:149): NaN and Infinity are values printed by name, `Float` division by zero is Infinity, and printing is ECMA-262 `Number::toString` on all seven backends; see docs/reference/types/float.md |
 | [Q38](#q38-are-composites-ordered-at-all) | Are composites ordered at all? | OPEN |
 | [Q39](#q39-is-a-timestamp-type-worth-a-third-numeric-type) | Is a timestamp type worth a third numeric type? | OPEN |
 | [Q40](#q40-is-a-fieldk-lens-trait-part-of-the-design) | Is a `Field<K>` lens trait part of the design? | OPEN |
 | [Q41](#q41-is-narrowing-a-record-to-a-subset-of-its-fields-an-operation) | Is narrowing a record to a subset of its fields an operation? | OPEN |
-| [Q42](#q42-is-a-runtime-field-names-accessor-part-of-the-design) | Is a runtime field-names accessor part of the design? | OPEN |
+| [Q42](#q42-is-a-runtime-field-names-accessor-part-of-the-design) | Is a runtime field-names accessor part of the design? | SETTLED: `fields`, a builtin on every backend (docs/reference/builtins/fields.md) |
 
 [Multidimensional vectors](#q9-are-vectors-multidimensional-with--as-projection) is the one
 question still capable of changing [the two-layer
@@ -93,7 +93,9 @@ is now SETTLED (wizard submission, multiplicity-choicepoint-http round, 2026-09-
 A, cartesian default**. `Vec op Vec` becomes legal for every operator (except `+`, already
 concatenation) and runs cartesian, matching jq's own default -- checked against a real jq
 1.8.2 binary: `echo '{"a":[2,3],"b":[10,20]}' | jq -c '[.a[] * .b[]]'` gives `[20,30,40,60]`,
-the full 2x2 outer product. No new builtin needed; `.a * .b` is legal and cartesian for free.
+the full 2x2 outer product. No new builtin needed; `.a * .b` becomes legal and cartesian for
+free. Not built as of 2026-09-18: the checker still refuses every operator but `+` over a
+`Vec` (`binary` in src/check/mod.rs), and no build row carries the ruling.
 
 Composite equality is settled without touching it. `==` on a record or an enum compares
 structurally, and is refused outright when the type carries a Vec anywhere inside it, so a
@@ -101,6 +103,13 @@ structurally, and is refused outright when the type carries a Vec anywhere insid
 ([the equality decision](../docs/reference/operators/comparison.md)).
 
 ### Q3. What symbol replaces `=` for the record-forming update?
+
+RATIFIED (multiplicity-and-offload round 2, binary-op-multiplicity-design): option B, `=`
+stays and its right-hand side must be a `One`, so a forking update has to be spelled out.
+The ratified spelling is written up, unbuilt, in
+[the update operator page](../docs/reference/operators/update.md). The maintainer's caveat
+from the same round applies to whatever binding syntax lands: no `$`-prefixed variable
+names.
 
 ### Q4. Can the type express ordering over heterogeneous streams?
 
@@ -144,7 +153,7 @@ Lua has true coroutines, JavaScript has generators, native
 has neither for free. Previously recorded as needing to be decided before any backend is
 written, which turned out to be false: three backends exist without it, because nothing in
 them streams. Then recorded as blocking any backend that *streams*, which the fused
-`jsonlines(f(inputs))` loop showed is also false: all seven backends now stream that pipeline
+`jsonlines(f(stdin | map(parse(.))))` loop showed is also false: all seven backends now stream that pipeline
 shape as a plain read/transform/write loop, no coroutines or generators involved, because a
 straight-line pipeline never needs to suspend. What the question still covers is lowering
 beyond that shape -- a stream consumed by something that is not the tail of its own loop --
@@ -166,8 +175,10 @@ things people reach for jq to do.
 **Ruled provisional** (signature-matching-and-search-cut round, 2026-09-01): `..` promises
 depth-first order, matching jq. The maintainer flagged this for reevaluation once the
 unordered/columnar-fast-path alternative has a real research brief comparing it against other
-languages' recursive-descent semantics and use cases -- see `recursive-descent-order-research`
-in plans/board.yaml.
+languages' recursive-descent semantics and use cases. That brief,
+[recursive-descent-order-research](recursive-descent-order-research.md), landed 2026-09-07:
+every precedent surveyed (jq, XPath, JSONPath) treats depth-first pre-order as load-bearing,
+so the ruling stands with nothing left to re-ask. `..` itself is not implemented yet.
 
 ### Q8. Is vectorizability visible in the type system, or a silent optimization?
 
@@ -177,6 +188,11 @@ signatures. Hiding it makes performance unpredictable in exactly the way this de
 trying to avoid. Note the two effects are orthogonal: `select` changes cardinality and
 vectorizes fine as a mask, while `first` changes cardinality the same way and cannot
 vectorize at all.
+
+CONFIRMED silent (offload-boundary-design round 2): vectorizability is derived from
+cardinality and never appears in a signature. Discoverability, the cost of hiding it, is
+answered by the opt-in `--explain-offload` compiler diagnostic, which is built
+(`offload-explain-flag-build`); editor hover is a wanted addition, not scheduled.
 
 ### Q9. Are vectors multidimensional, with `[]` as projection?
 
@@ -190,6 +206,12 @@ while JSON is ragged.
 Deciding when a projection lens can materialize instead
  of staying a view requires knowing no other reference to the source survives. That is
  linearity or uniqueness typing, the machinery deliberately avoided in [the ordering question](#q4-can-the-type-express-ordering-over-heterogeneous-streams).
+
+SETTLED yes, compiler-internal (mutation-semantics-design, three forest rounds, 2026-09-17),
+after the [mutation spike](mutation-semantics-spike.md) grounded the "provably one
+reference" analysis: the first landing refuses across call boundaries, ships the strict
+single-use v1 rule rather than the lazy-copy v2, and lands on all seven backends one at a
+time, Rust first (landed). The v2 follow-up row exists already at the maintainer's request.
 
 ### Q11. How does the query/transformation split manifest in the type system?
 
@@ -213,7 +235,7 @@ If effect multiplicity is born only from
  operator is needed, because degrading a `Vec` forgets its extent and buys nothing. LEANING
  toward yes. This decides [the streams question](#q1-streams-first-class-values-or-evaluation-level-multiplicity) with it, since the only thing that would break it is a value
  with genuinely unknown extent, which is what a first-class stream value would be. The streams
- question is now settled the compatible way, and this lifecycle -- born at `inputs`/`lines`,
+ question is now settled the compatible way, and this lifecycle -- born at `stdin` or `range`,
  dead at `collect` or a sink -- became the `Stream<T>` typing rule, so reversing this lean now
  means amending that decision too.
 
@@ -223,6 +245,16 @@ See the section on
  whether a value-layer `select` copies. A bitmask breaks `Vec`'s constant-time indexing
  promise, a selection vector keeps it and pays memory per survivor, and either view pins its
  whole source buffer alive.
+
+RULED option B (offload-boundary-design round 5, 2026-09-07), the maintainer's own proposal:
+`select` keeps returning `Vec`; behind the name is a {source, mask-or-selection} pair,
+indexable through a lazily built selection vector or a mask with a popcount table, compacting
+on the first strong reference and reusing the input's storage when that reference is unique
+(the same condition [Q10](#q10-is-uniqueness-analysis-in-scope-for-deciding-when-a-lens-materializes)
+uses). Whether the representation is shared with streams was answered in
+`select-shared-mechanism-design`: `select` stays on its own subject-context dispatch. The
+per-backend build rows are `select-lazy-materialization-build-*` in plans/board.yaml; Python
+landed first.
 
 ### Q15. Backend: LLVM via inkwell, Cranelift, or both?
 
@@ -237,14 +269,23 @@ The three
  is cheap on both sides. It has to be decided early because it constrains the string API
  permanently.
 
+SETTLED as the third option by
+[ADR 0011](../docs/adr/0011-str-is-a-sequence-of-unicode-scalar-values.md) (2026-09-07): a
+`Str` is a sequence of Unicode scalar values with no length, no indexing, and no splitting;
+`chars` is the only decomposition and codepoint order is the ordering law. The ADR does not
+cite this entry, which is why the status sat at OPEN for eleven days after it was accepted.
+
 ### Q17. Is there a dense tensor type, constructed explicitly?
 
 SETTLED (vec-as-dataframe-type-research +
 dense-tensor-type wizard ruling, 2026-09-08): no separate `Tensor` type -- `Vec` itself is the
-tensor/dataframe-capable type (rectangular, shape-checked), not a distinct value kind. `Float`
-does not exist yet, so construction does not bundle a number-type commitment: `tensor(n; m)` is
-one stage, narrows and shapes together, with no `@f32`-style width commitment (the earlier
-`@f32 | reshape(n; m)` two-stage sketch is dropped, since it presupposed `Float`).
+tensor/dataframe-capable type (rectangular, shape-checked), not a distinct value kind.
+Construction does not bundle a number-type commitment: `tensor(n; m)` is one stage, narrows
+and shapes together, with no `@f32`-style width commitment (the earlier `@f32 | reshape(n; m)`
+two-stage sketch is dropped). `Float` did not exist when this was ruled; it does now
+([Float](../docs/reference/types/float.md)), which changes nothing about the ruling.
+`tensor(n; m)` is not built: `tensor-constructor-build` has stalled twice and waits on a
+convergence ruling.
 
 ### Q18. Does `.[]` on a rank-2 tensor yield rows or scalars?
 
@@ -253,7 +294,9 @@ NumPy and APL both yield rows, which makes `map` rank-polymorphic and gives row 
 `map(fold(add; 0))` with no new syntax; rank-1 yields scalars and `flatten` already covers
 full linearization. RULED (dense-tensor-type wizard, 2026-09-08): a transpose/column-access
 view is built now, alongside the tensor type, rather than deferred -- `.counts | transpose |
-map(sum(.))` for per-column reductions.
+map(sum(.))` for per-column reductions. As of 2026-09-18 `transpose` emits on Go and Rust
+only, has no corpus case, and is missing from the checker's builtin-name list, so it has no
+reference page either; the `transpose-remaining-backends` row carries the rest.
 
 ### Q19. How are nulls carried in a dense typed buffer?
 
@@ -273,24 +316,39 @@ representation now in scope.
  whole input before producing anything and are parallelizable by other means. The
  kernel-admissibility result covers elementwise filters only, and this is the gap it leaves.
 
+The answer: a blocking operator is one `Vec` in and one `Vec` out with no `Stream` instance
+at all, so the checker refuses it on a stream subject rather than buffering behind the
+program's back. `sort`, `sort_by`, `max_by`, `max`, and `sum` all carry the rule today; the
+reference pages ([sort](../docs/reference/builtins/sort.md) and its neighbours) are the record.
+
 ### Q21. What guarantees batch size is unobservable over a batched stream?
 
 Argued in [the admissible input set, and where batching comes from](../draft.md#the-admissible-input-set-and-where-batching-comes-from) rather than
-here, since it arrived with that material. The leaning is the trait law that operations commute
-with reification, which is what makes a batch boundary invisible to a program.
+here, since it arrived with that material. RATIFIED in two rounds of `offload-boundary-design`:
+round 4 picked option B, the compiler requires a declared associative combiner at every batch
+boundary, the same enforcement posture as `sort`'s element-type check; round 5 (2026-09-07),
+after `batch-type-design-research`, made the batch itself an opaque `Batch<T>` with no
+operations at all (no length, no indexing, no equality), produced by `batch(s, n)` where `n`
+is a runtime hint rather than a type parameter, forced at the reader and at any whole-input
+reduction and explicit everywhere else. That closes the observability hole by construction
+instead of by a growing list of per-operation gates. None of it is built.
 
 ### Q22. Are dense and masked vectors distinguishable in the type?
 
 Argued in [the admissible input set, and where batching comes from](../draft.md#the-admissible-input-set-and-where-batching-comes-from), where it
 appears as the observation that a masked view and a dense buffer have different launch
 preconditions. The same question as [what select returns](#q14-does-select-return-a-masked-view-a-selection-vector-or-a-copy), approached from
-the layout side rather than the operator side.
+the layout side rather than the operator side, and ruled with it: the type does not
+distinguish them, the mask lives behind `Vec`.
 
 ### Q23. What primitive set is the standard library defined over?
 
-Argued in [the primitive set cannot be fold and recursion](../draft.md#the-primitive-set-cannot-be-fold-and-recursion). The leaning is the
-parallel basis, with `fold` and general recursion available but not the thing everything else
-is defined over.
+Argued in [the primitive set cannot be fold and recursion](../draft.md#the-primitive-set-cannot-be-fold-and-recursion). RATIFIED
+option A (offload-boundary-design round 3): the full parallel basis now -- map, scan, reduce,
+gather, scatter, and their segmented forms -- with `fold` and general recursion demoted to
+convenience leaves, and future standard-library additions checked against the third
+homomorphism theorem. The basis is a design commitment; the builtins that exist today are
+listed under docs/reference/builtins.
 ### Q24. Are compile-time macros a first-class concept?
 
 A macro would be a function that runs at compile time and transforms the compiler's own
@@ -317,7 +375,9 @@ it is `Str | Int`; without one there is no answer. That question is settled on o
 the absence it exposed is not, and heterogeneous data is not a corner of a data language.
 
 Related: an alternation over types is also what the ordering question needs, so these may be one
-piece of machinery rather than two.
+piece of machinery rather than two. Answered no by `stream-merge-tagged-design` (2026-09-07):
+an ordinary closed enum already produces the tagged shape with no new type-system machinery,
+so no `Alt<A, B>` is needed; the prelude's `PipeLine` enum is the shipped instance.
 
 Partly settled by [the enum decision](../docs/guides/enums.md): closed nominal
 sums now exist, and they serve both this question's motivating case (heterogeneous data) and the
@@ -467,7 +527,15 @@ Open, and roughly in dependency order:
 - **Does it interact with the dimension model at all?** A record literal does not distribute, so
   presumably not, but partial application inside `map` is exactly where it would be used most.
 
-Blocked on first-class functions, which nothing else currently needs.
+RULED option C (partial-application-system-design, 2026-09-07): array-like (positional prefix)
+and struct-like (field subtraction) partial application are two input shapes hitting one
+mechanism, application returning a function, once functions are first-class. The maintainer
+added a requirement no option carried: partial application must always be syntactically
+explicit, never inferred from arity or shape, so a residual function value is visibly distinct
+from an array literal. Two things now need first-class functions besides this: `.`-rebinding
+was ruled sugar over a one-parameter closure (`dot-rebinding-vs-lambda-design`, 2026-09-17),
+and `dsv-partials-migration` is parked on a partial-application build row that does not exist
+yet; `closures-first-class-functions-build` is the row this entry waits on.
 
 ### Q34. Do named types exist, and is a name an alias or an identity?
 
@@ -496,7 +564,10 @@ Not free, in rough order of how much they decide:
 - **Destructuring.** Does `.name` on a `User` see through the name, or does getting a field
   out need an explicit step? Nothing about this direction falls out, and it is what decides
   whether an identity is pleasant or a tax.
-- **The declaration form.** `Type::from_name` knows three names and there is no `type X = ...`.
+- **The declaration form.** Shipped: `type X = ...` declares a pure alias
+  ([alias](../docs/reference/types/alias.md)), emitting identical bytes to the type written
+  out on every backend, and `Type::from_name` now knows seven built-in names. What shipped
+  answers the alias half only; an identity declaration for records is still absent.
 - **One namespace or two.** The checker looks a call up in `sigs`, so a type declaration
   introducing a constructor would put type names and function names in one namespace. That is
   probably right and should be chosen rather than arrived at.
@@ -533,7 +604,7 @@ What it does not answer:
   the input ends is the thing streaming exists to avoid. These are not obviously reconcilable.
 - **Is stderr in the language or under it?** Every backend refuses in its own words today, and the
   agreement harness deliberately checks only *that* they refuse. Making the message part of the
-  language means six backends must agree on it.
+  language means seven backends must agree on it.
 - **Does output have a type?** Input does, and it is checked. Output is whatever the body renders
   to, which means the printer is the only specification of the format.
 - **Does a stream of outputs exist at all**, or does a program produce one value whose rendering
@@ -550,27 +621,53 @@ answered. What was decided there about output is deliberately minimal: `jsonline
 legal only as the program's outermost expression, with no result type. That removes the old
 placeholder (`jsonlines(...) : Str`, a type claiming the whole output exists as one value)
 without deciding whether stdout is a value, an effect, or something a program returns into.
-Everything in the bullet list above remains open.
+
+Ruled since, in three steps under `stdout-stderr-effect-model-design` and its two follow-ups
+(2026-09-07). First, option A: opaque plumbing, a second single-instance sink beside
+`jsonlines`, with no sequencing form (the [research](stdout-stderr-effect-model-research.md)
+had leaned the other way, since a program is one expression and cannot write twice). Then,
+because `pipe_through` must relay a subprocess's stdout and stderr in one run, a merged stream
+whose items are tagged by origin; and finally the mechanism for that tag, one fixed prelude
+enum rather than any new `Alt<A, B>` machinery. The shipped shape is `PipeLine`
+(`Stdout{text}` or `Stderr{text}`) and
+[`pipe_through`](../docs/reference/builtins/pipe_through.md), built on the Rust backend. So
+stderr is in the language, as a variant. What remains open from the list above is the
+splitting of stdin and stdout, which every round flagged and none answered; it has its own
+row.
 
 ### Q36. Does a real module system need imports, multiple files, and enforced privacy?
 
 One file exists: `prelude.toy`, always merged in whole, `pub` picking which of its definitions a
 program receives. What it does not have: a way to name what a program wants rather than receiving
-all of it; a way for a program's own file to export something another file imports; more than one
-file to import from at all; and enforced privacy, since a non-`pub` prelude definition today is
-not "private to the prelude," it is simply never compiled, which forecloses a `pub` function
-calling a private helper.
+all of it; a way for a program's own file to export something another file imports; and more
+than one file to import from at all.
 
-None of these were needed to get one function (`unlines`) out of six backends' worth of hand-
-written codegen, and building them speculatively risks shaping them around a prelude that has
-exactly one function in it. What would force an answer: a second prelude function needing an
-internal helper, at which point the non-`pub`-is-simply-absent rule stops being free.
+Privacy is no longer on that list. The forcing event this entry predicted, a second prelude
+function needing an internal helper, happened: `join` and `join_lines` share the private
+`join_parts`, and `file-visibility-tracking-build` made a non-`pub` definition callable only
+from its own file, enforced by origin at each call site
+([the prelude page](../docs/reference/prelude/index.md)). The prelude now holds two
+functions, three enums, and a trait with one impl, so the "one function out of seven
+backends" framing is gone too. On syntax: `@(path)` module routing lexes and parses, and the
+checker refuses it as not yet implemented; the semantics rulings are recorded on the archived
+`module-routing-semantics-build` row, but only the `Origin` widening landed, so the build is
+still open (`module-routing-semantics-build-2`).
 
 ### Q37. How do floats print, and what are NaN and Infinity in a JSON-shaped value model?
 
 The representation is [decided](../docs/adr/0007-float-is-javascripts-double.md): IEEE 754 binary64,
-JavaScript's number. Everything observable about it is not, and each piece has to survive the
-agreement harness, which checks bytes.
+JavaScript's number. The three observable pieces below were each open when this was written
+and are each settled and built now (ruling kantord/toylang#145, build kantord/toylang#149,
+2026-09-04 to 2026-09-06; [Float](../docs/reference/types/float.md)): printing is ECMA-262
+`Number::toString` on all seven backends, verified byte for byte against Node over a
+fuzz run, with a hand-written formatter in the native runtime because libc has none; `NaN`
+and `Infinity` are admitted as values and print by name, so a top-level result holding one is
+not JSON; and `Float` division by zero returns `Infinity`, so division's failure behavior
+does depend on the operand type. Left open: any `Float` nested inside a `Vec` or
+record bypasses the relayout on the jq backend and diverges at every notation boundary, not
+only for the non-finite values (the docs harness found the wider half on 2026-09-18);
+tracked as `float-jq-nested-in-container`. There is still no corpus case for `Float`
+(`float-corpus-cases`). The original framing follows.
 
 - **Printing.** Every backend must render the same double to the same text, and their defaults
   do not agree on shortest-roundtrip versus fixed formatting, or on `1e21`-style switchover
@@ -586,8 +683,8 @@ agreement harness, which checks bytes.
   IEEE says `1.0 / 0.0` is `Infinity`, no failure at all. Keeping both means division's
   behavior depends on its operand type; unifying means overriding one standard or the other.
 
-None of this blocks anything else, so it waits for `Float` to be forced by a real program the
-way `inputs` and `jsonlines` were.
+None of this blocked anything else, so it waited for `Float` to be forced by a real program,
+which the benchmark suite's mandelbrot did.
 
 ### Q38. Are composites ordered at all?
 
@@ -635,6 +732,6 @@ shorthand was refused stays findable now that the draft section carrying it is g
 
 A record's declared field order is real data -- it drives printing and the native/Go columnar
 layouts (see [Records](../docs/reference/types/record.md)) -- and is meant to become a
-runtime-queryable accessor, a `field_names`-style builtin for serialization and friends. Its
-name and shape are not yet decided (kantord/toylang#63), and nothing is implemented. Recorded
-so the intent survives the draft section's deletion without being built.
+runtime-queryable accessor for serialization and friends. Built as
+[`fields`](../docs/reference/builtins/fields.md) (`field-names-accessor`, from
+kantord/toylang#63), on every backend, reflecting the checked declaration order.

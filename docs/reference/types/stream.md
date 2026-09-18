@@ -5,8 +5,9 @@
 expression yields its entries one at a time as evaluation proceeds, not that a stream object
 exists as a value.
 
-A stream is born only at a source -- [`stdin`](../sources/stdin.md) or
-[`range`](../builtins/range.md) -- and dies at
+A stream is born only at a source -- [`stdin`](../sources/stdin.md),
+[`range`](../builtins/range.md), or a subprocess relayed by
+[`pipe_through`](../builtins/pipe_through.md) -- and dies at
 [`collect`](../builtins/collect.md) or at the [`jsonlines`](../builtins/jsonlines.md) sink. In
 between, `select`, `map`, and projection accept a `Stream` subject and yield a `Stream` back,
 so a whole pipeline can live in the effect layer:

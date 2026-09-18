@@ -22,7 +22,7 @@ adults
 
 `select` works over a `Stream` subject too, and stays in the effect layer: a stream in, a
 stream out, one entry judged at a time. What the predicate cannot do is read a source
-(`inputs`, `lines`) itself, since it runs once per entry and stdin cannot be read once per
+(`stdin`, `range`) itself, since it runs once per entry and stdin cannot be read once per
 entry.
 
 `select` is not special syntax. It is an ordinary name applied to one argument, reachable

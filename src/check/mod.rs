@@ -139,7 +139,6 @@ fn resolve_defs<'a>(
     aliases: &'a [Alias],
     enum_decls: &'a [EnumDecl],
     defs: &'a [Def],
-    file: Origin,
 ) -> Result<
     (
         TypeEnv<'a>,
@@ -260,7 +259,7 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
         body: program_body,
     } = file;
     let (env, enums, variant_owners, mut sigs, visibility) =
-        resolve_defs(&aliases, &enum_decls, &defs, Origin::Program)?;
+        resolve_defs(&aliases, &enum_decls, &defs)?;
     for e in &enum_decls {
         if env.aliases.contains_key(&e.name) {
             return Err(Error::new(
@@ -1201,7 +1200,7 @@ pub fn check_module(module: crate::ast::Module) -> Result<(Vec<tir::Func>, ty::E
         impls,
     } = module;
     let (env, enum_tys, variant_owners, mut sigs, visibility) =
-        resolve_defs(&aliases, &enums, &defs, Origin::Prelude)?;
+        resolve_defs(&aliases, &enums, &defs)?;
     let (impl_defs, impl_table, generic_templates) = collect_impls(&traits, impls, &env, &sigs)?;
     let input = RefCell::new(None);
     let inputs = RefCell::new(None);
@@ -3029,7 +3028,7 @@ fn call(
         return fields_call(ctx, need_arg(arg, func, span)?);
     }
     // Blocking, one Vec in and one Vec out with no Stream instance (kantord/toylang#86, Q20 in
-    // draft.md), so both are checked here rather than through `select`'s subject-context
+    // plans/questions.md), so both are checked here rather than through `select`'s subject-context
     // mechanism.
     if func == "sort" {
         return sort_call(ctx, need_arg(arg, func, span)?);
@@ -4178,12 +4177,11 @@ fn expect_int_width(ctx: &Ctx, rhs: &Expr, width: &Type, op: BinOp) -> Result<Ti
 fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     let left = synth(ctx, lhs)?;
 
-    // Q2 is open, so an operator over a Vec is rejected rather than being silently given
-    // broadcast or zip semantics. Under C1 that restriction is ordinary typing: there is no
-    // separate cardinality to check, because a Vec is just a type. `+` is the one exception:
-    // it concatenates two Vecs of the same type now (kantord/toylang#97, the add-trait
-    // reading), which settles that half of Q2 without deciding what any other operator means
-    // over two Vecs.
+    // The binary-operator multiplicity question (Q2 in plans/questions.md) was ruled
+    // cartesian-by-default on 2026-09-08, but that ruling is not built yet, so an operator
+    // over a Vec is still rejected rather than being silently given broadcast or zip
+    // semantics. `+` is the one exception: it concatenates two Vecs of the same type
+    // (kantord/toylang#97, the add-trait reading).
     if left.ty.elem().is_some() && op != BinOp::Add {
         return Err(Error::new(
             lhs.span(),

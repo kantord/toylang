@@ -4,7 +4,7 @@
 What comes back is an ordinary value, exactly as sized as it needs to be, with no trace of
 how it arrived.
 
-A `Stream` is born at a source (`inputs`, `lines`), consumed exactly once, and cannot be
+A `Stream` is born at a source (`stdin`, `range`), consumed exactly once, and cannot be
 printed, stored in a record, or indexed; `collect` is the explicit boundary where it becomes
 a `Vec` that can do all of those things. The cost is equally explicit: `collect` waits for
 the whole stream, so nothing downstream of it starts until stdin closes.

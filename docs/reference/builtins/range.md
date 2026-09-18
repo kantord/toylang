@@ -2,7 +2,7 @@
 
 `range(n)`, of type `Int -> Stream<Int>`: the integers from zero up to but not including `n`,
 one at a time, as a stream. Zero-based, matching jq, Python, and the language's own indices.
-`range` is one of the three stream sources (with `inputs` and `lines`), so a pipeline over it
+`range` is a stream source like [`stdin`](../sources/stdin.md), so a pipeline over it
 fuses into a count-one/transform-one/write-one loop instead of materializing the whole `Vec`:
 
 ```toylang

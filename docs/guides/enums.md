@@ -58,7 +58,7 @@ enum_vec_payload
 
 ## The whole shape at stream scale
 
-Enums compose with streams: `inputs` typed as `Stream<Msg>` validates each line against the
+Enums compose with streams: `stdin | map(parse(.))` typed as `Stream<Msg>` validates each line against the
 set as it arrives, one exhaustive match inside `map` proves coverage, and the sink prints
 as it goes:
 

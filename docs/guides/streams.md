@@ -5,11 +5,12 @@ endless -- and the program should emit results as it reads, in constant memory.
 
 ## Pick the source
 
-`inputs` when each line is a JSON value, typed by the `Stream<T>` parameter that consumes
-it; [`stdin`](../reference/sources/stdin.md) when the lines are plain text. (When stdin is
-one document rather than a feed, this is not a streaming problem: `input` reads it whole.)
+`stdin | map(parse(.))` when each line is a JSON value, typed by the `Stream<T>` parameter
+that consumes it; bare [`stdin`](../reference/sources/stdin.md) when the lines are plain
+text. (When stdin is one document rather than a feed, this is not a streaming problem:
+`parse(stdin)` reads it whole.)
 
-The third source has nothing to do with stdin: [`range`](../reference/builtins/range.md) is
+The other source has nothing to do with stdin: [`range`](../reference/builtins/range.md) is
 a stream of integers, counted one at a time instead of materialized as a `Vec`. It is what
 the Euler examples use for "try every value in a range" without building the range first:
 

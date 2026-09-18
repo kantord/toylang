@@ -2,15 +2,16 @@
 
 A compiled, statically typed language for transforming data, taking jq as its main inspiration
 without aiming at compatibility with it. This file is the glossary and nothing else: what the
-terms mean, not how anything is built. The design lives in `draft.md`, the build order in
-`plans/`, and what building it taught us in `research-log/`.
+terms mean, not how anything is built. The design lives in `docs/` (guides, reference, ADRs)
+with the open questions in `plans/questions.md`, the build order in `plans/board.yaml`, and
+what building it taught us in `research-log/`.
 
 ## Language
 
 ### Shape of a value
 
 **Scalar**:
-A value with no interior to address: `Int`, `Str`, `Bool`.
+A value with no interior to address: `Int`, `Int64`, `Float`, `Str`, `Char`, `Bool`.
 
 **Record**:
 A fixed set of differently-typed parts addressed by name, where the names are part of the type.
@@ -135,7 +136,8 @@ exactly once, dead at `collect` or a sink; never inside a record, a `Vec`, or an
 _Avoid_: lazy list, generator, iterator, channel
 
 **Source**:
-An expression a `Stream` is born from, and the only way one arises: `inputs`, `lines`.
+An expression a `Stream` is born from, and the only way one arises: `stdin`, `range`, and a
+`pipe_through` relay.
 _Avoid_: producer, reader
 
 **Sink**:

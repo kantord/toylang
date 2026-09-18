@@ -21,7 +21,7 @@ of the adults:
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
     db.users | select(.age >= 18) | .[].name
 
-adults(input)
+adults(parse(stdin))
 ```
 
 ```
@@ -48,7 +48,7 @@ enum Shape { Point, Circle{r: Int} }
 
 fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0
 
-{a: area_ish(Shape.point), b: area_ish(circle{r: 3})}
+{a: area_ish(Shape.point), b: area_ish(circle({r: 3}))}
 ```
 
 ```
