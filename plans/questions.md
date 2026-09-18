@@ -19,7 +19,7 @@ it would delete the only copy.
 | # | Question | Status |
 |---|---|---|
 | [Q1](#q1-streams-first-class-values-or-evaluation-level-multiplicity) | Streams: first-class values, or evaluation-level multiplicity? | SETTLED, evaluation-level and typed: `Stream<T>` is the effect layer's type, not a value type |
-| [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | SETTLED (wizard submission, 2026-09-08): option A, cartesian default; not built yet, the checker still refuses every `Vec op Vec` except `+` |
+| [Q2](#q2-binary-operators-over-two-multi-valued-expressions-cartesian-zip-or-explicit) | Binary operators over two multi-valued expressions: cartesian, zip, or explicit? | SETTLED (wizard submission, 2026-09-08): option A, cartesian default; built 2026-09-18, every operator but `+` runs cartesian over two Vecs on all seven backends |
 | [Q3](#q3-what-symbol-replaces--for-the-record-forming-update) | What symbol replaces `=` for the record-forming update? | RATIFIED (multiplicity-and-offload round 2): option B, keep `=` and require a `One` on its right, so forking is explicit; not built |
 | [Q4](#q4-can-the-type-express-ordering-over-heterogeneous-streams) | Can the type express ordering over heterogeneous streams? | OPEN in the general case; the shape is decided (ADR 0008: Kleene patterns in effect position), enums supply tagged alternation, and the `Seq<Head, Rest>` spelling is built as a checker type (`seq-type-primitive-build`); runtime-pair emission is still to come |
 | [Q5](#q5-stream-lowering-strategy-across-the-three-backends) | Stream-lowering strategy across the three backends | OPEN in general; all seven backends stream the fused pipeline shape, so only lowering beyond that shape remains |
@@ -94,8 +94,12 @@ A, cartesian default**. `Vec op Vec` becomes legal for every operator (except `+
 concatenation) and runs cartesian, matching jq's own default -- checked against a real jq
 1.8.2 binary: `echo '{"a":[2,3],"b":[10,20]}' | jq -c '[.a[] * .b[]]'` gives `[20,30,40,60]`,
 the full 2x2 outer product. No new builtin needed; `.a * .b` becomes legal and cartesian for
-free. Not built as of 2026-09-18: the checker still refuses every operator but `+` over a
-`Vec` (`binary` in src/check/mod.rs), and no build row carries the ruling.
+free. Built 2026-09-18 (board row binary-op-cartesian-build): `cartesian` in
+src/check/mod.rs lowers `Vec op Vec` to the `map`/`flatten` nodes every backend already
+emits, in jq's order (right operand outermost, pinned by the corpus case
+`cartesian_order`), for every arithmetic and comparison operator. A Vec on one side only
+was not in the ruling and stays a type mismatch; nothing broadcasts. Equality still stops
+at a Vec inside a composite or inside another Vec, as the next paragraph says.
 
 Composite equality is settled without touching it. `==` on a record or an enum compares
 structurally, and is refused outright when the type carries a Vec anywhere inside it, so a

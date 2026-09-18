@@ -1,0 +1,15 @@
+# The ruling's own example (Q2 in plans/questions.md): `*` over two Vecs is the full 2x2
+# product, and this is byte for byte what jq 1.8.2 prints for `[.a[] * .b[]]` on the same
+# input.
+program: |
+  fn f(r: {a: Vec<Int>, b: Vec<Int>}) -> Vec<Int> = r.a * r.b
+
+  f(parse(stdin))
+
+input: |
+  {"a": [2, 3], "b": [10, 20]}
+
+output: |
+  [20,30,40,60]
+
+node_types: [application, arith.mul, builtin.flatten, input, local, map-over, pipe, projection, var]

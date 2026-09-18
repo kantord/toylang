@@ -62,15 +62,31 @@ fn an_operator_does_not_apply_to_a_vec() {
     insta::assert_snapshot!(err(r#"[1, 2] + "a""#));
 }
 
-/// `+`'s carve-out does not extend to the rest of Q2: every other operator over two Vecs is
-/// still refused.
+/// Two Vecs under any other operator run cartesian (Q2 in plans/questions.md), but a Vec
+/// meeting a scalar is not in that ruling: it stays a plain type mismatch, not a broadcast.
 #[test]
-fn a_non_add_operator_still_does_not_apply_to_a_vec() {
-    insta::assert_snapshot!(err("[1, 2] - [3, 4]"));
+fn a_vec_on_one_side_only_is_a_type_mismatch() {
+    insta::assert_snapshot!(err("[1, 2] - 3"));
 }
 
-/// And a Vec one level down is the same open question: structural equality would otherwise
-/// have to say whether the field compares as a whole value, which is what Q2 asks.
+/// The element operator accepts exactly what it accepts on scalars, so a cartesian `*` over
+/// two `Vec<Str>` is refused the way `Str * Str` is, and names the Vec it was given.
+#[test]
+fn a_cartesian_operator_still_needs_scalar_elements_it_applies_to() {
+    insta::assert_snapshot!(err(r#"["a"] * ["b"]"#));
+}
+
+/// The cartesian rule says what two bare Vecs do; it does not reach a Vec one level down.
+/// Equality over `Vec<Vec<Int>>` would have to say whether an inner Vec compares as a whole
+/// value, which is the same question a Vec-typed record field raises, so both stay refused.
+#[test]
+fn equality_does_not_reach_past_a_nested_vec() {
+    insta::assert_snapshot!(err("[[1]] == [[1]]"));
+}
+
+/// A Vec one level down inside a record: structural equality would otherwise have to say
+/// whether the field compares as a whole value or reaches in, which the cartesian rule for
+/// two bare Vecs does not answer.
 #[test]
 fn equality_does_not_reach_past_a_vec() {
     insta::assert_snapshot!(err("{a: [1, 2]} == {a: [1, 2]}"));

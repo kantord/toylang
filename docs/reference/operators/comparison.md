@@ -42,11 +42,23 @@ type are one value and compare equal. All of it is pinned on every backend:
 comparison_semantics
 ```
 
-Equality stops at a `Vec`. `[1, 2] == [1, 2]` is refused, and so is
-`{a: [1, 2]} == {a: [1, 2]}`, because what an operator applied to a dimension means --
-compare the whole thing, or compare entry by entry and hand back a `Vec<Bool>` -- is a
-question the language has not answered, and a record field is no better a place to answer it
-by accident than the top level is.
+A comparison over two `Vec`s of the same element type is cartesian, the same rule as
+[arithmetic](arithmetic.md): every pair is compared, right operand outermost, and the answer
+is a `Vec<Bool>`:
+
+```toylang
+[1, 5] < [3, 4]
+```
+
+```output
+[true,false,true,false]
+```
+
+That rule covers two bare `Vec`s and nothing deeper. `{a: [1, 2]} == {a: [1, 2]}` is refused,
+and so is `[[1]] == [[1]]`, because what equality means for a `Vec` *inside* a value --
+compare it as a whole, or reach in and hand back Bools -- is a question the language has not
+answered, and a record field is no better a place to answer it by accident than a nested
+`Vec` is.
 
 Ordering on a composite is untouched, and still disagrees. `<` on a record typechecks today,
 then three backends refuse to compile it, two fail at runtime, and two answer -- jq by its own

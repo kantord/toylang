@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (243):
+compiles natively (247):
 adults
 all_basic
 all_empty
@@ -28,6 +28,10 @@ call_form_hoist
 call_form_hoist_non_match
 call_form_match_expression
 call_without_parens
+cartesian_compare
+cartesian_empty
+cartesian_order
+cartesian_product
 char_range_and_complement
 chars_unicode_honest
 colon_call_ufcs_sugar

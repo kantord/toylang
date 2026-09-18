@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(\"[1, 2] - 3\")"
+---
+expected Vec<Int>, found Int (at byte 9)

@@ -1,0 +1,12 @@
+# An empty side leaves no pairs at all, whichever side it is on. The left is the inner loop
+# here, so this is also the case where every outer iteration produces an empty row and
+# `flatten` has to hand back an empty Vec rather than nothing.
+program: |
+  fn f(v: Vec<Int>) -> Vec<Int> = v * [10, 20]
+
+  f([])
+
+output: |
+  []
+
+node_types: [application, arith.mul, builtin.flatten, int, local, map-over, pipe, var, vec-literal]
