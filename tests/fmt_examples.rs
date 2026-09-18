@@ -51,6 +51,8 @@ fn every_docs_fragment_is_already_formatted() {
 
     let mut pages = Vec::new();
     walk(&repo_root().join("docs"), &mut pages);
+    // The README's fences run under the docs harness too, so they are held to the same form.
+    pages.push(repo_root().join("README.md"));
     pages.sort();
 
     for page in pages {

@@ -125,8 +125,8 @@ fn self_recursion_alone_still_compiles() {
 /// carry it yet, so none of these can be a corpus case, which would require every backend to
 /// agree. They pin jq's output byte for byte against what the JS reference prints, so the two
 /// backends that carry Float stay honest with each other without roping in the rest of the row.
-/// The one place they deliberately do not agree -- a non-finite float nested inside a Vec or
-/// Record -- is its own test below, with the reason.
+/// Nested floats used to be the one place they deliberately did not agree; since the text
+/// renderer (`text` in src/emit_jq.rs) they agree there too, see below.
 #[track_caller]
 fn agree_jq_js(src: &str, stdin: Option<&str>) -> String {
     let js = toylang::run_on(src, stdin, toylang::Backend::Js).unwrap();
@@ -201,23 +201,39 @@ fn float_printing_matches_at_notation_boundaries() {
     assert_eq!(agree_jq_js("-0.5 * 2.0\n", None), "-1\n");
 }
 
-/// What jq cannot reproduce: a non-finite float nested inside a Vec or Record. JS's Float
-/// printer runs the same way at every position, top-level or nested (`show` in src/emit_js.rs),
-/// so `Infinity`/`NaN` come out as bare words even inside `[...]` -- not valid JSON, but that is
-/// already the JS/Native reference's own accepted behavior, not something jq falls short of.
-/// jq is structurally different here: emit_jq.rs generates a jq *expression*, evaluated to a
-/// jq *value* and only then handed to jq's own `-c` JSON encoder, which has no way to encode a
-/// value as a bare unquoted word -- non-finite floats become valid JSON instead (`infinite` as
-/// the largest finite double, `nan` as `null`). Reaching parity would mean building the whole
-/// containing structure as hand-assembled string concatenation instead of a jq value whenever a
-/// Float could be non-finite, a materially bigger change than this row's "one backend, one
-/// commit" scope, and not something any other backend's own design has actually resolved either
-/// (no decision exists on what a non-finite value inside a container should print as). Pinned
-/// here as a known, deliberate divergence rather than left silently untested.
+/// What jq's own encoder cannot reproduce, and the text renderer does: a Float inside a Vec,
+/// a record, an enum payload, or a `jsonlines` element. jq's `-c` output prints a nested
+/// double in its own notation (`1E-7`, a 22-digit run for `1e21`) and turns the non-finite
+/// values into the largest double or `null`, so emit_jq.rs assembles any structure holding a
+/// Float as JSON text around `tl_show_float` instead (`text`), and `run_jq` prints it raw.
+/// Each shape is pinned against the JS reference; the recursive enum is the one that goes
+/// through a named `_text` printer rather than an inline expansion.
 #[test]
-fn float_non_finite_inside_a_vec_diverges_from_js() {
-    let js = toylang::run_on("[1.0 / 0.0, 0.0 / 0.0]\n", None, toylang::Backend::Js).unwrap();
-    assert_eq!(js, "[Infinity,NaN]\n");
-    let jq = toylang::run_on("[1.0 / 0.0, 0.0 / 0.0]\n", None, toylang::Backend::Jq).unwrap();
-    assert_eq!(jq, "[1.7976931348623157e+308,null]\n");
+fn float_inside_a_container_agrees_with_js_at_every_position() {
+    assert_eq!(agree_jq_js("[1.0 / 0.0, 0.0 / 0.0]\n", None), "[Infinity,NaN]\n");
+    assert_eq!(
+        agree_jq_js("{a: 1e21, b: 1e-7, s: \"x\"}\n", None),
+        "{\"a\":1e+21,\"b\":1e-7,\"s\":\"x\"}\n"
+    );
+    assert_eq!(agree_jq_js("[1.5][5]\n", None), "null\n");
+    assert_eq!(agree_jq_js("[1.5][0]\n", None), "1.5\n");
+    assert_eq!(
+        agree_jq_js(
+            "enum Shape { Point, Circle{r: Float} }\n\n[circle({r: 1e21}), Shape.point]\n",
+            None
+        ),
+        "[{\"Circle\":{\"r\":1e+21}},\"Point\"]\n"
+    );
+    assert_eq!(
+        agree_jq_js(
+            "enum Tree { Leaf{v: Float}, Node{kids: Vec<Tree>} }\n\n\
+             node({kids: [leaf({v: 1e21}), leaf({v: 0.0 / 0.0})]})\n",
+            None
+        ),
+        "{\"Node\":{\"kids\":[{\"Leaf\":{\"v\":1e+21}},{\"Leaf\":{\"v\":NaN}}]}}\n"
+    );
+    assert_eq!(
+        agree_jq_js("jsonlines([1e21, 0.0 / 0.0])\n", None),
+        "1e+21\nNaN\n"
+    );
 }

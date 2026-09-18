@@ -663,10 +663,10 @@ and are each settled and built now (ruling kantord/toylang#145, build kantord/to
 fuzz run, with a hand-written formatter in the native runtime because libc has none; `NaN`
 and `Infinity` are admitted as values and print by name, so a top-level result holding one is
 not JSON; and `Float` division by zero returns `Infinity`, so division's failure behavior
-does depend on the operand type. Left open: any `Float` nested inside a `Vec` or
-record bypasses the relayout on the jq backend and diverges at every notation boundary, not
-only for the non-finite values (the docs harness found the wider half on 2026-09-18);
-tracked as `float-jq-nested-in-container`. There is still no corpus case for `Float`
+does depend on the operand type. The jq backend's nested-float
+divergence (a `Float` inside a `Vec` or record printed in jq's own notation, and the
+non-finite values as the largest double or `null`) was closed the same day the docs harness
+found its wider half, 2026-09-18, by rendering any Float-bearing structure as text. There is still no corpus case for `Float`
 (`float-corpus-cases`). The original framing follows.
 
 - **Printing.** Every backend must render the same double to the same text, and their defaults

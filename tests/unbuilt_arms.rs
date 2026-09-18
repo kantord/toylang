@@ -73,3 +73,13 @@ fn a_use_inside_a_function_is_refused_too() {
         "`sort_by` has no lua backend yet; today it runs on go and rust"
     );
 }
+
+/// `toylang run` does not go through `Backend::emit`; it must refuse the same way.
+#[test]
+fn running_is_refused_the_same_way_as_emitting() {
+    let err = toylang::run_on("[3, 1, 2] | sort_by(.)\n", None, Backend::Py).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "`sort_by` has no py backend yet; today it runs on go and rust"
+    );
+}

@@ -134,7 +134,7 @@ pub fn emit(program: &Program) -> Result<String, String> {
     if fdiv {
         out.push_str(FLOAT_HELPER);
     }
-    if matches!(program.body.ty, Type::Float) {
+    if uses_float(program) {
         out.push_str(FLOAT_PRINT_HELPER);
     }
 
@@ -205,14 +205,13 @@ pub fn emit(program: &Program) -> Result<String, String> {
     }
     // Records are rebuilt in the type's field order, because jq preserves insertion order and
     // an object read from input carries whatever order the input had.
-    if matches!(program.body.ty, Type::Float) {
-        // A Float body renders to a string (`tl_show_float`) and is printed raw, because jq's
-        // `-c` JSON output cannot spell the non-finite values a Float can hold; `run_jq` sets
-        // `-r` for exactly this body type.
-        out.push_str(&format!(
-            "({} | tl_show_float)\n",
-            expr(enums, &program.body)
-        ));
+    if ty::contains_float(enums, &program.body.ty) {
+        // A body with a Float anywhere in it renders to its JSON text (`text`) and is printed
+        // raw, because jq's `-c` JSON output cannot spell the non-finite values a Float can
+        // hold and prints a nested double in its own notation; `run_jq` sets `-r` for exactly
+        // these body types.
+        out.push_str(&text(enums, &program.body.ty, &expr(enums, &program.body)));
+        out.push('\n');
     } else {
         out.push_str(&canonical(
             enums,
@@ -222,6 +221,110 @@ pub fn emit(program: &Program) -> Result<String, String> {
         out.push('\n');
     }
     Ok(out)
+}
+
+/// Whether any value the program computes can carry a Float, which is when `tl_show_float`
+/// has to be defined: a Float reaches the printer through a body, a `jsonlines` element, or a
+/// recursive enum's printer, and each of those goes through `text`.
+fn uses_float(program: &Program) -> bool {
+    let mut found = false;
+    let mut visit = |t: &Tir| {
+        if ty::contains_float(&program.enums, &t.ty) {
+            found = true;
+        }
+    };
+    for f in &program.funcs {
+        tir::each_node(&f.body, &mut visit);
+    }
+    tir::each_node(&program.body, &mut visit);
+    found
+}
+
+/// A value of `ty` rendered to its JSON text, as a jq expression producing a string. This is
+/// the path for anything with a Float inside: jq's own `-c` encoder prints a nested double in
+/// its own notation (`1E-7`, and a 22-digit run for `1e21`) and cannot spell NaN or the
+/// infinities at all, so a structure holding a Float is assembled as text around
+/// `tl_show_float` instead of being handed to the encoder as a value. Anything with no Float
+/// inside goes through `canonical` and `tojson`, which is the encoder's own output for it.
+fn text(enums: &Enums, ty: &Type, value: &str) -> String {
+    if !ty::contains_float(enums, ty) {
+        return format!("({} | tojson)", canonical(enums, ty, value));
+    }
+    match ty {
+        Type::Float => format!("({value} | tl_show_float)"),
+        Type::Vec(elem) => format!(
+            "({value} | \"[\" + ([.[] | {}] | join(\",\")) + \"]\")",
+            text(enums, elem, ".")
+        ),
+        Type::Record(fields) => {
+            let parts: Vec<String> = fields
+                .iter()
+                .map(|(name, fty)| {
+                    format!(
+                        "(({} | tojson) + \":\" + {})",
+                        jq_string(name),
+                        text(enums, fty, &field_of(".", name))
+                    )
+                })
+                .collect();
+            format!(
+                "({value} | \"{{\" + ([{}] | join(\",\")) + \"}}\")",
+                parts.join(", ")
+            )
+        }
+        Type::Enum { .. } if ty.as_opt().is_some() => {
+            let inner = ty.as_opt().expect("guarded");
+            format!(
+                "({value} | if . == \"none\" then \"null\" else {} end)",
+                text(enums, inner, ".some")
+            )
+        }
+        // The text printer for a recursive enum is a named filter beside its value printer
+        // (`printers`), for the same reason: expanding it inline has no bottom.
+        Type::Enum { .. } if ty::is_recursive(enums, ty) => {
+            format!("({value} | {}_text)", ty.show_fn())
+        }
+        Type::Enum { .. } => text_enum(enums, ty, value),
+        other => unreachable!("{other} cannot contain a Float"),
+    }
+}
+
+/// `canonical_enum`'s shape, producing text: a unit variant is its name as a JSON string, a
+/// payload variant a single-key wrapper around its payload's text (ADR 0009).
+fn text_enum(enums: &Enums, ty: &Type, value: &str) -> String {
+    let variants = ty::variants(enums, ty);
+    let payloads: Vec<(&String, &Type)> = variants
+        .iter()
+        .filter_map(|(n, p)| p.as_ref().map(|p| (n, p)))
+        .collect();
+    if payloads.is_empty() {
+        return format!("({value} | tojson)");
+    }
+    let wrap = |vname: &String, pty: &Type| {
+        format!(
+            "(\"{{\" + ({} | tojson) + \":\" + {} + \"}}\")",
+            jq_string(vname),
+            text(enums, pty, &field_of(".", vname))
+        )
+    };
+    let mut tests: Vec<String> = Vec::new();
+    if payloads.len() < variants.len() {
+        tests.push("if type == \"string\" then tojson".to_string());
+    }
+    for (vname, pty) in &payloads[..payloads.len() - 1] {
+        let word = if tests.is_empty() { "if" } else { "elif" };
+        tests.push(format!(
+            "{word} has({}) then {}",
+            jq_string(vname),
+            wrap(vname, pty)
+        ));
+    }
+    let (last_name, last_ty) = payloads[payloads.len() - 1];
+    let last = wrap(last_name, last_ty);
+    if tests.is_empty() {
+        return format!("({value} | {last})");
+    }
+    format!("({value} | {} else {last} end)", tests.join(" "))
 }
 
 /// Reconstruct a value with keys in the type's order, so the printed form matches the other
@@ -643,9 +746,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::JsonLines => {
                 let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 format!(
-                    "({} | [.[] | ({} | tojson)] | join(\"\\n\"))",
+                    "({} | [.[] | {}] | join(\"\\n\"))",
                     expr(enums, arg),
-                    canonical(enums, elem, ".")
+                    text(enums, elem, ".")
                 )
             }
             // The source already materialized, so the exit has nothing left to do.
@@ -989,6 +1092,13 @@ fn printers(program: &Program) -> Result<String, String> {
             ty.show_fn(),
             canonical_enum(&program.enums, &ty, ".")
         ));
+        if ty::contains_float(&program.enums, &ty) {
+            out.push_str(&format!(
+                "def {}_text: {};\n",
+                ty.show_fn(),
+                text_enum(&program.enums, &ty, ".")
+            ));
+        }
     }
     Ok(out)
 }

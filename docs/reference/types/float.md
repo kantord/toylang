@@ -82,9 +82,16 @@ twice(parse(stdin))
 5
 ```
 
-A `Float` inside a `Vec` or a record prints the same way on six backends. On jq it does not
-yet: the nested value skips the relayout and comes out in jq's own notation, so this page
-shows no container example until the `float-jq-nested-in-container` row lands.
+A `Float` inside a `Vec`, a record, or an enum payload prints the same way, and so do the
+non-finite values, on every backend:
+
+```toylang
+[{a: 1e21, b: 1e-7}, {a: 1.0 / 0.0, b: 0.0 / 0.0}]
+```
+
+```output
+[{"a":1e+21,"b":1e-7},{"a":Infinity,"b":NaN}]
+```
 
 What a `Float` cannot do yet: `str` takes an `Int` only; `sum` and `max` take `Int` or
 `Int64`; and the ordering builtins (`sort`, `sort_by`, `max_by`) take `Int`, `Int64`, `Str`,

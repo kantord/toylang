@@ -1,0 +1,11 @@
+# `parse` over a Str value, not over stdin: the same checked read, typed by the position it
+# lands in, applied to text the program already holds.
+program: |
+  fn count(v: Vec<Int>) -> Int = length(v)
+
+  count(parse("[1, 2, 3]"))
+
+output: |
+  3
+
+node_types: [application, builtin.length, builtin.parse, str, var]

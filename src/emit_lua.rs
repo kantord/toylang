@@ -537,7 +537,7 @@ pub fn emit(program: &Program) -> String {
     // never reaches the printer directly, so its element is not a case here the way a jsonlines
     // callback's is on the backends that scan emitted text -- a Float inside `inputs` is reached
     // through `fused_main`'s `current_ty`, which is `program.body.ty`'s element by then.
-    let show_float = structured && contains_float(enums, &program.body.ty);
+    let show_float = structured && ty::contains_float(enums, &program.body.ty);
     for (on, text) in [
         (used.select, SELECT_HELPER),
         (used.field, FIELD_HELPER),
@@ -801,35 +801,6 @@ fn contains_vec(enums: &Enums, ty: &Type) -> bool {
     }
 }
 
-/// A Float prints through `tl_show_float` rather than Lua's `tostring`, whose spelling is not
-/// the shortest round-trip digit string ADR 0007 requires. The printer walks the type, so a
-/// Float anywhere in the output -- a bare one, a Vec element, a record field -- needs the
-/// helper present, the same way `needs_quote` reaches a Str inside a container. A recursive
-/// enum's self-reference is always behind a Vec (the checker allows no other), so the first hop
-/// back into one is reachable; `seen` stops the second from looping, the way `is_recursive`
-/// does for the same reason.
-fn contains_float(enums: &Enums, ty: &Type) -> bool {
-    fn walk(enums: &Enums, ty: &Type, seen: &mut Vec<Type>) -> bool {
-        match ty {
-            Type::Float => true,
-            Type::Vec(elem) => walk(enums, elem, seen),
-            Type::Record(fields) => fields.iter().any(|(_, t)| walk(enums, t, seen)),
-            Type::Enum { .. } => {
-                if seen.contains(ty) {
-                    return false;
-                }
-                seen.push(ty.clone());
-                let r = ty::variants(enums, ty)
-                    .iter()
-                    .any(|(_, p)| p.as_ref().is_some_and(|p| walk(enums, p, seen)));
-                seen.pop();
-                r
-            }
-            _ => false,
-        }
-    }
-    walk(enums, ty, &mut Vec::new())
-}
 
 /// Which identifiers are reserved is the target's business, not toylang's. A program with a
 /// function called `print` or `end` would otherwise emit Lua that shadows the output function or

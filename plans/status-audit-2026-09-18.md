@@ -44,8 +44,9 @@ the harness runs on all seven backends, amended ADR 0007 to record that printing
 non-finite values are decided and built, and rewrote Q37. Writing the page found a wider gap
 than the one recorded: on jq, any `Float` inside a `Vec` or record skips the relayout, so
 `[1.0e-7, 1.0e21]` prints `[1E-7,1000000000000000000000]` there, not only the non-finite
-values the jq row had pinned. The page keeps container examples out until that lands. Rows:
-`float-corpus-cases`, `float-jq-nested-in-container`. The formatting sweep then found a
+values the jq row had pinned. Closed the same evening: emit_jq.rs renders any Float-bearing
+structure as JSON text around its own float formatter instead of handing it to jq's encoder.
+Row: `float-corpus-cases` (still open, dispatched). The formatting sweep then found a
 second one: `toylang fmt` spelled Float literals through the backends' shortest-digits
 helper, so `2.0` came back as `2` and `1.0e21` as a 22-digit run, both of which lex as
 `Int`; a formatted program changed type or stopped compiling. Fixed in `emit_toylang` with a

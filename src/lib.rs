@@ -132,6 +132,9 @@ pub fn streams_inputs(program: &tir::Program) -> bool {
 /// `Feed::Live` exists for on the ones that no longer do.
 pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String> {
     let program = compile(src)?;
+    // The emitters below are called directly rather than through `Backend::emit`, so the
+    // same refusal has to stand here or `toylang run` would still reach a missing arm.
+    backend_support::refuse_unbuilt(backend, &program).map_err(anyhow::Error::msg)?;
 
     // `stdin.is_none()` is the same convention `uses_lines` already uses below: nothing was
     // supplied, which only happens on the real command line, never from a test fixture. Only
@@ -246,13 +249,13 @@ pub fn run_on(src: &str, stdin: Option<&str>, backend: Backend) -> Result<String
             &emit_jq::emit(&program).map_err(anyhow::Error::msg)?,
             JqInvocation {
                 has_value: value.is_some(),
-                // A Str prints raw, and so does a Float: its emitter renders the value to a
-                // string (`tl_show_float`) because jq's compact JSON output cannot spell the
-                // non-finite values a Float can hold, so `-r` is what lets those words through.
-                raw: matches!(
-                    program.body.ty,
-                    ty::Type::Str | ty::Type::Sink | ty::Type::Float
-                ),
+                // A Str prints raw, and so does anything with a Float inside: its emitter
+                // renders the value to its JSON text (`text` in emit_jq.rs) because jq's
+                // compact JSON output cannot spell the non-finite values a Float can hold and
+                // prints a nested double in its own notation, so `-r` is what lets the
+                // rendered text through.
+                raw: matches!(program.body.ty, ty::Type::Str | ty::Type::Sink)
+                    || ty::contains_float(&program.enums, &program.body.ty),
                 uses_lines: program.uses_lines || program.dsv.is_some(),
             },
             &feed,

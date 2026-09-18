@@ -118,6 +118,11 @@ pub fn takes_type_arg(name: &str) -> bool {
     matches!(name, "Vec" | "Stream" | "Seq")
 }
 
+/// The type names a program can write that are not type constructors: what `from_name`
+/// resolves. Listed so the docs harness can demand a reference page per name
+/// (`tests/docs.rs`); `from_name` below is the one place that has to agree with it.
+pub const NAMED_TYPES: &[&str] = &["Str", "Int", "Int64", "Float", "Bool", "Char", "Sink"];
+
 impl Type {
     pub fn from_name(name: &str) -> Option<Type> {
         match name {
@@ -475,6 +480,35 @@ pub fn variants(enums: &Enums, ty: &Type) -> Vec<(String, Option<Type>)> {
         unreachable!("only an enum has variants")
     };
     variants_of(enums, name, args)
+}
+
+/// Whether a value of `ty` can carry a `Float` anywhere inside it -- bare, a Vec element, a
+/// record field, an enum payload. A printer that spells floats itself (every backend, ADR
+/// 0007) needs its helper whenever this holds, not only for a bare Float body. A recursive
+/// enum's self-reference is always behind a Vec (the checker allows no other), so the first
+/// hop back into one is reachable; `seen` stops the second from looping, as `is_recursive`
+/// does for the same reason.
+pub fn contains_float(enums: &Enums, ty: &Type) -> bool {
+    fn walk(enums: &Enums, ty: &Type, seen: &mut Vec<Type>) -> bool {
+        match ty {
+            Type::Float => true,
+            Type::Vec(elem) | Type::Stream(elem) => walk(enums, elem, seen),
+            Type::Record(fields) => fields.iter().any(|(_, t)| walk(enums, t, seen)),
+            Type::Enum { .. } => {
+                if seen.contains(ty) {
+                    return false;
+                }
+                seen.push(ty.clone());
+                let r = variants(enums, ty)
+                    .iter()
+                    .any(|(_, p)| p.as_ref().is_some_and(|p| walk(enums, p, seen)));
+                seen.pop();
+                r
+            }
+            _ => false,
+        }
+    }
+    walk(enums, ty, &mut Vec::new())
 }
 
 /// Whether a value of this enum type can hold another of the same type, however deep.

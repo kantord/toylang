@@ -194,6 +194,34 @@ fn every_builtin_has_a_reference_page() {
     );
 }
 
+/// Every type name a program can write has a page too, lowercased the way the existing
+/// pages are named. `Float` ran on seven backends for twelve days with no page before this
+/// gate existed; `every_builtin_has_a_reference_page` covered only builtins.
+#[test]
+fn every_named_type_has_a_reference_page() {
+    let missing: Vec<&str> = toylang::ty::NAMED_TYPES
+        .iter()
+        .copied()
+        .filter(|name| {
+            !docs_dir()
+                .join("reference/types")
+                .join(format!("{}.md", name.to_lowercase()))
+                .is_file()
+        })
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "named types without a reference page under docs/reference/types/: {}",
+        missing.join(", ")
+    );
+    for name in toylang::ty::NAMED_TYPES {
+        assert!(
+            toylang::ty::Type::from_name(name).is_some(),
+            "`{name}` is listed in NAMED_TYPES but from_name does not know it"
+        );
+    }
+}
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
 }
@@ -208,6 +236,9 @@ fn pages() -> Vec<(String, String)> {
     let mut paths = Vec::new();
     walk(&docs_dir(), &mut paths);
     paths.sort();
+    // The README is the page most people read first and the one that drifted longest: its
+    // examples used a retired spelling for weeks because nothing ran them.
+    paths.push(repo_root().join("README.md"));
     paths
         .into_iter()
         .map(|p| {

@@ -17,12 +17,22 @@ the design record is [draft.md](draft.md), and what is still open is tracked in
 [`examples/adults.toy`](examples/adults.toy) reads a user list on stdin and prints the names
 of the adults:
 
-```
+```toylang
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
     db.users | select(.age >= 18) | .[].name
 
 adults(parse(stdin))
 ```
+
+```input
+{"users":[{"name":"ada","age":36},{"name":"tim","age":12},{"name":"grace","age":85}]}
+```
+
+```output
+["ada","grace"]
+```
+
+From the shell, that is:
 
 ```
 $ echo '{"users":[{"name":"ada","age":36},{"name":"tim","age":12},{"name":"grace","age":85}]}' | cargo run --quiet -- run examples/adults.toy
@@ -43,7 +53,7 @@ types wire data directly.
 
 [`examples/shapes.toy`](examples/shapes.toy):
 
-```
+```toylang
 enum Shape { Point, Circle{r: Int} }
 
 fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0
@@ -51,15 +61,14 @@ fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0
 {a: area_ish(Shape.point), b: area_ish(circle({r: 3}))}
 ```
 
-```
-$ cargo run --quiet -- run examples/shapes.toy
+```output
 {"a":0,"b":9}
 ```
 
 Match arms chain with `or`; the first that matches wins. The match is closed-world: a
 program whose match handles only `Circle`,
 
-```
+```toylang
 enum Shape { Point, Circle{r: Int} }
 
 fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r
@@ -69,7 +78,7 @@ area_ish(Shape.point)
 
 is refused:
 
-```
+```error
 a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 73)
 ```
 
