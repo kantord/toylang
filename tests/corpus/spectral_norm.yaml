@@ -1,0 +1,72 @@
+# The core of the CLBG spectral-norm task (kantord/toylang benchmark suite): ten rounds of
+# power iteration with the matrix whose (i, j) entry is 1 / ((i + j)(i + j + 1) / 2 + i + 1),
+# then sqrt(u.v / v.v). The language converts no Int to a Float, so each loop carries its
+# index twice (an Int to index by, a Float for the formula), and has no square root, so
+# `sqrt` is a Newton iteration in toylang. This is the correctness fixture for
+# benches/programs/spectral-norm.toy at an N small enough to run fast on every backend; at
+# the benchmark input's N = 100 the program prints 1.2742199912349306, whose first nine
+# decimals are CLBG's published 1.274219991.
+#
+# Derived: Computer Language Benchmarks Game spectral-norm task, BSD-3-Clause,
+# https://benchmarksgame-team.pages.debian.net/benchmarksgame/ -- reimplemented from the
+# task's plain description (the matrix formula and the power iteration), not copied from any
+# reference source.
+program: |
+  fn newton({x, y}: {x: Float, y: Float}) -> Float =
+      let next = (y + x / y) / 2.0
+      next >= y | . -> y or newton({x: x, y: next})
+
+  fn sqrt(x: Float) -> Float = newton({x: x, y: (x + 1.0) / 2.0})
+
+  fn a({i, j}: {i: Float, j: Float}) -> Float =
+      1.0 / ((i + j) * (i + j + 1.0) / 2.0 + i + 1.0)
+
+  fn entry({i, j, t}: {i: Float, j: Float, t: Int}) -> Float =
+      t | . == 0 -> a({i: i, j: j}) or a({i: j, j: i})
+
+  fn row({u, i, j, fj, t, acc}: {u: Vec<Float>, i: Float, j: Int, fj: Float, t: Int, acc: Float}) -> Float =
+      u
+          | j == length(u) -> acc or
+                row({u: u, i: i, j: j + 1, fj: fj + 1.0, t: t, acc: acc + entry({i: i, j: fj, t: t}) * u[j]!})
+
+  fn times({u, i, fi, t, out}: {u: Vec<Float>, i: Int, fi: Float, t: Int, out: Vec<Float>}) -> Vec<Float> =
+      u
+          | i == length(u) -> out or
+                times({u: u, i: i + 1, fi: fi + 1.0, t: t, out: out + [row({u: u, i: fi, j: 0, fj: 0.0, t: t, acc: 0.0})]})
+
+  fn times_a(u: Vec<Float>) -> Vec<Float> =
+      times({u: u, i: 0, fi: 0.0, t: 0, out: []})
+
+  fn times_at(u: Vec<Float>) -> Vec<Float> =
+      times({u: u, i: 0, fi: 0.0, t: 1, out: []})
+
+  fn times_ata(u: Vec<Float>) -> Vec<Float> = times_at(times_a(u))
+
+  fn power({u, k}: {u: Vec<Float>, k: Int}) -> {u: Vec<Float>, v: Vec<Float>} =
+      let v = times_ata(u)
+      let w = times_ata(v)
+      k | . == 1 -> {u: w, v: v} or power({u: w, k: . - 1})
+
+  fn dot({u, v, i, acc}: {u: Vec<Float>, v: Vec<Float>, i: Int, acc: Float}) -> Float =
+      u
+          | i == length(u) -> acc or
+                dot({u: u, v: v, i: i + 1, acc: acc + u[i]! * v[i]!})
+
+  fn ones(n: Int) -> Vec<Float> = collect(range(n)) | map(1.0)
+
+  fn norm(n: Int) -> Float =
+      let r = power({u: ones(n), k: 10})
+      sqrt(
+          dot({u: r.u, v: r.v, i: 0, acc: 0.0}) /
+              dot({u: r.v, v: r.v, i: 0, acc: 0.0})
+      )
+
+  norm(parse(stdin))
+
+input: |
+  50
+
+output: |
+  1.274193836983093
+
+node_types: [application, arith.add, arith.div, arith.mul, arith.sub, builtin.collect, builtin.length, builtin.range, compare.eq, compare.ge, concat, float, input, int, local, map-over, match, pipe, projection, record-literal, selection.collapse, unwrap, var, vec-literal]

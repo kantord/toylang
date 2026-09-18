@@ -132,15 +132,46 @@ visited, and the maximum flip count, the benchmark's real number, matches CLBG. 
 runs it -- none of the seven refuses, since it needs only the `Vec<Int>` slice, reverse, and
 index operations every backend already carries.
 
-Of the eight, `binary-trees`, `fasta`, and `fannkuch-redux` are landed; `mandelbrot` needs float support
-most backends don't have yet, the same gate n-body/spectral-norm are already behind; `pidigits`
-needs a bignum type; `reverse-complement`, `k-nucleotide`, and `regex-redux` need `Str`
-slicing or a `Char -> Str` builtin, neither of which exists.
+The second wave (2026-09-18), the three float tasks gh:146 deferred until `Float` existed, is
+landed: `n-body` (`benches/programs/n-body.toy`, `tests/corpus/n_body.yaml`), `spectral-norm`
+(`spectral-norm.toy`, `spectral_norm.yaml`), and `mandelbrot` (`mandelbrot.toy`,
+`mandelbrot.yaml`). All seven backends run all three and agree. Each one works around a gap
+in what `Float` can do today, and the workaround is written in toylang rather than faked:
+
+- **No square root.** n-body needs one per body pair per step and spectral-norm one at the
+  end. Both carry a `sqrt` that is a Newton iteration: start at the mean of x and 1 (never
+  below the root), halve toward the root until a step stops decreasing. Deterministic IEEE
+  arithmetic, so every backend prints the same digits, but the last digit is not the
+  correctly-rounded one a builtin would give. n-body's energies for N = 1000 agree with
+  CLBG's published `-0.169075164` / `-0.169087605` to the nine decimals CLBG prints, and
+  spectral-norm's N = 100 result begins with CLBG's `1.274219991`.
+- **No `Int -> Float` conversion** (`i64` is the only bridge, and it is Int to Int64).
+  spectral-norm's matrix entry and mandelbrot's pixel coordinate are Float formulas over an
+  index, so each loop carries the index twice, an Int for indexing or counting and a Float
+  for the formula, both stepped by one. mandelbrot needs the grid size as a Float once, and
+  `to_float` counts up to it by repeated addition.
+- **`sum` refuses `Vec<Float>`**, so spectral-norm's dot products are accumulator recursions.
+- **No Bool literal**, so spectral-norm's transpose flag is an Int.
+- **No binary output.** mandelbrot writes the plain-text PBM (P1), the same bits CLBG packs
+  into P4, one `0`/`1` character per pixel.
+
+n-body prints its two energies through `jsonlines` over a `Vec<Float>`, the nested-Float shape
+the jq backend prints in its own notation (`float-jq-nested-in-container`). For these values
+the notations coincide, so jq agrees byte for byte; a different step count could land on a
+value where they differ, and then jq's line is the known divergence, not a reason to drop it.
+
+Building the wave found two backend bugs, fixed alongside with their corpus cases: the Lua
+backend omitted its Float printer when the only Float reached the output through a
+`jsonlines` callback (`jsonlines_of_floats.yaml`), and the native backend crashed the compiler
+on `v[i]!` over a `Vec<Float>`, handing back the slot pointer instead of decoding the bits
+(`vec_float_index_unwrap.yaml`).
+
+Of the ten CLBG tasks, six are landed. `pidigits` needs a bignum type; `reverse-complement`,
+`k-nucleotide`, and `regex-redux` need `Str` slicing or a `Char -> Str` builtin, neither of
+which exists.
 
 ## What this plan leaves to the next person
 
-- Whether n-body and spectral-norm stay in the initial set, and whether float semantics (the
-  `q37-float-semantics` / `float-build` board rows, both still `todo`) gate them.
+- A `sqrt` builtin and an `Int -> Float` bridge. Each would let the float benchmarks drop a
+  workaround, and `sqrt` would also make n-body's digits CLBG's rather than a few ulps off.
 - A dashboard, when there is a baseline and a specific regression it would have caught.
-
-These are named rather than resolved here because the spikes do not settle them.

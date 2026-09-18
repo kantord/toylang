@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (242):
+compiles natively (247):
 adults
 all_basic
 all_empty
@@ -120,6 +120,7 @@ jq_tutorial
 jq_tutorial_step4
 jsonlines_enum_stream
 jsonlines_of_dsv
+jsonlines_of_floats
 jsonlines_of_inputs
 jsonlines_of_lines
 jsonlines_of_range
@@ -133,6 +134,7 @@ lines_only
 lines_preserve_crlf
 lines_stream_signature
 lines_unterminated_final_line
+mandelbrot
 map_after_select
 map_body_from_expected_element
 map_double
@@ -151,6 +153,7 @@ max_empty_unwrap_refuses
 max_int64s
 max_ints
 max_negative
+n_body
 nested_field_access
 nullary_function
 opt_constructors
@@ -201,6 +204,7 @@ sort_descending
 sort_int64s
 sort_ints
 sort_strs
+spectral_norm
 str_concat
 str_equality
 str_inequality
@@ -235,6 +239,7 @@ vec_concat
 vec_concat_chain
 vec_concat_empty
 vec_concat_records
+vec_float_index_unwrap
 vec_of_opt_of_reordered_record
 vec_of_reordered_records_crossing_a_call
 vec_through_function
