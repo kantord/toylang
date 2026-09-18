@@ -165,6 +165,23 @@ def latest_row(row_id: str) -> dict | None:
     return best
 
 
+def effective_status(row: dict) -> str:
+    """Status to surface for a row, after liveness is taken into account.
+
+    A RUNNING marker (written by simple_dispatch.py right after clone)
+    only reads as a live run while the dispatcher process that owns that
+    row is actually alive. If it isn't, the dispatcher died between
+    writing the marker and writing the terminal record -- killing, OOM,
+    host crash -- and reporting the bare RUNNING would pretend the run is
+    still healthy (and hide the death behind the row's previous terminal
+    record, the exact gap this marker exists to close). Report it
+    distinctly instead.
+    """
+    if row.get("status") == "RUNNING" and row.get("row_id") not in live_row_ids():
+        return "RUNNING-nothing-live"
+    return row.get("status") or ""
+
+
 def bundle_for(row_id: str, run_id: str) -> Path:
     return RESULT_DIR / row_id / run_id
 
@@ -201,7 +218,7 @@ def show(row_id: str, run_id: str | None = None) -> str:
     if row is None:
         return f"{row_id}: no dispatch recorded" + (f" for run {run_id}" if run_id else "")
     run_id = row["run_id"]
-    out = [f"{row_id} run {run_id}: {row['status']} ${row['cost_usd']} "
+    out = [f"{row_id} run {run_id}: {effective_status(row)} ${row['cost_usd']} "
            f"ended_by={row.get('ended_by') or '(pre-2026-09-14, not recorded)'} "
            f"edits={row.get('edits') or '?'} turns={row.get('turns') or '?'} "
            f"model={row['model']} {row['start_time']} -> {row['end_time']} ({row['duration_s']}s)"]
@@ -504,7 +521,7 @@ if __name__ == "__main__":
         row = latest_row(row_id)
         if row:
             report = self_report_path_for(row_id, row["run_id"])
-            print(f"{row['status']} {row['cost_usd']} {row.get('patch_path', '')} {report} "
+            print(f"{effective_status(row)} {row['cost_usd']} {row.get('patch_path', '')} {report} "
                   f"{row.get('ended_by', '')} {row.get('edits', '')} {row.get('turns', '')}")
     elif "--show" in args:
         pos = _positional_after(args, "--show")
