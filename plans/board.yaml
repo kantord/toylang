@@ -493,20 +493,6 @@
   prio: 4
   status: delegated
 
-- id: convergence-guard-round-composition
-  title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
-    4-part task, self-report: narrower would succeed -- 2026-09-17). Part 4 of 4, independent of the
-    other three. drive skill + grill-via-annotations skill text: composing a round for a decide row
-    that gates build rows must first run dispatch_state.py --show on every gated row and quote each
-    one''s latest run (run id, status, edits, ended_by) in the round''s background section; if any
-    gated row''s latest run has a patch_path (edits > 0), the composer must stop and report that
-    instead of composing the round, since a landed or near-landed patch means the premise needs
-    re-checking, not a fresh question. Done-gate: both skill texts state this rule explicitly.'
-  kind: build
-  needs: []
-  prio: 4
-  status: delegated
-
 - id: select-lazy-materialization-convergence-ruling
   issue: gh:176
   title: 'Placeholder decide row gating the 7 select-lazy-materialization-build-* rows (go, js, py, lua,
@@ -627,6 +613,21 @@
 
 - id: board-lint-done-in-live-board
   title: 'board-lint.py rejects a non-done row in the archive but nothing rejects `status: done` in plans/board.yaml: 24 landed rows accumulated there before the 2026-09-18 audit archived them. Add that lint, and make dispatch_state.py''s live-row rule and the drive skill prose agree on whether a done-in-board id satisfies a `needs`. Self-originated, 2026-09-18 status audit.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: grill-via-annotations-round-composition-gate
+  title: 'Post-land review of convergence-guard-round-composition (landed 2026-09-18, patch
+    614104f3): the row''s own done-gate said "both skill texts state this rule explicitly"
+    (drive skill AND grill-via-annotations skill) about the round-composition rule --
+    composing a round for a decide row that gates build rows must first run
+    `dispatch_state.py --show` on every gated row and quote its latest run in the round''s
+    background, stopping instead of composing if any gated row''s latest run has a
+    non-empty patch_path. The landed patch only added this to `.claude/skills/drive/SKILL.md`
+    (7 lines, verified present); `.claude/skills/grill-via-annotations/SKILL.md` has no
+    trace of it (checked: no match for "dispatch_state.py --show", "patch_path", or
+    "composing a round"). Add the equivalent rule there. Self-originated, post-land review.'
   kind: build
   needs: []
   status: todo
