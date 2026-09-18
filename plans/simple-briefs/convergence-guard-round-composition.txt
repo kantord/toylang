@@ -1,0 +1,49 @@
+Board row `convergence-guard-round-composition`. Part 4 of a 4-part task split after
+`convergence-ruling-staleness-guards` STUCK twice at max_turns (60 turns total, 0 edits) trying to
+do all 4 parts in one dispatch; the agent's own self-report said it was still exploring at turn 30
+of 30 both attempts and that a narrower scope (one part) would succeed. This brief is ONLY part 4.
+Do not touch simple_dispatch.py, board-lint.py, or the drive skill's redispatch/decide-row-escalation
+text -- those are separate rows (parts 1-3).
+
+## Background (why this matters)
+
+The `drive` skill (`.claude/skills/drive/SKILL.md`) and the `grill-via-annotations` skill
+(`.claude/skills/grill-via-annotations/SKILL.md`) both describe how a coordinator composes a forest
+round (a decide row rendered as a question in the Grill tab, `docs/.grill/*.forest.yaml`) for a
+decide row that gates one or more build rows. On 2026-09-17 a decide row
+(`select-lazy-materialization-convergence-ruling`) told the maintainer "the model is not
+converging" while `plans/dispatch-log.csv` already held a 13-edit near-green js run (run
+`ec7b5d98`) and a diagnosed go run (run `ed033203`) for rows gated behind that same decide row --
+real progress had happened but the round's premise had gone stale before anyone re-checked it. The
+round composer never looked at dispatch-log.csv before writing the question.
+
+`.claude/scripts/dispatch_state.py --show ROW-ID` prints a gated build row's latest dispatch run:
+run id, status, edits, ended_by (this is the tool named elsewhere in the drive skill as "the
+standard way to look at any such run" -- read the drive skill's existing text around that phrase for
+the exact invocation and output shape).
+
+## Task
+
+Edit both skill texts to state this rule explicitly, in each file's own voice/section, matching the
+surrounding prose style (terse, imperative, evidence-first -- do not add a new heading or section if
+an existing one already covers round composition; extend it in place):
+
+1. Before composing a round for a decide row that gates one or more build rows, the composer must
+   run `dispatch_state.py --show` on every row that has the decide row in its `needs:` list, and
+   quote each one's latest run (run id, status, edits, ended_by) in the round node's `background`
+   section.
+2. If any gated row's latest run has a non-empty `patch_path` (i.e. edits happened), the composer
+   must STOP and report that instead of composing the round -- a landed or near-landed patch means
+   the round's premise needs re-checking, not a fresh question to the maintainer.
+
+Find the exact spot in each skill file where round/node composition is already described (search
+for "compose", "background", "node" in `.claude/skills/drive/SKILL.md` and
+`.claude/skills/grill-via-annotations/SKILL.md`) and add this rule there, not as a bolted-on
+paragraph at the end of the file.
+
+## Done-gate
+
+Both skill files state this rule explicitly: (a) run `dispatch_state.py --show` on every gated row
+before composing, quoting run id/status/edits/ended_by in the round's background; (b) a gated row
+with a non-empty `patch_path` on its latest run stops composition instead of producing a round.
+This is a documentation-only change -- no code, no board.yaml edits, no new forest files.

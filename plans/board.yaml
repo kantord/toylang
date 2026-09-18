@@ -801,7 +801,7 @@
   kind: build
   needs: []
   prio: 4
-  status: delegated
+  status: todo
 
 - id: convergence-guard-running-marker
   title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
@@ -815,7 +815,7 @@
   kind: build
   needs: []
   prio: 4
-  status: delegated
+  status: todo
 
 - id: convergence-guard-drive-verbs
   title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
@@ -828,7 +828,7 @@
   kind: build
   needs: []
   prio: 4
-  status: delegated
+  status: todo
 
 - id: convergence-guard-round-composition
   title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
