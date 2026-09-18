@@ -18,7 +18,7 @@ read back to the same double, in fixed notation from `1e-7` up to `1e21` and exp
 outside it -- ECMA-262's `Number::toString`, byte for byte, on every backend:
 
 ```toylang
-1.0e21
+1e21
 ```
 
 ```output
@@ -26,7 +26,7 @@ outside it -- ECMA-262's `Number::toString`, byte for byte, on every backend:
 ```
 
 ```toylang
-1.0e-7
+1e-7
 ```
 
 ```output
@@ -58,7 +58,7 @@ the operation that produced them or mapping them to `null` at the boundary. Comp
 follows IEEE too: `NaN` is not equal to itself, and neither less nor greater than anything.
 
 ```toylang
-(0.0 / 0.0) == (0.0 / 0.0)
+0.0 / 0.0 == 0.0 / 0.0
 ```
 
 ```output

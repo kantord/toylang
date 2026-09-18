@@ -45,7 +45,12 @@ non-finite values are decided and built, and rewrote Q37. Writing the page found
 than the one recorded: on jq, any `Float` inside a `Vec` or record skips the relayout, so
 `[1.0e-7, 1.0e21]` prints `[1E-7,1000000000000000000000]` there, not only the non-finite
 values the jq row had pinned. The page keeps container examples out until that lands. Rows:
-`float-corpus-cases`, `float-jq-nested-in-container`.
+`float-corpus-cases`, `float-jq-nested-in-container`. The formatting sweep then found a
+second one: `toylang fmt` spelled Float literals through the backends' shortest-digits
+helper, so `2.0` came back as `2` and `1.0e21` as a 22-digit run, both of which lex as
+`Int`; a formatted program changed type or stopped compiling. Fixed in `emit_toylang` with a
+test in `tests/fmt.rs`. Neither bug could surface before, because no docs page and no corpus
+case carried a Float.
 
 **Rulings never written back.** Twenty-three of the forty-two questions carried a status
 that the board had already overtaken: Q3, Q8, Q14, Q16, Q21, Q22, Q23, Q33 were ruled in

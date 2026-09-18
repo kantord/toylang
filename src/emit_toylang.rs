@@ -534,6 +534,22 @@ fn print_expr_compact(e: &Expr, ctx: Ctx) -> String {
     print_expr_inner(e)
 }
 
+/// A Float literal spelled so it lexes back as a Float. `float::lit` is the shortest
+/// round-trip digits, which the backends want, but it drops the `.0` on a whole value
+/// (`2.0` -> `2`) and writes `1e21` as a 22-digit run -- both of which the lexer reads as an
+/// `Int`, so a formatted program changed type or stopped compiling (found by the docs
+/// harness the day the Float reference page landed, 2026-09-18). Whole values keep a `.0`,
+/// and values outside the printer's fixed-notation band (`1e-7` to `1e21`) use the exponent
+/// form, which the lexer takes as a Float on its own.
+fn float_literal(n: f64) -> String {
+    let magnitude = n.abs();
+    if magnitude >= 1e21 || (magnitude > 0.0 && magnitude < 1e-6) {
+        return format!("{n:e}");
+    }
+    let plain = crate::float::lit(n);
+    if plain.contains('.') { plain } else { format!("{plain}.0") }
+}
+
 /// The outer parens decision (`needs_parens`) has already been made by `print_expr_compact`;
 /// every child position inside is fixed by its own node (a `Binary`'s own operator powers,
 /// `Pipe`'s hard-coded `PIPE_RIGHT`, and so on), independent of the outer `ctx`.
@@ -541,7 +557,7 @@ fn print_expr_inner(e: &Expr) -> String {
     match e {
         Expr::Str { text, .. } => format!("\"{}\"", escape_str(text)),
         Expr::Int { value, .. } => value.to_string(),
-        Expr::Float { value, .. } => crate::float::lit(*value),
+        Expr::Float { value, .. } => float_literal(*value),
         Expr::VecLit { items, .. } => {
             let items_str = items
                 .iter()

@@ -110,6 +110,19 @@ fn a_pipeline_that_does_not_fit_breaks_one_stage_per_line_pipe_first() {
     assert_eq!(toylang::fmt(src).unwrap(), src);
 }
 
+/// A Float literal has to come back out as a Float literal. The backends' shortest-digits
+/// spelling drops the `.0` on a whole value and writes `1e21` as a digit run, and both of those
+/// lex as `Int`, so the formatted program either changed type (`x * 2.0` became `x * 2`) or
+/// stopped compiling (a 22-digit `Int` is out of range). Caught by the docs sweep the day the
+/// Float reference page landed.
+#[test]
+fn a_float_literal_stays_a_float_literal() {
+    let src = "fn f(x: Float) -> Float = x * 2.0\n\n[f(1.5), f(1e21), f(1e-7), f(0.25)]\n";
+    assert_eq!(toylang::fmt(src).unwrap(), src);
+    assert_eq!(toylang::fmt("1.0e21\n").unwrap(), "1e21\n");
+    assert_eq!(toylang::fmt("3.0\n").unwrap(), "3.0\n");
+}
+
 /// The one piece of source text `emit_toylang::emit` cannot reconstruct from the parsed tree --
 /// see its module doc -- is a leading comment banner, which `fmt` reattaches from the raw text
 /// instead. Pinned directly since nothing else here exercises it: every corpus program is
