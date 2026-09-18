@@ -1,0 +1,14 @@
+# Indexing a Vec<Float> and unwrapping the element hands back the Float itself. The native
+# backend used to hand back the raw slot pointer instead: its unwrap decoded the slot only for
+# the integer-shaped scalars, and a Float, which rides in the slot as its own bit pattern the
+# same way, fell through to the boxed-value path and crashed the compiler on the first
+# arithmetic that expected a float.
+program: |
+  fn second(v: Vec<Float>) -> Float = v[1]! * 2.0
+
+  second([1.5, 2.5, 3.5])
+
+output: |
+  5
+
+node_types: [application, arith.mul, float, int, selection.collapse, unwrap, var, vec-literal]
