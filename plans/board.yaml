@@ -471,20 +471,6 @@
   needs: []
   status: todo
 
-- id: rust-let-bound-vec-left-of-plus
-  title: 'Rust backend refuses a program where a let-bound or destructured Vec is the LEFT operand of `+`: it emits `let t_N: Vec<_> = ...; t_N.extend(...)` without `mut` (rustc E0596). Minimal repro: `fn f({acc}: {acc: Vec<Int>}) -> Vec<Int> = acc + [1]` then `f({acc: [0]})`; `p.acc + [1]` and `[1] + acc` work. Found by the 2026-09-19 Euler review (pages 11 and 13 route around it). Fix the emitter and add a corpus case with the repro.'
-  kind: build
-  needs: []
-  status: delegated
-  outcome: 'Landed e920d44 (2026-09-19). `Cursor::advance` records each comment it passes into
-    `File::comments` / `Module::comments` with `own_line` and `blank_after` flags; the formatter
-    hands them out in source order across declarations, let bindings, the let value, and the
-    program body. Placement rules and the one kept piece of author spacing (the blank line after
-    a comment) are in src/emit_toylang.rs''s module doc. The raw-text banner path is gone. Three
-    style calls were the agent''s and are listed for the maintainer in the 2026-09-19 session
-    report: one space before a trailing `#`, an in-expression comment rising above its
-    definition, and keeping only the blank line after a comment.'
-
 - id: pipe-stage-vs-call-equivalence-decide
   title: 'A call around a pipeline, `join_lines(collect(P))`, reads better as the pipeline with
     the call as its last stage, `P | collect(.) | join_lines(.)`, and the maintainer asked
