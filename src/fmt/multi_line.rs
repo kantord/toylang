@@ -429,6 +429,27 @@ fn wrap_delimited(e: &Expr, indent: usize) -> Option<String> {
             let item = print_expr_wrapped(a, Ctx::Expr(0), inner);
             format!("{func}{}", wrap_delim("(", &[item], ")", indent))
         }
+        // A record payload that does not fit breaks bare, one field per line -- the same
+        // seam a bare record argument already gets -- since the grammar's own bare-brace
+        // form for a variant payload has no wrapping parens to break inside of.
+        Expr::Variant {
+            enum_name,
+            variant,
+            payload: Some(p),
+            ..
+        } if matches!(**p, Expr::RecordLit { .. }) => {
+            let Expr::RecordLit { fields, .. } = &**p else {
+                unreachable!("just matched")
+            };
+            let rendered: Vec<String> = fields
+                .iter()
+                .map(|(n, _, v)| print_field(n, v, inner))
+                .collect();
+            format!(
+                "{enum_name}.{variant} {}",
+                wrap_delim("{", &rendered, "}", indent)
+            )
+        }
         Expr::Variant {
             enum_name,
             variant,

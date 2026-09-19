@@ -11,7 +11,7 @@ program: |
   {
     a: render Msg.ping,
     b: render Msg.quit,
-    c: render Msg.text({ body: "hi" })
+    c: render Msg.text { body: "hi" }
   }
 
 output: |

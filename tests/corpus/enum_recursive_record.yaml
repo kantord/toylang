@@ -4,13 +4,10 @@
 program: |
   enum Doc { Section { title: Str, parts: Vec<Doc> }, Text(Str) }
 
-  Doc.section(
-    {
-      title: "top",
-      parts:
-        [Doc.text("hi"), Doc.section({ title: "inner", parts: [] })]
-    }
-  )
+  Doc.section {
+    title: "top",
+    parts: [Doc.text("hi"), Doc.section { title: "inner", parts: [] }]
+  }
 
 output: |
   {"Section":{"title":"top","parts":[{"Text":"hi"},{"Section":{"title":"inner","parts":[]}}]}}

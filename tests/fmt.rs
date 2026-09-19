@@ -466,3 +466,45 @@ fn a_call_used_as_a_postfix_base_keeps_its_parens() {
     assert_eq!(toylang::fmt(src).unwrap(), src);
     assert_eq!(toylang::run(src).unwrap(), "[1,2]\n");
 }
+
+/// A qualified variant's payload drops its parens exactly when it is a record literal
+/// (maintainer ruling, 2026-09-19: the same class of gap bare application closed for calls).
+/// `Shape.circle{r: 3}` is the only bare form the grammar's own payload production gives --
+/// `ident_expr` recognises the payload on a bare `(` or `{` alone, with no `self.postfix()`
+/// fallback the way a call's bare argument gets, so a non-record payload (`Shape.some2(5)`)
+/// has no bare spelling to fall back to and keeps its parens.
+#[test]
+fn a_record_variant_payload_prints_bare() {
+    let src = "enum Shape { Point, Circle{r: Int} }\n\n\
+               fn area(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0\n\n\
+               area(Shape.circle({r: 3}))\n";
+    let want = "enum Shape { Point, Circle { r: Int } }\n\n\
+                fn area(s: Shape) -> Int = s | Circle { r } -> r * r or Point -> 0\n\n\
+                area Shape.circle { r: 3 }\n";
+    assert_eq!(toylang::fmt(src).unwrap(), want);
+    assert_eq!(toylang::fmt(want).unwrap(), want);
+    assert_eq!(toylang::run(src).unwrap(), toylang::run(want).unwrap());
+
+    // A non-record payload (Int, here) has no bare form at all -- `Shape.some2 5` does not
+    // parse -- so it keeps its parens even though the *outer* call bare-applies around it.
+    let src = "enum Opt2 { Some2(Int), None2 }\n\n\
+               fn f(x: Opt2) -> Int = x | Some2 -> . or 0\n\n\
+               f(Opt2.some2(5))\n";
+    let want = "enum Opt2 { Some2(Int), None2 }\n\n\
+                fn f(x: Opt2) -> Int = x | Some2 -> . or 0\n\n\
+                f Opt2.some2(5)\n";
+    assert_eq!(toylang::fmt(src).unwrap(), want);
+    assert_eq!(toylang::fmt(want).unwrap(), want);
+    assert_eq!(toylang::run(src).unwrap(), toylang::run(want).unwrap());
+}
+
+/// A record payload that does not fit compact breaks bare, one field per line, since the
+/// grammar's bare-brace payload form has no wrapping parens to break inside of.
+#[test]
+fn a_long_record_variant_payload_breaks_bare() {
+    let src = "enum S { C{aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: Int, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: Int} }\n\nfn f(x: S) -> Int = x | C{aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb} -> aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n\nf(S.c({aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: 1, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: 2}))\n";
+    let want = toylang::fmt(src).unwrap();
+    assert!(want.contains("f(\n  S.c {\n"), "{want}");
+    assert_eq!(toylang::fmt(&want).unwrap(), want);
+    assert_eq!(toylang::run(src).unwrap(), toylang::run(&want).unwrap());
+}

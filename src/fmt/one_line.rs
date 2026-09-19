@@ -376,6 +376,22 @@ fn call(func: &str, arg: Option<&Expr>) -> String {
     }
 }
 
+/// A record payload is the one bare form the grammar gives a qualified variant:
+/// `Shape.circle{r: 3}`, recognised by `ident_expr` on a bare `{` with no `(` at all around
+/// it. Unlike a bare call argument there is no wider set here -- a payload that is a name, a
+/// literal, or anything else needs the parens, since the only two payload productions the
+/// parser tries are `(expr)` and the record literal alone (verified: `Shape.circle 5` does
+/// not parse).
+fn variant_ctor(enum_name: &str, variant: &str, payload: Option<&Expr>) -> String {
+    match payload {
+        None => format!("{enum_name}.{variant}"),
+        Some(p) if matches!(p, Expr::RecordLit { .. }) => {
+            format!("{enum_name}.{variant} {}", print_expr_inner(p))
+        }
+        Some(p) => format!("{enum_name}.{variant}({})", print_paren_arg(p)),
+    }
+}
+
 fn print_expr_inner(e: &Expr) -> String {
     match e {
         Expr::Str { text, .. } => format!("\"{}\"", escape_str(text)),
@@ -446,10 +462,7 @@ fn print_expr_inner(e: &Expr) -> String {
             variant,
             payload,
             ..
-        } => match payload {
-            None => format!("{enum_name}.{variant}"),
-            Some(p) => format!("{enum_name}.{variant}({})", print_paren_arg(p)),
-        },
+        } => variant_ctor(enum_name, variant, payload.as_deref()),
         Expr::Match { arms, .. } => arms
             .iter()
             .enumerate()

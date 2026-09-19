@@ -898,7 +898,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "enum Msg { Ping, Quit, Text { body: Str } }\n\nfn render =\n  Msg(Ping -> \"*ping*\" or Quit -> \"*quit*\" or Text { body } -> body)\n\n{\n  a: render Msg.ping,\n  b: render Msg.quit,\n  c: render Msg.text({ body: \"hi\" })\n}\n",
+      "program": "enum Msg { Ping, Quit, Text { body: Str } }\n\nfn render =\n  Msg(Ping -> \"*ping*\" or Quit -> \"*quit*\" or Text { body } -> body)\n\n{\n  a: render Msg.ping,\n  b: render Msg.quit,\n  c: render Msg.text { body: \"hi\" }\n}\n",
       "resultType": "{a: Str, b: Str, c: Str}",
       "usesLines": false
     },
@@ -932,7 +932,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "enum Shape { Point, Circle { r: Int } }\n\nfn area = Shape(Circle { r } -> r * r or Point -> 0)\n\n{\n  c: area Shape.circle({ r: 3 }),\n  p: area Shape.point,\n  doubled: area Shape.circle({ r: 4 }) * 2\n}\n",
+      "program": "enum Shape { Point, Circle { r: Int } }\n\nfn area = Shape(Circle { r } -> r * r or Point -> 0)\n\n{\n  c: area Shape.circle { r: 3 },\n  p: area Shape.point,\n  doubled: area Shape.circle { r: 4 } * 2\n}\n",
       "resultType": "{c: Int, p: Int, doubled: Int}",
       "usesLines": false
     },
@@ -964,7 +964,7 @@
         "variant.unit",
         "vec-literal"
       ],
-      "program": "enum Msg { Ping, Quit, Text { body: Str } }\n\n[Msg.ping, Msg.quit, Msg.text({ body: \"hi\" })]\n| map Msg(Ping -> \"ping\" or Quit -> \"quit\" or Text -> \"text\")\n",
+      "program": "enum Msg { Ping, Quit, Text { body: Str } }\n\n[Msg.ping, Msg.quit, Msg.text { body: \"hi\" }]\n| map Msg(Ping -> \"ping\" or Quit -> \"quit\" or Text -> \"text\")\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -2002,7 +2002,7 @@
         "variant.payload",
         "vec-literal"
       ],
-      "program": "enum Doc { Section { title: Str, parts: Vec<Doc> }, Text(Str) }\n\nDoc.section(\n  {\n    title: \"top\",\n    parts:\n      [Doc.text(\"hi\"), Doc.section({ title: \"inner\", parts: [] })]\n  }\n)\n",
+      "program": "enum Doc { Section { title: Str, parts: Vec<Doc> }, Text(Str) }\n\nDoc.section {\n  title: \"top\",\n  parts: [Doc.text(\"hi\"), Doc.section { title: \"inner\", parts: [] }]\n}\n",
       "resultType": "Doc",
       "usesLines": false
     },

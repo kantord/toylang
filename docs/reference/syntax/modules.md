@@ -102,7 +102,7 @@ pub fn handle(s: Shape) -> Int =
 ```
 
 ```toylang
-Shape.circle({ r: 2 }) | @("tests/modules/shapes.toy")
+Shape.circle { r: 2 } | @("tests/modules/shapes.toy")
 ```
 
 ```output
