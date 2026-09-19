@@ -1,45 +1,22 @@
-Board row `float-corpus-cases`, issue gh:149 (the parent Float implementation issue -- already
-closed out on the build side; this row is the corpus-coverage follow-up).
+A previous dispatch completed this task, but landing the branch on main
+FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 1 of 3). The exact evidence:
 
-## Background (why this matters)
+error: patch failed: docs/reference/types/float.md:5
+error: docs/reference/types/float.md: patch does not apply
+error: patch failed: src/emit_toylang.rs:534
+error: src/emit_toylang.rs: patch does not apply
+error: patch failed: tests/snapshots/backend_llvm__native_agrees_where_it_compiles.snap:2
+error: tests/snapshots/backend_llvm__native_agrees_where_it_compiles.snap: patch does not apply
+error: patch failed: tests/snapshots/backend_rust__rust_agrees_where_it_compiles.snap:2
+error: tests/snapshots/backend_rust__rust_agrees_where_it_compiles.snap: patch does not apply
+hint: Use 'git am --show-current-patch=diff' to see the failed patch
+hint: When you have resolved this problem, run "git am --continue".
+hint: If you prefer to skip this patch, run "git am --skip" instead.
+hint: To restore the original branch and stop patching, run "git am --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Applying: agent_loop.py output
+Patch failed at 0001 agent_loop.py output
 
-Float (IEEE binary64 per docs/adr/0007-float-is-javascript-double.md) already has per-backend
-tests in `tests/backend_go.rs`, `tests/backend_python.rs`, `tests/backend_rust.rs`,
-`tests/backend_lua.rs` (check which backend test files actually have Float cases -- grep for
-`float` case-insensitively across `tests/backend_*.rs`). Those tests only run one backend each; the
-project's real cross-backend agreement check lives in `tests/corpus/*.yaml` (see
-`tests/corpus/input_annotation.yaml` for the shape of a corpus case: a `.tl` source snippet plus
-expected output, run through all seven backends and required to agree byte for byte). Float has no
-corpus case, so the seven-backend agreement check does not cover it at all -- only whichever
-backends happen to have their own one-off test file.
 
-This was flagged in `float-build-c-escalation` (see `plans/board-archive.yaml` for that row's
-history) as still needing "Go/Python/Rust/Lua before it can be a corpus case" -- all four have since
-landed, but nobody filed the corpus-promotion follow-up until the 2026-09-18 status audit
-(`plans/status-audit-2026-09-18.md`) caught the gap.
-
-## Task
-
-1. Find the existing per-backend Float tests: `grep -il float tests/backend_*.rs`.
-2. Look at `tests/corpus/input_annotation.yaml` (or another existing corpus file) for the exact
-   case format (source, expected output, any tags).
-3. Add one or more `case` entries to `tests/corpus/` (new file or an existing float-relevant one --
-   check whether a `tests/corpus/*.yaml` file already exists for float/numeric types) tagged so the
-   `float` tag has real coverage, exercising: literal parsing, arithmetic (+ - * /), comparisons,
-   NaN/Infinity producibility and identical printing across backends, and division by zero on Float
-   returning Infinity (contrast with Int, which raises).
-4. Where `docs/reference/types/float.md` already has an inline code example that duplicates one of
-   these cases, replace it with a `case` fence referencing the corpus case instead of hand-duplicating
-   the snippet (check how other reference docs embed corpus cases via `case` fences -- grep for
-   ` ```case` in `docs/reference/`).
-5. Do not remove the existing `tests/backend_*.rs` Float tests unless the corpus case fully
-   subsumes them and removing them is clearly intended by the pattern used elsewhere in this repo
-   for other types that made this same migration -- check git history/other corpus migrations
-   (grep board-archive.yaml for similar "promote ... into tests/corpus" rows) before deleting
-   anything.
-
-## Done-gate
-
-`just check` (or whatever this repo's full test invocation is -- see `justfile`) passes with a new
-Float corpus case exercised across all seven backends, and `float` has real corpus-level coverage
-that did not exist before.
+Your job now is ONLY to make this branch land: fix whatever the evidence above
+shows failing, and re-run the verify command yourself. Do not start new feature work.

@@ -1,43 +1,16 @@
-Board row `convergence-guard-drive-verbs`. Part 3 of a 4-part task split after
-`convergence-ruling-staleness-guards` STUCK twice at max_turns (60 turns total, 0 edits) trying to
-do all 4 parts in one dispatch; the agent's own self-report said it was still exploring at turn 30
-of 30 both attempts and that a narrower scope (one part) would succeed. This brief is ONLY part 3.
-Do not touch simple_dispatch.py, board-lint.py, or the round-composition text in the drive skill or
-grill-via-annotations skill -- those are separate rows (parts 1, 2, and 4).
+A previous dispatch completed this task, but landing the branch on main
+FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 1 of 3). The exact evidence:
 
-## Background (why this matters)
+error: patch failed: docs/reference/types/float.md:18
+error: docs/reference/types/float.md: patch does not apply
+hint: Use 'git am --show-current-patch=diff' to see the failed patch
+hint: When you have resolved this problem, run "git am --continue".
+hint: If you prefer to skip this patch, run "git am --skip" instead.
+hint: To restore the original branch and stop patching, run "git am --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Applying: agent_loop.py output
+Patch failed at 0001 agent_loop.py output
 
-The `drive` skill (`.claude/skills/drive/SKILL.md`) describes, in its dispatch section (step 3 of
-"The loop"), the three verbs a tick uses on a non-GREEN dispatch outcome: (a) a narrower redispatch
-per the agent's own suggestion, (b) a decide-row escalation when the report says this is a scope
-problem, (c) a HARNESS DEFECT escalation. Verbs (a) and (b) are mutually exclusive for a single row:
-choosing (a) -- redispatching narrower -- only makes sense once any decide row that was gating the
-original row's scope has actually been resolved one way or another. Today the skill text does not
-say what to do with that gating decide row when a tick picks verb (a) instead of leaving it open.
 
-The failure mode this guards against: a tick redispatches a row narrower (verb a), the row lands,
-but a decide row that was created to gate the ORIGINAL (wider) scope is left sitting open in
-`plans/board.yaml`/a forest round with `needs` pointing at a row that has already moved on. The
-decide row becomes a stale question nobody will ever act on, or -- worse -- silently keeps gating
-something it no longer describes.
-
-## Task
-
-Edit `.claude/skills/drive/SKILL.md`, in the dispatch section where the three verbs (a)/(b)/(c) are
-described (step 3 of "The loop" -- search for "narrower redispatch" / "decide-row escalation"), to
-state this rule explicitly, matching the surrounding prose style (terse, imperative,
-evidence-first). Extend the existing verb (a) description in place; do not add a new heading or
-section:
-
-Choosing verb (a) -- a narrower redispatch -- while a decide row is still open and was created to
-gate that same row's scope must, in the SAME commit as the redispatch, either:
-- retire the gating decide row (`status: done`, with a note explaining the redispatch made it moot), or
-- drop the `needs`/gating edge between the decide row and the row being redispatched,
-
-so that a redispatch can never leave a stale open decide row gating a row that has already moved on
-to a narrower scope under its own steam.
-
-## Done-gate
-
-`.claude/skills/drive/SKILL.md` states this rule explicitly in the verb (a) description. This is a
-documentation-only change -- no code, no board.yaml edits, no new forest files.
+Your job now is ONLY to make this branch land: fix whatever the evidence above
+shows failing, and re-run the verify command yourself. Do not start new feature work.
