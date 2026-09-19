@@ -1,86 +1,67 @@
-Board row `select-lazy-materialization-build-js` (gh:176). Third attempt. Two earlier runs
-(063c8fc1, 6bf3bbdf) went STUCK at 0 edits just reading the file -- this brief already hands you
-the consumer map below so you don't repeat that. A third run (ec7b5d98, 2026-09-14) actually wrote
-the design (13 edits) and got the build compiling; it ran out of its 90-turn budget one step from
-green. Its own self-report: "I had just added densify guards to tl_field and tl_eq, but had not
-yet re-run the full verification cycle after those last edits. The build itself was already
-compiling and the only earlier failure was the expected snapshot diff in
-js_targets_split_on_stdin, which is meant to be accepted via `cargo insta accept`." Concretely,
-this run's remaining work is: (1) confirm the `tl_field`/`tl_eq` densify guards you (re)write per
-the design below are complete and correct, (2) run `just check`, (3) accept the expected snapshot
-diff(s) with `cargo insta accept` (do not hand-edit `.snap` files), (4) rerun `just check` to
-confirm green. Read the rest of this brief for the full design so you do not have to re-derive it
-from scratch.
+A previous dispatch completed this task, but landing the branch on main
+FAILED: the full test suite went red (landing attempt 2 of 3). The exact evidence:
 
-## What exists today (eager, what you're replacing)
+    test tmp ... FAILED
 
-`src/emit_js.rs:35-41` (`SELECT_HELPER`):
-```js
-function tl_select(src, pred) {
-  const out = [];
-  for (let i = 0; i < src.length; i++) if (pred(src[i])) out.push(src[i]);
-  return out;
-}
-```
-Registered at `src/emit_js.rs:279` (`(used.select, SELECT_HELPER)`). Usage flagged at the `walk()`
-pass, `src/emit_js.rs:788` (`Kind::Select { .. } => used.select = true`). Emitted at the
-`Kind::Select` codegen site, `src/emit_js.rs:1119-1128`, as `tl_select(source, pred)`.
+    failures:
 
-## Every consumer that currently assumes `tl_select`'s result is a plain array
+    failures:
+        tmp
 
-- `Kind::Index`, `src/emit_js.rs:1158-1166`, emits `tl_at(base, index, depth)`. `tl_at` itself is
-  `OPT_HELPER`, `src/emit_js.rs:52-62` -- takes `v.length` and `v[i]` directly.
-- `Kind::Slice`, `src/emit_js.rs:1168-1181`, emits `tl_slice(base, lo, hi, depth)`. `tl_slice` is
-  `SLICE_HELPER`, `src/emit_js.rs:67-72` -- calls `v.slice(lo, hi)` and `v.map(...)` directly.
-- Anything else that reads a Select's result as a plain array (`.map`, printing/JSON output, a
-  chained pipe stage, `for...of`) -- grep for other helpers that take a bare array parameter and
-  check whether a Select can flow into them; if you find one, densify at that boundary the same
-  way as below.
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-## Design to build (mirrors the already-proven Go version; translate the shape, not the syntax)
+  stderr ───
 
-Make `tl_select` return a lazy handle instead of a plain array; build the selection vector once,
-on first use; give O(1) indexed access without copying survivors out. Any consumer that isn't
-plain indexing just densifies first (always correct, just not lazy for that path):
+    thread 'tmp' (2520032) panicked at tests/zz_tmp.rs:3:55:
+    called `Result::unwrap()` on an `Err` value: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
-```js
-function tl_sel_new(src, pred) {
-  return { __tlSel: true, src, pred, idx: null, dense: null };
-}
-function tl_sel_build(s) {
-  if (s.idx !== null) return;
-  const idx = [];
-  for (let i = 0; i < s.src.length; i++) if (s.pred(s.src[i])) idx.push(i);
-  s.idx = idx;
-}
-function tl_sel_dense(s) {
-  if (s.dense !== null) return s.dense;
-  tl_sel_build(s);
-  s.dense = s.idx.map((i) => s.src[i]);
-  return s.dense;
-}
-```
+  Cancelling due to test failure: 16 tests still running
+        PASS [   0.043s] (461/476) toylang::variant_casing a_lowercase_variant_declaration_is_refused
+        PASS [   0.943s] (462/476) toylang::streaming lua_streams_range
+        PASS [   0.511s] (463/476) toylang::unwrap an_int_from_input_has_to_fit_too
+        PASS [   3.720s] (464/476) toylang::fmt a_formatted_corpus_program_runs_the_same_as_the_original
+        PASS [   1.468s] (465/476) toylang::ts_types tsc_accepts_the_declaration_and_consumer
+        PASS [  13.461s] (466/476) toylang::corpus every_backend_agrees_and_is_right_shard_4
+        PASS [  13.473s] (467/476) toylang::corpus every_backend_agrees_and_is_right_shard_3
+        PASS [  13.876s] (468/476) toylang::corpus every_backend_agrees_and_is_right_shard_0
+        PASS [  14.143s] (469/476) toylang::corpus every_backend_agrees_and_is_right_shard_2
+        PASS [  14.109s] (470/476) toylang::corpus every_backend_agrees_and_is_right_shard_6
+        PASS [  14.350s] (471/476) toylang::corpus every_backend_agrees_and_is_right_shard_7
+        PASS [  14.563s] (472/476) toylang::corpus every_backend_agrees_and_is_right_shard_1
+        PASS [  15.341s] (473/476) toylang::corpus every_backend_agrees_and_is_right_shard_5
+        PASS [  30.947s] (474/476) toylang::backend_llvm native_agrees_where_it_compiles
+        PASS [  37.836s] (475/476) toylang::backend_rust rust_agrees_where_it_compiles
+        SLOW [> 60.000s] (───────) toylang::docs every_fragment_is_a_real_program
+        SLOW [>120.000s] (───────) toylang::docs every_fragment_is_a_real_program
+        FAIL [ 167.772s] (476/476) toylang::docs every_fragment_is_a_real_program
+  stdout ───
 
-Then make `tl_at` and `tl_slice` polymorphic: if `v && v.__tlSel`, either answer directly from the
-selection vector (the actual laziness win, for `tl_at` at `depth === 0`: `tl_sel_build(v)`, apply
-the same negative-index/bounds logic against `v.idx.length`, return `{some: v.src[v.idx[i]]}` or
-`"none"`) or fall back to `tl_sel_dense(v)` then proceed with the existing plain-array logic
-unchanged (simplest correct option for `tl_slice` and the `depth > 0` recursive case in both
-helpers). Do the same densify-at-the-boundary check for any other consumer you find per the list
-above.
+    running 1 test
+    test every_fragment_is_a_real_program has been running for over 60 seconds
+    test every_fragment_is_a_real_program ... FAILED
 
-The in-place/reuse optimization (reusing the source's backing array when uniquely referenced) that
-the shared spec mentions is a perf nicety, not required for this row's done-gate -- skip it; a
-version that always copies on `tl_sel_dense` is correct and acceptable.
+    failures:
 
-## Scope
+    failures:
+        every_fragment_is_a_real_program
 
-JS backend only (`src/emit_js.rs`). Do not touch other backends.
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 167.76s
 
-## Done-gate
+  stderr ───
 
-`just check` passes. The corpus snapshot tests for `*__js.snap` will need `cargo insta accept` (or
-this repo's existing insta-update workflow) once you've confirmed the new emitted output is
-behaviorally correct -- same elements, same order as the eager version. That snapshot diff is
-expected, not a regression; don't treat it as a bug. Same `Kind::Select` AST/checker node, no
-syntax/checker change, `xs | select(pred)` keeps its current meaning and element order.
+    thread 'every_fragment_is_a_real_program' (2511464) panicked at tests/docs.rs:108:5:
+    1 of 200 docs fragments failed:
+    DISAGREE docs/examples/euler/04-largest-palindrome-product.md:12: lua="906609\n" js="[object Object]\n" native="906609\n" jq="906609\n" go="906609\n" py="906609\n" rust="906609\n"
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+────────────
+     Summary [ 168.536s] 476 tests run: 474 passed, 2 failed, 1 skipped
+        FAIL [   0.015s] (460/476) toylang::zz_tmp tmp
+        FAIL [ 167.772s] (476/476) toylang::docs every_fragment_is_a_real_program
+error: test run failed
+error: recipe `test` failed on line 7 with exit code 100
+
+
+Your job now is ONLY to make this branch land: fix whatever the evidence above
+shows failing, and re-run the verify command yourself. Do not start new feature work.
