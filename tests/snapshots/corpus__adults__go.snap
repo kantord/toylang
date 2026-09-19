@@ -11,6 +11,11 @@ import (
 	"strings"
 )
 
+type tlOpt[T any] struct {
+	ok bool
+	v  T
+}
+
 func tlFail(msg string) {
 	fmt.Fprintln(os.Stderr, "toylang: "+msg)
 	os.Exit(1)
@@ -26,13 +31,57 @@ func tlMap[A, B any](src []A, f func(A) B) []B {
 	return out
 }
 
-func tlSelect[T any](src []T, pred func(T) bool) []T {
-	out := []T{}
-	for _, e := range src {
-		if pred(e) {
-			out = append(out, e)
+type tlSel[T any] struct {
+	src     []T
+	pred    func(T) bool
+	idx     []int32
+	dense   []T
+}
+
+func tlSelNew[T any](src []T, pred func(T) bool) *tlSel[T] {
+	return &tlSel[T]{src: src, pred: pred}
+}
+
+func (s *tlSel[T]) build() {
+	if s.idx != nil {
+		return
+	}
+	idx := make([]int32, 0, len(s.src))
+	for i, e := range s.src {
+		if s.pred(e) {
+			idx = append(idx, int32(i))
 		}
 	}
+	s.idx = idx
+}
+
+func tlSelAt[T any](s *tlSel[T], i int32) tlOpt[T] {
+	s.build()
+	n := int32(len(s.idx))
+	if i < 0 {
+		i = n + i
+	}
+	if i < 0 || i >= n {
+		return tlOpt[T]{}
+	}
+	return tlOpt[T]{true, s.src[s.idx[i]]}
+}
+
+func tlSelLen[T any](s *tlSel[T]) int32 {
+	s.build()
+	return int32(len(s.idx))
+}
+
+func tlSelDense[T any](s *tlSel[T]) []T {
+	if s.dense != nil {
+		return s.dense
+	}
+	s.build()
+	out := make([]T, len(s.idx))
+	for j, i := range s.idx {
+		out[j] = s.src[i]
+	}
+	s.dense = out
 	return out
 }
 
@@ -82,7 +131,7 @@ type tlRec1 struct {
 }
 
 func v_adults(v_db tlRec1) []string {
-	return func(t_2 []tlRec0) []string { return tlMap(t_2, func(m1 tlRec0) string { return (m1).Fname }) }(func(t_0 []tlRec0) []tlRec0 { return tlSelect(t_0, func(t_1 tlRec0) bool { return ((t_1).Fage >= tlInt(18)) }) }((v_db).Fusers))
+	return func(t_2 []tlRec0) []string { return tlMap(t_2, func(m1 tlRec0) string { return (m1).Fname }) }(func(t_0 []tlRec0) []tlRec0 { return tlSelDense(tlSelNew(t_0, func(t_1 tlRec0) bool { return ((t_1).Fage >= tlInt(18)) })) }((v_db).Fusers))
 }
 
 func main() {
