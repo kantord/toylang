@@ -1,10 +1,6 @@
 A previous dispatch completed this task, but landing the branch on main
-FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 1 of 3). The exact evidence:
+FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 2 of 3). The exact evidence:
 
-error: patch failed: docs/reference/types/float.md:5
-error: docs/reference/types/float.md: patch does not apply
-error: patch failed: src/emit_toylang.rs:534
-error: src/emit_toylang.rs: patch does not apply
 error: patch failed: tests/snapshots/backend_llvm__native_agrees_where_it_compiles.snap:2
 error: tests/snapshots/backend_llvm__native_agrees_where_it_compiles.snap: patch does not apply
 error: patch failed: tests/snapshots/backend_rust__rust_agrees_where_it_compiles.snap:2
@@ -14,8 +10,8 @@ hint: When you have resolved this problem, run "git am --continue".
 hint: If you prefer to skip this patch, run "git am --skip" instead.
 hint: To restore the original branch and stop patching, run "git am --abort".
 hint: Disable this message with "git config set advice.mergeConflict false"
-Applying: agent_loop.py output
-Patch failed at 0001 agent_loop.py output
+Applying: float-corpus-cases: Float is now a corpus case across all seven backends
+Patch failed at 0001 float-corpus-cases: Float is now a corpus case across all seven backends
 
 
 Your job now is ONLY to make this branch land: fix whatever the evidence above
