@@ -2896,3 +2896,9 @@
   kind: decide
   needs: []
   status: done
+
+- id: corpus-euler-stale-sort-citations-decide
+  title: 'Corpus-implementation-style-review follow-up (problems 22, 23): the skipped pages still cite gh:86 missing-Vec-sort as the blocker -- 22 says toylang has no `Vec` sort and 23 cites #86 for its sorted-list sieve -- but `sort` has existed since 2026-08-30 and the ergonomics doc already flags both citations as stale. The real blockers are elsewhere and still unsolved: 22 has no external name data to load (the 46k licensed names are why it is skipped) and 23 pays an O(1e7)-pair membership cost on its abundant sums (the gh:93 slow-fragment ruling). `sort_by`/`max_by` change neither. Decide how to reword or re-scope both skip pages so the corpus stops citing a landed feature as missing -- e.g. cite the data blocker and gh:93 directly and drop the #86 references -- rather than treating the sort gap as a live dependency. Resolved by the 2026-09-19 Euler review rather than a ruling: pages 22 and 23 no longer cite #86; 22 names its real blockers (the names data, no Char-to-Int conversion) and 23 points at the #93 ruling.'
+  kind: decide
+  needs: []
+  status: done

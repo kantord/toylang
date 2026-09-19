@@ -508,12 +508,6 @@
   needs: []
   status: todo
 
-- id: corpus-euler-stale-sort-citations-decide
-  title: 'Corpus-implementation-style-review follow-up (problems 22, 23): the skipped pages still cite gh:86 missing-Vec-sort as the blocker -- 22 says toylang has no `Vec` sort and 23 cites #86 for its sorted-list sieve -- but `sort` has existed since 2026-08-30 and the ergonomics doc already flags both citations as stale. The real blockers are elsewhere and still unsolved: 22 has no external name data to load (the 46k licensed names are why it is skipped) and 23 pays an O(1e7)-pair membership cost on its abundant sums (the gh:93 slow-fragment ruling). `sort_by`/`max_by` change neither. Decide how to reword or re-scope both skip pages so the corpus stops citing a landed feature as missing -- e.g. cite the data blocker and gh:93 directly and drop the #86 references -- rather than treating the sort gap as a live dependency. Mark done when ruled.'
-  kind: decide
-  needs: []
-  status: todo
-
 - id: float-corpus-cases
   issue: gh:149
   title: 'Promote the per-backend Float tests (tests/backend_*.rs) into tests/corpus cases so the `float` tag has corpus coverage and the seven-backend agreement check owns Float; where docs/reference/types/float.md repeats one, embed it with a `case` fence instead. Self-originated from the 2026-09-18 status audit (plans/status-audit-2026-09-18.md): float-build-c-escalation said Float "still needs Go/Python/Rust/Lua before it can be a corpus case"; all four landed and the follow-up was never filed.'
@@ -622,5 +616,17 @@
 - id: opencode-worker-scripts-retire-decide
   title: '.claude/skills/enwiro-delegate/SKILL.md still gives `.claude/scripts/opencode_worker.py` as the copy-paste launch for the enwiro variant, while its own header and the drive skill say every opencode path is retired and must never be invoked; opencode_worker.py and opencode_peek.py survive in the tree with no record of why. .claude/skills/land-delegated-work/SKILL.md likewise still calls opencode the delegation default and routes incidents to plans/opencode-rollout.md. Decide: delete both scripts and strip the enwiro block, or record in plans/simple-dispatch-design.md that the enwiro variant is a kept exception. Mark done when ruled.'
   kind: decide
+  needs: []
+  status: todo
+
+- id: rust-let-bound-vec-left-of-plus
+  title: 'Rust backend refuses a program where a let-bound or destructured Vec is the LEFT operand of `+`: it emits `let t_N: Vec<_> = ...; t_N.extend(...)` without `mut` (rustc E0596). Minimal repro: `fn f({acc}: {acc: Vec<Int>}) -> Vec<Int> = acc + [1]` then `f({acc: [0]})`; `p.acc + [1]` and `[1] + acc` work. Found by the 2026-09-19 Euler review (pages 11 and 13 route around it). Fix the emitter and add a corpus case with the repro.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: fmt-wrap-body-after-let
+  title: '`toylang fmt` does not wrap a long expression that follows `let` bindings: the body after the lets prints on one line however long, so Euler pages 11 and 14 use several short lets instead of one expression. Apply the same line-breaking the formatter does for a body without lets. Found by the 2026-09-19 Euler review.'
+  kind: build
   needs: []
   status: todo
