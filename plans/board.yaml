@@ -174,6 +174,10 @@
     compacting only on the first strong reference (reusing input storage if uniquely
     referenced, per mutation-semantics-spike''s provably-one-reference condition). Same
     `Kind::Select` AST/checker node -- no syntax/checker change; `xs | select(pred)` keeps its
+    RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror
+    Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete
+    worked pattern. A prior attempt (run ed033203, 2026-09-14) made 9 real edits but hit
+    max_turns at 90 without landing -- give the next dispatch a larger turn budget.
     current meaning. Per-backend builtin-wiring precedent: `src/emit_go.rs:192` (SUM_HELPER).
     Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
   kind: build
@@ -186,6 +190,10 @@
     stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
     `src/emit_js.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
     representation, compacting only on first strong reference; same `Kind::Select` node, no
+    RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror
+    Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete
+    worked pattern. A prior attempt (run ec7b5d98, 2026-09-14) made 13 real edits but hit
+    max_turns at 90 without landing -- give the next dispatch a larger turn budget.
     syntax/checker change. Confirm the current filter''s exact location with `grep -n` first --
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
     Done-gate: this backend''s own conformance tests pass.'
@@ -201,7 +209,7 @@
     representation, compacting only on first strong reference; same `Kind::Select` node, no
     syntax/checker change. Confirm the current filter''s exact location with `grep -n` first --
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
-    Done-gate: this backend''s own conformance tests pass.'
+    RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete worked pattern once this backend is picked up. Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: [select-lazy-materialization-convergence-ruling]
   status: todo
@@ -213,7 +221,7 @@
     `src/emit_rs.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
     representation, compacting only on first strong reference; same `Kind::Select` node, no
     syntax/checker change. Per-backend builtin-wiring precedent: `src/emit_rs.rs:205`
-    (MAX_BY_HELPER). Done-gate: this backend''s own conformance tests pass.'
+    (MAX_BY_HELPER). RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete worked pattern once this backend is picked up. Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: [select-lazy-materialization-convergence-ruling]
   status: todo
@@ -227,7 +235,7 @@
     reference; same `Kind::Select` node, no syntax/checker change. If jq''s language model makes
     true laziness impossible for this construct, say so plainly in the self-report rather than
     forcing a fake implementation -- this is the one backend where the maintainer may need a
-    follow-up ruling. Done-gate: this backend''s own conformance tests pass.'
+    follow-up ruling. RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the starting point, adapted for jq''s own semantics per the carve-out above. Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: [select-lazy-materialization-convergence-ruling]
   status: todo
@@ -240,7 +248,7 @@
     representation, compacting only on first strong reference; same `Kind::Select` node, no
     syntax/checker change. Confirm the current filter''s exact location with `grep -n` first --
     see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
-    Done-gate: this backend''s own conformance tests pass.'
+    RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete worked pattern once this backend is picked up. Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: [select-lazy-materialization-convergence-ruling]
   status: todo
@@ -451,27 +459,6 @@
   kind: build
   needs: [mutation-semantics-design, mutation-rule-v1-build-native]
   prio: 5
-  status: todo
-
-- id: select-lazy-materialization-convergence-ruling
-  title: 'Placeholder decide row gating the 7 select-lazy-materialization-build-* rows (go, js, py, lua,
-    rust, jq, llvm) as not-ready. With every known harness bug fixed (exploration cutoff off, reasoning
-    cap 8192 with nudges, tsc present), go/js/py were redispatched on 2026-09-15 and all three used their
-    full 60 turns across 2 attempts without a single edit: ended_by=dedup after two max_turns attempts,
-    self-report blocker_kind=harness_cutoff, narrower_would_succeed=true -- "still reading src/emit_js.rs
-    to map all consumers of tl_select (index, slice, map, print, fusion) before making any edit".
-    $0.18 per run. This is no longer the harness deciding; it is the model not converging on a change
-    that touches every consumer of a helper in one backend. Decide: (a) redispatch each backend with the
-    narrower slice the self-reports propose (replace only the select helper with a lazy wrapper, leave
-    consumers materializing, one commit), (b) hand one backend to a manual/privileged session to produce
-    a worked example the other six can mirror, (c) a stronger model for this family only, or (d) defer
-    gh:176. Mark done when ruled; the 7 rows'' needs point here. Status audit note (2026-09-18):
-    option (a) was tried after this was written and the Python backend landed and archived
-    (select-lazy-materialization-build-py, commit bcabef0) while its `needs` still pointed here; go
-    and js ended RED with real edits (dispatch-log rows ed033203, ec7b5d98). The question this row
-    asks is now about the remaining five backends, not seven.'
-  kind: decide
-  needs: []
   status: todo
 
 - id: transpose-remaining-backends

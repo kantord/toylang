@@ -2930,3 +2930,24 @@
   needs: []
   prio: 4
   status: done
+
+- id: select-lazy-materialization-convergence-ruling
+  title: 'Placeholder decide row gating the 7 select-lazy-materialization-build-* rows (go, js, py, lua,
+    rust, jq, llvm) as not-ready. With every known harness bug fixed (exploration cutoff off, reasoning
+    cap 8192 with nudges, tsc present), go/js/py were redispatched on 2026-09-15 and all three used their
+    full 60 turns across 2 attempts without a single edit: ended_by=dedup after two max_turns attempts,
+    self-report blocker_kind=harness_cutoff, narrower_would_succeed=true -- "still reading src/emit_js.rs
+    to map all consumers of tl_select (index, slice, map, print, fusion) before making any edit".
+    $0.18 per run. This is no longer the harness deciding; it is the model not converging on a change
+    that touches every consumer of a helper in one backend. Decide: (a) redispatch each backend with the
+    narrower slice the self-reports propose (replace only the select helper with a lazy wrapper, leave
+    consumers materializing, one commit), (b) hand one backend to a manual/privileged session to produce
+    a worked example the other six can mirror, (c) a stronger model for this family only, or (d) defer
+    gh:176. Mark done when ruled; the 7 rows'' needs point here. Status audit note (2026-09-18):
+    option (a) was tried after this was written and the Python backend landed and archived
+    (select-lazy-materialization-build-py, commit bcabef0) while its `needs` still pointed here; go
+    and js ended RED with real edits (dispatch-log rows ed033203, ec7b5d98). The question this row
+    asks is now about the remaining five backends, not seven.'
+  kind: decide
+  needs: []
+  status: done
