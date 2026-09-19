@@ -2,9 +2,27 @@
 source: tests/corpus.rs
 expression: emitted
 ---
-function tl_select(src, pred) {
-  const out = [];
-  for (let i = 0; i < src.length; i++) if (pred(src[i])) out.push(src[i]);
+// A lazy selection vector: `pred` is not run up front. The first dense read -- or, for a direct
+// index, the index itself -- applies it once and caches both the survivor indices and the
+// materialized survivors, so repeated reads never re-run `pred`.
+function tl_sel_new(src, pred) {
+  return { __tlSel: true, src: src, pred: pred, idx: null, dense: null };
+}
+function tl_sel_build(s) {
+  if (s.idx !== null) return;
+  const idx = [];
+  for (let i = 0; i < s.src.length; i++) if (s.pred(s.src[i])) idx.push(i);
+  s.idx = idx;
+}
+// Idempotent: a plain array passes straight through, so every consumer can call this at the
+// boundary without knowing whether its input was ever a select.
+function tl_sel_dense(s) {
+  if (!(s && s.__tlSel)) return s;
+  if (s.dense !== null) return s.dense;
+  tl_sel_build(s);
+  const out = new Array(s.idx.length);
+  for (let i = 0; i < s.idx.length; i++) out[i] = s.src[s.idx[i]];
+  s.dense = out;
   return out;
 }
 function tl_field(v, k, depth) {
@@ -19,7 +37,7 @@ function tl_join(v, f) {
   return "[" + parts.join(",") + "]";
 }
 function v_adults(v_db) {
-  return ((t_2) => tl_field(t_2, "name", 1))(((t_0) => tl_select(t_0, (t_1) => (t_1["age"] >= 18)))(v_db["users"]));
+  return ((t_2) => tl_field(t_2, "name", 1))(((t_0) => tl_sel_dense(tl_sel_new(t_0, (t_1) => (t_1["age"] >= 18))))(v_db["users"]));
 }
 const t_input = JSON.parse(require("fs").readFileSync(0, "utf8"));
 console.log(tl_join(v_adults(t_input), (e0) => JSON.stringify(e0)));

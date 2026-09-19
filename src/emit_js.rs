@@ -33,9 +33,27 @@ impl JsTarget {
 }
 
 const SELECT_HELPER: &str = "\
-function tl_select(src, pred) {
-  const out = [];
-  for (let i = 0; i < src.length; i++) if (pred(src[i])) out.push(src[i]);
+// A lazy selection vector: `pred` is not run up front. The first dense read -- or, for a direct
+// index, the index itself -- applies it once and caches both the survivor indices and the
+// materialized survivors, so repeated reads never re-run `pred`.
+function tl_sel_new(src, pred) {
+  return { __tlSel: true, src: src, pred: pred, idx: null, dense: null };
+}
+function tl_sel_build(s) {
+  if (s.idx !== null) return;
+  const idx = [];
+  for (let i = 0; i < s.src.length; i++) if (s.pred(s.src[i])) idx.push(i);
+  s.idx = idx;
+}
+// Idempotent: a plain array passes straight through, so every consumer can call this at the
+// boundary without knowing whether its input was ever a select.
+function tl_sel_dense(s) {
+  if (!(s && s.__tlSel)) return s;
+  if (s.dense !== null) return s.dense;
+  tl_sel_build(s);
+  const out = new Array(s.idx.length);
+  for (let i = 0; i < s.idx.length; i++) out[i] = s.src[s.idx[i]];
+  s.dense = out;
   return out;
 }
 ";
@@ -53,6 +71,14 @@ const OPT_HELPER: &str = "\
 // An Opt is its enum's own runtime shape (ADR 0009): `{Some: v}` present, \"None\" absent.
 // Tagged, so two levels of absence stay two values; only the printer flattens to null.
 function tl_at(v, i, depth) {
+  if (v && v.__tlSel) {
+    if (depth > 0) return tl_sel_dense(v).map((e) => tl_at(e, i, depth - 1));
+    tl_sel_build(v);
+    const n = v.idx.length;
+    if (i < 0) i = n + i;
+    if (i < 0 || i >= n) return \"None\";
+    return { Some: v.src[v.idx[i]] };
+  }
   if (depth > 0) return v.map((e) => tl_at(e, i, depth - 1));
   const n = v.length;
   if (i < 0) i = n + i;
@@ -66,6 +92,7 @@ function tl_at(v, i, depth) {
 // out, which `.slice` reads as the array's own boundary.
 const SLICE_HELPER: &str = "\
 function tl_slice(v, lo, hi, depth) {
+  if (v && v.__tlSel) v = tl_sel_dense(v);
   if (depth > 0) return v.map((e) => tl_slice(e, lo, hi, depth - 1));
   return v.slice(lo, hi);
 }
@@ -1144,8 +1171,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             param,
             pred,
         } => {
+            // Built lazily, then densified at this very boundary: every consumer below sees a
+            // plain array, while a direct `Index` (which special-cases the Select above) still
+            // gets the lazy vector so `tl_at` can answer without materializing survivors.
             format!(
-                "tl_select({}, ({}) => {})",
+                "tl_sel_dense(tl_sel_new({}, ({}) => {}))",
                 expr(enums, source),
                 local(*param),
                 expr(enums, pred)
@@ -1181,12 +1211,19 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::Index {
             base, index, depth, ..
         } => {
-            format!(
-                "tl_at({}, {}, {})",
-                expr(enums, base),
-                expr(enums, index),
-                depth
-            )
+            // Indexing a Select straight away skips the dense materialization: `tl_at` reads
+            // the selection vector directly (densifying once only in the recursive depth>0
+            // case). Any other use of a Select result is already dense from the Select arm.
+            let base = match &base.kind {
+                Kind::Select { source, param, pred } => format!(
+                    "tl_sel_new({}, ({}) => {})",
+                    expr(enums, source),
+                    local(*param),
+                    expr(enums, pred)
+                ),
+                _ => expr(enums, base),
+            };
+            format!("tl_at({}, {}, {})", base, expr(enums, index), depth)
         }
         Kind::Slice {
             base,

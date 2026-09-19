@@ -5,6 +5,14 @@ expression: emitted
 // An Opt is its enum's own runtime shape (ADR 0009): `{Some: v}` present, "None" absent.
 // Tagged, so two levels of absence stay two values; only the printer flattens to null.
 function tl_at(v, i, depth) {
+  if (v && v.__tlSel) {
+    if (depth > 0) return tl_sel_dense(v).map((e) => tl_at(e, i, depth - 1));
+    tl_sel_build(v);
+    const n = v.idx.length;
+    if (i < 0) i = n + i;
+    if (i < 0 || i >= n) return "None";
+    return { Some: v.src[v.idx[i]] };
+  }
   if (depth > 0) return v.map((e) => tl_at(e, i, depth - 1));
   const n = v.length;
   if (i < 0) i = n + i;
