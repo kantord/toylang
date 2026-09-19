@@ -1,0 +1,12 @@
+# `Bool` names the prelude's enum wherever an enum name goes: the match-call form (gh:152)
+# asserts the subject is a Bool and infers the hoisted signature from it, and the qualified
+# constructors `Bool.true` / `Bool.false` build the value the way `Shape.point` does.
+program: |
+  fn name = Bool(True -> 1 or False -> 0)
+
+  [name(Bool.true), name(Bool.false)]
+
+output: |
+  [1,0]
+
+node_types: [application, bool, int, local, match, pipe, var, vec-literal]

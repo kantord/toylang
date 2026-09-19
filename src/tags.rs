@@ -33,6 +33,7 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
         Kind::Str(_)
         | Kind::Int(_)
         | Kind::Float(_)
+        | Kind::Bool(_)
         | Kind::Var(_)
         | Kind::Local(_)
         | Kind::Input
@@ -122,6 +123,7 @@ pub const TAGS: &[&str] = &[
     "int",
     "int64",
     "float",
+    "bool",
     "vec-literal",
     "record-literal",
     "variant.unit",
@@ -188,6 +190,7 @@ fn tag(tir: &Tir) -> String {
         Kind::Int(_) if tir.ty == crate::ty::Type::Int64 => "int64".into(),
         Kind::Int(_) => "int".into(),
         Kind::Float(_) => "float".into(),
+        Kind::Bool(_) => "bool".into(),
         Kind::VecLit(_) => "vec-literal".into(),
         Kind::RecordLit { .. } => "record-literal".into(),
         // CONTEXT.md's terms: a `variant` is one alternative, a `unit variant` carries nothing.

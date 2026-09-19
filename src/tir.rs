@@ -31,6 +31,11 @@ pub enum Kind {
     /// in the node's own type -- there is only one float width, so a `Float` node is always
     /// the binary64 the ADR picks, and no other backend needs to consult the type to know.
     Float(f64),
+    /// `true` / `false`: the constructors of the prelude's `enum Bool { True, False }`. A
+    /// literal node rather than an `EnumLit`, because every backend keeps its native boolean
+    /// for `Bool` (the same value a comparison yields), so the declaration only names the
+    /// constructors and the matchers; nothing about the value is tagged.
+    Bool(bool),
     VecLit(Vec<Tir>),
     /// A record literal, its fields in declaration order so a field's position here matches
     /// its position in the type. That is what lets a backend address one by index rather than
@@ -590,6 +595,7 @@ pub fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
         Kind::Str(_)
         | Kind::Int(_)
         | Kind::Float(_)
+        | Kind::Bool(_)
         | Kind::Var(_)
         | Kind::Local(_)
         | Kind::Input

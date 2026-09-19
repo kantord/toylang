@@ -1,0 +1,13 @@
+# A match over a Bool subject is closed-world over `True` and `False`, like any enum match
+# (missing one is the checker's refusal, pinned in tests/bool.rs). The checker lowers the two
+# pattern arms to the guard chain every backend already runs, so a computed Bool and a literal
+# one dispatch the same way.
+program: |
+  fn name(b: Bool) -> Str = b | True -> "yes" or False -> "no"
+
+  [name(true), name(false), name(1 == 2)]
+
+output: |
+  ["yes","no","no"]
+
+node_types: [application, bool, compare.eq, int, local, match, pipe, str, var, vec-literal]

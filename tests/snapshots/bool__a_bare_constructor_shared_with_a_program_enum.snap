@@ -1,0 +1,5 @@
+---
+source: tests/bool.rs
+expression: "err(\"enum Toggle { True, False }\\n\\ntrue\")"
+---
+`true` is a variant of `Bool` and `Toggle`; qualify it as `Bool.true` or `Toggle.true` (at byte 29)

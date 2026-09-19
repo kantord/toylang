@@ -1,0 +1,9 @@
+# `and`, `or`, and `not` stay operators under the ruling; a literal is an ordinary operand to
+# them, the same as a comparison is.
+program: |
+  {both: true and false, either: true or false, negated: not true}
+
+output: |
+  {"both":false,"either":true,"negated":false}
+
+node_types: [bool, logic.and, logic.not, logic.or, record-literal]

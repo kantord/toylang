@@ -1060,6 +1060,7 @@ impl Collect<'_> {
             Kind::Str(_)
             | Kind::Int(_)
             | Kind::Float(_)
+            | Kind::Bool(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
@@ -1540,6 +1541,7 @@ impl Emitter<'_> {
             // integer literal. The `f64` suffix re-types it so `2f64` is the 2.0 the node names
             // and `0.25 * 2` type-checks as float-by-float (plans/float-format-research.md).
             Kind::Float(n) => format!("{}f64", crate::float::lit(*n)),
+            Kind::Bool(b) => b.to_string(),
             Kind::Var(name) => format!("{}.clone()", self.user(name)),
             Kind::Local(id) => format!("{}.clone()", self.local(*id)),
             Kind::Input => format!("{INPUT}.clone()"),

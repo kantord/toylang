@@ -1,0 +1,15 @@
+# A Bool inside a record and a Vec reads from JSON `true`/`false` and prints back the same: input
+# never sees the enum declaration, only the built-in type, so every backend keeps reading its
+# native boolean.
+program: |
+  fn id(r: {flag: Bool, xs: Vec<Bool>}) -> {flag: Bool, xs: Vec<Bool>} = r
+
+  id(parse(stdin))
+
+input: |
+  {"flag": true, "xs": [false, true]}
+
+output: |
+  {"flag":true,"xs":[false,true]}
+
+node_types: [application, input, var]

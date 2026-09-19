@@ -408,6 +408,7 @@ impl ToRust for tir::Kind {
             Str(s) => format!("crate::tir::Kind::Str({})", s.to_rust()),
             Int(n) => format!("crate::tir::Kind::Int({})", n.to_rust()),
             Float(n) => format!("crate::tir::Kind::Float({})", n.to_rust()),
+            Bool(b) => format!("crate::tir::Kind::Bool({})", b.to_rust()),
             VecLit(items) => format!("crate::tir::Kind::VecLit({})", items.to_rust()),
             RecordLit { fields } => record_lit(fields),
             EnumLit { variant, payload } => enum_lit(variant, payload),

@@ -1296,6 +1296,9 @@ impl<'ctx> Emitter<'ctx, '_> {
             Kind::Str(text) => self.string_const(text).into(),
             Kind::Int(n) => self.ctx.i64_type().const_int(*n as u64, true).into(),
             Kind::Float(n) => self.ctx.f64_type().const_float(*n).into(),
+            // The same i1 a comparison yields (`compare` below), so a literal and a computed
+            // Bool are interchangeable everywhere one is consumed.
+            Kind::Bool(b) => self.ctx.bool_type().const_int(u64::from(*b), false).into(),
 
             Kind::Var(name) => *self
                 .params

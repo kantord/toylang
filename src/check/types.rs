@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::ast::{Alias, Def, EnumDecl, Expr, ParamShape, Span, TypeExpr};
+use crate::ast::{Alias, Def, EnumDecl, Expr, Origin, ParamShape, Span, TypeExpr};
 use crate::error::Error;
 use crate::ty::{self, Sig, Type};
 
@@ -87,7 +87,13 @@ pub(super) fn enum_map(enums: &[EnumDecl]) -> Result<HashMap<String, &EnumDecl>,
                 ),
             ));
         }
-        if ty::is_builtin_type_name(&e.name) {
+        // The prelude's `enum Bool { True, False }` is not a redefinition: it is the
+        // declaration that gives `Type::Bool` its constructors and matchers (the Opt
+        // precedent). A written `Bool` still resolves through `Type::from_name` first, so this
+        // entry never becomes a second, nominal `Bool` a program could confuse with the
+        // built-in; a program's own `enum Bool` is refused like any other built-in name.
+        let declares_builtin = e.name == "Bool" && matches!(e.origin, Origin::Prelude);
+        if ty::is_builtin_type_name(&e.name) && !declares_builtin {
             return Err(Error::new(
                 e.span,
                 format!("`{}` is a built-in type and cannot be redefined", e.name),

@@ -903,6 +903,7 @@ fn used_helpers(program: &Program) -> Helpers {
             Kind::Str(_)
             | Kind::Int(_)
             | Kind::Float(_)
+            | Kind::Bool(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
@@ -1037,6 +1038,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::Str(s) => lua_string(s),
         Kind::Int(n) => n.to_string(),
         Kind::Float(n) => lua_float_lit(*n),
+        Kind::Bool(b) => b.to_string(),
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),

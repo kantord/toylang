@@ -11,8 +11,10 @@ there yet, because nothing imports from a program file today.
 entry point next to `parse::parse`, and a module is zero or more declarations (`[pub] fn`,
 `[pub] enum`, `[pub] trait`, `impl`) and nothing else -- no body expression to fake. It
 currently holds [`join`](join.md) and [`join_lines`](join_lines.md); the
-[`Opt`](../types/opt.md), [`Result`](../types/result.md), and `PipeLine` enums (the last is
-what [`pipe_through`](../builtins/pipe_through.md) streams); and a `Fold` trait with one
+[`Bool`](../types/bool.md), [`Opt`](../types/opt.md), [`Result`](../types/result.md), and
+`PipeLine` enums (`Bool` is the built-in type's own declaration, there to give it the `true`
+and `false` constructors, and `PipeLine` is what
+[`pipe_through`](../builtins/pipe_through.md) streams); and a `Fold` trait with one
 `impl Fold for Vec<Int>`, the first trait the language shipped. A non-`pub` definition is a
 helper for its own file: a private one stays in so it can serve as a helper for a `pub` one,
 and the checker refuses calls to it from any other file, at each call site, by file origin.

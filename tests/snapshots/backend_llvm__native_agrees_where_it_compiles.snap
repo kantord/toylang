@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (252):
+compiles natively (259):
 adults
 all_basic
 all_empty
@@ -19,6 +19,13 @@ arith_rem_sign
 arith_sub
 binary_trees_node_count
 bool_connectives
+bool_input_round_trip
+bool_literal
+bool_literal_connectives
+bool_literal_in_record
+bool_literal_select
+bool_match
+bool_match_call_form
 bool_or_in_arm_body
 bool_or_splits_from_arms
 bool_precedence

@@ -1,0 +1,5 @@
+---
+source: tests/bool.rs
+expression: "err(\"true | True -> 1 or False -> 0 or any() -> 2\")"
+---
+this arm can never match; the arms above it already cover every variant of `Bool` (at byte 34)

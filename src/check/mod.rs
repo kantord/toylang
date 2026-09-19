@@ -174,6 +174,15 @@ fn resolve_defs<'a>(
     }
     let mut enums: HashMap<String, Type> = HashMap::new();
     for e in enum_decls {
+        // The prelude's `Bool` declaration is `Type::Bool` itself (`types::enum_map`), so it
+        // stays out of the registry: nothing downstream -- `ty::variants_of`, a backend's type
+        // declarations, `check_hoisted_def` -- ever meets a nominal `Bool`. What the
+        // declaration contributes is its constructors and matchers: `variant_owners` below
+        // reads them from it, and `BOOL_VARIANTS` is pinned to it here.
+        if e.name == "Bool" && matches!(e.origin, Origin::Prelude) {
+            check_bool_decl(e)?;
+            continue;
+        }
         enums.insert(
             e.name.clone(),
             resolve_enum(e, &env, &mut Vec::new(), None)?,
@@ -213,6 +222,49 @@ fn resolve_defs<'a>(
         .map(|d| (d.name.clone(), (d.origin.clone(), d.is_pub)))
         .collect();
     Ok((env, enums, variant_owners, sigs, visibility))
+}
+
+/// The matchers of the prelude's `enum Bool { True, False }`, in declaration order. The checker
+/// keeps its own copy because `Bool` has no registry entry to re-derive them from
+/// (`resolve_defs`); `check_bool_decl` is what keeps the two from drifting apart.
+const BOOL_VARIANTS: [&str; 2] = ["True", "False"];
+
+fn check_bool_decl(decl: &EnumDecl) -> Result<(), Error> {
+    let declared: Vec<&str> = decl.variants.iter().map(|v| v.name.as_str()).collect();
+    if declared != BOOL_VARIANTS || decl.variants.iter().any(|v| v.payload.is_some()) {
+        return Err(Error::new(
+            decl.span,
+            "the prelude's `Bool` declares exactly the unit variants `True` and `False`; the \
+             checker's own notion of a Bool is pinned to that shape"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// What a capitalized name resolves to as an enum: the registry's template, or `Type::Bool`
+/// for the prelude's `Bool`, which is declared like an enum but lives outside the registry.
+fn named_enum(ctx: &Ctx, name: &str) -> Option<Type> {
+    if name == "Bool" {
+        return Some(Type::Bool);
+    }
+    ctx.enums.get(name).cloned()
+}
+
+/// The subject's variant list for a pattern arm, with the name the messages call its type:
+/// the registry's for an enum, and the prelude declaration's two unit variants for `Bool`.
+fn matchable_variants(
+    ctx: &Ctx,
+    subject_ty: &Type,
+) -> Option<(String, Vec<(String, Option<Type>)>)> {
+    match subject_ty {
+        Type::Enum { name, args, .. } => Some((name.clone(), enum_variants(ctx, name, args))),
+        Type::Bool => Some((
+            "Bool".to_string(),
+            BOOL_VARIANTS.iter().map(|v| (v.to_string(), None)).collect(),
+        )),
+        _ => None,
+    }
 }
 
 /// The per-file mutable checker state, borrowed so a module with no program body can still build
@@ -1622,12 +1674,12 @@ fn mapper_ctx<'a>(ctx: &'a Ctx, elem: Type, param: LocalId) -> Ctx<'a> {
 
 /// The one enum a bare variant name refers to, or the error naming every candidate: guessing
 /// between two claimants would silently pick a type the program never wrote down.
-fn sole_owner<'a>(
-    ctx: &'a Ctx,
+fn sole_owner(
+    ctx: &Ctx,
     variant: &str,
     owners: &[String],
     span: Span,
-) -> Result<&'a Type, Error> {
+) -> Result<Type, Error> {
     if owners.len() > 1 {
         let named: Vec<String> = owners.iter().map(|e| format!("`{e}`")).collect();
         let qualified: Vec<String> = owners.iter().map(|e| format!("`{e}.{variant}`")).collect();
@@ -1640,7 +1692,7 @@ fn sole_owner<'a>(
             ),
         ));
     }
-    Ok(&ctx.enums[&owners[0]])
+    Ok(named_enum(ctx, &owners[0]).expect("every variant owner is a declared enum"))
 }
 
 /// Every builtin and special-cased call form (`select`, `map`, `length`, ...) is unary; only a
@@ -1741,6 +1793,9 @@ fn construct(
     expected: Option<&Type>,
     from_string: bool,
 ) -> Result<Tir, Error> {
+    if *enum_ty == Type::Bool {
+        return bool_literal(variant, variant_span, payload);
+    }
     let Type::Enum { name, args, .. } = enum_ty else {
         unreachable!("construct is only called with an enum type")
     };
@@ -1816,6 +1871,40 @@ fn construct(
             payload,
         },
     ))
+}
+
+/// `true` / `false` (or `Bool.true` / `Bool.false`): the constructors of the prelude's `Bool`.
+/// Checked the way any unit constructor is -- the capitalized spelling is the matcher, and a
+/// payload is refused -- but built as a `Kind::Bool` literal, since every backend keeps its
+/// native boolean for the type rather than a tagged value.
+fn bool_literal(variant: &str, variant_span: Span, payload: Option<&Expr>) -> Result<Tir, Error> {
+    let value = match variant {
+        "true" => true,
+        "false" => false,
+        _ if BOOL_VARIANTS.contains(&variant) => {
+            return Err(Error::new(
+                variant_span,
+                format!(
+                    "a constructor starts with a lowercase letter; `{variant}` is the matcher and \
+                     matches only in a pattern, so write `{}` to build the value",
+                    constructor_of(variant)
+                ),
+            ));
+        }
+        _ => {
+            return Err(Error::new(
+                variant_span,
+                format!("`Bool` has no variant `{variant}`"),
+            ));
+        }
+    };
+    if let Some(expr) = payload {
+        return Err(Error::new(
+            expr.span(),
+            format!("`{variant}` is a unit variant of `Bool` and takes no payload"),
+        ));
+    }
+    Ok(Tir::new(Type::Bool, Kind::Bool(value)))
 }
 
 /// A generic enum's constructor met with no expectation: the payload is synthesised and its
@@ -2136,11 +2225,9 @@ fn check_reachable(
                 .to_string(),
         ));
     }
-    if let Type::Enum { name, args, .. } = subject_ty
+    if let Some((name, variants)) = matchable_variants(ctx, subject_ty)
         && !covered.is_empty()
-        && enum_variants(ctx, name, args)
-            .iter()
-            .all(|(n, _)| covered.contains(n))
+        && variants.iter().all(|(n, _)| covered.contains(n))
     {
         return Err(Error::new(
             arm_span,
@@ -2160,15 +2247,10 @@ fn check_coverage(
     covered: &[String],
     span: Span,
 ) -> Result<(), Error> {
-    let Type::Enum {
-        name: enum_name,
-        args,
-        ..
-    } = subject_ty
-    else {
+    let Some((enum_name, variants)) = matchable_variants(ctx, subject_ty) else {
         unreachable!("a pattern arm was checked against an enum subject")
     };
-    let missing: Vec<String> = enum_variants(ctx, enum_name, args)
+    let missing: Vec<String> = variants
         .iter()
         .filter(|(n, _)| !covered.contains(n))
         .map(|(n, _)| format!("`{n}`"))
@@ -2209,18 +2291,12 @@ fn variant_arm<'a>(
             ),
         ));
     }
-    let Type::Enum {
-        name: enum_name,
-        args,
-        ..
-    } = subject_ty
-    else {
+    let Some((enum_name, variants)) = matchable_variants(ctx, subject_ty) else {
         return Err(Error::new(
             vspan,
             format!("a match needs an enum subject, found {subject_ty}"),
         ));
     };
-    let variants = enum_variants(ctx, enum_name, args);
     let Some((_, payload_ty)) = variants.iter().find(|(n, _)| n == vname) else {
         // A lowercase name is the constructor, which builds a value; a pattern names the matcher.
         if variants.iter().any(|(n, _)| is_constructor_of(n, vname)) {
@@ -2397,6 +2473,30 @@ fn match_chain(
     // serialization's documented lossiness, not a conflation to refuse.
     let partial = !has_pattern_arm && !default_seen;
     let result = if partial { opt_of(ctx, result) } else { result };
+    // A Bool match is checked like any enum match -- coverage and dead arms above -- but
+    // lowers to the guard chain every backend already runs: `True ->` tests the subject itself
+    // and `False ->` its complement. The chain is total by then (coverage proved it, or a
+    // default ends it), and a total chain's last arm is exactly the default arm, so the last
+    // pattern becomes one rather than a guard: six backends skip that test anyway, and rustc
+    // cannot prove a chain of `_ if` arms exhaustive. The alternative was seven emitters each
+    // learning a tag test over a native boolean.
+    if subject_ty == Type::Bool {
+        let last = out.len() - 1;
+        for (i, arm) in out.iter_mut().enumerate() {
+            let Some(matcher) = arm.variant.take() else {
+                continue;
+            };
+            if i == last {
+                continue;
+            }
+            let subject = Tir::new(Type::Bool, Kind::Local(sid));
+            arm.guard = Some(if matcher == "True" {
+                subject
+            } else {
+                Tir::new(Type::Bool, Kind::Not(Box::new(subject)))
+            });
+        }
+    }
     let subject = Tir::new(subject_ty.clone(), Kind::Local(sid));
     Ok(Tir::new(
         result,
@@ -2420,7 +2520,7 @@ fn match_call(
     arms: &[MatchArm],
     span: Span,
 ) -> Result<Tir, Error> {
-    if !ctx.enums.contains_key(enum_name) {
+    if named_enum(ctx, enum_name).is_none() {
         return Err(Error::new(enum_span, format!("unknown type `{enum_name}`")));
     }
     let Some((subject_ty, _)) = ctx.subject.clone() else {
@@ -2429,7 +2529,7 @@ fn match_call(
             "a match needs a subject, so it must follow `|`".to_string(),
         ));
     };
-    let Type::Enum { name, .. } = &subject_ty else {
+    let Some((name, _)) = matchable_variants(ctx, &subject_ty) else {
         return Err(Error::new(
             enum_span,
             format!("`{enum_name}` names an enum, but the subject is {subject_ty}"),
@@ -2466,7 +2566,7 @@ fn check_hoisted_def(ctx: &Ctx, def: &Def) -> Result<tir::Func, Error> {
             ),
         ));
     };
-    let Some(enum_ty) = ctx.enums.get(enum_name.as_str()) else {
+    let Some(enum_ty) = named_enum(ctx, enum_name) else {
         return Err(Error::new(
             *enum_span,
             format!("unknown type `{enum_name}`"),
@@ -2686,7 +2786,7 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
                 };
             }
             if let Some(owners) = ctx.variant_owners.get(name) {
-                let enum_ty = sole_owner(ctx, name, owners, *span)?.clone();
+                let enum_ty = sole_owner(ctx, name, owners, *span)?;
                 return construct(ctx, &enum_ty, name, *span, None, None, false);
             }
             // A function is not a value, but "`f` is not defined" for a defined function is a
@@ -2847,7 +2947,7 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             payload,
             ..
         } => {
-            let Some(enum_ty) = ctx.enums.get(enum_name) else {
+            let Some(enum_ty) = named_enum(ctx, enum_name) else {
                 return Err(Error::new(
                     *enum_span,
                     format!("`{enum_name}` is not an enum"),
@@ -2855,7 +2955,7 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
             };
             construct(
                 ctx,
-                &enum_ty.clone(),
+                &enum_ty,
                 variant,
                 *variant_span,
                 payload.as_deref(),
@@ -3105,7 +3205,7 @@ fn call(
         // A payload constructor is ordinary application (the Q34 path), so `circle{r: 1}` lands
         // here; it resolves as a variant only after the function namespace declines.
         if let Some(owners) = ctx.variant_owners.get(func) {
-            let enum_ty = sole_owner(ctx, func, owners, func_span)?.clone();
+            let enum_ty = sole_owner(ctx, func, owners, func_span)?;
             return construct(ctx, &enum_ty, func, func_span, arg.as_deref(), None, false);
         }
         return Err(Error::new(func_span, format!("`{func}` is not a function")));
