@@ -52,21 +52,30 @@ exactly the boundary `run_on` currently blurs.
 
 ## How results compare against other languages
 
-A comparison needs the same program in toylang and in the comparison languages, run by the same
-harness. The concrete shape:
+The thesis these numbers publish is a general cross-language competitiveness claim: on the same
+task, run by the same harness, how does a toylang program measure up against the same task
+written in each comparison language -- not merely how toylang's own backends compare to one
+another. The ruling (gh:147) settled this framing: toylang is measured against the other
+languages as a general competitiveness claim about the language, not the narrower "comparative
+color across this project's backends" reading.
+
+The concrete shape stays the same program in toylang and in the comparison languages, run by the
+same harness:
 
 - toylang runs across its seven backends from the emitted source, as above.
 - The comparison rows are the same task written in jq, Python, Node, Go, Rust, C, and Lua --
   toylang's own backend languages are the obvious baseline set, because they are already
-  installed and the comparison asks "what does this emitted program cost next to the language it
-  is emitted into?" rather than "how does toylang compare to an arbitrary third party."
+  installed and each is a real, widely used language in its own right. Reading the numbers
+  against those rows is a competitiveness claim about toylang, not an internal accounting of
+  what an emitted program costs next to its host.
 - Every row is timed by the same hyperfine invocation with the same `--warmup`, `--runs`, and
-  input, so the only variable is the language/backend the program was written or emitted in.
+  input, so the only variable is the language the program was written or emitted in.
 
-Carry the CLBG site's own caveat wherever the numbers land: the game's maintainers call its
-results "far from realistic" and not a general performance ranking. These timings are comparative
-color across this project's backends and their host languages, not a claim about toylang in the
-abstract.
+Carry the CLBG site's own caveat wherever the numbers land, stated as a caveat on the claim
+rather than a retreat from it: the game's maintainers call its results "far from realistic" and
+not a general performance ranking, so no single row is a general performance ranking of toylang.
+The claim is still real -- toylang is measured against the other languages on these tasks -- but
+it is bounded by the tasks, the harness, and the machine the numbers were taken on.
 
 ## CI reporting
 
