@@ -1,0 +1,29 @@
+Board row `docs-gaps-let-tailpipe-destructure-tailcall`. Docs plus ONE corpus yaml; no Rust source changes.
+
+Four shipped features have no reference page. Write each into docs/reference (runnable fences,
+so every fenced toylang fragment must compile: the docs tests compile them). Look at
+docs/reference/syntax/functions.md and docs/guides/enums.md first for frontmatter, heading
+style, and the fence conventions; copy them. Use plain non-runnable text fences for anything
+that is not valid toylang.
+
+1. `let` bindings (gh:150). New page docs/reference/syntax/let.md (check whether the site
+   needs it registered in an index/nav file: grep for a neighbouring page filename such as
+   `functions.md`). Find the real syntax and semantics by grepping `Let` in src/parse.rs and
+   src/ast.rs, and copy working examples from existing tests/corpus/*.yaml (grep -l '\blet\b').
+2. The `|>` tail-pipe marker (gh:154). Read src/parse.rs around line 1426 (the doc comment on
+   the tail-pipeline `lhs |> callee`: the one way a sink is written, outermost position only,
+   a nested `|>` is a parse error). Document on a new page docs/reference/syntax/tail-pipe.md.
+   Take a real working program from a corpus case that uses `|>` (grep -l '|>' tests/corpus/*.yaml,
+   and src/check/mod.rs for what callee is allowed).
+   ALSO add ONE new corpus case tests/corpus/tail_pipe_basic.yaml in the format of
+   tests/corpus/tail_recursion_deep.yaml (program / input / output; no snapshot line, no
+   node_types line unless another case shows it is required -- run `just check` and follow
+   what tests/tag_coverage.rs says). Verify its output by actually running it, not by guessing.
+3. Record-parameter destructuring `fn g({a, b}: {a: Int, b: Int})` (gh:144): add a section to
+   docs/reference/syntax/functions.md with a runnable example. Find the working form in
+   tests/ or tests/corpus (grep -rn '({' tests/corpus | head).
+4. The self-tail-call constant-stack contract (gh:141): add a section to
+   docs/reference/syntax/functions.md stating it as contract (a self-tail-call runs in constant
+   stack on every backend), citing the example in tests/corpus/tail_recursion_deep.yaml.
+
+Do not touch src/*.rs. Done-gate: `just check` passes.

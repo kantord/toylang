@@ -451,7 +451,7 @@
   title: 'Four shipped features with no reference page, found by the 2026-09-19 issue review: `let` bindings (gh:150; no page, no guide section), the `|>` tail-pipe marker (gh:154; no docs page, no corpus case, no Rust test -- a fixed-string grep hits only src/), record-parameter destructuring `fn g({a, b}: {a: Int, b: Int})` (gh:144; docs/reference/syntax/functions.md never mentions it), and the self-tail-call constant-stack contract (gh:141; lives only in a corpus comment and emitter comments). Write each into docs/reference with runnable fences, and add a corpus case for `|>`.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: benchmark-thesis-publication
   issue: gh:147
