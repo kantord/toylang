@@ -1,0 +1,21 @@
+Board row `benchmark-thesis-publication` (gh:147). Docs and plan edit only; no Rust changes.
+
+The ruling (gh:147): the benchmark thesis is a general cross-language competitiveness claim,
+not merely "comparative color across this project's backends".
+
+1. Edit plans/benchmark-plan.md: lines ~55-70 (the paragraph beginning "A comparison needs the
+   same program..." through the "Carry the CLBG site's own caveat" paragraph) state the framing
+   the ruling overrode ("not a claim about toylang in the abstract"). Rewrite those thesis and
+   comparison sections to the ruled framing: toylang is measured against the other languages as
+   a general competitiveness claim. Keep the CLBG "far from realistic" caveat, stated as a
+   caveat on the claim, not a retreat from it. Do not touch the CI-reporting section.
+2. Add a docs page that publishes benches/results. Look at benches/results/ (binary-trees.md
+   and .json exist) and at how another page under docs/reference or docs/guides is laid out
+   (frontmatter, runnable-fence rules -- use plain non-runnable text fences for tables). The
+   page states the thesis, embeds/links the results tables, and carries the CLBG caveat
+   prominently near the top. Put it under docs/guides/ (check a neighbouring page for the
+   exact frontmatter and whether the site needs it registered in an index or nav file; if so
+   add it there, found by grepping for a neighbouring guide's filename).
+
+Done-gate: `just check` passes (the docs tests compile fenced fragments, so no runnable fence
+may contain non-toylang text).

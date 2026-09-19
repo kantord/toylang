@@ -404,10 +404,10 @@
   status: todo
 
 - id: seq-runtime-pair-emission
-  title: 'The follow-up seq-type-primitive-build named and nobody filed: emit the runtime pair for `Seq<Head, Rest>` on every backend, now that the checker shape landed (2026-09-17). Self-originated, 2026-09-18 status audit.'
+  title: 'The follow-up seq-type-primitive-build named and nobody filed: emit the runtime pair for `Seq<Head, Rest>` on every backend, now that the checker shape landed (2026-09-17). Self-originated, 2026-09-18 status audit. DISPATCH 2026-09-19 (cb787fe0): 2 attempts model_done with zero edits, 7-backend scope; split per backend (as select-lazy / transpose were) with exact emitter sites in the brief before redispatch, do not send whole.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: closures-first-class-functions-design
   title: 'Three rulings wait on first-class functions with no row to deliver them: partial application (partial-application-system-design, option C, always explicit), `.`-rebinding as sugar over a one-parameter closure (dot-rebinding-vs-lambda-design), and dsv-partials-migration''s blocked_by. Grill the concrete shape -- a function type in the type grammar, closure syntax, what a residual function value looks like and how it stays visibly distinct from an array literal -- informed by plans/closures-first-class-functions-research.md, then spin off the build rows. Mark done when ruled.'
@@ -435,10 +435,10 @@
 
 - id: declare-terminator-build-2
   issue: gh:153
-  title: 'declare-terminator-build is archived done, but its landing (8c84499) contained only 04aa00a, which lexes `;` and says in its own message that the parser does not consume it yet. Verified 2026-09-19: `fn id(s: Str) -> Str = s;` is refused with "expected an expression, found `;`", the same-line heuristic the ruling retires is still live (src/parse.rs ~616, 625-637, 1472, 1646) and still taught in docs/reference/syntax/functions.md. Build the rest of the gh:153 ruling: `;` required after every fn and type declaration, the same-line rule and its diagnostic retired, tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml updated, the syntax page rewritten. Also write the ruling into plans/questions.md or an ADR, since it is recorded nowhere but the issue.'
+  title: 'declare-terminator-build is archived done, but its landing (8c84499) contained only 04aa00a, which lexes `;` and says in its own message that the parser does not consume it yet. Verified 2026-09-19: `fn id(s: Str) -> Str = s;` is refused with "expected an expression, found `;`", the same-line heuristic the ruling retires is still live (src/parse.rs ~616, 625-637, 1472, 1646) and still taught in docs/reference/syntax/functions.md. Build the rest of the gh:153 ruling: `;` required after every fn and type declaration, the same-line rule and its diagnostic retired, tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml updated, the syntax page rewritten. Also write the ruling into plans/questions.md or an ADR, since it is recorded nowhere but the issue. DISPATCH 2026-09-19 (32ebad8e): RED, 3x max_turns; the agent bulk-rewrote tests/*.rs with a script that wrote literal backslash-n into tests/euler_real_data.rs:190. Split (parser+fmt+corpus yaml, then tests/examples/docs sweep) before redispatch and forbid script-rewriting .rs sources.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: pipe-through-remaining-backends
   issue: gh:158
@@ -458,7 +458,7 @@
   title: 'Ruling gh:147 (benchmark thesis is a general cross-language competitiveness claim) is recorded nowhere but the archived row title, and plans/benchmark-plan.md:66-69 still states the framing it overrode ("comparative color across this project''s backends ... not a claim about toylang in the abstract"). Rewrite the plan''s thesis and comparison sections to the ruled framing, add a publication surface for benches/results (a docs page the site renders), and carry the CLBG "far from realistic" caveat prominently there. Found by the 2026-09-19 issue review.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: matcher-totality-alt-composition-decide
   issue: gh:156
@@ -483,7 +483,7 @@
   title: 'Rust backend refuses a program where a let-bound or destructured Vec is the LEFT operand of `+`: it emits `let t_N: Vec<_> = ...; t_N.extend(...)` without `mut` (rustc E0596). Minimal repro: `fn f({acc}: {acc: Vec<Int>}) -> Vec<Int> = acc + [1]` then `f({acc: [0]})`; `p.acc + [1]` and `[1] + acc` work. Found by the 2026-09-19 Euler review (pages 11 and 13 route around it). Fix the emitter and add a corpus case with the repro.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
   outcome: 'Landed e920d44 (2026-09-19). `Cursor::advance` records each comment it passes into
     `File::comments` / `Module::comments` with `own_line` and `blank_after` flags; the formatter
     hands them out in source order across declarations, let bindings, the let value, and the

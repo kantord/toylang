@@ -1,0 +1,19 @@
+Board row `rust-let-bound-vec-left-of-plus`. The Rust backend (src/emit_rs.rs) emits a `let`
+without `mut` when the let-bound or destructured Vec is the LEFT operand of `+`, so rustc
+rejects it (E0596, `t_N.extend(...)` on an immutable binding).
+
+Minimal repro:
+    fn f({acc}: {acc: Vec<Int>}) -> Vec<Int> = acc + [1]
+called as `f({acc: [0]})`. `p.acc + [1]` and `[1] + acc` already work.
+
+Where to look (do not survey the repo): `concat_owned` at src/emit_rs.rs:1539 emits
+`t.extend(...)` on the owned left operand; `owned()` at :1530 decides via `self.mutables`
+which locals are treated as owned/mutable. The bug is that a local reaches `concat_owned` as
+owned while the `let` that binds it (grep `mutables` in src/emit_rs.rs for where the set is
+filled and where `let mut` is printed) was not marked `mut`. Fix by making the binding `mut`
+whenever `concat_owned` will mutate it -- the smallest change wins; do not restructure.
+
+Add a corpus case tests/corpus/vec_let_bound_left_of_plus.yaml with the repro (copy the shape
+of a neighbouring tests/corpus/*.yaml case) so all backends agree on the result `[0, 1]`.
+
+Done-gate: `just check` passes with the new corpus case green on every backend.

@@ -1,27 +1,37 @@
 Board row `pipe-through-remaining-backends` (gh:158). `pipe_through` runs on the Rust backend
-only (src/backend_support.rs `LANDINGS`); the other six refuse cleanly.
+only (src/backend_support.rs `LANDINGS`, ~line 35). THIS pass is GO ONLY. Do not touch Python,
+JS, Lua, jq or LLVM; they keep refusing cleanly. A prior attempt read the whole repo for 60
+turns and made zero edits: do NOT survey. Every site you need is listed here. Make your first
+edit by turn 12.
 
-Reference: commit fcea805 (`git show fcea805`) added it on Rust: `pipe_through({cmd: Str,
-args: Vec<Str>, lines: Stream<Str>}) -> Stream<PipeLine>`; stdin fed the lines, stdout and
-stderr relayed back as the prelude's tagged `PipeLine` enum; stdout lines first as they arrive,
-stderr lines after stdout closes (deterministic order); the child's exit status is ignored.
-The Rust helper is `tl_pipe_through` in src/emit_rust.rs.
+Semantics (from Rust, `git show fcea805`): `pipe_through({cmd: Str, args: Vec<Str>, lines:
+Stream<Str>}) -> Stream<PipeLine>`; stdin is fed the lines, stdout lines come back first as the
+prelude's tagged `PipeLine` Stdout variant, then stderr lines after stdout closes as the Stderr
+variant; the child's exit status is ignored.
 
-Scope for THIS pass (a wide row must not be attempted whole): Go (`src/emit_go.rs`) and Python
-(`src/emit_py.rs`) only. JS, Lua, jq and LLVM keep refusing cleanly -- do not touch them.
+Reference implementation (READ THESE TWO RANGES ONLY):
+- src/emit_rs.rs:720-760 -- `PIPE_HELPER`, the `tl_pipe_through` helper text.
+- src/emit_rs.rs:1641-1680 -- the `Builtin::PipeThrough` arm (how the two PipeLine variant
+  constructors are found in the prelude and passed to the helper).
 
-For each of the two backends: add a `LANDINGS` entry for `pipe_through` (see how the Rust entry
-and other partial builtins such as `transpose` are registered in src/backend_support.rs), then
-emit the same semantics using that language's standard subprocess facility (Go `os/exec`,
-Python `subprocess`), feeding stdin on a separate thread/goroutine so a child that never reads
-it cannot stall, and keeping the same stdout-then-stderr order. Follow how the same emitter
-already wires other helpers on demand (its `uses(...)`-style gating of helper text).
+Go sites (mirror how `transpose` is wired):
+- src/emit_go.rs:290 `TRANSPOSE_HELPER` -- add a `PIPE_HELPER` const beside it: a Go function
+  using `os/exec`, writing stdin from a goroutine (a child that never reads must not stall),
+  collecting stdout lines then stderr lines, calling two constructor callbacks.
+- src/emit_go.rs:732 and :764 -- the `uses("tlTranspose(")` gate and the helper list; add the
+  same for `uses("tlPipeThrough(")`. If the helper needs `os/exec` / `bufio` / `strings`
+  imports, find how the emitter already adds imports on demand and do the same.
+- src/emit_go.rs:1386 -- `Builtin::Transpose => format!(...)`; add `Builtin::PipeThrough`
+  emitting the call. Model the PipeLine variant constructors on how the Go emitter already
+  builds any other prelude enum value.
+- src/backend_support.rs:35 -- add `Backend::Go` to `pipe_through`'s `built_on`.
 
-Add a corpus case in tests/corpus/ (a filter such as `grep` or `cat` over a few lines, printing
-the tagged output) that clears the `pipe_through` entry in tests/tag_coverage.rs UNCOVERED,
-gated to the backends that have it the same way other partial-backend corpus cases are gated.
-Update docs/reference/builtins/ page for pipe_through if it lists which backends run it (the
-docs test compiles fragments, so a stale "runs on rust only" claim can break it).
+Corpus: add tests/corpus/pipe_through.yaml (copy the shape of an existing case such as
+tests/corpus/pipe_chain.yaml; look at how a partial-backend case is gated in the corpus
+support module) -- `cat` over three lines, printing the tagged output -- and clear the
+`builtin.pipe_through` entry in tests/tag_coverage.rs UNCOVERED (line ~26) once covered.
+Update docs/reference/builtins/pipe_through.md if it says which backends run it (the docs test
+compiles its fragments).
 
-Done-gate: `just check` passes; the corpus case agrees on Rust, Go and Python; the other four
-backends still refuse `pipe_through` cleanly.
+Done-gate: `just check` passes; the corpus case agrees on Rust and Go; the other five backends
+still refuse `pipe_through` cleanly.
