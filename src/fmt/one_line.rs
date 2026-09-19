@@ -304,6 +304,10 @@ pub(super) fn neg_sign(base: &Expr) -> &'static str {
     }
 }
 
+fn neg(base: &Expr) -> String {
+    format!("{}{}", neg_sign(base), print_expr_compact(base, Ctx::Unary))
+}
+
 fn print_expr_inner(e: &Expr) -> String {
     match e {
         Expr::Str { text, .. } => format!("\"{}\"", escape_str(text)),
@@ -342,9 +346,7 @@ fn print_expr_inner(e: &Expr) -> String {
             format!("{}[{lo}:{hi}]", print_atom_base(base))
         }
         Expr::Unwrap { base, .. } => format!("{}!", print_atom_base(base)),
-        Expr::Neg { base, .. } => {
-            format!("{}{}", neg_sign(base), print_expr_compact(base, Ctx::Unary))
-        }
+        Expr::Neg { base, .. } => neg(base),
         // `not x`, not `not(x)`: this is an operator, and the parens spelling would read as the
         // call it is not. What follows is printed at `not`'s own power, so `not a == b` keeps
         // the parens off the comparison the parser would give it back.
