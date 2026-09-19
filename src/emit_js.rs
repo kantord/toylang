@@ -250,6 +250,22 @@ function tl_max(v) {
 }
 ";
 
+// `Int` and `Int64` are the only element types the checker lets through, so one helper serves
+// both widths. A ragged input -- rows of unequal length -- is refused the same way every other
+// runtime failure is, since the checker cannot see lengths.
+const TRANSPOSE_HELPER: &str = "\
+function tl_transpose(vv) {
+  if (vv.length === 0) return [];
+  const ncols = vv[0].length;
+  for (const row of vv) {
+    if (row.length !== ncols) { throw new Error(\"toylang: transpose needs a rectangular Vec of Vecs\"); }
+  }
+  const out = [];
+  for (let c = 0; c < ncols; c++) out.push(vv.map((row) => row[c]));
+  return out;
+}
+";
+
 pub fn emit(program: &Program, target: JsTarget) -> Result<String, String> {
     emit_with(program, target, &Web::default())
 }
@@ -294,6 +310,7 @@ pub fn emit_with(program: &Program, target: JsTarget, web: &Web) -> Result<Strin
         (used.chars, CHARS_HELPER),
         (used.sum || used.sum64, SUM_HELPER),
         (used.max, MAX_HELPER),
+        (used.transpose, TRANSPOSE_HELPER),
         (used.eq, EQ_HELPER),
     ] {
         if on {
@@ -699,6 +716,7 @@ struct Helpers {
     sum: bool,
     sum64: bool,
     max: bool,
+    transpose: bool,
     eq: bool,
 }
 
@@ -814,6 +832,7 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.sum64 |=
                     *which == Builtin::Sum && tir::runtime_elem(&arg.ty) == Some(&Type::Int64);
                 used.max |= *which == Builtin::Max;
+                used.transpose |= *which == Builtin::Transpose;
                 walk(arg, used);
             }
             Kind::Arith { lhs, rhs, .. } => {
@@ -1052,6 +1071,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Any => format!("tl_any({})", expr(enums, arg)),
             Builtin::All => format!("tl_all({})", expr(enums, arg)),
             Builtin::Flatten => format!("{}.flat()", expr(enums, arg)),
+            Builtin::Transpose => format!("tl_transpose({})", expr(enums, arg)),
             // `Array.prototype.sort`'s default comparator stringifies, which is wrong for
             // numbers; `tl_str_cmp` already returns the -1/0/1 a comparator wants, so it can be
             // passed straight through for Str.
