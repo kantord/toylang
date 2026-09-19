@@ -882,6 +882,7 @@ impl Collect<'_> {
             Kind::Str(_)
             | Kind::Int(_)
             | Kind::Float(_)
+            | Kind::Bool(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
@@ -1212,6 +1213,7 @@ impl Emitter<'_> {
             // constant-folds `1.0 / 0.0` to a compile error, where the runtime division (the
             // whole point of a total Float) is the IEEE answer, +Inf. See `go_float_lit`.
             Kind::Float(n) => go_float_lit(*n),
+            Kind::Bool(b) => b.to_string(),
             Kind::Var(name) => self.user(name),
             Kind::Local(id) => self.local(*id),
             Kind::Input => INPUT.to_string(),

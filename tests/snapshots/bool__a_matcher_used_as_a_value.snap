@@ -1,0 +1,5 @@
+---
+source: tests/bool.rs
+expression: "err(\"True\")"
+---
+a constructor starts with a lowercase letter; `True` is the matcher and matches only in a pattern, so write `true` to build the value (at byte 0)

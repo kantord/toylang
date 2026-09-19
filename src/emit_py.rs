@@ -559,6 +559,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::Str(s) => py_string(s),
         Kind::Int(n) => n.to_string(),
         Kind::Float(n) => crate::float::lit(*n),
+        Kind::Bool(b) => if *b { "True" } else { "False" }.to_string(),
         Kind::Var(name) => user(name),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),

@@ -1,0 +1,9 @@
+# A Bool literal inside a record and a Vec prints as JSON `true`/`false` in place: the wire form
+# is unchanged by the enum declaration, on every backend.
+program: |
+  {flag: true, flags: [false, true]}
+
+output: |
+  {"flag":true,"flags":[false,true]}
+
+node_types: [bool, record-literal, vec-literal]

@@ -1,0 +1,5 @@
+---
+source: tests/bool.rs
+expression: "err(\"true | True -> \\\"yes\\\"\")"
+---
+a match over `Bool` must cover every variant or end in a default; missing `False` (at byte 7)

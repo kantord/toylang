@@ -1,0 +1,5 @@
+---
+source: tests/bool.rs
+expression: "err(\"enum Bool { Yes, No }\\n\\ntrue\")"
+---
+`Bool` is a built-in type and cannot be redefined (at byte 0)

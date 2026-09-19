@@ -1,0 +1,14 @@
+# `true` is a constructor of the prelude's `enum Bool { True, False }` (the bool-literal-decide
+# ruling), not a keyword: the declaration is what gives the language the two names. The
+# emitted code is pinned for two backends because the output cannot show what matters here: the
+# literal is the target's own boolean, the same value a comparison yields, and not a tagged
+# variant -- Python spells it `True`, Rust `true`.
+program: |
+  true
+
+output: |
+  true
+
+snapshot: [py, rust]
+
+node_types: [bool]

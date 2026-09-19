@@ -378,6 +378,7 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
         Kind::Str(_)
         | Kind::Int(_)
         | Kind::Float(_)
+        | Kind::Bool(_)
         | Kind::Var(_)
         | Kind::Local(_)
         | Kind::Input
@@ -568,6 +569,7 @@ fn uses_arith(program: &Program) -> (bool, bool, bool) {
             Kind::Str(_)
             | Kind::Int(_)
             | Kind::Float(_)
+            | Kind::Bool(_)
             | Kind::Var(_)
             | Kind::Local(_)
             | Kind::Input
@@ -682,6 +684,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::Str(s) => jq_string(s),
         Kind::Int(n) => n.to_string(),
         Kind::Float(n) => crate::float::lit(*n),
+        Kind::Bool(b) => b.to_string(),
         Kind::Var(name) => format!("${}", user(name)),
         Kind::Local(id) => local(*id),
         Kind::Input => INPUT.to_string(),

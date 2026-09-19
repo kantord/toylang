@@ -1,0 +1,8 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+import sys
+sys.setrecursionlimit(100000)
+
+sys.stdout.buffer.write((("true" if True else "false") + "\n").encode("utf-8"))

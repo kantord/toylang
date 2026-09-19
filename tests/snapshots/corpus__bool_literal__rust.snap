@@ -1,0 +1,9 @@
+---
+source: tests/corpus.rs
+expression: emitted
+---
+#![allow(dead_code)]
+
+fn main() {
+    println!("{}", (true).to_string());
+}
