@@ -415,7 +415,7 @@
   title: 'Slice 1 of 3 of declare-terminator-build-2 (split after the 32ebad8e RED, 2026-09-19): make the parser CONSUME an optional `;` after every fn and type declaration (no new diagnostic, same-line rule stays for now), make `toylang fmt` print the `;` after declarations, and add the `;` to every .toy, tests/corpus/*.yaml, examples/ and docs/ fragment (NOT tests/*.rs). Forbidden: script-rewriting any .rs source.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: declare-terminator-build-2b
   issue: gh:153

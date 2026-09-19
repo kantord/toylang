@@ -19,11 +19,17 @@ Do, in this order, running `just check` after each step:
    Multi-line declarations get the `;` at the end of their last line. Leave
    tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml UNCHANGED.
 
-HARD RULES: do NOT edit any tests/*.rs file or any other .rs file except src/parse.rs and
-files under src/fmt (a previous attempt bulk-rewrote tests/*.rs with a script and wrote a
-literal backslash-n into tests/euler_real_data.rs -- those are slice 2). Do not use sed/python
-bulk rewrites on .rs files. For the many yaml/docs edits a small careful script over .yaml/.md
-/.toy files only is fine, but `git diff` a few files afterwards to confirm no stray characters.
+HARD RULES: the ONLY .rs files you may edit are src/parse.rs, files under src/fmt, and
+tests/fmt.rs. Editing tests/fmt.rs is allowed and REQUIRED because it holds hardcoded expected
+formatter output (e.g. the test at line ~420, a_call_argument_prints_bare_wherever_the_grammar_reads_it_back,
+expects `fn f(x: Int) -> Int = x * 10` and must now expect `...= x * 10;`). Edit it ONLY with the
+edit tool, one string at a time -- never a sed/python/bulk rewrite of any .rs file (a previous
+attempt bulk-rewrote tests/*.rs and wrote a literal backslash-n into tests/euler_real_data.rs;
+the rest of tests/*.rs is slice 2b). Run `cargo nextest run --no-fail-fast -E 'test(fmt)'`
+early to list every fmt expectation that needs the `;`, then fix them all in tests/fmt.rs. If
+`just check` fails in some OTHER tests/*.rs file that is not fmt-related, STOP and say which.
+For the many yaml/docs edits a small careful script over .yaml/.md/.toy files only is fine,
+but `git diff` a few files afterwards to confirm no stray characters.
 
 Done-gate: `just check` passes; `fn id(s: Str) -> Str = s;` compiles and runs; the old spelling
 without `;` still compiles; `toylang fmt` output ends every declaration with `;`.
