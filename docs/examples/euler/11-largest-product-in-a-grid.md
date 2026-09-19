@@ -10,43 +10,42 @@ fragment below runs on a synthetic 4x4 grid and the real-sized check lives in
 
 Each of the four directions is a `(dr, dc)` step, and `row_products` bounds the starting column
 so no step reaches outside the grid. Every product each direction can form is collected, the four
-`Vec`s are concatenated, and `max` reduces the concatenated list directly. The example grid is 1
+`Vec`s are flattened into one list, and `max` reduces it directly. The example grid is 1
 to 16 in order, where the bottom row's 13*14*15*16 = 43680 wins only because a row alone runs
 that far; the point of checking all four directions is that the real answer usually comes from a
 diagonal.
 
 ```toylang
-fn get(p: {g: Vec<Vec<Int>>, r: Int, c: Int}) -> Int = p.g[p.r]![p.c]!
+fn get({g, r, c}: {g: Vec<Vec<Int>>, r: Int, c: Int}) -> Int = g[r]![c]!
 
-fn four(p: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int =
-    get({g: p.g, r: p.r, c: p.c}) * get({g: p.g, r: p.r + p.dr, c: p.c + p.dc}) *
-        get({g: p.g, r: p.r + 2 * p.dr, c: p.c + 2 * p.dc}) *
-        get({g: p.g, r: p.r + 3 * p.dr, c: p.c + 3 * p.dc})
+fn four({g, r, c, dr, dc}: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int =
+    get({g: g, r: r, c: c}) * get({g: g, r: r + dr, c: c + dc}) *
+        get({g: g, r: r + 2 * dr, c: c + 2 * dc}) *
+        get({g: g, r: r + 3 * dr, c: c + 3 * dc})
 
-fn row_products(p: {g: Vec<Vec<Int>>, r: Int, dr: Int, dc: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
-    collect(range(p.cmax))
-        | select(. >= p.cmin)
-        | map(four({g: p.g, r: p.r, c: ., dr: p.dr, dc: p.dc}))
+fn row_products({g, r, dr, dc, cmin, cmax}: {g: Vec<Vec<Int>>, r: Int, dr: Int, dc: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
+    collect(range(cmax))
+        | select(. >= cmin)
+        | map(four({g: g, r: r, c: ., dr: dr, dc: dc}))
 
-fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
+fn direction({g, dr, dc, rmax, cmin, cmax}: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
     flatten(
-        collect(range(p.rmax))
+        collect(range(rmax))
             | map(
                   row_products(
-                      {
-                          g: p.g,
-                          r: .,
-                          dr: p.dr,
-                          dc: p.dc,
-                          cmin: p.cmin,
-                          cmax: p.cmax
-                      }
+                      {g: g, r: ., dr: dr, dc: dc, cmin: cmin, cmax: cmax}
                   )
               )
     )
 
 fn largest_product(g: Vec<Vec<Int>>) -> Int =
-    max(direction({g: g, dr: 0, dc: 1, rmax: length(g), cmin: 0, cmax: length(g[0]!) - 3}) + direction({g: g, dr: 1, dc: 0, rmax: length(g) - 3, cmin: 0, cmax: length(g[0]!)}) + direction({g: g, dr: 1, dc: 1, rmax: length(g) - 3, cmin: 0, cmax: length(g[0]!) - 3}) + direction({g: g, dr: 1, dc: -1, rmax: length(g) - 3, cmin: 3, cmax: length(g[0]!)}))!
+    let rows = length(g)
+    let cols = length(g[0]!)
+    let right = direction({g: g, dr: 0, dc: 1, rmax: rows, cmin: 0, cmax: cols - 3})
+    let down = direction({g: g, dr: 1, dc: 0, rmax: rows - 3, cmin: 0, cmax: cols})
+    let diagonal = direction({g: g, dr: 1, dc: 1, rmax: rows - 3, cmin: 0, cmax: cols - 3})
+    let antidiagonal = direction({g: g, dr: 1, dc: -1, rmax: rows - 3, cmin: 3, cmax: cols})
+    max(flatten([right, down, diagonal, antidiagonal]))!
 
 largest_product(parse(stdin))
 ```

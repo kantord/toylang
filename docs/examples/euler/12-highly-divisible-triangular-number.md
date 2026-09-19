@@ -9,25 +9,25 @@ factor, and `n*(n+1)/2` is one of them times the other's half, so its divisor co
 product of `count_divisors(n/2)` and `count_divisors(n+1)` (or the odd-`n` mirror) -- trial
 division stays under a few hundred either way. `range` with a bound known to hold the answer
 takes the place of open-ended search, the same shape as [the ten-thousand-first
-prime](07-10001st-prime.md).
+prime](07-10001st-prime.md), and `first` picks the earliest `n` that qualifies.
 
 ```toylang
-fn cd_loop(p: {m: Int, d: Int, count: Int}) -> Int =
-    p
-        | .d * .d > .m -> p.count or
-              cd_loop({m: p.m, d: p.d + 1, count: p.count + (p | .m % .d == 0 -> 2 or 0) - (p | .d * .d == .m -> 1 or 0)})
+fn cd_loop({m, d, count}: {m: Int, d: Int, count: Int}) -> Int =
+    d * d > m
+        | . -> count or
+              cd_loop({m: m, d: d + 1, count: count + (m % d == 0 | . -> 2 or 0) - (d * d == m | . -> 1 or 0)})
 
 fn count_divisors(m: Int) -> Int = cd_loop({m: m, d: 1, count: 0})
 
 fn triangle_divisors(n: Int) -> Int =
-    n
-        | . % 2 == 0 -> count_divisors(n / 2) * count_divisors(n + 1) or
+    n % 2 == 0
+        | . -> count_divisors(n / 2) * count_divisors(n + 1) or
               count_divisors(n) * count_divisors((n + 1) / 2)
 
 fn triangle(n: Int) -> Int = n * (n + 1) / 2
 
 triangle(
-    (collect(range(12376)) | select(. >= 1) | select(triangle_divisors(.) > 500))[0]!
+    first(collect(range(12376)) | select(. >= 1 and triangle_divisors(.) > 500))!
 )
 ```
 
