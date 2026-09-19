@@ -8,7 +8,7 @@ does not erase boundaries.
 An index collapses its dimension to one entry. Zero-based from the front, `-1` is the last:
 
 ```toylang
-{first: [1, 2, 3][0], last: [1, 2, 3][-1]}
+{ first: [1, 2, 3][0], last: [1, 2, 3][-1] }
 ```
 
 ```output

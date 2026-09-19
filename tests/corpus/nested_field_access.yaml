@@ -1,7 +1,9 @@
 program: |
   # Two dimensions, so two specs: one for the groups and one for the members.
-  fn names(db: {groups: Vec<{members: Vec<{name: Str}>}>}) -> Vec<Vec<Str>> =
-      db.groups[].members[].name
+  fn names(
+    db: { groups: Vec<{ members: Vec<{ name: Str }> }> }
+  ) -> Vec<Vec<Str>> =
+    db.groups[].members[].name
 
   names(parse(stdin))
 

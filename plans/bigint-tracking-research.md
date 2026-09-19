@@ -131,7 +131,8 @@ type, arithmetic is the ordinary operators, and a bare literal on the other side
 resolves to `BigInt` by position:
 
 ```toylang
-fn factorial(n: BigInt) -> BigInt = n == 0 -> 1 or n * factorial(n - 1)
+fn factorial(n: BigInt) -> BigInt =
+  n == 0 -> 1 or n * factorial(n - 1)
 
 factorial(50)
 ```

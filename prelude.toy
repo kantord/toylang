@@ -4,25 +4,25 @@ pub enum Opt<T> { Some(T), None }
 
 pub enum Result<T, E> { Ok(T), Err(E) }
 
-pub enum PipeLine { Stdout{text: Str}, Stderr{text: Str} }
+pub enum PipeLine { Stdout { text: Str }, Stderr { text: Str } }
 
 fn join_parts(v: Vec<Str>) -> Str =
-    v | length(v) == 0 -> "" or v[0]! + join_parts(tail(v)!)
+  v | length(v) == 0 -> "" or v[0]! + join_parts(tail(v)!)
 
 pub fn join_lines(v: Vec<Str>) -> Str =
-    v
-        | length(v) == 0 -> "" or
-              length(v) == 1 -> v[0]! or
-              v[0]! + "\n" + join_lines(tail(v)!)
+  v
+  | length(v) == 0 -> "" or
+    length(v) == 1 -> v[0]! or
+    v[0]! + "\n" + join_lines(tail(v)!)
 
 pub fn join(v: Vec<Str>) -> Str = join_parts(v)
 
 pub trait Fold {
-    fn identity() -> Self
-    fn step(p: {acc: Self, x: Int}) -> Self
+  fn identity() -> Self
+  fn step(p: { acc: Self, x: Int }) -> Self
 }
 
 impl Fold for Vec<Int> {
-    fn identity() -> Self = []
-    fn step(p: {acc: Self, x: Int}) -> Self = p.acc + [p.x]
+  fn identity() -> Self = []
+  fn step(p: { acc: Self, x: Int }) -> Self = p.acc + [p.x]
 }

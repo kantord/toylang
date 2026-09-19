@@ -45,9 +45,9 @@ modules `tests/modules/celsius.toy` (`pub fn handle(c: Int) -> Int = c + 273`) a
 enum Temp { Celsius(Int), Kelvin(Int) }
 
 fn to_kelvin(t: Temp) -> Int =
-    t
-        | Celsius -> @("tests/modules/celsius.toy") or
-              Kelvin -> @("tests/modules/kelvin.toy")
+  t
+  | Celsius -> @("tests/modules/celsius.toy") or
+    Kelvin -> @("tests/modules/kelvin.toy")
 
 [to_kelvin(Temp.celsius(27)), to_kelvin(Temp.kelvin(300))]
 ```
@@ -95,14 +95,14 @@ program having to tell them apart, which is what a set of route handlers written
 tends to do. `tests/modules/shapes.toy`:
 
 ```toy
-pub enum Shape { Circle{r: Int}, Square{side: Int} }
+pub enum Shape { Circle { r: Int }, Square { side: Int } }
 
 pub fn handle(s: Shape) -> Int =
-    s | Circle{r} -> r * r * 3 or Square{side} -> side * side
+  s | Circle { r } -> r * r * 3 or Square { side } -> side * side
 ```
 
 ```toylang
-Shape.circle({r: 2}) | @("tests/modules/shapes.toy")
+Shape.circle({ r: 2 }) | @("tests/modules/shapes.toy")
 ```
 
 ```output

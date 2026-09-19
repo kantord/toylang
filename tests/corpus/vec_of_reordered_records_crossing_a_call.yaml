@@ -5,11 +5,11 @@
 # in -- reading `.b` at column 1 (`first_b`'s declared order) off a value laid out column 0
 # first (`g`'s), which is `a` there.
 program: |
-  fn first_b(v: Vec<{a: Str, b: Int}>) -> Int = v[0]!.b
+  fn first_b(v: Vec<{ a: Str, b: Int }>) -> Int = v[0]!.b
 
-  fn g(v: Vec<{b: Int, a: Str}>) -> Int = first_b(v)
+  fn g(v: Vec<{ b: Int, a: Str }>) -> Int = first_b(v)
 
-  g([{b: 42, a: "hi"}])
+  g([{ b: 42, a: "hi" }])
 
 output: |
   42

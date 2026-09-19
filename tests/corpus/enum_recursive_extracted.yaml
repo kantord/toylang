@@ -8,7 +8,7 @@ program: |
   enum Json { Arr(Vec<Json>), Num(Int) }
 
   Json.arr([Json.arr([Json.num(1)]), Json.num(2)])
-      | Arr -> .[0]! or Num -> Json.num(0)
+  | Arr -> .[0]! or Num -> Json.num(0)
 
 output: |
   {"Arr":[{"Num":1}]}

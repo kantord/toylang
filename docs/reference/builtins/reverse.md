@@ -14,7 +14,7 @@ reverse([1, 2, 3])
 ```
 
 ```toylang
-reverse([{n: 1}, {n: 2}])
+reverse([{ n: 1 }, { n: 2 }])
 ```
 
 ```output

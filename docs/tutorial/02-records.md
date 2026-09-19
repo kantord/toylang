@@ -5,9 +5,9 @@ A record is a fixed set of named parts, and the names are part of the type:
 projection, `.age`:
 
 ```toylang
-fn age_of(user: {name: Str, age: Int}) -> Int = user.age
+fn age_of(user: { name: Str, age: Int }) -> Int = user.age
 
-age_of({name: "ada", age: 36})
+age_of({ name: "ada", age: 36 })
 ```
 
 ```output
@@ -20,9 +20,9 @@ unary -- and that is not a limitation, because a record is how several things tr
 one:
 
 ```toylang
-fn area(r: {w: Int, h: Int}) -> Int = r.w * r.h
+fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h
 
-area({w: 3, h: 4})
+area({ w: 3, h: 4 })
 ```
 
 ```output
@@ -49,7 +49,7 @@ them -- order is metadata the type carries, so every value checked against a typ
 the same way:
 
 ```toylang
-{b: 1, a: {inner: "deep"}}
+{ b: 1, a: { inner: "deep" } }
 ```
 
 ```output

@@ -26,7 +26,7 @@ sort(["banana", "apple", "cherry"])
 ```
 
 ```toylang
-sort([{n: 1}])
+sort([{ n: 1 }])
 ```
 
 ```error

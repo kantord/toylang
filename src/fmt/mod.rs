@@ -7,7 +7,7 @@
 //! tree and nothing else. The author's line breaks, blank-line grouping, and redundant parens
 //! are not in the tree, so they do not survive. Two templates render that one tree:
 //!
-//! - `multi_line`, the file template: an 80-column width that is the template's own property,
+//! - `multi_line`, the file template: a 69-column width that is the template's own property,
 //!   not a rule a program is held to (a node with no seam to break at overflows rather than
 //!   failing), and comments placed by `comments`.
 //! - `one_line`, the one-line template: the whole program on a single line with no width and
@@ -17,11 +17,13 @@
 //! `parens` holds the one decision both share: which parens the tree needs, since the AST does
 //! not record which ones the source had.
 //!
-//! The maintainer's own sample (docs/examples/euler/01-multiples-of-3-and-5.md) is the ground
-//! truth for the file template's layout, and the source of two choices nothing in the grammar
-//! forces: calls are always written with explicit parens (`f(x)`, never the bare `f x` or the
-//! brace shorthand `f{...}`), and the width is 80 columns, backed out from the sample -- the one
-//! line it left alone is 44 columns, and the two it broke are 89 and 118.
+//! The maintainer's own hand-formatted sample, examples/shapes.toy (2026-09-19), is the ground
+//! truth for the file template's layout: 2-space indent, 69 columns, padded braces everywhere
+//! (`Circle { r }`, `{ r: 3 }`), a broken pipeline's `|` at its subject's column, a broken
+//! chain's arms aligned with the first arm's text. Everything else is fit-based: whatever fits
+//! on one line stays there. One choice nothing in the grammar forces predates it: calls are
+//! always written with explicit parens (`f(x)`, never the bare `f x` or the brace shorthand
+//! `f{...}`).
 
 mod comments;
 mod multi_line;

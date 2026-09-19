@@ -3,8 +3,10 @@
 # a `map`/`select` chain over its parameter. Output is unaffected either way -- this case only
 # pins the value; tests/streaming.rs is what checks output actually arrives before stdin closes.
 program: |
-  fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
-      users | select(.age >= 18) | map({name: .name})
+  fn adults(
+    users: Stream<{ name: Str, age: Int }>
+  ) -> Stream<{ name: Str }> =
+    users | select(.age >= 18) | map({ name: .name })
 
   jsonlines(adults(stdin | map(parse(.))))
 

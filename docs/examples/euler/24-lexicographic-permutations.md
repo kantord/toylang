@@ -15,20 +15,22 @@ millionth permutation (index 999999, since the first is index zero) make 2783915
 ```toylang
 fn factorial(n: Int) -> Int = n | . <= 1 -> 1 or . * factorial(. - 1)
 
-fn nth_perm({remaining, idx}: {remaining: Vec<Int>, idx: Int}) -> Vec<Int> =
-    let block = factorial(length(remaining) - 1)
-    let i = idx / block
-    remaining
-        | length(remaining) == 0 -> [] or
-              [remaining[i]!] +
-                  nth_perm(
-                      {
-                          remaining: remaining[:i] + remaining[i + 1:],
-                          idx: idx % block
-                      }
-                  )
+fn nth_perm(
+  { remaining, idx }: { remaining: Vec<Int>, idx: Int }
+) -> Vec<Int> =
+  let block = factorial(length(remaining) - 1)
+  let i = idx / block
+  remaining
+  | length(remaining) == 0 -> [] or
+    [remaining[i]!] +
+      nth_perm(
+        {
+          remaining: remaining[:i] + remaining[i + 1:],
+          idx: idx % block
+        }
+      )
 
-nth_perm({remaining: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], idx: 999999})
+nth_perm({ remaining: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], idx: 999999 })
 ```
 
 ```output

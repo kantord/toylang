@@ -7,7 +7,7 @@ program: |
 
   fn warmer(t: Temp) -> Int = t | Celsius -> . + 1 or Unknown -> 0
 
-  {a: warmer(celsius(21)), b: warmer(Temp.unknown), raw: celsius(21)}
+  { a: warmer(celsius(21)), b: warmer(Temp.unknown), raw: celsius(21) }
 
 output: |
   {"a":22,"b":0,"raw":{"Celsius":21}}

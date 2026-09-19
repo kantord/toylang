@@ -11,19 +11,19 @@ Two numbers are amicable when each is the other's proper-divisor sum and neither
 range filtered by `is_amicable`.
 
 ```toylang
-fn divisor_contribution({n, d}: {n: Int, d: Int}) -> Int =
-    d | n % d != 0 -> 0 or d * d == n -> d or d + n / d
+fn divisor_contribution({ n, d }: { n: Int, d: Int }) -> Int =
+  d | n % d != 0 -> 0 or d * d == n -> d or d + n / d
 
-fn sigma({n, d}: {n: Int, d: Int}) -> Int =
-    d
-        | d * d > n -> 0 or
-              divisor_contribution({n: n, d: d}) + sigma({n: n, d: d + 1})
+fn sigma({ n, d }: { n: Int, d: Int }) -> Int =
+  d
+  | d * d > n -> 0 or
+    divisor_contribution({ n: n, d: d }) + sigma({ n: n, d: d + 1 })
 
-fn proper_divisor_sum(n: Int) -> Int = sigma({n: n, d: 1}) - n
+fn proper_divisor_sum(n: Int) -> Int = sigma({ n: n, d: 1 }) - n
 
 fn is_amicable(n: Int) -> Bool =
-    proper_divisor_sum(n) != n and
-        proper_divisor_sum(proper_divisor_sum(n)) == n
+  proper_divisor_sum(n) != n and
+    proper_divisor_sum(proper_divisor_sum(n)) == n
 
 sum(collect(range(10000)) | select(is_amicable(.)))
 ```

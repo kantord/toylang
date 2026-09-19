@@ -39,7 +39,7 @@ Defined only for the two integer element types. A `Vec` of records has no total 
 reduce to a maximum over, so it is refused:
 
 ```toylang
-max([{n: 1}])
+max([{ n: 1 }])
 ```
 
 ```error

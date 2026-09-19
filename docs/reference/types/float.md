@@ -86,7 +86,7 @@ A `Float` inside a `Vec`, a record, or an enum payload prints the same way, and 
 non-finite values, on every backend:
 
 ```toylang
-[{a: 1e21, b: 1e-7}, {a: 1.0 / 0.0, b: 0.0 / 0.0}]
+[{ a: 1e21, b: 1e-7 }, { a: 1.0 / 0.0, b: 0.0 / 0.0 }]
 ```
 
 ```output

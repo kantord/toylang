@@ -139,7 +139,7 @@ pub(super) fn print_param(p: &Option<Param>) -> String {
         Some(p) => match &p.shape {
             ParamShape::Name(name, _) => format!("{name}: {}", print_type(&p.ty)),
             ParamShape::Fields(f) => {
-                format!("{{{}}}: {}", print_fields_pattern(f), print_type(&p.ty))
+                format!("{{ {} }}: {}", print_fields_pattern(f), print_type(&p.ty))
             }
         },
     }
@@ -154,7 +154,7 @@ pub(super) fn print_variant_decl(v: &Variant) -> String {
                 .map(|(n, t)| format!("{n}: {}", print_type(t)))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("{}{{{fields_str}}}", v.name)
+            format!("{} {{ {fields_str} }}", v.name)
         }
         Some(t) => format!("{}({})", v.name, print_type(t)),
     }
@@ -232,7 +232,11 @@ pub(super) fn print_type(t: &TypeExpr) -> String {
                 .map(|(n, t)| format!("{n}: {}", print_type(t)))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("{{{fields_str}}}")
+            if fields.is_empty() {
+                "{}".to_string()
+            } else {
+                format!("{{ {fields_str} }}")
+            }
         }
     }
 }
@@ -321,7 +325,8 @@ fn print_expr_inner(e: &Expr) -> String {
                 .join(", ");
             format!("[{items_str}]")
         }
-        Expr::RecordLit { fields, .. } => format!("{{{}}}", print_record_fields(fields)),
+        Expr::RecordLit { fields, .. } if fields.is_empty() => "{}".to_string(),
+        Expr::RecordLit { fields, .. } => format!("{{ {} }}", print_record_fields(fields)),
         Expr::Subject { .. } => ".".to_string(),
         Expr::Var { name, .. } => name.clone(),
         Expr::Call { func, arg, .. } => match arg {
@@ -482,7 +487,7 @@ pub(super) fn arm_head(arm: &MatchArm, is_last: bool) -> Option<String> {
         Pattern::Guard(g) => print_expr_compact(g, Ctx::Operand(COND_POWER)),
         Pattern::Variant { name, fields, .. } => match fields {
             None => name.clone(),
-            Some(f) => format!("{name}{{{}}}", print_fields_pattern(f)),
+            Some(f) => format!("{name} {{ {} }}", print_fields_pattern(f)),
         },
     })
 }

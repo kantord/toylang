@@ -1,6 +1,6 @@
 program: |
-  fn shout(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-      db.users | map(.name + " is " + str(.age))
+  fn shout(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
+    db.users | map(.name + " is " + str(.age))
 
   shout(parse(stdin))
 

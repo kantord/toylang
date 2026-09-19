@@ -5,7 +5,7 @@ names are part of the type. A record answers what it is from its contents alone,
 what lets a record literal appear anywhere without an annotation:
 
 ```toylang
-{name: "ada", logins: [1, 2]}
+{ name: "ada", logins: [1, 2] }
 ```
 
 ```output

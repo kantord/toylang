@@ -12,56 +12,57 @@ remainder. A `Str` has no length of its own, but
 
 ```toylang
 fn ones(n: Int) -> Str =
-    [
-        "",
-        "one",
-        "two",
-        "three",
-        "four",
-        "five",
-        "six",
-        "seven",
-        "eight",
-        "nine"
-    ][n]!
+  [
+    "",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine"
+  ][n]!
 
 fn teens(n: Int) -> Str =
-    [
-        "ten",
-        "eleven",
-        "twelve",
-        "thirteen",
-        "fourteen",
-        "fifteen",
-        "sixteen",
-        "seventeen",
-        "eighteen",
-        "nineteen"
-    ][n - 10]!
+  [
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen"
+  ][n - 10]!
 
 fn tens(n: Int) -> Str =
-    [
-        "",
-        "",
-        "twenty",
-        "thirty",
-        "forty",
-        "fifty",
-        "sixty",
-        "seventy",
-        "eighty",
-        "ninety"
-    ][n / 10]!
+  [
+    "",
+    "",
+    "twenty",
+    "thirty",
+    "forty",
+    "fifty",
+    "sixty",
+    "seventy",
+    "eighty",
+    "ninety"
+  ][n / 10]!
 
 fn under_hundred(n: Int) -> Str =
-    n | . < 10 -> ones(n) or . < 20 -> teens(n) or tens(n) + ones(n % 10)
+  n
+  | . < 10 -> ones(n) or . < 20 -> teens(n) or tens(n) + ones(n % 10)
 
 fn words(n: Int) -> Str =
-    n
-        | . == 1000 -> "onethousand" or
-              . < 100 -> under_hundred(n) or
-              . % 100 == 0 -> ones(n / 100) + "hundred" or
-              ones(n / 100) + "hundredand" + under_hundred(n % 100)
+  n
+  | . == 1000 -> "onethousand" or
+    . < 100 -> under_hundred(n) or
+    . % 100 == 0 -> ones(n / 100) + "hundred" or
+    ones(n / 100) + "hundredand" + under_hundred(n % 100)
 
 sum(collect(range(1000)) | map(length(chars(words(. + 1)))))
 ```

@@ -19,9 +19,9 @@ clean. Each is a named param plus an explicit `|` subject;the subject is spelled
 the language currently lets you match:
 
 ```toylang
-enum Shape { point, circle{r: Int} }
+enum Shape { point, circle { r: Int } }
 
-fn area(s: Shape) -> Int = s | circle{r} -> r * r or point -> 0
+fn area(s: Shape) -> Int = s | circle { r } -> r * r or point -> 0
 
 area(Shape.point)
 ```
@@ -45,9 +45,9 @@ was `fn render = Msg(Ping -> "*ping*" or Quit -> "*quit*" or Text -> .body)`.
 the return annotation, each mandatory). Every A probe dies at the same byte:
 
 ```toylang
-enum Shape { point, circle{r: Int} }
+enum Shape { point, circle { r: Int } }
 
-fn area = Shape(circle{r} -> r * r or point -> 0)
+fn area = Shape(circle { r } -> r * r or point -> 0)
 
 area(Shape.point)
 ```
@@ -64,9 +64,9 @@ and writes the call-form as a body expression, to test the head independently of
 question:
 
 ```toylang
-enum Shape { point, circle{r: Int} }
+enum Shape { point, circle { r: Int } }
 
-fn area(s: Shape) -> Int = Shape(circle{r} -> r * r or point -> 0)
+fn area(s: Shape) -> Int = Shape(circle { r } -> r * r or point -> 0)
 
 area(Shape.point)
 ```
@@ -102,9 +102,9 @@ change, independent of everything downstream.
 **A bare match body has no subject.**
 
 ```toylang
-enum Shape { point, circle{r: Int} }
+enum Shape { point, circle { r: Int } }
 
-fn area(s: Shape) -> Int = circle{r} -> r * r or point -> 0
+fn area(s: Shape) -> Int = circle { r } -> r * r or point -> 0
 
 area(Shape.point)
 ```
@@ -128,9 +128,9 @@ construct.
 ## Candidate C: additive `.`-binding
 
 ```toylang
-enum Shape { point, circle{r: Int} }
+enum Shape { point, circle { r: Int } }
 
-fn area(s: Shape) -> Int = . | circle{r} -> r * r or point -> 0
+fn area(s: Shape) -> Int = . | circle { r } -> r * r or point -> 0
 
 area(Shape.point)
 ```
@@ -158,7 +158,8 @@ could be tested independently of C's top-level binding:
 ```toylang
 enum Json { arr(Vec<Json>), num(Int) }
 
-fn total(j: Json) -> Int = j | num -> . or arr -> . | map(. | total(.)) | sum(.)
+fn total(j: Json) -> Int =
+  j | num -> . or arr -> . | map(. | total(.)) | sum(.)
 ```
 
 It fails type-checking: "expected Int, found Vec<Json>" at the `arr` arm's body `.` -- match arms

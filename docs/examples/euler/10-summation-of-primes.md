@@ -18,11 +18,15 @@ and only executes it under `just slow-test`, where all seven backends print the 
 answer.
 
 ```toylang slow
-fn has_divisor({n, d}: {n: Int, d: Int}) -> Bool =
-    d * d <= n and
-        (n % d == 0 or has_divisor({n: n, d: d + (d == 2 | . -> 1 or 2)}))
+fn has_divisor({ n, d }: { n: Int, d: Int }) -> Bool =
+  d * d <= n and
+    (
+      n % d == 0 or
+        has_divisor({ n: n, d: d + (d == 2 | . -> 1 or 2) })
+    )
 
-fn is_prime(n: Int) -> Bool = n >= 2 and not has_divisor({n: n, d: 2})
+fn is_prime(n: Int) -> Bool =
+  n >= 2 and not has_divisor({ n: n, d: 2 })
 
 sum(collect(range(2000000) | select(is_prime(.)) | map(i64(.))))
 ```

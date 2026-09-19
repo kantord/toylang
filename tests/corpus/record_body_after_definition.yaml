@@ -4,7 +4,7 @@
 program: |
   fn id(s: Str) -> Str = s
 
-  {a: 1}
+  { a: 1 }
 
 output: |
   {"a":1}

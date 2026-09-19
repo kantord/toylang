@@ -3,7 +3,7 @@
 # its own column, which is the same struct-of-arrays invariant 363710f fixed for field access.
 # Nothing in the corpus had ever written `[{...}, {...}]` as a literal before this.
 program: |
-  jsonlines([{a: [1, 2], b: "x"}, {a: [3], b: "y"}])
+  jsonlines([{ a: [1, 2], b: "x" }, { a: [3], b: "y" }])
 
 output: |
   {"a":[1,2],"b":"x"}

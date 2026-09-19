@@ -1,7 +1,9 @@
 program: |
   # Six JSON parsers and six string representations, one answer.
-  fn tags(db: {rows: Vec<{name: Str, tag: Str}>}) -> Vec<{name: Str, tag: Str}> =
-      db.rows
+  fn tags(
+    db: { rows: Vec<{ name: Str, tag: Str }> }
+  ) -> Vec<{ name: Str, tag: Str }> =
+    db.rows
 
   tags(parse(stdin))
 

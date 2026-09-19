@@ -5,9 +5,9 @@ one must handle every variant. As data an enum is plain JSON, never an opaque va
 ([ADR 0009](../../adr/0009-enums-are-json-native-single-key-wrappers.md)).
 
 ```toylang
-enum Shape { Point, Circle{r: Int} }
+enum Shape { Point, Circle { r: Int } }
 
-{a: Shape.point, b: circle({r: 3})}
+{ a: Shape.point, b: circle({ r: 3 }) }
 ```
 
 ```output
@@ -33,15 +33,15 @@ Consumption is the [match](../operators/match.md), which is closed-world: every 
 handled, or an `any()` arm for the rest. A program whose match misses a variant is refused:
 
 ```toylang
-enum Shape { Point, Circle{r: Int} }
+enum Shape { Point, Circle { r: Int } }
 
-fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r
+fn area_ish(s: Shape) -> Int = s | Circle { r } -> r * r
 
 area_ish(Shape.point)
 ```
 
 ```error
-a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 73)
+a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 76)
 ```
 
 Because the wire shape is plain JSON, an enum types input directly, and the input is
@@ -66,11 +66,11 @@ The rule is per occurrence, not per declaration, so `enum E { Safe(Vec<E>), Bad(
 `safe` and still refuses `bad`: a bare self-reference is a layout that contains itself.
 
 ```toylang
-enum Json { Arr(Vec<Json>), Num(Int), Node{next: Json} }
+enum Json { Arr(Vec<Json>), Num(Int), Node { next: Json } }
 
 Json.num(1)
 ```
 
 ```error
-type `Json` is written in terms of itself (at byte 49)
+type `Json` is written in terms of itself (at byte 51)
 ```

@@ -14,7 +14,7 @@ the constructor, `Bool.true` is `true` spelled through its enum, and a program c
 second `Bool` any more than a second `Int`.
 
 ```toylang
-{lit: true, cmp: 1 == 1, qualified: Bool.false}
+{ lit: true, cmp: 1 == 1, qualified: Bool.false }
 ```
 
 ```output

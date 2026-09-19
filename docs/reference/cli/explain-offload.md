@@ -36,8 +36,8 @@ The same `select` over a stream is the other verdict. These two programs keep th
 and differ only in what the function takes:
 
 ```toylang
-fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users | select(.age >= 18) | .[].name
+fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
+  db.users | select(.age >= 18) | .[].name
 
 adults(parse(stdin))
 ```
@@ -57,8 +57,10 @@ select over Vec<{name: Str, age: Int}>: became a compaction kernel (Opt<{name: S
 ```
 
 ```toylang
-fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
-    users | select(.age >= 18) | map({name: .name})
+fn adults(
+  users: Stream<{ name: Str, age: Int }>
+) -> Stream<{ name: Str }> =
+  users | select(.age >= 18) | map({ name: .name })
 
 jsonlines(adults(stdin | map(parse(.))))
 ```
@@ -86,7 +88,8 @@ transforms, and writes an entry at a time, and the report names the source it re
 so, with the map that fed it counted as a kernel:
 
 ```toylang
-fn names(db: Vec<{name: Str, age: Int}>) -> Vec<Str> = db | map(.name)
+fn names(db: Vec<{ name: Str, age: Int }>) -> Vec<Str> =
+  db | map(.name)
 
 jsonlines(names(parse(stdin)))
 ```

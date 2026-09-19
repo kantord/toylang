@@ -82,31 +82,38 @@ fn a_formatted_corpus_program_runs_the_same_as_the_original() {
     );
 }
 
-/// The maintainer's own sample (docs/examples/euler/01-multiples-of-3-and-5.md) is the one
-/// ground truth for what the canonical style actually looks like -- everything else in
-/// `src/fmt/multi_line.rs` is derived from or extends it. Pinned verbatim, not just checked for
-/// idempotency, so a change to the layout rules cannot silently drift from it.
+/// The maintainer's own hand-formatted sample (examples/shapes.toy, 2026-09-19) is the one
+/// ground truth for what the canonical style looks like -- 2-space indent, padded braces, a
+/// chain on one line when it fits -- and everything else in `src/fmt/multi_line.rs` is derived
+/// from or extends it. Pinned verbatim, not just checked for idempotency, so a change to the
+/// layout rules cannot silently drift from it. The earlier sample (Euler 1) set the rules this
+/// one replaced: 4-space indent, 80 columns, unpadded records.
 #[test]
 fn the_maintainer_sample_formats_to_itself() {
-    let sample = "fn triangle(m: Int) -> Int = m * (m + 1) / 2\n\
+    let sample = "# An enum with a payload variant, consumed by an exhaustive match.\n\
+                  enum Shape { Point, Circle { r: Int } }\n\
                   \n\
-                  fn sum_of_multiples(p: {k: Int, limit: Int}) -> Int =\n\
-                  \x20   triangle((p.limit - 1) / p.k) * p.k\n\
+                  fn area_ish(s: Shape) -> Int =\n\
+                  \x20 s | Circle { r } -> r * r or Point -> 0\n\
                   \n\
-                  sum_of_multiples({k: 3, limit: 1000}) + sum_of_multiples({k: 5, limit: 1000}) -\n\
-                  \x20   sum_of_multiples({k: 15, limit: 1000})\n";
+                  { a: area_ish(Shape.point), b: area_ish(circle({ r: 3 })) }\n";
     assert_eq!(toylang::fmt(sample).unwrap(), sample);
+    let on_disk = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/shapes.toy"),
+    )
+    .expect("examples/shapes.toy is readable");
+    assert_eq!(on_disk, sample, "examples/shapes.toy is the pinned sample");
 }
 
 /// A pipeline that overflows the width breaks one stage per line, `|` leading each continuation
-/// line so the pipes draw a vertical column (issue #101) -- the opposite of `Binary`'s trailing
-/// rule, which pipelines used to follow by analogy before the maintainer pinned this shape.
+/// line at the subject's own column so the pipes draw a vertical column (issue #101, then the
+/// 2026-09-19 sample for the column) -- the opposite of `Binary`'s trailing rule.
 #[test]
 fn a_pipeline_that_does_not_fit_breaks_one_stage_per_line_pipe_first() {
     let src = "range(1000)\n\
-               \x20   | select(. > 5)\n\
-               \x20   | select(. < 1000 - somewhatlongvariablename)\n\
-               \x20   | map(. * 2)\n";
+               | select(. > 5)\n\
+               | select(. < 1000 - somewhatlongvariablename)\n\
+               | map(. * 2)\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
 }
 
@@ -145,10 +152,10 @@ fn a_commented_multi_function_program_formats_to_itself() {
                fn f(x: Int) -> Int = x * 2 # trailing f\n\
                \n\
                fn g(x: Int) -> Int =\n\
-               \x20   # before the binding\n\
-               \x20   let a = f(x) # trailing the binding\n\
-               \x20   # before the value\n\
-               \x20   a + 1 # trailing the value\n\
+               \x20 # before the binding\n\
+               \x20 let a = f(x) # trailing the binding\n\
+               \x20 # before the value\n\
+               \x20 a + 1 # trailing the value\n\
                \n\
                # Before the program body.\n\
                g(1) # trailing the body\n\
@@ -227,62 +234,63 @@ fn a_literal_guard_head_formats_bare_and_round_trips() {
 /// A signature that does not fit puts its parameter on its own line, and a record parameter
 /// type that still does not fit there breaks one field per line; a broken signature never
 /// takes its body on the closing line. Before this, the signature was the one node with no
-/// seam, and Euler 11's `direction` sat at 128 columns.
+/// seam, and Euler 11's `direction` sat at 128 columns. (`four`'s parameter fit on its own
+/// line at 80 columns; at 69 it breaks too.)
 #[test]
 fn a_long_signature_breaks_at_its_parameter_then_inside_a_record_type() {
     let src = "fn four({g, r, c, dr, dc}: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int = g[r]![c]!\n\nfour({g: [[1]], r: 0, c: 0, dr: 0, dc: 0})\n";
     let want = "fn four(\n\
-                \x20   {g, r, c, dr, dc}: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}\n\
+                \x20 { g, r, c, dr, dc }: {\n\
+                \x20   g: Vec<Vec<Int>>,\n\
+                \x20   r: Int,\n\
+                \x20   c: Int,\n\
+                \x20   dr: Int,\n\
+                \x20   dc: Int\n\
+                \x20 }\n\
                 ) -> Int =\n\
-                \x20   g[r]![c]!\n\
+                \x20 g[r]![c]!\n\
                 \n\
-                four({g: [[1]], r: 0, c: 0, dr: 0, dc: 0})\n";
+                four({ g: [[1]], r: 0, c: 0, dr: 0, dc: 0 })\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 
     let src = "fn direction({g, dr, dc, rmax, cmin, cmax}: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Int = rmax\n\ndirection({g: [[1]], dr: 0, dc: 0, rmax: 0, cmin: 0, cmax: 0})\n";
     let want = "fn direction(\n\
-                \x20   {g, dr, dc, rmax, cmin, cmax}: {\n\
-                \x20       g: Vec<Vec<Int>>,\n\
-                \x20       dr: Int,\n\
-                \x20       dc: Int,\n\
-                \x20       rmax: Int,\n\
-                \x20       cmin: Int,\n\
-                \x20       cmax: Int\n\
-                \x20   }\n\
+                \x20 { g, dr, dc, rmax, cmin, cmax }: {\n\
+                \x20   g: Vec<Vec<Int>>,\n\
+                \x20   dr: Int,\n\
+                \x20   dc: Int,\n\
+                \x20   rmax: Int,\n\
+                \x20   cmin: Int,\n\
+                \x20   cmax: Int\n\
+                \x20 }\n\
                 ) -> Int =\n\
-                \x20   rmax\n\
+                \x20 rmax\n\
                 \n\
-                direction({g: [[1]], dr: 0, dc: 0, rmax: 0, cmin: 0, cmax: 0})\n";
+                direction({ g: [[1]], dr: 0, dc: 0, rmax: 0, cmin: 0, cmax: 0 })\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 }
 
-/// A match arm whose body does not fit breaks after its `->`, the body one level below the
-/// column the chain's later arms sit at, so it is visibly deeper than the arm after it
-/// (maintainer ruling, 2026-09-19); a bare default arm has no `->` and breaks in place. Arms
-/// used to break only between each other, so an arm's own body overflowed.
+/// A match arm whose body does not fit breaks after its `->`, the body one level in from the
+/// arms, which all share the first arm's column (maintainer ruling, 2026-09-19); a bare default
+/// arm has no `->` and breaks in place. Arms used to break only between each other, so an
+/// arm's own body overflowed.
 #[test]
 fn a_long_match_arm_breaks_after_its_arrow() {
     let src = "fn f(x: Int) -> Int = x | . > 1 -> some_function_call({alpha: x, beta: x + 1, gamma: x * 2, delta: x - 1, eps: x}) or 0\n\nfn some_function_call(p: {alpha: Int, beta: Int, gamma: Int, delta: Int, eps: Int}) -> Int = p.alpha\n\nf(1)\n";
     let want = "fn f(x: Int) -> Int =\n\
-                \x20   x\n\
-                \x20       | . > 1 ->\n\
-                \x20                 some_function_call(\n\
-                \x20                     {\n\
-                \x20                         alpha: x,\n\
-                \x20                         beta: x + 1,\n\
-                \x20                         gamma: x * 2,\n\
-                \x20                         delta: x - 1,\n\
-                \x20                         eps: x\n\
-                \x20                     }\n\
-                \x20                 ) or\n\
-                \x20             0\n\
+                \x20 x\n\
+                \x20 | . > 1 ->\n\
+                \x20     some_function_call(\n\
+                \x20       { alpha: x, beta: x + 1, gamma: x * 2, delta: x - 1, eps: x }\n\
+                \x20     ) or\n\
+                \x20   0\n\
                 \n\
                 fn some_function_call(\n\
-                \x20   p: {alpha: Int, beta: Int, gamma: Int, delta: Int, eps: Int}\n\
+                \x20 p: { alpha: Int, beta: Int, gamma: Int, delta: Int, eps: Int }\n\
                 ) -> Int =\n\
-                \x20   p.alpha\n\
+                \x20 p.alpha\n\
                 \n\
                 f(1)\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
@@ -290,24 +298,24 @@ fn a_long_match_arm_breaks_after_its_arrow() {
 }
 
 /// A postfix chain breaks inside its base, and the base's budget holds back the suffix's
-/// columns: `[...][n]!` here is a list that fits at 80 exactly without `[n]!`, which used to
-/// leave it compact and the line four columns over (Euler 17's `ones`).
+/// columns: `[...][n]!` here is a list that once fit the width exactly without `[n]!`, which
+/// used to leave it compact and the line four columns over (Euler 17's `ones`).
 #[test]
 fn a_postfix_chain_breaks_inside_its_base_with_the_suffix_reserved() {
     let src = "fn ones(n: Int) -> Str =\n    [\"\", \"one\", \"two\", \"three\", \"four\", \"five\", \"six\", \"seven\", \"eight\", \"nine\"][n]!\n\nones(1)\n";
     let want = "fn ones(n: Int) -> Str =\n\
-                \x20   [\n\
-                \x20       \"\",\n\
-                \x20       \"one\",\n\
-                \x20       \"two\",\n\
-                \x20       \"three\",\n\
-                \x20       \"four\",\n\
-                \x20       \"five\",\n\
-                \x20       \"six\",\n\
-                \x20       \"seven\",\n\
-                \x20       \"eight\",\n\
-                \x20       \"nine\"\n\
-                \x20   ][n]!\n\
+                \x20 [\n\
+                \x20   \"\",\n\
+                \x20   \"one\",\n\
+                \x20   \"two\",\n\
+                \x20   \"three\",\n\
+                \x20   \"four\",\n\
+                \x20   \"five\",\n\
+                \x20   \"six\",\n\
+                \x20   \"seven\",\n\
+                \x20   \"eight\",\n\
+                \x20   \"nine\"\n\
+                \x20 ][n]!\n\
                 \n\
                 ones(1)\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
@@ -332,4 +340,44 @@ fn a_nested_negation_keeps_a_space_between_the_signs() {
     assert_eq!(toylang::fmt("-(-5)\n").unwrap(), "- -5\n");
     assert_eq!(toylang::fmt("- -5\n").unwrap(), "- -5\n");
     assert_eq!(toylang::run("- -5\n").unwrap(), toylang::run("-(-5)\n").unwrap());
+}
+
+/// A record field whose value does not fit beside its name drops the value to its own line
+/// one level in, unless the value opens a bracket, which stays on the name's line. Before
+/// this the value's budget ignored the `name: ` prefix, so Euler 19's `weekday` field sat
+/// four columns over the width.
+#[test]
+fn a_record_field_whose_value_does_not_fit_breaks_after_the_name() {
+    let src = "{ month: month == 12 | . -> 1 or month + 1, weekday: (weekday + days_in_month({ month: month, year: year })) % 7, rows: { a: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] } }\n";
+    let want = "{\n\
+                \x20 month: month == 12 | . -> 1 or month + 1,\n\
+                \x20 weekday:\n\
+                \x20   (weekday + days_in_month({ month: month, year: year })) % 7,\n\
+                \x20 rows: {\n\
+                \x20   a: [\n\
+                \x20     1,\n\
+                \x20     2,\n\
+                \x20     3,\n\
+                \x20     4,\n\
+                \x20     5,\n\
+                \x20     6,\n\
+                \x20     7,\n\
+                \x20     8,\n\
+                \x20     9,\n\
+                \x20     10,\n\
+                \x20     11,\n\
+                \x20     12,\n\
+                \x20     13,\n\
+                \x20     14,\n\
+                \x20     15,\n\
+                \x20     16,\n\
+                \x20     17,\n\
+                \x20     18,\n\
+                \x20     19,\n\
+                \x20     20\n\
+                \x20   ]\n\
+                \x20 }\n\
+                }\n";
+    assert_eq!(toylang::fmt(src).unwrap(), want);
+    assert_eq!(toylang::fmt(want).unwrap(), want);
 }

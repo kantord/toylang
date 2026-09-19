@@ -4,10 +4,10 @@
 # lua has proper tail calls in the language. So this program is exactly the contract: every
 # backend runs it to completion and agrees on the answer.
 program: |
-  fn countdown(p: {n: Int, acc: Int}) -> Int =
-      p | p.n <= 0 -> p.acc or countdown({n: p.n - 1, acc: p.acc + 1})
+  fn countdown(p: { n: Int, acc: Int }) -> Int =
+    p | p.n <= 0 -> p.acc or countdown({ n: p.n - 1, acc: p.acc + 1 })
 
-  countdown({n: 100000, acc: 0})
+  countdown({ n: 100000, acc: 0 })
 
 output: |
   100000

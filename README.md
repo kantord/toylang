@@ -18,8 +18,8 @@ the design record is [draft.md](draft.md), and what is still open is tracked in
 of the adults:
 
 ```toylang
-fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users | select(.age >= 18) | .[].name
+fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
+  db.users | select(.age >= 18) | .[].name
 
 adults(parse(stdin))
 ```
@@ -54,11 +54,12 @@ types wire data directly.
 [`examples/shapes.toy`](examples/shapes.toy):
 
 ```toylang
-enum Shape { Point, Circle{r: Int} }
+enum Shape { Point, Circle { r: Int } }
 
-fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0
+fn area_ish(s: Shape) -> Int =
+  s | Circle { r } -> r * r or Point -> 0
 
-{a: area_ish(Shape.point), b: area_ish(circle({r: 3}))}
+{ a: area_ish(Shape.point), b: area_ish(circle({ r: 3 })) }
 ```
 
 ```output
@@ -69,9 +70,9 @@ Match arms chain with `or`; the first that matches wins. The match is closed-wor
 program whose match handles only `Circle`,
 
 ```toylang
-enum Shape { Point, Circle{r: Int} }
+enum Shape { Point, Circle { r: Int } }
 
-fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r
+fn area_ish(s: Shape) -> Int = s | Circle { r } -> r * r
 
 area_ish(Shape.point)
 ```
@@ -79,7 +80,7 @@ area_ish(Shape.point)
 is refused:
 
 ```error
-a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 73)
+a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 76)
 ```
 
 ## Seven backends, kept as falsifiers

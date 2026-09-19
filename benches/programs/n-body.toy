@@ -20,164 +20,173 @@
 # task's plain description and its published initial conditions (positions in AU, velocities
 # in AU per day scaled to per year, masses relative to the Sun), not copied from any
 # reference source.
-type Body = {x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float, m: Float}
+type Body = { x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float, m: Float }
 
-fn newton({x, y}: {x: Float, y: Float}) -> Float =
-    let next = (y + x / y) / 2.0
-    next >= y | . -> y or newton({x: x, y: next})
+fn newton({ x, y }: { x: Float, y: Float }) -> Float =
+  let next = (y + x / y) / 2.0
+  next >= y | . -> y or newton({ x: x, y: next })
 
-fn sqrt(x: Float) -> Float = newton({x: x, y: (x + 1.0) / 2.0})
+fn sqrt(x: Float) -> Float = newton({ x: x, y: (x + 1.0) / 2.0 })
 
-fn solar_mass() -> Float = 4.0 * 3.141592653589793 * 3.141592653589793
+fn solar_mass() -> Float =
+  4.0 * 3.141592653589793 * 3.141592653589793
 
 fn days_per_year() -> Float = 365.24
 
 fn planets() -> Vec<Body> =
-    [
-        {
-            x: 4.841431442464721,
-            y: -1.1603200440274284,
-            z: -0.10362204447112311,
-            vx: 0.001660076642744037 * days_per_year(),
-            vy: 0.007699011184197404 * days_per_year(),
-            vz: -0.0000690460016972063 * days_per_year(),
-            m: 0.0009547919384243266 * solar_mass()
-        },
-        {
-            x: 8.34336671824458,
-            y: 4.124798564124305,
-            z: -0.4035234171143214,
-            vx: -0.002767425107268624 * days_per_year(),
-            vy: 0.004998528012349172 * days_per_year(),
-            vz: 0.000023041729757376393 * days_per_year(),
-            m: 0.0002858859806661308 * solar_mass()
-        },
-        {
-            x: 12.894369562139131,
-            y: -15.111151401698631,
-            z: -0.22330757889265573,
-            vx: 0.002964601375647616 * days_per_year(),
-            vy: 0.0023784717395948095 * days_per_year(),
-            vz: -0.000029658956854023756 * days_per_year(),
-            m: 0.00004366244043351563 * solar_mass()
-        },
-        {
-            x: 15.379697114850917,
-            y: -25.919314609987964,
-            z: 0.17925877295037118,
-            vx: 0.0026806777249038932 * days_per_year(),
-            vy: 0.001628241700382423 * days_per_year(),
-            vz: -0.00009515922545197159 * days_per_year(),
-            m: 0.000051513890204661145 * solar_mass()
-        }
-    ]
+  [
+    {
+      x: 4.841431442464721,
+      y: -1.1603200440274284,
+      z: -0.10362204447112311,
+      vx: 0.001660076642744037 * days_per_year(),
+      vy: 0.007699011184197404 * days_per_year(),
+      vz: -0.0000690460016972063 * days_per_year(),
+      m: 0.0009547919384243266 * solar_mass()
+    },
+    {
+      x: 8.34336671824458,
+      y: 4.124798564124305,
+      z: -0.4035234171143214,
+      vx: -0.002767425107268624 * days_per_year(),
+      vy: 0.004998528012349172 * days_per_year(),
+      vz: 0.000023041729757376393 * days_per_year(),
+      m: 0.0002858859806661308 * solar_mass()
+    },
+    {
+      x: 12.894369562139131,
+      y: -15.111151401698631,
+      z: -0.22330757889265573,
+      vx: 0.002964601375647616 * days_per_year(),
+      vy: 0.0023784717395948095 * days_per_year(),
+      vz: -0.000029658956854023756 * days_per_year(),
+      m: 0.00004366244043351563 * solar_mass()
+    },
+    {
+      x: 15.379697114850917,
+      y: -25.919314609987964,
+      z: 0.17925877295037118,
+      vx: 0.0026806777249038932 * days_per_year(),
+      vy: 0.001628241700382423 * days_per_year(),
+      vz: -0.00009515922545197159 * days_per_year(),
+      m: 0.000051513890204661145 * solar_mass()
+    }
+  ]
 
 fn momentum(
-    {bs, px, py, pz}: {bs: Vec<Body>, px: Float, py: Float, pz: Float}
+  { bs, px, py, pz }: {
+    bs: Vec<Body>,
+    px: Float,
+    py: Float,
+    pz: Float
+  }
 ) -> Body =
-    bs
-        | length(bs) == 0 ->
-                  {
-                      x: 0.0,
-                      y: 0.0,
-                      z: 0.0,
-                      vx: 0.0 - px / solar_mass(),
-                      vy: 0.0 - py / solar_mass(),
-                      vz: 0.0 - pz / solar_mass(),
-                      m: solar_mass()
-                  } or
-              momentum(
-                  {
-                      bs: tail(bs)!,
-                      px: px + bs[0]!.vx * bs[0]!.m,
-                      py: py + bs[0]!.vy * bs[0]!.m,
-                      pz: pz + bs[0]!.vz * bs[0]!.m
-                  }
-              )
+  bs
+  | length(bs) == 0 ->
+      {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        vx: 0.0 - px / solar_mass(),
+        vy: 0.0 - py / solar_mass(),
+        vz: 0.0 - pz / solar_mass(),
+        m: solar_mass()
+      } or
+    momentum(
+      {
+        bs: tail(bs)!,
+        px: px + bs[0]!.vx * bs[0]!.m,
+        py: py + bs[0]!.vy * bs[0]!.m,
+        pz: pz + bs[0]!.vz * bs[0]!.m
+      }
+    )
 
 fn system() -> Vec<Body> =
-    [momentum({bs: planets(), px: 0.0, py: 0.0, pz: 0.0})] + planets()
+  [momentum({ bs: planets(), px: 0.0, py: 0.0, pz: 0.0 })] +
+    planets()
 
-fn kick({b, o}: {b: Body, o: Body}) -> Body =
-    let dx = b.x - o.x
-    let dy = b.y - o.y
-    let dz = b.z - o.z
-    let d2 = dx * dx + dy * dy + dz * dz
-    let mag = 0.01 / (d2 * sqrt(d2))
-    {
-        x: b.x,
-        y: b.y,
-        z: b.z,
-        vx: b.vx - dx * o.m * mag,
-        vy: b.vy - dy * o.m * mag,
-        vz: b.vz - dz * o.m * mag,
-        m: b.m
-    }
+fn kick({ b, o }: { b: Body, o: Body }) -> Body =
+  let dx = b.x - o.x
+  let dy = b.y - o.y
+  let dz = b.z - o.z
+  let d2 = dx * dx + dy * dy + dz * dz
+  let mag = 0.01 / (d2 * sqrt(d2))
+  {
+    x: b.x,
+    y: b.y,
+    z: b.z,
+    vx: b.vx - dx * o.m * mag,
+    vy: b.vy - dy * o.m * mag,
+    vz: b.vz - dz * o.m * mag,
+    m: b.m
+  }
 
-fn pull({b, others}: {b: Body, others: Vec<Body>}) -> Body =
-    others
-        | length(others) == 0 -> b or
-              pull({b: kick({b: b, o: others[0]!}), others: tail(others)!})
+fn pull({ b, others }: { b: Body, others: Vec<Body> }) -> Body =
+  others
+  | length(others) == 0 -> b or
+    pull({ b: kick({ b: b, o: others[0]! }), others: tail(others)! })
 
 fn tick(bs: Vec<Body>) -> Vec<Body> =
-    collect(range(length(bs)))
-        | map(pull({b: bs[.]!, others: bs[:.] + bs[. + 1:]}))
-        | map(
-              {
-                  x: .x + 0.01 * .vx,
-                  y: .y + 0.01 * .vy,
-                  z: .z + 0.01 * .vz,
-                  vx: .vx,
-                  vy: .vy,
-                  vz: .vz,
-                  m: .m
-              }
-          )
+  collect(range(length(bs)))
+  | map(pull({ b: bs[.]!, others: bs[:.] + bs[. + 1:] }))
+  | map(
+      {
+        x: .x + 0.01 * .vx,
+        y: .y + 0.01 * .vy,
+        z: .z + 0.01 * .vz,
+        vx: .vx,
+        vy: .vy,
+        vz: .vz,
+        m: .m
+      }
+    )
 
-fn advance({bs, n}: {bs: Vec<Body>, n: Int}) -> Vec<Body> =
-    n | . == 0 -> bs or advance({bs: tick(bs), n: . - 1})
+fn advance({ bs, n }: { bs: Vec<Body>, n: Int }) -> Vec<Body> =
+  n | . == 0 -> bs or advance({ bs: tick(bs), n: . - 1 })
 
-fn pair({b, o, acc}: {b: Body, o: Body, acc: Float}) -> Float =
-    let dx = b.x - o.x
-    let dy = b.y - o.y
-    let dz = b.z - o.z
-    acc - b.m * o.m / sqrt(dx * dx + dy * dy + dz * dz)
+fn pair({ b, o, acc }: { b: Body, o: Body, acc: Float }) -> Float =
+  let dx = b.x - o.x
+  let dy = b.y - o.y
+  let dz = b.z - o.z
+  acc - b.m * o.m / sqrt(dx * dx + dy * dy + dz * dz)
 
 fn potential(
-    {b, others, acc}: {b: Body, others: Vec<Body>, acc: Float}
+  { b, others, acc }: { b: Body, others: Vec<Body>, acc: Float }
 ) -> Float =
-    others
-        | length(others) == 0 -> acc or
-              potential(
-                  {
-                      b: b,
-                      others: tail(others)!,
-                      acc: pair({b: b, o: others[0]!, acc: acc})
-                  }
-              )
+  others
+  | length(others) == 0 -> acc or
+    potential(
+      {
+        b: b,
+        others: tail(others)!,
+        acc: pair({ b: b, o: others[0]!, acc: acc })
+      }
+    )
 
-fn kinetic({b, acc}: {b: Body, acc: Float}) -> Float =
-    acc + 0.5 * b.m * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
+fn kinetic({ b, acc }: { b: Body, acc: Float }) -> Float =
+  acc + 0.5 * b.m * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
 
-fn energy({bs, acc}: {bs: Vec<Body>, acc: Float}) -> Float =
-    bs
-        | length(bs) == 0 -> acc or
-              energy(
-                  {
-                      bs: tail(bs)!,
-                      acc: potential(
-                          {
-                              b: bs[0]!,
-                              others: tail(bs)!,
-                              acc: kinetic({b: bs[0]!, acc: acc})
-                          }
-                      )
-                  }
-              )
+fn energy({ bs, acc }: { bs: Vec<Body>, acc: Float }) -> Float =
+  bs
+  | length(bs) == 0 -> acc or
+    energy(
+      {
+        bs: tail(bs)!,
+        acc: potential(
+          {
+            b: bs[0]!,
+            others: tail(bs)!,
+            acc: kinetic({ b: bs[0]!, acc: acc })
+          }
+        )
+      }
+    )
 
 jsonlines(
-    [
-        energy({bs: system(), acc: 0.0}),
-        energy({bs: advance({bs: system(), n: parse(stdin)}), acc: 0.0})
-    ]
+  [
+    energy({ bs: system(), acc: 0.0 }),
+    energy(
+      { bs: advance({ bs: system(), n: parse(stdin) }), acc: 0.0 }
+    )
+  ]
 )

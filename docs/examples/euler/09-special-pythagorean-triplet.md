@@ -8,13 +8,13 @@ and flattens with `flatten`, and `first` takes the first (and, for this input, o
 `max` or fold needed here, since the triplet turns out to be unique.
 
 ```toylang
-fn abc({a, b}: {a: Int, b: Int}) -> Int = a * b * (1000 - a - b)
+fn abc({ a, b }: { a: Int, b: Int }) -> Int = a * b * (1000 - a - b)
 
 fn row(a: Int) -> Vec<Int> =
-    collect(range(1000))
-        | select(. > a and . < 1000 - a)
-        | select(a * a + . * . == (1000 - a - .) * (1000 - a - .))
-        | map(abc({a: a, b: .}))
+  collect(range(1000))
+  | select(. > a and . < 1000 - a)
+  | select(a * a + . * . == (1000 - a - .) * (1000 - a - .))
+  | map(abc({ a: a, b: . }))
 
 first(flatten(collect(range(1000)) | select(. >= 1) | map(row(.))))!
 ```

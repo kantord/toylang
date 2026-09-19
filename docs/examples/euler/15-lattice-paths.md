@@ -12,12 +12,14 @@ ceiling by two orders of magnitude. The largest intermediate, `C(39, 19) * 40`, 
 2.8e12, inside jq's 2^53 envelope, so all seven backends agree.
 
 ```toylang
-fn choose_2n_n({n, i, acc}: {n: Int, i: Int, acc: Int64}) -> Int64 =
-    i
-        | . > n -> acc or
-              choose_2n_n({n: n, i: i + 1, acc: acc * i64(n + i) / i64(i)})
+fn choose_2n_n(
+  { n, i, acc }: { n: Int, i: Int, acc: Int64 }
+) -> Int64 =
+  i
+  | . > n -> acc or
+    choose_2n_n({ n: n, i: i + 1, acc: acc * i64(n + i) / i64(i) })
 
-choose_2n_n({n: 20, i: 1, acc: 1})
+choose_2n_n({ n: 20, i: 1, acc: 1 })
 ```
 
 ```output

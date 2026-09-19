@@ -2,7 +2,10 @@
 # never sees the enum declaration, only the built-in type, so every backend keeps reading its
 # native boolean.
 program: |
-  fn id(r: {flag: Bool, xs: Vec<Bool>}) -> {flag: Bool, xs: Vec<Bool>} = r
+  fn id(
+    r: { flag: Bool, xs: Vec<Bool> }
+  ) -> { flag: Bool, xs: Vec<Bool> } =
+    r
 
   id(parse(stdin))
 

@@ -6,11 +6,11 @@ because the program is the expression.
 
 ```toylang
 # Comments start with `#` and run to the end of the line.
-type Pair = {a: Int, b: Int}
+type Pair = { a: Int, b: Int }
 
 fn total(p: Pair) -> Int = p.a + p.b
 
-{sum: total({a: 1, b: 2})}
+{ sum: total({ a: 1, b: 2 }) }
 ```
 
 ```output

@@ -6,7 +6,7 @@ program: |
 
   fn shallow() -> Opt<Opt<Int>> = some(none)
 
-  {a: deep(), b: shallow()}
+  { a: deep(), b: shallow() }
 
 output: |
   {"a":7,"b":null}

@@ -4,7 +4,7 @@
 # step's own parameter is already the whole {acc, x} record), so the receiver's only job is
 # picking the impl by type -- any Vec<Int> value works, its own contents are irrelevant.
 program: |
-  [3]:step({acc: [3]:identity(), x: 3})
+  [3]:step({ acc: [3]:identity(), x: 3 })
 output: |
   [3]
 

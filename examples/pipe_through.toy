@@ -1,3 +1,5 @@
 collect(
-    pipe_through({cmd: "sh", args: ["-c", "cat; echo note >&2"], lines: stdin})
+  pipe_through(
+    { cmd: "sh", args: ["-c", "cat; echo note >&2"], lines: stdin }
+  )
 )

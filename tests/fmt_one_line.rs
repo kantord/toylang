@@ -98,11 +98,11 @@ fn every_kind_of_declaration_renders_on_one_line() {
                fn g(x: Int) -> Int = f({a: x, b: x})\n\
                \n\
                g(1)\n";
-    let want = "type P = {a: Int, b: Int} enum Shape { Circle(Int), Point } \
+    let want = "type P = { a: Int, b: Int } enum Shape { Circle(Int), Point } \
                 trait Area { fn area(s: Shape) -> Int } \
                 impl Area for Shape { fn area(s: Shape) -> Int = s | Circle(r) -> r * r * 3 or 0 } \
                 fn f(p: P) -> Int = p.a * 2 + p.b \
-                fn g(x: Int) -> Int = f({a: x, b: x}) g(1)\n";
+                fn g(x: Int) -> Int = f({ a: x, b: x }) g(1)\n";
     assert_eq!(toylang::fmt_one_line(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), file_form_without_comments(src));
 }

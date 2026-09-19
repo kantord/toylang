@@ -12,90 +12,99 @@
 # task's plain description (the matrix formula and the power iteration), not copied from any
 # reference source.
 program: |
-  fn newton({x, y}: {x: Float, y: Float}) -> Float =
-      let next = (y + x / y) / 2.0
-      next >= y | . -> y or newton({x: x, y: next})
+  fn newton({ x, y }: { x: Float, y: Float }) -> Float =
+    let next = (y + x / y) / 2.0
+    next >= y | . -> y or newton({ x: x, y: next })
 
-  fn sqrt(x: Float) -> Float = newton({x: x, y: (x + 1.0) / 2.0})
+  fn sqrt(x: Float) -> Float = newton({ x: x, y: (x + 1.0) / 2.0 })
 
-  fn a({i, j}: {i: Float, j: Float}) -> Float =
-      1.0 / ((i + j) * (i + j + 1.0) / 2.0 + i + 1.0)
+  fn a({ i, j }: { i: Float, j: Float }) -> Float =
+    1.0 / ((i + j) * (i + j + 1.0) / 2.0 + i + 1.0)
 
-  fn entry({i, j, t}: {i: Float, j: Float, t: Int}) -> Float =
-      t | . == 0 -> a({i: i, j: j}) or a({i: j, j: i})
+  fn entry({ i, j, t }: { i: Float, j: Float, t: Int }) -> Float =
+    t | . == 0 -> a({ i: i, j: j }) or a({ i: j, j: i })
 
   fn row(
-      {u, i, j, fj, t, acc}: {
-          u: Vec<Float>,
-          i: Float,
-          j: Int,
-          fj: Float,
-          t: Int,
-          acc: Float
-      }
+    { u, i, j, fj, t, acc }: {
+      u: Vec<Float>,
+      i: Float,
+      j: Int,
+      fj: Float,
+      t: Int,
+      acc: Float
+    }
   ) -> Float =
-      u
-          | j == length(u) -> acc or
-                row(
-                    {
-                        u: u,
-                        i: i,
-                        j: j + 1,
-                        fj: fj + 1.0,
-                        t: t,
-                        acc: acc + entry({i: i, j: fj, t: t}) * u[j]!
-                    }
-                )
+    u
+    | j == length(u) -> acc or
+      row(
+        {
+          u: u,
+          i: i,
+          j: j + 1,
+          fj: fj + 1.0,
+          t: t,
+          acc: acc + entry({ i: i, j: fj, t: t }) * u[j]!
+        }
+      )
 
   fn times(
-      {u, i, fi, t, out}: {
-          u: Vec<Float>,
-          i: Int,
-          fi: Float,
-          t: Int,
-          out: Vec<Float>
-      }
+    { u, i, fi, t, out }: {
+      u: Vec<Float>,
+      i: Int,
+      fi: Float,
+      t: Int,
+      out: Vec<Float>
+    }
   ) -> Vec<Float> =
-      u
-          | i == length(u) -> out or
-                times(
-                    {
-                        u: u,
-                        i: i + 1,
-                        fi: fi + 1.0,
-                        t: t,
-                        out: out + [row({u: u, i: fi, j: 0, fj: 0.0, t: t, acc: 0.0})]
-                    }
-                )
+    u
+    | i == length(u) -> out or
+      times(
+        {
+          u: u,
+          i: i + 1,
+          fi: fi + 1.0,
+          t: t,
+          out:
+            out +
+              [row({ u: u, i: fi, j: 0, fj: 0.0, t: t, acc: 0.0 })]
+        }
+      )
 
   fn times_a(u: Vec<Float>) -> Vec<Float> =
-      times({u: u, i: 0, fi: 0.0, t: 0, out: []})
+    times({ u: u, i: 0, fi: 0.0, t: 0, out: [] })
 
   fn times_at(u: Vec<Float>) -> Vec<Float> =
-      times({u: u, i: 0, fi: 0.0, t: 1, out: []})
+    times({ u: u, i: 0, fi: 0.0, t: 1, out: [] })
 
   fn times_ata(u: Vec<Float>) -> Vec<Float> = times_at(times_a(u))
 
-  fn power({u, k}: {u: Vec<Float>, k: Int}) -> {u: Vec<Float>, v: Vec<Float>} =
-      let v = times_ata(u)
-      let w = times_ata(v)
-      k | . == 1 -> {u: w, v: v} or power({u: w, k: . - 1})
+  fn power(
+    { u, k }: { u: Vec<Float>, k: Int }
+  ) -> { u: Vec<Float>, v: Vec<Float> } =
+    let v = times_ata(u)
+    let w = times_ata(v)
+    k | . == 1 -> { u: w, v: v } or power({ u: w, k: . - 1 })
 
   fn dot(
-      {u, v, i, acc}: {u: Vec<Float>, v: Vec<Float>, i: Int, acc: Float}
+    { u, v, i, acc }: {
+      u: Vec<Float>,
+      v: Vec<Float>,
+      i: Int,
+      acc: Float
+    }
   ) -> Float =
-      u
-          | i == length(u) -> acc or
-                dot({u: u, v: v, i: i + 1, acc: acc + u[i]! * v[i]!})
+    u
+    | i == length(u) -> acc or
+      dot({ u: u, v: v, i: i + 1, acc: acc + u[i]! * v[i]! })
 
   fn ones(n: Int) -> Vec<Float> = collect(range(n)) | map(1.0)
 
   fn norm(n: Int) -> Float =
-      let r = power({u: ones(n), k: 10})
-      sqrt(
-          dot({u: r.u, v: r.v, i: 0, acc: 0.0}) /
-              dot({u: r.v, v: r.v, i: 0, acc: 0.0})
-      )
+    let r = power({ u: ones(n), k: 10 })
+    sqrt(
+      dot({ u: r.u, v: r.v, i: 0, acc: 0.0 }) /
+        dot({ u: r.v, v: r.v, i: 0, acc: 0.0 })
+    )
 
   norm(parse(stdin))
 

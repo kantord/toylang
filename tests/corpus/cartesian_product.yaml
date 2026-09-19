@@ -2,7 +2,7 @@
 # product, and this is byte for byte what jq 1.8.2 prints for `[.a[] * .b[]]` on the same
 # input.
 program: |
-  fn f(r: {a: Vec<Int>, b: Vec<Int>}) -> Vec<Int> = r.a * r.b
+  fn f(r: { a: Vec<Int>, b: Vec<Int> }) -> Vec<Int> = r.a * r.b
 
   f(parse(stdin))
 

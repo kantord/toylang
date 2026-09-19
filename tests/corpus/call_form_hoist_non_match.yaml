@@ -2,14 +2,14 @@
 # caller can use the result where the inferred type is expected (gh:152). A payload pattern
 # rebinds `.` to the payload, exactly as in an ordinary match.
 program: |
-  enum Shape { Point, Circle{r: Int} }
+  enum Shape { Point, Circle { r: Int } }
 
-  fn area = Shape(Circle{r} -> r * r or Point -> 0)
+  fn area = Shape(Circle { r } -> r * r or Point -> 0)
 
   {
-      c: area(Shape.circle({r: 3})),
-      p: area(Shape.point),
-      doubled: area(Shape.circle({r: 4})) * 2
+    c: area(Shape.circle({ r: 3 })),
+    p: area(Shape.point),
+    doubled: area(Shape.circle({ r: 4 })) * 2
   }
 
 output: |

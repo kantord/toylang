@@ -5,7 +5,7 @@
 # an exact key match (src/input.rs) before any backend runs, so a field whose JSON key differs
 # only in case is refused uniformly rather than silently filled on Go alone.
 program: |
-  fn get_name(db: {name: Str}) -> Str = db.name
+  fn get_name(db: { name: Str }) -> Str = db.name
 
   get_name(parse(stdin))
 

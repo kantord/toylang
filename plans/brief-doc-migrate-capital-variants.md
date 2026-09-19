@@ -6,9 +6,9 @@ around them.
 ## The rule, verified today
 
 ```toylang
-enum Shape { Point, Circle{r: Int} }
+enum Shape { Point, Circle { r: Int } }
 
-circle({r: 1})
+circle({ r: 1 })
 ```
 ```
 {"Circle":{"r":1}}
@@ -19,9 +19,9 @@ used to build/match a value is the same name lowercased (`circle{...}`, or a bar
 for a unit variant). A declaration that still starts lowercase is refused, verified today:
 
 ```toylang
-enum Shape { point, circle{r: Int} }
+enum Shape { point, circle { r: Int } }
 
-circle({r: 1})
+circle({ r: 1 })
 ```
 ```
 toylang: a variant name starts with a capital letter; declare `point` of `Shape` as `Point`,

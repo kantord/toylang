@@ -98,7 +98,7 @@ fn shallow() -> Opt<Opt<Int>> = some(none)
 
 fn absent() -> Opt<Opt<Int>> = none
 
-{a: deep(), b: shallow(), c: absent()}
+{ a: deep(), b: shallow(), c: absent() }
 ```
 
 ```output

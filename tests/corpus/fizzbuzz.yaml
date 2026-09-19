@@ -1,14 +1,14 @@
 program: |
   # FizzBuzz to 100: one transformation, one string, printed as lines.
   join_lines(
-      collect(range(100))
-          | map(. + 1)
-          | map(
-                . % 15 == 0 -> "FizzBuzz" or
-                    . % 3 == 0 -> "Fizz" or
-                    . % 5 == 0 -> "Buzz" or
-                    str(.)
-            )
+    collect(range(100))
+    | map(. + 1)
+    | map(
+        . % 15 == 0 -> "FizzBuzz" or
+        . % 3 == 0 -> "Fizz" or
+        . % 5 == 0 -> "Buzz" or
+        str(.)
+      )
   )
 
 output: |

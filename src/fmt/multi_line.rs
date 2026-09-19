@@ -21,9 +21,10 @@ use crate::ast::{
     TraitDecl, TraitMethodSig, TypeExpr,
 };
 
-const WIDTH: usize = 80;
+/// Maintainer ruling, 2026-09-19: 69 columns, not 80.
+const WIDTH: usize = 69;
 
-pub(super) const INDENT: usize = 4;
+pub(super) const INDENT: usize = 2;
 
 fn fits(s: &str, indent: usize) -> bool {
     indent + s.chars().count() <= WIDTH
@@ -141,7 +142,7 @@ pub(super) fn print_sig(
 fn print_param_wrapped(p: &Param, indent: usize) -> String {
     let shape = match &p.shape {
         ParamShape::Name(name, _) => name.clone(),
-        ParamShape::Fields(f) => format!("{{{}}}", print_fields_pattern(f)),
+        ParamShape::Fields(f) => format!("{{ {} }}", print_fields_pattern(f)),
     };
     format!("{shape}: {}", print_type_wrapped(&p.ty, indent))
 }
@@ -313,10 +314,9 @@ fn wrap_delim(open: &str, items: &[String], close: &str, indent: usize) -> Strin
 }
 
 /// An arm at `indent` that does not fit there (with the ` or` after it, when one follows)
-/// breaks after its `->`, its body dropping to `body_column`: one level below the column the
-/// chain's continuation arms sit at, so a broken body is always visibly deeper than the arm
-/// that follows it (maintainer ruling, 2026-09-19). A bare default arm has no `->` and its
-/// body breaks in place.
+/// breaks after its `->`, its body dropping to `body_column`, one level in from the arms, so a
+/// broken body is visibly deeper than the arm that follows it. A bare default arm has no `->`
+/// and its body breaks in place.
 fn print_match_arm_wrapped(
     arm: &MatchArm,
     is_last: bool,
@@ -407,17 +407,19 @@ fn print_expr_fitting(e: &Expr, ctx: Ctx, indent: usize, reserve: usize) -> Stri
 fn wrap_delimited(e: &Expr, indent: usize) -> Option<String> {
     let inner = indent + INDENT;
     Some(match e {
+        // Each item's budget holds back the `,` `wrap_delim` puts after it, which alone let a
+        // line overflow by one.
         Expr::VecLit { items, .. } => {
             let rendered: Vec<String> = items
                 .iter()
-                .map(|i| print_expr_wrapped(i, Ctx::Expr(0), inner))
+                .map(|i| print_expr_fitting(i, Ctx::Expr(0), inner, 1))
                 .collect();
             wrap_delim("[", &rendered, "]", indent)
         }
         Expr::RecordLit { fields, .. } => {
             let rendered: Vec<String> = fields
                 .iter()
-                .map(|(n, _, v)| format!("{n}: {}", print_expr_wrapped(v, Ctx::Expr(0), inner)))
+                .map(|(n, _, v)| print_field(n, v, inner))
                 .collect();
             wrap_delim("{", &rendered, "}", indent)
         }
@@ -501,6 +503,25 @@ fn wrap_postfix(e: &Expr, indent: usize, reserve: usize) -> Option<String> {
     })
 }
 
+/// A record field at `indent`: `name: value` when the value's first line fits after the
+/// name (so a value that opens a bracket keeps the bracket on the name's line); otherwise the
+/// value drops to its own line one level in, the way a body drops below its signature. The
+/// `name: ` prefix was not in the value's budget before, so a value that fit by exactly that
+/// width overflowed (Euler 19's `weekday`).
+fn print_field(name: &str, value: &Expr, indent: usize) -> String {
+    let beside = print_expr_fitting(value, Ctx::Expr(0), indent, 1);
+    let first_line = beside.lines().next().unwrap_or_default();
+    if fits(&format!("{name}: {first_line}"), indent + 1) {
+        return format!("{name}: {beside}");
+    }
+    let inner = indent + INDENT;
+    format!(
+        "{name}:\n{}{}",
+        pad(inner),
+        print_expr_fitting(value, Ctx::Expr(0), inner, 1)
+    )
+}
+
 fn print_postfix_base(base: &Expr, indent: usize, reserve: usize) -> String {
     print_expr_fitting(base, Ctx::Atom, indent, reserve)
 }
@@ -531,33 +552,33 @@ fn wrap_pipe(e: &Expr, indent: usize, reserve: usize) -> String {
         // just fits alone overruns the line by exactly that prefix -- and a stage that
         // wraps internally hangs its closing bracket left of its own opener.
         let reserve = if i == last { reserve } else { 0 };
-        let stage_str =
-            print_expr_fitting(stage, Ctx::Expr(PIPE_RIGHT), indent + INDENT + 2, reserve);
+        // Each `|` sits at the subject's own column (maintainer ruling, 2026-09-19), so the
+        // stages read as a list under their head rather than a continuation of it.
+        let stage_str = print_expr_fitting(stage, Ctx::Expr(PIPE_RIGHT), indent + 2, reserve);
         out.push('\n');
-        out.push_str(&pad(indent + INDENT));
+        out.push_str(&pad(indent));
         out.push_str("| ");
         out.push_str(&stage_str);
     }
     out
 }
 
-/// The first arm stays at `indent`, where the chain began; every later arm sits one level in.
+/// Every arm sits at `indent`, the column the first arm's text began at (maintainer ruling,
+/// 2026-09-19), and a body that breaks after its `->` goes one level in from there.
 fn wrap_match(arms: &[MatchArm], indent: usize, reserve: usize) -> String {
     let n = arms.len();
     let mut out = String::new();
     for (i, a) in arms.iter().enumerate() {
-        let column = if i == 0 { indent } else { indent + INDENT };
         if i > 0 {
             out.push_str(" or\n");
-            out.push_str(&pad(column));
+            out.push_str(&pad(indent));
         }
         let reserve = if i + 1 == n { reserve } else { 0 };
-        let body_column = indent + 2 * INDENT;
         out.push_str(&print_match_arm_wrapped(
             a,
             i + 1 == n,
-            column,
-            body_column,
+            indent,
+            indent + INDENT,
             reserve,
         ));
     }

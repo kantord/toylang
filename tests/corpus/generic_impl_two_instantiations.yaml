@@ -4,11 +4,11 @@
 # a separate impl block per element type the way a non-generic impl would.
 program: |
   trait Peek {
-      fn peek(s: Self) -> Self
+    fn peek(s: Self) -> Self
   }
 
   impl<T> Peek for Vec<T> {
-      fn peek(s: Self) -> Self = reverse(s)
+    fn peek(s: Self) -> Self = reverse(s)
   }
 
   str([1, 2, 3]:peek()[0]!) + ["a", "b"]:peek()[0]!

@@ -1,7 +1,8 @@
 # The same layout question one step earlier: the projection stops at the record rather than
 # reading through it, so the result is a Vec of records that has to be spread into columns.
 program: |
-  fn inner(db: Vec<{a: {b: Str}, z: Int}>) -> Vec<{b: Str}> = db[].a
+  fn inner(db: Vec<{ a: { b: Str }, z: Int }>) -> Vec<{ b: Str }> =
+    db[].a
 
   inner(parse(stdin))
 

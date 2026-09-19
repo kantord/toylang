@@ -4,17 +4,17 @@
 # codegen, not just parsing (an earlier version of this test impl'd an undeclared type and only
 # passed because nothing resolved it).
 program: |
-  type Circle = {r: Int}
+  type Circle = { r: Int }
 
   trait Area {
-      fn area(s: Self) -> Int
+    fn area(s: Self) -> Int
   }
 
   impl Area for Circle {
-      fn area(s: Self) -> Int = s.r * s.r
+    fn area(s: Self) -> Int = s.r * s.r
   }
 
-  {r: 3}:area()
+  { r: 3 }:area()
 
 output: |
   9

@@ -1,7 +1,8 @@
 # The record spread inside the Vec-of-Vecs walk, which is the two paths combined rather than
 # either alone.
 program: |
-  fn deep(db: Vec<Vec<{a: {b: Int}}>>) -> Vec<Vec<Int>> = db[][].a.b
+  fn deep(db: Vec<Vec<{ a: { b: Int } }>>) -> Vec<Vec<Int>> =
+    db[][].a.b
 
   deep(parse(stdin))
 

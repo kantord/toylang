@@ -28,7 +28,7 @@ null
 The first entry is a value like any other, records included:
 
 ```toylang
-first([{n: 1}, {n: 2}])!
+first([{ n: 1 }, { n: 2 }])!
 ```
 
 ```output

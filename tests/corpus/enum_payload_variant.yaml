@@ -1,9 +1,9 @@
 # A payload variant is the single-key wrapper (ADR 0009), constructed by ordinary application
 # of the constructor an enum declaration derives.
 program: |
-  enum Shape { Point, Circle{r: Int} }
+  enum Shape { Point, Circle { r: Int } }
 
-  circle({r: 1})
+  circle({ r: 1 })
 
 output: |
   {"Circle":{"r":1}}

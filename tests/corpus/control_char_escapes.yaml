@@ -4,7 +4,7 @@
 # runtime's hand-rolled JSON decoder had no \u handling at all until this case caught it --
 # every other backend uses a library that already had it.
 program: |
-  fn tag(db: {tag: Str}) -> Str = db.tag
+  fn tag(db: { tag: Str }) -> Str = db.tag
 
   tag(parse(stdin))
 

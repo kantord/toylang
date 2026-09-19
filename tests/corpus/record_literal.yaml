@@ -1,7 +1,7 @@
 # Components come out in the order the literal declares them: order is per-value metadata
 # the printer reads off the type it was built with, never part of the type's identity.
 program: |
-  {b: 2, a: 1}
+  { b: 2, a: 1 }
 
 output: |
   {"b":2,"a":1}

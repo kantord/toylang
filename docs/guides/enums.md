@@ -11,12 +11,12 @@ because that pair is exactly the enum encoding: unit variants are strings, paylo
 are wrappers.
 
 ```toylang
-enum Msg { Ping, Quit, Text{body: Str} }
+enum Msg { Ping, Quit, Text { body: Str } }
 
 fn render(m: Msg) -> Str =
-    m | Ping -> "*ping*" or Quit -> "*quit*" or Text -> .body
+  m | Ping -> "*ping*" or Quit -> "*quit*" or Text -> .body
 
-render(text({body: "hi"}))
+render(text({ body: "hi" }))
 ```
 
 ```output

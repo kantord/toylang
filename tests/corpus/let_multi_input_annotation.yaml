@@ -4,10 +4,10 @@
 # function (issue #150). The annotation types the same stdin the body reads, so the run
 # validates the fixture against it just as it would against an inferred type.
 program: |
-  fn f(p: {x: Int, y: Int}) -> Int =
-      let a = p.x * 2
-      let b = p.y * 3
-      a + b
+  fn f(p: { x: Int, y: Int }) -> Int =
+    let a = p.x * 2
+    let b = p.y * 3
+    a + b
 
   f(parse(stdin))
 

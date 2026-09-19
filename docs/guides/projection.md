@@ -3,7 +3,7 @@
 Reading a field out of every entry of a dimension has one preferred spelling:
 
 ```toylang
-[{name: "ada"}, {name: "bo"}][].name
+[{ name: "ada" }, { name: "bo" }][].name
 ```
 
 ```output
@@ -22,8 +22,8 @@ language teaches that job through the spelling that is only that job.
 computing an expression:
 
 ```toylang
-[{name: "ada", age: 36}, {name: "bo", age: 9}]
-    | map({name: .name, greeting: "hello " + .name})
+[{ name: "ada", age: 36 }, { name: "bo", age: 9 }]
+| map({ name: .name, greeting: "hello " + .name })
 ```
 
 ```output

@@ -6,7 +6,7 @@ program: |
 
   fn nbig() -> Int64 = -600851475143
 
-  {q: big() / 71, r: big() % 71, nq: nbig() / 71, nr: nbig() % 71}
+  { q: big() / 71, r: big() % 71, nq: nbig() / 71, nr: nbig() % 71 }
 
 output: |
   {"q":8462696833,"r":0,"nq":-8462696833,"nr":0}

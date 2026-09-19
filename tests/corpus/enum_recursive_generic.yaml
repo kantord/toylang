@@ -8,8 +8,8 @@ program: |
   fn label(t: Tree<Str>) -> Str = t | Node -> "node" or Leaf -> .
 
   {
-      shape: Tree.node([Tree.leaf("a"), Tree.node([Tree.leaf("b")])]),
-      top: label(Tree.leaf("x"))
+    shape: Tree.node([Tree.leaf("a"), Tree.node([Tree.leaf("b")])]),
+    top: label(Tree.leaf("x"))
   }
 
 output: |

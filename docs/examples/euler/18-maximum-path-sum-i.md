@@ -15,21 +15,25 @@ is left. Branching top-down instead would revisit the same cell many times over.
 best path is 5 -> 8 -> 9 -> 6, summing to 28.
 
 ```toylang
-fn merge_row({row, below}: {row: Vec<Int>, below: Vec<Int>}) -> Vec<Int> =
-    collect(range(length(row))) | map(row[.]! + max(below[.:. + 2])!)
+fn merge_row(
+  { row, below }: { row: Vec<Int>, below: Vec<Int> }
+) -> Vec<Int> =
+  collect(range(length(row))) | map(row[.]! + max(below[.:. + 2])!)
 
-fn collapse({rows, acc}: {rows: Vec<Vec<Int>>, acc: Vec<Int>}) -> Int =
-    rows
-        | length(rows) == 0 -> acc[0]! or
-              collapse(
-                  {
-                      rows: tail(rows)!,
-                      acc: merge_row({row: rows[0]!, below: acc})
-                  }
-              )
+fn collapse(
+  { rows, acc }: { rows: Vec<Vec<Int>>, acc: Vec<Int> }
+) -> Int =
+  rows
+  | length(rows) == 0 -> acc[0]! or
+    collapse(
+      {
+        rows: tail(rows)!,
+        acc: merge_row({ row: rows[0]!, below: acc })
+      }
+    )
 
 fn triangle_max(rows: Vec<Vec<Int>>) -> Int =
-    collapse({rows: reverse(rows[:-1]), acc: rows[-1]!})
+  collapse({ rows: reverse(rows[:-1]), acc: rows[-1]! })
 
 triangle_max(parse(stdin))
 ```

@@ -24,9 +24,10 @@ program's functions, at the names and runtime shapes the JS backend gives them, 
 declarations. This program exercises every shape it can name:
 
 ```toylang
-enum Shape { Point, Circle{r: Int} }
+enum Shape { Point, Circle { r: Int } }
 
-fn area_ish(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0
+fn area_ish(s: Shape) -> Int =
+  s | Circle { r } -> r * r or Point -> 0
 
 fn greet(who: Str) -> Str = "hello " + who
 
@@ -34,23 +35,24 @@ fn total(v: Vec<Int>) -> Int = sum(v)
 
 fn bump(x: Opt<Int>) -> Opt<Int> = x
 
-fn area(r: {w: Int, h: Int}) -> Int = r.w * r.h
+fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h
 
 fn big(x: Int64) -> Int64 = x
 
-fn positive(x: Int) -> Result<Int, Str> = x | . > 0 -> ok(.) or err("no")
+fn positive(x: Int) -> Result<Int, Str> =
+  x | . > 0 -> ok(.) or err("no")
 
 fn half(x: Float) -> Float = x / 2.0
 
 {
-    a: area_ish(circle({r: 3})),
-    g: greet("bob"),
-    t: total([1, 2]),
-    b: bump(some(5)),
-    r: area({w: 2, h: 3}),
-    i: big(i64(7)),
-    o: positive(1),
-    h: half(3.0)
+  a: area_ish(circle({ r: 3 })),
+  g: greet("bob"),
+  t: total([1, 2]),
+  b: bump(some(5)),
+  r: area({ w: 2, h: 3 }),
+  i: big(i64(7)),
+  o: positive(1),
+  h: half(3.0)
 }
 ```
 

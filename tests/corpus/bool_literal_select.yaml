@@ -1,7 +1,10 @@
 # A literal is a predicate wherever a comparison is one: `select(true)` keeps everything and
 # `select(false)` keeps nothing.
 program: |
-  {kept: [1, 2, 3] | select(true), dropped: [1, 2, 3] | select(false)}
+  {
+    kept: [1, 2, 3] | select(true),
+    dropped: [1, 2, 3] | select(false)
+  }
 
 output: |
   {"kept":[1,2,3],"dropped":[]}

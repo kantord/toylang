@@ -3,11 +3,16 @@
 # inferred from the body, and each arm resolves against that enum's variants. The whole call
 # form is sugar for a `Match` over the implicit parameter.
 program: |
-  enum Msg { Ping, Quit, Text{body: Str} }
+  enum Msg { Ping, Quit, Text { body: Str } }
 
-  fn render = Msg(Ping -> "*ping*" or Quit -> "*quit*" or Text{body} -> body)
+  fn render =
+    Msg(Ping -> "*ping*" or Quit -> "*quit*" or Text { body } -> body)
 
-  {a: render(Msg.ping), b: render(Msg.quit), c: render(Msg.text({body: "hi"}))}
+  {
+    a: render(Msg.ping),
+    b: render(Msg.quit),
+    c: render(Msg.text({ body: "hi" }))
+  }
 
 output: |
   {"a":"*ping*","b":"*quit*","c":"hi"}

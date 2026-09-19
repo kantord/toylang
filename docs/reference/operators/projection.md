@@ -4,7 +4,7 @@
 [selection](specs.md) chooses which entries.
 
 ```toylang
-{name: "ada", age: 36}.age
+{ name: "ada", age: 36 }.age
 ```
 
 ```output
@@ -22,7 +22,7 @@ Over a dimension of records, `[].field` is the projection spelling: it distribut
 projection over a kept dimension:
 
 ```toylang
-[{n: 1}, {n: 2}][].n
+[{ n: 1 }, { n: 2 }][].n
 ```
 
 ```output

@@ -3,8 +3,8 @@
 # forced a whole-record read out of the struct-of-arrays cursor `map` binds `.` to, which native
 # cannot do (issue #40). `.readings[0]` is the field-then-index shape that surfaced it.
 program: |
-  [{valid: 1 == 2, readings: [5]}, {valid: 1 == 1, readings: [1]}]
-      | map(.valid -> .readings[0]! or any() -> 0)
+  [{ valid: 1 == 2, readings: [5] }, { valid: 1 == 1, readings: [1] }]
+  | map(.valid -> .readings[0]! or any() -> 0)
 
 output: |
   [0,1]

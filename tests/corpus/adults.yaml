@@ -2,8 +2,8 @@
 # something the output cannot: JavaScript hoists, Go declares a struct per record type,
 # and Python needs no declarations at all.
 program: |
-  fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-      db.users | select(.age >= 18) | .[].name
+  fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
+    db.users | select(.age >= 18) | .[].name
 
   adults(parse(stdin))
 

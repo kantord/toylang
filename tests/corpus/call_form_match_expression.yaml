@@ -2,10 +2,10 @@
 # (gh:152): inside a mapper body `.` is the element, and `Msg(...)` is sugar for a `Match` over
 # it. The checker resolves each arm against the enum the name spells.
 program: |
-  enum Msg { Ping, Quit, Text{body: Str} }
+  enum Msg { Ping, Quit, Text { body: Str } }
 
-  [Msg.ping, Msg.quit, Msg.text({body: "hi"})]
-      | map(Msg(Ping -> "ping" or Quit -> "quit" or Text -> "text"))
+  [Msg.ping, Msg.quit, Msg.text({ body: "hi" })]
+  | map(Msg(Ping -> "ping" or Quit -> "quit" or Text -> "text"))
 
 output: |
   ["ping","quit","text"]

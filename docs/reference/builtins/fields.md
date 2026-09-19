@@ -7,7 +7,7 @@ same type" spelled with fields in a different order can disagree here -- each ca
 checked order, and `fields` reads it off.
 
 ```toylang
-fields({name: "ada", age: 36})
+fields({ name: "ada", age: 36 })
 ```
 
 ```output
@@ -17,7 +17,7 @@ fields({name: "ada", age: 36})
 The order is the type's, not the literal's alphabetization or any other convention:
 
 ```toylang
-fields({z: 1, a: 2, m: 3})
+fields({ z: 1, a: 2, m: 3 })
 ```
 
 ```output

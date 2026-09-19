@@ -3,7 +3,7 @@
 # once, centrally, before any backend runs (see run_on in src/lib.rs), so every backend refuses
 # identically rather than six JSON parsers each deciding this on their own.
 program: |
-  fn tag(db: {tag: Str}) -> Str = db.tag
+  fn tag(db: { tag: Str }) -> Str = db.tag
 
   tag(parse(stdin))
 
