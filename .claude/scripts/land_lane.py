@@ -157,6 +157,35 @@ def retrigger(n: str, kind: str, evidence_path: Path) -> None:
     # <patch-path>` again, the same way it does for any other dispatch.
 
 
+
+def regenerate_generated(d: Path, log) -> bool:
+    """Regenerate GENERATED files in worktree d and verify the result.
+    Shared by the generated-conflict path in land_one and by land-patch,
+    so there is a single copy of the sequence. The write pass (cargo nextest
+    + cargo insta accept) is silent; only the verifying run is appended to
+    `log` (an open file object). Returns True when the verify run is green."""
+    run(["cargo", "nextest", "run", "-E", REGEN_TESTS], cwd=d,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    run(["cargo", "insta", "accept"], cwd=d,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    regen_rc = run(["cargo", "nextest", "run", "-E", REGEN_TESTS], cwd=d,
+                    stdout=log, stderr=subprocess.STDOUT).returncode
+    return regen_rc == 0
+
+
+def apply_patch_excluding_generated(d: Path, patch_file: Path, log) -> bool:
+    """`git am` the dispatch patch onto worktree d, dropping hunks for every
+    GENERATED path. `git am` forwards each `--exclude=<path>` to `git apply`,
+    which discards those hunks -- so a stale generated hunk (main rewrites
+    corpus.json on nearly every landing) can never fail the whole am. The
+    non-generated hunks still apply normally. Returns True when am succeeds.
+    """
+    cmd = ["git", "-C", str(d), "am"] + [
+        f"--exclude={p}" for p in sorted(GENERATED)
+    ] + [str(patch_file)]
+    return run(cmd, stdout=log, stderr=subprocess.STDOUT).returncode == 0
+
+
 def land_one(n: str) -> bool:
     """Row/issue identifier already checked out at $LANES/issue-<n> on
     branch issue-<n>. Returns True if it landed on main (pushed), False for
@@ -277,13 +306,8 @@ def land_one(n: str) -> bool:
             run(["git", "-C", str(pdir), "checkout", "--ours", "--", *conflicted])
             run(["git", "-C", str(pdir), "add", *conflicted])
             with open(gate_log, "a") as f:
-                run(["cargo", "nextest", "run", "-E", REGEN_TESTS], cwd=pdir,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                run(["cargo", "insta", "accept"], cwd=pdir,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                regen_rc = run(["cargo", "nextest", "run", "-E", REGEN_TESTS], cwd=pdir,
-                                stdout=f, stderr=subprocess.STDOUT).returncode
-            if regen_rc == 0:
+                regen_ok = regenerate_generated(pdir, f)
+            if regen_ok:
                 run(["git", "-C", str(pdir), "add", *conflicted])
                 run(["git", "-C", str(pdir), "commit", "-q", "--no-edit", "-F", str(msg_file)])
             else:
@@ -495,14 +519,15 @@ def cmd_land_patch(args: list[str]) -> int:
     run(["git", "worktree", "add", "-b", branch, str(d), "main", "-q"], cwd=REPO)
     am_log = LOG_DIR / f"land-patch-am-issue-{n}.log"
     with open(am_log, "w") as f:
-        am_rc = run(["git", "-C", str(d), "am", str(patch_file)],
-                     stdout=f, stderr=subprocess.STDOUT).returncode
-    if am_rc != 0:
+        am_ok = apply_patch_excluding_generated(d, patch_file, f)
+    if not am_ok:
         # The patch was generated against whatever commit was HEAD when
         # simple_dispatch.py cloned -- main has very likely moved since. A
         # clean git-am failure here means real drift, not a bug in the
         # patch itself; route it through the SAME retry/escalation path as
-        # any other landing failure rather than a bespoke one.
+        # any other landing failure rather than a bespoke one. (GENERATED
+        # hunks are excluded above, so a stale generated hunk can never
+        # reach this branch -- only a real, non-generated drift does.)
         run(["git", "-C", str(d), "am", "--abort"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         run(["git", "worktree", "remove", "--force", str(d)], cwd=REPO,
@@ -512,6 +537,28 @@ def cmd_land_patch(args: list[str]) -> int:
         retrigger(n, "patch from simple_dispatch.py did not apply cleanly onto current main", am_log)
         fire_tick()
         return 1
+    # The am dropped stale GENERATED hunks, so the lane's generated files
+    # may be behind what the rest of the patch implies. Regenerate them in
+    # the lane worktree before landing -- the SAME sequence the generated-
+    # conflict path in land_one uses -- and commit the result only if it
+    # changed anything.
+    with open(am_log, "a") as f:
+        regen_ok = regenerate_generated(d, f)
+    if not regen_ok:
+        run(["git", "-C", str(d), "am", "--abort"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        run(["git", "worktree", "remove", "--force", str(d)], cwd=REPO,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        run(["git", "branch", "-D", branch], cwd=REPO,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        retrigger(n, "generated-file regeneration failed", am_log)
+        fire_tick()
+        return 1
+    run(["git", "-C", str(d), "add", *sorted(GENERATED)])
+    if run(["git", "-C", str(d), "diff", "--cached", "--quiet"],
+           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+        run(["git", "-C", str(d), "commit", "-q", "-m",
+             f"Regenerate generated files for gh:{n}"])
     any_green = land_one(n)
     fire_tick()
     return 0 if any_green else 1
