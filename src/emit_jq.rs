@@ -756,7 +756,22 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             }
             // The source already materialized, so the exit has nothing left to do.
             Builtin::Collect => expr(enums, arg),
-            Builtin::Length => format!("({} | length)", expr(enums, arg)),
+            // Reading a Select's length directly reads the un-densified survivor
+            // stream: jq's `reduce` counts the filter's outputs in one pass, so the
+            // `[...]` survivor array is never materialized. Every other consumer
+            // still gets the dense array from `expr`, so this is the one lazy path.
+            Builtin::Length => {
+                if let Kind::Select { source, param, pred } = &arg.kind {
+                    format!(
+                        "(reduce ({}[] | . as {} | select({})) as $x (0; . + 1))",
+                        expr(enums, source),
+                        local(*param),
+                        expr(enums, pred)
+                    )
+                } else {
+                    format!("({} | length)", expr(enums, arg))
+                }
+            },
             // jq's own `.[1:]` on an empty array is `[]`, not null; toylang's tail needs the
             // tagged Opt shape instead, so both cases are spelled out rather than borrowed.
             Builtin::Tail => {
@@ -894,6 +909,26 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::Index {
             base, index, depth, ..
         } => {
+            // Direct index into a Select reads the un-densified survivor stream without
+            // materializing the `[...]` array first. jq's `nth` has no "from the end"
+            // form and rejects negative indices outright, so a negative index is first
+            // converted to a forward one against the survivor count (a scalar `reduce`,
+            // never an array); a forward index that runs past the end is `null`, the same
+            // was-not-there answer `.[i]` gives, so the Opt tagging is unchanged.
+            if *depth == 0 {
+                if let Kind::Select { source, param, pred } = &base.kind {
+                    let stream = format!(
+                        "{}[] | . as {} | select({})",
+                        expr(enums, source),
+                        local(*param),
+                        expr(enums, pred)
+                    );
+                    let idx = expr(enums, index);
+                    return format!(
+                        "(({idx}) as $i |                          (if $i < 0 then (reduce ({stream}) as $x (0; . + 1)) as $len | ($len + $i)                           else ($i) end) as $k |                          (if $k < 0 then \"None\"                           else (nth($k; {stream}) as $e | if $e == null then \"None\" else {{Some: $e}} end) end))"
+                    );
+                }
+            }
             let at = format!(
                 "(.[{}] as $e | if $e == null then \"None\" else {{Some: $e}} end)",
                 expr(enums, index)
