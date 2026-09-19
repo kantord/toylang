@@ -88,3 +88,15 @@ passes.
 Out of scope: no new `Type::Vec`-adjacent value kind, no syntax change, no checker change, no
 change to `select`'s result order or elements -- this is a backend-representation optimization
 only, scoped to Lua.
+
+## Ruled pattern (2026-09-19, select-lazy-materialization-convergence-ruling, option a)
+
+Mirror Python's landed lazy Select: read `src/emit_py.rs` lines 137-184 (`TLSEL_HELPER`, class
+`TlSel`: src/pred/idx/dense, `_build` computes survivor indices once, `_densify` builds the real
+list on first strong use, `__len__` uses idx only, `tl_at` has a fast path) plus its registration
+and `Kind::Select` emit site (`grep -n TlSel src/emit_py.rs`). Port that shape to Lua as a table
+with a metatable (`__len`, `__index` for integer keys via the selection vector, `ipairs`-safe
+densify for every consumer that iterates or slices). Any consumer you do not make lazy must call
+the densify path -- always correct. Skip in-place reuse. Read the Go/JS sibling briefs' lessons:
+after `just check` shows expected snapshot diffs, accept them with `cargo insta accept` (never
+hand-edit `.snap`), rerun `just check` to green.
