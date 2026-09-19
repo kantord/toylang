@@ -519,3 +519,14 @@
   kind: build
   needs: [sort-by-max-by-native]
   status: todo
+
+- id: transpose-jq-llvm
+  issue: gh:181
+  title: 'transpose-remaining-backends was archived done, but only 3 of the 5 missing backends
+    landed (JS, Python, Lua -- src/backend_support.rs LANDINGS still reads &[Go, Rust, Js, Py,
+    Lua]). jq and LLVM have no transpose arm at all: grep -n Transpose src/emit_jq.rs
+    src/emit_llvm.rs is empty on main as of 2026-09-19. Found looking around after the landing;
+    add the two remaining emitter arms and update LANDINGS.'
+  kind: build
+  needs: []
+  status: todo
