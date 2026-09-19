@@ -19,7 +19,7 @@ fn digit_power_sum(n: Int) -> Int =
 fn is_digit_power_sum(n: Int) -> Bool = digit_power_sum n == n
 
 sum(
-  collect range 354295
+  collect(range 354295)
   | select(. >= 2)
   | select is_digit_power_sum(.)
 )

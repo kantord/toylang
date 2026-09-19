@@ -39,9 +39,9 @@ fn powers_with_mult(
 
 fn powers() -> Vec<Power> =
   flatten(
-    collect range 5
+    collect(range 5)
     | map(6 - .)
-    | map powers_with_mult { m: ., roots: 10 }
+    | map(powers_with_mult { m: ., roots: 10 })
   ) +
     powers_with_mult { m: 1, roots: 100 }
 
@@ -55,7 +55,7 @@ fn all_keys(top: Int) -> Vec<Int> =
   let table = powers()
   let bases = collect range(top - 1) | map(. + 2)
   flatten(
-    bases | map keys_for_base { a: ., bs: bases, table: table }
+    bases | map(keys_for_base { a: ., bs: bases, table: table })
   )
 
 fn adjacent_dup_count(sorted: Vec<Int>) -> Int =
@@ -65,9 +65,9 @@ fn adjacent_dup_count(sorted: Vec<Int>) -> Int =
   )
 
 fn distinct_count(v: Vec<Int>) -> Int =
-  length v - adjacent_dup_count sort v
+  length v - adjacent_dup_count(sort v)
 
-distinct_count all_keys 100
+distinct_count(all_keys 100)
 ```
 
 ```output

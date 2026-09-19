@@ -15,14 +15,14 @@ fn reverse_num({ n, acc }: { n: Int, acc: Int }) -> Int =
   | . -> acc or reverse_num { n: n / 10, acc: acc * 10 + n % 10 }
 
 fn row_candidates(a: Int) -> Vec<Int> =
-  collect range 1000
+  collect(range 1000)
   | select(. >= a)
   | map(a * .)
   | select(. == reverse_num { n: ., acc: 0 })
 
 max(
   flatten(
-    collect range 1000 | select(. >= 100) | map row_candidates(.)
+    collect(range 1000) | select(. >= 100) | map row_candidates(.)
   )
 )!
 ```

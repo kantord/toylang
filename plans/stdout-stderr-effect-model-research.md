@@ -51,7 +51,7 @@ the effect-layer decision describes -- read one, transform one, write one, no bu
 input:
 
 ```toylang
-jsonlines(lines | map length chars(.))
+jsonlines(lines | map(length chars(.)))
 ```
 
 run against `ab\ncde\n`, prints `2` then `3` as each line is read, not both at once after

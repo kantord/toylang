@@ -6,7 +6,7 @@ program: |
   fn describe(m: Msg) -> Str = m | Text -> .body or any() -> "control"
 
   {
-    a: describe text { body: "hi" },
+    a: describe(text { body: "hi" }),
     b: describe ping,
     c: describe quit
   }

@@ -63,7 +63,7 @@ fn words(n: Int) -> Str =
     . % 100 == 0 -> ones(n / 100) + "hundred" or
     ones(n / 100) + "hundredand" + under_hundred(n % 100)
 
-sum(collect range 1000 | map length chars words(. + 1))
+sum(collect(range 1000) | map length(chars words(. + 1)))
 ```
 
 ```output

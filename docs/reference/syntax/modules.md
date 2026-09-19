@@ -67,7 +67,7 @@ anywhere else. `tests/modules/greet.toy`:
 ```toy
 fn exclaim(s: Str) -> Str = s + "!"
 
-pub fn shout(s: Str) -> Str = exclaim exclaim s
+pub fn shout(s: Str) -> Str = exclaim(exclaim s)
 
 pub fn handle(name: Str) -> Str = exclaim("hello " + name)
 ```

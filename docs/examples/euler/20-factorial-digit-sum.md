@@ -52,7 +52,7 @@ fn factorial_digits(
       }
     )
 
-sum factorial_digits { digits: [1], k: 2 }
+sum(factorial_digits { digits: [1], k: 2 })
 ```
 
 ```output

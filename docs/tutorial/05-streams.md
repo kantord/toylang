@@ -23,7 +23,7 @@ what stdin must be:
 fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
   db.users | select(.age >= 18) | .[].name
 
-adults parse stdin
+adults(parse stdin)
 ```
 
 ```input

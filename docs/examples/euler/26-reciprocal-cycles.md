@@ -19,7 +19,7 @@ fn strip2(n: Int) -> Int = n | . % 2 == 0 -> strip2(. / 2) or .
 
 fn strip5(n: Int) -> Int = n | . % 5 == 0 -> strip5(. / 5) or .
 
-fn reduced(d: Int) -> Int = strip5 strip2 d
+fn reduced(d: Int) -> Int = strip5(strip2 d)
 
 fn walk({ m, r, count }: { m: Int, r: Int, count: Int }) -> Int =
   r

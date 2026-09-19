@@ -10,7 +10,7 @@ a `Vec` that can do all of those things. The cost is equally explicit: `collect`
 the whole stream, so nothing downstream of it starts until stdin closes.
 
 ```toylang
-join_lines collect stdin
+join_lines(collect stdin)
 ```
 
 ```input

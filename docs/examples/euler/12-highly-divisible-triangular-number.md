@@ -35,7 +35,7 @@ fn triangle(n: Int) -> Int = n * (n + 1) / 2
 
 triangle(
   first(
-    collect range 12376
+    collect(range 12376)
     | select(. >= 1 and triangle_divisors(.) > 500)
   )!
 )

@@ -7,7 +7,7 @@ program: |
   ) -> { flag: Bool, xs: Vec<Bool> } =
     r
 
-  id parse stdin
+  id(parse stdin)
 
 input: |
   {"flag": true, "xs": [false, true]}

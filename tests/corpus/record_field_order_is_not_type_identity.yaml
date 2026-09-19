@@ -6,7 +6,7 @@ program: |
 
   fn g(r: { b: Int, a: Str }) -> Str = f r
 
-  g parse stdin
+  g(parse stdin)
 
 input: |
   {"b": 1, "a": "hi"}

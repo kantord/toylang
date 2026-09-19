@@ -7,4 +7,4 @@ fn build(depth: Int) -> Tree =
 fn count(t: Tree) -> Int =
   t | Leaf -> 1 or Node -> 1 + count(.[0]!) + count(.[1]!)
 
-count build parse stdin
+count build(parse stdin)

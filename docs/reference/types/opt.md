@@ -92,7 +92,7 @@ value inside an absent-looking one and a value that is absent all the way down p
 identically:
 
 ```toylang
-fn deep() -> Opt<Opt<Int>> = some some 7
+fn deep() -> Opt<Opt<Int>> = some(some 7)
 
 fn shallow() -> Opt<Opt<Int>> = some none
 

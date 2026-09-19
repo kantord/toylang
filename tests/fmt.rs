@@ -96,7 +96,7 @@ fn the_maintainer_sample_formats_to_itself() {
                   fn area_ish(s: Shape) -> Int =\n\
                   \x20 s | Circle { r } -> r * r or Point -> 0\n\
                   \n\
-                  { a: area_ish Shape.point, b: area_ish circle { r: 3 } }\n";
+                  { a: area_ish Shape.point, b: area_ish(circle { r: 3 }) }\n";
     assert_eq!(toylang::fmt(sample).unwrap(), sample);
     let on_disk = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/shapes.toy"),
@@ -339,7 +339,10 @@ fn comment_text_gets_one_space_after_the_hash() {
 fn a_nested_negation_keeps_a_space_between_the_signs() {
     assert_eq!(toylang::fmt("-(-5)\n").unwrap(), "- -5\n");
     assert_eq!(toylang::fmt("- -5\n").unwrap(), "- -5\n");
-    assert_eq!(toylang::run("- -5\n").unwrap(), toylang::run("-(-5)\n").unwrap());
+    assert_eq!(
+        toylang::run("- -5\n").unwrap(),
+        toylang::run("-(-5)\n").unwrap()
+    );
 }
 
 /// A record field whose value does not fit beside its name drops the value to its own line
@@ -391,7 +394,8 @@ fn a_record_field_whose_value_does_not_fit_breaks_after_the_name() {
 /// a call's argument. The formatter has no types, so it must not rewrite one into the other.
 #[test]
 fn a_call_around_a_pipeline_keeps_its_call_form() {
-    let src = "fn total(nums: Vec<Int>) -> Int = length nums\n\ntotal collect(stdin | map parse(.))\n";
+    let src =
+        "fn total(nums: Vec<Int>) -> Int = length nums\n\ntotal collect(stdin | map parse(.))\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
     assert!(toylang::run_with_input(src, Some("1\n2\n")).is_ok());
     let as_stages = "fn total(nums: Vec<Int>) -> Int = length(nums)\n\nstdin | map(parse(.)) | collect(.) | total(.)\n";
@@ -408,7 +412,7 @@ fn a_call_argument_prints_bare_wherever_the_grammar_reads_it_back() {
     // Str, Int, Float, a name, a record literal, and a nested call are all safe bare, and
     // chain right-associatively with no first-class functions to make the reading ambiguous.
     let src = "fn f(x: Int) -> Int = x * 10\n\nfn g(x: Int) -> Int = x + 1\n\n\
-               [f 1, f \"s\", f 1.5, f x, f { a: 1 }, f g 2]\n";
+               [f 1, f \"s\", f 1.5, f x, f { a: 1 }, f(g 2)]\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
 
     // A postfix chain on top of a safe base reads back as part of the SAME argument (the
@@ -451,7 +455,10 @@ fn a_call_argument_prints_bare_wherever_the_grammar_reads_it_back() {
     let src = "fn f(x: Int) -> Int = x\n\nfn r(x: Int) -> { a: Int } = { a: x }\n\n\
                f({ a: 1 }.a)\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
-    assert_eq!(toylang::run(src).unwrap(), toylang::run("fn f(x: Int) -> Int = x\n\nf(1)\n").unwrap());
+    assert_eq!(
+        toylang::run(src).unwrap(),
+        toylang::run("fn f(x: Int) -> Int = x\n\nf(1)\n").unwrap()
+    );
 }
 
 /// A call used as a postfix base is always parenthesized, even when its own argument would
@@ -507,4 +514,46 @@ fn a_long_record_variant_payload_breaks_bare() {
     assert!(want.contains("f(\n  S.c {\n"), "{want}");
     assert_eq!(toylang::fmt(&want).unwrap(), want);
     assert_eq!(toylang::run(src).unwrap(), toylang::run(&want).unwrap());
+}
+
+/// Bare application is capped at one hop (maintainer ruling, 2026-09-19): two or more names
+/// chained bare with nothing between them (`foo bar 3`) reads right-to-left correctly by the
+/// grammar's own rule, but a person has to hold that rule to do it, and it gets hard past one
+/// hop. `foo(3)` is one hop and stays bare; two names in a row is where a call's own argument
+/// stops counting as bare-safe.
+///
+/// A `Call` is safe as someone else's bare argument exactly when it would not itself render
+/// bare: if it would (`bar 3`), placing it right after another bare name produces the run
+/// this rule forbids (`foo bar 3`); if it renders parenthesized instead, because its own
+/// argument failed this same check, its parens already delimit it and a bare name in front of
+/// it is unambiguous (`foo bar(3)`). The result alternates parens and bare reading outward
+/// from the innermost call, one hop at a time, rather than parenthesizing every level once a
+/// chain reaches two.
+#[test]
+fn bare_application_is_capped_at_one_hop() {
+    let h = "fn foo(x: Int) -> Int = x * 10\n\n\
+             fn bar(x: Int) -> Int = x + 1\n\n\
+             fn baz(x: Int) -> Int = x - 1\n\n\
+             fn qux(x: Int) -> Int = x * 2\n\n";
+    let cases = [
+        ("foo(3)", "foo 3"),
+        ("foo(bar(3))", "foo(bar 3)"),
+        ("foo(bar(baz(3)))", "foo bar(baz 3)"),
+        ("foo(bar(baz(qux(3))))", "foo(bar baz(qux 3))"),
+    ];
+    for (src_body, want_body) in cases {
+        let src = format!("{h}{src_body}\n");
+        let want = format!("{h}{want_body}\n");
+        assert_eq!(toylang::fmt(&src).unwrap(), want, "formatting {src_body}");
+        assert_eq!(
+            toylang::fmt(&want).unwrap(),
+            want,
+            "{want_body} is not idempotent"
+        );
+        assert_eq!(
+            toylang::run(&src).unwrap(),
+            toylang::run(&want).unwrap(),
+            "{src_body} changed behaviour"
+        );
+    }
 }

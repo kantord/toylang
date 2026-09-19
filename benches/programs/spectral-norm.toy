@@ -80,7 +80,7 @@ fn times_a(u: Vec<Float>) -> Vec<Float> =
 fn times_at(u: Vec<Float>) -> Vec<Float> =
   times { u: u, i: 0, fi: 0.0, t: 1, out: [] }
 
-fn times_ata(u: Vec<Float>) -> Vec<Float> = times_at times_a u
+fn times_ata(u: Vec<Float>) -> Vec<Float> = times_at(times_a u)
 
 fn power(
   { u, k }: { u: Vec<Float>, k: Int }
@@ -101,7 +101,7 @@ fn dot(
   | i == length u -> acc or
     dot { u: u, v: v, i: i + 1, acc: acc + u[i]! * v[i]! }
 
-fn ones(n: Int) -> Vec<Float> = collect range n | map 1.0
+fn ones(n: Int) -> Vec<Float> = collect(range n) | map 1.0
 
 fn norm(n: Int) -> Float =
   let r = power { u: ones n, k: 10 }
@@ -110,4 +110,4 @@ fn norm(n: Int) -> Float =
       dot { u: r.v, v: r.v, i: 0, acc: 0.0 }
   )
 
-norm parse stdin
+norm(parse stdin)

@@ -29,7 +29,7 @@ As a stream it follows the same rules the other sources do: born at the source, 
 makes the memory cost visible:
 
 ```toylang
-collect range 4
+collect(range 4)
 ```
 
 ```output
@@ -39,7 +39,7 @@ collect range 4
 and everything that works on a `Vec` works on that:
 
 ```toylang
-length collect range(-3)
+length(collect range(-3))
 ```
 
 ```output

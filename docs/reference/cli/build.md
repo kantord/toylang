@@ -45,12 +45,12 @@ fn positive(x: Int) -> Result<Int, Str> =
 fn half(x: Float) -> Float = x / 2.0
 
 {
-  a: area_ish circle { r: 3 },
+  a: area_ish(circle { r: 3 }),
   g: greet "bob",
   t: total([1, 2]),
-  b: bump some 5,
+  b: bump(some 5),
   r: area { w: 2, h: 3 },
-  i: big i64 7,
+  i: big(i64 7),
   o: positive 1,
   h: half 3.0
 }

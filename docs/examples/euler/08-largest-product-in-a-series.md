@@ -21,9 +21,9 @@ fn product(v: Vec<Int>) -> Int64 =
   length v == 0 | . -> 1 or i64 v[0]! * product tail(v)!
 
 fn windows(v: Vec<Int>) -> Vec<Int64> =
-  collect range(length v - 12) | map product v[.:. + 13]
+  collect range(length v - 12) | map(product v[.:. + 13])
 
-max(windows parse stdin)!
+max(windows(parse stdin))!
 ```
 
 ```input

@@ -117,8 +117,8 @@ program: |
       pull { b: kick { b: b, o: others[0]! }, others: tail(others)! }
 
   fn tick(bs: Vec<Body>) -> Vec<Body> =
-    collect range length bs
-    | map pull { b: bs[.]!, others: bs[:.] + bs[. + 1:] }
+    collect range(length bs)
+    | map(pull { b: bs[.]!, others: bs[:.] + bs[. + 1:] })
     | map(
         {
           x: .x + 0.01 * .vx,

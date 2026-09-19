@@ -108,7 +108,7 @@ program: |
         rows { n: n, size: to_float n, y: 0, fy: 0.0, lines: [] }
     )
 
-  plot parse stdin
+  plot(parse stdin)
 
 input: |
   16

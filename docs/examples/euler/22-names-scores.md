@@ -27,13 +27,13 @@ fn name_score(name: Str) -> Int =
 
 fn ranked_total(ordered: Vec<Str>) -> Int =
   sum(
-    collect range length ordered
+    collect range(length ordered)
     | map((. + 1) * name_score ordered[.]!)
   )
 
-fn names_total(names: Vec<Str>) -> Int = ranked_total sort names
+fn names_total(names: Vec<Str>) -> Int = ranked_total(sort names)
 
-names_total parse stdin
+names_total(parse stdin)
 ```
 
 ```input

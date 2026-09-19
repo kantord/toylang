@@ -355,17 +355,40 @@ fn bare_arg_ok(e: &Expr) -> bool {
         | Expr::Var { .. }
         | Expr::Variant { .. }
         | Expr::MatchCall { .. }
-        | Expr::Call { .. }
         | Expr::RecordLit { .. } => true,
+        // Capped at one bare hop (maintainer ruling, 2026-09-19): the grammar reads `foo bar
+        // baz` as `foo(bar(baz))` regardless of depth, but a reader has to hold the same
+        // right-to-left rule to do it, and that gets hard past one hop. `foo 3` stays bare;
+        // `foo(bar 3)` is where a chain of two or more calls now stops.
+        //
+        // A `Call` is safe as someone else's bare argument exactly when IT would not itself
+        // render bare -- i.e. exactly when its own argument is not `bare_arg_ok`. If it would
+        // render bare too (`bar 3`), placing it right after another bare name produces the
+        // ambiguous run this rule exists to forbid (`foo bar 3`); if it renders parenthesized
+        // (`bar(3)`, because its own argument failed this same check), its parens already
+        // delimit it and an outer bare name in front is unambiguous (`foo bar(3)`). This is
+        // deliberately not "does my argument merely look like a `Call`": that stops after
+        // exactly one hop and produces `foo(bar baz 3)` for three names in a row, which still
+        // has the same adjacent-bare-names problem one level in.
+        Expr::Call { arg, .. } => !arg.as_deref().is_some_and(bare_arg_ok),
         Expr::Field { base, .. }
         | Expr::Index { base, .. }
         | Expr::Slice { base, .. }
         | Expr::Unwrap { base, .. }
         | Expr::ColonCall { receiver: base, .. } => {
-            !matches!(**base, Expr::RecordLit { .. }) && bare_arg_ok(base)
+            !matches!(**base, Expr::RecordLit { .. }) && postfix_base_safe(base)
         }
         _ => false,
     }
+}
+
+/// Whether `base` is safe as the root of a postfix chain that itself becomes someone else's
+/// bare argument. A `Call` is always safe here, regardless of the one-hop cap above: unlike a
+/// `Call` printed as a call's own direct argument, one printed as a postfix base never
+/// actually renders bare -- `print_atom_base` parenthesizes it unconditionally (`f r(1).a`
+/// stays `f r(1).a`, not `f(r(1).a)`), so there is no adjacent-bare-names risk here to cap.
+fn postfix_base_safe(base: &Expr) -> bool {
+    matches!(base, Expr::Call { .. }) || bare_arg_ok(base)
 }
 
 fn call(func: &str, arg: Option<&Expr>) -> String {

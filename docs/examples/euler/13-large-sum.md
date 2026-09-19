@@ -58,7 +58,7 @@ fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
     { nums: nums, k: length nums[0]! - 1, carry: 0, acc: [] }
   )[0:10]
 
-leading_digits parse stdin
+leading_digits(parse stdin)
 ```
 
 ```input

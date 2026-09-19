@@ -42,9 +42,9 @@ fn row_products(
     cmax: Int
   }
 ) -> Vec<Int> =
-  collect range cmax
+  collect(range cmax)
   | select(. >= cmin)
-  | map four { g: g, r: r, c: ., dr: dr, dc: dc }
+  | map(four { g: g, r: r, c: ., dr: dr, dc: dc })
 
 fn direction(
   { g, dr, dc, rmax, cmin, cmax }: {
@@ -57,7 +57,7 @@ fn direction(
   }
 ) -> Vec<Int> =
   flatten(
-    collect range rmax
+    collect(range rmax)
     | map(
         row_products(
           { g: g, r: ., dr: dr, dc: dc, cmin: cmin, cmax: cmax }
@@ -74,7 +74,7 @@ fn largest_product(g: Vec<Vec<Int>>) -> Int =
   let antidiagonal = direction { g: g, dr: 1, dc: -1, rmax: rows - 3, cmin: 3, cmax: cols }
   max(flatten([right, down, diagonal, antidiagonal]))!
 
-largest_product parse stdin
+largest_product(parse stdin)
 ```
 
 ```input

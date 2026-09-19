@@ -39,7 +39,7 @@ and differ only in what the function takes:
 fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
   db.users | select(.age >= 18) | .[].name
 
-adults parse stdin
+adults(parse stdin)
 ```
 
 ```input
@@ -91,7 +91,7 @@ so, with the map that fed it counted as a kernel:
 fn names(db: Vec<{ name: Str, age: Int }>) -> Vec<Str> =
   db | map(.name)
 
-jsonlines names parse stdin
+jsonlines names(parse stdin)
 ```
 
 ```input

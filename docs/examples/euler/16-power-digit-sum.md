@@ -61,7 +61,7 @@ fn power_of_two(
       }
     )
 
-sum power_of_two { digits: [1], n: 1000 }
+sum(power_of_two { digits: [1], n: 1000 })
 ```
 
 ```output

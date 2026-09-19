@@ -58,10 +58,10 @@ program: |
       fold { v: tail(v)!, acc: fk_step { p: v[0]!, acc: acc } }
 
   fn fk(n: Int) -> Str =
-    let r = fold { v: perms(collect range n | map(. + 1)), acc: { checksum: 0, max: 0 } }
+    let r = fold { v: perms(collect(range n) | map(. + 1)), acc: { checksum: 0, max: 0 } }
     str r.checksum + "\nPfannkuchen(" + str n + ") = " + str r.max
 
-  fk parse stdin
+  fk(parse stdin)
 
 input: |
   6

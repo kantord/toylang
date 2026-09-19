@@ -8,7 +8,7 @@ program: |
   fn area_ish(s: Shape) -> Int =
     s | Circle { r } -> r * r or Point -> 0
 
-  { a: area_ish Shape.point, b: area_ish circle { r: 3 } }
+  { a: area_ish Shape.point, b: area_ish(circle { r: 3 }) }
 
 output: |
   {"a":0,"b":9}
