@@ -17,7 +17,7 @@ with the term's index.
 
 ```toylang
 fn limb({ v, i }: { v: Vec<Int>, i: Int }) -> Int =
-  i < length(v) | . -> v[i]! or 0
+  i < length v | . -> v[i]! or 0
 
 fn add_limbs(
   { a, b, i, carry, acc }: {
@@ -28,8 +28,8 @@ fn add_limbs(
     acc: Vec<Int>
   }
 ) -> Vec<Int> =
-  let total = limb({ v: a, i: i }) + limb({ v: b, i: i }) + carry
-  i == length(a)
+  let total = limb { v: a, i: i } + limb { v: b, i: i } + carry
+  i == length a
   | . -> (carry == 0 | . -> acc or acc + [carry]) or
     add_limbs(
       {
@@ -45,7 +45,7 @@ fn digit_count(n: Int) -> Int =
   n < 10 | . -> 1 or 1 + digit_count(n / 10)
 
 fn digits_of(v: Vec<Int>) -> Int =
-  (length(v) - 1) * 8 + digit_count(v[-1]!)
+  (length v - 1) * 8 + digit_count v[-1]!
 
 fn first_with(
   { prev, cur, n, want }: {
@@ -55,18 +55,18 @@ fn first_with(
     want: Int
   }
 ) -> Int =
-  digits_of(cur) >= want
+  digits_of cur >= want
   | . -> n or
     first_with(
       {
         prev: cur,
-        cur: add_limbs({ a: cur, b: prev, i: 0, carry: 0, acc: [] }),
+        cur: add_limbs { a: cur, b: prev, i: 0, carry: 0, acc: [] },
         n: n + 1,
         want: want
       }
     )
 
-first_with({ prev: [1], cur: [1], n: 2, want: 1000 })
+first_with { prev: [1], cur: [1], n: 2, want: 1000 }
 ```
 
 ```output

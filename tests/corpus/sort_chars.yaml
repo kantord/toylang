@@ -1,7 +1,7 @@
 # Char has no wire form (docs/reference/types/char.md), so the order is observed through a
 # comparison rather than printed directly.
 program: |
-  sort(chars("dbca"))[0]! == chars("a")[0]!
+  sort(chars "dbca")[0]! == chars("a")[0]!
 
 output: |
   true

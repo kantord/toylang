@@ -7,7 +7,7 @@ one must handle every variant. As data an enum is plain JSON, never an opaque va
 ```toylang
 enum Shape { Point, Circle { r: Int } }
 
-{ a: Shape.point, b: circle({ r: 3 }) }
+{ a: Shape.point, b: circle { r: 3 } }
 ```
 
 ```output
@@ -37,7 +37,7 @@ enum Shape { Point, Circle { r: Int } }
 
 fn area_ish(s: Shape) -> Int = s | Circle { r } -> r * r
 
-area_ish(Shape.point)
+area_ish Shape.point
 ```
 
 ```error

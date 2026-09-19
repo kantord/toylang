@@ -9,7 +9,7 @@ program: |
     msgs
     | map(. | Ping -> "*ping*" or Quit -> "*quit*" or Text -> .body)
 
-  jsonlines(render(stdin | map(parse(.))))
+  jsonlines render(stdin | map parse(.))
 
 input: |
   "Ping"

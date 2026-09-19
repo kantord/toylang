@@ -23,7 +23,7 @@ what stdin must be:
 fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
   db.users | select(.age >= 18) | .[].name
 
-adults(parse(stdin))
+adults parse stdin
 ```
 
 ```input
@@ -48,9 +48,9 @@ the same `select`/`map`/projection spellings work on it:
 fn adults(
   users: Stream<{ name: Str, age: Int }>
 ) -> Stream<{ name: Str }> =
-  users | select(.age >= 18) | map({ name: .name })
+  users | select(.age >= 18) | map { name: .name }
 
-jsonlines(adults(stdin | map(parse(.))))
+jsonlines adults(stdin | map parse(.))
 ```
 
 ```input
@@ -77,9 +77,9 @@ A stream is not a value: it cannot be printed, stored, or indexed. `collect` is 
 exit, turning `Stream<T>` into an ordinary `Vec<T>` by reading everything:
 
 ```toylang
-fn count(xs: Vec<Int>) -> Int = length(xs)
+fn count(xs: Vec<Int>) -> Int = length xs
 
-count(collect(stdin | map(parse(.))))
+count collect(stdin | map parse(.))
 ```
 
 ```input

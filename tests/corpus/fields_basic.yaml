@@ -1,5 +1,5 @@
 program: |
-  fields({ name: "ada", age: 36 })
+  fields { name: "ada", age: 36 }
 
 output: |
   ["name","age"]

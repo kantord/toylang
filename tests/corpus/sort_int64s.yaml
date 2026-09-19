@@ -2,9 +2,9 @@
 # (Array.sort coerces the comparator result with ToNumber, which throws on BigInt) until
 # the three-way compare replaced `a - b` (kantord/toylang#86).
 program: |
-  fn wide(x: Int) -> Int64 = i64(x)
+  fn wide(x: Int) -> Int64 = i64 x
 
-  sort([wide(3), wide(1), wide(2)])
+  sort([wide 3, wide 1, wide 2])
 
 output: |
   [1,2,3]

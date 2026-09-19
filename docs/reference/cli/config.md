@@ -39,7 +39,7 @@ two share the read and differ only in what follows it.
 ```toylang
 fn twice(x: Int) -> Int = x * 2
 
-twice(parse(stdin))
+twice parse stdin
 ```
 
 ```input
@@ -82,7 +82,7 @@ $ toylang emit input.toy js > input.js && node input.js
 in hand before the body runs.
 
 ```toylang
-collect(stdin)
+collect stdin
 ```
 
 ```input
@@ -119,7 +119,7 @@ is pasted whole:
 ```toylang
 fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + "!")
 
-jsonlines(shout(stdin))
+jsonlines shout stdin
 ```
 
 ```input

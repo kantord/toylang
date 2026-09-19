@@ -125,7 +125,7 @@ status or an unparseable body stops the program, the way a stdin parse failure d
 
 
 ```toylang
-http("https://api.example.com/users") | select(.age >= 18) | .[].name
+http "https://api.example.com/users" | select(.age >= 18) | .[].name
 ```
 
 

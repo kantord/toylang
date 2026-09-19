@@ -4,7 +4,7 @@
 program: |
   fn pick({ a, .. }: { a: Int, b: Int }) -> Int = a
 
-  pick({ a: 7, b: 9 })
+  pick { a: 7, b: 9 }
 
 output: |
   7

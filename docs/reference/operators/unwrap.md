@@ -4,7 +4,7 @@ Postfix `!` consumes an [Opt](../types/opt.md): it insists the value is there an
 the bare `T`.
 
 ```toylang
-str(tail([1, 2, 3])![0]!)
+str tail([1, 2, 3])![0]!
 ```
 
 ```output

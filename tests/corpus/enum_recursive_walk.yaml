@@ -9,8 +9,8 @@ program: |
   enum Json { Arr(Vec<Json>), Num(Int) }
 
   fn total(v: Vec<Json>) -> Int =
-    length(v) == 0
-    | . -> 0 or (v[0]! | Arr -> total(.) or Num -> .) + total(tail(v)!)
+    length v == 0
+    | . -> 0 or (v[0]! | Arr -> total(.) or Num -> .) + total tail(v)!
 
   total(
     [

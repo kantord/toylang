@@ -7,7 +7,7 @@ program: |
   fn work(s: Status) -> Vec<Int> =
     s | Active -> [1, 2] or Inactive -> []
 
-  work("Inactive")
+  work "Inactive"
 
 output: |
   []

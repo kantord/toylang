@@ -3,7 +3,7 @@
 # `str(.)` the chain's bare default.
 program: |
   join_lines(
-    collect(range(100))
+    collect range 100
     | map(. + 1)
     | map(
         . % 15 == 0 -> "FizzBuzz" or

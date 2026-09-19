@@ -5,7 +5,7 @@ program: |
 
   fn status(n: Int) -> Status = n | . > 0 -> "Active" or "Inactive"
 
-  status(0)
+  status 0
 
 output: |
   "Inactive"

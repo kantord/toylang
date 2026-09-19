@@ -2,9 +2,9 @@
 # oddities inventory: the first `input` is typed by `f`'s parameter, and the second use --
 # a record field nothing expects anything of -- borrows the type the first use fixed.
 program: |
-  fn f(v: Vec<Int>) -> Int = length(v)
+  fn f(v: Vec<Int>) -> Int = length v
 
-  { a: f(parse(stdin)), b: parse(stdin) }
+  { a: f parse stdin, b: parse stdin }
 
 input: |
   [1, 2, 3]

@@ -1,7 +1,7 @@
 # `i64(x)` is the one bridge between the integer types, and past it the arithmetic really is
 # 64-bit: one past Int's ceiling, unreachable at 32 bits without wrapping.
 program: |
-  i64(2147483647) + 1
+  i64 2147483647 + 1
 
 output: |
   2147483648

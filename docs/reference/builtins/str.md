@@ -4,7 +4,7 @@
 from inside a program, where a number needs to take part in string concatenation.
 
 ```toylang
-"the answer is " + str(42)
+"the answer is " + str 42
 ```
 
 ```output

@@ -28,7 +28,7 @@ the value came from:
 ```toylang
 enum Shape { Point, Circle { r: Int } }
 
-circle({ r: 1 }) == circle({ r: 1 })
+circle { r: 1 } == circle { r: 1 }
 ```
 
 ```output

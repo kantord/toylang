@@ -25,7 +25,7 @@ The rules, each of which the checker enforces:
   came in through its parameter, so the pipeline stays one chain from source to sink.
 
 ```toylang
-fn conjure(n: Int) -> Stream<Int> = stdin | map(n)
+fn conjure(n: Int) -> Stream<Int> = stdin | map n
 
 0
 ```

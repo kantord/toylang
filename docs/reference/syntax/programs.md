@@ -10,7 +10,7 @@ type Pair = { a: Int, b: Int }
 
 fn total(p: Pair) -> Int = p.a + p.b
 
-{ sum: total({ a: 1, b: 2 }) }
+{ sum: total { a: 1, b: 2 } }
 ```
 
 ```output

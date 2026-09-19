@@ -7,7 +7,7 @@ projection, `.age`:
 ```toylang
 fn age_of(user: { name: Str, age: Int }) -> Int = user.age
 
-age_of({ name: "ada", age: 36 })
+age_of { name: "ada", age: 36 }
 ```
 
 ```output
@@ -22,7 +22,7 @@ one:
 ```toylang
 fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h
 
-area({ w: 3, h: 4 })
+area { w: 3, h: 4 }
 ```
 
 ```output
@@ -34,10 +34,9 @@ the same call with its argument grouped. On a record literal the bare form reads
 arguments:
 
 ```toylang
-# fmt: syntax-example
-fn area(r: {w: Int, h: Int}) -> Int = r.w * r.h
+fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h
 
-area {w: 3, h: 4}
+area { w: 3, h: 4 }
 ```
 
 ```output

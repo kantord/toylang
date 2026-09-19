@@ -24,18 +24,18 @@ fn cd_loop({ m, d, count }: { m: Int, d: Int, count: Int }) -> Int =
       }
     )
 
-fn count_divisors(m: Int) -> Int = cd_loop({ m: m, d: 1, count: 0 })
+fn count_divisors(m: Int) -> Int = cd_loop { m: m, d: 1, count: 0 }
 
 fn triangle_divisors(n: Int) -> Int =
   n % 2 == 0
   | . -> count_divisors(n / 2) * count_divisors(n + 1) or
-    count_divisors(n) * count_divisors((n + 1) / 2)
+    count_divisors n * count_divisors((n + 1) / 2)
 
 fn triangle(n: Int) -> Int = n * (n + 1) / 2
 
 triangle(
   first(
-    collect(range(12376))
+    collect range 12376
     | select(. >= 1 and triangle_divisors(.) > 500)
   )!
 )

@@ -9,7 +9,7 @@ program: |
 
   fn qualified(x: Int) -> Str = x | Bool.true -> "yes" or "no"
 
-  [always(1), never(1), qualified(1)]
+  [always 1, never 1, qualified 1]
 
 output: |
   ["yes","no","yes"]

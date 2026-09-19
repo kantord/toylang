@@ -6,9 +6,9 @@ to a string already in hand. The result type comes only from the position the ca
 the same way `input` always borrowed its type.
 
 ```toylang
-fn total(v: Vec<Int>) -> Int = length(v)
+fn total(v: Vec<Int>) -> Int = length v
 
-total(parse("[1, 2, 3]"))
+total parse "[1, 2, 3]"
 ```
 
 ```output

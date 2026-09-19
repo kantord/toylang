@@ -17,9 +17,9 @@ fn choose_2n_n(
 ) -> Int64 =
   i
   | . > n -> acc or
-    choose_2n_n({ n: n, i: i + 1, acc: acc * i64(n + i) / i64(i) })
+    choose_2n_n { n: n, i: i + 1, acc: acc * i64(n + i) / i64 i }
 
-choose_2n_n({ n: 20, i: 1, acc: 1 })
+choose_2n_n { n: 20, i: 1, acc: 1 }
 ```
 
 ```output

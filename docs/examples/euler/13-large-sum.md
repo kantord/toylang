@@ -31,7 +31,7 @@ fn emit_carry(
 ) -> Vec<Int> =
   carry == 0
   | . -> acc or
-    emit_carry({ carry: carry / 10, acc: [carry % 10] + acc })
+    emit_carry { carry: carry / 10, acc: [carry % 10] + acc }
 
 fn add_digits(
   { nums, k, carry, acc }: {
@@ -41,10 +41,9 @@ fn add_digits(
     acc: Vec<Int>
   }
 ) -> Vec<Int> =
-  let total = column_total({ nums: nums, k: k, carry: carry })
+  let total = column_total { nums: nums, k: k, carry: carry }
   k == 0
-  | . ->
-      emit_carry({ carry: total / 10, acc: [total % 10] + acc }) or
+  | . -> emit_carry { carry: total / 10, acc: [total % 10] + acc } or
     add_digits(
       {
         nums: nums,
@@ -56,10 +55,10 @@ fn add_digits(
 
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
   add_digits(
-    { nums: nums, k: length(nums[0]!) - 1, carry: 0, acc: [] }
+    { nums: nums, k: length nums[0]! - 1, carry: 0, acc: [] }
   )[0:10]
 
-leading_digits(parse(stdin))
+leading_digits parse stdin
 ```
 
 ```input

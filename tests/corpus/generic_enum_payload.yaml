@@ -4,7 +4,7 @@
 program: |
   enum Box<T> { Wrap(T), Empty }
 
-  wrap(5)
+  wrap 5
 
 output: |
   {"Wrap":5}

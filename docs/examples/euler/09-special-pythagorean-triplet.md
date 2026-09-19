@@ -11,12 +11,12 @@ and flattens with `flatten`, and `first` takes the first (and, for this input, o
 fn abc({ a, b }: { a: Int, b: Int }) -> Int = a * b * (1000 - a - b)
 
 fn row(a: Int) -> Vec<Int> =
-  collect(range(1000))
+  collect range 1000
   | select(. > a and . < 1000 - a)
   | select(a * a + . * . == (1000 - a - .) * (1000 - a - .))
-  | map(abc({ a: a, b: . }))
+  | map abc { a: a, b: . }
 
-first(flatten(collect(range(1000)) | select(. >= 1) | map(row(.))))!
+first(flatten(collect range 1000 | select(. >= 1) | map row(.)))!
 ```
 
 ```output

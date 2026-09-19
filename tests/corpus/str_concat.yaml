@@ -1,5 +1,5 @@
 program: |
-  "n=" + str(3)
+  "n=" + str 3
 
 output: |
   n=3

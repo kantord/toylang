@@ -8,7 +8,7 @@ program: |
 
   fn peek(b: Box<Int>) -> Int = b | Wrap -> . or Empty -> 0
 
-  peek(wrap(7)) + peek(nothing())
+  peek wrap 7 + peek nothing()
 
 output: |
   7

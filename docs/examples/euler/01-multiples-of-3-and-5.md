@@ -14,9 +14,9 @@ fn triangle(m: Int) -> Int = m * (m + 1) / 2
 fn sum_of_multiples({ k, limit }: { k: Int, limit: Int }) -> Int =
   triangle((limit - 1) / k) * k
 
-sum_of_multiples({ k: 3, limit: 1000 }) +
-  sum_of_multiples({ k: 5, limit: 1000 }) -
-  sum_of_multiples({ k: 15, limit: 1000 })
+sum_of_multiples { k: 3, limit: 1000 } +
+  sum_of_multiples { k: 5, limit: 1000 } -
+  sum_of_multiples { k: 15, limit: 1000 }
 ```
 
 ```output

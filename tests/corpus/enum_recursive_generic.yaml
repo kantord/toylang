@@ -9,7 +9,7 @@ program: |
 
   {
     shape: Tree.node([Tree.leaf("a"), Tree.node([Tree.leaf("b")])]),
-    top: label(Tree.leaf("x"))
+    top: label Tree.leaf("x")
   }
 
 output: |

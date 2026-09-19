@@ -39,7 +39,7 @@ and differ only in what the function takes:
 fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
   db.users | select(.age >= 18) | .[].name
 
-adults(parse(stdin))
+adults parse stdin
 ```
 
 ```input
@@ -60,9 +60,9 @@ select over Vec<{name: Str, age: Int}>: became a compaction kernel (Opt<{name: S
 fn adults(
   users: Stream<{ name: Str, age: Int }>
 ) -> Stream<{ name: Str }> =
-  users | select(.age >= 18) | map({ name: .name })
+  users | select(.age >= 18) | map { name: .name }
 
-jsonlines(adults(stdin | map(parse(.))))
+jsonlines adults(stdin | map parse(.))
 ```
 
 ```input
@@ -91,7 +91,7 @@ so, with the map that fed it counted as a kernel:
 fn names(db: Vec<{ name: Str, age: Int }>) -> Vec<Str> =
   db | map(.name)
 
-jsonlines(names(parse(stdin)))
+jsonlines names parse stdin
 ```
 
 ```input

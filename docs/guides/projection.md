@@ -23,7 +23,7 @@ computing an expression:
 
 ```toylang
 [{ name: "ada", age: 36 }, { name: "bo", age: 9 }]
-| map({ name: .name, greeting: "hello " + .name })
+| map { name: .name, greeting: "hello " + .name }
 ```
 
 ```output

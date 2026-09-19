@@ -1,7 +1,7 @@
 # Neither builtin takes a comparator (kantord/toylang#86 keeps `sort` to plain ascending
 # order), so descending order is the composition `reverse(sort(v))`.
 program: |
-  reverse(sort([3, 1, 2]))
+  reverse sort([3, 1, 2])
 
 output: |
   [3,2,1]

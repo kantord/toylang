@@ -4,7 +4,7 @@
 program: |
   fn name = Bool(True -> 1 or False -> 0)
 
-  [name(Bool.true), name(Bool.false)]
+  [name Bool.true, name Bool.false]
 
 output: |
   [1,0]

@@ -16,12 +16,12 @@ program: |
     same: { a: 1, b: 2 } == { a: 1, b: 2 },
     reordered: { a: 1, b: 2 } == { b: 2, a: 1 },
     differing: { a: 1, b: 2 } == { a: 1, b: 3 },
-    payload: circle({ r: 1 }) == circle({ r: 1 }),
-    payload_differing: circle({ r: 1 }) == circle({ r: 2 }),
-    variants: circle({ r: 1 }) == box({ w: 1, h: 2 }),
+    payload: circle { r: 1 } == circle { r: 1 },
+    payload_differing: circle { r: 1 } == circle { r: 2 },
+    variants: circle { r: 1 } == box { w: 1, h: 2 },
     unit: point == point,
-    nested: { s: some({ a: 1 }) } == { s: some({ a: 1 }) },
-    absent: some({ a: 1 }) != none
+    nested: { s: some { a: 1 } } == { s: some { a: 1 } },
+    absent: some { a: 1 } != none
   }
 
 output: |

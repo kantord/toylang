@@ -1,9 +1,9 @@
 # `max` of a Vec<Int64> is an Opt<Int64>: present, it prints as the bare value, the same way
 # the present arm of a partial match does. Small values keep every backend (jq included) exact.
 program: |
-  fn wide(x: Int) -> Int64 = i64(x)
+  fn wide(x: Int) -> Int64 = i64 x
 
-  max([wide(9), wide(2), wide(7)])
+  max([wide 9, wide 2, wide 7])
 
 output: |
   9

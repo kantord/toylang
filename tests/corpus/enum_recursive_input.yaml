@@ -13,7 +13,7 @@ program: |
 
   fn json(j: Json) -> Json = j
 
-  json(parse(stdin))
+  json parse stdin
 
 input: |
   {"Arr": [{"Num": 1}, {"Arr": [{"Num": 2}, "Null"]}]}

@@ -6,7 +6,7 @@ Basic Multilingual Plane is one element here even on a target whose own strings 
 surrogate pair to spell it.
 
 ```toylang
-length(chars("abc"))
+length chars "abc"
 ```
 
 ```output
@@ -17,7 +17,7 @@ A character outside the Basic Multilingual Plane is still one element, the diffe
 this and counting bytes or UTF-16 units:
 
 ```toylang
-length(chars("a😀b"))
+length chars "a😀b"
 ```
 
 ```output
@@ -39,7 +39,7 @@ Both directions are refused at compile time:
 ```toylang
 fn use_it(c: Char) -> Bool = c == c
 
-use_it(parse(stdin))
+use_it parse stdin
 ```
 
 ```error

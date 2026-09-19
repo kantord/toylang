@@ -15,9 +15,9 @@ program: |
 
   fn newton({ x, y }: { x: Float, y: Float }) -> Float =
     let next = (y + x / y) / 2.0
-    next >= y | . -> y or newton({ x: x, y: next })
+    next >= y | . -> y or newton { x: x, y: next }
 
-  fn sqrt(x: Float) -> Float = newton({ x: x, y: (x + 1.0) / 2.0 })
+  fn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 }
 
   fn solar_mass() -> Float =
     4.0 * 3.141592653589793 * 3.141592653589793
@@ -73,7 +73,7 @@ program: |
     }
   ) -> Body =
     bs
-    | length(bs) == 0 ->
+    | length bs == 0 ->
         {
           x: 0.0,
           y: 0.0,
@@ -93,15 +93,14 @@ program: |
       )
 
   fn system() -> Vec<Body> =
-    [momentum({ bs: planets(), px: 0.0, py: 0.0, pz: 0.0 })] +
-      planets()
+    [momentum { bs: planets(), px: 0.0, py: 0.0, pz: 0.0 }] + planets()
 
   fn kick({ b, o }: { b: Body, o: Body }) -> Body =
     let dx = b.x - o.x
     let dy = b.y - o.y
     let dz = b.z - o.z
     let d2 = dx * dx + dy * dy + dz * dz
-    let mag = 0.01 / (d2 * sqrt(d2))
+    let mag = 0.01 / (d2 * sqrt d2)
     {
       x: b.x,
       y: b.y,
@@ -114,12 +113,12 @@ program: |
 
   fn pull({ b, others }: { b: Body, others: Vec<Body> }) -> Body =
     others
-    | length(others) == 0 -> b or
-      pull({ b: kick({ b: b, o: others[0]! }), others: tail(others)! })
+    | length others == 0 -> b or
+      pull { b: kick { b: b, o: others[0]! }, others: tail(others)! }
 
   fn tick(bs: Vec<Body>) -> Vec<Body> =
-    collect(range(length(bs)))
-    | map(pull({ b: bs[.]!, others: bs[:.] + bs[. + 1:] }))
+    collect range length bs
+    | map pull { b: bs[.]!, others: bs[:.] + bs[. + 1:] }
     | map(
         {
           x: .x + 0.01 * .vx,
@@ -133,7 +132,7 @@ program: |
       )
 
   fn advance({ bs, n }: { bs: Vec<Body>, n: Int }) -> Vec<Body> =
-    n | . == 0 -> bs or advance({ bs: tick(bs), n: . - 1 })
+    n | . == 0 -> bs or advance { bs: tick bs, n: . - 1 }
 
   fn pair({ b, o, acc }: { b: Body, o: Body, acc: Float }) -> Float =
     let dx = b.x - o.x
@@ -145,12 +144,12 @@ program: |
     { b, others, acc }: { b: Body, others: Vec<Body>, acc: Float }
   ) -> Float =
     others
-    | length(others) == 0 -> acc or
+    | length others == 0 -> acc or
       potential(
         {
           b: b,
           others: tail(others)!,
-          acc: pair({ b: b, o: others[0]!, acc: acc })
+          acc: pair { b: b, o: others[0]!, acc: acc }
         }
       )
 
@@ -159,7 +158,7 @@ program: |
 
   fn energy({ bs, acc }: { bs: Vec<Body>, acc: Float }) -> Float =
     bs
-    | length(bs) == 0 -> acc or
+    | length bs == 0 -> acc or
       energy(
         {
           bs: tail(bs)!,
@@ -167,7 +166,7 @@ program: |
             {
               b: bs[0]!,
               others: tail(bs)!,
-              acc: kinetic({ b: bs[0]!, acc: acc })
+              acc: kinetic { b: bs[0]!, acc: acc }
             }
           )
         }
@@ -175,9 +174,9 @@ program: |
 
   jsonlines(
     [
-      energy({ bs: system(), acc: 0.0 }),
+      energy { bs: system(), acc: 0.0 },
       energy(
-        { bs: advance({ bs: system(), n: parse(stdin) }), acc: 0.0 }
+        { bs: advance { bs: system(), n: parse stdin }, acc: 0.0 }
       )
     ]
   )

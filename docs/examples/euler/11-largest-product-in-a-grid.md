@@ -28,9 +28,9 @@ fn four(
     dc: Int
   }
 ) -> Int =
-  get({ g: g, r: r, c: c }) * get({ g: g, r: r + dr, c: c + dc }) *
-    get({ g: g, r: r + 2 * dr, c: c + 2 * dc }) *
-    get({ g: g, r: r + 3 * dr, c: c + 3 * dc })
+  get { g: g, r: r, c: c } * get { g: g, r: r + dr, c: c + dc } *
+    get { g: g, r: r + 2 * dr, c: c + 2 * dc } *
+    get { g: g, r: r + 3 * dr, c: c + 3 * dc }
 
 fn row_products(
   { g, r, dr, dc, cmin, cmax }: {
@@ -42,9 +42,9 @@ fn row_products(
     cmax: Int
   }
 ) -> Vec<Int> =
-  collect(range(cmax))
+  collect range cmax
   | select(. >= cmin)
-  | map(four({ g: g, r: r, c: ., dr: dr, dc: dc }))
+  | map four { g: g, r: r, c: ., dr: dr, dc: dc }
 
 fn direction(
   { g, dr, dc, rmax, cmin, cmax }: {
@@ -57,7 +57,7 @@ fn direction(
   }
 ) -> Vec<Int> =
   flatten(
-    collect(range(rmax))
+    collect range rmax
     | map(
         row_products(
           { g: g, r: ., dr: dr, dc: dc, cmin: cmin, cmax: cmax }
@@ -66,15 +66,15 @@ fn direction(
   )
 
 fn largest_product(g: Vec<Vec<Int>>) -> Int =
-  let rows = length(g)
-  let cols = length(g[0]!)
-  let right = direction({ g: g, dr: 0, dc: 1, rmax: rows, cmin: 0, cmax: cols - 3 })
-  let down = direction({ g: g, dr: 1, dc: 0, rmax: rows - 3, cmin: 0, cmax: cols })
-  let diagonal = direction({ g: g, dr: 1, dc: 1, rmax: rows - 3, cmin: 0, cmax: cols - 3 })
-  let antidiagonal = direction({ g: g, dr: 1, dc: -1, rmax: rows - 3, cmin: 3, cmax: cols })
+  let rows = length g
+  let cols = length g[0]!
+  let right = direction { g: g, dr: 0, dc: 1, rmax: rows, cmin: 0, cmax: cols - 3 }
+  let down = direction { g: g, dr: 1, dc: 0, rmax: rows - 3, cmin: 0, cmax: cols }
+  let diagonal = direction { g: g, dr: 1, dc: 1, rmax: rows - 3, cmin: 0, cmax: cols - 3 }
+  let antidiagonal = direction { g: g, dr: 1, dc: -1, rmax: rows - 3, cmin: 3, cmax: cols }
   max(flatten([right, down, diagonal, antidiagonal]))!
 
-largest_product(parse(stdin))
+largest_product parse stdin
 ```
 
 ```input

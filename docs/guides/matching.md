@@ -15,7 +15,7 @@ next to its own result instead of the cascade nesting further:
 fn shipping(kg: Int) -> Int =
   kg | . <= 1 -> 5 or . <= 5 -> 12 or . <= 20 -> 25 or 40
 
-{ a: shipping(1), b: shipping(3), c: shipping(20), d: shipping(25) }
+{ a: shipping 1, b: shipping 3, c: shipping 20, d: shipping 25 }
 ```
 
 ```output
@@ -34,7 +34,7 @@ fn band(n: Int) -> Str =
   n
   | . < 0 or . > 100 -> "out" or . >= 50 and . <= 60 -> "mid" or "in"
 
-{ a: band(-1), b: band(55), c: band(20) }
+{ a: band(-1), b: band 55, c: band 20 }
 ```
 
 ```output
@@ -82,7 +82,7 @@ declining every arm produces `Opt`, not a refusal:
 ```toylang
 fn discount(total: Int) -> Opt<Int> = total | . >= 100 -> total / 10
 
-{ a: discount(150), b: discount(50) }
+{ a: discount 150, b: discount 50 }
 ```
 
 ```output
@@ -95,7 +95,7 @@ so a bare `[]` resolves inside a partial arm without needing a variable to infer
 ```toylang
 fn tags(n: Int) -> Opt<Vec<Int>> = n | . > 0 -> []
 
-{ a: tags(1), b: tags(-1) }
+{ a: tags 1, b: tags(-1) }
 ```
 
 ```output
@@ -109,7 +109,7 @@ if it should not:
 ```toylang
 fn discount(total: Int) -> Int = total | . >= 100 -> total / 10 or 0
 
-{ a: discount(150), b: discount(50) }
+{ a: discount 150, b: discount 50 }
 ```
 
 ```output
@@ -128,8 +128,8 @@ fn first_reading(
   entry | .valid -> entry.readings[9]
 
 {
-  a: first_reading({ valid: 1 == 2, readings: [5] }),
-  b: first_reading({ valid: 1 == 1, readings: [5] })
+  a: first_reading { valid: 1 == 2, readings: [5] },
+  b: first_reading { valid: 1 == 1, readings: [5] }
 }
 ```
 
@@ -152,8 +152,8 @@ fn first_reading(
   entry | .valid -> entry.readings[0] or entry.readings[9]
 
 {
-  a: first_reading({ valid: 1 == 2, readings: [5] }),
-  b: first_reading({ valid: 1 == 1, readings: [1] })
+  a: first_reading { valid: 1 == 2, readings: [5] },
+  b: first_reading { valid: 1 == 1, readings: [1] }
 }
 ```
 

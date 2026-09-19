@@ -10,9 +10,9 @@ program: |
   fn size(b: Batch) -> Int = b | Some -> length(.) or Empty -> 0
 
   {
-    n: size(Batch.some([1, 2, 3])),
+    n: size Batch.some([1, 2, 3]),
     raw: Batch.some([4, 5]),
-    z: size(Batch.empty)
+    z: size Batch.empty
   }
 
 output: |

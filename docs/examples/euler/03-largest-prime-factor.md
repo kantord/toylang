@@ -18,10 +18,10 @@ recursion is about 740 calls deep at its deepest, inside every backend's stack.
 fn largest({ n, d }: { n: Int64, d: Int64 }) -> Int64 =
   d * d > n
   | . -> n or
-    n % d == 0 -> largest({ n: n / d, d: d }) or
-    largest({ n: n, d: d + (d == 2 | . -> 1 or 2) })
+    n % d == 0 -> largest { n: n / d, d: d } or
+    largest { n: n, d: d + (d == 2 | . -> 1 or 2) }
 
-largest({ n: 600851475143, d: 2 })
+largest { n: 600851475143, d: 2 }
 ```
 
 ```output

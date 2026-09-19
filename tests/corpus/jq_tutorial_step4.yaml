@@ -9,8 +9,8 @@ program: |
     db
 
   jsonlines(
-    commits(parse(stdin))
-    | map({ message: .commit.message, name: .commit.committer.name })
+    commits parse stdin
+    | map { message: .commit.message, name: .commit.committer.name }
   )
 
 input: |

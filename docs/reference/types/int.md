@@ -19,7 +19,7 @@ position it sits in expects an [Int64](int64.md), which is the only way a wider 
 enters:
 
 ```toylang
-str(2147483648)
+str 2147483648
 ```
 
 ```error

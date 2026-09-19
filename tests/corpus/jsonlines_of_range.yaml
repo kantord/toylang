@@ -3,7 +3,7 @@
 # count-one/transform-one/write-one loop like any other stream; tests/streaming.rs proves the
 # loop, output is what this pins. The eager spelling is `collect(range(n)) | select | map`.
 program: |
-  jsonlines(range(10) | select(. % 2 == 0) | map(. * 10))
+  jsonlines(range 10 | select(. % 2 == 0) | map(. * 10))
 
 output: |
   0

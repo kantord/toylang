@@ -19,16 +19,15 @@ fn strip2(n: Int) -> Int = n | . % 2 == 0 -> strip2(. / 2) or .
 
 fn strip5(n: Int) -> Int = n | . % 5 == 0 -> strip5(. / 5) or .
 
-fn reduced(d: Int) -> Int = strip5(strip2(d))
+fn reduced(d: Int) -> Int = strip5 strip2 d
 
 fn walk({ m, r, count }: { m: Int, r: Int, count: Int }) -> Int =
   r
-  | . == 1 -> count or
-    walk({ m: m, r: r * 10 % m, count: count + 1 })
+  | . == 1 -> count or walk { m: m, r: r * 10 % m, count: count + 1 }
 
 fn cycle_length(d: Int) -> Int =
-  let m = reduced(d)
-  m | . == 1 -> 0 or walk({ m: m, r: 10 % m, count: 1 })
+  let m = reduced d
+  m | . == 1 -> 0 or walk { m: m, r: 10 % m, count: 1 }
 
 fn best_of(
   { a, b }: { a: { d: Int, len: Int }, b: { d: Int, len: Int } }
@@ -39,11 +38,11 @@ fn find_best(
   { lo, hi }: { lo: Int, hi: Int }
 ) -> { d: Int, len: Int } =
   hi - lo
-  | . == 1 -> { d: lo, len: cycle_length(lo) } or
+  | . == 1 -> { d: lo, len: cycle_length lo } or
     best_of(
       {
-        a: find_best({ lo: lo, hi: (lo + hi) / 2 }),
-        b: find_best({ lo: (lo + hi) / 2, hi: hi })
+        a: find_best { lo: lo, hi: (lo + hi) / 2 },
+        b: find_best { lo: (lo + hi) / 2, hi: hi }
       }
     )
 

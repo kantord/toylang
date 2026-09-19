@@ -21,9 +21,13 @@
 //! truth for the file template's layout: 2-space indent, 69 columns, padded braces everywhere
 //! (`Circle { r }`, `{ r: 3 }`), a broken pipeline's `|` at its subject's column, a broken
 //! chain's arms aligned with the first arm's text. Everything else is fit-based: whatever fits
-//! on one line stays there. One choice nothing in the grammar forces predates it: calls are
-//! always written with explicit parens (`f(x)`, never the bare `f x` or the brace shorthand
-//! `f{...}`).
+//! on one line stays there.
+//!
+//! A call's own parens are optional wherever the grammar can read the argument back
+//! unambiguously (maintainer ruling, 2026-09-19: force bare application except where parens
+//! are really needed), so `f(x)` prints `f x` and `f({a: 1})` prints `f { a: 1 }`. `bare_arg_ok`
+//! in `one_line.rs` decides which arguments qualify, mirroring `parse.rs::ident_expr` exactly;
+//! its own doc comment has the grammar's reasoning.
 
 mod comments;
 mod multi_line;

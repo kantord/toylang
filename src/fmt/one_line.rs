@@ -256,9 +256,24 @@ fn escape_str(s: &str) -> String {
     out
 }
 
-/// The base of a postfix chain (`Field`/`Index`/`Project`/`Unwrap`): only reachable bare via
-/// `atom()`, so a compound child always needs parens there.
+/// The base of a postfix chain (`Field`/`Index`/`Project`/`Unwrap`/`ColonCall`'s receiver):
+/// only reachable bare via `atom()`, so a compound child always needs parens there.
+///
+/// A `Call` is the one exception `Ctx::Atom` alone does not cover: `bare_arg_ok` makes a
+/// call's OWN argument bare-appliable, but a bare argument is a postfix chain in its own right
+/// (`self.postfix()` again -- see `bare_arg_ok`'s doc), so a trailer appended after a bare call
+/// used as a base would reattach to the argument, not the call's result: `f(x)[i]` printed as
+/// `f x[i]` reparses as `f(x[i])`, not `(f(x))[i]` (found by the corpus's own behaviour check).
+/// A call serving as a base is therefore always printed with its explicit, self-delimiting
+/// parens, regardless of `bare_arg_ok`; anything nested inside those parens is unaffected and
+/// may still be bare.
 pub(super) fn print_atom_base(base: &Expr) -> String {
+    if let Expr::Call { func, arg, .. } = base {
+        return match arg {
+            None => format!("{func}()"),
+            Some(a) => format!("{func}({})", print_paren_arg(a)),
+        };
+    }
     print_expr_compact(base, Ctx::Atom)
 }
 
@@ -312,6 +327,55 @@ fn neg(base: &Expr) -> String {
     format!("{}{}", neg_sign(base), print_expr_compact(base, Ctx::Unary))
 }
 
+/// Whether `e` can be written as a call's bare (undelimited) argument and be read back as the
+/// same tree -- mirrors `parse.rs::ident_expr` exactly, not just "does it look simple" (maintainer
+/// ruling, 2026-09-19: force bare application except where parens are really needed).
+///
+/// A bare argument is read via `self.postfix()` there: `atom()` for the base, then the same
+/// trailer loop that reads `.field`/`[i]`/`!`/`:method(...)` anywhere else, so a postfix chain
+/// on top of a safe base is safe too, recursively (`f x.a`, `f v[0]!`, `f 1:m(2)` all round-trip).
+/// Three of the grammar's own exclusions need no check here, because no tree node renders that
+/// way: a leading `-` is always `Neg` (never in the arms below), a leading `.` is always
+/// `Subject` or a `Field` based on one (ditto), and `not` is not reachable from `atom()` at all
+/// (`Not` is parsed at a higher level, so it is never a `Call`'s own argument in a checked tree
+/// -- also ditto). The one exclusion that does need a check: a record literal right after the
+/// callee is read through the separate, non-continuing `self.argument()`, not `self.postfix()`,
+/// so `{a: 1}` alone is fine but a postfix chain sitting on top of one in the tree, `{a: 1}.a`,
+/// is not -- the `.a` would reattach to the call's result, not the literal (verified: `f {a:
+/// 2}.a` parses as `(f({a: 2})).a`, not `f({a: 2}.a)`). A `Vec` literal is never a recognised
+/// argument start at all, with or without a chain on top, so it is simply absent from the arms
+/// below and falls through to `false` like every other compound expression.
+fn bare_arg_ok(e: &Expr) -> bool {
+    match e {
+        Expr::Str { .. }
+        | Expr::Int { .. }
+        | Expr::Float { .. }
+        | Expr::Stdin { .. }
+        | Expr::Dsv { .. }
+        | Expr::Var { .. }
+        | Expr::Variant { .. }
+        | Expr::MatchCall { .. }
+        | Expr::Call { .. }
+        | Expr::RecordLit { .. } => true,
+        Expr::Field { base, .. }
+        | Expr::Index { base, .. }
+        | Expr::Slice { base, .. }
+        | Expr::Unwrap { base, .. }
+        | Expr::ColonCall { receiver: base, .. } => {
+            !matches!(**base, Expr::RecordLit { .. }) && bare_arg_ok(base)
+        }
+        _ => false,
+    }
+}
+
+fn call(func: &str, arg: Option<&Expr>) -> String {
+    match arg {
+        None => format!("{func}()"),
+        Some(a) if bare_arg_ok(a) => format!("{func} {}", print_expr_inner(a)),
+        Some(a) => format!("{func}({})", print_paren_arg(a)),
+    }
+}
+
 fn print_expr_inner(e: &Expr) -> String {
     match e {
         Expr::Str { text, .. } => format!("\"{}\"", escape_str(text)),
@@ -328,10 +392,7 @@ fn print_expr_inner(e: &Expr) -> String {
         Expr::RecordLit { fields, .. } => record_lit(fields),
         Expr::Subject { .. } => ".".to_string(),
         Expr::Var { name, .. } => name.clone(),
-        Expr::Call { func, arg, .. } => match arg {
-            None => format!("{func}()"),
-            Some(a) => format!("{func}({})", print_paren_arg(a)),
-        },
+        Expr::Call { func, arg, .. } => call(func, arg.as_deref()),
         Expr::Project { base, .. } => format!("{}[]", print_atom_base(base)),
         Expr::Index { base, index, .. } => {
             format!("{}[{}]", print_atom_base(base), print_paren_arg(index))

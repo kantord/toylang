@@ -1,5 +1,5 @@
 program: |
-  str(42)
+  str 42
 
 output: |
   42

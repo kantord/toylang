@@ -1,7 +1,7 @@
 # Quoted rather than a block scalar: output
 # holds bytes a block cannot reproduce.
 program: |
-  join_lines(collect(range(-3)) | map(str(.)))
+  join_lines(collect range(-3) | map str(.))
 
 output: "\n"
 

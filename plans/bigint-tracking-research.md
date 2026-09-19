@@ -134,7 +134,7 @@ resolves to `BigInt` by position:
 fn factorial(n: BigInt) -> BigInt =
   n == 0 -> 1 or n * factorial(n - 1)
 
-factorial(50)
+factorial 50
 ```
 
 ```output
@@ -145,9 +145,9 @@ The bridge in is `big(x)`, converting a value carried as `Int` or `Int64` (its e
 surface is open; the `i64` precedent takes only `Int`):
 
 ```toylang
-fn digits(n: Int64) -> BigInt = big(n)
+fn digits(n: Int64) -> BigInt = big n
 
-digits(600851475143)
+digits 600851475143
 ```
 
 ```output

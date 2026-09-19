@@ -35,15 +35,15 @@ fn longest(
 ) -> { n: Int, len: Int } =
   let mid = (lo + hi) / 2
   hi - lo == 1
-  | . -> { n: lo, len: chain_len({ n: i64(lo), acc: 1 }) } or
+  | . -> { n: lo, len: chain_len { n: i64 lo, acc: 1 } } or
     better(
       {
-        a: longest({ lo: lo, hi: mid }),
-        b: longest({ lo: mid, hi: hi })
+        a: longest { lo: lo, hi: mid },
+        b: longest { lo: mid, hi: hi }
       }
     )
 
-longest({ lo: 1, hi: 1000000 })
+longest { lo: 1, hi: 1000000 }
 ```
 
 ```output

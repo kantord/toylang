@@ -4,7 +4,7 @@
 program: |
   fn nothing() -> Vec<Int> = []
 
-  first(nothing())
+  first nothing()
 
 output: |
   null

@@ -4,7 +4,7 @@
 program: |
   enum Box<T> { Wrap(T), Empty }
 
-  { a: wrap("x"), b: wrap(1) }
+  { a: wrap "x", b: wrap 1 }
 
 output: |
   {"a":{"Wrap":"x"},"b":{"Wrap":1}}

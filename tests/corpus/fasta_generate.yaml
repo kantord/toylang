@@ -63,9 +63,9 @@ program: |
           left: s.left - 1,
           col: s.col + 1,
           line: s.line +
-            s.syms[pick({ r: s.seed, w: s.w, acc: 0, i: 0, total: s.total })]!,
+            s.syms[pick { r: s.seed, w: s.w, acc: 0, i: 0, total: s.total }]!,
           lines: s.lines,
-          seed: next_rng(s.seed),
+          seed: next_rng s.seed,
           syms: s.syms,
           w: s.w,
           total: s.total,
@@ -102,7 +102,7 @@ program: |
           col: s.col + 1,
           line: s.line + s.alu[s.k]!,
           lines: s.lines,
-          k: (s.k + 1) % length(s.alu),
+          k: (s.k + 1) % length s.alu,
           alu: s.alu
         }
       )
@@ -126,7 +126,7 @@ program: |
   join_lines(
     alu_sec(
       {
-        left: 2 * parse(stdin),
+        left: 2 * parse stdin,
         col: 0,
         line: "",
         lines: [">ONE Homo sapiens alu"],
@@ -425,7 +425,7 @@ program: |
       after_two(
         gen(
           {
-            left: 3 * parse(stdin),
+            left: 3 * parse stdin,
             col: 0,
             line: "",
             lines: [">TWO IUB ambiguity codes"],
@@ -449,7 +449,7 @@ program: |
             ],
             w: [27, 12, 12, 27, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
             total: 100,
-            n: parse(stdin)
+            n: parse stdin
           }
         )
       )

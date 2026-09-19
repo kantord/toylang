@@ -5,7 +5,7 @@ program: |
   ) -> { name: Str, age: Int } =
     db.u
 
-  pick(parse(stdin))
+  pick parse stdin
 
 input: |
   {"u": {"name": "ada", "age": 36}}

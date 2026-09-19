@@ -28,7 +28,7 @@ An empty `Vec` yields the absent `Opt`, which prints as `null`:
 ```toylang
 fn nothing() -> Vec<Int> = []
 
-max(nothing())
+max nothing()
 ```
 
 ```output

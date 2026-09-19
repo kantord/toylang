@@ -1,7 +1,7 @@
 # `[]` alone cannot be typed (nothing says what it would contain), so the empty Vec<Vec<Int>>
 # here comes from tail of a one-element Vec instead of a literal.
 program: |
-  flatten(tail([[1]])!)
+  flatten tail([[1]])!
 
 output: |
   []

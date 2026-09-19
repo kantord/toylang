@@ -8,7 +8,7 @@ and the two compose in the same chain.
 fn grade(score: Int) -> Str =
   score | . >= 90 -> "A" or . >= 80 -> "B" or . >= 70 -> "C" or "F"
 
-{ a: grade(95), b: grade(82), c: grade(55) }
+{ a: grade 95, b: grade 82, c: grade 55 }
 ```
 
 ```output
@@ -38,7 +38,7 @@ the `or` joins clauses into one test; a body is finished, so the `or` after it e
 fn size(n: Int) -> Str =
   n | . == 0 or . == 1 -> "tiny" or . < 10 -> "small" or "big"
 
-{ a: size(0), b: size(4), c: size(40) }
+{ a: size 0, b: size 4, c: size 40 }
 ```
 
 ```output
@@ -94,7 +94,7 @@ the declared element type instead of needing it spelled out some other way:
 ```toylang
 fn tags(n: Int) -> Opt<Vec<Int>> = n | . > 0 -> []
 
-{ a: tags(1), b: tags(-1) }
+{ a: tags 1, b: tags(-1) }
 ```
 
 ```output
@@ -112,7 +112,7 @@ fn first_reading(
 ) -> Opt<Opt<Int>> =
   entry | .valid -> entry.readings[9]
 
-first_reading({ valid: 1 == 2, readings: [5] })
+first_reading { valid: 1 == 2, readings: [5] }
 ```
 
 ```output
@@ -128,8 +128,8 @@ fn first_reading(
   entry | .valid -> entry.readings[0] or entry.readings[9]
 
 {
-  a: first_reading({ valid: 1 == 2, readings: [5] }),
-  b: first_reading({ valid: 1 == 1, readings: [1] })
+  a: first_reading { valid: 1 == 2, readings: [5] },
+  b: first_reading { valid: 1 == 1, readings: [1] }
 }
 ```
 

@@ -5,7 +5,7 @@ program: |
 
   fn dot(b: Bool) -> Str = b | . -> "yes" or "no"
 
-  [name(true), name(false), name(1 == 2), dot(true), dot(false)]
+  [name true, name false, name(1 == 2), dot true, dot false]
 
 output: |
   ["yes","no","no","yes","no"]

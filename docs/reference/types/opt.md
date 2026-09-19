@@ -8,7 +8,7 @@ collapsing index, [`tail`](../builtins/tail.md), a projection through a ragged d
 and the constructors `some(x)` and `none` spell one directly.
 
 ```toylang
-str(collect(range(5))[3]!)
+str collect(range 5)[3]!
 ```
 
 ```output
@@ -24,7 +24,7 @@ which is what lets it hand the absence back instead of being forced to insist:
 ```toylang
 fn head(v: Vec<Int>) -> Opt<Int> = v[0]
 
-str(head([1, 2, 3])!)
+str head([1, 2, 3])!
 ```
 
 ```output
@@ -55,7 +55,7 @@ memory. `!` peels exactly one level, so it can tell them apart. Unwrapping a `so
 survives, because the outer tag says the value is there, and yields the inner absence:
 
 ```toylang
-fn shallow() -> Opt<Opt<Int>> = some(none)
+fn shallow() -> Opt<Opt<Int>> = some none
 
 shallow()!
 ```
@@ -92,9 +92,9 @@ value inside an absent-looking one and a value that is absent all the way down p
 identically:
 
 ```toylang
-fn deep() -> Opt<Opt<Int>> = some(some(7))
+fn deep() -> Opt<Opt<Int>> = some some 7
 
-fn shallow() -> Opt<Opt<Int>> = some(none)
+fn shallow() -> Opt<Opt<Int>> = some none
 
 fn absent() -> Opt<Opt<Int>> = none
 

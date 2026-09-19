@@ -15,7 +15,7 @@ a stream of integers, counted one at a time instead of materialized as a `Vec`. 
 the Euler examples use for "try every value in a range" without building the range first:
 
 ```toylang
-jsonlines(range(6) | select(. % 2 == 0) | map(. * 10))
+jsonlines(range 6 | select(. % 2 == 0) | map(. * 10))
 ```
 
 ```output
@@ -36,7 +36,7 @@ pipeline reads the same as chapter 3's:
 fn shout(names: Stream<Str>) -> Stream<Str> =
   names | select(. != "bo") | map(. + "!")
 
-jsonlines(shout(stdin))
+jsonlines shout stdin
 ```
 
 ```input

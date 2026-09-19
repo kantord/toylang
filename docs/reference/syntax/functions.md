@@ -7,7 +7,6 @@ about a signature is inferred. The one exception is the hoisted match-call form,
 and whose result type is read off the arms (see [match](../operators/match.md)).
 
 ```toylang
-# fmt: syntax-example
 fn double(x: Int) -> Int = x * 2
 
 double 21
@@ -77,8 +76,7 @@ rule phrased about calls would have missed the case that motivated it. The same 
 lets `map` take a lambda whose body is a record literal without the parens:
 
 ```toylang
-# fmt: syntax-example
-[{a: 1, b: 2}] | map {a: .a}
+[{ a: 1, b: 2 }] | map { a: .a }
 ```
 
 ```output

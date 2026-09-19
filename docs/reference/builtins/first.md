@@ -18,7 +18,7 @@ as `null` -- the same answer indexing gives to absence:
 ```toylang
 fn nothing() -> Vec<Int> = []
 
-first(nothing())
+first nothing()
 ```
 
 ```output
@@ -38,7 +38,7 @@ first([{ n: 1 }, { n: 2 }])!
 Any element type is accepted, so the only refusal is a scalar argument:
 
 ```toylang
-first(1)
+first 1
 ```
 
 ```error

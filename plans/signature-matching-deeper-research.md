@@ -23,7 +23,7 @@ enum Shape { point, circle { r: Int } }
 
 fn area(s: Shape) -> Int = s | circle { r } -> r * r or point -> 0
 
-area(Shape.point)
+area Shape.point
 ```
 
 The record one destructures through guard projections (`p |.x > .y -> .x or .y`),the vec
@@ -49,7 +49,7 @@ enum Shape { point, circle { r: Int } }
 
 fn area = Shape(circle { r } -> r * r or point -> 0)
 
-area(Shape.point)
+area Shape.point
 ```
 
 `a_enum`, `a_nested` (`Wrapped(w -> Shape(circle{r} -> ... or ...))` as head),and `a_vec`
@@ -68,7 +68,7 @@ enum Shape { point, circle { r: Int } }
 
 fn area(s: Shape) -> Int = Shape(circle { r } -> r * r or point -> 0)
 
-area(Shape.point)
+area Shape.point
 ```
 
 `a_inner` parses,and the checker answers "`Shape` is not a function". Enum construction is
@@ -106,7 +106,7 @@ enum Shape { point, circle { r: Int } }
 
 fn area(s: Shape) -> Int = circle { r } -> r * r or point -> 0
 
-area(Shape.point)
+area Shape.point
 ```
 
 `b_body` parses fine,and the checker answers "a match needs a subject, so it must follow `|`"
@@ -132,7 +132,7 @@ enum Shape { point, circle { r: Int } }
 
 fn area(s: Shape) -> Int = . | circle { r } -> r * r or point -> 0
 
-area(Shape.point)
+area Shape.point
 ```
 
 `. ` rebinds at each boundary that introduces a subject: a pipe stage, a `map` or `select` body,

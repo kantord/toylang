@@ -49,7 +49,7 @@ fn to_kelvin(t: Temp) -> Int =
   | Celsius -> @("tests/modules/celsius.toy") or
     Kelvin -> @("tests/modules/kelvin.toy")
 
-[to_kelvin(Temp.celsius(27)), to_kelvin(Temp.kelvin(300))]
+[to_kelvin Temp.celsius(27), to_kelvin Temp.kelvin(300)]
 ```
 
 ```output
@@ -67,7 +67,7 @@ anywhere else. `tests/modules/greet.toy`:
 ```toy
 fn exclaim(s: Str) -> Str = s + "!"
 
-pub fn shout(s: Str) -> Str = exclaim(exclaim(s))
+pub fn shout(s: Str) -> Str = exclaim exclaim s
 
 pub fn handle(name: Str) -> Str = exclaim("hello " + name)
 ```

@@ -1,9 +1,9 @@
 program: |
-  fn outer(x: Str) -> Str = inner(x) + "!"
+  fn outer(x: Str) -> Str = inner x + "!"
 
   fn inner(x: Str) -> Str = "[" + x + "]"
 
-  outer("hi")
+  outer "hi"
 
 output: |
   [hi]!

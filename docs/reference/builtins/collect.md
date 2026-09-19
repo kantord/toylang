@@ -10,7 +10,7 @@ a `Vec` that can do all of those things. The cost is equally explicit: `collect`
 the whole stream, so nothing downstream of it starts until stdin closes.
 
 ```toylang
-join_lines(collect(stdin))
+join_lines collect stdin
 ```
 
 ```input
@@ -29,9 +29,9 @@ Counting a stream is the shape that shows why the boundary is spelled out: the c
 exist until everything has been read.
 
 ```toylang
-fn total(nums: Vec<Int>) -> Int = length(nums)
+fn total(nums: Vec<Int>) -> Int = length nums
 
-total(collect(stdin | map(parse(.))))
+total collect(stdin | map parse(.))
 ```
 
 ```input

@@ -96,7 +96,7 @@ fn the_maintainer_sample_formats_to_itself() {
                   fn area_ish(s: Shape) -> Int =\n\
                   \x20 s | Circle { r } -> r * r or Point -> 0\n\
                   \n\
-                  { a: area_ish(Shape.point), b: area_ish(circle({ r: 3 })) }\n";
+                  { a: area_ish Shape.point, b: area_ish circle { r: 3 } }\n";
     assert_eq!(toylang::fmt(sample).unwrap(), sample);
     let on_disk = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/shapes.toy"),
@@ -110,7 +110,7 @@ fn the_maintainer_sample_formats_to_itself() {
 /// 2026-09-19 sample for the column) -- the opposite of `Binary`'s trailing rule.
 #[test]
 fn a_pipeline_that_does_not_fit_breaks_one_stage_per_line_pipe_first() {
-    let src = "range(1000)\n\
+    let src = "range 1000\n\
                | select(. > 5)\n\
                | select(. < 1000 - somewhatlongvariablename)\n\
                | map(. * 2)\n";
@@ -124,7 +124,7 @@ fn a_pipeline_that_does_not_fit_breaks_one_stage_per_line_pipe_first() {
 /// Float reference page landed.
 #[test]
 fn a_float_literal_stays_a_float_literal() {
-    let src = "fn f(x: Float) -> Float = x * 2.0\n\n[f(1.5), f(1e21), f(1e-7), f(0.25)]\n";
+    let src = "fn f(x: Float) -> Float = x * 2.0\n\n[f 1.5, f 1e21, f 1e-7, f 0.25]\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
     assert_eq!(toylang::fmt("1.0e21\n").unwrap(), "1e21\n");
     assert_eq!(toylang::fmt("3.0\n").unwrap(), "3.0\n");
@@ -153,12 +153,12 @@ fn a_commented_multi_function_program_formats_to_itself() {
                \n\
                fn g(x: Int) -> Int =\n\
                \x20 # before the binding\n\
-               \x20 let a = f(x) # trailing the binding\n\
+               \x20 let a = f x # trailing the binding\n\
                \x20 # before the value\n\
                \x20 a + 1 # trailing the value\n\
                \n\
                # Before the program body.\n\
-               g(1) # trailing the body\n\
+               g 1 # trailing the body\n\
                # After everything.\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
 }
@@ -179,7 +179,7 @@ fn a_comment_inside_an_expression_rises_to_its_definition() {
                 # then add them up\n\
                 fn f(x: Int) -> Int = x | map(. * 2) | sum\n\
                 \n\
-                f(1)\n";
+                f 1\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 }
@@ -192,7 +192,7 @@ fn a_commented_module_formats_to_itself() {
                pub fn f(x: Int) -> Int = x # trailing\n\
                \n\
                # Private helper.\n\
-               fn g(x: Int) -> Int = f(x) + 1\n\
+               fn g(x: Int) -> Int = f x + 1\n\
                # The end.\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
 }
@@ -221,7 +221,7 @@ fn the_prelude_is_a_module_and_is_already_formatted() {
 /// error, so `(true) -> ..` survived exactly one formatting pass.
 #[test]
 fn a_literal_guard_head_formats_bare_and_round_trips() {
-    let src = "fn f(x: Int) -> Str = x | true -> \"a\" or \"b\"\n\nf(1)\n";
+    let src = "fn f(x: Int) -> Str = x | true -> \"a\" or \"b\"\n\nf 1\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
     let parenthesized = "fn f(x: Int) -> Str = x | (true) -> \"a\" or \"b\"\n\nf(1)\n";
     assert_eq!(toylang::fmt(parenthesized).unwrap(), src);
@@ -250,7 +250,7 @@ fn a_long_signature_breaks_at_its_parameter_then_inside_a_record_type() {
                 ) -> Int =\n\
                 \x20 g[r]![c]!\n\
                 \n\
-                four({ g: [[1]], r: 0, c: 0, dr: 0, dc: 0 })\n";
+                four { g: [[1]], r: 0, c: 0, dr: 0, dc: 0 }\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 
@@ -267,7 +267,7 @@ fn a_long_signature_breaks_at_its_parameter_then_inside_a_record_type() {
                 ) -> Int =\n\
                 \x20 rmax\n\
                 \n\
-                direction({ g: [[1]], dr: 0, dc: 0, rmax: 0, cmin: 0, cmax: 0 })\n";
+                direction { g: [[1]], dr: 0, dc: 0, rmax: 0, cmin: 0, cmax: 0 }\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 }
@@ -292,7 +292,7 @@ fn a_long_match_arm_breaks_after_its_arrow() {
                 ) -> Int =\n\
                 \x20 p.alpha\n\
                 \n\
-                f(1)\n";
+                f 1\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 }
@@ -317,7 +317,7 @@ fn a_postfix_chain_breaks_inside_its_base_with_the_suffix_reserved() {
                 \x20   \"nine\"\n\
                 \x20 ][n]!\n\
                 \n\
-                ones(1)\n";
+                ones 1\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 }
@@ -328,7 +328,7 @@ fn a_postfix_chain_breaks_inside_its_base_with_the_suffix_reserved() {
 #[test]
 fn comment_text_gets_one_space_after_the_hash() {
     let src = "#no space\n#\n#   indented kept\nfn f(x: Int) -> Int = x #trail   \n\nf(1)\n";
-    let want = "# no space\n#\n#   indented kept\nfn f(x: Int) -> Int = x # trail\n\nf(1)\n";
+    let want = "# no space\n#\n#   indented kept\nfn f(x: Int) -> Int = x # trail\n\nf 1\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 }
@@ -352,7 +352,7 @@ fn a_record_field_whose_value_does_not_fit_breaks_after_the_name() {
     let want = "{\n\
                 \x20 month: month == 12 | . -> 1 or month + 1,\n\
                 \x20 weekday:\n\
-                \x20   (weekday + days_in_month({ month: month, year: year })) % 7,\n\
+                \x20   (weekday + days_in_month { month: month, year: year }) % 7,\n\
                 \x20 rows: {\n\
                 \x20   a: [\n\
                 \x20     1,\n\
@@ -391,11 +391,78 @@ fn a_record_field_whose_value_does_not_fit_breaks_after_the_name() {
 /// a call's argument. The formatter has no types, so it must not rewrite one into the other.
 #[test]
 fn a_call_around_a_pipeline_keeps_its_call_form() {
-    let src = "fn total(nums: Vec<Int>) -> Int = length(nums)\n\ntotal(collect(stdin | map(parse(.))))\n";
+    let src = "fn total(nums: Vec<Int>) -> Int = length nums\n\ntotal collect(stdin | map parse(.))\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
     assert!(toylang::run_with_input(src, Some("1\n2\n")).is_ok());
     let as_stages = "fn total(nums: Vec<Int>) -> Int = length(nums)\n\nstdin | map(parse(.)) | collect(.) | total(.)\n";
     assert!(toylang::run_with_input(as_stages, Some("1\n2\n")).is_err());
     let sink = "range(3) | map(. * 10) | jsonlines(.)\n";
     assert!(toylang::run(sink).is_err());
+}
+
+/// Bare application, `f x`, is the default call form (maintainer ruling, 2026-09-19); `f(x)`
+/// stays only where the grammar cannot read `f x` back as one tree -- `src/fmt/one_line.rs`'s
+/// `bare_arg_ok` mirrors `parse.rs::ident_expr` exactly, not "looks simple enough".
+#[test]
+fn a_call_argument_prints_bare_wherever_the_grammar_reads_it_back() {
+    // Str, Int, Float, a name, a record literal, and a nested call are all safe bare, and
+    // chain right-associatively with no first-class functions to make the reading ambiguous.
+    let src = "fn f(x: Int) -> Int = x * 10\n\nfn g(x: Int) -> Int = x + 1\n\n\
+               [f 1, f \"s\", f 1.5, f x, f { a: 1 }, f g 2]\n";
+    assert_eq!(toylang::fmt(src).unwrap(), src);
+
+    // A postfix chain on top of a safe base reads back as part of the SAME argument (the
+    // grammar's bare-argument path is `self.postfix()`, the same trailer loop `.field`/`[i]`/
+    // `!`/`:method(...)` use everywhere else), so all three stay bare and run the same.
+    let src = "fn f(x: Int) -> Int = x\n\
+               \n\
+               fn r(x: Int) -> { a: Int } = { a: x }\n\
+               \n\
+               trait M {\n\
+               \x20 fn m(p: { x: Self, y: Int }) -> Self\n\
+               }\n\
+               impl M for Int {\n\
+               \x20 fn m(p: { x: Self, y: Int }) -> Self = p.x + p.y\n\
+               }\n\
+               \n\
+               [f(r(1).a), f([1, 2][0]!), f(1:m({ x: 1, y: 2 }))]\n";
+    let want = src
+        .replace(
+            "[f(r(1).a), f([1, 2][0]!), f(1:m({ x: 1, y: 2 }))]",
+            "[f r(1).a, f([1, 2][0]!), f 1:m({ x: 1, y: 2 })]",
+        )
+        .replace("}\nimpl M for Int", "}\n\nimpl M for Int");
+    assert_eq!(toylang::fmt(src).unwrap(), want);
+    assert_eq!(toylang::fmt(&want).unwrap(), want);
+    assert_eq!(toylang::run(src).unwrap(), toylang::run(&want).unwrap());
+
+    // The grammar's own exclusions: `-` is always subtraction, `[` always indexes (so a Vec
+    // literal argument needs parens with or without a postfix chain on top: `parse.rs`'s
+    // `self.argument()` for a *record* literal is the one exception that continues no further,
+    // but `[` is never even a recognised argument start), and `.` is always field access on
+    // the callee.
+    let src = "fn f(x: Int) -> Int = x\n\n[f(-1), f([1, 2]), f([1, 2][0]!), f(.)]\n";
+    assert_eq!(toylang::fmt(src).unwrap(), src);
+
+    // A record literal *with* a postfix chain on it is the one base that does not continue:
+    // `self.argument()`'s LBrace case never reads a trailer, so `{a: 1}.a` written bare would
+    // reattach the `.a` to the call's result. Alone, with no chain, it is bare-safe (tested
+    // above via `f { a: 1 }`).
+    let src = "fn f(x: Int) -> Int = x\n\nfn r(x: Int) -> { a: Int } = { a: x }\n\n\
+               f({ a: 1 }.a)\n";
+    assert_eq!(toylang::fmt(src).unwrap(), src);
+    assert_eq!(toylang::run(src).unwrap(), toylang::run("fn f(x: Int) -> Int = x\n\nf(1)\n").unwrap());
+}
+
+/// A call used as a postfix base is always parenthesized, even when its own argument would
+/// otherwise print bare: `f(x)[i]` printed as `f x[i]` would reparse as `f(x[i])`, since a
+/// bare argument is itself a postfix chain and the `[i]` would reattach there instead of to
+/// the call's result. Found by the corpus's own behaviour check the day bare application
+/// landed: nine real corpus programs changed behaviour this way before `print_atom_base` was
+/// taught to always parenthesize a `Call` it is printing as a base.
+#[test]
+fn a_call_used_as_a_postfix_base_keeps_its_parens() {
+    let src = "fn f(xs: Vec<Int>) -> Vec<Int> = xs\n\n[f([1, 2])[0]!, f([1, 2])[1]!]\n";
+    assert_eq!(toylang::fmt(src).unwrap(), src);
+    assert_eq!(toylang::run(src).unwrap(), "[1,2]\n");
 }

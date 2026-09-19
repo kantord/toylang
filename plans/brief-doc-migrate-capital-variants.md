@@ -8,7 +8,7 @@ around them.
 ```toylang
 enum Shape { Point, Circle { r: Int } }
 
-circle({ r: 1 })
+circle { r: 1 }
 ```
 ```
 {"Circle":{"r":1}}
@@ -21,7 +21,7 @@ for a unit variant). A declaration that still starts lowercase is refused, verif
 ```toylang
 enum Shape { point, circle { r: Int } }
 
-circle({ r: 1 })
+circle { r: 1 }
 ```
 ```
 toylang: a variant name starts with a capital letter; declare `point` of `Shape` as `Point`,

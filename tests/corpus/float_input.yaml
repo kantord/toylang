@@ -3,7 +3,7 @@
 program: |
   fn twice(x: Float) -> Float = x * 2.0
 
-  twice(parse(stdin))
+  twice parse stdin
 
 input: |
   2.5

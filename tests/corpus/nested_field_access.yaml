@@ -5,7 +5,7 @@ program: |
   ) -> Vec<Vec<Str>> =
     db.groups[].members[].name
 
-  names(parse(stdin))
+  names parse stdin
 
 input: |
   {"groups": [{"members": [{"name": "ada"}, {"name": "bo"}]}, {"members": [{"name": "cy"}]}]}

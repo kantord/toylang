@@ -1,5 +1,5 @@
 program: |
-  1 == 2 | . -> str(1) or 1 == 1 -> str(2) or str(3)
+  1 == 2 | . -> str 1 or 1 == 1 -> str 2 or str 3
 
 output: |
   2

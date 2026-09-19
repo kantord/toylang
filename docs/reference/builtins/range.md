@@ -6,7 +6,7 @@ one at a time, as a stream. Zero-based, matching jq, Python, and the language's 
 fuses into a count-one/transform-one/write-one loop instead of materializing the whole `Vec`:
 
 ```toylang
-jsonlines(range(5) | select(. >= 2) | map(. * 10))
+jsonlines(range 5 | select(. >= 2) | map(. * 10))
 ```
 
 ```output
@@ -18,7 +18,7 @@ jsonlines(range(5) | select(. >= 2) | map(. * 10))
 A zero or negative argument yields no elements, not an error:
 
 ```toylang
-jsonlines(range(-3))
+jsonlines range(-3)
 ```
 
 ```output
@@ -29,7 +29,7 @@ As a stream it follows the same rules the other sources do: born at the source, 
 makes the memory cost visible:
 
 ```toylang
-collect(range(4))
+collect range 4
 ```
 
 ```output
@@ -39,7 +39,7 @@ collect(range(4))
 and everything that works on a `Vec` works on that:
 
 ```toylang
-length(collect(range(-3)))
+length collect range(-3)
 ```
 
 ```output

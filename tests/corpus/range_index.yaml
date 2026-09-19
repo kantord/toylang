@@ -1,5 +1,5 @@
 program: |
-  str(collect(range(5))[3]!)
+  str collect(range 5)[3]!
 
 output: |
   3
