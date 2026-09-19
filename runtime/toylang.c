@@ -1363,6 +1363,36 @@ tl_vec *tl_vec_concat(const tl_vec *a, const tl_vec *b, int64_t ncols) {
     return out;
 }
 
+/* `transpose`, the matrix transpose of a rectangular `Vec<Vec<T>>`: row `i` of the result is
+ * column `i` of the input. `ncols` is T's column count, the same reason `tl_vec_flatten` takes
+ * it rather than reading it off either Vec. A ragged input (rows of unequal length) is refused
+ * at runtime the same way every other runtime failure is, since the checker cannot see lengths. */
+tl_vec *tl_vec_transpose(const tl_vec *vv, int64_t ncols) {
+    if (vv->len == 0) {
+        return tl_vec_new(0, 1);
+    }
+    int64_t nrows = vv->len;
+    int64_t ncols_out = ((const tl_vec *)vv->cols[0][0])->len;
+    for (int64_t i = 0; i < nrows; i++) {
+        if (((const tl_vec *)vv->cols[0][i])->len != ncols_out) {
+            const char *msg = "toylang: transpose needs a rectangular Vec of Vecs\n";
+            (void)!write(2, msg, strlen(msg));
+            exit(1);
+        }
+    }
+    tl_vec *out = tl_vec_new(ncols_out, 1);
+    for (int64_t c = 0; c < ncols_out; c++) {
+        tl_vec *row = tl_vec_new(nrows, ncols);
+        for (int64_t k = 0; k < ncols; k++) {
+            for (int64_t r = 0; r < nrows; r++) {
+                row->cols[k][r] = ((const tl_vec *)vv->cols[0][r])->cols[k][c];
+            }
+        }
+        out->cols[0][c] = (int64_t)row;
+    }
+    return out;
+}
+
 /* Ascending by raw int64 value: what backs Int, Int64, and Char, since all three live in the
  * slot unnarrowed (a Char is a codepoint, and the checker already keeps it from mixing with the
  * others). qsort's comparator returns the sign of the difference rather than subtracting, since
