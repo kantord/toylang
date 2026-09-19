@@ -110,3 +110,12 @@ work -- two tokens, a prefix form, and the flag that splits `or`'s two readings 
 one more node threaded through the backends. Every one carries the check's own inherited label,
 and the task was implementing #96, not the emitter split; `parse.rs` has no split conversation
 of its own yet either. Same rule, same outcome.
+
+The fmt-templates session (2026-09-19, branch fmt-improvements) grew `parse.rs` 1816->1871
+(recording comments in `Cursor::advance`), inherited by the same rule. It is also the first
+instance of the *caused* bullet: `src/emit_toylang.rs` went 887->1264, under budget at
+merge-base and over after the comment placement, the four new break seams, and the one-line
+template landed. The session was maintainer-driven, so it was raised directly rather than as
+an issue, with the seams named (the one-line template, about 110 lines; comment placement,
+about 100; the parser-mirroring paren table, about 90); the finding stands until the
+maintainer rules on the split.
