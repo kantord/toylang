@@ -87,6 +87,13 @@ nodes:
       answeredAt: <ISO timestamp>
 ```
 
+**Decide rows that gate build rows**: a decide row that gates one or more build rows is only
+composed into a round after `dispatch_state.py --show` on every row that has the decide row in
+its `needs:` list -- quote each one's latest run (run id, status, edits, ended_by) in the round
+node's `background`. If any gated row's latest run has a non-empty `patch_path` (edits happened),
+STOP and report that instead of composing the round: a landed or near-landed patch means the
+premise needs re-checking, not a fresh question.
+
 **Lifecycle**: append/edit nodes as `status: draft` freely -- the server never serves a draft node
 to the browser, so this is where planning several questions ahead, and revising them as more
 context arrives, actually lives. Flip a node to `status: live` to promote it: one plain edit, no
