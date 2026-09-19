@@ -1,3 +1,26 @@
+FOURTH ATTEMPT -- SCOPE CUT, read this first. Run 8fe6a6b6 (2026-09-19) ran out of turns (3x30)
+one step from green: it applied the one-line OPT_TYPE fix and the SELECT_HELPER rewrite correctly,
+but then ALSO built a lazy-local RefCell/HashSet tracker (depth-0 index optimization) and was
+still routing consumers through dense when turns ran out. Its own verdict: "a narrower version
+scoped to just the one-line OPT_TYPE gating fix plus the SELECT_HELPER rewrite and basic dense
+routing, falling back to always-dense for every consumer, would very likely have succeeded."
+So, for this attempt ONLY:
+  1. NO RefCell, NO HashSet, NO lazy-local tracking, NO `lazy_type`/`lazy` bookkeeping. A `select`
+     bound to a name or passed anywhere is emitted as `tlSelNew(...)` wrapped in a call to
+     `tlSelDense(...)` immediately -- i.e. every consumer sees a plain `[]T`. The ONLY lazy path
+     is a Select expression indexed directly (`xs | select(p) | at(i)` style, depth-0 Index/Length
+     directly on the Select node), which calls `tlSelAt`/`tlSelLen` on the un-densified handle.
+  2. Do the edits in this order, running `cargo build` after each so errors stay small:
+     (a) replace SELECT_HELPER text, (b) OPT_TYPE gate `|| uses("tlSelNew(")`, (c) helper
+     registration `uses("tlSelNew(")`, (d) the Kind::Select emit site, (e) direct Index/Length on
+     Select. Nothing else needs to change if (d) always wraps in tlSelDense.
+  3. `just check` stops at the FIRST failing snapshot test. Do not run it repeatedly. Instead,
+     once it builds, run `INSTA_UPDATE=always cargo nextest run` (or `cargo insta test --accept`
+     if nextest complains), THEN `just check` once to confirm green. Snapshot diffs in
+     tests/snapshots/corpus__*__go.snap are expected.
+  4. Spend at most ~10 turns reading. The consumer map is `grep -n "tlSelect\|Kind::Select"
+     src/emit_go.rs`; do not re-read the whole file.
+
 Board row `select-lazy-materialization-build-go` (gh:176). Third attempt. Two prior runs
 (9a7e0d2f, ed033203, both 2026-09-14) used the exact design below and got real edits in, but both
 still failed `just check` -- read the bug diagnosis right below before writing any code, it is a

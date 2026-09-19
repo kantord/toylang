@@ -182,7 +182,7 @@
     Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
   kind: build
   needs: [select-lazy-materialization-convergence-ruling]
-  status: delegated
+  status: todo
 
 - id: select-lazy-materialization-build-js
   title: 'select-lazy-materialization, JS backend -- split from `select-lazy-materialization-build`
