@@ -2932,3 +2932,33 @@
     grammar would read differently on one line (19 of 261 corpus programs today; a module never).
     The cause is the grammar''s newline-as-separator, filed as
     fmt-newline-separator-grammar-decide; until that is ruled the template cannot be total.'
+
+- id: fmt-newline-separator-grammar-decide
+  title: 'The grammar uses a line break as the only separator in two places: between a `let`
+    binding''s value and the block''s value (`parse.rs::def_body` requires the whole `let name =
+    expr` on one line), and between the last definition''s body and the program body (the
+    same-line rule in `takes_argument`). With bare application, `let a = x` then `a` on one line
+    is the call `x(a)`, and `fn g(x: Int) -> Int = x` then `g(1)` is `x(g(1))`. Two formatter
+    consequences (2026-09-19 session): a `let` value can never be broken, so Euler 11 keeps
+    four lines at 83-92 columns; and `fmt_one_line` must refuse 19 of 261 corpus programs. `;`
+    is lexed (`Tok::Semicolon`) and accepted nowhere. Decide: (a) accept `;` as an optional
+    terminator after a `let` value and after a definition body, which the file template never
+    writes and the one-line template always writes; (b) let a `let` value continue onto more
+    indented lines, which fixes the file template only; (c) keep the rule and accept both
+    limits. Verified probes are in the session report. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: done
+  outcome: 'Ruled 2026-09-19: keep the grammar rule. A program with a `let` block is defined as
+    not one-lineable, and `toylang::fmt_one_line` refuses it outright (b5b348d); a `let` value
+    stays on one line however long, so Euler 11 keeps four lines over 80 columns by design.'
+
+- id: fmt-one-line-consumer-decide
+  title: 'fmt-one-line-template builds a one-line rendering of a program as a library function; nothing calls it yet. Decide where it surfaces: a `toylang fmt --one-line FILE` form, the site''s code views, inline fragments in the docs, or something else. Asked 2026-09-19 alongside the two-template ruling and left open. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: done
+  outcome: 'Ruled 2026-09-19: `toylang fmt --one-line FILE`, and that is enough for now. Built in
+    b5b348d with docs/reference/cli/index.md and a CLI test. The same session also ruled and
+    built comment-text normalisation (`# text`), a broken arm body one level below the later
+    arms, and the formatter restructure into src/fmt/ (one module per concern).'
