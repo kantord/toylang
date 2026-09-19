@@ -53,6 +53,8 @@ struct Runtime<'ctx> {
     vec_from_mask: FunctionValue<'ctx>,
     mask_new: FunctionValue<'ctx>,
     mask_set: FunctionValue<'ctx>,
+    sel_len: FunctionValue<'ctx>,
+    sel_at: FunctionValue<'ctx>,
     vec_column: FunctionValue<'ctx>,
     rec_get: FunctionValue<'ctx>,
     rec_new: FunctionValue<'ctx>,
@@ -194,6 +196,16 @@ impl<'ctx> Emitter<'ctx, '_> {
                 "tl_mask_set",
                 ctx.void_type()
                     .fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
+                None,
+            ),
+            sel_len: module.add_function(
+                "tl_sel_len",
+                i64t.fn_type(&[ptr.into(), ptr.into()], false),
+                None,
+            ),
+            sel_at: module.add_function(
+                "tl_sel_at",
+                ptr.fn_type(&[ptr.into(), ptr.into(), i64t.into(), i32t.into()], false),
                 None,
             ),
             vec_column: module.add_function(
@@ -726,17 +738,27 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(out.into())
     }
 
-    /// `select` builds a mask and then compacts, rather than growing an array.
+    /// Build the survivor mask for a `select` without compacting it into a Vec.
     ///
     /// The predicate reads element `i` out of the column: nothing materialises an element, which
     /// is what keeps the loop in the shape that vectorises and is what the struct-of-arrays
-    /// layout is for once a Vec of records has several columns.
-    fn select(
+    /// layout is for once a Vec of records has several columns. The mask is what a consumer that
+    /// only needs to observe the selection (its length, one of its elements) reads through, so
+    /// those consumers can avoid the compaction `vec_from_mask` would otherwise do.
+    fn select_mask(
         &mut self,
         source: &Tir,
         param: LocalId,
         pred: &Tir,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<
+        (
+            PointerValue<'ctx>,
+            PointerValue<'ctx>,
+            IntValue<'ctx>,
+            Type,
+        ),
+        String,
+    > {
         let elem_ty = crate::tir::runtime_elem(&source.ty)
             .ok_or_else(|| "select on something that has no dimension".to_string())?
             .clone();
@@ -749,15 +771,16 @@ impl<'ctx> Emitter<'ctx, '_> {
             .call_rt(self.rt.mask_new, &[len.into()], "mask")?
             .into_pointer_value();
         let zero = self.ctx.i64_type().const_zero();
+        let elem_ty_loop = elem_ty.clone();
 
         self.emit_loop(len, move |e, i| {
-            if matches!(elem_ty, Type::Record(_)) {
+            if matches!(elem_ty_loop, Type::Record(_)) {
                 e.locals.insert(param, Slot::Cursor { vec: src, index: i });
             } else {
                 let slot = e
                     .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
                     .into_int_value();
-                let elem = e.read_slot(slot, &elem_ty)?;
+                let elem = e.read_slot(slot, &elem_ty_loop)?;
                 e.locals.insert(param, Slot::Value(elem));
             }
 
@@ -769,6 +792,22 @@ impl<'ctx> Emitter<'ctx, '_> {
             Ok(())
         })?;
 
+        Ok((src, mask, len, elem_ty))
+    }
+
+    /// `select` builds a mask and then compacts it into a dense Vec.
+    ///
+    /// The compaction is the one part a consumer that only observes the result (its length, a
+    /// single element) can skip; those consumers call `select_mask` and read through the mask
+    /// instead of arriving here. This is the fallback that materialises the concrete Vec every
+    /// other consumer needs.
+    fn select(
+        &mut self,
+        source: &Tir,
+        param: LocalId,
+        pred: &Tir,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let (src, mask, _len, _elem_ty) = self.select_mask(source, param, pred)?;
         self.call_rt(self.rt.vec_from_mask, &[src.into(), mask.into()], "kept")
     }
 
@@ -1463,7 +1502,8 @@ impl<'ctx> Emitter<'ctx, '_> {
                 // Read before `arg` below shadows the node with its computed value: `Fields`
                 // wants the checked type, not the record value.
                 let record_ty = arg.ty.clone();
-                let arg = self.expr(arg)?;
+                let arg_node = arg;
+                let arg = self.expr(arg_node)?;
                 match which {
                     Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,
                     // The descriptor tells the runtime parser what the result type is, the
@@ -1486,8 +1526,17 @@ impl<'ctx> Emitter<'ctx, '_> {
                     }
                     // The source already materialized, so the exit has nothing left to do.
                     Builtin::Collect => arg,
-                    // Already tracked on the Vec header; nothing to compute.
-                    Builtin::Length => self.call_rt(self.rt.vec_len, &[arg], "length")?,
+                    // A length directly on a Select stays lazy: it counts the survivors in
+                    // the mask instead of compacting the selection into a dense Vec first.
+                    Builtin::Length => {
+                        if let Kind::Select { source, param, pred } = &arg_node.kind {
+                            let (src, mask, _len, _elem_ty) =
+                                self.select_mask(source, *param, pred)?;
+                            self.call_rt(self.rt.sel_len, &[src.into(), mask.into()], "sel_len")?
+                        } else {
+                            self.call_rt(self.rt.vec_len, &[arg], "length")?
+                        }
+                    },
                     Builtin::Tail => self.call_rt(self.rt.vec_tail, &[arg], "tail")?,
                     // A record entry is spread across columns, so `is_record` is what tells the
                     // runtime to gather it back, the same flag an Index collapse carries.
@@ -1662,6 +1711,29 @@ impl<'ctx> Emitter<'ctx, '_> {
                 elem_is_record,
             } => {
                 let i64t = self.ctx.i64_type();
+                // A depth-0 index directly on a Select stays lazy: it walks the survivor mask
+                // to the i-th kept element instead of compacting the selection into a dense
+                // Vec first.
+                if *depth == 0 {
+                    if let Kind::Select { source, param, pred } = &base.kind {
+                        let (src, mask, _len, _elem_ty) =
+                            self.select_mask(source, *param, pred)?;
+                        let index = self.expr(index)?;
+                        return self.call_rt(
+                            self.rt.sel_at,
+                            &[
+                                src.into(),
+                                mask.into(),
+                                index,
+                                self.ctx
+                                    .i32_type()
+                                    .const_int(*elem_is_record as u64, false)
+                                    .into(),
+                            ],
+                            "sel_at",
+                        );
+                    }
+                }
                 let base = self.expr(base)?;
                 let index = self.expr(index)?;
                 self.call_rt(

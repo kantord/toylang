@@ -1470,6 +1470,43 @@ int64_t *tl_at(const tl_vec *v, int64_t i, int64_t depth, int is_record) {
     return tl_opt_some(is_record ? (int64_t)tl_rec_from_vec(v, i) : v->cols[0][i]);
 }
 
+/* Lazy select: read through a survivor mask the codegen built inline, without compacting the
+ * source first. `tl_sel_len` counts survivors; `tl_sel_at` finds the i-th survivor's element
+ * the way `tl_at` finds the i-th element of a dense Vec, sharing its negative-index and absence
+ * encodings. The mask is the codegen's own `int8_t *` from `tl_mask_new`/`tl_mask_set`, so
+ * these are the only two places a mask is read back. The predicate itself never runs here:
+ * the codegen has already evaluated it element-wise into the mask, which is what keeps the
+ * mask-building loop vectorisable. */
+int64_t tl_sel_len(const tl_vec *src, const int8_t *keep) {
+    int64_t n = 0;
+    for (int64_t i = 0; i < src->len; i++) {
+        n += keep[i] != 0;
+    }
+    return n;
+}
+
+int64_t *tl_sel_at(const tl_vec *src, const int8_t *keep, int64_t i, int is_record) {
+    int64_t n = tl_sel_len(src, keep);
+    if (i < 0) {
+        i = n + i;
+    }
+    if (i < 0 || i >= n) {
+        return NULL;
+    }
+    /* Walk the mask to the i-th survivor's source index. */
+    int64_t idx = 0;
+    int64_t seen = 0;
+    while (seen <= i) {
+        if (keep[idx]) {
+            seen++;
+        }
+        if (seen <= i) {
+            idx++;
+        }
+    }
+    return tl_opt_some(is_record ? (int64_t)tl_rec_from_vec(src, idx) : src->cols[0][idx]);
+}
+
 /* Narrow a Vec to the [lo, hi) window, clamping out-of-range bounds jq-style rather than
  * answering absence the way tl_at does: negatives count from the end, both bounds clamp to
  * [0, len], and a crossed window is empty (kantord/toylang#143). A bound left out is passed
