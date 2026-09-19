@@ -683,7 +683,8 @@ pub fn emit(program: &Program) -> String {
         || collect
         || program.input.is_some()
         || program.inputs.is_some()
-        || uses("tlFail(");
+        || uses("tlFail(")
+        || uses("tlTranspose(");
     let quote = uses("tlQuote(");
     let join = uses("tlJoin(");
 

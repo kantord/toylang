@@ -912,6 +912,7 @@ pub fn emit(program: &Program) -> String {
         || uses("tl_range(")
         || uses("tl_read_all_stdin(")
         || uses("tl_read_lines(")
+        || uses("tl_transpose(")
         || uses("tl_fail(");
 
     let mut helpers = String::new();
