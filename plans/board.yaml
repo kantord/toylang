@@ -452,13 +452,6 @@
   needs: []
   status: delegated
 
-- id: benchmark-thesis-publication
-  issue: gh:147
-  title: 'Ruling gh:147 (benchmark thesis is a general cross-language competitiveness claim) is recorded nowhere but the archived row title, and plans/benchmark-plan.md:66-69 still states the framing it overrode ("comparative color across this project''s backends ... not a claim about toylang in the abstract"). Rewrite the plan''s thesis and comparison sections to the ruled framing, add a publication surface for benches/results (a docs page the site renders), and carry the CLBG "far from realistic" caveat prominently there. Found by the 2026-09-19 issue review.'
-  kind: build
-  needs: []
-  status: delegated
-
 - id: matcher-totality-alt-composition-decide
   issue: gh:156
   title: 'gh:156''s round 2 ruled only the naming convention (curly-only patterns, capital-first variants, both built); the question in its title -- matcher totality measurement, alt-composition, and the parser-combinator claim -- was never re-asked, and the row closed on the naming ruling alone. Today src/check/mod.rs (~2289) still refuses `o | Some{v} -> v or None -> 0` over Opt with "how its arms compose is still being decided", and Q30 sits at LEANING. Grill that remainder. Mark done when ruled.'
