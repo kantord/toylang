@@ -1,0 +1,10 @@
+Board row `declare-terminator-build-2a-2` (gh:153, formatter half of slice 2a). Make `toylang fmt` print `;` after every fn and type declaration.
+
+State on main: the parser ACCEPTS `;` after every `fn`/`type` declaration (optional; slice 2a landed only src/parse.rs `opt_semicolon`). The gh:153 ruling makes `;` REQUIRED; a later slice (2c) flips that, so every toylang program in the repo must first spell it. `enum`, `trait`, `impl` and expressions are NOT touched -- only `fn` and `type` (incl. `pub fn`, `pub type`). A multi-line declaration gets the `;` at the end of its LAST line, e.g. `fn f(x: Int) -> Int = x * 10;`. Blank-line layout stays as is.
+
+Your job: src/fmt (the formatter) must print the `;` directly after the last token of each fn/type declaration (before the blank lines that separate declarations; a trailing comment, if the formatter keeps one, stays after the `;`). Then update the expected outputs in tests/fmt.rs: it holds hardcoded formatter output (e.g. the test near line 419 expects `fn f(x: Int) -> Int = x * 10` and must now expect `... = x * 10;`; also near line 539) and its input strings.
+
+YOUR FILES ONLY: files under src/fmt, tests/fmt.rs, and any fixture/snapshot under tests/ that stores formatted output.
+HARD RULES: edit tests/fmt.rs ONLY with the edit tool, one string at a time (or replace_all for an identical string) -- NEVER a sed/python/bulk rewrite of a .rs file (a previous attempt wrote a literal backslash-n into tests/euler_real_data.rs that way). Keep each literal's existing escaping exactly and add only the `;` character.
+Method: implement in src/fmt, then `cargo nextest run --no-fail-fast -E 'test(fmt)'` lists every expectation that needs the `;`; fix them one by one. The corpus files under tests/corpus and the docs are migrated by OTHER rows in parallel: if a test that reads tests/corpus or docs/ fails ONLY because those files have no `;` yet, say so in your report and do not edit them. Formatting must stay idempotent (fmt(fmt(x)) == fmt(x)) and formatted output must re-parse.
+Done-gate: `just check` passes except failures you named as caused by the other rows; `git diff --stat` shows only your files.

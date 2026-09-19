@@ -397,11 +397,46 @@
   needs: [declare-terminator-build-2a, declare-terminator-build-2b, declare-terminator-build-2c]
   status: todo
 
+- id: declare-terminator-build-2a-2
+  issue: gh:153
+  title: 'Slice 2a leftover (found 2026-09-20: 2a landed only the parser opt_semicolon): make `toylang fmt` print `;` after every fn/type declaration and update tests/fmt.rs expectations. Brief: plans/simple-briefs/declare-terminator-build-2a-2.txt.'
+  kind: build
+  needs: []
+  status: delegated
+
+- id: declare-terminator-build-2a-3
+  issue: gh:153
+  title: 'Slice 2a leftover: add `;` after every fn/type declaration in tests/corpus/[a-k]*.yaml (not record_body_after_definition/vec_body_after_definition). Brief: plans/simple-briefs/declare-terminator-build-2a-3.txt.'
+  kind: build
+  needs: []
+  status: delegated
+
+- id: declare-terminator-build-2a-4
+  issue: gh:153
+  title: 'Slice 2a leftover: add `;` after every fn/type declaration in tests/corpus/[l-z]*.yaml (not record_body_after_definition/vec_body_after_definition). Brief: plans/simple-briefs/declare-terminator-build-2a-4.txt.'
+  kind: build
+  needs: []
+  status: delegated
+
+- id: declare-terminator-build-2a-5
+  issue: gh:153
+  title: 'Slice 2a leftover: add `;` after every fn/type declaration in every .toy file (prelude.toy, examples/, tests/modules/, benches/programs/), README.md, draft.md, docs/examples/ and docs/adr/. Brief still to write.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: declare-terminator-build-2a-6
+  issue: gh:153
+  title: 'Slice 2a leftover: add `;` after every fn/type declaration in toylang fragments under docs/guides, docs/overview, docs/reference, docs/tutorial EXCEPT docs/reference/syntax/functions.md (2c owns it); tests/docs.rs compiles each fragment. Brief still to write.'
+  kind: build
+  needs: []
+  status: todo
+
 - id: declare-terminator-build-2c
   issue: gh:153
   title: 'Slice 3 of 3 of declare-terminator-build-2: make `;` REQUIRED after every fn/type declaration with one new diagnostic, retire the same-line heuristic and its diagnostic (src/parse.rs ~616, 625-637, 1472, 1646), update tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml, rewrite the declarations section of docs/reference/syntax/functions.md, and record the gh:153 ruling in plans/questions.md or a docs/adr/ ADR.'
   kind: build
-  needs: [declare-terminator-build-2b-1, declare-terminator-build-2b-2, declare-terminator-build-2b-3]
+  needs: [declare-terminator-build-2a-2, declare-terminator-build-2a-3, declare-terminator-build-2a-4, declare-terminator-build-2a-5, declare-terminator-build-2a-6]
   status: todo
 
 - id: matcher-totality-alt-composition-decide
