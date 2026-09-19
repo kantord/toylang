@@ -10,7 +10,7 @@ mod support;
 fn file_form_without_comments(src: &str) -> String {
     let mut file = toylang::parse::parse(src).expect("a program");
     file.comments.clear();
-    toylang::emit_toylang::emit(&file)
+    toylang::fmt::emit(&file)
 }
 
 enum Outcome {

@@ -84,7 +84,7 @@ fn a_formatted_corpus_program_runs_the_same_as_the_original() {
 
 /// The maintainer's own sample (docs/examples/euler/01-multiples-of-3-and-5.md) is the one
 /// ground truth for what the canonical style actually looks like -- everything else in
-/// `emit_toylang.rs` is derived from or extends it. Pinned verbatim, not just checked for
+/// `src/fmt/multi_line.rs` is derived from or extends it. Pinned verbatim, not just checked for
 /// idempotency, so a change to the layout rules cannot silently drift from it.
 #[test]
 fn the_maintainer_sample_formats_to_itself() {
@@ -123,7 +123,7 @@ fn a_float_literal_stays_a_float_literal() {
     assert_eq!(toylang::fmt("3.0\n").unwrap(), "3.0\n");
 }
 
-/// Comments are the one input beside the tree (`emit_toylang`'s module doc has the placement
+/// Comments are the one input beside the tree (`src/fmt/comments.rs`'s module doc has the placement
 /// rules). Pinned directly since every corpus program is comment-free. Before comments were
 /// recorded by the parser, only a leading banner survived, copied off the raw text, and every
 /// comment between or inside declarations was dropped, which is why the Euler pages carry all
