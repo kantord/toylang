@@ -2909,3 +2909,9 @@
   kind: build
   needs: []
   status: done
+
+- id: corpus-euler-record-key-max-decide
+  title: 'Corpus-implementation-style-review follow-up (problems 14, 26): the hand-rolled record-key maxima `better` (by `len`, 14-longest-collatz) and `best_of` (by `len`, 26-reciprocal-cycles) survive because nothing landed can express them. `max` (gh:140) is defined only for Vec<Int>/Vec<Int64> and refuses record Vecs, and the designed fix for exactly these two pages, `max_by(.key)` (ergonomics row 7, gh:177), has landed on the Go and Rust-source backends only (2026-09-18) -- the other five are still pending, so a rewrite would not be portable. RULED (maintainer, AskUserQuestion, 2026-09-19): option (a), hold. The current divide-and-conquer workaround on pages 14 and 26 is verified and correct and stays until max_by lands on all seven backends; no Int64 score-encoding detour. Spun off euler-14-26-max-by-rewrite with a hard needs edge on the last backend in the chain, so it becomes dispatchable the moment max_by finishes rolling out rather than depending on anyone remembering to revisit it.'
+  kind: decide
+  needs: []
+  status: done

@@ -502,12 +502,6 @@
   needs: []
   status: todo
 
-- id: corpus-euler-record-key-max-decide
-  title: 'Corpus-implementation-style-review follow-up (problems 14, 26): the hand-rolled record-key maxima `better` (by `len`, 14-longest-collatz) and `best_of` (by `len`, 26-reciprocal-cycles) survive because nothing landed can express them. `max` (gh:140) is defined only for Vec<Int>/Vec<Int64> and refuses record Vecs, and the designed fix for exactly these two pages, `max_by(.key)` (ergonomics row 7, gh:177), has landed on the Go and Rust-source backends only (2026-09-18) -- the other five are still pending, so a rewrite would not be portable. Decide: (a) hold both rewrites until max_by lands everywhere (the current divide-and-conquer workaround is verified and correct), (b) adopt an Int64 score encoding (len * 1000000 + n style) to squeeze into the landed `max` at the cost of a worse idiom than today, or (c) leave the pages as-is and record that as the ruling. Mark done when ruled.'
-  kind: decide
-  needs: []
-  status: todo
-
 - id: transpose-remaining-backends
   issue: gh:181
   title: '`transpose` (tensor-transpose-build, archived done) emits on Go and Rust only; JS, Python, Lua, jq and LLVM hit `unreachable!`. Add `transpose` to BUILTIN_NAMES in src/check/mod.rs so the docs gate in tests/docs.rs demands a page and the name is reserved, write docs/reference/builtins/transpose.md, add the five emitter arms, and add a corpus case. Self-originated, 2026-09-18 status audit. Found 2026-09-19 while verifying gh:181: `transpose([[1, 2], [3, 4]])` alone does not compile on Go (`undefined: tlFail`) or Rust (`cannot find function tl_fail`), because the transpose helper calls the fail helper without pulling it into the conditional-inclusion table; masked whenever anything else in the program uses it. The corpus case comes first, the fix rides with it.'
@@ -622,4 +616,10 @@
   title: '`toylang fmt` does not wrap a long expression that follows `let` bindings: the body after the lets prints on one line however long, so Euler pages 11 and 14 use several short lets instead of one expression. Apply the same line-breaking the formatter does for a body without lets. Found by the 2026-09-19 Euler review.'
   kind: build
   needs: []
+  status: todo
+
+- id: euler-14-26-max-by-rewrite
+  title: 'Rewrite Euler 14 (docs/examples/euler/14-longest-collatz-sequence.md) and 26 (docs/examples/euler/26-reciprocal-cycles.md) to use `max_by(.key)` in place of their hand-rolled record-key maxima (`better`, `best_of`), now that max_by runs on every backend. Ruled hold-until-landed on corpus-euler-record-key-max-decide (archived); this is the deferred rewrite, gated on the chain actually finishing.'
+  kind: build
+  needs: [sort-by-max-by-native]
   status: todo
