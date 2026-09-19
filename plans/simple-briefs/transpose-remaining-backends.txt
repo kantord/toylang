@@ -1,37 +1,27 @@
-Board row `transpose-remaining-backends`, issue gh:181.
+Board row `transpose-remaining-backends` (gh:181), SLICE 1 of 2. A previous attempt at the whole row
+ran out of turns mid-way (it got as far as LLVM, which needs a new C runtime function). This slice
+is deliberately smaller: do NOT touch `src/emit_llvm.rs` or `src/emit_jq.rs` -- they are slice 2.
 
-Note: this row previously linked gh:175 in `plans/board.yaml`, but gh:175 is actually the unrelated
-dense-tensor design research report issue -- a copy/paste mismatch caught and fixed while writing
-this brief (board.yaml now points at gh:181, which has this row's real content). Ignore any stale
-reference to gh:175 you find elsewhere.
+`transpose` (a unary builtin over a rectangular `Vec<Vec<T>>`) already emits on Go
+(`TRANSPOSE_HELPER`, `Builtin::Transpose` arm in src/emit_go.rs) and Rust (src/emit_rs.rs).
+Work through these steps in order, running `just check` after each numbered step and fixing before
+moving on:
 
-## Background (why this matters)
+1. Fix the masked bug: `transpose([[1, 2], [3, 4]])` alone does not compile on Go (`undefined:
+   tlFail`) or Rust (`cannot find function tl_fail`), because the transpose helper calls the fail
+   helper without pulling it into the conditional-inclusion table (in src/emit_go.rs the table with
+   `(uses("tlTranspose("), TRANSPOSE_HELPER)` around line 718; find the analogue in emit_rs.rs). Make
+   the fail helper be included whenever the transpose helper is.
+2. Add `transpose` to `BUILTIN_NAMES` in `src/check/mod.rs`, and write
+   `docs/reference/builtins/transpose.md` following the shape of a neighbouring builtin page. The
+   docs gate in tests/docs.rs demands the page once the name is reserved. Every toylang fenced code
+   fragment in the page must already be in canonical form (`toylang fmt`); if `just check` reports
+   "not in canonical form", fix the fragment to the canonical text it prints.
+3. Add the emitter arm for `Builtin::Transpose` in `src/emit_js.rs`, `src/emit_py.rs`, and
+   `src/emit_lua.rs` (they currently hit `unreachable!`). Copy the semantics of the Go helper: a
+   rectangular Vec of Vecs becomes its transpose; a ragged input fails hard, the same way each
+   backend's other hard failures work (look at how that backend implements its fail path).
 
-`transpose` (built by `tensor-transpose-build`, archived done in `plans/board-archive.yaml`) only
-emits on the Go and Rust backends. The other five backends (JS, Python, Lua, jq, LLVM) hit
-`unreachable!` when a program calls `transpose` and gets emitted for one of them. Self-originated
-from the 2026-09-18 status audit (`plans/status-audit-2026-09-18.md`).
-
-Look at how `tensor-transpose-build` implemented Go and Rust for the exact semantics to replicate:
-`git log --all --oneline --grep transpose` and check the archived row / its landing commit diff for
-the Go and Rust emitter arms as the reference implementation.
-
-## Task
-
-1. Add `transpose` to `BUILTIN_NAMES` in `src/check/mod.rs` (if not already present -- check first;
-   it may already be reserved from the Go/Rust landing) so the docs gate in `tests/docs.rs` demands
-   a reference page.
-2. Write `docs/reference/builtins/transpose.md` following the format of a sibling builtin doc (e.g.
-   `docs/reference/builtins/collect.md` or `docs/reference/builtins/sort_by.md`) -- signature,
-   description, examples, backend notes if any.
-3. Add the five missing emitter arms (`unreachable!` sites) for JS, Python, Lua, jq, and LLVM,
-   matching the Go/Rust reference semantics exactly (same shape/dimension handling, same error
-   behavior on non-rectangular input if that's how Go/Rust handle it).
-4. Add a corpus test case (`tests/corpus/`) exercising `transpose` across all seven backends so the
-   agreement check covers it.
-
-## Done-gate
-
-`just check` passes with `transpose` working identically across all seven backends (Go, Rust, JS,
-Python, Lua, jq, LLVM), a corpus case proving cross-backend agreement, and
-`docs/reference/builtins/transpose.md` in place.
+Do not add a corpus case in this slice (LLVM/jq would fail it). Done-gate: `just check` passes, and
+a program like `transpose([[1, 2, 3], [4, 5, 6]])` compiled to Go, Rust, JS, Python and Lua all print
+the same transposed value.

@@ -1,18 +1,24 @@
-A previous dispatch completed this task, but landing the branch on main
-FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 2 of 3). The exact evidence:
+Board row `convergence-guard-lint-check`. Three earlier dispatches finished this task but their
+patches no longer applied because main moved; start fresh from current main and keep the diff
+small so it lands quickly. Only touch `.claude/scripts/board-lint.py` and
+`.claude/scripts/test_board_lint.py`.
 
-error: patch failed: docs/reference/types/float.md:18
-error: docs/reference/types/float.md: patch does not apply
-error: patch failed: src/emit_toylang.rs:541
-error: src/emit_toylang.rs: patch does not apply
-hint: Use 'git am --show-current-patch=diff' to see the failed patch
-hint: When you have resolved this problem, run "git am --continue".
-hint: If you prefer to skip this patch, run "git am --skip" instead.
-hint: To restore the original branch and stop patching, run "git am --abort".
-hint: Disable this message with "git config set advice.mergeConflict false"
-Applying: agent_loop.py output
-Patch failed at 0001 agent_loop.py output
+Task: add ONE new error rule to `.claude/scripts/board-lint.py`. Report an error for any board
+row that is (a) `kind: build`, (b) `status` todo or proposed, (c) has a `needs` entry naming a
+`kind: decide` row whose status is not `done`, AND (d) whose latest row in `plans/dispatch-log.csv`
+(match on `row_id`; the last matching line wins) has a non-empty `patch_path` column. Reason: a gated
+row that already has an unlanded patch means the gate's premise needs re-checking. Error text should
+name the row, the open decide row, and the run_id of the log line.
 
+Implementation notes: read the CSV with the csv module; if `plans/dispatch-log.csv` does not exist or
+has no line for the row, the rule does not fire. Follow the style of the existing rules in the file
+(same error-collecting helper, same function shape).
 
-Your job now is ONLY to make this branch land: fix whatever the evidence above
-shows failing, and re-run the verify command yourself. Do not start new feature work.
+Add a test to `.claude/scripts/test_board_lint.py` that builds a fixture (a tiny board with one open
+decide row and one build row needing it, plus a dispatch-log.csv fixture with a patch_path for that
+build row) and asserts the new error fires; add a second assertion that it does NOT fire when
+patch_path is empty. Use whatever fixture mechanism the existing tests use.
+
+Done-gate: `just check` passes and the new test passes, and running board-lint.py on the real board
+still passes (if it reports the new error on a real row, that is real signal -- do not suppress it;
+report the row name in your final message).
