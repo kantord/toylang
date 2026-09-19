@@ -16,13 +16,13 @@ fn body_ty(src: &str) -> Type {
 
 #[test]
 fn empty_vec_resolves_against_the_return_type() {
-    let src = "fn nothing(x: Int) -> Vec<Int> = x | []\n\nnothing(1)";
+    let src = "fn nothing(x: Int) -> Vec<Int> = x | [];\n\nnothing(1)";
     assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
 }
 
 #[test]
 fn empty_vec_nested_in_a_literal_resolves_too() {
-    let src = "fn f(x: Int) -> Vec<Vec<Int>> = [[], [x]]\n\nf(1)";
+    let src = "fn f(x: Int) -> Vec<Vec<Int>> = [[], [x]];\n\nf(1)";
     assert_eq!(
         body_ty(src),
         Type::Vec(Box::new(Type::Vec(Box::new(Type::Int))))
@@ -38,12 +38,12 @@ fn a_bare_empty_vec_is_still_refused() {
 /// the entry, not at the whole literal.
 #[test]
 fn wrong_element_under_annotation() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Int> = [\"a\"]\n\nf(1)"));
+    insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Int> = [\"a\"];\n\nf(1)"));
 }
 
 #[test]
 fn a_string_names_a_unit_variant_in_return_position() {
-    let src = "enum Status { Active, Inactive }\n\nfn initial(x: Int) -> Status = x | \"active\"\n\ninitial(1)";
+    let src = "enum Status { Active, Inactive }\n\nfn initial(x: Int) -> Status = x | \"active\";\n\ninitial(1)";
     assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Status"));
 }
 
@@ -51,14 +51,14 @@ fn a_string_names_a_unit_variant_in_return_position() {
 #[test]
 fn a_string_naming_a_payload_variant_is_refused() {
     insta::assert_snapshot!(err(
-        "enum Shape { Point, Circle{r: Int} }\n\nfn f(x: Int) -> Shape = \"circle\"\n\nf(1)"
+        "enum Shape { Point, Circle{r: Int} }\n\nfn f(x: Int) -> Shape = \"circle\";\n\nf(1)"
     ));
 }
 
 #[test]
 fn a_string_naming_no_variant_is_refused() {
     insta::assert_snapshot!(err(
-        "enum Status { Active, Inactive }\n\nfn f(x: Int) -> Status = \"gone\"\n\nf(1)"
+        "enum Status { Active, Inactive }\n\nfn f(x: Int) -> Status = \"gone\";\n\nf(1)"
     ));
 }
 
@@ -66,7 +66,7 @@ fn a_string_naming_no_variant_is_refused() {
 /// mismatch error still blames the function by name.
 #[test]
 fn a_synthesised_mismatch_still_names_the_function() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Int> = x | \"a\"\n\nf(1)"));
+    insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Int> = x | \"a\";\n\nf(1)"));
 }
 
 // Step 2: a record literal checked against a record type pushes each field's expected type
@@ -75,20 +75,20 @@ fn a_synthesised_mismatch_still_names_the_function() {
 #[test]
 fn record_fields_receive_the_declared_types() {
     let src = "enum Status { Active, Inactive }\n\n\
-               fn f(x: Int) -> {v: Vec<Int>, s: Status} = x | {v: [], s: \"active\"}\n\nf(1)";
+               fn f(x: Int) -> {v: Vec<Int>, s: Status} = x | {v: [], s: \"active\"};\n\nf(1)";
     assert!(matches!(body_ty(src), Type::Record(_)));
 }
 
 #[test]
 fn input_in_a_field_checked_against_a_declared_record() {
-    let src = "fn f(x: Int) -> {n: Int} = x | {n: parse(stdin)}\n\nf(1)";
+    let src = "fn f(x: Int) -> {n: Int} = x | {n: parse(stdin)};\n\nf(1)";
     let program = toylang::compile(src).unwrap();
     assert_eq!(program.input, Some(Type::Int));
 }
 
 #[test]
 fn a_later_input_borrows_the_type_the_first_use_fixed() {
-    let src = "fn f(v: Vec<Int>) -> Int = length(v)\n\n{a: f(parse(stdin)), b: parse(stdin)}";
+    let src = "fn f(v: Vec<Int>) -> Int = length(v);\n\n{a: f(parse(stdin)), b: parse(stdin)}";
     assert_eq!(
         body_ty(src),
         Type::Record(vec![
@@ -103,7 +103,7 @@ fn a_later_input_borrows_the_type_the_first_use_fixed() {
 #[test]
 fn an_input_ahead_of_every_typed_use_is_still_refused() {
     insta::assert_snapshot!(err(
-        "fn f(v: Vec<Int>) -> Int = length(v)\n\n{a: input, b: f(input)}"
+        "fn f(v: Vec<Int>) -> Int = length(v);\n\n{a: input, b: f(input)}"
     ));
 }
 
@@ -113,7 +113,7 @@ fn an_input_ahead_of_every_typed_use_is_still_refused() {
 #[test]
 fn reordered_fields_check_against_the_return_type() {
     let program =
-        toylang::compile("fn f(x: Int) -> {a: Int, b: Str} = x | {b: \"x\", a: 1}\n\nf(1)")
+        toylang::compile("fn f(x: Int) -> {a: Int, b: Str} = x | {b: \"x\", a: 1};\n\nf(1)")
             .unwrap();
     let Type::Record(fields) = &program.funcs[0].body.ty else {
         panic!("expected a record type");
@@ -126,7 +126,7 @@ fn reordered_fields_check_against_the_return_type() {
 
 #[test]
 fn a_missing_field_still_mismatches() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> {a: Int, b: Str} = x | {a: 1}\n\nf(1)"));
+    insta::assert_snapshot!(err("fn f(x: Int) -> {a: Int, b: Str} = x | {a: 1};\n\nf(1)"));
 }
 
 // Step 3: a call against a known signature pushes the parameter type into the argument. The
@@ -134,7 +134,7 @@ fn a_missing_field_still_mismatches() {
 
 #[test]
 fn empty_vec_as_an_argument() {
-    let src = "fn f(v: Vec<Int>) -> Int = length(v)\n\nf([])";
+    let src = "fn f(v: Vec<Int>) -> Int = length(v);\n\nf([])";
     assert_eq!(body_ty(src), Type::Int);
 }
 
@@ -142,14 +142,14 @@ fn empty_vec_as_an_argument() {
 fn a_string_names_a_variant_in_argument_position() {
     let src = "enum Status { Active, Inactive }\n\n\
                fn flip(s: Status) -> Status =\n    \
-               s | Active -> Status.inactive or Inactive -> Status.active\n\n\
+               s | Active -> Status.inactive or Inactive -> Status.active;\n\n\
                flip(\"active\")";
     assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Status"));
 }
 
 #[test]
 fn input_in_a_record_argument_field() {
-    let src = "fn g(r: {n: Int, tag: Str}) -> Int = r.n\n\ng({n: parse(stdin), tag: \"x\"})";
+    let src = "fn g(r: {n: Int, tag: Str}) -> Int = r.n;\n\ng({n: parse(stdin), tag: \"x\"})";
     let program = toylang::compile(src).unwrap();
     assert_eq!(program.input, Some(Type::Int));
 }
@@ -174,13 +174,13 @@ fn a_polymorphic_builtin_still_synthesises_its_argument() {
 
 #[test]
 fn the_expectation_flows_through_a_pipe() {
-    let src = "fn f(x: Int) -> Vec<Int> = x | [.]\n\nf(1)";
+    let src = "fn f(x: Int) -> Vec<Int> = x | [.];\n\nf(1)";
     assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
 }
 
 #[test]
 fn empty_vec_in_a_map_body() {
-    let src = "fn pad(v: Vec<Int>) -> Vec<Vec<Int>> = v | map([])\n\npad([1, 2])";
+    let src = "fn pad(v: Vec<Int>) -> Vec<Vec<Int>> = v | map([]);\n\npad([1, 2])";
     assert_eq!(
         body_ty(src),
         Type::Vec(Box::new(Type::Vec(Box::new(Type::Int))))
@@ -192,14 +192,14 @@ fn empty_vec_in_a_map_body() {
 #[test]
 fn a_record_map_body_takes_the_declared_element() {
     let src = "enum Status { Active, Inactive }\n\n\
-               fn tag(v: Vec<Int>) -> Vec<{n: Int, s: Status}> = v | map({n: ., s: \"active\"})\n\n\
+               fn tag(v: Vec<Int>) -> Vec<{n: Int, s: Status}> = v | map({n: ., s: \"active\"});\n\n\
                tag([1])";
     assert!(matches!(body_ty(src), Type::Vec(_)));
 }
 
 #[test]
 fn a_stream_map_body_takes_the_declared_element() {
-    let src = "fn pad(s: Stream<Int>) -> Stream<Vec<Int>> = s | map([])\n\n\
+    let src = "fn pad(s: Stream<Int>) -> Stream<Vec<Int>> = s | map([]);\n\n\
                collect(pad((stdin | map(parse(.)))))";
     assert!(matches!(body_ty(src), Type::Vec(_)));
 }
@@ -208,7 +208,7 @@ fn a_stream_map_body_takes_the_declared_element() {
 #[test]
 fn a_map_body_that_misses_the_element_type() {
     insta::assert_snapshot!(err(
-        "fn f(v: Vec<Int>) -> Vec<Str> = v | map(. + 1)\n\nf([1])"
+        "fn f(v: Vec<Int>) -> Vec<Str> = v | map(. + 1);\n\nf([1])"
     ));
 }
 
@@ -218,14 +218,14 @@ fn a_map_body_that_misses_the_element_type() {
 
 #[test]
 fn both_conditional_branches_receive_the_expectation() {
-    let src = "fn f(x: Int) -> Vec<Int> = x | . > 0 -> [] or [1]\n\nf(1)";
+    let src = "fn f(x: Int) -> Vec<Int> = x | . > 0 -> [] or [1];\n\nf(1)";
     assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
 }
 
 #[test]
 fn conditional_branches_can_name_variants() {
     let src = "enum Status { Active, Inactive }\n\n\
-               fn status(n: Int) -> Status = n | . > 0 -> \"Active\" or \"Inactive\"\n\n\
+               fn status(n: Int) -> Status = n | . > 0 -> \"Active\" or \"Inactive\";\n\n\
                status(0)";
     assert!(matches!(body_ty(src), Type::Enum { name, .. } if name == "Status"));
 }
@@ -234,20 +234,20 @@ fn conditional_branches_can_name_variants() {
 /// rather than on whichever arm came first.
 #[test]
 fn the_branch_that_misses_the_annotation_is_blamed() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> Str = x | . > 0 -> 1 or \"a\"\n\nf(1)"));
+    insta::assert_snapshot!(err("fn f(x: Int) -> Str = x | . > 0 -> 1 or \"a\";\n\nf(1)"));
 }
 
 #[test]
 fn match_arms_receive_the_expectation() {
     let src = "enum Status { Active, Inactive }\n\n\
-               fn work(s: Status) -> Vec<Int> = s | Active -> [1, 2] or Inactive -> []\n\n\
+               fn work(s: Status) -> Vec<Int> = s | Active -> [1, 2] or Inactive -> [];\n\n\
                work(\"inactive\")";
     assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
 }
 
 #[test]
 fn a_default_arm_receives_the_expectation_too() {
-    let src = "fn f(x: Int) -> Vec<Int> = x | . > 0 -> [x] or any() -> []\n\nf(1)";
+    let src = "fn f(x: Int) -> Vec<Int> = x | . > 0 -> [x] or any() -> [];\n\nf(1)";
     assert_eq!(body_ty(src), Type::Vec(Box::new(Type::Int)));
 }
 
@@ -257,7 +257,7 @@ fn a_default_arm_receives_the_expectation_too() {
 /// what lets `[]` resolve inside a partial arm the same way it does anywhere else `T` is wanted.
 #[test]
 fn a_partial_chain_peels_the_declared_opt_into_its_arms() {
-    let src = "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> []\n\nf(1)";
+    let src = "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> [];\n\nf(1)";
     assert_eq!(body_ty(src).to_string(), "Opt<Vec<Int>>");
 }
 
@@ -266,7 +266,7 @@ fn a_partial_chain_peels_the_declared_opt_into_its_arms() {
 #[test]
 fn a_partial_chain_arm_that_misses_the_peeled_element() {
     insta::assert_snapshot!(err(
-        "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> [\"a\"]\n\nf(1)"
+        "fn f(x: Int) -> Opt<Vec<Int>> = x | . > 0 -> [\"a\"];\n\nf(1)"
     ));
 }
 
@@ -275,10 +275,10 @@ fn a_partial_chain_arm_that_misses_the_peeled_element() {
 /// carry its own `Opt` on top of the chain's.
 #[test]
 fn a_partial_chain_over_opt_arms_still_wants_the_doubled_annotation() {
-    let doubled = "fn f(v: Vec<Int>) -> Opt<Opt<Int>> = v | length(v) > 0 -> v[9]\n\nf([1])";
+    let doubled = "fn f(v: Vec<Int>) -> Opt<Opt<Int>> = v | length(v) > 0 -> v[9];\n\nf([1])";
     assert!(toylang::compile(doubled).is_ok());
     insta::assert_snapshot!(err(
-        "fn f(v: Vec<Int>) -> Opt<Int> = v | length(v) > 0 -> v[9]\n\nf([1])"
+        "fn f(v: Vec<Int>) -> Opt<Int> = v | length(v) > 0 -> v[9];\n\nf([1])"
     ));
 }
 
@@ -287,7 +287,7 @@ fn a_partial_chain_over_opt_arms_still_wants_the_doubled_annotation() {
 #[test]
 fn an_uncovered_variant_is_still_refused_under_an_expectation() {
     insta::assert_snapshot!(err("enum Status { Active, Inactive }\n\n\
-         fn f(s: Status) -> Vec<Int> = s | Active -> []\n\nf(\"active\")"));
+         fn f(s: Status) -> Vec<Int> = s | Active -> [];\n\nf(\"active\")"));
 }
 
 // The stream-containment lesson survives the checked fast paths (found landing this branch:
@@ -295,10 +295,10 @@ fn an_uncovered_variant_is_still_refused_under_an_expectation() {
 
 #[test]
 fn a_stream_in_a_checked_record_field_keeps_its_refusal() {
-    insta::assert_snapshot!(err("fn f(v: Stream<Int>) -> {n: Int} = {n: v}\n\n1"));
+    insta::assert_snapshot!(err("fn f(v: Stream<Int>) -> {n: Int} = {n: v};\n\n1"));
 }
 
 #[test]
 fn a_stream_in_a_checked_vec_keeps_its_refusal() {
-    insta::assert_snapshot!(err("fn f(v: Stream<Int>) -> Vec<Int> = [v]\n\n1"));
+    insta::assert_snapshot!(err("fn f(v: Stream<Int>) -> Vec<Int> = [v];\n\n1"));
 }

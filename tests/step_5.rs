@@ -2,7 +2,7 @@ const DB: &str = r#"{"users": [{"name": "ada", "age": 36}, {"name": "bo", "age":
 
 const ADULTS: &str = r#"
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users | select(.age >= 18) | .[].name
+    db.users | select(.age >= 18) | .[].name;
 
 adults(parse(stdin))
 "#;
@@ -40,8 +40,8 @@ fn emitted_lua() {
 #[test]
 fn reordered_fields_are_the_same_type() {
     let src = r#"
-fn f(r: {a: Str, b: Int}) -> Str = r.a
-fn g(r: {b: Int, a: Str}) -> Str = f(r)
+fn f(r: {a: Str, b: Int}) -> Str = r.a;
+fn g(r: {b: Int, a: Str}) -> Str = f(r);
 
 g(parse(stdin))
 "#;
@@ -52,7 +52,7 @@ g(parse(stdin))
 #[test]
 fn a_record_can_be_the_result() {
     let src = r#"
-fn pick(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
+fn pick(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u;
 
 pick(parse(stdin))
 "#;
@@ -67,7 +67,7 @@ pick(parse(stdin))
 fn misspelled_field() {
     insta::assert_snapshot!(err(r#"
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users | select(.age >= 18) | .[].nmae
+    db.users | select(.age >= 18) | .[].nmae;
 
 adults(parse(stdin))
 "#));
@@ -75,7 +75,7 @@ adults(parse(stdin))
 
 #[test]
 fn field_on_a_scalar() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> Int = x.name\nf(1)"));
+    insta::assert_snapshot!(err("fn f(x: Int) -> Int = x.name;\nf(1)"));
 }
 
 /// `input` gets its type from the position it appears in, so with no position it has none.
@@ -87,8 +87,8 @@ fn bare_input() {
 #[test]
 fn input_used_at_two_types() {
     insta::assert_snapshot!(err(r#"
-fn a(x: Int) -> Str = x | "n"
-fn b(x: Str) -> Str = x
+fn a(x: Int) -> Str = x | "n";
+fn b(x: Str) -> Str = x;
 
 a(parse(stdin)) + b(parse(stdin))
 "#));
@@ -97,7 +97,7 @@ a(parse(stdin)) + b(parse(stdin))
 #[test]
 fn duplicate_record_field() {
     insta::assert_snapshot!(err(
-        "fn f(r: {a: Str, a: Int}) -> Str = r.a\nf(parse(stdin))"
+        "fn f(r: {a: Str, a: Int}) -> Str = r.a;\nf(parse(stdin))"
     ));
 }
 
@@ -155,7 +155,7 @@ fn a_program_cannot_call_a_private_prelude_helper() {
 fn a_program_can_call_its_own_non_pub_helper() {
     let src = r#"
 fn parts(v: Vec<Str>) -> Str =
-    v | length(v) == 0 -> "" or v[0]! + parts(tail(v)!)
+    v | length(v) == 0 -> "" or v[0]! + parts(tail(v)!);
 
 parts(["ada", "bo"])
 "#;
