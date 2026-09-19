@@ -1,6 +1,5 @@
 ---
 source: tests/step_3.rs
-assertion_line: 131
-expression: "err(r#\"fn greeting() -> Str = \"hello\"\ngreeting(\"x\")\"#)"
+expression: "err(r#\"fn greeting() -> Str = \"hello\";\ngreeting(\"x\")\"#)"
 ---
-`greeting` takes no argument (at byte 40)
+`greeting` takes no argument (at byte 41)

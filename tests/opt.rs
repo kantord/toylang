@@ -11,12 +11,12 @@ fn err(src: &str) -> String {
 /// its own return type instead of the caller only finding out from the value.
 #[test]
 fn a_function_can_return_an_opt() {
-    assert!(toylang::compile("fn head(v: Vec<Int>) -> Opt<Int> = v[0]\n\nhead([1, 2, 3])").is_ok());
+    assert!(toylang::compile("fn head(v: Vec<Int>) -> Opt<Int> = v[0];\n\nhead([1, 2, 3])").is_ok());
 }
 
 #[test]
 fn a_function_can_take_an_opt() {
-    assert!(toylang::compile("fn f(x: Opt<Int>) -> Int = x | 0\n\nf([1][0])").is_ok());
+    assert!(toylang::compile("fn f(x: Opt<Int>) -> Int = x | 0;\n\nf([1][0])").is_ok());
 }
 
 /// `Opt` nests the same way `Vec` does: nothing in the grammar or the checker singles out one
@@ -24,22 +24,22 @@ fn a_function_can_take_an_opt() {
 /// already produced before `Opt` had a spelling.
 #[test]
 fn opt_can_hold_an_opt() {
-    assert!(toylang::compile("fn f(x: Opt<Opt<Int>>) -> Int = x | 0\n\n1").is_ok());
+    assert!(toylang::compile("fn f(x: Opt<Opt<Int>>) -> Int = x | 0;\n\n1").is_ok());
 }
 
 #[test]
 fn a_vec_can_hold_an_opt() {
-    assert!(toylang::compile("fn f(x: Vec<Opt<Int>>) -> Int = x | 0\n\n1").is_ok());
+    assert!(toylang::compile("fn f(x: Vec<Opt<Int>>) -> Int = x | 0;\n\n1").is_ok());
 }
 
 #[test]
 fn an_opt_can_hold_a_vec() {
-    assert!(toylang::compile("fn f(x: Opt<Vec<Int>>) -> Int = x | 0\n\n1").is_ok());
+    assert!(toylang::compile("fn f(x: Opt<Vec<Int>>) -> Int = x | 0;\n\n1").is_ok());
 }
 
 #[test]
 fn a_record_field_can_be_an_opt() {
-    assert!(toylang::compile("fn f(r: {a: Opt<Int>}) -> Int = r | 0\n\n1").is_ok());
+    assert!(toylang::compile("fn f(r: {a: Opt<Int>}) -> Int = r | 0;\n\n1").is_ok());
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn an_enum_payload_can_be_an_opt() {
 /// the way any duplicate type does.
 #[test]
 fn opt_cannot_be_redeclared() {
-    insta::assert_snapshot!(err("type Opt = Int\n\n1"));
+    insta::assert_snapshot!(err("type Opt = Int;\n\n1"));
 }
 
 /// The stream containment ban holds through the generic path `Opt` resolves by now: a stream
@@ -61,12 +61,12 @@ mod containment {
 
     #[test]
     fn a_signature_cannot_put_a_stream_in_an_opt() {
-        insta::assert_snapshot!(err("fn f(x: Opt<Stream<Str>>) -> Int = 0\n\n1"));
+        insta::assert_snapshot!(err("fn f(x: Opt<Stream<Str>>) -> Int = 0;\n\n1"));
     }
 
     #[test]
     fn a_record_field_cannot_put_a_stream_in_an_opt() {
-        insta::assert_snapshot!(err("fn f(r: {a: Opt<Stream<Str>>}) -> Int = 0\n\n1"));
+        insta::assert_snapshot!(err("fn f(r: {a: Opt<Stream<Str>>}) -> Int = 0;\n\n1"));
     }
 
     #[test]
@@ -87,13 +87,13 @@ fn matching_an_opt_by_variant_is_not_yet_decided() {
 /// type is refused rather than guessed.
 #[test]
 fn input_cannot_be_opt_typed() {
-    insta::assert_snapshot!(err("fn f(x: Opt<Int>) -> Int = x!\n\nf(parse(stdin))"));
+    insta::assert_snapshot!(err("fn f(x: Opt<Int>) -> Int = x!;\n\nf(parse(stdin))"));
 }
 
 #[test]
 fn inputs_cannot_carry_an_opt_element() {
     insta::assert_snapshot!(err(
-        "fn f(v: Vec<Opt<Int>>) -> Int = length(v)\n\nf(collect((stdin | map(parse(.)))))"
+        "fn f(v: Vec<Opt<Int>>) -> Int = length(v);\n\nf(collect((stdin | map(parse(.)))))"
     ));
 }
 

@@ -1,5 +1,5 @@
 ---
 source: tests/step_3.rs
-expression: "err(r#\"fn f(x: Str) -> Str = x\nx\"#)"
+expression: "err(r#\"fn f(x: Str) -> Str = x;\nx\"#)"
 ---
-`x` is not defined (at byte 24)
+`x` is not defined (at byte 25)
