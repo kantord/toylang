@@ -12,33 +12,33 @@ fn err(src: &str) -> String {
 #[test]
 fn a_generic_enum_needs_its_argument() {
     insta::assert_snapshot!(err(
-        "enum Pair<T> { Two{a: T, b: T} }\n\nfn f(p: Pair) -> Int = 1\n\nf(two{a: 1, b: 2})"
+        "enum Pair<T> { Two{a: T, b: T} }\n\nfn f(p: Pair) -> Int = 1;\n\nf(two{a: 1, b: 2})"
     ));
 }
 
 #[test]
 fn a_generic_enum_refuses_extra_arguments() {
     insta::assert_snapshot!(err(
-        "enum Box<T> { Wrap(T), Empty }\n\nfn f(b: Box<Int, Str>) -> Int = 1\n\nf(wrap(1))"
+        "enum Box<T> { Wrap(T), Empty }\n\nfn f(b: Box<Int, Str>) -> Int = 1;\n\nf(wrap(1))"
     ));
 }
 
 #[test]
 fn a_plain_enum_takes_no_argument() {
     insta::assert_snapshot!(err(
-        "enum Shape { Point }\n\nfn f(s: Shape<Int>) -> Int = 1\n\nf(point)"
+        "enum Shape { Point }\n\nfn f(s: Shape<Int>) -> Int = 1;\n\nf(point)"
     ));
 }
 
 #[test]
 fn a_builtin_scalar_takes_no_argument() {
-    insta::assert_snapshot!(err("fn f(s: Str<Int>) -> Int = 1\n\nf(\"x\")"));
+    insta::assert_snapshot!(err("fn f(s: Str<Int>) -> Int = 1;\n\nf(\"x\")"));
 }
 
 #[test]
 fn an_alias_takes_no_argument() {
     insta::assert_snapshot!(err(
-        "type Db = {n: Int}\n\nfn f(d: Db<Int>) -> Int = 1\n\nf({n: 1})"
+        "type Db = {n: Int};\n\nfn f(d: Db<Int>) -> Int = 1;\n\nf({n: 1})"
     ));
 }
 
@@ -74,7 +74,7 @@ fn a_type_parameter_takes_no_argument() {
 #[test]
 fn a_stream_cannot_be_a_type_argument() {
     insta::assert_snapshot!(err(
-        "enum Box<T> { Wrap(T), Empty }\n\nfn f(b: Box<Stream<Str>>) -> Int = 1\n\nf(empty)"
+        "enum Box<T> { Wrap(T), Empty }\n\nfn f(b: Box<Stream<Str>>) -> Int = 1;\n\nf(empty)"
     ));
 }
 
@@ -136,7 +136,7 @@ fn a_generic_enum_parses_in_a_module() {
 /// file can -- the prelude will need to ship all three once the trait scaffold lands.
 #[test]
 fn trait_impl_and_alias_parse_in_a_module() {
-    let module = toylang::parse::parse_module("trait T {}\nimpl T for S {}\ntype A = B\n").unwrap();
+    let module = toylang::parse::parse_module("trait T {}\nimpl T for S {}\ntype A = B;\n").unwrap();
     assert_eq!(module.traits.len(), 1);
     assert_eq!(module.impls.len(), 1);
     assert_eq!(module.aliases.len(), 1);
@@ -181,7 +181,7 @@ fn an_impl_method_must_match_its_trait_signature() {
 #[test]
 fn a_colon_call_with_no_matching_impl_is_refused() {
     insta::assert_snapshot!(err(
-        "trait Area {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int}\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n}\n\n3:area()"
+        "trait Area {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int};\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n}\n\n3:area()"
     ));
 }
 
@@ -190,7 +190,7 @@ fn a_colon_call_with_no_matching_impl_is_refused() {
 #[test]
 fn an_impl_method_not_named_by_its_trait_is_refused() {
     insta::assert_snapshot!(err(
-        "trait Area {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int}\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n    fn perimeter(s: Self) -> Int = s.r * 4\n}\n\n1"
+        "trait Area {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int};\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n    fn perimeter(s: Self) -> Int = s.r * 4\n}\n\n1"
     ));
 }
 
@@ -198,7 +198,7 @@ fn an_impl_method_not_named_by_its_trait_is_refused() {
 /// separate `y`: no unary function can take a receiver and an argument at once (gh:174).
 #[test]
 fn a_plain_function_colon_called_with_an_argument_is_refused() {
-    insta::assert_snapshot!(err("fn double(x: Int) -> Int = x * 2\n\n3:double(4)"));
+    insta::assert_snapshot!(err("fn double(x: Int) -> Int = x * 2;\n\n3:double(4)"));
 }
 
 /// The plain-function namespace and the trait-method namespace cannot share a name: the old
@@ -207,7 +207,7 @@ fn a_plain_function_colon_called_with_an_argument_is_refused() {
 #[test]
 fn an_impl_method_colliding_with_a_plain_function_is_refused() {
     insta::assert_snapshot!(err(
-        "fn area(x: Int) -> Int = x\n\ntrait Area {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int}\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n}\n\n1"
+        "fn area(x: Int) -> Int = x;\n\ntrait Area {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int};\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n}\n\n1"
     ));
 }
 
@@ -219,7 +219,7 @@ fn an_impl_method_colliding_with_a_plain_function_is_refused() {
 #[test]
 fn two_impls_of_different_traits_for_the_same_type_and_method_collide() {
     insta::assert_snapshot!(err(
-        "trait Area {\n    fn area(s: Self) -> Int\n}\n\ntrait Size {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int}\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n}\n\nimpl Size for Circle {\n    fn area(s: Self) -> Int = s.r\n}\n\n1"
+        "trait Area {\n    fn area(s: Self) -> Int\n}\n\ntrait Size {\n    fn area(s: Self) -> Int\n}\n\ntype Circle = {r: Int};\n\nimpl Area for Circle {\n    fn area(s: Self) -> Int = s.r * s.r\n}\n\nimpl Size for Circle {\n    fn area(s: Self) -> Int = s.r\n}\n\n1"
     ));
 }
 
@@ -291,7 +291,7 @@ fn a_generic_impls_operator_use_is_refused_at_an_instantiation_that_does_not_sup
 #[test]
 fn a_generic_impl_method_colliding_with_a_plain_function_is_refused() {
     insta::assert_snapshot!(err(
-        "fn peek(x: Int) -> Int = x\n\ntrait Peek {\n    fn peek(s: Self) -> Self\n}\n\nimpl<T> Peek for Vec<T> {\n    fn peek(s: Self) -> Self = s\n}\n\n1"
+        "fn peek(x: Int) -> Int = x;\n\ntrait Peek {\n    fn peek(s: Self) -> Self\n}\n\nimpl<T> Peek for Vec<T> {\n    fn peek(s: Self) -> Self = s\n}\n\n1"
     ));
 }
 
@@ -301,6 +301,6 @@ fn a_generic_impl_method_colliding_with_a_plain_function_is_refused() {
 #[test]
 fn a_generic_impls_parameter_must_appear_in_its_target_type() {
     insta::assert_snapshot!(err(
-        "type Circle = {r: Int}\n\ntrait Foo {\n    fn f(s: Self) -> Int\n}\n\nimpl<T> Foo for Circle {\n    fn f(s: Self) -> Int = 1\n}\n\n1"
+        "type Circle = {r: Int};\n\ntrait Foo {\n    fn f(s: Self) -> Int\n}\n\nimpl<T> Foo for Circle {\n    fn f(s: Self) -> Int = 1\n}\n\n1"
     ));
 }

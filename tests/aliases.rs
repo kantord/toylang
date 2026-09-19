@@ -7,17 +7,17 @@
 use toylang::Backend;
 
 const WITH_ALIAS: &str = r#"
-type U = {name: Str, age: Int}
-type Db = {users: Vec<U>}
+type U = {name: Str, age: Int};
+type Db = {users: Vec<U>};
 
-fn adults(db: Db) -> Vec<Str> = db.users | select(.age >= 18) | .[].name
+fn adults(db: Db) -> Vec<Str> = db.users | select(.age >= 18) | .[].name;
 
 adults(parse(stdin))
 "#;
 
 const WRITTEN_OUT: &str = r#"
 fn adults(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<Str> =
-    db.users | select(.age >= 18) | .[].name
+    db.users | select(.age >= 18) | .[].name;
 
 adults(parse(stdin))
 "#;
@@ -51,7 +51,7 @@ fn an_alias_emits_identically_to_the_type_written_out() {
 fn an_alias_is_invisible_in_errors() {
     insta::assert_snapshot!(
         toylang::compile(
-            "type Db = {users: Vec<Int>}\n\nfn f(d: Db) -> Str = d\n\nf(parse(stdin))"
+            "type Db = {users: Vec<Int>};\n\nfn f(d: Db) -> Str = d;\n\nf(parse(stdin))"
         )
         .map(|_| ())
         .unwrap_err()
@@ -67,42 +67,42 @@ fn err(src: &str) -> String {
 /// Expanding this would not terminate, so it is refused rather than attempted.
 #[test]
 fn a_type_written_in_terms_of_itself() {
-    insta::assert_snapshot!(err("type T = {next: T}\n\nstr(1)"));
+    insta::assert_snapshot!(err("type T = {next: T};\n\nstr(1)"));
 }
 
 /// The cycle need not be direct, and the chain of names being expanded is what catches it.
 #[test]
 fn a_cycle_through_two_names() {
-    insta::assert_snapshot!(err("type A = {b: B}\ntype B = {a: A}\n\nstr(1)"));
+    insta::assert_snapshot!(err("type A = {b: B};\ntype B = {a: A};\n\nstr(1)"));
 }
 
 /// Resolved eagerly, so a broken alias is an error even when nothing refers to it.
 #[test]
 fn an_unused_alias_is_still_checked() {
-    insta::assert_snapshot!(err("type A = Nope\n\nstr(1)"));
+    insta::assert_snapshot!(err("type A = Nope;\n\nstr(1)"));
 }
 
 /// Naming the chain is the difference between knowing there is a cycle and finding it.
 #[test]
 fn a_cycle_through_three_names() {
     insta::assert_snapshot!(err(
-        "type A = {b: B}\ntype B = {c: C}\ntype C = {a: A}\n\nstr(1)"
+        "type A = {b: B};\ntype B = {c: C};\ntype C = {a: A};\n\nstr(1)"
     ));
 }
 
 #[test]
 fn a_builtin_type_cannot_be_redefined() {
-    insta::assert_snapshot!(err("type Int = Str\n\nstr(1)"));
+    insta::assert_snapshot!(err("type Int = Str;\n\nstr(1)"));
 }
 
 /// The casing rule reaches type declarations too, which is what will keep a constructor and a
 /// call apart if named types ever gain identity.
 #[test]
 fn a_type_name_starts_uppercase() {
-    insta::assert_snapshot!(err("type db = {users: Vec<Int>}\n\nstr(1)"));
+    insta::assert_snapshot!(err("type db = {users: Vec<Int>};\n\nstr(1)"));
 }
 
 #[test]
 fn a_type_cannot_be_defined_twice() {
-    insta::assert_snapshot!(err("type A = Int\ntype A = Str\n\nstr(1)"));
+    insta::assert_snapshot!(err("type A = Int;\ntype A = Str;\n\nstr(1)"));
 }
