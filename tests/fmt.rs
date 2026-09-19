@@ -223,3 +223,86 @@ fn a_literal_guard_head_formats_bare_and_round_trips() {
         toylang::run(src).unwrap()
     );
 }
+
+/// A signature that does not fit puts its parameter on its own line, and a record parameter
+/// type that still does not fit there breaks one field per line; a broken signature never
+/// takes its body on the closing line. Before this, the signature was the one node with no
+/// seam, and Euler 11's `direction` sat at 128 columns.
+#[test]
+fn a_long_signature_breaks_at_its_parameter_then_inside_a_record_type() {
+    let src = "fn four({g, r, c, dr, dc}: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int = g[r]![c]!\n\nfour({g: [[1]], r: 0, c: 0, dr: 0, dc: 0})\n";
+    let want = "fn four(\n\
+                \x20   {g, r, c, dr, dc}: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}\n\
+                ) -> Int =\n\
+                \x20   g[r]![c]!\n\
+                \n\
+                four({g: [[1]], r: 0, c: 0, dr: 0, dc: 0})\n";
+    assert_eq!(toylang::fmt(src).unwrap(), want);
+    assert_eq!(toylang::fmt(want).unwrap(), want);
+
+    let src = "fn direction({g, dr, dc, rmax, cmin, cmax}: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Int = rmax\n\ndirection({g: [[1]], dr: 0, dc: 0, rmax: 0, cmin: 0, cmax: 0})\n";
+    let want = "fn direction(\n\
+                \x20   {g, dr, dc, rmax, cmin, cmax}: {\n\
+                \x20       g: Vec<Vec<Int>>,\n\
+                \x20       dr: Int,\n\
+                \x20       dc: Int,\n\
+                \x20       rmax: Int,\n\
+                \x20       cmin: Int,\n\
+                \x20       cmax: Int\n\
+                \x20   }\n\
+                ) -> Int =\n\
+                \x20   rmax\n\
+                \n\
+                direction({g: [[1]], dr: 0, dc: 0, rmax: 0, cmin: 0, cmax: 0})\n";
+    assert_eq!(toylang::fmt(src).unwrap(), want);
+    assert_eq!(toylang::fmt(want).unwrap(), want);
+}
+
+/// A match arm whose body does not fit breaks after its `->`, the body one level in, the way a
+/// definition's body drops below its signature; a bare default arm has no `->` and breaks in
+/// place. Arms used to break only between each other, so an arm's own body overflowed.
+#[test]
+fn a_long_match_arm_breaks_after_its_arrow() {
+    let src = "fn f(x: Int) -> Int = x | . > 1 -> some_function_call({alpha: x, beta: x + 1, gamma: x * 2, delta: x - 1, eps: x}) or 0\n\nfn some_function_call(p: {alpha: Int, beta: Int, gamma: Int, delta: Int, eps: Int}) -> Int = p.alpha\n\nf(1)\n";
+    let want = "fn f(x: Int) -> Int =\n\
+                \x20   x\n\
+                \x20       | . > 1 ->\n\
+                \x20             some_function_call(\n\
+                \x20                 {alpha: x, beta: x + 1, gamma: x * 2, delta: x - 1, eps: x}\n\
+                \x20             ) or\n\
+                \x20             0\n\
+                \n\
+                fn some_function_call(\n\
+                \x20   p: {alpha: Int, beta: Int, gamma: Int, delta: Int, eps: Int}\n\
+                ) -> Int =\n\
+                \x20   p.alpha\n\
+                \n\
+                f(1)\n";
+    assert_eq!(toylang::fmt(src).unwrap(), want);
+    assert_eq!(toylang::fmt(want).unwrap(), want);
+}
+
+/// A postfix chain breaks inside its base, and the base's budget holds back the suffix's
+/// columns: `[...][n]!` here is a list that fits at 80 exactly without `[n]!`, which used to
+/// leave it compact and the line four columns over (Euler 17's `ones`).
+#[test]
+fn a_postfix_chain_breaks_inside_its_base_with_the_suffix_reserved() {
+    let src = "fn ones(n: Int) -> Str =\n    [\"\", \"one\", \"two\", \"three\", \"four\", \"five\", \"six\", \"seven\", \"eight\", \"nine\"][n]!\n\nones(1)\n";
+    let want = "fn ones(n: Int) -> Str =\n\
+                \x20   [\n\
+                \x20       \"\",\n\
+                \x20       \"one\",\n\
+                \x20       \"two\",\n\
+                \x20       \"three\",\n\
+                \x20       \"four\",\n\
+                \x20       \"five\",\n\
+                \x20       \"six\",\n\
+                \x20       \"seven\",\n\
+                \x20       \"eight\",\n\
+                \x20       \"nine\"\n\
+                \x20   ][n]!\n\
+                \n\
+                ones(1)\n";
+    assert_eq!(toylang::fmt(src).unwrap(), want);
+    assert_eq!(toylang::fmt(want).unwrap(), want);
+}

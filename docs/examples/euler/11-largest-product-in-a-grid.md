@@ -18,17 +18,37 @@ diagonal.
 ```toylang
 fn get({g, r, c}: {g: Vec<Vec<Int>>, r: Int, c: Int}) -> Int = g[r]![c]!
 
-fn four({g, r, c, dr, dc}: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int =
+fn four(
+    {g, r, c, dr, dc}: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}
+) -> Int =
     get({g: g, r: r, c: c}) * get({g: g, r: r + dr, c: c + dc}) *
         get({g: g, r: r + 2 * dr, c: c + 2 * dc}) *
         get({g: g, r: r + 3 * dr, c: c + 3 * dc})
 
-fn row_products({g, r, dr, dc, cmin, cmax}: {g: Vec<Vec<Int>>, r: Int, dr: Int, dc: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
+fn row_products(
+    {g, r, dr, dc, cmin, cmax}: {
+        g: Vec<Vec<Int>>,
+        r: Int,
+        dr: Int,
+        dc: Int,
+        cmin: Int,
+        cmax: Int
+    }
+) -> Vec<Int> =
     collect(range(cmax))
         | select(. >= cmin)
         | map(four({g: g, r: r, c: ., dr: dr, dc: dc}))
 
-fn direction({g, dr, dc, rmax, cmin, cmax}: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
+fn direction(
+    {g, dr, dc, rmax, cmin, cmax}: {
+        g: Vec<Vec<Int>>,
+        dr: Int,
+        dc: Int,
+        rmax: Int,
+        cmin: Int,
+        cmax: Int
+    }
+) -> Vec<Int> =
     flatten(
         collect(range(rmax))
             | map(

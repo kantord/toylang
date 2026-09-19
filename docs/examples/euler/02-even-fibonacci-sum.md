@@ -10,7 +10,8 @@ argument; only about thirty terms exist below the limit, so the recursion stays 
 fn even_fib_sum({a, b, limit}: {a: Int, b: Int, limit: Int}) -> Int =
     a >= limit
         | . -> 0 or
-              (a % 2 == 0 | . -> a or 0) + even_fib_sum({a: b, b: a + b, limit: limit})
+              (a % 2 == 0 | . -> a or 0) +
+                  even_fib_sum({a: b, b: a + b, limit: limit})
 
 even_fib_sum({a: 1, b: 2, limit: 4000000})
 ```

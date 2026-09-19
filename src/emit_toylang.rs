@@ -41,9 +41,9 @@
 //! comment, which is what tells a file banner from a doc comment.
 
 use crate::ast::{
-    Alias, BinOp, Comment, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod,
-    LogicOp, MatchArm, Module, Param, ParamShape, Pattern, Span, TraitDecl, TraitMethodSig,
-    TypeExpr, Variant,
+    Alias, BinOp, Comment, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod, LogicOp,
+    MatchArm, Module, Param, ParamShape, Pattern, Span, TraitDecl, TraitMethodSig, TypeExpr,
+    Variant,
 };
 
 const WIDTH: usize = 80;
@@ -370,8 +370,74 @@ fn print_param(p: &Option<Param>) -> String {
     }
 }
 
-fn print_sig(pub_prefix: &str, name: &str, param: &Option<Param>, ret: String) -> String {
-    format!("{pub_prefix}fn {name}({}) -> {ret}", print_param(param))
+/// `fn name(param) -> ret`, on one line when it and the ` =` after it fit at `indent`. Otherwise
+/// the parameter goes on its own line one level in, and a record parameter type that still does
+/// not fit there breaks one field per line. A nullary signature has nothing to break at.
+fn print_sig(
+    pub_prefix: &str,
+    name: &str,
+    param: &Option<Param>,
+    ret: &str,
+    indent: usize,
+) -> String {
+    let one_line = format!("{pub_prefix}fn {name}({}) -> {ret}", print_param(param));
+    if fits(&format!("{one_line} ="), indent) {
+        return one_line;
+    }
+    let Some(p) = param else {
+        return one_line;
+    };
+    let inner = indent + INDENT;
+    let compact = print_param(param);
+    let param_str = if fits(&compact, inner) {
+        compact
+    } else {
+        print_param_wrapped(p, inner)
+    };
+    format!(
+        "{pub_prefix}fn {name}(\n{}{param_str}\n{}) -> {ret}",
+        pad(inner),
+        pad(indent)
+    )
+}
+
+fn print_param_wrapped(p: &Param, indent: usize) -> String {
+    let shape = match &p.shape {
+        ParamShape::Name(name, _) => name.clone(),
+        ParamShape::Fields(f) => format!("{{{}}}", print_fields_pattern(f)),
+    };
+    format!("{shape}: {}", print_type_wrapped(&p.ty, indent))
+}
+
+/// A record type one field per line; every other type has no seam and prints compact.
+fn print_type_wrapped(t: &TypeExpr, indent: usize) -> String {
+    match t {
+        TypeExpr::Record { fields, .. } => {
+            let rendered: Vec<String> = fields
+                .iter()
+                .map(|(n, t)| format!("{n}: {}", print_type(t)))
+                .collect();
+            wrap_delim("{", &rendered, "}", indent)
+        }
+        _ => print_type(t),
+    }
+}
+
+/// `sig = body` on one line when that fits at `indent`; otherwise the body on its own line one
+/// level in. A signature that already broke never takes its body on the closing line.
+fn print_signed(sig: String, body: &Expr, indent: usize) -> String {
+    if !sig.contains('\n') {
+        let one_line = format!("{sig} = {}", print_expr_compact(body, Ctx::Expr(0)));
+        if fits(&one_line, indent) {
+            return one_line;
+        }
+    }
+    let inner = indent + INDENT;
+    format!(
+        "{sig} =\n{}{}",
+        pad(inner),
+        print_expr_wrapped(body, Ctx::Expr(0), inner)
+    )
 }
 
 /// A definition whose body is a `let` block: the signature, then one `let` line per binding,
@@ -388,7 +454,9 @@ fn print_let_def(d: &Def, comments: &mut Comments) -> String {
         .as_ref()
         .map(print_type)
         .expect("a `let` block is only ever the body of a signed definition");
-    let mut out = format!("{} =\n", print_sig(pub_prefix, &d.name, &d.param, ret));
+    let mut out = format!("{} =\n", print_sig(pub_prefix, &d.name, &d.param, &ret, 0));
+    // The parser holds a binding to one line (`parse.rs::def_body`), so a value has no wrapped
+    // form: an overlong one is overlong.
     for (n, v) in bindings {
         let leading = comments.take_before(v.span().start);
         out.push_str(&comment_lines(&leading, INDENT));
@@ -426,14 +494,11 @@ fn print_def(d: &Def) -> String {
         // a parser/checker invariant, never a legal program.
         None => unreachable!("a non-hoisted definition always writes a return type"),
     };
-    let sig = print_sig(pub_prefix, &d.name, &d.param, ret);
-    let compact_body = print_expr_compact(&d.body, Ctx::Expr(0));
-    let one_line = format!("{sig} = {compact_body}");
-    if fits(&one_line, 0) {
-        return one_line;
-    }
-    let body = print_expr_wrapped(&d.body, Ctx::Expr(0), INDENT);
-    format!("{sig} =\n{}{body}", pad(INDENT))
+    print_signed(
+        print_sig(pub_prefix, &d.name, &d.param, &ret, 0),
+        &d.body,
+        0,
+    )
 }
 
 fn print_variant_decl(v: &Variant) -> String {
@@ -494,12 +559,7 @@ fn print_trait(t: &TraitDecl) -> String {
 }
 
 fn print_trait_method(m: &TraitMethodSig) -> String {
-    format!(
-        "fn {}({}) -> {}",
-        m.name,
-        print_param(&m.param),
-        print_type(&m.ret)
-    )
+    print_sig("", &m.name, &m.param, &print_type(&m.ret), INDENT)
 }
 
 fn print_impl(i: &ImplDecl) -> String {
@@ -520,26 +580,16 @@ fn print_impl(i: &ImplDecl) -> String {
     )
 }
 
+/// Sits one level in, inside the impl's braces, so that is where its own lines are measured
+/// from and where a broken body indents from.
 fn print_impl_method(m: &ImplMethod) -> String {
-    let sig = format!(
-        "fn {}({}) -> {}",
-        m.name,
-        print_param(&m.param),
-        print_type(&m.ret)
-    );
-    let compact_body = print_expr_compact(&m.body, Ctx::Expr(0));
-    let one_line = format!("{sig} = {compact_body}");
-    if fits(&one_line, 0) {
-        return one_line;
-    }
-    let body = print_expr_wrapped(&m.body, Ctx::Expr(0), INDENT);
-    format!("{sig} =\n{}{body}", pad(INDENT))
+    let sig = print_sig("", &m.name, &m.param, &print_type(&m.ret), INDENT);
+    print_signed(sig, &m.body, INDENT)
 }
 
 /// A brace block whose items need no separator between them (trait and impl methods each
 /// start with their own `fn`, so a comma would break the next method's parse), laid out one
 /// per line, indented one level.
-
 fn wrap_brace(open: &str, items: &[String], close: &str) -> String {
     let mut out = format!("{open}\n");
     for item in items {
@@ -816,19 +866,43 @@ fn print_fields_pattern(f: &FieldsPattern) -> String {
 /// idempotent, spelling; every other `Default` prints the explicit `any()` it must have been.
 fn print_match_arm(arm: &MatchArm, is_last: bool) -> String {
     let body = print_expr_compact(&arm.body, Ctx::Expr(ARM_BODY));
-    match &arm.pattern {
-        Pattern::Default { span } if is_last && *span == arm.body.span() => body,
-        Pattern::Default { .. } => format!("any() -> {body}"),
-        Pattern::Guard(g) => format!(
-            "{} -> {body}",
-            print_expr_compact(g, Ctx::Operand(COND_POWER))
-        ),
-        Pattern::Variant { name, fields, .. } => {
-            let head = match fields {
-                None => name.clone(),
-                Some(f) => format!("{name}{{{}}}", print_fields_pattern(f)),
-            };
-            format!("{head} -> {body}")
+    match arm_head(arm, is_last) {
+        None => body,
+        Some(head) => format!("{head} -> {body}"),
+    }
+}
+
+/// What precedes the `->`, or `None` for a bare default arm, which is its body alone.
+fn arm_head(arm: &MatchArm, is_last: bool) -> Option<String> {
+    Some(match &arm.pattern {
+        Pattern::Default { span } if is_last && *span == arm.body.span() => return None,
+        Pattern::Default { .. } => "any()".to_string(),
+        Pattern::Guard(g) => print_expr_compact(g, Ctx::Operand(COND_POWER)),
+        Pattern::Variant { name, fields, .. } => match fields {
+            None => name.clone(),
+            Some(f) => format!("{name}{{{}}}", print_fields_pattern(f)),
+        },
+    })
+}
+
+/// An arm at `indent` that does not fit there (with the ` or` after it, when one follows)
+/// breaks after its `->`, the body one level in, the same way a definition's body drops below
+/// its signature; a bare default arm has no `->` and its body breaks in place.
+fn print_match_arm_wrapped(arm: &MatchArm, is_last: bool, indent: usize, reserve: usize) -> String {
+    let compact = print_match_arm(arm, is_last);
+    let reserve = reserve + if is_last { 0 } else { " or".len() };
+    if fits(&compact, indent + reserve) {
+        return compact;
+    }
+    match arm_head(arm, is_last) {
+        None => print_expr_fitting(&arm.body, Ctx::Expr(ARM_BODY), indent, reserve),
+        Some(head) => {
+            let inner = indent + INDENT;
+            format!(
+                "{head} ->\n{}{}",
+                pad(inner),
+                print_expr_fitting(&arm.body, Ctx::Expr(ARM_BODY), inner, reserve)
+            )
         }
     }
 }
@@ -838,60 +912,85 @@ fn print_match_arm(arm: &MatchArm, is_last: bool) -> String {
 /// back to the (overlong) compact form for node kinds with no seam to break at -- accepted
 /// overflow, not a correctness problem, since every backend agrees on lines it never sees.
 fn print_expr_wrapped(e: &Expr, ctx: Ctx, indent: usize) -> String {
+    print_expr_fitting(e, ctx, indent, 0)
+}
+
+/// `print_expr_wrapped` with `reserve` columns held back on the node's last line for whatever
+/// the caller appends there: a postfix suffix (`[n]!`), the trailing operator of a binary chain,
+/// the ` or` after a match arm. Without it a base that fits by exactly its suffix's width is
+/// left compact and the line overflows by that much.
+fn print_expr_fitting(e: &Expr, ctx: Ctx, indent: usize, reserve: usize) -> String {
     let compact = print_expr_compact(e, ctx);
-    if fits(&compact, indent) {
+    if fits(&compact, indent + reserve) {
         return compact;
     }
     if needs_parens(e, ctx) {
         let inner = print_expr_wrapped(e, Ctx::Expr(0), indent + INDENT);
         return format!("(\n{}{inner}\n{})", pad(indent + INDENT), pad(indent));
     }
+    let inner = indent + INDENT;
     match e {
         Expr::Binary { op, lhs, rhs, .. } => {
             let (left, right) = bin_power(*op);
-            let lhs_str = print_expr_wrapped(lhs, Ctx::Operand(left), indent);
-            let rhs_str = print_expr_wrapped(rhs, Ctx::Operand(right), indent + INDENT);
-            format!("{lhs_str} {op}\n{}{rhs_str}", pad(indent + INDENT))
+            let op_str = op.to_string();
+            let lhs_str = print_expr_fitting(lhs, Ctx::Operand(left), indent, op_str.len() + 1);
+            let rhs_str = print_expr_fitting(rhs, Ctx::Operand(right), inner, reserve);
+            format!("{lhs_str} {op_str}\n{}{rhs_str}", pad(inner))
         }
         Expr::Logic { op, lhs, rhs, .. } => {
             let (left, right) = logic_power(*op);
-            let lhs_str = print_expr_wrapped(lhs, Ctx::Operand(left), indent);
-            let rhs_str = print_expr_wrapped(rhs, Ctx::Operand(right), indent + INDENT);
-            format!("{lhs_str} {op}\n{}{rhs_str}", pad(indent + INDENT))
+            let op_str = op.to_string();
+            let lhs_str = print_expr_fitting(lhs, Ctx::Operand(left), indent, op_str.len() + 1);
+            let rhs_str = print_expr_fitting(rhs, Ctx::Operand(right), inner, reserve);
+            format!("{lhs_str} {op_str}\n{}{rhs_str}", pad(inner))
         }
         Expr::Not { base, .. } => format!(
             "not {}",
-            print_expr_wrapped(base, Ctx::Operand(NOT_POWER), indent)
+            print_expr_fitting(base, Ctx::Operand(NOT_POWER), indent, reserve)
         ),
-        Expr::Pipe { .. } => wrap_pipe(e, indent),
-        Expr::TailPipe { lhs, callee, .. } => format!(
-            "{} |> {callee}",
-            print_expr_wrapped(lhs, Ctx::Expr(0), indent)
-        ),
-        Expr::Match { arms, .. } => wrap_match(arms, indent),
+        Expr::Pipe { .. } => wrap_pipe(e, indent, reserve),
+        Expr::TailPipe { lhs, callee, .. } => {
+            let tail = format!(" |> {callee}");
+            format!(
+                "{}{tail}",
+                print_expr_fitting(lhs, Ctx::Expr(0), indent, tail.len() + reserve)
+            )
+        }
+        Expr::Match { arms, .. } => wrap_match(arms, indent, reserve),
+        Expr::Neg { base, .. } => {
+            format!("-{}", print_expr_fitting(base, Ctx::Unary, indent, reserve))
+        }
+        _ => wrap_delimited(e, indent)
+            .or_else(|| wrap_postfix(e, indent, reserve))
+            // No natural seam to break at (`Var`, `Call`/`Variant` with no argument, and so
+            // on): the compact form already computed above is the best available.
+            .unwrap_or(compact),
+    }
+}
+
+/// A node whose seam is a delimited list -- a literal, a call's argument -- opened one item per
+/// line. `None` for every other node.
+fn wrap_delimited(e: &Expr, indent: usize) -> Option<String> {
+    let inner = indent + INDENT;
+    Some(match e {
         Expr::VecLit { items, .. } => {
             let rendered: Vec<String> = items
                 .iter()
-                .map(|i| print_expr_wrapped(i, Ctx::Expr(0), indent + INDENT))
+                .map(|i| print_expr_wrapped(i, Ctx::Expr(0), inner))
                 .collect();
             wrap_delim("[", &rendered, "]", indent)
         }
         Expr::RecordLit { fields, .. } => {
             let rendered: Vec<String> = fields
                 .iter()
-                .map(|(n, _, v)| {
-                    format!(
-                        "{n}: {}",
-                        print_expr_wrapped(v, Ctx::Expr(0), indent + INDENT)
-                    )
-                })
+                .map(|(n, _, v)| format!("{n}: {}", print_expr_wrapped(v, Ctx::Expr(0), inner)))
                 .collect();
             wrap_delim("{", &rendered, "}", indent)
         }
         Expr::Call {
             func, arg: Some(a), ..
         } => {
-            let item = print_expr_wrapped(a, Ctx::Expr(0), indent + INDENT);
+            let item = print_expr_wrapped(a, Ctx::Expr(0), inner);
             format!("{func}{}", wrap_delim("(", &[item], ")", indent))
         }
         Expr::Variant {
@@ -900,7 +999,7 @@ fn print_expr_wrapped(e: &Expr, ctx: Ctx, indent: usize) -> String {
             payload: Some(p),
             ..
         } => {
-            let item = print_expr_wrapped(p, Ctx::Expr(0), indent + INDENT);
+            let item = print_expr_wrapped(p, Ctx::Expr(0), inner);
             format!(
                 "{enum_name}.{variant}{}",
                 wrap_delim("(", &[item], ")", indent)
@@ -909,11 +1008,67 @@ fn print_expr_wrapped(e: &Expr, ctx: Ctx, indent: usize) -> String {
         Expr::MatchCall {
             enum_name, arms, ..
         } => wrap_match_call(enum_name, arms, indent),
-        Expr::Neg { base, .. } => format!("-{}", print_expr_wrapped(base, Ctx::Unary, indent)),
-        // No natural seam to break at (`Var`, `Call`/`Variant` with no argument, a projection or
-        // field chain, and so on): the compact form already computed above is the best available.
-        _ => compact,
-    }
+        Expr::ColonCall {
+            receiver,
+            method,
+            arg: Some(a),
+            ..
+        } => {
+            let item = print_expr_wrapped(a, Ctx::Expr(0), inner);
+            format!(
+                "{}:{method}{}",
+                print_atom_base(receiver),
+                wrap_delim("(", &[item], ")", indent)
+            )
+        }
+        _ => return None,
+    })
+}
+
+/// A postfix chain breaks inside its base, the suffix staying on the base's last line:
+/// `[...][n]!` opens the list one item per line and closes it with `][n]!`. `None` for every
+/// other node.
+fn wrap_postfix(e: &Expr, indent: usize, reserve: usize) -> Option<String> {
+    Some(match e {
+        Expr::Index { base, index, .. } => {
+            let suffix = format!("[{}]", print_paren_arg(index));
+            format!(
+                "{}{suffix}",
+                print_postfix_base(base, indent, suffix.len() + reserve)
+            )
+        }
+        Expr::Slice {
+            base, start, end, ..
+        } => {
+            let lo = start
+                .as_ref()
+                .map(|s| print_paren_arg(s))
+                .unwrap_or_default();
+            let hi = end.as_ref().map(|e| print_paren_arg(e)).unwrap_or_default();
+            let suffix = format!("[{lo}:{hi}]");
+            format!(
+                "{}{suffix}",
+                print_postfix_base(base, indent, suffix.len() + reserve)
+            )
+        }
+        Expr::Unwrap { base, .. } => format!("{}!", print_postfix_base(base, indent, 1 + reserve)),
+        Expr::Project { base, .. } => {
+            format!("{}[]", print_postfix_base(base, indent, 2 + reserve))
+        }
+        // `.name` (a `Subject` base) is already as short as it gets and is the compact form.
+        Expr::Field { base, name, .. } if !matches!(**base, Expr::Subject { .. }) => {
+            let suffix = format!(".{name}");
+            format!(
+                "{}{suffix}",
+                print_postfix_base(base, indent, suffix.len() + reserve)
+            )
+        }
+        _ => return None,
+    })
+}
+
+fn print_postfix_base(base: &Expr, indent: usize, reserve: usize) -> String {
+    print_expr_fitting(base, Ctx::Atom, indent, reserve)
 }
 
 /// Flattens a left-recursive `Pipe` chain (`a | b | c` parses as `(a | b) | c`, the same fold
@@ -933,14 +1088,17 @@ fn flatten_pipe(e: &Expr) -> Vec<&Expr> {
 /// A pipeline that does not fit breaks one stage per line, with `|` as the first character of
 /// every continuation line so the pipes line up in a vertical column (issue #101) -- unlike
 /// `Binary`'s trailing-operator rule, which a bare two-operand `Pipe` no longer follows.
-fn wrap_pipe(e: &Expr, indent: usize) -> String {
+fn wrap_pipe(e: &Expr, indent: usize, reserve: usize) -> String {
     let stages = flatten_pipe(e);
     let mut out = print_expr_wrapped(stages[0], Ctx::Expr(0), indent);
-    for stage in &stages[1..] {
+    let last = stages.len() - 1;
+    for (i, stage) in stages.iter().enumerate().skip(1) {
         // The stage's budget must include the two columns "| " occupies, or a stage that
         // just fits alone overruns the line by exactly that prefix -- and a stage that
         // wraps internally hangs its closing bracket left of its own opener.
-        let stage_str = print_expr_wrapped(stage, Ctx::Expr(PIPE_RIGHT), indent + INDENT + 2);
+        let reserve = if i == last { reserve } else { 0 };
+        let stage_str =
+            print_expr_fitting(stage, Ctx::Expr(PIPE_RIGHT), indent + INDENT + 2, reserve);
         out.push('\n');
         out.push_str(&pad(indent + INDENT));
         out.push_str("| ");
@@ -949,17 +1107,18 @@ fn wrap_pipe(e: &Expr, indent: usize) -> String {
     out
 }
 
-fn wrap_match(arms: &[MatchArm], indent: usize) -> String {
+/// The first arm stays at `indent`, where the chain began; every later arm sits one level in.
+fn wrap_match(arms: &[MatchArm], indent: usize, reserve: usize) -> String {
     let n = arms.len();
-    let mut parts = arms
-        .iter()
-        .enumerate()
-        .map(|(i, a)| print_match_arm(a, i + 1 == n));
-    let mut out = parts.next().expect("a match always has at least one arm");
-    for p in parts {
-        out.push_str(" or\n");
-        out.push_str(&pad(indent + INDENT));
-        out.push_str(&p);
+    let mut out = String::new();
+    for (i, a) in arms.iter().enumerate() {
+        let column = if i == 0 { indent } else { indent + INDENT };
+        if i > 0 {
+            out.push_str(" or\n");
+            out.push_str(&pad(column));
+        }
+        let reserve = if i + 1 == n { reserve } else { 0 };
+        out.push_str(&print_match_arm_wrapped(a, i + 1 == n, column, reserve));
     }
     out
 }
@@ -973,7 +1132,7 @@ fn wrap_match_call(enum_name: &str, arms: &[MatchArm], indent: usize) -> String 
     let mut out = format!("{enum_name}(\n");
     for (i, a) in arms.iter().enumerate() {
         out.push_str(&pad(inner));
-        out.push_str(&print_match_arm(a, i + 1 == n));
+        out.push_str(&print_match_arm_wrapped(a, i + 1 == n, inner, 0));
         if i + 1 < n {
             out.push_str(" or\n");
         } else {

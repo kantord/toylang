@@ -23,14 +23,18 @@ fn chain_len({n, acc}: {n: Int64, acc: Int}) -> Int =
         | . -> acc or
               chain_len({n: n % 2 == 0 | . -> n / 2 or n * 3 + 1, acc: acc + 1})
 
-fn better({a, b}: {a: {n: Int, len: Int}, b: {n: Int, len: Int}}) -> {n: Int, len: Int} =
+fn better(
+    {a, b}: {a: {n: Int, len: Int}, b: {n: Int, len: Int}}
+) -> {n: Int, len: Int} =
     a.len >= b.len | . -> a or b
 
 fn longest({lo, hi}: {lo: Int, hi: Int}) -> {n: Int, len: Int} =
     let mid = (lo + hi) / 2
     hi - lo == 1
         | . -> {n: lo, len: chain_len({n: i64(lo), acc: 1})} or
-              better({a: longest({lo: lo, hi: mid}), b: longest({lo: mid, hi: hi})})
+              better(
+                  {a: longest({lo: lo, hi: mid}), b: longest({lo: mid, hi: hi})}
+              )
 
 longest({lo: 1, hi: 1000000})
 ```

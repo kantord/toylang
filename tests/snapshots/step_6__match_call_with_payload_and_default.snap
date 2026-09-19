@@ -1,5 +1,6 @@
 ---
 source: tests/step_6.rs
+assertion_line: 26
 expression: "parse(r#\"Shape(Circle{r} -> r * r or Point -> 0 or any() -> 99)\"#)"
 ---
 File {
@@ -113,6 +114,7 @@ File {
             end: 54,
         },
     },
+    comments: [],
     route_refs: [],
     routes: {},
 }

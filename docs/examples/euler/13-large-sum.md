@@ -21,18 +21,34 @@ The example's three numbers, two of them all nines, ripple a carry all the way u
 20000000000 and the answer is its first ten digits.
 
 ```toylang
-fn column_total({nums, k, carry}: {nums: Vec<Vec<Int>>, k: Int, carry: Int}) -> Int =
+fn column_total(
+    {nums, k, carry}: {nums: Vec<Vec<Int>>, k: Int, carry: Int}
+) -> Int =
     sum(nums | map(.[k]!)) + carry
 
 fn emit_carry({carry, acc}: {carry: Int, acc: Vec<Int>}) -> Vec<Int> =
     carry == 0
         | . -> acc or emit_carry({carry: carry / 10, acc: [carry % 10] + acc})
 
-fn add_digits({nums, k, carry, acc}: {nums: Vec<Vec<Int>>, k: Int, carry: Int, acc: Vec<Int>}) -> Vec<Int> =
+fn add_digits(
+    {nums, k, carry, acc}: {
+        nums: Vec<Vec<Int>>,
+        k: Int,
+        carry: Int,
+        acc: Vec<Int>
+    }
+) -> Vec<Int> =
     let total = column_total({nums: nums, k: k, carry: carry})
     k == 0
         | . -> emit_carry({carry: total / 10, acc: [total % 10] + acc}) or
-              add_digits({nums: nums, k: k - 1, carry: total / 10, acc: [total % 10] + acc})
+              add_digits(
+                  {
+                      nums: nums,
+                      k: k - 1,
+                      carry: total / 10,
+                      acc: [total % 10] + acc
+                  }
+              )
 
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
     add_digits({nums: nums, k: length(nums[0]!) - 1, carry: 0, acc: []})[0:10]

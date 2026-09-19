@@ -43,7 +43,9 @@ fn powers() -> Vec<Power> =
     ) +
         powers_with_mult({m: 1, roots: 100})
 
-fn keys_for_base({a, bs, table}: {a: Int, bs: Vec<Int>, table: Vec<Power>}) -> Vec<Int> =
+fn keys_for_base(
+    {a, bs, table}: {a: Int, bs: Vec<Int>, table: Vec<Power>}
+) -> Vec<Int> =
     let p = first(table | select(.value == a))!
     bs | map(p.root * 1000 + p.mult * .)
 

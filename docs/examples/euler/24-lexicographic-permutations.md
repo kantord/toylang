@@ -20,7 +20,13 @@ fn nth_perm({remaining, idx}: {remaining: Vec<Int>, idx: Int}) -> Vec<Int> =
     let i = idx / block
     remaining
         | length(remaining) == 0 -> [] or
-              [remaining[i]!] + nth_perm({remaining: remaining[:i] + remaining[i + 1:], idx: idx % block})
+              [remaining[i]!] +
+                  nth_perm(
+                      {
+                          remaining: remaining[:i] + remaining[i + 1:],
+                          idx: idx % block
+                      }
+                  )
 
 nth_perm({remaining: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], idx: 999999})
 ```

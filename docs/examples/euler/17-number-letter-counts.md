@@ -12,13 +12,46 @@ remainder. A `Str` has no length of its own, but
 
 ```toylang
 fn ones(n: Int) -> Str =
-    ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][n]!
+    [
+        "",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine"
+    ][n]!
 
 fn teens(n: Int) -> Str =
-    ["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"][n - 10]!
+    [
+        "ten",
+        "eleven",
+        "twelve",
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen"
+    ][n - 10]!
 
 fn tens(n: Int) -> Str =
-    ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"][n / 10]!
+    [
+        "",
+        "",
+        "twenty",
+        "thirty",
+        "forty",
+        "fifty",
+        "sixty",
+        "seventy",
+        "eighty",
+        "ninety"
+    ][n / 10]!
 
 fn under_hundred(n: Int) -> Str =
     n | . < 10 -> ones(n) or . < 20 -> teens(n) or tens(n) + ones(n % 10)

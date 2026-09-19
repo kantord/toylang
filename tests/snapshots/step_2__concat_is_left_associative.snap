@@ -44,6 +44,7 @@ File {
             end: 15,
         },
     },
+    comments: [],
     route_refs: [],
     routes: {},
 }

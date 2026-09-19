@@ -1,5 +1,6 @@
 ---
 source: tests/step_6.rs
+assertion_line: 19
 expression: "parse(r#\"Msg(Ping -> \"pong\" or Quit -> \"bye\")\"#)"
 ---
 File {
@@ -63,6 +64,7 @@ File {
             end: 36,
         },
     },
+    comments: [],
     route_refs: [],
     routes: {},
 }

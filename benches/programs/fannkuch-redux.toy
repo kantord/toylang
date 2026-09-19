@@ -25,7 +25,8 @@ fn insert_each({x, p}: {x: Int, p: Vec<Int>}) -> Vec<Vec<Int>> =
 fn build_perms({x, ps}: {x: Int, ps: Vec<Vec<Int>>}) -> Vec<Vec<Int>> =
     ps
         | length(ps) == 0 -> [] or
-              insert_each({x: x, p: ps[0]!}) + build_perms({x: x, ps: tail(ps)!})
+              insert_each({x: x, p: ps[0]!}) +
+                  build_perms({x: x, ps: tail(ps)!})
 
 fn perms(v: Vec<Int>) -> Vec<Vec<Int>> =
     v | length(v) == 0 -> [[]] or build_perms({x: v[0]!, ps: perms(tail(v)!)})
@@ -38,14 +39,18 @@ fn invs(p: Vec<Int>) -> Int =
         | length(p) <= 1 -> 0 or
               (length(tail(p)! | select(. < p[0]!)) + invs(tail(p)!)) % 2
 
-fn step({p, acc}: {p: Vec<Int>, acc: {checksum: Int, max: Int}}) -> {checksum: Int, max: Int} =
+fn step(
+    {p, acc}: {p: Vec<Int>, acc: {checksum: Int, max: Int}}
+) -> {checksum: Int, max: Int} =
     let f = flips(p)
     {
         checksum: acc.checksum + (invs(p) == 0 | . -> f or 0 - f),
         max: f > acc.max | . -> f or acc.max
     }
 
-fn fold({v, acc}: {v: Vec<Vec<Int>>, acc: {checksum: Int, max: Int}}) -> {checksum: Int, max: Int} =
+fn fold(
+    {v, acc}: {v: Vec<Vec<Int>>, acc: {checksum: Int, max: Int}}
+) -> {checksum: Int, max: Int} =
     v
         | length(v) == 0 -> acc or
               fold({v: tail(v)!, acc: step({p: v[0]!, acc: acc})})

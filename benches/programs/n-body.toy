@@ -72,10 +72,28 @@ fn planets() -> Vec<Body> =
         }
     ]
 
-fn momentum({bs, px, py, pz}: {bs: Vec<Body>, px: Float, py: Float, pz: Float}) -> Body =
+fn momentum(
+    {bs, px, py, pz}: {bs: Vec<Body>, px: Float, py: Float, pz: Float}
+) -> Body =
     bs
-        | length(bs) == 0 -> {x: 0.0, y: 0.0, z: 0.0, vx: 0.0 - px / solar_mass(), vy: 0.0 - py / solar_mass(), vz: 0.0 - pz / solar_mass(), m: solar_mass()} or
-              momentum({bs: tail(bs)!, px: px + bs[0]!.vx * bs[0]!.m, py: py + bs[0]!.vy * bs[0]!.m, pz: pz + bs[0]!.vz * bs[0]!.m})
+        | length(bs) == 0 ->
+              {
+                  x: 0.0,
+                  y: 0.0,
+                  z: 0.0,
+                  vx: 0.0 - px / solar_mass(),
+                  vy: 0.0 - py / solar_mass(),
+                  vz: 0.0 - pz / solar_mass(),
+                  m: solar_mass()
+              } or
+              momentum(
+                  {
+                      bs: tail(bs)!,
+                      px: px + bs[0]!.vx * bs[0]!.m,
+                      py: py + bs[0]!.vy * bs[0]!.m,
+                      pz: pz + bs[0]!.vz * bs[0]!.m
+                  }
+              )
 
 fn system() -> Vec<Body> =
     [momentum({bs: planets(), px: 0.0, py: 0.0, pz: 0.0})] + planets()
@@ -125,10 +143,18 @@ fn pair({b, o, acc}: {b: Body, o: Body, acc: Float}) -> Float =
     let dz = b.z - o.z
     acc - b.m * o.m / sqrt(dx * dx + dy * dy + dz * dz)
 
-fn potential({b, others, acc}: {b: Body, others: Vec<Body>, acc: Float}) -> Float =
+fn potential(
+    {b, others, acc}: {b: Body, others: Vec<Body>, acc: Float}
+) -> Float =
     others
         | length(others) == 0 -> acc or
-              potential({b: b, others: tail(others)!, acc: pair({b: b, o: others[0]!, acc: acc})})
+              potential(
+                  {
+                      b: b,
+                      others: tail(others)!,
+                      acc: pair({b: b, o: others[0]!, acc: acc})
+                  }
+              )
 
 fn kinetic({b, acc}: {b: Body, acc: Float}) -> Float =
     acc + 0.5 * b.m * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
@@ -136,7 +162,18 @@ fn kinetic({b, acc}: {b: Body, acc: Float}) -> Float =
 fn energy({bs, acc}: {bs: Vec<Body>, acc: Float}) -> Float =
     bs
         | length(bs) == 0 -> acc or
-              energy({bs: tail(bs)!, acc: potential({b: bs[0]!, others: tail(bs)!, acc: kinetic({b: bs[0]!, acc: acc})})})
+              energy(
+                  {
+                      bs: tail(bs)!,
+                      acc: potential(
+                          {
+                              b: bs[0]!,
+                              others: tail(bs)!,
+                              acc: kinetic({b: bs[0]!, acc: acc})
+                          }
+                      )
+                  }
+              )
 
 jsonlines(
     [
