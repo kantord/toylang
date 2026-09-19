@@ -206,7 +206,7 @@
     RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete worked pattern once this backend is picked up. Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: [select-lazy-materialization-convergence-ruling]
-  status: todo
+  status: delegated
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
@@ -447,7 +447,7 @@
     "composing a round"). Add the equivalent rule there. Self-originated, post-land review.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: float-sqrt-and-int-to-float-decide
   title: 'The second benchmark wave (n-body, spectral-norm, mandelbrot) had to hand-write a Newton square root in toylang and carry parallel Int and Float loop counters, because there is no `sqrt` and no `Int -> Float` bridge (`i64` is the only numeric conversion). Decide which Float builtins the language admits first (sqrt at least; the parallel basis ruling on Q23 is the frame) and the spelling of the Int-to-Float conversion. plans/benchmark-plan.md records the workarounds. Mark done when ruled.'
