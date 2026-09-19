@@ -1,3 +1,21 @@
+RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a) -- READ FIRST.
+Mirror Python's landed lazy Select as the concrete pattern: `TlSel`/`TLSEL_HELPER`
+(src/emit_py.rs:137-184, emit site ~405, ~694). It holds source + predicate, builds the survivor
+index vector once on first use, answers length/indexing from that vector without copying, and
+densifies (real list) only when a consumer needs one. Sibling Go/JS/Lua runs that added
+extra bookkeeping (RefCell/HashSet trackers, per-consumer lazy routing) ran out of turns one step
+from green. So SCOPE CUT for this attempt:
+  1. Every Select that is bound, passed, iterated or piped onward is densified immediately, so
+     all existing consumers keep seeing the plain type they see today (no consumer changes).
+  2. The ONLY lazy path is a Select indexed or measured DIRECTLY (`select(p) | .[i]` /
+     length on the Select node itself), which reads the un-densified handle's selection vector.
+  3. Edit in this order, building after each step: (a) helper const, (b) helper registration in
+     the conditional-inclusion table, (c) the Kind::Select emit site, (d) direct Index/Length.
+  4. `just check` stops at the first failing snapshot. Once it builds, accept expected snapshot
+     diffs (`cargo insta test --accept` or `INSTA_UPDATE=always cargo nextest run`), then run
+     `just check` ONCE to confirm green. Spend at most ~10 turns reading.
+Rust note: the Kind::Select emit site is now at src/emit_rs.rs:~1779 (grep -n "Kind::Select"); a fully-inline iterator chain there is what you replace with a call to a real `tl_select`-style helper.
+
 Board row `select-lazy-materialization-build-rust` (gh:176). Split from the original 7-backend row
 `select-lazy-materialization-build` per maintainer ruling (wizard submission,
 stuck-cross-backend-scope-escalation round, 2026-09-13, option A) -- that row kept going STUCK

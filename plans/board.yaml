@@ -182,7 +182,7 @@
     Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
   kind: build
   needs: [select-lazy-materialization-convergence-ruling]
-  status: todo
+  status: delegated
 
 - id: select-lazy-materialization-build-js
   title: 'select-lazy-materialization, JS backend -- split from `select-lazy-materialization-build`
@@ -224,7 +224,7 @@
     (MAX_BY_HELPER). RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete worked pattern once this backend is picked up. Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: [select-lazy-materialization-convergence-ruling]
-  status: todo
+  status: delegated
 
 - id: select-lazy-materialization-build-jq
   title: 'select-lazy-materialization, jq backend -- split from `select-lazy-materialization-build`
@@ -238,7 +238,7 @@
     follow-up ruling. RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the starting point, adapted for jq''s own semantics per the carve-out above. Done-gate: this backend''s own conformance tests pass.'
   kind: build
   needs: [select-lazy-materialization-convergence-ruling]
-  status: todo
+  status: delegated
 
 - id: select-lazy-materialization-build-llvm
   title: 'select-lazy-materialization, LLVM backend -- split from `select-lazy-materialization-build`
