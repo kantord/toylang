@@ -15,14 +15,12 @@ prime](07-10001st-prime.md), and `first` picks the earliest `n` that qualifies.
 fn cd_loop({ m, d, count }: { m: Int, d: Int, count: Int }) -> Int =
   d * d > m
   | . -> count or
-    cd_loop(
-      {
-        m: m,
-        d: d + 1,
-        count: count + (m % d == 0 | . -> 2 or 0) -
-          (d * d == m | . -> 1 or 0)
-      }
-    )
+    cd_loop {
+      m: m,
+      d: d + 1,
+      count: count + (m % d == 0 | . -> 2 or 0) -
+        (d * d == m | . -> 1 or 0)
+    }
 
 fn count_divisors(m: Int) -> Int = cd_loop { m: m, d: 1, count: 0 }
 

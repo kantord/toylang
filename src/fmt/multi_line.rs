@@ -423,6 +423,24 @@ fn wrap_delimited(e: &Expr, indent: usize) -> Option<String> {
                 .collect();
             wrap_delim("{", &rendered, "}", indent)
         }
+        // A record argument that does not fit compact breaks bare, one field per line, the
+        // same as a bare record argument that DOES fit (`join_digits { ... }`): the `{}` is
+        // already the call's own delimiter, so wrapping it in a second, real pair of parens
+        // (`join_digits(\n  { ... }\n)`) added a pair the record's own braces made redundant.
+        // The compact printer already renders this bare when it fits (`bare_arg_ok`); this is
+        // that same choice, carried into the wrapped form when it does not.
+        Expr::Call {
+            func, arg: Some(a), ..
+        } if matches!(**a, Expr::RecordLit { .. }) => {
+            let Expr::RecordLit { fields, .. } = &**a else {
+                unreachable!("just matched")
+            };
+            let rendered: Vec<String> = fields
+                .iter()
+                .map(|(n, _, v)| print_field(n, v, inner))
+                .collect();
+            format!("{func} {}", wrap_delim("{", &rendered, "}", indent))
+        }
         Expr::Call {
             func, arg: Some(a), ..
         } => {

@@ -24,21 +24,20 @@ fn nth_perm(
   remaining
   | length remaining == 0 -> [] or
     [remaining[i]!] +
-      nth_perm(
-        {
-          remaining: remaining[:i] + remaining[i + 1:],
-          idx: idx % block
-        }
-      )
+      nth_perm {
+        remaining: remaining[:i] + remaining[i + 1:],
+        idx: idx % block
+      }
 
 fn join_digits(
   { digits, acc }: { digits: Vec<Int>, acc: Int64 }
 ) -> Int64 =
   length digits == 0
   | . -> acc or
-    join_digits(
-      { digits: tail(digits)!, acc: acc * 10 + i64 digits[0]! }
-    )
+    join_digits {
+      digits: tail(digits)!,
+      acc: acc * 10 + i64 digits[0]!
+    }
 
 fn as_number(digits: Vec<Int>) -> Int64 =
   join_digits { digits: digits, acc: 0 }

@@ -36,12 +36,10 @@ fn run_months({ state, left }: { state: State, left: Int }) -> Int =
   | . == 0 -> state.count or
     run_months { state: month_advance state, left: left - 1 }
 
-run_months(
-  {
-    state: { month: 1, year: 1900, weekday: 1, count: 0 },
-    left: 1212
-  }
-)
+run_months {
+  state: { month: 1, year: 1900, weekday: 1, count: 0 },
+  left: 1212
+}
 ```
 
 ```output

@@ -31,15 +31,13 @@ fn add_limbs(
   let total = limb { v: a, i: i } + limb { v: b, i: i } + carry
   i == length a
   | . -> (carry == 0 | . -> acc or acc + [carry]) or
-    add_limbs(
-      {
-        a: a,
-        b: b,
-        i: i + 1,
-        carry: total / 100000000,
-        acc: acc + [total % 100000000]
-      }
-    )
+    add_limbs {
+      a: a,
+      b: b,
+      i: i + 1,
+      carry: total / 100000000,
+      acc: acc + [total % 100000000]
+    }
 
 fn digit_count(n: Int) -> Int =
   n < 10 | . -> 1 or 1 + digit_count(n / 10)
@@ -57,14 +55,12 @@ fn first_with(
 ) -> Int =
   digits_of cur >= want
   | . -> n or
-    first_with(
-      {
-        prev: cur,
-        cur: add_limbs { a: cur, b: prev, i: 0, carry: 0, acc: [] },
-        n: n + 1,
-        want: want
-      }
-    )
+    first_with {
+      prev: cur,
+      cur: add_limbs { a: cur, b: prev, i: 0, carry: 0, acc: [] },
+      n: n + 1,
+      want: want
+    }
 
 first_with { prev: [1], cur: [1], n: 2, want: 1000 }
 ```

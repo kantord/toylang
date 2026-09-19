@@ -27,15 +27,13 @@ program: |
     k
     | . == 0 -> "1" or
       zr * zr + zi * zi > 4.0 -> "0" or
-      pixel(
-        {
-          cr: cr,
-          ci: ci,
-          zr: zr * zr - zi * zi + cr,
-          zi: 2.0 * zr * zi + ci,
-          k: . - 1
-        }
-      )
+      pixel {
+        cr: cr,
+        ci: ci,
+        zr: zr * zr - zi * zi + cr,
+        zi: 2.0 * zr * zi + ci,
+        k: . - 1
+      }
 
   fn row(
     { n, size, x, fx, ci, line }: {
@@ -49,25 +47,21 @@ program: |
   ) -> Str =
     n
     | x == n -> line or
-      row(
-        {
-          n: n,
-          size: size,
-          x: x + 1,
-          fx: fx + 1.0,
-          ci: ci,
-          line: line +
-            pixel(
-              {
-                cr: 2.0 * fx / size - 1.5,
-                ci: ci,
-                zr: 0.0,
-                zi: 0.0,
-                k: 50
-              }
-            )
-        }
-      )
+      row {
+        n: n,
+        size: size,
+        x: x + 1,
+        fx: fx + 1.0,
+        ci: ci,
+        line: line +
+          pixel {
+            cr: 2.0 * fx / size - 1.5,
+            ci: ci,
+            zr: 0.0,
+            zi: 0.0,
+            k: 50
+          }
+      }
 
   fn rows(
     { n, size, y, fy, lines }: {
@@ -80,27 +74,23 @@ program: |
   ) -> Vec<Str> =
     n
     | y == n -> lines or
-      rows(
-        {
-          n: n,
-          size: size,
-          y: y + 1,
-          fy: fy + 1.0,
-          lines: lines +
-            [
-              row(
-                {
-                  n: n,
-                  size: size,
-                  x: 0,
-                  fx: 0.0,
-                  ci: 2.0 * fy / size - 1.0,
-                  line: ""
-                }
-              )
-            ]
-        }
-      )
+      rows {
+        n: n,
+        size: size,
+        y: y + 1,
+        fy: fy + 1.0,
+        lines: lines +
+          [
+            row {
+              n: n,
+              size: size,
+              x: 0,
+              fx: 0.0,
+              ci: 2.0 * fy / size - 1.0,
+              line: ""
+            }
+          ]
+      }
 
   fn plot(n: Int) -> Str =
     join_lines(

@@ -41,16 +41,14 @@ fn row(
 ) -> Float =
   u
   | j == length u -> acc or
-    row(
-      {
-        u: u,
-        i: i,
-        j: j + 1,
-        fj: fj + 1.0,
-        t: t,
-        acc: acc + entry { i: i, j: fj, t: t } * u[j]!
-      }
-    )
+    row {
+      u: u,
+      i: i,
+      j: j + 1,
+      fj: fj + 1.0,
+      t: t,
+      acc: acc + entry { i: i, j: fj, t: t } * u[j]!
+    }
 
 fn times(
   { u, i, fi, t, out }: {
@@ -63,16 +61,14 @@ fn times(
 ) -> Vec<Float> =
   u
   | i == length u -> out or
-    times(
-      {
-        u: u,
-        i: i + 1,
-        fi: fi + 1.0,
-        t: t,
-        out:
-          out + [row { u: u, i: fi, j: 0, fj: 0.0, t: t, acc: 0.0 }]
-      }
-    )
+    times {
+      u: u,
+      i: i + 1,
+      fi: fi + 1.0,
+      t: t,
+      out:
+        out + [row { u: u, i: fi, j: 0, fj: 0.0, t: t, acc: 0.0 }]
+    }
 
 fn times_a(u: Vec<Float>) -> Vec<Float> =
   times { u: u, i: 0, fi: 0.0, t: 0, out: [] }

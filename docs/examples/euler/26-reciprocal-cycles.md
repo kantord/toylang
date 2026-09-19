@@ -39,12 +39,10 @@ fn find_best(
 ) -> { d: Int, len: Int } =
   hi - lo
   | . == 1 -> { d: lo, len: cycle_length lo } or
-    best_of(
-      {
-        a: find_best { lo: lo, hi: (lo + hi) / 2 },
-        b: find_best { lo: (lo + hi) / 2, hi: hi }
-      }
-    )
+    best_of {
+      a: find_best { lo: lo, hi: (lo + hi) / 2 },
+      b: find_best { lo: (lo + hi) / 2, hi: hi }
+    }
 
 find_best({ lo: 2, hi: 1000 }).d
 ```

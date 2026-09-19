@@ -25,12 +25,10 @@ fn collapse(
 ) -> Int =
   rows
   | length rows == 0 -> acc[0]! or
-    collapse(
-      {
-        rows: tail(rows)!,
-        acc: merge_row { row: rows[0]!, below: acc }
-      }
-    )
+    collapse {
+      rows: tail(rows)!,
+      acc: merge_row { row: rows[0]!, below: acc }
+    }
 
 fn triangle_max(rows: Vec<Vec<Int>>) -> Int =
   collapse { rows: reverse rows[:-1], acc: rows[-1]! }

@@ -38,28 +38,24 @@ fn scale(
   let total = digits[i]! * k + carry
   i == length digits - 1
   | . -> push_carry { carry: total / 10, acc: acc + [total % 10] } or
-    scale(
-      {
-        digits: digits,
-        k: k,
-        i: i + 1,
-        carry: total / 10,
-        acc: acc + [total % 10]
-      }
-    )
+    scale {
+      digits: digits,
+      k: k,
+      i: i + 1,
+      carry: total / 10,
+      acc: acc + [total % 10]
+    }
 
 fn power_of_two(
   { digits, n }: { digits: Vec<Int>, n: Int }
 ) -> Vec<Int> =
   n == 0
   | . -> digits or
-    power_of_two(
-      {
-        digits:
-          scale { digits: digits, k: 2, i: 0, carry: 0, acc: [] },
-        n: n - 1
-      }
-    )
+    power_of_two {
+      digits:
+        scale { digits: digits, k: 2, i: 0, carry: 0, acc: [] },
+      n: n - 1
+    }
 
 sum(power_of_two { digits: [1], n: 1000 })
 ```

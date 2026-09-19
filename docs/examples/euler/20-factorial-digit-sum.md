@@ -29,28 +29,24 @@ fn scale(
   let total = digits[i]! * k + carry
   i == length digits - 1
   | . -> push_carry { carry: total / 10, acc: acc + [total % 10] } or
-    scale(
-      {
-        digits: digits,
-        k: k,
-        i: i + 1,
-        carry: total / 10,
-        acc: acc + [total % 10]
-      }
-    )
+    scale {
+      digits: digits,
+      k: k,
+      i: i + 1,
+      carry: total / 10,
+      acc: acc + [total % 10]
+    }
 
 fn factorial_digits(
   { digits, k }: { digits: Vec<Int>, k: Int }
 ) -> Vec<Int> =
   k > 100
   | . -> digits or
-    factorial_digits(
-      {
-        digits:
-          scale { digits: digits, k: k, i: 0, carry: 0, acc: [] },
-        k: k + 1
-      }
-    )
+    factorial_digits {
+      digits:
+        scale { digits: digits, k: k, i: 0, carry: 0, acc: [] },
+      k: k + 1
+    }
 
 sum(factorial_digits { digits: [1], k: 2 })
 ```

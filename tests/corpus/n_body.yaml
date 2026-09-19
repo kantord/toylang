@@ -83,14 +83,12 @@ program: |
           vz: 0.0 - pz / solar_mass(),
           m: solar_mass()
         } or
-      momentum(
-        {
-          bs: tail(bs)!,
-          px: px + bs[0]!.vx * bs[0]!.m,
-          py: py + bs[0]!.vy * bs[0]!.m,
-          pz: pz + bs[0]!.vz * bs[0]!.m
-        }
-      )
+      momentum {
+        bs: tail(bs)!,
+        px: px + bs[0]!.vx * bs[0]!.m,
+        py: py + bs[0]!.vy * bs[0]!.m,
+        pz: pz + bs[0]!.vz * bs[0]!.m
+      }
 
   fn system() -> Vec<Body> =
     [momentum { bs: planets(), px: 0.0, py: 0.0, pz: 0.0 }] + planets()
@@ -119,17 +117,15 @@ program: |
   fn tick(bs: Vec<Body>) -> Vec<Body> =
     collect range(length bs)
     | map(pull { b: bs[.]!, others: bs[:.] + bs[. + 1:] })
-    | map(
-        {
-          x: .x + 0.01 * .vx,
-          y: .y + 0.01 * .vy,
-          z: .z + 0.01 * .vz,
-          vx: .vx,
-          vy: .vy,
-          vz: .vz,
-          m: .m
-        }
-      )
+    | map {
+        x: .x + 0.01 * .vx,
+        y: .y + 0.01 * .vy,
+        z: .z + 0.01 * .vz,
+        vx: .vx,
+        vy: .vy,
+        vz: .vz,
+        m: .m
+      }
 
   fn advance({ bs, n }: { bs: Vec<Body>, n: Int }) -> Vec<Body> =
     n | . == 0 -> bs or advance { bs: tick bs, n: . - 1 }
@@ -145,13 +141,11 @@ program: |
   ) -> Float =
     others
     | length others == 0 -> acc or
-      potential(
-        {
-          b: b,
-          others: tail(others)!,
-          acc: pair { b: b, o: others[0]!, acc: acc }
-        }
-      )
+      potential {
+        b: b,
+        others: tail(others)!,
+        acc: pair { b: b, o: others[0]!, acc: acc }
+      }
 
   fn kinetic({ b, acc }: { b: Body, acc: Float }) -> Float =
     acc + 0.5 * b.m * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
@@ -159,25 +153,22 @@ program: |
   fn energy({ bs, acc }: { bs: Vec<Body>, acc: Float }) -> Float =
     bs
     | length bs == 0 -> acc or
-      energy(
-        {
-          bs: tail(bs)!,
-          acc: potential(
-            {
-              b: bs[0]!,
-              others: tail(bs)!,
-              acc: kinetic { b: bs[0]!, acc: acc }
-            }
-          )
+      energy {
+        bs: tail(bs)!,
+        acc: potential {
+          b: bs[0]!,
+          others: tail(bs)!,
+          acc: kinetic { b: bs[0]!, acc: acc }
         }
-      )
+      }
 
   jsonlines(
     [
       energy { bs: system(), acc: 0.0 },
-      energy(
-        { bs: advance { bs: system(), n: parse stdin }, acc: 0.0 }
-      )
+      energy {
+        bs: advance { bs: system(), n: parse stdin },
+        acc: 0.0
+      }
     ]
   )
 

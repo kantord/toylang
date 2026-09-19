@@ -21,9 +21,10 @@ and only executes it under `just slow-test`, where all seven backends find the t
 fn chain_len({ n, acc }: { n: Int64, acc: Int }) -> Int =
   n == 1
   | . -> acc or
-    chain_len(
-      { n: n % 2 == 0 | . -> n / 2 or n * 3 + 1, acc: acc + 1 }
-    )
+    chain_len {
+      n: n % 2 == 0 | . -> n / 2 or n * 3 + 1,
+      acc: acc + 1
+    }
 
 fn better(
   { a, b }: { a: { n: Int, len: Int }, b: { n: Int, len: Int } }
@@ -36,12 +37,10 @@ fn longest(
   let mid = (lo + hi) / 2
   hi - lo == 1
   | . -> { n: lo, len: chain_len { n: i64 lo, acc: 1 } } or
-    better(
-      {
-        a: longest { lo: lo, hi: mid },
-        b: longest { lo: mid, hi: hi }
-      }
-    )
+    better {
+      a: longest { lo: lo, hi: mid },
+      b: longest { lo: mid, hi: hi }
+    }
 
 longest { lo: 1, hi: 1000000 }
 ```

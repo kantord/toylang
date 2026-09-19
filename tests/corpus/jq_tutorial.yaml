@@ -9,13 +9,11 @@ program: |
     db
 
   commits(parse stdin)
-  | map(
-      {
-        message: .commit.message,
-        name: .commit.committer.name,
-        parents: .parents[].html_url
-      }
-    )
+  | map {
+      message: .commit.message,
+      name: .commit.committer.name,
+      parents: .parents[].html_url
+    }
 
 input: |
   [{"commit": {"message": "first", "committer": {"name": "ada"}},

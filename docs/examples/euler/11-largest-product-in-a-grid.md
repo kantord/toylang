@@ -59,9 +59,14 @@ fn direction(
   flatten(
     collect(range rmax)
     | map(
-        row_products(
-          { g: g, r: ., dr: dr, dc: dc, cmin: cmin, cmax: cmax }
-        )
+        row_products {
+          g: g,
+          r: .,
+          dr: dr,
+          dc: dc,
+          cmin: cmin,
+          cmax: cmax
+        }
       )
   )
 

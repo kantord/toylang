@@ -44,19 +44,20 @@ fn add_digits(
   let total = column_total { nums: nums, k: k, carry: carry }
   k == 0
   | . -> emit_carry { carry: total / 10, acc: [total % 10] + acc } or
-    add_digits(
-      {
-        nums: nums,
-        k: k - 1,
-        carry: total / 10,
-        acc: [total % 10] + acc
-      }
-    )
+    add_digits {
+      nums: nums,
+      k: k - 1,
+      carry: total / 10,
+      acc: [total % 10] + acc
+    }
 
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
-  add_digits(
-    { nums: nums, k: length nums[0]! - 1, carry: 0, acc: [] }
-  )[0:10]
+  add_digits {
+    nums: nums,
+    k: length nums[0]! - 1,
+    carry: 0,
+    acc: []
+  }[0:10]
 
 leading_digits(parse stdin)
 ```

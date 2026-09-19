@@ -282,9 +282,13 @@ fn a_long_match_arm_breaks_after_its_arrow() {
     let want = "fn f(x: Int) -> Int =\n\
                 \x20 x\n\
                 \x20 | . > 1 ->\n\
-                \x20     some_function_call(\n\
-                \x20       { alpha: x, beta: x + 1, gamma: x * 2, delta: x - 1, eps: x }\n\
-                \x20     ) or\n\
+                \x20     some_function_call {\n\
+                \x20       alpha: x,\n\
+                \x20       beta: x + 1,\n\
+                \x20       gamma: x * 2,\n\
+                \x20       delta: x - 1,\n\
+                \x20       eps: x\n\
+                \x20     } or\n\
                 \x20   0\n\
                 \n\
                 fn some_function_call(\n\
@@ -556,4 +560,27 @@ fn bare_application_is_capped_at_one_hop() {
             "{src_body} changed behaviour"
         );
     }
+}
+
+/// A record argument that does not fit compact breaks bare, one field per line, the same way
+/// a variant's record payload already does (maintainer finding, 2026-09-19, in a real
+/// recursive function): the `{}` is already the call's own delimiter, so wrapping it in a
+/// second, real pair of parens (`join_digits(\n  { ... }\n)`) added a pair the record's own
+/// braces made redundant. The compact printer already rendered this bare when it fit; this is
+/// that same choice carried into the wrapped form.
+#[test]
+fn a_long_record_call_argument_breaks_bare() {
+    let src = "fn join_digits({ digits, acc }: { digits: Vec<Int>, acc: Int64 }) -> Int64 =\n  length digits == 0\n  | . -> acc or\n    join_digits({ digits: tail(digits)!, acc: acc * 10 + i64 digits[0]! })\n\njoin_digits({ digits: [1, 2, 3], acc: 0 })\n";
+    let want = toylang::fmt(src).unwrap();
+    assert!(
+        want.contains("join_digits {\n      digits:"),
+        "expected a bare, broken record argument:\n{want}"
+    );
+    assert_eq!(
+        want.matches("join_digits(\n").count(),
+        1,
+        "only the signature should open with a wrapped paren, not the recursive call:\n{want}"
+    );
+    assert_eq!(toylang::fmt(&want).unwrap(), want);
+    assert_eq!(toylang::run(src).unwrap(), toylang::run(&want).unwrap());
 }
