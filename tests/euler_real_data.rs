@@ -22,146 +22,66 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 const PROGRAM_8: &str = r#"
-fn window(p: {v: Vec<Int>, i: Int, k: Int}) -> Int64 =
-    p | .k == 0 -> 1 or i64(p.v[p.i + p.k - 1]!) * window({v: p.v, i: p.i, k: p.k - 1})
+fn product(v: Vec<Int>) -> Int64 =
+    length(v) == 0 | . -> 1 or i64(v[0]!) * product(tail(v)!)
 
-fn max2(p: {a: Int64, b: Int64}) -> Int64 = p | .a > .b -> p.a or p.b
+fn windows(v: Vec<Int>) -> Vec<Int64> =
+    collect(range(length(v) - 12)) | map(product(v[.:. + 13]))
 
-fn best(p: {v: Vec<Int>, lo: Int, hi: Int}) -> Int64 =
-    p | .hi - .lo == 1 -> window({v: p.v, i: p.lo, k: 13}) or
-        max2(
-            {
-                a: best({v: p.v, lo: p.lo, hi: (p.lo + p.hi) / 2}),
-                b: best({v: p.v, lo: (p.lo + p.hi) / 2, hi: p.hi})
-            }
-        )
-
-best({v: input, lo: 0, hi: length(input) - 12})
+max(windows(parse(stdin)))!
 "#;
 
 const PROGRAM_11: &str = r#"
-fn get(p: {g: Vec<Vec<Int>>, r: Int, c: Int}) -> Int = p.g[p.r]![p.c]!
+fn get({g, r, c}: {g: Vec<Vec<Int>>, r: Int, c: Int}) -> Int = g[r]![c]!
 
-fn four(p: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int =
-    get({g: p.g, r: p.r, c: p.c}) * get({g: p.g, r: p.r + p.dr, c: p.c + p.dc}) *
-        get({g: p.g, r: p.r + 2 * p.dr, c: p.c + 2 * p.dc}) *
-        get({g: p.g, r: p.r + 3 * p.dr, c: p.c + 3 * p.dc})
+fn four({g, r, c, dr, dc}: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int =
+    get({g: g, r: r, c: c}) * get({g: g, r: r + dr, c: c + dc}) *
+        get({g: g, r: r + 2 * dr, c: c + 2 * dc}) *
+        get({g: g, r: r + 3 * dr, c: c + 3 * dc})
 
-fn row_products(p: {g: Vec<Vec<Int>>, r: Int, dr: Int, dc: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
-    collect(range(p.cmax))
-        | select(. >= p.cmin)
-        | map(four({g: p.g, r: p.r, c: ., dr: p.dr, dc: p.dc}))
+fn row_products({g, r, dr, dc, cmin, cmax}: {g: Vec<Vec<Int>>, r: Int, dr: Int, dc: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
+    collect(range(cmax))
+        | select(. >= cmin)
+        | map(four({g: g, r: r, c: ., dr: dr, dc: dc}))
 
-fn direction(p: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
+fn direction({g, dr, dc, rmax, cmin, cmax}: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
     flatten(
-        collect(range(p.rmax))
+        collect(range(rmax))
             | map(
                   row_products(
-                      {
-                          g: p.g,
-                          r: .,
-                          dr: p.dr,
-                          dc: p.dc,
-                          cmin: p.cmin,
-                          cmax: p.cmax
-                      }
+                      {g: g, r: ., dr: dr, dc: dc, cmin: cmin, cmax: cmax}
                   )
               )
     )
 
-fn maximum_of(p: {v: Vec<Int>, i: Int, best: Int}) -> Int =
-    p | .i >= length(.v) -> p.best or
-        maximum_of(
-            {
-                v: p.v,
-                i: p.i + 1,
-                best: p | .v[.i]! > .best -> p.v[p.i]! or p.best
-            }
-        )
-
-fn maximum(v: Vec<Int>) -> Int = maximum_of({v: v, i: 1, best: v[0]!})
-
 fn largest_product(g: Vec<Vec<Int>>) -> Int =
-    maximum(
-        direction(
-            {
-                g: g,
-                dr: 0,
-                dc: 1,
-                rmax: length(g),
-                cmin: 0,
-                cmax: length(g[0]!) - 3
-            }
-        ) +
-            direction(
-                {
-                    g: g,
-                    dr: 1,
-                    dc: 0,
-                    rmax: length(g) - 3,
-                    cmin: 0,
-                    cmax: length(g[0]!)
-                }
-            ) +
-            direction(
-                {
-                    g: g,
-                    dr: 1,
-                    dc: 1,
-                    rmax: length(g) - 3,
-                    cmin: 0,
-                    cmax: length(g[0]!) - 3
-                }
-            ) +
-            direction(
-                {
-                    g: g,
-                    dr: 1,
-                    dc: -1,
-                    rmax: length(g) - 3,
-                    cmin: 3,
-                    cmax: length(g[0]!)
-                }
-            )
-    )
+    let rows = length(g)
+    let cols = length(g[0]!)
+    let right = direction({g: g, dr: 0, dc: 1, rmax: rows, cmin: 0, cmax: cols - 3})
+    let down = direction({g: g, dr: 1, dc: 0, rmax: rows - 3, cmin: 0, cmax: cols})
+    let diagonal = direction({g: g, dr: 1, dc: 1, rmax: rows - 3, cmin: 0, cmax: cols - 3})
+    let antidiagonal = direction({g: g, dr: 1, dc: -1, rmax: rows - 3, cmin: 3, cmax: cols})
+    max(flatten([right, down, diagonal, antidiagonal]))!
 
 largest_product(parse(stdin))
 "#;
 
 const PROGRAM_13: &str = r#"
-fn empty() -> Vec<Int> = []
+fn column_total({nums, k, carry}: {nums: Vec<Vec<Int>>, k: Int, carry: Int}) -> Int =
+    sum(nums | map(.[k]!)) + carry
 
-fn col_sum(p: {nums: Vec<Vec<Int>>, i: Int, k: Int}) -> Int =
-    p | .i >= length(.nums) -> 0 or
-        p.nums[p.i]![p.k]! + col_sum({nums: p.nums, i: p.i + 1, k: p.k})
+fn emit_carry({carry, acc}: {carry: Int, acc: Vec<Int>}) -> Vec<Int> =
+    carry == 0
+        | . -> acc or emit_carry({carry: carry / 10, acc: [carry % 10] + acc})
 
-fn column_total(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int}) -> Int =
-    col_sum({nums: p.nums, i: 0, k: p.k}) + p.carry
-
-fn emit_carry(p: {carry: Int, acc: Vec<Int>}) -> Vec<Int> =
-    p | .carry == 0 -> p.acc or
-        emit_carry({carry: p.carry / 10, acc: [p.carry % 10] + p.acc})
-
-fn add_digits(p: {nums: Vec<Vec<Int>>, k: Int, carry: Int, acc: Vec<Int>}) -> Vec<Int> =
-    p | .k < 0 -> emit_carry({carry: p.carry, acc: p.acc}) or
-        add_digits(
-            {
-                nums: p.nums,
-                k: p.k - 1,
-                carry: column_total({nums: p.nums, k: p.k, carry: p.carry}) / 10,
-                acc: [column_total({nums: p.nums, k: p.k, carry: p.carry}) % 10] +
-                    p.acc
-            }
-        )
-
-fn first_ten(v: Vec<Int>) -> Vec<Int> = collect(range(10)) | map(v[.]!)
+fn add_digits({nums, k, carry, acc}: {nums: Vec<Vec<Int>>, k: Int, carry: Int, acc: Vec<Int>}) -> Vec<Int> =
+    let total = column_total({nums: nums, k: k, carry: carry})
+    k == 0
+        | . -> emit_carry({carry: total / 10, acc: [total % 10] + acc}) or
+              add_digits({nums: nums, k: k - 1, carry: total / 10, acc: [total % 10] + acc})
 
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
-    first_ten(
-        add_digits(
-            {nums: nums, k: length(nums[0]!) - 1, carry: 0, acc: empty()}
-        )
-    )
+    add_digits({nums: nums, k: length(nums[0]!) - 1, carry: 0, acc: []})[0:10]
 
 leading_digits(parse(stdin))
 "#;
