@@ -1,0 +1,9 @@
+# Float arithmetic is total: a zero divisor is the IEEE answer, Infinity, not the stop an
+# Int's `1 / 0` is (kantord/toylang#145). Every backend prints it by name.
+program: |
+  1.0 / 0.0
+
+output: |
+  Infinity
+
+node_types: [arith.div, float]
