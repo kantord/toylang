@@ -201,6 +201,118 @@ pub fn emit_module(module: &Module) -> String {
     ensure_single_newline(out)
 }
 
+/// The one-line template: the same tree on a single line, with no width. Declarations and the
+/// body are separated by one space, a `let` block is `let a = .. let b = .. value`, and
+/// trait and impl methods sit inside their braces separated by spaces. Comments are dropped:
+/// a `#` runs to the end of the line, so none can sit inside one.
+///
+/// The grammar reads a line break as the separator between a `let` value and the block's
+/// value, and between the last definition's body and the program body; on one line, a body
+/// ending in a name followed by an atom re-reads as a bare application (`x g(1)` is `x(g(1))`).
+/// This renderer does not guard against that -- `fmt_one_line` in lib.rs re-parses its output
+/// and refuses the program when the reading changed.
+pub fn emit_one_line(file: &File) -> String {
+    let mut parts: Vec<String> = decls_in_source_order(
+        &file.aliases,
+        &file.enums,
+        &file.traits,
+        &file.impls,
+        &file.defs,
+    )
+    .iter()
+    .map(print_decl_one_line)
+    .collect();
+    parts.push(print_expr_compact(&file.body, Ctx::Expr(0)));
+    format!("{}\n", parts.join(" "))
+}
+
+pub fn emit_module_one_line(module: &Module) -> String {
+    let decls: Vec<String> = decls_in_source_order(
+        &module.aliases,
+        &module.enums,
+        &module.traits,
+        &module.impls,
+        &module.defs,
+    )
+    .iter()
+    .map(print_decl_one_line)
+    .collect();
+    if decls.is_empty() {
+        return String::new();
+    }
+    format!("{}\n", decls.join(" "))
+}
+
+fn print_decl_one_line(item: &Item) -> String {
+    match item {
+        Item::Alias(a) => print_alias(a),
+        Item::Enum(e) => print_enum_compact(e),
+        Item::Trait(t) => {
+            let methods: Vec<String> = t.methods.iter().map(print_trait_method).collect();
+            format!("{} {}", trait_head(t), brace_one_line(&methods))
+        }
+        Item::Impl(i) => {
+            let methods: Vec<String> = i.methods.iter().map(print_impl_method_one_line).collect();
+            format!("{} {}", impl_head(i), brace_one_line(&methods))
+        }
+        Item::Def(d) => print_def_one_line(d),
+    }
+}
+
+fn brace_one_line(items: &[String]) -> String {
+    if items.is_empty() {
+        "{}".to_string()
+    } else {
+        format!("{{ {} }}", items.join(" "))
+    }
+}
+
+fn print_def_one_line(d: &Def) -> String {
+    let pub_prefix = if d.is_pub { "pub " } else { "" };
+    if d.hoisted {
+        return format!(
+            "{pub_prefix}fn {} = {}",
+            d.name,
+            print_expr_compact(&d.body, Ctx::Expr(0))
+        );
+    }
+    let ret = d
+        .ret
+        .as_ref()
+        .map(print_type)
+        .expect("a non-hoisted definition always writes a return type");
+    format!(
+        "{pub_prefix}fn {}({}) -> {ret} = {}",
+        d.name,
+        print_param(&d.param),
+        print_body_one_line(&d.body)
+    )
+}
+
+fn print_impl_method_one_line(m: &ImplMethod) -> String {
+    format!(
+        "fn {}({}) -> {} = {}",
+        m.name,
+        print_param(&m.param),
+        print_type(&m.ret),
+        print_body_one_line(&m.body)
+    )
+}
+
+/// A definition body: a `let` block is its bindings and value in a row, since `let` is a
+/// keyword and cannot be read as an argument; anything else is its compact form.
+fn print_body_one_line(body: &Expr) -> String {
+    let Expr::Let { bindings, body, .. } = body else {
+        return print_expr_compact(body, Ctx::Expr(0));
+    };
+    let mut parts: Vec<String> = bindings
+        .iter()
+        .map(|(n, v)| format!("let {n} = {}", print_expr_compact(v, Ctx::Expr(0))))
+        .collect();
+    parts.push(print_expr_compact(body, Ctx::Expr(0)));
+    parts.join(" ")
+}
+
 /// A comment's `blank_after` can leave a blank line at the very end; a file ends in exactly one
 /// newline.
 fn ensure_single_newline(out: String) -> String {
@@ -527,57 +639,64 @@ fn print_type_params(params: &[(String, crate::ast::Span)]) -> String {
     }
 }
 
-fn print_enum(e: &EnumDecl) -> String {
+fn enum_head(e: &EnumDecl) -> String {
     let pub_prefix = if e.is_pub { "pub " } else { "" };
-    let head = format!(
+    format!(
         "{pub_prefix}enum {}{}",
         e.name,
         print_type_params(&e.params)
-    );
+    )
+}
+
+fn print_enum_compact(e: &EnumDecl) -> String {
     let variants: Vec<String> = e.variants.iter().map(print_variant_decl).collect();
     if variants.is_empty() {
-        return format!("{head} {{}}");
+        return format!("{} {{}}", enum_head(e));
     }
-    let compact = format!("{head} {{ {} }}", variants.join(", "));
-    if fits(&compact, 0) {
+    format!("{} {{ {} }}", enum_head(e), variants.join(", "))
+}
+
+fn print_enum(e: &EnumDecl) -> String {
+    let compact = print_enum_compact(e);
+    if e.variants.is_empty() || fits(&compact, 0) {
         return compact;
     }
-    format!("{head} {}", wrap_delim("{", &variants, "}", 0))
+    let variants: Vec<String> = e.variants.iter().map(print_variant_decl).collect();
+    format!("{} {}", enum_head(e), wrap_delim("{", &variants, "}", 0))
+}
+
+fn trait_head(t: &TraitDecl) -> String {
+    let pub_prefix = if t.is_pub { "pub " } else { "" };
+    format!("{pub_prefix}trait {}", t.name)
 }
 
 fn print_trait(t: &TraitDecl) -> String {
-    let pub_prefix = if t.is_pub { "pub " } else { "" };
     if t.methods.is_empty() {
-        return format!("{pub_prefix}trait {} {{}}", t.name);
+        return format!("{} {{}}", trait_head(t));
     }
     let methods: Vec<String> = t.methods.iter().map(print_trait_method).collect();
-    format!(
-        "{pub_prefix}trait {} {}",
-        t.name,
-        wrap_brace("{", &methods, "}")
-    )
+    format!("{} {}", trait_head(t), wrap_brace("{", &methods, "}"))
 }
 
 fn print_trait_method(m: &TraitMethodSig) -> String {
     print_sig("", &m.name, &m.param, &print_type(&m.ret), INDENT)
 }
 
+fn impl_head(i: &ImplDecl) -> String {
+    format!(
+        "impl{} {} for {}",
+        print_type_params(&i.params),
+        i.trait_name,
+        print_type(&i.ty)
+    )
+}
+
 fn print_impl(i: &ImplDecl) -> String {
-    let params = print_type_params(&i.params);
     if i.methods.is_empty() {
-        return format!(
-            "impl{params} {} for {} {{}}",
-            i.trait_name,
-            print_type(&i.ty)
-        );
+        return format!("{} {{}}", impl_head(i));
     }
     let methods: Vec<String> = i.methods.iter().map(print_impl_method).collect();
-    format!(
-        "impl{params} {} for {} {}",
-        i.trait_name,
-        print_type(&i.ty),
-        wrap_brace("{", &methods, "}")
-    )
+    format!("{} {}", impl_head(i), wrap_brace("{", &methods, "}"))
 }
 
 /// Sits one level in, inside the impl's braces, so that is where its own lines are measured

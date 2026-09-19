@@ -115,6 +115,55 @@ pub fn fmt(src: &str) -> Result<String, Error> {
     emit_toylang::format_source(src)
 }
 
+/// The same tree as `fmt` renders, on one line: the one-line template of `emit_toylang`.
+///
+/// Refuses a program whose one-line form would read differently. The grammar separates a
+/// `let` value from the block's value, and the last definition's body from the program body,
+/// by a line break alone, and bare application makes a name followed by an atom a call, so
+/// `fn g(x: Int) -> Int = x` then `g(1)` becomes `x g(1)`, the call `x(g(1))`. Rather than
+/// enumerate the shapes, the rendering is parsed back and compared, tree to tree, through the
+/// file template; a mismatch is an error naming the definition whose body was swallowed.
+pub fn fmt_one_line(src: &str) -> Result<String, Error> {
+    let as_program = match parse::parse(src) {
+        Ok(mut file) => {
+            let line = emit_toylang::emit_one_line(&file);
+            let reread = parse::parse(&line).map_err(|e| one_line_error(&file, e.msg))?;
+            // The one-line form carries no comments, so the trees are compared without them.
+            file.comments.clear();
+            if emit_toylang::emit(&reread) != emit_toylang::emit(&file) {
+                return Err(one_line_error(&file, "it reads as a different program"));
+            }
+            return Ok(line);
+        }
+        Err(e) => e,
+    };
+    match parse::parse_module(src) {
+        // A module is declarations only, each starting with a keyword no argument can be, so
+        // its one-line form always reads back the same.
+        Ok(module) => Ok(emit_toylang::emit_module_one_line(&module)),
+        Err(as_module) if as_module.span.start > as_program.span.start => Err(as_module),
+        Err(_) => Err(as_program),
+    }
+}
+
+/// The one-line failure, placed at the last definition: the seam between its body and the
+/// program body is where a one-line rendering loses its separator, unless a `let` block did.
+fn one_line_error(file: &ast::File, why: impl std::fmt::Display) -> Error {
+    let span = file
+        .defs
+        .iter()
+        .map(|d| d.span)
+        .max_by_key(|s| s.start)
+        .unwrap_or_else(|| file.body.span());
+    Error::new(
+        span,
+        format!(
+            "this program has no one-line form: {why} (a body followed by an atom on the same \
+             line reads as a call, and the grammar has no other separator)"
+        ),
+    )
+}
+
 pub fn run(src: &str) -> Result<String> {
     run_on(src, None, Backend::Lua)
 }
