@@ -7551,7 +7551,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn f({ acc }: { acc: Vec<Int> }) -> Vec<Int> = acc + [1]\n\nf({ acc: [0] })\n",
+      "program": "fn f({ acc }: { acc: Vec<Int> }) -> Vec<Int> = acc + [1]\n\nf { acc: [0] }\n",
       "resultType": "Vec<Int>",
       "usesLines": false
     },
