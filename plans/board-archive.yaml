@@ -2902,3 +2902,10 @@
   kind: decide
   needs: []
   status: done
+
+- id: float-corpus-cases
+  issue: gh:149
+  title: 'Promote the per-backend Float tests (tests/backend_*.rs) into tests/corpus cases so the `float` tag has corpus coverage and the seven-backend agreement check owns Float; where docs/reference/types/float.md repeats one, embed it with a `case` fence instead. Self-originated from the 2026-09-18 status audit (plans/status-audit-2026-09-18.md): float-build-c-escalation said Float "still needs Go/Python/Rust/Lua before it can be a corpus case"; all four landed and the follow-up was never filed.'
+  kind: build
+  needs: []
+  status: done
