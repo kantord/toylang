@@ -1034,7 +1034,7 @@ impl<'i> Cursor<'i> {
     }
 
     /// `enum Shape { point, circle{r: Int}, celsius(Int) }`, optionally with type
-    /// parameters: `enum Opt<T> { some(T), none }`.
+    /// parameters: `enum Opt<T> { Some(T), None }`.
     ///
     /// A variant is a name, optionally followed by its payload type. The payload rule is any
     /// single type, spelled the way a call spells its argument: a record type directly in

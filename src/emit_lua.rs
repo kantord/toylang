@@ -92,7 +92,7 @@ end
 ";
 
 const OPT_HELPER: &str = "\
--- An Opt is its enum's own runtime shape (ADR 0009): `{some = v}` present, \"none\" absent.
+-- An Opt is its enum's own runtime shape (ADR 0009): `{Some = v}` present, \"None\" absent.
 -- Tagged, so two levels of absence stay two values; only the printer flattens to null. A
 -- table rather than nil also keeps `#` honest for a Vec of Opt.
 local function tl_at(v, i, depth)
@@ -103,8 +103,8 @@ local function tl_at(v, i, depth)
   end
   local n = #v
   if i < 0 then i = n + i end
-  if i < 0 or i >= n then return \"none\" end
-  return { some = v[i + 1] }
+  if i < 0 or i >= n then return \"None\" end
+  return { Some = v[i + 1] }
 end
 ";
 
@@ -139,17 +139,17 @@ end
 
 const TAIL_HELPER: &str = "\
 local function tl_tail(v)
-  if #v == 0 then return \"none\" end
+  if #v == 0 then return \"None\" end
   local out = {}
   for i = 2, #v do out[i - 1] = v[i] end
-  return { some = out }
+  return { Some = out }
 end
 ";
 
 const FIRST_HELPER: &str = "\
 local function tl_first(v)
-  if #v == 0 then return \"none\" end
-  return { some = v[1] }
+  if #v == 0 then return \"None\" end
+  return { Some = v[1] }
 end
 ";
 
@@ -219,12 +219,12 @@ end
 
 const MAX_HELPER: &str = "\
 local function tl_max(v)
-  if #v == 0 then return \"none\" end
+  if #v == 0 then return \"None\" end
   local m = v[1]
   for i = 2, #v do
     if v[i] > m then m = v[i] end
   end
-  return { some = m }
+  return { Some = m }
 end
 ";
 
@@ -234,8 +234,8 @@ const UNWRAP_HELPER: &str = r#"local function tl_unwrap(v, depth)
     for k = 1, #v do out[k] = tl_unwrap(v[k], depth - 1) end
     return out
   end
-  if v == "none" then error("toylang: unwrapped a value that is not there", 0) end
-  return v.some
+  if v == "None" then error("toylang: unwrapped a value that is not there", 0) end
+  return v.Some
 end
 "#;
 
@@ -702,8 +702,8 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
             let inner = ty.as_opt().expect("guarded");
             let v = format!("o{depth}");
             format!(
-                "(function({v}) if {v} == \"none\" then return \"null\" else return {} end end)({value})",
-                show(enums, inner, &format!("{v}.some"), depth + 1)
+                "(function({v}) if {v} == \"None\" then return \"null\" else return {} end end)({value})",
+                show(enums, inner, &format!("{v}.Some"), depth + 1)
             )
         }
         // A recursive enum prints through a function of its own (`printers`), because expanding
@@ -1027,7 +1027,7 @@ fn used_helpers(program: &Program) -> Helpers {
 /// body bare. Split out of `expr`'s match arm (kantord/toylang#62).
 fn arm_return(body: String, partial: bool) -> String {
     if partial {
-        format!("return {{some = {body}}} ")
+        format!("return {{Some = {body}}} ")
     } else {
         format!("return {body} ")
     }
@@ -1178,14 +1178,14 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 tir::vec_depth(&base.ty)
             )
         }
-        // Opt's reorder pass (kantord/toylang#66): the same `== "none"`/`.some` shape the
+        // Opt's reorder pass (kantord/toylang#66): the same `== "None"`/`.Some` shape the
         // printer and Match already read, generalised to rebuild the table instead.
         Kind::OptMap {
             source,
             param,
             body,
         } => format!(
-            "(function(__opt) if __opt == \"none\" then return \"none\" else local {} = __opt.some return {{some = {}}} end end)({})",
+            "(function(__opt) if __opt == \"None\" then return \"None\" else local {} = __opt.Some return {{Some = {}}} end end)({})",
             local(*param),
             expr(enums, body),
             expr(enums, source)
@@ -1273,7 +1273,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 }
             }
             if *partial {
-                body.push_str("return \"none\" ");
+                body.push_str("return \"None\" ");
             }
             format!("(function() {body}end)()")
         }

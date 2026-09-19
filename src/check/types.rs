@@ -108,10 +108,10 @@ pub(super) fn enum_map(enums: &[EnumDecl]) -> Result<HashMap<String, &EnumDecl>,
             }
             // The declared name is the matcher, so it starts with a capital letter; the value is
             // built with the lowercase constructor (`Circle` declares, `circle` builds). The
-            // prelude's Opt/Result still spell their variants lowercase -- exempting pub enums
-            // keeps the build green until gh:165 migrates them, and a program's own variants are
-            // all non-pub, so the rule still bites everywhere it should.
-            if !e.is_pub && !v.name.chars().next().is_some_and(char::is_uppercase) {
+            // prelude is held to it too: `Opt` and `Result` declare `Some`/`None` and
+            // `Ok`/`Err` (gh:165), which is what lets a lowercase head before `->` be read as
+            // a guard rather than a pattern.
+            if !v.name.chars().next().is_some_and(char::is_uppercase) {
                 return Err(Error::new(
                     v.span,
                     format!(

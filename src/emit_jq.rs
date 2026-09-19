@@ -7,7 +7,7 @@
 //!
 //! Two mappings are worth naming. A dimension spec becomes `.[]` plus a reification, since
 //! keeping a dimension in a stream language means iterating and collecting. And `Opt` carries
-//! its enum's own runtime shape even here -- `{"some": v}` present, `"none"` absent -- tagged
+//! its enum's own runtime shape even here -- `{"Some": v}` present, `"None"` absent -- tagged
 //! in memory like every backend now, with `null` appearing only when the printer flattens the
 //! tags away. One consequence is load-bearing: no in-memory value is ever JSON null, so jq's
 //! own null (an out-of-range `.[i]`) still unambiguously means "was not there".
@@ -275,8 +275,8 @@ fn text(enums: &Enums, ty: &Type, value: &str) -> String {
         Type::Enum { .. } if ty.as_opt().is_some() => {
             let inner = ty.as_opt().expect("guarded");
             format!(
-                "({value} | if . == \"none\" then \"null\" else {} end)",
-                text(enums, inner, ".some")
+                "({value} | if . == \"None\" then \"null\" else {} end)",
+                text(enums, inner, ".Some")
             )
         }
         // The text printer for a recursive enum is a named filter beside its value printer
@@ -344,7 +344,7 @@ fn canonical(enums: &Enums, ty: &Type, value: &str) -> String {
         Type::Enum { .. } if ty.as_opt().is_some() => {
             let inner = ty.as_opt().expect("guarded");
             format!(
-                "({value} | if . == \"none\" then null else (.some | {}) end)",
+                "({value} | if . == \"None\" then null else (.Some | {}) end)",
                 canonical(enums, inner, ".")
             )
         }
@@ -761,13 +761,13 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // tagged Opt shape instead, so both cases are spelled out rather than borrowed.
             Builtin::Tail => {
                 format!(
-                    "({} | if length == 0 then \"none\" else {{some: .[1:]}} end)",
+                    "({} | if length == 0 then \"None\" else {{Some: .[1:]}} end)",
                     expr(enums, arg)
                 )
             }
             // The first entry, tagged the same way `tail` tags; an empty Vec is the absent Opt.
             Builtin::First => format!(
-                "({} | if length == 0 then \"none\" else {{some: .[0]}} end)",
+                "({} | if length == 0 then \"None\" else {{Some: .[0]}} end)",
                 expr(enums, arg)
             ),
             // jq's own `any`/`all` already reduce a list of Bools the way the language's cuts
@@ -797,7 +797,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // jq's own `max` on an empty list errors, and on a non-empty one is exactly this,
             // so only the empty case is spelled: the absent Opt, tagged the way `Tail` tags.
             Builtin::Max => format!(
-                "({} | if length == 0 then \"none\" else {{some: max}} end)",
+                "({} | if length == 0 then \"None\" else {{Some: max}} end)",
                 expr(enums, arg)
             ),
             // The names come from the checked type, not the object value, so `arg` runs only to
@@ -867,7 +867,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         }
         Kind::Unwrap { base } => {
             let check = format!(
-                "if . == \"none\" then error({}) else .some end",
+                "if . == \"None\" then error({}) else .Some end",
                 jq_string("toylang: unwrapped a value that is not there")
             );
             format!(
@@ -876,14 +876,14 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 distribute(&check, tir::vec_depth(&base.ty))
             )
         }
-        // Opt's reorder pass (kantord/toylang#66): the same `== "none"`/`.some` shape the
+        // Opt's reorder pass (kantord/toylang#66): the same `== "None"`/`.Some` shape the
         // printer and Match already read, generalised to rebuild the object instead.
         Kind::OptMap {
             source,
             param,
             body,
         } => format!(
-            "({} | if . == \"none\" then \"none\" else (.some as {} | {{some: {}}}) end)",
+            "({} | if . == \"None\" then \"None\" else (.Some as {} | {{Some: {}}}) end)",
             expr(enums, source),
             local(*param),
             expr(enums, body)
@@ -895,7 +895,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             base, index, depth, ..
         } => {
             let at = format!(
-                "(.[{}] as $e | if $e == null then \"none\" else {{some: $e}} end)",
+                "(.[{}] as $e | if $e == null then \"None\" else {{Some: $e}} end)",
                 expr(enums, index)
             );
             format!("({} | {})", expr(enums, base), distribute(&at, *depth))
@@ -948,7 +948,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             let run = |arm: &tir::MatchArm| {
                 if *partial {
                     // A partial chain's yield is an Opt, so a present arm is tagged.
-                    format!("{{some: {}}}", run(arm))
+                    format!("{{Some: {}}}", run(arm))
                 } else {
                     run(arm)
                 }
@@ -976,7 +976,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 }
             }
             if *partial {
-                out.push_str("else \"none\" end");
+                out.push_str("else \"None\" end");
             }
             out.push(')');
             out

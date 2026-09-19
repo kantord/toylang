@@ -75,7 +75,7 @@ mod containment {
     }
 }
 
-/// Deliberately parameterized, not built: how `some`/`none` arms compose is what the pending
+/// Deliberately parameterized, not built: how `Some`/`None` arms compose is what the pending
 /// matcher-totality round decides (plans/opt-as-enum.md, "Open points, owned elsewhere").
 #[test]
 fn matching_an_opt_by_variant_is_not_yet_decided() {

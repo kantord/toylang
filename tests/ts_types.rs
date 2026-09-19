@@ -34,7 +34,7 @@ const b: string = v_greet("bob");
 const c: boolean = v_is_pos(2);
 const d: number = v_total([1,  2,  3]);
 const e: number = v_area({ w:  2, h:  3 });
-const f: Opt_Int = v_bump({ some:  5 });
+const f: Opt_Int = v_bump({ Some:  5 });
 "#;
 
 /// `strict: true` is the point: it is what makes the consumer's usage actually type-checked

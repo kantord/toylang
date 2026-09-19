@@ -2278,7 +2278,7 @@ fn variant_arm<'a>(
     vspan: Span,
     fields: Option<&FieldsPattern>,
 ) -> Result<(Option<LocalId>, Ctx<'a>), Error> {
-    // Deliberately parameterized, not built: how `some`/`none` arms compose -- their
+    // Deliberately parameterized, not built: how `Some`/`None` arms compose -- their
     // totality, and whether they flow through first-class matchers -- is what the pending
     // matcher-totality round decides (plans/opt-as-enum.md, "Open points, owned elsewhere").
     // Until it runs, `!` and the producers' own combinators are Opt's consumption surface.

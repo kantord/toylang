@@ -50,14 +50,14 @@ function tl_field(v, k, depth) {
 ";
 
 const OPT_HELPER: &str = "\
-// An Opt is its enum's own runtime shape (ADR 0009): `{some: v}` present, \"none\" absent.
+// An Opt is its enum's own runtime shape (ADR 0009): `{Some: v}` present, \"None\" absent.
 // Tagged, so two levels of absence stay two values; only the printer flattens to null.
 function tl_at(v, i, depth) {
   if (depth > 0) return v.map((e) => tl_at(e, i, depth - 1));
   const n = v.length;
   if (i < 0) i = n + i;
-  if (i < 0 || i >= n) return \"none\";
-  return { some: v[i] };
+  if (i < 0 || i >= n) return \"None\";
+  return { Some: v[i] };
 }
 ";
 
@@ -73,15 +73,15 @@ function tl_slice(v, lo, hi, depth) {
 
 const TAIL_HELPER: &str = "\
 function tl_tail(v) {
-  if (v.length === 0) return \"none\";
-  return { some: v.slice(1) };
+  if (v.length === 0) return \"None\";
+  return { Some: v.slice(1) };
 }
 ";
 
 const FIRST_HELPER: &str = "\
 function tl_first(v) {
-  if (v.length === 0) return \"none\";
-  return { some: v[0] };
+  if (v.length === 0) return \"None\";
+  return { Some: v[0] };
 }
 ";
 
@@ -101,8 +101,8 @@ function tl_all(v) {
 
 const UNWRAP_HELPER: &str = r#"function tl_unwrap(v, depth) {
   if (depth > 0) return v.map((e) => tl_unwrap(e, depth - 1));
-  if (v === "none") { throw new Error("toylang: unwrapped a value that is not there"); }
-  return v.some;
+  if (v === "None") { throw new Error("toylang: unwrapped a value that is not there"); }
+  return v.Some;
 }
 "#;
 
@@ -243,10 +243,10 @@ function tl_sum64(v) {
 // `>` orders Number and BigInt alike, so one maximum serves both widths.
 const MAX_HELPER: &str = "\
 function tl_max(v) {
-  if (v.length === 0) return \"none\";
+  if (v.length === 0) return \"None\";
   let m = v[0];
   for (let i = 1; i < v.length; i++) if (v[i] > m) m = v[i];
-  return { some: m };
+  return { Some: m };
 }
 ";
 
@@ -584,8 +584,8 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
             let inner = ty.as_opt().expect("guarded");
             let v = format!("o{depth}");
             format!(
-                "(({v}) => {v} === \"none\" ? \"null\" : {})({value})",
-                show(enums, inner, &format!("{v}.some"), depth + 1)
+                "(({v}) => {v} === \"None\" ? \"null\" : {})({value})",
+                show(enums, inner, &format!("{v}.Some"), depth + 1)
             )
         }
         // A recursive enum prints through a function of its own (`printers`), because expanding
@@ -868,7 +868,7 @@ fn used_helpers(program: &Program) -> Helpers {
 /// body bare. Split out of `expr`'s match arm (kantord/toylang#62).
 fn arm_return(body: String, partial: bool) -> String {
     if partial {
-        format!("return {{some: {body}}}; ")
+        format!("return {{Some: {body}}}; ")
     } else {
         format!("return {body}; ")
     }
@@ -1136,7 +1136,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::SortBy { .. } | Kind::MaxBy { .. } => {
             unreachable!("sort_by/max_by emission lands in a later step")
         }
-        // Opt's reorder pass (kantord/toylang#66): the tagged shape (`"none"` or `{some: v}`)
+        // Opt's reorder pass (kantord/toylang#66): the tagged shape (`"None"` or `{Some: v}`)
         // is generic enough that this is the ordinary key-presence test every Match arm over
         // an Opt subject would already use, just rebuilding the payload instead of a body.
         Kind::OptMap {
@@ -1145,7 +1145,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             body,
         } => {
             format!(
-                "(__opt => __opt === \"none\" ? \"none\" : (({}) => ({{some: {}}}))(__opt.some))({})",
+                "(__opt => __opt === \"None\" ? \"None\" : (({}) => ({{Some: {}}}))(__opt.Some))({})",
                 local(*param),
                 expr(enums, body),
                 expr(enums, source)
@@ -1239,7 +1239,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 }
             }
             if *partial {
-                body.push_str("return \"none\"; ");
+                body.push_str("return \"None\"; ");
             }
             format!("(() => {{ {body}}})()")
         }
