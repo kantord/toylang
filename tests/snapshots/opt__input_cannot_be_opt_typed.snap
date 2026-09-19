@@ -1,6 +1,5 @@
 ---
 source: tests/opt.rs
-assertion_line: 90
-expression: "err(\"fn f(x: Opt<Int>) -> Int = x!\\n\\nf(parse(stdin))\")"
+expression: "err(\"fn f(x: Opt<Int>) -> Int = x!;\\n\\nf(parse(stdin))\")"
 ---
-`parse(stdin)` cannot be read as Opt<Int>; absence has no wire form to read (at byte 33)
+`parse(stdin)` cannot be read as Opt<Int>; absence has no wire form to read (at byte 34)

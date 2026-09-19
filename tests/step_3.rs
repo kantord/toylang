@@ -5,7 +5,7 @@ fn err(src: &str) -> String {
 #[test]
 fn call_a_function() {
     let src = r#"
-fn greet(who: Str) -> Str = "hello " + who
+fn greet(who: Str) -> Str = "hello " + who;
 
 greet("world")
 "#;
@@ -16,8 +16,8 @@ greet("world")
 #[test]
 fn call_a_function_defined_later() {
     let src = r#"
-fn outer(x: Str) -> Str = inner(x) + "!"
-fn inner(x: Str) -> Str = "[" + x + "]"
+fn outer(x: Str) -> Str = inner(x) + "!";
+fn inner(x: Str) -> Str = "[" + x + "]";
 
 outer("hi")
 "#;
@@ -29,7 +29,7 @@ outer("hi")
 #[test]
 fn a_function_may_be_named_print() {
     let src = r#"
-fn print(x: Str) -> Str = "got " + x
+fn print(x: Str) -> Str = "got " + x;
 
 print("it")
 "#;
@@ -39,7 +39,7 @@ print("it")
 #[test]
 fn emitted_lua() {
     let src = r#"
-fn greet(who: Str) -> Str = "hello " + who
+fn greet(who: Str) -> Str = "hello " + who;
 
 greet("world")
 "#;
@@ -50,13 +50,13 @@ greet("world")
 
 #[test]
 fn argument_type_mismatch() {
-    insta::assert_snapshot!(err(r#"fn greet(who: Str) -> Str = who
+    insta::assert_snapshot!(err(r#"fn greet(who: Str) -> Str = who;
 greet(42)"#));
 }
 
 #[test]
 fn return_type_mismatch() {
-    insta::assert_snapshot!(err(r#"fn f(x: Str) -> Int = x
+    insta::assert_snapshot!(err(r#"fn f(x: Str) -> Int = x;
 f("a")"#));
 }
 
@@ -68,25 +68,25 @@ fn concat_an_int() {
 
 #[test]
 fn parameter_without_annotation() {
-    insta::assert_snapshot!(err(r#"fn greet(who) -> Str = who
+    insta::assert_snapshot!(err(r#"fn greet(who) -> Str = who;
 greet("x")"#));
 }
 
 #[test]
 fn function_without_return_type() {
-    insta::assert_snapshot!(err(r#"fn greet(who: Str) = who
+    insta::assert_snapshot!(err(r#"fn greet(who: Str) = who;
 greet("x")"#));
 }
 
 #[test]
 fn unknown_type_name() {
-    insta::assert_snapshot!(err(r#"fn greet(who: Text) -> Text = who
+    insta::assert_snapshot!(err(r#"fn greet(who: Text) -> Text = who;
 greet("x")"#));
 }
 
 #[test]
 fn unbound_name() {
-    insta::assert_snapshot!(err(r#"fn greet(who: Str) -> Str = other
+    insta::assert_snapshot!(err(r#"fn greet(who: Str) -> Str = other;
 greet("x")"#));
 }
 
@@ -97,21 +97,21 @@ fn call_of_an_undefined_function() {
 
 #[test]
 fn a_parameter_is_not_a_function() {
-    insta::assert_snapshot!(err(r#"fn greet(who: Str) -> Str = who("x")
+    insta::assert_snapshot!(err(r#"fn greet(who: Str) -> Str = who("x");
 greet("x")"#));
 }
 
 #[test]
 fn duplicate_definition() {
-    insta::assert_snapshot!(err(r#"fn f(x: Str) -> Str = x
-fn f(x: Str) -> Str = x
+    insta::assert_snapshot!(err(r#"fn f(x: Str) -> Str = x;
+fn f(x: Str) -> Str = x;
 f("a")"#));
 }
 
 /// A parameter is in scope in its own body and nowhere else.
 #[test]
 fn parameter_does_not_leak() {
-    insta::assert_snapshot!(err(r#"fn f(x: Str) -> Str = x
+    insta::assert_snapshot!(err(r#"fn f(x: Str) -> Str = x;
 x"#));
 }
 
@@ -119,7 +119,7 @@ x"#));
 #[test]
 fn a_nullary_function() {
     let src = r#"
-fn greeting() -> Str = "hello"
+fn greeting() -> Str = "hello";
 
 greeting()
 "#;
@@ -128,13 +128,13 @@ greeting()
 
 #[test]
 fn a_nullary_function_called_with_an_argument() {
-    insta::assert_snapshot!(err(r#"fn greeting() -> Str = "hello"
+    insta::assert_snapshot!(err(r#"fn greeting() -> Str = "hello";
 greeting("x")"#));
 }
 
 #[test]
 fn a_unary_function_called_with_no_argument() {
-    insta::assert_snapshot!(err(r#"fn greet(who: Str) -> Str = who
+    insta::assert_snapshot!(err(r#"fn greet(who: Str) -> Str = who;
 greet()"#));
 }
 
@@ -143,7 +143,7 @@ greet()"#));
 /// expression gives it nothing to infer a parameter type from.
 #[test]
 fn hoisted_def_needs_a_match_call_body() {
-    insta::assert_snapshot!(err(r#"fn nope = 42
+    insta::assert_snapshot!(err(r#"fn nope = 42;
 
 nope(1)"#));
 }
@@ -152,7 +152,7 @@ nope(1)"#));
 /// unknown type, not a plausible-but-wrong signature.
 #[test]
 fn hoisted_def_unknown_enum() {
-    insta::assert_snapshot!(err(r#"fn nope = Missing(any() -> 0)
+    insta::assert_snapshot!(err(r#"fn nope = Missing(any() -> 0);
 
 nope(1)"#));
 }
@@ -163,7 +163,7 @@ nope(1)"#));
 fn hoisted_def_cannot_conjure_a_stream() {
     insta::assert_snapshot!(err(
         r#"enum Msg { Ping }
-fn render = Msg(Ping -> range(3))
+fn render = Msg(Ping -> range(3));
 
 collect(render(Msg.ping))"#
     ));

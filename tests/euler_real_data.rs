@@ -26,26 +26,26 @@ use serde_json::{Value, json};
 
 const PROGRAM_8: &str = r#"
 fn product(v: Vec<Int>) -> Int64 =
-    length(v) == 0 | . -> 1 or i64(v[0]!) * product(tail(v)!)
+    length(v) == 0 | . -> 1 or i64(v[0]!) * product(tail(v)!);
 
 fn windows(v: Vec<Int>) -> Vec<Int64> =
-    collect(range(length(v) - 12)) | map(product(v[.:. + 13]))
+    collect(range(length(v) - 12)) | map(product(v[.:. + 13]));
 
 max(windows(parse(stdin)))!
 "#;
 
 const PROGRAM_11: &str = r#"
-fn get({g, r, c}: {g: Vec<Vec<Int>>, r: Int, c: Int}) -> Int = g[r]![c]!
+fn get({g, r, c}: {g: Vec<Vec<Int>>, r: Int, c: Int}) -> Int = g[r]![c]!;
 
 fn four({g, r, c, dr, dc}: {g: Vec<Vec<Int>>, r: Int, c: Int, dr: Int, dc: Int}) -> Int =
     get({g: g, r: r, c: c}) * get({g: g, r: r + dr, c: c + dc}) *
         get({g: g, r: r + 2 * dr, c: c + 2 * dc}) *
-        get({g: g, r: r + 3 * dr, c: c + 3 * dc})
+        get({g: g, r: r + 3 * dr, c: c + 3 * dc});
 
 fn row_products({g, r, dr, dc, cmin, cmax}: {g: Vec<Vec<Int>>, r: Int, dr: Int, dc: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
     collect(range(cmax))
         | select(. >= cmin)
-        | map(four({g: g, r: r, c: ., dr: dr, dc: dc}))
+        | map(four({g: g, r: r, c: ., dr: dr, dc: dc}));
 
 fn direction({g, dr, dc, rmax, cmin, cmax}: {g: Vec<Vec<Int>>, dr: Int, dc: Int, rmax: Int, cmin: Int, cmax: Int}) -> Vec<Int> =
     flatten(
@@ -55,7 +55,7 @@ fn direction({g, dr, dc, rmax, cmin, cmax}: {g: Vec<Vec<Int>>, dr: Int, dc: Int,
                       {g: g, r: ., dr: dr, dc: dc, cmin: cmin, cmax: cmax}
                   )
               )
-    )
+    );
 
 fn largest_product(g: Vec<Vec<Int>>) -> Int =
     let rows = length(g)
@@ -64,58 +64,58 @@ fn largest_product(g: Vec<Vec<Int>>) -> Int =
     let down = direction({g: g, dr: 1, dc: 0, rmax: rows - 3, cmin: 0, cmax: cols})
     let diagonal = direction({g: g, dr: 1, dc: 1, rmax: rows - 3, cmin: 0, cmax: cols - 3})
     let antidiagonal = direction({g: g, dr: 1, dc: -1, rmax: rows - 3, cmin: 3, cmax: cols})
-    max(flatten([right, down, diagonal, antidiagonal]))!
+    max(flatten([right, down, diagonal, antidiagonal]))!;
 
 largest_product(parse(stdin))
 "#;
 
 const PROGRAM_13: &str = r#"
 fn column_total({nums, k, carry}: {nums: Vec<Vec<Int>>, k: Int, carry: Int}) -> Int =
-    sum(nums | map(.[k]!)) + carry
+    sum(nums | map(.[k]!)) + carry;
 
 fn emit_carry({carry, acc}: {carry: Int, acc: Vec<Int>}) -> Vec<Int> =
     carry == 0
-        | . -> acc or emit_carry({carry: carry / 10, acc: [carry % 10] + acc})
+        | . -> acc or emit_carry({carry: carry / 10, acc: [carry % 10] + acc});
 
 fn add_digits({nums, k, carry, acc}: {nums: Vec<Vec<Int>>, k: Int, carry: Int, acc: Vec<Int>}) -> Vec<Int> =
     let total = column_total({nums: nums, k: k, carry: carry})
     k == 0
         | . -> emit_carry({carry: total / 10, acc: [total % 10] + acc}) or
-              add_digits({nums: nums, k: k - 1, carry: total / 10, acc: [total % 10] + acc})
+              add_digits({nums: nums, k: k - 1, carry: total / 10, acc: [total % 10] + acc});
 
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
-    add_digits({nums: nums, k: length(nums[0]!) - 1, carry: 0, acc: []})[0:10]
+    add_digits({nums: nums, k: length(nums[0]!) - 1, carry: 0, acc: []})[0:10];
 
 leading_digits(parse(stdin))
 "#;
 
 const PROGRAM_18: &str = r#"
 fn merge_row({row, below}: {row: Vec<Int>, below: Vec<Int>}) -> Vec<Int> =
-    collect(range(length(row))) | map(row[.]! + max(below[.:. + 2])!)
+    collect(range(length(row))) | map(row[.]! + max(below[.:. + 2])!);
 
 fn collapse({rows, acc}: {rows: Vec<Vec<Int>>, acc: Vec<Int>}) -> Int =
     rows
         | length(rows) == 0 -> acc[0]! or
-              collapse({rows: tail(rows)!, acc: merge_row({row: rows[0]!, below: acc})})
+              collapse({rows: tail(rows)!, acc: merge_row({row: rows[0]!, below: acc})});
 
 fn triangle_max(rows: Vec<Vec<Int>>) -> Int =
-    collapse({rows: reverse(rows[:-1]), acc: rows[-1]!})
+    collapse({rows: reverse(rows[:-1]), acc: rows[-1]!});
 
 triangle_max(parse(stdin))
 "#;
 
 const PROGRAM_22: &str = r#"
 fn letter_value(c: Char) -> Int =
-    length(chars("ABCDEFGHIJKLMNOPQRSTUVWXYZ") | select(. <= c))
+    length(chars("ABCDEFGHIJKLMNOPQRSTUVWXYZ") | select(. <= c));
 
-fn name_score(name: Str) -> Int = sum(chars(name) | map(letter_value(.)))
+fn name_score(name: Str) -> Int = sum(chars(name) | map(letter_value(.)));
 
 fn ranked_total(ordered: Vec<Str>) -> Int =
     sum(
         collect(range(length(ordered))) | map((. + 1) * name_score(ordered[.]!))
-    )
+    );
 
-fn names_total(names: Vec<Str>) -> Int = ranked_total(sort(names))
+fn names_total(names: Vec<Str>) -> Int = ranked_total(sort(names));
 
 names_total(parse(stdin))
 "#;
