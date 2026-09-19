@@ -199,7 +199,7 @@
   title: 'Maintainer ruling (2026-09-19, select-lazy-js-land-cap-escalation round): fix the mechanism so this cannot recur. land_lane.py land-patch applies a dispatch patch with plain `git am`, and any patch carrying a stale hunk of a GENERATED file (site/public/corpus.json, rewritten by nearly every landing) fails whole -- select-lazy-materialization-build-js and -lua both burned the retry cap this way with sound edits. Make land-patch drop GENERATED hunks (`git am --exclude=...`) and regenerate them in the lane worktree before the gate. Brief: plans/simple-briefs/land-patch-generated-hunks-fix.txt. AFTER IT LANDS: rm the land-failed-issue-select-lazy-materialization-build-{js,lua} markers (and land-retries-*) and re-run land-patch for both rows with their existing patches (js 62ba574f, lua 76aa59c3 under ~/.cache/toylang-simple-dispatch/results/).'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
@@ -413,7 +413,7 @@
   title: 'The follow-up seq-type-primitive-build named and nobody filed: emit the runtime pair for `Seq<Head, Rest>` on every backend, now that the checker shape landed (2026-09-17). Self-originated, 2026-09-18 status audit. DISPATCH 2026-09-19 (cb787fe0): 2 attempts model_done with zero edits, 7-backend scope; split per backend (as select-lazy / transpose were) with exact emitter sites in the brief before redispatch, do not send whole.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: closures-first-class-functions-design
   title: 'Three rulings wait on first-class functions with no row to deliver them: partial application (partial-application-system-design, option C, always explicit), `.`-rebinding as sugar over a one-parameter closure (dot-rebinding-vs-lambda-design), and dsv-partials-migration''s blocked_by. Grill the concrete shape -- a function type in the type grammar, closure syntax, what a residual function value looks like and how it stays visibly distinct from an array literal -- informed by plans/closures-first-class-functions-research.md, then spin off the build rows. Mark done when ruled.'

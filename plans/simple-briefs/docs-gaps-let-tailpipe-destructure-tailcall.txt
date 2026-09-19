@@ -1,18 +1,26 @@
-A previous dispatch completed this task, but landing the branch on main
-FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 2 of 3). The exact evidence:
+Board row `docs-gaps-let-tailpipe-destructure-tailcall`. Write four missing reference pages/sections
+under docs/reference/, each with runnable fences, and add one corpus case for `|>`.
 
-error: patch failed: tests/snapshots/backend_llvm__native_agrees_where_it_compiles.snap:2
-error: tests/snapshots/backend_llvm__native_agrees_where_it_compiles.snap: patch does not apply
-error: patch failed: tests/snapshots/backend_rust__rust_agrees_where_it_compiles.snap:2
-error: tests/snapshots/backend_rust__rust_agrees_where_it_compiles.snap: patch does not apply
-hint: Use 'git am --show-current-patch=diff' to see the failed patch
-hint: When you have resolved this problem, run "git am --continue".
-hint: If you prefer to skip this patch, run "git am --skip" instead.
-hint: To restore the original branch and stop patching, run "git am --abort".
-hint: Disable this message with "git config set advice.mergeConflict false"
-Applying: agent_loop.py output
-Patch failed at 0001 agent_loop.py output
+The four features (all shipped, none documented):
+1. `let` bindings (gh:150): no page, no guide section. Add docs/reference/syntax/let.md.
+2. The `|>` tail-pipe marker (gh:154): no docs page, no corpus case, no Rust test. Add
+   docs/reference/syntax/tail-pipe.md and tests/corpus/tail_pipe_basic.yaml (copy the shape of a
+   neighbouring corpus yaml; expected output must be real -- run it).
+3. Record-parameter destructuring `fn g({a, b}: {a: Int, b: Int})` (gh:144): add a section to
+   docs/reference/syntax/functions.md.
+4. The self-tail-call constant-stack contract (gh:141): currently lives only in a corpus comment
+   and emitter comments. Add a section to docs/reference/syntax/functions.md.
 
+HARD REQUIREMENT learned from a failed landing: tests/fmt_examples.rs
+`every_docs_fragment_is_already_formatted` checks every fence in docs/ is in canonical `toylang fmt`
+form. A previous attempt at this row was red on exactly this: docs/reference/syntax/tail-pipe.md
+had `fn count(ss: Stream<Str>) -> Int = length collect ss` and the canonical form is
+`length(collect ss)` (the formatter caps bare application at one hop, so two bare names never
+run together). Write every fence in canonical form, then RUN the check yourself:
+`cargo nextest run -E 'test(every_docs_fragment_is_already_formatted) or test(every_fragment_is_a_real_program)'`
+(or `just test` filtered the same way) and fix every reported fence -- the failure prints the
+canonical form to paste in. Only mark a fence `# fmt: syntax-example` if it deliberately shows a
+non-canonical spelling. Finish with `just check`.
 
-Your job now is ONLY to make this branch land: fix whatever the evidence above
-shows failing, and re-run the verify command yourself. Do not start new feature work.
+Do not touch any other file. Do not hand-edit site/public/corpus.json or tests/snapshots/*.snap
+unless a test run regenerates them.
