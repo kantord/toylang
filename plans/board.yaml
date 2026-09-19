@@ -480,19 +480,6 @@
   prio: 4
   status: todo
 
-- id: convergence-guard-drive-verbs
-  title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
-    4-part task, self-report: narrower would succeed -- 2026-09-17). Part 3 of 4, independent of the
-    other three. drive skill text: verb (a) redispatch-narrower and verb (b) decide-row escalation
-    are mutually exclusive for one row -- choosing (a) while a gating decide row is still open must
-    retire that row (status: done with a note) or drop the need in the same commit, so a redispatch
-    can never leave a stale open decide row gating a row that has already moved on. Done-gate: the
-    drive skill text states this rule explicitly.'
-  kind: build
-  needs: []
-  prio: 4
-  status: delegated
-
 - id: select-lazy-materialization-convergence-ruling
   issue: gh:176
   title: 'Placeholder decide row gating the 7 select-lazy-materialization-build-* rows (go, js, py, lua,
