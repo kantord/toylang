@@ -545,3 +545,14 @@
   kind: build
   needs: []
   status: todo
+
+- id: json-in-place-representation-idea
+  title: 'Idea capture, deliberately unscheduled (same treatment as bigint-tracking, gh:112):
+    a data structure that holds a value as regular serialized JSON in memory, so working with it
+    never needs a full deserialize/reserialize round-trip -- Rust precedent named in the note,
+    `simd-json`''s tape representation and `serde_json::value::RawValue`. Write-up:
+    plans/json-in-place-representation-idea.md. No proposal, no evaluation done; revisit if a
+    real performance question in the runtime actually needs this.'
+  kind: decide
+  needs: []
+  status: todo
