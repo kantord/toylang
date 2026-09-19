@@ -325,8 +325,7 @@ fn print_expr_inner(e: &Expr) -> String {
                 .join(", ");
             format!("[{items_str}]")
         }
-        Expr::RecordLit { fields, .. } if fields.is_empty() => "{}".to_string(),
-        Expr::RecordLit { fields, .. } => format!("{{ {} }}", print_record_fields(fields)),
+        Expr::RecordLit { fields, .. } => record_lit(fields),
         Expr::Subject { .. } => ".".to_string(),
         Expr::Var { name, .. } => name.clone(),
         Expr::Call { func, arg, .. } => match arg {
@@ -442,6 +441,14 @@ fn print_expr_inner(e: &Expr) -> String {
         // nested one the parser never produces (the block form is only a function body).
         Expr::Let { .. } => unreachable!("a `let` block is only ever a function body"),
         Expr::ModuleRoute { path, .. } => format!("@(\"{}\")", escape_str(path)),
+    }
+}
+
+fn record_lit(fields: &[(String, crate::ast::Span, Expr)]) -> String {
+    if fields.is_empty() {
+        "{}".to_string()
+    } else {
+        format!("{{ {} }}", print_record_fields(fields))
     }
 }
 
