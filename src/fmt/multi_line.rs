@@ -10,7 +10,7 @@
 
 use super::comments::{Comments, comment_lines, with_trailing};
 use super::one_line::{
-    arm_head, enum_head, impl_head, print_alias, print_atom_base, print_enum_compact,
+    arm_head, enum_head, impl_head, neg_sign, print_alias, print_atom_base, print_enum_compact,
     print_expr_compact, print_fields_pattern, print_match_arm, print_param, print_paren_arg,
     print_type, print_variant_decl, trait_head,
 };
@@ -389,9 +389,11 @@ fn print_expr_fitting(e: &Expr, ctx: Ctx, indent: usize, reserve: usize) -> Stri
             )
         }
         Expr::Match { arms, .. } => wrap_match(arms, indent, reserve),
-        Expr::Neg { base, .. } => {
-            format!("-{}", print_expr_fitting(base, Ctx::Unary, indent, reserve))
-        }
+        Expr::Neg { base, .. } => format!(
+            "{}{}",
+            neg_sign(base),
+            print_expr_fitting(base, Ctx::Unary, indent, reserve)
+        ),
         _ => wrap_delimited(e, indent)
             .or_else(|| wrap_postfix(e, indent, reserve))
             // No natural seam to break at (`Var`, `Call`/`Variant` with no argument, and so

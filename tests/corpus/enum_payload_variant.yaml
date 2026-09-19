@@ -3,7 +3,7 @@
 program: |
   enum Shape { Point, Circle{r: Int} }
 
-  circle{r: 1}
+  circle({r: 1})
 
 output: |
   {"Circle":{"r":1}}

@@ -109,7 +109,7 @@ needed:
 
 ```toylang
 fn labels(n: Int) -> Vec<Str> =
-    [ n | . % 3 == 0 -> "fizz" or . % 5 == 0 -> "buzz" ]
+    [n | . % 3 == 0 -> "fizz" or . % 5 == 0 -> "buzz"]
 ```
 
 `labels(15)` -> `["fizz","buzz"]`;`labels(3)` -> `["fizz"]`;`labels(7)` -> `[]`. The

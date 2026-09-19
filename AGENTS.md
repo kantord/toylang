@@ -125,6 +125,11 @@ Use block scalars (`|`) so nothing is coerced by YAML's scalar rules. Unknown ke
 backend names, and a case with both or neither of `output` and `refuses` are all errors, because
 a case that asks for nothing looks exactly like a case that passes.
 
+Every `program`, like every `.toy` file and every `toylang` fence in the docs, is held to
+`toylang fmt`'s canonical form by `tests/fmt_examples.rs`. A case that exists to show a spelling
+the canonical form does not use (bare application, the `csv` sugar) opens with the line
+`# fmt: syntax-example`, and nothing else is exempt.
+
 ## Uncertainty
 
 Say what you're unsure about and what would settle it. This is only useful if it's selective:

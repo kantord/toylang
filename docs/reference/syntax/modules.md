@@ -97,7 +97,8 @@ tends to do. `tests/modules/shapes.toy`:
 ```toy
 pub enum Shape { Circle{r: Int}, Square{side: Int} }
 
-pub fn handle(s: Shape) -> Int = s | Circle{r} -> r * r * 3 or Square{side} -> side * side
+pub fn handle(s: Shape) -> Int =
+    s | Circle{r} -> r * r * 3 or Square{side} -> side * side
 ```
 
 ```toylang

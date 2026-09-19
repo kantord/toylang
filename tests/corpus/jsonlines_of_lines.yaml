@@ -3,10 +3,9 @@
 # now that fusion reads types; tests/streaming.rs is what proves the fusion, output is what
 # this pins.
 program: |
-  fn shout(names: Stream<Str>) -> Stream<Str> =
-      names | map(. + "!")
+  fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + "!")
 
-  jsonlines shout stdin
+  jsonlines(shout(stdin))
 
 input: |
   ada

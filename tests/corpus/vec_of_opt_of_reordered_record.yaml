@@ -3,7 +3,8 @@
 # so this pins that Map, OptMap, and the record rebuild compose (and the index adds its own Opt layer, so the doubled unwrap here is itself post-#62 behavior) -- the exact nesting a
 # wrong-column native read would corrupt silently.
 program: |
-  fn first_b(v: Vec<Opt<{a: Str, b: Int}>>) -> Int = ((v[0]!)!).b
+  fn first_b(v: Vec<Opt<{a: Str, b: Int}>>) -> Int = v[0]!!.b
+
   fn g(v: Vec<Opt<{b: Int, a: Str}>>) -> Int = first_b(v)
 
   g([some({b: 42, a: "hi"})])

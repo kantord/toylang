@@ -294,6 +294,16 @@ fn float_literal(n: f64) -> String {
 /// The outer parens decision (`needs_parens`) has already been made by `print_expr_compact`;
 /// every child position inside is fixed by its own node (a `Binary`'s own operator powers,
 /// `Pipe`'s hard-coded `PIPE_RIGHT`, and so on), independent of the outer `ctx`.
+/// `- -5`, not `--5`: the parser reads both as two negations, but the second reads as a
+/// decrement to a person.
+pub(super) fn neg_sign(base: &Expr) -> &'static str {
+    if matches!(base, Expr::Neg { .. }) {
+        "- "
+    } else {
+        "-"
+    }
+}
+
 fn print_expr_inner(e: &Expr) -> String {
     match e {
         Expr::Str { text, .. } => format!("\"{}\"", escape_str(text)),
@@ -332,7 +342,9 @@ fn print_expr_inner(e: &Expr) -> String {
             format!("{}[{lo}:{hi}]", print_atom_base(base))
         }
         Expr::Unwrap { base, .. } => format!("{}!", print_atom_base(base)),
-        Expr::Neg { base, .. } => format!("-{}", print_expr_compact(base, Ctx::Unary)),
+        Expr::Neg { base, .. } => {
+            format!("{}{}", neg_sign(base), print_expr_compact(base, Ctx::Unary))
+        }
         // `not x`, not `not(x)`: this is an operator, and the parens spelling would read as the
         // call it is not. What follows is printed at `not`'s own power, so `not a == b` keeps
         // the parens off the comparison the parser would give it back.

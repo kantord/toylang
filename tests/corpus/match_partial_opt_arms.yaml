@@ -4,7 +4,8 @@
 # serialization drops every level of tagging, lossy by design -- and the tag is still real,
 # which opt_unwrap_peels_one_level.yaml witnesses through `!`.
 program: |
-  [{valid: 1 == 2, readings: [5]}, {valid: 1 == 1, readings: [1]}] | map(.valid -> .readings[9])
+  [{valid: 1 == 2, readings: [5]}, {valid: 1 == 1, readings: [1]}]
+      | map(.valid -> .readings[9])
 
 output: |
   [null,null]

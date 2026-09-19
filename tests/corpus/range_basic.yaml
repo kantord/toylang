@@ -1,5 +1,5 @@
 program: |
-  join_lines(collect(range 4) | map(str(.)))
+  join_lines(collect(range(4)) | map(str(.)))
 
 output: |
   0

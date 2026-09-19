@@ -3,10 +3,15 @@
 # jq prints one JSON object per line here rather than one array, which is what jsonlines is
 # for. Verified byte-identical to real jq on this input.
 program: |
-  fn commits(db: Vec<{commit: {message: Str, committer: {name: Str}}}>)
-      -> Vec<{commit: {message: Str, committer: {name: Str}}}> = db
+  fn commits(
+      db: Vec<{commit: {message: Str, committer: {name: Str}}}>
+  ) -> Vec<{commit: {message: Str, committer: {name: Str}}}> =
+      db
 
-  jsonlines(commits parse(stdin) | map {message: .commit.message, name: .commit.committer.name})
+  jsonlines(
+      commits(parse(stdin))
+          | map({message: .commit.message, name: .commit.committer.name})
+  )
 
 input: |
   [{"commit": {"message": "first", "committer": {"name": "ada"}}},

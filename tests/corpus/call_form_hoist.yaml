@@ -7,7 +7,7 @@ program: |
 
   fn render = Msg(Ping -> "*ping*" or Quit -> "*quit*" or Text{body} -> body)
 
-  {a: render(Msg.ping), b: render(Msg.quit), c: render(Msg.text{body: "hi"})}
+  {a: render(Msg.ping), b: render(Msg.quit), c: render(Msg.text({body: "hi"}))}
 
 output: |
   {"a":"*ping*","b":"*quit*","c":"hi"}

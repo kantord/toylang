@@ -324,3 +324,12 @@ fn comment_text_gets_one_space_after_the_hash() {
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 }
+
+/// Two negations print with a space between them: `--5` re-parses the same, but reads as a
+/// decrement.
+#[test]
+fn a_nested_negation_keeps_a_space_between_the_signs() {
+    assert_eq!(toylang::fmt("-(-5)\n").unwrap(), "- -5\n");
+    assert_eq!(toylang::fmt("- -5\n").unwrap(), "- -5\n");
+    assert_eq!(toylang::run("- -5\n").unwrap(), toylang::run("-(-5)\n").unwrap());
+}

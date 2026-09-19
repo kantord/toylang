@@ -1,5 +1,5 @@
 program: |
-  [1,2,3] | map(. % 2 == 0 -> "even" or "odd")
+  [1, 2, 3] | map(. % 2 == 0 -> "even" or "odd")
 
 output: |
   ["odd","even","odd"]

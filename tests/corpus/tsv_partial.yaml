@@ -1,6 +1,7 @@
 # `tsv` is the prelude partial of `dsv("\t")`. Quoted rather than a block scalar so the
 # tabs survive YAML's folding; the fixture is two tab-separated rows.
 program: |
+  # fmt: syntax-example
   tsv | map(.[0]!)
 
 input: "ada\t36\nbo\t2\n"

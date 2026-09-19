@@ -6,7 +6,11 @@ program: |
 
   fn area = Shape(Circle{r} -> r * r or Point -> 0)
 
-  {c: area(Shape.circle{r: 3}), p: area(Shape.point), doubled: area(Shape.circle{r: 4}) * 2}
+  {
+      c: area(Shape.circle({r: 3})),
+      p: area(Shape.point),
+      doubled: area(Shape.circle({r: 4})) * 2
+  }
 
 output: |
   {"c":9,"p":0,"doubled":32}

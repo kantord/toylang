@@ -8,8 +8,8 @@ program: |
   fn is_not_digit(c: Char) -> Bool = not is_digit(c)
 
   {
-    digits: length(chars("a1b2c3") | select(is_digit(.))),
-    rest: length(chars("a1b2c3") | select(is_not_digit(.)))
+      digits: length(chars("a1b2c3") | select(is_digit(.))),
+      rest: length(chars("a1b2c3") | select(is_not_digit(.)))
   }
 
 output: |

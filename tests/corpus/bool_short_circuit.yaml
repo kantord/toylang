@@ -3,8 +3,8 @@
 # program that prints at all is a program whose right sides never ran.
 program: |
   {
-    or_stops_at_true: 1 == 1 or 1 / 0 == 1,
-    and_stops_at_false: not 1 == 1 and 1 / 0 == 1
+      or_stops_at_true: 1 == 1 or 1 / 0 == 1,
+      and_stops_at_false: not 1 == 1 and 1 / 0 == 1
   }
 
 output: |

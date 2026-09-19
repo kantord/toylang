@@ -2,6 +2,7 @@
 # strings. Indexing collapses a dimension to `Opt`, so `!` is what turns the second
 # column into a plain Str.
 program: |
+  # fmt: syntax-example
   csv | map(.[1]!)
 
 input: |
