@@ -53,3 +53,20 @@ Do this in two parts:
    from-scratch algorithmic code under this constraint), a permissions/tooling trap (denied
    commands eating the run), or something else. That diagnosis is what tells us whether other
    "author from scratch" rows are going to hit the same wall.
+
+## Measurements from the 2026-09-19 Euler review
+
+Both programs were re-derived and run at the full bound; both print the accepted answers
+(4179871 and -59231). What a cleverer program buys, measured on this machine:
+
+- 23: a `Vec<Bool>` abundance table for O(1) membership and an early-exit `and`/`or`
+  recursion instead of `any` over a materialized list: Go 1.0s, Lua 14s, Python 31s, jq
+  51s. Still a `slow` fence; the linear scan per candidate has no set type to replace it.
+- 27: b restricted to the 168 primes below 1000, a to odd values, and the `{a, b, len}`
+  winner packed into one `Int` key (`len * 4000000 + (a + 1000) * 2000 + b`) so plain `max`
+  reduces it: Go 0.2s, Lua 3.5s, jq 22s. That is cheaper than page 30, which runs in the
+  every-fragment suite at 30s on jq, so 27 may not need the tier at all; decide the two
+  together against the "measured cost" rule.
+
+There is no prior working solution in the repo's history; the programs above were written
+during the review and are described in plans/euler-unsolved-review-2026-09-19.md.
