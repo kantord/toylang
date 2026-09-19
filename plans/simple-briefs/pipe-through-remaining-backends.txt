@@ -1,0 +1,27 @@
+Board row `pipe-through-remaining-backends` (gh:158). `pipe_through` runs on the Rust backend
+only (src/backend_support.rs `LANDINGS`); the other six refuse cleanly.
+
+Reference: commit fcea805 (`git show fcea805`) added it on Rust: `pipe_through({cmd: Str,
+args: Vec<Str>, lines: Stream<Str>}) -> Stream<PipeLine>`; stdin fed the lines, stdout and
+stderr relayed back as the prelude's tagged `PipeLine` enum; stdout lines first as they arrive,
+stderr lines after stdout closes (deterministic order); the child's exit status is ignored.
+The Rust helper is `tl_pipe_through` in src/emit_rust.rs.
+
+Scope for THIS pass (a wide row must not be attempted whole): Go (`src/emit_go.rs`) and Python
+(`src/emit_py.rs`) only. JS, Lua, jq and LLVM keep refusing cleanly -- do not touch them.
+
+For each of the two backends: add a `LANDINGS` entry for `pipe_through` (see how the Rust entry
+and other partial builtins such as `transpose` are registered in src/backend_support.rs), then
+emit the same semantics using that language's standard subprocess facility (Go `os/exec`,
+Python `subprocess`), feeding stdin on a separate thread/goroutine so a child that never reads
+it cannot stall, and keeping the same stdout-then-stderr order. Follow how the same emitter
+already wires other helpers on demand (its `uses(...)`-style gating of helper text).
+
+Add a corpus case in tests/corpus/ (a filter such as `grep` or `cat` over a few lines, printing
+the tagged output) that clears the `pipe_through` entry in tests/tag_coverage.rs UNCOVERED,
+gated to the backends that have it the same way other partial-backend corpus cases are gated.
+Update docs/reference/builtins/ page for pipe_through if it lists which backends run it (the
+docs test compiles fragments, so a stale "runs on rust only" claim can break it).
+
+Done-gate: `just check` passes; the corpus case agrees on Rust, Go and Python; the other four
+backends still refuse `pipe_through` cleanly.
