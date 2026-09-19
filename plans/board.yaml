@@ -465,21 +465,6 @@
   prio: 5
   status: todo
 
-- id: convergence-guard-lint-check
-  title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
-    4-part task, self-report: narrower would succeed -- 2026-09-17). Part 1 of 4, independent of the
-    other three. board-lint.py: error on any todo/proposed build row whose needs include an open
-    decide row AND whose latest plans/dispatch-log.csv row has a patch_path (edits > 0) -- a gated
-    row with an unlanded patch means the gate''s premise needs re-checking (this is what let the
-    select-lazy-materialization-convergence-ruling round go stale: dispatch-log.csv held a 13-edit
-    near-green js run (ec7b5d98) and a diagnosed go run (ed033203) while the round told the maintainer
-    the model was not converging). Done-gate: board-lint fails on a fixture reproducing this case, and
-    a test in test_board_lint.py covers it. Reset to todo 2026-09-19: three GREEN patches (7173610b, 940fdccf, 2b9d2ef3) each failed to apply onto a main that had moved under them, and the landing queue reached its repair cap; the next dispatch starts from current main rather than repairing a stale patch.'
-  kind: build
-  needs: []
-  prio: 4
-  status: delegated
-
 - id: select-lazy-materialization-convergence-ruling
   issue: gh:176
   title: 'Placeholder decide row gating the 7 select-lazy-materialization-build-* rows (go, js, py, lua,
