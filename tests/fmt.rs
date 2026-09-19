@@ -151,3 +151,18 @@ fn the_prelude_is_a_module_and_is_already_formatted() {
     // one.
     toylang::parse::parse_module(&formatted).expect("the formatted prelude is still a module");
 }
+/// A lowercase head before `->` is a guard, decided by casing alone (`parse.rs`'s
+/// `arm_starts_here`), so a Bool literal guard prints bare and reads back as the same guard.
+/// Before the casing rule the paren-free `true -> ..` the formatter produced was a pattern
+/// error, so `(true) -> ..` survived exactly one formatting pass.
+#[test]
+fn a_literal_guard_head_formats_bare_and_round_trips() {
+    let src = "fn f(x: Int) -> Str = x | true -> \"a\" or \"b\"\n\nf(1)\n";
+    assert_eq!(toylang::fmt(src).unwrap(), src);
+    let parenthesized = "fn f(x: Int) -> Str = x | (true) -> \"a\" or \"b\"\n\nf(1)\n";
+    assert_eq!(toylang::fmt(parenthesized).unwrap(), src);
+    assert_eq!(
+        toylang::run(parenthesized).unwrap(),
+        toylang::run(src).unwrap()
+    );
+}

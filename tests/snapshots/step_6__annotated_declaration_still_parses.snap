@@ -1,6 +1,6 @@
 ---
 source: tests/step_6.rs
-expression: "parse(\"enum Shape { point, circle{r: Int} }\\nfn area(s: Shape) -> Int = s | circle{r} -> r * r or point -> 0\\narea(Shape.point)\")"
+expression: "parse(\"enum Shape { Point, Circle{r: Int} }\\nfn area(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0\\narea(Shape.point)\")"
 ---
 File {
     aliases: [],
@@ -10,7 +10,7 @@ File {
             params: [],
             variants: [
                 Variant {
-                    name: "point",
+                    name: "Point",
                     span: Span {
                         start: 13,
                         end: 18,
@@ -18,7 +18,7 @@ File {
                     payload: None,
                 },
                 Variant {
-                    name: "circle",
+                    name: "Circle",
                     span: Span {
                         start: 20,
                         end: 26,
@@ -104,7 +104,7 @@ File {
                     arms: [
                         MatchArm {
                             pattern: Variant {
-                                name: "circle",
+                                name: "Circle",
                                 span: Span {
                                     start: 68,
                                     end: 77,
@@ -156,7 +156,7 @@ File {
                         },
                         MatchArm {
                             pattern: Variant {
-                                name: "point",
+                                name: "Point",
                                 span: Span {
                                     start: 90,
                                     end: 95,

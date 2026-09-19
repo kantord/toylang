@@ -38,6 +38,14 @@ true | True -> "yes"
 a match over `Bool` must cover every variant or end in a default; missing `False` (at byte 7)
 ```
 
+A Bool value is a guard by itself: `true -> ..`, or a parameter `b -> ..`. A lowercase head
+before `->` is read as an expression and never as a pattern, so neither needs parens; the
+capitalized `True -> ..` is the pattern.
+
+```case
+bool_param_as_guard
+```
+
 As output and as input it is JSON's `true`/`false`, unchanged by the declaration; every backend
 keeps its own boolean for the value rather than a tagged variant, so a Bool inside a record or a
 Vec reads and prints in place.

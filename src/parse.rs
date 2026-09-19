@@ -1117,11 +1117,15 @@ impl<'i> Cursor<'i> {
         })
     }
 
-    /// Whether the tokens ahead begin a match arm: `name ->`, `name{a, b} ->`, or `any() ->`.
-    /// The one place this has to look carefully is a brace: a record *pattern* holds bare names
-    /// (and `..`), so the first `:` proves the braces are a constructor's record literal
-    /// argument instead. A lexical error while probing is not an arm; the ordinary path will
-    /// surface it.
+    /// Whether the tokens ahead begin a variant-pattern arm: `Name ->`, `name{a, b} ->`, or
+    /// `any() ->`. Nothing has resolved yet, so casing is what decides a bare `name ->`: a
+    /// variant name is capitalized and a value is not (check/types.rs), so `True -> ..` is a
+    /// pattern while `true -> ..`, a Bool parameter `b -> ..` and any other lowercase head are
+    /// guard expressions, read by the ordinary path. A brace of bare names (and `..`) can only
+    /// be a record pattern, since a record literal needs a `:` after its first field, so that
+    /// shape is an arm whatever its case, which keeps `circle{r} ->` reaching the checker's
+    /// constructor-not-matcher hint. A lexical error while probing is not an arm; the ordinary
+    /// path will surface it.
     fn arm_starts_here(&self) -> bool {
         let mut probe = self.input;
         let mut next = || read_tok(&mut probe).map(|(t, _)| t);
@@ -1129,7 +1133,7 @@ impl<'i> Cursor<'i> {
             return false;
         };
         match next() {
-            Ok(Tok::Arrow) => true,
+            Ok(Tok::Arrow) => name.chars().next().is_some_and(char::is_uppercase),
             Ok(Tok::LParen) if name == "any" => {
                 matches!(next(), Ok(Tok::RParen)) && matches!(next(), Ok(Tok::Arrow))
             }

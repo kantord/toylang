@@ -1,0 +1,5 @@
+---
+source: tests/variant_casing.rs
+expression: "err(\"enum Shape { Point, Circle{r: Int} }\\n\\n\\\n         fn f(s: Shape) -> Int = s | Square -> 1 or 2\\n\\n\\\n         f(Shape.point)\")"
+---
+`Shape` has no variant `Square` (at byte 66)
