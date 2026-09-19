@@ -627,3 +627,23 @@
     report: one space before a trailing `#`, an in-expression comment rising above its
     definition, and keeping only the blank line after a comment.'
 
+- id: pipe-stage-vs-call-equivalence-decide
+  title: 'A call around a pipeline, `join_lines(collect(P))`, reads better as the pipeline with
+    the call as its last stage, `P | collect(.) | join_lines(.)`, and the maintainer asked
+    (2026-09-19) for the formatter to force that spelling. It cannot: the two are different
+    programs to the checker, found by trying the rewrite on the corpus (10 of 261 broke). Two
+    rules differ. A sink (`jsonlines`) is legal only as the outermost expression or a
+    Sink-returning body, never as a pipe stage, so `P | jsonlines(.)` is refused where
+    `jsonlines(P)` is fine. And `f(P)` pushes `f`''s parameter type down into `P`, which is what
+    lets `parse(.)` inside it check ("its result type comes from the position it is checked
+    in"), while a pipe stage gets no expected type, so `stdin | map(parse(.)) | collect(.) |
+    total(.)` fails where `total(stdin | map(parse(.)) | collect(.))` runs. The formatter has
+    no types, so it keeps the call form (pinned in tests/fmt.rs). Decide whether the language
+    should make the stage form as good as the call form -- a sink allowed as the last stage of
+    the outermost pipeline, and a stage''s expected type flowing back into the stages before it
+    -- after which the formatter rule can follow; and separately whether a bare callee as a
+    stage (`| collect | join_lines`, meaning `f(.)`) is wanted, since today a bare name there is
+    a variable reference. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: todo

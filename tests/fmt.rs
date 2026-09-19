@@ -381,3 +381,21 @@ fn a_record_field_whose_value_does_not_fit_breaks_after_the_name() {
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 }
+
+/// A call around a pipeline stays a call. `join_lines(collect(P))` reads better as
+/// `P | collect(.) | join_lines(.)`, and the two run the same when both check, but they are
+/// not one tree to the checker (found 2026-09-19 by trying the rewrite on the corpus, where it
+/// broke ten programs): a sink such as `jsonlines` is legal only as the outermost expression,
+/// never as a pipe stage, and `f(P)` pushes `f`'s parameter type down into `P`, which is what
+/// lets a `parse(.)` inside it check, while a pipe stage gets no expected type, even inside
+/// a call's argument. The formatter has no types, so it must not rewrite one into the other.
+#[test]
+fn a_call_around_a_pipeline_keeps_its_call_form() {
+    let src = "fn total(nums: Vec<Int>) -> Int = length(nums)\n\ntotal(collect(stdin | map(parse(.))))\n";
+    assert_eq!(toylang::fmt(src).unwrap(), src);
+    assert!(toylang::run_with_input(src, Some("1\n2\n")).is_ok());
+    let as_stages = "fn total(nums: Vec<Int>) -> Int = length(nums)\n\nstdin | map(parse(.)) | collect(.) | total(.)\n";
+    assert!(toylang::run_with_input(as_stages, Some("1\n2\n")).is_err());
+    let sink = "range(3) | map(. * 10) | jsonlines(.)\n";
+    assert!(toylang::run(sink).is_err());
+}
