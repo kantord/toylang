@@ -1,0 +1,13 @@
+# The `|>` tail-pipeline marker (gh:154): the one way a sink call is written, `lhs |> callee`,
+# where `callee` is a sink -- `jsonlines` or a function declared `-> Sink`. The program's body
+# is the only place a sink may be born, so `|>` sits at the outermost position and the sink
+# prints each entry as it goes, with no result type left to observe.
+program: |
+  ["ada", "bo", "cy"] |> jsonlines
+
+output: |
+  "ada"
+  "bo"
+  "cy"
+
+node_types: [builtin.jsonlines, str, vec-literal]
