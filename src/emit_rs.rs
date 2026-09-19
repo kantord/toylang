@@ -1764,7 +1764,8 @@ impl Emitter<'_> {
                     self.mutables.push(*id);
                 }
                 let rendered = format!(
-                    "({{ let {}: {} = {}; {} }})",
+                    "({{ let {}{}: {} = {}; {} }})",
+                    if owned { "mut " } else { "" },
                     self.local(*id),
                     self.rs_type(&value.ty),
                     self.expr(value),
