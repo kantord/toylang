@@ -13,6 +13,41 @@ fn file_form_without_comments(src: &str) -> String {
     toylang::emit_toylang::emit(&file)
 }
 
+enum Outcome {
+    Rendered,
+    Refused,
+    Failed(String),
+}
+
+/// One corpus program through the one-line template: rendered and checked (one line, the
+/// same tree as the file form, idempotent, runs the same on Lua), refused with the grammar's
+/// reason, or failed with what went wrong.
+fn one_line_outcome(case: &support::Case) -> Outcome {
+    let line = match toylang::fmt_one_line(&case.program) {
+        Ok(line) => line,
+        Err(e) if e.msg.contains("no one-line form") => return Outcome::Refused,
+        Err(e) => return Outcome::Failed(e.to_string()),
+    };
+    if line.matches('\n').count() != 1 || !line.ends_with('\n') {
+        return Outcome::Failed(format!("not one line:\n{line}"));
+    }
+    if toylang::fmt(&line).unwrap() != file_form_without_comments(&case.program) {
+        return Outcome::Failed("the one-line form is a different tree".to_string());
+    }
+    if toylang::fmt_one_line(&line).unwrap() != line {
+        return Outcome::Failed("not idempotent".to_string());
+    }
+    let before = toylang::run_on(&case.program, case.input.as_deref(), toylang::Backend::Lua);
+    let after = toylang::run_on(&line, case.input.as_deref(), toylang::Backend::Lua);
+    match (before, after) {
+        (Ok(a), Ok(b)) if a == b => Outcome::Rendered,
+        (Err(_), Err(_)) => Outcome::Rendered,
+        (before, after) => Outcome::Failed(format!(
+            "the one-line form runs differently: {before:?} -> {after:?}"
+        )),
+    }
+}
+
 #[test]
 fn every_corpus_program_has_a_one_line_form_or_says_why_not() {
     let cases = support::cases();
@@ -20,36 +55,10 @@ fn every_corpus_program_has_a_one_line_form_or_says_why_not() {
     let mut refused = Vec::new();
     let mut failures = Vec::new();
     for case in &cases {
-        let line = match toylang::fmt_one_line(&case.program) {
-            Ok(line) => line,
-            Err(e) if e.msg.contains("no one-line form") => {
-                refused.push(case.name.clone());
-                continue;
-            }
-            Err(e) => {
-                failures.push(format!("{}: {e}", case.name));
-                continue;
-            }
-        };
-        rendered += 1;
-        if line.matches('\n').count() != 1 || !line.ends_with('\n') {
-            failures.push(format!("{}: not one line:\n{line}", case.name));
-        }
-        if toylang::fmt(&line).unwrap() != file_form_without_comments(&case.program) {
-            failures.push(format!("{}: the one-line form is a different tree", case.name));
-        }
-        if toylang::fmt_one_line(&line).unwrap() != line {
-            failures.push(format!("{}: not idempotent", case.name));
-        }
-        let before = toylang::run_on(&case.program, case.input.as_deref(), toylang::Backend::Lua);
-        let after = toylang::run_on(&line, case.input.as_deref(), toylang::Backend::Lua);
-        match (before, after) {
-            (Ok(a), Ok(b)) if a == b => {}
-            (Err(_), Err(_)) => {}
-            (before, after) => failures.push(format!(
-                "{}: the one-line form runs differently: {before:?} -> {after:?}",
-                case.name
-            )),
+        match one_line_outcome(case) {
+            Outcome::Rendered => rendered += 1,
+            Outcome::Refused => refused.push(case.name.clone()),
+            Outcome::Failed(why) => failures.push(format!("{}: {why}", case.name)),
         }
     }
     assert!(rendered > 0, "no corpus program rendered on one line");
