@@ -333,6 +333,7 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
         impls: impl_decls,
         defs,
         body: program_body,
+        comments: _,
         route_refs: _,
         routes,
     } = file;
@@ -1275,6 +1276,7 @@ pub fn check_module(module: crate::ast::Module) -> Result<(Vec<tir::Func>, ty::E
         traits,
         impls,
         route_refs: _,
+        comments: _,
     } = module;
     let (env, enum_tys, variant_owners, mut sigs, visibility) =
         resolve_defs(&aliases, &enums, &defs)?;

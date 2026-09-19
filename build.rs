@@ -523,6 +523,7 @@ fn main() {
         traits: module.traits,
         impls: module.impls,
         route_refs: module.route_refs,
+        comments: module.comments,
     };
     // `check_module` still validates prelude.toy's own impls at build time (a real early catch),
     // but their checked funcs are not embedded below: `check::check` re-derives them at every

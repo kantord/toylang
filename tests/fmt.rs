@@ -123,13 +123,70 @@ fn a_float_literal_stays_a_float_literal() {
     assert_eq!(toylang::fmt("3.0\n").unwrap(), "3.0\n");
 }
 
-/// The one piece of source text `emit_toylang::emit` cannot reconstruct from the parsed tree --
-/// see its module doc -- is a leading comment banner, which `fmt` reattaches from the raw text
-/// instead. Pinned directly since nothing else here exercises it: every corpus program is
-/// comment-free.
+/// Comments are the one input beside the tree (`emit_toylang`'s module doc has the placement
+/// rules). Pinned directly since every corpus program is comment-free. Before comments were
+/// recorded by the parser, only a leading banner survived, copied off the raw text, and every
+/// comment between or inside declarations was dropped, which is why the Euler pages carry all
+/// their explanation in a header.
 #[test]
 fn a_leading_comment_survives_formatting() {
     let src = "# Keep the elements that are at least 2.\n[1, 2, 3] | select(. >= 2)\n";
+    assert_eq!(toylang::fmt(src).unwrap(), src);
+}
+
+/// A banner is told from a doc comment by the blank line after it, so that one blank line is
+/// kept; a comment before a declaration, a `let` binding, or the program body goes above it,
+/// and one trailing a line stays at the end of the line it lands on.
+#[test]
+fn a_commented_multi_function_program_formats_to_itself() {
+    let src = "# A banner, separated from the first function by a blank line.\n\
+               \n\
+               # Doc comment on f.\n\
+               fn f(x: Int) -> Int = x * 2 # trailing f\n\
+               \n\
+               fn g(x: Int) -> Int =\n\
+               \x20   # before the binding\n\
+               \x20   let a = f(x) # trailing the binding\n\
+               \x20   # before the value\n\
+               \x20   a + 1 # trailing the value\n\
+               \n\
+               # Before the program body.\n\
+               g(1) # trailing the body\n\
+               # After everything.\n";
+    assert_eq!(toylang::fmt(src).unwrap(), src);
+}
+
+/// An expression is re-rendered from the tree, so a comment inside one has no line to stay on:
+/// it rises to the top of the definition (or binding, or body) that holds it. Spacing and
+/// parens around it are normalised like any other source.
+#[test]
+fn a_comment_inside_an_expression_rises_to_its_definition() {
+    let src = "fn f(x: Int) -> Int =\n\
+               \x20   x\n\
+               \x20       # double every element\n\
+               \x20       | map(. * 2) # then add them up\n\
+               \x20       | sum\n\
+               \n\
+               f(1)\n";
+    let want = "# double every element\n\
+                # then add them up\n\
+                fn f(x: Int) -> Int = x | map(. * 2) | sum\n\
+                \n\
+                f(1)\n";
+    assert_eq!(toylang::fmt(src).unwrap(), want);
+    assert_eq!(toylang::fmt(want).unwrap(), want);
+}
+
+/// A module's comments go the same way, and a comment after the last declaration ends the file.
+#[test]
+fn a_commented_module_formats_to_itself() {
+    let src = "# The module banner.\n\
+               \n\
+               pub fn f(x: Int) -> Int = x # trailing\n\
+               \n\
+               # Private helper.\n\
+               fn g(x: Int) -> Int = f(x) + 1\n\
+               # The end.\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
 }
 

@@ -47,6 +47,7 @@ pub fn module() -> Module {
         traits: module.traits,
         impls: module.impls,
         route_refs: module.route_refs,
+        comments: module.comments,
     }
 }
 

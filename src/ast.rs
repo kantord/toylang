@@ -328,6 +328,21 @@ pub struct ImplMethod {
 }
 
 /// Zero or more definitions followed by the expression that is the program.
+/// One `#` comment, kept for the formatter and nothing else: the checker never sees these.
+/// `text` is everything after the `#` with trailing whitespace trimmed, verbatim otherwise.
+#[derive(Debug, Clone)]
+pub struct Comment {
+    pub text: String,
+    pub span: Span,
+    /// Whether the comment is the first thing on its line. False means it trails code, and
+    /// the formatter keeps it at the end of the line that code lands on.
+    pub own_line: bool,
+    /// Whether a blank line followed the comment. A banner is separated from what it heads by
+    /// a blank line; a doc comment sits directly on top of it. That is the one piece of
+    /// author spacing the formatter keeps, because it changes what the comment reads as.
+    pub blank_after: bool,
+}
+
 #[derive(Debug)]
 pub struct File {
     /// `type Db = {users: Vec<User>}`. An abbreviation and nothing more: the name and what it
@@ -340,6 +355,9 @@ pub struct File {
     pub impls: Vec<ImplDecl>,
     pub defs: Vec<Def>,
     pub body: Expr,
+    /// Every comment in the file, in source order. Not attached to nodes: the formatter places
+    /// each one by comparing its span against the declarations and `let` bindings around it.
+    pub comments: Vec<Comment>,
     /// Every `@(path)` the parser read in this file, unresolved. `modules::inject` drains them,
     /// loads each module, and fills `routes` in their place.
     pub route_refs: Vec<RouteRef>,
@@ -360,6 +378,8 @@ pub struct Module {
     pub impls: Vec<ImplDecl>,
     /// Same as `File::route_refs`: a routed module may route further, relative to its own file.
     pub route_refs: Vec<RouteRef>,
+    /// Same as `File::comments`.
+    pub comments: Vec<Comment>,
 }
 
 /// One `@(path)` as written, before resolution. The span covers the whole `@(...)`, so a module

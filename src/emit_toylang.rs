@@ -23,16 +23,27 @@
 //! sample itself -- the one line it left alone is 44 columns, and the two it broke are 89 and
 //! 118.
 //!
-//! One thing the AST cannot carry: comments. `parse::parse` throws every `#...` away as trivia
-//! (`skip_trivia`), so `emit` alone can only ever produce a program with none. `format_source`
-//! covers the one shape that actually appears in this repository -- a file's leading banner,
-//! read back off the raw text rather than the tree -- and nothing else; a comment anywhere else
-//! does not survive formatting, which is why every fragment that puts one somewhere else is
-//! marked a syntax-spelling exception rather than swept.
+//! One rendering per AST (maintainer ruling, 2026-09-19): the output is a function of the parsed
+//! tree and nothing else. The author's line breaks, blank-line grouping, and redundant parens
+//! are not in the tree, so they do not survive. The 80-column width is a property of this
+//! module's file template, not a rule a program is held to: a node with no seam to break at
+//! overflows rather than failing. A second template, the one-line form, renders the same tree
+//! on a single line with no width at all; for expressions it is the `print_expr_compact` path
+//! the file template itself tries first.
+//!
+//! Comments are the one input that lives beside the tree rather than in it. `parse` records
+//! every `#` line with its span (`ast::Comment`), and `Comments` below hands them out in source
+//! order as the printer walks the line-owning items: declarations, `let` bindings, a `let`
+//! block's value, the program body. A comment on its own line goes above the next such item; a
+//! comment trailing code stays at the end of the line that item lands on; an own-line comment
+//! inside an expression rises to the top of the item holding it, since a re-rendered expression
+//! has no line for it to stay on. The one piece of author spacing kept is the blank line after a
+//! comment, which is what tells a file banner from a doc comment.
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod, LogicOp,
-    MatchArm, Module, Param, ParamShape, Pattern, TraitDecl, TraitMethodSig, TypeExpr, Variant,
+    Alias, BinOp, Comment, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod,
+    LogicOp, MatchArm, Module, Param, ParamShape, Pattern, Span, TraitDecl, TraitMethodSig,
+    TypeExpr, Variant,
 };
 
 const WIDTH: usize = 80;
@@ -146,91 +157,185 @@ fn pad(n: usize) -> String {
 }
 
 pub fn emit(file: &File) -> String {
+    let mut comments = Comments::new(&file.comments);
     let mut out = String::new();
-    for decl in decls_in_source_order(
+    for item in decls_in_source_order(
         &file.aliases,
         &file.enums,
         &file.traits,
         &file.impls,
         &file.defs,
     ) {
-        out.push_str(&decl);
+        out.push_str(&print_decl(&item, &mut comments));
         out.push_str("\n\n");
     }
-    out.push_str(&print_expr_wrapped(&file.body, Ctx::Expr(0), 0));
+    let leading = comments.take_before(file.body.span().end);
+    out.push_str(&comment_lines(&leading, 0));
+    let body = print_expr_wrapped(&file.body, Ctx::Expr(0), 0);
+    out.push_str(&with_trailing(body, comments.take_trailing()));
     out.push('\n');
-    out
+    out.push_str(&comment_lines(&comments.take_rest(), 0));
+    ensure_single_newline(out)
 }
 
 /// A module is the declarations alone: no trailing expression to separate them from, so they end
 /// the file rather than each being followed by a blank line the way `emit` writes them.
 pub fn emit_module(module: &Module) -> String {
-    let decls = decls_in_source_order(
-        &[],
+    let mut comments = Comments::new(&module.comments);
+    let decls: Vec<String> = decls_in_source_order(
+        &module.aliases,
         &module.enums,
         &module.traits,
         &module.impls,
         &module.defs,
-    );
-    if decls.is_empty() {
+    )
+    .iter()
+    .map(|item| print_decl(item, &mut comments))
+    .collect();
+    let mut out = decls.join("\n\n");
+    out.push('\n');
+    out.push_str(&comment_lines(&comments.take_rest(), 0));
+    if out.trim().is_empty() {
         return String::new();
     }
-    format!("{}\n", decls.join("\n\n"))
+    ensure_single_newline(out)
 }
 
-/// Every declaration rendered, back in the order it was written.
+/// A comment's `blank_after` can leave a blank line at the very end; a file ends in exactly one
+/// newline.
+fn ensure_single_newline(out: String) -> String {
+    format!("{}\n", out.trim_end())
+}
+
+/// The file's comments, handed out in source order as the printer walks the line-owning items.
+/// The placement rules are in the module doc.
+struct Comments<'a> {
+    list: &'a [Comment],
+    next: usize,
+}
+
+impl<'a> Comments<'a> {
+    fn new(list: &'a [Comment]) -> Self {
+        Comments { list, next: 0 }
+    }
+
+    /// Every comment not yet taken that starts before `limit`.
+    fn take_before(&mut self, limit: usize) -> Vec<&'a Comment> {
+        let mut out = Vec::new();
+        while let Some(c) = self.list.get(self.next)
+            && c.span.start < limit
+        {
+            out.push(c);
+            self.next += 1;
+        }
+        out
+    }
+
+    /// The comment on the line the last printed item ended on, if there is one.
+    fn take_trailing(&mut self) -> Option<&'a Comment> {
+        let c = self.list.get(self.next)?;
+        if c.own_line {
+            return None;
+        }
+        self.next += 1;
+        Some(c)
+    }
+
+    fn take_rest(&mut self) -> Vec<&'a Comment> {
+        self.take_before(usize::MAX)
+    }
+}
+
+/// Own-line comments, one per line at `indent`, keeping the blank line after any that had one.
+fn comment_lines(comments: &[&Comment], indent: usize) -> String {
+    let mut out = String::new();
+    for c in comments {
+        out.push_str(&pad(indent));
+        out.push('#');
+        out.push_str(&c.text);
+        out.push('\n');
+        if c.blank_after {
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// `rendered` with `comment`, if any, at the end of its last line.
+fn with_trailing(mut rendered: String, comment: Option<&Comment>) -> String {
+    if let Some(c) = comment {
+        rendered.push_str(" #");
+        rendered.push_str(&c.text);
+    }
+    rendered
+}
+
+enum Item<'a> {
+    Alias(&'a Alias),
+    Enum(&'a EnumDecl),
+    Trait(&'a TraitDecl),
+    Impl(&'a ImplDecl),
+    Def(&'a Def),
+}
+
+impl Item<'_> {
+    fn span(&self) -> Span {
+        match self {
+            Item::Alias(a) => a.span,
+            Item::Enum(e) => e.span,
+            Item::Trait(t) => t.span,
+            Item::Impl(i) => i.span,
+            Item::Def(d) => d.span,
+        }
+    }
+}
+
+/// Every declaration, back in the order it was written.
 ///
 /// The AST groups declarations by kind, losing their interleaving in the source; sorting by span
 /// start puts them back, which is what makes the output idempotent -- reformatting an
 /// already-sorted file is a no-op re-sort.
-fn decls_in_source_order(
-    aliases: &[Alias],
-    enums: &[EnumDecl],
-    traits: &[TraitDecl],
-    impls: &[ImplDecl],
-    defs: &[Def],
-) -> Vec<String> {
-    enum Item<'a> {
-        Alias(&'a Alias),
-        Enum(&'a EnumDecl),
-        Trait(&'a TraitDecl),
-        Impl(&'a ImplDecl),
-        Def(&'a Def),
-    }
-
-    let mut items: Vec<(usize, Item)> = Vec::new();
-    for a in aliases {
-        items.push((a.span.start, Item::Alias(a)));
-    }
-    for e in enums {
-        items.push((e.span.start, Item::Enum(e)));
-    }
-    for t in traits {
-        items.push((t.span.start, Item::Trait(t)));
-    }
-    for i in impls {
-        items.push((i.span.start, Item::Impl(i)));
-    }
-    for d in defs {
-        items.push((d.span.start, Item::Def(d)));
-    }
-    items.sort_by_key(|(start, _)| *start);
-
+fn decls_in_source_order<'a>(
+    aliases: &'a [Alias],
+    enums: &'a [EnumDecl],
+    traits: &'a [TraitDecl],
+    impls: &'a [ImplDecl],
+    defs: &'a [Def],
+) -> Vec<Item<'a>> {
+    let mut items: Vec<Item<'a>> = Vec::new();
+    items.extend(aliases.iter().map(Item::Alias));
+    items.extend(enums.iter().map(Item::Enum));
+    items.extend(traits.iter().map(Item::Trait));
+    items.extend(impls.iter().map(Item::Impl));
+    items.extend(defs.iter().map(Item::Def));
+    items.sort_by_key(|item| item.span().start);
     items
-        .iter()
-        .map(|(_, item)| match item {
-            Item::Alias(a) => print_alias(a),
-            Item::Enum(e) => print_enum(e),
-            Item::Trait(t) => print_trait(t),
-            Item::Impl(i) => print_impl(i),
-            Item::Def(d) => print_def(d),
-        })
-        .collect()
 }
 
-/// Parses `src` and formats it, then reattaches the one piece of source text `emit` cannot
-/// reconstruct from the tree: a leading run of `#` comment (and blank) lines, copied back
-/// verbatim ahead of the formatted body.
+/// One declaration with its comments: the own-line ones before it (and, for everything but a
+/// `let`-bodied definition, inside it) above, and the one trailing its last line at its end.
+fn print_decl(item: &Item, comments: &mut Comments) -> String {
+    let span = item.span();
+    let mut leading = comments.take_before(span.start);
+    let rendered = match item {
+        Item::Def(d) if matches!(d.body, Expr::Let { .. }) => print_let_def(d, comments),
+        _ => {
+            leading.extend(comments.take_before(span.end));
+            match item {
+                Item::Alias(a) => print_alias(a),
+                Item::Enum(e) => print_enum(e),
+                Item::Trait(t) => print_trait(t),
+                Item::Impl(i) => print_impl(i),
+                Item::Def(d) => print_def(d),
+            }
+        }
+    };
+    let mut out = comment_lines(&leading, 0);
+    out.push_str(&with_trailing(rendered, comments.take_trailing()));
+    out
+}
+
+/// Parses `src` and formats it.
 ///
 /// Two file shapes reach a formatter that walks a project: a program, and a module --
 /// declarations with no trailing expression, which `parse` rejects outright and which
@@ -238,35 +343,15 @@ fn decls_in_source_order(
 /// so both are tried. When neither parse succeeds, the error reported is whichever got further
 /// into the file, so a typo halfway down a module is not reported as a missing program body.
 pub fn format_source(src: &str) -> Result<String, crate::error::Error> {
-    let banner = leading_comment(src);
     let as_program = match crate::parse::parse(src) {
-        Ok(file) => return Ok(format!("{banner}{}", emit(&file))),
+        Ok(file) => return Ok(emit(&file)),
         Err(e) => e,
     };
     match crate::parse::parse_module(src) {
-        Ok(module) => Ok(format!("{banner}{}", emit_module(&module))),
+        Ok(module) => Ok(emit_module(&module)),
         Err(as_module) if as_module.span.start > as_program.span.start => Err(as_module),
         Err(_) => Err(as_program),
     }
-}
-
-fn leading_comment(src: &str) -> String {
-    let mut banner = String::new();
-    for line in src.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with('#') {
-            banner.push_str(line.trim_end());
-            banner.push('\n');
-        } else if trimmed.is_empty() {
-            if banner.is_empty() {
-                continue;
-            }
-            break;
-        } else {
-            break;
-        }
-    }
-    banner
 }
 
 fn print_alias(a: &Alias) -> String {
@@ -283,6 +368,40 @@ fn print_param(p: &Option<Param>) -> String {
             }
         },
     }
+}
+
+fn print_sig(pub_prefix: &str, name: &str, param: &Option<Param>, ret: String) -> String {
+    format!("{pub_prefix}fn {name}({}) -> {ret}", print_param(param))
+}
+
+/// A definition whose body is a `let` block: the signature, then one `let` line per binding,
+/// then the value, each indented one level. The block has no one-line form in this template.
+/// Each binding and the value is a line-owning item, so each takes its own comments: the
+/// own-line ones before it above it, the one trailing it at its end.
+fn print_let_def(d: &Def, comments: &mut Comments) -> String {
+    let Expr::Let { bindings, body, .. } = &d.body else {
+        unreachable!("print_let_def is only called on a `let` body")
+    };
+    let pub_prefix = if d.is_pub { "pub " } else { "" };
+    let ret = d
+        .ret
+        .as_ref()
+        .map(print_type)
+        .expect("a `let` block is only ever the body of a signed definition");
+    let mut out = format!("{} =\n", print_sig(pub_prefix, &d.name, &d.param, ret));
+    for (n, v) in bindings {
+        let leading = comments.take_before(v.span().start);
+        out.push_str(&comment_lines(&leading, INDENT));
+        let line = format!("let {n} = {}", print_expr_compact(v, Ctx::Expr(0)));
+        out.push_str(&pad(INDENT));
+        out.push_str(&with_trailing(line, comments.take_trailing()));
+        out.push('\n');
+    }
+    let leading = comments.take_before(body.span().end);
+    out.push_str(&comment_lines(&leading, INDENT));
+    out.push_str(&pad(INDENT));
+    out.push_str(&print_expr_wrapped(body, Ctx::Expr(0), INDENT));
+    out
 }
 
 fn print_def(d: &Def) -> String {
@@ -307,27 +426,7 @@ fn print_def(d: &Def) -> String {
         // a parser/checker invariant, never a legal program.
         None => unreachable!("a non-hoisted definition always writes a return type"),
     };
-    let sig = format!(
-        "{pub_prefix}fn {}({}) -> {ret}",
-        d.name,
-        print_param(&d.param),
-    );
-    // A `let` block is line-structured, so it has no one-line form: the signature, then one
-    // `let` line per binding, then the value, each indented one level.
-    if let Expr::Let { bindings, body, .. } = &d.body {
-        let mut lines: Vec<String> = bindings
-            .iter()
-            .map(|(n, v)| format!("let {n} = {}", print_expr_compact(v, Ctx::Expr(0))))
-            .collect();
-        lines.push(print_expr_wrapped(body, Ctx::Expr(0), INDENT));
-        let mut out = format!("{sig} =\n");
-        for line in lines {
-            out.push_str(&pad(INDENT));
-            out.push_str(&line);
-            out.push('\n');
-        }
-        return out.trim_end().to_string();
-    }
+    let sig = print_sig(pub_prefix, &d.name, &d.param, ret);
     let compact_body = print_expr_compact(&d.body, Ctx::Expr(0));
     let one_line = format!("{sig} = {compact_body}");
     if fits(&one_line, 0) {

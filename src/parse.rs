@@ -4,7 +4,7 @@ use winnow::stream::{LocatingSlice, Location, Stream};
 use winnow::token::take_while;
 
 use crate::ast::{
-    Alias, BinOp, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod, LogicOp,
+    Alias, BinOp, Comment, Def, EnumDecl, Expr, FieldsPattern, File, ImplDecl, ImplMethod, LogicOp,
     MatchArm, Module, Param, ParamShape, Pattern, Span, TraitDecl, TraitMethodSig, TypeExpr,
     Variant,
 };
@@ -155,6 +155,51 @@ fn skip_trivia(input: &mut Input) {
         while !matches!(input.peek_token(), None | Some('\n')) {
             input.next_token();
         }
+    }
+}
+
+/// `skip_trivia`, keeping every comment it passes. Only `Cursor::advance` calls this, on the
+/// real input: `peek` lexes a throwaway copy, and recording there would file the same comment
+/// once per lookahead.
+///
+/// `own_line` is whether a newline (or the start of the file) separates the comment from the
+/// token before it; `blank_after` is whether the whitespace after it holds a second newline,
+/// which is only known once the next run of whitespace has been read, so it is filled in one
+/// iteration late.
+fn record_trivia(input: &mut Input, comments: &mut Vec<Comment>) {
+    let mut own_line = input.current_token_start() == 0;
+    let mut pending: Option<usize> = None;
+    loop {
+        let ws = take_while::<_, _, Error>(0.., |c: char| c.is_ascii_whitespace())
+            .parse_next(input)
+            .expect("a lower bound of zero never fails");
+        if let Some(i) = pending.take() {
+            comments[i].blank_after = ws.matches('\n').count() >= 2;
+        }
+        if ws.contains('\n') {
+            own_line = true;
+        }
+        if input.peek_token() != Some('#') {
+            return;
+        }
+        let start = input.current_token_start();
+        input.next_token();
+        let mut text = String::new();
+        while let Some(c) = input.peek_token()
+            && c != '\n'
+        {
+            text.push(c);
+            input.next_token();
+        }
+        let text = text.trim_end().to_string();
+        let end = input.current_token_start();
+        comments.push(Comment {
+            text,
+            span: Span::new(start, end),
+            own_line,
+            blank_after: false,
+        });
+        pending = Some(comments.len() - 1);
     }
 }
 
@@ -447,6 +492,7 @@ pub fn parse(src: &str) -> Result<File, Error> {
         declined_cross_line: None,
         or_separates: false,
         route_refs: Vec::new(),
+        comments: Vec::new(),
     };
 
     // Declarations in any order and any mix, since no kind can refer to another's position:
@@ -458,6 +504,8 @@ pub fn parse(src: &str) -> Result<File, Error> {
     if rest != Tok::Eof {
         return Err(p.unexpected(rest_span, format!("expected end of program, found {rest}")));
     }
+    // Consuming the end marker is what records any comment after the last token.
+    p.advance()?;
     Ok(File {
         aliases,
         enums,
@@ -465,6 +513,7 @@ pub fn parse(src: &str) -> Result<File, Error> {
         impls,
         defs,
         body,
+        comments: p.comments,
         route_refs: p.route_refs,
         routes: std::collections::HashMap::new(),
     })
@@ -479,6 +528,7 @@ pub fn parse_module(src: &str) -> Result<Module, Error> {
         declined_cross_line: None,
         or_separates: false,
         route_refs: Vec::new(),
+        comments: Vec::new(),
     };
     let (defs, aliases, enums, traits, impls) = p.declarations()?;
     let (tok, span) = p.peek()?;
@@ -488,6 +538,7 @@ pub fn parse_module(src: &str) -> Result<Module, Error> {
             format!("expected `fn` or end of module, found {tok}"),
         ));
     }
+    p.advance()?;
     Ok(Module {
         defs,
         aliases,
@@ -495,6 +546,7 @@ pub fn parse_module(src: &str) -> Result<Module, Error> {
         traits,
         impls,
         route_refs: p.route_refs,
+        comments: p.comments,
     })
 }
 
@@ -521,6 +573,8 @@ struct Cursor<'i> {
     /// by a later walk, since the AST has no generic visitor and the loader only needs the
     /// paths, not where in the tree they sit.
     route_refs: Vec<crate::ast::RouteRef>,
+    /// Every comment consumed so far, in source order; see `record_trivia`.
+    comments: Vec<Comment>,
 }
 
 impl<'i> Cursor<'i> {
@@ -591,6 +645,7 @@ impl<'i> Cursor<'i> {
     }
 
     fn advance(&mut self) -> Result<(Tok, Span), Error> {
+        record_trivia(&mut self.input, &mut self.comments);
         read_tok(&mut self.input)
     }
 
