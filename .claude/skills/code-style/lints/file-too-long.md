@@ -117,5 +117,9 @@ instance of the *caused* bullet: `src/emit_toylang.rs` went 887->1264, under bud
 merge-base and over after the comment placement, the four new break seams, and the one-line
 template landed. The session was maintainer-driven, so it was raised directly rather than as
 an issue, with the seams named (the one-line template, about 110 lines; comment placement,
-about 100; the parser-mirroring paren table, about 90); the finding stands until the
-maintainer rules on the split.
+about 100; the parser-mirroring paren table, about 90). The maintainer ruled the same day
+to restructure properly rather than trim, and the file became `src/fmt/` (4138778): one
+module per concern, named after the design's own vocabulary -- `one_line` and `multi_line`
+for the two templates, `parens`, `comments`, and `mod.rs` for the entry points -- with the
+largest at 590 lines. The split drew its lines where the design already had them, which is
+the test for a split that is not "meaningless pieces to get under a number".

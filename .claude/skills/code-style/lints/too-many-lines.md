@@ -231,3 +231,8 @@ the enum printer and the enum literal into `show_enum()` and `enum_lit()` took m
 functions than the registry put in. The one caused finding was a cognitive-complexity crossing
 in `emit_llvm.rs`'s `expr()`; see
 [cognitive-complexity.md](cognitive-complexity.md)'s matching entry.
+
+The fmt-templates session (2026-09-19) moved `print_expr_inner` unchanged (131 lines at main,
+verified) from `src/emit_toylang.rs` into `src/fmt/one_line.rs`, so the check reports it at a new
+path; it is a flat match over expression kinds, inherited by the same rule as `check/mod.rs`'s
+path change above.
