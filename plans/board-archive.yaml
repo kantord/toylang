@@ -2890,3 +2890,9 @@
   needs: []
   prio: 4
   status: done
+
+- id: issue-hygiene-close-sweep-decide
+  title: '2026-09-18 status audit: 40 open GitHub issues have only done rows behind them (list in plans/status-audit-2026-09-18.md), six more have no row at all (142, 144, 145, 146, 147, 180), and gh:136 is closed while dsv-partials-migration still points at it. Decide which of the 40 close now, which "Ruling:" issues stay open as records, and whether gh:180 stays the tracking issue for this. Superseded in detail by plans/issue-review-2026-09-19.md (every open issue verified against main, one verdict and a closing comment each): 43 close (obsolete and superseded ones included), 9 keep open with corrections; RULED (maintainer, chat, 2026-09-19): close the 43, no comments; done the same hour. The 9 that stay open are the ones the review keeps with corrections.'
+  kind: decide
+  needs: []
+  status: done

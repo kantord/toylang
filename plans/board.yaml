@@ -2,7 +2,7 @@
   issue: gh:136
   title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet. Neither source_in_fn nor a partial-application-system-build row exists on the board, so `needs` structurally cannot express the real gap -- status set to `proposed` (2026-09-12) so this stops false-reporting as a ready build row (flagged as a recurring false-ready incident, plans/simple-dispatch-design.md, 2026-09-11); set back to `todo` once the real prerequisite rows exist and land.'
   kind: build
-  needs: [partial-application-system-design]
+  needs: [closures-first-class-functions-design]
   blocked_by: source_in_fn and a partial-application-system-BUILD row (not just the design)
     don't exist yet -- needs listing the design row only covers half the real gate; the
     design landing done does not mean this is ready.
@@ -542,12 +542,6 @@
 
 - id: concurrency-open-item-decide
   title: 'Maintainer note on erlang-target-consideration: concurrency will need to be supported by toylang regardless of the backend question, worth surfacing as its own open item once the research landed. It landed (gh:163 closed) and nothing was filed. Decide whether concurrency gets a numbered question in plans/questions.md now or stays out of scope until a program needs it. Mark done when ruled.'
-  kind: decide
-  needs: []
-  status: todo
-
-- id: issue-hygiene-close-sweep-decide
-  title: '2026-09-18 status audit: 40 open GitHub issues have only done rows behind them (list in plans/status-audit-2026-09-18.md), six more have no row at all (142, 144, 145, 146, 147, 180), and gh:136 is closed while dsv-partials-migration still points at it. Decide which of the 40 close now, which "Ruling:" issues stay open as records, and whether gh:180 stays the tracking issue for this. Superseded in detail by plans/issue-review-2026-09-19.md (every open issue verified against main, one verdict and a closing comment each): 43 close (obsolete and superseded ones included), 9 keep open with corrections; the maintainer says the word and the comments get posted. Mark done when ruled.'
   kind: decide
   needs: []
   status: todo
