@@ -107,6 +107,32 @@ fn naming_a_file_still_formats_it_to_stdout() {
     assert_eq!(read(dir.path(), "crooked.toy"), CROOKED);
 }
 
+/// `--one-line FILE` prints the same program on one line, to stdout, disk untouched; a program
+/// with a `let` block is refused on stderr with the definition named, and exits nonzero.
+#[test]
+fn one_line_prints_the_program_on_one_line_and_refuses_a_let_block() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    write(dir.path(), "crooked.toy", CROOKED);
+    write(
+        dir.path(),
+        "lets.toy",
+        "fn f(x: Int) -> Int =\n    let a = x\n    a + 1\n\nf(1)\n",
+    );
+
+    let out = fmt(dir.path(), &["--one-line", "crooked.toy"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_eq!(stdout(&out), "fn double(n: Int) -> Int = n * 2 double(21)\n");
+    assert_eq!(read(dir.path(), "crooked.toy"), CROOKED);
+
+    let out = fmt(dir.path(), &["--one-line", "lets.toy"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        stderr(&out).contains("no one-line form") && stderr(&out).contains("`let`"),
+        "{}",
+        stderr(&out)
+    );
+}
+
 /// A directory the walk cannot read (permission denied) is recorded as failed, the walk continues
 /// with other entries, and the run exits nonzero.
 #[test]

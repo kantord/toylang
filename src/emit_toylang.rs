@@ -363,8 +363,7 @@ fn comment_lines(comments: &[&Comment], indent: usize) -> String {
     let mut out = String::new();
     for c in comments {
         out.push_str(&pad(indent));
-        out.push('#');
-        out.push_str(&c.text);
+        out.push_str(&comment_text(c));
         out.push('\n');
         if c.blank_after {
             out.push('\n');
@@ -376,10 +375,22 @@ fn comment_lines(comments: &[&Comment], indent: usize) -> String {
 /// `rendered` with `comment`, if any, at the end of its last line.
 fn with_trailing(mut rendered: String, comment: Option<&Comment>) -> String {
     if let Some(c) = comment {
-        rendered.push_str(" #");
-        rendered.push_str(&c.text);
+        rendered.push(' ');
+        rendered.push_str(&comment_text(c));
     }
     rendered
+}
+
+/// `# text`: one space after the `#` (added when the author wrote none), the text's own
+/// further indentation kept, since an indented line inside a comment is usually deliberate
+/// (a list, a code sample). The parser already drops trailing whitespace. A bare `#` stays
+/// bare.
+fn comment_text(c: &Comment) -> String {
+    if c.text.is_empty() || c.text.starts_with(' ') {
+        format!("#{}", c.text)
+    } else {
+        format!("# {}", c.text)
+    }
 }
 
 enum Item<'a> {
@@ -1005,9 +1016,17 @@ fn arm_head(arm: &MatchArm, is_last: bool) -> Option<String> {
 }
 
 /// An arm at `indent` that does not fit there (with the ` or` after it, when one follows)
-/// breaks after its `->`, the body one level in, the same way a definition's body drops below
-/// its signature; a bare default arm has no `->` and its body breaks in place.
-fn print_match_arm_wrapped(arm: &MatchArm, is_last: bool, indent: usize, reserve: usize) -> String {
+/// breaks after its `->`, its body dropping to `body_column`: one level below the column the
+/// chain's continuation arms sit at, so a broken body is always visibly deeper than the arm
+/// that follows it (maintainer ruling, 2026-09-19). A bare default arm has no `->` and its
+/// body breaks in place.
+fn print_match_arm_wrapped(
+    arm: &MatchArm,
+    is_last: bool,
+    indent: usize,
+    body_column: usize,
+    reserve: usize,
+) -> String {
     let compact = print_match_arm(arm, is_last);
     let reserve = reserve + if is_last { 0 } else { " or".len() };
     if fits(&compact, indent + reserve) {
@@ -1015,14 +1034,11 @@ fn print_match_arm_wrapped(arm: &MatchArm, is_last: bool, indent: usize, reserve
     }
     match arm_head(arm, is_last) {
         None => print_expr_fitting(&arm.body, Ctx::Expr(ARM_BODY), indent, reserve),
-        Some(head) => {
-            let inner = indent + INDENT;
-            format!(
-                "{head} ->\n{}{}",
-                pad(inner),
-                print_expr_fitting(&arm.body, Ctx::Expr(ARM_BODY), inner, reserve)
-            )
-        }
+        Some(head) => format!(
+            "{head} ->\n{}{}",
+            pad(body_column),
+            print_expr_fitting(&arm.body, Ctx::Expr(ARM_BODY), body_column, reserve)
+        ),
     }
 }
 
@@ -1237,7 +1253,14 @@ fn wrap_match(arms: &[MatchArm], indent: usize, reserve: usize) -> String {
             out.push_str(&pad(column));
         }
         let reserve = if i + 1 == n { reserve } else { 0 };
-        out.push_str(&print_match_arm_wrapped(a, i + 1 == n, column, reserve));
+        let body_column = indent + 2 * INDENT;
+        out.push_str(&print_match_arm_wrapped(
+            a,
+            i + 1 == n,
+            column,
+            body_column,
+            reserve,
+        ));
     }
     out
 }
@@ -1251,7 +1274,13 @@ fn wrap_match_call(enum_name: &str, arms: &[MatchArm], indent: usize) -> String 
     let mut out = format!("{enum_name}(\n");
     for (i, a) in arms.iter().enumerate() {
         out.push_str(&pad(inner));
-        out.push_str(&print_match_arm_wrapped(a, i + 1 == n, inner, 0));
+        out.push_str(&print_match_arm_wrapped(
+            a,
+            i + 1 == n,
+            inner,
+            inner + INDENT,
+            0,
+        ));
         if i + 1 < n {
             out.push_str(" or\n");
         } else {

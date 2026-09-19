@@ -77,15 +77,15 @@ fn momentum(
 ) -> Body =
     bs
         | length(bs) == 0 ->
-              {
-                  x: 0.0,
-                  y: 0.0,
-                  z: 0.0,
-                  vx: 0.0 - px / solar_mass(),
-                  vy: 0.0 - py / solar_mass(),
-                  vz: 0.0 - pz / solar_mass(),
-                  m: solar_mass()
-              } or
+                  {
+                      x: 0.0,
+                      y: 0.0,
+                      z: 0.0,
+                      vx: 0.0 - px / solar_mass(),
+                      vy: 0.0 - py / solar_mass(),
+                      vz: 0.0 - pz / solar_mass(),
+                      m: solar_mass()
+                  } or
               momentum(
                   {
                       bs: tail(bs)!,

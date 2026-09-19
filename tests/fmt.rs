@@ -258,18 +258,25 @@ fn a_long_signature_breaks_at_its_parameter_then_inside_a_record_type() {
     assert_eq!(toylang::fmt(want).unwrap(), want);
 }
 
-/// A match arm whose body does not fit breaks after its `->`, the body one level in, the way a
-/// definition's body drops below its signature; a bare default arm has no `->` and breaks in
-/// place. Arms used to break only between each other, so an arm's own body overflowed.
+/// A match arm whose body does not fit breaks after its `->`, the body one level below the
+/// column the chain's later arms sit at, so it is visibly deeper than the arm after it
+/// (maintainer ruling, 2026-09-19); a bare default arm has no `->` and breaks in place. Arms
+/// used to break only between each other, so an arm's own body overflowed.
 #[test]
 fn a_long_match_arm_breaks_after_its_arrow() {
     let src = "fn f(x: Int) -> Int = x | . > 1 -> some_function_call({alpha: x, beta: x + 1, gamma: x * 2, delta: x - 1, eps: x}) or 0\n\nfn some_function_call(p: {alpha: Int, beta: Int, gamma: Int, delta: Int, eps: Int}) -> Int = p.alpha\n\nf(1)\n";
     let want = "fn f(x: Int) -> Int =\n\
                 \x20   x\n\
                 \x20       | . > 1 ->\n\
-                \x20             some_function_call(\n\
-                \x20                 {alpha: x, beta: x + 1, gamma: x * 2, delta: x - 1, eps: x}\n\
-                \x20             ) or\n\
+                \x20                 some_function_call(\n\
+                \x20                     {\n\
+                \x20                         alpha: x,\n\
+                \x20                         beta: x + 1,\n\
+                \x20                         gamma: x * 2,\n\
+                \x20                         delta: x - 1,\n\
+                \x20                         eps: x\n\
+                \x20                     }\n\
+                \x20                 ) or\n\
                 \x20             0\n\
                 \n\
                 fn some_function_call(\n\
@@ -303,6 +310,17 @@ fn a_postfix_chain_breaks_inside_its_base_with_the_suffix_reserved() {
                 \x20   ][n]!\n\
                 \n\
                 ones(1)\n";
+    assert_eq!(toylang::fmt(src).unwrap(), want);
+    assert_eq!(toylang::fmt(want).unwrap(), want);
+}
+
+/// Comment text is normalised: one space after the `#` when the author wrote none, a bare `#`
+/// left bare, and further indentation inside the text kept, since an indented line in a
+/// comment is usually a list or a sample. Trailing whitespace never survives the parser.
+#[test]
+fn comment_text_gets_one_space_after_the_hash() {
+    let src = "#no space\n#\n#   indented kept\nfn f(x: Int) -> Int = x #trail   \n\nf(1)\n";
+    let want = "# no space\n#\n#   indented kept\nfn f(x: Int) -> Int = x # trail\n\nf(1)\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 }

@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use toylang::Backend;
 use toylang::fmt_tree::{self, Mode};
 
-const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|rust|llvm]\n       toylang build FILE [js]\n       toylang fmt FILE\n       toylang fmt [--write]\n       toylang --explain-offload <run|emit|build> FILE [lua|js|jq|go|py|rust|llvm]";
+const USAGE: &str = "usage: toylang <run|emit> FILE [lua|js|jq|go|py|rust|llvm]\n       toylang build FILE [js]\n       toylang fmt [--one-line] FILE\n       toylang fmt [--write]\n       toylang --explain-offload <run|emit|build> FILE [lua|js|jq|go|py|rust|llvm]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -23,6 +23,7 @@ fn main() -> ExitCode {
     match args {
         ["fmt"] => fmt_project(Mode::Check),
         ["fmt", "--write"] => fmt_project(Mode::Write),
+        ["fmt", "--one-line", path] => on_file(&["fmt-one-line", path], explain),
         _ => on_file(args, explain),
     }
 }
@@ -110,6 +111,7 @@ fn on_file(args: &[&str], explain: bool) -> ExitCode {
         },
         "build" => build(&src, path, backend.unwrap_or_else(|| default_backend(cmd))),
         "fmt" => toylang::fmt(&src).map_err(anyhow::Error::from),
+        "fmt-one-line" => toylang::fmt_one_line(&src).map_err(anyhow::Error::from),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::FAILURE;

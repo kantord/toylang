@@ -7,7 +7,7 @@ stderr, prefixed with `toylang: FILE:`, and the exit code is nonzero when anythi
 ```
 usage: toylang <run|emit> FILE [lua|js|jq|go|py|rust|llvm]
        toylang build FILE [js]
-       toylang fmt FILE
+       toylang fmt [--one-line] FILE
        toylang fmt [--write]
        toylang --explain-offload <run|emit|build> FILE [lua|js|jq|go|py|rust|llvm]
 ```
@@ -29,6 +29,13 @@ that `emit` does not already do. [toylang build](build.md) has the details.
 fmt` with no file walks down from the current directory, lists every `.toy` file that is not
 canonical, and exits nonzero if any is; `toylang fmt --write` makes the same walk and rewrites
 them.
+
+`toylang fmt --one-line FILE` prints the same program on a single line: the one-line form of
+the same tree, with no line width, so `toylang fmt` on its output gives back the canonical
+file. Comments are dropped, since none can sit inside a line. A program with a `let` block has
+no one-line form, because the grammar reads a `let` block one binding per line, and neither
+does one whose last definition's body would read as a call once the program body follows it
+on the same line; both are refused with the definition named.
 
 Two things change what these commands do without appearing on the command line. A
 [toylang.conf.yaml](config.md) anywhere up the directory tree switches the JS backend from

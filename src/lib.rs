@@ -126,6 +126,19 @@ pub fn fmt(src: &str) -> Result<String, Error> {
 pub fn fmt_one_line(src: &str) -> Result<String, Error> {
     let as_program = match parse::parse(src) {
         Ok(mut file) => {
+            // A `let` block is line-structured by the grammar (one binding per line), so a
+            // program holding one is defined as having no one-line form (maintainer ruling,
+            // 2026-09-19), whether or not this particular one would happen to read back.
+            if let Some(d) = file
+                .defs
+                .iter()
+                .find(|d| matches!(d.body, ast::Expr::Let { .. }))
+            {
+                return Err(Error::new(
+                    d.span,
+                    "this program has no one-line form: a `let` block is one binding per line",
+                ));
+            }
             let line = emit_toylang::emit_one_line(&file);
             let reread = parse::parse(&line).map_err(|e| one_line_error(&file, e.msg))?;
             // The one-line form carries no comments, so the trees are compared without them.

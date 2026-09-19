@@ -73,13 +73,12 @@ fn every_corpus_program_has_a_one_line_form_or_says_why_not() {
     );
 }
 
-/// Every kind of declaration on one line, with a `let` block whose value ends in a literal,
-/// which no argument can follow -- and the body of the last definition ends in a call, so the
-/// program body after it cannot be read as its argument. Comments are dropped: none can sit
-/// inside a line. A rendering check only; that a one-line form runs the same is the corpus
+/// Every kind of declaration on one line; the body of the last definition ends in a call, so
+/// the program body after it cannot be read as its argument. Comments are dropped: none can
+/// sit inside a line. A rendering check only; that a one-line form runs the same is the corpus
 /// test's claim.
 #[test]
-fn declarations_and_a_let_block_render_on_one_line() {
+fn every_kind_of_declaration_renders_on_one_line() {
     let src = "# dropped\n\
                type P = {a: Int, b: Int}\n\
                \n\
@@ -93,11 +92,8 @@ fn declarations_and_a_let_block_render_on_one_line() {
                \x20   fn area(s: Shape) -> Int = s | Circle(r) -> r * r * 3 or 0\n\
                }\n\
                \n\
-               fn f(p: P) -> Int =\n\
-               \x20   # dropped too\n\
-               \x20   let a = p.a * 2\n\
-               \x20   let b = a + 1\n\
-               \x20   a + b\n\
+               # dropped too\n\
+               fn f(p: P) -> Int = p.a * 2 + p.b\n\
                \n\
                fn g(x: Int) -> Int = f({a: x, b: x})\n\
                \n\
@@ -105,15 +101,16 @@ fn declarations_and_a_let_block_render_on_one_line() {
     let want = "type P = {a: Int, b: Int} enum Shape { Circle(Int), Point } \
                 trait Area { fn area(s: Shape) -> Int } \
                 impl Area for Shape { fn area(s: Shape) -> Int = s | Circle(r) -> r * r * 3 or 0 } \
-                fn f(p: P) -> Int = let a = p.a * 2 let b = a + 1 a + b \
+                fn f(p: P) -> Int = p.a * 2 + p.b \
                 fn g(x: Int) -> Int = f({a: x, b: x}) g(1)\n";
     assert_eq!(toylang::fmt_one_line(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), file_form_without_comments(src));
 }
 
-/// The grammar's limit: a body ending in a name, followed on the same line by the program
-/// body, reads as a bare application. The template cannot fix that with a separator the
-/// grammar does not have, so the program is refused with the definition named.
+/// Two shapes have no one-line form by ruling (2026-09-19): a body ending in a name followed
+/// on the same line by the program body, which reads as a bare application; and any `let`
+/// block, which the grammar reads one binding per line. Both are refused with the definition
+/// named.
 #[test]
 fn a_body_that_would_swallow_the_program_body_is_refused() {
     let src = "fn g(x: Int) -> Int = x\n\ng(1)\n";
@@ -121,9 +118,11 @@ fn a_body_that_would_swallow_the_program_body_is_refused() {
     assert!(err.msg.contains("no one-line form"), "{}", err.msg);
     assert_eq!(&src[err.span.start..err.span.end], "fn g(x: Int) -> Int = x");
 
-    let src = "fn f(x: Int) -> Int =\n    let a = x\n    a\n\nf(1)\n";
+    // A `let` block is refused outright, even one that would happen to read back the same.
+    let src = "fn f(x: Int) -> Int =\n    let a = x * 2\n    a + 1\n\nf(1)\n";
     let err = toylang::fmt_one_line(src).unwrap_err();
-    assert!(err.msg.contains("no one-line form"), "{}", err.msg);
+    assert!(err.msg.contains("`let` block"), "{}", err.msg);
+    assert_eq!(err.span.start, 0);
 }
 
 /// A module is declarations only, each opening with a keyword, so it always has a one-line
