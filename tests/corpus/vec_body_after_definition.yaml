@@ -4,6 +4,7 @@
 program: |
   fn user_fn(x: Int) -> Int = x * 2
 
+
   [user_fn 1, user_fn 2]
  
 output: |

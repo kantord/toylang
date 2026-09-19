@@ -23,6 +23,7 @@ fn insert_each({ x, p }: { x: Int, p: Vec<Int> }) -> Vec<Vec<Int>> =
     [[x] + p] +
       (insert_each { x: x, p: tail(p)! } | map([p[0]!] + .))
 
+
 fn build_perms(
   { x, ps }: { x: Int, ps: Vec<Vec<Int>> }
 ) -> Vec<Vec<Int>> =
@@ -31,18 +32,22 @@ fn build_perms(
     insert_each { x: x, p: ps[0]! } +
       build_perms { x: x, ps: tail(ps)! }
 
+
 fn perms(v: Vec<Int>) -> Vec<Vec<Int>> =
   v
   | length v == 0 -> [[]] or
     build_perms { x: v[0]!, ps: perms tail(v)! }
 
+
 fn flips(p: Vec<Int>) -> Int =
   p | p[0]! == 1 -> 0 or 1 + flips(reverse p[:p[0]!] + p[p[0]!:])
+
 
 fn invs(p: Vec<Int>) -> Int =
   p
   | length p <= 1 -> 0 or
     (length(tail(p)! | select(. < p[0]!)) + invs tail(p)!) % 2
+
 
 fn step(
   { p, acc }: { p: Vec<Int>, acc: { checksum: Int, max: Int } }
@@ -53,6 +58,7 @@ fn step(
     max: f > acc.max | . -> f or acc.max
   }
 
+
 fn fold(
   { v, acc }: { v: Vec<Vec<Int>>, acc: { checksum: Int, max: Int } }
 ) -> { checksum: Int, max: Int } =
@@ -60,8 +66,10 @@ fn fold(
   | length v == 0 -> acc or
     fold { v: tail(v)!, acc: step { p: v[0]!, acc: acc } }
 
+
 fn fk(n: Int) -> Str =
   let r = fold { v: perms(collect(range n) | map(. + 1)), acc: { checksum: 0, max: 0 } }
   str r.checksum + "\nPfannkuchen(" + str n + ") = " + str r.max
+
 
 fk(parse stdin)

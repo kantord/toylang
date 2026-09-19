@@ -4,6 +4,7 @@
 program: |
   fn pad(v: Vec<Int>) -> Vec<Vec<Int>> = v | map([])
 
+
   pad([1, 2])
 
 output: |

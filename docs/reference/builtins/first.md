@@ -18,6 +18,7 @@ as `null` -- the same answer indexing gives to absence:
 ```toylang
 fn nothing() -> Vec<Int> = []
 
+
 first nothing()
 ```
 

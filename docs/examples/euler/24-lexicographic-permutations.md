@@ -16,6 +16,7 @@ than as the `Vec<Int>` of digits [problem 13](13-large-sum.md) has to settle for
 ```toylang
 fn factorial(n: Int) -> Int = n | . <= 1 -> 1 or . * factorial(. - 1)
 
+
 fn nth_perm(
   { remaining, idx }: { remaining: Vec<Int>, idx: Int }
 ) -> Vec<Int> =
@@ -29,6 +30,7 @@ fn nth_perm(
         idx: idx % block
       }
 
+
 fn join_digits(
   { digits, acc }: { digits: Vec<Int>, acc: Int64 }
 ) -> Int64 =
@@ -39,8 +41,10 @@ fn join_digits(
       acc: acc * 10 + i64 digits[0]!
     }
 
+
 fn as_number(digits: Vec<Int>) -> Int64 =
   join_digits { digits: digits, acc: 0 }
+
 
 as_number(
   nth_perm { remaining: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], idx: 999999 }

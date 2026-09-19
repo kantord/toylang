@@ -25,8 +25,10 @@ fn has_divisor({ n, d }: { n: Int, d: Int }) -> Bool =
         has_divisor { n: n, d: d + (d == 2 | . -> 1 or 2) }
     )
 
+
 fn is_prime(n: Int) -> Bool =
   n >= 2 and not has_divisor { n: n, d: 2 }
+
 
 sum collect(range 2000000 | select is_prime(.) | map i64(.))
 ```

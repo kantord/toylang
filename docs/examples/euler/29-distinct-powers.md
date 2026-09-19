@@ -27,8 +27,10 @@ is equal, so no key is ever compared against more than its neighbour in the sort
 ```toylang
 type Power = { value: Int, root: Int, mult: Int }
 
+
 fn ipow({ r, m }: { r: Int, m: Int }) -> Int =
   m | . == 0 -> 1 or r * ipow { r: r, m: m - 1 }
+
 
 fn powers_with_mult(
   { m, roots }: { m: Int, roots: Int }
@@ -36,6 +38,7 @@ fn powers_with_mult(
   collect range(roots - 1)
   | map(. + 2)
   | map { value: ipow { r: ., m: m }, root: ., mult: m }
+
 
 fn powers() -> Vec<Power> =
   flatten(
@@ -45,11 +48,13 @@ fn powers() -> Vec<Power> =
   ) +
     powers_with_mult { m: 1, roots: 100 }
 
+
 fn keys_for_base(
   { a, bs, table }: { a: Int, bs: Vec<Int>, table: Vec<Power> }
 ) -> Vec<Int> =
   let p = first(table | select(.value == a))!
   bs | map(p.root * 1000 + p.mult * .)
+
 
 fn all_keys(top: Int) -> Vec<Int> =
   let table = powers()
@@ -58,14 +63,17 @@ fn all_keys(top: Int) -> Vec<Int> =
     bases | map(keys_for_base { a: ., bs: bases, table: table })
   )
 
+
 fn adjacent_dup_count(sorted: Vec<Int>) -> Int =
   length(
     collect range(length sorted - 1)
     | select(sorted[. + 1]! == sorted[.]!)
   )
 
+
 fn distinct_count(v: Vec<Int>) -> Int =
   length v - adjacent_dup_count(sort v)
+
 
 distinct_count(all_keys 100)
 ```

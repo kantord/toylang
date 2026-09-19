@@ -134,6 +134,7 @@ resolves to `BigInt` by position:
 fn factorial(n: BigInt) -> BigInt =
   n == 0 -> 1 or n * factorial(n - 1)
 
+
 factorial 50
 ```
 
@@ -146,6 +147,7 @@ surface is open; the `i64` precedent takes only `Int`):
 
 ```toylang
 fn digits(n: Int64) -> BigInt = big n
+
 
 digits 600851475143
 ```
@@ -168,6 +170,7 @@ The Python model: no third type, the existing `Int` grows, and `Int64` (which ex
 
 ```toylang
 fn big() -> Int = 600851475143
+
 
 big()
 ```

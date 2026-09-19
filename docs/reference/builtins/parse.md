@@ -8,6 +8,7 @@ the same way `input` always borrowed its type.
 ```toylang
 fn total(v: Vec<Int>) -> Int = length v
 
+
 total(parse "[1, 2, 3]")
 ```
 

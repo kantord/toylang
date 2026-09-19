@@ -26,10 +26,12 @@ fn chain_len({ n, acc }: { n: Int64, acc: Int }) -> Int =
       acc: acc + 1
     }
 
+
 fn better(
   { a, b }: { a: { n: Int, len: Int }, b: { n: Int, len: Int } }
 ) -> { n: Int, len: Int } =
   a.len >= b.len | . -> a or b
+
 
 fn longest(
   { lo, hi }: { lo: Int, hi: Int }
@@ -41,6 +43,7 @@ fn longest(
       a: longest { lo: lo, hi: mid },
       b: longest { lo: mid, hi: hi }
     }
+
 
 longest { lo: 1, hi: 1000000 }
 ```

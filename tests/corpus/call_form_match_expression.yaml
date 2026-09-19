@@ -4,6 +4,7 @@
 program: |
   enum Msg { Ping, Quit, Text { body: Str } }
 
+
   [Msg.ping, Msg.quit, Msg.text { body: "hi" }]
   | map Msg(Ping -> "ping" or Quit -> "quit" or Text -> "text")
 

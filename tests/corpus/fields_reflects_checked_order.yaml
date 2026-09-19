@@ -5,7 +5,9 @@
 program: |
   fn f(r: { a: Str, b: Int }) -> Vec<Str> = fields r
 
+
   fn g(r: { b: Int, a: Str }) -> Vec<Str> = f r
+
 
   g { b: 1, a: "hi" }
 

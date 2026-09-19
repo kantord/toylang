@@ -4,8 +4,10 @@
 program: |
   enum Status { Active, Inactive }
 
+
   fn flip(s: Status) -> Status =
     s | Active -> Status.inactive or Inactive -> Status.active
+
 
   flip(parse stdin)
 

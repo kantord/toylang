@@ -13,6 +13,7 @@
 program: |
   fn next_rng(prev: Int) -> Int = (prev * 3877 + 29573) % 139968
 
+
   fn pick(
     s: { r: Int, w: Vec<Int>, acc: Int, i: Int, total: Int }
   ) -> Int =
@@ -25,6 +26,7 @@ program: |
         i: s.i + 1,
         total: s.total
       }
+
 
   fn gen(
     s: {
@@ -67,6 +69,7 @@ program: |
         n: s.n
       }
 
+
   fn alu_sec(
     s: {
       left: Int,
@@ -97,6 +100,7 @@ program: |
         alu: s.alu
       }
 
+
   fn after_two(t: { lines: Vec<Str>, seed: Int, n: Int }) -> Vec<Str> =
     t.lines +
       gen {
@@ -110,6 +114,7 @@ program: |
         total: 1000,
         n: t.n
       }.lines
+
 
   join_lines(
     alu_sec {

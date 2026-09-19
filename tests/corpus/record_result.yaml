@@ -5,6 +5,7 @@ program: |
   ) -> { name: Str, age: Int } =
     db.u
 
+
   pick(parse stdin)
 
 input: |

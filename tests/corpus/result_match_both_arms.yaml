@@ -4,8 +4,10 @@ program: |
   fn safe(b: Int) -> Result<Int, Str> =
     b | . != 0 -> ok(10 / b) or err "division by zero"
 
+
   fn describe(r: Result<Int, Str>) -> Str =
     r | Err -> "error: " + . or Ok -> str(.)
+
 
   describe(safe 2) + " / " + describe(safe 0)
 

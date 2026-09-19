@@ -7,7 +7,9 @@
 program: |
   enum Batch { Empty, Some(Vec<Int>) }
 
+
   fn size(b: Batch) -> Int = b | Some -> length(.) or Empty -> 0
+
 
   {
     n: size Batch.some([1, 2, 3]),

@@ -4,6 +4,7 @@
 program: |
   fn f(r: { a: Vec<Int>, b: Vec<Int> }) -> Vec<Int> = r.a * r.b
 
+
   f(parse stdin)
 
 input: |

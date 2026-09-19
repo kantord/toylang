@@ -5,9 +5,11 @@
 program: |
   enum Msg { Ping, Quit, Text { body: Str } }
 
+
   fn render(msgs: Stream<Msg>) -> Stream<Str> =
     msgs
     | map(. | Ping -> "*ping*" or Quit -> "*quit*" or Text -> .body)
+
 
   jsonlines render(stdin | map parse(.))
 

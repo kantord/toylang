@@ -15,6 +15,7 @@ next to its own result instead of the cascade nesting further:
 fn shipping(kg: Int) -> Int =
   kg | . <= 1 -> 5 or . <= 5 -> 12 or . <= 20 -> 25 or 40
 
+
 { a: shipping 1, b: shipping 3, c: shipping 20, d: shipping 25 }
 ```
 
@@ -33,6 +34,7 @@ so the chain has not reached the point where an `or` could end it:
 fn band(n: Int) -> Str =
   n
   | . < 0 or . > 100 -> "out" or . >= 50 and . <= 60 -> "mid" or "in"
+
 
 { a: band(-1), b: band 55, c: band 20 }
 ```
@@ -55,17 +57,19 @@ guard that always holds does not close the match:
 ```toylang
 enum S { A, B }
 
+
 S.a | A -> 1 or 1 == 1 -> 2
 ```
 
 ```error
-a match over `S` must cover every variant or end in a default; missing `B` (at byte 23)
+a match over `S` must cover every variant or end in a default; missing `B` (at byte 24)
 ```
 
 Name the remaining variant, or end the chain in `any()`:
 
 ```toylang
 enum S { A, B }
+
 
 S.a | A -> 1 or any() -> 2
 ```
@@ -82,6 +86,7 @@ declining every arm produces `Opt`, not a refusal:
 ```toylang
 fn discount(total: Int) -> Opt<Int> = total | . >= 100 -> total / 10
 
+
 { a: discount 150, b: discount 50 }
 ```
 
@@ -94,6 +99,7 @@ so a bare `[]` resolves inside a partial arm without needing a variable to infer
 
 ```toylang
 fn tags(n: Int) -> Opt<Vec<Int>> = n | . > 0 -> []
+
 
 { a: tags 1, b: tags(-1) }
 ```
@@ -108,6 +114,7 @@ if it should not:
 
 ```toylang
 fn discount(total: Int) -> Int = total | . >= 100 -> total / 10 or 0
+
 
 { a: discount 150, b: discount 50 }
 ```
@@ -126,6 +133,7 @@ fn first_reading(
   entry: { valid: Bool, readings: Vec<Int> }
 ) -> Opt<Opt<Int>> =
   entry | .valid -> entry.readings[9]
+
 
 {
   a: first_reading { valid: 1 == 2, readings: [5] },
@@ -150,6 +158,7 @@ fn first_reading(
   entry: { valid: Bool, readings: Vec<Int> }
 ) -> Opt<Int> =
   entry | .valid -> entry.readings[0] or entry.readings[9]
+
 
 {
   a: first_reading { valid: 1 == 2, readings: [5] },

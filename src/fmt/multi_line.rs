@@ -45,7 +45,7 @@ pub fn emit(file: &File) -> String {
         &file.defs,
     ) {
         out.push_str(&print_decl(&item, &mut comments));
-        out.push_str("\n\n");
+        out.push_str("\n\n\n");
     }
     let leading = comments.take_before(file.body.span().end);
     out.push_str(&comment_lines(&leading, 0));
@@ -57,7 +57,7 @@ pub fn emit(file: &File) -> String {
 }
 
 /// A module is the declarations alone: no trailing expression to separate them from, so they end
-/// the file rather than each being followed by a blank line the way `emit` writes them.
+/// the file rather than each being followed by the two blank lines the way `emit` writes them.
 pub fn emit_module(module: &Module) -> String {
     let mut comments = Comments::new(&module.comments);
     let decls: Vec<String> = decls_in_source_order(
@@ -70,7 +70,7 @@ pub fn emit_module(module: &Module) -> String {
     .iter()
     .map(|item| print_decl(item, &mut comments))
     .collect();
-    let mut out = decls.join("\n\n");
+    let mut out = decls.join("\n\n\n");
     out.push('\n');
     out.push_str(&comment_lines(&comments.take_rest(), 0));
     if out.trim().is_empty() {

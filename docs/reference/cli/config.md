@@ -39,6 +39,7 @@ two share the read and differ only in what follows it.
 ```toylang
 fn twice(x: Int) -> Int = x * 2
 
+
 twice(parse stdin)
 ```
 
@@ -118,6 +119,7 @@ is pasted whole:
 
 ```toylang
 fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + "!")
+
 
 jsonlines(shout stdin)
 ```

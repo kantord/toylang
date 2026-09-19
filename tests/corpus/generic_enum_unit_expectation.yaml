@@ -4,7 +4,9 @@
 program: |
   enum Box<T> { Wrap(T), Empty }
 
+
   fn nothing() -> Box<Int> = empty
+
 
   nothing()
 

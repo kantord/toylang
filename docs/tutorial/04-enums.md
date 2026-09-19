@@ -6,6 +6,7 @@ point or a circle with a radius. An enum declares the set, closed:
 ```toylang
 enum Status { Active, Inactive }
 
+
 Status.active
 ```
 
@@ -19,6 +20,7 @@ rather than inventing a private encoding.
 
 ```toylang
 enum Shape { Point, Circle { r: Int } }
+
 
 circle { r: 3 }
 ```
@@ -39,8 +41,10 @@ with `or`, first match wins:
 ```toylang
 enum Shape { Point, Circle { r: Int } }
 
+
 fn area_ish(s: Shape) -> Int =
   s | Circle { r } -> r * r or Point -> 0
+
 
 { a: area_ish Shape.point, b: area_ish(circle { r: 3 }) }
 ```

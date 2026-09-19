@@ -4,9 +4,12 @@
 program: |
   enum Box<T> { Wrap(T), Empty }
 
+
   fn nothing() -> Box<Int> = empty
 
+
   fn peek(b: Box<Int>) -> Int = b | Wrap -> . or Empty -> 0
+
 
   peek(wrap 7) + peek nothing()
 

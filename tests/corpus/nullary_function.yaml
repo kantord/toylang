@@ -2,6 +2,7 @@
 program: |
   fn greeting() -> Str = "hello"
 
+
   greeting()
 
 output: |

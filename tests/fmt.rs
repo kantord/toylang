@@ -92,10 +92,10 @@ fn a_formatted_corpus_program_runs_the_same_as_the_original() {
 fn the_maintainer_sample_formats_to_itself() {
     let sample = "# An enum with a payload variant, consumed by an exhaustive match.\n\
                   enum Shape { Point, Circle { r: Int } }\n\
-                  \n\
+                  \n\n\
                   fn area_ish(s: Shape) -> Int =\n\
                   \x20 s | Circle { r } -> r * r or Point -> 0\n\
-                  \n\
+                  \n\n\
                   { a: area_ish Shape.point, b: area_ish(circle { r: 3 }) }\n";
     assert_eq!(toylang::fmt(sample).unwrap(), sample);
     let on_disk = std::fs::read_to_string(
@@ -124,7 +124,7 @@ fn a_pipeline_that_does_not_fit_breaks_one_stage_per_line_pipe_first() {
 /// Float reference page landed.
 #[test]
 fn a_float_literal_stays_a_float_literal() {
-    let src = "fn f(x: Float) -> Float = x * 2.0\n\n[f 1.5, f 1e21, f 1e-7, f 0.25]\n";
+    let src = "fn f(x: Float) -> Float = x * 2.0\n\n\n[f 1.5, f 1e21, f 1e-7, f 0.25]\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
     assert_eq!(toylang::fmt("1.0e21\n").unwrap(), "1e21\n");
     assert_eq!(toylang::fmt("3.0\n").unwrap(), "3.0\n");
@@ -150,13 +150,13 @@ fn a_commented_multi_function_program_formats_to_itself() {
                \n\
                # Doc comment on f.\n\
                fn f(x: Int) -> Int = x * 2 # trailing f\n\
-               \n\
+               \n\n\
                fn g(x: Int) -> Int =\n\
                \x20 # before the binding\n\
                \x20 let a = f x # trailing the binding\n\
                \x20 # before the value\n\
                \x20 a + 1 # trailing the value\n\
-               \n\
+               \n\n\
                # Before the program body.\n\
                g 1 # trailing the body\n\
                # After everything.\n";
@@ -173,12 +173,12 @@ fn a_comment_inside_an_expression_rises_to_its_definition() {
                \x20       # double every element\n\
                \x20       | map(. * 2) # then add them up\n\
                \x20       | sum\n\
-               \n\
+               \n\n\
                f(1)\n";
     let want = "# double every element\n\
                 # then add them up\n\
                 fn f(x: Int) -> Int = x | map(. * 2) | sum\n\
-                \n\
+                \n\n\
                 f 1\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
@@ -190,7 +190,7 @@ fn a_commented_module_formats_to_itself() {
     let src = "# The module banner.\n\
                \n\
                pub fn f(x: Int) -> Int = x # trailing\n\
-               \n\
+               \n\n\
                # Private helper.\n\
                fn g(x: Int) -> Int = f x + 1\n\
                # The end.\n";
@@ -221,7 +221,7 @@ fn the_prelude_is_a_module_and_is_already_formatted() {
 /// error, so `(true) -> ..` survived exactly one formatting pass.
 #[test]
 fn a_literal_guard_head_formats_bare_and_round_trips() {
-    let src = "fn f(x: Int) -> Str = x | true -> \"a\" or \"b\"\n\nf 1\n";
+    let src = "fn f(x: Int) -> Str = x | true -> \"a\" or \"b\"\n\n\nf 1\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
     let parenthesized = "fn f(x: Int) -> Str = x | (true) -> \"a\" or \"b\"\n\nf(1)\n";
     assert_eq!(toylang::fmt(parenthesized).unwrap(), src);
@@ -249,7 +249,7 @@ fn a_long_signature_breaks_at_its_parameter_then_inside_a_record_type() {
                 \x20 }\n\
                 ) -> Int =\n\
                 \x20 g[r]![c]!\n\
-                \n\
+                \n\n\
                 four { g: [[1]], r: 0, c: 0, dr: 0, dc: 0 }\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
@@ -266,7 +266,7 @@ fn a_long_signature_breaks_at_its_parameter_then_inside_a_record_type() {
                 \x20 }\n\
                 ) -> Int =\n\
                 \x20 rmax\n\
-                \n\
+                \n\n\
                 direction { g: [[1]], dr: 0, dc: 0, rmax: 0, cmin: 0, cmax: 0 }\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
@@ -290,12 +290,12 @@ fn a_long_match_arm_breaks_after_its_arrow() {
                 \x20       eps: x\n\
                 \x20     } or\n\
                 \x20   0\n\
-                \n\
+                \n\n\
                 fn some_function_call(\n\
                 \x20 p: { alpha: Int, beta: Int, gamma: Int, delta: Int, eps: Int }\n\
                 ) -> Int =\n\
                 \x20 p.alpha\n\
-                \n\
+                \n\n\
                 f 1\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
@@ -320,7 +320,7 @@ fn a_postfix_chain_breaks_inside_its_base_with_the_suffix_reserved() {
                 \x20   \"eight\",\n\
                 \x20   \"nine\"\n\
                 \x20 ][n]!\n\
-                \n\
+                \n\n\
                 ones 1\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
@@ -332,7 +332,7 @@ fn a_postfix_chain_breaks_inside_its_base_with_the_suffix_reserved() {
 #[test]
 fn comment_text_gets_one_space_after_the_hash() {
     let src = "#no space\n#\n#   indented kept\nfn f(x: Int) -> Int = x #trail   \n\nf(1)\n";
-    let want = "# no space\n#\n#   indented kept\nfn f(x: Int) -> Int = x # trail\n\nf 1\n";
+    let want = "# no space\n#\n#   indented kept\nfn f(x: Int) -> Int = x # trail\n\n\nf 1\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
 }
@@ -399,7 +399,7 @@ fn a_record_field_whose_value_does_not_fit_breaks_after_the_name() {
 #[test]
 fn a_call_around_a_pipeline_keeps_its_call_form() {
     let src =
-        "fn total(nums: Vec<Int>) -> Int = length nums\n\ntotal collect(stdin | map parse(.))\n";
+        "fn total(nums: Vec<Int>) -> Int = length nums\n\n\ntotal collect(stdin | map parse(.))\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
     assert!(toylang::run_with_input(src, Some("1\n2\n")).is_ok());
     let as_stages = "fn total(nums: Vec<Int>) -> Int = length(nums)\n\nstdin | map(parse(.)) | collect(.) | total(.)\n";
@@ -415,7 +415,7 @@ fn a_call_around_a_pipeline_keeps_its_call_form() {
 fn a_call_argument_prints_bare_wherever_the_grammar_reads_it_back() {
     // Str, Int, Float, a name, a record literal, and a nested call are all safe bare, and
     // chain right-associatively with no first-class functions to make the reading ambiguous.
-    let src = "fn f(x: Int) -> Int = x * 10\n\nfn g(x: Int) -> Int = x + 1\n\n\
+    let src = "fn f(x: Int) -> Int = x * 10\n\n\nfn g(x: Int) -> Int = x + 1\n\n\n\
                [f 1, f \"s\", f 1.5, f x, f { a: 1 }, f(g 2)]\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
 
@@ -423,23 +423,23 @@ fn a_call_argument_prints_bare_wherever_the_grammar_reads_it_back() {
     // grammar's bare-argument path is `self.postfix()`, the same trailer loop `.field`/`[i]`/
     // `!`/`:method(...)` use everywhere else), so all three stay bare and run the same.
     let src = "fn f(x: Int) -> Int = x\n\
-               \n\
+               \n\n\
                fn r(x: Int) -> { a: Int } = { a: x }\n\
-               \n\
+               \n\n\
                trait M {\n\
                \x20 fn m(p: { x: Self, y: Int }) -> Self\n\
                }\n\
                impl M for Int {\n\
                \x20 fn m(p: { x: Self, y: Int }) -> Self = p.x + p.y\n\
                }\n\
-               \n\
+               \n\n\
                [f(r(1).a), f([1, 2][0]!), f(1:m({ x: 1, y: 2 }))]\n";
     let want = src
         .replace(
             "[f(r(1).a), f([1, 2][0]!), f(1:m({ x: 1, y: 2 }))]",
             "[f r(1).a, f([1, 2][0]!), f 1:m({ x: 1, y: 2 })]",
         )
-        .replace("}\nimpl M for Int", "}\n\nimpl M for Int");
+        .replace("}\nimpl M for Int", "}\n\n\nimpl M for Int");
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(&want).unwrap(), want);
     assert_eq!(toylang::run(src).unwrap(), toylang::run(&want).unwrap());
@@ -449,19 +449,19 @@ fn a_call_argument_prints_bare_wherever_the_grammar_reads_it_back() {
     // `self.argument()` for a *record* literal is the one exception that continues no further,
     // but `[` is never even a recognised argument start), and `.` is always field access on
     // the callee.
-    let src = "fn f(x: Int) -> Int = x\n\n[f(-1), f([1, 2]), f([1, 2][0]!), f(.)]\n";
+    let src = "fn f(x: Int) -> Int = x\n\n\n[f(-1), f([1, 2]), f([1, 2][0]!), f(.)]\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
 
     // A record literal *with* a postfix chain on it is the one base that does not continue:
     // `self.argument()`'s LBrace case never reads a trailer, so `{a: 1}.a` written bare would
     // reattach the `.a` to the call's result. Alone, with no chain, it is bare-safe (tested
     // above via `f { a: 1 }`).
-    let src = "fn f(x: Int) -> Int = x\n\nfn r(x: Int) -> { a: Int } = { a: x }\n\n\
+    let src = "fn f(x: Int) -> Int = x\n\n\nfn r(x: Int) -> { a: Int } = { a: x }\n\n\n\
                f({ a: 1 }.a)\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
     assert_eq!(
         toylang::run(src).unwrap(),
-        toylang::run("fn f(x: Int) -> Int = x\n\nf(1)\n").unwrap()
+        toylang::run("fn f(x: Int) -> Int = x\n\n\nf(1)\n").unwrap()
     );
 }
 
@@ -473,7 +473,7 @@ fn a_call_argument_prints_bare_wherever_the_grammar_reads_it_back() {
 /// taught to always parenthesize a `Call` it is printing as a base.
 #[test]
 fn a_call_used_as_a_postfix_base_keeps_its_parens() {
-    let src = "fn f(xs: Vec<Int>) -> Vec<Int> = xs\n\n[f([1, 2])[0]!, f([1, 2])[1]!]\n";
+    let src = "fn f(xs: Vec<Int>) -> Vec<Int> = xs\n\n\n[f([1, 2])[0]!, f([1, 2])[1]!]\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
     assert_eq!(toylang::run(src).unwrap(), "[1,2]\n");
 }
@@ -486,11 +486,11 @@ fn a_call_used_as_a_postfix_base_keeps_its_parens() {
 /// has no bare spelling to fall back to and keeps its parens.
 #[test]
 fn a_record_variant_payload_prints_bare() {
-    let src = "enum Shape { Point, Circle{r: Int} }\n\n\
-               fn area(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0\n\n\
+    let src = "enum Shape { Point, Circle{r: Int} }\n\n\n\
+               fn area(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0\n\n\n\
                area(Shape.circle({r: 3}))\n";
-    let want = "enum Shape { Point, Circle { r: Int } }\n\n\
-                fn area(s: Shape) -> Int = s | Circle { r } -> r * r or Point -> 0\n\n\
+    let want = "enum Shape { Point, Circle { r: Int } }\n\n\n\
+                fn area(s: Shape) -> Int = s | Circle { r } -> r * r or Point -> 0\n\n\n\
                 area Shape.circle { r: 3 }\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
@@ -498,11 +498,11 @@ fn a_record_variant_payload_prints_bare() {
 
     // A non-record payload (Int, here) has no bare form at all -- `Shape.some2 5` does not
     // parse -- so it keeps its parens even though the *outer* call bare-applies around it.
-    let src = "enum Opt2 { Some2(Int), None2 }\n\n\
-               fn f(x: Opt2) -> Int = x | Some2 -> . or 0\n\n\
+    let src = "enum Opt2 { Some2(Int), None2 }\n\n\n\
+               fn f(x: Opt2) -> Int = x | Some2 -> . or 0\n\n\n\
                f(Opt2.some2(5))\n";
-    let want = "enum Opt2 { Some2(Int), None2 }\n\n\
-                fn f(x: Opt2) -> Int = x | Some2 -> . or 0\n\n\
+    let want = "enum Opt2 { Some2(Int), None2 }\n\n\n\
+                fn f(x: Opt2) -> Int = x | Some2 -> . or 0\n\n\n\
                 f Opt2.some2(5)\n";
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), want);
@@ -535,10 +535,10 @@ fn a_long_record_variant_payload_breaks_bare() {
 /// chain reaches two.
 #[test]
 fn bare_application_is_capped_at_one_hop() {
-    let h = "fn foo(x: Int) -> Int = x * 10\n\n\
-             fn bar(x: Int) -> Int = x + 1\n\n\
-             fn baz(x: Int) -> Int = x - 1\n\n\
-             fn qux(x: Int) -> Int = x * 2\n\n";
+    let h = "fn foo(x: Int) -> Int = x * 10\n\n\n\
+             fn bar(x: Int) -> Int = x + 1\n\n\n\
+             fn baz(x: Int) -> Int = x - 1\n\n\n\
+             fn qux(x: Int) -> Int = x * 2\n\n\n";
     let cases = [
         ("foo(3)", "foo 3"),
         ("foo(bar(3))", "foo(bar 3)"),

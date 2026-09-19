@@ -7,6 +7,7 @@ program: |
   fn countdown(p: { n: Int, acc: Int }) -> Int =
     p | p.n <= 0 -> p.acc or countdown { n: p.n - 1, acc: p.acc + 1 }
 
+
   countdown { n: 100000, acc: 0 }
 
 output: |

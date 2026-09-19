@@ -26,6 +26,7 @@ fn push_carry(
   | . -> acc or
     push_carry { carry: carry / 10, acc: acc + [carry % 10] }
 
+
 fn scale(
   { digits, k, i, carry, acc }: {
     digits: Vec<Int>,
@@ -46,6 +47,7 @@ fn scale(
       acc: acc + [total % 10]
     }
 
+
 fn power_of_two(
   { digits, n }: { digits: Vec<Int>, n: Int }
 ) -> Vec<Int> =
@@ -56,6 +58,7 @@ fn power_of_two(
         scale { digits: digits, k: 2, i: 0, carry: 0, acc: [] },
       n: n - 1
     }
+
 
 sum(power_of_two { digits: [1], n: 1000 })
 ```

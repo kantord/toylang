@@ -27,6 +27,7 @@ The rules, each of which the checker enforces:
 ```toylang
 fn conjure(n: Int) -> Stream<Int> = stdin | map n
 
+
 0
 ```
 

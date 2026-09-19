@@ -7,7 +7,9 @@
 program: |
   fn first_b(v: Vec<{ a: Str, b: Int }>) -> Int = v[0]!.b
 
+
   fn g(v: Vec<{ b: Int, a: Str }>) -> Int = first_b v
+
 
   g([{ b: 42, a: "hi" }])
 

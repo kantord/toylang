@@ -13,16 +13,21 @@
 program: |
   type Body = { x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float, m: Float }
 
+
   fn newton({ x, y }: { x: Float, y: Float }) -> Float =
     let next = (y + x / y) / 2.0
     next >= y | . -> y or newton { x: x, y: next }
 
+
   fn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 }
+
 
   fn solar_mass() -> Float =
     4.0 * 3.141592653589793 * 3.141592653589793
 
+
   fn days_per_year() -> Float = 365.24
+
 
   fn planets() -> Vec<Body> =
     [
@@ -64,6 +69,7 @@ program: |
       }
     ]
 
+
   fn momentum(
     { bs, px, py, pz }: {
       bs: Vec<Body>,
@@ -90,8 +96,10 @@ program: |
         pz: pz + bs[0]!.vz * bs[0]!.m
       }
 
+
   fn system() -> Vec<Body> =
     [momentum { bs: planets(), px: 0.0, py: 0.0, pz: 0.0 }] + planets()
+
 
   fn kick({ b, o }: { b: Body, o: Body }) -> Body =
     let dx = b.x - o.x
@@ -109,10 +117,12 @@ program: |
       m: b.m
     }
 
+
   fn pull({ b, others }: { b: Body, others: Vec<Body> }) -> Body =
     others
     | length others == 0 -> b or
       pull { b: kick { b: b, o: others[0]! }, others: tail(others)! }
+
 
   fn tick(bs: Vec<Body>) -> Vec<Body> =
     collect range(length bs)
@@ -127,14 +137,17 @@ program: |
         m: .m
       }
 
+
   fn advance({ bs, n }: { bs: Vec<Body>, n: Int }) -> Vec<Body> =
     n | . == 0 -> bs or advance { bs: tick bs, n: . - 1 }
+
 
   fn pair({ b, o, acc }: { b: Body, o: Body, acc: Float }) -> Float =
     let dx = b.x - o.x
     let dy = b.y - o.y
     let dz = b.z - o.z
     acc - b.m * o.m / sqrt(dx * dx + dy * dy + dz * dz)
+
 
   fn potential(
     { b, others, acc }: { b: Body, others: Vec<Body>, acc: Float }
@@ -147,8 +160,10 @@ program: |
         acc: pair { b: b, o: others[0]!, acc: acc }
       }
 
+
   fn kinetic({ b, acc }: { b: Body, acc: Float }) -> Float =
     acc + 0.5 * b.m * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
+
 
   fn energy({ bs, acc }: { bs: Vec<Body>, acc: Float }) -> Float =
     bs
@@ -161,6 +176,7 @@ program: |
           acc: kinetic { b: bs[0]!, acc: acc }
         }
       }
+
 
   jsonlines(
     [

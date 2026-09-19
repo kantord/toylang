@@ -3,7 +3,9 @@
 program: |
   fn name(b: Bool) -> Str = b | b -> "yes" or "no"
 
+
   fn dot(b: Bool) -> Str = b | . -> "yes" or "no"
+
 
   [name true, name false, name(1 == 2), dot true, dot false]
 

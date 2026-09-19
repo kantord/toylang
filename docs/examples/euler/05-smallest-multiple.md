@@ -10,12 +10,15 @@ range 1 to 20 from the top down.
 fn gcd({ a, b }: { a: Int, b: Int }) -> Int =
   b == 0 | . -> a or gcd { a: b, b: a % b }
 
+
 fn lcm({ a, b }: { a: Int, b: Int }) -> Int =
   a / gcd { a: a, b: b } * b
+
 
 fn lcm_upto({ n, limit }: { n: Int, limit: Int }) -> Int =
   n > limit
   | . -> 1 or lcm { a: lcm_upto { n: n + 1, limit: limit }, b: n }
+
 
 lcm_upto { n: 1, limit: 20 }
 ```

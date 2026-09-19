@@ -8,6 +8,7 @@ program: |
   ) -> Stream<{ name: Str }> =
     users | select(.age >= 18) | map { name: .name }
 
+
   jsonlines adults(stdin | map parse(.))
 
 input: |

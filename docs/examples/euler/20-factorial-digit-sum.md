@@ -17,6 +17,7 @@ fn push_carry(
   | . -> acc or
     push_carry { carry: carry / 10, acc: acc + [carry % 10] }
 
+
 fn scale(
   { digits, k, i, carry, acc }: {
     digits: Vec<Int>,
@@ -37,6 +38,7 @@ fn scale(
       acc: acc + [total % 10]
     }
 
+
 fn factorial_digits(
   { digits, k }: { digits: Vec<Int>, k: Int }
 ) -> Vec<Int> =
@@ -47,6 +49,7 @@ fn factorial_digits(
         scale { digits: digits, k: k, i: 0, carry: 0, acc: [] },
       k: k + 1
     }
+
 
 sum(factorial_digits { digits: [1], k: 2 })
 ```

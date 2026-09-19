@@ -8,6 +8,7 @@ around them.
 ```toylang
 enum Shape { Point, Circle { r: Int } }
 
+
 circle { r: 1 }
 ```
 ```
@@ -20,6 +21,7 @@ for a unit variant). A declaration that still starts lowercase is refused, verif
 
 ```toylang
 enum Shape { point, circle { r: Int } }
+
 
 circle { r: 1 }
 ```

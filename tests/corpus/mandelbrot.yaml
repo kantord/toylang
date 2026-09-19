@@ -15,6 +15,7 @@ program: |
   fn to_float(n: Int) -> Float =
     n | . == 0 -> 0.0 or 1.0 + to_float(. - 1)
 
+
   fn pixel(
     { cr, ci, zr, zi, k }: {
       cr: Float,
@@ -34,6 +35,7 @@ program: |
         zi: 2.0 * zr * zi + ci,
         k: . - 1
       }
+
 
   fn row(
     { n, size, x, fx, ci, line }: {
@@ -62,6 +64,7 @@ program: |
             k: 50
           }
       }
+
 
   fn rows(
     { n, size, y, fy, lines }: {
@@ -92,11 +95,13 @@ program: |
           ]
       }
 
+
   fn plot(n: Int) -> Str =
     join_lines(
       ["P1", str n + " " + str n] +
         rows { n: n, size: to_float n, y: 0, fy: 0.0, lines: [] }
     )
+
 
   plot(parse stdin)
 

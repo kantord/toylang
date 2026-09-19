@@ -5,9 +5,12 @@
 program: |
   fn always(x: Int) -> Str = x | true -> "yes" or "no"
 
+
   fn never(x: Int) -> Str = x | false -> "yes" or "no"
 
+
   fn qualified(x: Int) -> Str = x | Bool.true -> "yes" or "no"
+
 
   [always 1, never 1, qualified 1]
 

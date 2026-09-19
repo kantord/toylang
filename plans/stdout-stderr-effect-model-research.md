@@ -35,6 +35,7 @@ writing as evaluation proceeds instead, and there is no result value at all:
 ```toylang
 fn out(v: Vec<Int>) -> Sink = jsonlines v
 
+
 out([1, 2, 3])
 ```
 
@@ -75,6 +76,7 @@ symmetric in every rule:
 
 ```toylang
 fn warn(msg: Str) -> Sink = eprintln msg
+
 
 warn "could not parse line 3"
 ```

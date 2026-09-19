@@ -21,7 +21,9 @@ the language currently lets you match:
 ```toylang
 enum Shape { point, circle { r: Int } }
 
+
 fn area(s: Shape) -> Int = s | circle { r } -> r * r or point -> 0
+
 
 area Shape.point
 ```
@@ -47,7 +49,9 @@ the return annotation, each mandatory). Every A probe dies at the same byte:
 ```toylang
 enum Shape { point, circle { r: Int } }
 
+
 fn area = Shape(circle { r } -> r * r or point -> 0)
+
 
 area Shape.point
 ```
@@ -66,7 +70,9 @@ question:
 ```toylang
 enum Shape { point, circle { r: Int } }
 
+
 fn area(s: Shape) -> Int = Shape(circle { r } -> r * r or point -> 0)
+
 
 area Shape.point
 ```
@@ -104,7 +110,9 @@ change, independent of everything downstream.
 ```toylang
 enum Shape { point, circle { r: Int } }
 
+
 fn area(s: Shape) -> Int = circle { r } -> r * r or point -> 0
+
 
 area Shape.point
 ```
@@ -130,7 +138,9 @@ construct.
 ```toylang
 enum Shape { point, circle { r: Int } }
 
+
 fn area(s: Shape) -> Int = . | circle { r } -> r * r or point -> 0
+
 
 area Shape.point
 ```
@@ -157,6 +167,7 @@ could be tested independently of C's top-level binding:
 
 ```toylang
 enum Json { arr(Vec<Json>), num(Int) }
+
 
 fn total(j: Json) -> Int =
   j | num -> . or arr -> . | map(. | total(.)) | sum(.)

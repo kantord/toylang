@@ -8,6 +8,7 @@ program: |
   ) -> Vec<{ commit: { message: Str, committer: { name: Str } } }> =
     db
 
+
   jsonlines(
     commits(parse stdin)
     | map { message: .commit.message, name: .commit.committer.name }

@@ -5,6 +5,7 @@
 program: |
   fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + "!")
 
+
   jsonlines(shout stdin)
 
 input: |

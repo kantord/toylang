@@ -7,6 +7,7 @@ projection, `.age`:
 ```toylang
 fn age_of(user: { name: Str, age: Int }) -> Int = user.age
 
+
 age_of { name: "ada", age: 36 }
 ```
 
@@ -22,6 +23,7 @@ one:
 ```toylang
 fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h
 
+
 area { w: 3, h: 4 }
 ```
 
@@ -35,6 +37,7 @@ arguments:
 
 ```toylang
 fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h
+
 
 area { w: 3, h: 4 }
 ```

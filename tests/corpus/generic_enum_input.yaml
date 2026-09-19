@@ -3,7 +3,9 @@
 program: |
   enum Box<T> { Wrap { v: T }, Empty }
 
+
   fn peek(b: Box<Int>) -> Int = b | Wrap { v } -> v or Empty -> 0
+
 
   peek(parse stdin)
 

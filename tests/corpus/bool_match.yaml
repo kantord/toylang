@@ -5,6 +5,7 @@
 program: |
   fn name(b: Bool) -> Str = b | True -> "yes" or False -> "no"
 
+
   [name true, name false, name(1 == 2)]
 
 output: |

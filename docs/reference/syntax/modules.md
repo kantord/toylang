@@ -44,10 +44,12 @@ modules `tests/modules/celsius.toy` (`pub fn handle(c: Int) -> Int = c + 273`) a
 ```toylang
 enum Temp { Celsius(Int), Kelvin(Int) }
 
+
 fn to_kelvin(t: Temp) -> Int =
   t
   | Celsius -> @("tests/modules/celsius.toy") or
     Kelvin -> @("tests/modules/kelvin.toy")
+
 
 [to_kelvin Temp.celsius(27), to_kelvin Temp.kelvin(300)]
 ```
@@ -67,7 +69,9 @@ anywhere else. `tests/modules/greet.toy`:
 ```toy
 fn exclaim(s: Str) -> Str = s + "!"
 
+
 pub fn shout(s: Str) -> Str = exclaim(exclaim s)
+
 
 pub fn handle(name: Str) -> Str = exclaim("hello " + name)
 ```
@@ -96,6 +100,7 @@ tends to do. `tests/modules/shapes.toy`:
 
 ```toy
 pub enum Shape { Circle { r: Int }, Square { side: Int } }
+
 
 pub fn handle(s: Shape) -> Int =
   s | Circle { r } -> r * r * 3 or Square { side } -> side * side

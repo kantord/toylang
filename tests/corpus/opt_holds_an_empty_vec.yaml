@@ -3,6 +3,7 @@ program: |
   # truthiness test for absence would print null here. It uses `is None`.
   fn rows(db: { v: Vec<Vec<Int>> }) -> Vec<Vec<Int>> = db.v
 
+
   rows(parse stdin)[0]
 
 input: |

@@ -6,6 +6,7 @@
 program: |
   fn tag(db: { tag: Str }) -> Str = db.tag
 
+
   tag(parse stdin)
 
 input: |

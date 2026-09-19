@@ -3,6 +3,7 @@
 program: |
   fn none() -> Vec<Bool> = []
 
+
   all none()
 
 output: |

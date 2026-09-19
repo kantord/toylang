@@ -3,6 +3,7 @@ program: |
   # its own, so a signature could describe the Vec it collapses but not what collapsing yields.
   fn head(v: Vec<Int>) -> Opt<Int> = v[0]
 
+
   head([1, 2, 3])
 
 output: |

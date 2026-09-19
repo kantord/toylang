@@ -3,6 +3,7 @@
 program: |
   fn count(v: Vec<Int>) -> Int = length v
 
+
   count(parse "[1, 2, 3]")
 
 output: |

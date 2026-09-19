@@ -9,7 +9,7 @@ use std::process::{Command, Output};
 
 /// One line off canonical: `fmt` spaces its binary operators.
 const CROOKED: &str = "fn double(n: Int) -> Int = n*2\ndouble(21)\n";
-const CANONICAL: &str = "fn double(n: Int) -> Int = n * 2\n\ndouble 21\n";
+const CANONICAL: &str = "fn double(n: Int) -> Int = n * 2\n\n\ndouble 21\n";
 
 #[test]
 fn check_lists_what_is_not_formatted_and_touches_nothing() {

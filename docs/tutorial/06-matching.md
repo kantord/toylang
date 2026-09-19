@@ -8,6 +8,7 @@ and the two compose in the same chain.
 fn grade(score: Int) -> Str =
   score | . >= 90 -> "A" or . >= 80 -> "B" or . >= 70 -> "C" or "F"
 
+
 { a: grade 95, b: grade 82, c: grade 55 }
 ```
 
@@ -38,6 +39,7 @@ the `or` joins clauses into one test; a body is finished, so the `or` after it e
 fn size(n: Int) -> Str =
   n | . == 0 or . == 1 -> "tiny" or . < 10 -> "small" or "big"
 
+
 { a: size 0, b: size 4, c: size 40 }
 ```
 
@@ -67,11 +69,12 @@ through, so no guard -- however certain -- contributes to that coverage:
 ```toylang
 enum S { A, B }
 
+
 S.a | A -> 1 or 1 == 1 -> 2
 ```
 
 ```error
-a match over `S` must cover every variant or end in a default; missing `B` (at byte 23)
+a match over `S` must cover every variant or end in a default; missing `B` (at byte 24)
 ```
 
 `1 == 1` always matches at runtime, but the checker only counts named variants and `any()`.
@@ -94,6 +97,7 @@ the declared element type instead of needing it spelled out some other way:
 ```toylang
 fn tags(n: Int) -> Opt<Vec<Int>> = n | . > 0 -> []
 
+
 { a: tags 1, b: tags(-1) }
 ```
 
@@ -112,6 +116,7 @@ fn first_reading(
 ) -> Opt<Opt<Int>> =
   entry | .valid -> entry.readings[9]
 
+
 first_reading { valid: 1 == 2, readings: [5] }
 ```
 
@@ -126,6 +131,7 @@ fn first_reading(
   entry: { valid: Bool, readings: Vec<Int> }
 ) -> Opt<Int> =
   entry | .valid -> entry.readings[0] or entry.readings[9]
+
 
 {
   a: first_reading { valid: 1 == 2, readings: [5] },

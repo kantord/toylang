@@ -6,13 +6,16 @@
 program: |
   type Circle = { r: Int }
 
+
   trait Area {
     fn area(s: Self) -> Int
   }
 
+
   impl Area for Circle {
     fn area(s: Self) -> Int = s.r * s.r
   }
+
 
   { r: 3 }:area()
 

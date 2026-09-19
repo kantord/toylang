@@ -4,6 +4,7 @@
 program: |
   fn nothing() -> Vec<Int> = []
 
+
   sum nothing()
 
 output: |

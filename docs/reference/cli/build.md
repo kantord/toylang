@@ -26,23 +26,32 @@ declarations. This program exercises every shape it can name:
 ```toylang
 enum Shape { Point, Circle { r: Int } }
 
+
 fn area_ish(s: Shape) -> Int =
   s | Circle { r } -> r * r or Point -> 0
 
+
 fn greet(who: Str) -> Str = "hello " + who
+
 
 fn total(v: Vec<Int>) -> Int = sum v
 
+
 fn bump(x: Opt<Int>) -> Opt<Int> = x
+
 
 fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h
 
+
 fn big(x: Int64) -> Int64 = x
+
 
 fn positive(x: Int) -> Result<Int, Str> =
   x | . > 0 -> ok(.) or err "no"
 
+
 fn half(x: Float) -> Float = x / 2.0
+
 
 {
   a: area_ish(circle { r: 3 }),

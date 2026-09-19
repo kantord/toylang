@@ -3,6 +3,7 @@
 program: |
   fn nothing() -> Vec<Int> = []
 
+
   max(nothing())!
 
 refuses: true

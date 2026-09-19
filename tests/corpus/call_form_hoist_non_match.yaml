@@ -4,7 +4,9 @@
 program: |
   enum Shape { Point, Circle { r: Int } }
 
+
   fn area = Shape(Circle { r } -> r * r or Point -> 0)
+
 
   {
     c: area Shape.circle { r: 3 },

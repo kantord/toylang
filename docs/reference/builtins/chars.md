@@ -39,9 +39,10 @@ Both directions are refused at compile time:
 ```toylang
 fn use_it(c: Char) -> Bool = c == c
 
+
 use_it(parse stdin)
 ```
 
 ```error
-`parse(stdin)` cannot be read as Char; Char has no wire form to read (at byte 44)
+`parse(stdin)` cannot be read as Char; Char has no wire form to read (at byte 45)
 ```

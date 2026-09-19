@@ -8,6 +8,7 @@ program: |
   ) -> Vec<{ commit: { message: Str, committer: { name: Str } }, parents: Vec<{ html_url: Str }> }> =
     db
 
+
   commits(parse stdin)
   | map {
       message: .commit.message,

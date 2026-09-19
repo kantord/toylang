@@ -3,6 +3,7 @@
 program: |
   fn owed() -> Int64 = -1800000000000
 
+
   owed() - 43
 
 output: |

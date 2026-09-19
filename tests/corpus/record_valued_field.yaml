@@ -4,6 +4,7 @@ program: |
   fn inner(db: Vec<{ a: { b: Str }, z: Int }>) -> Vec<{ b: Str }> =
     db[].a
 
+
   inner(parse stdin)
 
 input: |

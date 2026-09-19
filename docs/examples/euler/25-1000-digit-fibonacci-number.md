@@ -19,6 +19,7 @@ with the term's index.
 fn limb({ v, i }: { v: Vec<Int>, i: Int }) -> Int =
   i < length v | . -> v[i]! or 0
 
+
 fn add_limbs(
   { a, b, i, carry, acc }: {
     a: Vec<Int>,
@@ -39,11 +40,14 @@ fn add_limbs(
       acc: acc + [total % 100000000]
     }
 
+
 fn digit_count(n: Int) -> Int =
   n < 10 | . -> 1 or 1 + digit_count(n / 10)
 
+
 fn digits_of(v: Vec<Int>) -> Int =
   (length v - 1) * 8 + digit_count v[-1]!
+
 
 fn first_with(
   { prev, cur, n, want }: {
@@ -61,6 +65,7 @@ fn first_with(
       n: n + 1,
       want: want
     }
+
 
 first_with { prev: [1], cur: [1], n: 2, want: 1000 }
 ```

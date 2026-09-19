@@ -6,6 +6,7 @@
 program: |
   fn second(v: Vec<Float>) -> Float = v[1]! * 2.0
 
+
   second([1.5, 2.5, 3.5])
 
 output: |

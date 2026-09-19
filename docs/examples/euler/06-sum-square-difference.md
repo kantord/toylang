@@ -9,9 +9,12 @@ iterates at all.
 ```toylang
 fn tri(n: Int) -> Int = n * (n + 1) / 2
 
+
 fn sumsq(n: Int) -> Int = n * (n + 1) * (2 * n + 1) / 6
 
+
 fn square(x: Int) -> Int = x * x
+
 
 square(tri 100) - sumsq 100
 ```

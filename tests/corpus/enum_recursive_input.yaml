@@ -11,7 +11,9 @@
 program: |
   enum Json { Arr(Vec<Json>), Num(Int), Null }
 
+
   fn json(j: Json) -> Json = j
+
 
   json(parse stdin)
 

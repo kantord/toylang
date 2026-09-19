@@ -9,6 +9,7 @@ and whose result type is read off the arms (see [match](../operators/match.md)).
 ```toylang
 fn double(x: Int) -> Int = x * 2
 
+
 double 21
 ```
 
@@ -46,6 +47,7 @@ A function may also take no parameter, written `fn name() -> Type = body` and ca
 
 ```toylang
 fn greeting() -> Str = "hello"
+
 
 greeting()
 ```

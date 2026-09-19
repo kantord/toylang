@@ -4,9 +4,12 @@
 program: |
   fn a() -> { v: Int64 } = { v: 600851475143 }
 
+
   fn b() -> { v: Int64 } = { v: 600851475143 }
 
+
   fn c() -> { v: Int64 } = { v: 600851475142 }
+
 
   { same: a() == b(), differing: a() == c() }
 

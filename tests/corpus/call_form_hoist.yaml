@@ -5,8 +5,10 @@
 program: |
   enum Msg { Ping, Quit, Text { body: Str } }
 
+
   fn render =
     Msg(Ping -> "*ping*" or Quit -> "*quit*" or Text { body } -> body)
+
 
   {
     a: render Msg.ping,

@@ -21,6 +21,7 @@ of the adults:
 fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
   db.users | select(.age >= 18) | .[].name
 
+
 adults(parse stdin)
 ```
 
@@ -56,8 +57,10 @@ types wire data directly.
 ```toylang
 enum Shape { Point, Circle { r: Int } }
 
+
 fn area_ish(s: Shape) -> Int =
   s | Circle { r } -> r * r or Point -> 0
+
 
 { a: area_ish Shape.point, b: area_ish(circle { r: 3 }) }
 ```
@@ -72,7 +75,9 @@ program whose match handles only `Circle`,
 ```toylang
 enum Shape { Point, Circle { r: Int } }
 
+
 fn area_ish(s: Shape) -> Int = s | Circle { r } -> r * r
+
 
 area_ish Shape.point
 ```
@@ -80,7 +85,7 @@ area_ish Shape.point
 is refused:
 
 ```error
-a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 76)
+a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 77)
 ```
 
 ## Seven backends, kept as falsifiers

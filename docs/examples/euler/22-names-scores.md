@@ -22,8 +22,10 @@ itself scores, is worth 53 and comes third of three, contributing 159 of the 227
 fn letter_value(c: Char) -> Int =
   length(chars "ABCDEFGHIJKLMNOPQRSTUVWXYZ" | select(. <= c))
 
+
 fn name_score(name: Str) -> Int =
   sum(chars name | map letter_value(.))
+
 
 fn ranked_total(ordered: Vec<Str>) -> Int =
   sum(
@@ -31,7 +33,9 @@ fn ranked_total(ordered: Vec<Str>) -> Int =
     | map((. + 1) * name_score ordered[.]!)
   )
 
+
 fn names_total(names: Vec<Str>) -> Int = ranked_total(sort names)
+
 
 names_total(parse stdin)
 ```

@@ -27,6 +27,7 @@ The result keeps the element width, so a `Vec<Int64>` sums to an `Int64`:
 ```toylang
 fn wide(x: Int) -> Int64 = i64 x
 
+
 sum([wide 3, wide 1, wide 2])
 ```
 

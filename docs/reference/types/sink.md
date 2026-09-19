@@ -8,6 +8,7 @@ program's output loop can live behind a name:
 ```toylang
 fn out(v: Vec<Int>) -> Sink = jsonlines v
 
+
 out([1, 2])
 ```
 

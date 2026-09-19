@@ -4,6 +4,7 @@
 program: |
   pub fn double(x: Int) -> Int = x * 2
 
+
   double 21
 
 output: |

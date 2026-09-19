@@ -5,6 +5,7 @@ program: |
   ) -> Vec<Vec<Str>> =
     db.groups[].members[].name
 
+
   names(parse stdin)
 
 input: |

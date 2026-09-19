@@ -4,6 +4,7 @@
 program: |
   fn id(s: Str) -> Str = s
 
+
   { a: 1 }
 
 output: |

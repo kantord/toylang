@@ -4,6 +4,7 @@ program: |
   fn swap(p: { a: Int, b: Int }) -> { a: Int, b: Int } =
     { a: p.b, b: p.a }
 
+
   swap { a: 1, b: 2 }
 
 output: |

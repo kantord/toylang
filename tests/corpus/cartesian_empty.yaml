@@ -4,6 +4,7 @@
 program: |
   fn f(v: Vec<Int>) -> Vec<Int> = v * [10, 20]
 
+
   f([])
 
 output: |

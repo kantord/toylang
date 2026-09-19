@@ -23,6 +23,7 @@ what stdin must be:
 fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
   db.users | select(.age >= 18) | .[].name
 
+
 adults(parse stdin)
 ```
 
@@ -49,6 +50,7 @@ fn adults(
   users: Stream<{ name: Str, age: Int }>
 ) -> Stream<{ name: Str }> =
   users | select(.age >= 18) | map { name: .name }
+
 
 jsonlines adults(stdin | map parse(.))
 ```
@@ -78,6 +80,7 @@ exit, turning `Stream<T>` into an ordinary `Vec<T>` by reading everything:
 
 ```toylang
 fn count(xs: Vec<Int>) -> Int = length xs
+
 
 count collect(stdin | map parse(.))
 ```

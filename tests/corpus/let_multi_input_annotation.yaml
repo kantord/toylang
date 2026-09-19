@@ -9,6 +9,7 @@ program: |
     let b = p.y * 3
     a + b
 
+
   f(parse stdin)
 
 input: |

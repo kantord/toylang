@@ -21,13 +21,17 @@ fn newton({ x, y }: { x: Float, y: Float }) -> Float =
   let next = (y + x / y) / 2.0
   next >= y | . -> y or newton { x: x, y: next }
 
+
 fn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 }
+
 
 fn a({ i, j }: { i: Float, j: Float }) -> Float =
   1.0 / ((i + j) * (i + j + 1.0) / 2.0 + i + 1.0)
 
+
 fn entry({ i, j, t }: { i: Float, j: Float, t: Int }) -> Float =
   t | . == 0 -> a { i: i, j: j } or a { i: j, j: i }
+
 
 fn row(
   { u, i, j, fj, t, acc }: {
@@ -50,6 +54,7 @@ fn row(
       acc: acc + entry { i: i, j: fj, t: t } * u[j]!
     }
 
+
 fn times(
   { u, i, fi, t, out }: {
     u: Vec<Float>,
@@ -70,13 +75,17 @@ fn times(
         out + [row { u: u, i: fi, j: 0, fj: 0.0, t: t, acc: 0.0 }]
     }
 
+
 fn times_a(u: Vec<Float>) -> Vec<Float> =
   times { u: u, i: 0, fi: 0.0, t: 0, out: [] }
+
 
 fn times_at(u: Vec<Float>) -> Vec<Float> =
   times { u: u, i: 0, fi: 0.0, t: 1, out: [] }
 
+
 fn times_ata(u: Vec<Float>) -> Vec<Float> = times_at(times_a u)
+
 
 fn power(
   { u, k }: { u: Vec<Float>, k: Int }
@@ -84,6 +93,7 @@ fn power(
   let v = times_ata u
   let w = times_ata v
   k | . == 1 -> { u: w, v: v } or power { u: w, k: . - 1 }
+
 
 fn dot(
   { u, v, i, acc }: {
@@ -97,7 +107,9 @@ fn dot(
   | i == length u -> acc or
     dot { u: u, v: v, i: i + 1, acc: acc + u[i]! * v[i]! }
 
+
 fn ones(n: Int) -> Vec<Float> = collect(range n) | map 1.0
+
 
 fn norm(n: Int) -> Float =
   let r = power { u: ones n, k: 10 }
@@ -105,5 +117,6 @@ fn norm(n: Int) -> Float =
     dot { u: r.u, v: r.v, i: 0, acc: 0.0 } /
       dot { u: r.v, v: r.v, i: 0, acc: 0.0 }
   )
+
 
 norm(parse stdin)

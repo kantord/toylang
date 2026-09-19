@@ -4,6 +4,7 @@
 program: |
   fn big() -> Int64 = 600851475143
 
+
   big()
 
 output: |

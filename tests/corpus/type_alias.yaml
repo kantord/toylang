@@ -3,10 +3,13 @@
 program: |
   type User = { name: Str, age: Int }
 
+
   type Db = { users: Vec<User> }
+
 
   fn adults(db: Db) -> Vec<Str> =
     db.users | select(.age >= 18) | .[].name
+
 
   adults(parse stdin)
 

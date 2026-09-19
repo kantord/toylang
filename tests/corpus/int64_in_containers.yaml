@@ -5,6 +5,7 @@ snapshot: [js, go]
 program: |
   fn ts() -> Int64 = 1756500000000
 
+
   { when: ts(), deltas: [ts() + 1, ts() - 1, i64 0] }
 
 output: |

@@ -4,6 +4,7 @@
 program: |
   enum Json { Arr(Vec<Json>), Num(Int) }
 
+
   jsonlines([Json.arr([Json.num(1)]), Json.num(2)])
 
 output: |

@@ -36,6 +36,7 @@ pipeline reads the same as chapter 3's:
 fn shout(names: Stream<Str>) -> Stream<Str> =
   names | select(. != "bo") | map(. + "!")
 
+
 jsonlines(shout stdin)
 ```
 

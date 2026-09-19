@@ -7,6 +7,7 @@
 program: |
   enum Json { Arr(Vec<Json>), Num(Int) }
 
+
   Json.arr([Json.num(1), Json.arr([Json.num(2)]), Json.num(3)])
 
 output: |

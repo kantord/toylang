@@ -4,6 +4,7 @@ program: |
   fn deep(db: Vec<Vec<{ a: { b: Int } }>>) -> Vec<Vec<Int>> =
     db[][].a.b
 
+
   deep(parse stdin)
 
 input: |

@@ -5,6 +5,7 @@ program: |
   fn names(users: Vec<{ name: Str, age: Int }>) -> Vec<Str> =
     users + tail(users)! | .[].name
 
+
   names([{ name: "ada", age: 36 }, { name: "bo", age: 9 }])
 
 output: |

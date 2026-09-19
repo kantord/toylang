@@ -28,6 +28,16 @@
 //! are really needed), so `f(x)` prints `f x` and `f({a: 1})` prints `f { a: 1 }`. `bare_arg_ok`
 //! in `one_line.rs` decides which arguments qualify, mirroring `parse.rs::ident_expr` exactly;
 //! its own doc comment has the grammar's reasoning.
+//!
+//! Top-level declarations, and the file's own trailing expression, are separated by two blank
+//! lines, not one (maintainer ruling, 2026-09-19), so that a single blank line stays free to
+//! mean something else inside a body without colliding with the top-level boundary. That
+//! second half -- preserving an author's blank line as structure *inside* a definition or
+//! expression -- is not built: nothing in the AST or the parser records a blank line's position
+//! there today (only a comment's is), so one written between two `let` bindings, or inside a
+//! record literal, is silently lost on the next format, the same as any other whitespace. The
+//! two-blank-line separator above is what the feature will eventually rely on; it does not by
+//! itself make a single blank line inside a body survive.
 
 mod comments;
 mod multi_line;

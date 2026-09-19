@@ -4,6 +4,7 @@
 program: |
   fn wide(x: Int) -> Int64 = i64 x
 
+
   sort([wide 3, wide 1, wide 2])
 
 output: |

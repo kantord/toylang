@@ -4,6 +4,7 @@
 program: |
   fn nothing() -> Opt<Int> = none
 
+
   { a: some 5, b: nothing() }
 
 output: |

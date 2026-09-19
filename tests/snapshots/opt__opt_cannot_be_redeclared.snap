@@ -1,5 +1,6 @@
 ---
 source: tests/opt.rs
+assertion_line: 54
 expression: "err(\"type Opt = Int\\n\\n1\")"
 ---
-type `Opt` is defined twice (at byte 35)
+type `Opt` is defined twice (at byte 36)

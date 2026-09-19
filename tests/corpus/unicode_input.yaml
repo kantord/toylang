@@ -5,6 +5,7 @@ program: |
   ) -> Vec<{ name: Str, tag: Str }> =
     db.rows
 
+
   tags(parse stdin)
 
 input: |

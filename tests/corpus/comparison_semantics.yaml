@@ -12,6 +12,7 @@
 program: |
   enum Shape { Point, Circle { r: Int }, Box { w: Int, h: Int } }
 
+
   {
     same: { a: 1, b: 2 } == { a: 1, b: 2 },
     reordered: { a: 1, b: 2 } == { b: 2, a: 1 },

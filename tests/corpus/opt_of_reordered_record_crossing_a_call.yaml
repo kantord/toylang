@@ -6,7 +6,9 @@
 program: |
   fn first_b(v: Opt<{ a: Str, b: Int }>) -> Int = v!.b
 
+
   fn g(v: Opt<{ b: Int, a: Str }>) -> Int = first_b v
+
 
   g(some { b: 42, a: "hi" })
 

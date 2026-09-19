@@ -4,6 +4,7 @@
 program: |
   fn shallow() -> Opt<Opt<Int>> = none
 
+
   shallow()!
 
 refuses: true

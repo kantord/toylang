@@ -19,6 +19,7 @@ entry:
 fn adults(users: Vec<{ name: Str, age: Int }>) -> Vec<Str> =
   users | select(.age >= 18) | .[].name
 
+
 adults([{ name: "ada", age: 36 }, { name: "bo", age: 9 }])
 ```
 

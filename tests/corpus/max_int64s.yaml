@@ -3,6 +3,7 @@
 program: |
   fn wide(x: Int) -> Int64 = i64 x
 
+
   max([wide 9, wide 2, wide 7])
 
 output: |

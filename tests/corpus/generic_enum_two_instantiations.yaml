@@ -4,6 +4,7 @@
 program: |
   enum Box<T> { Wrap(T), Empty }
 
+
   { a: wrap "x", b: wrap 1 }
 
 output: |

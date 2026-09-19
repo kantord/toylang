@@ -5,7 +5,9 @@
 program: |
   enum Temp { Unknown, Celsius(Int) }
 
+
   fn warmer(t: Temp) -> Int = t | Celsius -> . + 1 or Unknown -> 0
+
 
   { a: warmer(celsius 21), b: warmer Temp.unknown, raw: celsius 21 }
 

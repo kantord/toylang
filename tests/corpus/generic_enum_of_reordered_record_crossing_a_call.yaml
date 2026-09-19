@@ -6,10 +6,13 @@
 program: |
   enum Box<T> { Full(T), Empty }
 
+
   fn get_b(x: Box<{ a: Str, b: Int }>) -> Int =
     x | Full -> .b or Empty -> 0
 
+
   fn g(x: Box<{ b: Int, a: Str }>) -> Int = get_b x
+
 
   g(full { b: 42, a: "hi" })
 

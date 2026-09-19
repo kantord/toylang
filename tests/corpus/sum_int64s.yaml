@@ -3,6 +3,7 @@
 program: |
   fn wide(x: Int) -> Int64 = i64 x
 
+
   sum([wide 3, wide 1, wide 2])
 
 output: |

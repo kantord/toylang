@@ -26,12 +26,14 @@ fn column_total(
 ) -> Int =
   sum(nums | map(.[k]!)) + carry
 
+
 fn emit_carry(
   { carry, acc }: { carry: Int, acc: Vec<Int> }
 ) -> Vec<Int> =
   carry == 0
   | . -> acc or
     emit_carry { carry: carry / 10, acc: [carry % 10] + acc }
+
 
 fn add_digits(
   { nums, k, carry, acc }: {
@@ -51,6 +53,7 @@ fn add_digits(
       acc: [total % 10] + acc
     }
 
+
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
   add_digits {
     nums: nums,
@@ -58,6 +61,7 @@ fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
     carry: 0,
     acc: []
   }[0:10]
+
 
 leading_digits(parse stdin)
 ```

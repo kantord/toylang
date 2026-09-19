@@ -6,6 +6,7 @@
 program: |
   fn f({ acc }: { acc: Vec<Int> }) -> Vec<Int> = acc + [1]
 
+
   f { acc: [0] }
 
 output: |

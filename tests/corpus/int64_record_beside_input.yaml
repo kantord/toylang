@@ -5,7 +5,9 @@
 program: |
   fn wide() -> Int64 = 600851475143
 
+
   fn double(x: Int) -> Int = x * 2
+
 
   { a: wide(), b: double(parse stdin) }
 

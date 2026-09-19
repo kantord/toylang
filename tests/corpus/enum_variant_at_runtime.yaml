@@ -5,8 +5,10 @@
 program: |
   enum Shape { Point, Circle { r: Int } }
 
+
   fn classify(n: Int) -> Shape =
     n | . == 0 -> Shape.point or circle { r: n }
+
 
   { a: classify 0, b: classify 3 }
 

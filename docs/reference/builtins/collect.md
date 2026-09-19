@@ -31,6 +31,7 @@ exist until everything has been read.
 ```toylang
 fn total(nums: Vec<Int>) -> Int = length nums
 
+
 total collect(stdin | map parse(.))
 ```
 

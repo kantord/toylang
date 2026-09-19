@@ -21,6 +21,7 @@ annotation an empty `[]` takes its element type from the signature:
 ```toylang
 fn nothing() -> Vec<Int> = []
 
+
 nothing()
 ```
 
