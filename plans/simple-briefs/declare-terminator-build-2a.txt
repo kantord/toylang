@@ -1,0 +1,29 @@
+Board row `declare-terminator-build-2a` (gh:153, slice 1 of 3). Start the `;` declaration terminator.
+
+State on main: commit 04aa00a lexes `;` but the parser does not consume it: `fn id(s: Str) -> Str = s;`
+is refused with "expected an expression, found `;`". The gh:153 ruling (`gh issue view 153`) makes
+`;` REQUIRED after every `fn` and `type` declaration. This slice only makes it ACCEPTED and
+printed; a later slice makes it required. So after your change both `fn f() -> Int = 1` and
+`fn f() -> Int = 1;` must parse and mean the same thing. Leave the same-line heuristic in
+src/parse.rs (roughly lines 616, 625-637, 1472, 1646 -- `grep -n` first) exactly as it is.
+
+Do, in this order, running `just check` after each step:
+1. src/parse.rs: after parsing an fn or type declaration, consume one `;` if present. No new
+   diagnostic. Add a parser test that both spellings give the same AST.
+2. src/fmt (`toylang fmt`): print `;` after every fn and type declaration. Its round-trip tests
+   must pass; update expected outputs in the fmt tests' YAML/fixture files if they list formatted
+   text (fixture files only -- see the rule below for .rs).
+3. Add the `;` after every declaration in: every .toy file, tests/corpus/*.yaml programs,
+   examples/, and every toylang fragment in docs/ (tests/docs.rs compiles each fragment, so a
+   missed one shows as BROKEN). Find them with `grep -rn "^fn \|^type " docs examples tests/corpus`.
+   Multi-line declarations get the `;` at the end of their last line. Leave
+   tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml UNCHANGED.
+
+HARD RULES: do NOT edit any tests/*.rs file or any other .rs file except src/parse.rs and
+files under src/fmt (a previous attempt bulk-rewrote tests/*.rs with a script and wrote a
+literal backslash-n into tests/euler_real_data.rs -- those are slice 2). Do not use sed/python
+bulk rewrites on .rs files. For the many yaml/docs edits a small careful script over .yaml/.md
+/.toy files only is fine, but `git diff` a few files afterwards to confirm no stray characters.
+
+Done-gate: `just check` passes; `fn id(s: Str) -> Str = s;` compiles and runs; the old spelling
+without `;` still compiles; `toylang fmt` output ends every declaration with `;`.

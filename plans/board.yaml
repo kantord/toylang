@@ -407,14 +407,29 @@
   issue: gh:153
   title: 'declare-terminator-build is archived done, but its landing (8c84499) contained only 04aa00a, which lexes `;` and says in its own message that the parser does not consume it yet. Verified 2026-09-19: `fn id(s: Str) -> Str = s;` is refused with "expected an expression, found `;`", the same-line heuristic the ruling retires is still live (src/parse.rs ~616, 625-637, 1472, 1646) and still taught in docs/reference/syntax/functions.md. Build the rest of the gh:153 ruling: `;` required after every fn and type declaration, the same-line rule and its diagnostic retired, tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml updated, the syntax page rewritten. Also write the ruling into plans/questions.md or an ADR, since it is recorded nowhere but the issue. DISPATCH 2026-09-19 (32ebad8e): RED, 3x max_turns; the agent bulk-rewrote tests/*.rs with a script that wrote literal backslash-n into tests/euler_real_data.rs:190. Split (parser+fmt+corpus yaml, then tests/examples/docs sweep) before redispatch and forbid script-rewriting .rs sources.'
   kind: build
-  needs: []
+  needs: [declare-terminator-build-2a, declare-terminator-build-2b, declare-terminator-build-2c]
   status: todo
 
-- id: docs-gaps-let-tailpipe-destructure-tailcall
-  title: 'Four shipped features with no reference page, found by the 2026-09-19 issue review: `let` bindings (gh:150; no page, no guide section), the `|>` tail-pipe marker (gh:154; no docs page, no corpus case, no Rust test -- a fixed-string grep hits only src/), record-parameter destructuring `fn g({a, b}: {a: Int, b: Int})` (gh:144; docs/reference/syntax/functions.md never mentions it), and the self-tail-call constant-stack contract (gh:141; lives only in a corpus comment and emitter comments). Write each into docs/reference with runnable fences, and add a corpus case for `|>`.'
+- id: declare-terminator-build-2a
+  issue: gh:153
+  title: 'Slice 1 of 3 of declare-terminator-build-2 (split after the 32ebad8e RED, 2026-09-19): make the parser CONSUME an optional `;` after every fn and type declaration (no new diagnostic, same-line rule stays for now), make `toylang fmt` print the `;` after declarations, and add the `;` to every .toy, tests/corpus/*.yaml, examples/ and docs/ fragment (NOT tests/*.rs). Forbidden: script-rewriting any .rs source.'
   kind: build
   needs: []
   status: delegated
+
+- id: declare-terminator-build-2b
+  issue: gh:153
+  title: 'Slice 2 of 3 of declare-terminator-build-2: add the `;` to the toylang source strings embedded in tests/*.rs (hand-edit with the edit tool, file by file; NEVER a script that writes escapes -- 32ebad8e wrote a literal backslash-n into tests/euler_real_data.rs:190). Parser still accepts the `;` optionally, so each file can land green independently.'
+  kind: build
+  needs: [declare-terminator-build-2a]
+  status: todo
+
+- id: declare-terminator-build-2c
+  issue: gh:153
+  title: 'Slice 3 of 3 of declare-terminator-build-2: make `;` REQUIRED after every fn/type declaration with one new diagnostic, retire the same-line heuristic and its diagnostic (src/parse.rs ~616, 625-637, 1472, 1646), update tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml, rewrite the declarations section of docs/reference/syntax/functions.md, and record the gh:153 ruling in plans/questions.md or a docs/adr/ ADR.'
+  kind: build
+  needs: [declare-terminator-build-2b]
+  status: todo
 
 - id: matcher-totality-alt-composition-decide
   issue: gh:156
@@ -471,7 +486,7 @@
     add the two remaining emitter arms and update LANDINGS.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: grill-submit-disabled-no-feedback
   title: 'The Grill tab''s AnswerComposer Submit button (site/dev/src/components/AnswerComposer.tsx)
