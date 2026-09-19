@@ -236,3 +236,9 @@ The fmt-templates session (2026-09-19) moved `print_expr_inner` unchanged (131 l
 verified) from `src/emit_toylang.rs` into `src/fmt/one_line.rs`, so the check reports it at a new
 path; it is a flat match over expression kinds, inherited by the same rule as `check/mod.rs`'s
 path change above.
+
+The bare-application session (2026-09-19) added a `Call` arm to `print_expr_inner` that grew it
+to 118, one over its own budget and caused; extracted a `call()` helper (the same tighten-first
+move as the nullary-functions session's `call()`/`call_args()` instances above), which also
+shrank the surrounding `match` enough to land at 114 -- below the 117-line value it carried at
+main before this session touched it, so nothing stands open.
