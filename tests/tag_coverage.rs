@@ -21,7 +21,6 @@ const UNCOVERED: &[(&str, &str)] = &[
         "max-by",
         "sort-by-max-by-jq, the last of the per-backend rows",
     ),
-    ("builtin.transpose", "transpose-remaining-backends"),
     (
         "builtin.pipe_through",
         "no row: pipe_through runs on Rust only and reads a subprocess",

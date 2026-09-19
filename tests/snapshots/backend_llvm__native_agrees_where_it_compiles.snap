@@ -1,9 +1,8 @@
 ---
 source: tests/backend_llvm.rs
-assertion_line: 46
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (270):
+compiles natively (272):
 adults
 all_basic
 all_empty
@@ -246,6 +245,8 @@ tail_of_empty_refuses
 tail_pipe_basic
 tail_recursion_deep
 trait_impl_parse
+transpose_basic
+transpose_ragged
 tsv_partial
 type_alias
 undeclared_input_fields
