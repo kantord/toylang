@@ -137,11 +137,20 @@ export function AnswerComposer({ topic, node, onSubmitted }: { topic: string; no
     return () => document.removeEventListener("keydown", onKey)
   }, [])
 
+  // Disabled-state hint shown to the left of the Submit button (and as its `title`) whenever
+  // Submit is blocked because nothing is selected or the selected box is empty.
+  const submitDisabledHint =
+    !ready && !submitting
+      ? selected === null
+        ? "Pick an option (radio, top of each box) or type in a box to enable Submit."
+        : "The selected box is empty -- write something to enable Submit."
+      : undefined
+
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
         {boxes.map((box, i) => (
-          // `onClick` deliberately lives on the label only, not this wrapping div: a click
+          // The radio + label live in the header row only, not this wrapping div: a click
           // anywhere inside the Tiptap editor below bubbles up through ordinary DOM propagation
           // (ProseMirror doesn't stop it), so putting the handler on the whole card would still
           // let clicking in just to position a cursor silently reassign the selection -- the same
@@ -153,22 +162,30 @@ export function AnswerComposer({ topic, node, onSubmitted }: { topic: string; no
               selected === i ? "border-primary ring-2 ring-primary/30 bg-primary/5" : "border-border hover:bg-muted/40",
             )}
           >
-            <div
+            <label
               onClick={() => setSelected(i)}
-              className="cursor-pointer text-xs font-medium text-muted-foreground"
+              className="flex w-full cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs font-medium text-muted-foreground"
             >
+              <input
+                type="radio"
+                name={`${key}-choice`}
+                checked={selected === i}
+                onChange={() => setSelected(i)}
+                className="h-3 w-3"
+              />
               {box.label ?? "Write your own"}
-            </div>
+            </label>
             <MarkdownEditor content={box.content} onChange={(md) => setBoxContent(i, md)} />
           </div>
         ))}
       </div>
       {submitError && <p className="text-sm text-destructive">Delivery failed: {submitError}. Your answer is kept -- retry.</p>}
       <div className="flex justify-end gap-2">
+        {submitDisabledHint && <p className="text-sm text-muted-foreground">{submitDisabledHint}</p>}
         <Button variant="outline" onClick={reset} disabled={!hasAnythingToReset || submitting}>
           Reset
         </Button>
-        <Button onClick={submit} disabled={!ready || submitting}>
+        <Button onClick={submit} disabled={!ready || submitting} title={submitDisabledHint}>
           {submitting ? "Submitting..." : "Submit"}
         </Button>
       </div>
