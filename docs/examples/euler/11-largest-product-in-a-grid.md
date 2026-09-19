@@ -81,6 +81,7 @@ fn largest_product(g: Vec<Vec<Int>>) -> Int =
   let down = direction { g: g, dr: 1, dc: 0, rmax: rows - 3, cmin: 0, cmax: cols }
   let diagonal = direction { g: g, dr: 1, dc: 1, rmax: rows - 3, cmin: 0, cmax: cols - 3 }
   let antidiagonal = direction { g: g, dr: 1, dc: -1, rmax: rows - 3, cmin: 3, cmax: cols }
+
   max(flatten([right, down, diagonal, antidiagonal]))!
 
 

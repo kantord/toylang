@@ -14,6 +14,7 @@
 program: |
   fn newton({ x, y }: { x: Float, y: Float }) -> Float =
     let next = (y + x / y) / 2.0
+
     next >= y | . -> y or newton { x: x, y: next }
 
 
@@ -87,6 +88,7 @@ program: |
   ) -> { u: Vec<Float>, v: Vec<Float> } =
     let v = times_ata u
     let w = times_ata v
+
     k | . == 1 -> { u: w, v: v } or power { u: w, k: . - 1 }
 
 
@@ -108,6 +110,7 @@ program: |
 
   fn norm(n: Int) -> Float =
     let r = power { u: ones n, k: 10 }
+
     sqrt(
       dot { u: r.u, v: r.v, i: 0, acc: 0.0 } /
         dot { u: r.v, v: r.v, i: 0, acc: 0.0 }

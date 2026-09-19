@@ -22,6 +22,7 @@ fn nth_perm(
 ) -> Vec<Int> =
   let block = factorial(length remaining - 1)
   let i = idx / block
+
   remaining
   | length remaining == 0 -> [] or
     [remaining[i]!] +

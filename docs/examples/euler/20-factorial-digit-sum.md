@@ -28,6 +28,7 @@ fn scale(
   }
 ) -> Vec<Int> =
   let total = digits[i]! * k + carry
+
   i == length digits - 1
   | . -> push_carry { carry: total / 10, acc: acc + [total % 10] } or
     scale {

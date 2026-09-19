@@ -5,6 +5,7 @@
 program: |
   fn classify(p: { x: Int, y: Int }) -> Str =
     let m = p.x * p.x + p.y * p.y
+
     m | m == 0 -> "origin" or m < 100 -> "near" or "far"
 
 

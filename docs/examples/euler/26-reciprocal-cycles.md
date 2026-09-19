@@ -31,6 +31,7 @@ fn walk({ m, r, count }: { m: Int, r: Int, count: Int }) -> Int =
 
 fn cycle_length(d: Int) -> Int =
   let m = reduced d
+
   m | . == 1 -> 0 or walk { m: m, r: 10 % m, count: 1 }
 
 

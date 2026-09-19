@@ -9,6 +9,7 @@ the final expression read the bound names.
 ```toylang
 fn classify(p: { x: Int, y: Int }) -> Str =
   let m = p.x * p.x + p.y * p.y
+
   m | m == 0 -> "origin" or m < 100 -> "near" or "far"
 
 
@@ -27,6 +28,7 @@ bindings stack, and a later binding may read an earlier one:
 fn f(p: { x: Int, y: Int }) -> Int =
   let a = p.x * 2
   let b = a + p.y
+
   a + b
 
 
@@ -44,6 +46,7 @@ that wins is the innermost binding in scope:
 fn f(x: Int) -> Int =
   let x = x + 1
   let x = x * 2
+
   x
 
 

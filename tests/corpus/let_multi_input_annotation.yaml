@@ -7,6 +7,7 @@ program: |
   fn f(p: { x: Int, y: Int }) -> Int =
     let a = p.x * 2
     let b = p.y * 3
+
     a + b
 
 

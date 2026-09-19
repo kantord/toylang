@@ -203,6 +203,9 @@ fn print_let_def(d: &Def, comments: &mut Comments) -> String {
         out.push_str(&with_trailing(line, comments.take_trailing()));
         out.push('\n');
     }
+    // The value the block evaluates to is set apart from the bindings that feed it (maintainer
+    // ruling, 2026-09-19), the same way a doc comment's blank line marks a boundary elsewhere.
+    out.push('\n');
     let leading = comments.take_before(body.span().end);
     out.push_str(&comment_lines(&leading, INDENT));
     out.push_str(&pad(INDENT));

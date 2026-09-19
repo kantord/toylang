@@ -16,6 +16,7 @@ program: |
 
   fn newton({ x, y }: { x: Float, y: Float }) -> Float =
     let next = (y + x / y) / 2.0
+
     next >= y | . -> y or newton { x: x, y: next }
 
 
@@ -107,6 +108,7 @@ program: |
     let dz = b.z - o.z
     let d2 = dx * dx + dy * dy + dz * dz
     let mag = 0.01 / (d2 * sqrt d2)
+
     {
       x: b.x,
       y: b.y,
@@ -146,6 +148,7 @@ program: |
     let dx = b.x - o.x
     let dy = b.y - o.y
     let dz = b.z - o.z
+
     acc - b.m * o.m / sqrt(dx * dx + dy * dy + dz * dz)
 
 

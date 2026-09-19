@@ -53,6 +53,7 @@ fn step(
   { p, acc }: { p: Vec<Int>, acc: { checksum: Int, max: Int } }
 ) -> { checksum: Int, max: Int } =
   let f = flips p
+
   {
     checksum: acc.checksum + (invs p == 0 | . -> f or 0 - f),
     max: f > acc.max | . -> f or acc.max
@@ -69,6 +70,7 @@ fn fold(
 
 fn fk(n: Int) -> Str =
   let r = fold { v: perms(collect(range n) | map(. + 1)), acc: { checksum: 0, max: 0 } }
+
   str r.checksum + "\nPfannkuchen(" + str n + ") = " + str r.max
 
 

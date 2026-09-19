@@ -30,6 +30,7 @@ fn add_limbs(
   }
 ) -> Vec<Int> =
   let total = limb { v: a, i: i } + limb { v: b, i: i } + carry
+
   i == length a
   | . -> (carry == 0 | . -> acc or acc + [carry]) or
     add_limbs {

@@ -37,6 +37,7 @@ fn longest(
   { lo, hi }: { lo: Int, hi: Int }
 ) -> { n: Int, len: Int } =
   let mid = (lo + hi) / 2
+
   hi - lo == 1
   | . -> { n: lo, len: chain_len { n: i64 lo, acc: 1 } } or
     better {

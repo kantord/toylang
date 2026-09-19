@@ -44,6 +44,7 @@ fn add_digits(
   }
 ) -> Vec<Int> =
   let total = column_total { nums: nums, k: k, carry: carry }
+
   k == 0
   | . -> emit_carry { carry: total / 10, acc: [total % 10] + acc } or
     add_digits {

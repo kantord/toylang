@@ -53,12 +53,14 @@ fn keys_for_base(
   { a, bs, table }: { a: Int, bs: Vec<Int>, table: Vec<Power> }
 ) -> Vec<Int> =
   let p = first(table | select(.value == a))!
+
   bs | map(p.root * 1000 + p.mult * .)
 
 
 fn all_keys(top: Int) -> Vec<Int> =
   let table = powers()
   let bases = collect range(top - 1) | map(. + 2)
+
   flatten(
     bases | map(keys_for_base { a: ., bs: bases, table: table })
   )

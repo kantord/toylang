@@ -154,6 +154,7 @@ fn a_commented_multi_function_program_formats_to_itself() {
                fn g(x: Int) -> Int =\n\
                \x20 # before the binding\n\
                \x20 let a = f x # trailing the binding\n\
+               \n\
                \x20 # before the value\n\
                \x20 a + 1 # trailing the value\n\
                \n\n\
@@ -581,6 +582,18 @@ fn a_long_record_call_argument_breaks_bare() {
         1,
         "only the signature should open with a wrapped paren, not the recursive call:\n{want}"
     );
+    assert_eq!(toylang::fmt(&want).unwrap(), want);
+    assert_eq!(toylang::run(src).unwrap(), toylang::run(&want).unwrap());
+}
+
+/// A `let` block's value is set apart from the bindings that feed it by a blank line
+/// (maintainer ruling, 2026-09-19), the same way two blank lines now separate top-level
+/// declarations: a visible boundary between the setup and the thing it computes.
+#[test]
+fn a_let_blocks_value_gets_a_blank_line_before_it() {
+    let src = "fn f(x: Int) -> Int =\n  let a = x * 2\n  let b = a + 1\n  a + b\n\n\nf 1\n";
+    let want = "fn f(x: Int) -> Int =\n  let a = x * 2\n  let b = a + 1\n\n  a + b\n\n\nf 1\n";
+    assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(&want).unwrap(), want);
     assert_eq!(toylang::run(src).unwrap(), toylang::run(&want).unwrap());
 }
