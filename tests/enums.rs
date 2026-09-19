@@ -137,7 +137,7 @@ fn a_match_that_misses_variants_names_them() {
 #[test]
 fn an_arm_for_a_variant_the_enum_does_not_have() {
     insta::assert_snapshot!(err(
-        "enum Shape { Point }\n\nShape.point | square -> 1 or any() -> 0"
+        "enum Shape { Point }\n\nShape.point | Square -> 1 or any() -> 0"
     ));
 }
 
@@ -193,7 +193,7 @@ fn the_subject_is_not_reachable_inside_a_unit_arm() {
 #[test]
 fn an_enum_parses_in_a_module() {
     let module = toylang::parse::parse_module(
-        "pub enum Status { active, inactive }\n\npub fn same(s: Status) -> Status = s\n",
+        "pub enum Status { Active, Inactive }\n\npub fn same(s: Status) -> Status = s\n",
     )
     .unwrap();
     assert_eq!(module.enums.len(), 1);

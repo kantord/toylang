@@ -1,7 +1,7 @@
 # Opt
 
 `Opt<T>`: a `T` that may be absent. The prelude declares it as an ordinary
-[enum](enum.md) -- `enum Opt<T> { some(T), none }` -- so absence is a tag the value carries
+[enum](enum.md) -- `enum Opt<T> { Some(T), None }` -- so absence is a tag the value carries
 in memory, the same as any other enum's variant, not a null pointer standing in for a
 missing `T`. Most `Opt`s come from an operation that cannot promise an entry -- a
 collapsing index, [`tail`](../builtins/tail.md), a projection through a ragged dimension --
@@ -111,14 +111,14 @@ it is lossy the same way every type-level distinction in the output already is
 ([kantord/toylang#62](https://github.com/kantord/toylang/issues/62)), and `Opt` pays it
 twice over when it nests.
 
-Rust's `Option<T>` is the same tagged enum, `enum Option<T> { Some(T), None }`, and the two
-languages agree deeper than the name: `serde_json`'s default `Serialize` for `Option<T>`
-prints `Some(x)` as `x` and `None` as `null`, so `Option<Option<i32>>` collapses the same
-way `Opt<Opt<Int>>` does here -- `Some(None)` and `None` both print `null`. The difference
-is where that rule lives. In toylang it is the language's own printer, with no other choice
-available. In Rust, `Option<T>` has no wire format of its own; `serde` is a library, its
-`null`-for-`None` behavior is one derive among others, and a type that wants a different
-shape on the wire picks a different one:
+Rust's `Option<T>` is the same tagged enum, `enum Option<T> { Some(T), None }`, variant
+names and all, and the two languages agree past the declaration: `serde_json`'s default
+`Serialize` for `Option<T>` prints `Some(x)` as `x` and `None` as `null`, so
+`Option<Option<i32>>` collapses the same way `Opt<Opt<Int>>` does here -- `Some(None)` and
+`None` both print `null`. The difference is where that rule lives. In toylang it is the
+language's own printer, with no other choice available. In Rust, `Option<T>` has no wire
+format of its own; `serde` is a library, its `null`-for-`None` behavior is one derive among
+others, and a type that wants a different shape on the wire picks a different one:
 
 ```rust
 #[derive(serde::Serialize)]

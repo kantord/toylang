@@ -2,23 +2,23 @@
 source: tests/corpus.rs
 expression: emitted
 ---
-// An Opt is its enum's own runtime shape (ADR 0009): `{some: v}` present, "none" absent.
+// An Opt is its enum's own runtime shape (ADR 0009): `{Some: v}` present, "None" absent.
 // Tagged, so two levels of absence stay two values; only the printer flattens to null.
 function tl_at(v, i, depth) {
   if (depth > 0) return v.map((e) => tl_at(e, i, depth - 1));
   const n = v.length;
   if (i < 0) i = n + i;
-  if (i < 0 || i >= n) return "none";
-  return { some: v[i] };
+  if (i < 0 || i >= n) return "None";
+  return { Some: v[i] };
 }
 function tl_tail(v) {
-  if (v.length === 0) return "none";
-  return { some: v.slice(1) };
+  if (v.length === 0) return "None";
+  return { Some: v.slice(1) };
 }
 function tl_unwrap(v, depth) {
   if (depth > 0) return v.map((e) => tl_unwrap(e, depth - 1));
-  if (v === "none") { throw new Error("toylang: unwrapped a value that is not there"); }
-  return v.some;
+  if (v === "None") { throw new Error("toylang: unwrapped a value that is not there"); }
+  return v.Some;
 }
 function v_join_lines(v_v) {
   return ((t_1) => (() => { if ((v_v.length === 0)) { return ""; } if ((v_v.length === 1)) { return tl_unwrap(tl_at(v_v, 0, 0), 0); } return ((tl_unwrap(tl_at(v_v, 0, 0), 0) + "\n") + v_join_lines(tl_unwrap(tl_tail(v_v), 0))); })())(v_v);

@@ -125,7 +125,7 @@ fn a_reparameterized_self_reference_is_refused() {
 /// prelude's `Opt<T>` will use (plans/opt-as-enum.md step 2).
 #[test]
 fn a_generic_enum_parses_in_a_module() {
-    let module = toylang::parse::parse_module("pub enum Opt2<T> { some(T), none }\n").unwrap();
+    let module = toylang::parse::parse_module("pub enum Opt2<T> { Some(T), None }\n").unwrap();
     assert_eq!(module.enums.len(), 1);
     assert_eq!(module.enums[0].params.len(), 1);
     assert_eq!(module.enums[0].params[0].0, "T");

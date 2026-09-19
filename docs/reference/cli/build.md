@@ -55,7 +55,7 @@ fn half(x: Float) -> Float = x / 2.0
 ```
 
 ```output
-{"a":9,"g":"hello bob","t":3,"b":5,"r":6,"i":7,"o":{"ok":1},"h":1.5}
+{"a":9,"g":"hello bob","t":3,"b":5,"r":6,"i":7,"o":{"Ok":1},"h":1.5}
 ```
 
 ```
@@ -63,11 +63,11 @@ $ toylang build shapes.toy js
 shapes.js
 shapes.d.ts
 $ node shapes.js
-{"a":9,"g":"hello bob","t":3,"b":5,"r":6,"i":7,"o":{"ok":1},"h":1.5}
+{"a":9,"g":"hello bob","t":3,"b":5,"r":6,"i":7,"o":{"Ok":1},"h":1.5}
 $ cat shapes.d.ts
 export type Shape = "Point" | { Circle: { r: number } };
-export type Opt_Int = { some: number } | "none";
-export type Result_Int_Str = { ok: number } | { err: string };
+export type Opt_Int = { Some: number } | "None";
+export type Result_Int_Str = { Ok: number } | { Err: string };
 export function v_area_ish(x: Shape): number;
 export function v_greet(x: string): string;
 export function v_total(x: Array<number>): number;

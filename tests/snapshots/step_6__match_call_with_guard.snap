@@ -52,14 +52,15 @@ File {
                 },
             },
             MatchArm {
-                pattern: Variant {
-                    name: "count",
-                    span: Span {
-                        start: 26,
-                        end: 31,
+                pattern: Guard(
+                    Var {
+                        name: "count",
+                        span: Span {
+                            start: 26,
+                            end: 31,
+                        },
                     },
-                    fields: None,
-                },
+                ),
                 body: Str {
                     text: "small",
                     span: Span {

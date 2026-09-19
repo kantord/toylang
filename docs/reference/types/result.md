@@ -1,7 +1,7 @@
 # Result
 
 `Result<T, E>`: a `T` on success or an `E` on failure. The prelude declares it as an
-ordinary [enum](enum.md) with two type parameters -- `enum Result<T, E> { ok(T), err(E) }`
+ordinary [enum](enum.md) with two type parameters -- `enum Result<T, E> { Ok(T), Err(E) }`
 -- so it carries no machinery beyond what any generic enum gets. Unlike [`Opt`](opt.md),
 `Result` is not special-cased: both variants are payload variants, and serialization keeps
 the single-key wrapper rather than collapsing one side to `null`.
@@ -14,11 +14,11 @@ fn safe_div(pair: {a: Int, b: Int}) -> Result<Int, Str> =
 ```
 
 ```output
-{"good":{"ok":5},"bad":{"err":"division by zero"}}
+{"good":{"Ok":5},"bad":{"Err":"division by zero"}}
 ```
 
-Consumption is the same [match](../operators/match.md) any enum uses, closed over `ok` and
-`err`:
+Consumption is the same [match](../operators/match.md) any enum uses, closed over `Ok` and
+`Err`:
 
 ```case
 result_match_both_arms

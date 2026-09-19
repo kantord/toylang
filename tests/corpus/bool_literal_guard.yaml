@@ -1,0 +1,17 @@
+# A lowercase head before `->` is a guard expression, decided by casing before any name
+# resolves (src/parse.rs `arm_starts_here`). `true`, `false` and `Bool.true` are Bool's
+# constructors, so each reads as the guard of `x | <bool> -> .. or ..`, not as a variant
+# pattern; `true -> ..` used to be refused as a bad pattern, and only `(true) -> ..` ran.
+program: |
+  fn always(x: Int) -> Str = x | true -> "yes" or "no"
+
+  fn never(x: Int) -> Str = x | false -> "yes" or "no"
+
+  fn qualified(x: Int) -> Str = x | Bool.true -> "yes" or "no"
+
+  [always(1), never(1), qualified(1)]
+
+output: |
+  ["yes","no","yes"]
+
+node_types: [application, bool, int, local, match, pipe, str, var, vec-literal]

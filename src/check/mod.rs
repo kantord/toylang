@@ -2278,7 +2278,7 @@ fn variant_arm<'a>(
     vspan: Span,
     fields: Option<&FieldsPattern>,
 ) -> Result<(Option<LocalId>, Ctx<'a>), Error> {
-    // Deliberately parameterized, not built: how `some`/`none` arms compose -- their
+    // Deliberately parameterized, not built: how `Some`/`None` arms compose -- their
     // totality, and whether they flow through first-class matchers -- is what the pending
     // matcher-totality round decides (plans/opt-as-enum.md, "Open points, owned elsewhere").
     // Until it runs, `!` and the producers' own combinators are Opt's consumption surface.
@@ -2402,6 +2402,25 @@ fn match_chain(
             // The guard is a Bool over the unrebound subject, so it is checked in the
             // enclosing context, and the body keeps `.` as the subject too.
             Pattern::Guard(g) => {
+                // A lowercase head is a guard by casing alone (parse.rs `arm_starts_here`), so
+                // a unit constructor written where its matcher was meant arrives here as a bare
+                // name; `expect` would only say "found Shape", and the pattern path's hint for
+                // `circle{r}` is the one that helps. Not over a Bool subject: there `true` is
+                // a Bool, so it is the guard it reads as.
+                if let Expr::Var { name, span } = g
+                    && !matches!(subject_ty, Type::Bool)
+                    && let Some((_, variants)) = matchable_variants(ctx, &subject_ty)
+                    && variants.iter().any(|(v, _)| is_constructor_of(v, name))
+                {
+                    return Err(Error::new(
+                        *span,
+                        format!(
+                            "`{name}` is the constructor, not a matcher; a pattern names the \
+                             matcher, so write `{}`",
+                            matcher_of(name)
+                        ),
+                    ));
+                }
                 let cond = expect(ctx, g, &Type::Bool)?;
                 (None, Some(cond), None, ctx.with(ctx.subject.clone()), None)
             }

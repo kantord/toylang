@@ -176,7 +176,7 @@ const TLSEL_HELPER: &str = r#"class TlSel:
         return other + self._densify()
 "#;
 
-/// An Opt is its enum's own runtime shape (ADR 0009): `{"some": v}` present, `"none"` absent.
+/// An Opt is its enum's own runtime shape (ADR 0009): `{"Some": v}` present, `"None"` absent.
 /// Tagged, so two levels of absence stay two values; only the printer flattens to null.
 const AT_HELPER: &str = r#"def tl_at(v, i, depth):
     if depth > 0:
@@ -187,14 +187,14 @@ const AT_HELPER: &str = r#"def tl_at(v, i, depth):
         if i < 0:
             i = n + i
         if i < 0 or i >= n:
-            return "none"
-        return {"some": v.src[v.idx[i]]}
+            return "None"
+        return {"Some": v.src[v.idx[i]]}
     n = len(v)
     if i < 0:
         i = n + i
     if i < 0 or i >= n:
-        return "none"
-    return {"some": v[i]}
+        return "None"
+    return {"Some": v[i]}
 "#;
 
 /// Python's own slicing already clamps out-of-range bounds and counts negatives from the end,
@@ -208,21 +208,21 @@ const SLICE_HELPER: &str = r#"def tl_slice(v, lo, hi, depth):
 const UNWRAP_HELPER: &str = r#"def tl_unwrap(v, depth):
     if depth > 0:
         return [tl_unwrap(e, depth - 1) for e in v]
-    if v == "none":
+    if v == "None":
         tl_fail("unwrapped a value that is not there")
-    return v["some"]
+    return v["Some"]
 "#;
 
 const TAIL_HELPER: &str = r#"def tl_tail(v):
     if len(v) == 0:
-        return "none"
-    return {"some": v[1:]}
+        return "None"
+    return {"Some": v[1:]}
 "#;
 
 const FIRST_HELPER: &str = r#"def tl_first(v):
     if len(v) == 0:
-        return "none"
-    return {"some": v[0]}
+        return "None"
+    return {"Some": v[0]}
 "#;
 
 const ANY_HELPER: &str = r#"def tl_any(v):
@@ -287,8 +287,8 @@ def tl_sum64(v):
 
 const MAX_HELPER: &str = r#"def tl_max(v):
     if len(v) == 0:
-        return "none"
-    return {"some": max(v)}
+        return "None"
+    return {"Some": max(v)}
 "#;
 
 /// Iterating characters rather than bytes, which agrees with the C runtime's byte loop because
@@ -519,8 +519,8 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
             let inner = ty.as_opt().expect("guarded");
             let v = format!("o{depth}");
             format!(
-                "(lambda {v}: \"null\" if {v} == \"none\" else {})({value})",
-                show(enums, inner, &format!("{v}[\"some\"]"), depth + 1)
+                "(lambda {v}: \"null\" if {v} == \"None\" else {})({value})",
+                show(enums, inner, &format!("{v}[\"Some\"]"), depth + 1)
             )
         }
         // A recursive enum prints through a function of its own (`printers`), because expanding
@@ -709,7 +709,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 tir::vec_depth(&base.ty)
             )
         }
-        // Opt's reorder pass (kantord/toylang#66): the same `== "none"`/`["some"]` shape the
+        // Opt's reorder pass (kantord/toylang#66): the same `== "None"`/`["Some"]` shape the
         // printer and Match already read, generalised to rebuild the dict instead.
         Kind::OptMap {
             source,
@@ -717,7 +717,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             body,
         } => {
             format!(
-                "(lambda __opt: \"none\" if __opt == \"none\" else {{\"some\": (lambda {}: {})(__opt[\"some\"])}})({})",
+                "(lambda __opt: \"None\" if __opt == \"None\" else {{\"Some\": (lambda {}: {})(__opt[\"Some\"])}})({})",
                 local(*param),
                 expr(enums, body),
                 expr(enums, source)
@@ -803,7 +803,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 };
                 // A partial chain's yield is an Opt, so a present arm is tagged.
                 let run = if *partial {
-                    format!("{{\"some\": {run}}}")
+                    format!("{{\"Some\": {run}}}")
                 } else {
                     run
                 };
@@ -816,7 +816,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 }
             }
             if *partial {
-                out.push_str("\"none\"");
+                out.push_str("\"None\"");
             }
             out.push_str(&")".repeat(closing));
             format!("({out})")

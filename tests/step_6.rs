@@ -8,7 +8,7 @@ fn parse(src: &str) -> toylang::ast::File {
 #[test]
 fn hoisted_call_form_declaration() {
     insta::assert_debug_snapshot!(parse(
-        "enum Shape { point, circle{r: Int} }\nfn area = Shape(circle{r} -> r * r or point -> 0)\narea(Shape.point)"
+        "enum Shape { Point, Circle{r: Int} }\nfn area = Shape(Circle{r} -> r * r or Point -> 0)\narea(Shape.point)"
     ));
 }
 
@@ -24,7 +24,7 @@ fn match_call_as_expression() {
 #[test]
 fn match_call_with_payload_and_default() {
     insta::assert_debug_snapshot!(parse(
-        r#"Shape(circle{r} -> r * r or point -> 0 or any() -> 99)"#
+        r#"Shape(Circle{r} -> r * r or Point -> 0 or any() -> 99)"#
     ));
 }
 
@@ -38,7 +38,7 @@ fn match_call_with_guard() {
 #[test]
 fn annotated_declaration_still_parses() {
     insta::assert_debug_snapshot!(parse(
-        "enum Shape { point, circle{r: Int} }\nfn area(s: Shape) -> Int = s | circle{r} -> r * r or point -> 0\narea(Shape.point)"
+        "enum Shape { Point, Circle{r: Int} }\nfn area(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0\narea(Shape.point)"
     ));
 }
 

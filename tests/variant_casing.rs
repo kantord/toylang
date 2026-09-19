@@ -41,3 +41,26 @@ fn capitalized_declaration_with_lowercase_constructor_runs() {
                s | Circle{r} -> r * r or Point -> 0\n\n{a: area(Shape.point), b: area(circle{r: 3})}";
     assert_eq!(toylang::run(src).unwrap(), "{\"a\":0,\"b\":9}\n");
 }
+/// Casing decides an arm head before any name resolves (`parse.rs`'s `arm_starts_here`): a
+/// capitalized head is a pattern even when nothing declares it, so it fails as a pattern --
+/// no enum subject, or no such variant -- rather than being retried as an expression.
+#[test]
+fn a_capitalized_head_over_a_non_enum_subject_is_a_pattern_error() {
+    insta::assert_snapshot!(err("fn f(x: Int) -> Int = x | Yes -> 1 or 2\n\nf(1)"));
+}
+
+#[test]
+fn a_capitalized_head_naming_no_variant_is_a_pattern_error() {
+    insta::assert_snapshot!(err("enum Shape { Point, Circle{r: Int} }\n\n\
+         fn f(s: Shape) -> Int = s | Square -> 1 or 2\n\n\
+         f(Shape.point)"));
+}
+
+/// A lowercase head is a guard, so a bare unit constructor written where its matcher was meant
+/// reaches the checker as an expression; the hint is the same one `circle{r}` gets.
+#[test]
+fn a_lowercase_unit_constructor_head_gets_the_matcher_hint() {
+    insta::assert_snapshot!(err("enum Shape { Point, Circle{r: Int} }\n\n\
+         fn f(s: Shape) -> Int = s | point -> 0 or Circle{r} -> r\n\n\
+         f(Shape.point)"));
+}

@@ -1,6 +1,6 @@
 ---
 source: tests/step_6.rs
-expression: "parse(r#\"Shape(circle{r} -> r * r or point -> 0 or any() -> 99)\"#)"
+expression: "parse(r#\"Shape(Circle{r} -> r * r or Point -> 0 or any() -> 99)\"#)"
 ---
 File {
     aliases: [],
@@ -17,7 +17,7 @@ File {
         arms: [
             MatchArm {
                 pattern: Variant {
-                    name: "circle",
+                    name: "Circle",
                     span: Span {
                         start: 6,
                         end: 15,
@@ -69,7 +69,7 @@ File {
             },
             MatchArm {
                 pattern: Variant {
-                    name: "point",
+                    name: "Point",
                     span: Span {
                         start: 28,
                         end: 33,

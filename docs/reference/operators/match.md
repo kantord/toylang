@@ -6,7 +6,10 @@ arm separator `//` is retired
 ([kantord/toylang#96](https://github.com/kantord/toylang/issues/96)).
 An arm's left
 side is a variant pattern of an [enum](../types/enum.md) subject, or a Bool guard over any
-subject.
+subject. Which of the two a head is follows from its first letter, before any name resolves:
+a variant name is capitalized, so `Circle -> ..` and `True -> ..` are patterns, while a
+lowercase head is an expression, so `true -> ..`, a Bool parameter `b -> ..` and
+`. % 3 == 0 -> ..` are guards, none of them needing parens.
 
 ```case
 enum_match

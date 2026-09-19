@@ -1,8 +1,8 @@
 pub enum Bool { True, False }
 
-pub enum Opt<T> { some(T), none }
+pub enum Opt<T> { Some(T), None }
 
-pub enum Result<T, E> { ok(T), err(E) }
+pub enum Result<T, E> { Ok(T), Err(E) }
 
 pub enum PipeLine { Stdout{text: Str}, Stderr{text: Str} }
 
