@@ -307,6 +307,63 @@ const TRANSPOSE_HELPER: &str = r#"func tlTranspose[T any](vv [][]T) [][]T {
 	return out
 }
 "#;
+/// Feeds stdin's lines into a subprocess's stdin and relays its stdout/stderr lines back, each
+/// tagged by origin. stdout streams out as it arrives; stderr lines are drained concurrently (so
+/// neither pipe can fill up and stall the child) and emitted after stdout closes, so the two
+/// streams' relative order is deterministic. The child's exit status is ignored: a filter like
+/// `grep` exits nonzero on "no matches", which is a normal outcome for the shape this builtin
+/// exists to express. The two closures build the tagged output value, which is what lets the
+/// helper stay generic over the `PipeLine` enum each program emits as its own type.
+const PIPE_HELPER: &str = r#"func tlPipeThrough[T any](cmd string, args []string, stdinLines []string, toStdout func(string) T, toStderr func(string) T) []T {
+	child := exec.Command(cmd, args...)
+	stdin, _ := child.StdinPipe()
+	stdout, _ := child.StdoutPipe()
+	stderr, _ := child.StderrPipe()
+	if err := child.Start(); err != nil {
+		tlFail("cannot spawn subprocess: " + err.Error())
+	}
+
+	// Feed stdin on its own goroutine so a child that never reads (or closes its stdin early)
+	// cannot stall the relay: the main loop keeps draining stdout while this blocks.
+	feedDone := make(chan struct{})
+	go func() {
+		defer close(feedDone)
+		defer stdin.Close()
+		for _, line := range stdinLines {
+			if _, err := stdin.Write([]byte(line + "\n")); err != nil {
+				break
+			}
+		}
+	}()
+
+	// Drain stderr concurrently so neither pipe can fill up and stall the child.
+	stderrDone := make(chan struct{})
+	var stderrLines []string
+	go func() {
+		defer close(stderrDone)
+		sc := bufio.NewScanner(stderr)
+		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for sc.Scan() {
+			stderrLines = append(stderrLines, strings.TrimSuffix(sc.Text(), "\r"))
+		}
+	}()
+
+	var out []T
+	sc := bufio.NewScanner(stdout)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		out = append(out, toStdout(strings.TrimSuffix(sc.Text(), "\r")))
+	}
+	<-feedDone
+	child.Wait()
+	<-stderrDone
+	for _, line := range stderrLines {
+		out = append(out, toStderr(line))
+	}
+	return out
+}
+"#;
+
 
 /// Go's `int32` wraps on overflow by definition, and its `/` and `%` truncate toward zero, so
 /// only the zero divisor needs a guard. `MIN / -1` is defined to be `MIN` here, which is the
@@ -729,7 +786,8 @@ pub fn emit(program: &Program) -> String {
         || program.input.is_some()
         || program.inputs.is_some()
         || uses("tlFail(")
-        || uses("tlTranspose(");
+        || uses("tlTranspose(")
+        || uses("tlPipeThrough(");
     let quote = uses("tlQuote(");
     let join = uses("tlJoin(");
 
@@ -762,6 +820,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tlMax("), MAX_HELPER),
         (uses("tlMaxBy("), MAX_BY_HELPER),
         (uses("tlTranspose("), TRANSPOSE_HELPER),
+        (uses("tlPipeThrough("), PIPE_HELPER),
         (unwrap, UNWRAP_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
@@ -800,6 +859,7 @@ pub fn emit(program: &Program) -> String {
         ),
         (uses("tlShowFloat(") || uses("tlFloat("), &["math"]),
         (uses("tlDsv(") || collect, &["unicode/utf8"]),
+        (uses("tlPipeThrough("), &["os/exec", "bufio", "strings"]),
         (uses("tlSort(") || uses("tlSortBy("), &["cmp", "slices"]),
         (uses("tlMax(") || uses("tlMaxBy("), &["cmp"]),
         (uses("tlEq("), &["reflect"]),
@@ -1384,6 +1444,41 @@ impl Emitter<'_> {
                 }
                 Builtin::Max => format!("tlMax({})", self.expr(arg)),
                 Builtin::Transpose => format!("tlTranspose({})", self.expr(arg)),
+                Builtin::PipeThrough => {
+                    let Kind::RecordLit { fields, .. } = &arg.kind else {
+                        unreachable!("pipe_through's argument is checked to be the record literal")
+                    };
+                    let field = |name: &str| {
+                        fields
+                            .iter()
+                            .find(|(n, _)| n == name)
+                            .map(|(_, v)| v)
+                            .expect("pipe_through's record is checked to carry all three fields")
+                    };
+                    let enum_ty = tir::runtime_elem(&t.ty)
+                        .expect("pipe_through returns a stream");
+                    let variants = ty::variants(self.registry, enum_ty);
+                    variants
+                        .iter()
+                        .find(|(n, _)| n == "Stdout")
+                        .and_then(|(_, p)| p.as_ref())
+                        .expect("the prelude's PipeLine carries a `Stdout{text: Str}` payload");
+                    let ename = self.go_type(enum_ty);
+                    let tag = move |tag: &str| {
+                        let i = Self::variant_index(&ty::variants(self.registry, enum_ty), tag);
+                        format!(
+                            "func(l string) {ename} {{ return {ename}{{tag: {i}, p{i}: tlPtr(l)}} }}"
+                        )
+                    };
+                    format!(
+                        "tlPipeThrough({}, {}, {}, {}, {})",
+                        self.expr(&field("cmd")),
+                        self.expr(&field("args")),
+                        self.expr(&field("lines")),
+                        tag("Stdout"),
+                        tag("Stderr")
+                    )
+                }
                 // The names come from the checked type, not the struct value, so `arg` runs in
                 // an ignored parameter -- the same IIFE shape `Bind` uses -- purely for whatever
                 // else it does.
