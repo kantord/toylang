@@ -205,8 +205,13 @@ provenance ("self-originated, idle board" on the row/issue):
      non-GREEN run is `uv run --project .claude/scripts .claude/scripts/dispatch_state.py
      --show ROW-ID` (status, per-attempt endings, self-report, log tail); run it before
      deciding, never grep `~/.cache` by hand. Then one of THREE verbs: (a) a narrower
-     redispatch per the agent's own suggestion; (b) a decide-row escalation if the report
-     says this is a scope problem; (c) HARNESS DEFECT when `ended_by` is a harness ending
+     redispatch per the agent's own suggestion -- choosing it while a decide row created
+     to gate that same row's scope is still open must, in the SAME commit as the
+     redispatch, either retire the gating decide row (`status: done`, with a note that
+     the redispatch made it moot) or drop the `needs`/gating edge to it, so a redispatch
+     can never leave a stale open decide row gating a row that has moved on under its own
+     steam; (b) a decide-row escalation if the report says this is a scope problem; (c)
+     HARNESS DEFECT when `ended_by` is a harness ending
      with zero edits, or the `dispatch health` line in the state snapshot says ALARM. For
      (c): hold dispatch, `dispatch_state.py --capture ROW-ID` (writes
      `plans/incidents/<row>-<date>/`, commit it), and open or update ONE harness `decide`
