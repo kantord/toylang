@@ -561,12 +561,6 @@
   needs: []
   status: todo
 
-- id: fmt-comments-in-ast
-  title: '`toylang fmt` re-renders a file from its AST alone (maintainer ruling, 2026-09-19: one rendering per AST, the templates own the width, nothing else about the source survives), and comments are the one input the AST does not carry: `parse::skip_trivia` drops every `#` line, so `format_source` copies a leading banner back off the raw text and every other comment vanishes -- between declarations, trailing a line, inside a `let` block, and the blank line after the banner goes with it (verified 2026-09-19; benchmark-second-wave had to move all explanation into each program''s header to survive `fmt --write`). Put comments into the AST -- trivia attached by position to declarations, `let` bindings, and the file -- delete the raw-text banner path, and pin a commented multi-function program (banner, between-declaration, trailing) formatting to itself. Record the one-rendering-per-AST rule in src/emit_toylang.rs''s module doc while there. Supersedes fmt-preserve-interior-comments.'
-  kind: build
-  needs: []
-  status: todo
-
 - id: js-build-exports-match-dts-decide
   title: '`toylang build FILE js` writes a `.d.ts` declaring `export function v_*` next to a `.js` that exports nothing: it is a script that runs the program on load (verified under node 24: `import * as m` runs the program and exposes only `default`; `require` gives `{}`), so `tsc` only accepts a consumer because `moduleResolution: bundler` resolves to the `.d.ts`. Decide what the JS artifact is -- a runnable script, an ES module exporting the functions, or both under different flags -- before the `.d.ts` is made truthful. Found by the CLI docs pass (docs/reference/cli/build.md records the gap). Mark done when ruled.'
   kind: decide
@@ -624,17 +618,30 @@
   kind: build
   needs: []
   status: todo
+  outcome: 'Landed e920d44 (2026-09-19). `Cursor::advance` records each comment it passes into
+    `File::comments` / `Module::comments` with `own_line` and `blank_after` flags; the formatter
+    hands them out in source order across declarations, let bindings, the let value, and the
+    program body. Placement rules and the one kept piece of author spacing (the blank line after
+    a comment) are in src/emit_toylang.rs''s module doc. The raw-text banner path is gone. Three
+    style calls were the agent''s and are listed for the maintainer in the 2026-09-19 session
+    report: one space before a trailing `#`, an in-expression comment rising above its
+    definition, and keeping only the blank line after a comment.'
 
-- id: fmt-file-template-seams
-  title: '`toylang fmt`''s file template tries a node''s one-line form and breaks at the node''s own seam when it does not fit, but four positions have no seam and fall through to the overlong one-line form: a `fn` signature (record parameter types never break; Euler 11 has one at 128 columns), a match-arm body (`print_match_arm` only ever calls the compact printer, so arms break between each other but never inside; ~10 of the overlong docs lines), a `let` binding''s value (only the body after the lets wraps -- the 2026-09-19 Euler review misread this as the body not wrapping; Euler 11''s `let diagonal = ...` is 92 columns), and a postfix chain over a breakable base (`[...][n]!`, Euler 17 at 123 columns). 23 lines over 80 columns in the docs fences today, none of which the author could fix without leaving canonical form. Give each a break in `print_expr_wrapped` (and a wrapped `print_type` for signatures) and pin one case each. Supersedes fmt-wrap-body-after-let.'
-  kind: build
+- id: fmt-newline-separator-grammar-decide
+  title: 'The grammar uses a line break as the only separator in two places: between a `let`
+    binding''s value and the block''s value (`parse.rs::def_body` requires the whole `let name =
+    expr` on one line), and between the last definition''s body and the program body (the
+    same-line rule in `takes_argument`). With bare application, `let a = x` then `a` on one line
+    is the call `x(a)`, and `fn g(x: Int) -> Int = x` then `g(1)` is `x(g(1))`. Two formatter
+    consequences (2026-09-19 session): a `let` value can never be broken, so Euler 11 keeps
+    four lines at 83-92 columns; and `fmt_one_line` must refuse 19 of 261 corpus programs. `;`
+    is lexed (`Tok::Semicolon`) and accepted nowhere. Decide: (a) accept `;` as an optional
+    terminator after a `let` value and after a definition body, which the file template never
+    writes and the one-line template always writes; (b) let a `let` value continue onto more
+    indented lines, which fixes the file template only; (c) keep the rule and accept both
+    limits. Verified probes are in the session report. Mark done when ruled.'
+  kind: decide
   needs: []
-  status: todo
-
-- id: fmt-one-line-template
-  title: 'Maintainer ruling (2026-09-19): the formatter has exactly two templates for one AST -- the file template, which owns the 80-column width internally, and a one-line template that renders the whole program on one line with no width at all. The one-line template already exists for expressions as `print_expr_compact` (every file-template printer tries it first), but has no top: `print_def` forces a `let` block multi-line, `emit` joins declarations with blank lines, and `wrap_brace` puts trait/impl methods one per line, although the grammar accepts all three on one line (verified: a file with two `fn`s, a `let` block, and the body on one line parses and runs). Give those a one-line form and expose `toylang::fmt_one_line(src)`; pin that its output has no newline, is idempotent, and runs the same as the file form over the corpus. Comments are the one rule that differs by template: `#` runs to end of line, so the one-line template drops them (say so in the module doc). The library function is the deliverable; where it is consumed is fmt-one-line-consumer-decide.'
-  kind: build
-  needs: [fmt-comments-in-ast]
   status: todo
 
 - id: fmt-one-line-consumer-decide
