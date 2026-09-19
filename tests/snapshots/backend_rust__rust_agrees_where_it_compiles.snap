@@ -1,8 +1,9 @@
 ---
 source: tests/backend_rust.rs
+assertion_line: 47
 expression: "format!(\"compiles (rust) ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles (rust) (269):
+compiles (rust) (270):
 adults
 all_basic
 all_empty
@@ -113,6 +114,7 @@ generic_enum_unit_expectation
 generic_impl_two_instantiations
 greet
 hello
+impl_method_with_let_body
 index_negative
 index_negative_out_of_range
 index_out_of_range

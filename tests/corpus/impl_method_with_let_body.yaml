@@ -1,0 +1,24 @@
+# An impl method's body may be a `let` block, the same as a top-level function's --
+# `parse.rs::impl_decl` calls the same `def_body()` a top-level `fn` does. Found 2026-09-19
+# because the formatter's `let`-block path was only ever built for a top-level definition, so a
+# real, checker-accepted impl method with one crashed `toylang fmt`.
+program: |
+  trait M {
+    fn m(x: Int) -> Int
+  }
+
+
+  impl M for Int {
+    fn m(x: Int) -> Int =
+      let a = x * 2
+
+      a + 1
+  }
+
+
+  1:m(3)
+
+output: |
+  7
+
+node_types: [application, arith.add, arith.mul, int, local, pipe, var]

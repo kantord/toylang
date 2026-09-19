@@ -1,8 +1,9 @@
 ---
 source: tests/backend_llvm.rs
+assertion_line: 46
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (269):
+compiles natively (270):
 adults
 all_basic
 all_empty
@@ -113,6 +114,7 @@ generic_enum_unit_expectation
 generic_impl_two_instantiations
 greet
 hello
+impl_method_with_let_body
 index_negative
 index_negative_out_of_range
 index_out_of_range

@@ -3161,3 +3161,23 @@
   kind: build
   needs: []
   status: done
+
+- id: fmt-panics-on-impl-method-let-body
+  title: 'An `impl` method with a `let` block body checks and runs fine (verified: `impl M for
+    Int { fn m(x: Int) -> Int = let a = x * 2 a + 1 }` called as `1:m(3)` returns 7) but
+    `toylang fmt` panics on it: "internal error: entered unreachable code: a `let` block is
+    only ever a function body", from `src/fmt/one_line.rs`. `parse.rs::impl_decl` calls the
+    same `def_body()` a top-level `fn` does, so the grammar always allowed this; the formatter
+    only ever built the `let`-block path for `Item::Def` (`print_let_def` in
+    src/fmt/multi_line.rs), never for `ImplMethod`. Found 2026-09-19 alongside the
+    let-block-blank-line change, unrelated to it. Give `print_impl_method` the same treatment
+    `print_let_def` gets, and pin the repro as a formatter test and (since it is a real,
+    checker-accepted program) a corpus case.'
+  kind: build
+  needs: []
+  status: done
+  outcome: 'Landed 2026-09-20: `print_impl_method` branches on `Expr::Let` to
+    `print_impl_let_method`, mirroring `print_let_def`''s shape one level deeper (the method
+    already sits inside the impl''s own braces). Impl methods carry no comments today, so
+    unlike `print_let_def` there was nothing to thread through. Pinned as a formatter test and
+    as the corpus case impl_method_with_let_body (a real, checker-accepted program).'

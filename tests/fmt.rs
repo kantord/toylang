@@ -597,3 +597,18 @@ fn a_let_blocks_value_gets_a_blank_line_before_it() {
     assert_eq!(toylang::fmt(&want).unwrap(), want);
     assert_eq!(toylang::run(src).unwrap(), toylang::run(&want).unwrap());
 }
+
+/// An impl method's body may be a `let` block, the same as a top-level function's --
+/// `parse.rs::impl_decl` calls the same `def_body()` a top-level `fn` does. The formatter's
+/// `let`-block path was only ever built for a top-level definition (`print_let_def`), so a
+/// real, checker-accepted impl method with one crashed `fmt` with "a `let` block is only ever
+/// a function body" until `print_impl_let_method` gave it the same treatment, one level deeper
+/// since the method already sits inside the impl's own braces.
+#[test]
+fn an_impl_methods_let_body_formats_without_panicking() {
+    let src = "trait M {\n  fn m(x: Int) -> Int\n}\n\n\nimpl M for Int {\n  fn m(x: Int) -> Int =\n    let a = x * 2\n    a + 1\n}\n\n\n1:m(3)\n";
+    let want = "trait M {\n  fn m(x: Int) -> Int\n}\n\n\nimpl M for Int {\n  fn m(x: Int) -> Int =\n    let a = x * 2\n\n    a + 1\n}\n\n\n1:m(3)\n";
+    assert_eq!(toylang::fmt(src).unwrap(), want);
+    assert_eq!(toylang::fmt(&want).unwrap(), want);
+    assert_eq!(toylang::run(src).unwrap(), toylang::run(&want).unwrap());
+}

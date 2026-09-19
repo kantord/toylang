@@ -277,7 +277,39 @@ fn print_impl(i: &ImplDecl) -> String {
 /// from and where a broken body indents from.
 fn print_impl_method(m: &ImplMethod) -> String {
     let sig = print_sig("", &m.name, &m.param, &print_type(&m.ret), INDENT);
-    print_signed(sig, &m.body, INDENT)
+    match &m.body {
+        Expr::Let { bindings, body, .. } => print_impl_let_method(sig, bindings, body, INDENT),
+        _ => print_signed(sig, &m.body, INDENT),
+    }
+}
+
+/// The `let`-block form of an impl method's body, one level deeper than `print_let_def`'s
+/// top-level case since the method already sits inside the impl's own braces: one `let` line
+/// per binding, a blank line, then the value. `parse.rs::impl_decl` calls the same `def_body()`
+/// a top-level `fn` does, so this shape was always legal; the formatter's `let`-block path was
+/// only ever built for `Item::Def`, so a checker-accepted impl method with one crashed `fmt`
+/// (found 2026-09-19). Impl methods carry no comments today -- `print_impl` passes none
+/// through -- so, unlike `print_let_def`, there is nothing here to place.
+fn print_impl_let_method(
+    sig: String,
+    bindings: &[(String, Expr)],
+    body: &Expr,
+    indent: usize,
+) -> String {
+    let inner = indent + INDENT;
+    let mut out = format!("{sig} =\n");
+    for (n, v) in bindings {
+        out.push_str(&pad(inner));
+        out.push_str(&format!(
+            "let {n} = {}",
+            print_expr_compact(v, Ctx::Expr(0))
+        ));
+        out.push('\n');
+    }
+    out.push('\n');
+    out.push_str(&pad(inner));
+    out.push_str(&print_expr_wrapped(body, Ctx::Expr(0), inner));
+    out
 }
 
 /// A brace block whose items need no separator between them (trait and impl methods each
