@@ -1,29 +1,67 @@
-Board row `docs-gaps-let-tailpipe-destructure-tailcall`. Docs plus ONE corpus yaml; no Rust source changes.
+A previous dispatch completed this task, but landing the branch on main
+FAILED: the full test suite went red (landing attempt 1 of 3). The exact evidence:
 
-Four shipped features have no reference page. Write each into docs/reference (runnable fences,
-so every fenced toylang fragment must compile: the docs tests compile them). Look at
-docs/reference/syntax/functions.md and docs/guides/enums.md first for frontmatter, heading
-style, and the fence conventions; copy them. Use plain non-runnable text fences for anything
-that is not valid toylang.
 
-1. `let` bindings (gh:150). New page docs/reference/syntax/let.md (check whether the site
-   needs it registered in an index/nav file: grep for a neighbouring page filename such as
-   `functions.md`). Find the real syntax and semantics by grepping `Let` in src/parse.rs and
-   src/ast.rs, and copy working examples from existing tests/corpus/*.yaml (grep -l '\blet\b').
-2. The `|>` tail-pipe marker (gh:154). Read src/parse.rs around line 1426 (the doc comment on
-   the tail-pipeline `lhs |> callee`: the one way a sink is written, outermost position only,
-   a nested `|>` is a parse error). Document on a new page docs/reference/syntax/tail-pipe.md.
-   Take a real working program from a corpus case that uses `|>` (grep -l '|>' tests/corpus/*.yaml,
-   and src/check/mod.rs for what callee is allowed).
-   ALSO add ONE new corpus case tests/corpus/tail_pipe_basic.yaml in the format of
-   tests/corpus/tail_recursion_deep.yaml (program / input / output; no snapshot line, no
-   node_types line unless another case shows it is required -- run `just check` and follow
-   what tests/tag_coverage.rs says). Verify its output by actually running it, not by guessing.
-3. Record-parameter destructuring `fn g({a, b}: {a: Int, b: Int})` (gh:144): add a section to
-   docs/reference/syntax/functions.md with a runnable example. Find the working form in
-   tests/ or tests/corpus (grep -rn '({' tests/corpus | head).
-4. The self-tail-call constant-stack contract (gh:141): add a section to
-   docs/reference/syntax/functions.md stating it as contract (a self-tail-call runs in constant
-   stack on every backend), citing the example in tests/corpus/tail_recursion_deep.yaml.
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
-Do not touch src/*.rs. Done-gate: `just check` passes.
+  Cancelling due to test failure: 19 tests still running
+        FAIL [   0.055s] (151/493) toylang::fmt_examples every_corpus_program_is_already_formatted
+  stdout ───
+
+    running 1 test
+    test every_corpus_program_is_already_formatted ... FAILED
+
+    failures:
+
+    failures:
+        every_corpus_program_is_already_formatted
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.05s
+
+  stderr ───
+
+    thread 'every_corpus_program_is_already_formatted' (3797656) panicked at tests/fmt_examples.rs:142:5:
+    1 of 268 not formatted:
+    tail_pipe_basic: program is not in canonical form -- run `toylang fmt` on it, or open it with `# fmt: syntax-example` if it deliberately shows a non-canonical spelling
+    --- as written ---
+    fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + "!")
+
+    shout(stdin) |> jsonlines
+    --- canonical ---
+    fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + "!")
+
+    shout stdin |> jsonlines
+
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [   0.100s] (152/493) toylang::fmt every_corpus_program_formats_idempotently
+        PASS [   1.470s] (153/493) toylang::backend_js record_key_order_follows_the_type
+        PASS [   0.610s] (154/493) toylang::export_site export_the_corpus_for_the_site
+        PASS [   1.369s] (155/493) toylang::backend_rust float_printing_matches_at_notation_boundaries
+        PASS [   1.651s] (156/493) toylang::backend_js float_printing_matches_at_notation_boundaries
+        PASS [   1.864s] (157/493) toylang::backend_go float_notation_switches_like_js
+        PASS [   3.421s] (158/493) toylang::fmt a_formatted_corpus_program_runs_the_same_as_the_original
+        PASS [  13.017s] (159/493) toylang::corpus every_backend_agrees_and_is_right_shard_4
+        PASS [  13.363s] (160/493) toylang::corpus every_backend_agrees_and_is_right_shard_0
+        PASS [  13.351s] (161/493) toylang::corpus every_backend_agrees_and_is_right_shard_3
+        PASS [  13.368s] (162/493) toylang::corpus every_backend_agrees_and_is_right_shard_6
+        PASS [  13.773s] (163/493) toylang::corpus every_backend_agrees_and_is_right_shard_2
+        PASS [  14.005s] (164/493) toylang::corpus every_backend_agrees_and_is_right_shard_7
+        PASS [  14.431s] (165/493) toylang::corpus every_backend_agrees_and_is_right_shard_1
+        PASS [  15.189s] (166/493) toylang::corpus every_backend_agrees_and_is_right_shard_5
+        PASS [  32.055s] (167/493) toylang::backend_llvm native_agrees_where_it_compiles
+        PASS [  39.302s] (168/493) toylang::backend_rust rust_agrees_where_it_compiles
+        SLOW [> 60.000s] (───────) toylang::docs every_fragment_is_a_real_program
+        SLOW [>120.000s] (───────) toylang::docs every_fragment_is_a_real_program
+        PASS [ 175.588s] (169/493) toylang::docs every_fragment_is_a_real_program
+────────────
+     Summary [ 176.449s] 169/493 tests run: 167 passed (1 slow), 2 failed, 1 skipped
+        FAIL [   0.038s] (150/493) toylang::fmt_examples every_docs_fragment_is_already_formatted
+        FAIL [   0.055s] (151/493) toylang::fmt_examples every_corpus_program_is_already_formatted
+warning: 324/493 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)
+error: test run failed
+error: recipe `test` failed on line 7 with exit code 100
+
+
+Your job now is ONLY to make this branch land: fix whatever the evidence above
+shows failing, and re-run the verify command yourself. Do not start new feature work.
