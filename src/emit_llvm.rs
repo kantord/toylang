@@ -86,6 +86,7 @@ struct Runtime<'ctx> {
     vec_sort_str: FunctionValue<'ctx>,
     vec_reverse: FunctionValue<'ctx>,
     vec_sum: FunctionValue<'ctx>,
+    vec_transpose: FunctionValue<'ctx>,
     vec_max: FunctionValue<'ctx>,
 }
 
@@ -326,6 +327,11 @@ impl<'ctx> Emitter<'ctx, '_> {
             vec_sum: module.add_function(
                 "tl_vec_sum",
                 i64t.fn_type(&[ptr.into(), i32t.into()], false),
+                None,
+            ),
+            vec_transpose: module.add_function(
+                "tl_vec_transpose",
+                ptr.fn_type(&[ptr.into(), i64t.into()], false),
                 None,
             ),
             vec_max: module.add_function("tl_vec_max", ptr.fn_type(&[ptr.into()], false), None),
@@ -1589,6 +1595,14 @@ impl<'ctx> Emitter<'ctx, '_> {
                             .i32_type()
                             .const_int((elem_ty.as_ref() == Some(&Type::Int)) as u64, false);
                         self.call_rt(self.rt.vec_sum, &[arg, narrow.into()], "sum")?
+                    }
+                    // The result is also a Vec of Vecs, so its element (an inner Vec) carries
+                    // the innermost type's column count -- the same reason `tl_vec_flatten`
+                    // takes `ncols` rather than reading it off either Vec.
+                    Builtin::Transpose => {
+                        let inner = t.ty.elem().and_then(Type::elem).expect("checked to be Vec<Vec<T>>");
+                        let ncols = self.ctx.i64_type().const_int(Self::columns(inner), false);
+                        self.call_rt(self.rt.vec_transpose, &[arg, ncols.into()], "transpose")?
                     }
                     // NULL on an empty Vec is exactly the absent Opt a partial Index yields.
                     Builtin::Max => self.call_rt(self.rt.vec_max, &[arg], "max")?,

@@ -1,0 +1,8 @@
+# A ragged input (rows of unequal length) is refused at runtime on every backend, the same
+# way an out-of-range Index or an unwrap of an absent Opt is -- the checker cannot see lengths.
+program: |
+  transpose([[1, 2], [3]])
+
+refuses: true
+
+node_types: [builtin.transpose, int, vec-literal]

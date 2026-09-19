@@ -815,6 +815,13 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 "({} | if length == 0 then \"None\" else {{Some: max}} end)",
                 expr(enums, arg)
             ),
+            // jq has `transpose` natively, but it pads ragged rows with null, so the row
+            // lengths are checked first and a ragged input is refused like every other
+            // backend: only a rectangular matrix reaches jq's own `transpose`.
+            Builtin::Transpose => format!(
+                "({} | . as $vv | if ($vv | map(length) | unique | length) <= 1 then $vv | transpose else error(\"toylang: transpose needs a rectangular Vec of Vecs\") end)",
+                expr(enums, arg)
+            ),
             // The names come from the checked type, not the object value, so `arg` runs only to
             // become the `.` a literal array then ignores -- the same discard the pipe already
             // gives every other builtin here.
