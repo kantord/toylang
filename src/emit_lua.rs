@@ -12,13 +12,57 @@ pub const INPUTS: &str = "t_inputs";
 /// or `nil` at EOF. See `tir::fusion` and this file's `fused_main`.
 pub const NEXT_INPUT: &str = "tl_next_input";
 
+// A selection is lazy: it is its source plus a predicate, and only materialises a real table on
+// the first strong reference (length, an index, or the `pairs` a structural compare needs). `#`
+// and integer indexing go through the metamethods off a built index vector, so a `Length`, an
+// `Index`, a `Slice`, a `Map`, a `Field`, or the printer all read the source without copying it.
+// `tl_sel_dense` is the one true copy, for the consumers that need a plain table. `_tl_sel` is
+// the marker `tl_at` tests to route a lazy index straight to the source.
 const SELECT_HELPER: &str = "\
-local function tl_select(src, pred)
-  local out = {}
-  for i = 1, #src do
-    if pred(src[i]) then out[#out + 1] = src[i] end
+local tl_select_mt = {}
+local function tl_sel_build(self)
+  if rawget(self, \"idx\") == nil then
+    local src = rawget(self, \"src\")
+    local pred = rawget(self, \"pred\")
+    local idx = {}
+    for i = 1, #src do
+      if pred(src[i]) then idx[#idx + 1] = i end
+    end
+    rawset(self, \"idx\", idx)
   end
-  return out
+end
+local function tl_sel_dense(self)
+  tl_sel_build(self)
+  local dense = rawget(self, \"dense\")
+  if dense ~= nil then return dense end
+  local src = rawget(self, \"src\")
+  local idx = rawget(self, \"idx\")
+  dense = {}
+  for j = 1, #idx do dense[j] = src[idx[j]] end
+  rawset(self, \"dense\", dense)
+  return dense
+end
+tl_select_mt.__len = function(self)
+  tl_sel_build(self)
+  return #rawget(self, \"idx\")
+end
+tl_select_mt.__index = function(self, k)
+  if k == \"src\" then return rawget(self, \"src\") end
+  if k == \"pred\" then return rawget(self, \"pred\") end
+  if k == \"idx\" then return rawget(self, \"idx\") end
+  if k == \"dense\" then return rawget(self, \"dense\") end
+  if type(k) == \"number\" then
+    tl_sel_build(self)
+    local n = #rawget(self, \"idx\")
+    if k < 0 then k = n + k + 1 end
+    if k >= 1 and k <= n then return rawget(self, \"src\")[rawget(self, \"idx\")[k]] end
+  end
+  return nil
+end
+tl_select_mt.__pairs = function(self) return pairs(tl_sel_dense(self)) end
+tl_select_mt.__ipairs = function(self) return ipairs(tl_sel_dense(self)) end
+local function tl_select(src, pred)
+  return setmetatable({ src = src, pred = pred, _tl_sel = true }, tl_select_mt)
 end
 ";
 
@@ -100,6 +144,15 @@ local function tl_at(v, i, depth)
     local out = {}
     for k = 1, #v do out[k] = tl_at(v[k], i, depth - 1) end
     return out
+  end
+  -- An index straight off a lazy selection reads the source through its index vector, so a
+  -- single element is fetched without materialising the whole filtered array.
+  if v._tl_sel then
+    tl_sel_build(v)
+    local n = #v
+    if i < 0 then i = n + i end
+    if i < 0 or i >= n then return \"None\" end
+    return { Some = v.src[v.idx[i + 1]] }
   end
   local n = #v
   if i < 0 then i = n + i end
