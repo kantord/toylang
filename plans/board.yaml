@@ -530,3 +530,18 @@
   kind: build
   needs: []
   status: todo
+
+- id: grill-submit-disabled-no-feedback
+  title: 'The Grill tab''s AnswerComposer Submit button (site/dev/src/components/AnswerComposer.tsx)
+    is disabled until a box is explicitly `selected`, and clicking or reading inside a box''s
+    Tiptap editor deliberately does not select it (only clicking the small label above the box, or
+    editing its content, does) -- a past bug where focus alone selected was removed on purpose.
+    The button gives zero feedback for this: no tooltip, no hint text, nothing distinguishes it
+    from "genuinely nothing to submit." A maintainer opened a live round, read a pre-filled
+    option, clicked Submit, and nothing happened -- no network request fired at all, because
+    `disabled` suppresses the click before JS runs. Add a visible hint (e.g. "pick an answer
+    above" under the button, or a tooltip) whenever ready is false but at least one box has
+    non-empty content, so the disabled state explains itself. Found 2026-09-19 from a real report.'
+  kind: build
+  needs: []
+  status: todo
