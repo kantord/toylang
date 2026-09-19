@@ -1495,7 +1495,7 @@ fn tail_pipe(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 /// rebind `.`,and `sort_by`/`max_by` do the same with an orderable projection. All
 /// twenty-three are reserved the same way, and the docs harness (tests/docs.rs) reads this list
 /// to insist each one has a reference page.
-pub const BUILTIN_NAMES: [&str; 23] = [
+pub const BUILTIN_NAMES: [&str; 24] = [
     "all",
     "any",
     "chars",
@@ -1519,6 +1519,7 @@ pub const BUILTIN_NAMES: [&str; 23] = [
     "str",
     "sum",
     "tail",
+    "transpose",
 ];
 
 /// Functions the language provides. Unary like every other function, so they need no special

@@ -182,6 +182,26 @@ local function tl_flatten(vv)
 end
 ";
 
+// `Int` and `Int64` are the only element types the checker lets through, so one helper serves
+// both widths. A ragged input -- rows of unequal length -- is refused the same way every other
+// runtime failure is, since the checker cannot see lengths.
+const TRANSPOSE_HELPER: &str = "\
+local function tl_transpose(vv)
+  if #vv == 0 then return {} end
+  local ncols = #vv[1]
+  for i = 1, #vv do
+    if #vv[i] ~= ncols then error(\"toylang: transpose needs a rectangular Vec of Vecs\", 0) end
+  end
+  local out = {}
+  for c = 1, ncols do
+    local col = {}
+    for r = 1, #vv do col[r] = vv[r][c] end
+    out[c] = col
+  end
+  return out
+end
+";
+
 // `table.sort`'s default comparator is Lua's own `<`, which already agrees with every other
 // backend's ordering on both numbers and (byte-wise, so codepoint-wise for valid UTF-8) strings,
 // so nothing here has to branch on the element type.
@@ -554,6 +574,7 @@ pub fn emit(program: &Program) -> String {
         (used.any, ANY_HELPER),
         (used.all, ALL_HELPER),
         (used.flatten, FLATTEN_HELPER),
+        (used.transpose, TRANSPOSE_HELPER),
         (used.sort, SORT_HELPER),
         (used.reverse, REVERSE_HELPER),
         (used.arith, ARITH_HELPER),
@@ -836,6 +857,7 @@ struct Helpers {
     any: bool,
     all: bool,
     flatten: bool,
+    transpose: bool,
     chars: bool,
     sort: bool,
     reverse: bool,
@@ -888,6 +910,7 @@ fn builtin_helpers(which: &Builtin, arg_ty: &Type, used: &mut Helpers) {
     used.any |= matches!(which, Builtin::Any);
     used.all |= matches!(which, Builtin::All);
     used.flatten |= matches!(which, Builtin::Flatten);
+    used.transpose |= matches!(which, Builtin::Transpose);
     used.chars |= matches!(which, Builtin::Chars);
     used.sort |= matches!(which, Builtin::Sort);
     used.reverse |= matches!(which, Builtin::Reverse);
@@ -1106,6 +1129,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Any => format!("tl_any({})", expr(enums, arg)),
             Builtin::All => format!("tl_all({})", expr(enums, arg)),
             Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
+            Builtin::Transpose => format!("tl_transpose({})", expr(enums, arg)),
             Builtin::Sort => format!("tl_sort({})", expr(enums, arg)),
             Builtin::Reverse => format!("tl_reverse({})", expr(enums, arg)),
             Builtin::Sum => format!(
