@@ -6,8 +6,10 @@
 //! programs, run against a contributor's own copies of the real texts, failing loudly on a wrong
 //! answer rather than skipping.
 //!
-//! `#[ignore]` keeps it out of `just test`; `just euler-data DIR` runs it with DIR holding your
-//! own copies of the five raw data texts, copied from projecteuler.net:
+//! `#[ignore]` keeps it out of `just test`; `just euler-data` fetches this machine's own copies
+//! of the five raw data texts from projecteuler.net (scripts/fetch_euler_data.py, CC BY-NC-SA
+//! 4.0, gitignored `.euler-data/` cache -- never committed) and runs against them. `just
+//! euler-data DIR` points at a different directory, e.g. your own hand-copied files:
 //!
 //! - `euler08.txt`: the thousand-digit number, whitespace allowed.
 //! - `euler11.txt`: twenty lines, twenty integers each.

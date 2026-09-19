@@ -10,9 +10,15 @@ test:
 check:
     cargo nextest run -E 'not test(every_fragment_is_a_real_program)'
 
-# Opt-in: run the skipped Euler 8/11/13/18 programs against real puzzle data in DIR, outside
-# `just test`. DIR holds your own copies of the raw data texts; fails loudly, never skips.
-euler-data DIR:
+# Opt-in: fetch this machine's own copies of the Euler 8/11/13/18/22 puzzle data from
+# projecteuler.net (CC BY-NC-SA 4.0, see scripts/fetch_euler_data.py) into a local, gitignored
+# cache. Re-run any time; a file already cached is left alone unless --force is passed.
+euler-fetch DIR=".euler-data" *ARGS="":
+    python3 scripts/fetch_euler_data.py {{DIR}} {{ARGS}}
+
+# Opt-in: run the skipped Euler 8/11/13/18/22 programs against real puzzle data in DIR (fetched
+# automatically if not already cached there), outside `just test`. Fails loudly, never skips.
+euler-data DIR=".euler-data": (euler-fetch DIR)
     EULER_DATA={{DIR}} cargo nextest run --run-ignored ignored-only -E 'test(euler_real_data)'
 
 # Re-run the slow-fragment tier: the same suite, but `slow` fragments are executed on every
