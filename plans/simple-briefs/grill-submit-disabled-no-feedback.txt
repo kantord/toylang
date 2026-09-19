@@ -1,0 +1,25 @@
+Board row `grill-submit-disabled-no-feedback`. ONE file to edit: site/dev/src/components/AnswerComposer.tsx
+(177 lines; read it whole first). Do not touch any other file. Edit only with the edit tool.
+
+Problem: the Submit button (line ~171) is `disabled={!ready || submitting}` where `ready` needs a box
+`selected` (state, line 55) with non-empty content. Selecting without editing only happens via
+`onClick={() => setSelected(i)}` on the small `text-xs` label div (line ~156-161), which is easy to
+miss or fails in practice -- maintainers report clicking Submit on an untouched pre-filled option
+does nothing, with zero feedback. Typing into a box works (setBoxContent selects it).
+
+Do BOTH, minimally:
+1. Make selecting-without-editing obvious and hard to miss: add a radio-style control to each box's
+   header row. Put the label and a small `<input type="radio" name={`${key}-choice`} checked={selected === i}
+   onChange={() => setSelected(i)} />` (or a <label> wrapping both, so the whole header row is the
+   click target -- stretch the header div to full card width with padding). Do NOT put any
+   onClick/onFocus on the whole card or the editor: the existing comment (lines ~144-148) explains a
+   click inside the Tiptap editor must never change the selection. Keep that comment accurate.
+2. Add a disabled-state hint next to the Submit button: when Submit is disabled and not submitting,
+   render a `<p className="text-sm text-muted-foreground">` to its left inside the same flex row:
+   `selected === null` -> "Pick an option (radio, top of each box) or type in a box to enable Submit."
+   selected box has empty content -> "The selected box is empty -- write something to enable Submit."
+   Also set `title` on the Button to the same string.
+
+Done-gate: run `cd site && npm run check` (tsc -b plus the repo's check runner; if it needs
+`npm install` first do that) and it must pass; then `just check` from the repo root must pass.
+Report the diff summary. If `npm run check` fails for a reason unrelated to your edit, STOP and say which file.

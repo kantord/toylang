@@ -152,19 +152,6 @@
   prio: 4
   status: todo
 
-- id: select-lazy-materialization-build
-  title: 'Spun off from select-shared-mechanism-design''s checkpoint ruling (wizard submission, 2026-09-11): implement offload-boundary-design''s Q22 ruling (RATIFIED, 2026-09-07) for `select` -- replace every backend''s eager `tlSelect`-style filter (e.g. `src/emit_go.rs:1336-1345`) with a lazily-built mask/selection-vector representation behind the same `Vec` (O(1) indexed access via a selection vector or mask+popcount table built once over mask bits), compacting only on the first strong reference (reusing input storage if uniquely referenced, per the same provably-one-reference condition mutation-semantics-spike already uses). Same `Kind::Select` AST/checker node throughout -- no syntax change, no checker change; `xs | select(pred)` keeps its current meaning across all 7 backends.
-
-    STUCK (agent could only scope a Go-only slice, which it said would violate the
-    cross-backend done-gate as written). Maintainer ruling (wizard submission,
-    stuck-cross-backend-scope-escalation round, 2026-09-13, option A): split into 7 per-backend
-    build rows below, same shared spec, sequenced by no particular order. This tracking row
-    closes once all 7 land; the cross-backend invariant is checked by the existing full-corpus
-    conformance suite once the last one lands, not by any single dispatch session.'
-  kind: build
-  needs: [select-lazy-materialization-build-go, select-lazy-materialization-build-js, select-lazy-materialization-build-py, select-lazy-materialization-build-lua, select-lazy-materialization-build-rust, select-lazy-materialization-build-jq, select-lazy-materialization-build-llvm]
-  status: todo
-
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
   kind: build
@@ -415,7 +402,7 @@
   title: 'Slice 1 of 3 of declare-terminator-build-2 (split after the 32ebad8e RED, 2026-09-19): make the parser CONSUME an optional `;` after every fn and type declaration (no new diagnostic, same-line rule stays for now), make `toylang fmt` print the `;` after declarations, and add the `;` to every .toy, tests/corpus/*.yaml, examples/ and docs/ fragment (NOT tests/*.rs). Forbidden: script-rewriting any .rs source.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: declare-terminator-build-2b
   issue: gh:153
@@ -477,17 +464,6 @@
   needs: [sort-by-max-by-native]
   status: todo
 
-- id: transpose-jq-llvm
-  issue: gh:181
-  title: 'transpose-remaining-backends was archived done, but only 3 of the 5 missing backends
-    landed (JS, Python, Lua -- src/backend_support.rs LANDINGS still reads &[Go, Rust, Js, Py,
-    Lua]). jq and LLVM have no transpose arm at all: grep -n Transpose src/emit_jq.rs
-    src/emit_llvm.rs is empty on main as of 2026-09-19. Found looking around after the landing;
-    add the two remaining emitter arms and update LANDINGS.'
-  kind: build
-  needs: []
-  status: delegated
-
 - id: grill-submit-disabled-no-feedback
   title: 'The Grill tab''s AnswerComposer Submit button (site/dev/src/components/AnswerComposer.tsx)
     is disabled until a box is explicitly `selected`, and clicking or reading inside a box''s
@@ -509,7 +485,7 @@
     the disabled-state hint from the original finding either way.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: json-in-place-representation-idea
   title: 'Idea capture, deliberately unscheduled (same treatment as bigint-tracking, gh:112):
