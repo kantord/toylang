@@ -42,6 +42,7 @@ destroys the information before user code sees it;and `chars` could not decode t
 Python or JavaScript program can emit,and a pipeline fed such data fails loudly instead of
 processing it. The full survey of the candidate internals lives in the spike, not here.
 
-The `lines` edge stays unpinned:what a non-UTF-8 byte arriving as a line does on each
-backend is still an open question,filed as kantord/toylang#102. It is the one place the
-"scalar values only" contract could currently be violated by construction.
+The `lines` edge (bare `stdin` today) was pinned after this was written: a non-UTF-8 byte
+arriving as a line is refused on every backend, not carried and not replaced (kantord/toylang#102,
+ruled 2026-09-03, `assert_refuses_non_utf8` in tests/streaming.rs), so the "scalar values only"
+contract holds by construction there too.

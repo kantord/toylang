@@ -191,7 +191,7 @@ Output: a top-level `Str` prints raw; a nested one prints JSON-quoted and escape
 ([Str reference](../docs/reference/types/str.md)). Both directions of the wire are UTF-8, so
 the UTF-8-bytes model is the only candidate with no transcode at either edge.
 
-[`lines`](../docs/reference/sources/lines.md) is the unpinned edge. It hands over "the bytes
+[`lines`, since folded into `stdin`](../docs/reference/sources/stdin.md) is the unpinned edge. It hands over "the bytes
 between terminators" with no JSON parsing, and nothing pins what happens when those bytes are
 not valid UTF-8: the byte-string backends (Go, Lua, native) would carry them, Rust's line
 reader would error, and what JavaScript's and Python's readers do to them (replace, refuse)

@@ -31,8 +31,8 @@ export function RunPage({ rowId, runId }: { rowId: string; runId: string }) {
   return (
     <div className="space-y-6 text-sm">
       <div>
-        <a href="#/mail" className="text-xs text-muted-foreground hover:text-foreground">
-          &larr; back to mail
+        <a href="#/grill" className="text-xs text-muted-foreground hover:text-foreground">
+          &larr; back to grill
         </a>
         <h2 className="mt-1 font-mono text-base font-semibold">
           {rowId} / {runId}

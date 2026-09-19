@@ -523,7 +523,7 @@
 
 - id: transpose-remaining-backends
   issue: gh:181
-  title: '`transpose` (tensor-transpose-build, archived done) emits on Go and Rust only; JS, Python, Lua, jq and LLVM hit `unreachable!`. Add `transpose` to BUILTIN_NAMES in src/check/mod.rs so the docs gate in tests/docs.rs demands a page and the name is reserved, write docs/reference/builtins/transpose.md, add the five emitter arms, and add a corpus case. Self-originated, 2026-09-18 status audit.'
+  title: '`transpose` (tensor-transpose-build, archived done) emits on Go and Rust only; JS, Python, Lua, jq and LLVM hit `unreachable!`. Add `transpose` to BUILTIN_NAMES in src/check/mod.rs so the docs gate in tests/docs.rs demands a page and the name is reserved, write docs/reference/builtins/transpose.md, add the five emitter arms, and add a corpus case. Self-originated, 2026-09-18 status audit. Found 2026-09-19 while verifying gh:181: `transpose([[1, 2], [3, 4]])` alone does not compile on Go (`undefined: tlFail`) or Rust (`cannot find function tl_fail`), because the transpose helper calls the fail helper without pulling it into the conditional-inclusion table; masked whenever anything else in the program uses it. The corpus case comes first, the fix rides with it.'
   kind: build
   needs: []
   status: todo
@@ -540,13 +540,6 @@
   needs: []
   status: todo
 
-- id: stdin-stdout-splitting-design
-  issue: gh:158
-  title: 'The stdin/stdout splitting question was flagged in every Q35 round (stdout-stderr-effect-model-design and both follow-ups) and never asked on its own; plans/questions.md#q35 now names this row as where it lives. Grill it. Mark done when ruled.'
-  kind: decide
-  needs: []
-  status: todo
-
 - id: concurrency-open-item-decide
   title: 'Maintainer note on erlang-target-consideration: concurrency will need to be supported by toylang regardless of the backend question, worth surfacing as its own open item once the research landed. It landed (gh:163 closed) and nothing was filed. Decide whether concurrency gets a numbered question in plans/questions.md now or stays out of scope until a program needs it. Mark done when ruled.'
   kind: decide
@@ -554,7 +547,7 @@
   status: todo
 
 - id: issue-hygiene-close-sweep-decide
-  title: '2026-09-18 status audit: 40 open GitHub issues have only done rows behind them (list in plans/status-audit-2026-09-18.md), six more have no row at all (142, 144, 145, 146, 147, 180), and gh:136 is closed while dsv-partials-migration still points at it. Decide which of the 40 close now, which "Ruling:" issues stay open as records, and whether gh:180 stays the tracking issue for this. Mark done when ruled.'
+  title: '2026-09-18 status audit: 40 open GitHub issues have only done rows behind them (list in plans/status-audit-2026-09-18.md), six more have no row at all (142, 144, 145, 146, 147, 180), and gh:136 is closed while dsv-partials-migration still points at it. Decide which of the 40 close now, which "Ruling:" issues stay open as records, and whether gh:180 stays the tracking issue for this. Superseded in detail by plans/issue-review-2026-09-19.md (every open issue verified against main, one verdict and a closing comment each): 43 close (obsolete and superseded ones included), 9 keep open with corrections; the maintainer says the word and the comments get posted. Mark done when ruled.'
   kind: decide
   needs: []
   status: todo
@@ -592,3 +585,48 @@
   needs: []
   status: todo
 
+- id: declare-terminator-build-2
+  issue: gh:153
+  title: 'declare-terminator-build is archived done, but its landing (8c84499) contained only 04aa00a, which lexes `;` and says in its own message that the parser does not consume it yet. Verified 2026-09-19: `fn id(s: Str) -> Str = s;` is refused with "expected an expression, found `;`", the same-line heuristic the ruling retires is still live (src/parse.rs ~616, 625-637, 1472, 1646) and still taught in docs/reference/syntax/functions.md. Build the rest of the gh:153 ruling: `;` required after every fn and type declaration, the same-line rule and its diagnostic retired, tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml updated, the syntax page rewritten. Also write the ruling into plans/questions.md or an ADR, since it is recorded nowhere but the issue.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: pipe-through-remaining-backends
+  issue: gh:158
+  title: '`pipe_through` runs on the Rust backend only (src/backend_support.rs LANDINGS); the other six refuse cleanly. Add the arms for Go, Python, JS, Lua, jq and LLVM, following the Rust one (fcea805: piped stdin, stdout and stderr relayed as the tagged `PipeLine` stream), and the corpus case that clears tests/tag_coverage.rs UNCOVERED. jq and LLVM may need a ruling if a subprocess is not expressible there; say so on the row rather than faking it. Filed by the 2026-09-19 issue review: transpose and sort_by had a remaining-backends row, this did not.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: docs-gaps-let-tailpipe-destructure-tailcall
+  title: 'Four shipped features with no reference page, found by the 2026-09-19 issue review: `let` bindings (gh:150; no page, no guide section), the `|>` tail-pipe marker (gh:154; no docs page, no corpus case, no Rust test -- a fixed-string grep hits only src/), record-parameter destructuring `fn g({a, b}: {a: Int, b: Int})` (gh:144; docs/reference/syntax/functions.md never mentions it), and the self-tail-call constant-stack contract (gh:141; lives only in a corpus comment and emitter comments). Write each into docs/reference with runnable fences, and add a corpus case for `|>`.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: benchmark-thesis-publication
+  issue: gh:147
+  title: 'Ruling gh:147 (benchmark thesis is a general cross-language competitiveness claim) is recorded nowhere but the archived row title, and plans/benchmark-plan.md:66-69 still states the framing it overrode ("comparative color across this project''s backends ... not a claim about toylang in the abstract"). Rewrite the plan''s thesis and comparison sections to the ruled framing, add a publication surface for benches/results (a docs page the site renders), and carry the CLBG "far from realistic" caveat prominently there. Found by the 2026-09-19 issue review.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: matcher-totality-alt-composition-decide
+  issue: gh:156
+  title: 'gh:156''s round 2 ruled only the naming convention (curly-only patterns, capital-first variants, both built); the question in its title -- matcher totality measurement, alt-composition, and the parser-combinator claim -- was never re-asked, and the row closed on the naming ruling alone. Today src/check/mod.rs (~2289) still refuses `o | Some{v} -> v or None -> 0` over Opt with "how its arms compose is still being decided", and Q30 sits at LEANING. Grill that remainder. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: todo
+
+- id: q6-reconciler-decide
+  title: 'Q6 in plans/questions.md ("Does a reconciler belong in the language or a library?") is a table row marked OPEN with a heading and no body; the 2026-09-18 audit recorded the emptiness and nothing else did. Decide whether to write the body from wherever the question came from (draft.md history, the JSX sketch) or strike the row. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: todo
+
+- id: opencode-worker-scripts-retire-decide
+  title: '.claude/skills/enwiro-delegate/SKILL.md still gives `.claude/scripts/opencode_worker.py` as the copy-paste launch for the enwiro variant, while its own header and the drive skill say every opencode path is retired and must never be invoked; opencode_worker.py and opencode_peek.py survive in the tree with no record of why. .claude/skills/land-delegated-work/SKILL.md likewise still calls opencode the delegation default and routes incidents to plans/opencode-rollout.md. Decide: delete both scripts and strip the enwiro block, or record in plans/simple-dispatch-design.md that the enwiro variant is a kept exception. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: todo

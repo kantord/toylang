@@ -403,8 +403,8 @@ fn web_stdin_error(
     let collect_read = collect && !matches!(fused_source, Some(tir::Source::Lines));
     if target.is_web() && web_stdin_refusal(program, fused_source, collect_read, web) {
         return Err(
-            "the web target has no stdin: `input`, `inputs`, `lines`, `dsv`,and stream-typed \
-             pipelines all read through node's `fs`"
+            "the web target has no stdin: `stdin`, `dsv`, and stream-typed pipelines all read \
+             through node's `fs`"
                 .to_string(),
         );
     }

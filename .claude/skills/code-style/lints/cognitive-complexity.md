@@ -1,5 +1,5 @@
 ---
-type: Lesson
+type: Playbook
 name: cognitive-complexity
 description: What to do when clippy's cognitive_complexity fires -- look at the shape, not the number, especially in emitters
 ---

@@ -27,6 +27,8 @@ key. Nothing here needs a runtime, an index to rebuild, or a tool to read it.
   diff, is not that session's to fix.
 - [okf-invalid](/.claude/skills/code-style/lints/okf-invalid.md) -- the check
   only covers the lints and research-log bundles, not skill files generally.
+- [cognitive-complexity](/.claude/skills/code-style/lints/cognitive-complexity.md) --
+  look at the shape, not the number, especially in emitters.
 
 Otherwise empty, deliberately. A lesson records a decision this repo
 actually made after a finding forced the question. toy-browser's eleven

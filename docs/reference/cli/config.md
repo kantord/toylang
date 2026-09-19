@@ -21,7 +21,7 @@ would throw on its first line in a browser:
 $ cat toylang.conf.yaml
 target: web
 $ toylang emit lines.toy js
-toylang: lines.toy: the web target has no stdin: `input`, `inputs`, `lines`, `dsv`,and stream-typed pipelines all read through node's `fs`
+toylang: lines.toy: the web target has no stdin: `stdin`, `dsv`, and stream-typed pipelines all read through node's `fs`
 ```
 
 ## The `web` substitutes

@@ -2179,7 +2179,7 @@ fn let_bind(
         Expected::Checked(tir) => (true, tir),
         Expected::Synthesised(tir) => (false, tir),
     };
-    for (local, value) in locals.into_iter().zip(values).into_iter().rev() {
+    for (local, value) in locals.into_iter().zip(values).rev() {
         let body_ty = tir.ty.clone();
         tir = Tir::new(
             body_ty,

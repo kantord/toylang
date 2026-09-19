@@ -52,3 +52,7 @@ satisfied with declarations and JavaScript with hoisting, cannot be expressed th
 
 A sixth instance, the first found by a target silently disagreeing rather than refusing to
 compile or run: [a sixth instance of the backend having rules the checker does not](a-sixth-backend-rule-the-checker-did-not-know.md).
+
+The widths are the same lesson from the other side: where a target cannot fake a width, the
+boundary becomes the type's own contract, see
+[the widths a backend cannot fake become the type's contract](the-widths-a-backend-cannot-fake-become-the-types-contract.md).

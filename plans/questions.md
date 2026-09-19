@@ -52,7 +52,7 @@ it would delete the only copy.
 | [Q32](#q32-does-the-dimension-model-subsume-the-effect-layer) | Does the dimension model subsume the effect layer? | OPEN, and it may dissolve Q13 rather than answer it |
 | [Q33](#q33-does-a-spread-slot-in-a-call-give-partial-application) | Does a spread slot in a call give partial application? | RULED option C (partial-application-system-design, 2026-09-07): array-like and struct-like partial application are one mechanism once functions are first-class, and it must always be syntactically explicit; no build row exists yet |
 | [Q34](#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity) | Do named types exist, and is a name an alias or an identity? | OPEN for records; enums decided identity for themselves, and `type X = ...` shipped as a pure alias (docs/reference/types/alias.md), so the declaration form exists and only the identity half remains |
-| [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | RULED in three steps (2026-09-07): opaque plumbing, then a merged stream where each item is tagged by origin, spelled as the prelude enum `PipeLine`; `pipe_through` builds that on Rust. Still open: how stdin and stdout are split |
+| [Q35](#q35-what-are-stdout-and-stderr-and-does-a-program-write-or-return) | What are stdout and stderr, and does a program write or return? | RULED in three steps (2026-09-07): opaque plumbing, then a merged stream where each item is tagged by origin, spelled as the prelude enum `PipeLine`; `pipe_through` builds that on Rust; the input side (a `Stream<Str>` stdin argument) was ruled the same week |
 | [Q36](#q36-does-a-real-module-system-need-imports-multiple-files-and-enforced-privacy) | Does a real module system need imports, multiple files, and enforced privacy? | OPEN for named imports and exports; file-scoped privacy and `@(path)` module routing are built (docs/reference/syntax/modules.md) |
 | [Q37](#q37-how-do-floats-print-and-what-are-nan-and-infinity-in-a-json-shaped-value-model) | How do floats print, and what are NaN and Infinity in a JSON-shaped value model? | SETTLED (gh:145, built under gh:149): NaN and Infinity are values printed by name, `Float` division by zero is Infinity, and printing is ECMA-262 `Number::toString` on all seven backends; see docs/reference/types/float.md |
 | [Q38](#q38-are-composites-ordered-at-all) | Are composites ordered at all? | OPEN |
@@ -635,9 +635,10 @@ whose items are tagged by origin; and finally the mechanism for that tag, one fi
 enum rather than any new `Alt<A, B>` machinery. The shipped shape is `PipeLine`
 (`Stdout{text}` or `Stderr{text}`) and
 [`pipe_through`](../docs/reference/builtins/pipe_through.md), built on the Rust backend. So
-stderr is in the language, as a variant. What remains open from the list above is the
-splitting of stdin and stdout, which every round flagged and none answered; it has its own
-row.
+stderr is in the language, as a variant. The input side, flagged across three rounds as
+possibly distinct, was ruled on 2026-09-07 (`stdin-stdout-splitting-design`, option A): a
+`Stream<Str>` argument symmetric with the tagged output stream, which is the `lines` field
+`pipe_through` takes today. Nothing from the list above remains open.
 
 ### Q36. Does a real module system need imports, multiple files, and enforced privacy?
 
