@@ -2962,3 +2962,104 @@
     b5b348d with docs/reference/cli/index.md and a CLI test. The same session also ruled and
     built comment-text normalisation (`# text`), a broken arm body one level below the later
     arms, and the formatter restructure into src/fmt/ (one module per concern).'
+
+- id: float-corpus-cases
+  issue: gh:149
+  title: 'Promote the per-backend Float tests (tests/backend_*.rs) into tests/corpus cases so the `float` tag has corpus coverage and the seven-backend agreement check owns Float; where docs/reference/types/float.md repeats one, embed it with a `case` fence instead. Self-originated from the 2026-09-18 status audit (plans/status-audit-2026-09-18.md): float-build-c-escalation said Float "still needs Go/Python/Rust/Lua before it can be a corpus case"; all four landed and the follow-up was never filed.'
+  kind: build
+  needs: []
+  status: done
+
+- id: corpus-euler-record-key-max-decide
+  title: 'Corpus-implementation-style-review follow-up (problems 14, 26): the hand-rolled record-key maxima `better` (by `len`, 14-longest-collatz) and `best_of` (by `len`, 26-reciprocal-cycles) survive because nothing landed can express them. `max` (gh:140) is defined only for Vec<Int>/Vec<Int64> and refuses record Vecs, and the designed fix for exactly these two pages, `max_by(.key)` (ergonomics row 7, gh:177), has landed on the Go and Rust-source backends only (2026-09-18) -- the other five are still pending, so a rewrite would not be portable. RULED (maintainer, AskUserQuestion, 2026-09-19): option (a), hold. The current divide-and-conquer workaround on pages 14 and 26 is verified and correct and stays until max_by lands on all seven backends; no Int64 score-encoding detour. Spun off euler-14-26-max-by-rewrite with a hard needs edge on the last backend in the chain, so it becomes dispatchable the moment max_by finishes rolling out rather than depending on anyone remembering to revisit it.'
+  kind: decide
+  needs: []
+  status: done
+
+- id: convergence-guard-lint-check
+  title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
+    4-part task, self-report: narrower would succeed -- 2026-09-17). Part 1 of 4, independent of the
+    other three. board-lint.py: error on any todo/proposed build row whose needs include an open
+    decide row AND whose latest plans/dispatch-log.csv row has a patch_path (edits > 0) -- a gated
+    row with an unlanded patch means the gate''s premise needs re-checking (this is what let the
+    select-lazy-materialization-convergence-ruling round go stale: dispatch-log.csv held a 13-edit
+    near-green js run (ec7b5d98) and a diagnosed go run (ed033203) while the round told the maintainer
+    the model was not converging). Done-gate: board-lint fails on a fixture reproducing this case, and
+    a test in test_board_lint.py covers it. Reset to todo 2026-09-19: three GREEN patches (7173610b, 940fdccf, 2b9d2ef3) each failed to apply onto a main that had moved under them, and the landing queue reached its repair cap; the next dispatch starts from current main rather than repairing a stale patch.'
+  kind: build
+  needs: []
+  prio: 4
+  status: done
+
+- id: select-lazy-materialization-convergence-ruling
+  title: 'Placeholder decide row gating the 7 select-lazy-materialization-build-* rows (go, js, py, lua,
+    rust, jq, llvm) as not-ready. With every known harness bug fixed (exploration cutoff off, reasoning
+    cap 8192 with nudges, tsc present), go/js/py were redispatched on 2026-09-15 and all three used their
+    full 60 turns across 2 attempts without a single edit: ended_by=dedup after two max_turns attempts,
+    self-report blocker_kind=harness_cutoff, narrower_would_succeed=true -- "still reading src/emit_js.rs
+    to map all consumers of tl_select (index, slice, map, print, fusion) before making any edit".
+    $0.18 per run. This is no longer the harness deciding; it is the model not converging on a change
+    that touches every consumer of a helper in one backend. Decide: (a) redispatch each backend with the
+    narrower slice the self-reports propose (replace only the select helper with a lazy wrapper, leave
+    consumers materializing, one commit), (b) hand one backend to a manual/privileged session to produce
+    a worked example the other six can mirror, (c) a stronger model for this family only, or (d) defer
+    gh:176. Mark done when ruled; the 7 rows'' needs point here. Status audit note (2026-09-18):
+    option (a) was tried after this was written and the Python backend landed and archived
+    (select-lazy-materialization-build-py, commit bcabef0) while its `needs` still pointed here; go
+    and js ended RED with real edits (dispatch-log rows ed033203, ec7b5d98). The question this row
+    asks is now about the remaining five backends, not seven.'
+  kind: decide
+  needs: []
+  status: done
+
+- id: transpose-remaining-backends
+  issue: gh:181
+  title: '`transpose` (tensor-transpose-build, archived done) emits on Go and Rust only; JS, Python, Lua, jq and LLVM hit `unreachable!`. Add `transpose` to BUILTIN_NAMES in src/check/mod.rs so the docs gate in tests/docs.rs demands a page and the name is reserved, write docs/reference/builtins/transpose.md, add the five emitter arms, and add a corpus case. Self-originated, 2026-09-18 status audit. Found 2026-09-19 while verifying gh:181: `transpose([[1, 2], [3, 4]])` alone does not compile on Go (`undefined: tlFail`) or Rust (`cannot find function tl_fail`), because the transpose helper calls the fail helper without pulling it into the conditional-inclusion table; masked whenever anything else in the program uses it. The corpus case comes first, the fix rides with it.'
+  kind: build
+  needs: []
+  status: done
+
+- id: select-lazy-materialization-build-go
+  title: 'select-lazy-materialization, Go backend -- split from `select-lazy-materialization-build`
+    per maintainer ruling (wizard submission, stuck-cross-backend-scope-escalation round,
+    2026-09-13, option A). Replace this backend''s eager `tlSelect`-style filter (currently
+    `src/emit_go.rs:1336-1345`) with a lazily-built mask/selection-vector representation (O(1)
+    indexed access via a selection vector or mask+popcount table built once over mask bits),
+    compacting only on the first strong reference (reusing input storage if uniquely
+    referenced, per mutation-semantics-spike''s provably-one-reference condition). Same
+    `Kind::Select` AST/checker node -- no syntax/checker change; `xs | select(pred)` keeps its
+    RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror
+    Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete
+    worked pattern. A prior attempt (run ed033203, 2026-09-14) made 9 real edits but hit
+    max_turns at 90 without landing -- give the next dispatch a larger turn budget.
+    current meaning. Per-backend builtin-wiring precedent: `src/emit_go.rs:192` (SUM_HELPER).
+    Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
+  kind: build
+  needs: [select-lazy-materialization-convergence-ruling]
+  status: done
+
+- id: select-lazy-materialization-build-rust
+  title: 'select-lazy-materialization, Rust backend -- split from `select-lazy-materialization-build`
+    per the same ruling as the Go row above (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
+    `src/emit_rs.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
+    representation, compacting only on first strong reference; same `Kind::Select` node, no
+    syntax/checker change. Per-backend builtin-wiring precedent: `src/emit_rs.rs:205`
+    (MAX_BY_HELPER). RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete worked pattern once this backend is picked up. Done-gate: this backend''s own conformance tests pass.'
+  kind: build
+  needs: [select-lazy-materialization-convergence-ruling]
+  status: done
+
+- id: select-lazy-materialization-build-jq
+  title: 'select-lazy-materialization, jq backend -- split from `select-lazy-materialization-build`
+    per the same ruling as the Go row above (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
+    `src/emit_jq.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
+    representation where jq''s own semantics allow it, compacting only on first strong
+    reference; same `Kind::Select` node, no syntax/checker change. If jq''s language model makes
+    true laziness impossible for this construct, say so plainly in the self-report rather than
+    forcing a fake implementation -- this is the one backend where the maintainer may need a
+    follow-up ruling. RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the starting point, adapted for jq''s own semantics per the carve-out above. Done-gate: this backend''s own conformance tests pass.'
+  kind: build
+  needs: [select-lazy-materialization-convergence-ruling]
+  status: done

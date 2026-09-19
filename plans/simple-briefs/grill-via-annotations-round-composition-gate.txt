@@ -1,0 +1,27 @@
+Board row `grill-via-annotations-round-composition-gate`. Docs-only change to ONE file:
+`.claude/skills/grill-via-annotations/SKILL.md`. Touch nothing else.
+
+Background: the row `convergence-guard-round-composition` landed a rule into
+`.claude/skills/drive/SKILL.md` (the `decide` bullet in the ready-set section, around line 175:
+"A decide row that gates one or more build rows is only composed into a round after
+`dispatch_state.py --show` on every row that has the decide row in its `needs:` list -- quote each
+one's latest run (run id, status, edits, ended_by) in the round node's `background`. If any gated
+row's latest run has a non-empty `patch_path` (edits happened), STOP and report that instead of
+composing the round: a landed or near-landed patch means the premise needs re-checking, not a fresh
+question."). Its done-gate required BOTH skill texts to state the rule; the grill-via-annotations
+skill has no trace of it (grep for "dispatch_state.py --show", "patch_path", "composing a round"
+finds nothing there).
+
+Do:
+1. Read `.claude/skills/drive/SKILL.md` around the `decide` bullet to copy the exact rule wording.
+2. In `.claude/skills/grill-via-annotations/SKILL.md`, in the "Forest rounds" section (starts at
+   `## Forest rounds (chain/tree, live)`, near line 53), add a short subsection or paragraph after
+   the schema block, stating the same rule in the same terms (the wording may be shortened to the
+   skill's own tone but must name `dispatch_state.py --show`, quoting the latest run in the round
+   node's `background`, and the STOP-on-non-empty-`patch_path` condition).
+3. Match the surrounding file's formatting and comment density. No em-dash-free rewrites of
+   existing text, no other edits.
+
+Done-gate: `grep -n 'dispatch_state.py --show' .claude/skills/grill-via-annotations/SKILL.md` and
+`grep -n 'patch_path' .claude/skills/grill-via-annotations/SKILL.md` each match; `just check`
+passes.

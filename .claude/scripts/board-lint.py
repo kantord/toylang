@@ -195,6 +195,49 @@ def lint_stale_delegated(rows, log_path, live_ids=live_dispatch_row_ids, now=Non
     return errs
 
 
+
+def lint_gated_patch(rows, log_path):
+    """A gated row that already has an unlanded patch means the gate's
+    premise needs re-checking. Fires on a row that is (a) kind: build,
+    (b) status todo or proposed, (c) gated on a kind: decide row that is
+    not done, and (d) whose latest dispatch-log line (last matching line
+    wins) has a non-empty patch_path. If the dispatch log does not exist
+    or has no line for the row, the rule does not fire."""
+    rows_by_id = {r["id"]: r for r in rows if isinstance(r, dict)}
+    latest = {}
+    if Path(log_path).exists():
+        with open(log_path, newline="") as f:
+            for row in csv.DictReader(f):
+                rid = row.get("row_id")
+                if rid:
+                    latest[rid] = row  # last matching line wins
+    errs = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        if r.get("kind") != "build" or r.get("status") not in ("todo", "proposed"):
+            continue
+        needs = r.get("needs", [])
+        if not isinstance(needs, list):
+            continue
+        open_decides = [
+            n for n in needs
+            if (d := rows_by_id.get(n)) is not None
+            and d.get("kind") == "decide" and d.get("status") != "done"
+        ]
+        if not open_decides:
+            continue
+        last = latest.get(r["id"])
+        if last is None or not (last.get("patch_path") or "").strip():
+            continue
+        for n in open_decides:
+            errs.append(
+                f"{BOARD}: {r['id']}: gated on open decide {n} but already has an "
+                f"unlanded patch (run {last.get('run_id')}) -- re-check the gate's premise"
+            )
+    return errs
+
+
 def lint_forest_escalations(grill_dir):
     """Cap live `flow: escalation` nodes across every forest round in
     `grill_dir` -- one root per file, so the cap spans files."""
@@ -274,7 +317,9 @@ def main():
     # Only a schema-valid board is worth reading for staleness: the rows
     # above may not even be mappings.
     if not board_errs:
-        errs += lint_stale_delegated(yaml.safe_load(open(BOARD)), DISPATCH_LOG)
+        rows = yaml.safe_load(open(BOARD))
+        errs += lint_stale_delegated(rows, DISPATCH_LOG)
+        errs += lint_gated_patch(rows, DISPATCH_LOG)
     errs += lint_forest_escalations(GRILL_DIR)
     for e in errs:
         print(e, file=sys.stderr)

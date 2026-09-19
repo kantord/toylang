@@ -11,5 +11,6 @@ docs/.annotations/
 docs/.grill/
 /repro.toy
 /benches/results
+/.euler-data/
 /LAND-FAILURE.txt
 /ESCALATION.md

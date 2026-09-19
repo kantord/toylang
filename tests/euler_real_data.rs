@@ -1,4 +1,4 @@
-//! The opt-in check that verifies Euler 8, 11, 13 and 18 against real puzzle data.
+//! The opt-in check that verifies Euler 8, 11, 13, 18 and 22 against real puzzle data.
 //!
 //! Each problem reads a blob of problem-given data that cannot live in this repo (#39), so the
 //! docs pages run the programs below on small synthetic data instead and point here for the
@@ -6,13 +6,16 @@
 //! programs, run against a contributor's own copies of the real texts, failing loudly on a wrong
 //! answer rather than skipping.
 //!
-//! `#[ignore]` keeps it out of `just test`; `just euler-data DIR` runs it with DIR holding your
-//! own copies of the four raw data texts, copied from projecteuler.net:
+//! `#[ignore]` keeps it out of `just test`; `just euler-data` fetches this machine's own copies
+//! of the five raw data texts from projecteuler.net (scripts/fetch_euler_data.py, CC BY-NC-SA
+//! 4.0, gitignored `.euler-data/` cache -- never committed) and runs against them. `just
+//! euler-data DIR` points at a different directory, e.g. your own hand-copied files:
 //!
 //! - `euler08.txt`: the thousand-digit number, whitespace allowed.
 //! - `euler11.txt`: twenty lines, twenty integers each.
 //! - `euler13.txt`: a hundred lines, fifty digits each.
 //! - `euler18.txt`: fifteen lines, line `i` holding `i + 1` integers.
+//! - `euler22.txt`: the names file as published, double-quoted names separated by commas.
 
 mod support;
 
@@ -101,6 +104,22 @@ fn triangle_max(rows: Vec<Vec<Int>>) -> Int =
 triangle_max(parse(stdin))
 "#;
 
+const PROGRAM_22: &str = r#"
+fn letter_value(c: Char) -> Int =
+    length(chars("ABCDEFGHIJKLMNOPQRSTUVWXYZ") | select(. <= c))
+
+fn name_score(name: Str) -> Int = sum(chars(name) | map(letter_value(.)))
+
+fn ranked_total(ordered: Vec<Str>) -> Int =
+    sum(
+        collect(range(length(ordered))) | map((. + 1) * name_score(ordered[.]!))
+    )
+
+fn names_total(names: Vec<Str>) -> Int = ranked_total(sort(names))
+
+names_total(parse(stdin))
+"#;
+
 /// A number split into its digits, one JSON integer per digit.
 fn digits(text: &str, what: &str) -> Value {
     Value::Array(
@@ -159,6 +178,24 @@ fn int_rows(text: &str, what: &str) -> Value {
     )
 }
 
+/// Comma-separated double-quoted names, as the problem 22 file is published, each one a JSON
+/// string. Whitespace around a name is dropped; a name without both quotes is an error.
+fn quoted_names(text: &str, what: &str) -> Value {
+    Value::Array(
+        text.split(',')
+            .map(str::trim)
+            .filter(|tok| !tok.is_empty())
+            .map(|tok| {
+                let name = tok
+                    .strip_prefix('"')
+                    .and_then(|t| t.strip_suffix('"'))
+                    .unwrap_or_else(|| panic!("{what}: not a quoted name: {tok:?}"));
+                json!(name)
+            })
+            .collect(),
+    )
+}
+
 /// One problem's fixed program, data file name, parser, and published answer.
 type Case = (
     &'static str,
@@ -168,7 +205,7 @@ type Case = (
     &'static str,
 );
 
-/// Runs the four Euler programs against the contributor's own copies of the real puzzle data and
+/// Runs the five Euler programs against the contributor's own copies of the real puzzle data and
 /// checks every backend against the published answer. It fails loudly rather than skipping: an
 /// unset `EULER_DATA`, a missing or unparseable data file, or a wrong answer all turn red.
 #[test]
@@ -176,13 +213,13 @@ type Case = (
 fn euler_real_data() {
     let dir = env::var("EULER_DATA").unwrap_or_else(|_| {
         panic!(
-            "EULER_DATA is unset: point it at your own copies of the Euler 8/11/13/18 data \
+            "EULER_DATA is unset: point it at your own copies of the Euler 8/11/13/18/22 data \
              (see the module docs for the file names) and run `just euler-data`"
         )
     });
     let dir = Path::new(&dir);
 
-    let cases: [Case; 4] = [
+    let cases: [Case; 5] = [
         ("8", PROGRAM_8, "euler08.txt", digits, "23514624000"),
         ("11", PROGRAM_11, "euler11.txt", int_rows, "70600674"),
         (
@@ -193,6 +230,7 @@ fn euler_real_data() {
             "[5,5,3,7,3,7,6,2,3,0]",
         ),
         ("18", PROGRAM_18, "euler18.txt", int_rows, "1074"),
+        ("22", PROGRAM_22, "euler22.txt", quoted_names, "871198282"),
     ];
 
     for (problem, program, file, parse, want) in cases {
@@ -212,4 +250,14 @@ fn euler_real_data() {
         );
         assert!(failures.is_empty(), "{file}: {}", failures.join("\n"));
     }
+}
+
+/// The names file is one line of `"MARY","PATRICIA",...`; this is the only parser above whose
+/// shape a digit or integer file does not already exercise, and it runs without the data.
+#[test]
+fn quoted_names_reads_the_published_shape() {
+    assert_eq!(
+        quoted_names("\"MARY\",\"PATRICIA\"\n", "euler22.txt"),
+        json!(["MARY", "PATRICIA"])
+    );
 }

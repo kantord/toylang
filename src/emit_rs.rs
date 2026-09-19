@@ -266,6 +266,37 @@ const MAX_BY_HELPER: &str = r#"fn tl_max_by<T: Clone, K: Ord>(v: &[T], key: impl
     Some(m.clone())
 }
 "#;
+// A `select` is lazy in the one place laziness is observable: a Select indexed or measured
+// directly (`select(p) | .[i]`, `length(select(p))`) reads the survivor index vector without
+// materializing the filtered elements. Every other consumer (bound, passed, iterated, piped
+// onward) gets the densified `Vec` from `tl_select` itself, so no consumer needs to know a
+// lazy representation exists. `tl_select_at`/`tl_select_len` build the same index vector the
+// densified path's filter would, but stop at the indices -- O(n) over the mask bits, then O(1)
+// indexed access into the source, no element copies.
+const SELECT_HELPER: &str = r#"fn tl_select<T: Clone>(v: &[T], pred: impl Fn(&T) -> bool) -> Vec<T> {
+    v.iter().cloned().filter(pred).collect()
+}
+
+fn tl_select_len<T>(v: &[T], pred: impl Fn(&T) -> bool) -> i32 {
+    v.iter().filter(|&e| pred(e)).count() as i32
+}
+
+fn tl_select_at<T: Clone>(v: &[T], pred: impl Fn(&T) -> bool, i: i32) -> Option<T> {
+    let idx: Vec<usize> = v
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| pred(e))
+        .map(|(i, _)| i)
+        .collect();
+    let n = idx.len() as i32;
+    let i = if i < 0 { n + i } else { i };
+    if i < 0 || i >= n {
+        None
+    } else {
+        Some(v[idx[i as usize]].clone())
+    }
+}
+"#;
 
 // `T: Copy` covers both integer widths (i32 and i64), the only element types the checker
 // lets `transpose` take. A ragged input -- rows of unequal length -- is refused the same way
@@ -912,6 +943,7 @@ pub fn emit(program: &Program) -> String {
         || uses("tl_range(")
         || uses("tl_read_all_stdin(")
         || uses("tl_read_lines(")
+        || uses("tl_transpose(")
         || uses("tl_fail(");
 
     let mut helpers = String::new();
@@ -938,6 +970,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_sum(") || uses("tl_sum64("), SUM_HELPER),
         (uses("tl_max("), MAX_HELPER),
         (uses("tl_max_by("), MAX_BY_HELPER),
+        (uses("tl_select(") || uses("tl_select_at(") || uses("tl_select_len("), SELECT_HELPER),
         (uses("tl_transpose("), TRANSPOSE_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
@@ -1637,7 +1670,28 @@ impl Emitter<'_> {
                         tag("Stderr")
                     )
                 }
-                Builtin::Length => format!("(({}).len() as i32)", self.expr(arg)),
+                // The one lazy select path: a Select measured directly (`length(select(p))`).
+                // `tl_select_len` counts the survivor index vector without materializing the
+                // filtered `Vec`.
+                Builtin::Length => {
+                    if let Kind::Select {
+                        source,
+                        param,
+                        pred,
+                    } = &arg.kind
+                    {
+                        let elem = self.rs_type(tir::runtime_elem(&source.ty)
+                            .expect("select runs over a dimension"));
+                        return format!(
+                            "tl_select_len(&{}, |{}: &{}| -> bool {{ {} }})",
+                            self.expr(source),
+                            self.local(*param),
+                            elem,
+                            self.expr(pred)
+                        );
+                    }
+                    format!("(({}).len() as i32)", self.expr(arg))
+                }
                 Builtin::Tail => format!("tl_tail(&{})", self.expr(arg)),
                 Builtin::First => format!("tl_first(&{})", self.expr(arg)),
                 Builtin::Any => format!("tl_any(&{})", self.expr(arg)),
@@ -1771,16 +1825,17 @@ impl Emitter<'_> {
                 self.local(*param),
                 self.expr(body)
             ),
-            // `.cloned()` before `.filter()` keeps the closure's parameter at exactly one level
-            // of reference (`&T`, not `&&T` the way `.iter().filter()` alone would give):
-            // `.clone()` on `&T` derefs one level to `T`, but on `&&T` it only strips one level
-            // of reference, leaving `&T` -- verified directly, not assumed.
+            // A `select` is densified into a plain `Vec` at this emit site, so every consumer
+            // (bind, pipe, iterate, print) keeps seeing the Vec it sees today. The one lazy
+            // path -- a Select indexed or measured directly -- is handled at the Index/Length
+            // sites, which build the survivor index vector and read it without copying the
+            // filtered elements out.
             Kind::Select {
                 source,
                 param,
                 pred,
             } => format!(
-                "{}.iter().cloned().filter(|{}: &{}| -> bool {{ {} }}).collect::<Vec<_>>()",
+                "tl_select(&{}, |{}: &{}| -> bool {{ {} }})",
                 self.expr(source),
                 self.local(*param),
                 self.rs_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
@@ -1826,6 +1881,31 @@ impl Emitter<'_> {
                 base, index, depth, ..
             } => {
                 let i = self.expr(index);
+                // The one lazy select path: a Select indexed directly (`select(p) | .[i]`).
+                // `tl_select_at` builds the survivor index vector and reads the element at the
+                // given index without materializing the filtered `Vec`, so only the work needed
+                // to answer that index is forced. (Indexing a Select is always at depth 0 -- the
+                // Select is the outermost dimension -- so a nonzero depth falls through to the
+                // densified path.)
+                if *depth == 0 {
+                    if let Kind::Select {
+                        source,
+                        param,
+                        pred,
+                    } = &base.kind
+                    {
+                        let elem = self.rs_type(tir::runtime_elem(&source.ty)
+                            .expect("select runs over a dimension"));
+                        return format!(
+                            "tl_select_at(&{}, |{}: &{}| -> bool {{ {} }}, {})",
+                            self.expr(source),
+                            self.local(*param),
+                            elem,
+                            self.expr(pred),
+                            i
+                        );
+                    }
+                }
                 let base_expr = self.expr(base);
                 self.distribute(&base_expr, &base.ty, &t.ty, *depth, &|v| {
                     format!("tl_at(&{v}, {i})")

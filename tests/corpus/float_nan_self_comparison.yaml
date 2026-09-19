@@ -1,0 +1,9 @@
+# Comparison follows IEEE: NaN is not equal to itself. A Float comparison type-checks and
+# prints a Bool on every backend.
+program: |
+  0.0 / 0.0 == 0.0 / 0.0
+
+output: |
+  false
+
+node_types: [arith.div, compare.eq, float]

@@ -29,7 +29,7 @@ pub const LANDINGS: &[Landing] = &[
     },
     Landing {
         name: "transpose",
-        built_on: &[Backend::Go, Backend::Rust],
+        built_on: &[Backend::Go, Backend::Rust, Backend::Js, Backend::Py, Backend::Lua],
     },
     Landing {
         name: "pipe_through",

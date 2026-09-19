@@ -12,6 +12,19 @@ locations verbatim. If you find yourself facing either shape here -- too much su
 turns spent re-reading files this brief already quotes -- say so precisely in your summary rather
 than pushing through partially.
 
+RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python's landed
+`TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184) as the worked pattern -- a lazy value holding
+source + predicate/mask that computes indices on first use, is readable by every existing consumer
+(length, iteration, indexing), and densifies only where a consumer needs a concrete Vec. Go, Python,
+Rust and jq have landed on this pattern; JS/Lua produced sound patches that only failed to land on
+a stale `site/public/corpus.json`. Work from the tree you were cloned with and regenerate
+`site/public/corpus.json` (via the repo's existing generator, see `just` recipes) if snapshots change.
+
+Budget guard: locate the edit site with the `grep -n` below, then WRITE. Do not spend your turns on
+long deliberation before the first `write_file`; if the runtime-side representation is genuinely too
+big for one attempt, state exactly which runtime pieces are missing and stop -- that is a complete
+outcome for this row.
+
 ## What exists today -- read this carefully, it is NOT the same starting point as other backends
 
 Unlike every other backend, LLVM's `Select` emission (`fn select`, `src/emit_llvm.rs:725-760`,

@@ -1,0 +1,10 @@
+# A Float inside a record prints the same way it does top-level, and so do the non-finite
+# values, on every backend: the ECMA-262 notation switch for 1e21 and 1e-7, and the bare
+# words Infinity and NaN.
+program: |
+  [{ a: 1e21, b: 1e-7 }, { a: 1.0 / 0.0, b: 0.0 / 0.0 }]
+
+output: |
+  [{"a":1e+21,"b":1e-7},{"a":Infinity,"b":NaN}]
+
+node_types: [arith.div, float, record-literal, vec-literal]

@@ -1,0 +1,9 @@
+# A decimal-point literal is a Float (ADR 0007), and arithmetic on Floats follows IEEE. An
+# integral value prints without a trailing `.0`, the way JavaScript's own printer writes it.
+program: |
+  1.5 + 0.25 * 2.0
+
+output: |
+  2
+
+node_types: [arith.add, arith.mul, float]

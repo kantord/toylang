@@ -1,37 +1,67 @@
-Board row `transpose-remaining-backends`, issue gh:181.
+A previous dispatch completed this task, but landing the branch on main
+FAILED: the full test suite went red (landing attempt 1 of 3). The exact evidence:
 
-Note: this row previously linked gh:175 in `plans/board.yaml`, but gh:175 is actually the unrelated
-dense-tensor design research report issue -- a copy/paste mismatch caught and fixed while writing
-this brief (board.yaml now points at gh:181, which has this row's real content). Ignore any stale
-reference to gh:175 you find elsewhere.
+        PASS [   0.032s] (448/475) toylang::unwrap both_branches_must_agree
+        PASS [   0.030s] (449/475) toylang::unwrap plus_does_not_mix_its_operands
+        PASS [   0.036s] (450/475) toylang::unwrap ne_on_an_opt_suggests_the_unwrap
+        PASS [   0.031s] (451/475) toylang::unwrap str_takes_an_int
+        PASS [   0.019s] (452/475) toylang::unwrap unwrapping_changes_how_a_string_prints
+        PASS [   0.026s] (453/475) toylang::unwrap the_most_negative_int_is_writable_but_not_one_past_it
+        PASS [   0.034s] (454/475) toylang::variant_casing a_capitalized_constructor_is_refused
+        PASS [   0.029s] (455/475) toylang::variant_casing a_capitalized_head_over_a_non_enum_subject_is_a_pattern_error
+        PASS [   0.030s] (456/475) toylang::variant_casing a_lowercase_pattern_is_refused
+        PASS [   0.045s] (457/475) toylang::variant_casing a_capitalized_head_naming_no_variant_is_a_pattern_error
+        PASS [   0.013s] (458/475) toylang::variant_casing capitalized_declaration_with_lowercase_constructor_runs
+        PASS [   0.041s] (459/475) toylang::variant_casing a_lowercase_unit_constructor_head_gets_the_matcher_hint
+        PASS [   0.035s] (460/475) toylang::variant_casing a_lowercase_variant_declaration_is_refused
+        PASS [   0.912s] (461/475) toylang::streaming lua_streams_range
+        PASS [   0.490s] (462/475) toylang::unwrap an_int_from_input_has_to_fit_too
+        PASS [   1.439s] (463/475) toylang::ts_types tsc_accepts_the_declaration_and_consumer
+        PASS [   3.695s] (464/475) toylang::fmt a_formatted_corpus_program_runs_the_same_as_the_original
+        PASS [  11.371s] (465/475) toylang::corpus every_backend_agrees_and_is_right_shard_4
+        PASS [  11.535s] (466/475) toylang::corpus every_backend_agrees_and_is_right_shard_3
+        PASS [  11.662s] (467/475) toylang::corpus every_backend_agrees_and_is_right_shard_0
+        PASS [  11.966s] (468/475) toylang::corpus every_backend_agrees_and_is_right_shard_6
+        PASS [  12.068s] (469/475) toylang::corpus every_backend_agrees_and_is_right_shard_2
+        PASS [  12.148s] (470/475) toylang::corpus every_backend_agrees_and_is_right_shard_7
+        PASS [  12.800s] (471/475) toylang::corpus every_backend_agrees_and_is_right_shard_1
+        PASS [  12.918s] (472/475) toylang::corpus every_backend_agrees_and_is_right_shard_5
+        PASS [  28.736s] (473/475) toylang::backend_llvm native_agrees_where_it_compiles
+        PASS [  34.167s] (474/475) toylang::backend_rust rust_agrees_where_it_compiles
+        SLOW [> 60.000s] (───────) toylang::docs every_fragment_is_a_real_program
+        SLOW [>120.000s] (───────) toylang::docs every_fragment_is_a_real_program
+        FAIL [ 169.686s] (475/475) toylang::docs every_fragment_is_a_real_program
+  stdout ───
 
-## Background (why this matters)
+    running 1 test
+    test every_fragment_is_a_real_program has been running for over 60 seconds
+    test every_fragment_is_a_real_program ... FAILED
 
-`transpose` (built by `tensor-transpose-build`, archived done in `plans/board-archive.yaml`) only
-emits on the Go and Rust backends. The other five backends (JS, Python, Lua, jq, LLVM) hit
-`unreachable!` when a program calls `transpose` and gets emitted for one of them. Self-originated
-from the 2026-09-18 status audit (`plans/status-audit-2026-09-18.md`).
+    failures:
 
-Look at how `tensor-transpose-build` implemented Go and Rust for the exact semantics to replicate:
-`git log --all --oneline --grep transpose` and check the archived row / its landing commit diff for
-the Go and Rust emitter arms as the reference implementation.
+    failures:
+        every_fragment_is_a_real_program
 
-## Task
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 169.67s
 
-1. Add `transpose` to `BUILTIN_NAMES` in `src/check/mod.rs` (if not already present -- check first;
-   it may already be reserved from the Go/Rust landing) so the docs gate in `tests/docs.rs` demands
-   a reference page.
-2. Write `docs/reference/builtins/transpose.md` following the format of a sibling builtin doc (e.g.
-   `docs/reference/builtins/collect.md` or `docs/reference/builtins/sort_by.md`) -- signature,
-   description, examples, backend notes if any.
-3. Add the five missing emitter arms (`unreachable!` sites) for JS, Python, Lua, jq, and LLVM,
-   matching the Go/Rust reference semantics exactly (same shape/dimension handling, same error
-   behavior on non-rectangular input if that's how Go/Rust handle it).
-4. Add a corpus test case (`tests/corpus/`) exercising `transpose` across all seven backends so the
-   agreement check covers it.
+  stderr ───
 
-## Done-gate
+    thread 'every_fragment_is_a_real_program' (1007041) panicked at tests/docs.rs:108:5:
+    5 of 202 docs fragments failed:
+    BROKEN  docs/reference/builtins/transpose.md:6: lua could not run: `transpose` has no lua backend yet; today it runs on go and rust
+    BROKEN  docs/reference/builtins/transpose.md:6: js could not run: `transpose` has no js backend yet; today it runs on go and rust
+    BROKEN  docs/reference/builtins/transpose.md:6: native could not run: `transpose` has no native backend yet; today it runs on go and rust
+    BROKEN  docs/reference/builtins/transpose.md:6: jq could not run: `transpose` has no jq backend yet; today it runs on go and rust
+    BROKEN  docs/reference/builtins/transpose.md:6: py could not run: `transpose` has no py backend yet; today it runs on go and rust
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
-`just check` passes with `transpose` working identically across all seven backends (Go, Rust, JS,
-Python, Lua, jq, LLVM), a corpus case proving cross-backend agreement, and
-`docs/reference/builtins/transpose.md` in place.
+  Cancelling due to test failure: 
+────────────
+     Summary [ 170.378s] 475 tests run: 474 passed, 1 failed, 1 skipped
+        FAIL [ 169.686s] (475/475) toylang::docs every_fragment_is_a_real_program
+error: test run failed
+error: recipe `test` failed on line 7 with exit code 100
+
+
+Your job now is ONLY to make this branch land: fix whatever the evidence above
+shows failing, and re-run the verify command yourself. Do not start new feature work.

@@ -1,0 +1,9 @@
+# NaN is a value a Float holds and prints by name (kantord/toylang#145). It is produced by
+# `0.0 / 0.0` and prints identically on every backend.
+program: |
+  0.0 / 0.0
+
+output: |
+  NaN
+
+node_types: [arith.div, float]

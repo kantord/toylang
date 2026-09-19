@@ -47,16 +47,61 @@ const MAP_HELPER: &str = r#"func tlMap[A, B any](src []A, f func(A) B) []B {
 }
 "#;
 
-const SELECT_HELPER: &str = r#"func tlSelect[T any](src []T, pred func(T) bool) []T {
-	out := []T{}
-	for _, e := range src {
-		if pred(e) {
-			out = append(out, e)
+const SELECT_HELPER: &str = r#"type tlSel[T any] struct {
+	src     []T
+	pred    func(T) bool
+	idx     []int32
+	dense   []T
+}
+
+func tlSelNew[T any](src []T, pred func(T) bool) *tlSel[T] {
+	return &tlSel[T]{src: src, pred: pred}
+}
+
+func (s *tlSel[T]) build() {
+	if s.idx != nil {
+		return
+	}
+	idx := make([]int32, 0, len(s.src))
+	for i, e := range s.src {
+		if s.pred(e) {
+			idx = append(idx, int32(i))
 		}
 	}
+	s.idx = idx
+}
+
+func tlSelAt[T any](s *tlSel[T], i int32) tlOpt[T] {
+	s.build()
+	n := int32(len(s.idx))
+	if i < 0 {
+		i = n + i
+	}
+	if i < 0 || i >= n {
+		return tlOpt[T]{}
+	}
+	return tlOpt[T]{true, s.src[s.idx[i]]}
+}
+
+func tlSelLen[T any](s *tlSel[T]) int32 {
+	s.build()
+	return int32(len(s.idx))
+}
+
+func tlSelDense[T any](s *tlSel[T]) []T {
+	if s.dense != nil {
+		return s.dense
+	}
+	s.build()
+	out := make([]T, len(s.idx))
+	for j, i := range s.idx {
+		out[j] = s.src[i]
+	}
+	s.dense = out
 	return out
 }
 "#;
+
 
 const AT_HELPER: &str = r#"func tlAt[T any](v []T, i int32) tlOpt[T] {
 	n := int32(len(v))
@@ -683,14 +728,15 @@ pub fn emit(program: &Program) -> String {
         || collect
         || program.input.is_some()
         || program.inputs.is_some()
-        || uses("tlFail(");
+        || uses("tlFail(")
+        || uses("tlTranspose(");
     let quote = uses("tlQuote(");
     let join = uses("tlJoin(");
 
     let mut helpers = String::new();
     // tlOpt is what tlAt and tlUnwrap are written in terms of, and inference means the emitted
     // text need never spell it. Helper-to-helper dependencies are stated rather than read back.
-    if uses("tlOpt[") || uses("tlAt(") || uses("tlTail(") || uses("tlFirst(") || unwrap {
+    if uses("tlOpt[") || uses("tlAt(") || uses("tlTail(") || uses("tlFirst(") || uses("tlSelNew(") || unwrap {
         helpers.push_str(OPT_TYPE);
         helpers.push('\n');
     }
@@ -701,7 +747,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tlInt("), INT_HELPER),
         (uses("tlInt64("), INT64_HELPER),
         (uses("tlMap("), MAP_HELPER),
-        (uses("tlSelect("), SELECT_HELPER),
+        (uses("tlSelNew("), SELECT_HELPER),
         (uses("tlAt("), AT_HELPER),
         (uses("tlSlice("), SLICE_HELPER),
         (uses("tlTail("), TAIL_HELPER),
@@ -1302,7 +1348,24 @@ impl Emitter<'_> {
                 }
                 // The source already materialized, so the exit has nothing left to do.
                 Builtin::Collect => self.expr(arg),
-                Builtin::Length => format!("int32(len({}))", self.expr(arg)),
+                Builtin::Length => {
+                    // A length directly on a Select stays lazy: it answers from the survivor
+                    // vector without materializing the dense slice first.
+                    if let Kind::Select { source, param, pred } = &arg.kind {
+                        format!(
+                            "tlSelLen(tlSelNew({}, func({} {}) bool {{ return {} }}))",
+                            self.expr(source),
+                            self.local(*param),
+                            self.go_type(
+                                tir::runtime_elem(&source.ty)
+                                    .expect("select runs over a dimension")
+                            ),
+                            self.expr(pred)
+                        )
+                    } else {
+                        format!("int32(len({}))", self.expr(arg))
+                    }
+                }
                 Builtin::Tail => format!("tlTail({})", self.expr(arg)),
                 Builtin::First => format!("tlFirst({})", self.expr(arg)),
                 Builtin::Any => format!("tlAny({})", self.expr(arg)),
@@ -1368,7 +1431,7 @@ impl Emitter<'_> {
                 param,
                 pred,
             } => format!(
-                "tlSelect({}, func({} {}) bool {{ return {} }})",
+                "tlSelDense(tlSelNew({}, func({} {}) bool {{ return {} }}))",
                 self.expr(source),
                 self.local(*param),
                 self.go_type(tir::runtime_elem(&source.ty).expect("select runs over a dimension")),
@@ -1430,6 +1493,23 @@ impl Emitter<'_> {
                 base, index, depth, ..
             } => {
                 let i = self.expr(index);
+                // A depth-0 index directly on a Select stays lazy: it reads the survivor
+                // vector instead of materializing the dense slice first.
+                if *depth == 0 {
+                    if let Kind::Select { source, param, pred } = &base.kind {
+                        return format!(
+                            "tlSelAt(tlSelNew({}, func({} {}) bool {{ return {} }}), {})",
+                            self.expr(source),
+                            self.local(*param),
+                            self.go_type(
+                                tir::runtime_elem(&source.ty)
+                                    .expect("select runs over a dimension")
+                            ),
+                            self.expr(pred),
+                            i
+                        );
+                    }
+                }
                 self.distribute(&self.expr(base), &base.ty, &t.ty, *depth, &|v| {
                     format!("tlAt({v}, {i})")
                 })

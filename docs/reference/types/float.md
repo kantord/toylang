@@ -5,12 +5,8 @@ An IEEE 754 binary64, JavaScript's number
 or an exponent is a `Float`; one without is an [Int](int.md), and the two never meet in one
 operator, so `1 + 1.5` is refused rather than promoted.
 
-```toylang
-1.5 + 0.25 * 2.0
-```
-
-```output
-2
+```case
+float_arith
 ```
 
 Integral values print without a trailing `.0`, and the rest print the shortest digits that
@@ -37,60 +33,34 @@ Float arithmetic is total. Where an `Int` divisor of zero is the one way integer
 fails, a `Float` divisor of zero is the IEEE answer, and `NaN` and the two infinities are
 values a `Float` holds and prints by name (kantord/toylang#145):
 
-```toylang
-1.0 / 0.0
+```case
+float_div_by_zero
 ```
 
-```output
-Infinity
-```
-
-```toylang
-0.0 / 0.0
-```
-
-```output
-NaN
+```case
+float_nan
 ```
 
 That output is not JSON, which is the price of admitting the values rather than failing on
 the operation that produced them or mapping them to `null` at the boundary. Comparison
 follows IEEE too: `NaN` is not equal to itself, and neither less nor greater than anything.
 
-```toylang
-0.0 / 0.0 == 0.0 / 0.0
-```
-
-```output
-false
+```case
+float_nan_self_comparison
 ```
 
 Input is the other way a `Float` enters. A JSON number already is the double a `Float` names,
 so `parse` reads it without a conversion step:
 
-```toylang
-fn twice(x: Float) -> Float = x * 2.0
-
-twice(parse(stdin))
-```
-
-```input
-2.5
-```
-
-```output
-5
+```case
+float_input
 ```
 
 A `Float` inside a `Vec`, a record, or an enum payload prints the same way, and so do the
 non-finite values, on every backend:
 
-```toylang
-[{ a: 1e21, b: 1e-7 }, { a: 1.0 / 0.0, b: 0.0 / 0.0 }]
-```
-
-```output
-[{"a":1e+21,"b":1e-7},{"a":Infinity,"b":NaN}]
+```case
+float_nested_non_finite
 ```
 
 What a `Float` cannot do yet: `str` takes an `Int` only; `sum` and `max` take `Int` or

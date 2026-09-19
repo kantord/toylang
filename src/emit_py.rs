@@ -243,6 +243,19 @@ const FLATTEN_HELPER: &str = r#"def tl_flatten(vv):
     return [e for sub in vv for e in sub]
 "#;
 
+// `Int` and `Int64` are the only element types the checker lets through, so one helper serves
+// both widths. A ragged input -- rows of unequal length -- is refused the same way every other
+// runtime failure is, since the checker cannot see lengths.
+const TRANSPOSE_HELPER: &str = r#"def tl_transpose(vv):
+    if not vv:
+        return []
+    ncols = len(vv[0])
+    for row in vv:
+        if len(row) != ncols:
+            tl_fail("transpose needs a rectangular Vec of Vecs")
+    return [[row[c] for row in vv] for c in range(ncols)]
+"#;
+
 const COLLECT_HELPER: &str = r#"def tl_collect_lines():
     out = []
     for line in sys.stdin:
@@ -394,7 +407,7 @@ pub fn emit(program: &Program) -> String {
     out.push_str("sys.setrecursionlimit(100000)\n");
     out.push('\n');
     for (on, text) in [
-        (unwrap || arith || arith64, FAIL_HELPER),
+        (unwrap || arith || arith64 || uses("tl_transpose("), FAIL_HELPER),
         (arith || uses("tl_i32(") || uses("tl_sum("), I32_HELPER),
         (arith64 || uses("tl_i64(") || uses("tl_sum64("), I64_HELPER),
         (arith, ARITH_HELPER),
@@ -410,6 +423,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_any("), ANY_HELPER),
         (uses("tl_all("), ALL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
+        (uses("tl_transpose("), TRANSPOSE_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
@@ -626,6 +640,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Any => format!("tl_any({})", expr(enums, arg)),
             Builtin::All => format!("tl_all({})", expr(enums, arg)),
             Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
+            Builtin::Transpose => format!("tl_transpose({})", expr(enums, arg)),
             // Python compares both numbers and strings (by codepoint) with `<` natively, so
             // `sorted` needs no key or comparator.
             Builtin::Sort => format!("sorted({})", expr(enums, arg)),
