@@ -195,19 +195,6 @@
   needs: [select-lazy-materialization-convergence-ruling]
   status: delegated
 
-- id: select-lazy-materialization-build-llvm
-  title: 'select-lazy-materialization, LLVM backend -- split from `select-lazy-materialization-build`
-    per the same ruling as the Go row above (wizard submission,
-    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
-    `src/emit_llvm.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
-    representation, compacting only on first strong reference; same `Kind::Select` node, no
-    syntax/checker change. Confirm the current filter''s exact location with `grep -n` first --
-    see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
-    RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete worked pattern once this backend is picked up. Done-gate: this backend''s own conformance tests pass.'
-  kind: build
-  needs: [select-lazy-materialization-convergence-ruling]
-  status: delegated
-
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
   kind: build
@@ -433,21 +420,6 @@
   kind: decide
   needs: []
   status: todo
-
-- id: grill-via-annotations-round-composition-gate
-  title: 'Post-land review of convergence-guard-round-composition (landed 2026-09-18, patch
-    614104f3): the row''s own done-gate said "both skill texts state this rule explicitly"
-    (drive skill AND grill-via-annotations skill) about the round-composition rule --
-    composing a round for a decide row that gates build rows must first run
-    `dispatch_state.py --show` on every gated row and quote its latest run in the round''s
-    background, stopping instead of composing if any gated row''s latest run has a
-    non-empty patch_path. The landed patch only added this to `.claude/skills/drive/SKILL.md`
-    (7 lines, verified present); `.claude/skills/grill-via-annotations/SKILL.md` has no
-    trace of it (checked: no match for "dispatch_state.py --show", "patch_path", or
-    "composing a round"). Add the equivalent rule there. Self-originated, post-land review.'
-  kind: build
-  needs: []
-  status: delegated
 
 - id: float-sqrt-and-int-to-float-decide
   title: 'The second benchmark wave (n-body, spectral-norm, mandelbrot) had to hand-write a Newton square root in toylang and carry parallel Int and Float loop counters, because there is no `sqrt` and no `Int -> Float` bridge (`i64` is the only numeric conversion). Decide which Float builtins the language admits first (sqrt at least; the parallel basis ruling on Q23 is the frame) and the spelling of the Int-to-Float conversion. plans/benchmark-plan.md records the workarounds. Mark done when ruled.'
