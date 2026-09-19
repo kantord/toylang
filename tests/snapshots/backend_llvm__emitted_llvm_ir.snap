@@ -39,6 +39,10 @@ declare ptr @tl_mask_new(i64)
 
 declare void @tl_mask_set(ptr, i64, i64)
 
+declare i64 @tl_sel_len(ptr, ptr)
+
+declare ptr @tl_sel_at(ptr, ptr, i64, i32)
+
 declare ptr @tl_vec_column(ptr, i64)
 
 declare i64 @tl_rec_get(ptr, i64)
