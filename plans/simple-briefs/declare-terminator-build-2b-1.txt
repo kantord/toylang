@@ -1,0 +1,30 @@
+Board row `declare-terminator-build-2b-1` (gh:153, slice 2 of 3, part part 1 of 3). Add the `;` declaration terminator to toylang source embedded in Rust tests.
+
+State on main: the parser accepts `;` after every `fn`/`type` declaration (optional, slice 2a landed) and
+`toylang fmt` prints it. Later slice 2c makes it REQUIRED. Your job: in the files named below, every toylang
+program written inside a Rust string literal must spell each `fn ...` and `type ...` declaration WITH a
+trailing `;`. Example: `"fn f(x: Int) -> Int = x * 10\n\nf(1)"` becomes `"fn f(x: Int) -> Int = x * 10;\n\nf(1)"`.
+A multi-line declaration gets the `;` at the end of its LAST line. `enum` declarations and expressions are
+NOT touched (only `fn` and `type`). Tests that deliberately test the no-`;` heuristic/diagnostics
+(record_body_after_definition style) stay as they are -- if unsure, leave it and say so.
+
+YOUR FILES ONLY: tests/type_flow.rs, tests/streams.rs, tests/step_5.rs, tests/bare_application.rs, tests/int64.rs
+Do not touch any other tests/*.rs, and never tests/fmt.rs.
+
+HARD RULES: edit .rs files ONLY with the edit tool, one string at a time (or replace_all for an identical
+string) -- NEVER a sed/python/bulk rewrite of any .rs file. A previous attempt did that and wrote a literal
+backslash-n into tests/euler_real_data.rs:190. Raw-string vs escaped-quote literals differ; keep each literal's
+existing escaping exactly and add only the `;` character.
+
+Method, per file: `grep -nE '(fn|type) [a-zA-Z_]+' FILE` to list declarations (also look for declarations that
+start a line inside a raw string or a multi-line string), edit them, then run
+`cargo nextest run --no-fail-fast -E 'binary(FILE_STEM)'` (FILE_STEM = file name without .rs).
+Some tests use insta snapshots that echo the source (error carets/spans). After adding `;`, those snapshots
+in tests/snapshots/*.snap change. Regenerate them with `INSTA_UPDATE=always cargo nextest run -E 'binary(FILE_STEM)'`
+(or `cargo insta test --accept`), then `git diff tests/snapshots` and confirm every changed line differs only by
+an added `;` (or a caret column shifted by that `;`). A snapshot diff that is anything else means STOP and report
+it -- do not accept it.
+
+Done-gate: `just check` passes, `git diff --stat` shows only your named files plus tests/snapshots/*.snap,
+and `grep -nE '(fn|type) [a-zA-Z_]+[^;]*=' ` over each of your files shows no remaining un-terminated declaration
+(except deliberate no-`;` tests you named in your final report).

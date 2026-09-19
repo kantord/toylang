@@ -397,18 +397,32 @@
   needs: [declare-terminator-build-2a, declare-terminator-build-2b, declare-terminator-build-2c]
   status: todo
 
-- id: declare-terminator-build-2b
+- id: declare-terminator-build-2b-1
   issue: gh:153
-  title: 'Slice 2 of 3 of declare-terminator-build-2: add the `;` to the toylang source strings embedded in tests/*.rs (hand-edit with the edit tool, file by file; NEVER a script that writes escapes -- 32ebad8e wrote a literal backslash-n into tests/euler_real_data.rs:190). Parser still accepts the `;` optionally, so each file can land green independently.'
+  title: 'Slice 2 of 3 of declare-terminator-build-2 (split into 2b-1/2b-2/2b-3 by file, ~85 hand-edits each, one dispatch batch): add the `;` to the toylang source strings embedded in the named tests/*.rs files and the tests/snapshots/*.snap that echo them (hand-edit .rs with the edit tool ONLY; NEVER a script that writes escapes -- 32ebad8e wrote a literal backslash-n into tests/euler_real_data.rs:190). Parser still accepts the `;` optionally, so each file lands green independently. Files: tests/type_flow.rs, streams.rs, step_5.rs, bare_application.rs, int64.rs.'
   kind: build
   needs: [declare-terminator-build-2a]
-  status: todo
+  status: delegated
+
+- id: declare-terminator-build-2b-2
+  issue: gh:153
+  title: 'Slice 2 of 3 of declare-terminator-build-2 (split into 2b-1/2b-2/2b-3 by file, ~85 hand-edits each, one dispatch batch): add the `;` to the toylang source strings embedded in the named tests/*.rs files and the tests/snapshots/*.snap that echo them (hand-edit .rs with the edit tool ONLY; NEVER a script that writes escapes -- 32ebad8e wrote a literal backslash-n into tests/euler_real_data.rs:190). Parser still accepts the `;` optionally, so each file lands green independently. Files: tests/step_3.rs, generics.rs, euler_real_data.rs, aliases.rs, opt.rs.'
+  kind: build
+  needs: [declare-terminator-build-2a]
+  status: delegated
+
+- id: declare-terminator-build-2b-3
+  issue: gh:153
+  title: 'Slice 2 of 3 of declare-terminator-build-2 (split into 2b-1/2b-2/2b-3 by file, ~85 hand-edits each, one dispatch batch): add the `;` to the toylang source strings embedded in the named tests/*.rs files and the tests/snapshots/*.snap that echo them (hand-edit .rs with the edit tool ONLY; NEVER a script that writes escapes -- 32ebad8e wrote a literal backslash-n into tests/euler_real_data.rs:190). Parser still accepts the `;` optionally, so each file lands green independently. Files: every other tests/*.rs holding fn/type declaration strings (fmt_one_line, unused, backend_*, ts_types, variant_casing, streaming, fmt_project, enums, char, unwrap, step_dsv, step_4, step_6, unbuilt_arms, reductions, and any others a grep finds) -- NOT tests/fmt.rs, done in 2a.'
+  kind: build
+  needs: [declare-terminator-build-2a]
+  status: delegated
 
 - id: declare-terminator-build-2c
   issue: gh:153
   title: 'Slice 3 of 3 of declare-terminator-build-2: make `;` REQUIRED after every fn/type declaration with one new diagnostic, retire the same-line heuristic and its diagnostic (src/parse.rs ~616, 625-637, 1472, 1646), update tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml, rewrite the declarations section of docs/reference/syntax/functions.md, and record the gh:153 ruling in plans/questions.md or a docs/adr/ ADR.'
   kind: build
-  needs: [declare-terminator-build-2b]
+  needs: [declare-terminator-build-2b-1, declare-terminator-build-2b-2, declare-terminator-build-2b-3]
   status: todo
 
 - id: matcher-totality-alt-composition-decide
