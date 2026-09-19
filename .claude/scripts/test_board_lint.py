@@ -124,6 +124,39 @@ class EscalationCap(unittest.TestCase):
         self.assertEqual(errs, [])
 
 
+
+class GatedPatch(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.log = Path(self.tmp.name) / "dispatch-log.csv"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def check(self, rows, lines):
+        self.log.write_text(HEADER + "".join(lines))
+        return board_lint.lint_gated_patch(rows, self.log)
+
+    def test_gated_build_with_unlanded_patch_is_an_error(self):
+        rows = [
+            {"id": "d1", "kind": "decide", "status": "todo", "title": "decide it"},
+            {"id": "b1", "kind": "build", "status": "todo", "needs": ["d1"], "title": "build it"},
+        ]
+        errs = self.check(rows, [log_line("b1", "GREEN", timedelta(hours=1), extra="p.patch")])
+        self.assertEqual(len(errs), 1)
+        self.assertIn("b1", errs[0])
+        self.assertIn("d1", errs[0])
+        self.assertIn("r1", errs[0])
+
+    def test_gated_build_with_empty_patch_path_does_not_fire(self):
+        rows = [
+            {"id": "d1", "kind": "decide", "status": "todo", "title": "decide it"},
+            {"id": "b1", "kind": "build", "status": "todo", "needs": ["d1"], "title": "build it"},
+        ]
+        errs = self.check(rows, [log_line("b1", "GREEN", timedelta(hours=1), extra="")])
+        self.assertEqual(errs, [])
+
+
 class MemoryPool(unittest.TestCase):
     """The pool's scope rule is the kind enum; these pin what it accepts.
     The seeded real file is covered by running the linter on the repo."""
