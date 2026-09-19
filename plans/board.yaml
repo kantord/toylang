@@ -605,9 +605,3 @@
   needs: []
   status: todo
 
-- id: bool-prelude-enum-build
-  title: 'Build the bool-literal-decide ruling: `pub enum Bool { True, False }` in prelude.toy, recognized by name the way `Opt` is (`as_opt`), so `true`/`false` and `Bool.true` are constructors of the existing `Type::Bool`, a match over a Bool subject is checked exhaustively over True/False, printing and input stay JSON true/false, and every backend keeps its native boolean. Corpus cases for the literal, the match, and a Bool inside a record; docs/reference/types/bool.md and the prelude page updated.'
-  kind: build
-  needs: []
-  status: proposed
-  blocked_by: 'built directly by the coordinator session of 2026-09-19 on main via a builder in a worktree, not by a dispatched worker; do not dispatch, archive when its commit lands'
