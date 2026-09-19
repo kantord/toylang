@@ -1,0 +1,14 @@
+# A JSON number already is the double a Float names, so `parse` reads it without a conversion
+# step (ADR 0007).
+program: |
+  fn twice(x: Float) -> Float = x * 2.0
+
+  twice(parse(stdin))
+
+input: |
+  2.5
+
+output: |
+  5
+
+node_types: [application, arith.mul, float, input, var]
