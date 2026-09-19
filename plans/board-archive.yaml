@@ -3235,3 +3235,10 @@
   kind: build
   needs: []
   status: done
+
+- id: declare-terminator-build-2b-2
+  issue: gh:153
+  title: 'Slice 2 of 3 of declare-terminator-build-2 (split into 2b-1/2b-2/2b-3 by file, ~85 hand-edits each, one dispatch batch): add the `;` to the toylang source strings embedded in the named tests/*.rs files and the tests/snapshots/*.snap that echo them (hand-edit .rs with the edit tool ONLY; NEVER a script that writes escapes -- 32ebad8e wrote a literal backslash-n into tests/euler_real_data.rs:190). Parser still accepts the `;` optionally, so each file lands green independently. Files: tests/step_3.rs, generics.rs, euler_real_data.rs, aliases.rs, opt.rs.'
+  kind: build
+  needs: [declare-terminator-build-2a]
+  status: done
