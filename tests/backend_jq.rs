@@ -4,8 +4,8 @@
 //! forced that the others did not.
 
 const FORWARD: &str = r#"
-fn outer(x: Str) -> Str = inner(x) + "!"
-fn inner(x: Str) -> Str = "[" + x + "]"
+fn outer(x: Str) -> Str = inner(x) + "!";
+fn inner(x: Str) -> Str = "[" + x + "]";
 
 outer("hi")
 "#;
@@ -38,9 +38,9 @@ fn an_optional_string_prints_as_json() {
 /// accepts it -- signatures are collected before any body is checked, so a call to a function
 /// defined later, or back around a cycle, is no different from any forward reference.
 const CYCLE: &str = r#"
-fn a(n: Int) -> Int = n | . <= 0 -> 0 or 1 + b(n - 1)
-fn b(n: Int) -> Int = n | . <= 0 -> 0 or 1 + c(n - 1)
-fn c(n: Int) -> Int = n | . <= 0 -> 0 or 1 + a(n - 1)
+fn a(n: Int) -> Int = n | . <= 0 -> 0 or 1 + b(n - 1);
+fn b(n: Int) -> Int = n | . <= 0 -> 0 or 1 + c(n - 1);
+fn c(n: Int) -> Int = n | . <= 0 -> 0 or 1 + a(n - 1);
 
 a(5)
 "#;
@@ -115,7 +115,7 @@ fn a_genuine_cycle_between_printers_is_refused_cleanly() {
 #[test]
 fn self_recursion_alone_still_compiles() {
     let p = toylang::compile(
-        "fn count(n: Int) -> Int = n | . <= 0 -> 0 or 1 + count(n - 1)\n\ncount(5)",
+        "fn count(n: Int) -> Int = n | . <= 0 -> 0 or 1 + count(n - 1);\n\ncount(5)",
     )
     .unwrap();
     assert!(toylang::emit_jq::emit(&p).is_ok());
@@ -170,7 +170,7 @@ fn float_comparison() {
 /// double a Float names (ADR 0007), the case that made Int64 refuse `input`.
 #[test]
 fn float_input_reads_a_json_number() {
-    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(parse(stdin))\n";
+    let src = "fn twice(x: Float) -> Float = x * 2.0;\n\ntwice(parse(stdin))\n";
     assert_eq!(agree_jq_js(src, Some("2.5")), "5\n");
 }
 

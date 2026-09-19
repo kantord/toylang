@@ -22,7 +22,7 @@ fn agree(src: &str, stdin: Option<&str>) -> String {
 #[test]
 fn record_key_order_follows_the_type() {
     let src = r#"
-fn pick(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u
+fn pick(db: {u: {name: Str, age: Int}}) -> {name: Str, age: Int} = db.u;
 
 pick(parse(stdin))
 "#;
@@ -80,7 +80,7 @@ fn float_comparison() {
 /// still a legal Float per input.rs's own rule.
 #[test]
 fn float_input_reads_a_json_number() {
-    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(parse(stdin))\n";
+    let src = "fn twice(x: Float) -> Float = x * 2.0;\n\ntwice(parse(stdin))\n";
     let out = toylang::run_on(src, Some("2.5"), Backend::Js).unwrap();
     assert_eq!(out, "5\n");
 }
@@ -91,7 +91,7 @@ fn float_input_reads_a_json_number() {
 /// Float) once a backend other than JS told the two Kinds apart.
 #[test]
 fn float_negation_of_a_variable() {
-    let src = "fn neg(x: Float) -> Float = -x\n\nneg(3.5)\n";
+    let src = "fn neg(x: Float) -> Float = -x;\n\nneg(3.5)\n";
     assert_eq!(agree_float(src, None), "-3.5\n");
 }
 
@@ -230,7 +230,7 @@ fn web_escape_hatch_replaces_tl_collect_lines() {
 
 #[test]
 fn web_escape_hatch_replaces_tl_read_input() {
-    let program = toylang::compile("fn twice(x: Int) -> Int = x * 2\n\ntwice(parse(stdin))\n")
+    let program = toylang::compile("fn twice(x: Int) -> Int = x * 2;\n\ntwice(parse(stdin))\n")
         .expect("compiles");
     let web = toylang::config::Web {
         input: Some("function tl_read_input() { return \"21\"; }\n".to_string()),
@@ -258,7 +258,7 @@ fn web_escape_hatch_replaces_tl_read_input() {
 #[test]
 fn web_escape_hatch_replaces_tl_read_line() {
     let program = toylang::compile(
-        "fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + \"!\")\n\njsonlines(shout(stdin))\n",
+        "fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + \"!\");\n\njsonlines(shout(stdin))\n",
     )
     .expect("compiles");
     let web = toylang::config::Web {

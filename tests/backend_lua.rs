@@ -57,7 +57,7 @@ fn float_comparison() {
 /// double a Float names (ADR 0007).
 #[test]
 fn float_input_reads_a_json_number() {
-    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(parse(stdin))\n";
+    let src = "fn twice(x: Float) -> Float = x * 2.0;\n\ntwice(parse(stdin))\n";
     let out = toylang::run_on(src, Some("2.5"), toylang::Backend::Lua).unwrap();
     assert_eq!(out, "5\n");
 }
@@ -67,7 +67,7 @@ fn float_input_reads_a_json_number() {
 /// Float width.
 #[test]
 fn float_negation_of_a_variable() {
-    let src = "fn neg(x: Float) -> Float = -x\n\nneg(3.5)\n";
+    let src = "fn neg(x: Float) -> Float = -x;\n\nneg(3.5)\n";
     let out = toylang::run_on(src, None, toylang::Backend::Lua).unwrap();
     assert_eq!(out, "-3.5\n");
 }

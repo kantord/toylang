@@ -13,8 +13,8 @@ use toylang::Backend;
 #[test]
 fn one_struct_per_record_type() {
     let src = r#"
-fn keep(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<{name: Str, age: Int}> = db.users
-fn name(u: {name: Str, age: Int}) -> Str = u.name
+fn keep(db: {users: Vec<{name: Str, age: Int}>}) -> Vec<{name: Str, age: Int}> = db.users;
+fn name(u: {name: Str, age: Int}) -> Str = u.name;
 
 keep(parse(stdin))
 "#;
@@ -90,7 +90,7 @@ fn float_comparison() {
 /// double a Float names (ADR 0007), the case that made Int64 refuse `input`.
 #[test]
 fn float_input_reads_a_json_number() {
-    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(parse(stdin))\n";
+    let src = "fn twice(x: Float) -> Float = x * 2.0;\n\ntwice(parse(stdin))\n";
     let out = toylang::run_on(src, Some("2.5"), Backend::Go).unwrap();
     assert_eq!(out, "5\n");
 }
@@ -152,7 +152,7 @@ fn max_by_keeps_the_first_of_equal_maxima() {
 #[test]
 fn max_by_of_an_empty_vec_is_absent() {
     let src = r#"
-fn nothing() -> Vec<{name: Str, age: Int}> = []
+fn nothing() -> Vec<{name: Str, age: Int}> = [];
 nothing() | max_by(.age)
 "#;
     let out = toylang::run_on(src, None, Backend::Go).unwrap();
@@ -175,7 +175,7 @@ fn sort_by_and_max_by_handle_str_and_int64_keys() {
 
     let wide = toylang::run_on(
         r#"
-fn wide(x: Int) -> Int64 = i64(x)
+fn wide(x: Int) -> Int64 = i64(x);
 
 [{v: wide(9), s: "x"}, {v: wide(2), s: "y"}] | max_by(.v)
 "#,
