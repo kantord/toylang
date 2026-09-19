@@ -1,0 +1,14 @@
+# Regression guard for `+` over a let-bound Vec on its left: `p.acc + [1]` and `[1] + acc`
+# already worked (the right operand is folded into a fresh `concat`), but `acc + [1]` used
+# to emit `t_0.extend(...)` on an immutable binding (E0596) because the `let` that binds it
+# was not marked `mut`. The binding must be `mut` whenever `concat_owned` will fold the other
+# side into it.
+program: |
+  fn f({ acc }: { acc: Vec<Int> }) -> Vec<Int> = acc + [1]
+
+  f { acc: [0] }
+
+output: |
+  [0,1]
+
+node_types: [application, concat, int, local, pipe, projection, record-literal, var, vec-literal]
