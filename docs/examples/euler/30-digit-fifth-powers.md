@@ -7,8 +7,8 @@ The search has a hard ceiling: a six-digit number can be at most `6 * 9^5 = 3542
 six digits, while seven digits can reach only `7 * 9^5 = 413343` -- fewer than the smallest
 seven-digit number, `1000000`. Nothing past 354294 can ever equal its own digit-fifth-power
 sum, so that is the whole search range. `digit_power_sum` peels digits off from the low end by
-repeated `% 10` and `/ 10`, at most six deep for a number this size; `sum` now reduces the
-filtered candidates directly, however many pass the filter (six, for fifth powers).
+repeated `% 10` and `/ 10`, at most six deep for a number this size; `sum` adds up whichever
+candidates pass the filter (six, for fifth powers).
 
 ```toylang
 fn fifth(d: Int) -> Int = d * d * d * d * d

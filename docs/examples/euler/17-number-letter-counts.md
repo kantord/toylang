@@ -3,34 +3,34 @@
 Solves [Project Euler 17](https://projecteuler.net/problem=17). See the
 [spoiler warning](00-spoiler-warning.md).
 
-`Str` has no length in toylang (see [Str](../../reference/types/str.md)), so this never spells
-a number out at all: `ones_letters`, `teens_letters`, and `tens_letters` are lookup tables of
-how many letters each piece *would* take, and `under_hundred` and `letters` combine them the
-way English grammar combines the words -- an "and" only between a hundreds part and a nonzero
-remainder. `sum` reduces the full 1-to-1000 range directly in one call, a builtin reduction
-rather than user recursion, so no chunking is needed.
+Each number is spelled out the way the problem counts it, letters only, no spaces or
+hyphens: `ones`, `teens`, and `tens` are the word tables, and `under_hundred` and `words`
+combine them the way English does, with an "and" only between a hundreds part and a nonzero
+remainder. A `Str` has no length of its own, but
+[`chars`](../../reference/builtins/chars.md) turns one into a `Vec<Char>` that does, so
+`length(chars(words(n)))` is a number's letter count.
 
 ```toylang
-fn ones_letters(n: Int) -> Int = [0, 3, 3, 5, 4, 4, 3, 5, 5, 4][n]!
+fn ones(n: Int) -> Str =
+    ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][n]!
 
-fn teens_letters(n: Int) -> Int = [3, 6, 6, 8, 8, 7, 7, 9, 8, 8][n - 10]!
+fn teens(n: Int) -> Str =
+    ["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"][n - 10]!
 
-fn tens_letters(n: Int) -> Int = [0, 0, 6, 6, 5, 5, 5, 7, 6, 6][n / 10]!
+fn tens(n: Int) -> Str =
+    ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"][n / 10]!
 
-fn under_hundred(n: Int) -> Int =
+fn under_hundred(n: Int) -> Str =
+    n | . < 10 -> ones(n) or . < 20 -> teens(n) or tens(n) + ones(n % 10)
+
+fn words(n: Int) -> Str =
     n
-        | . == 0 -> 0 or
-              . < 10 -> ones_letters(n) or
-              . < 20 -> teens_letters(n) or
-              tens_letters(n) + ones_letters(n % 10)
+        | . == 1000 -> "onethousand" or
+              . < 100 -> under_hundred(n) or
+              . % 100 == 0 -> ones(n / 100) + "hundred" or
+              ones(n / 100) + "hundredand" + under_hundred(n % 100)
 
-fn letters(n: Int) -> Int =
-    n
-        | . == 1000 -> 11 or
-              . / 100 > 0 -> ones_letters(n / 100) + 7 + (n | . % 100 > 0 -> 3 or 0) + under_hundred(n % 100) or
-              under_hundred(n)
-
-sum(collect(range(1000)) | map(letters(1 + .)))
+sum(collect(range(1000)) | map(length(chars(words(. + 1)))))
 ```
 
 ```output
