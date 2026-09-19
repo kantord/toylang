@@ -2864,3 +2864,16 @@
   kind: build
   needs: []
   status: done
+
+- id: prelude-variants-capitalized
+  issue: gh:165
+  title: 'Finish gh:165 for the prelude: `Opt` and `Result` still spell their variants lowercase (`some`, `none`, `ok`, `err`), exempted from the capital-first rule in src/check/types.rs until migrated. Rename them to `Some`, `None`, `Ok`, `Err` (constructors stay `some(x)`, `none`, `ok(x)`, `err(e)` by the lowercase-constructor rule), drop the pub exemption, and migrate every corpus case, docs page and example that matches on them. Ruled by the maintainer in chat, 2026-09-19, as the prerequisite of match-arm-heads-by-case.'
+  kind: build
+  needs: []
+  status: done
+
+- id: match-arm-heads-by-case
+  title: '`arm_starts_here` in src/parse.rs claims any `identifier ->` as a variant pattern before names resolve, so `x | true -> ..` and a Bool parameter `b -> ..` are pattern errors, and `(true) -> ..` works only until `toylang fmt` strips the parens. The casing rule already separates the two (values lowercase, variants capitalized): a lowercase identifier before `->` is a guard expression, a capitalized one a pattern. Make the parser follow it, with tests for `b -> ..`, `true -> ..`, and a formatter round-trip. Ruled by the maintainer in chat, 2026-09-19.'
+  kind: build
+  needs: [prelude-variants-capitalized]
+  status: done
