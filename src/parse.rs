@@ -658,6 +658,16 @@ impl<'i> Cursor<'i> {
         Ok(span)
     }
 
+    /// Consume one `;` after an fn or type declaration if one is present (gh:153, slice 2a).
+    /// The `;` is ACCEPTED and recorded by the formatter but not required yet; a later slice
+    /// makes it required.
+    fn opt_semicolon(&mut self) -> Result<(), Error> {
+        if self.peek()?.0 == Tok::Semicolon {
+            self.advance()?;
+        }
+        Ok(())
+    }
+
     /// An "unexpected token" error, extended with the parens spelling when the failing token is
     /// one a call declined to take as a cross-line argument (see `declined_cross_line`): the
     /// token had somewhere to go, and only the line break kept it from going there.
@@ -769,6 +779,7 @@ impl<'i> Cursor<'i> {
         if next == Tok::Eq {
             self.advance()?;
             let body = self.def_body()?;
+            self.opt_semicolon()?;
             return Ok(Def {
                 span: start.to(body.span()),
                 name,
@@ -797,6 +808,7 @@ impl<'i> Cursor<'i> {
 
         self.eat(Tok::Eq)?;
         let body = self.def_body()?;
+        self.opt_semicolon()?;
         Ok(Def {
             span: start.to(body.span()),
             name,
@@ -1146,6 +1158,7 @@ impl<'i> Cursor<'i> {
         let (name, _) = self.eat_ident("a type name")?;
         self.eat(Tok::Eq)?;
         let ty = self.type_expr()?;
+        self.opt_semicolon()?;
         let span = start.to(ty.span());
         Ok(Alias { name, ty, span })
     }
@@ -1868,4 +1881,33 @@ impl<'i> Cursor<'i> {
 /// `Circle(...)`), which this does not gate.
 fn bare_callee(name: &str) -> bool {
     !name.chars().next().is_some_and(char::is_uppercase)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_module;
+
+    /// Compare two spellings that differ only by the optional `;` terminator (gh:153 slice 2a).
+    /// Each pair is isolated on its own line so the extra `;` cannot shift any later span, and
+    /// the two trees must be identical.
+    fn same(a: &str, b: &str) {
+        assert_eq!(
+            format!("{:?}", parse_module(a).unwrap()),
+            format!("{:?}", parse_module(b).unwrap()),
+            "spellings `{a}` and `{b}` parsed differently",
+        );
+    }
+
+    /// gh:153 slice 2a: the `;` declaration terminator is accepted but not yet required, and
+    /// leaves no trace on the tree -- both spellings of an fn or type declaration parse to the
+    /// same module.
+    #[test]
+    fn semicolon_terminator_does_not_change_the_tree() {
+        same("fn f(x: Int) -> Int = x * 10", "fn f(x: Int) -> Int = x * 10;");
+        same("fn f(x: Int) -> Int = x", "fn f(x: Int) -> Int = x;");
+        same("type U = {name: Str}", "type U = {name: Str};");
+        same("type Db = Vec<Int>", "type Db = Vec<Int>;");
+        // The hoisted form accepts the terminator too.
+        same("fn answer = 42", "fn answer = 42;");
+    }
 }
