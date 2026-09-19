@@ -284,10 +284,41 @@ pub(super) fn print_paren_arg(e: &Expr) -> String {
 }
 
 pub(super) fn print_expr_compact(e: &Expr, ctx: Ctx) -> String {
+    // A bare call sitting right next to a binary operator, comparison, or guard has nothing
+    // marking where its argument ends and the operator begins (`length v == 0`) -- the same
+    // ambiguity bare application was built to avoid, just against an operator instead of
+    // another call (maintainer ruling, 2026-09-20). Falling back to the call's own
+    // parenthesized form is enough; it needs no *extra* wrapping on top; `f(x) == 0` already
+    // delimits itself the way `(f x) == 0` would, one paren pair lighter.
+    //
+    // Exempted when the argument's own rendering already closes with `}` or `]`: a record
+    // literal, or a postfix chain ending in an index/slice/projection, already marks its own
+    // end as clearly as parens would (`get { r: 3 } * get { ... }` is no less clear than
+    // `get({ r: 3 }) * get({ ... })`), so the fallback would only add a redundant pair.
+    if let Expr::Call { func, arg, .. } = e
+        && matches!(ctx, Ctx::Operand(_))
+    {
+        return match arg {
+            None => format!("{func}()"),
+            Some(a) if bare_arg_ok(a) && ends_bracketed(a) => {
+                format!("{func} {}", print_expr_inner(a))
+            }
+            Some(a) => format!("{func}({})", print_paren_arg(a)),
+        };
+    }
     if needs_parens(e, ctx) {
         return format!("({})", print_expr_inner(e));
     }
     print_expr_inner(e)
+}
+
+/// Whether `e`'s own rendering closes with `}` or `]`. Renders it to find out rather than
+/// re-deriving the shape structurally, since the answer already has to agree with whatever
+/// `print_expr_inner` actually produces (a nested bare call's own ending, recursively, in
+/// particular) and a second hand-written predicate would only be one edit away from drifting
+/// out of sync with it.
+fn ends_bracketed(e: &Expr) -> bool {
+    print_expr_inner(e).ends_with(['}', ']'])
 }
 
 /// A Float literal spelled so it lexes back as a Float. `float::lit` is the shortest
