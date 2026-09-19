@@ -165,25 +165,6 @@
   needs: [select-lazy-materialization-build-go, select-lazy-materialization-build-js, select-lazy-materialization-build-py, select-lazy-materialization-build-lua, select-lazy-materialization-build-rust, select-lazy-materialization-build-jq, select-lazy-materialization-build-llvm]
   status: todo
 
-- id: select-lazy-materialization-build-go
-  title: 'select-lazy-materialization, Go backend -- split from `select-lazy-materialization-build`
-    per maintainer ruling (wizard submission, stuck-cross-backend-scope-escalation round,
-    2026-09-13, option A). Replace this backend''s eager `tlSelect`-style filter (currently
-    `src/emit_go.rs:1336-1345`) with a lazily-built mask/selection-vector representation (O(1)
-    indexed access via a selection vector or mask+popcount table built once over mask bits),
-    compacting only on the first strong reference (reusing input storage if uniquely
-    referenced, per mutation-semantics-spike''s provably-one-reference condition). Same
-    `Kind::Select` AST/checker node -- no syntax/checker change; `xs | select(pred)` keeps its
-    RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror
-    Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete
-    worked pattern. A prior attempt (run ed033203, 2026-09-14) made 9 real edits but hit
-    max_turns at 90 without landing -- give the next dispatch a larger turn budget.
-    current meaning. Per-backend builtin-wiring precedent: `src/emit_go.rs:192` (SUM_HELPER).
-    Done-gate: this backend''s own conformance tests pass (not the full 7-backend suite).'
-  kind: build
-  needs: [select-lazy-materialization-convergence-ruling]
-  status: delegated
-
 - id: select-lazy-materialization-build-js
   title: 'select-lazy-materialization, JS backend -- split from `select-lazy-materialization-build`
     per the same ruling as the Go row above (wizard submission,
