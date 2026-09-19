@@ -1,5 +1,4 @@
 - id: dsv-partials-migration
-  issue: gh:136
   title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet. Neither source_in_fn nor a partial-application-system-build row exists on the board, so `needs` structurally cannot express the real gap -- status set to `proposed` (2026-09-12) so this stops false-reporting as a ready build row (flagged as a recurring false-ready incident, plans/simple-dispatch-design.md, 2026-09-11); set back to `todo` once the real prerequisite rows exist and land.'
   kind: build
   needs: [closures-first-class-functions-design]
@@ -154,7 +153,6 @@
   status: todo
 
 - id: select-lazy-materialization-build
-  issue: gh:176
   title: 'Spun off from select-shared-mechanism-design''s checkpoint ruling (wizard submission, 2026-09-11): implement offload-boundary-design''s Q22 ruling (RATIFIED, 2026-09-07) for `select` -- replace every backend''s eager `tlSelect`-style filter (e.g. `src/emit_go.rs:1336-1345`) with a lazily-built mask/selection-vector representation behind the same `Vec` (O(1) indexed access via a selection vector or mask+popcount table built once over mask bits), compacting only on the first strong reference (reusing input storage if uniquely referenced, per the same provably-one-reference condition mutation-semantics-spike already uses). Same `Kind::Select` AST/checker node throughout -- no syntax change, no checker change; `xs | select(pred)` keeps its current meaning across all 7 backends.
 
     STUCK (agent could only scope a Go-only slice, which it said would violate the
@@ -168,7 +166,6 @@
   status: todo
 
 - id: select-lazy-materialization-build-go
-  issue: gh:176
   title: 'select-lazy-materialization, Go backend -- split from `select-lazy-materialization-build`
     per maintainer ruling (wizard submission, stuck-cross-backend-scope-escalation round,
     2026-09-13, option A). Replace this backend''s eager `tlSelect`-style filter (currently
@@ -184,7 +181,6 @@
   status: todo
 
 - id: select-lazy-materialization-build-js
-  issue: gh:176
   title: 'select-lazy-materialization, JS backend -- split from `select-lazy-materialization-build`
     per the same ruling as the Go row above (wizard submission,
     stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
@@ -198,7 +194,6 @@
   status: todo
 
 - id: select-lazy-materialization-build-lua
-  issue: gh:176
   title: 'select-lazy-materialization, Lua backend -- split from `select-lazy-materialization-build`
     per the same ruling as the Go row above (wizard submission,
     stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
@@ -212,7 +207,6 @@
   status: todo
 
 - id: select-lazy-materialization-build-rust
-  issue: gh:176
   title: 'select-lazy-materialization, Rust backend -- split from `select-lazy-materialization-build`
     per the same ruling as the Go row above (wizard submission,
     stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
@@ -225,7 +219,6 @@
   status: todo
 
 - id: select-lazy-materialization-build-jq
-  issue: gh:176
   title: 'select-lazy-materialization, jq backend -- split from `select-lazy-materialization-build`
     per the same ruling as the Go row above (wizard submission,
     stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
@@ -240,7 +233,6 @@
   status: todo
 
 - id: select-lazy-materialization-build-llvm
-  issue: gh:176
   title: 'select-lazy-materialization, LLVM backend -- split from `select-lazy-materialization-build`
     per the same ruling as the Go row above (wizard submission,
     stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
@@ -261,7 +253,6 @@
   status: todo
 
 - id: http-query-sugar-build
-  issue: gh:171
   title: 'Build HTTP query sugar per http-query-sugar-design''s ruling (2026-09-08): `fetch(url)` on the 3 TLS-capable backends only (Go, JS, Python) -- full response record (status/headers/body) via proper structs/enums, not an ad hoc record; a new header representation is needed since toylang has no Map type yet. Lua/jq/Rust/native refuse this program class outright. Once this lands, file a follow-up row for extending HTTP support to the remaining 4 backends (maintainer flagged the design is not "really final" until all backends have it, but explicitly scoped that out of this build). Parked after 3 verified sandboxed build attempts all made zero file changes (not an infra failure -- toolchain ran fine each round) -- maintainer ruling (wizard submission, http-query-sugar-build-sandbox-blocker round, 2026-09-09): hand off to a privileged manual session rather than redispatch. Prompt drafted at plans/issue-171-privileged-agent-prompt.md. Lane stays escalated (~/.cache/toylang-drive/escalated-issue-171 kept) until that session lands it. Status set to `proposed` (2026-09-12) since `status: todo` kept round-tripping through every tick''s ready-build-row list despite the do-not-redispatch ruling, same recurring-false-ready pattern already flagged for the batch-3 slow-fragment row (plans/simple-dispatch-design.md, 2026-09-11); set back to `todo` once the privileged session lands it or a new ruling supersedes this one.'
   kind: build
   needs: [http-query-sugar-design]
@@ -273,7 +264,6 @@
   status: proposed
 
 - id: dense-tensor-type-build
-  issue: gh:175
   title: 'Build the dense tensor design per dense-tensor-type''s ruling (2026-09-08): no separate Tensor value kind -- Vec itself is the tensor-capable type (rectangular, shape-checked); `tensor(n; m)` constructor, one stage, no Float/width commitment (Float does not exist yet); `.[]` on a rank-2 tensor yields rows (Q18, already settled); a transpose/column-access view built now, not deferred; nulls hard-fail only at construction, no validity bitmask (maintainer flagged this pick as tentative -- revisit if a real pipeline needs masked nulls).
 
     STUCK (agent was still mapping the wiring pattern when budget ran out; flagged that
@@ -289,7 +279,6 @@
   status: todo
 
 - id: tensor-constructor-build
-  issue: gh:175
   title: 'Implement the `tensor(n; m)` constructor builtin (new semicolon-separated call syntax)
     across all 7 backends -- split from `dense-tensor-type-build` per the same ruling as
     `tensor-transpose-build` (wizard submission, stuck-cross-backend-scope-escalation round,
@@ -309,7 +298,6 @@
   status: todo
 
 - id: tensor-constructor-build-convergence-ruling
-  issue: gh:175
   title: '`tensor-constructor-build` STUCK twice in a row (run c3768587, 2026-09-15, $0.244833)
     at the scope already narrowed by the prior redispatch (parser + checker/TIR only, no backend
     codegen): both attempts hit max_turns (30 each), edits=0, verify=RED (no changes, no verify
@@ -466,7 +454,6 @@
   status: todo
 
 - id: select-lazy-materialization-convergence-ruling
-  issue: gh:176
   title: 'Placeholder decide row gating the 7 select-lazy-materialization-build-* rows (go, js, py, lua,
     rust, jq, llvm) as not-ready. With every known harness bug fixed (exploration cutoff off, reasoning
     cap 8192 with nudges, tsc present), go/js/py were redispatched on 2026-09-15 and all three used their
