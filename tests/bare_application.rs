@@ -19,8 +19,8 @@ fn matches_the_parenthesized_form() {
 /// Right-recursive, so `f g x` is `f(g(x))` rather than needing `f(g(x))` spelled with parens.
 #[test]
 fn chains_right_to_left() {
-    let chained = "fn inc(n: Int) -> Int = n + 1\n\nstr inc 5";
-    let parenthesized = "fn inc(n: Int) -> Int = n + 1\n\nstr(inc(5))";
+    let chained = "fn inc(n: Int) -> Int = n + 1;\n\nstr inc 5";
+    let parenthesized = "fn inc(n: Int) -> Int = n + 1;\n\nstr(inc(5))";
     assert_eq!(
         toylang::run(chained).unwrap(),
         toylang::run(parenthesized).unwrap()
@@ -32,7 +32,7 @@ fn chains_right_to_left() {
 /// `1 + inc 2 + inc 3` read `(1 + inc(2)) + inc(3)`.
 #[test]
 fn composes_with_operators() {
-    let src = "fn inc(n: Int) -> Int = n + 1\n\n1 + inc 2 + inc 3";
+    let src = "fn inc(n: Int) -> Int = n + 1;\n\n1 + inc 2 + inc 3";
     assert_eq!(toylang::run(src).unwrap(), "8\n");
 }
 
@@ -40,7 +40,7 @@ fn composes_with_operators() {
 /// what keeps the definition boundary safe instead.
 #[test]
 fn a_definition_body_may_end_in_a_bare_call() {
-    let src = "fn size(v: Vec<Int>) -> Int = length v\n\nsize([1, 2, 3])";
+    let src = "fn size(v: Vec<Int>) -> Int = length v;\n\nsize([1, 2, 3])";
     assert_eq!(toylang::run(src).unwrap(), "3\n");
 }
 
@@ -49,7 +49,7 @@ fn a_definition_body_may_end_in_a_bare_call() {
 /// the call across lines.
 #[test]
 fn a_cross_line_argument_is_rejected_naming_the_parens_spelling() {
-    insta::assert_snapshot!(err("fn inc(n: Int) -> Int = n + 1\n\ninc\n1"));
+    insta::assert_snapshot!(err("fn inc(n: Int) -> Int = n + 1;\n\ninc\n1"));
 }
 
 /// `-` is already subtraction, so `f -1` stays `f - 1` rather than `f` applied to `-1` -- the
@@ -57,7 +57,7 @@ fn a_cross_line_argument_is_rejected_naming_the_parens_spelling() {
 /// needed, and the error says that instead of claiming the name is undefined.
 #[test]
 fn a_trailing_minus_is_subtraction_not_negation() {
-    insta::assert_snapshot!(err("fn f(n: Int) -> Int = n\n\nf -1"));
+    insta::assert_snapshot!(err("fn f(n: Int) -> Int = n;\n\nf -1"));
 }
 
 /// Projection binds tighter than bare application everywhere, so `map .n` is a field access on
@@ -72,8 +72,8 @@ fn projection_wins_over_bare_application() {
 /// name inside `Call`, and so are reserved the same way every other builtin is.
 #[test]
 fn select_and_map_cannot_be_redefined() {
-    insta::assert_snapshot!(err("fn select(x: Int) -> Int = x\n\n1"));
-    insta::assert_snapshot!(err("fn map(x: Int) -> Int = x\n\n1"));
+    insta::assert_snapshot!(err("fn select(x: Int) -> Int = x;\n\n1"));
+    insta::assert_snapshot!(err("fn map(x: Int) -> Int = x;\n\n1"));
 }
 
 /// A definition's body and whatever follows it -- another `fn`, or the file's own body -- sit
@@ -83,7 +83,7 @@ fn select_and_map_cannot_be_redefined() {
 #[test]
 fn a_function_body_does_not_swallow_what_follows_it() {
     assert_eq!(
-        toylang::run("fn f(x: Int) -> Int = x\n\nf(1)").unwrap(),
+        toylang::run("fn f(x: Int) -> Int = x;\n\nf(1)").unwrap(),
         "1\n"
     );
 }
@@ -93,7 +93,7 @@ fn a_function_body_does_not_swallow_what_follows_it() {
 #[test]
 fn a_parenthesized_program_body_is_not_swallowed() {
     assert_eq!(
-        toylang::run("fn f(x: Int) -> Int = x\n\n(1 + 2)").unwrap(),
+        toylang::run("fn f(x: Int) -> Int = x;\n\n(1 + 2)").unwrap(),
         "3\n"
     );
 }

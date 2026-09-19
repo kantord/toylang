@@ -32,13 +32,13 @@ mod containment {
     /// sites: an annotation cannot describe a stream as stored in a Vec.
     #[test]
     fn a_signature_cannot_put_a_stream_in_a_vec() {
-        insta::assert_snapshot!(err("fn f(v: Vec<Stream<Str>>) -> Int = 0\n\n1"));
+        insta::assert_snapshot!(err("fn f(v: Vec<Stream<Str>>) -> Int = 0;\n\n1"));
     }
 
     /// Same ban for a record field, spelled in a signature.
     #[test]
     fn a_signature_cannot_put_a_stream_in_a_record() {
-        insta::assert_snapshot!(err("fn f(r: {s: Stream<Str>}) -> Int = 0\n\n1"));
+        insta::assert_snapshot!(err("fn f(r: {s: Stream<Str>}) -> Int = 0;\n\n1"));
     }
 
     /// And for an enum variant's payload, the one other annotation a value constructor reads.
@@ -57,7 +57,7 @@ mod containment {
     /// A stream of streams has nothing it could yield: its entries would not be values.
     #[test]
     fn a_stream_cannot_hold_another_stream() {
-        insta::assert_snapshot!(err("fn f(s: Stream<Stream<Str>>) -> Int = 0\n\n1"));
+        insta::assert_snapshot!(err("fn f(s: Stream<Stream<Str>>) -> Int = 0;\n\n1"));
     }
 }
 
@@ -79,7 +79,7 @@ mod linearity {
     #[test]
     fn a_stream_signature_checks_end_to_end() {
         assert!(
-            toylang::compile("fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\n\nf(stdin)").is_ok()
+            toylang::compile("fn f(s: Stream<Str>) -> Vec<Str> = collect(s);\n\nf(stdin)").is_ok()
         );
     }
 
@@ -88,7 +88,7 @@ mod linearity {
     /// dropped a stream.
     #[test]
     fn a_stream_parameter_must_be_consumed() {
-        insta::assert_snapshot!(err("fn f(s: Stream<Str>) -> Int = 0\n\n1"));
+        insta::assert_snapshot!(err("fn f(s: Stream<Str>) -> Int = 0;\n\n1"));
     }
 
     /// Two uses is the Python-generator mistake the single-use rule exists to prevent: the
@@ -96,7 +96,7 @@ mod linearity {
     #[test]
     fn a_stream_parameter_cannot_be_consumed_twice() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Str>) -> Int = length(collect(s)) + length(collect(s))\n\n1"
+            "fn f(s: Stream<Str>) -> Int = length(collect(s)) + length(collect(s));\n\n1"
         ));
     }
 
@@ -112,7 +112,7 @@ mod linearity {
     #[test]
     fn a_program_cannot_result_in_a_bare_stream() {
         insta::assert_snapshot!(err(
-            "fn noisy(s: Stream<Str>) -> Stream<Str> = s | map(. + \"!\")\n\nnoisy(stdin)"
+            "fn noisy(s: Stream<Str>) -> Stream<Str> = s | map(. + \"!\");\n\nnoisy(stdin)"
         ));
     }
 
@@ -123,7 +123,7 @@ mod linearity {
     #[test]
     fn a_conditional_cannot_yield_a_stream() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Str>) -> Stream<Str> = s if 1 == 1 else s\n\n1"
+            "fn f(s: Stream<Str>) -> Stream<Str> = s if 1 == 1 else s;\n\n1"
         ));
     }
 
@@ -131,7 +131,7 @@ mod linearity {
     #[test]
     fn a_match_cannot_yield_a_stream() {
         insta::assert_snapshot!(err(
-            "enum E { A, B }\n\nfn f(s: Stream<Str>) -> Stream<Str> = a | (A -> s or B -> s)\n\n1"
+            "enum E { A, B }\n\nfn f(s: Stream<Str>) -> Stream<Str> = a | (A -> s or B -> s);\n\n1"
         ));
     }
 
@@ -140,7 +140,7 @@ mod linearity {
     #[test]
     fn a_map_body_cannot_be_a_stream() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Str>) -> Int = length([1] | map(s))\n\n1"
+            "fn f(s: Stream<Str>) -> Int = length([1] | map(s));\n\n1"
         ));
     }
 
@@ -150,7 +150,7 @@ mod linearity {
     #[test]
     fn a_stream_cannot_be_consumed_inside_a_mapper() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Str>) -> Vec<Int> = [1] | map(length(collect(s)))\n\n1"
+            "fn f(s: Stream<Str>) -> Vec<Int> = [1] | map(length(collect(s)));\n\n1"
         ));
     }
 
@@ -181,7 +181,7 @@ mod sources {
     #[test]
     fn input_and_lines_cannot_both_be_used() {
         insta::assert_snapshot!(err(
-            "fn f(x: Int) -> Int = x\n\nf(parse(stdin)) + (collect(stdin) | 0)"
+            "fn f(x: Int) -> Int = x;\n\nf(parse(stdin)) + (collect(stdin) | 0)"
         ));
     }
 
@@ -190,7 +190,7 @@ mod sources {
     #[test]
     fn input_and_inputs_cannot_both_be_used() {
         insta::assert_snapshot!(err(
-            "fn f(x: Int) -> Int = x\nfn g(x: Vec<Int>) -> Int = length(x)\n\nf(parse(stdin)) + g(collect((stdin | map(parse(.)))))"
+            "fn f(x: Int) -> Int = x;\nfn g(x: Vec<Int>) -> Int = length(x);\n\nf(parse(stdin)) + g(collect((stdin | map(parse(.)))))"
         ));
     }
 
@@ -200,7 +200,7 @@ mod sources {
     #[test]
     fn lines_and_inputs_cannot_both_be_used() {
         insta::assert_snapshot!(err(
-            "fn g(x: Vec<Int>) -> Int = length(x)\n\n(collect(stdin) | 0) + g(collect((stdin | map(parse(.)))))"
+            "fn g(x: Vec<Int>) -> Int = length(x);\n\n(collect(stdin) | 0) + g(collect((stdin | map(parse(.)))))"
         ));
     }
 
@@ -216,7 +216,7 @@ mod sources {
     #[test]
     fn inputs_cannot_be_read_twice() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Int>) -> Vec<Int> = collect(s)\n\nlength(f((stdin | map(parse(.))))) + length(f((stdin | map(parse(.)))))"
+            "fn f(s: Stream<Int>) -> Vec<Int> = collect(s);\n\nlength(f((stdin | map(parse(.))))) + length(f((stdin | map(parse(.)))))"
         ));
     }
 
@@ -240,7 +240,7 @@ mod sources {
     #[test]
     fn inputs_wanted_as_a_vec_names_the_eager_spelling() {
         insta::assert_snapshot!(err(
-            "fn g(x: Vec<Int>) -> Int = length(x)\n\ng((stdin | map(parse(.))))"
+            "fn g(x: Vec<Int>) -> Int = length(x);\n\ng((stdin | map(parse(.))))"
         ));
     }
 
@@ -249,7 +249,7 @@ mod sources {
     #[test]
     fn input_cannot_be_a_stream() {
         insta::assert_snapshot!(err(
-            "fn f(s: Stream<Str>) -> Vec<Str> = collect(s)\n\nf(parse(stdin))"
+            "fn f(s: Stream<Str>) -> Vec<Str> = collect(s);\n\nf(parse(stdin))"
         ));
     }
 
@@ -262,7 +262,7 @@ mod sources {
     #[test]
     fn inputs_cannot_be_read_inside_a_mapper() {
         insta::assert_snapshot!(err(
-            "fn g(x: Vec<Int>) -> Int = length(x)\n\nlength([1] | map(g(collect((stdin | map(parse(.)))))))"
+            "fn g(x: Vec<Int>) -> Int = length(x);\n\nlength([1] | map(g(collect((stdin | map(parse(.)))))))"
         ));
     }
 
@@ -271,13 +271,13 @@ mod sources {
     /// below.
     #[test]
     fn lines_cannot_be_read_inside_a_fn_body() {
-        insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Str> = collect(stdin)\n\n1"));
+        insta::assert_snapshot!(err("fn f(x: Int) -> Vec<Str> = collect(stdin);\n\n1"));
     }
 
     #[test]
     fn inputs_cannot_be_read_inside_a_fn_body() {
         insta::assert_snapshot!(err(
-            "fn f(x: Int) -> Vec<Int> = collect((stdin | map(parse(.))))\n\n1"
+            "fn f(x: Int) -> Vec<Int> = collect((stdin | map(parse(.))));\n\n1"
         ));
     }
 
@@ -288,7 +288,7 @@ mod sources {
     #[test]
     fn a_function_reading_a_source_cannot_be_called_from_a_mapper() {
         insta::assert_snapshot!(err(
-            "fn f(x: Int) -> Int = length(collect(stdin)) + x\n\nlength([1, 2] | map(f(.)))"
+            "fn f(x: Int) -> Int = length(collect(stdin)) + x;\n\nlength([1, 2] | map(f(.)))"
         ));
     }
 
@@ -297,6 +297,6 @@ mod sources {
     /// sink.
     #[test]
     fn a_function_cannot_conjure_a_stream() {
-        insta::assert_snapshot!(err("fn f(x: Int) -> Stream<Str> = stdin\n\n1"));
+        insta::assert_snapshot!(err("fn f(x: Int) -> Stream<Str> = stdin;\n\n1"));
     }
 }

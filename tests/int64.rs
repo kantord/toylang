@@ -13,7 +13,7 @@ use toylang::Backend;
 /// bits: everything but jq.
 #[test]
 fn int64_wraps_at_the_2_63_boundary() {
-    let src = "fn big() -> Int64 = 9223372036854775807\n\nbig() + 1\n";
+    let src = "fn big() -> Int64 = 9223372036854775807;\n\nbig() + 1\n";
     for backend in Backend::ALL {
         if backend == Backend::Jq {
             continue;
@@ -32,8 +32,8 @@ fn int64_wraps_at_the_2_63_boundary() {
 /// rule to the width where the underlying hardware division would otherwise trap.
 #[test]
 fn int64_min_over_minus_one_wraps() {
-    let div = "fn min() -> Int64 = -9223372036854775807\n\n(min() - 1) / i64(0 - 1)\n";
-    let rem = "fn min() -> Int64 = -9223372036854775807\n\n(min() - 1) % i64(0 - 1)\n";
+    let div = "fn min() -> Int64 = -9223372036854775807;\n\n(min() - 1) / i64(0 - 1)\n";
+    let rem = "fn min() -> Int64 = -9223372036854775807;\n\n(min() - 1) % i64(0 - 1)\n";
     for backend in Backend::ALL {
         if backend == Backend::Jq {
             continue;
@@ -58,7 +58,7 @@ fn int64_min_over_minus_one_wraps() {
 /// this snapshot ever changes, jq's Int64 story changed with it.
 #[test]
 fn jq_int64_is_inexact_past_2_53() {
-    let src = "fn big() -> Int64 = 9223372036854775807\n\nbig() + 1\n";
+    let src = "fn big() -> Int64 = 9223372036854775807;\n\nbig() + 1\n";
     let out = toylang::run_on(src, None, Backend::Jq).unwrap();
     assert_eq!(out, "9223372036854776000\n");
 }
@@ -68,7 +68,7 @@ fn jq_int64_is_inexact_past_2_53() {
 #[test]
 fn arithmetic_does_not_mix_the_widths() {
     insta::assert_snapshot!(
-        toylang::compile("fn big() -> Int64 = 5\n\n1 + big()")
+        toylang::compile("fn big() -> Int64 = 5;\n\n1 + big()")
             .map(|_| ())
             .unwrap_err()
             .to_string()
@@ -78,7 +78,7 @@ fn arithmetic_does_not_mix_the_widths() {
 #[test]
 fn comparison_does_not_mix_the_widths() {
     insta::assert_snapshot!(
-        toylang::compile("fn big() -> Int64 = 5\n\nbig() < 2 + 2")
+        toylang::compile("fn big() -> Int64 = 5;\n\nbig() < 2 + 2")
             .map(|_| ())
             .unwrap_err()
             .to_string()
@@ -113,7 +113,7 @@ fn i64_takes_an_int() {
 #[test]
 fn input_cannot_be_int64() {
     insta::assert_snapshot!(
-        toylang::compile("fn f(n: Int64) -> Int64 = n\n\nf(parse(stdin))")
+        toylang::compile("fn f(n: Int64) -> Int64 = n;\n\nf(parse(stdin))")
             .map(|_| ())
             .unwrap_err()
             .to_string()
@@ -124,7 +124,7 @@ fn input_cannot_be_int64() {
 fn inputs_cannot_carry_int64() {
     insta::assert_snapshot!(
         toylang::compile(
-            "fn f(s: Stream<{ts: Int64}>) -> Stream<{ts: Int64}> = s\n\njsonlines(f((stdin | map(parse(.)))))"
+            "fn f(s: Stream<{ts: Int64}>) -> Stream<{ts: Int64}> = s;\n\njsonlines(f((stdin | map(parse(.)))))"
         )
         .map(|_| ())
         .unwrap_err()
@@ -137,7 +137,7 @@ fn inputs_cannot_carry_int64() {
 #[test]
 fn str_does_not_take_an_int64() {
     insta::assert_snapshot!(
-        toylang::compile("fn big() -> Int64 = 5\n\nstr(big())")
+        toylang::compile("fn big() -> Int64 = 5;\n\nstr(big())")
             .map(|_| ())
             .unwrap_err()
             .to_string()

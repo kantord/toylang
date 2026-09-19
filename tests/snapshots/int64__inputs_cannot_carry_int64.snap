@@ -1,6 +1,5 @@
 ---
 source: tests/int64.rs
-assertion_line: 125
-expression: "toylang::compile(\"fn f(s: Stream<{ts: Int64}>) -> Stream<{ts: Int64}> = s\\n\\njsonlines(f((stdin | map(parse(.)))))\").map(|_|\n()).unwrap_err().to_string()"
+expression: "toylang::compile(\"fn f(s: Stream<{ts: Int64}>) -> Stream<{ts: Int64}> = s;\\n\\njsonlines(f((stdin | map(parse(.)))))\").map(|_|\n()).unwrap_err().to_string()"
 ---
-`stdin | map(parse(.))` cannot be read as Stream<{ts: Int64}>; how an Int64 crosses the wire is not decided yet (at byte 70)
+`stdin | map(parse(.))` cannot be read as Stream<{ts: Int64}>; how an Int64 crosses the wire is not decided yet (at byte 71)

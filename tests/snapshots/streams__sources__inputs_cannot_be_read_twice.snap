@@ -1,6 +1,5 @@
 ---
 source: tests/streams.rs
-assertion_line: 218
-expression: "err(\"fn f(s: Stream<Int>) -> Vec<Int> = collect(s)\\n\\nlength(f((stdin | map(parse(.))))) + length(f((stdin | map(parse(.)))))\")"
+expression: "err(\"fn f(s: Stream<Int>) -> Vec<Int> = collect(s);\\n\\nlength(f((stdin | map(parse(.))))) + length(f((stdin | map(parse(.)))))\")"
 ---
-`stdin` has already been read; there is only one stdin (at byte 94)
+`stdin` has already been read; there is only one stdin (at byte 95)

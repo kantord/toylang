@@ -1,6 +1,5 @@
 ---
 source: tests/int64.rs
-assertion_line: 115
-expression: "toylang::compile(\"fn f(n: Int64) -> Int64 = n\\n\\nf(parse(stdin))\").map(|_|\n()).unwrap_err().to_string()"
+expression: "toylang::compile(\"fn f(n: Int64) -> Int64 = n;\\n\\nf(parse(stdin))\").map(|_|\n()).unwrap_err().to_string()"
 ---
-`parse(stdin)` cannot be read as Int64; how an Int64 crosses the wire is not decided yet (at byte 31)
+`parse(stdin)` cannot be read as Int64; how an Int64 crosses the wire is not decided yet (at byte 32)
