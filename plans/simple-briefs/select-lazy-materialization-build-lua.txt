@@ -1,5 +1,5 @@
 A previous dispatch completed this task, but landing the branch on main
-FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 1 of 3). The exact evidence:
+FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 2 of 3). The exact evidence:
 
 error: patch failed: site/public/corpus.json:14
 error: site/public/corpus.json: patch does not apply
