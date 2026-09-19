@@ -1,0 +1,28 @@
+Board row `transpose-jq-llvm` (gh:181). Add the `transpose` builtin to the jq and LLVM backends.
+
+State on main: `transpose(vv)` (`Builtin::Transpose`, src/tir.rs ~282: `Vec<Vec<T>> -> Vec<Vec<T>>`,
+rectangular input; a ragged input is refused at runtime) is built on Go, Rust, JS, Python and
+Lua. `grep -n Transpose src/emit_jq.rs src/emit_llvm.rs` is empty. src/backend_support.rs
+LANDINGS still lists `transpose` as built on `[Go, Rust, Js, Py, Lua]`.
+
+Do, in this order, running `just check` after each step:
+1. Read how one landed backend does it (`grep -n -i transpose src/emit_lua.rs src/emit_js.rs`)
+   and reuse its error text for a ragged input so behaviour agrees across backends.
+2. src/emit_jq.rs: add the `Builtin::Transpose` arm next to the neighbouring builtin arms
+   (jq has `transpose` natively but it pads ragged rows with null -- the ragged case must still be
+   refused like the other backends, so check row lengths first and `error(...)` on mismatch).
+3. src/emit_llvm.rs: add the `Builtin::Transpose` arm next to `Builtin::Sum` (~line 1586). If a
+   Vec-of-Vec allocation helper already exists there reuse it; keep it in the file's existing
+   style.
+4. src/backend_support.rs: add `Backend::Jq` and `Backend::Llvm` to the `transpose` landing (check
+   the enum for exact variant names). Then read tests/tag_coverage.rs:24 and
+   tests/unbuilt_arms.rs and update whatever they say about transpose so those tests pass.
+5. Add one corpus program under tests/corpus/ (copy the shape of a neighbouring .yaml) covering a
+   2x3 -> 3x2 transpose and the ragged-input refusal, if the corpus format supports expected
+   runtime errors; otherwise just the success case.
+
+Do NOT rewrite files with scripts (sed/python bulk edits); use the edit tool on the specific
+lines. Do not touch other builtins.
+
+Done-gate: `just check` passes; `transpose([[1, 2, 3], [4, 5, 6]])` prints the same result on
+every backend including jq and LLVM (run the corpus test that compares backends).

@@ -3119,3 +3119,45 @@
     style calls were the agent''s and are listed for the maintainer in the 2026-09-19 session
     report: one space before a trailing `#`, an in-expression comment rising above its
     definition, and keeping only the blank line after a comment.'
+
+- id: select-lazy-materialization-build-js
+  title: 'select-lazy-materialization, JS backend -- split from `select-lazy-materialization-build`
+    per the same ruling as the Go row above (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
+    `src/emit_js.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
+    representation, compacting only on first strong reference; same `Kind::Select` node, no
+    RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror
+    Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete
+    worked pattern. A prior attempt (run ec7b5d98, 2026-09-14) made 13 real edits but hit
+    max_turns at 90 without landing -- give the next dispatch a larger turn budget.
+    syntax/checker change. Confirm the current filter''s exact location with `grep -n` first --
+    see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
+    Done-gate: this backend''s own conformance tests pass.'
+  kind: build
+  needs: [select-lazy-materialization-convergence-ruling]
+  status: done
+
+- id: select-lazy-materialization-build-lua
+  title: 'select-lazy-materialization, Lua backend -- split from `select-lazy-materialization-build`
+    per the same ruling as the Go row above (wizard submission,
+    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
+    `src/emit_lua.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
+    representation, compacting only on first strong reference; same `Kind::Select` node, no
+    syntax/checker change. Confirm the current filter''s exact location with `grep -n` first --
+    see this backend''s own Sum/Max builtin wiring for the per-backend helper pattern to follow.
+    RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete worked pattern once this backend is picked up. Done-gate: this backend''s own conformance tests pass.'
+  kind: build
+  needs: [select-lazy-materialization-convergence-ruling]
+  status: done
+
+- id: land-patch-generated-hunks-fix
+  title: 'Maintainer ruling (2026-09-19, select-lazy-js-land-cap-escalation round): fix the mechanism so this cannot recur. land_lane.py land-patch applies a dispatch patch with plain `git am`, and any patch carrying a stale hunk of a GENERATED file (site/public/corpus.json, rewritten by nearly every landing) fails whole -- select-lazy-materialization-build-js and -lua both burned the retry cap this way with sound edits. Make land-patch drop GENERATED hunks (`git am --exclude=...`) and regenerate them in the lane worktree before the gate. Brief: plans/simple-briefs/land-patch-generated-hunks-fix.txt. AFTER IT LANDS: rm the land-failed-issue-select-lazy-materialization-build-{js,lua} markers (and land-retries-*) and re-run land-patch for both rows with their existing patches (js 62ba574f, lua 76aa59c3 under ~/.cache/toylang-simple-dispatch/results/).'
+  kind: build
+  needs: []
+  status: done
+
+- id: docs-gaps-let-tailpipe-destructure-tailcall
+  title: 'Four shipped features with no reference page, found by the 2026-09-19 issue review: `let` bindings (gh:150; no page, no guide section), the `|>` tail-pipe marker (gh:154; no docs page, no corpus case, no Rust test -- a fixed-string grep hits only src/), record-parameter destructuring `fn g({a, b}: {a: Int, b: Int})` (gh:144; docs/reference/syntax/functions.md never mentions it), and the self-tail-call constant-stack contract (gh:141; lives only in a corpus comment and emitter comments). Write each into docs/reference with runnable fences, and add a corpus case for `|>`.'
+  kind: build
+  needs: []
+  status: done

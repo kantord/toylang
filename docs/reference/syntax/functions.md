@@ -65,6 +65,47 @@ builtin in every such language re-poses that question. A record answers it once 
 structurally -- fields are named and order does not matter -- so named arguments are not a
 feature bolted on but what passing a record already looks like.
 
+A record parameter can be destructured in place: `fn g({a, b}: {a: Int, b: Int})` binds `a`
+and `b` directly, instead of naming the record and reaching through `.` on it. The type
+annotation stays fully explicit -- the pattern names the fields, the annotation names their
+types -- and the body reads the fields as ordinary parameters:
+
+```toylang
+fn g({ a, b }: { a: Int, b: Int }) -> Int = a + b
+
+g { a: 3, b: 4 }
+```
+
+```output
+7
+```
+
+`..` permits naming only some of the fields, the same rest marker a match arm uses; the
+unnamed fields are simply not bound:
+
+```toylang
+fn g({ a, b, .. }: { a: Int, b: Int, c: Int }) -> Int = a + b
+
+g { a: 3, b: 4, c: 5 }
+```
+
+```output
+7
+```
+
+A name that is not a field of the annotated type is refused at the signature, so a typo
+points at the parameter rather than at a later use:
+
+```toylang
+fn g({ a, z }: { a: Int, b: Int }) -> Int = a
+
+g { a: 3, b: 4 }
+```
+
+```error
+no field `z` on {a: Int, b: Int} (at byte 10)
+```
+
 A record-literal argument may drop its parens, so `area {w: 3, h: 4}` reads as named arguments:
 
 ```case
@@ -102,6 +143,29 @@ A real cycle between two or more named functions runs on six of the seven backen
 exception: its `def` sees only itself and whatever is already defined above it, with no forward
 declaration to bridge a cycle, so `toylang build`/`emit` refuses cleanly for that target rather
 than emitting jq source that would fail to compile.
+
+A function that calls itself in tail position runs in constant stack
+([kantord/toylang#141](https://github.com/kantord/toylang/issues/141)). Tail position is the
+body itself, the value of a `let` block, or an arm body of a total match -- the positions
+whose value is the function's own result. Every backend lowers a self-tail-call to a loop
+(jq's `until`, Lua's proper tail calls, and an explicit `param = arg; continue` loop on the
+interpreted and statically compiled backends), so deep self-recursion cannot overflow the
+stack:
+
+```toylang
+fn countdown(p: { n: Int, acc: Int }) -> Int =
+  p | p.n <= 0 -> p.acc or countdown { n: p.n - 1, acc: p.acc + 1 }
+
+countdown { n: 100000, acc: 0 }
+```
+
+```output
+100000
+```
+
+The contract is about the call being in tail position, not about the function being
+recursive in general: a recursive call whose result a later operation observes is an ordinary
+call and grows the stack like any other.
 
 What a signature cannot say: a `Stream` result without a `Stream` parameter (a stream is
 born only at a source; see [Stream](../types/stream.md)). A function is not a value -- it
