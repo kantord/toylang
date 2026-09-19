@@ -474,11 +474,11 @@
     select-lazy-materialization-convergence-ruling round go stale: dispatch-log.csv held a 13-edit
     near-green js run (ec7b5d98) and a diagnosed go run (ed033203) while the round told the maintainer
     the model was not converging). Done-gate: board-lint fails on a fixture reproducing this case, and
-    a test in test_board_lint.py covers it.'
+    a test in test_board_lint.py covers it. Reset to todo 2026-09-19: three GREEN patches (7173610b, 940fdccf, 2b9d2ef3) each failed to apply onto a main that had moved under them, and the landing queue reached its repair cap; the next dispatch starts from current main rather than repairing a stale patch.'
   kind: build
   needs: []
   prio: 4
-  status: delegated
+  status: todo
 
 - id: convergence-guard-drive-verbs
   title: 'Split from convergence-ruling-staleness-guards (STUCK twice at max_turns on the combined
