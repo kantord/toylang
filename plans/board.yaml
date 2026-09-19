@@ -195,32 +195,6 @@
   needs: [select-lazy-materialization-convergence-ruling]
   status: delegated
 
-- id: select-lazy-materialization-build-rust
-  title: 'select-lazy-materialization, Rust backend -- split from `select-lazy-materialization-build`
-    per the same ruling as the Go row above (wizard submission,
-    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
-    `src/emit_rs.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
-    representation, compacting only on first strong reference; same `Kind::Select` node, no
-    syntax/checker change. Per-backend builtin-wiring precedent: `src/emit_rs.rs:205`
-    (MAX_BY_HELPER). RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the concrete worked pattern once this backend is picked up. Done-gate: this backend''s own conformance tests pass.'
-  kind: build
-  needs: [select-lazy-materialization-convergence-ruling]
-  status: delegated
-
-- id: select-lazy-materialization-build-jq
-  title: 'select-lazy-materialization, jq backend -- split from `select-lazy-materialization-build`
-    per the same ruling as the Go row above (wizard submission,
-    stuck-cross-backend-scope-escalation round, 2026-09-13, option A). Same shared spec: replace
-    `src/emit_jq.rs`''s eager Select-node filter with a lazily-built mask/selection-vector
-    representation where jq''s own semantics allow it, compacting only on first strong
-    reference; same `Kind::Select` node, no syntax/checker change. If jq''s language model makes
-    true laziness impossible for this construct, say so plainly in the self-report rather than
-    forcing a fake implementation -- this is the one backend where the maintainer may need a
-    follow-up ruling. RULED 2026-09-19 (select-lazy-materialization-convergence-ruling, option a): mirror Python''s landed `TlSel`/`TLSEL_HELPER` (src/emit_py.rs:137-184,405,694) as the starting point, adapted for jq''s own semantics per the carve-out above. Done-gate: this backend''s own conformance tests pass.'
-  kind: build
-  needs: [select-lazy-materialization-convergence-ruling]
-  status: delegated
-
 - id: select-lazy-materialization-build-llvm
   title: 'select-lazy-materialization, LLVM backend -- split from `select-lazy-materialization-build`
     per the same ruling as the Go row above (wizard submission,
