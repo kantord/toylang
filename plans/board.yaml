@@ -587,12 +587,6 @@
   needs: []
   status: todo
 
-- id: bool-literal-decide
-  title: 'There is no Bool literal: `true` is "not defined" (verified 2026-09-19), so a program that needs a Bool writes `1 == 1`, and the second benchmark wave carried its transpose flag as an Int. Decide the spelling (`true`/`false` as keywords is the obvious reading, but they are language surface) and whether they are reserved names. Found by benchmark-second-wave; mark done when ruled.'
-  kind: decide
-  needs: []
-  status: todo
-
 - id: float-sqrt-and-int-to-float-decide
   title: 'The second benchmark wave (n-body, spectral-norm, mandelbrot) had to hand-write a Newton square root in toylang and carry parallel Int and Float loop counters, because there is no `sqrt` and no `Int -> Float` bridge (`i64` is the only numeric conversion). Decide which Float builtins the language admits first (sqrt at least; the parallel basis ruling on Q23 is the frame) and the spelling of the Int-to-Float conversion. plans/benchmark-plan.md records the workarounds. Mark done when ruled.'
   kind: decide
@@ -610,3 +604,10 @@
   kind: decide
   needs: []
   status: todo
+
+- id: bool-prelude-enum-build
+  title: 'Build the bool-literal-decide ruling: `pub enum Bool { True, False }` in prelude.toy, recognized by name the way `Opt` is (`as_opt`), so `true`/`false` and `Bool.true` are constructors of the existing `Type::Bool`, a match over a Bool subject is checked exhaustively over True/False, printing and input stay JSON true/false, and every backend keeps its native boolean. Corpus cases for the literal, the match, and a Bool inside a record; docs/reference/types/bool.md and the prelude page updated.'
+  kind: build
+  needs: []
+  status: proposed
+  blocked_by: 'built directly by the coordinator session of 2026-09-19 on main via a builder in a worktree, not by a dispatched worker; do not dispatch, archive when its commit lands'

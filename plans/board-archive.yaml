@@ -2852,3 +2852,9 @@
   kind: build
   needs: []
   status: done
+
+- id: bool-literal-decide
+  title: 'There is no Bool literal: `true` is "not defined" (verified 2026-09-19), so a program that needs a Bool writes `1 == 1`, and the second benchmark wave carried its transpose flag as an Int. Decide the spelling (`true`/`false` as keywords is the obvious reading, but they are language surface) and whether they are reserved names. Found by benchmark-second-wave. RULED (maintainer, chat, 2026-09-19): Bool becomes a prelude-defined enum, `pub enum Bool { True, False }`, on the Opt precedent -- the enum gives the `true`/`false` constructors and exhaustive match, while the wire form stays JSON true/false and every backend keeps its native boolean; `and`/`or`/`not` stay operators. Build row: bool-prelude-enum-build.'
+  kind: decide
+  needs: []
+  status: done
