@@ -73,6 +73,7 @@ types -- and the body reads the fields as ordinary parameters:
 ```toylang
 fn g({ a, b }: { a: Int, b: Int }) -> Int = a + b
 
+
 g { a: 3, b: 4 }
 ```
 
@@ -86,6 +87,7 @@ unnamed fields are simply not bound:
 ```toylang
 fn g({ a, b, .. }: { a: Int, b: Int, c: Int }) -> Int = a + b
 
+
 g { a: 3, b: 4, c: 5 }
 ```
 
@@ -98,6 +100,7 @@ points at the parameter rather than at a later use:
 
 ```toylang
 fn g({ a, z }: { a: Int, b: Int }) -> Int = a
+
 
 g { a: 3, b: 4 }
 ```
@@ -155,6 +158,7 @@ stack:
 ```toylang
 fn countdown(p: { n: Int, acc: Int }) -> Int =
   p | p.n <= 0 -> p.acc or countdown { n: p.n - 1, acc: p.acc + 1 }
+
 
 countdown { n: 100000, acc: 0 }
 ```

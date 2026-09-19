@@ -23,6 +23,7 @@ so a named sink can be built once and reused:
 ```toylang
 fn emit(ss: Vec<Str>) -> Sink = ss |> jsonlines
 
+
 ["a", "b"] |> emit
 ```
 

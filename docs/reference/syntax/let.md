@@ -11,6 +11,7 @@ fn classify(p: { x: Int, y: Int }) -> Str =
   let m = p.x * p.x + p.y * p.y
   m | m == 0 -> "origin" or m < 100 -> "near" or "far"
 
+
 classify { x: 3, y: 4 }
 ```
 
@@ -28,6 +29,7 @@ fn f(p: { x: Int, y: Int }) -> Int =
   let b = a + p.y
   a + b
 
+
 f { x: 3, y: 4 }
 ```
 
@@ -43,6 +45,7 @@ fn f(x: Int) -> Int =
   let x = x + 1
   let x = x * 2
   x
+
 
 f 5
 ```
