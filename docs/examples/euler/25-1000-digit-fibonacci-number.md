@@ -17,7 +17,7 @@ with the term's index.
 
 ```toylang
 fn limb({ v, i }: { v: Vec<Int>, i: Int }) -> Int =
-  i < length v | . -> v[i]! or 0
+  i < length(v) | . -> v[i]! or 0
 
 
 fn add_limbs(
@@ -31,7 +31,7 @@ fn add_limbs(
 ) -> Vec<Int> =
   let total = limb { v: a, i: i } + limb { v: b, i: i } + carry
 
-  i == length a
+  i == length(a)
   | . -> (carry == 0 | . -> acc or acc + [carry]) or
     add_limbs {
       a: a,
@@ -47,7 +47,7 @@ fn digit_count(n: Int) -> Int =
 
 
 fn digits_of(v: Vec<Int>) -> Int =
-  (length v - 1) * 8 + digit_count v[-1]!
+  (length(v) - 1) * 8 + digit_count(v[-1]!)
 
 
 fn first_with(
@@ -58,7 +58,7 @@ fn first_with(
     want: Int
   }
 ) -> Int =
-  digits_of cur >= want
+  digits_of(cur) >= want
   | . -> n or
     first_with {
       prev: cur,

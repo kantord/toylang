@@ -11,14 +11,14 @@ pub enum PipeLine { Stdout { text: Str }, Stderr { text: Str } }
 
 
 fn join_parts(v: Vec<Str>) -> Str =
-  v | length v == 0 -> "" or v[0]! + join_parts tail(v)!
+  v | length(v) == 0 -> "" or v[0]! + join_parts(tail(v)!)
 
 
 pub fn join_lines(v: Vec<Str>) -> Str =
   v
-  | length v == 0 -> "" or
-    length v == 1 -> v[0]! or
-    v[0]! + "\n" + join_lines tail(v)!
+  | length(v) == 0 -> "" or
+    length(v) == 1 -> v[0]! or
+    v[0]! + "\n" + join_lines(tail(v)!)
 
 
 pub fn join(v: Vec<Str>) -> Str = join_parts v

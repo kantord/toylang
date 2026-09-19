@@ -29,7 +29,7 @@ fn count_divisors(m: Int) -> Int = cd_loop { m: m, d: 1, count: 0 }
 fn triangle_divisors(n: Int) -> Int =
   n % 2 == 0
   | . -> count_divisors(n / 2) * count_divisors(n + 1) or
-    count_divisors n * count_divisors((n + 1) / 2)
+    count_divisors(n) * count_divisors((n + 1) / 2)
 
 
 fn triangle(n: Int) -> Int = n * (n + 1) / 2

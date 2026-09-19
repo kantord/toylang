@@ -57,7 +57,7 @@ fn tens(n: Int) -> Str =
 
 
 fn under_hundred(n: Int) -> Str =
-  n | . < 10 -> ones n or . < 20 -> teens n or tens n + ones(n % 10)
+  n | . < 10 -> ones n or . < 20 -> teens n or tens(n) + ones(n % 10)
 
 
 fn words(n: Int) -> Str =

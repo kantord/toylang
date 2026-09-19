@@ -58,7 +58,7 @@ fn add_digits(
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
   add_digits {
     nums: nums,
-    k: length nums[0]! - 1,
+    k: length(nums[0]!) - 1,
     carry: 0,
     acc: []
   }[0:10]

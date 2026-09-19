@@ -30,7 +30,7 @@ fn name_score(name: Str) -> Int =
 fn ranked_total(ordered: Vec<Str>) -> Int =
   sum(
     collect range(length ordered)
-    | map((. + 1) * name_score ordered[.]!)
+    | map((. + 1) * name_score(ordered[.]!))
   )
 
 

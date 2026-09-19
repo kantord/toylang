@@ -100,7 +100,7 @@ fn rows(
 
 fn plot(n: Int) -> Str =
   join_lines(
-    ["P1", str n + " " + str n] +
+    ["P1", str(n) + " " + str(n)] +
       rows { n: n, size: to_float n, y: 0, fy: 0.0, lines: [] }
   )
 

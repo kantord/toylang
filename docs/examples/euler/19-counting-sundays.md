@@ -20,7 +20,7 @@ fn is_leap(year: Int) -> Bool =
 
 
 fn days_in_month({ month, year }: { month: Int, year: Int }) -> Int =
-  month == 2 and is_leap year
+  month == 2 and is_leap(year)
   | . -> 29 or
     [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]!
 

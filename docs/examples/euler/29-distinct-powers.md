@@ -68,13 +68,13 @@ fn all_keys(top: Int) -> Vec<Int> =
 
 fn adjacent_dup_count(sorted: Vec<Int>) -> Int =
   length(
-    collect range(length sorted - 1)
+    collect range(length(sorted) - 1)
     | select(sorted[. + 1]! == sorted[.]!)
   )
 
 
 fn distinct_count(v: Vec<Int>) -> Int =
-  length v - adjacent_dup_count(sort v)
+  length(v) - adjacent_dup_count(sort v)
 
 
 distinct_count(all_keys 100)

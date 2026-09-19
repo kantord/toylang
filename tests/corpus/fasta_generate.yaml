@@ -96,7 +96,7 @@ program: |
         col: s.col + 1,
         line: s.line + s.alu[s.k]!,
         lines: s.lines,
-        k: (s.k + 1) % length s.alu,
+        k: (s.k + 1) % length(s.alu),
         alu: s.alu
       }
 
@@ -118,7 +118,7 @@ program: |
 
   join_lines(
     alu_sec {
-      left: 2 * parse stdin,
+      left: 2 * parse(stdin),
       col: 0,
       line: "",
       lines: [">ONE Homo sapiens alu"],
@@ -415,7 +415,7 @@ program: |
     } +
       after_two(
         gen {
-          left: 3 * parse stdin,
+          left: 3 * parse(stdin),
           col: 0,
           line: "",
           lines: [">TWO IUB ambiguity codes"],

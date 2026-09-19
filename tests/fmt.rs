@@ -193,7 +193,7 @@ fn a_commented_module_formats_to_itself() {
                pub fn f(x: Int) -> Int = x # trailing\n\
                \n\n\
                # Private helper.\n\
-               fn g(x: Int) -> Int = f x + 1\n\
+               fn g(x: Int) -> Int = f(x) + 1\n\
                # The end.\n";
     assert_eq!(toylang::fmt(src).unwrap(), src);
 }
@@ -611,4 +611,45 @@ fn an_impl_methods_let_body_formats_without_panicking() {
     assert_eq!(toylang::fmt(src).unwrap(), want);
     assert_eq!(toylang::fmt(&want).unwrap(), want);
     assert_eq!(toylang::run(src).unwrap(), toylang::run(&want).unwrap());
+}
+
+/// A bare call sitting right next to a binary operator, comparison, or guard has nothing
+/// marking where its argument ends and the operator begins (maintainer ruling, 2026-09-20,
+/// found in a real function: `(length_digits v - 1) * 8 + digit_count v[-1]!`) -- the same
+/// ambiguity bare application was built to avoid, just against an operator instead of another
+/// call. The call falls back to its own parenthesized form, with no extra wrap on top:
+/// `length(v) == 0`, not `(length v) == 0`.
+///
+/// Exempted when the argument's own rendering already closes with `}` or `]`: a record
+/// literal, or a postfix chain ending in an index/slice/projection, already marks its own end
+/// as clearly as parens would, so `get { r: 3 } * get { r: 4 }` is left bare.
+#[test]
+fn a_bare_call_next_to_an_operator_falls_back_to_parens() {
+    let h = "fn length_digits(v: Vec<Int>) -> Int = length v\n\n\n\
+             fn digit_count(x: Int) -> Int = x - 5\n\n\n\
+             fn get(p: { r: Int }) -> Int = p.r\n\n\n";
+    let src = format!(
+        "{h}fn digits_of(v: Vec<Int>) -> Int =\n\
+         \x20 (length_digits v - 1) * 8 + digit_count v[-1]!\n\n\n\
+         digits_of([100, 5])\n"
+    );
+    let want = format!(
+        "{h}fn digits_of(v: Vec<Int>) -> Int =\n\
+         \x20 (length_digits(v) - 1) * 8 + digit_count(v[-1]!)\n\n\n\
+         digits_of([100, 5])\n"
+    );
+    assert_eq!(toylang::fmt(&src).unwrap(), want);
+    assert_eq!(toylang::fmt(&want).unwrap(), want);
+    assert_eq!(toylang::run(&src).unwrap(), toylang::run(&want).unwrap());
+
+    // A record literal ends the argument's rendering with `}`, which already marks where it
+    // stops, so no fallback is needed even though the call sits right next to `*`.
+    let bracketed = format!("{h}get({{ r: 3 }}) * get({{ r: 4 }})\n");
+    let bracketed_want = format!("{h}get {{ r: 3 }} * get {{ r: 4 }}\n");
+    assert_eq!(toylang::fmt(&bracketed).unwrap(), bracketed_want);
+    assert_eq!(toylang::fmt(&bracketed_want).unwrap(), bracketed_want);
+    assert_eq!(
+        toylang::run(&bracketed).unwrap(),
+        toylang::run(&bracketed_want).unwrap()
+    );
 }

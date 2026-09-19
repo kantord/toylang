@@ -18,7 +18,7 @@ fn digit_power_sum(n: Int) -> Int =
   n | . == 0 -> 0 or fifth(. % 10) + digit_power_sum(. / 10)
 
 
-fn is_digit_power_sum(n: Int) -> Bool = digit_power_sum n == n
+fn is_digit_power_sum(n: Int) -> Bool = digit_power_sum(n) == n
 
 
 sum(

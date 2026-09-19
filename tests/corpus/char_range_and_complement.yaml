@@ -7,7 +7,7 @@ program: |
     c >= chars("0")[0]! and c <= chars("9")[0]!
 
 
-  fn is_not_digit(c: Char) -> Bool = not is_digit c
+  fn is_not_digit(c: Char) -> Bool = not is_digit(c)
 
 
   {

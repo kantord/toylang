@@ -40,7 +40,7 @@ program: |
     }
   ) -> Float =
     u
-    | j == length u -> acc or
+    | j == length(u) -> acc or
       row {
         u: u,
         i: i,
@@ -61,7 +61,7 @@ program: |
     }
   ) -> Vec<Float> =
     u
-    | i == length u -> out or
+    | i == length(u) -> out or
       times {
         u: u,
         i: i + 1,
@@ -101,7 +101,7 @@ program: |
     }
   ) -> Float =
     u
-    | i == length u -> acc or
+    | i == length(u) -> acc or
       dot { u: u, v: v, i: i + 1, acc: acc + u[i]! * v[i]! }
 
 

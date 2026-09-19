@@ -25,7 +25,7 @@ fn collapse(
   { rows, acc }: { rows: Vec<Vec<Int>>, acc: Vec<Int> }
 ) -> Int =
   rows
-  | length rows == 0 -> acc[0]! or
+  | length(rows) == 0 -> acc[0]! or
     collapse {
       rows: tail(rows)!,
       acc: merge_row { row: rows[0]!, below: acc }

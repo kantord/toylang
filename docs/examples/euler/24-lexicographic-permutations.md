@@ -20,11 +20,11 @@ fn factorial(n: Int) -> Int = n | . <= 1 -> 1 or . * factorial(. - 1)
 fn nth_perm(
   { remaining, idx }: { remaining: Vec<Int>, idx: Int }
 ) -> Vec<Int> =
-  let block = factorial(length remaining - 1)
+  let block = factorial(length(remaining) - 1)
   let i = idx / block
 
   remaining
-  | length remaining == 0 -> [] or
+  | length(remaining) == 0 -> [] or
     [remaining[i]!] +
       nth_perm {
         remaining: remaining[:i] + remaining[i + 1:],
@@ -35,11 +35,11 @@ fn nth_perm(
 fn join_digits(
   { digits, acc }: { digits: Vec<Int>, acc: Int64 }
 ) -> Int64 =
-  length digits == 0
+  length(digits) == 0
   | . -> acc or
     join_digits {
       digits: tail(digits)!,
-      acc: acc * 10 + i64 digits[0]!
+      acc: acc * 10 + i64(digits[0]!)
     }
 
 

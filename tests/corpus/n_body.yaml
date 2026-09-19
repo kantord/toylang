@@ -80,7 +80,7 @@ program: |
     }
   ) -> Body =
     bs
-    | length bs == 0 ->
+    | length(bs) == 0 ->
         {
           x: 0.0,
           y: 0.0,
@@ -107,7 +107,7 @@ program: |
     let dy = b.y - o.y
     let dz = b.z - o.z
     let d2 = dx * dx + dy * dy + dz * dz
-    let mag = 0.01 / (d2 * sqrt d2)
+    let mag = 0.01 / (d2 * sqrt(d2))
 
     {
       x: b.x,
@@ -122,7 +122,7 @@ program: |
 
   fn pull({ b, others }: { b: Body, others: Vec<Body> }) -> Body =
     others
-    | length others == 0 -> b or
+    | length(others) == 0 -> b or
       pull { b: kick { b: b, o: others[0]! }, others: tail(others)! }
 
 
@@ -156,7 +156,7 @@ program: |
     { b, others, acc }: { b: Body, others: Vec<Body>, acc: Float }
   ) -> Float =
     others
-    | length others == 0 -> acc or
+    | length(others) == 0 -> acc or
       potential {
         b: b,
         others: tail(others)!,
@@ -170,7 +170,7 @@ program: |
 
   fn energy({ bs, acc }: { bs: Vec<Body>, acc: Float }) -> Float =
     bs
-    | length bs == 0 -> acc or
+    | length(bs) == 0 -> acc or
       energy {
         bs: tail(bs)!,
         acc: potential {
