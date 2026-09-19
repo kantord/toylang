@@ -3091,3 +3091,10 @@
   kind: build
   needs: []
   status: done
+
+- id: pipe-through-remaining-backends
+  issue: gh:158
+  title: '`pipe_through` runs on the Rust backend only (src/backend_support.rs LANDINGS); the other six refuse cleanly. Add the arms for Go, Python, JS, Lua, jq and LLVM, following the Rust one (fcea805: piped stdin, stdout and stderr relayed as the tagged `PipeLine` stream), and the corpus case that clears tests/tag_coverage.rs UNCOVERED. jq and LLVM may need a ruling if a subprocess is not expressible there; say so on the row rather than faking it. Filed by the 2026-09-19 issue review: transpose and sort_by had a remaining-backends row, this did not.'
+  kind: build
+  needs: []
+  status: done

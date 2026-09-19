@@ -195,6 +195,12 @@
   needs: [select-lazy-materialization-convergence-ruling]
   status: delegated
 
+- id: land-patch-generated-hunks-fix
+  title: 'Maintainer ruling (2026-09-19, select-lazy-js-land-cap-escalation round): fix the mechanism so this cannot recur. land_lane.py land-patch applies a dispatch patch with plain `git am`, and any patch carrying a stale hunk of a GENERATED file (site/public/corpus.json, rewritten by nearly every landing) fails whole -- select-lazy-materialization-build-js and -lua both burned the retry cap this way with sound edits. Make land-patch drop GENERATED hunks (`git am --exclude=...`) and regenerate them in the lane worktree before the gate. Brief: plans/simple-briefs/land-patch-generated-hunks-fix.txt. AFTER IT LANDS: rm the land-failed-issue-select-lazy-materialization-build-{js,lua} markers (and land-retries-*) and re-run land-patch for both rows with their existing patches (js 62ba574f, lua 76aa59c3 under ~/.cache/toylang-simple-dispatch/results/).'
+  kind: build
+  needs: []
+  status: todo
+
 - id: draft-md-cleanup-review
   title: Review what remains of draft.md after every split row lands; assign or delete the remainder, retire the file (draft-split)
   kind: build
@@ -439,13 +445,6 @@
   kind: build
   needs: []
   status: todo
-
-- id: pipe-through-remaining-backends
-  issue: gh:158
-  title: '`pipe_through` runs on the Rust backend only (src/backend_support.rs LANDINGS); the other six refuse cleanly. Add the arms for Go, Python, JS, Lua, jq and LLVM, following the Rust one (fcea805: piped stdin, stdout and stderr relayed as the tagged `PipeLine` stream), and the corpus case that clears tests/tag_coverage.rs UNCOVERED. jq and LLVM may need a ruling if a subprocess is not expressible there; say so on the row rather than faking it. Filed by the 2026-09-19 issue review: transpose and sort_by had a remaining-backends row, this did not.'
-  kind: build
-  needs: []
-  status: delegated
 
 - id: docs-gaps-let-tailpipe-destructure-tailcall
   title: 'Four shipped features with no reference page, found by the 2026-09-19 issue review: `let` bindings (gh:150; no page, no guide section), the `|>` tail-pipe marker (gh:154; no docs page, no corpus case, no Rust test -- a fixed-string grep hits only src/), record-parameter destructuring `fn g({a, b}: {a: Int, b: Int})` (gh:144; docs/reference/syntax/functions.md never mentions it), and the self-tail-call constant-stack contract (gh:141; lives only in a corpus comment and emitter comments). Write each into docs/reference with runnable fences, and add a corpus case for `|>`.'
