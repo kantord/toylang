@@ -3205,3 +3205,33 @@
   kind: build
   needs: [select-lazy-materialization-build-go, select-lazy-materialization-build-js, select-lazy-materialization-build-py, select-lazy-materialization-build-lua, select-lazy-materialization-build-rust, select-lazy-materialization-build-jq, select-lazy-materialization-build-llvm]
   status: done
+
+- id: declare-terminator-build-2a
+  issue: gh:153
+  title: 'Slice 1 of 3 of declare-terminator-build-2 (split after the 32ebad8e RED, 2026-09-19): make the parser CONSUME an optional `;` after every fn and type declaration (no new diagnostic, same-line rule stays for now), make `toylang fmt` print the `;` after declarations, and add the `;` to every .toy, tests/corpus/*.yaml, examples/ and docs/ fragment (NOT tests/*.rs). Forbidden: script-rewriting any .rs source.'
+  kind: build
+  needs: []
+  status: done
+
+- id: grill-submit-disabled-no-feedback
+  title: 'The Grill tab''s AnswerComposer Submit button (site/dev/src/components/AnswerComposer.tsx)
+    is disabled until a box is explicitly `selected`, and clicking or reading inside a box''s
+    Tiptap editor deliberately does not select it (only clicking the small label above the box, or
+    editing its content, does) -- a past bug where focus alone selected was removed on purpose.
+    The button gives zero feedback for this: no tooltip, no hint text, nothing distinguishes it
+    from "genuinely nothing to submit." A maintainer opened a live round, read a pre-filled
+    option, clicked Submit, and nothing happened -- no network request fired at all, because
+    `disabled` suppresses the click before JS runs. Sharper evidence 2026-09-19 (three real attempts): selecting a pre-filled option via its
+    small label click, with no edit, has failed every time tried (applicative-fold-block-syntax,
+    stale-branch-cleanup-decide -- both still `status: live`, nothing reached the inbox). Typing
+    into a box worked every time (select-lazy-js-land-cap-escalation landed `status: answered`,
+    `wasEdited: true`). Could not reproduce with a browser (none available); static reading of
+    AnswerComposer.tsx shows the label onClick should set `selected` and enable Submit, so either
+    the click target is too small/easy to miss, or there is a real bug in that path nothing here
+    caught. Fix both: (1) make the whole card clickable as select-without-edit, excluding only the
+    editor body (the comment already explains why not the whole card today -- find a way that
+    still avoids that footgun, e.g. a dedicated radio control), not a `text-xs` label line; (2) add
+    the disabled-state hint from the original finding either way.'
+  kind: build
+  needs: []
+  status: done
