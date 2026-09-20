@@ -378,12 +378,6 @@
   needs: []
   status: todo
 
-- id: float-builtins-build-front
-  title: 'Front-end half of the float-sqrt-and-int-to-float-decide ruling (2026-09-20, option A, maintainer-edited): two plain unary builtins, `sqrt: Float -> Float` and `float: Int -> Float`. Maintainer wording: `float(x)` is just a float constructor that is also implemented for `x: Int`; `sqrt` becomes a regular builtin. `float(n)` is exact (Int is 32 bits, Float is 64). Nothing Float -> Int is ruled, so no floor/round here. `sqrt` of a negative is NaN on every backend. Follow the Sum/Max/Transpose unary-builtin wiring: `Builtin` variants in src/tir.rs, type rules in src/check/mod.rs (BUILTIN_NAMES ~line 1509; `float` also accepts a Float and returns it unchanged), src/tags.rs, build.rs arms, src/backend_support.rs LANDINGS (no backend built yet), tests/tag_coverage.rs and tests/unbuilt_arms.rs, and the ADR 0010 mention that `i64` is no longer the only conversion. No emitter arms in this row. Do NOT rewrite files with scripts. Done-gate: `just check` passes and `sqrt 2.0` / `float 1 + 0.5` type-check.'
-  kind: build
-  needs: [float-sqrt-and-int-to-float-decide]
-  status: delegated
-
 - id: float-builtins-build-backends-a
   title: 'Emitter arms for `sqrt` and `float` on Rust, Go, JS and Python (ruling 2026-09-20, see float-builtins-build-front). `sqrt` must print the correctly rounded IEEE result on every backend (`sqrt 2.0` prints `1.4142135623730951`); a negative input gives NaN, and Python needs a guard because `math.sqrt(-1.0)` raises ValueError. `float(n)` converts an Int (exactly) and returns a Float unchanged. Add the four backends to the LANDINGS entries in src/backend_support.rs. Add corpus yaml under tests/corpus/ covering `sqrt 2.0`, `sqrt` of a negative printing NaN, `float 5 / 2.0`. Do NOT rewrite files with scripts. Done-gate: `just check` passes and the corpus agrees across the four backends.'
   kind: build
@@ -406,7 +400,7 @@
   title: 'Step B of the js-build-pub-exports-build ruling (forest js-build-artifact-shape, applied 2026-09-20): LIBRARY mode. `compile_in` (src/lib.rs ~104) only calls `parse`, which requires a trailing expression, so a declarations-only file is rejected today; make `toylang build FILE js` accept it (fall back to `parse_module` when there is no trailing expression, carry a library flag on the tir Program), emit the `.js` as an ES module with bare `export` on exactly the `pub fn`s and `require("fs")` becoming `import`, keep APP `.js` byte-identical to `toylang run FILE js`; update docs/reference/cli/build.md. Needs step A (tir::Func.is_pub + pub-only `.d.ts`). Split further if the brief says >150 lines: (1) compile_in/Program flag, (2) emit_with export prefix + import.'
   kind: build
   needs: [js-build-pub-exports-build]
-  status: todo
+  status: delegated
 
 - id: declare-terminator-build-2
   issue: gh:153
@@ -420,7 +414,7 @@
   title: 'Slice 3 of 3 of declare-terminator-build-2: make `;` REQUIRED after every fn/type declaration with one new diagnostic, retire the same-line heuristic and its diagnostic (src/parse.rs ~616, 625-637, 1472, 1646), update tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml, rewrite the declarations section of docs/reference/syntax/functions.md, and record the gh:153 ruling in plans/questions.md or a docs/adr/ ADR.'
   kind: build
   needs: [declare-terminator-build-2a-2, declare-terminator-build-2a-3, declare-terminator-build-2a-4, declare-terminator-build-2a-5, declare-terminator-build-2a-6, declare-terminator-build-2a-7, declare-terminator-build-2a-8]
-  status: todo
+  status: delegated
 
 - id: matcher-totality-alt-composition-decide
   issue: gh:156
@@ -490,7 +484,7 @@
     have no arm and gh:158 stays open for them.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: pipe-through-lua
   issue: gh:158

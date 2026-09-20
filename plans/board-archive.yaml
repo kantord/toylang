@@ -3337,3 +3337,9 @@
   kind: build
   needs: []
   status: done
+
+- id: float-builtins-build-front
+  title: 'Front-end half of the float-sqrt-and-int-to-float-decide ruling (2026-09-20, option A, maintainer-edited): two plain unary builtins, `sqrt: Float -> Float` and `float: Int -> Float`. Maintainer wording: `float(x)` is just a float constructor that is also implemented for `x: Int`; `sqrt` becomes a regular builtin. `float(n)` is exact (Int is 32 bits, Float is 64). Nothing Float -> Int is ruled, so no floor/round here. `sqrt` of a negative is NaN on every backend. Follow the Sum/Max/Transpose unary-builtin wiring: `Builtin` variants in src/tir.rs, type rules in src/check/mod.rs (BUILTIN_NAMES ~line 1509; `float` also accepts a Float and returns it unchanged), src/tags.rs, build.rs arms, src/backend_support.rs LANDINGS (no backend built yet), tests/tag_coverage.rs and tests/unbuilt_arms.rs, and the ADR 0010 mention that `i64` is no longer the only conversion. No emitter arms in this row. Do NOT rewrite files with scripts. Done-gate: `just check` passes and `sqrt 2.0` / `float 1 + 0.5` type-check.'
+  kind: build
+  needs: [float-sqrt-and-int-to-float-decide]
+  status: done
