@@ -11,14 +11,15 @@ repeated `% 10` and `/ 10`, at most six deep for a number this size; `sum` adds 
 candidates pass the filter (six, for fifth powers).
 
 ```toylang
-fn fifth(d: Int) -> Int = d * d * d * d * d
+# fmt: syntax-example
+fn fifth(d: Int) -> Int = d * d * d * d * d;
 
 
 fn digit_power_sum(n: Int) -> Int =
-  n | . == 0 -> 0 or fifth(. % 10) + digit_power_sum(. / 10)
+  n | . == 0 -> 0 or fifth(. % 10) + digit_power_sum(. / 10);
 
 
-fn is_digit_power_sum(n: Int) -> Bool = digit_power_sum(n) == n
+fn is_digit_power_sum(n: Int) -> Bool = digit_power_sum(n) == n;
 
 
 sum(

@@ -10,12 +10,13 @@ being a number. The column totals grow with `k` but stay small: a digit times 10
 under 100 is under 1000, far inside `Int`, while the product itself reaches 158 digits.
 
 ```toylang
+# fmt: syntax-example
 fn push_carry(
   { carry, acc }: { carry: Int, acc: Vec<Int> }
 ) -> Vec<Int> =
   carry == 0
   | . -> acc or
-    push_carry { carry: carry / 10, acc: acc + [carry % 10] }
+    push_carry { carry: carry / 10, acc: acc + [carry % 10] };
 
 
 fn scale(
@@ -37,7 +38,7 @@ fn scale(
       i: i + 1,
       carry: total / 10,
       acc: acc + [total % 10]
-    }
+    };
 
 
 fn factorial_digits(
@@ -49,7 +50,7 @@ fn factorial_digits(
       digits:
         scale { digits: digits, k: k, i: 0, carry: 0, acc: [] },
       k: k + 1
-    }
+    };
 
 
 sum(factorial_digits { digits: [1], k: 2 })

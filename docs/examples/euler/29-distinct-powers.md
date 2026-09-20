@@ -25,11 +25,12 @@ its twin, so subtracting that count from the total length gives the distinct cou
 is equal, so no key is ever compared against more than its neighbour in the sorted order.
 
 ```toylang
-type Power = { value: Int, root: Int, mult: Int }
+# fmt: syntax-example
+type Power = { value: Int, root: Int, mult: Int };
 
 
 fn ipow({ r, m }: { r: Int, m: Int }) -> Int =
-  m | . == 0 -> 1 or r * ipow { r: r, m: m - 1 }
+  m | . == 0 -> 1 or r * ipow { r: r, m: m - 1 };
 
 
 fn powers_with_mult(
@@ -37,7 +38,7 @@ fn powers_with_mult(
 ) -> Vec<Power> =
   collect range(roots - 1)
   | map(. + 2)
-  | map { value: ipow { r: ., m: m }, root: ., mult: m }
+  | map { value: ipow { r: ., m: m }, root: ., mult: m };
 
 
 fn powers() -> Vec<Power> =
@@ -46,7 +47,7 @@ fn powers() -> Vec<Power> =
     | map(6 - .)
     | map(powers_with_mult { m: ., roots: 10 })
   ) +
-    powers_with_mult { m: 1, roots: 100 }
+    powers_with_mult { m: 1, roots: 100 };
 
 
 fn keys_for_base(
@@ -54,7 +55,7 @@ fn keys_for_base(
 ) -> Vec<Int> =
   let p = first(table | select(.value == a))!
 
-  bs | map(p.root * 1000 + p.mult * .)
+  bs | map(p.root * 1000 + p.mult * .);
 
 
 fn all_keys(top: Int) -> Vec<Int> =
@@ -63,18 +64,18 @@ fn all_keys(top: Int) -> Vec<Int> =
 
   flatten(
     bases | map(keys_for_base { a: ., bs: bases, table: table })
-  )
+  );
 
 
 fn adjacent_dup_count(sorted: Vec<Int>) -> Int =
   length(
     collect range(length(sorted) - 1)
     | select(sorted[. + 1]! == sorted[.]!)
-  )
+  );
 
 
 fn distinct_count(v: Vec<Int>) -> Int =
-  length(v) - adjacent_dup_count(sort v)
+  length(v) - adjacent_dup_count(sort v);
 
 
 distinct_count(all_keys 100)

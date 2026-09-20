@@ -16,8 +16,9 @@ number. `first_with` walks the recurrence from `F(2)` until the count reaches 10
 with the term's index.
 
 ```toylang
+# fmt: syntax-example
 fn limb({ v, i }: { v: Vec<Int>, i: Int }) -> Int =
-  i < length(v) | . -> v[i]! or 0
+  i < length(v) | . -> v[i]! or 0;
 
 
 fn add_limbs(
@@ -39,15 +40,15 @@ fn add_limbs(
       i: i + 1,
       carry: total / 100000000,
       acc: acc + [total % 100000000]
-    }
+    };
 
 
 fn digit_count(n: Int) -> Int =
-  n < 10 | . -> 1 or 1 + digit_count(n / 10)
+  n < 10 | . -> 1 or 1 + digit_count(n / 10);
 
 
 fn digits_of(v: Vec<Int>) -> Int =
-  (length(v) - 1) * 8 + digit_count(v[-1]!)
+  (length(v) - 1) * 8 + digit_count(v[-1]!);
 
 
 fn first_with(
@@ -65,7 +66,7 @@ fn first_with(
       cur: add_limbs { a: cur, b: prev, i: 0, carry: 0, acc: [] },
       n: n + 1,
       want: want
-    }
+    };
 
 
 first_with { prev: [1], cur: [1], n: 2, want: 1000 }

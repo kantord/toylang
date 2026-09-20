@@ -7,13 +7,14 @@ Both sums are closed forms (triangular numbers, square pyramidal numbers), so no
 iterates at all.
 
 ```toylang
-fn tri(n: Int) -> Int = n * (n + 1) / 2
+# fmt: syntax-example
+fn tri(n: Int) -> Int = n * (n + 1) / 2;
 
 
-fn sumsq(n: Int) -> Int = n * (n + 1) * (2 * n + 1) / 6
+fn sumsq(n: Int) -> Int = n * (n + 1) * (2 * n + 1) / 6;
 
 
-fn square(x: Int) -> Int = x * x
+fn square(x: Int) -> Int = x * x;
 
 
 square(tri 100) - sumsq(100)

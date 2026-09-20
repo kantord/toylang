@@ -9,11 +9,12 @@ filter -- `select(. % 3 == 0 or . % 5 == 0)` over the whole range -- works too, 
 closed form never scans at all.
 
 ```toylang
-fn triangle(m: Int) -> Int = m * (m + 1) / 2
+# fmt: syntax-example
+fn triangle(m: Int) -> Int = m * (m + 1) / 2;
 
 
 fn sum_of_multiples({ k, limit }: { k: Int, limit: Int }) -> Int =
-  triangle((limit - 1) / k) * k
+  triangle((limit - 1) / k) * k;
 
 
 sum_of_multiples { k: 3, limit: 1000 } +

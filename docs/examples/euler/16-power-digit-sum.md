@@ -19,12 +19,13 @@ digits of 2^1000 but not print 2^1000, or compare it, or divide it by anything. 
 this problem needs.
 
 ```toylang
+# fmt: syntax-example
 fn push_carry(
   { carry, acc }: { carry: Int, acc: Vec<Int> }
 ) -> Vec<Int> =
   carry == 0
   | . -> acc or
-    push_carry { carry: carry / 10, acc: acc + [carry % 10] }
+    push_carry { carry: carry / 10, acc: acc + [carry % 10] };
 
 
 fn scale(
@@ -46,7 +47,7 @@ fn scale(
       i: i + 1,
       carry: total / 10,
       acc: acc + [total % 10]
-    }
+    };
 
 
 fn power_of_two(
@@ -58,7 +59,7 @@ fn power_of_two(
       digits:
         scale { digits: digits, k: 2, i: 0, carry: 0, acc: [] },
       n: n - 1
-    }
+    };
 
 
 sum(power_of_two { digits: [1], n: 1000 })

@@ -14,7 +14,8 @@ an `Int64` accumulator, `acc * 10 + i64(d)`, and the answer prints as the number
 than as the `Vec<Int>` of digits [problem 13](13-large-sum.md) has to settle for.
 
 ```toylang
-fn factorial(n: Int) -> Int = n | . <= 1 -> 1 or . * factorial(. - 1)
+# fmt: syntax-example
+fn factorial(n: Int) -> Int = n | . <= 1 -> 1 or . * factorial(. - 1);
 
 
 fn nth_perm(
@@ -29,7 +30,7 @@ fn nth_perm(
       nth_perm {
         remaining: remaining[:i] + remaining[i + 1:],
         idx: idx % block
-      }
+      };
 
 
 fn join_digits(
@@ -40,11 +41,11 @@ fn join_digits(
     join_digits {
       digits: tail(digits)!,
       acc: acc * 10 + i64(digits[0]!)
-    }
+    };
 
 
 fn as_number(digits: Vec<Int>) -> Int64 =
-  join_digits { digits: digits, acc: 0 }
+  join_digits { digits: digits, acc: 0 };
 
 
 as_number(

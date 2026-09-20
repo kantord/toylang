@@ -21,10 +21,11 @@ The example's three numbers, two of them all nines, ripple a carry all the way u
 20000000000 and the answer is its first ten digits.
 
 ```toylang
+# fmt: syntax-example
 fn column_total(
   { nums, k, carry }: { nums: Vec<Vec<Int>>, k: Int, carry: Int }
 ) -> Int =
-  sum(nums | map(.[k]!)) + carry
+  sum(nums | map(.[k]!)) + carry;
 
 
 fn emit_carry(
@@ -32,7 +33,7 @@ fn emit_carry(
 ) -> Vec<Int> =
   carry == 0
   | . -> acc or
-    emit_carry { carry: carry / 10, acc: [carry % 10] + acc }
+    emit_carry { carry: carry / 10, acc: [carry % 10] + acc };
 
 
 fn add_digits(
@@ -52,7 +53,7 @@ fn add_digits(
       k: k - 1,
       carry: total / 10,
       acc: [total % 10] + acc
-    }
+    };
 
 
 fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
@@ -61,7 +62,7 @@ fn leading_digits(nums: Vec<Vec<Int>>) -> Vec<Int> =
     k: length(nums[0]!) - 1,
     carry: 0,
     acc: []
-  }[0:10]
+  }[0:10];
 
 
 leading_digits(parse stdin)
