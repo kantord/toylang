@@ -28,30 +28,30 @@ declarations. This program exercises every shape it can name:
 enum Shape { Point, Circle { r: Int } }
 
 
-fn area_ish(s: Shape) -> Int =
+pub fn area_ish(s: Shape) -> Int =
   s | Circle { r } -> r * r or Point -> 0;
 
 
-fn greet(who: Str) -> Str = "hello " + who;
+pub fn greet(who: Str) -> Str = "hello " + who;
 
 
-fn total(v: Vec<Int>) -> Int = sum v;
+pub fn total(v: Vec<Int>) -> Int = sum v;
 
 
-fn bump(x: Opt<Int>) -> Opt<Int> = x;
+pub fn bump(x: Opt<Int>) -> Opt<Int> = x;
 
 
-fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h;
+pub fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h;
 
 
-fn big(x: Int64) -> Int64 = x;
+pub fn big(x: Int64) -> Int64 = x;
 
 
-fn positive(x: Int) -> Result<Int, Str> =
+pub fn positive(x: Int) -> Result<Int, Str> =
   x | . > 0 -> ok(.) or err "no";
 
 
-fn half(x: Float) -> Float = x / 2.0;
+pub fn half(x: Float) -> Float = x / 2.0;
 
 
 {
@@ -93,7 +93,7 @@ export function v_half(x: number): number;
 One `export function` per function the program's body reaches, at the name the `.js` defines
 it under (`v_` in front of the source name) and with the one parameter always called `x`. A
 function nothing calls is pruned by the checker before any backend runs, so it appears in
-neither file. Before the functions, one `export type` alias per enum a signature mentions,
+neither file. Only `pub` functions appear in the `.d.ts`. Before the functions, one `export type` alias per enum a signature mentions,
 named as the JS backend names the type (`Opt_Int`, `Result_Int_Str`: the arguments are
 embedded because `Opt<Int>` and `Opt<Str>` are distinct types) and defined as the union of the
 runtime shapes an enum value takes

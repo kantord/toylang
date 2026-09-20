@@ -322,6 +322,8 @@ pub struct Func {
     pub param: Option<String>,
     pub param_ty: Option<Type>,
     pub body: Tir,
+    /// Whether the source declared it `pub`; a backend that exports functions filters on it.
+    pub is_pub: bool,
 }
 
 /// The one escaping rule every backend applies to a `Func.name` (or a `Kind::Call.func`) before

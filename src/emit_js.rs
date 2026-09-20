@@ -1468,6 +1468,9 @@ pub fn emit_dts(program: &Program) -> String {
         ));
     }
     for f in &program.funcs {
+        if !f.is_pub {
+            continue;
+        }
         let param = f.param_ty.as_ref().map(|t| format!("x: {}", ts_type(t)));
         out.push_str(&format!(
             "export function {}({}): {};\n",

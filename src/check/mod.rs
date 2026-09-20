@@ -571,7 +571,7 @@ fn check_defs<'a>(
             check_hoisted_def(&ctx, def)
         } else {
             let sig = sig_of(&ctx, &def.name);
-            check_one_def(&ctx, &def.name, def.param.as_ref(), sig, &def.body)
+            check_one_def(&ctx, &def.name, def.param.as_ref(), sig, &def.body, def.is_pub)
         };
         funcs.push(checked.map_err(|e| routing::in_file(e, &def.origin))?);
     }
@@ -722,6 +722,7 @@ fn check_one_def(
     param: Option<&Param>,
     sig: &Sig,
     body_expr: &Expr,
+    is_pub: bool,
 ) -> Result<tir::Func, Error> {
     let (scope, lowered) = lower_param(ctx, name, param, &sig.param)?;
     let def_ctx = Ctx {
@@ -803,6 +804,7 @@ fn check_one_def(
         },
         param_ty: sig.param.clone(),
         body,
+        is_pub,
     })
 }
 
@@ -2632,6 +2634,7 @@ fn check_hoisted_def(ctx: &Ctx, def: &Def) -> Result<tir::Func, Error> {
         param: Some(param_name),
         param_ty: Some(enum_ty.clone()),
         body,
+        is_pub: def.is_pub,
     })
 }
 
@@ -3470,7 +3473,7 @@ fn monomorphize(
         ret: ret_ty,
     };
     check_sig_invariants(&gm.name, gm.span, &sig)?;
-    let func = check_one_def(ctx, &def_name, gm.param.as_ref(), &sig, &gm.body)?;
+    let func = check_one_def(ctx, &def_name, gm.param.as_ref(), &sig, &gm.body, true)?;
     ctx.generic_funcs.borrow_mut().push(func);
     let entry = ImplEntry {
         method: gm.name.clone(),
