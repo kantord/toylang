@@ -487,3 +487,10 @@
   status: todo
 
 
+
+- id: fold-step-item-rename-build
+  title: 'Rename the current-element field of `Fold::step`''s parameter record from `x` to `item`, per the applicative-fold-block-syntax round ruling (2026-09-20, reduce-item-field-name option B: reduce''s step sees `{ acc, item }`, so `Fold::step` must match). Touch: prelude.toy (trait Fold and `impl Fold for Vec<Int>` step bodies, `p.x` -> `p.item`), tests/corpus/fold_trait_scaffold.yaml (`x: 3` -> `item: 3`), tests/generics.rs:153 (trait text `x: Int` -> `item: Int`), and any snapshot that renders the signature. Do NOT add `reduce` itself -- rename only; behavior identical. Verify with `just check` and the corpus test for fold_trait_scaffold.'
+  kind: build
+  needs: []
+  prio: 4
+  status: todo
