@@ -3256,3 +3256,10 @@
   kind: build
   needs: [declare-terminator-build-2a]
   status: done
+
+- id: declare-terminator-build-2a-3
+  issue: gh:153
+  title: 'Slice 2a leftover: add `;` after every fn/type declaration in tests/corpus/[a-k]*.yaml (not record_body_after_definition/vec_body_after_definition). Brief: plans/simple-briefs/declare-terminator-build-2a-3.txt.'
+  kind: build
+  needs: []
+  status: done
