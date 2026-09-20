@@ -1,0 +1,8 @@
+Board row `declare-terminator-build-2a-6` (gh:153, slice 2a, prose part). Add the `;` declaration terminator to toylang code blocks in docs.
+
+State on main: the parser ACCEPTS `;` after every `fn`/`type` declaration (optional). The gh:153 ruling makes `;` REQUIRED later (slice 2c), so every toylang program in the repo must first spell it. `enum`, `trait`, `impl` and expressions are NOT touched -- only `fn` and `type` (incl. `pub fn`, `pub type`). A multi-line declaration gets the `;` at the end of its LAST line, e.g. `fn f(x: Int) -> Int = x * 10;`. Blank-line layout stays as is. In markdown only touch fenced blocks that are toylang (```toy or unlabelled blocks holding toylang), never Rust/Go/etc blocks. NEVER touch any .rs file or src/. Do NOT run a script that rewrites .rs files; edit with the edit tool (a careful sed limited to the .md files is fine) and check `git diff` shows only added `;` characters.
+Method: `grep -nE '^\s*(pub )?(fn|type) ' <files>` lists declarations; do not survey beyond that. Your very first tool call is that grep, the second is the first edit.
+
+YOUR FILES ONLY: docs/guides/*.md, docs/overview/*.md, docs/tutorial/*.md (toylang fenced blocks only).
+tests/docs.rs compiles each fragment: run `cargo nextest run --no-fail-fast --test docs` at the end. Do not touch docs/reference, docs/examples, docs/adr, README.md, draft.md, any .toy file.
+Done-gate: `git diff --stat` shows only your files, every changed line differs by an added `;`, and the docs test binary is green (or fails only in a fragment you did not touch -- name it and stop).
