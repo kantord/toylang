@@ -382,7 +382,7 @@
   title: 'Emitter arms for `sqrt` and `float` on Rust, Go, JS and Python (ruling 2026-09-20, see float-builtins-build-front). `sqrt` must print the correctly rounded IEEE result on every backend (`sqrt 2.0` prints `1.4142135623730951`); a negative input gives NaN, and Python needs a guard because `math.sqrt(-1.0)` raises ValueError. `float(n)` converts an Int (exactly) and returns a Float unchanged. Add the four backends to the LANDINGS entries in src/backend_support.rs. Add corpus yaml under tests/corpus/ covering `sqrt 2.0`, `sqrt` of a negative printing NaN, `float 5 / 2.0`. Do NOT rewrite files with scripts. Done-gate: `just check` passes and the corpus agrees across the four backends.'
   kind: build
   needs: [float-builtins-build-front]
-  status: todo
+  status: delegated
 
 - id: float-builtins-build-backends-b
   title: 'Emitter arms for `sqrt` and `float` on Lua, jq and LLVM (ruling 2026-09-20, see float-builtins-build-front and -backends-a; reuse the corpus yaml written there). jq: `-1 | sqrt` gives `null` natively, so guard to NaN. Lua prints `-nan` for a negative -- match the toylang-level NaN like the float_nan corpus does. LLVM: use the sqrt intrinsic. Add the three backends to the LANDINGS entries in src/backend_support.rs and update tests/tag_coverage.rs / tests/unbuilt_arms.rs as needed. Do NOT rewrite files with scripts. Done-gate: `just check` passes and the corpus agrees on all seven backends.'
@@ -414,7 +414,7 @@
   title: 'Slice 3a of the declare-terminator-build-2 split (2026-09-20, after a 3-attempt max_turns RED on the whole slice): make `;` REQUIRED after every fn/type declaration in src/parse.rs (`require_semicolon`, one diagnostic "expected `;` after this declaration"), and add the missing `;` to every source string / .toy / corpus yaml / doc fragment that the strictness breaks (the first attempt hit tests/backend_rust.rs float_input_reads_a_json_number, so slices 2a/2b missed some). Retiring the same-line call-argument rule and the docs/ADR are rows 2d and 2e.'
   kind: build
   needs: [declare-terminator-build-2a-2, declare-terminator-build-2a-3, declare-terminator-build-2a-4, declare-terminator-build-2a-5, declare-terminator-build-2a-6, declare-terminator-build-2a-7, declare-terminator-build-2a-8]
-  status: todo
+  status: delegated
 
 - id: declare-terminator-build-2d
   issue: gh:153
@@ -498,7 +498,7 @@
     have no arm and gh:158 stays open for them.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: pipe-through-lua
   issue: gh:158
