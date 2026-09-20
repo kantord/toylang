@@ -420,7 +420,7 @@
   title: 'Slice 2a leftover (found 2026-09-20): make `toylang fmt` print `;` after every fn/type declaration, update tests/fmt*.rs expectations, and sweep every .toy file (prelude.toy, examples/, benches/, tests/modules/) with `toylang fmt --write`. Held until the docs/README rows land: three RED runs all hit the circle (fmt prints `;` -> prelude/.toy pins fail; .toy `;` -> fmt pins fail), so fmt + all .toy files must land in ONE patch. Brief: plans/simple-briefs/declare-terminator-build-2a-2.txt (resumes from plans/wip/declare-terminator-build-2a-2.patch, the saved partial work of the sixth run).'
   kind: build
   needs: [declare-terminator-build-2a-5, declare-terminator-build-2a-7, declare-terminator-build-2a-8]
-  status: todo
+  status: delegated
 
 - id: declare-terminator-build-2c
   issue: gh:153
