@@ -3349,3 +3349,20 @@
   kind: build
   needs: [js-build-pub-exports-build]
   status: done
+
+- id: float-builtins-build-backends-a
+  title: 'Emitter arms for `sqrt` and `float` on Rust, Go, JS and Python (ruling 2026-09-20, see float-builtins-build-front). `sqrt` must print the correctly rounded IEEE result on every backend (`sqrt 2.0` prints `1.4142135623730951`); a negative input gives NaN, and Python needs a guard because `math.sqrt(-1.0)` raises ValueError. `float(n)` converts an Int (exactly) and returns a Float unchanged. Add the four backends to the LANDINGS entries in src/backend_support.rs. Add corpus yaml under tests/corpus/ covering `sqrt 2.0`, `sqrt` of a negative printing NaN, `float 5 / 2.0`. Do NOT rewrite files with scripts. Done-gate: `just check` passes and the corpus agrees across the four backends.'
+  kind: build
+  needs: [float-builtins-build-front]
+  status: done
+
+- id: pipe-through-js
+  issue: gh:158
+  title: 'pipe_through (gh:158) -- emit for the JS backend only (src/emit_js.rs plus its LANDINGS entry in
+    src/backend_support.rs and tests/unbuilt_arms.rs), following the Go/Python/Rust arms: piped stdin,
+    stdout/stderr relayed as the tagged `PipeLine` stream. Filed by the 2026-09-20 periodic audit:
+    pipe-through-remaining-backends-2 was archived after landing Python only; JS, Lua, jq and LLVM still
+    have no arm and gh:158 stays open for them.'
+  kind: build
+  needs: []
+  status: done
