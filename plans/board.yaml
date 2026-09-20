@@ -382,7 +382,7 @@
   title: 'Front-end half of the float-sqrt-and-int-to-float-decide ruling (2026-09-20, option A, maintainer-edited): two plain unary builtins, `sqrt: Float -> Float` and `float: Int -> Float`. Maintainer wording: `float(x)` is just a float constructor that is also implemented for `x: Int`; `sqrt` becomes a regular builtin. `float(n)` is exact (Int is 32 bits, Float is 64). Nothing Float -> Int is ruled, so no floor/round here. `sqrt` of a negative is NaN on every backend. Follow the Sum/Max/Transpose unary-builtin wiring: `Builtin` variants in src/tir.rs, type rules in src/check/mod.rs (BUILTIN_NAMES ~line 1509; `float` also accepts a Float and returns it unchanged), src/tags.rs, build.rs arms, src/backend_support.rs LANDINGS (no backend built yet), tests/tag_coverage.rs and tests/unbuilt_arms.rs, and the ADR 0010 mention that `i64` is no longer the only conversion. No emitter arms in this row. Do NOT rewrite files with scripts. Done-gate: `just check` passes and `sqrt 2.0` / `float 1 + 0.5` type-check.'
   kind: build
   needs: [float-sqrt-and-int-to-float-decide]
-  status: todo
+  status: delegated
 
 - id: float-builtins-build-backends-a
   title: 'Emitter arms for `sqrt` and `float` on Rust, Go, JS and Python (ruling 2026-09-20, see float-builtins-build-front). `sqrt` must print the correctly rounded IEEE result on every backend (`sqrt 2.0` prints `1.4142135623730951`); a negative input gives NaN, and Python needs a guard because `math.sqrt(-1.0)` raises ValueError. `float(n)` converts an Int (exactly) and returns a Float unchanged. Add the four backends to the LANDINGS entries in src/backend_support.rs. Add corpus yaml under tests/corpus/ covering `sqrt 2.0`, `sqrt` of a negative printing NaN, `float 5 / 2.0`. Do NOT rewrite files with scripts. Done-gate: `just check` passes and the corpus agrees across the four backends.'
@@ -492,4 +492,4 @@
   title: 'Periodic audit 2026-09-20: `pipe-through-remaining-backends` was archived done after landing Go only -- src/backend_support.rs LANDINGS still lists pipe_through on Go and Rust, and src/emit_{py,js,lua,jq,llvm}.rs have no arm (gh:158 stays open for this). Add the arms for Python, JS, Lua, jq and LLVM one backend per dispatch (footprint: each emit file plus LANDINGS in backend_support.rs, so serialize on that file), following the Go/Rust arms (piped stdin, stdout/stderr relayed as the tagged `PipeLine` stream), and update LANDINGS + tests/unbuilt_arms.rs as each lands. jq and LLVM may need a decide row if a subprocess is not expressible there; say so rather than faking it.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
