@@ -18,8 +18,9 @@ the design record is [draft.md](draft.md), and what is still open is tracked in
 of the adults:
 
 ```toylang
+# fmt: syntax-example
 fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
-  db.users | select(.age >= 18) | .[].name
+  db.users | select(.age >= 18) | .[].name;
 
 
 adults(parse stdin)
@@ -55,11 +56,12 @@ types wire data directly.
 [`examples/shapes.toy`](examples/shapes.toy):
 
 ```toylang
+# fmt: syntax-example
 enum Shape { Point, Circle { r: Int } }
 
 
 fn area_ish(s: Shape) -> Int =
-  s | Circle { r } -> r * r or Point -> 0
+  s | Circle { r } -> r * r or Point -> 0;
 
 
 { a: area_ish Shape.point, b: area_ish(circle { r: 3 }) }
@@ -73,10 +75,11 @@ Match arms chain with `or`; the first that matches wins. The match is closed-wor
 program whose match handles only `Circle`,
 
 ```toylang
+# fmt: syntax-example
 enum Shape { Point, Circle { r: Int } }
 
 
-fn area_ish(s: Shape) -> Int = s | Circle { r } -> r * r
+fn area_ish(s: Shape) -> Int = s | Circle { r } -> r * r;
 
 
 area_ish Shape.point
@@ -85,7 +88,7 @@ area_ish Shape.point
 is refused:
 
 ```error
-a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 77)
+a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 99)
 ```
 
 ## Seven backends, kept as falsifiers
