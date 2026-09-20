@@ -3,10 +3,11 @@
 # a JSON parser for every record type whenever input existed -- including this output record,
 # whose Int64 field hit the deliberate no-wire-form unreachable and panicked at generation.
 program: |
-  fn wide() -> Int64 = 600851475143
+  # fmt: syntax-example
+  fn wide() -> Int64 = 600851475143;
 
 
-  fn double(x: Int) -> Int = x * 2
+  fn double(x: Int) -> Int = x * 2;
 
 
   { a: wide(), b: double(parse stdin) }

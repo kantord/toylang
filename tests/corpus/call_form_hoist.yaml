@@ -3,11 +3,12 @@
 # inferred from the body, and each arm resolves against that enum's variants. The whole call
 # form is sugar for a `Match` over the implicit parameter.
 program: |
+  # fmt: syntax-example
   enum Msg { Ping, Quit, Text { body: Str } }
 
 
   fn render =
-    Msg(Ping -> "*ping*" or Quit -> "*quit*" or Text { body } -> body)
+    Msg(Ping -> "*ping*" or Quit -> "*quit*" or Text { body } -> body);
 
 
   {

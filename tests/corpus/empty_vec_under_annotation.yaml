@@ -2,7 +2,8 @@
 # flows into the body, so `[]` takes its element type from the annotation instead of being
 # refused as unknowable.
 program: |
-  fn nothing() -> Vec<Int> = []
+  # fmt: syntax-example
+  fn nothing() -> Vec<Int> = [];
 
 
   nothing()

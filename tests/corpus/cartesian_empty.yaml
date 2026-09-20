@@ -2,7 +2,8 @@
 # here, so this is also the case where every outer iteration produces an empty row and
 # `flatten` has to hand back an empty Vec rather than nothing.
 program: |
-  fn f(v: Vec<Int>) -> Vec<Int> = v * [10, 20]
+  # fmt: syntax-example
+  fn f(v: Vec<Int>) -> Vec<Int> = v * [10, 20];
 
 
   f([])

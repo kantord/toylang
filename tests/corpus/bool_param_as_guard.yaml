@@ -1,10 +1,11 @@
 # A Bool parameter is a guard on its own: `b -> ..` reads as the expression `b`, exactly as
 # `. -> ..` does, because a lowercase head is never a variant pattern.
 program: |
-  fn name(b: Bool) -> Str = b | b -> "yes" or "no"
+  # fmt: syntax-example
+  fn name(b: Bool) -> Str = b | b -> "yes" or "no";
 
 
-  fn dot(b: Bool) -> Str = b | . -> "yes" or "no"
+  fn dot(b: Bool) -> Str = b | . -> "yes" or "no";
 
 
   [name true, name false, name(1 == 2), dot true, dot false]

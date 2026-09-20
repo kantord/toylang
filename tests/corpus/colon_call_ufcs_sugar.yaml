@@ -2,7 +2,8 @@
 # function's one argument slot -- not trait-method dispatch, since `double` is an ordinary `fn`
 # with no impl involved.
 program: |
-  fn double(x: Int) -> Int = x * 2
+  # fmt: syntax-example
+  fn double(x: Int) -> Int = x * 2;
 
 
   3:double()

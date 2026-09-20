@@ -3,12 +3,13 @@
 # `any()` arm, so the checker proves coverage of all three variants. The shape fuses on every
 # backend; output is what the corpus can check, tests/streaming.rs is what proves fusion.
 program: |
+  # fmt: syntax-example
   enum Msg { Ping, Quit, Text { body: Str } }
 
 
   fn render(msgs: Stream<Msg>) -> Stream<Str> =
     msgs
-    | map(. | Ping -> "*ping*" or Quit -> "*quit*" or Text -> .body)
+    | map(. | Ping -> "*ping*" or Quit -> "*quit*" or Text -> .body);
 
 
   jsonlines render(stdin | map parse(.))

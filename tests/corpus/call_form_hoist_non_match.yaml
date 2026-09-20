@@ -2,10 +2,11 @@
 # caller can use the result where the inferred type is expected (gh:152). A payload pattern
 # rebinds `.` to the payload, exactly as in an ordinary match.
 program: |
+  # fmt: syntax-example
   enum Shape { Point, Circle { r: Int } }
 
 
-  fn area = Shape(Circle { r } -> r * r or Point -> 0)
+  fn area = Shape(Circle { r } -> r * r or Point -> 0);
 
 
   {

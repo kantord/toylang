@@ -2,7 +2,8 @@
 # asserts the subject is a Bool and infers the hoisted signature from it, and the qualified
 # constructors `Bool.true` / `Bool.false` build the value the way `Shape.point` does.
 program: |
-  fn name = Bool(True -> 1 or False -> 0)
+  # fmt: syntax-example
+  fn name = Bool(True -> 1 or False -> 0);
 
 
   [name Bool.true, name Bool.false]
