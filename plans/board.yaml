@@ -409,18 +409,18 @@
   title: 'Slice 2a leftover: add `;` after every fn/type declaration in tests/corpus/[l-z]*.yaml (not record_body_after_definition/vec_body_after_definition). Brief: plans/simple-briefs/declare-terminator-build-2a-4.txt.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: declare-terminator-build-2a-5
   issue: gh:153
-  title: 'Slice 2a leftover: add `;` after every fn/type declaration in every .toy file (prelude.toy, examples/, tests/modules/, benches/programs/), README.md, draft.md, docs/examples/ and docs/adr/. Brief still to write.'
+  title: 'Slice 2a leftover: add `;` after every fn/type declaration in every .toy file (prelude.toy, examples/, tests/modules/, benches/programs/), README.md, draft.md, docs/examples/ and docs/adr/. Brief: plans/simple-briefs/declare-terminator-build-2a-5.txt.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: declare-terminator-build-2a-6
   issue: gh:153
-  title: 'Slice 2a leftover: add `;` after every fn/type declaration in toylang fragments under docs/guides, docs/overview, docs/reference, docs/tutorial EXCEPT docs/reference/syntax/functions.md (2c owns it); tests/docs.rs compiles each fragment. Brief still to write.'
+  title: 'Slice 2a leftover: add `;` after every fn/type declaration in toylang fragments under docs/guides, docs/overview, docs/reference, docs/tutorial EXCEPT docs/reference/syntax/functions.md (2c owns it); tests/docs.rs compiles each fragment. Brief: plans/simple-briefs/declare-terminator-build-2a-5.txt.'
   kind: build
   needs: []
   status: todo
