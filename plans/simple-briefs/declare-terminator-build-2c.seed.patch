@@ -1,0 +1,602 @@
+From 3cb294626e47bbb47acda51a785ef6c3058680ac Mon Sep 17 00:00:00 2001
+From: Daniel Kantor <git@daniel-kantor.com>
+Date: Sun, 20 Sep 2026 22:16:28 +0000
+Subject: [PATCH] agent_loop.py output
+
+---
+ src/parse.rs                                  | 52 ++++++++++++-------
+ tests/backend_rust.rs                         |  6 +--
+ tests/char.rs                                 | 10 ++--
+ tests/enums.rs                                | 10 ++--
+ tests/jsonlines.rs                            |  2 +-
+ tests/module_routing.rs                       |  2 +-
+ tests/reductions.rs                           |  2 +-
+ .../char__input_cannot_be_char_typed.snap     |  4 +-
+ ...r__inputs_cannot_carry_a_char_element.snap |  4 +-
+ ...__a_conditional_cannot_yield_a_stream.snap |  3 +-
+ tests/step_4.rs                               |  4 +-
+ tests/step_6.rs                               |  6 +--
+ tests/step_dsv.rs                             |  6 +--
+ tests/streaming.rs                            | 10 ++--
+ tests/unbuilt_arms.rs                         |  2 +-
+ tests/unused.rs                               | 14 ++---
+ tests/unwrap.rs                               |  8 +--
+ tests/variant_casing.rs                       | 10 ++--
+ 18 files changed, 86 insertions(+), 69 deletions(-)
+
+diff --git a/src/parse.rs b/src/parse.rs
+index 8142af47..e0c533eb 100644
+--- a/src/parse.rs
++++ b/src/parse.rs
+@@ -658,13 +658,15 @@ impl<'i> Cursor<'i> {
+         Ok(span)
+     }
+ 
+-    /// Consume one `;` after an fn or type declaration if one is present (gh:153, slice 2a).
+-    /// The `;` is ACCEPTED and recorded by the formatter but not required yet; a later slice
+-    /// makes it required.
+-    fn opt_semicolon(&mut self) -> Result<(), Error> {
+-        if self.peek()?.0 == Tok::Semicolon {
+-            self.advance()?;
++    /// Require the `;` after an fn or type declaration (gh:153, slice 3a). `end` is the span
++    /// of the declaration's body, used as the error span when the offending token is Eof.
++    fn require_semicolon(&mut self, end: Span) -> Result<(), Error> {
++        let (tok, span) = self.peek()?;
++        if tok != Tok::Semicolon {
++            let span = if tok == Tok::Eof { Span::new(end.end, end.end) } else { span };
++            return Err(Error::new(span, "expected `;` after this declaration"));
+         }
++        self.advance()?;
+         Ok(())
+     }
+ 
+@@ -779,7 +781,7 @@ impl<'i> Cursor<'i> {
+         if next == Tok::Eq {
+             self.advance()?;
+             let body = self.def_body()?;
+-            self.opt_semicolon()?;
++            self.require_semicolon(body.span())?;
+             return Ok(Def {
+                 span: start.to(body.span()),
+                 name,
+@@ -808,7 +810,7 @@ impl<'i> Cursor<'i> {
+ 
+         self.eat(Tok::Eq)?;
+         let body = self.def_body()?;
+-        self.opt_semicolon()?;
++        self.require_semicolon(body.span())?;
+         Ok(Def {
+             span: start.to(body.span()),
+             name,
+@@ -1158,7 +1160,7 @@ impl<'i> Cursor<'i> {
+         let (name, _) = self.eat_ident("a type name")?;
+         self.eat(Tok::Eq)?;
+         let ty = self.type_expr()?;
+-        self.opt_semicolon()?;
++        self.require_semicolon(ty.span())?;
+         let span = start.to(ty.span());
+         Ok(Alias { name, ty, span })
+     }
+@@ -1898,16 +1900,30 @@ mod tests {
+         );
+     }
+ 
+-    /// gh:153 slice 2a: the `;` declaration terminator is accepted but not yet required, and
+-    /// leaves no trace on the tree -- both spellings of an fn or type declaration parse to the
+-    /// same module.
++    /// gh:153 slice 3a: the `;` declaration terminator is required and leaves no trace on the
++    /// tree -- every terminated spelling parses, and every un-terminated one errors.
+     #[test]
+     fn semicolon_terminator_does_not_change_the_tree() {
+-        same("fn f(x: Int) -> Int = x * 10", "fn f(x: Int) -> Int = x * 10;");
+-        same("fn f(x: Int) -> Int = x", "fn f(x: Int) -> Int = x;");
+-        same("type U = {name: Str}", "type U = {name: Str};");
+-        same("type Db = Vec<Int>", "type Db = Vec<Int>;");
+-        // The hoisted form accepts the terminator too.
+-        same("fn answer = 42", "fn answer = 42;");
++        same("fn f(x: Int) -> Int = x * 10;", "fn f(x: Int) -> Int = x * 10;");
++        same("fn f(x: Int) -> Int = x;", "fn f(x: Int) -> Int = x;");
++        same("type U = {name: Str};", "type U = {name: Str};");
++        same("type Db = Vec<Int>;", "type Db = Vec<Int>;");
++        // The hoisted form requires the terminator too.
++        same("fn answer = 42;", "fn answer = 42;");
++
++        for src in [
++            "fn f(x: Int) -> Int = x * 10",
++            "fn f(x: Int) -> Int = x",
++            "type U = {name: Str}",
++            "type Db = Vec<Int>",
++            "fn answer = 42",
++        ] {
++            let err = parse_module(src).unwrap_err();
++            assert!(
++                err.msg.contains("expected `;`"),
++                "`{src}` should complain about the missing `;`, got: {}",
++                err.msg,
++            );
++        }
+     }
+ }
+diff --git a/tests/backend_rust.rs b/tests/backend_rust.rs
+index 550e3ba7..3f5faaae 100644
+--- a/tests/backend_rust.rs
++++ b/tests/backend_rust.rs
+@@ -102,7 +102,7 @@ fn float_comparison() {
+ /// double a Float names (ADR 0007), the case that made Int64 refuse `input`.
+ #[test]
+ fn float_input_reads_a_json_number() {
+-    let src = "fn twice(x: Float) -> Float = x * 2.0\n\ntwice(parse(stdin))\n";
++    let src = "fn twice(x: Float) -> Float = x * 2.0;\n\ntwice(parse(stdin))\n";
+     assert_eq!(agree_rust_js(src, Some("2.5")), "5\n");
+ }
+ 
+@@ -169,7 +169,7 @@ fn max_by_keeps_the_first_of_equal_maxima() {
+ #[test]
+ fn max_by_of_an_empty_vec_is_absent() {
+     let src = r#"
+-fn nothing() -> Vec<{name: Str, age: Int}> = []
++fn nothing() -> Vec<{name: Str, age: Int}> = [];
+ nothing() | max_by(.age)
+ "#;
+     let out = toylang::run_on(src, None, Backend::Rust).unwrap();
+@@ -191,7 +191,7 @@ fn sort_by_and_max_by_handle_str_and_int64_keys() {
+ 
+     let wide = toylang::run_on(
+         r#"
+-fn wide(x: Int) -> Int64 = i64(x)
++fn wide(x: Int) -> Int64 = i64(x);
+ 
+ [{v: wide(9), s: "x"}, {v: wide(2), s: "y"}] | max_by(.v)
+ "#,
+diff --git a/tests/char.rs b/tests/char.rs
+index e830e22c..585b0560 100644
+--- a/tests/char.rs
++++ b/tests/char.rs
+@@ -10,28 +10,28 @@ fn err(src: &str) -> String {
+ 
+ #[test]
+ fn a_function_can_take_and_return_a_char() {
+-    assert!(toylang::compile("fn id(c: Char) -> Char = c\n\nlength(chars(\"a\"))").is_ok());
++    assert!(toylang::compile("fn id(c: Char) -> Char = c;\n\nlength(chars(\"a\"))").is_ok());
+ }
+ 
+ #[test]
+ fn a_record_field_can_be_a_char() {
+-    assert!(toylang::compile("fn f(r: {c: Char}) -> Char = r.c\n\n1").is_ok());
++    assert!(toylang::compile("fn f(r: {c: Char}) -> Char = r.c;\n\n1").is_ok());
+ }
+ 
+ #[test]
+ fn a_vec_can_hold_a_char() {
+-    assert!(toylang::compile("fn f(v: Vec<Char>) -> Int = length(v)\n\n1").is_ok());
++    assert!(toylang::compile("fn f(v: Vec<Char>) -> Int = length(v);\n\n1").is_ok());
+ }
+ 
+ #[test]
+ fn input_cannot_be_char_typed() {
+-    insta::assert_snapshot!(err("fn f(c: Char) -> Bool = c == c\n\nf(parse(stdin))"));
++    insta::assert_snapshot!(err("fn f(c: Char) -> Bool = c == c;\n\nf(parse(stdin))"));
+ }
+ 
+ #[test]
+ fn inputs_cannot_carry_a_char_element() {
+     insta::assert_snapshot!(err(
+-        "fn f(v: Vec<Char>) -> Int = length(v)\n\nf(collect((stdin | map(parse(.)))))"
++        "fn f(v: Vec<Char>) -> Int = length(v);\n\nf(collect((stdin | map(parse(.)))))"
+     ));
+ }
+ 
+diff --git a/tests/enums.rs b/tests/enums.rs
+index 8b77a193..4e413a32 100644
+--- a/tests/enums.rs
++++ b/tests/enums.rs
+@@ -73,7 +73,7 @@ fn a_vec_wrapped_self_reference_typechecks() {
+     assert!(
+         toylang::compile(
+             "enum Json { Arr(Vec<Json>), Num(Int) }\n\n\
+-             fn describe(j: Json) -> Str = j | Arr -> \"arr\" or Num -> \"num\"\n\n\
++             fn describe(j: Json) -> Str = j | Arr -> \"arr\" or Num -> \"num\";\n\n\
+              describe(Json.arr([Json.num(1)]))"
+         )
+         .is_ok()
+@@ -92,7 +92,7 @@ fn only_the_boxed_variant_of_a_mixed_enum_is_legal() {
+ /// way around.
+ #[test]
+ fn an_enum_cannot_reuse_an_alias_name() {
+-    insta::assert_snapshot!(err("type A = Int\nenum A { X }\n\nstr(1)"));
++    insta::assert_snapshot!(err("type A = Int;\nenum A { X }\n\nstr(1)"));
+ }
+ 
+ #[track_caller]
+@@ -104,7 +104,7 @@ fn run_err(src: &str, stdin: &str) -> String {
+ }
+ 
+ const FLIP: &str =
+-    "enum Status { Active, Inactive }\n\nfn f(s: Status) -> Status = s\n\nf(parse(stdin))";
++    "enum Status { Active, Inactive }\n\nfn f(s: Status) -> Status = s;\n\nf(parse(stdin))";
+ 
+ /// A wire mismatch names the enum, since "found a string" alone would not say which closed set
+ /// the string missed.
+@@ -118,7 +118,7 @@ fn input_that_is_no_variant_names_the_enum() {
+ #[test]
+ fn input_using_the_wrong_shape_for_a_variant() {
+     let src =
+-        "enum Shape { Point, Circle{r: Int} }\n\nfn f(s: Shape) -> Shape = s\n\nf(parse(stdin))";
++        "enum Shape { Point, Circle{r: Int} }\n\nfn f(s: Shape) -> Shape = s;\n\nf(parse(stdin))";
+     insta::assert_snapshot!(format!(
+         "{}\n{}",
+         run_err(src, "\"circle\""),
+@@ -193,7 +193,7 @@ fn the_subject_is_not_reachable_inside_a_unit_arm() {
+ #[test]
+ fn an_enum_parses_in_a_module() {
+     let module = toylang::parse::parse_module(
+-        "pub enum Status { Active, Inactive }\n\npub fn same(s: Status) -> Status = s\n",
++        "pub enum Status { Active, Inactive }\n\npub fn same(s: Status) -> Status = s;\n",
+     )
+     .unwrap();
+     assert_eq!(module.enums.len(), 1);
+diff --git a/tests/jsonlines.rs b/tests/jsonlines.rs
+index c0d991f2..1739e28b 100644
+--- a/tests/jsonlines.rs
++++ b/tests/jsonlines.rs
+@@ -15,7 +15,7 @@ fn err(src: &str) -> String {
+ /// against; it needs its own guard for the same reason every other builtin has one.
+ #[test]
+ fn jsonlines_cannot_be_redefined() {
+-    insta::assert_snapshot!(err("fn jsonlines(x: Int) -> Int = x\n\njsonlines(1)"));
++    insta::assert_snapshot!(err("fn jsonlines(x: Int) -> Int = x;\n\njsonlines(1)"));
+ }
+ 
+ #[test]
+diff --git a/tests/module_routing.rs b/tests/module_routing.rs
+index 862cdad1..36061292 100644
+--- a/tests/module_routing.rs
++++ b/tests/module_routing.rs
+@@ -34,7 +34,7 @@ fn matcher_arms_route_to_different_modules() {
+         r#"enum Temp { Celsius(Int), Kelvin(Int) }
+ 
+ fn to_kelvin(t: Temp) -> Int =
+-    t | Celsius -> @("tests/modules/celsius.toy") or Kelvin -> @("tests/modules/kelvin.toy")
++    t | Celsius -> @("tests/modules/celsius.toy") or Kelvin -> @("tests/modules/kelvin.toy");
+ 
+ [to_kelvin(Temp.celsius(27)), to_kelvin(Temp.kelvin(300))]
+ "#,
+diff --git a/tests/reductions.rs b/tests/reductions.rs
+index 1be75ee8..d645ca2f 100644
+--- a/tests/reductions.rs
++++ b/tests/reductions.rs
+@@ -51,7 +51,7 @@ fn max_takes_an_int_element() {
+ #[test]
+ fn a_builtin_cannot_be_redefined() {
+     insta::assert_snapshot!(
+-        toylang::compile("fn sum(x: Vec<Int>) -> Int = x[0]!\n\nsum([1])")
++        toylang::compile("fn sum(x: Vec<Int>) -> Int = x[0]!;\n\nsum([1])")
+             .map(|_| ())
+             .unwrap_err()
+             .to_string()
+diff --git a/tests/snapshots/char__input_cannot_be_char_typed.snap b/tests/snapshots/char__input_cannot_be_char_typed.snap
+index 10e0a81b..eec01385 100644
+--- a/tests/snapshots/char__input_cannot_be_char_typed.snap
++++ b/tests/snapshots/char__input_cannot_be_char_typed.snap
+@@ -1,6 +1,6 @@
+ ---
+ source: tests/char.rs
+ assertion_line: 28
+-expression: "err(\"fn f(c: Char) -> Bool = c == c\\n\\nf(parse(stdin))\")"
++expression: "err(\"fn f(c: Char) -> Bool = c == c;\\n\\nf(parse(stdin))\")"
+ ---
+-`parse(stdin)` cannot be read as Char; Char has no wire form to read (at byte 34)
++`parse(stdin)` cannot be read as Char; Char has no wire form to read (at byte 35)
+diff --git a/tests/snapshots/char__inputs_cannot_carry_a_char_element.snap b/tests/snapshots/char__inputs_cannot_carry_a_char_element.snap
+index 15dc97eb..76a16e1b 100644
+--- a/tests/snapshots/char__inputs_cannot_carry_a_char_element.snap
++++ b/tests/snapshots/char__inputs_cannot_carry_a_char_element.snap
+@@ -1,6 +1,6 @@
+ ---
+ source: tests/char.rs
+ assertion_line: 33
+-expression: "err(\"fn f(v: Vec<Char>) -> Int = length(v)\\n\\nf(collect((stdin | map(parse(.)))))\")"
++expression: "err(\"fn f(v: Vec<Char>) -> Int = length(v);\\n\\nf(collect((stdin | map(parse(.)))))\")"
+ ---
+-`stdin | map(parse(.))` cannot be read as Stream<Char>; Char has no wire form to read (at byte 50)
++`stdin | map(parse(.))` cannot be read as Stream<Char>; Char has no wire form to read (at byte 51)
+diff --git a/tests/snapshots/streams__linearity__a_conditional_cannot_yield_a_stream.snap b/tests/snapshots/streams__linearity__a_conditional_cannot_yield_a_stream.snap
+index f8ee2cf5..ef296dbf 100644
+--- a/tests/snapshots/streams__linearity__a_conditional_cannot_yield_a_stream.snap
++++ b/tests/snapshots/streams__linearity__a_conditional_cannot_yield_a_stream.snap
+@@ -1,5 +1,6 @@
+ ---
+ source: tests/streams.rs
++assertion_line: 125
+ expression: "err(\"fn f(s: Stream<Str>) -> Stream<Str> = s if 1 == 1 else s;\\n\\n1\")"
+ ---
+-expected end of program, found `;` (at byte 56)
++expected `;` after this declaration (at byte 50)
+diff --git a/tests/step_4.rs b/tests/step_4.rs
+index 2fca6d61..8e545192 100644
+--- a/tests/step_4.rs
++++ b/tests/step_4.rs
+@@ -17,7 +17,7 @@ fn a_spec_with_nothing_to_spec_is_the_identity() {
+ #[test]
+ fn field_access_through_an_unspecced_dimension() {
+     insta::assert_snapshot!(err(r#"
+-fn f(db: {users: Vec<{name: Str}>}) -> Vec<Str> = db.users.name
++fn f(db: {users: Vec<{name: Str}>}) -> Vec<Str> = db.users.name;
+ f(parse(stdin))
+ "#));
+ }
+@@ -35,7 +35,7 @@ fn pipe_rebinds_the_subject() {
+ #[test]
+ fn a_vec_survives_a_function() {
+     let src = r#"
+-fn big(xs: Vec<Int>) -> Vec<Int> = xs | select(. >= 2)
++fn big(xs: Vec<Int>) -> Vec<Int> = xs | select(. >= 2);
+ 
+ big([1, 2, 3])
+ "#;
+diff --git a/tests/step_6.rs b/tests/step_6.rs
+index e64aece0..adfdb8eb 100644
+--- a/tests/step_6.rs
++++ b/tests/step_6.rs
+@@ -8,7 +8,7 @@ fn parse(src: &str) -> toylang::ast::File {
+ #[test]
+ fn hoisted_call_form_declaration() {
+     insta::assert_debug_snapshot!(parse(
+-        "enum Shape { Point, Circle{r: Int} }\nfn area = Shape(Circle{r} -> r * r or Point -> 0)\narea(Shape.point)"
++        "enum Shape { Point, Circle{r: Int} }\nfn area = Shape(Circle{r} -> r * r or Point -> 0);\narea(Shape.point)"
+     ));
+ }
+ 
+@@ -38,7 +38,7 @@ fn match_call_with_guard() {
+ #[test]
+ fn annotated_declaration_still_parses() {
+     insta::assert_debug_snapshot!(parse(
+-        "enum Shape { Point, Circle{r: Int} }\nfn area(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0\narea(Shape.point)"
++        "enum Shape { Point, Circle{r: Int} }\nfn area(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0;\narea(Shape.point)"
+     ));
+ }
+ 
+@@ -46,5 +46,5 @@ fn annotated_declaration_still_parses() {
+ /// restricts it to one is the checker's step, not the parser's.
+ #[test]
+ fn hoisted_declaration_accepts_any_body() {
+-    insta::assert_debug_snapshot!(parse("fn answer = 42\nanswer"));
++    insta::assert_debug_snapshot!(parse("fn answer = 42;\nanswer"));
+ }
+diff --git a/tests/step_dsv.rs b/tests/step_dsv.rs
+index 6d7d97b1..9f10a959 100644
+--- a/tests/step_dsv.rs
++++ b/tests/step_dsv.rs
+@@ -9,7 +9,7 @@ fn err(src: &str) -> String {
+ /// spelling `dsv` is refused there the same way they are.
+ #[test]
+ fn dsv_in_a_function_body() {
+-    insta::assert_snapshot!(err("fn f() -> Vec<Vec<Str>> = dsv(\",\")\nf"));
++    insta::assert_snapshot!(err("fn f() -> Vec<Vec<Str>> = dsv(\",\");\nf"));
+ }
+ 
+ /// There is only ever one real stdin, so a second `dsv` -- even with a different delimiter --
+@@ -23,7 +23,7 @@ fn dsv_read_twice() {
+ #[test]
+ fn dsv_exclusive_with_lines() {
+     insta::assert_snapshot!(err(
+-        "fn g(a: Stream<Str>) -> Vec<Str> = collect(a)\n{a: join_lines(g(stdin)), b: csv}.a"
++        "fn g(a: Stream<Str>) -> Vec<Str> = collect(a);\n{a: join_lines(g(stdin)), b: csv}.a"
+     ));
+ }
+ 
+@@ -31,7 +31,7 @@ fn dsv_exclusive_with_lines() {
+ #[test]
+ fn dsv_exclusive_with_input() {
+     insta::assert_snapshot!(err(
+-        "fn g(a: {x: Str}) -> Str = a.x\n{g: g(parse(stdin)), c: csv}.g"
++        "fn g(a: {x: Str}) -> Str = a.x;\n{g: g(parse(stdin)), c: csv}.g"
+     ));
+ }
+ 
+diff --git a/tests/streaming.rs b/tests/streaming.rs
+index 6c8a6534..6e0ff0a7 100644
+--- a/tests/streaming.rs
++++ b/tests/streaming.rs
+@@ -13,7 +13,7 @@ use std::time::Duration;
+ 
+ const PROGRAM: &str = r#"
+ fn adults(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
+-    users | select(.age >= 18) | map {name: .name}
++    users | select(.age >= 18) | map {name: .name};
+ 
+ jsonlines(adults((stdin | map(parse(.)))))
+ "#;
+@@ -24,10 +24,10 @@ jsonlines(adults((stdin | map(parse(.)))))
+ /// Type-driven fusion reads it like any other stream pipeline.
+ const COMPOSED: &str = r#"
+ fn keep(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str, age: Int}> =
+-    users | select(.age >= 18)
++    users | select(.age >= 18);
+ 
+ fn names(users: Stream<{name: Str, age: Int}>) -> Stream<{name: Str}> =
+-    users | map {name: .name}
++    users | map {name: .name};
+ 
+ jsonlines(names(keep((stdin | map(parse(.))))))
+ "#;
+@@ -36,7 +36,7 @@ jsonlines(names(keep((stdin | map(parse(.))))))
+ /// (it demanded an `inputs` base), fused now because the types say stream.
+ const SHOUT: &str = r#"
+ fn shout(names: Stream<Str>) -> Stream<Str> =
+-    names | map(. + "!")
++    names | map(. + "!");
+ 
+ jsonlines(shout(stdin))
+ "#;
+@@ -347,7 +347,7 @@ const REJECT: &str = r#"
+ enum Msg { Ping, Text{body: Str} }
+ 
+ fn render(msgs: Stream<Msg>) -> Stream<Str> =
+-    msgs | map(. | Text -> .body or any() -> "*ping*")
++    msgs | map(. | Text -> .body or any() -> "*ping*");
+ 
+ jsonlines(render((stdin | map(parse(.)))))
+ "#;
+diff --git a/tests/unbuilt_arms.rs b/tests/unbuilt_arms.rs
+index 8aace3dc..584acb8a 100644
+--- a/tests/unbuilt_arms.rs
++++ b/tests/unbuilt_arms.rs
+@@ -89,7 +89,7 @@ fn sqrt_and_float_type_check_where_the_corpus_cannot() {
+ #[test]
+ fn a_use_inside_a_function_is_refused_too() {
+     let program =
+-        toylang::compile("fn f(v: Vec<Int>) -> Vec<Int> = v | sort_by(.)\n\nf([2, 1])\n").unwrap();
++        toylang::compile("fn f(v: Vec<Int>) -> Vec<Int> = v | sort_by(.);\n\nf([2, 1])\n").unwrap();
+     assert_eq!(
+         Backend::Lua.emit(&program).unwrap_err(),
+         "`sort_by` has no lua backend yet; today it runs on go and rust"
+diff --git a/tests/unused.rs b/tests/unused.rs
+index aa77dbff..9e5e22a3 100644
+--- a/tests/unused.rs
++++ b/tests/unused.rs
+@@ -8,33 +8,33 @@ fn err(src: &str) -> String {
+ 
+ #[test]
+ fn an_unused_parameter_is_refused() {
+-    insta::assert_snapshot!(err("fn f(x: Int) -> Int = 1\n\nf(1)"));
++    insta::assert_snapshot!(err("fn f(x: Int) -> Int = 1;\n\nf(1)"));
+ }
+ 
+ #[test]
+ fn a_read_parameter_compiles() {
+-    assert!(toylang::compile("fn f(x: Int) -> Int = x\n\nf(1)").is_ok());
++    assert!(toylang::compile("fn f(x: Int) -> Int = x;\n\nf(1)").is_ok());
+ }
+ 
+ /// The unused check is per-binding, not per-name: `x` shadows the outer name but is itself
+ /// read, so the inner function is fine even though an outer `x` bound the same word.
+ #[test]
+ fn a_parameter_used_only_in_a_nested_call_still_counts() {
+-    let src = "fn double(x: Int) -> Int = x + x\n\nfn f(x: Int) -> Int = double(x)\n\nf(1)";
++    let src = "fn double(x: Int) -> Int = x + x;\n\nfn f(x: Int) -> Int = double(x);\n\nf(1)";
+     assert!(toylang::compile(src).is_ok());
+ }
+ 
+ #[test]
+ fn an_unused_destructured_field_is_refused() {
+     insta::assert_snapshot!(err("enum Shape { Point, Circle{r: Int, color: Str} }\n\n\
+-         fn area(s: Shape) -> Int = s | Circle{r, color} -> r * r or Point -> 0\n\n\
++         fn area(s: Shape) -> Int = s | Circle{r, color} -> r * r or Point -> 0;\n\n\
+          area(Shape.point)"));
+ }
+ 
+ #[test]
+ fn a_read_destructured_field_compiles() {
+     let src = "enum Shape { Point, Circle{r: Int} }\n\n\
+-               fn area(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0\n\n\
++               fn area(s: Shape) -> Int = s | Circle{r} -> r * r or Point -> 0;\n\n\
+                area(Shape.point)";
+     assert!(toylang::compile(src).is_ok());
+ }
+@@ -45,7 +45,7 @@ fn a_read_destructured_field_compiles() {
+ #[test]
+ fn reading_the_field_through_the_subject_spelling_still_counts_as_using_the_binding() {
+     let src = "enum Shape { Circle{r: Int} }\n\n\
+-               fn area(s: Shape) -> Int = s | Circle{r} -> .r * .r\n\n\
++               fn area(s: Shape) -> Int = s | Circle{r} -> .r * .r;\n\n\
+                area(circle{r: 3})";
+     assert!(toylang::compile(src).is_ok());
+ }
+@@ -55,6 +55,6 @@ fn reading_the_field_through_the_subject_spelling_still_counts_as_using_the_bind
+ #[test]
+ fn the_hint_does_not_repeat_an_existing_rest() {
+     insta::assert_snapshot!(err("enum Shape { Circle{r: Int, color: Str} }\n\n\
+-         fn area(s: Shape) -> Int = s | Circle{r, color, ..} -> r * r\n\n\
++         fn area(s: Shape) -> Int = s | Circle{r, color, ..} -> r * r;\n\n\
+          area(circle{r: 3, color: \"red\"})"));
+ }
+diff --git a/tests/unwrap.rs b/tests/unwrap.rs
+index 4eb3f7be..e6e051fe 100644
+--- a/tests/unwrap.rs
++++ b/tests/unwrap.rs
+@@ -19,7 +19,7 @@ fn unwrapping_changes_how_a_string_prints() {
+ /// `str` is a builtin, so a program cannot define its own and silently mean something else.
+ #[test]
+ fn a_builtin_cannot_be_redefined() {
+-    let err = toylang::compile("fn str(x: Int) -> Str = x\nstr(1)")
++    let err = toylang::compile("fn str(x: Int) -> Str = x;\nstr(1)")
+         .map(|_| ())
+         .unwrap_err()
+         .to_string();
+@@ -104,7 +104,7 @@ fn the_most_negative_int_is_writable_but_not_one_past_it() {
+ /// would have reported as one backend broken rather than as a rule the language was not keeping.
+ #[test]
+ fn an_int_from_input_has_to_fit_too() {
+-    let src = "fn ts(db: {t: Int}) -> Int = db.t\n\nts(parse(stdin))";
++    let src = "fn ts(db: {t: Int}) -> Int = db.t;\n\nts(parse(stdin))";
+     let err = toylang::run_on(src, Some(r#"{"t": 9999999999}"#), Backend::Lua)
+         .map(|_| ())
+         .unwrap_err()
+@@ -138,7 +138,7 @@ fn a_field_cannot_be_given_twice() {
+ #[test]
+ fn a_function_name_starts_lowercase() {
+     insta::assert_snapshot!(
+-        toylang::compile("fn User(c: {n: Str}) -> Str = c.n\n\nUser {n: \"a\"}")
++        toylang::compile("fn User(c: {n: Str}) -> Str = c.n;\n\nUser {n: \"a\"}")
+             .map(|_| ())
+             .unwrap_err()
+             .to_string()
+@@ -162,7 +162,7 @@ fn ne_on_an_opt_suggests_the_unwrap() {
+ #[test]
+ fn a_field_name_may_be_capitalised() {
+     let out = toylang::run_with_input(
+-        "fn f(c: {Name: Str}) -> Str = c.Name\n\nf(parse(stdin))",
++        "fn f(c: {Name: Str}) -> Str = c.Name;\n\nf(parse(stdin))",
+         Some(r#"{"Name": "ada"}"#),
+     )
+     .unwrap();
+diff --git a/tests/variant_casing.rs b/tests/variant_casing.rs
+index dae384ef..e4aa76ec 100644
+--- a/tests/variant_casing.rs
++++ b/tests/variant_casing.rs
+@@ -28,7 +28,7 @@ fn a_capitalized_constructor_is_refused() {
+ fn a_lowercase_pattern_is_refused() {
+     insta::assert_snapshot!(err(
+         "enum Shape { Point, Circle{r: Int} }\n\n\
+-         fn f(s: Shape) -> Int = s | circle{r} -> r or Point -> 0\n\n\
++         fn f(s: Shape) -> Int = s | circle{r} -> r or Point -> 0;\n\n\
+          f(Shape.point)"
+     ));
+ }
+@@ -38,7 +38,7 @@ fn a_lowercase_pattern_is_refused() {
+ #[test]
+ fn capitalized_declaration_with_lowercase_constructor_runs() {
+     let src = "enum Shape { Point, Circle{r: Int} }\n\nfn area(s: Shape) -> Int = \
+-               s | Circle{r} -> r * r or Point -> 0\n\n{a: area(Shape.point), b: area(circle{r: 3})}";
++               s | Circle{r} -> r * r or Point -> 0;\n\n{a: area(Shape.point), b: area(circle{r: 3})}";
+     assert_eq!(toylang::run(src).unwrap(), "{\"a\":0,\"b\":9}\n");
+ }
+ /// Casing decides an arm head before any name resolves (`parse.rs`'s `arm_starts_here`): a
+@@ -46,13 +46,13 @@ fn capitalized_declaration_with_lowercase_constructor_runs() {
+ /// no enum subject, or no such variant -- rather than being retried as an expression.
+ #[test]
+ fn a_capitalized_head_over_a_non_enum_subject_is_a_pattern_error() {
+-    insta::assert_snapshot!(err("fn f(x: Int) -> Int = x | Yes -> 1 or 2\n\nf(1)"));
++    insta::assert_snapshot!(err("fn f(x: Int) -> Int = x | Yes -> 1 or 2;\n\nf(1)"));
+ }
+ 
+ #[test]
+ fn a_capitalized_head_naming_no_variant_is_a_pattern_error() {
+     insta::assert_snapshot!(err("enum Shape { Point, Circle{r: Int} }\n\n\
+-         fn f(s: Shape) -> Int = s | Square -> 1 or 2\n\n\
++         fn f(s: Shape) -> Int = s | Square -> 1 or 2;\n\n\
+          f(Shape.point)"));
+ }
+ 
+@@ -61,6 +61,6 @@ fn a_capitalized_head_naming_no_variant_is_a_pattern_error() {
+ #[test]
+ fn a_lowercase_unit_constructor_head_gets_the_matcher_hint() {
+     insta::assert_snapshot!(err("enum Shape { Point, Circle{r: Int} }\n\n\
+-         fn f(s: Shape) -> Int = s | point -> 0 or Circle{r} -> r\n\n\
++         fn f(s: Shape) -> Int = s | point -> 0 or Circle{r} -> r;\n\n\
+          f(Shape.point)"));
+ }
+-- 
+2.47.3
+
