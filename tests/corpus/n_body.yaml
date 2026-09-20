@@ -20,7 +20,8 @@ program: |
     next >= y | . -> y or newton { x: x, y: next };
 
 
-  fn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 };
+  fn sqrt_newton(x: Float) -> Float =
+    newton { x: x, y: (x + 1.0) / 2.0 };
 
 
   fn solar_mass() -> Float =
@@ -107,7 +108,7 @@ program: |
     let dy = b.y - o.y
     let dz = b.z - o.z
     let d2 = dx * dx + dy * dy + dz * dz
-    let mag = 0.01 / (d2 * sqrt(d2))
+    let mag = 0.01 / (d2 * sqrt_newton(d2))
 
     {
       x: b.x,
@@ -149,7 +150,7 @@ program: |
     let dy = b.y - o.y
     let dz = b.z - o.z
 
-    acc - b.m * o.m / sqrt(dx * dx + dy * dy + dz * dz);
+    acc - b.m * o.m / sqrt_newton(dx * dx + dy * dy + dz * dz);
 
 
   fn potential(

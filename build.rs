@@ -183,6 +183,8 @@ impl ToRust for tir::Builtin {
         let variant = match self {
             tir::Builtin::IntToStr => "IntToStr",
             tir::Builtin::IntToI64 => "IntToI64",
+            tir::Builtin::Sqrt => "Sqrt",
+            tir::Builtin::FloatOf => "FloatOf",
             tir::Builtin::Range => "Range",
             tir::Builtin::Collect => "Collect",
             tir::Builtin::JsonLines => "JsonLines",

@@ -25,6 +25,16 @@ const UNCOVERED: &[(&str, &str)] = &[
         "builtin.pipe_through",
         "no corpus case: pipe_through runs only on a subset of backends (go, rust, py) and reads a subprocess",
     ),
+    (
+        "builtin.sqrt",
+        "no row yet: sqrt lands on no backend, so no corpus case can exist until a built-on \
+backend gives the refusal a backend to name (float-builtins-build-front, ruling 2026-09-20)",
+    ),
+    (
+        "builtin.float",
+        "no row yet: float lands on no backend, so no corpus case can exist until a built-on \
+backend gives the refusal a backend to name (float-builtins-build-front, ruling 2026-09-20)",
+    ),
 ];
 
 fn used_tags() -> BTreeSet<String> {

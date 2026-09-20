@@ -1499,12 +1499,13 @@ fn tail_pipe(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
 /// rebind `.`,and `sort_by`/`max_by` do the same with an orderable projection. All
 /// twenty-three are reserved the same way, and the docs harness (tests/docs.rs) reads this list
 /// to insist each one has a reference page.
-pub const BUILTIN_NAMES: [&str; 24] = [
+pub const BUILTIN_NAMES: [&str; 26] = [
     "all",
     "any",
     "chars",
     "collect",
     "first",
+    "float",
     "length",
     "fields",
     "flatten",
@@ -1520,6 +1521,7 @@ pub const BUILTIN_NAMES: [&str; 24] = [
     "select",
     "sort",
     "sort_by",
+    "sqrt",
     "str",
     "sum",
     "tail",
@@ -1560,6 +1562,15 @@ fn builtin(name: &str) -> Option<(tir::Builtin, Sig)> {
             Sig {
                 param: Some(Type::Int),
                 ret: Type::Int64,
+            },
+        ),
+        // `sqrt`, `Float -> Float` (ruling 2026-09-20). A fixed signature, unlike `float`,
+        // which takes either Int or Float and is checked from `synth`'s own `float_call` arm.
+        "sqrt" => (
+            tir::Builtin::Sqrt,
+            Sig {
+                param: Some(Type::Float),
+                ret: Type::Float,
             },
         ),
         _ => return None,
@@ -3199,6 +3210,11 @@ fn call(
     if func == "transpose" {
         return transpose_call(ctx, need_arg(arg, func, span)?);
     }
+    // `float` accepts an Int or a Float (returning the Float unchanged), which a fixed
+    // signature cannot say, so it is checked here the way `sum`/`max`/`transpose` are.
+    if func == "float" {
+        return float_call(ctx, need_arg(arg, func, span)?);
+    }
     // The three search cuts (draft.md#query-is-search): `first` takes any element type
     // the way `tail` does, `any` and `all` each take a Vec of Bool. All three are checked here
     // rather than through `builtin()`'s fixed table: their return types are the element type's
@@ -3930,6 +3946,28 @@ fn transpose_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
         Type::Vec(Box::new(Type::Vec(Box::new(elem.clone())))),
         Kind::Builtin {
             which: tir::Builtin::Transpose,
+            arg: Box::new(arg),
+        },
+    ))
+}
+
+/// `float(n)`, `Int -> Float` (and `Float -> Float`, returned unchanged): the exact
+/// Int -> Float conversion, ruling 2026-09-20 (Int is 32 bits, Float is 64, so nothing
+/// rounds). A fixed signature cannot name both argument types, so it is checked here the way
+/// `sum`/`max`/`transpose` are.
+fn float_call(ctx: &Ctx, arg: &Expr) -> Result<Tir, Error> {
+    let arg_span = arg.span();
+    let arg = synth(ctx, arg)?;
+    if !matches!(arg.ty, Type::Int | Type::Float) {
+        return Err(Error::new(
+            arg_span,
+            format!("`float` needs an Int or a Float, found {}", arg.ty),
+        ));
+    }
+    Ok(Tir::new(
+        Type::Float,
+        Kind::Builtin {
+            which: tir::Builtin::FloatOf,
             arg: Box::new(arg),
         },
     ))

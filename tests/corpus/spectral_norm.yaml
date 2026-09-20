@@ -1,6 +1,6 @@
 # The core of the CLBG spectral-norm task (kantord/toylang benchmark suite): ten rounds of
 # power iteration with the matrix whose (i, j) entry is 1 / ((i + j)(i + j + 1) / 2 + i + 1),
-# then sqrt(u.v / v.v). The language converts no Int to a Float, so each loop carries its
+# then sqrt_newton(u.v / v.v). The language converts no Int to a Float, so each loop carries its
 # index twice (an Int to index by, a Float for the formula), and has no square root, so
 # `sqrt` is a Newton iteration in toylang. This is the correctness fixture for
 # benches/programs/spectral-norm.toy at an N small enough to run fast on every backend; at
@@ -18,7 +18,8 @@ program: |
     next >= y | . -> y or newton { x: x, y: next };
 
 
-  fn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 };
+  fn sqrt_newton(x: Float) -> Float =
+    newton { x: x, y: (x + 1.0) / 2.0 };
 
 
   fn a({ i, j }: { i: Float, j: Float }) -> Float =
@@ -111,7 +112,7 @@ program: |
   fn norm(n: Int) -> Float =
     let r = power { u: ones n, k: 10 }
 
-    sqrt(
+    sqrt_newton(
       dot { u: r.u, v: r.v, i: 0, acc: 0.0 } /
         dot { u: r.v, v: r.v, i: 0, acc: 0.0 }
     );

@@ -15,6 +15,8 @@ fn program_using(name: &str) -> &'static str {
         "max_by" => "[3, 1, 2] | max_by(.)\n",
         "transpose" => "transpose([[1, 2], [3, 4]])\n",
         "pipe_through" => "collect(pipe_through({cmd: \"cat\", args: [], lines: stdin}))\n",
+        "sqrt" => "sqrt(2.0)\n",
+        "float" => "float(1) + 0.5\n",
         other => panic!("no program for landing builtin `{other}`; add one here"),
     }
 }
@@ -60,6 +62,26 @@ fn every_landing_builtin_emits_where_built_and_refuses_elsewhere() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Ruling 2026-09-20's check-level claims, pinned where the corpus cannot: both builtins are
+/// refused on every backend, so no corpus row can exist and the agreement harness never sees
+/// them; this test is the front-end side of the row.
+#[test]
+fn sqrt_and_float_type_check_where_the_corpus_cannot() {
+    // `sqrt` is `Float -> Float`.
+    toylang::compile("sqrt(2.0)\n").expect("sqrt(2.0) type-checks");
+    // The other edge, a negative argument, is the backend's business (NaN, later row): on the
+    // front end it type-checks like any `Float`, because `sqrt` cannot know the values.
+    toylang::compile("sqrt(-1.0)\n").expect("sqrt(-1.0) type-checks");
+    // `float` is `Int -> Float`, exact (Int is 32 bits, Float is 64).
+    toylang::compile("float(1) + 0.5\n").expect("float(1) + 0.5 type-checks");
+    toylang::compile("float(2.5)\n").expect("float(2.5) type-checks: Float is returned unchanged");
+    // A non-numeric argument is an ordinary type error, not a builtin-specific one.
+    assert!(
+        toylang::compile("float([1])\n").is_err(),
+        "float takes Int or Float; a Vec is a type error"
+    );
 }
 
 /// The refusal reaches a program that only uses the builtin inside a named function, not
