@@ -146,17 +146,7 @@ pub fn emit(program: &Program) -> Result<String, String> {
     // share. Lua needed forward declarations for the same reason; jq has no way to write one.
     for f in ordered(program)? {
         match f {
-            // A unary function's argument arrives as `.` and is bound before the body runs; a
-            // nullary one ignores `.` entirely, since it has nothing to bind.
-            Emitted::One(f) => out.push_str(&match &f.param {
-                Some(param) => format!(
-                    "def {}: . as ${} | {};\n",
-                    user(&f.name),
-                    user(param),
-                    expr(enums, &f.body)
-                ),
-                None => format!("def {}: {};\n", user(&f.name), expr(enums, &f.body)),
-            }),
+            Emitted::One(f) => out.push_str(&emit_one(enums, f)),
             Emitted::Group(text) => out.push_str(&text),
         }
     }
@@ -468,6 +458,20 @@ enum Emitted<'a> {
     Group(String),
 }
 
+/// A single plain function's `def`: a unary function's argument arrives as `.` and is bound
+/// before the body runs; a nullary one ignores `.` entirely, since it has nothing to bind.
+fn emit_one(enums: &Enums, f: &tir::Func) -> String {
+    match &f.param {
+        Some(param) => format!(
+            "def {}: . as ${} | {};\n",
+            user(&f.name),
+            user(param),
+            expr(enums, &f.body)
+        ),
+        None => format!("def {}: {};\n", user(&f.name), expr(enums, &f.body)),
+    }
+}
+
 /// Definitions in callee-before-caller order, or the cycle blocking one: jq's `def` sees only
 /// itself and whatever is already defined above it, with no forward declaration to bridge a
 /// real cycle between two or more named functions (kantord/toylang#79). Self-recursion never
@@ -638,39 +642,7 @@ fn acc_step(
             if calls_group(subject, group) {
                 return None;
             }
-            if arms.len() == 1 {
-                if arms[0].payload.is_some() {
-                    return None;
-                }
-                return acc_step(enums, group, dispatcher, acc, &arms[0].body);
-            }
-            let mut branches: Vec<(Option<String>, String)> = Vec::new();
-            for arm in arms {
-                if arm.payload.is_some() {
-                    // Kept to the guard-shaped chains the checker's cycle test actually uses;
-                    // a payload arm can stay a later widening if a real program needs it.
-                    return None;
-                }
-                let step = acc_step(enums, group, dispatcher, acc, &arm.body)?;
-                let test = match &arm.guard {
-                    Some(g) if !calls_group(g, group) => Some(expr(enums, g)),
-                    Some(_) => return None,
-                    None => None,
-                };
-                branches.push((test, step));
-            }
-            let mut out = String::from("(");
-            for (i, (test, step)) in branches.iter().enumerate() {
-                match test {
-                    Some(test) => {
-                        let word = if i == 0 { "if" } else { "elif" };
-                        out.push_str(&format!("{word} {test} then {step} "));
-                    }
-                    None => out.push_str(&format!("else {step} end")),
-                }
-            }
-            out.push(')');
-            Some(out)
+            acc_match(enums, group, dispatcher, acc, arms)
         }
         Kind::Arith {
             op: BinOp::Add,
@@ -695,6 +667,53 @@ fn acc_step(
             }
         }
     }
+}
+
+/// `acc_step`'s `Kind::Match` case: every arm becomes a branch of the same `if`/`elif`/`else`
+/// chain `expr`'s own Match codegen builds, except each arm's body is itself run back through
+/// `acc_step` rather than through `expr`, so a tail call inside an arm keeps folding into the
+/// dispatcher instead of being read as an ordinary value. Kept to the guard-shaped chains the
+/// checker's cycle test actually uses -- a payload arm bails to `None`, a later widening if a
+/// real program needs one.
+fn acc_match(
+    enums: &Enums,
+    group: &[String],
+    dispatcher: &str,
+    acc: &str,
+    arms: &[tir::MatchArm],
+) -> Option<String> {
+    if arms.len() == 1 {
+        return if arms[0].payload.is_some() {
+            None
+        } else {
+            acc_step(enums, group, dispatcher, acc, &arms[0].body)
+        };
+    }
+    let mut branches: Vec<(Option<String>, String)> = Vec::new();
+    for arm in arms {
+        if arm.payload.is_some() {
+            return None;
+        }
+        let step = acc_step(enums, group, dispatcher, acc, &arm.body)?;
+        let test = match &arm.guard {
+            Some(g) if !calls_group(g, group) => Some(expr(enums, g)),
+            Some(_) => return None,
+            None => None,
+        };
+        branches.push((test, step));
+    }
+    let mut out = String::from("(");
+    for (i, (test, step)) in branches.iter().enumerate() {
+        match test {
+            Some(test) => {
+                let word = if i == 0 { "if" } else { "elif" };
+                out.push_str(&format!("{word} {test} then {step} "));
+            }
+            None => out.push_str(&format!("else {step} end")),
+        }
+    }
+    out.push(')');
+    Some(out)
 }
 
 /// Tries to compile `group` -- a real cycle `ordered` cannot place -- as one trampolined
