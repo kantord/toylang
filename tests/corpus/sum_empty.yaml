@@ -2,7 +2,7 @@
 # where `max` is not. The empty Vec<Int> comes from a declared return type, since a bare `[]`
 # literal cannot be typed.
 program: |
-  fn nothing() -> Vec<Int> = []
+  fn nothing() -> Vec<Int> = [];
 
 
   sum nothing()

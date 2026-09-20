@@ -2,7 +2,7 @@
 # same answer an out-of-range index gives, and why `max` returns `Opt<T>` at all. The empty
 # Vec<Int> comes from a declared return type, since a bare `[]` literal cannot be typed.
 program: |
-  fn nothing() -> Vec<Int> = []
+  fn nothing() -> Vec<Int> = [];
 
 
   max nothing()

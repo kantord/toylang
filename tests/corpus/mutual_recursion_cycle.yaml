@@ -4,13 +4,13 @@
 # directly, but every member here tail-recurses into the next behind a `+`, so `emit_jq::fold_cycle`
 # compiles the whole group as one trampolined dispatcher instead of refusing.
 program: |
-  fn a(n: Int) -> Int = n | . <= 0 -> 0 or 1 + b(n - 1)
+  fn a(n: Int) -> Int = n | . <= 0 -> 0 or 1 + b(n - 1);
 
 
-  fn b(n: Int) -> Int = n | . <= 0 -> 0 or 1 + c(n - 1)
+  fn b(n: Int) -> Int = n | . <= 0 -> 0 or 1 + c(n - 1);
 
 
-  fn c(n: Int) -> Int = n | . <= 0 -> 0 or 1 + a(n - 1)
+  fn c(n: Int) -> Int = n | . <= 0 -> 0 or 1 + a(n - 1);
 
 
   a 5

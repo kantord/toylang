@@ -4,7 +4,7 @@
 # was not marked `mut`. The binding must be `mut` whenever `concat_owned` will fold the other
 # side into it.
 program: |
-  fn f({ acc }: { acc: Vec<Int> }) -> Vec<Int> = acc + [1]
+  fn f({ acc }: { acc: Vec<Int> }) -> Vec<Int> = acc + [1];
 
 
   f { acc: [0] }

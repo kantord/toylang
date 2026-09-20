@@ -2,7 +2,7 @@
 # index on the definition's trailing expression (issue #148). An index must start on the same
 # line as its base, and this `[` does not.
 program: |
-  fn user_fn(x: Int) -> Int = x * 2
+  fn user_fn(x: Int) -> Int = x * 2;
 
 
   [user_fn 1, user_fn 2]

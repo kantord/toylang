@@ -2,7 +2,7 @@
 # The serialization rule is the one place Opt stays special: a present value prints as its
 # payload and an absent one as null, not as the enum's single-key wrapper.
 program: |
-  fn nothing() -> Opt<Int> = none
+  fn nothing() -> Opt<Int> = none;
 
 
   { a: some 5, b: nothing() }
