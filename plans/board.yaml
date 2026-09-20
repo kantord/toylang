@@ -500,3 +500,33 @@
   needs: []
   prio: 4
   status: delegated
+
+- id: pipe-through-js
+  issue: gh:158
+  title: 'pipe_through (gh:158) -- emit for the JS backend only (src/emit_js.rs plus its LANDINGS entry in
+    src/backend_support.rs and tests/unbuilt_arms.rs), following the Go/Python/Rust arms: piped stdin,
+    stdout/stderr relayed as the tagged `PipeLine` stream. Filed by the 2026-09-20 periodic audit:
+    pipe-through-remaining-backends-2 was archived after landing Python only; JS, Lua, jq and LLVM still
+    have no arm and gh:158 stays open for them.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: pipe-through-lua
+  issue: gh:158
+  title: 'pipe_through (gh:158) -- emit for the Lua backend only (src/emit_lua.rs plus LANDINGS in
+    src/backend_support.rs and tests/unbuilt_arms.rs), following the Go/Python/Rust arms. Serialized
+    after pipe-through-js on backend_support.rs.'
+  kind: build
+  needs: [pipe-through-js]
+  status: todo
+
+- id: pipe-through-jq-llvm-decide
+  issue: gh:158
+  title: 'pipe_through (gh:158) -- decide whether jq and LLVM can express a subprocess pipe at all
+    (jq has no process spawning; LLVM needs libc popen/posix_spawn plumbing). Either file a build row per
+    backend or rule them a documented refusal; do not fake an arm. Close gh:158 once ruled and the
+    buildable ones land.'
+  kind: decide
+  needs: [pipe-through-lua]
+  status: todo
