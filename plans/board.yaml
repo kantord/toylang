@@ -406,7 +406,7 @@
   title: 'Ruled 2026-09-20 (forest js-build-artifact-shape): `toylang build FILE js` distinguishes library from app. LIBRARY (a file of declarations with no trailing expression): the `.js` is an ES module that exports exactly the `pub fn`s (bare `export` on those, none on the rest) and the `.d.ts` declares exactly those, so `.js` and `.d.ts` agree; any `require("fs")` the module needs becomes an `import`. APP (a trailing expression): the `.js` stays the runnable script `toylang run FILE js` uses and exports nothing, and the `.d.ts` declares no `export function` for non-`pub` functions (type aliases and enums stay). Non-`pub` functions are never exported in either case. Verified facts to start from: today the `.d.ts` declares `export function v_*` for every reachable function and the `.js` exports nothing (docs/reference/cli/build.md records the gap); node 26 runs an `export`-prefixed `.js` without package.json; `target: web` needs `type="module"` for an ES-module artifact. Not built: `.d.ts` types for an app entry point (open, see the applied line in docs/.grill/js-build-artifact-shape.forest.yaml). Update docs/reference/cli/build.md.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: declare-terminator-build-2
   issue: gh:153
@@ -493,4 +493,4 @@
   kind: build
   needs: []
   prio: 4
-  status: todo
+  status: delegated

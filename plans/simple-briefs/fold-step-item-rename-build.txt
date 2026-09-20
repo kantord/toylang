@@ -1,0 +1,9 @@
+Board row `fold-step-item-rename-build`. Pure rename, behavior identical: the current-element field of `Fold::step`'s parameter record goes from `x` to `item` (ruling 2026-09-20, reduce-item-field-name option B: reduce's step sees `{ acc, item }`). Do NOT add `reduce`; do NOT touch anything else.
+
+Edits (find them with one `grep -rn "acc: Self, x\|acc: Self, x:" --include=... .` style search if these locations drift):
+1. prelude.toy lines ~29 and ~35: trait Fold `fn step(p: { acc: Self, x: Int }) -> Self` -> `item: Int`; and in `impl Fold for Vec<Int>` the signature likewise plus the body `p.x` -> `p.item`.
+2. tests/corpus/fold_trait_scaffold.yaml: the program's `x: 3` record field -> `item: 3` (and any `x:`/`.x` that feeds `step`; read the file first).
+3. tests/generics.rs ~line 153: the trait/impl text inside the `parse_module("trait Fold {...}")` string: `x: Int` -> `item: Int` and `p.x` -> `p.item` (both the trait and impl copies).
+4. Any snapshot or expected-output file that renders the `step` signature: run `grep -rn "acc: Self, x" .` (excluding target/ and plans/) after the edits above and fix what remains.
+
+Method: small Edit-tool calls, no bulk sed. Done-gate: `just check` passes (includes the corpus test for fold_trait_scaffold). Stop as soon as it is green.
