@@ -4258,7 +4258,7 @@
         "str",
         "var"
       ],
-      "program": "fn classify(p: { x: Int, y: Int }) -> Str =\n  let m = p.x * p.x + p.y * p.y\n\n  m | m == 0 -> \"origin\" or m < 100 -> \"near\" or \"far\"\n\n\nclassify(parse stdin)\n",
+      "program": "fn classify(p: { x: Int, y: Int }) -> Str =\n  let m = p.x * p.x + p.y * p.y\n\n  m | m == 0 -> \"origin\" or m < 100 -> \"near\" or \"far\";\n\n\nclassify(parse stdin)\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -4290,7 +4290,7 @@
         "projection",
         "var"
       ],
-      "program": "fn f(p: { x: Int, y: Int }) -> Int =\n  let a = p.x * 2\n  let b = p.y * 3\n\n  a + b\n\n\nf(parse stdin)\n",
+      "program": "fn f(p: { x: Int, y: Int }) -> Int =\n  let a = p.x * 2\n  let b = p.y * 3\n\n  a + b;\n\n\nf(parse stdin)\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -4434,7 +4434,7 @@
         "unwrap",
         "var"
       ],
-      "program": "fn shout(names: Stream<Str>) -> Stream<Str> =\n  names | select(. != \"bo\") | map { who: . + \"!\" } | .[].who\n\n\njoin_lines collect(shout stdin)\n",
+      "program": "fn shout(names: Stream<Str>) -> Stream<Str> =\n  names | select(. != \"bo\") | map { who: . + \"!\" } | .[].who;\n\n\njoin_lines collect(shout stdin)\n",
       "resultType": "Str",
       "usesLines": true
     },
@@ -4519,7 +4519,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn to_float(n: Int) -> Float =\n  n | . == 0 -> 0.0 or 1.0 + to_float(. - 1)\n\n\nfn pixel(\n  { cr, ci, zr, zi, k }: {\n    cr: Float,\n    ci: Float,\n    zr: Float,\n    zi: Float,\n    k: Int\n  }\n) -> Str =\n  k\n  | . == 0 -> \"1\" or\n    zr * zr + zi * zi > 4.0 -> \"0\" or\n    pixel {\n      cr: cr,\n      ci: ci,\n      zr: zr * zr - zi * zi + cr,\n      zi: 2.0 * zr * zi + ci,\n      k: . - 1\n    }\n\n\nfn row(\n  { n, size, x, fx, ci, line }: {\n    n: Int,\n    size: Float,\n    x: Int,\n    fx: Float,\n    ci: Float,\n    line: Str\n  }\n) -> Str =\n  n\n  | x == n -> line or\n    row {\n      n: n,\n      size: size,\n      x: x + 1,\n      fx: fx + 1.0,\n      ci: ci,\n      line: line +\n        pixel {\n          cr: 2.0 * fx / size - 1.5,\n          ci: ci,\n          zr: 0.0,\n          zi: 0.0,\n          k: 50\n        }\n    }\n\n\nfn rows(\n  { n, size, y, fy, lines }: {\n    n: Int,\n    size: Float,\n    y: Int,\n    fy: Float,\n    lines: Vec<Str>\n  }\n) -> Vec<Str> =\n  n\n  | y == n -> lines or\n    rows {\n      n: n,\n      size: size,\n      y: y + 1,\n      fy: fy + 1.0,\n      lines: lines +\n        [\n          row {\n            n: n,\n            size: size,\n            x: 0,\n            fx: 0.0,\n            ci: 2.0 * fy / size - 1.0,\n            line: \"\"\n          }\n        ]\n    }\n\n\nfn plot(n: Int) -> Str =\n  join_lines(\n    [\"P1\", str(n) + \" \" + str(n)] +\n      rows { n: n, size: to_float n, y: 0, fy: 0.0, lines: [] }\n  )\n\n\nplot(parse stdin)\n",
+      "program": "fn to_float(n: Int) -> Float =\n  n | . == 0 -> 0.0 or 1.0 + to_float(. - 1);\n\n\nfn pixel(\n  { cr, ci, zr, zi, k }: {\n    cr: Float,\n    ci: Float,\n    zr: Float,\n    zi: Float,\n    k: Int\n  }\n) -> Str =\n  k\n  | . == 0 -> \"1\" or\n    zr * zr + zi * zi > 4.0 -> \"0\" or\n    pixel {\n      cr: cr,\n      ci: ci,\n      zr: zr * zr - zi * zi + cr,\n      zi: 2.0 * zr * zi + ci,\n      k: . - 1\n    };\n\n\nfn row(\n  { n, size, x, fx, ci, line }: {\n    n: Int,\n    size: Float,\n    x: Int,\n    fx: Float,\n    ci: Float,\n    line: Str\n  }\n) -> Str =\n  n\n  | x == n -> line or\n    row {\n      n: n,\n      size: size,\n      x: x + 1,\n      fx: fx + 1.0,\n      ci: ci,\n      line: line +\n        pixel {\n          cr: 2.0 * fx / size - 1.5,\n          ci: ci,\n          zr: 0.0,\n          zi: 0.0,\n          k: 50\n        }\n    };\n\n\nfn rows(\n  { n, size, y, fy, lines }: {\n    n: Int,\n    size: Float,\n    y: Int,\n    fy: Float,\n    lines: Vec<Str>\n  }\n) -> Vec<Str> =\n  n\n  | y == n -> lines or\n    rows {\n      n: n,\n      size: size,\n      y: y + 1,\n      fy: fy + 1.0,\n      lines: lines +\n        [\n          row {\n            n: n,\n            size: size,\n            x: 0,\n            fx: 0.0,\n            ci: 2.0 * fy / size - 1.0,\n            line: \"\"\n          }\n        ]\n    };\n\n\nfn plot(n: Int) -> Str =\n  join_lines(\n    [\"P1\", str(n) + \" \" + str(n)] +\n      rows { n: n, size: to_float n, y: 0, fy: 0.0, lines: [] }\n  );\n\n\nplot(parse stdin)\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -4580,7 +4580,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn pad(v: Vec<Int>) -> Vec<Vec<Int>> = v | map([])\n\n\npad([1, 2])\n",
+      "program": "fn pad(v: Vec<Int>) -> Vec<Vec<Int>> = v | map([]);\n\n\npad([1, 2])\n",
       "resultType": "Vec<Vec<Int>>",
       "usesLines": false
     },
@@ -4707,7 +4707,7 @@
         "str",
         "var"
       ],
-      "program": "fn shout(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =\n  db.users | map(.name + \" is \" + str(.age))\n\n\nshout(parse stdin)\n",
+      "program": "fn shout(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =\n  db.users | map(.name + \" is \" + str(.age));\n\n\nshout(parse stdin)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -4859,7 +4859,7 @@
         "variant.unit",
         "vec-literal"
       ],
-      "program": "enum Status { Active, Inactive }\n\n\nfn work(s: Status) -> Vec<Int> =\n  s | Active -> [1, 2] or Inactive -> []\n\n\nwork \"Inactive\"\n",
+      "program": "enum Status { Active, Inactive }\n\n\nfn work(s: Status) -> Vec<Int> =\n  s | Active -> [1, 2] or Inactive -> [];\n\n\nwork \"Inactive\"\n",
       "resultType": "Vec<Int>",
       "usesLines": false
     },
@@ -4950,7 +4950,7 @@
         "builtin.max",
         "vec-literal"
       ],
-      "program": "fn nothing() -> Vec<Int> = []\n\n\nmax nothing()\n",
+      "program": "fn nothing() -> Vec<Int> = [];\n\n\nmax nothing()\n",
       "resultType": "Opt<Int>",
       "usesLines": false
     },
@@ -4976,7 +4976,7 @@
         "unwrap",
         "vec-literal"
       ],
-      "program": "fn nothing() -> Vec<Int> = []\n\n\nmax(nothing())!\n",
+      "program": "fn nothing() -> Vec<Int> = [];\n\n\nmax(nothing())!\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -5005,7 +5005,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn wide(x: Int) -> Int64 = i64 x\n\n\nmax([wide 9, wide 2, wide 7])\n",
+      "program": "fn wide(x: Int) -> Int64 = i64 x;\n\n\nmax([wide 9, wide 2, wide 7])\n",
       "resultType": "Opt<Int64>",
       "usesLines": false
     },
@@ -5089,7 +5089,7 @@
         "pipe",
         "var"
       ],
-      "program": "fn a(n: Int) -> Int = n | . <= 0 -> 0 or 1 + b(n - 1)\n\n\nfn b(n: Int) -> Int = n | . <= 0 -> 0 or 1 + c(n - 1)\n\n\nfn c(n: Int) -> Int = n | . <= 0 -> 0 or 1 + a(n - 1)\n\n\na 5\n",
+      "program": "fn a(n: Int) -> Int = n | . <= 0 -> 0 or 1 + b(n - 1);\n\n\nfn b(n: Int) -> Int = n | . <= 0 -> 0 or 1 + c(n - 1);\n\n\nfn c(n: Int) -> Int = n | . <= 0 -> 0 or 1 + a(n - 1);\n\n\na 5\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -5139,7 +5139,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "type Body = { x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float, m: Float }\n\n\nfn newton({ x, y }: { x: Float, y: Float }) -> Float =\n  let next = (y + x / y) / 2.0\n\n  next >= y | . -> y or newton { x: x, y: next }\n\n\nfn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 }\n\n\nfn solar_mass() -> Float =\n  4.0 * 3.141592653589793 * 3.141592653589793\n\n\nfn days_per_year() -> Float = 365.24\n\n\nfn planets() -> Vec<Body> =\n  [\n    {\n      x: 4.841431442464721,\n      y: -1.1603200440274284,\n      z: -0.10362204447112311,\n      vx: 0.001660076642744037 * days_per_year(),\n      vy: 0.007699011184197404 * days_per_year(),\n      vz: -0.0000690460016972063 * days_per_year(),\n      m: 0.0009547919384243266 * solar_mass()\n    },\n    {\n      x: 8.34336671824458,\n      y: 4.124798564124305,\n      z: -0.4035234171143214,\n      vx: -0.002767425107268624 * days_per_year(),\n      vy: 0.004998528012349172 * days_per_year(),\n      vz: 0.000023041729757376393 * days_per_year(),\n      m: 0.0002858859806661308 * solar_mass()\n    },\n    {\n      x: 12.894369562139131,\n      y: -15.111151401698631,\n      z: -0.22330757889265573,\n      vx: 0.002964601375647616 * days_per_year(),\n      vy: 0.0023784717395948095 * days_per_year(),\n      vz: -0.000029658956854023756 * days_per_year(),\n      m: 0.00004366244043351563 * solar_mass()\n    },\n    {\n      x: 15.379697114850917,\n      y: -25.919314609987964,\n      z: 0.17925877295037118,\n      vx: 0.0026806777249038932 * days_per_year(),\n      vy: 0.001628241700382423 * days_per_year(),\n      vz: -0.00009515922545197159 * days_per_year(),\n      m: 0.000051513890204661145 * solar_mass()\n    }\n  ]\n\n\nfn momentum(\n  { bs, px, py, pz }: {\n    bs: Vec<Body>,\n    px: Float,\n    py: Float,\n    pz: Float\n  }\n) -> Body =\n  bs\n  | length(bs) == 0 ->\n      {\n        x: 0.0,\n        y: 0.0,\n        z: 0.0,\n        vx: 0.0 - px / solar_mass(),\n        vy: 0.0 - py / solar_mass(),\n        vz: 0.0 - pz / solar_mass(),\n        m: solar_mass()\n      } or\n    momentum {\n      bs: tail(bs)!,\n      px: px + bs[0]!.vx * bs[0]!.m,\n      py: py + bs[0]!.vy * bs[0]!.m,\n      pz: pz + bs[0]!.vz * bs[0]!.m\n    }\n\n\nfn system() -> Vec<Body> =\n  [momentum { bs: planets(), px: 0.0, py: 0.0, pz: 0.0 }] + planets()\n\n\nfn kick({ b, o }: { b: Body, o: Body }) -> Body =\n  let dx = b.x - o.x\n  let dy = b.y - o.y\n  let dz = b.z - o.z\n  let d2 = dx * dx + dy * dy + dz * dz\n  let mag = 0.01 / (d2 * sqrt(d2))\n\n  {\n    x: b.x,\n    y: b.y,\n    z: b.z,\n    vx: b.vx - dx * o.m * mag,\n    vy: b.vy - dy * o.m * mag,\n    vz: b.vz - dz * o.m * mag,\n    m: b.m\n  }\n\n\nfn pull({ b, others }: { b: Body, others: Vec<Body> }) -> Body =\n  others\n  | length(others) == 0 -> b or\n    pull { b: kick { b: b, o: others[0]! }, others: tail(others)! }\n\n\nfn tick(bs: Vec<Body>) -> Vec<Body> =\n  collect range(length bs)\n  | map(pull { b: bs[.]!, others: bs[:.] + bs[. + 1:] })\n  | map {\n      x: .x + 0.01 * .vx,\n      y: .y + 0.01 * .vy,\n      z: .z + 0.01 * .vz,\n      vx: .vx,\n      vy: .vy,\n      vz: .vz,\n      m: .m\n    }\n\n\nfn advance({ bs, n }: { bs: Vec<Body>, n: Int }) -> Vec<Body> =\n  n | . == 0 -> bs or advance { bs: tick bs, n: . - 1 }\n\n\nfn pair({ b, o, acc }: { b: Body, o: Body, acc: Float }) -> Float =\n  let dx = b.x - o.x\n  let dy = b.y - o.y\n  let dz = b.z - o.z\n\n  acc - b.m * o.m / sqrt(dx * dx + dy * dy + dz * dz)\n\n\nfn potential(\n  { b, others, acc }: { b: Body, others: Vec<Body>, acc: Float }\n) -> Float =\n  others\n  | length(others) == 0 -> acc or\n    potential {\n      b: b,\n      others: tail(others)!,\n      acc: pair { b: b, o: others[0]!, acc: acc }\n    }\n\n\nfn kinetic({ b, acc }: { b: Body, acc: Float }) -> Float =\n  acc + 0.5 * b.m * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)\n\n\nfn energy({ bs, acc }: { bs: Vec<Body>, acc: Float }) -> Float =\n  bs\n  | length(bs) == 0 -> acc or\n    energy {\n      bs: tail(bs)!,\n      acc: potential {\n        b: bs[0]!,\n        others: tail(bs)!,\n        acc: kinetic { b: bs[0]!, acc: acc }\n      }\n    }\n\n\njsonlines(\n  [\n    energy { bs: system(), acc: 0.0 },\n    energy {\n      bs: advance { bs: system(), n: parse stdin },\n      acc: 0.0\n    }\n  ]\n)\n",
+      "program": "type Body = { x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float, m: Float };\n\n\nfn newton({ x, y }: { x: Float, y: Float }) -> Float =\n  let next = (y + x / y) / 2.0\n\n  next >= y | . -> y or newton { x: x, y: next };\n\n\nfn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 };\n\n\nfn solar_mass() -> Float =\n  4.0 * 3.141592653589793 * 3.141592653589793;\n\n\nfn days_per_year() -> Float = 365.24;\n\n\nfn planets() -> Vec<Body> =\n  [\n    {\n      x: 4.841431442464721,\n      y: -1.1603200440274284,\n      z: -0.10362204447112311,\n      vx: 0.001660076642744037 * days_per_year(),\n      vy: 0.007699011184197404 * days_per_year(),\n      vz: -0.0000690460016972063 * days_per_year(),\n      m: 0.0009547919384243266 * solar_mass()\n    },\n    {\n      x: 8.34336671824458,\n      y: 4.124798564124305,\n      z: -0.4035234171143214,\n      vx: -0.002767425107268624 * days_per_year(),\n      vy: 0.004998528012349172 * days_per_year(),\n      vz: 0.000023041729757376393 * days_per_year(),\n      m: 0.0002858859806661308 * solar_mass()\n    },\n    {\n      x: 12.894369562139131,\n      y: -15.111151401698631,\n      z: -0.22330757889265573,\n      vx: 0.002964601375647616 * days_per_year(),\n      vy: 0.0023784717395948095 * days_per_year(),\n      vz: -0.000029658956854023756 * days_per_year(),\n      m: 0.00004366244043351563 * solar_mass()\n    },\n    {\n      x: 15.379697114850917,\n      y: -25.919314609987964,\n      z: 0.17925877295037118,\n      vx: 0.0026806777249038932 * days_per_year(),\n      vy: 0.001628241700382423 * days_per_year(),\n      vz: -0.00009515922545197159 * days_per_year(),\n      m: 0.000051513890204661145 * solar_mass()\n    }\n  ];\n\n\nfn momentum(\n  { bs, px, py, pz }: {\n    bs: Vec<Body>,\n    px: Float,\n    py: Float,\n    pz: Float\n  }\n) -> Body =\n  bs\n  | length(bs) == 0 ->\n      {\n        x: 0.0,\n        y: 0.0,\n        z: 0.0,\n        vx: 0.0 - px / solar_mass(),\n        vy: 0.0 - py / solar_mass(),\n        vz: 0.0 - pz / solar_mass(),\n        m: solar_mass()\n      } or\n    momentum {\n      bs: tail(bs)!,\n      px: px + bs[0]!.vx * bs[0]!.m,\n      py: py + bs[0]!.vy * bs[0]!.m,\n      pz: pz + bs[0]!.vz * bs[0]!.m\n    };\n\n\nfn system() -> Vec<Body> =\n  [momentum { bs: planets(), px: 0.0, py: 0.0, pz: 0.0 }] + planets();\n\n\nfn kick({ b, o }: { b: Body, o: Body }) -> Body =\n  let dx = b.x - o.x\n  let dy = b.y - o.y\n  let dz = b.z - o.z\n  let d2 = dx * dx + dy * dy + dz * dz\n  let mag = 0.01 / (d2 * sqrt(d2))\n\n  {\n    x: b.x,\n    y: b.y,\n    z: b.z,\n    vx: b.vx - dx * o.m * mag,\n    vy: b.vy - dy * o.m * mag,\n    vz: b.vz - dz * o.m * mag,\n    m: b.m\n  };\n\n\nfn pull({ b, others }: { b: Body, others: Vec<Body> }) -> Body =\n  others\n  | length(others) == 0 -> b or\n    pull { b: kick { b: b, o: others[0]! }, others: tail(others)! };\n\n\nfn tick(bs: Vec<Body>) -> Vec<Body> =\n  collect range(length bs)\n  | map(pull { b: bs[.]!, others: bs[:.] + bs[. + 1:] })\n  | map {\n      x: .x + 0.01 * .vx,\n      y: .y + 0.01 * .vy,\n      z: .z + 0.01 * .vz,\n      vx: .vx,\n      vy: .vy,\n      vz: .vz,\n      m: .m\n    };\n\n\nfn advance({ bs, n }: { bs: Vec<Body>, n: Int }) -> Vec<Body> =\n  n | . == 0 -> bs or advance { bs: tick bs, n: . - 1 };\n\n\nfn pair({ b, o, acc }: { b: Body, o: Body, acc: Float }) -> Float =\n  let dx = b.x - o.x\n  let dy = b.y - o.y\n  let dz = b.z - o.z\n\n  acc - b.m * o.m / sqrt(dx * dx + dy * dy + dz * dz);\n\n\nfn potential(\n  { b, others, acc }: { b: Body, others: Vec<Body>, acc: Float }\n) -> Float =\n  others\n  | length(others) == 0 -> acc or\n    potential {\n      b: b,\n      others: tail(others)!,\n      acc: pair { b: b, o: others[0]!, acc: acc }\n    };\n\n\nfn kinetic({ b, acc }: { b: Body, acc: Float }) -> Float =\n  acc + 0.5 * b.m * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz);\n\n\nfn energy({ bs, acc }: { bs: Vec<Body>, acc: Float }) -> Float =\n  bs\n  | length(bs) == 0 -> acc or\n    energy {\n      bs: tail(bs)!,\n      acc: potential {\n        b: bs[0]!,\n        others: tail(bs)!,\n        acc: kinetic { b: bs[0]!, acc: acc }\n      }\n    };\n\n\njsonlines(\n  [\n    energy { bs: system(), acc: 0.0 },\n    energy {\n      bs: advance { bs: system(), n: parse stdin },\n      acc: 0.0\n    }\n  ]\n)\n",
       "resultType": "Sink",
       "usesLines": false
     },
@@ -5166,7 +5166,7 @@
         "projection",
         "var"
       ],
-      "program": "# Two dimensions, so two specs: one for the groups and one for the members.\nfn names(\n  db: { groups: Vec<{ members: Vec<{ name: Str }> }> }\n) -> Vec<Vec<Str>> =\n  db.groups[].members[].name\n\n\nnames(parse stdin)\n",
+      "program": "# Two dimensions, so two specs: one for the groups and one for the members.\nfn names(\n  db: { groups: Vec<{ members: Vec<{ name: Str }> }> }\n) -> Vec<Vec<Str>> =\n  db.groups[].members[].name;\n\n\nnames(parse stdin)\n",
       "resultType": "Vec<Vec<Str>>",
       "usesLines": false
     },
@@ -5191,7 +5191,7 @@
         "application",
         "str"
       ],
-      "program": "fn greeting() -> Str = \"hello\"\n\n\ngreeting()\n",
+      "program": "fn greeting() -> Str = \"hello\";\n\n\ngreeting()\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -5219,7 +5219,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "fn nothing() -> Opt<Int> = none\n\n\n{ a: some 5, b: nothing() }\n",
+      "program": "fn nothing() -> Opt<Int> = none;\n\n\n{ a: some 5, b: nothing() }\n",
       "resultType": "{a: Opt<Int>, b: Opt<Int>}",
       "usesLines": false
     },
@@ -5248,7 +5248,7 @@
         "selection.collapse",
         "var"
       ],
-      "program": "# Python is the only target where absence and an empty Vec are both falsy, so a\n# truthiness test for absence would print null here. It uses `is None`.\nfn rows(db: { v: Vec<Vec<Int>> }) -> Vec<Vec<Int>> = db.v\n\n\nrows(parse stdin)[0]\n",
+      "program": "# Python is the only target where absence and an empty Vec are both falsy, so a\n# truthiness test for absence would print null here. It uses `is None`.\nfn rows(db: { v: Vec<Vec<Int>> }) -> Vec<Vec<Int>> = db.v;\n\n\nrows(parse stdin)[0]\n",
       "resultType": "Opt<Vec<Int>>",
       "usesLines": false
     },
@@ -5276,7 +5276,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "# The parser used to refuse this: Opt was produced by the checker but had no spelling of\n# its own, so a signature could describe the Vec it collapses but not what collapsing yields.\nfn head(v: Vec<Int>) -> Opt<Int> = v[0]\n\n\nhead([1, 2, 3])\n",
+      "program": "# The parser used to refuse this: Opt was produced by the checker but had no spelling of\n# its own, so a signature could describe the Vec it collapses but not what collapsing yields.\nfn head(v: Vec<Int>) -> Opt<Int> = v[0];\n\n\nhead([1, 2, 3])\n",
       "resultType": "Opt<Int>",
       "usesLines": false
     },
@@ -5305,7 +5305,7 @@
         "selection.collapse",
         "var"
       ],
-      "program": "# The other side of opt_holds_an_empty_vec: nothing there at all.\nfn rows(db: { v: Vec<Vec<Int>> }) -> Vec<Vec<Int>> = db.v\n\n\nrows(parse stdin)[0]\n",
+      "program": "# The other side of opt_holds_an_empty_vec: nothing there at all.\nfn rows(db: { v: Vec<Vec<Int>> }) -> Vec<Vec<Int>> = db.v;\n\n\nrows(parse stdin)[0]\n",
       "resultType": "Opt<Vec<Int>>",
       "usesLines": false
     },
@@ -5333,7 +5333,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "fn deep() -> Opt<Opt<Int>> = some(some 7)\n\n\nfn shallow() -> Opt<Opt<Int>> = some none\n\n\n{ a: deep(), b: shallow() }\n",
+      "program": "fn deep() -> Opt<Opt<Int>> = some(some 7);\n\n\nfn shallow() -> Opt<Opt<Int>> = some none;\n\n\n{ a: deep(), b: shallow() }\n",
       "resultType": "{a: Opt<Opt<Int>>, b: Opt<Opt<Int>>}",
       "usesLines": false
     },
@@ -5366,7 +5366,7 @@
         "var",
         "variant.payload"
       ],
-      "program": "fn first_b(v: Opt<{ a: Str, b: Int }>) -> Int = v!.b\n\n\nfn g(v: Opt<{ b: Int, a: Str }>) -> Int = first_b v\n\n\ng(some { b: 42, a: \"hi\" })\n",
+      "program": "fn first_b(v: Opt<{ a: Str, b: Int }>) -> Int = v!.b;\n\n\nfn g(v: Opt<{ b: Int, a: Str }>) -> Int = first_b v;\n\n\ng(some { b: 42, a: \"hi\" })\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -5391,7 +5391,7 @@
         "unwrap",
         "variant.unit"
       ],
-      "program": "fn shallow() -> Opt<Opt<Int>> = none\n\n\nshallow()!\n",
+      "program": "fn shallow() -> Opt<Opt<Int>> = none;\n\n\nshallow()!\n",
       "resultType": "Opt<Int>",
       "usesLines": false
     },
@@ -5418,7 +5418,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "fn shallow() -> Opt<Opt<Int>> = some none\n\n\nshallow()!\n",
+      "program": "fn shallow() -> Opt<Opt<Int>> = some none;\n\n\nshallow()!\n",
       "resultType": "Opt<Int>",
       "usesLines": false
     },
@@ -5449,7 +5449,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn pair_sum({ a, b }: { a: Int, b: Int }) -> Int = a + b\n\n\npair_sum { a: 2, b: 3 }\n",
+      "program": "fn pair_sum({ a, b }: { a: Int, b: Int }) -> Int = a + b;\n\n\npair_sum { a: 2, b: 3 }\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -5479,7 +5479,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn pick({ a, .. }: { a: Int, b: Int }) -> Int = a\n\n\npick { a: 7, b: 9 }\n",
+      "program": "fn pick({ a, .. }: { a: Int, b: Int }) -> Int = a;\n\n\npick { a: 7, b: 9 }\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -5507,7 +5507,7 @@
         "str",
         "var"
       ],
-      "program": "fn count(v: Vec<Int>) -> Int = length v\n\n\ncount(parse \"[1, 2, 3]\")\n",
+      "program": "fn count(v: Vec<Int>) -> Int = length v;\n\n\ncount(parse \"[1, 2, 3]\")\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -5589,7 +5589,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn swap(p: { a: Int, b: Int }) -> { a: Int, b: Int } =\n  { a: p.b, b: p.a }\n\n\nswap { a: 1, b: 2 }\n",
+      "program": "fn swap(p: { a: Int, b: Int }) -> { a: Int, b: Int } =\n  { a: p.b, b: p.a };\n\n\nswap { a: 1, b: 2 }\n",
       "resultType": "{a: Int, b: Int}",
       "usesLines": false
     },
@@ -5616,7 +5616,7 @@
         "int",
         "var"
       ],
-      "program": "pub fn double(x: Int) -> Int = x * 2\n\n\ndouble 21\n",
+      "program": "pub fn double(x: Int) -> Int = x * 2;\n\n\ndouble 21\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -5790,7 +5790,7 @@
         "int",
         "record-literal"
       ],
-      "program": "fn id(s: Str) -> Str = s\n\n\n{ a: 1 }\n",
+      "program": "fn id(s: Str) -> Str = s;\n\n\n{ a: 1 }\n",
       "resultType": "{a: Int}",
       "usesLines": false
     },
@@ -5820,7 +5820,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn f(r: { a: Str, b: Int }) -> Str = r.a\n\n\nfn g(r: { b: Int, a: Str }) -> Str = f r\n\n\ng(parse stdin)\n",
+      "program": "fn f(r: { a: Str, b: Int }) -> Str = r.a;\n\n\nfn g(r: { b: Int, a: Str }) -> Str = f r;\n\n\ng(parse stdin)\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -5847,7 +5847,7 @@
         "projection",
         "var"
       ],
-      "program": "fn deep(db: Vec<{ a: { b: Int } }>) -> Vec<Int> = db[].a.b\n\n\ndeep(parse stdin)\n",
+      "program": "fn deep(db: Vec<{ a: { b: Int } }>) -> Vec<Int> = db[].a.b;\n\n\ndeep(parse stdin)\n",
       "resultType": "Vec<Int>",
       "usesLines": false
     },
@@ -5874,7 +5874,7 @@
         "projection",
         "var"
       ],
-      "program": "fn deep(db: Vec<Vec<{ a: { b: Int } }>>) -> Vec<Vec<Int>> =\n  db[][].a.b\n\n\ndeep(parse stdin)\n",
+      "program": "fn deep(db: Vec<Vec<{ a: { b: Int } }>>) -> Vec<Vec<Int>> =\n  db[][].a.b;\n\n\ndeep(parse stdin)\n",
       "resultType": "Vec<Vec<Int>>",
       "usesLines": false
     },
@@ -5976,7 +5976,7 @@
         "projection",
         "var"
       ],
-      "program": "# `first` is a builtin now, so the record-returning function picks another name.\nfn pick(\n  db: { u: { name: Str, age: Int } }\n) -> { name: Str, age: Int } =\n  db.u\n\n\npick(parse stdin)\n",
+      "program": "# `first` is a builtin now, so the record-returning function picks another name.\nfn pick(\n  db: { u: { name: Str, age: Int } }\n) -> { name: Str, age: Int } =\n  db.u;\n\n\npick(parse stdin)\n",
       "resultType": "{name: Str, age: Int}",
       "usesLines": false
     },
@@ -6003,7 +6003,7 @@
         "projection",
         "var"
       ],
-      "program": "fn inner(db: Vec<{ a: { b: Str }, z: Int }>) -> Vec<{ b: Str }> =\n  db[].a\n\n\ninner(parse stdin)\n",
+      "program": "fn inner(db: Vec<{ a: { b: Str }, z: Int }>) -> Vec<{ b: Str }> =\n  db[].a;\n\n\ninner(parse stdin)\n",
       "resultType": "Vec<{b: Str}>",
       "usesLines": false
     },
@@ -6063,7 +6063,7 @@
         "var",
         "variant.payload"
       ],
-      "program": "fn safe(b: Int) -> Result<Int, Str> =\n  b | . != 0 -> ok(10 / b) or err \"division by zero\"\n\n\nfn describe(r: Result<Int, Str>) -> Str =\n  r | Err -> \"error: \" + . or Ok -> str(.)\n\n\ndescribe(safe 2) + \" / \" + describe(safe 0)\n",
+      "program": "fn safe(b: Int) -> Result<Int, Str> =\n  b | . != 0 -> ok(10 / b) or err \"division by zero\";\n\n\nfn describe(r: Result<Int, Str>) -> Str =\n  r | Err -> \"error: \" + . or Ok -> str(.);\n\n\ndescribe(safe 2) + \" / \" + describe(safe 0)\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -6117,7 +6117,7 @@
         "str",
         "var"
       ],
-      "program": "# `print` is a legal toylang name and must not collide with the target's.\nfn print(x: Str) -> Str = \"got \" + x\n\n\nprint \"it\"\n",
+      "program": "# `print` is a legal toylang name and must not collide with the target's.\nfn print(x: Str) -> Str = \"got \" + x;\n\n\nprint \"it\"\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -6408,7 +6408,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn names(\n  users: Vec<{ name: Str, age: Int }>\n) -> Vec<{ name: Str, age: Int }> =\n  users[1:]\n\n\nnames(\n  [\n    { name: \"ada\", age: 36 },\n    { name: \"bo\", age: 9 },\n    { name: \"cy\", age: 21 }\n  ]\n)\n",
+      "program": "fn names(\n  users: Vec<{ name: Str, age: Int }>\n) -> Vec<{ name: Str, age: Int }> =\n  users[1:];\n\n\nnames(\n  [\n    { name: \"ada\", age: 36 },\n    { name: \"bo\", age: 9 },\n    { name: \"cy\", age: 21 }\n  ]\n)\n",
       "resultType": "Vec<{name: Str, age: Int}>",
       "usesLines": false
     },
@@ -6520,7 +6520,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn wide(x: Int) -> Int64 = i64 x\n\n\nsort([wide 3, wide 1, wide 2])\n",
+      "program": "fn wide(x: Int) -> Int64 = i64 x;\n\n\nsort([wide 3, wide 1, wide 2])\n",
       "resultType": "Vec<Int64>",
       "usesLines": false
     },
@@ -6619,7 +6619,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn newton({ x, y }: { x: Float, y: Float }) -> Float =\n  let next = (y + x / y) / 2.0\n\n  next >= y | . -> y or newton { x: x, y: next }\n\n\nfn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 }\n\n\nfn a({ i, j }: { i: Float, j: Float }) -> Float =\n  1.0 / ((i + j) * (i + j + 1.0) / 2.0 + i + 1.0)\n\n\nfn entry({ i, j, t }: { i: Float, j: Float, t: Int }) -> Float =\n  t | . == 0 -> a { i: i, j: j } or a { i: j, j: i }\n\n\nfn row(\n  { u, i, j, fj, t, acc }: {\n    u: Vec<Float>,\n    i: Float,\n    j: Int,\n    fj: Float,\n    t: Int,\n    acc: Float\n  }\n) -> Float =\n  u\n  | j == length(u) -> acc or\n    row {\n      u: u,\n      i: i,\n      j: j + 1,\n      fj: fj + 1.0,\n      t: t,\n      acc: acc + entry { i: i, j: fj, t: t } * u[j]!\n    }\n\n\nfn times(\n  { u, i, fi, t, out }: {\n    u: Vec<Float>,\n    i: Int,\n    fi: Float,\n    t: Int,\n    out: Vec<Float>\n  }\n) -> Vec<Float> =\n  u\n  | i == length(u) -> out or\n    times {\n      u: u,\n      i: i + 1,\n      fi: fi + 1.0,\n      t: t,\n      out:\n        out + [row { u: u, i: fi, j: 0, fj: 0.0, t: t, acc: 0.0 }]\n    }\n\n\nfn times_a(u: Vec<Float>) -> Vec<Float> =\n  times { u: u, i: 0, fi: 0.0, t: 0, out: [] }\n\n\nfn times_at(u: Vec<Float>) -> Vec<Float> =\n  times { u: u, i: 0, fi: 0.0, t: 1, out: [] }\n\n\nfn times_ata(u: Vec<Float>) -> Vec<Float> = times_at(times_a u)\n\n\nfn power(\n  { u, k }: { u: Vec<Float>, k: Int }\n) -> { u: Vec<Float>, v: Vec<Float> } =\n  let v = times_ata u\n  let w = times_ata v\n\n  k | . == 1 -> { u: w, v: v } or power { u: w, k: . - 1 }\n\n\nfn dot(\n  { u, v, i, acc }: {\n    u: Vec<Float>,\n    v: Vec<Float>,\n    i: Int,\n    acc: Float\n  }\n) -> Float =\n  u\n  | i == length(u) -> acc or\n    dot { u: u, v: v, i: i + 1, acc: acc + u[i]! * v[i]! }\n\n\nfn ones(n: Int) -> Vec<Float> = collect(range n) | map 1.0\n\n\nfn norm(n: Int) -> Float =\n  let r = power { u: ones n, k: 10 }\n\n  sqrt(\n    dot { u: r.u, v: r.v, i: 0, acc: 0.0 } /\n      dot { u: r.v, v: r.v, i: 0, acc: 0.0 }\n  )\n\n\nnorm(parse stdin)\n",
+      "program": "fn newton({ x, y }: { x: Float, y: Float }) -> Float =\n  let next = (y + x / y) / 2.0\n\n  next >= y | . -> y or newton { x: x, y: next };\n\n\nfn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 };\n\n\nfn a({ i, j }: { i: Float, j: Float }) -> Float =\n  1.0 / ((i + j) * (i + j + 1.0) / 2.0 + i + 1.0);\n\n\nfn entry({ i, j, t }: { i: Float, j: Float, t: Int }) -> Float =\n  t | . == 0 -> a { i: i, j: j } or a { i: j, j: i };\n\n\nfn row(\n  { u, i, j, fj, t, acc }: {\n    u: Vec<Float>,\n    i: Float,\n    j: Int,\n    fj: Float,\n    t: Int,\n    acc: Float\n  }\n) -> Float =\n  u\n  | j == length(u) -> acc or\n    row {\n      u: u,\n      i: i,\n      j: j + 1,\n      fj: fj + 1.0,\n      t: t,\n      acc: acc + entry { i: i, j: fj, t: t } * u[j]!\n    };\n\n\nfn times(\n  { u, i, fi, t, out }: {\n    u: Vec<Float>,\n    i: Int,\n    fi: Float,\n    t: Int,\n    out: Vec<Float>\n  }\n) -> Vec<Float> =\n  u\n  | i == length(u) -> out or\n    times {\n      u: u,\n      i: i + 1,\n      fi: fi + 1.0,\n      t: t,\n      out:\n        out + [row { u: u, i: fi, j: 0, fj: 0.0, t: t, acc: 0.0 }]\n    };\n\n\nfn times_a(u: Vec<Float>) -> Vec<Float> =\n  times { u: u, i: 0, fi: 0.0, t: 0, out: [] };\n\n\nfn times_at(u: Vec<Float>) -> Vec<Float> =\n  times { u: u, i: 0, fi: 0.0, t: 1, out: [] };\n\n\nfn times_ata(u: Vec<Float>) -> Vec<Float> = times_at(times_a u);\n\n\nfn power(\n  { u, k }: { u: Vec<Float>, k: Int }\n) -> { u: Vec<Float>, v: Vec<Float> } =\n  let v = times_ata u\n  let w = times_ata v\n\n  k | . == 1 -> { u: w, v: v } or power { u: w, k: . - 1 };\n\n\nfn dot(\n  { u, v, i, acc }: {\n    u: Vec<Float>,\n    v: Vec<Float>,\n    i: Int,\n    acc: Float\n  }\n) -> Float =\n  u\n  | i == length(u) -> acc or\n    dot { u: u, v: v, i: i + 1, acc: acc + u[i]! * v[i]! };\n\n\nfn ones(n: Int) -> Vec<Float> = collect(range n) | map 1.0;\n\n\nfn norm(n: Int) -> Float =\n  let r = power { u: ones n, k: 10 }\n\n  sqrt(\n    dot { u: r.u, v: r.v, i: 0, acc: 0.0 } /\n      dot { u: r.v, v: r.v, i: 0, acc: 0.0 }\n  );\n\n\nnorm(parse stdin)\n",
       "resultType": "Float",
       "usesLines": false
     },
@@ -6877,7 +6877,7 @@
         "builtin.sum",
         "vec-literal"
       ],
-      "program": "fn nothing() -> Vec<Int> = []\n\n\nsum nothing()\n",
+      "program": "fn nothing() -> Vec<Int> = [];\n\n\nsum nothing()\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -6906,7 +6906,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn wide(x: Int) -> Int64 = i64 x\n\n\nsum([wide 3, wide 1, wide 2])\n",
+      "program": "fn wide(x: Int) -> Int64 = i64 x;\n\n\nsum([wide 3, wide 1, wide 2])\n",
       "resultType": "Int64",
       "usesLines": false
     },
@@ -7097,7 +7097,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn countdown(p: { n: Int, acc: Int }) -> Int =\n  p | p.n <= 0 -> p.acc or countdown { n: p.n - 1, acc: p.acc + 1 }\n\n\ncountdown { n: 100000, acc: 0 }\n",
+      "program": "fn countdown(p: { n: Int, acc: Int }) -> Int =\n  p | p.n <= 0 -> p.acc or countdown { n: p.n - 1, acc: p.acc + 1 };\n\n\ncountdown { n: 100000, acc: 0 }\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -7126,7 +7126,7 @@
         "record-literal",
         "var"
       ],
-      "program": "type Circle = { r: Int }\n\n\ntrait Area {\n  fn area(s: Self) -> Int\n}\n\n\nimpl Area for Circle {\n  fn area(s: Self) -> Int = s.r * s.r\n}\n\n\n{ r: 3 }:area()\n",
+      "program": "type Circle = { r: Int };\n\n\ntrait Area {\n  fn area(s: Self) -> Int\n}\n\n\nimpl Area for Circle {\n  fn area(s: Self) -> Int = s.r * s.r\n}\n\n\n{ r: 3 }:area()\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -7239,7 +7239,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "type User = { name: Str, age: Int }\n\n\ntype Db = { users: Vec<User> }\n\n\nfn adults(db: Db) -> Vec<Str> =\n  db.users | select(.age >= 18) | .[].name\n\n\nadults(parse stdin)\n",
+      "program": "type User = { name: Str, age: Int };\n\n\ntype Db = { users: Vec<User> };\n\n\nfn adults(db: Db) -> Vec<Str> =\n  db.users | select(.age >= 18) | .[].name;\n\n\nadults(parse stdin)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -7271,7 +7271,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =\n  db.users | select(.age >= 18) | .[].name\n\n\nadults(parse stdin)\n",
+      "program": "fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =\n  db.users | select(.age >= 18) | .[].name;\n\n\nadults(parse stdin)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -7298,7 +7298,7 @@
         "projection",
         "var"
       ],
-      "program": "# Six JSON parsers and six string representations, one answer.\nfn tags(\n  db: { rows: Vec<{ name: Str, tag: Str }> }\n) -> Vec<{ name: Str, tag: Str }> =\n  db.rows\n\n\ntags(parse stdin)\n",
+      "program": "# Six JSON parsers and six string representations, one answer.\nfn tags(\n  db: { rows: Vec<{ name: Str, tag: Str }> }\n) -> Vec<{ name: Str, tag: Str }> =\n  db.rows;\n\n\ntags(parse stdin)\n",
       "resultType": "Vec<{name: Str, tag: Str}>",
       "usesLines": false
     },
@@ -7349,7 +7349,7 @@
         "projection",
         "var"
       ],
-      "program": "fn tag(db: { tag: Str }) -> Str = db.tag\n\n\ntag(parse stdin)\n",
+      "program": "fn tag(db: { tag: Str }) -> Str = db.tag;\n\n\ntag(parse stdin)\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -7512,7 +7512,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn user_fn(x: Int) -> Int = x * 2\n\n\n[user_fn 1, user_fn 2]\n",
+      "program": "fn user_fn(x: Int) -> Int = x * 2;\n\n\n[user_fn 1, user_fn 2]\n",
       "resultType": "Vec<Int>",
       "usesLines": false
     },
@@ -7627,7 +7627,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn names(users: Vec<{ name: Str, age: Int }>) -> Vec<Str> =\n  users + tail(users)! | .[].name\n\n\nnames([{ name: \"ada\", age: 36 }, { name: \"bo\", age: 9 }])\n",
+      "program": "fn names(users: Vec<{ name: Str, age: Int }>) -> Vec<Str> =\n  users + tail(users)! | .[].name;\n\n\nnames([{ name: \"ada\", age: 36 }, { name: \"bo\", age: 9 }])\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -7658,7 +7658,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn second(v: Vec<Float>) -> Float = v[1]! * 2.0\n\n\nsecond([1.5, 2.5, 3.5])\n",
+      "program": "fn second(v: Vec<Float>) -> Float = v[1]! * 2.0;\n\n\nsecond([1.5, 2.5, 3.5])\n",
       "resultType": "Float",
       "usesLines": false
     },
@@ -7690,7 +7690,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn f({ acc }: { acc: Vec<Int> }) -> Vec<Int> = acc + [1]\n\n\nf { acc: [0] }\n",
+      "program": "fn f({ acc }: { acc: Vec<Int> }) -> Vec<Int> = acc + [1];\n\n\nf { acc: [0] }\n",
       "resultType": "Vec<Int>",
       "usesLines": false
     },
@@ -7726,7 +7726,7 @@
         "variant.payload",
         "vec-literal"
       ],
-      "program": "fn first_b(v: Vec<Opt<{ a: Str, b: Int }>>) -> Int = v[0]!!.b\n\n\nfn g(v: Vec<Opt<{ b: Int, a: Str }>>) -> Int = first_b v\n\n\ng([some { b: 42, a: \"hi\" }])\n",
+      "program": "fn first_b(v: Vec<Opt<{ a: Str, b: Int }>>) -> Int = v[0]!!.b;\n\n\nfn g(v: Vec<Opt<{ b: Int, a: Str }>>) -> Int = first_b v;\n\n\ng([some { b: 42, a: \"hi\" }])\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -7760,7 +7760,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn first_b(v: Vec<{ a: Str, b: Int }>) -> Int = v[0]!.b\n\n\nfn g(v: Vec<{ b: Int, a: Str }>) -> Int = first_b v\n\n\ng([{ b: 42, a: \"hi\" }])\n",
+      "program": "fn first_b(v: Vec<{ a: Str, b: Int }>) -> Int = v[0]!.b;\n\n\nfn g(v: Vec<{ b: Int, a: Str }>) -> Int = first_b v;\n\n\ng([{ b: 42, a: \"hi\" }])\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -7791,7 +7791,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn big(xs: Vec<Int>) -> Vec<Int> = xs | select(. >= 2)\n\n\nbig([1, 2, 3])\n",
+      "program": "fn big(xs: Vec<Int>) -> Vec<Int> = xs | select(. >= 2);\n\n\nbig([1, 2, 3])\n",
       "resultType": "Vec<Int>",
       "usesLines": false
     },
