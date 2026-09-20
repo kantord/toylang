@@ -404,27 +404,6 @@
   needs: [declare-terminator-build-2a-5, declare-terminator-build-2a-7, declare-terminator-build-2a-8]
   status: todo
 
-- id: declare-terminator-build-2a-5
-  issue: gh:153
-  title: 'Slice 2a leftover: add `;` after every fn/type declaration in the toylang blocks of README.md and draft.md ONLY. Re-scoped 2026-09-20: .toy files cannot land before the formatter prints `;` (tests/fmt.rs prelude pin + tests/fmt_examples.rs .toy sweep compare against fmt output), so they moved to 2a-2. Brief: plans/simple-briefs/declare-terminator-build-2a-5.txt.'
-  kind: build
-  needs: []
-  status: delegated
-
-- id: declare-terminator-build-2a-7
-  issue: gh:153
-  title: 'Slice 2a leftover: add `;` after every fn/type declaration in toylang blocks under docs/examples/ and docs/adr/. Split off 2a-5 on 2026-09-20. Brief: plans/simple-briefs/declare-terminator-build-2a-7.txt.'
-  kind: build
-  needs: []
-  status: delegated
-
-- id: declare-terminator-build-2a-8
-  issue: gh:153
-  title: 'Slice 2a leftover: add `;` after every fn/type declaration in toylang fragments under docs/reference EXCEPT docs/reference/syntax/functions.md (2c owns it); tests/docs.rs compiles each fragment. Split off 2a-6 on 2026-09-20. Brief: plans/simple-briefs/declare-terminator-build-2a-8.txt.'
-  kind: build
-  needs: []
-  status: delegated
-
 - id: declare-terminator-build-2c
   issue: gh:153
   title: 'Slice 3 of 3 of declare-terminator-build-2: make `;` REQUIRED after every fn/type declaration with one new diagnostic, retire the same-line heuristic and its diagnostic (src/parse.rs ~616, 625-637, 1472, 1646), update tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml, rewrite the declarations section of docs/reference/syntax/functions.md, and record the gh:153 ruling in plans/questions.md or a docs/adr/ ADR.'
