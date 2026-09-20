@@ -256,6 +256,22 @@ const TRANSPOSE_HELPER: &str = r#"def tl_transpose(vv):
     return [[row[c] for row in vv] for c in range(ncols)]
 "#;
 
+/// Feeds stdin's lines into a subprocess's stdin and relays its stdout/stderr lines back, each
+/// tagged by origin, `subprocess.run` draining both pipes so a child that never reads stdin
+/// cannot stall the program. stdout lines come first, then stderr, so the two streams' relative
+/// order is deterministic. The child's exit status is ignored: a filter like `grep` exits
+/// nonzero on "no matches", which is a normal outcome for the shape this builtin exists to
+/// express. The two closures build the tagged output value, which is what lets the helper stay
+/// generic over the `PipeLine` enum each program emits as its own runtime shape.
+const PIPE_HELPER: &str = r#"def tl_pipe_through(cmd, args, stdin_lines, to_stdout, to_stderr):
+    import subprocess
+    inp = "\n".join(stdin_lines) + "\n" if stdin_lines else ""
+    r = subprocess.run([cmd] + list(args), input=inp, capture_output=True, text=True)
+    out = [to_stdout(l) for l in r.stdout.splitlines()]
+    out.extend(to_stderr(l) for l in r.stderr.splitlines())
+    return out
+"#;
+
 const COLLECT_HELPER: &str = r#"def tl_collect_lines():
     out = []
     for line in sys.stdin:
@@ -424,6 +440,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_all("), ALL_HELPER),
         (uses("tl_flatten("), FLATTEN_HELPER),
         (uses("tl_transpose("), TRANSPOSE_HELPER),
+        (uses("tl_pipe_through("), PIPE_HELPER),
         (unwrap, UNWRAP_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
@@ -641,6 +658,34 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::All => format!("tl_all({})", expr(enums, arg)),
             Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
             Builtin::Transpose => format!("tl_transpose({})", expr(enums, arg)),
+            // The two closures build the tagged `PipeLine` value, the same runtime shape a
+            // payload variant is everywhere in Python: the single-key dict `{"Stdout": l}`.
+            // `arg` is a checked record literal, so its three fields are read straight off it.
+            Builtin::PipeThrough => {
+                let Kind::RecordLit { fields, .. } = &arg.kind else {
+                    unreachable!("pipe_through's argument is checked to be the record literal")
+                };
+                let field = |name: &str| {
+                    fields
+                        .iter()
+                        .find(|(n, _)| n == name)
+                        .map(|(_, v)| v)
+                        .expect("pipe_through's record is checked to carry all three fields")
+                };
+                // A payload variant's runtime value is `{variant: <payload>}`, and this
+                // payload is the `{text: Str}` record, so the closure wraps the line in both.
+                let tag = |tag: &str| {
+                    format!("lambda l: {{{}: {{\"text\": l}}}}", py_string(tag))
+                };
+                format!(
+                    "tl_pipe_through({}, {}, {}, {}, {})",
+                    expr(enums, &field("cmd")),
+                    expr(enums, &field("args")),
+                    expr(enums, &field("lines")),
+                    tag("Stdout"),
+                    tag("Stderr")
+                )
+            }
             // Python compares both numbers and strings (by codepoint) with `<` natively, so
             // `sorted` needs no key or comparator.
             Builtin::Sort => format!("sorted({})", expr(enums, arg)),
