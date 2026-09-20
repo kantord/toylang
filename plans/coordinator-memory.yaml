@@ -4,45 +4,31 @@
 version: 1
 cap: 8
 slots:
-  - id: cutoff-near-edit-site
-    kind: watch
-    condition: "a non-GREEN run whose latest attempt ended by no_progress_cutoff or max_turns within 2 turns of a grep/read that located the edit site: the cutoff is too low, not the task too wide"
-    observation: "2026-09-11 toylang-conf-yaml-build run 64a0432c, and then 46 of 54 runs through 2026-09-13; see plans/dispatch-self-healing-plan.md"
-    source: plans/dispatch-self-healing-plan.md
-    written: "2026-09-14"
-    confirmed: 0
   - id: go-select-helper-optype-gating
     kind: fact-check
     summary: "src/emit_go.rs OPT_TYPE gate (~line 693) must also include uses(\"tlSelNew(\") -- SELECT_HELPER's lazy tlSel/tlSelAt text always defines tlSelAt returning tlOpt[T], so omitting it emits `undefined: tlOpt` whenever a Select never gets a direct depth-0 index"
     observation: "select-lazy-materialization-build-go run ed033203 (2026-09-14) failed just check this way on the type_alias corpus test; fix folded into plans/simple-briefs/select-lazy-materialization-build-go.txt for the next redispatch"
     source: plans/simple-briefs/select-lazy-materialization-build-go.txt
     written: "2026-09-15"
-    confirmed: 0
-  - id: select-lazy-materialization-reasoning-loop
-    kind: watch
-    condition: "any select-lazy-materialization-build-* dispatch (go/js/py/lua/rust/jq/llvm): all 7 have independently ended STUCK/dedup/0-edits, model completion budget burned on reasoning_tokens before any write_file call -- RULED 2026-09-15 (reasoning-token cap fix in agent_loop.py, ended_by=reasoning_exhausted); if a select-lazy row STUCKs again with that ending, the cap or model is still the problem, not scope"
-    observation: "7/7 backends STUCK identically 2026-09-13 (post per-backend split); go recurred 2026-09-14 (35f62caa) even after the no-progress-cutoff fix landed same day"
-    source: plans/board.yaml#select-lazy-materialization-harness-defect-ruling
-    written: "2026-09-14"
-    confirmed: 0
+    confirmed: 1
   - id: land-lane-self-conflict-guard-bug
     kind: fact-check
     summary: "land_lane.py's other_land_process_for() matched on any /proc process with a 'land_lane.py'-ending argv token -- the drive-tick claude -p session's own argv carries the whole prompt (which always quotes the exact land-patch command as advice), so every land-patch call self-detected as a live conflict and yielded without landing. Fixed by requiring the candidate's /proc/pid/comm be python3/python/uv, which excludes the claude/timeout/zsh wrapper processes."
     observation: "select-lazy-materialization-build-py GREEN patch (5e7acc2d) failed to land 3x in a row with 'another land_lane.py process for this row is live -- yielding' though ps showed nothing; every prior successful land-patch commit presumably got lucky on argv shape, not on correct logic"
     source: .claude/scripts/land_lane.py#other_land_process_for
     written: "2026-09-15"
-    confirmed: 0
+    confirmed: 1
   - id: forest-answer-nesting-mismatch-2026-09-17
     kind: footprint-conflict
     summary: "mutation-which-backends-first.forest.yaml had status/answer/applied written at the top level of the file (sibling to `nodes`), a shape RawForest in site/vite-plugins/grill-forest.ts doesn't read at all -- the node itself still had status: live. The file served status:answered/applied correctly to drive_tick.py's own eyeball but the actual /__grill-forest/round endpoint (and drive_tick.py's open_forest_rounds()/unapplied_answers_trigger(), both of which only check node.status) kept treating it as an open live question, invisible to the 'flagged every tick' safety net since that check requires status==answered first. Checked all other *.forest.yaml files: this was a one-off, not a pattern. Fixed by moving answer/applied onto the node."
     observation: "Found 2026-09-17 while composing a new round and cross-checking the snapshot's pending_rounds claim against disk; snapshot said this file was still pending when the maintainer had already ruled and it had been fully applied to the board days-of-clock-time-equivalent earlier in the same tick chain."
     source: docs/.grill/mutation-which-backends-first.forest.yaml
     written: "2026-09-17"
-    confirmed: 0
+    confirmed: 1
   - id: openrouter-key-fixed-2026-09-15
     kind: fact-check
     summary: "The OpenRouter API key that returned HTTP 401 'API key expired' during the 20:05-21:05 FATAL incident is live again -- a direct /api/v1/credits check returned 200 with $15.62 remaining. No further account-fix action needed; the two board.yaml status: delegated reverts (ada646c/e684a77, 51ce9d8/5a92b8d) are resolved history, not an open blocker."
     observation: "Confirmed by direct credit-balance check before redispatching module-routing-syntax-build-checker, tensor-transpose-build, corpus-implementation-style-review as one batch, then verified all three live in dispatch_state.py --live before committing status: delegated (8f41aea)."
     source: plans/simple-dispatch-design.md#2026-09-15-fatal-openrouter-api-key-expired-preflight-correctly-refused
     written: "2026-09-15"
-    confirmed: 0
+    confirmed: 1

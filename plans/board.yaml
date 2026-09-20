@@ -486,3 +486,10 @@
   needs: []
   status: todo
 
+
+- id: pipe-through-remaining-backends-2
+  issue: gh:158
+  title: 'Periodic audit 2026-09-20: `pipe-through-remaining-backends` was archived done after landing Go only -- src/backend_support.rs LANDINGS still lists pipe_through on Go and Rust, and src/emit_{py,js,lua,jq,llvm}.rs have no arm (gh:158 stays open for this). Add the arms for Python, JS, Lua, jq and LLVM one backend per dispatch (footprint: each emit file plus LANDINGS in backend_support.rs, so serialize on that file), following the Go/Rust arms (piped stdin, stdout/stderr relayed as the tagged `PipeLine` stream), and update LANDINGS + tests/unbuilt_arms.rs as each lands. jq and LLVM may need a decide row if a subprocess is not expressible there; say so rather than faking it.'
+  kind: build
+  needs: []
+  status: todo
