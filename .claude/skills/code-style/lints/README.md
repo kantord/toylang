@@ -29,6 +29,9 @@ key. Nothing here needs a runtime, an index to rebuild, or a tool to read it.
   only covers the lints and research-log bundles, not skill files generally.
 - [cognitive-complexity](/.claude/skills/code-style/lints/cognitive-complexity.md) --
   look at the shape, not the number, especially in emitters.
+- [collapsible-if](/.claude/skills/code-style/lints/collapsible-if.md) -- a finding swept in by
+  file-touched scope, not the session's own diff, defaults to inherited like the others; fixing
+  it anyway needs the maintainer's call, not the session's own judgment.
 
 Otherwise empty, deliberately. A lesson records a decision this repo
 actually made after a finding forced the question. toy-browser's eleven

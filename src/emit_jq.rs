@@ -1224,24 +1224,23 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // converted to a forward one against the survivor count (a scalar `reduce`,
             // never an array); a forward index that runs past the end is `null`, the same
             // was-not-there answer `.[i]` gives, so the Opt tagging is unchanged.
-            if *depth == 0 {
-                if let Kind::Select {
+            if *depth == 0
+                && let Kind::Select {
                     source,
                     param,
                     pred,
                 } = &base.kind
-                {
-                    let stream = format!(
-                        "{}[] | . as {} | select({})",
-                        expr(enums, source),
-                        local(*param),
-                        expr(enums, pred)
-                    );
-                    let idx = expr(enums, index);
-                    return format!(
-                        "(({idx}) as $i |                          (if $i < 0 then (reduce ({stream}) as $x (0; . + 1)) as $len | ($len + $i)                           else ($i) end) as $k |                          (if $k < 0 then \"None\"                           else (nth($k; {stream}) as $e | if $e == null then \"None\" else {{Some: $e}} end) end))"
-                    );
-                }
+            {
+                let stream = format!(
+                    "{}[] | . as {} | select({})",
+                    expr(enums, source),
+                    local(*param),
+                    expr(enums, pred)
+                );
+                let idx = expr(enums, index);
+                return format!(
+                    "(({idx}) as $i |                          (if $i < 0 then (reduce ({stream}) as $x (0; . + 1)) as $len | ($len + $i)                           else ($i) end) as $k |                          (if $k < 0 then \"None\"                           else (nth($k; {stream}) as $e | if $e == null then \"None\" else {{Some: $e}} end) end))"
+                );
             }
             let at = format!(
                 "(.[{}] as $e | if $e == null then \"None\" else {{Some: $e}} end)",
