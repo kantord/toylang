@@ -406,15 +406,29 @@
   issue: gh:153
   title: 'declare-terminator-build is archived done, but its landing (8c84499) contained only 04aa00a, which lexes `;` and says in its own message that the parser does not consume it yet. Verified 2026-09-19: `fn id(s: Str) -> Str = s;` is refused with "expected an expression, found `;`", the same-line heuristic the ruling retires is still live (src/parse.rs ~616, 625-637, 1472, 1646) and still taught in docs/reference/syntax/functions.md. Build the rest of the gh:153 ruling: `;` required after every fn and type declaration, the same-line rule and its diagnostic retired, tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml updated, the syntax page rewritten. Also write the ruling into plans/questions.md or an ADR, since it is recorded nowhere but the issue. DISPATCH 2026-09-19 (32ebad8e): RED, 3x max_turns; the agent bulk-rewrote tests/*.rs with a script that wrote literal backslash-n into tests/euler_real_data.rs:190. Split (parser+fmt+corpus yaml, then tests/examples/docs sweep) before redispatch and forbid script-rewriting .rs sources.'
   kind: build
-  needs: [declare-terminator-build-2a, declare-terminator-build-2b, declare-terminator-build-2c]
+  needs: [declare-terminator-build-2a, declare-terminator-build-2b, declare-terminator-build-2c, declare-terminator-build-2d, declare-terminator-build-2e]
   status: todo
 
 - id: declare-terminator-build-2c
   issue: gh:153
-  title: 'Slice 3 of 3 of declare-terminator-build-2: make `;` REQUIRED after every fn/type declaration with one new diagnostic, retire the same-line heuristic and its diagnostic (src/parse.rs ~616, 625-637, 1472, 1646), update tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml, rewrite the declarations section of docs/reference/syntax/functions.md, and record the gh:153 ruling in plans/questions.md or a docs/adr/ ADR.'
+  title: 'Slice 3a of the declare-terminator-build-2 split (2026-09-20, after a 3-attempt max_turns RED on the whole slice): make `;` REQUIRED after every fn/type declaration in src/parse.rs (`require_semicolon`, one diagnostic "expected `;` after this declaration"), and add the missing `;` to every source string / .toy / corpus yaml / doc fragment that the strictness breaks (the first attempt hit tests/backend_rust.rs float_input_reads_a_json_number, so slices 2a/2b missed some). Retiring the same-line call-argument rule and the docs/ADR are rows 2d and 2e.'
   kind: build
   needs: [declare-terminator-build-2a-2, declare-terminator-build-2a-3, declare-terminator-build-2a-4, declare-terminator-build-2a-5, declare-terminator-build-2a-6, declare-terminator-build-2a-7, declare-terminator-build-2a-8]
-  status: delegated
+  status: todo
+
+- id: declare-terminator-build-2d
+  issue: gh:153
+  title: 'Slice 3b: retire the same-line rule for CALL ARGUMENTS and its diagnostic in src/parse.rs (`takes_argument`, `declined_cross_line`, `same_line` at the call-argument sites) now that the required `;` makes the ambiguity unreachable; leave `same_line` for indexing, colon-calls and let-binding ends. If a non-declaration test fails because a multi-line expression parses differently, restore the rule and report exactly which test and why (escalation shape).'
+  kind: build
+  needs: [declare-terminator-build-2c]
+  status: todo
+
+- id: declare-terminator-build-2e
+  issue: gh:153
+  title: 'Slice 3c: docs for the required declaration terminator -- rewrite the declarations section of docs/reference/syntax/functions.md (required `;`, canonical `toylang fmt` form, drop the same-line explanation), fix any docs page under docs/reference or docs/guides that teaches the same-line rule, and record the gh:153 ruling as docs/adr/0012-declarations-end-with-a-semicolon.md in the shape of docs/adr/0011-*.md.'
+  kind: build
+  needs: [declare-terminator-build-2c]
+  status: todo
 
 - id: matcher-totality-alt-composition-decide
   issue: gh:156
@@ -484,7 +498,7 @@
     have no arm and gh:158 stays open for them.'
   kind: build
   needs: []
-  status: delegated
+  status: todo
 
 - id: pipe-through-lua
   issue: gh:158

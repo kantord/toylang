@@ -1,12 +1,28 @@
-Board row `pipe-through-js` (gh:158). `pipe_through` is built on Go, Rust and Python (src/backend_support.rs `LANDINGS`, entry name "pipe_through", ~line 44). THIS pass is JS ONLY. Do not touch Lua, jq, LLVM, Go, Rust or Python emitters; they keep refusing cleanly. Do NOT survey: every site is listed here. Make your first edit by turn 12.
+Board row `pipe-through-js` (gh:158). JS ONLY: no other emitter changes. A previous attempt read for 60 turns and made ZERO edits. Every site and the exact text are below. DO NOT read whole files. Your FIRST action is edit 1; do all five edits within 10 turns, then run `just check`.
 
-Semantics: `pipe_through({cmd: Str, args: Vec<Str>, lines: Stream<Str>}) -> Stream<PipeLine>`; the child gets the lines on stdin (one per line), its stdout lines come back first as the prelude's tagged `PipeLine` Stdout variant, then its stderr lines as the Stderr variant; the child's exit status is ignored; a child that never reads stdin must not stall the program.
+All edits are in src/emit_js.rs unless noted. Use the edit tool with small anchors; never a script that rewrites source.
 
-The Python arm just landed and is the template -- READ ONLY these:
-- src/emit_py.rs:266 `PIPE_HELPER` and :664-690 the `Builtin::PipeThrough` arm (record-literal field lookup, two tag closures, the helper call).
-- src/emit_js.rs: `TRANSPOSE_HELPER` (~283) is the helper-const shape; the helper gate list is the tuple array at ~line 330-345 (`(used.transpose, TRANSPOSE_HELPER)`); the `used` flags struct is at ~746 (`transpose: bool`) and is set at ~862 (`used.transpose |= *which == Builtin::Transpose;`); the `Builtin::Transpose` arm is at ~1101. Mirror all four: add `pipe_through: bool` to the flags struct, set it for `Builtin::PipeThrough`, add `(used.pipe_through, PIPE_HELPER)` to the gate list, and add a `Builtin::PipeThrough` arm in the same match as Transpose.
-- JS helper `function tl_pipe_through(cmd, args, stdinLines, toStdout, toStderr)`: use `require("child_process").spawnSync(cmd, args, { input: stdinLines.length ? stdinLines.join("\n") + "\n" : "", encoding: "utf8" })` (synchronous, like tl_collect_lines; spawnSync with `input` never stalls on a child that ignores stdin), then return `r.stdout.split("\n")` minus a trailing empty piece (i.e. drop the final "" when the text ends in "\n"; empty text gives []) mapped through toStdout, followed by the same for stderr through toStderr. Exit status ignored. `require(...)` is how the file already imports (see tl_collect_lines).
-- The tagged value: JS represents a payload variant as a single-key object; look at how the JS emitter builds any payload variant (grep `Kind::Variant` or the enum constructor code in emit_js.rs) and use the SAME shape for `{Stdout: {text: l}}` / `{Stderr: {text: l}}` -- the Python arm's payload is the `{text: Str}` record wrapped in the variant tag; do the JS-equivalent.
-- src/backend_support.rs:45 add `Backend::Js` to pipe_through's `built_on`. tests/unbuilt_arms.rs:17 already has a `pipe_through` program; check with `cargo nextest run --test unbuilt_arms` that JS now emits it and that the refusal test for the remaining backends still passes. tests/tag_coverage.rs:26 says "(go, rust, py)": update that reason text to "(go, rust, py, js)".
-Corpus: tests/corpus cannot express a partial-backend case (tests/tag_coverage.rs says so); do not add a yaml. Instead add one node-run test if an existing JS test in tests/ runs a program through node (grep `Backend::Js` in tests/ for a `run_on` example); model it on the Python test that landed with the Python arm (grep `pipe_through` in tests/*.rs). Use `cat` as the child: `collect(pipe_through({cmd: "cat", args: [], lines: ["a", "b"]}))` yields both lines tagged Stdout.
-Done-gate: `just check` passes; `cargo nextest run --test unbuilt_arms` green with JS emitting pipe_through. Edit with the edit tool, never a script that rewrites source files.
+Edit 1 -- helper const. Insert directly BEFORE the doc comment of `const TRANSPOSE_HELPER` (~line 278; the const is `&str = "\` with a backslash continuation and `\"` escapes) a new const in the same shape:
+
+/// Feeds `lines` to a child's stdin and relays its stdout lines then its stderr lines, each
+/// tagged by the closures. `spawnSync` with `input` drains both pipes, so a child that never reads
+/// stdin cannot stall the program. Exit status is ignored, as on the other backends.
+const PIPE_HELPER: &str = "\
+function tl_pipe_through(cmd, args, stdinLines, toStdout, toStderr) {
+  const r = require(\"child_process\").spawnSync(cmd, args, { input: stdinLines.length ? stdinLines.join(\"\\n\") + \"\\n\" : \"\", encoding: \"utf8\" });
+  const split = (t) => { const p = t.split(\"\\n\"); if (p.length && p[p.length - 1] === \"\") p.pop(); return p; };
+  return split(r.stdout || \"\").map(toStdout).concat(split(r.stderr || \"\").map(toStderr));
+}
+";
+
+(Match the exact trailing quote/blank-line style of TRANSPOSE_HELPER's end.)
+
+Edit 2 -- gate list (~line 340): add the line `        (used.pipe_through, PIPE_HELPER),` right after `(used.transpose, TRANSPOSE_HELPER),`.
+Edit 3 -- flags struct (~line 746): add `    pipe_through: bool,` after `transpose: bool,`.
+Edit 4 -- flag set (~line 862): add `                used.pipe_through |= *which == Builtin::PipeThrough;` after the `used.transpose |= ...` line.
+Edit 5 -- arm. Right after the `Builtin::Transpose => format!("tl_transpose({})", expr(enums, arg)),` line (~1101) add an arm copied from the Python arm at src/emit_py.rs:664-690 (read only those 27 lines): destructure `arg.kind` as `Kind::RecordLit { fields, .. }` (unreachable! otherwise), a `field` closure looking up "cmd"/"args"/"lines", and a `tag` closure. JS payload-variant shape is the single-key object `{Stdout: {text: l}}` (see js_string(vname) at ~674 for how variants are read back), so: `let tag = |t: &str| format!("(l) => ({{{}: {{text: l}}}})", t);` producing `(l) => ({Stdout: {text: l}})`; result `format!("tl_pipe_through({}, {}, {}, {}, {})", expr(enums,&field("cmd")), expr(enums,&field("args")), expr(enums,&field("lines")), tag("Stdout"), tag("Stderr"))`. If `Kind` or the record field name is not in scope in emit_js.rs, copy the `use` the Python emitter has.
+
+Edit 6 -- src/backend_support.rs:45: `built_on: &[Backend::Go, Backend::Rust, Backend::Py, Backend::Js],`. tests/tag_coverage.rs:26: change "(go, rust, py)" to "(go, rust, py, js)".
+
+Then: `cargo nextest run --test unbuilt_arms --test tag_coverage` must pass (JS now emits pipe_through; the other backends still refuse). If a JS-run test helper exists (grep -n 'pipe_through' tests/*.rs for the Python one, and mirror it with the JS runner in the same file), add one node-run test using `cat` as the child: `collect(pipe_through({cmd: "cat", args: [], lines: ["a", "b"]}))` yields both lines tagged Stdout; skip this test if no JS runner sits next to the Python test.
+Done-gate: `just check` passes. Stop the moment it is green.
