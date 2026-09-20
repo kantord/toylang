@@ -36,6 +36,11 @@
   kind: decide
   status: todo
 
+- id: harness-run-record-lost-decide
+  title: 'HARNESS DEFECT (2026-09-20 drive tick): declare-terminator-build-2c run 81cc9f95 finished RED with blank ended_by, edits=0, turns=0, cost $0, attempts=[] and a raw log tail as its message -- while its agent.log shows 15 model turns ($0.0116) and its patch holds a real 39+/26- edit of src/parse.rs (evidence: plans/incidents/declare-terminator-build-2c-20260920/, note in plans/simple-dispatch-design.md). The counters were lost between agent_loop.py and status.json, so the dispatch health line cannot see it (harness streak stays 0). One data point so far: dispatch is NOT held; if a second run shows blank ended_by, hold dispatch and rebrief simple_dispatch.py finalisation (write ended_by/edits/turns/cost even on an abnormal exit). Decide: build a finaliser fix row, or accept as a one-off.'
+  kind: decide
+  status: todo
+
 - id: stale-worktree-cleanup-decide
   title: 'Self-originated, idle board (2026-09-17 periodic audit, second finding this tick):
     `git worktree list` shows 42 checkouts beyond the main repo -- 24 under
@@ -408,7 +413,7 @@
   title: 'Slice 3a of the declare-terminator-build-2 split (2026-09-20, after a 3-attempt max_turns RED on the whole slice): make `;` REQUIRED after every fn/type declaration in src/parse.rs (`require_semicolon`, one diagnostic "expected `;` after this declaration"), and add the missing `;` to every source string / .toy / corpus yaml / doc fragment that the strictness breaks (the first attempt hit tests/backend_rust.rs float_input_reads_a_json_number, so slices 2a/2b missed some). Retiring the same-line call-argument rule and the docs/ADR are rows 2d and 2e.'
   kind: build
   needs: [declare-terminator-build-2a-2, declare-terminator-build-2a-3, declare-terminator-build-2a-4, declare-terminator-build-2a-5, declare-terminator-build-2a-6, declare-terminator-build-2a-7, declare-terminator-build-2a-8]
-  status: delegated
+  status: todo
 
 - id: declare-terminator-build-2d
   issue: gh:153

@@ -2205,3 +2205,15 @@ The repeat of the 2026-09-15 lesson above is the point: a decide row's prose is 
 dispatch state at composition time, and every later reader (board-lint, the tick, the round
 composer) trusted the prose over `dispatch-log.csv` and the results bundles. Guards go on the
 board as `convergence-ruling-staleness-guards`.
+
+## 2026-09-20 declare-terminator-build-2c run 81cc9f95: RED with blank ended_by/edits/turns, but a real patch exists
+
+Evidence: `plans/incidents/declare-terminator-build-2c-20260920/`. The run's agent.log shows 15
+model turns (running total $0.0116), and its `patch` is a real 39+/26- edit of `src/parse.rs`
+committed at 21:23:42, yet `status.json` says `ended_by=""`, `edits=0`, `turns=0`,
+`cost_usd=0.0`, `attempts=[]`, and its `message` is the raw tail of agent.log (cut mid-line).
+The two other rows of the same batch (pipe-through-js, float-builtins-build-backends-a)
+finalised normally, so the loop was not killed batch-wide; this row's finaliser lost its
+counters. `dispatch_state.py --show` labels it "pre-2026-09-14, not recorded", which is
+wrong for a 2026-09-20 run. Harness streak in the health line stayed 0 because ended_by was
+blank, not a named harness ending. Filed as the `harness-run-record-lost-decide` row.
