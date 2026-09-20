@@ -1,0 +1,668 @@
+From 753592d262ab2b0674bf31f9af21fd904f641238 Mon Sep 17 00:00:00 2001
+From: Daniel Kantor <git@daniel-kantor.com>
+Date: Sun, 20 Sep 2026 15:12:29 +0000
+Subject: [PATCH] agent_loop.py output
+
+---
+ benches/programs/binary-trees.toy   |  4 ++--
+ benches/programs/fannkuch-redux.toy | 16 +++++++--------
+ benches/programs/fasta.toy          | 10 ++++-----
+ benches/programs/mandelbrot.toy     | 10 ++++-----
+ benches/programs/n-body.toy         | 32 ++++++++++++++---------------
+ benches/programs/spectral-norm.toy  | 26 +++++++++++------------
+ examples/adults.toy                 |  2 +-
+ examples/greet_fn.toy               |  2 +-
+ examples/shapes.toy                 |  2 +-
+ prelude.toy                         |  6 +++---
+ src/fmt/multi_line.rs               |  5 ++++-
+ src/fmt/one_line.rs                 |  4 ++--
+ tests/fmt_one_line.rs               | 26 ++++++++++-------------
+ tests/fmt_project.rs                |  4 ++--
+ tests/modules/celsius.toy           |  2 +-
+ tests/modules/double.toy            |  2 +-
+ tests/modules/greet.toy             |  6 +++---
+ tests/modules/kelvin.toy            |  2 +-
+ tests/modules/nested/inner.toy      |  2 +-
+ tests/modules/nested/outer.toy      |  2 +-
+ tests/modules/no_handle.toy         |  2 +-
+ tests/modules/shapes.toy            |  2 +-
+ 22 files changed, 84 insertions(+), 85 deletions(-)
+
+diff --git a/benches/programs/binary-trees.toy b/benches/programs/binary-trees.toy
+index 110700e3..f7dec4f9 100644
+--- a/benches/programs/binary-trees.toy
++++ b/benches/programs/binary-trees.toy
+@@ -3,11 +3,11 @@ enum Tree { Leaf, Node(Vec<Tree>) }
+ 
+ fn build(depth: Int) -> Tree =
+   depth
+-  | . == 0 -> Tree.leaf or Tree.node([build(. - 1), build(. - 1)])
++  | . == 0 -> Tree.leaf or Tree.node([build(. - 1), build(. - 1)]);
+ 
+ 
+ fn count(t: Tree) -> Int =
+-  t | Leaf -> 1 or Node -> 1 + count(.[0]!) + count(.[1]!)
++  t | Leaf -> 1 or Node -> 1 + count(.[0]!) + count(.[1]!);
+ 
+ 
+ count build(parse stdin)
+diff --git a/benches/programs/fannkuch-redux.toy b/benches/programs/fannkuch-redux.toy
+index 00ac0723..5e6cf386 100644
+--- a/benches/programs/fannkuch-redux.toy
++++ b/benches/programs/fannkuch-redux.toy
+@@ -21,7 +21,7 @@ fn insert_each({ x, p }: { x: Int, p: Vec<Int> }) -> Vec<Vec<Int>> =
+   p
+   | length(p) == 0 -> [[x]] or
+     [[x] + p] +
+-      (insert_each { x: x, p: tail(p)! } | map([p[0]!] + .))
++      (insert_each { x: x, p: tail(p)! } | map([p[0]!] + .));
+ 
+ 
+ fn build_perms(
+@@ -30,23 +30,23 @@ fn build_perms(
+   ps
+   | length(ps) == 0 -> [] or
+     insert_each { x: x, p: ps[0]! } +
+-      build_perms { x: x, ps: tail(ps)! }
++      build_perms { x: x, ps: tail(ps)! };
+ 
+ 
+ fn perms(v: Vec<Int>) -> Vec<Vec<Int>> =
+   v
+   | length(v) == 0 -> [[]] or
+-    build_perms { x: v[0]!, ps: perms tail(v)! }
++    build_perms { x: v[0]!, ps: perms tail(v)! };
+ 
+ 
+ fn flips(p: Vec<Int>) -> Int =
+-  p | p[0]! == 1 -> 0 or 1 + flips(reverse p[:p[0]!] + p[p[0]!:])
++  p | p[0]! == 1 -> 0 or 1 + flips(reverse p[:p[0]!] + p[p[0]!:]);
+ 
+ 
+ fn invs(p: Vec<Int>) -> Int =
+   p
+   | length(p) <= 1 -> 0 or
+-    (length(tail(p)! | select(. < p[0]!)) + invs(tail(p)!)) % 2
++    (length(tail(p)! | select(. < p[0]!)) + invs(tail(p)!)) % 2;
+ 
+ 
+ fn step(
+@@ -57,7 +57,7 @@ fn step(
+   {
+     checksum: acc.checksum + (invs(p) == 0 | . -> f or 0 - f),
+     max: f > acc.max | . -> f or acc.max
+-  }
++  };
+ 
+ 
+ fn fold(
+@@ -65,13 +65,13 @@ fn fold(
+ ) -> { checksum: Int, max: Int } =
+   v
+   | length(v) == 0 -> acc or
+-    fold { v: tail(v)!, acc: step { p: v[0]!, acc: acc } }
++    fold { v: tail(v)!, acc: step { p: v[0]!, acc: acc } };
+ 
+ 
+ fn fk(n: Int) -> Str =
+   let r = fold { v: perms(collect(range n) | map(. + 1)), acc: { checksum: 0, max: 0 } }
+ 
+-  str(r.checksum) + "\nPfannkuchen(" + str(n) + ") = " + str(r.max)
++  str(r.checksum) + "\nPfannkuchen(" + str(n) + ") = " + str(r.max);
+ 
+ 
+ fk(parse stdin)
+diff --git a/benches/programs/fasta.toy b/benches/programs/fasta.toy
+index 0e486942..3b5f32fb 100644
+--- a/benches/programs/fasta.toy
++++ b/benches/programs/fasta.toy
+@@ -9,7 +9,7 @@
+ # https://benchmarksgame-team.pages.debian.net/benchmarksgame/ -- reimplemented from the task's
+ # plain description (repeat a fixed sequence, draw from the IUB ambiguity codes and a
+ # nucleotide frequency table), in integer arithmetic, not copied from any reference source.
+-fn next_rng(prev: Int) -> Int = (prev * 3877 + 29573) % 139968
++fn next_rng(prev: Int) -> Int = (prev * 3877 + 29573) % 139968;
+ 
+ 
+ fn pick(
+@@ -23,7 +23,7 @@ fn pick(
+       acc: s.acc + s.w[s.i]!,
+       i: s.i + 1,
+       total: s.total
+-    }
++    };
+ 
+ 
+ fn gen(
+@@ -65,7 +65,7 @@ fn gen(
+       w: s.w,
+       total: s.total,
+       n: s.n
+-    }
++    };
+ 
+ 
+ fn alu_sec(
+@@ -96,7 +96,7 @@ fn alu_sec(
+       lines: s.lines,
+       k: (s.k + 1) % length(s.alu),
+       alu: s.alu
+-    }
++    };
+ 
+ 
+ fn after_two(t: { lines: Vec<Str>, seed: Int, n: Int }) -> Vec<Str> =
+@@ -111,7 +111,7 @@ fn after_two(t: { lines: Vec<Str>, seed: Int, n: Int }) -> Vec<Str> =
+       w: [303, 198, 198, 301],
+       total: 1000,
+       n: t.n
+-    }.lines
++    }.lines;
+ 
+ 
+ join_lines(
+diff --git a/benches/programs/mandelbrot.toy b/benches/programs/mandelbrot.toy
+index 085c6d84..cc71e528 100644
+--- a/benches/programs/mandelbrot.toy
++++ b/benches/programs/mandelbrot.toy
+@@ -15,7 +15,7 @@
+ # task's plain description (the iteration, the escape radius, the iteration limit, and the
+ # plane it covers), not copied from any reference source.
+ fn to_float(n: Int) -> Float =
+-  n | . == 0 -> 0.0 or 1.0 + to_float(. - 1)
++  n | . == 0 -> 0.0 or 1.0 + to_float(. - 1);
+ 
+ 
+ fn pixel(
+@@ -36,7 +36,7 @@ fn pixel(
+       zr: zr * zr - zi * zi + cr,
+       zi: 2.0 * zr * zi + ci,
+       k: . - 1
+-    }
++    };
+ 
+ 
+ fn row(
+@@ -65,7 +65,7 @@ fn row(
+           zi: 0.0,
+           k: 50
+         }
+-    }
++    };
+ 
+ 
+ fn rows(
+@@ -95,14 +95,14 @@ fn rows(
+             line: ""
+           }
+         ]
+-    }
++    };
+ 
+ 
+ fn plot(n: Int) -> Str =
+   join_lines(
+     ["P1", str(n) + " " + str(n)] +
+       rows { n: n, size: to_float n, y: 0, fy: 0.0, lines: [] }
+-  )
++  );
+ 
+ 
+ plot(parse stdin)
+diff --git a/benches/programs/n-body.toy b/benches/programs/n-body.toy
+index a131d320..98b765c7 100644
+--- a/benches/programs/n-body.toy
++++ b/benches/programs/n-body.toy
+@@ -20,23 +20,23 @@
+ # task's plain description and its published initial conditions (positions in AU, velocities
+ # in AU per day scaled to per year, masses relative to the Sun), not copied from any
+ # reference source.
+-type Body = { x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float, m: Float }
++type Body = { x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float, m: Float };
+ 
+ 
+ fn newton({ x, y }: { x: Float, y: Float }) -> Float =
+   let next = (y + x / y) / 2.0
+ 
+-  next >= y | . -> y or newton { x: x, y: next }
++  next >= y | . -> y or newton { x: x, y: next };
+ 
+ 
+-fn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 }
++fn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 };
+ 
+ 
+ fn solar_mass() -> Float =
+-  4.0 * 3.141592653589793 * 3.141592653589793
++  4.0 * 3.141592653589793 * 3.141592653589793;
+ 
+ 
+-fn days_per_year() -> Float = 365.24
++fn days_per_year() -> Float = 365.24;
+ 
+ 
+ fn planets() -> Vec<Body> =
+@@ -77,7 +77,7 @@ fn planets() -> Vec<Body> =
+       vz: -0.00009515922545197159 * days_per_year(),
+       m: 0.000051513890204661145 * solar_mass()
+     }
+-  ]
++  ];
+ 
+ 
+ fn momentum(
+@@ -104,11 +104,11 @@ fn momentum(
+       px: px + bs[0]!.vx * bs[0]!.m,
+       py: py + bs[0]!.vy * bs[0]!.m,
+       pz: pz + bs[0]!.vz * bs[0]!.m
+-    }
++    };
+ 
+ 
+ fn system() -> Vec<Body> =
+-  [momentum { bs: planets(), px: 0.0, py: 0.0, pz: 0.0 }] + planets()
++  [momentum { bs: planets(), px: 0.0, py: 0.0, pz: 0.0 }] + planets();
+ 
+ 
+ fn kick({ b, o }: { b: Body, o: Body }) -> Body =
+@@ -126,13 +126,13 @@ fn kick({ b, o }: { b: Body, o: Body }) -> Body =
+     vy: b.vy - dy * o.m * mag,
+     vz: b.vz - dz * o.m * mag,
+     m: b.m
+-  }
++  };
+ 
+ 
+ fn pull({ b, others }: { b: Body, others: Vec<Body> }) -> Body =
+   others
+   | length(others) == 0 -> b or
+-    pull { b: kick { b: b, o: others[0]! }, others: tail(others)! }
++    pull { b: kick { b: b, o: others[0]! }, others: tail(others)! };
+ 
+ 
+ fn tick(bs: Vec<Body>) -> Vec<Body> =
+@@ -146,11 +146,11 @@ fn tick(bs: Vec<Body>) -> Vec<Body> =
+       vy: .vy,
+       vz: .vz,
+       m: .m
+-    }
++    };
+ 
+ 
+ fn advance({ bs, n }: { bs: Vec<Body>, n: Int }) -> Vec<Body> =
+-  n | . == 0 -> bs or advance { bs: tick bs, n: . - 1 }
++  n | . == 0 -> bs or advance { bs: tick bs, n: . - 1 };
+ 
+ 
+ fn pair({ b, o, acc }: { b: Body, o: Body, acc: Float }) -> Float =
+@@ -158,7 +158,7 @@ fn pair({ b, o, acc }: { b: Body, o: Body, acc: Float }) -> Float =
+   let dy = b.y - o.y
+   let dz = b.z - o.z
+ 
+-  acc - b.m * o.m / sqrt(dx * dx + dy * dy + dz * dz)
++  acc - b.m * o.m / sqrt(dx * dx + dy * dy + dz * dz);
+ 
+ 
+ fn potential(
+@@ -170,11 +170,11 @@ fn potential(
+       b: b,
+       others: tail(others)!,
+       acc: pair { b: b, o: others[0]!, acc: acc }
+-    }
++    };
+ 
+ 
+ fn kinetic({ b, acc }: { b: Body, acc: Float }) -> Float =
+-  acc + 0.5 * b.m * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
++  acc + 0.5 * b.m * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz);
+ 
+ 
+ fn energy({ bs, acc }: { bs: Vec<Body>, acc: Float }) -> Float =
+@@ -187,7 +187,7 @@ fn energy({ bs, acc }: { bs: Vec<Body>, acc: Float }) -> Float =
+         others: tail(bs)!,
+         acc: kinetic { b: bs[0]!, acc: acc }
+       }
+-    }
++    };
+ 
+ 
+ jsonlines(
+diff --git a/benches/programs/spectral-norm.toy b/benches/programs/spectral-norm.toy
+index 7b4d586e..befafe5f 100644
+--- a/benches/programs/spectral-norm.toy
++++ b/benches/programs/spectral-norm.toy
+@@ -20,18 +20,18 @@
+ fn newton({ x, y }: { x: Float, y: Float }) -> Float =
+   let next = (y + x / y) / 2.0
+ 
+-  next >= y | . -> y or newton { x: x, y: next }
++  next >= y | . -> y or newton { x: x, y: next };
+ 
+ 
+-fn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 }
++fn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 };
+ 
+ 
+ fn a({ i, j }: { i: Float, j: Float }) -> Float =
+-  1.0 / ((i + j) * (i + j + 1.0) / 2.0 + i + 1.0)
++  1.0 / ((i + j) * (i + j + 1.0) / 2.0 + i + 1.0);
+ 
+ 
+ fn entry({ i, j, t }: { i: Float, j: Float, t: Int }) -> Float =
+-  t | . == 0 -> a { i: i, j: j } or a { i: j, j: i }
++  t | . == 0 -> a { i: i, j: j } or a { i: j, j: i };
+ 
+ 
+ fn row(
+@@ -53,7 +53,7 @@ fn row(
+       fj: fj + 1.0,
+       t: t,
+       acc: acc + entry { i: i, j: fj, t: t } * u[j]!
+-    }
++    };
+ 
+ 
+ fn times(
+@@ -74,18 +74,18 @@ fn times(
+       t: t,
+       out:
+         out + [row { u: u, i: fi, j: 0, fj: 0.0, t: t, acc: 0.0 }]
+-    }
++    };
+ 
+ 
+ fn times_a(u: Vec<Float>) -> Vec<Float> =
+-  times { u: u, i: 0, fi: 0.0, t: 0, out: [] }
++  times { u: u, i: 0, fi: 0.0, t: 0, out: [] };
+ 
+ 
+ fn times_at(u: Vec<Float>) -> Vec<Float> =
+-  times { u: u, i: 0, fi: 0.0, t: 1, out: [] }
++  times { u: u, i: 0, fi: 0.0, t: 1, out: [] };
+ 
+ 
+-fn times_ata(u: Vec<Float>) -> Vec<Float> = times_at(times_a u)
++fn times_ata(u: Vec<Float>) -> Vec<Float> = times_at(times_a u);
+ 
+ 
+ fn power(
+@@ -94,7 +94,7 @@ fn power(
+   let v = times_ata u
+   let w = times_ata v
+ 
+-  k | . == 1 -> { u: w, v: v } or power { u: w, k: . - 1 }
++  k | . == 1 -> { u: w, v: v } or power { u: w, k: . - 1 };
+ 
+ 
+ fn dot(
+@@ -107,10 +107,10 @@ fn dot(
+ ) -> Float =
+   u
+   | i == length(u) -> acc or
+-    dot { u: u, v: v, i: i + 1, acc: acc + u[i]! * v[i]! }
++    dot { u: u, v: v, i: i + 1, acc: acc + u[i]! * v[i]! };
+ 
+ 
+-fn ones(n: Int) -> Vec<Float> = collect(range n) | map 1.0
++fn ones(n: Int) -> Vec<Float> = collect(range n) | map 1.0;
+ 
+ 
+ fn norm(n: Int) -> Float =
+@@ -119,7 +119,7 @@ fn norm(n: Int) -> Float =
+   sqrt(
+     dot { u: r.u, v: r.v, i: 0, acc: 0.0 } /
+       dot { u: r.v, v: r.v, i: 0, acc: 0.0 }
+-  )
++  );
+ 
+ 
+ norm(parse stdin)
+diff --git a/examples/adults.toy b/examples/adults.toy
+index 66f720ee..0dd6eecf 100644
+--- a/examples/adults.toy
++++ b/examples/adults.toy
+@@ -1,6 +1,6 @@
+ # Read a user list on stdin and print the names of the adults.
+ fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
+-  db.users | select(.age >= 18) | .[].name
++  db.users | select(.age >= 18) | .[].name;
+ 
+ 
+ adults(parse stdin)
+diff --git a/examples/greet_fn.toy b/examples/greet_fn.toy
+index 85df48c4..3c4f45f5 100644
+--- a/examples/greet_fn.toy
++++ b/examples/greet_fn.toy
+@@ -1,4 +1,4 @@
+-fn greet(who: Str) -> Str = "hello " + who
++fn greet(who: Str) -> Str = "hello " + who;
+ 
+ 
+ greet "world"
+diff --git a/examples/shapes.toy b/examples/shapes.toy
+index d1a2b9a9..bcdcbc2c 100644
+--- a/examples/shapes.toy
++++ b/examples/shapes.toy
+@@ -3,7 +3,7 @@ enum Shape { Point, Circle { r: Int } }
+ 
+ 
+ fn area_ish(s: Shape) -> Int =
+-  s | Circle { r } -> r * r or Point -> 0
++  s | Circle { r } -> r * r or Point -> 0;
+ 
+ 
+ { a: area_ish Shape.point, b: area_ish(circle { r: 3 }) }
+diff --git a/prelude.toy b/prelude.toy
+index 14ec978e..b787b0f3 100644
+--- a/prelude.toy
++++ b/prelude.toy
+@@ -11,17 +11,17 @@ pub enum PipeLine { Stdout { text: Str }, Stderr { text: Str } }
+ 
+ 
+ fn join_parts(v: Vec<Str>) -> Str =
+-  v | length(v) == 0 -> "" or v[0]! + join_parts(tail(v)!)
++  v | length(v) == 0 -> "" or v[0]! + join_parts(tail(v)!);
+ 
+ 
+ pub fn join_lines(v: Vec<Str>) -> Str =
+   v
+   | length(v) == 0 -> "" or
+     length(v) == 1 -> v[0]! or
+-    v[0]! + "\n" + join_lines(tail(v)!)
++    v[0]! + "\n" + join_lines(tail(v)!);
+ 
+ 
+-pub fn join(v: Vec<Str>) -> Str = join_parts v
++pub fn join(v: Vec<Str>) -> Str = join_parts v;
+ 
+ 
+ pub trait Fold {
+diff --git a/src/fmt/multi_line.rs b/src/fmt/multi_line.rs
+index 2c995def..0cb1b724 100644
+--- a/src/fmt/multi_line.rs
++++ b/src/fmt/multi_line.rs
+@@ -90,7 +90,7 @@ fn ensure_single_newline(out: String) -> String {
+ fn print_decl(item: &Item, comments: &mut Comments) -> String {
+     let span = item.span();
+     let mut leading = comments.take_before(span.start);
+-    let rendered = match item {
++    let mut rendered = match item {
+         Item::Def(d) if matches!(d.body, Expr::Let { .. }) => print_let_def(d, comments),
+         _ => {
+             leading.extend(comments.take_before(span.end));
+@@ -103,6 +103,9 @@ fn print_decl(item: &Item, comments: &mut Comments) -> String {
+             }
+         }
+     };
++    if matches!(item, Item::Alias(_) | Item::Def(_)) {
++        rendered.push(';');
++    }
+     let mut out = comment_lines(&leading, 0);
+     out.push_str(&with_trailing(rendered, comments.take_trailing()));
+     out
+diff --git a/src/fmt/one_line.rs b/src/fmt/one_line.rs
+index 0e14cfb2..341f5151 100644
+--- a/src/fmt/one_line.rs
++++ b/src/fmt/one_line.rs
+@@ -61,7 +61,7 @@ pub fn emit_module_one_line(module: &Module) -> String {
+ 
+ fn print_decl_one_line(item: &Item) -> String {
+     match item {
+-        Item::Alias(a) => print_alias(a),
++        Item::Alias(a) => format!("{};", print_alias(a)),
+         Item::Enum(e) => print_enum_compact(e),
+         Item::Trait(t) => {
+             let methods: Vec<String> = t.methods.iter().map(print_trait_method).collect();
+@@ -71,7 +71,7 @@ fn print_decl_one_line(item: &Item) -> String {
+             let methods: Vec<String> = i.methods.iter().map(print_impl_method_one_line).collect();
+             format!("{} {}", impl_head(i), brace_one_line(&methods))
+         }
+-        Item::Def(d) => print_def_one_line(d),
++        Item::Def(d) => format!("{};", print_def_one_line(d)),
+     }
+ }
+ 
+diff --git a/tests/fmt_one_line.rs b/tests/fmt_one_line.rs
+index 6313c731..f48871de 100644
+--- a/tests/fmt_one_line.rs
++++ b/tests/fmt_one_line.rs
+@@ -73,10 +73,9 @@ fn every_corpus_program_has_a_one_line_form_or_says_why_not() {
+     );
+ }
+ 
+-/// Every kind of declaration on one line; the body of the last definition ends in a call, so
+-/// the program body after it cannot be read as its argument. Comments are dropped: none can
+-/// sit inside a line. A rendering check only; that a one-line form runs the same is the corpus
+-/// test's claim.
++/// Every kind of declaration on one line; the `;` that closes a definition keeps the program
++/// body after it from reading as its argument. Comments are dropped: none can sit inside a
++/// line. A rendering check only; that a one-line form runs the same is the corpus test's claim.
+ #[test]
+ fn every_kind_of_declaration_renders_on_one_line() {
+     let src = "# dropped\n\
+@@ -98,25 +97,22 @@ fn every_kind_of_declaration_renders_on_one_line() {
+                fn g(x: Int) -> Int = f({a: x, b: x})\n\
+                \n\
+                g(1)\n";
+-    let want = "type P = { a: Int, b: Int } enum Shape { Circle(Int), Point } \
++    let want = "type P = { a: Int, b: Int }; enum Shape { Circle(Int), Point } \
+                 trait Area { fn area(s: Shape) -> Int } \
+                 impl Area for Shape { fn area(s: Shape) -> Int = s | Circle(r) -> r * r * 3 or 0 } \
+-                fn f(p: P) -> Int = p.a * 2 + p.b \
+-                fn g(x: Int) -> Int = f { a: x, b: x } g 1\n";
++                fn f(p: P) -> Int = p.a * 2 + p.b; \
++                fn g(x: Int) -> Int = f { a: x, b: x }; g 1\n";
+     assert_eq!(toylang::fmt_one_line(src).unwrap(), want);
+     assert_eq!(toylang::fmt(want).unwrap(), file_form_without_comments(src));
+ }
+ 
+-/// Two shapes have no one-line form by ruling (2026-09-19): a body ending in a name followed
+-/// on the same line by the program body, which reads as a bare application; and any `let`
+-/// block, which the grammar reads one binding per line. Both are refused with the definition
+-/// named.
++/// The `;` that closes a definition keeps a body ending in a name from swallowing the program
++/// body after it, so that shape now renders on one line; only a `let` block, which the grammar
++/// reads one binding per line, is still refused outright, with the definition named.
+ #[test]
+-fn a_body_that_would_swallow_the_program_body_is_refused() {
++fn a_body_ending_in_a_name_renders_and_a_let_block_is_refused() {
+     let src = "fn g(x: Int) -> Int = x\n\ng(1)\n";
+-    let err = toylang::fmt_one_line(src).unwrap_err();
+-    assert!(err.msg.contains("no one-line form"), "{}", err.msg);
+-    assert_eq!(&src[err.span.start..err.span.end], "fn g(x: Int) -> Int = x");
++    assert_eq!(toylang::fmt_one_line(src).unwrap(), "fn g(x: Int) -> Int = x; g 1\n");
+ 
+     // A `let` block is refused outright, even one that would happen to read back the same.
+     let src = "fn f(x: Int) -> Int =\n    let a = x * 2\n    a + 1\n\nf(1)\n";
+diff --git a/tests/fmt_project.rs b/tests/fmt_project.rs
+index 74844472..5c437017 100644
+--- a/tests/fmt_project.rs
++++ b/tests/fmt_project.rs
+@@ -9,7 +9,7 @@ use std::process::{Command, Output};
+ 
+ /// One line off canonical: `fmt` spaces its binary operators.
+ const CROOKED: &str = "fn double(n: Int) -> Int = n*2\ndouble(21)\n";
+-const CANONICAL: &str = "fn double(n: Int) -> Int = n * 2\n\n\ndouble 21\n";
++const CANONICAL: &str = "fn double(n: Int) -> Int = n * 2;\n\n\ndouble 21\n";
+ 
+ #[test]
+ fn check_lists_what_is_not_formatted_and_touches_nothing() {
+@@ -121,7 +121,7 @@ fn one_line_prints_the_program_on_one_line_and_refuses_a_let_block() {
+ 
+     let out = fmt(dir.path(), &["--one-line", "crooked.toy"]);
+     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+-    assert_eq!(stdout(&out), "fn double(n: Int) -> Int = n * 2 double 21\n");
++    assert_eq!(stdout(&out), "fn double(n: Int) -> Int = n * 2; double 21\n");
+     assert_eq!(read(dir.path(), "crooked.toy"), CROOKED);
+ 
+     let out = fmt(dir.path(), &["--one-line", "lets.toy"]);
+diff --git a/tests/modules/celsius.toy b/tests/modules/celsius.toy
+index 3a62c6cd..44d3f33c 100644
+--- a/tests/modules/celsius.toy
++++ b/tests/modules/celsius.toy
+@@ -1 +1 @@
+-pub fn handle(c: Int) -> Int = c + 273
++pub fn handle(c: Int) -> Int = c + 273;
+diff --git a/tests/modules/double.toy b/tests/modules/double.toy
+index 1cbc4d92..81bdb68d 100644
+--- a/tests/modules/double.toy
++++ b/tests/modules/double.toy
+@@ -1 +1 @@
+-pub fn handle(n: Int) -> Int = n * 2
++pub fn handle(n: Int) -> Int = n * 2;
+diff --git a/tests/modules/greet.toy b/tests/modules/greet.toy
+index e5d022a9..a66af331 100644
+--- a/tests/modules/greet.toy
++++ b/tests/modules/greet.toy
+@@ -1,7 +1,7 @@
+-fn exclaim(s: Str) -> Str = s + "!"
++fn exclaim(s: Str) -> Str = s + "!";
+ 
+ 
+-pub fn shout(s: Str) -> Str = exclaim(exclaim s)
++pub fn shout(s: Str) -> Str = exclaim(exclaim s);
+ 
+ 
+-pub fn handle(name: Str) -> Str = exclaim("hello " + name)
++pub fn handle(name: Str) -> Str = exclaim("hello " + name);
+diff --git a/tests/modules/kelvin.toy b/tests/modules/kelvin.toy
+index db5f2a94..7f74db5a 100644
+--- a/tests/modules/kelvin.toy
++++ b/tests/modules/kelvin.toy
+@@ -1 +1 @@
+-pub fn handle(k: Int) -> Int = k
++pub fn handle(k: Int) -> Int = k;
+diff --git a/tests/modules/nested/inner.toy b/tests/modules/nested/inner.toy
+index 573f2ca6..184c118a 100644
+--- a/tests/modules/nested/inner.toy
++++ b/tests/modules/nested/inner.toy
+@@ -1 +1 @@
+-pub fn handle(n: Int) -> Int = n + 1
++pub fn handle(n: Int) -> Int = n + 1;
+diff --git a/tests/modules/nested/outer.toy b/tests/modules/nested/outer.toy
+index ecc93dac..d8d449e0 100644
+--- a/tests/modules/nested/outer.toy
++++ b/tests/modules/nested/outer.toy
+@@ -1 +1 @@
+-pub fn handle(n: Int) -> Int = n | @("inner.toy")
++pub fn handle(n: Int) -> Int = n | @("inner.toy");
+diff --git a/tests/modules/no_handle.toy b/tests/modules/no_handle.toy
+index 516ded3e..57686384 100644
+--- a/tests/modules/no_handle.toy
++++ b/tests/modules/no_handle.toy
+@@ -1 +1 @@
+-pub fn other(n: Int) -> Int = n
++pub fn other(n: Int) -> Int = n;
+diff --git a/tests/modules/shapes.toy b/tests/modules/shapes.toy
+index 3a7688d5..63d2bfae 100644
+--- a/tests/modules/shapes.toy
++++ b/tests/modules/shapes.toy
+@@ -2,4 +2,4 @@ pub enum Shape { Circle { r: Int }, Square { side: Int } }
+ 
+ 
+ pub fn handle(s: Shape) -> Int =
+-  s | Circle { r } -> r * r * 3 or Square { side } -> side * side
++  s | Circle { r } -> r * r * 3 or Square { side } -> side * side;
+-- 
+2.47.3
+
