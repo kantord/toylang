@@ -2,10 +2,10 @@
 # are the same record type with the fields spelled in the other order, so `f(r)` type-checks
 # and the value crosses the call unchanged.
 program: |
-  fn f(r: { a: Str, b: Int }) -> Str = r.a
+  fn f(r: { a: Str, b: Int }) -> Str = r.a;
 
 
-  fn g(r: { b: Int, a: Str }) -> Str = f r
+  fn g(r: { b: Int, a: Str }) -> Str = f r;
 
 
   g(parse stdin)

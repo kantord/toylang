@@ -132,7 +132,7 @@ resolves to `BigInt` by position:
 
 ```toylang
 fn factorial(n: BigInt) -> BigInt =
-  n == 0 -> 1 or n * factorial(n - 1)
+  n == 0 -> 1 or n * factorial(n - 1);
 
 
 factorial 50
@@ -146,7 +146,7 @@ The bridge in is `big(x)`, converting a value carried as `Int` or `Int64` (its e
 surface is open; the `i64` precedent takes only `Int`):
 
 ```toylang
-fn digits(n: Int64) -> BigInt = big n
+fn digits(n: Int64) -> BigInt = big n;
 
 
 digits 600851475143
@@ -169,7 +169,7 @@ The Python model: no third type, the existing `Int` grows, and `Int64` (which ex
 *escape* `Int`'s ceiling) becomes redundant. A wide literal is just an `Int`.
 
 ```toylang
-fn big() -> Int = 600851475143
+fn big() -> Int = 600851475143;
 
 
 big()

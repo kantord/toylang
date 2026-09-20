@@ -61,7 +61,7 @@ pub fn emit_module_one_line(module: &Module) -> String {
 
 fn print_decl_one_line(item: &Item) -> String {
     match item {
-        Item::Alias(a) => print_alias(a),
+        Item::Alias(a) => format!("{};", print_alias(a)),
         Item::Enum(e) => print_enum_compact(e),
         Item::Trait(t) => {
             let methods: Vec<String> = t.methods.iter().map(print_trait_method).collect();
@@ -71,7 +71,7 @@ fn print_decl_one_line(item: &Item) -> String {
             let methods: Vec<String> = i.methods.iter().map(print_impl_method_one_line).collect();
             format!("{} {}", impl_head(i), brace_one_line(&methods))
         }
-        Item::Def(d) => print_def_one_line(d),
+        Item::Def(d) => format!("{};", print_def_one_line(d)),
     }
 }
 

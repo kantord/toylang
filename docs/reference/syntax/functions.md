@@ -7,7 +7,7 @@ about a signature is inferred. The one exception is the hoisted match-call form,
 and whose result type is read off the arms (see [match](../operators/match.md)).
 
 ```toylang
-fn double(x: Int) -> Int = x * 2
+fn double(x: Int) -> Int = x * 2;
 
 
 double 21
@@ -46,7 +46,7 @@ A function may also take no parameter, written `fn name() -> Type = body` and ca
 `name()`:
 
 ```toylang
-fn greeting() -> Str = "hello"
+fn greeting() -> Str = "hello";
 
 
 greeting()
@@ -71,7 +71,7 @@ annotation stays fully explicit -- the pattern names the fields, the annotation 
 types -- and the body reads the fields as ordinary parameters:
 
 ```toylang
-fn g({ a, b }: { a: Int, b: Int }) -> Int = a + b
+fn g({ a, b }: { a: Int, b: Int }) -> Int = a + b;
 
 
 g { a: 3, b: 4 }
@@ -85,7 +85,7 @@ g { a: 3, b: 4 }
 unnamed fields are simply not bound:
 
 ```toylang
-fn g({ a, b, .. }: { a: Int, b: Int, c: Int }) -> Int = a + b
+fn g({ a, b, .. }: { a: Int, b: Int, c: Int }) -> Int = a + b;
 
 
 g { a: 3, b: 4, c: 5 }
@@ -99,7 +99,7 @@ A name that is not a field of the annotated type is refused at the signature, so
 points at the parameter rather than at a later use:
 
 ```toylang
-fn g({ a, z }: { a: Int, b: Int }) -> Int = a
+fn g({ a, z }: { a: Int, b: Int }) -> Int = a;
 
 
 g { a: 3, b: 4 }
@@ -157,7 +157,7 @@ stack:
 
 ```toylang
 fn countdown(p: { n: Int, acc: Int }) -> Int =
-  p | p.n <= 0 -> p.acc or countdown { n: p.n - 1, acc: p.acc + 1 }
+  p | p.n <= 0 -> p.acc or countdown { n: p.n - 1, acc: p.acc + 1 };
 
 
 countdown { n: 100000, acc: 0 }

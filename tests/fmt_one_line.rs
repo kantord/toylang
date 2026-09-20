@@ -73,10 +73,9 @@ fn every_corpus_program_has_a_one_line_form_or_says_why_not() {
     );
 }
 
-/// Every kind of declaration on one line; the body of the last definition ends in a call, so
-/// the program body after it cannot be read as its argument. Comments are dropped: none can
-/// sit inside a line. A rendering check only; that a one-line form runs the same is the corpus
-/// test's claim.
+/// Every kind of declaration on one line; the `;` that closes a definition keeps the program
+/// body after it from reading as its argument. Comments are dropped: none can sit inside a
+/// line. A rendering check only; that a one-line form runs the same is the corpus test's claim.
 #[test]
 fn every_kind_of_declaration_renders_on_one_line() {
     let src = "# dropped\n\
@@ -98,25 +97,22 @@ fn every_kind_of_declaration_renders_on_one_line() {
                fn g(x: Int) -> Int = f({a: x, b: x})\n\
                \n\
                g(1)\n";
-    let want = "type P = { a: Int, b: Int } enum Shape { Circle(Int), Point } \
+    let want = "type P = { a: Int, b: Int }; enum Shape { Circle(Int), Point } \
                 trait Area { fn area(s: Shape) -> Int } \
                 impl Area for Shape { fn area(s: Shape) -> Int = s | Circle(r) -> r * r * 3 or 0 } \
-                fn f(p: P) -> Int = p.a * 2 + p.b \
-                fn g(x: Int) -> Int = f { a: x, b: x } g 1\n";
+                fn f(p: P) -> Int = p.a * 2 + p.b; \
+                fn g(x: Int) -> Int = f { a: x, b: x }; g 1\n";
     assert_eq!(toylang::fmt_one_line(src).unwrap(), want);
     assert_eq!(toylang::fmt(want).unwrap(), file_form_without_comments(src));
 }
 
-/// Two shapes have no one-line form by ruling (2026-09-19): a body ending in a name followed
-/// on the same line by the program body, which reads as a bare application; and any `let`
-/// block, which the grammar reads one binding per line. Both are refused with the definition
-/// named.
+/// The `;` that closes a definition keeps a body ending in a name from swallowing the program
+/// body after it, so that shape now renders on one line; only a `let` block, which the grammar
+/// reads one binding per line, is still refused outright, with the definition named.
 #[test]
-fn a_body_that_would_swallow_the_program_body_is_refused() {
+fn a_body_ending_in_a_name_renders_and_a_let_block_is_refused() {
     let src = "fn g(x: Int) -> Int = x\n\ng(1)\n";
-    let err = toylang::fmt_one_line(src).unwrap_err();
-    assert!(err.msg.contains("no one-line form"), "{}", err.msg);
-    assert_eq!(&src[err.span.start..err.span.end], "fn g(x: Int) -> Int = x");
+    assert_eq!(toylang::fmt_one_line(src).unwrap(), "fn g(x: Int) -> Int = x; g 1\n");
 
     // A `let` block is refused outright, even one that would happen to read back the same.
     let src = "fn f(x: Int) -> Int =\n    let a = x * 2\n    a + 1\n\nf(1)\n";

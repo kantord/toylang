@@ -5,7 +5,7 @@ program: |
   fn names(
     users: Vec<{ name: Str, age: Int }>
   ) -> Vec<{ name: Str, age: Int }> =
-    users[1:]
+    users[1:];
 
 
   names(

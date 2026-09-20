@@ -2,7 +2,7 @@
 # so the same unwrap that survived some(none) stops the program on none. One value prints
 # null before the `!`, both print null without it -- the tag is the whole difference.
 program: |
-  fn shallow() -> Opt<Opt<Int>> = none
+  fn shallow() -> Opt<Opt<Int>> = none;
 
 
   shallow()!

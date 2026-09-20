@@ -9,7 +9,7 @@
 # https://benchmarksgame-team.pages.debian.net/benchmarksgame/ -- reimplemented from the task's
 # plain description (repeat a fixed sequence, draw from the IUB ambiguity codes and a
 # nucleotide frequency table), in integer arithmetic, not copied from any reference source.
-fn next_rng(prev: Int) -> Int = (prev * 3877 + 29573) % 139968
+fn next_rng(prev: Int) -> Int = (prev * 3877 + 29573) % 139968;
 
 
 fn pick(
@@ -23,7 +23,7 @@ fn pick(
       acc: s.acc + s.w[s.i]!,
       i: s.i + 1,
       total: s.total
-    }
+    };
 
 
 fn gen(
@@ -65,7 +65,7 @@ fn gen(
       w: s.w,
       total: s.total,
       n: s.n
-    }
+    };
 
 
 fn alu_sec(
@@ -96,7 +96,7 @@ fn alu_sec(
       lines: s.lines,
       k: (s.k + 1) % length(s.alu),
       alu: s.alu
-    }
+    };
 
 
 fn after_two(t: { lines: Vec<Str>, seed: Int, n: Int }) -> Vec<Str> =
@@ -111,7 +111,7 @@ fn after_two(t: { lines: Vec<Str>, seed: Int, n: Int }) -> Vec<Str> =
       w: [303, 198, 198, 301],
       total: 1000,
       n: t.n
-    }.lines
+    }.lines;
 
 
 join_lines(
