@@ -7,10 +7,11 @@ result. The block's value is checked against the function's return type, which i
 the final expression read the bound names.
 
 ```toylang
+# fmt: syntax-example
 fn classify(p: { x: Int, y: Int }) -> Str =
   let m = p.x * p.x + p.y * p.y
 
-  m | m == 0 -> "origin" or m < 100 -> "near" or "far"
+  m | m == 0 -> "origin" or m < 100 -> "near" or "far";
 
 
 classify { x: 3, y: 4 }
@@ -25,11 +26,12 @@ expression, so a top-level `let` is a parse error rather than a declaration. Ins
 bindings stack, and a later binding may read an earlier one:
 
 ```toylang
+# fmt: syntax-example
 fn f(p: { x: Int, y: Int }) -> Int =
   let a = p.x * 2
   let b = a + p.y
 
-  a + b
+  a + b;
 
 
 f { x: 3, y: 4 }
@@ -43,11 +45,12 @@ A later binding may also shadow an earlier one, or the function's own parameter;
 that wins is the innermost binding in scope:
 
 ```toylang
+# fmt: syntax-example
 fn f(x: Int) -> Int =
   let x = x + 1
   let x = x * 2
 
-  x
+  x;
 
 
 f 5

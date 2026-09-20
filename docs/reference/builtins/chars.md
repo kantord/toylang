@@ -37,12 +37,13 @@ A `Char` has no wire form: it never comes from JSON, and it cannot be handed to 
 Both directions are refused at compile time:
 
 ```toylang
-fn use_it(c: Char) -> Bool = c == c
+# fmt: syntax-example
+fn use_it(c: Char) -> Bool = c == c;
 
 
 use_it(parse stdin)
 ```
 
 ```error
-`parse(stdin)` cannot be read as Char; Char has no wire form to read (at byte 45)
+`parse(stdin)` cannot be read as Char; Char has no wire form to read (at byte 68)
 ```

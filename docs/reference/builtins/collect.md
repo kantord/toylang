@@ -29,7 +29,8 @@ Counting a stream is the shape that shows why the boundary is spelled out: the c
 exist until everything has been read.
 
 ```toylang
-fn total(nums: Vec<Int>) -> Int = length nums
+# fmt: syntax-example
+fn total(nums: Vec<Int>) -> Int = length nums;
 
 
 total collect(stdin | map parse(.))

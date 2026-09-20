@@ -21,7 +21,8 @@ return type is `Sink`. A `Sink`-returning function's body is the other place `|>
 so a named sink can be built once and reused:
 
 ```toylang
-fn emit(ss: Vec<Str>) -> Sink = ss |> jsonlines
+# fmt: syntax-example
+fn emit(ss: Vec<Str>) -> Sink = ss |> jsonlines;
 
 
 ["a", "b"] |> emit

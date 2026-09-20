@@ -26,7 +26,8 @@ false
 An empty `Vec` is false -- there is no true entry to find:
 
 ```toylang
-fn no_hits() -> Vec<Bool> = []
+# fmt: syntax-example
+fn no_hits() -> Vec<Bool> = [];
 
 
 any no_hits()

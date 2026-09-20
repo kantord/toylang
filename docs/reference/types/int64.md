@@ -10,7 +10,8 @@ wherever one is expected -- the same rule that gives `[]` its element type. So t
 literal below is legal only because the annotation says what it is:
 
 ```toylang
-fn big() -> Int64 = 600851475143
+# fmt: syntax-example
+fn big() -> Int64 = 600851475143;
 
 
 big()
@@ -34,21 +35,23 @@ Nothing widens implicitly. `Int` and `Int64` never meet in one operator, and the
 [i64](../builtins/i64.md), the one bridge:
 
 ```toylang
-fn big() -> Int64 = 5
+# fmt: syntax-example
+fn big() -> Int64 = 5;
 
 
 1 + big()
 ```
 
 ```error
-`+` cannot mix Int and Int64; widen the Int side with `i64(...)` (at byte 28)
+`+` cannot mix Int and Int64; widen the Int side with `i64(...)` (at byte 51)
 ```
 
 A bare literal on either side of an `Int64` operator needs no bridge -- its position already
 says which width it has:
 
 ```toylang
-fn big() -> Int64 = 1234567890123456
+# fmt: syntax-example
+fn big() -> Int64 = 1234567890123456;
 
 
 big() + 1
