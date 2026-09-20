@@ -26,11 +26,11 @@ pub fn join(v: Vec<Str>) -> Str = join_parts v
 
 pub trait Fold {
   fn identity() -> Self
-  fn step(p: { acc: Self, x: Int }) -> Self
+  fn step(p: { acc: Self, item: Int }) -> Self
 }
 
 
 impl Fold for Vec<Int> {
   fn identity() -> Self = []
-  fn step(p: { acc: Self, x: Int }) -> Self = p.acc + [p.x]
+  fn step(p: { acc: Self, item: Int }) -> Self = p.acc + [p.item]
 }
