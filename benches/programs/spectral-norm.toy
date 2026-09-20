@@ -1,6 +1,6 @@
 # CLBG spectral-norm: the largest singular value of the infinite matrix whose (i, j) entry is
 # 1 / ((i + j)(i + j + 1) / 2 + i + 1), for its leading N x N block, by power iteration. Ten
-# rounds of v = A'A u, u = A'A v from u = [1, ..., 1], then the norm is sqrt(u.v / v.v), which
+# rounds of v = A'A u, u = A'A v from u = [1, ..., 1], then the norm is sqrt_newton(u.v / v.v), which
 # for N = 100 begins 1.274219991, CLBG's published value.
 #
 # The entry is a Float formula over the indices, and the language converts no Int to a
@@ -23,7 +23,8 @@ fn newton({ x, y }: { x: Float, y: Float }) -> Float =
   next >= y | . -> y or newton { x: x, y: next };
 
 
-fn sqrt(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 };
+fn sqrt_newton(x: Float) -> Float =
+  newton { x: x, y: (x + 1.0) / 2.0 };
 
 
 fn a({ i, j }: { i: Float, j: Float }) -> Float =
@@ -116,7 +117,7 @@ fn ones(n: Int) -> Vec<Float> = collect(range n) | map 1.0;
 fn norm(n: Int) -> Float =
   let r = power { u: ones n, k: 10 }
 
-  sqrt(
+  sqrt_newton(
     dot { u: r.u, v: r.v, i: 0, acc: 0.0 } /
       dot { u: r.v, v: r.v, i: 0, acc: 0.0 }
   );

@@ -1624,6 +1624,12 @@ impl Emitter<'_> {
                     self.parser_expr(&t.ty)
                 ),
                 Builtin::IntToI64 => format!("(({}) as i64)", self.expr(arg)),
+                // Not landed on any backend yet (ruling 2026-09-20); `refuse_unbuilt` turns a
+                // program that reaches here into an error before any emitter runs, so this arm
+                // is unreachable and emits nothing.
+                Builtin::Sqrt | Builtin::FloatOf => {
+                    unreachable!("not yet implemented for this backend")
+                }
                 Builtin::Range => format!("tl_range({})", self.expr(arg)),
                 Builtin::Chars => format!("tl_chars(&{})", self.expr(arg)),
                 Builtin::JsonLines => {

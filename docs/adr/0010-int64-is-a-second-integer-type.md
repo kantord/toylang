@@ -16,6 +16,8 @@ Three decisions make the surface:
    too-big literal with no expectation stays an error rather than being guessed wide.
 2. **No implicit widening.** Mixing the two types in one operator is an error naming
    `i64(x)`, the explicit conversion builtin and the whole conversion surface.
+   `float(x)` (`Int -> Float`, exact, ruling 2026-09-20) is a second conversion, so the
+   surface is not exhausted by `i64` alone.
 3. **Int64 wraps**, extending ADR 0006's rule to 64 bits: division truncates, a zero divisor
    is the only arithmetic failure, and `MIN / -1` is `MIN`.
 

@@ -158,6 +158,8 @@ pub const TAGS: &[&str] = &[
     "projection",
     "builtin.str",
     "builtin.i64",
+    "builtin.sqrt",
+    "builtin.float",
     "builtin.range",
     "builtin.collect",
     "builtin.jsonlines",
@@ -247,6 +249,8 @@ fn builtin_tag(which: &Builtin) -> &'static str {
     match which {
         Builtin::IntToStr => "str",
         Builtin::IntToI64 => "i64",
+        Builtin::Sqrt => "sqrt",
+        Builtin::FloatOf => "float",
         Builtin::Range => "range",
         Builtin::Collect => "collect",
         Builtin::JsonLines => "jsonlines",
