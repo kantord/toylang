@@ -8,12 +8,12 @@
 
 /// Exercises every shape the .d.ts has to name: a typed function signature for int, str, bool,
 /// a Vec, a record, and a generic enum, all called from the body so the checker keeps them.
-const PROGRAM: &str = r#"fn add(x: Int) -> Int = x + 1
-fn greet(x: Str) -> Str = "hi " + x
-fn is_pos(x: Int) -> Bool = x >  0
-fn total(v: Vec<Int>) -> Int = sum(v)
-fn area(r: {w: Int, h: Int}) -> Int = r.w * r.h
-fn bump(x: Opt<Int>) -> Opt<Int> = x
+const PROGRAM: &str = r#"pub fn add(x: Int) -> Int = x + 1
+pub fn greet(x: Str) -> Str = "hi " + x
+pub fn is_pos(x: Int) -> Bool = x >  0
+pub fn total(v: Vec<Int>) -> Int = sum(v)
+pub fn area(r: {w: Int, h: Int}) -> Int = r.w * r.h
+pub fn bump(x: Opt<Int>) -> Opt<Int> = x
 
 {
   a: add(1),
@@ -55,6 +55,26 @@ const TSCONFIG: &str = r#"{
 fn emitted_dts_declares_the_module_shape() {
     let program = toylang::compile(PROGRAM).expect("compiles");
     insta::assert_snapshot!(toylang::emit_js::emit_dts(&program));
+}
+
+/// Only `pub` functions surface in the `.d.ts`: a non-`pub` one is still emitted to the `.js`
+/// and callable within the program, but it is not part of the module's declaration.
+#[test]
+fn emitted_dts_only_declares_pub_functions() {
+    let program = toylang::compile(
+        r#"pub fn exported(x: Int) -> Int = x + 1
+fn hidden(x: Int) -> Int = x * 2
+
+{
+  a: exported(1),
+  b: hidden(2)
+}
+"#,
+    )
+    .expect("compiles");
+    let dts = toylang::emit_js::emit_dts(&program);
+    assert!(dts.contains("export function v_exported(x: number): number;"));
+    assert!(!dts.contains("export function v_hidden"));
 }
 
 #[test]

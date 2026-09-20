@@ -477,7 +477,7 @@ impl ToRust for tir::Kind {
 impl ToRust for tir::Func {
     fn to_rust(&self) -> String {
         format!(
-            "crate::tir::Func {{ name: {}, param: {}, param_ty: {}, body: {} }}",
+            "crate::tir::Func {{ name: {}, param: {}, param_ty: {}, body: {}, is_pub: false }}",
             self.name.to_rust(),
             self.param.to_rust(),
             self.param_ty.to_rust(),
