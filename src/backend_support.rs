@@ -42,7 +42,7 @@ pub const LANDINGS: &[Landing] = &[
     },
     Landing {
         name: "pipe_through",
-        built_on: &[Backend::Go, Backend::Rust, Backend::Py],
+        built_on: &[Backend::Go, Backend::Rust, Backend::Py, Backend::Js],
     },
     Landing {
         name: "sqrt",
