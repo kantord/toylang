@@ -105,7 +105,44 @@ pub fn compile_in(src: &str, dir: &std::path::Path) -> Result<Program, Error> {
     let mut file = parse::parse(src)?;
     modules::inject(&mut file, dir)?;
     prelude::inject(&mut file);
-    check::check(file)
+    check::check(file, false)
+}
+
+/// Compiles `src` for `toylang build`: a program with a trailing expression compiles exactly
+/// as `compile_in` does, and a declarations-only file -- a library -- parses as a module and
+/// compiles with `library` set, so the backend exports its `pub fn`s instead of running a
+/// body. The placeholder body is an integer literal `0` at a zero span: it never runs, it just
+/// gives the checker a body to type, and it reaches nothing, so `check` roots reachability at
+/// the `pub fn`s in library mode.
+pub fn compile_library_in(src: &str, dir: &std::path::Path) -> Result<Program, Error> {
+    match parse::parse(src) {
+        Ok(mut file) => {
+            modules::inject(&mut file, dir)?;
+            prelude::inject(&mut file);
+            check::check(file, false)
+        }
+        Err(program_err) => {
+            let module = parse::parse_module(src).map_err(|_| program_err)?;
+            let file = ast::File {
+                aliases: module.aliases,
+                enums: module.enums,
+                traits: module.traits,
+                impls: module.impls,
+                defs: module.defs,
+                body: ast::Expr::Int {
+                    value: 0,
+                    span: ast::Span::new(0, 0),
+                },
+                comments: module.comments,
+                route_refs: module.route_refs,
+                routes: std::collections::HashMap::new(),
+            };
+            let mut file = file;
+            modules::inject(&mut file, dir)?;
+            prelude::inject(&mut file);
+            check::check(file, true)
+        }
+    }
 }
 
 /// Parses `src` and re-renders it in the canonical toylang style, without checking or injecting

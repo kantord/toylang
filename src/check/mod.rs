@@ -14,7 +14,8 @@ mod routing;
 mod types;
 
 use linearity::{
-    StreamBinding, check_linear, field_used, local_used, param_used, prune_unreachable,
+    StreamBinding, check_linear, field_used, local_used, param_used, prune_keep_pub,
+    prune_unreachable,
 };
 use types::{
     TypeEnv, alias_map, check_sig_invariants, check_type_params, constructor_of, enum_map,
@@ -325,7 +326,7 @@ impl Cells<'_> {
     }
 }
 
-pub fn check(file: File) -> Result<tir::Program, Error> {
+pub fn check(file: File, library: bool) -> Result<tir::Program, Error> {
     let File {
         aliases,
         enums: enum_decls,
@@ -421,14 +422,22 @@ pub fn check(file: File) -> Result<tir::Program, Error> {
     funcs.extend(generic_funcs.into_inner());
     let stdin =
         check_result_and_stdin(&body, program_body.span(), input, inputs, &lines_used, dsv)?;
+    // A library has no body to root reachability from: its `pub fn`s are the surface, so
+    // they and everything they call are kept instead of whatever the placeholder body reaches.
+    let funcs = if library {
+        prune_keep_pub(funcs)
+    } else {
+        prune_unreachable(funcs, &body)
+    };
     Ok(tir::Program {
-        funcs: prune_unreachable(funcs, &body),
+        funcs,
         body,
         input: stdin.input,
         inputs: stdin.inputs,
         uses_lines: lines_used.get(),
         dsv: stdin.dsv,
         enums,
+        library,
     })
 }
 
