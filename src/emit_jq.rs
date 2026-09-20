@@ -145,17 +145,20 @@ pub fn emit(program: &Program) -> Result<String, String> {
     // accepts a call to a function defined further down, which is a rule this target does not
     // share. Lua needed forward declarations for the same reason; jq has no way to write one.
     for f in ordered(program)? {
-        // A unary function's argument arrives as `.` and is bound before the body runs; a
-        // nullary one ignores `.` entirely, since it has nothing to bind.
-        out.push_str(&match &f.param {
-            Some(param) => format!(
-                "def {}: . as ${} | {};\n",
-                user(&f.name),
-                user(param),
-                expr(enums, &f.body)
-            ),
-            None => format!("def {}: {};\n", user(&f.name), expr(enums, &f.body)),
-        });
+        match f {
+            // A unary function's argument arrives as `.` and is bound before the body runs; a
+            // nullary one ignores `.` entirely, since it has nothing to bind.
+            Emitted::One(f) => out.push_str(&match &f.param {
+                Some(param) => format!(
+                    "def {}: . as ${} | {};\n",
+                    user(&f.name),
+                    user(param),
+                    expr(enums, &f.body)
+                ),
+                None => format!("def {}: {};\n", user(&f.name), expr(enums, &f.body)),
+            }),
+            Emitted::Group(text) => out.push_str(&text),
+        }
     }
 
     if let Some(fusion) = tir::fusion(program) {
@@ -335,7 +338,9 @@ fn canonical(enums: &Enums, ty: &Type, value: &str) -> String {
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
-        Type::Seq(..) => unreachable!("a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"),
+        Type::Seq(..) => unreachable!(
+            "a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"
+        ),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str | Type::Int | Type::Int64 | Type::Bool => value.to_string(),
         Type::Float => value.to_string(),
@@ -455,22 +460,295 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
     }
 }
 
+/// One slot in callee-before-caller order: a plain function, or a cycle jq's `def` scoping
+/// alone cannot place, rendered whole as a trampolined dispatcher plus one thin wrapper `def`
+/// per member (`fold_cycle`).
+enum Emitted<'a> {
+    One(&'a tir::Func),
+    Group(String),
+}
+
 /// Definitions in callee-before-caller order, or the cycle blocking one: jq's `def` sees only
 /// itself and whatever is already defined above it, with no forward declaration to bridge a
 /// real cycle between two or more named functions (kantord/toylang#79). Self-recursion never
 /// gets stuck here -- a function calling only itself is always immediately ready -- so reaching
 /// the stuck state below means the remaining functions have a genuine cycle among them.
-fn ordered(program: &Program) -> Result<Vec<&tir::Func>, String> {
-    topsort(
-        program.funcs.iter().collect(),
-        |f| f.name.clone(),
-        |f| {
+///
+/// Before refusing, a stuck cycle gets one more chance: `fold_cycle` tries compiling it as a
+/// single accumulator-tail dispatcher rather than separate ordered `def`s (kantord/toylang#79
+/// widened). That succeeds for the cycle the checker's own test pins (three functions each
+/// tail-recursing into the next behind a `+`) and correctly keeps failing for a shape like the
+/// mini-parser-spike's `expr`/`term`/`factor` (`plans/mini-parser-spike.md`), where the next
+/// call's argument depends on how much the previous one consumed -- `acc_step` has no case for
+/// that, so it returns `None` and the original refusal stands.
+fn ordered(program: &Program) -> Result<Vec<Emitted<'_>>, String> {
+    let mut remaining: Vec<&tir::Func> = program.funcs.iter().collect();
+    let mut placed: Vec<String> = Vec::new();
+    let mut out: Vec<Emitted<'_>> = Vec::new();
+    let deps = |f: &&tir::Func| {
+        let mut calls = Vec::new();
+        callees(&f.body, &mut calls);
+        calls
+    };
+    while !remaining.is_empty() {
+        let ready: Vec<usize> = remaining
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| deps(f).iter().all(|c| c == &f.name || placed.contains(c)))
+            .map(|(i, _)| i)
+            .collect();
+        if !ready.is_empty() {
+            for i in ready.into_iter().rev() {
+                let f = remaining.remove(i);
+                placed.push(f.name.clone());
+                out.push(Emitted::One(f));
+            }
+            continue;
+        }
+        let mut progressed = false;
+        for scc in scc_groups(&remaining) {
+            if scc.len() < 2 {
+                continue;
+            }
+            if let Some(rendered) = fold_cycle(&program.enums, &scc) {
+                for f in &scc {
+                    placed.push(f.name.clone());
+                }
+                remaining.retain(|f| !scc.iter().any(|g| g.name == f.name));
+                out.push(Emitted::Group(rendered));
+                progressed = true;
+            }
+        }
+        if progressed {
+            continue;
+        }
+        return Err(cycle_message(
+            &remaining,
+            &|f: &&tir::Func| f.name.clone(),
+            &deps,
+            "named functions",
+        ));
+    }
+    Ok(out)
+}
+
+/// The strongly connected components among `remaining`, by calls that stay inside `remaining`
+/// (a call to something already `placed` is a resolved edge and does not link two components).
+/// Small by construction -- this only ever runs on a stuck topsort remainder -- so plain
+/// reachability per node, not Tarjan, is the right amount of machinery.
+fn scc_groups<'a>(remaining: &[&'a tir::Func]) -> Vec<Vec<&'a tir::Func>> {
+    let names: Vec<&str> = remaining.iter().map(|f| f.name.as_str()).collect();
+    let reach = |start: &str| -> std::collections::HashSet<String> {
+        let mut seen = std::collections::HashSet::new();
+        let mut stack = vec![start.to_string()];
+        while let Some(n) = stack.pop() {
+            if !seen.insert(n.clone()) {
+                continue;
+            }
+            let f = remaining
+                .iter()
+                .find(|f| f.name == n)
+                .expect("n came from remaining");
             let mut calls = Vec::new();
             callees(&f.body, &mut calls);
-            calls
+            for c in calls {
+                if c != n && names.contains(&c.as_str()) {
+                    stack.push(c);
+                }
+            }
+        }
+        seen
+    };
+    let mut groups: Vec<Vec<&tir::Func>> = Vec::new();
+    let mut grouped: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for f in remaining {
+        if grouped.contains(&f.name) {
+            continue;
+        }
+        let fwd = reach(&f.name);
+        let scc: Vec<&tir::Func> = remaining
+            .iter()
+            .filter(|g| fwd.contains(&g.name) && reach(&g.name).contains(&f.name))
+            .copied()
+            .collect();
+        for g in &scc {
+            grouped.insert(g.name.clone());
+        }
+        groups.push(scc);
+    }
+    groups
+}
+
+/// Whether `t` (anywhere inside a member of `group`'s body) calls a member of `group`.
+fn calls_group(t: &Tir, group: &[String]) -> bool {
+    let mut out = Vec::new();
+    callees(t, &mut out);
+    out.iter().any(|c| group.contains(c))
+}
+
+/// Whether `t` is accumulator-tail-recursive into `group`: every path either has no call into
+/// `group` at all -- a base case, added to the running total `acc` reads as -- or is
+/// `term + call`/`call + term` with `term` call-free and `call` a tail recursion into a group
+/// member. This is `tir::has_tail_call` widened by one layer: the call may sit under one
+/// associative `+`, not only be the whole tail, which is what turns `1 + b(n-1)`-shaped mutual
+/// recursion into a single trampolined dispatcher instead of a refusal. Deliberately narrow --
+/// `+` on `Int`/`Int64`/`Float` only, no attempt at a general semiring -- because nothing in
+/// the corpus needs more than the checker's own pinned cycle yet.
+///
+/// `acc` is the jq expression the running total reads as at this point; it grows by one `arith`
+/// wrap each time a `+` layer is crossed, and is threaded down rather than emitted as a separate
+/// `as` binding so a leaf can fold it into its return value in one step.
+fn acc_step(
+    enums: &Enums,
+    group: &[String],
+    dispatcher: &str,
+    acc: &str,
+    t: &Tir,
+) -> Option<String> {
+    match &t.kind {
+        Kind::Call { func, arg } if group.contains(func) => {
+            let arg_expr = arg
+                .as_deref()
+                .map_or_else(|| "null".to_string(), |a| expr(enums, a));
+            Some(format!(
+                "{dispatcher}({{fn: {}, param: {arg_expr}, acc: ({acc})}})",
+                jq_string(func)
+            ))
+        }
+        Kind::Bind {
+            local: local_id,
+            value,
+            body,
+        } => {
+            if calls_group(value, group) {
+                return None;
+            }
+            let inner = acc_step(enums, group, dispatcher, acc, body)?;
+            Some(format!(
+                "({} as {} | {inner})",
+                expr(enums, value),
+                local(*local_id)
+            ))
+        }
+        Kind::Match {
+            subject,
+            arms,
+            partial,
+        } if !*partial => {
+            if calls_group(subject, group) {
+                return None;
+            }
+            if arms.len() == 1 {
+                if arms[0].payload.is_some() {
+                    return None;
+                }
+                return acc_step(enums, group, dispatcher, acc, &arms[0].body);
+            }
+            let mut branches: Vec<(Option<String>, String)> = Vec::new();
+            for arm in arms {
+                if arm.payload.is_some() {
+                    // Kept to the guard-shaped chains the checker's cycle test actually uses;
+                    // a payload arm can stay a later widening if a real program needs it.
+                    return None;
+                }
+                let step = acc_step(enums, group, dispatcher, acc, &arm.body)?;
+                let test = match &arm.guard {
+                    Some(g) if !calls_group(g, group) => Some(expr(enums, g)),
+                    Some(_) => return None,
+                    None => None,
+                };
+                branches.push((test, step));
+            }
+            let mut out = String::from("(");
+            for (i, (test, step)) in branches.iter().enumerate() {
+                match test {
+                    Some(test) => {
+                        let word = if i == 0 { "if" } else { "elif" };
+                        out.push_str(&format!("{word} {test} then {step} "));
+                    }
+                    None => out.push_str(&format!("else {step} end")),
+                }
+            }
+            out.push(')');
+            Some(out)
+        }
+        Kind::Arith {
+            op: BinOp::Add,
+            lhs,
+            rhs,
+        } => match (calls_group(lhs, group), calls_group(rhs, group)) {
+            (false, true) => {
+                let new_acc = arith(&t.ty, BinOp::Add, acc.to_string(), expr(enums, lhs));
+                acc_step(enums, group, dispatcher, &new_acc, rhs)
+            }
+            (true, false) => {
+                let new_acc = arith(&t.ty, BinOp::Add, acc.to_string(), expr(enums, rhs));
+                acc_step(enums, group, dispatcher, &new_acc, lhs)
+            }
+            _ => None,
         },
-        "named functions",
-    )
+        _ => {
+            if calls_group(t, group) {
+                None
+            } else {
+                Some(arith(&t.ty, BinOp::Add, acc.to_string(), expr(enums, t)))
+            }
+        }
+    }
+}
+
+/// Tries to compile `group` -- a real cycle `ordered` cannot place -- as one trampolined
+/// dispatcher instead of refusing: `None` when any member's body is not accumulator-tail-
+/// recursive into the group (`acc_step`), which leaves the original refusal to stand. Every
+/// member must be unary and share the group's return type, the shape the dispatcher's one
+/// `{fn, param, acc}` state relies on.
+fn fold_cycle(enums: &Enums, group: &[&tir::Func]) -> Option<String> {
+    let names: Vec<String> = group.iter().map(|f| f.name.clone()).collect();
+    let ret_ty = &group.first()?.body.ty;
+    if group
+        .iter()
+        .any(|f| f.param.is_none() || &f.body.ty != ret_ty)
+    {
+        return None;
+    }
+    let dispatcher = format!(
+        "tl_run_{}",
+        group
+            .iter()
+            .map(|f| user(&f.name))
+            .collect::<Vec<_>>()
+            .join("_")
+    );
+    let branches: Vec<(String, String, String)> = group
+        .iter()
+        .map(|f| {
+            let param_var = user(f.param.as_ref().expect("checked above"));
+            let step = acc_step(enums, &names, &dispatcher, "$acc", &f.body)?;
+            Some((f.name.clone(), param_var, step))
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    let mut body = String::new();
+    for (i, (name, param_var, step)) in branches.iter().enumerate() {
+        let word = if i == 0 { "if" } else { "elif" };
+        body.push_str(&format!(
+            "{word} $fn == {} then ($param as ${param_var} | {step})\n  ",
+            jq_string(name)
+        ));
+    }
+    body.push_str("else error(\"unreachable: bad dispatcher tag\")\n  end");
+
+    let mut out = format!(
+        "def {dispatcher}($state):\n  $state as {{fn: $fn, param: $param, acc: $acc}}\n  | {body};\n"
+    );
+    for (name, param_var, _) in &branches {
+        out.push_str(&format!(
+            "def {}: . as ${param_var} | {dispatcher}({{fn: {}, param: ${param_var}, acc: 0}});\n",
+            user(name),
+            jq_string(name)
+        ));
+    }
+    Some(out)
 }
 
 /// Callee-before-caller order over a list of named things, or the cycle blocking one. `name`
@@ -761,7 +1039,12 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // `[...]` survivor array is never materialized. Every other consumer
             // still gets the dense array from `expr`, so this is the one lazy path.
             Builtin::Length => {
-                if let Kind::Select { source, param, pred } = &arg.kind {
+                if let Kind::Select {
+                    source,
+                    param,
+                    pred,
+                } = &arg.kind
+                {
                     format!(
                         "(reduce ({}[] | . as {} | select({})) as $x (0; . + 1))",
                         expr(enums, source),
@@ -771,7 +1054,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 } else {
                     format!("({} | length)", expr(enums, arg))
                 }
-            },
+            }
             // jq's own `.[1:]` on an empty array is `[]`, not null; toylang's tail needs the
             // tagged Opt shape instead, so both cases are spelled out rather than borrowed.
             Builtin::Tail => {
@@ -923,7 +1206,12 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // never an array); a forward index that runs past the end is `null`, the same
             // was-not-there answer `.[i]` gives, so the Opt tagging is unchanged.
             if *depth == 0 {
-                if let Kind::Select { source, param, pred } = &base.kind {
+                if let Kind::Select {
+                    source,
+                    param,
+                    pred,
+                } = &base.kind
+                {
                     let stream = format!(
                         "{}[] | . as {} | select({})",
                         expr(enums, source),

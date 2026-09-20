@@ -1,0 +1,21 @@
+# `a` calls `b` calls `c` calls `a`, a real cycle between three named functions (kantord/toylang#79),
+# the shape `plans/mini-parser-spike.md` found in a recursive-descent parser's own
+# `expr`/`term`/`factor`/`group` chain. jq's `def` has no forward declaration to bridge a cycle
+# directly, but every member here tail-recurses into the next behind a `+`, so `emit_jq::fold_cycle`
+# compiles the whole group as one trampolined dispatcher instead of refusing.
+program: |
+  fn a(n: Int) -> Int = n | . <= 0 -> 0 or 1 + b(n - 1)
+
+
+  fn b(n: Int) -> Int = n | . <= 0 -> 0 or 1 + c(n - 1)
+
+
+  fn c(n: Int) -> Int = n | . <= 0 -> 0 or 1 + a(n - 1)
+
+
+  a 5
+
+output: |
+  5
+
+node_types: [application, arith.add, arith.sub, compare.le, int, local, match, pipe, var]

@@ -1,7 +1,10 @@
 //! The jq backend against the things it alone can say.
 //!
-//! Behaviour lives in the corpus like every other backend. What is here is the two rules jq
-//! forced that the others did not.
+//! Behaviour lives in the corpus like every other backend. What is here is the rules jq forced
+//! that the others did not: a real cycle between named functions or recursive-enum printers is
+//! folded into a trampolined dispatcher when every member is accumulator-tail-recursive into the
+//! group (`emit_jq::fold_cycle`, kantord/toylang#79 widened), and refused, as before, when it
+//! is not.
 
 const FORWARD: &str = r#"
 fn outer(x: Str) -> Str = inner(x) + "!";
@@ -32,55 +35,52 @@ fn an_optional_string_prints_as_json() {
     );
 }
 
-/// `a` calls `b` calls `c` calls `a`: a real cycle between three named functions, the shape
-/// `plans/mini-parser-spike.md` found in a recursive-descent parser's own
-/// `expr`/`term`/`factor`/`group` chain (kantord/toylang#77, kantord/toylang#79). The checker
-/// accepts it -- signatures are collected before any body is checked, so a call to a function
-/// defined later, or back around a cycle, is no different from any forward reference.
-const CYCLE: &str = r#"
-fn a(n: Int) -> Int = n | . <= 0 -> 0 or 1 + b(n - 1);
-fn b(n: Int) -> Int = n | . <= 0 -> 0 or 1 + c(n - 1);
-fn c(n: Int) -> Int = n | . <= 0 -> 0 or 1 + a(n - 1);
+/// `expr`/`term`/`factor`/`group` chain (kantord/toylang#77, kantord/toylang#79), narrowed to
+/// the associative-accumulator case `fold_cycle` actually closes. Now a corpus case
+/// (`tests/corpus/mutual_recursion_cycle.yaml`) since jq agrees with the other six; the parser's
+/// own adaptive shape -- where the next call's argument depends on how much the previous one
+/// consumed, not just on the original input -- is not this, and stays out of reach.
+///
+/// A cycle jq cannot fold, kept alongside the one it now can: `*` is not `+`, so `acc_step`
+/// (only `Int`/`Int64`/`Float` addition, deliberately) never matches this shape, and `ordered`
+/// falls through to the same refusal as before folding existed.
+const UNFOLDABLE_CYCLE: &str = r#"
+fn a(n: Int) -> Int = n | . <= 1 -> 1 or 2 * b(n - 1);
+fn b(n: Int) -> Int = n | . <= 1 -> 1 or 2 * a(n - 1);
 
-a(5)
+a(4)
 "#;
 
-/// The six backends this cycle does not defeat: jq's `def` scoping is the one thing about this
-/// program that is backend-specific, so it cannot live in the corpus (kantord/toylang#79's own
-/// AGENTS.md rule -- every corpus case runs on every backend, and jq never can here). This pins
-/// the same "every backend agrees" claim by hand, over `Backend::ALL` minus `Jq`.
+/// `ordered` cannot find any definition order where every function's callees are already in
+/// scope, and `fold_cycle` cannot fold `*` into the `+`-only accumulator dispatcher, so this
+/// still refuses rather than emitting jq source that would fail to compile with an error naming
+/// a mangled internal name out of context (kantord/toylang#79).
 #[test]
-fn mutual_recursion_runs_and_agrees_on_every_backend_but_jq() {
-    let mut outputs: Vec<(&str, String)> = Vec::new();
-    for backend in toylang::Backend::ALL {
-        if backend == toylang::Backend::Jq {
-            continue;
-        }
-        match toylang::run_on(CYCLE, None, backend) {
-            Ok(out) => outputs.push((backend.name(), out)),
-            Err(e) => panic!("{} could not run the cycle: {e}", backend.name()),
-        }
-    }
-    let (_, first) = &outputs[0];
-    assert_eq!(first, "5\n");
-    for (name, out) in &outputs {
-        assert_eq!(out, first, "{name} disagreed with {}", outputs[0].0);
-    }
+fn a_cycle_fold_cannot_close_is_still_refused_cleanly() {
+    let p = toylang::compile(UNFOLDABLE_CYCLE).unwrap();
+    let err = toylang::emit_jq::emit(&p).unwrap_err();
+    assert!(err.contains('a') && err.contains('b'), "{err}");
+    insta::assert_snapshot!(err);
 }
 
-/// The cycle jq alone cannot take: `ordered` cannot find any definition order where every
-/// function's callees are already in scope, so it refuses rather than emitting jq source that
-/// would fail to compile with an error naming a mangled internal name out of context
-/// (kantord/toylang#79).
+/// The jq-only counterpart to `tests/corpus/tail_recursion_deep.yaml`: `fold_cycle`'s dispatcher
+/// is itself a self-tail-recursive jq `def` (`if/elif/.../end` returning a tail call to itself),
+/// so jq's own TCO applies to it exactly as it would to a hand-written loop, and 100k levels of
+/// three-way mutual recursion runs to completion. This is jq-only, not a corpus case, because
+/// `fold_cycle` is jq's own answer to jq's own def-ordering limit (kantord/toylang#79) -- the
+/// other backends never refused this cycle in the first place, and they still just recurse
+/// through it natively rather than trampolining, so they do not get the same constant-stack
+/// guarantee for it that self-tail-recursion already gives every backend.
 #[test]
-fn a_genuine_cycle_between_named_functions_is_refused_cleanly() {
-    let p = toylang::compile(CYCLE).unwrap();
-    let err = toylang::emit_jq::emit(&p).unwrap_err();
-    assert!(
-        err.contains('a') && err.contains('b') && err.contains('c'),
-        "{err}"
+fn a_folded_cycle_runs_deep_in_constant_stack() {
+    let src = "fn a(n: Int) -> Int = n | . <= 0 -> 0 or 1 + b(n - 1);\n\
+               fn b(n: Int) -> Int = n | . <= 0 -> 0 or 1 + c(n - 1);\n\
+               fn c(n: Int) -> Int = n | . <= 0 -> 0 or 1 + a(n - 1);\n\n\
+               a(100000)\n";
+    assert_eq!(
+        toylang::run_on(src, None, toylang::Backend::Jq).unwrap(),
+        "100000\n"
     );
-    insta::assert_snapshot!(err);
 }
 
 /// Two enums that reach each other only through `Vec` type-check legally (kantord/toylang#94),
@@ -210,7 +210,10 @@ fn float_printing_matches_at_notation_boundaries() {
 /// through a named `_text` printer rather than an inline expansion.
 #[test]
 fn float_inside_a_container_agrees_with_js_at_every_position() {
-    assert_eq!(agree_jq_js("[1.0 / 0.0, 0.0 / 0.0]\n", None), "[Infinity,NaN]\n");
+    assert_eq!(
+        agree_jq_js("[1.0 / 0.0, 0.0 / 0.0]\n", None),
+        "[Infinity,NaN]\n"
+    );
     assert_eq!(
         agree_jq_js("{a: 1e21, b: 1e-7, s: \"x\"}\n", None),
         "{\"a\":1e+21,\"b\":1e-7,\"s\":\"x\"}\n"
