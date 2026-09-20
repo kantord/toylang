@@ -1,10 +1,18 @@
-Board row `float-builtins-build-front` (RESUME). Three earlier attempts wrote almost the whole row; their combined work is saved as a patch in the repo: plans/wip/float-builtins-build-front.patch. YOUR FIRST TOOL CALL: `git apply --3way plans/wip/float-builtins-build-front.patch && git rm -q --cached plans/wip/float-builtins-build-front.patch; rm plans/wip/float-builtins-build-front.patch` (if --3way reports conflicts, resolve them by keeping BOTH sides; main has since gained pipe_through backend landings in src/backend_support.rs). Do NOT re-implement anything the patch already does.
+A previous dispatch completed this task, but landing the branch on main
+FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 1 of 3). The exact evidence:
 
-What the patch does (do not redo): `Builtin::Sqrt` / `Builtin::FloatOf` in src/tir.rs, type rules in src/check/mod.rs (`sqrt: Float -> Float`, `float: Int|Float -> Float`), src/tags.rs, build.rs, src/backend_support.rs landings with empty `built_on`, refusal arms in src/emit_rs.rs, tests/tag_coverage.rs, tests/unbuilt_arms.rs, docs/reference/builtins/sqrt.md and float.md, the ADR 0010 sentence, and a rename of the user-defined `sqrt` to `sqrt_newton` in benches/programs/n-body.toy, benches/programs/spectral-norm.toy, tests/corpus/n_body.yaml, tests/corpus/spectral_norm.yaml (needed: a user `fn sqrt` now collides with the builtin).
+error: patch failed: src/backend_support.rs:43
+error: src/backend_support.rs: patch does not apply
+error: patch failed: tests/tag_coverage.rs:25
+error: tests/tag_coverage.rs: patch does not apply
+hint: Use 'git am --show-current-patch=diff' to see the failed patch
+hint: When you have resolved this problem, run "git am --continue".
+hint: If you prefer to skip this patch, run "git am --skip" instead.
+hint: To restore the original branch and stop patching, run "git am --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Applying: agent_loop.py output
+Patch failed at 0001 agent_loop.py output
 
-What is still failing (the ONLY known failure): `cargo nextest run --test fmt_examples` -> `every_corpus_program_is_already_formatted`. The renamed `fn sqrt_newton(x: Float) -> Float = newton { x: x, y: (x + 1.0) / 2.0 }` line in tests/corpus/n_body.yaml (and the matching lines in tests/corpus/spectral_norm.yaml) is wider than the formatter allows; the .toy files already carry the wrapped form
-    fn sqrt_newton(x: Float) -> Float =
-      newton { x: x, y: (x + 1.0) / 2.0 }
-Make the `program:` blocks in the two yaml files byte-identical in layout to what `toylang fmt` prints (the fmt_examples test failure message shows the expected text; copy it). Edit with the edit tool, do not rewrite files with scripts. Also `benches/programs/spectral-norm.toy` line ~3 comment mentions sqrt_newton(u.v / v.v): put the plain word `sqrt` back in that COMMENT only (it is prose about the math).
-Then run `just check`; fix only what it reports. site/public/corpus.json is a generated file the patch already updated; if a test says it is stale, regenerate it the way the failing test's message says.
-Done-gate: `just check` passes, `sqrt(2.0)` / `float(1) + 0.5` type-check. Stop as soon as it is green.
+
+Your job now is ONLY to make this branch land: fix whatever the evidence above
+shows failing, and re-run the verify command yourself. Do not start new feature work.
