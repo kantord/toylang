@@ -5,11 +5,12 @@ prints. There are no statements, no `main`, and no print call: output needs no s
 because the program is the expression.
 
 ```toylang
+# fmt: syntax-example
 # Comments start with `#` and run to the end of the line.
-type Pair = { a: Int, b: Int }
+type Pair = { a: Int, b: Int };
 
 
-fn total(p: Pair) -> Int = p.a + p.b
+fn total(p: Pair) -> Int = p.a + p.b;
 
 
 { sum: total { a: 1, b: 2 } }

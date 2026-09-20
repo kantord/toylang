@@ -37,7 +37,8 @@ lifts the refusal.
 two share the read and differ only in what follows it.
 
 ```toylang
-fn twice(x: Int) -> Int = x * 2
+# fmt: syntax-example
+fn twice(x: Int) -> Int = x * 2;
 
 
 twice(parse stdin)
@@ -118,7 +119,8 @@ of `stdin | map(parse(.))` likewise. The substitute can carry state of its own, 
 is pasted whole:
 
 ```toylang
-fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + "!")
+# fmt: syntax-example
+fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + "!");
 
 
 jsonlines(shout stdin)

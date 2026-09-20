@@ -26,7 +26,8 @@ max([-5, -1, -3])
 An empty `Vec` yields the absent `Opt`, which prints as `null`:
 
 ```toylang
-fn nothing() -> Vec<Int> = []
+# fmt: syntax-example
+fn nothing() -> Vec<Int> = [];
 
 
 max nothing()

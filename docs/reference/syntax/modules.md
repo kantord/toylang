@@ -6,7 +6,8 @@ the same shape [the prelude](../prelude/index.md) has. The module below lives at
 `tests/modules/double.toy`:
 
 ```toy
-pub fn handle(n: Int) -> Int = n * 2
+# fmt: syntax-example
+pub fn handle(n: Int) -> Int = n * 2;
 ```
 
 ```toylang
@@ -42,13 +43,14 @@ modules `tests/modules/celsius.toy` (`pub fn handle(c: Int) -> Int = c + 273`) a
 `tests/modules/kelvin.toy` (`pub fn handle(k: Int) -> Int = k`):
 
 ```toylang
+# fmt: syntax-example
 enum Temp { Celsius(Int), Kelvin(Int) }
 
 
 fn to_kelvin(t: Temp) -> Int =
   t
   | Celsius -> @("tests/modules/celsius.toy") or
-    Kelvin -> @("tests/modules/kelvin.toy")
+    Kelvin -> @("tests/modules/kelvin.toy");
 
 
 [to_kelvin Temp.celsius(27), to_kelvin Temp.kelvin(300)]
@@ -67,13 +69,14 @@ non-`pub` one is a helper for its own file, callable from that module's `handle`
 anywhere else. `tests/modules/greet.toy`:
 
 ```toy
-fn exclaim(s: Str) -> Str = s + "!"
+# fmt: syntax-example
+fn exclaim(s: Str) -> Str = s + "!";
 
 
-pub fn shout(s: Str) -> Str = exclaim(exclaim s)
+pub fn shout(s: Str) -> Str = exclaim(exclaim s);
 
 
-pub fn handle(name: Str) -> Str = exclaim("hello " + name)
+pub fn handle(name: Str) -> Str = exclaim("hello " + name);
 ```
 
 ```toylang
@@ -99,11 +102,12 @@ program having to tell them apart, which is what a set of route handlers written
 tends to do. `tests/modules/shapes.toy`:
 
 ```toy
+# fmt: syntax-example
 pub enum Shape { Circle { r: Int }, Square { side: Int } }
 
 
 pub fn handle(s: Shape) -> Int =
-  s | Circle { r } -> r * r * 3 or Square { side } -> side * side
+  s | Circle { r } -> r * r * 3 or Square { side } -> side * side;
 ```
 
 ```toylang

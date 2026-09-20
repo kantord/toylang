@@ -7,8 +7,9 @@ ordinary [enum](enum.md) with two type parameters -- `enum Result<T, E> { Ok(T),
 the single-key wrapper rather than collapsing one side to `null`.
 
 ```toylang
+# fmt: syntax-example
 fn safe_div(pair: { a: Int, b: Int }) -> Result<Int, Str> =
-  pair | .b != 0 -> ok(pair.a / pair.b) or err "division by zero"
+  pair | .b != 0 -> ok(pair.a / pair.b) or err "division by zero";
 
 
 { good: safe_div { a: 10, b: 2 }, bad: safe_div { a: 10, b: 0 } }

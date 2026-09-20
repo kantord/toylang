@@ -6,7 +6,8 @@ arrives; its type is `Sink`, and a function may declare `Sink` as its return typ
 program's output loop can live behind a name:
 
 ```toylang
-fn out(v: Vec<Int>) -> Sink = jsonlines v
+# fmt: syntax-example
+fn out(v: Vec<Int>) -> Sink = jsonlines v;
 
 
 out([1, 2])

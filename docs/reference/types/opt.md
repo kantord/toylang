@@ -22,7 +22,8 @@ absent every backend refuses at runtime (see [unwrap](../operators/unwrap.md)).
 which is what lets it hand the absence back instead of being forced to insist:
 
 ```toylang
-fn head(v: Vec<Int>) -> Opt<Int> = v[0]
+# fmt: syntax-example
+fn head(v: Vec<Int>) -> Opt<Int> = v[0];
 
 
 str head([1, 2, 3])!
@@ -56,7 +57,8 @@ memory. `!` peels exactly one level, so it can tell them apart. Unwrapping a `so
 survives, because the outer tag says the value is there, and yields the inner absence:
 
 ```toylang
-fn shallow() -> Opt<Opt<Int>> = some none
+# fmt: syntax-example
+fn shallow() -> Opt<Opt<Int>> = some none;
 
 
 shallow()!
@@ -69,7 +71,8 @@ null
 while unwrapping a bare `none` refuses, because there is no outer value to yield:
 
 ```toylang
-fn shallow() -> Opt<Opt<Int>> = none
+# fmt: syntax-example
+fn shallow() -> Opt<Opt<Int>> = none;
 
 
 shallow()!
@@ -95,13 +98,14 @@ value inside an absent-looking one and a value that is absent all the way down p
 identically:
 
 ```toylang
-fn deep() -> Opt<Opt<Int>> = some(some 7)
+# fmt: syntax-example
+fn deep() -> Opt<Opt<Int>> = some(some 7);
 
 
-fn shallow() -> Opt<Opt<Int>> = some none
+fn shallow() -> Opt<Opt<Int>> = some none;
 
 
-fn absent() -> Opt<Opt<Int>> = none
+fn absent() -> Opt<Opt<Int>> = none;
 
 
 { a: deep(), b: shallow(), c: absent() }

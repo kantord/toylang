@@ -25,14 +25,15 @@ The rules, each of which the checker enforces:
   came in through its parameter, so the pipeline stays one chain from source to sink.
 
 ```toylang
-fn conjure(n: Int) -> Stream<Int> = stdin | map n
+# fmt: syntax-example
+fn conjure(n: Int) -> Stream<Int> = stdin | map n;
 
 
 0
 ```
 
 ```error
-`conjure` returns Stream<Int> without taking a stream; a stream is born only at a source (at byte 0)
+`conjure` returns Stream<Int> without taking a stream; a stream is born only at a source (at byte 22)
 ```
 
 What the chain buys is fusion: a pipeline of the right shape compiles to a read-one,

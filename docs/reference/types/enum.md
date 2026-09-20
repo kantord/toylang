@@ -34,17 +34,18 @@ Consumption is the [match](../operators/match.md), which is closed-world: every 
 handled, or an `any()` arm for the rest. A program whose match misses a variant is refused:
 
 ```toylang
+# fmt: syntax-example
 enum Shape { Point, Circle { r: Int } }
 
 
-fn area_ish(s: Shape) -> Int = s | Circle { r } -> r * r
+fn area_ish(s: Shape) -> Int = s | Circle { r } -> r * r;
 
 
 area_ish Shape.point
 ```
 
 ```error
-a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 77)
+a match over `Shape` must cover every variant or end in a default; missing `Point` (at byte 99)
 ```
 
 Because the wire shape is plain JSON, an enum types input directly, and the input is

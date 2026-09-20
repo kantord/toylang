@@ -26,7 +26,8 @@ false
 An empty `Vec` is vacuously true -- there is no false entry to refute it:
 
 ```toylang
-fn no_misses() -> Vec<Bool> = []
+# fmt: syntax-example
+fn no_misses() -> Vec<Bool> = [];
 
 
 all no_misses()
