@@ -402,12 +402,6 @@
   needs: [float-builtins-build-backends-b]
   status: todo
 
-- id: js-build-pub-exports-build
-  title: 'Ruled 2026-09-20 (forest js-build-artifact-shape): `toylang build FILE js` distinguishes library from app. LIBRARY (a file of declarations with no trailing expression): the `.js` is an ES module that exports exactly the `pub fn`s (bare `export` on those, none on the rest) and the `.d.ts` declares exactly those, so `.js` and `.d.ts` agree; any `require("fs")` the module needs becomes an `import`. APP (a trailing expression): the `.js` stays the runnable script `toylang run FILE js` uses and exports nothing, and the `.d.ts` declares no `export function` for non-`pub` functions (type aliases and enums stay). Non-`pub` functions are never exported in either case. Verified facts to start from: today the `.d.ts` declares `export function v_*` for every reachable function and the `.js` exports nothing (docs/reference/cli/build.md records the gap); node 26 runs an `export`-prefixed `.js` without package.json; `target: web` needs `type="module"` for an ES-module artifact. Not built: `.d.ts` types for an app entry point (open, see the applied line in docs/.grill/js-build-artifact-shape.forest.yaml). Update docs/reference/cli/build.md. DISPATCH 2026-09-20 (d793772a): STUCK, 2x max_turns, 0 edits (all exploration); narrowed to STEP A only (tir::Func.is_pub + pub-only `.d.ts`), library mode split to js-build-pub-exports-build-lib.'
-  kind: build
-  needs: []
-  status: delegated
-
 - id: js-build-pub-exports-build-lib
   title: 'Step B of the js-build-pub-exports-build ruling (forest js-build-artifact-shape, applied 2026-09-20): LIBRARY mode. `compile_in` (src/lib.rs ~104) only calls `parse`, which requires a trailing expression, so a declarations-only file is rejected today; make `toylang build FILE js` accept it (fall back to `parse_module` when there is no trailing expression, carry a library flag on the tir Program), emit the `.js` as an ES module with bare `export` on exactly the `pub fn`s and `require("fs")` becoming `import`, keep APP `.js` byte-identical to `toylang run FILE js`; update docs/reference/cli/build.md. Needs step A (tir::Func.is_pub + pub-only `.d.ts`). Split further if the brief says >150 lines: (1) compile_in/Program flag, (2) emit_with export prefix + import.'
   kind: build
