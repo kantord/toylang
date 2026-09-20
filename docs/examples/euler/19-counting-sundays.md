@@ -12,17 +12,18 @@ backend runs in constant stack
 ([kantord/toylang#141](https://github.com/kantord/toylang/issues/141)).
 
 ```toylang
-type State = { month: Int, year: Int, weekday: Int, count: Int }
+# fmt: syntax-example
+type State = { month: Int, year: Int, weekday: Int, count: Int };
 
 
 fn is_leap(year: Int) -> Bool =
-  year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+  year % 4 == 0 and (year % 100 != 0 or year % 400 == 0);
 
 
 fn days_in_month({ month, year }: { month: Int, year: Int }) -> Int =
   month == 2 and is_leap(year)
   | . -> 29 or
-    [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]!
+    [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]!;
 
 
 fn month_advance({ month, year, weekday, count }: State) -> State =
@@ -32,13 +33,13 @@ fn month_advance({ month, year, weekday, count }: State) -> State =
     weekday:
       (weekday + days_in_month { month: month, year: year }) % 7,
     count: count + (year >= 1901 and weekday == 0 | . -> 1 or 0)
-  }
+  };
 
 
 fn run_months({ state, left }: { state: State, left: Int }) -> Int =
   left
   | . == 0 -> state.count or
-    run_months { state: month_advance state, left: left - 1 }
+    run_months { state: month_advance state, left: left - 1 };
 
 
 run_months {

@@ -16,8 +16,9 @@ that far; the point of checking all four directions is that the real answer usua
 diagonal.
 
 ```toylang
+# fmt: syntax-example
 fn get({ g, r, c }: { g: Vec<Vec<Int>>, r: Int, c: Int }) -> Int =
-  g[r]![c]!
+  g[r]![c]!;
 
 
 fn four(
@@ -31,7 +32,7 @@ fn four(
 ) -> Int =
   get { g: g, r: r, c: c } * get { g: g, r: r + dr, c: c + dc } *
     get { g: g, r: r + 2 * dr, c: c + 2 * dc } *
-    get { g: g, r: r + 3 * dr, c: c + 3 * dc }
+    get { g: g, r: r + 3 * dr, c: c + 3 * dc };
 
 
 fn row_products(
@@ -46,7 +47,7 @@ fn row_products(
 ) -> Vec<Int> =
   collect(range cmax)
   | select(. >= cmin)
-  | map(four { g: g, r: r, c: ., dr: dr, dc: dc })
+  | map(four { g: g, r: r, c: ., dr: dr, dc: dc });
 
 
 fn direction(
@@ -71,7 +72,7 @@ fn direction(
           cmax: cmax
         }
       )
-  )
+  );
 
 
 fn largest_product(g: Vec<Vec<Int>>) -> Int =
@@ -82,7 +83,7 @@ fn largest_product(g: Vec<Vec<Int>>) -> Int =
   let diagonal = direction { g: g, dr: 1, dc: 1, rmax: rows - 3, cmin: 0, cmax: cols - 3 }
   let antidiagonal = direction { g: g, dr: 1, dc: -1, rmax: rows - 3, cmin: 3, cmax: cols }
 
-  max(flatten([right, down, diagonal, antidiagonal]))!
+  max(flatten([right, down, diagonal, antidiagonal]))!;
 
 
 largest_product(parse stdin)

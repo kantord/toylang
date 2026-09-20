@@ -10,7 +10,8 @@ side of the ring. Summed, the `12i` and one `2i`-multiple's worth of cross terms
 separate lookups, and `sum` adds the 500 rings to the centre's `1`.
 
 ```toylang
-fn ring_sum(i: Int) -> Int = 4 * (2 * i + 1) * (2 * i + 1) - 12 * i
+# fmt: syntax-example
+fn ring_sum(i: Int) -> Int = 4 * (2 * i + 1) * (2 * i + 1) - 12 * i;
 
 
 1 + sum(collect(range 501) | select(. >= 1) | map ring_sum(.))
