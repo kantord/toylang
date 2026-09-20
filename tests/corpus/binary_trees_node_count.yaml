@@ -10,16 +10,17 @@
 # from the task's plain description (build a tree, count nodes), not copied from any reference
 # source.
 program: |
+  # fmt: syntax-example
   enum Tree { Leaf, Node(Vec<Tree>) }
 
 
   fn build(depth: Int) -> Tree =
     depth
-    | . == 0 -> Tree.leaf or Tree.node([build(. - 1), build(. - 1)])
+    | . == 0 -> Tree.leaf or Tree.node([build(. - 1), build(. - 1)]);
 
 
   fn count(t: Tree) -> Int =
-    t | Leaf -> 1 or Node -> 1 + count(.[0]!) + count(.[1]!)
+    t | Leaf -> 1 or Node -> 1 + count(.[0]!) + count(.[1]!);
 
 
   count build(parse stdin)

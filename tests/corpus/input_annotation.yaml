@@ -3,7 +3,8 @@
 # `input <type>` annotation form (issue #150); the program was migrated to `parse(stdin)`
 # with the stdin redesign (gh:172) and the case now pins that the signature alone is enough.
 program: |
-  fn f(p: { x: Int, y: Int }) -> Int = p.x * 2 + p.y * 3
+  # fmt: syntax-example
+  fn f(p: { x: Int, y: Int }) -> Int = p.x * 2 + p.y * 3;
 
 
   f(parse stdin)

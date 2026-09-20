@@ -1,7 +1,8 @@
 # A minus directly on a literal is part of the literal at this width too, so a negative that
 # no Int could hold is writable wherever an Int64 is expected.
 program: |
-  fn owed() -> Int64 = -1800000000000
+  # fmt: syntax-example
+  fn owed() -> Int64 = -1800000000000;
 
 
   owed() - 43

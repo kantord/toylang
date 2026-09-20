@@ -3,11 +3,12 @@
 # spelled around the language's absence -- a conditional for the range, a comparison against a
 # Bool that is one (`!= (1 == 1)`) for the complement -- which is what those keywords retired.
 program: |
+  # fmt: syntax-example
   fn is_digit(c: Char) -> Bool =
-    c >= chars("0")[0]! and c <= chars("9")[0]!
+    c >= chars("0")[0]! and c <= chars("9")[0]!;
 
 
-  fn is_not_digit(c: Char) -> Bool = not is_digit(c)
+  fn is_not_digit(c: Char) -> Bool = not is_digit(c);
 
 
   {

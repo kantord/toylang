@@ -3,10 +3,11 @@
 # variant list is re-derived per instantiation, the parameter substituted, and the payload of
 # `leaf` differs between them.
 program: |
+  # fmt: syntax-example
   enum Tree<T> { Node(Vec<Tree<T>>), Leaf(T) }
 
 
-  fn label(t: Tree<Str>) -> Str = t | Node -> "node" or Leaf -> .
+  fn label(t: Tree<Str>) -> Str = t | Node -> "node" or Leaf -> .;
 
 
   {

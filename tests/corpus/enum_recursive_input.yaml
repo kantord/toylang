@@ -9,10 +9,11 @@
 # both of an enum's wire shapes (ADR 0009) appear inside the recursion rather than only the
 # single-key one.
 program: |
+  # fmt: syntax-example
   enum Json { Arr(Vec<Json>), Num(Int), Null }
 
 
-  fn json(j: Json) -> Json = j
+  fn json(j: Json) -> Json = j;
 
 
   json(parse stdin)

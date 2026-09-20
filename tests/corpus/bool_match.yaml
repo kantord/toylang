@@ -3,7 +3,8 @@
 # pattern arms to the guard chain every backend already runs, so a computed Bool and a literal
 # one dispatch the same way.
 program: |
-  fn name(b: Bool) -> Str = b | True -> "yes" or False -> "no"
+  # fmt: syntax-example
+  fn name(b: Bool) -> Str = b | True -> "yes" or False -> "no";
 
 
   [name true, name false, name(1 == 2)]

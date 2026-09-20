@@ -3,10 +3,11 @@
 # argument, constructed by ordinary application, and bound whole to `.` inside its arm, since
 # there are no fields to destructure.
 program: |
+  # fmt: syntax-example
   enum Temp { Unknown, Celsius(Int) }
 
 
-  fn warmer(t: Temp) -> Int = t | Celsius -> . + 1 or Unknown -> 0
+  fn warmer(t: Temp) -> Int = t | Celsius -> . + 1 or Unknown -> 0;
 
 
   { a: warmer(celsius 21), b: warmer Temp.unknown, raw: celsius 21 }

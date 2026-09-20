@@ -1,5 +1,6 @@
 program: |
-  fn twice_over(x: Int) -> Int = x
+  # fmt: syntax-example
+  fn twice_over(x: Int) -> Int = x;
 
 
   twice_over 42
