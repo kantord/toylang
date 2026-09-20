@@ -3298,3 +3298,9 @@
   kind: build
   needs: []
   status: done
+
+- id: float-sqrt-and-int-to-float-decide
+  title: 'The second benchmark wave (n-body, spectral-norm, mandelbrot) had to hand-write a Newton square root in toylang and carry parallel Int and Float loop counters, because there is no `sqrt` and no `Int -> Float` bridge (`i64` is the only numeric conversion). Decide which Float builtins the language admits first (sqrt at least; the parallel basis ruling on Q23 is the frame) and the spelling of the Int-to-Float conversion. plans/benchmark-plan.md records the workarounds. Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: done
