@@ -402,9 +402,9 @@
   needs: [float-builtins-build-backends-b]
   status: todo
 
-- id: js-build-exports-match-dts-decide
-  title: '`toylang build FILE js` writes a `.d.ts` declaring `export function v_*` next to a `.js` that exports nothing: it is a script that runs the program on load (verified under node 24: `import * as m` runs the program and exposes only `default`; `require` gives `{}`), so `tsc` only accepts a consumer because `moduleResolution: bundler` resolves to the `.d.ts`. Decide what the JS artifact is -- a runnable script, an ES module exporting the functions, or both under different flags -- before the `.d.ts` is made truthful. Found by the CLI docs pass (docs/reference/cli/build.md records the gap). Mark done when ruled.'
-  kind: decide
+- id: js-build-pub-exports-build
+  title: 'Ruled 2026-09-20 (forest js-build-artifact-shape): `toylang build FILE js` distinguishes library from app. LIBRARY (a file of declarations with no trailing expression): the `.js` is an ES module that exports exactly the `pub fn`s (bare `export` on those, none on the rest) and the `.d.ts` declares exactly those, so `.js` and `.d.ts` agree; any `require("fs")` the module needs becomes an `import`. APP (a trailing expression): the `.js` stays the runnable script `toylang run FILE js` uses and exports nothing, and the `.d.ts` declares no `export function` for non-`pub` functions (type aliases and enums stay). Non-`pub` functions are never exported in either case. Verified facts to start from: today the `.d.ts` declares `export function v_*` for every reachable function and the `.js` exports nothing (docs/reference/cli/build.md records the gap); node 26 runs an `export`-prefixed `.js` without package.json; `target: web` needs `type="module"` for an ES-module artifact. Not built: `.d.ts` types for an app entry point (open, see the applied line in docs/.grill/js-build-artifact-shape.forest.yaml). Update docs/reference/cli/build.md.'
+  kind: build
   needs: []
   status: todo
 

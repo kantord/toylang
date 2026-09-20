@@ -3311,3 +3311,9 @@
   kind: build
   needs: []
   status: done
+
+- id: js-build-exports-match-dts-decide
+  title: '`toylang build FILE js` writes a `.d.ts` declaring `export function v_*` next to a `.js` that exports nothing: it is a script that runs the program on load (verified under node 24: `import * as m` runs the program and exposes only `default`; `require` gives `{}`), so `tsc` only accepts a consumer because `moduleResolution: bundler` resolves to the `.d.ts`. Decide what the JS artifact is -- a runnable script, an ES module exporting the functions, or both under different flags -- before the `.d.ts` is made truthful. Found by the CLI docs pass (docs/reference/cli/build.md records the gap). Mark done when ruled.'
+  kind: decide
+  needs: []
+  status: done
