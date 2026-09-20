@@ -1,10 +1,10 @@
 # The Fold trait's impl for Vec<Int> ships through the prelude, reachable only via colon-call
 # dispatch (gh:174: a trait method has no plain-call spelling). `identity`/`step` take no
 # receiver value that means anything on its own (identity() -> Self has nowhere to put one,
-# step's own parameter is already the whole {acc, x} record), so the receiver's only job is
+# step's own parameter is already the whole {acc, item} record), so the receiver's only job is
 # picking the impl by type -- any Vec<Int> value works, its own contents are irrelevant.
 program: |
-  [3]:step({ acc: [3]:identity(), x: 3 })
+  [3]:step({ acc: [3]:identity(), item: 3 })
 output: |
   [3]
 

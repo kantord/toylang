@@ -150,7 +150,7 @@ fn trait_impl_and_alias_parse_in_a_module() {
 #[test]
 fn an_impl_block_synthesizes_its_methods_as_functions() {
     let module = toylang::parse::parse_module(
-        "trait Fold {\n    fn identity() -> Self\n    fn step(p: {acc: Self, x: Int}) -> Self\n}\n\nimpl Fold for Vec<Int> {\n    fn identity() -> Self = []\n    fn step(p: {acc: Self, x: Int}) -> Self = p.acc + [p.x]\n}\n",
+        "trait Fold {\n    fn identity() -> Self\n    fn step(p: {acc: Self, item: Int}) -> Self\n}\n\nimpl Fold for Vec<Int> {\n    fn identity() -> Self = []\n    fn step(p: {acc: Self, item: Int}) -> Self = p.acc + [p.item]\n}\n",
     ).unwrap();
     let (funcs, _) = toylang::check::check_module(module).unwrap();
     assert_eq!(
