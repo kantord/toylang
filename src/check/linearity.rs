@@ -268,6 +268,31 @@ pub(super) fn prune_unreachable(funcs: Vec<tir::Func>, body: &Tir) -> Vec<tir::F
         .collect()
 }
 
+/// The library-mode counterpart of `prune_unreachable`: there is no body to root reachability
+/// from, so the `pub fn`s are the roots instead. Each one, and everything it calls (prelude
+/// helpers included), is kept for the backend to emit; a private function nothing public calls
+/// is pruned the same way an unused function in a program is.
+pub(super) fn prune_keep_pub(funcs: Vec<tir::Func>) -> Vec<tir::Func> {
+    let mut reached: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut worklist: Vec<String> = Vec::new();
+    for f in &funcs {
+        if f.is_pub {
+            worklist.push(f.name.clone());
+        }
+    }
+    while let Some(name) = worklist.pop() {
+        if reached.insert(name.clone())
+            && let Some(f) = funcs.iter().find(|f| f.name == name)
+        {
+            calls_in(&f.body, &mut worklist);
+        }
+    }
+    funcs
+        .into_iter()
+        .filter(|f| reached.contains(&f.name))
+        .collect()
+}
+
 /// Every function name a `Kind::Call` inside `t` names, collected recursively through every
 /// other kind of node.
 fn calls_in(t: &Tir, out: &mut Vec<String>) {

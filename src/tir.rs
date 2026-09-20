@@ -362,6 +362,9 @@ pub struct Program {
     /// enum's payload reaches back to itself, so this travels with the tree: it is what
     /// `ty::variants` re-derives from (kantord/toylang#94).
     pub enums: Enums,
+    /// Whether the source was declarations only: there is no body to run, and a backend that
+    /// exports functions (`emit_js`'s library mode) exports the `pub` ones instead.
+    pub library: bool,
 }
 
 /// The element type a backend iterates over. Under eager lowering a stream is materialized as

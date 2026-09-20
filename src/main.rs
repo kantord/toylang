@@ -142,7 +142,10 @@ fn build(src: &str, path: &str, backend: Backend) -> Result<String> {
     let dir = path.parent().unwrap_or(Path::new("."));
     match backend {
         Backend::Js => {
-            let program = toylang::compile_in(src, dir)?;
+            // A js build accepts a declarations-only library as well as a program: both go
+            // through `compile_library_in`, which routes a program through the normal path and
+            // flags a library for the emitter.
+            let program = toylang::compile_library_in(src, dir)?;
             let mut js = PathBuf::from(&stem);
             let mut dts = PathBuf::from(&stem);
             js.set_extension("js");
