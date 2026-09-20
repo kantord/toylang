@@ -23,7 +23,7 @@ const UNCOVERED: &[(&str, &str)] = &[
     ),
     (
         "builtin.pipe_through",
-        "no corpus case: pipe_through runs only on a subset of backends (go, rust, py) and reads a subprocess",
+        "no corpus case: pipe_through runs only on a subset of backends (go, rust, py, js) and reads a subprocess",
     ),
     (
         "builtin.sqrt",
