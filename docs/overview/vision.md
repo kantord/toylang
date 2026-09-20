@@ -77,7 +77,7 @@ fn view(project: Project) -> Vec<Row> =
     [ project.files[]
       | .diagnostics[]
       | select(.severity >= WARN)
-      | {file: ^.path, line: .line, text: .msg} ]
+      | {file: ^.path, line: .line, text: .msg} ];
 
 on "]q" -> cursor.next()
 on "gf" -> open(cursor.get().file, cursor.get().line)

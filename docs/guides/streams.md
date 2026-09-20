@@ -33,8 +33,9 @@ same `collect` to make a `Vec` when the whole thing is needed.
 pipeline reads the same as chapter 3's:
 
 ```toylang
+# fmt: syntax-example
 fn shout(names: Stream<Str>) -> Stream<Str> =
-  names | select(. != "bo") | map(. + "!")
+  names | select(. != "bo") | map(. + "!");
 
 
 jsonlines(shout stdin)
