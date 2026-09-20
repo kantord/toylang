@@ -93,7 +93,7 @@ A reified search is a result set:
 ```
 fn diagnostics(tree: Ast) -> Vec<Diag> =
     [ tree.. | select(.kind == "error")
-             | {file: .loc.file, line: .loc.line, msg: .text} ]
+             | {file: .loc.file, line: .loc.line, msg: .text} ];
 ```
 
 ## Single-pass composition
@@ -107,7 +107,7 @@ fn stats(xs: Stream<Int>) -> {sum: Int, count: Int, max: Int} =
         sum:   0    with (acc, x) -> acc + x
         count: 0    with (acc, _) -> acc + 1
         max:   MIN  with (acc, x) -> max(acc, x)
-    }
+    };
 ```
 
 Three folds, one iteration, one struct out. A **fold** is an accumulation over a sequence, so
