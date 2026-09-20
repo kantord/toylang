@@ -3343,3 +3343,9 @@
   kind: build
   needs: [float-sqrt-and-int-to-float-decide]
   status: done
+
+- id: js-build-pub-exports-build-lib
+  title: 'Step B of the js-build-pub-exports-build ruling (forest js-build-artifact-shape, applied 2026-09-20): LIBRARY mode. `compile_in` (src/lib.rs ~104) only calls `parse`, which requires a trailing expression, so a declarations-only file is rejected today; make `toylang build FILE js` accept it (fall back to `parse_module` when there is no trailing expression, carry a library flag on the tir Program), emit the `.js` as an ES module with bare `export` on exactly the `pub fn`s and `require("fs")` becoming `import`, keep APP `.js` byte-identical to `toylang run FILE js`; update docs/reference/cli/build.md. Needs step A (tir::Func.is_pub + pub-only `.d.ts`). Split further if the brief says >150 lines: (1) compile_in/Program flag, (2) emit_with export prefix + import.'
+  kind: build
+  needs: [js-build-pub-exports-build]
+  status: done
