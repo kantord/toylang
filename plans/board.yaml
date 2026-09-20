@@ -409,14 +409,14 @@
   title: 'Slice 2a leftover: add `;` after every fn/type declaration in tests/corpus/[a-k]*.yaml (not record_body_after_definition/vec_body_after_definition). Brief: plans/simple-briefs/declare-terminator-build-2a-3.txt.'
   kind: build
   needs: []
-  status: done
+  status: todo
 
 - id: declare-terminator-build-2a-4
   issue: gh:153
   title: 'Slice 2a leftover: add `;` after every fn/type declaration in tests/corpus/[l-z]*.yaml (not record_body_after_definition/vec_body_after_definition). Brief: plans/simple-briefs/declare-terminator-build-2a-4.txt.'
   kind: build
   needs: []
-  status: done
+  status: todo
 
 - id: declare-terminator-build-2a-5
   issue: gh:153
