@@ -5,7 +5,8 @@ A record is a fixed set of named parts, and the names are part of the type:
 projection, `.age`:
 
 ```toylang
-fn age_of(user: { name: Str, age: Int }) -> Int = user.age
+# fmt: syntax-example
+fn age_of(user: { name: Str, age: Int }) -> Int = user.age;
 
 
 age_of { name: "ada", age: 36 }
@@ -21,7 +22,8 @@ unary -- and that is not a limitation, because a record is how several things tr
 one:
 
 ```toylang
-fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h
+# fmt: syntax-example
+fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h;
 
 
 area { w: 3, h: 4 }
@@ -36,7 +38,8 @@ the same call with its argument grouped. On a record literal the bare form reads
 arguments:
 
 ```toylang
-fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h
+# fmt: syntax-example
+fn area(r: { w: Int, h: Int }) -> Int = r.w * r.h;
 
 
 area { w: 3, h: 4 }

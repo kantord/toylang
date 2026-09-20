@@ -39,11 +39,12 @@ Consuming an enum must handle every variant. The subject arrives through a pipe,
 with `or`, first match wins:
 
 ```toylang
+# fmt: syntax-example
 enum Shape { Point, Circle { r: Int } }
 
 
 fn area_ish(s: Shape) -> Int =
-  s | Circle { r } -> r * r or Point -> 0
+  s | Circle { r } -> r * r or Point -> 0;
 
 
 { a: area_ish Shape.point, b: area_ish(circle { r: 3 }) }

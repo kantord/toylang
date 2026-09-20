@@ -20,8 +20,9 @@ rules as the stdin sources: born at the source, single-use, dying at `collect` o
 what stdin must be:
 
 ```toylang
+# fmt: syntax-example
 fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =
-  db.users | select(.age >= 18) | .[].name
+  db.users | select(.age >= 18) | .[].name;
 
 
 adults(parse stdin)
@@ -46,10 +47,11 @@ pipeline one at a time, and the type system keeps it that way. A `Stream<T>` par
 the same `select`/`map`/projection spellings work on it:
 
 ```toylang
+# fmt: syntax-example
 fn adults(
   users: Stream<{ name: Str, age: Int }>
 ) -> Stream<{ name: Str }> =
-  users | select(.age >= 18) | map { name: .name }
+  users | select(.age >= 18) | map { name: .name };
 
 
 jsonlines adults(stdin | map parse(.))
@@ -79,8 +81,8 @@ A stream is not a value: it cannot be printed, stored, or indexed. `collect` is 
 exit, turning `Stream<T>` into an ordinary `Vec<T>` by reading everything:
 
 ```toylang
-fn count(xs: Vec<Int>) -> Int = length xs
-
+# fmt: syntax-example
+fn count(xs: Vec<Int>) -> Int = length xs;
 
 count collect(stdin | map parse(.))
 ```

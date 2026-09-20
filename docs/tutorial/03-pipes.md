@@ -16,8 +16,9 @@ When the entries are records, projections reach into the current entry, because 
 entry:
 
 ```toylang
+# fmt: syntax-example
 fn adults(users: Vec<{ name: Str, age: Int }>) -> Vec<Str> =
-  users | select(.age >= 18) | .[].name
+  users | select(.age >= 18) | .[].name;
 
 
 adults([{ name: "ada", age: 36 }, { name: "bo", age: 9 }])

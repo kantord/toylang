@@ -12,8 +12,9 @@ holds up well once a cascade grows past two or three branches, because each cond
 next to its own result instead of the cascade nesting further:
 
 ```toylang
+# fmt: syntax-example
 fn shipping(kg: Int) -> Int =
-  kg | . <= 1 -> 5 or . <= 5 -> 12 or . <= 20 -> 25 or 40
+  kg | . <= 1 -> 5 or . <= 5 -> 12 or . <= 20 -> 25 or 40;
 
 
 { a: shipping 1, b: shipping 3, c: shipping 20, d: shipping 25 }
@@ -31,9 +32,10 @@ guard is disjunction rather than the arm separator -- an arm's left side is stil
 so the chain has not reached the point where an `or` could end it:
 
 ```toylang
+# fmt: syntax-example
 fn band(n: Int) -> Str =
   n
-  | . < 0 or . > 100 -> "out" or . >= 50 and . <= 60 -> "mid" or "in"
+  | . < 0 or . > 100 -> "out" or . >= 50 and . <= 60 -> "mid" or "in";
 
 
 { a: band(-1), b: band 55, c: band 20 }
@@ -84,7 +86,8 @@ A guard chain with no default is a legitimate way to say "some inputs don't clas
 declining every arm produces `Opt`, not a refusal:
 
 ```toylang
-fn discount(total: Int) -> Opt<Int> = total | . >= 100 -> total / 10
+# fmt: syntax-example
+fn discount(total: Int) -> Opt<Int> = total | . >= 100 -> total / 10;
 
 
 { a: discount 150, b: discount 50 }
@@ -98,7 +101,8 @@ The declared `Opt<T>` return reaches each arm as `T`, the same as any other decl
 so a bare `[]` resolves inside a partial arm without needing a variable to infer it from:
 
 ```toylang
-fn tags(n: Int) -> Opt<Vec<Int>> = n | . > 0 -> []
+# fmt: syntax-example
+fn tags(n: Int) -> Opt<Vec<Int>> = n | . > 0 -> [];
 
 
 { a: tags 1, b: tags(-1) }
@@ -113,7 +117,8 @@ error ([unwrap](../reference/operators/unwrap.md)), or fold a default into the c
 if it should not:
 
 ```toylang
-fn discount(total: Int) -> Int = total | . >= 100 -> total / 10 or 0
+# fmt: syntax-example
+fn discount(total: Int) -> Int = total | . >= 100 -> total / 10 or 0;
 
 
 { a: discount 150, b: discount 50 }
@@ -129,10 +134,11 @@ in memory they stay two different values -- `none` and `some(none)`. Note the do
 return type:
 
 ```toylang
+# fmt: syntax-example
 fn first_reading(
   entry: { valid: Bool, readings: Vec<Int> }
 ) -> Opt<Opt<Int>> =
-  entry | .valid -> entry.readings[9]
+  entry | .valid -> entry.readings[9];
 
 
 {
@@ -154,10 +160,11 @@ A default arm collapses the doubling back to one level -- even a default that ca
 come back absent -- because the chain is no longer partial; every input now hits an arm:
 
 ```toylang
+# fmt: syntax-example
 fn first_reading(
   entry: { valid: Bool, readings: Vec<Int> }
 ) -> Opt<Int> =
-  entry | .valid -> entry.readings[0] or entry.readings[9]
+  entry | .valid -> entry.readings[0] or entry.readings[9];
 
 
 {
