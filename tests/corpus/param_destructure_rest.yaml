@@ -2,7 +2,7 @@
 # rule a match arm's pattern follows; naming a field binds it and leaves the rest out of scope.
 # The function is `pick` because `first` is a builtin now and cannot be redefined.
 program: |
-  fn pick({ a, .. }: { a: Int, b: Int }) -> Int = a
+  fn pick({ a, .. }: { a: Int, b: Int }) -> Int = a;
 
 
   pick { a: 7, b: 9 }

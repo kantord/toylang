@@ -8,7 +8,7 @@ program: |
     let a = p.x * 2
     let b = p.y * 3
 
-    a + b
+    a + b;
 
 
   f(parse stdin)

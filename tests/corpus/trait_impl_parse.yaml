@@ -4,7 +4,7 @@
 # codegen, not just parsing (an earlier version of this test impl'd an undeclared type and only
 # passed because nothing resolved it).
 program: |
-  type Circle = { r: Int }
+  type Circle = { r: Int };
 
 
   trait Area {

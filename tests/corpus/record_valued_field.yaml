@@ -2,7 +2,7 @@
 # reading through it, so the result is a Vec of records that has to be spread into columns.
 program: |
   fn inner(db: Vec<{ a: { b: Str }, z: Int }>) -> Vec<{ b: Str }> =
-    db[].a
+    db[].a;
 
 
   inner(parse stdin)

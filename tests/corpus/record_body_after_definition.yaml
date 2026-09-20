@@ -2,7 +2,7 @@
 # argument to the definition's trailing `s` (issue #10). An argument must start on the same
 # line as its function, and this `{` does not.
 program: |
-  fn id(s: Str) -> Str = s
+  fn id(s: Str) -> Str = s;
 
 
   { a: 1 }

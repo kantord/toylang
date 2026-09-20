@@ -15,7 +15,7 @@
 # task's plain description (the iteration, the escape radius, the iteration limit, and the
 # plane it covers), not copied from any reference source.
 fn to_float(n: Int) -> Float =
-  n | . == 0 -> 0.0 or 1.0 + to_float(. - 1)
+  n | . == 0 -> 0.0 or 1.0 + to_float(. - 1);
 
 
 fn pixel(
@@ -36,7 +36,7 @@ fn pixel(
       zr: zr * zr - zi * zi + cr,
       zi: 2.0 * zr * zi + ci,
       k: . - 1
-    }
+    };
 
 
 fn row(
@@ -65,7 +65,7 @@ fn row(
           zi: 0.0,
           k: 50
         }
-    }
+    };
 
 
 fn rows(
@@ -95,14 +95,14 @@ fn rows(
             line: ""
           }
         ]
-    }
+    };
 
 
 fn plot(n: Int) -> Str =
   join_lines(
     ["P1", str(n) + " " + str(n)] +
       rows { n: n, size: to_float n, y: 0, fy: 0.0, lines: [] }
-  )
+  );
 
 
 plot(parse stdin)

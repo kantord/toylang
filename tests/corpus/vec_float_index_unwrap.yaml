@@ -4,7 +4,7 @@
 # same way, fell through to the boxed-value path and crashed the compiler on the first
 # arithmetic that expected a float.
 program: |
-  fn second(v: Vec<Float>) -> Float = v[1]! * 2.0
+  fn second(v: Vec<Float>) -> Float = v[1]! * 2.0;
 
 
   second([1.5, 2.5, 3.5])

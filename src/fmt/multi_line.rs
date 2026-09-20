@@ -90,7 +90,7 @@ fn ensure_single_newline(out: String) -> String {
 fn print_decl(item: &Item, comments: &mut Comments) -> String {
     let span = item.span();
     let mut leading = comments.take_before(span.start);
-    let rendered = match item {
+    let mut rendered = match item {
         Item::Def(d) if matches!(d.body, Expr::Let { .. }) => print_let_def(d, comments),
         _ => {
             leading.extend(comments.take_before(span.end));
@@ -103,6 +103,9 @@ fn print_decl(item: &Item, comments: &mut Comments) -> String {
             }
         }
     };
+    if matches!(item, Item::Alias(_) | Item::Def(_)) {
+        rendered.push(';');
+    }
     let mut out = comment_lines(&leading, 0);
     out.push_str(&with_trailing(rendered, comments.take_trailing()));
     out

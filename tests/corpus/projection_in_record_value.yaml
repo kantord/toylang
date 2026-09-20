@@ -2,7 +2,7 @@
 # as `p` applied bare to `.b` (issue #19). Projection wins over bare application everywhere.
 program: |
   fn swap(p: { a: Int, b: Int }) -> { a: Int, b: Int } =
-    { a: p.b, b: p.a }
+    { a: p.b, b: p.a };
 
 
   swap { a: 1, b: 2 }

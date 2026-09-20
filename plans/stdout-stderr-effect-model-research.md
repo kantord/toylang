@@ -33,7 +33,7 @@ return type is `Sink` and whose body is (transitively) a `jsonlines` call -- out
 writing as evaluation proceeds instead, and there is no result value at all:
 
 ```toylang
-fn out(v: Vec<Int>) -> Sink = jsonlines v
+fn out(v: Vec<Int>) -> Sink = jsonlines v;
 
 
 out([1, 2, 3])
@@ -75,7 +75,7 @@ sequencing added -- and give stderr its own single-instance builtin alongside `j
 symmetric in every rule:
 
 ```toylang
-fn warn(msg: Str) -> Sink = eprintln msg
+fn warn(msg: Str) -> Sink = eprintln msg;
 
 
 warn "could not parse line 3"

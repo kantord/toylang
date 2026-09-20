@@ -1,14 +1,14 @@
 # An alias is an abbreviation, so this program is the same program as one with the shapes
 # written out, and every backend emits the same bytes for both.
 program: |
-  type User = { name: Str, age: Int }
+  type User = { name: Str, age: Int };
 
 
-  type Db = { users: Vec<User> }
+  type Db = { users: Vec<User> };
 
 
   fn adults(db: Db) -> Vec<Str> =
-    db.users | select(.age >= 18) | .[].name
+    db.users | select(.age >= 18) | .[].name;
 
 
   adults(parse stdin)

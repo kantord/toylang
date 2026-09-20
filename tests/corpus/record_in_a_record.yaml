@@ -3,7 +3,7 @@
 # record-valued field holds pointers rather than the one-column-per-subfield a Vec of records
 # needs. Nothing in the corpus had a record directly inside a record.
 program: |
-  fn deep(db: Vec<{ a: { b: Int } }>) -> Vec<Int> = db[].a.b
+  fn deep(db: Vec<{ a: { b: Int } }>) -> Vec<Int> = db[].a.b;
 
 
   deep(parse stdin)
