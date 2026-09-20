@@ -3270,3 +3270,10 @@
   kind: build
   needs: []
   status: done
+
+- id: declare-terminator-build-2a-6
+  issue: gh:153
+  title: 'Slice 2a leftover: add `;` after every fn/type declaration in toylang fragments under docs/guides, docs/overview, docs/tutorial; tests/docs.rs compiles each fragment (docs/reference split off to 2a-8). Brief: plans/simple-briefs/declare-terminator-build-2a-6.txt.'
+  kind: build
+  needs: []
+  status: done

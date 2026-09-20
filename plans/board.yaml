@@ -399,21 +399,14 @@
 
 - id: declare-terminator-build-2a-2
   issue: gh:153
-  title: 'Slice 2a leftover (found 2026-09-20: 2a landed only the parser opt_semicolon): make `toylang fmt` print `;` after every fn/type declaration and update tests/fmt.rs expectations. Brief: plans/simple-briefs/declare-terminator-build-2a-2.txt.'
+  title: 'Slice 2a leftover (found 2026-09-20): make `toylang fmt` print `;` after every fn/type declaration, update tests/fmt*.rs expectations, and sweep every .toy file (prelude.toy, examples/, benches/, tests/modules/) with `toylang fmt --write`. Held until the docs/README rows land: three RED runs all hit the circle (fmt prints `;` -> prelude/.toy pins fail; .toy `;` -> fmt pins fail), so fmt + all .toy files must land in ONE patch. Brief: plans/simple-briefs/declare-terminator-build-2a-2.txt.'
   kind: build
-  needs: []
-  status: delegated
+  needs: [declare-terminator-build-2a-5, declare-terminator-build-2a-7, declare-terminator-build-2a-8]
+  status: todo
 
 - id: declare-terminator-build-2a-5
   issue: gh:153
-  title: 'Slice 2a leftover: add `;` after every fn/type declaration in every .toy file (prelude.toy, examples/ EXCEPT examples/shapes.toy which 2a-2 owns, tests/modules/, benches/programs/), README.md and draft.md. Narrowed 2026-09-20 (run 5df294f9 ended max_turns with the .toy files done; docs/examples and docs/adr split off to 2a-7). Brief: plans/simple-briefs/declare-terminator-build-2a-5.txt.'
-  kind: build
-  needs: []
-  status: delegated
-
-- id: declare-terminator-build-2a-6
-  issue: gh:153
-  title: 'Slice 2a leftover: add `;` after every fn/type declaration in toylang fragments under docs/guides, docs/overview, docs/tutorial; tests/docs.rs compiles each fragment (docs/reference split off to 2a-8). Brief: plans/simple-briefs/declare-terminator-build-2a-6.txt.'
+  title: 'Slice 2a leftover: add `;` after every fn/type declaration in the toylang blocks of README.md and draft.md ONLY. Re-scoped 2026-09-20: .toy files cannot land before the formatter prints `;` (tests/fmt.rs prelude pin + tests/fmt_examples.rs .toy sweep compare against fmt output), so they moved to 2a-2. Brief: plans/simple-briefs/declare-terminator-build-2a-5.txt.'
   kind: build
   needs: []
   status: delegated
@@ -423,14 +416,14 @@
   title: 'Slice 2a leftover: add `;` after every fn/type declaration in toylang blocks under docs/examples/ and docs/adr/. Split off 2a-5 on 2026-09-20. Brief: plans/simple-briefs/declare-terminator-build-2a-7.txt.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: declare-terminator-build-2a-8
   issue: gh:153
   title: 'Slice 2a leftover: add `;` after every fn/type declaration in toylang fragments under docs/reference EXCEPT docs/reference/syntax/functions.md (2c owns it); tests/docs.rs compiles each fragment. Split off 2a-6 on 2026-09-20. Brief: plans/simple-briefs/declare-terminator-build-2a-8.txt.'
   kind: build
   needs: []
-  status: todo
+  status: delegated
 
 - id: declare-terminator-build-2c
   issue: gh:153
