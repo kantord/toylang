@@ -2,10 +2,11 @@
 # where a position expects a known instantiation -- here the declared return type. The bare
 # form is refused (tests/generics.rs); this is the spelling that works.
 program: |
+  # fmt: syntax-example
   enum Box<T> { Wrap(T), Empty }
 
 
-  fn nothing() -> Box<Int> = empty
+  fn nothing() -> Box<Int> = empty;
 
 
   nothing()

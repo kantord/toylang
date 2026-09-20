@@ -2,10 +2,11 @@
 # A bare literal on the right of an Int64 operator resolves as Int64, so no `i64(...)` is
 # needed around `71`.
 program: |
-  fn big() -> Int64 = 600851475143
+  # fmt: syntax-example
+  fn big() -> Int64 = 600851475143;
 
 
-  fn nbig() -> Int64 = -600851475143
+  fn nbig() -> Int64 = -600851475143;
 
 
   { q: big() / 71, r: big() % 71, nq: nbig() / 71, nr: nbig() % 71 }

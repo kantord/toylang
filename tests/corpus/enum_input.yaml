@@ -2,11 +2,12 @@
 # reader accepts it (the eager path hands each one canonical bytes to parse for itself), and the
 # result prints back as the other variant.
 program: |
+  # fmt: syntax-example
   enum Status { Active, Inactive }
 
 
   fn flip(s: Status) -> Status =
-    s | Active -> Status.inactive or Inactive -> Status.active
+    s | Active -> Status.inactive or Inactive -> Status.active;
 
 
   flip(parse stdin)

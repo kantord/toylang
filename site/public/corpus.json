@@ -37,7 +37,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "fn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =\n  db.users | select(.age >= 18) | .[].name\n\n\nadults(parse stdin)\n",
+      "program": "# fmt: syntax-example\nfn adults(db: { users: Vec<{ name: Str, age: Int }> }) -> Vec<Str> =\n  db.users | select(.age >= 18) | .[].name;\n\n\nadults(parse stdin)\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -90,7 +90,7 @@
         "builtin.all",
         "vec-literal"
       ],
-      "program": "fn none() -> Vec<Bool> = []\n\n\nall none()\n",
+      "program": "# fmt: syntax-example\nfn none() -> Vec<Bool> = [];\n\n\nall none()\n",
       "resultType": "Bool",
       "usesLines": false
     },
@@ -170,7 +170,7 @@
         "builtin.any",
         "vec-literal"
       ],
-      "program": "fn none() -> Vec<Bool> = []\n\n\nany none()\n",
+      "program": "# fmt: syntax-example\nfn none() -> Vec<Bool> = [];\n\n\nany none()\n",
       "resultType": "Bool",
       "usesLines": false
     },
@@ -424,7 +424,7 @@
         "variant.unit",
         "vec-literal"
       ],
-      "program": "enum Tree { Leaf, Node(Vec<Tree>) }\n\n\nfn build(depth: Int) -> Tree =\n  depth\n  | . == 0 -> Tree.leaf or Tree.node([build(. - 1), build(. - 1)])\n\n\nfn count(t: Tree) -> Int =\n  t | Leaf -> 1 or Node -> 1 + count(.[0]!) + count(.[1]!)\n\n\ncount build(parse stdin)\n",
+      "program": "# fmt: syntax-example\nenum Tree { Leaf, Node(Vec<Tree>) }\n\n\nfn build(depth: Int) -> Tree =\n  depth\n  | . == 0 -> Tree.leaf or Tree.node([build(. - 1), build(. - 1)]);\n\n\nfn count(t: Tree) -> Int =\n  t | Leaf -> 1 or Node -> 1 + count(.[0]!) + count(.[1]!);\n\n\ncount build(parse stdin)\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -479,7 +479,7 @@
         "input",
         "var"
       ],
-      "program": "fn id(\n  r: { flag: Bool, xs: Vec<Bool> }\n) -> { flag: Bool, xs: Vec<Bool> } =\n  r\n\n\nid(parse stdin)\n",
+      "program": "# fmt: syntax-example\nfn id(\n  r: { flag: Bool, xs: Vec<Bool> }\n) -> { flag: Bool, xs: Vec<Bool> } =\n  r;\n\n\nid(parse stdin)\n",
       "resultType": "{flag: Bool, xs: Vec<Bool>}",
       "usesLines": false
     },
@@ -563,7 +563,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn always(x: Int) -> Str = x | true -> \"yes\" or \"no\"\n\n\nfn never(x: Int) -> Str = x | false -> \"yes\" or \"no\"\n\n\nfn qualified(x: Int) -> Str = x | Bool.true -> \"yes\" or \"no\"\n\n\n[always 1, never 1, qualified 1]\n",
+      "program": "# fmt: syntax-example\nfn always(x: Int) -> Str = x | true -> \"yes\" or \"no\";\n\n\nfn never(x: Int) -> Str = x | false -> \"yes\" or \"no\";\n\n\nfn qualified(x: Int) -> Str = x | Bool.true -> \"yes\" or \"no\";\n\n\n[always 1, never 1, qualified 1]\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -652,7 +652,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn name(b: Bool) -> Str = b | True -> \"yes\" or False -> \"no\"\n\n\n[name true, name false, name(1 == 2)]\n",
+      "program": "# fmt: syntax-example\nfn name(b: Bool) -> Str = b | True -> \"yes\" or False -> \"no\";\n\n\n[name true, name false, name(1 == 2)]\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -683,7 +683,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn name = Bool(True -> 1 or False -> 0)\n\n\n[name Bool.true, name Bool.false]\n",
+      "program": "# fmt: syntax-example\nfn name = Bool(True -> 1 or False -> 0);\n\n\n[name Bool.true, name Bool.false]\n",
       "resultType": "Vec<Int>",
       "usesLines": false
     },
@@ -781,7 +781,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn name(b: Bool) -> Str = b | b -> \"yes\" or \"no\"\n\n\nfn dot(b: Bool) -> Str = b | . -> \"yes\" or \"no\"\n\n\n[name true, name false, name(1 == 2), dot true, dot false]\n",
+      "program": "# fmt: syntax-example\nfn name(b: Bool) -> Str = b | b -> \"yes\" or \"no\";\n\n\nfn dot(b: Bool) -> Str = b | . -> \"yes\" or \"no\";\n\n\n[name true, name false, name(1 == 2), dot true, dot false]\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -898,7 +898,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "enum Msg { Ping, Quit, Text { body: Str } }\n\n\nfn render =\n  Msg(Ping -> \"*ping*\" or Quit -> \"*quit*\" or Text { body } -> body)\n\n\n{\n  a: render Msg.ping,\n  b: render Msg.quit,\n  c: render Msg.text { body: \"hi\" }\n}\n",
+      "program": "# fmt: syntax-example\nenum Msg { Ping, Quit, Text { body: Str } }\n\n\nfn render =\n  Msg(Ping -> \"*ping*\" or Quit -> \"*quit*\" or Text { body } -> body);\n\n\n{\n  a: render Msg.ping,\n  b: render Msg.quit,\n  c: render Msg.text { body: \"hi\" }\n}\n",
       "resultType": "{a: Str, b: Str, c: Str}",
       "usesLines": false
     },
@@ -932,7 +932,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "enum Shape { Point, Circle { r: Int } }\n\n\nfn area = Shape(Circle { r } -> r * r or Point -> 0)\n\n\n{\n  c: area Shape.circle { r: 3 },\n  p: area Shape.point,\n  doubled: area Shape.circle { r: 4 } * 2\n}\n",
+      "program": "# fmt: syntax-example\nenum Shape { Point, Circle { r: Int } }\n\n\nfn area = Shape(Circle { r } -> r * r or Point -> 0);\n\n\n{\n  c: area Shape.circle { r: 3 },\n  p: area Shape.point,\n  doubled: area Shape.circle { r: 4 } * 2\n}\n",
       "resultType": "{c: Int, p: Int, doubled: Int}",
       "usesLines": false
     },
@@ -993,7 +993,7 @@
         "record-literal",
         "var"
       ],
-      "program": "# fmt: syntax-example\nfn area(r: {w: Int, h: Int}) -> Int = r.w * r.h\n\narea {w: 3, h: 4}\n",
+      "program": "# fmt: syntax-example\nfn area(r: {w: Int, h: Int}) -> Int = r.w * r.h;\n\narea {w: 3, h: 4}\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -1055,7 +1055,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn f(v: Vec<Int>) -> Vec<Int> = v * [10, 20]\n\n\nf([])\n",
+      "program": "# fmt: syntax-example\nfn f(v: Vec<Int>) -> Vec<Int> = v * [10, 20];\n\n\nf([])\n",
       "resultType": "Vec<Int>",
       "usesLines": false
     },
@@ -1117,7 +1117,7 @@
         "projection",
         "var"
       ],
-      "program": "fn f(r: { a: Vec<Int>, b: Vec<Int> }) -> Vec<Int> = r.a * r.b\n\n\nf(parse stdin)\n",
+      "program": "# fmt: syntax-example\nfn f(r: { a: Vec<Int>, b: Vec<Int> }) -> Vec<Int> = r.a * r.b;\n\n\nf(parse stdin)\n",
       "resultType": "Vec<Int>",
       "usesLines": false
     },
@@ -1156,7 +1156,7 @@
         "unwrap",
         "var"
       ],
-      "program": "fn is_digit(c: Char) -> Bool =\n  c >= chars(\"0\")[0]! and c <= chars(\"9\")[0]!\n\n\nfn is_not_digit(c: Char) -> Bool = not is_digit(c)\n\n\n{\n  digits: length(chars \"a1b2c3\" | select is_digit(.)),\n  rest: length(chars \"a1b2c3\" | select is_not_digit(.))\n}\n",
+      "program": "# fmt: syntax-example\nfn is_digit(c: Char) -> Bool =\n  c >= chars(\"0\")[0]! and c <= chars(\"9\")[0]!;\n\n\nfn is_not_digit(c: Char) -> Bool = not is_digit(c);\n\n\n{\n  digits: length(chars \"a1b2c3\" | select is_digit(.)),\n  rest: length(chars \"a1b2c3\" | select is_not_digit(.))\n}\n",
       "resultType": "{digits: Int, rest: Int}",
       "usesLines": false
     },
@@ -1209,7 +1209,7 @@
         "int",
         "var"
       ],
-      "program": "fn double(x: Int) -> Int = x * 2\n\n\n3:double()\n",
+      "program": "# fmt: syntax-example\nfn double(x: Int) -> Int = x * 2;\n\n\n3:double()\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -1319,7 +1319,7 @@
         "var",
         "variant.unit"
       ],
-      "program": "enum Status { Active, Inactive }\n\n\nfn status(n: Int) -> Status = n | . > 0 -> \"Active\" or \"Inactive\"\n\n\nstatus 0\n",
+      "program": "# fmt: syntax-example\nenum Status { Active, Inactive }\n\n\nfn status(n: Int) -> Status = n | . > 0 -> \"Active\" or \"Inactive\";\n\n\nstatus 0\n",
       "resultType": "Status",
       "usesLines": false
     },
@@ -1465,7 +1465,7 @@
         "projection",
         "var"
       ],
-      "program": "fn tag(db: { tag: Str }) -> Str = db.tag\n\n\ntag(parse stdin)\n",
+      "program": "# fmt: syntax-example\nfn tag(db: { tag: Str }) -> Str = db.tag;\n\n\ntag(parse stdin)\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -1671,7 +1671,7 @@
         "application",
         "vec-literal"
       ],
-      "program": "fn nothing() -> Vec<Int> = []\n\n\nnothing()\n",
+      "program": "# fmt: syntax-example\nfn nothing() -> Vec<Int> = [];\n\n\nnothing()\n",
       "resultType": "Vec<Int>",
       "usesLines": false
     },
@@ -1701,7 +1701,7 @@
         "var",
         "variant.unit"
       ],
-      "program": "enum Status { Active, Inactive }\n\n\nfn flip(s: Status) -> Status =\n  s | Active -> Status.inactive or Inactive -> Status.active\n\n\nflip(parse stdin)\n",
+      "program": "# fmt: syntax-example\nenum Status { Active, Inactive }\n\n\nfn flip(s: Status) -> Status =\n  s | Active -> Status.inactive or Inactive -> Status.active;\n\n\nflip(parse stdin)\n",
       "resultType": "Status",
       "usesLines": false
     },
@@ -1734,7 +1734,7 @@
         "str",
         "var"
       ],
-      "program": "enum Msg { Ping, Text { body: Str } }\n\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n  msgs | map(. | Text -> .body or any() -> \"*ping*\")\n\n\njsonlines render(stdin | map parse(.))\n",
+      "program": "# fmt: syntax-example\nenum Msg { Ping, Text { body: Str } }\n\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n  msgs | map(. | Text -> .body or any() -> \"*ping*\");\n\n\njsonlines render(stdin | map parse(.))\n",
       "resultType": "Sink",
       "usesLines": false
     },
@@ -1766,7 +1766,7 @@
         "str",
         "var"
       ],
-      "program": "enum Msg { Ping, Text { body: Str } }\n\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n  msgs | map(. | Text -> .body or any() -> \"*ping*\")\n\n\njsonlines render(stdin | map parse(.))\n",
+      "program": "# fmt: syntax-example\nenum Msg { Ping, Text { body: Str } }\n\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n  msgs | map(. | Text -> .body or any() -> \"*ping*\");\n\n\njsonlines render(stdin | map parse(.))\n",
       "resultType": "Sink",
       "usesLines": false
     },
@@ -1800,7 +1800,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "enum Shape { Point, Circle { r: Int } }\n\n\nfn area_ish(s: Shape) -> Int =\n  s | Circle { r } -> r * r or Point -> 0\n\n\n{ a: area_ish Shape.point, b: area_ish(circle { r: 3 }) }\n",
+      "program": "# fmt: syntax-example\nenum Shape { Point, Circle { r: Int } }\n\n\nfn area_ish(s: Shape) -> Int =\n  s | Circle { r } -> r * r or Point -> 0;\n\n\n{ a: area_ish Shape.point, b: area_ish(circle { r: 3 }) }\n",
       "resultType": "{a: Int, b: Int}",
       "usesLines": false
     },
@@ -1833,7 +1833,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "enum Msg { Ping, Text { body: Str }, Quit }\n\n\nfn describe(m: Msg) -> Str = m | Text -> .body or any() -> \"control\"\n\n\n{\n  a: describe(text { body: \"hi\" }),\n  b: describe ping,\n  c: describe quit\n}\n",
+      "program": "# fmt: syntax-example\nenum Msg { Ping, Text { body: Str }, Quit }\n\n\nfn describe(m: Msg) -> Str = m | Text -> .body or any() -> \"control\";\n\n\n{\n  a: describe(text { body: \"hi\" }),\n  b: describe ping,\n  c: describe quit\n}\n",
       "resultType": "{a: Str, b: Str, c: Str}",
       "usesLines": false
     },
@@ -1922,7 +1922,7 @@
         "variant.payload",
         "vec-literal"
       ],
-      "program": "enum Tree<T> { Node(Vec<Tree<T>>), Leaf(T) }\n\n\nfn label(t: Tree<Str>) -> Str = t | Node -> \"node\" or Leaf -> .\n\n\n{\n  shape: Tree.node([Tree.leaf(\"a\"), Tree.node([Tree.leaf(\"b\")])]),\n  top: label Tree.leaf(\"x\")\n}\n",
+      "program": "# fmt: syntax-example\nenum Tree<T> { Node(Vec<Tree<T>>), Leaf(T) }\n\n\nfn label(t: Tree<Str>) -> Str = t | Node -> \"node\" or Leaf -> .;\n\n\n{\n  shape: Tree.node([Tree.leaf(\"a\"), Tree.node([Tree.leaf(\"b\")])]),\n  top: label Tree.leaf(\"x\")\n}\n",
       "resultType": "{shape: Tree<Str>, top: Str}",
       "usesLines": false
     },
@@ -1948,7 +1948,7 @@
         "input",
         "var"
       ],
-      "program": "enum Json { Arr(Vec<Json>), Num(Int), Null }\n\n\nfn json(j: Json) -> Json = j\n\n\njson(parse stdin)\n",
+      "program": "# fmt: syntax-example\nenum Json { Arr(Vec<Json>), Num(Int), Null }\n\n\nfn json(j: Json) -> Json = j;\n\n\njson(parse stdin)\n",
       "resultType": "Json",
       "usesLines": false
     },
@@ -2065,7 +2065,7 @@
         "variant.payload",
         "vec-literal"
       ],
-      "program": "enum Json { Arr(Vec<Json>), Num(Int) }\n\n\nfn total(v: Vec<Json>) -> Int =\n  length(v) == 0\n  | . -> 0 or (v[0]! | Arr -> total(.) or Num -> .) + total(tail(v)!)\n\n\ntotal(\n  [\n    Json.arr([Json.num(1), Json.arr([Json.num(2), Json.num(3)])]),\n    Json.num(4)\n  ]\n)\n",
+      "program": "# fmt: syntax-example\nenum Json { Arr(Vec<Json>), Num(Int) }\n\n\nfn total(v: Vec<Json>) -> Int =\n  length(v) == 0\n  | . -> 0 or (v[0]! | Arr -> total(.) or Num -> .) + total(tail(v)!);\n\n\ntotal(\n  [\n    Json.arr([Json.num(1), Json.arr([Json.num(2), Json.num(3)])]),\n    Json.num(4)\n  ]\n)\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -2095,7 +2095,7 @@
         "pipe",
         "var"
       ],
-      "program": "enum Temp { Unknown, Celsius(Int) }\n\n\nfn read(t: Temp) -> Int = t | Celsius -> . or Unknown -> 0\n\n\nread(parse stdin)\n",
+      "program": "# fmt: syntax-example\nenum Temp { Unknown, Celsius(Int) }\n\n\nfn read(t: Temp) -> Int = t | Celsius -> . or Unknown -> 0;\n\n\nread(parse stdin)\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -2124,7 +2124,7 @@
         "pipe",
         "var"
       ],
-      "program": "enum Temp { Unknown, Celsius(Int) }\n\n\nfn read(t: Temp) -> Int = t | Celsius -> . or Unknown -> 0\n\n\nread(parse stdin)\n",
+      "program": "# fmt: syntax-example\nenum Temp { Unknown, Celsius(Int) }\n\n\nfn read(t: Temp) -> Int = t | Celsius -> . or Unknown -> 0;\n\n\nread(parse stdin)\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -2157,7 +2157,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "enum Temp { Unknown, Celsius(Int) }\n\n\nfn warmer(t: Temp) -> Int = t | Celsius -> . + 1 or Unknown -> 0\n\n\n{ a: warmer(celsius 21), b: warmer Temp.unknown, raw: celsius 21 }\n",
+      "program": "# fmt: syntax-example\nenum Temp { Unknown, Celsius(Int) }\n\n\nfn warmer(t: Temp) -> Int = t | Celsius -> . + 1 or Unknown -> 0;\n\n\n{ a: warmer(celsius 21), b: warmer Temp.unknown, raw: celsius 21 }\n",
       "resultType": "{a: Int, b: Int, raw: Temp}",
       "usesLines": false
     },
@@ -2182,7 +2182,7 @@
         "application",
         "variant.unit"
       ],
-      "program": "enum Status { Active, Inactive }\n\n\nfn initial() -> Status = \"Active\"\n\n\ninitial()\n",
+      "program": "# fmt: syntax-example\nenum Status { Active, Inactive }\n\n\nfn initial() -> Status = \"Active\";\n\n\ninitial()\n",
       "resultType": "Status",
       "usesLines": false
     },
@@ -2239,7 +2239,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "enum Shape { Point, Circle { r: Int } }\n\n\nfn classify(n: Int) -> Shape =\n  n | . == 0 -> Shape.point or circle { r: n }\n\n\n{ a: classify 0, b: classify 3 }\n",
+      "program": "# fmt: syntax-example\nenum Shape { Point, Circle { r: Int } }\n\n\nfn classify(n: Int) -> Shape =\n  n | . == 0 -> Shape.point or circle { r: n };\n\n\n{ a: classify 0, b: classify 3 }\n",
       "resultType": "{a: Shape, b: Shape}",
       "usesLines": false
     },
@@ -2273,7 +2273,7 @@
         "variant.unit",
         "vec-literal"
       ],
-      "program": "enum Batch { Empty, Some(Vec<Int>) }\n\n\nfn size(b: Batch) -> Int = b | Some -> length(.) or Empty -> 0\n\n\n{\n  n: size Batch.some([1, 2, 3]),\n  raw: Batch.some([4, 5]),\n  z: size Batch.empty\n}\n",
+      "program": "# fmt: syntax-example\nenum Batch { Empty, Some(Vec<Int>) }\n\n\nfn size(b: Batch) -> Int = b | Some -> length(.) or Empty -> 0;\n\n\n{\n  n: size Batch.some([1, 2, 3]),\n  raw: Batch.some([4, 5]),\n  z: size Batch.empty\n}\n",
       "resultType": "{n: Int, raw: Batch, z: Int}",
       "usesLines": false
     },
@@ -2350,7 +2350,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn insert_each({ x, p }: { x: Int, p: Vec<Int> }) -> Vec<Vec<Int>> =\n  p\n  | length(p) == 0 -> [[x]] or\n    [[x] + p] +\n      (insert_each { x: x, p: tail(p)! } | map([p[0]!] + .))\n\n\nfn build_perms(\n  { x, ps }: { x: Int, ps: Vec<Vec<Int>> }\n) -> Vec<Vec<Int>> =\n  ps\n  | length(ps) == 0 -> [] or\n    insert_each { x: x, p: ps[0]! } +\n      build_perms { x: x, ps: tail(ps)! }\n\n\nfn perms(v: Vec<Int>) -> Vec<Vec<Int>> =\n  v\n  | length(v) == 0 -> [[]] or\n    build_perms { x: v[0]!, ps: perms tail(v)! }\n\n\nfn flips(p: Vec<Int>) -> Int =\n  p | p[0]! == 1 -> 0 or 1 + flips(reverse p[:p[0]!] + p[p[0]!:])\n\n\nfn invs(p: Vec<Int>) -> Int =\n  p\n  | length(p) <= 1 -> 0 or\n    (length(tail(p)! | select(. < p[0]!)) + invs(tail(p)!)) % 2\n\n\nfn fk_step(\n  { p, acc }: { p: Vec<Int>, acc: { checksum: Int, max: Int } }\n) -> { checksum: Int, max: Int } =\n  let f = flips p\n\n  {\n    checksum: acc.checksum + (invs(p) == 0 | . -> f or 0 - f),\n    max: f > acc.max | . -> f or acc.max\n  }\n\n\nfn fold(\n  { v, acc }: { v: Vec<Vec<Int>>, acc: { checksum: Int, max: Int } }\n) -> { checksum: Int, max: Int } =\n  v\n  | length(v) == 0 -> acc or\n    fold { v: tail(v)!, acc: fk_step { p: v[0]!, acc: acc } }\n\n\nfn fk(n: Int) -> Str =\n  let r = fold { v: perms(collect(range n) | map(. + 1)), acc: { checksum: 0, max: 0 } }\n\n  str(r.checksum) + \"\\nPfannkuchen(\" + str(n) + \") = \" + str(r.max)\n\n\nfk(parse stdin)\n",
+      "program": "# fmt: syntax-example\nfn insert_each({ x, p }: { x: Int, p: Vec<Int> }) -> Vec<Vec<Int>> =\n  p\n  | length(p) == 0 -> [[x]] or\n    [[x] + p] +\n      (insert_each { x: x, p: tail(p)! } | map([p[0]!] + .));\n\n\nfn build_perms(\n  { x, ps }: { x: Int, ps: Vec<Vec<Int>> }\n) -> Vec<Vec<Int>> =\n  ps\n  | length(ps) == 0 -> [] or\n    insert_each { x: x, p: ps[0]! } +\n      build_perms { x: x, ps: tail(ps)! };\n\n\nfn perms(v: Vec<Int>) -> Vec<Vec<Int>> =\n  v\n  | length(v) == 0 -> [[]] or\n    build_perms { x: v[0]!, ps: perms tail(v)! };\n\n\nfn flips(p: Vec<Int>) -> Int =\n  p | p[0]! == 1 -> 0 or 1 + flips(reverse p[:p[0]!] + p[p[0]!:]);\n\n\nfn invs(p: Vec<Int>) -> Int =\n  p\n  | length(p) <= 1 -> 0 or\n    (length(tail(p)! | select(. < p[0]!)) + invs(tail(p)!)) % 2;\n\n\nfn fk_step(\n  { p, acc }: { p: Vec<Int>, acc: { checksum: Int, max: Int } }\n) -> { checksum: Int, max: Int } =\n  let f = flips p\n\n  {\n    checksum: acc.checksum + (invs(p) == 0 | . -> f or 0 - f),\n    max: f > acc.max | . -> f or acc.max\n  };\n\n\nfn fold(\n  { v, acc }: { v: Vec<Vec<Int>>, acc: { checksum: Int, max: Int } }\n) -> { checksum: Int, max: Int } =\n  v\n  | length(v) == 0 -> acc or\n    fold { v: tail(v)!, acc: fk_step { p: v[0]!, acc: acc } };\n\n\nfn fk(n: Int) -> Str =\n  let r = fold { v: perms(collect(range n) | map(. + 1)), acc: { checksum: 0, max: 0 } }\n\n  str(r.checksum) + \"\\nPfannkuchen(\" + str(n) + \") = \" + str(r.max);\n\n\nfk(parse stdin)\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -2395,7 +2395,7 @@
         "var",
         "vec-literal"
       ],
-      "program": "fn next_rng(prev: Int) -> Int = (prev * 3877 + 29573) % 139968\n\n\nfn pick(\n  s: { r: Int, w: Vec<Int>, acc: Int, i: Int, total: Int }\n) -> Int =\n  s\n  | (s.acc + s.w[s.i]!) * 139968 > s.r * s.total -> s.i or\n    pick {\n      r: s.r,\n      w: s.w,\n      acc: s.acc + s.w[s.i]!,\n      i: s.i + 1,\n      total: s.total\n    }\n\n\nfn gen(\n  s: {\n    left: Int,\n    col: Int,\n    line: Str,\n    lines: Vec<Str>,\n    seed: Int,\n    syms: Vec<Str>,\n    w: Vec<Int>,\n    total: Int,\n    n: Int\n  }\n) -> { lines: Vec<Str>, seed: Int, n: Int } =\n  s\n  | s.left == 0 ->\n      { lines: s.lines + [s.line], seed: s.seed, n: s.n } or\n    s.col == 60 ->\n      gen {\n        left: s.left,\n        col: 0,\n        line: \"\",\n        lines: s.lines + [s.line],\n        seed: s.seed,\n        syms: s.syms,\n        w: s.w,\n        total: s.total,\n        n: s.n\n      } or\n    gen {\n      left: s.left - 1,\n      col: s.col + 1,\n      line: s.line +\n        s.syms[pick { r: s.seed, w: s.w, acc: 0, i: 0, total: s.total }]!,\n      lines: s.lines,\n      seed: next_rng s.seed,\n      syms: s.syms,\n      w: s.w,\n      total: s.total,\n      n: s.n\n    }\n\n\nfn alu_sec(\n  s: {\n    left: Int,\n    col: Int,\n    line: Str,\n    lines: Vec<Str>,\n    k: Int,\n    alu: Vec<Str>\n  }\n) -> Vec<Str> =\n  s\n  | s.left == 0 -> s.lines + [s.line] or\n    s.col == 60 ->\n      alu_sec {\n        left: s.left,\n        col: 0,\n        line: \"\",\n        lines: s.lines + [s.line],\n        k: s.k,\n        alu: s.alu\n      } or\n    alu_sec {\n      left: s.left - 1,\n      col: s.col + 1,\n      line: s.line + s.alu[s.k]!,\n      lines: s.lines,\n      k: (s.k + 1) % length(s.alu),\n      alu: s.alu\n    }\n\n\nfn after_two(t: { lines: Vec<Str>, seed: Int, n: Int }) -> Vec<Str> =\n  t.lines +\n    gen {\n      left: 5 * t.n,\n      col: 0,\n      line: \"\",\n      lines: [\">THREE Homo sapiens frequency\"],\n      seed: t.seed,\n      syms: [\"a\", \"c\", \"g\", \"t\"],\n      w: [303, 198, 198, 301],\n      total: 1000,\n      n: t.n\n    }.lines\n\n\njoin_lines(\n  alu_sec {\n    left: 2 * parse(stdin),\n    col: 0,\n    line: \"\",\n    lines: [\">ONE Homo sapiens alu\"],\n    k: 0,\n    alu: [\n      \"G\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"A\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"T\",\n      \"A\",\n      \"A\",\n      \"T\",\n      \"C\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"T\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"T\",\n      \"C\",\n      \"A\",\n      \"C\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"T\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"T\",\n      \"T\",\n      \"C\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"A\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"A\",\n      \"C\",\n      \"A\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"T\",\n      \"G\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"C\",\n      \"C\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"T\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"T\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"T\",\n      \"A\",\n      \"C\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"T\",\n      \"T\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"T\",\n      \"A\",\n      \"A\",\n      \"T\",\n      \"C\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"T\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"A\",\n      \"A\",\n      \"T\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"T\",\n      \"T\",\n      \"G\",\n      \"A\",\n      \"A\",\n      \"C\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"T\",\n      \"T\",\n      \"G\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"T\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"A\",\n      \"T\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"C\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"A\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"T\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\"\n    ]\n  } +\n    after_two(\n      gen {\n        left: 3 * parse(stdin),\n        col: 0,\n        line: \"\",\n        lines: [\">TWO IUB ambiguity codes\"],\n        seed: 42,\n        syms: [\n          \"A\",\n          \"C\",\n          \"G\",\n          \"T\",\n          \"B\",\n          \"D\",\n          \"H\",\n          \"K\",\n          \"M\",\n          \"N\",\n          \"R\",\n          \"S\",\n          \"V\",\n          \"W\",\n          \"Y\"\n        ],\n        w: [27, 12, 12, 27, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],\n        total: 100,\n        n: parse stdin\n      }\n    )\n)\n",
+      "program": "# fmt: syntax-example\nfn next_rng(prev: Int) -> Int = (prev * 3877 + 29573) % 139968;\n\n\nfn pick(\n  s: { r: Int, w: Vec<Int>, acc: Int, i: Int, total: Int }\n) -> Int =\n  s\n  | (s.acc + s.w[s.i]!) * 139968 > s.r * s.total -> s.i or\n    pick {\n      r: s.r,\n      w: s.w,\n      acc: s.acc + s.w[s.i]!,\n      i: s.i + 1,\n      total: s.total\n    };\n\n\nfn gen(\n  s: {\n    left: Int,\n    col: Int,\n    line: Str,\n    lines: Vec<Str>,\n    seed: Int,\n    syms: Vec<Str>,\n    w: Vec<Int>,\n    total: Int,\n    n: Int\n  }\n) -> { lines: Vec<Str>, seed: Int, n: Int } =\n  s\n  | s.left == 0 ->\n      { lines: s.lines + [s.line], seed: s.seed, n: s.n } or\n    s.col == 60 ->\n      gen {\n        left: s.left,\n        col: 0,\n        line: \"\",\n        lines: s.lines + [s.line],\n        seed: s.seed,\n        syms: s.syms,\n        w: s.w,\n        total: s.total,\n        n: s.n\n      } or\n    gen {\n      left: s.left - 1,\n      col: s.col + 1,\n      line: s.line +\n        s.syms[pick { r: s.seed, w: s.w, acc: 0, i: 0, total: s.total }]!,\n      lines: s.lines,\n      seed: next_rng s.seed,\n      syms: s.syms,\n      w: s.w,\n      total: s.total,\n      n: s.n\n    };\n\n\nfn alu_sec(\n  s: {\n    left: Int,\n    col: Int,\n    line: Str,\n    lines: Vec<Str>,\n    k: Int,\n    alu: Vec<Str>\n  }\n) -> Vec<Str> =\n  s\n  | s.left == 0 -> s.lines + [s.line] or\n    s.col == 60 ->\n      alu_sec {\n        left: s.left,\n        col: 0,\n        line: \"\",\n        lines: s.lines + [s.line],\n        k: s.k,\n        alu: s.alu\n      } or\n    alu_sec {\n      left: s.left - 1,\n      col: s.col + 1,\n      line: s.line + s.alu[s.k]!,\n      lines: s.lines,\n      k: (s.k + 1) % length(s.alu),\n      alu: s.alu\n    };\n\n\nfn after_two(t: { lines: Vec<Str>, seed: Int, n: Int }) -> Vec<Str> =\n  t.lines +\n    gen {\n      left: 5 * t.n,\n      col: 0,\n      line: \"\",\n      lines: [\">THREE Homo sapiens frequency\"],\n      seed: t.seed,\n      syms: [\"a\", \"c\", \"g\", \"t\"],\n      w: [303, 198, 198, 301],\n      total: 1000,\n      n: t.n\n    }.lines;\n\n\njoin_lines(\n  alu_sec {\n    left: 2 * parse(stdin),\n    col: 0,\n    line: \"\",\n    lines: [\">ONE Homo sapiens alu\"],\n    k: 0,\n    alu: [\n      \"G\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"A\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"T\",\n      \"A\",\n      \"A\",\n      \"T\",\n      \"C\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"T\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"T\",\n      \"C\",\n      \"A\",\n      \"C\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"T\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"T\",\n      \"T\",\n      \"C\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"A\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"A\",\n      \"C\",\n      \"A\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"T\",\n      \"G\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"C\",\n      \"C\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"T\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"T\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"T\",\n      \"A\",\n      \"C\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"T\",\n      \"T\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"T\",\n      \"A\",\n      \"A\",\n      \"T\",\n      \"C\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"T\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"A\",\n      \"A\",\n      \"T\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"T\",\n      \"T\",\n      \"G\",\n      \"A\",\n      \"A\",\n      \"C\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"G\",\n      \"T\",\n      \"T\",\n      \"G\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"T\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"A\",\n      \"T\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"C\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"C\",\n      \"T\",\n      \"G\",\n      \"G\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"A\",\n      \"C\",\n      \"A\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"C\",\n      \"G\",\n      \"A\",\n      \"G\",\n      \"A\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"C\",\n      \"G\",\n      \"T\",\n      \"C\",\n      \"T\",\n      \"C\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\",\n      \"A\"\n    ]\n  } +\n    after_two(\n      gen {\n        left: 3 * parse(stdin),\n        col: 0,\n        line: \"\",\n        lines: [\">TWO IUB ambiguity codes\"],\n        seed: 42,\n        syms: [\n          \"A\",\n          \"C\",\n          \"G\",\n          \"T\",\n          \"B\",\n          \"D\",\n          \"H\",\n          \"K\",\n          \"M\",\n          \"N\",\n          \"R\",\n          \"S\",\n          \"V\",\n          \"W\",\n          \"Y\"\n        ],\n        w: [27, 12, 12, 27, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],\n        total: 100,\n        n: parse stdin\n      }\n    )\n)\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -2421,7 +2421,7 @@
         "projection",
         "var"
       ],
-      "program": "fn get_name(db: { name: Str }) -> Str = db.name\n\n\nget_name(parse stdin)\n",
+      "program": "# fmt: syntax-example\nfn get_name(db: { name: Str }) -> Str = db.name;\n\n\nget_name(parse stdin)\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -2480,7 +2480,7 @@
         "str",
         "var"
       ],
-      "program": "fn f(r: { a: Str, b: Int }) -> Vec<Str> = fields r\n\n\nfn g(r: { b: Int, a: Str }) -> Vec<Str> = f r\n\n\ng { b: 1, a: \"hi\" }\n",
+      "program": "# fmt: syntax-example\nfn f(r: { a: Str, b: Int }) -> Vec<Str> = fields r;\n\n\nfn g(r: { b: Int, a: Str }) -> Vec<Str> = f r;\n\n\ng { b: 1, a: \"hi\" }\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -2591,7 +2591,7 @@
         "builtin.first",
         "vec-literal"
       ],
-      "program": "fn nothing() -> Vec<Int> = []\n\n\nfirst nothing()\n",
+      "program": "# fmt: syntax-example\nfn nothing() -> Vec<Int> = [];\n\n\nfirst nothing()\n",
       "resultType": "Opt<Int>",
       "usesLines": false
     },
@@ -2836,7 +2836,7 @@
         "input",
         "var"
       ],
-      "program": "fn twice(x: Float) -> Float = x * 2.0\n\n\ntwice(parse stdin)\n",
+      "program": "# fmt: syntax-example\nfn twice(x: Float) -> Float = x * 2.0;\n\n\ntwice(parse stdin)\n",
       "resultType": "Float",
       "usesLines": false
     },
@@ -2971,7 +2971,7 @@
         "str",
         "var"
       ],
-      "program": "fn outer(x: Str) -> Str = inner(x) + \"!\"\n\n\nfn inner(x: Str) -> Str = \"[\" + x + \"]\"\n\n\nouter \"hi\"\n",
+      "program": "# fmt: syntax-example\nfn outer(x: Str) -> Str = inner(x) + \"!\";\n\n\nfn inner(x: Str) -> Str = \"[\" + x + \"]\";\n\n\nouter \"hi\"\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -3002,7 +3002,7 @@
         "projection",
         "var"
       ],
-      "program": "enum Box<T> { Wrap { v: T }, Empty }\n\n\nfn peek(b: Box<Int>) -> Int = b | Wrap { v } -> v or Empty -> 0\n\n\npeek(parse stdin)\n",
+      "program": "# fmt: syntax-example\nenum Box<T> { Wrap { v: T }, Empty }\n\n\nfn peek(b: Box<Int>) -> Int = b | Wrap { v } -> v or Empty -> 0;\n\n\npeek(parse stdin)\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -3034,7 +3034,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "enum Box<T> { Wrap(T), Empty }\n\n\nfn nothing() -> Box<Int> = empty\n\n\nfn peek(b: Box<Int>) -> Int = b | Wrap -> . or Empty -> 0\n\n\npeek(wrap 7) + peek(nothing())\n",
+      "program": "# fmt: syntax-example\nenum Box<T> { Wrap(T), Empty }\n\n\nfn nothing() -> Box<Int> = empty;\n\n\nfn peek(b: Box<Int>) -> Int = b | Wrap -> . or Empty -> 0;\n\n\npeek(wrap 7) + peek(nothing())\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -3068,7 +3068,7 @@
         "variant.payload",
         "variant.unit"
       ],
-      "program": "enum Box<T> { Full(T), Empty }\n\n\nfn get_b(x: Box<{ a: Str, b: Int }>) -> Int =\n  x | Full -> .b or Empty -> 0\n\n\nfn g(x: Box<{ b: Int, a: Str }>) -> Int = get_b x\n\n\ng(full { b: 42, a: \"hi\" })\n",
+      "program": "# fmt: syntax-example\nenum Box<T> { Full(T), Empty }\n\n\nfn get_b(x: Box<{ a: Str, b: Int }>) -> Int =\n  x | Full -> .b or Empty -> 0;\n\n\nfn g(x: Box<{ b: Int, a: Str }>) -> Int = get_b x;\n\n\ng(full { b: 42, a: \"hi\" })\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -3145,7 +3145,7 @@
         "application",
         "variant.unit"
       ],
-      "program": "enum Box<T> { Wrap(T), Empty }\n\n\nfn nothing() -> Box<Int> = empty\n\n\nnothing()\n",
+      "program": "# fmt: syntax-example\nenum Box<T> { Wrap(T), Empty }\n\n\nfn nothing() -> Box<Int> = empty;\n\n\nnothing()\n",
       "resultType": "Box<Int>",
       "usesLines": false
     },
@@ -3205,7 +3205,7 @@
         "str",
         "var"
       ],
-      "program": "fn greet(who: Str) -> Str = \"hello \" + who\n\n\ngreet \"world\"\n",
+      "program": "# fmt: syntax-example\nfn greet(who: Str) -> Str = \"hello \" + who;\n\n\ngreet \"world\"\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -3472,7 +3472,7 @@
         "projection",
         "var"
       ],
-      "program": "fn f(p: { x: Int, y: Int }) -> Int = p.x * 2 + p.y * 3\n\n\nf(parse stdin)\n",
+      "program": "# fmt: syntax-example\nfn f(p: { x: Int, y: Int }) -> Int = p.x * 2 + p.y * 3;\n\n\nf(parse stdin)\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -3500,7 +3500,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn f(v: Vec<Int>) -> Int = length v\n\n\n{ a: f(parse stdin), b: parse stdin }\n",
+      "program": "# fmt: syntax-example\nfn f(v: Vec<Int>) -> Int = length v;\n\n\n{ a: f(parse stdin), b: parse stdin }\n",
       "resultType": "{a: Int, b: Vec<Int>}",
       "usesLines": false
     },
@@ -3534,7 +3534,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "fn names(users: Stream<{ name: Str, age: Int }>) -> Stream<Str> =\n  users | select(.age >= 18) | .[].name\n\n\ncollect names(stdin | map parse(.))\n",
+      "program": "# fmt: syntax-example\nfn names(users: Stream<{ name: Str, age: Int }>) -> Stream<Str> =\n  users | select(.age >= 18) | .[].name;\n\n\ncollect names(stdin | map parse(.))\n",
       "resultType": "Vec<Str>",
       "usesLines": false
     },
@@ -3562,7 +3562,7 @@
         "inputs",
         "var"
       ],
-      "program": "fn total(nums: Vec<Int>) -> Int = length nums\n\n\ntotal collect(stdin | map parse(.))\n",
+      "program": "# fmt: syntax-example\nfn total(nums: Vec<Int>) -> Int = length nums;\n\n\ntotal collect(stdin | map parse(.))\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -3594,7 +3594,7 @@
         "pipe",
         "str"
       ],
-      "program": "fn big() -> Int64 = 4000000000\n\n\nbig() > i64(2147483647) | . -> \"wide\" or \"narrow\"\n",
+      "program": "# fmt: syntax-example\nfn big() -> Int64 = 4000000000;\n\n\nbig() > i64(2147483647) | . -> \"wide\" or \"narrow\"\n",
       "resultType": "Str",
       "usesLines": false
     },
@@ -3621,7 +3621,7 @@
         "int64",
         "record-literal"
       ],
-      "program": "fn a() -> { v: Int64 } = { v: 600851475143 }\n\n\nfn b() -> { v: Int64 } = { v: 600851475143 }\n\n\nfn c() -> { v: Int64 } = { v: 600851475142 }\n\n\n{ same: a() == b(), differing: a() == c() }\n",
+      "program": "# fmt: syntax-example\nfn a() -> { v: Int64 } = { v: 600851475143 };\n\n\nfn b() -> { v: Int64 } = { v: 600851475143 };\n\n\nfn c() -> { v: Int64 } = { v: 600851475142 };\n\n\n{ same: a() == b(), differing: a() == c() }\n",
       "resultType": "{same: Bool, differing: Bool}",
       "usesLines": false
     },
@@ -3649,7 +3649,7 @@
         "int64",
         "record-literal"
       ],
-      "program": "fn big() -> Int64 = 600851475143\n\n\nfn nbig() -> Int64 = -600851475143\n\n\n{ q: big() / 71, r: big() % 71, nq: nbig() / 71, nr: nbig() % 71 }\n",
+      "program": "# fmt: syntax-example\nfn big() -> Int64 = 600851475143;\n\n\nfn nbig() -> Int64 = -600851475143;\n\n\n{ q: big() / 71, r: big() % 71, nq: nbig() / 71, nr: nbig() % 71 }\n",
       "resultType": "{q: Int64, r: Int64, nq: Int64, nr: Int64}",
       "usesLines": false
     },
@@ -3680,7 +3680,7 @@
         "record-literal",
         "vec-literal"
       ],
-      "program": "fn ts() -> Int64 = 1756500000000\n\n\n{ when: ts(), deltas: [ts() + 1, ts() - 1, i64 0] }\n",
+      "program": "# fmt: syntax-example\nfn ts() -> Int64 = 1756500000000;\n\n\n{ when: ts(), deltas: [ts() + 1, ts() - 1, i64 0] }\n",
       "resultType": "{when: Int64, deltas: Vec<Int64>}",
       "usesLines": false
     },
@@ -3705,7 +3705,7 @@
         "application",
         "int64"
       ],
-      "program": "fn big() -> Int64 = 600851475143\n\n\nbig()\n",
+      "program": "# fmt: syntax-example\nfn big() -> Int64 = 600851475143;\n\n\nbig()\n",
       "resultType": "Int64",
       "usesLines": false
     },
@@ -3731,7 +3731,7 @@
         "arith.sub",
         "int64"
       ],
-      "program": "fn owed() -> Int64 = -1800000000000\n\n\nowed() - 43\n",
+      "program": "# fmt: syntax-example\nfn owed() -> Int64 = -1800000000000;\n\n\nowed() - 43\n",
       "resultType": "Int64",
       "usesLines": false
     },
@@ -3761,7 +3761,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn wide() -> Int64 = 600851475143\n\n\nfn double(x: Int) -> Int = x * 2\n\n\n{ a: wide(), b: double(parse stdin) }\n",
+      "program": "# fmt: syntax-example\nfn wide() -> Int64 = 600851475143;\n\n\nfn double(x: Int) -> Int = x * 2;\n\n\n{ a: wide(), b: double(parse stdin) }\n",
       "resultType": "{a: Int64, b: Int}",
       "usesLines": false
     },
@@ -3814,7 +3814,7 @@
         "int",
         "var"
       ],
-      "program": "fn twice_over(x: Int) -> Int = x\n\n\ntwice_over 42\n",
+      "program": "# fmt: syntax-example\nfn twice_over(x: Int) -> Int = x;\n\n\ntwice_over 42\n",
       "resultType": "Int",
       "usesLines": false
     },
@@ -3919,7 +3919,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn commits(\n  db: Vec<{ commit: { message: Str, committer: { name: Str } }, parents: Vec<{ html_url: Str }> }>\n) -> Vec<{ commit: { message: Str, committer: { name: Str } }, parents: Vec<{ html_url: Str }> }> =\n  db\n\n\ncommits(parse stdin)\n| map {\n    message: .commit.message,\n    name: .commit.committer.name,\n    parents: .parents[].html_url\n  }\n",
+      "program": "# fmt: syntax-example\nfn commits(\n  db: Vec<{ commit: { message: Str, committer: { name: Str } }, parents: Vec<{ html_url: Str }> }>\n) -> Vec<{ commit: { message: Str, committer: { name: Str } }, parents: Vec<{ html_url: Str }> }> =\n  db;\n\n\ncommits(parse stdin)\n| map {\n    message: .commit.message,\n    name: .commit.committer.name,\n    parents: .parents[].html_url\n  }\n",
       "resultType": "Vec<{message: Str, name: Str, parents: Vec<Str>}>",
       "usesLines": false
     },
@@ -3951,7 +3951,7 @@
         "record-literal",
         "var"
       ],
-      "program": "fn commits(\n  db: Vec<{ commit: { message: Str, committer: { name: Str } } }>\n) -> Vec<{ commit: { message: Str, committer: { name: Str } } }> =\n  db\n\n\njsonlines(\n  commits(parse stdin)\n  | map { message: .commit.message, name: .commit.committer.name }\n)\n",
+      "program": "# fmt: syntax-example\nfn commits(\n  db: Vec<{ commit: { message: Str, committer: { name: Str } } }>\n) -> Vec<{ commit: { message: Str, committer: { name: Str } } }> =\n  db;\n\n\njsonlines(\n  commits(parse stdin)\n  | map { message: .commit.message, name: .commit.committer.name }\n)\n",
       "resultType": "Sink",
       "usesLines": false
     },
@@ -3984,7 +3984,7 @@
         "str",
         "var"
       ],
-      "program": "enum Msg { Ping, Quit, Text { body: Str } }\n\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n  msgs\n  | map(. | Ping -> \"*ping*\" or Quit -> \"*quit*\" or Text -> .body)\n\n\njsonlines render(stdin | map parse(.))\n",
+      "program": "# fmt: syntax-example\nenum Msg { Ping, Quit, Text { body: Str } }\n\n\nfn render(msgs: Stream<Msg>) -> Stream<Str> =\n  msgs\n  | map(. | Ping -> \"*ping*\" or Quit -> \"*quit*\" or Text -> .body);\n\n\njsonlines render(stdin | map parse(.))\n",
       "resultType": "Sink",
       "usesLines": false
     },
@@ -4077,7 +4077,7 @@
         "selection.narrow",
         "var"
       ],
-      "program": "fn adults(\n  users: Stream<{ name: Str, age: Int }>\n) -> Stream<{ name: Str }> =\n  users | select(.age >= 18) | map { name: .name }\n\n\njsonlines adults(stdin | map parse(.))\n",
+      "program": "# fmt: syntax-example\nfn adults(\n  users: Stream<{ name: Str, age: Int }>\n) -> Stream<{ name: Str }> =\n  users | select(.age >= 18) | map { name: .name };\n\n\njsonlines adults(stdin | map parse(.))\n",
       "resultType": "Sink",
       "usesLines": false
     },
@@ -4109,7 +4109,7 @@
         "str",
         "var"
       ],
-      "program": "fn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + \"!\")\n\n\njsonlines(shout stdin)\n",
+      "program": "# fmt: syntax-example\nfn shout(names: Stream<Str>) -> Stream<Str> = names | map(. + \"!\");\n\n\njsonlines(shout stdin)\n",
       "resultType": "Sink",
       "usesLines": true
     },

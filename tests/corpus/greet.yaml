@@ -1,5 +1,6 @@
 program: |
-  fn greet(who: Str) -> Str = "hello " + who
+  # fmt: syntax-example
+  fn greet(who: Str) -> Str = "hello " + who;
 
 
   greet "world"

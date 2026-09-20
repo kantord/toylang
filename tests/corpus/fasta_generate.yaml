@@ -11,7 +11,8 @@
 # plain description (repeat a fixed sequence, draw from the IUB ambiguity codes and a nucleotide
 # frequency table), in integer arithmetic, not copied from any reference source.
 program: |
-  fn next_rng(prev: Int) -> Int = (prev * 3877 + 29573) % 139968
+  # fmt: syntax-example
+  fn next_rng(prev: Int) -> Int = (prev * 3877 + 29573) % 139968;
 
 
   fn pick(
@@ -25,7 +26,7 @@ program: |
         acc: s.acc + s.w[s.i]!,
         i: s.i + 1,
         total: s.total
-      }
+      };
 
 
   fn gen(
@@ -67,7 +68,7 @@ program: |
         w: s.w,
         total: s.total,
         n: s.n
-      }
+      };
 
 
   fn alu_sec(
@@ -98,7 +99,7 @@ program: |
         lines: s.lines,
         k: (s.k + 1) % length(s.alu),
         alu: s.alu
-      }
+      };
 
 
   fn after_two(t: { lines: Vec<Str>, seed: Int, n: Int }) -> Vec<Str> =
@@ -113,7 +114,7 @@ program: |
         w: [303, 198, 198, 301],
         total: 1000,
         n: t.n
-      }.lines
+      }.lines;
 
 
   join_lines(

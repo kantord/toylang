@@ -3,13 +3,14 @@
 # constructors, so each reads as the guard of `x | <bool> -> .. or ..`, not as a variant
 # pattern; `true -> ..` used to be refused as a bad pattern, and only `(true) -> ..` ran.
 program: |
-  fn always(x: Int) -> Str = x | true -> "yes" or "no"
+  # fmt: syntax-example
+  fn always(x: Int) -> Str = x | true -> "yes" or "no";
 
 
-  fn never(x: Int) -> Str = x | false -> "yes" or "no"
+  fn never(x: Int) -> Str = x | false -> "yes" or "no";
 
 
-  fn qualified(x: Int) -> Str = x | Bool.true -> "yes" or "no"
+  fn qualified(x: Int) -> Str = x | Bool.true -> "yes" or "no";
 
 
   [always 1, never 1, qualified 1]

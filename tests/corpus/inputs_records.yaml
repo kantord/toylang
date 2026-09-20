@@ -3,8 +3,9 @@
 # record tl_parse hands back for each line into proper columns, the same invariant vec_lit and
 # `+`/tail already keep.
 program: |
+  # fmt: syntax-example
   fn names(users: Stream<{ name: Str, age: Int }>) -> Stream<Str> =
-    users | select(.age >= 18) | .[].name
+    users | select(.age >= 18) | .[].name;
 
 
   collect names(stdin | map parse(.))

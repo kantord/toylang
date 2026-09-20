@@ -3,11 +3,12 @@
 # on the value's shape rather than its type alone. Also exercises the qualified spelling
 # (`Shape.point`) and an enum inside a record.
 program: |
+  # fmt: syntax-example
   enum Shape { Point, Circle { r: Int } }
 
 
   fn classify(n: Int) -> Shape =
-    n | . == 0 -> Shape.point or circle { r: n }
+    n | . == 0 -> Shape.point or circle { r: n };
 
 
   { a: classify 0, b: classify 3 }

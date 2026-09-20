@@ -5,10 +5,11 @@
 # same as any other, and the arm's `some` needs no qualifying since the subject's type names
 # the enum.
 program: |
+  # fmt: syntax-example
   enum Batch { Empty, Some(Vec<Int>) }
 
 
-  fn size(b: Batch) -> Int = b | Some -> length(.) or Empty -> 0
+  fn size(b: Batch) -> Int = b | Some -> length(.) or Empty -> 0;
 
 
   {

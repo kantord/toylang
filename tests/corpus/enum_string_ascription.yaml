@@ -2,10 +2,11 @@
 # string literal checked against an enum type is the unit variant it names, the same spelling
 # the wire format already gives one.
 program: |
+  # fmt: syntax-example
   enum Status { Active, Inactive }
 
 
-  fn initial() -> Status = "Active"
+  fn initial() -> Status = "Active";
 
 
   initial()

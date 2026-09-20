@@ -2,7 +2,7 @@
 # the argument is one. This is what makes that read as named arguments.
 program: |
   # fmt: syntax-example
-  fn area(r: {w: Int, h: Int}) -> Int = r.w * r.h
+  fn area(r: {w: Int, h: Int}) -> Int = r.w * r.h;
 
   area {w: 3, h: 4}
 

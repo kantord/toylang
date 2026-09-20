@@ -2,7 +2,8 @@
 # commit to and yields the absent Opt, which prints as null. The empty Vec<Int> comes from a
 # declared return type, since a bare `[]` literal cannot be typed.
 program: |
-  fn nothing() -> Vec<Int> = []
+  # fmt: syntax-example
+  fn nothing() -> Vec<Int> = [];
 
 
   first nothing()

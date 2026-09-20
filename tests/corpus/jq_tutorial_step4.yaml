@@ -3,10 +3,11 @@
 # jq prints one JSON object per line here rather than one array, which is what jsonlines is
 # for. Verified byte-identical to real jq on this input.
 program: |
+  # fmt: syntax-example
   fn commits(
     db: Vec<{ commit: { message: Str, committer: { name: Str } } }>
   ) -> Vec<{ commit: { message: Str, committer: { name: Str } } }> =
-    db
+    db;
 
 
   jsonlines(
