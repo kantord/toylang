@@ -1,10 +1,14 @@
 A previous dispatch completed this task, but landing the branch on main
-FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 1 of 3). The exact evidence:
+FAILED: patch from simple_dispatch.py did not apply cleanly onto current main (landing attempt 2 of 3). The exact evidence:
 
-error: patch failed: src/backend_support.rs:43
-error: src/backend_support.rs: patch does not apply
-error: patch failed: tests/tag_coverage.rs:25
-error: tests/tag_coverage.rs: patch does not apply
+error: patch failed: benches/programs/n-body.toy:29
+error: benches/programs/n-body.toy: patch does not apply
+error: patch failed: benches/programs/spectral-norm.toy:23
+error: benches/programs/spectral-norm.toy: patch does not apply
+error: patch failed: tests/corpus/n_body.yaml:20
+error: tests/corpus/n_body.yaml: patch does not apply
+error: patch failed: tests/corpus/spectral_norm.yaml:18
+error: tests/corpus/spectral_norm.yaml: patch does not apply
 hint: Use 'git am --show-current-patch=diff' to see the failed patch
 hint: When you have resolved this problem, run "git am --continue".
 hint: If you prefer to skip this patch, run "git am --skip" instead.
