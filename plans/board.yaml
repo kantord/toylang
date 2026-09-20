@@ -421,13 +421,6 @@
   needs: [declare-terminator-build-2a, declare-terminator-build-2b, declare-terminator-build-2c]
   status: todo
 
-- id: declare-terminator-build-2a-2
-  issue: gh:153
-  title: 'Slice 2a leftover (found 2026-09-20): make `toylang fmt` print `;` after every fn/type declaration, update tests/fmt*.rs expectations, and sweep every .toy file (prelude.toy, examples/, benches/, tests/modules/) with `toylang fmt --write`. Held until the docs/README rows land: three RED runs all hit the circle (fmt prints `;` -> prelude/.toy pins fail; .toy `;` -> fmt pins fail), so fmt + all .toy files must land in ONE patch. Brief: plans/simple-briefs/declare-terminator-build-2a-2.txt (resumes from plans/wip/declare-terminator-build-2a-2.patch, the saved partial work of the seventh run; eighth run only fixes ~21 docs/plans fence fragments).'
-  kind: build
-  needs: [declare-terminator-build-2a-5, declare-terminator-build-2a-7, declare-terminator-build-2a-8]
-  status: delegated
-
 - id: declare-terminator-build-2c
   issue: gh:153
   title: 'Slice 3 of 3 of declare-terminator-build-2: make `;` REQUIRED after every fn/type declaration with one new diagnostic, retire the same-line heuristic and its diagnostic (src/parse.rs ~616, 625-637, 1472, 1646), update tests/corpus/record_body_after_definition.yaml and vec_body_after_definition.yaml, rewrite the declarations section of docs/reference/syntax/functions.md, and record the gh:153 ruling in plans/questions.md or a docs/adr/ ADR.'
@@ -493,13 +486,6 @@
   status: todo
 
 
-
-- id: fold-step-item-rename-build
-  title: 'Rename the current-element field of `Fold::step`''s parameter record from `x` to `item`, per the applicative-fold-block-syntax round ruling (2026-09-20, reduce-item-field-name option B: reduce''s step sees `{ acc, item }`, so `Fold::step` must match). Touch: prelude.toy (trait Fold and `impl Fold for Vec<Int>` step bodies, `p.x` -> `p.item`), tests/corpus/fold_trait_scaffold.yaml (`x: 3` -> `item: 3`), tests/generics.rs:153 (trait text `x: Int` -> `item: Int`), and any snapshot that renders the signature. Do NOT add `reduce` itself -- rename only; behavior identical. Verify with `just check` and the corpus test for fold_trait_scaffold.'
-  kind: build
-  needs: []
-  prio: 4
-  status: delegated
 
 - id: pipe-through-js
   issue: gh:158
