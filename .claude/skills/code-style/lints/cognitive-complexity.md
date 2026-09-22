@@ -137,3 +137,10 @@ The float-builtins-build-backends-b session is another instance of the #61 entry
 ..., _ => arg }`, nested inside `expr()`'s otherwise-flat `Builtin` dispatch, moved the function
 from its merge-base 16/10 to 17/10. Extracted into a `float_of()` helper beside `fields_lit()`,
 the same tighten-first move, back to exactly 16/10 with no behavior change.
+
+The sort-by-max-by-lua session is a shape-1 instance in `emit_lua.rs`: splitting the combined
+`Kind::SortBy { .. } | Kind::MaxBy { .. }` placeholder arm into two real arms, in both `expr()`
+and `used_helpers`'s inner `walk()`, left both functions' cognitive-complexity scores exactly
+unchanged against a merge-base worktree (`expr()` 14/10, `walk()` 11/10, `builtin_helpers`
+17/10 untouched by this diff at all) -- a plain extra arm costs the metric nothing, confirming
+shape 1. Left standing, same as every wide-match instance above.

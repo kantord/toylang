@@ -123,3 +123,10 @@ module per concern, named after the design's own vocabulary -- `one_line` and `m
 for the two templates, `parens`, `comments`, and `mod.rs` for the entry points -- with the
 largest at 590 lines. The split drew its lines where the design already had them, which is
 the test for a split that is not "meaningless pieces to get under a number".
+
+The sort-by-max-by-lua session (2026-09-23) grew another already-over emitter, the same
+one-new-builtin-per-backend shape as the opt-as-enum/record-reorder/parser-floor/Int64/
+structural-equality/Bool-keywords sessions above: `emit_lua.rs` 1523->1584 (61 lines, the
+`tl_sort_by`/`tl_max_by` helpers plus the two now-real match arms), landing the one row this
+session was asked to implement. Task-driven nudge to inherited debt; the emitter-split
+conversation stays undone.
