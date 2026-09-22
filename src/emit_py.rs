@@ -81,6 +81,12 @@ def tl_rem64(a, b):
 ///
 /// Rust's `Display` emits a whole-number float as a bare integer (`src/float.rs::lit`), which
 /// Python parses as an `int`, so `float(n)` runs first to keep `repr` on the value's real type.
+// `math.sqrt` raises ValueError on a negative input; every other backend's sqrt gives NaN there
+// instead, so the guard makes Python agree.
+const SQRT_HELPER: &str = r#"def tl_sqrt(v):
+    return float("nan") if v < 0 else math.sqrt(v)
+"#;
+
 const FLOAT_HELPER: &str = r#"def tl_float(n):
     n = float(n)
     if n != n:
@@ -417,17 +423,24 @@ pub fn emit(program: &Program) -> String {
     if program.input.is_some() || program.inputs.is_some() || uses("json.loads(") {
         out.push_str("import json\n");
     }
+    if uses("tl_sqrt(") {
+        out.push_str("import math\n");
+    }
     // Python's default ceiling (1000) is far below what a compiled-style recursive program
     // needs: Euler 11's self-tail-recursive fold alone is ~1300 frames deep. Raise it before
     // any program code runs; 100000 is comfortably above the thousands real programs reach.
     out.push_str("sys.setrecursionlimit(100000)\n");
     out.push('\n');
     for (on, text) in [
-        (unwrap || arith || arith64 || uses("tl_transpose("), FAIL_HELPER),
+        (
+            unwrap || arith || arith64 || uses("tl_transpose("),
+            FAIL_HELPER,
+        ),
         (arith || uses("tl_i32(") || uses("tl_sum("), I32_HELPER),
         (arith64 || uses("tl_i64(") || uses("tl_sum64("), I64_HELPER),
         (arith, ARITH_HELPER),
         (arith64, ARITH64_HELPER),
+        (uses("tl_sqrt("), SQRT_HELPER),
         (uses("tl_float("), FLOAT_HELPER),
         (uses("tl_divf("), DIVF_HELPER),
         (uses("tl_field("), FIELD_HELPER),
@@ -532,7 +545,9 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
-        Type::Seq(..) => unreachable!("a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"),
+        Type::Seq(..) => unreachable!(
+            "a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"
+        ),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("tl_quote({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
@@ -638,6 +653,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Parse => format!("json.loads({})", expr(enums, arg)),
             // Python's integers are one type at every width, so the bridge has nothing to do.
             Builtin::IntToI64 => expr(enums, arg),
+            Builtin::Sqrt => format!("tl_sqrt({})", expr(enums, arg)),
+            Builtin::FloatOf => match &arg.ty {
+                Type::Int => format!("float({})", expr(enums, arg)),
+                _ => expr(enums, arg),
+            },
             Builtin::Range => format!("tl_range({})", expr(enums, arg)),
             Builtin::Chars => format!("tl_chars({})", expr(enums, arg)),
             Builtin::JsonLines => {
@@ -674,9 +694,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 };
                 // A payload variant's runtime value is `{variant: <payload>}`, and this
                 // payload is the `{text: Str}` record, so the closure wraps the line in both.
-                let tag = |tag: &str| {
-                    format!("lambda l: {{{}: {{\"text\": l}}}}", py_string(tag))
-                };
+                let tag = |tag: &str| format!("lambda l: {{{}: {{\"text\": l}}}}", py_string(tag));
                 format!(
                     "tl_pipe_through({}, {}, {}, {}, {})",
                     expr(enums, &field("cmd")),
@@ -710,7 +728,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 let names: Vec<String> = fields.iter().map(|(n, _)| py_string(n)).collect();
                 format!("(lambda _: [{}])({})", names.join(", "), expr(enums, arg))
             }
-            _ => unreachable!("not yet implemented for this backend"),
         },
         Kind::Compare { op, lhs, rhs } => {
             format!("({} {} {})", expr(enums, lhs), py_op(*op), expr(enums, rhs))

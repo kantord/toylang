@@ -3366,3 +3366,15 @@
   kind: build
   needs: []
   status: done
+
+- id: pipe-through-lua
+  issue: gh:158
+  title: 'pipe_through (gh:158) -- emit for the Lua backend only (src/emit_lua.rs plus LANDINGS in
+    src/backend_support.rs and tests/unbuilt_arms.rs), following the Go/Python/Rust arms. Serialized
+    after pipe-through-js on backend_support.rs. LANDED direct session 2026-09-22 (not drive): Lua has
+    no bidirectional-pipe primitive and mlua embeds the interpreter rather than shelling out to a real
+    `lua` binary, so stdin and stderr go through temp files instead of pipes (io.popen only captures one
+    direction). `just check` (502/502) and the full `just test` including the docs mega-test are green.'
+  kind: build
+  needs: [pipe-through-js]
+  status: done

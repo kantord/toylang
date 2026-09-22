@@ -23,17 +23,17 @@ const UNCOVERED: &[(&str, &str)] = &[
     ),
     (
         "builtin.pipe_through",
-        "no corpus case: pipe_through runs only on a subset of backends (go, rust, py, js) and reads a subprocess",
+        "no corpus case: pipe_through runs only on a subset of backends (go, rust, py, js, lua) and reads a subprocess",
     ),
     (
         "builtin.sqrt",
-        "no row yet: sqrt lands on no backend, so no corpus case can exist until a built-on \
-backend gives the refusal a backend to name (float-builtins-build-front, ruling 2026-09-20)",
+        "no corpus case: sqrt has no native (LLVM) arm yet, same reason pipe_through above has \
+none",
     ),
     (
         "builtin.float",
-        "no row yet: float lands on no backend, so no corpus case can exist until a built-on \
-backend gives the refusal a backend to name (float-builtins-build-front, ruling 2026-09-20)",
+        "no corpus case: float has no native (LLVM) arm yet, same reason pipe_through above has \
+none",
     ),
 ];
 
@@ -41,8 +41,8 @@ fn used_tags() -> BTreeSet<String> {
     let mut used = BTreeSet::new();
     for case in support::cases() {
         let path = support::dir().join(format!("{}.yaml", case.name));
-        let text = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let text =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         let Some(line) = text.lines().find(|l| l.starts_with("node_types:")) else {
             continue;
         };

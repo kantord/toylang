@@ -22,10 +22,13 @@ stream starts at `lines` and dies at `collect`, exactly the way any other stream
 
 
 
-The one backend where the primitive exists today is Rust (`std::process::Command` with piped
-stdin, stdout, and stderr). The other six backends have no arm for it yet, so a program using
-`pipe_through` there is refused before anything is emitted:
+Landed so far on Go, Rust, Python, JS, and Lua. jq and LLVM have no arm for it yet, so a program
+using `pipe_through` there is refused before anything is emitted:
 
 ```
-`pipe_through` has no lua backend yet; today it runs on rust
+`pipe_through` has no jq backend yet; today it runs on go and rust and py and js and lua
 ```
+
+Lua has no bidirectional-pipe primitive and no separate `lua` process to hand pipes to --
+`toylang run --backend lua` runs the emitted chunk embedded in the compiler's own process via
+`mlua` -- so stdin and stderr go through temp files rather than pipes.

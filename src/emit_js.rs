@@ -621,7 +621,9 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
-        Type::Seq(..) => unreachable!("a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"),
+        Type::Seq(..) => unreachable!(
+            "a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"
+        ),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
         Type::Str => format!("JSON.stringify({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
@@ -1088,6 +1090,13 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // The one real conversion among the backends: an Int is a number and an Int64 is
             // a BigInt, and BigInt() of a 32-bit integer is always exact.
             Builtin::IntToI64 => format!("BigInt({})", expr(enums, arg)),
+            // `Math.sqrt` already returns NaN for a negative input, the same as Rust's
+            // `f64::sqrt`, so nothing here has to guard it.
+            Builtin::Sqrt => format!("Math.sqrt({})", expr(enums, arg)),
+            // An Int and a Float are both a plain `number` here, so unlike Go's or Rust's
+            // distinct types, there is no runtime conversion to make: `float` only changes which
+            // printer the static type picks.
+            Builtin::FloatOf => expr(enums, arg),
             Builtin::Chars => format!("tl_chars({})", expr(enums, arg)),
             Builtin::Range => {
                 format!(
@@ -1178,7 +1187,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 let names: Vec<String> = fields.iter().map(|(n, _)| js_string(n)).collect();
                 format!("({}, [{}])", expr(enums, arg), names.join(", "))
             }
-            _ => unreachable!("not yet implemented for this backend"),
         },
         Kind::Compare { op, lhs, rhs } => compare(enums, *op, lhs, rhs),
         Kind::Bind {
@@ -1255,7 +1263,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             // the selection vector directly (densifying once only in the recursive depth>0
             // case). Any other use of a Select result is already dense from the Select arm.
             let base = match &base.kind {
-                Kind::Select { source, param, pred } => format!(
+                Kind::Select {
+                    source,
+                    param,
+                    pred,
+                } => format!(
                     "tl_sel_new({}, ({}) => {})",
                     expr(enums, source),
                     local(*param),
@@ -1409,7 +1421,9 @@ fn js_op(op: BinOp) -> &'static str {
 /// what a value looks like, so the `.d.ts` cannot differ between them.
 fn ts_type(ty: &Type) -> String {
     match ty {
-        Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
+        Type::Seq(..) => unreachable!(
+            "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
+        ),
         Type::Str => "string".to_string(),
         // An Int wraps to 32 bits and a Float is a double, but both are JS numbers; a Char
         // is its Unicode codepoint, another number, since `chars` produces numbers.

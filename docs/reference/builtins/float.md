@@ -13,15 +13,17 @@ It is exact because `Int` is 32 bits and `Float` is 64
 nothing to round; a too-big value enters as a literal only where a `Float` is already
 expected, never through the bridge.
 
-This row lands the builtin in the front end only: it type-checks (on an `Int` or a `Float`),
-and the refusal happens in one place, [`refuse_unbuilt`](../../../src/backend_support.rs),
-before any emitter runs. No backend has an arm for it yet, so a program that reached here is
-refused everywhere:
+Landed so far on Go, Rust, Python, JS, Lua, and jq. Native (the LLVM backend) has no arm for
+it yet, so a program that reaches it is refused before anything is emitted:
 
 ```
-`float` has no rust backend yet; today it runs on
+`float` has no native backend yet; today it runs on go and rust and py and js and lua and jq
 ```
 
-Because every backend refuses, no reference page can show `float(1) + 0.5` running, and the
-tag-corpus row for it is a debt held in `tests/tag_coverage.rs` (`builtin.float`) until a
-built-on backend gives the refusal a backend to name.
+Go and Rust are the two backends where an `Int` and a `Float` are genuinely different runtime
+types, so their arms cast; Python, JS, Lua, and jq represent both the same way at runtime, so
+`float` is the identity there and only changes which printer the static type picks.
+
+Because one backend still refuses, no reference page can show `float(1) + 0.5` running against
+all of them, and the tag-corpus row for it is a debt held in `tests/tag_coverage.rs`
+(`builtin.float`) until the last backend lands it.

@@ -1,14 +1,14 @@
 //! Which backends can emit the builtins that are still landing one backend at a time.
 //!
-//! `sort_by`, `max_by`, `transpose`, `pipe_through`, `sqrt`, and `float` each landed on one
-//! or two backends first (or, in `sqrt` and `float`'s case, on none yet), with the rest to
-//! follow as their own board rows. Until this table existed, the other emitters carried an
-//! `unreachable!("not yet implemented for this backend")` arm for them, so a program using
-//! one on the wrong backend did not get a refusal, it got a compiler panic -- and the
-//! reference pages could not say truthfully what happens. The refusal now happens here,
-//! before any emitter runs, in one place that a landing row updates when it adds an arm; the
-//! tests in `tests/unbuilt_arms.rs` hold this table to what the emitters actually do in both
-//! directions.
+//! `sort_by`, `max_by`, `transpose`, `pipe_through`, `sqrt`, and `float` each landed on some
+//! backends first, with the rest to follow as their own board rows. Until this table existed,
+//! the other emitters carried an `unreachable!("not yet implemented for this backend")` arm
+//! for them, so a program using one on the wrong backend did not get a refusal, it got a
+//! compiler panic -- and the reference pages could not say truthfully what happens. The
+//! refusal now happens here, before any emitter runs, in one place that a landing row updates
+//! when it adds an arm; the tests in `tests/unbuilt_arms.rs` hold this table to what the
+//! emitters actually do in both directions. jq and native (the LLVM backend) are the last two
+//! still carrying that wildcard arm, for whichever of these builtins reaches them next.
 
 use crate::Backend;
 use crate::tir::{self, Builtin, Kind, Program, Tir};
@@ -42,15 +42,35 @@ pub const LANDINGS: &[Landing] = &[
     },
     Landing {
         name: "pipe_through",
-        built_on: &[Backend::Go, Backend::Rust, Backend::Py, Backend::Js],
+        built_on: &[
+            Backend::Go,
+            Backend::Rust,
+            Backend::Py,
+            Backend::Js,
+            Backend::Lua,
+        ],
     },
     Landing {
         name: "sqrt",
-        built_on: &[],
+        built_on: &[
+            Backend::Go,
+            Backend::Rust,
+            Backend::Py,
+            Backend::Js,
+            Backend::Lua,
+            Backend::Jq,
+        ],
     },
     Landing {
         name: "float",
-        built_on: &[],
+        built_on: &[
+            Backend::Go,
+            Backend::Rust,
+            Backend::Py,
+            Backend::Js,
+            Backend::Lua,
+            Backend::Jq,
+        ],
     },
 ];
 

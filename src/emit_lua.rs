@@ -235,6 +235,50 @@ local function tl_flatten(vv)
 end
 ";
 
+// Standard Lua has no bidirectional-pipe primitive, and mlua embeds the interpreter in this
+// process rather than shelling out to a `lua` binary, so there is no separate process to hand
+// pipes to either way. `io.popen` only captures one direction, so stdin and stderr go through
+// temp files instead of pipes -- which also means a child that never reads stdin cannot stall
+// the program, the same guarantee the other backends get from draining concurrently. `io.popen`
+// runs its argument through the system shell, so each argv element is single-quoted to keep
+// `cmd` and `args` from being re-split or glob-expanded.
+const PIPE_HELPER: &str = r#"local function tl_pipe_through(cmd, args, stdin_lines, to_stdout, to_stderr)
+  local function shq(s)
+    return "'" .. string.gsub(s, "'", "'\\''") .. "'"
+  end
+  local function tl_pipe_lines(s)
+    if string.sub(s, -1) == "\n" then s = string.sub(s, 1, -2) end
+    if s == "" then return {} end
+    local out = {}
+    for line in (s .. "\n"):gmatch("(.-)\n") do out[#out + 1] = line end
+    return out
+  end
+  local in_path = os.tmpname()
+  local err_path = os.tmpname()
+  local f = io.open(in_path, "w")
+  for i = 1, #stdin_lines do f:write(stdin_lines[i], "\n") end
+  f:close()
+  local parts = { shq(cmd) }
+  for i = 1, #args do parts[#parts + 1] = shq(args[i]) end
+  parts[#parts + 1] = "<" .. shq(in_path)
+  parts[#parts + 1] = "2>" .. shq(err_path)
+  local p = io.popen(table.concat(parts, " "), "r")
+  local out_text = p:read("*a")
+  p:close()
+  local ef = io.open(err_path, "r")
+  local err_text = ef:read("*a")
+  ef:close()
+  os.remove(in_path)
+  os.remove(err_path)
+  local out = {}
+  local ol = tl_pipe_lines(out_text)
+  for i = 1, #ol do out[#out + 1] = to_stdout(ol[i]) end
+  local el = tl_pipe_lines(err_text)
+  for i = 1, #el do out[#out + 1] = to_stderr(el[i]) end
+  return out
+end
+"#;
+
 // `Int` and `Int64` are the only element types the checker lets through, so one helper serves
 // both widths. A ragged input -- rows of unequal length -- is refused the same way every other
 // runtime failure is, since the checker cannot see lengths.
@@ -612,8 +656,7 @@ pub fn emit(program: &Program) -> String {
     // through `fused_main`'s `current_ty`, which is `program.body.ty`'s element by then. A
     // `jsonlines` program's body type is Sink, which says nothing about what its callback
     // prints, so the helper rides along with `tl_jsonlines` the way `quote` and `join` do.
-    let show_float =
-        (structured && ty::contains_float(enums, &program.body.ty)) || used.jsonlines;
+    let show_float = (structured && ty::contains_float(enums, &program.body.ty)) || used.jsonlines;
     for (on, text) in [
         (used.select, SELECT_HELPER),
         (used.field, FIELD_HELPER),
@@ -628,6 +671,7 @@ pub fn emit(program: &Program) -> String {
         (used.all, ALL_HELPER),
         (used.flatten, FLATTEN_HELPER),
         (used.transpose, TRANSPOSE_HELPER),
+        (used.pipe_through, PIPE_HELPER),
         (used.sort, SORT_HELPER),
         (used.reverse, REVERSE_HELPER),
         (used.arith, ARITH_HELPER),
@@ -880,7 +924,6 @@ fn contains_vec(enums: &Enums, ty: &Type) -> bool {
     }
 }
 
-
 /// Which identifiers are reserved is the target's business, not toylang's. A program with a
 /// function called `print` or `end` would otherwise emit Lua that shadows the output function or
 /// does not parse.
@@ -911,6 +954,7 @@ struct Helpers {
     all: bool,
     flatten: bool,
     transpose: bool,
+    pipe_through: bool,
     chars: bool,
     sort: bool,
     reverse: bool,
@@ -964,6 +1008,7 @@ fn builtin_helpers(which: &Builtin, arg_ty: &Type, used: &mut Helpers) {
     used.all |= matches!(which, Builtin::All);
     used.flatten |= matches!(which, Builtin::Flatten);
     used.transpose |= matches!(which, Builtin::Transpose);
+    used.pipe_through |= matches!(which, Builtin::PipeThrough);
     used.chars |= matches!(which, Builtin::Chars);
     used.sort |= matches!(which, Builtin::Sort);
     used.reverse |= matches!(which, Builtin::Reverse);
@@ -1163,6 +1208,14 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::Parse => format!("tl_parse_json({})", expr(enums, arg)),
             // Lua's integers are 64-bit already; an Int just lives in the low half.
             Builtin::IntToI64 => expr(enums, arg),
+            // `math.sqrt` already returns NaN for a negative input, the same as Rust's
+            // `f64::sqrt`, so nothing here has to guard it.
+            Builtin::Sqrt => format!("math.sqrt({})", expr(enums, arg)),
+            // Lua 5.4 distinguishes an integer and a float subtype internally, but every
+            // arithmetic and formatting operation `tl_show_float` reaches for coerces either
+            // one, so there is no runtime conversion to make: `float` only changes which static
+            // type prints the value.
+            Builtin::FloatOf => expr(enums, arg),
             Builtin::Chars => format!("tl_chars({})", expr(enums, arg)),
             Builtin::Range => format!("tl_range({})", expr(enums, arg)),
             Builtin::JsonLines => {
@@ -1183,6 +1236,34 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::All => format!("tl_all({})", expr(enums, arg)),
             Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
             Builtin::Transpose => format!("tl_transpose({})", expr(enums, arg)),
+            // The two closures build the tagged `PipeLine` value, the same shape any
+            // payload-carrying variant takes here: the single-key table `{[variant] = payload}`.
+            Builtin::PipeThrough => {
+                let Kind::RecordLit { fields } = &arg.kind else {
+                    unreachable!("pipe_through's argument is checked to be the record literal")
+                };
+                let field = |name: &str| {
+                    fields
+                        .iter()
+                        .find(|(n, _)| n == name)
+                        .map(|(_, v)| v)
+                        .expect("pipe_through's record is checked to carry all three fields")
+                };
+                let tag = |t: &str| {
+                    format!(
+                        "function(l) return {{[{}] = {{[\"text\"] = l}}}} end",
+                        lua_string(t)
+                    )
+                };
+                format!(
+                    "tl_pipe_through({}, {}, {}, {}, {})",
+                    expr(enums, field("cmd")),
+                    expr(enums, field("args")),
+                    expr(enums, field("lines")),
+                    tag("Stdout"),
+                    tag("Stderr")
+                )
+            }
             Builtin::Sort => format!("tl_sort({})", expr(enums, arg)),
             Builtin::Reverse => format!("tl_reverse({})", expr(enums, arg)),
             Builtin::Sum => format!(
@@ -1205,7 +1286,6 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                     expr(enums, arg)
                 )
             }
-            _ => unreachable!("not yet implemented for this backend"),
         },
         Kind::Compare { op, lhs, rhs } => compare(enums, *op, lhs, rhs),
         // Lua has no expression-level `let`, so the binding becomes a call.

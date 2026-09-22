@@ -102,7 +102,6 @@ func tlSelDense[T any](s *tlSel[T]) []T {
 }
 "#;
 
-
 const AT_HELPER: &str = r#"func tlAt[T any](v []T, i int32) tlOpt[T] {
 	n := int32(len(v))
 	if i < 0 {
@@ -363,7 +362,6 @@ const PIPE_HELPER: &str = r#"func tlPipeThrough[T any](cmd string, args []string
 	return out
 }
 "#;
-
 
 /// Go's `int32` wraps on overflow by definition, and its `/` and `%` truncate toward zero, so
 /// only the zero divisor needs a guard. `MIN / -1` is defined to be `MIN` here, which is the
@@ -794,7 +792,13 @@ pub fn emit(program: &Program) -> String {
     let mut helpers = String::new();
     // tlOpt is what tlAt and tlUnwrap are written in terms of, and inference means the emitted
     // text need never spell it. Helper-to-helper dependencies are stated rather than read back.
-    if uses("tlOpt[") || uses("tlAt(") || uses("tlTail(") || uses("tlFirst(") || uses("tlSelNew(") || unwrap {
+    if uses("tlOpt[")
+        || uses("tlAt(")
+        || uses("tlTail(")
+        || uses("tlFirst(")
+        || uses("tlSelNew(")
+        || unwrap
+    {
         helpers.push_str(OPT_TYPE);
         helpers.push('\n');
     }
@@ -857,7 +861,10 @@ pub fn emit(program: &Program) -> String {
                 || uses("tlFloat("),
             &["strings"],
         ),
-        (uses("tlShowFloat(") || uses("tlFloat("), &["math"]),
+        (
+            uses("tlShowFloat(") || uses("tlFloat(") || uses("math.Sqrt("),
+            &["math"],
+        ),
         (uses("tlDsv(") || collect, &["unicode/utf8"]),
         (uses("tlPipeThrough("), &["os/exec", "bufio", "strings"]),
         (uses("tlSort(") || uses("tlSortBy("), &["cmp", "slices"]),
@@ -897,7 +904,9 @@ fn has_scalar(enums: &Enums, ty: &Type) -> bool {
             // Only ever called on the program's own result type, which the checker guarantees is
             // never a stream and never contains one.
             Type::Stream(_) => unreachable!("a stream cannot reach has_scalar"),
-            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
+            Type::Seq(..) => unreachable!(
+                "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
+            ),
             // The checker refuses a program whose result contains a Char, the same as a stream.
             Type::Char => unreachable!("a Char cannot reach has_scalar"),
             Type::Int | Type::Int64 | Type::Bool => true,
@@ -1094,7 +1103,9 @@ impl Emitter<'_> {
 
     fn go_type(&self, ty: &Type) -> String {
         match ty {
-            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
+            Type::Seq(..) => unreachable!(
+                "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
+            ),
             Type::Str => "string".to_string(),
             // A sink is a joined string at runtime, so a `-> Sink` function has one here too.
             Type::Sink => "string".to_string(),
@@ -1384,6 +1395,13 @@ impl Emitter<'_> {
             Kind::Builtin { which, arg } => match which {
                 Builtin::IntToStr => format!("strconv.FormatInt(int64({}), 10)", self.expr(arg)),
                 Builtin::IntToI64 => format!("int64({})", self.expr(arg)),
+                // Go's math.Sqrt already returns NaN for a negative input, the same as Rust's
+                // f64::sqrt, so nothing here has to guard it.
+                Builtin::Sqrt => format!("math.Sqrt({})", self.expr(arg)),
+                Builtin::FloatOf => match &arg.ty {
+                    Type::Int => format!("float64({})", self.expr(arg)),
+                    _ => self.expr(arg),
+                },
                 // Decode the string as one JSON value into the result type, the same path stdin
                 // already uses (`json.NewDecoder(os.Stdin).Decode`). A failed parse stops the
                 // program the way a malformed stdin value would.
@@ -1411,7 +1429,12 @@ impl Emitter<'_> {
                 Builtin::Length => {
                     // A length directly on a Select stays lazy: it answers from the survivor
                     // vector without materializing the dense slice first.
-                    if let Kind::Select { source, param, pred } = &arg.kind {
+                    if let Kind::Select {
+                        source,
+                        param,
+                        pred,
+                    } = &arg.kind
+                    {
                         format!(
                             "tlSelLen(tlSelNew({}, func({} {}) bool {{ return {} }}))",
                             self.expr(source),
@@ -1455,8 +1478,7 @@ impl Emitter<'_> {
                             .map(|(_, v)| v)
                             .expect("pipe_through's record is checked to carry all three fields")
                     };
-                    let enum_ty = tir::runtime_elem(&t.ty)
-                        .expect("pipe_through returns a stream");
+                    let enum_ty = tir::runtime_elem(&t.ty).expect("pipe_through returns a stream");
                     let variants = ty::variants(self.registry, enum_ty);
                     variants
                         .iter()
@@ -1494,7 +1516,6 @@ impl Emitter<'_> {
                         self.expr(arg)
                     )
                 }
-                _ => unreachable!("not yet implemented for this backend"),
             },
             Kind::Compare { op, lhs, rhs } => self.compare(*op, lhs, rhs),
             Kind::Bind {
@@ -1591,7 +1612,12 @@ impl Emitter<'_> {
                 // A depth-0 index directly on a Select stays lazy: it reads the survivor
                 // vector instead of materializing the dense slice first.
                 if *depth == 0 {
-                    if let Kind::Select { source, param, pred } = &base.kind {
+                    if let Kind::Select {
+                        source,
+                        param,
+                        pred,
+                    } = &base.kind
+                    {
                         return format!(
                             "tlSelAt(tlSelNew({}, func({} {}) bool {{ return {} }}), {})",
                             self.expr(source),
@@ -1717,7 +1743,9 @@ impl Emitter<'_> {
             // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
-            Type::Seq(..) => unreachable!("a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"),
+            Type::Seq(..) => unreachable!(
+                "a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"
+            ),
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tlQuote({value})"),
             Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),

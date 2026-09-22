@@ -1032,6 +1032,12 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             Builtin::IntToStr => format!("({} | tostring)", expr(enums, arg)),
             // jq has one number type at every width, so the bridge has nothing to do.
             Builtin::IntToI64 => format!("({})", expr(enums, arg)),
+            // jq's own `sqrt` filter already gives `nan` for a negative input, the IEEE answer
+            // every other backend's own sqrt gives natively too, so nothing here has to guard
+            // it; `tl_show_float` already knows how to print the `nan`/`infinite` jq gives back.
+            Builtin::Sqrt => format!("({} | sqrt)", expr(enums, arg)),
+            // jq has one number type at every width, the same reason `IntToI64` is a no-op.
+            Builtin::FloatOf => format!("({})", expr(enums, arg)),
             // jq's own `fromjson` reads a string as one JSON value; the body-level `canonical`
             // reorders any record it produces into the type's field order, the same way a parsed
             // stdin value is handled.
