@@ -3416,3 +3416,27 @@
   kind: build
   needs: [float-builtins-build-backends-b]
   status: done
+
+- id: mutation-rule-v1-checkpoint-rust
+  title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Rust-source commit landed
+    clean before starting Lua. Post-land review flag (2026-09-17): the only test the build
+    added, tests/scratch_mutation.rs''s scratch_dump, has zero assertions -- it just prints
+    which lines matched a substring filter and always passes regardless of output, so the v1
+    rule (single_consuming_use / owned-helper emission in src/emit_rs.rs) currently has no
+    real automated coverage. Decide whether to require an assertion-based test before Lua
+    starts, or accept scratch_dump as scaffolding and track real coverage separately. RULED
+    2026-09-23: require the assertion-based test before Lua starts; retitled into a build task.
+    LANDED 2026-09-23 (direct session, not drive): replaced tests/scratch_mutation.rs with
+    tests/mutation_rust.rs. Six tests, one per case scratch_dump used to print without checking:
+    single_consuming_use''s three binding forms (a `let`, a `map` element, an enum match arm''s
+    payload) each proven to emit the owned helper (`tl_sort_owned`/`tl_reverse_owned`/`.extend(`)
+    when read exactly once by a consuming builtin or a `+`-concat, plus two negatives (a `let`
+    binding and a `map` element, each read a second time alongside the consuming use) proving the
+    borrowing form (`tl_sort(&`, `.iter().map`) holds once the local is no longer single-use.
+    Two of the five programs scratch_dump printed no longer compiled (`map` over `Opt<Vec<Int>>`,
+    and enum/match syntax predating kantord/toylang#150''s `let` and the current match grammar);
+    replaced with equivalent valid programs exercising the same binding form. `just check`
+    (507/507) green -- 502 at merge-base, minus scratch_dump, plus the six new tests.'
+  kind: build
+  needs: [mutation-rule-v1-build-rust]
+  status: done
