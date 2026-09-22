@@ -659,6 +659,23 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(vec.into())
     }
 
+    /// `float`, unlike `sqrt`, also takes a Float (identity); only an Int argument needs the
+    /// bridge, the same split `emit_rs`/`emit_go` make.
+    fn float_of(
+        &mut self,
+        arg: BasicValueEnum<'ctx>,
+        arg_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        match arg_ty {
+            Type::Int => self
+                .builder
+                .build_signed_int_to_float(arg.into_int_value(), self.ctx.f64_type(), "float_of")
+                .map_err(|e| e.to_string())
+                .map(Into::into),
+            _ => Ok(arg),
+        }
+    }
+
     /// `fields(r)`'s literal: LLVM's record layout carries no field names at runtime at all
     /// (`vec_lit`'s own Record branch above reads them off the type the same way), so the names
     /// come from `record_ty` rather than any value.
@@ -1614,20 +1631,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     // `arg` above ran only for whatever else it does; its value is unused here.
                     Builtin::Fields => self.fields_lit(&record_ty)?,
                     Builtin::Sqrt => self.call_rt(self.rt.sqrt, &[arg], "sqrt")?,
-                    // `float`, unlike `sqrt`, also takes a Float (identity); only an Int
-                    // argument needs the bridge, the same split `emit_rs`/`emit_go` make.
-                    Builtin::FloatOf => match &arg_node.ty {
-                        Type::Int => self
-                            .builder
-                            .build_signed_int_to_float(
-                                arg.into_int_value(),
-                                self.ctx.f64_type(),
-                                "float_of",
-                            )
-                            .map_err(|e| e.to_string())?
-                            .into(),
-                        _ => arg,
-                    },
+                    Builtin::FloatOf => self.float_of(arg, &arg_node.ty)?,
                     _ => unreachable!("not yet implemented for this backend"),
                 }
             }
