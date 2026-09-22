@@ -122,6 +122,24 @@ pub enum Kind {
         param: LocalId,
         body: Box<Tir>,
     },
+    /// A closure value (closures-first-class-functions-design, 2026-09-23): `param` bound to
+    /// whatever `body`'s type says it is, `body` computing the result. The one way to build a
+    /// value of a `Type::Fn`, and -- since nothing else ever produces one -- always the checked
+    /// contents of a `$`-marked position rather than something a backend has to infer the shape
+    /// of. Second-class the same way a closure only exists as a call's own argument for now:
+    /// nothing stores one in a `let`, a `Vec`, or a return value yet.
+    Closure {
+        param: LocalId,
+        body: Box<Tir>,
+    },
+    /// Calls a closure *value* -- `closure`'s type is a `Type::Fn`, unlike `Call`, which names a
+    /// fixed top-level function by string. The one way a closure a caller built is ever actually
+    /// run: today, only a higher-order function's own body reaches this, applying a closure it
+    /// received as an ordinary parameter.
+    ApplyClosure {
+        closure: Box<Tir>,
+        arg: Box<Tir>,
+    },
     Select {
         source: Box<Tir>,
         param: LocalId,
@@ -675,6 +693,11 @@ pub fn each_node(t: &Tir, f: &mut impl FnMut(&Tir)) {
                 }
                 each_node(&arm.body, f);
             }
+        }
+        Kind::Closure { body, .. } => each_node(body, f),
+        Kind::ApplyClosure { closure, arg } => {
+            each_node(closure, f);
+            each_node(arg, f);
         }
     }
 }

@@ -370,6 +370,7 @@ impl<'ctx> Emitter<'ctx, '_> {
     fn llvm_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, String> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
             Type::Seq(..) => unreachable!(
                 "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
             ),
@@ -484,6 +485,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let i64t = self.ctx.i64_type();
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Seq(..) => unreachable!(
                 "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
@@ -513,6 +515,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let ptr = self.ctx.ptr_type(AddressSpace::default());
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Seq(..) => unreachable!(
                 "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
@@ -1070,6 +1073,7 @@ impl<'ctx> Emitter<'ctx, '_> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
             // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
@@ -1919,6 +1923,9 @@ impl<'ctx> Emitter<'ctx, '_> {
                 self.builder
                     .build_load(result_ty, slot, "matched")
                     .map_err(|e| e.to_string())?
+            }
+            Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
+                unreachable!("not yet implemented for this backend")
             }
         })
     }
@@ -2805,6 +2812,7 @@ fn descriptor(enums: &Enums, ty: &Type) -> String {
     fn walk(enums: &Enums, ty: &Type, open: &mut Vec<Type>) -> String {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
             // Stream is unspellable in a type annotation, so `input`'s declared type -- the only
             // thing this function is ever called on -- can never contain one.
             Type::Stream(_) => unreachable!("Stream cannot be declared, so input never has one"),

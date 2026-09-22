@@ -17,6 +17,11 @@ fn program_using(name: &str) -> &'static str {
         "pipe_through" => "collect(pipe_through({cmd: \"cat\", args: [], lines: stdin}))\n",
         "sqrt" => "sqrt(2.0)\n",
         "float" => "float(1) + 0.5\n",
+        "closure" => {
+            "fn f({items, pred}: {items: Vec<Int>, pred: Int -> Bool}) -> Int = \
+             items | select(pred) | length(.);\n\n\
+             f({items: [1, 2], pred: $ > 0})\n"
+        }
         other => panic!("no program for landing builtin `{other}`; add one here"),
     }
 }
