@@ -71,13 +71,6 @@
   needs: [sort-by-max-by-rust-tests]
   status: todo
 
-- id: sort-by-max-by-lua
-  issue: gh:177
-  title: 'sort_by and max_by (gh:177) -- emit for the Lua backend only (src/emit_lua.rs).'
-  kind: build
-  needs: [sort-by-max-by-checkpoint-rust]
-  status: todo
-
 - id: sort-by-max-by-checkpoint-lua
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Lua commit landed clean before

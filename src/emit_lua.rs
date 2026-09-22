@@ -320,6 +320,25 @@ local function tl_reverse(v)
 end
 ";
 
+// `table.sort` is not guaranteed stable, so ties would take an order the spec does not promise.
+// Decorate each element with its original index, sort by (key, index), then undecorate -- index
+// as the tiebreaker makes any underlying sort stable regardless of its own guarantees.
+const SORT_BY_HELPER: &str = "\
+local function tl_sort_by(v, key)
+  local decorated = {}
+  for i = 1, #v do
+    decorated[i] = { k = key(v[i]), i = i, v = v[i] }
+  end
+  table.sort(decorated, function(a, b)
+    if a.k ~= b.k then return a.k < b.k end
+    return a.i < b.i
+  end)
+  local out = {}
+  for i = 1, #decorated do out[i] = decorated[i].v end
+  return out
+end
+";
+
 // `narrow` is true exactly when the element type is Int: both widths live in the same 64-bit
 // integer here, so the only difference is whether each addition is brought back to 32 bits the
 // way `+` does.
@@ -340,6 +359,23 @@ local function tl_max(v)
   local m = v[1]
   for i = 2, #v do
     if v[i] > m then m = v[i] end
+  end
+  return { Some = m }
+end
+";
+
+// The same `key(x) > key(m)` shape `tl_max` uses, so of equal maxima the first entry wins.
+const MAX_BY_HELPER: &str = "\
+local function tl_max_by(v, key)
+  if #v == 0 then return \"None\" end
+  local m = v[1]
+  local mk = key(v[1])
+  for i = 2, #v do
+    local k = key(v[i])
+    if k > mk then
+      m = v[i]
+      mk = k
+    end
   end
   return { Some = m }
 end
@@ -673,6 +709,7 @@ pub fn emit(program: &Program) -> String {
         (used.transpose, TRANSPOSE_HELPER),
         (used.pipe_through, PIPE_HELPER),
         (used.sort, SORT_HELPER),
+        (used.sort_by, SORT_BY_HELPER),
         (used.reverse, REVERSE_HELPER),
         (used.arith, ARITH_HELPER),
         (used.arith64, ARITH64_HELPER),
@@ -681,6 +718,7 @@ pub fn emit(program: &Program) -> String {
         // nil global at runtime.
         (used.sum, SUM_HELPER),
         (used.max, MAX_HELPER),
+        (used.max_by, MAX_BY_HELPER),
         (used.map, MAP_HELPER),
         (used.range, RANGE_HELPER),
         (used.collect, UTF8_HELPER),
@@ -957,9 +995,11 @@ struct Helpers {
     pipe_through: bool,
     chars: bool,
     sort: bool,
+    sort_by: bool,
     reverse: bool,
     sum: bool,
     max: bool,
+    max_by: bool,
     eq: bool,
     split: bool,
     parse: bool,
@@ -1083,7 +1123,13 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(source, used);
                 walk(pred, used);
             }
-            Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+            Kind::SortBy { source, body, .. } => {
+                used.sort_by = true;
+                walk(source, used);
+                walk(body, used);
+            }
+            Kind::MaxBy { source, body, .. } => {
+                used.max_by = true;
                 walk(source, used);
                 walk(body, used);
             }
@@ -1321,11 +1367,26 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             local(*param),
             expr(enums, pred)
         ),
-        // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
-        // program produced one without its backend being taught to emit it yet.
-        Kind::SortBy { .. } | Kind::MaxBy { .. } => {
-            unreachable!("sort_by/max_by emission lands in a later step")
-        }
+        Kind::SortBy {
+            source,
+            param,
+            body,
+        } => format!(
+            "tl_sort_by({}, function({}) return {} end)",
+            expr(enums, source),
+            local(*param),
+            expr(enums, body)
+        ),
+        Kind::MaxBy {
+            source,
+            param,
+            body,
+        } => format!(
+            "tl_max_by({}, function({}) return {} end)",
+            expr(enums, source),
+            local(*param),
+            expr(enums, body)
+        ),
         // The depth comes from the type on the node below, so it cannot disagree with it, and
         // the emitted helper is told the answer rather than inspecting the value for it.
         Kind::Unwrap { base } => {
