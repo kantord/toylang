@@ -131,3 +131,9 @@ point the way #75's `if`-chain does. Both went back to their merge-base scores b
 loop into a `printers()` method, which is also what the four dynamic backends already spell as
 a function of their own. Reach for it whenever `emit()` grows a loop: this file's siblings
 already say where such a loop lives.
+
+The float-builtins-build-backends-b session is another instance of the #61 entry's
+`call_args()` shape: `Builtin::FloatOf`'s inline two-armed `match &arg_node.ty { Type::Int =>
+..., _ => arg }`, nested inside `expr()`'s otherwise-flat `Builtin` dispatch, moved the function
+from its merge-base 16/10 to 17/10. Extracted into a `float_of()` helper beside `fields_lit()`,
+the same tighten-first move, back to exactly 16/10 with no behavior change.

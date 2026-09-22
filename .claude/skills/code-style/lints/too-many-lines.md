@@ -242,3 +242,18 @@ to 118, one over its own budget and caused; extracted a `call()` helper (the sam
 move as the nullary-functions session's `call()`/`call_args()` instances above), which also
 shrank the surrounding `match` enough to land at 114 -- below the 117-line value it carried at
 main before this session touched it, so nothing stands open.
+
+The float-builtins-build-backends-b session (2026-09-22) names a wrinkle none of the above do:
+most of `emit_llvm.rs`'s `expr()` growth (458 -> 472, verified against a merge-base worktree)
+was not new content. The formatting hook that runs after every edit reformatted the whole file,
+and two pre-existing `if let Kind::Select { source, param, pred } = &..` destructures plus one
+`.and_then` chain -- untouched by this session's own diff -- happened to wrap onto several more
+lines under the project's current rustfmt than they took at merge-base, with no change in
+meaning. Only two of those lines were real: the new `Builtin::Sqrt`/`Builtin::FloatOf` match
+arms (the latter's own growth was fixed separately, see the matching
+[cognitive-complexity.md](cognitive-complexity.md) entry). `new()`'s 218 -> 219 is one real
+line, the new `sqrt` intrinsic's declaration. Both stay inherited by the same
+one-new-builtin-per-backend rule as every instance above; `field_of()` and `show()` were
+untouched and unchanged (105/100, 118/100 both sides). Read this as: a formatter-driven
+reformat of code the session's diff never touched is not caused debt either, the same as a
+file-touched-scope finding, whatever it does to a line count.
