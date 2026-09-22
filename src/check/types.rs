@@ -590,6 +590,13 @@ fn resolve_bound(
                     "a Vec cannot hold a sink, which has no value to store".to_string(),
                 ));
             }
+            if inner.contains_fn() {
+                return Err(Error::new(
+                    elem.span(),
+                    "a Vec cannot hold a closure, which only exists as a call's own argument"
+                        .to_string(),
+                ));
+            }
             Ok(Type::Vec(Box::new(inner)))
         }
         TypeExpr::Stream { elem, .. } => {
@@ -605,6 +612,13 @@ fn resolve_bound(
                 return Err(Error::new(
                     elem.span(),
                     "a Stream cannot hold a sink, which has no value to yield".to_string(),
+                ));
+            }
+            if inner.contains_fn() {
+                return Err(Error::new(
+                    elem.span(),
+                    "a Stream cannot hold a closure, which only exists as a call's own argument"
+                        .to_string(),
                 ));
             }
             Ok(Type::Stream(Box::new(inner)))
@@ -658,6 +672,28 @@ fn resolve_bound(
                 out.push((name.clone(), field));
             }
             Ok(Type::Record(out))
+        }
+        // Legal only as a function's own declared parameter type or a field of it (the parser
+        // is what enforces that position; nothing else ever calls `type_expr` from a `let` or a
+        // return-type slot). A closure never stores a stream either -- the containment ban
+        // matches Vec/Record/Seq's above, for the same reason: nothing here is a place a stream
+        // could be captured and read back later.
+        TypeExpr::Fn { input, output, .. } => {
+            let input_ty = resolve_bound(input, env, seen, params, boxed)?;
+            let output_ty = resolve_bound(output, env, seen, params, boxed)?;
+            if input_ty.contains_stream() || output_ty.contains_stream() {
+                return Err(Error::new(
+                    input.span().to(output.span()),
+                    "a closure cannot hold a stream, which has nothing to store".to_string(),
+                ));
+            }
+            if input_ty.contains_sink() || output_ty.contains_sink() {
+                return Err(Error::new(
+                    input.span().to(output.span()),
+                    "a closure cannot hold a sink, which has no value to store".to_string(),
+                ));
+            }
+            Ok(Type::Fn(Box::new(input_ty), Box::new(output_ty)))
         }
     }
 }

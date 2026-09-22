@@ -325,6 +325,7 @@ fn text_enum(enums: &Enums, ty: &Type, value: &str) -> String {
 fn canonical(enums: &Enums, ty: &Type, value: &str) -> String {
     match ty {
         Type::Param(_) => unreachable!("params are substituted before emit"),
+        Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
@@ -446,6 +447,9 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
                 }
                 callees(&a.body, out);
             }
+        }
+        Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
+            unreachable!("not yet implemented for this backend")
         }
     }
 }
@@ -946,6 +950,9 @@ fn uses_arith(program: &Program) -> (bool, bool, bool) {
                     walk(&a.body, found);
                 }
             }
+            Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
+                unreachable!("not yet implemented for this backend")
+            }
         }
     }
     let mut found = (false, false, false);
@@ -1334,6 +1341,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             }
             out.push(')');
             out
+        }
+        Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
+            unreachable!("not yet implemented for this backend")
         }
     }
 }

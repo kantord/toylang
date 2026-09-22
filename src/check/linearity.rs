@@ -71,6 +71,19 @@ fn stream_uses(t: &Tir, binding: &StreamBinding) -> Result<usize, LinearViolatio
             }
             stream_uses(source, binding)
         }
+        // A closure's body may be called an unknown number of times by whoever it is handed
+        // to, the same reason a mapper body is: any consumption inside it is its own violation
+        // rather than a count (closures-first-class-functions-design, 2026-09-23).
+        Kind::Closure { body, .. } => {
+            if stream_uses(body, binding)? > 0 {
+                return Err(LinearViolation::InMapper);
+            }
+            Ok(0)
+        }
+        // Applying an already-built closure is an ordinary use of two values: the closure's own
+        // body was already checked (as a `Closure` node, above) for what it may capture, so
+        // this site only counts `closure` and `arg` themselves, the way any other call would.
+        Kind::ApplyClosure { closure, arg } => both(closure, arg),
         Kind::Select { source, pred, .. } => {
             if stream_uses(pred, binding)? > 0 {
                 return Err(LinearViolation::InMapper);
@@ -217,6 +230,8 @@ fn any_node(t: &Tir, pred: &dyn Fn(&Tir) -> bool) -> bool {
                     a.guard.as_ref().is_some_and(|g| any_node(g, pred)) || any_node(&a.body, pred)
                 })
         }
+        Kind::Closure { body, .. } => any_node(body, pred),
+        Kind::ApplyClosure { closure, arg } => any_node(closure, pred) || any_node(arg, pred),
     }
 }
 
@@ -380,6 +395,11 @@ fn calls_in(t: &Tir, out: &mut Vec<String>) {
                 }
                 calls_in(&a.body, out);
             }
+        }
+        Kind::Closure { body, .. } => calls_in(body, out),
+        Kind::ApplyClosure { closure, arg } => {
+            calls_in(closure, out);
+            calls_in(arg, out);
         }
     }
 }

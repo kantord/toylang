@@ -836,6 +836,7 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
 fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
     match ty {
         Type::Param(_) => unreachable!("params are substituted before emit"),
+        Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
@@ -1182,6 +1183,9 @@ fn used_helpers(program: &Program) -> Helpers {
                     walk(&a.body, used);
                 }
             }
+            Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
+                unreachable!("not yet implemented for this backend")
+            }
         }
     }
     let mut used = Helpers::default();
@@ -1494,6 +1498,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 body.push_str("return \"None\" ");
             }
             format!("(function() {body}end)()")
+        }
+        Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
+            unreachable!("not yet implemented for this backend")
         }
     }
 }

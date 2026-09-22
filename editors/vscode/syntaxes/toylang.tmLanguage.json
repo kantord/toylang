@@ -37,7 +37,7 @@
       "name": "keyword.operator.logical.toylang"
     },
     {
-      "match": "(?:\\|>|==|!=|<=|>=|->|\\+|-|\\*|/|%|\\||\\.|=|!|<|>)",
+      "match": "(?:\\|>|==|!=|<=|>=|->|\\+|-|\\*|/|%|\\||\\.|=|!|<|>|\\$)",
       "name": "keyword.operator.toylang"
     },
     {
