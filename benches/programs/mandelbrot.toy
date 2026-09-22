@@ -4,20 +4,15 @@
 # bits as the plain-text PBM (P1), one `1` or `0` per pixel, since a `Str` is the only byte
 # stream the language emits. The image is the same; the file is eight times larger.
 #
-# The pixel coordinate is a Float formula over the pixel index, and the language converts no
-# Int to a Float, so the row and column loops carry the index twice, an Int for the count and
-# a Float for the formula, both advanced by one per pixel. The grid size itself is needed as
-# a Float once, for the scale, and `to_float` counts up to it by repeated addition, which is
-# exact for any Int and costs one recursion per unit.
+# The pixel coordinate is a Float formula over the pixel index, so the row and column loops
+# carry the index twice, an Int for the count and a Float for the formula, both advanced by
+# one per pixel. The grid size itself is needed as a Float once, for the scale, via the
+# `float` builtin.
 #
 # Derived: Computer Language Benchmarks Game mandelbrot task, BSD-3-Clause,
 # https://benchmarksgame-team.pages.debian.net/benchmarksgame/ -- reimplemented from the
 # task's plain description (the iteration, the escape radius, the iteration limit, and the
 # plane it covers), not copied from any reference source.
-fn to_float(n: Int) -> Float =
-  n | . == 0 -> 0.0 or 1.0 + to_float(. - 1);
-
-
 fn pixel(
   { cr, ci, zr, zi, k }: {
     cr: Float,
@@ -101,7 +96,7 @@ fn rows(
 fn plot(n: Int) -> Str =
   join_lines(
     ["P1", str(n) + " " + str(n)] +
-      rows { n: n, size: to_float n, y: 0, fy: 0.0, lines: [] }
+      rows { n: n, size: float n, y: 0, fy: 0.0, lines: [] }
   );
 
 

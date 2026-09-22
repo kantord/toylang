@@ -1,32 +1,18 @@
 # CLBG spectral-norm: the largest singular value of the infinite matrix whose (i, j) entry is
 # 1 / ((i + j)(i + j + 1) / 2 + i + 1), for its leading N x N block, by power iteration. Ten
-# rounds of v = A'A u, u = A'A v from u = [1, ..., 1], then the norm is sqrt_newton(u.v / v.v), which
+# rounds of v = A'A u, u = A'A v from u = [1, ..., 1], then the norm is sqrt(u.v / v.v), which
 # for N = 100 begins 1.274219991, CLBG's published value.
 #
-# The entry is a Float formula over the indices, and the language converts no Int to a
-# Float, so every loop carries the index twice: an Int for indexing the vector and a Float
-# for the formula, both advanced by one per step. The language also has no square root;
-# `sqrt` is the same Newton iteration in toylang that n-body.toy uses, honest IEEE
-# arithmetic that every backend agrees on but not the correctly-rounded last digit a builtin
-# would give. `sum` refuses a Vec<Float>, so the dot products are accumulator recursions.
-# One `times` serves both A and its transpose, told apart by an Int flag `t` (0 for A, 1 for
-# the transpose, which is the same formula with the indices swapped), an Int because the
-# language has no Bool literal.
+# The entry is a Float formula over the indices, converted from the Int loop counters with
+# the `float` builtin at the point of use. `sum` refuses a Vec<Float>, so the dot products
+# are accumulator recursions. One `times` serves both A and its transpose, told apart by an
+# Int flag `t` (0 for A, 1 for the transpose, which is the same formula with the indices
+# swapped), an Int because the language has no Bool literal.
 #
 # Derived: Computer Language Benchmarks Game spectral-norm task, BSD-3-Clause,
 # https://benchmarksgame-team.pages.debian.net/benchmarksgame/ -- reimplemented from the
 # task's plain description (the matrix formula and the power iteration), not copied from any
 # reference source.
-fn newton({ x, y }: { x: Float, y: Float }) -> Float =
-  let next = (y + x / y) / 2.0
-
-  next >= y | . -> y or newton { x: x, y: next };
-
-
-fn sqrt_newton(x: Float) -> Float =
-  newton { x: x, y: (x + 1.0) / 2.0 };
-
-
 fn a({ i, j }: { i: Float, j: Float }) -> Float =
   1.0 / ((i + j) * (i + j + 1.0) / 2.0 + i + 1.0);
 
@@ -36,11 +22,10 @@ fn entry({ i, j, t }: { i: Float, j: Float, t: Int }) -> Float =
 
 
 fn row(
-  { u, i, j, fj, t, acc }: {
+  { u, i, j, t, acc }: {
     u: Vec<Float>,
-    i: Float,
+    i: Int,
     j: Int,
-    fj: Float,
     t: Int,
     acc: Float
   }
@@ -51,17 +36,15 @@ fn row(
       u: u,
       i: i,
       j: j + 1,
-      fj: fj + 1.0,
       t: t,
-      acc: acc + entry { i: i, j: fj, t: t } * u[j]!
+      acc: acc + entry { i: float i, j: float j, t: t } * u[j]!
     };
 
 
 fn times(
-  { u, i, fi, t, out }: {
+  { u, i, t, out }: {
     u: Vec<Float>,
     i: Int,
-    fi: Float,
     t: Int,
     out: Vec<Float>
   }
@@ -71,19 +54,17 @@ fn times(
     times {
       u: u,
       i: i + 1,
-      fi: fi + 1.0,
       t: t,
-      out:
-        out + [row { u: u, i: fi, j: 0, fj: 0.0, t: t, acc: 0.0 }]
+      out: out + [row { u: u, i: i, j: 0, t: t, acc: 0.0 }]
     };
 
 
 fn times_a(u: Vec<Float>) -> Vec<Float> =
-  times { u: u, i: 0, fi: 0.0, t: 0, out: [] };
+  times { u: u, i: 0, t: 0, out: [] };
 
 
 fn times_at(u: Vec<Float>) -> Vec<Float> =
-  times { u: u, i: 0, fi: 0.0, t: 1, out: [] };
+  times { u: u, i: 0, t: 1, out: [] };
 
 
 fn times_ata(u: Vec<Float>) -> Vec<Float> = times_at(times_a u);
@@ -117,7 +98,7 @@ fn ones(n: Int) -> Vec<Float> = collect(range n) | map 1.0;
 fn norm(n: Int) -> Float =
   let r = power { u: ones n, k: 10 }
 
-  sqrt_newton(
+  sqrt(
     dot { u: r.u, v: r.v, i: 0, acc: 0.0 } /
       dot { u: r.v, v: r.v, i: 0, acc: 0.0 }
   );

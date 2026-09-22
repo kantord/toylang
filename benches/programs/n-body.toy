@@ -1,17 +1,12 @@
 # CLBG n-body: integrate the orbits of the Sun and the four gas giants with a symplectic Euler
 # step of 0.01 for N steps, printing the system's total energy before and after. The bodies
-# are records of Float, and the language has no square root, so `sqrt` below is a Newton
-# iteration written in toylang: a start above the root (the arithmetic mean of x and 1 is
-# never below it), then halve toward the root until a step stops decreasing, which is where
-# the doubles have converged. It is honest IEEE arithmetic on every backend, so all seven
-# agree, but its last digit is not the correctly-rounded one a `sqrt` builtin would give;
-# swap it out when one lands.
+# are records of Float.
 #
 # The Sun starts at rest and is then given whatever velocity cancels the planets' total
 # momentum, so the centre of mass stays put. The velocity update visits each body and pulls
 # it toward every other body in order, the same accumulation order the symmetric pair loop
-# of the reference formulation produces, so only the square root separates these numbers
-# from CLBG's. Energies are accumulated left to right for the same reason. The step count is
+# of the reference formulation produces, so these numbers match CLBG's. Energies are
+# accumulated left to right for the same reason. The step count is
 # threaded through `advance` rather than re-read from stdin, because the compiled backends
 # read `parse(stdin)` off the one top-level input.
 #
@@ -21,16 +16,6 @@
 # in AU per day scaled to per year, masses relative to the Sun), not copied from any
 # reference source.
 type Body = { x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float, m: Float };
-
-
-fn newton({ x, y }: { x: Float, y: Float }) -> Float =
-  let next = (y + x / y) / 2.0
-
-  next >= y | . -> y or newton { x: x, y: next };
-
-
-fn sqrt_newton(x: Float) -> Float =
-  newton { x: x, y: (x + 1.0) / 2.0 };
 
 
 fn solar_mass() -> Float =
@@ -117,7 +102,7 @@ fn kick({ b, o }: { b: Body, o: Body }) -> Body =
   let dy = b.y - o.y
   let dz = b.z - o.z
   let d2 = dx * dx + dy * dy + dz * dz
-  let mag = 0.01 / (d2 * sqrt_newton(d2))
+  let mag = 0.01 / (d2 * sqrt(d2))
 
   {
     x: b.x,
@@ -159,7 +144,7 @@ fn pair({ b, o, acc }: { b: Body, o: Body, acc: Float }) -> Float =
   let dy = b.y - o.y
   let dz = b.z - o.z
 
-  acc - b.m * o.m / sqrt_newton(dx * dx + dy * dy + dz * dz);
+  acc - b.m * o.m / sqrt(dx * dx + dy * dy + dz * dz);
 
 
 fn potential(

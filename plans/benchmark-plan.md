@@ -144,21 +144,24 @@ index operations every backend already carries.
 The second wave (2026-09-18), the three float tasks gh:146 deferred until `Float` existed, is
 landed: `n-body` (`benches/programs/n-body.toy`, `tests/corpus/n_body.yaml`), `spectral-norm`
 (`spectral-norm.toy`, `spectral_norm.yaml`), and `mandelbrot` (`mandelbrot.toy`,
-`mandelbrot.yaml`). All seven backends run all three and agree. Each one works around a gap
-in what `Float` can do today, and the workaround is written in toylang rather than faked:
+`mandelbrot.yaml`). All seven backends run all three and agree. They first worked around two
+gaps in what `Float` could do, in toylang rather than faked; both gaps closed when `sqrt` and
+`float` (float-builtins-build-backends-b) landed on every backend, and the workarounds came
+out (float-benchmarks-drop-workarounds):
 
-- **No square root.** n-body needs one per body pair per step and spectral-norm one at the
-  end. Both carry a `sqrt` that is a Newton iteration: start at the mean of x and 1 (never
-  below the root), halve toward the root until a step stops decreasing. Deterministic IEEE
-  arithmetic, so every backend prints the same digits, but the last digit is not the
-  correctly-rounded one a builtin would give. n-body's energies for N = 1000 agree with
-  CLBG's published `-0.169075164` / `-0.169087605` to the nine decimals CLBG prints, and
-  spectral-norm's N = 100 result begins with CLBG's `1.274219991`.
-- **No `Int -> Float` conversion** (`i64` is the only bridge, and it is Int to Int64).
-  spectral-norm's matrix entry and mandelbrot's pixel coordinate are Float formulas over an
-  index, so each loop carries the index twice, an Int for indexing or counting and a Float
-  for the formula, both stepped by one. mandelbrot needs the grid size as a Float once, and
-  `to_float` counts up to it by repeated addition.
+- **No square root**, until the `sqrt` builtin. n-body needs one per body pair per step and
+  spectral-norm one at the end; both used to carry a hand-written `sqrt`, a Newton iteration
+  (start at the mean of x and 1, never below the root, halve toward it until a step stops
+  decreasing) whose last digit was a few ulps off the correctly-rounded one. With the
+  builtin, n-body's energies for N = 1000 now match CLBG's published `-0.169075164` /
+  `-0.169087605` to the nine decimals CLBG prints, not just agree with themselves, and
+  spectral-norm's N = 100 result still begins with CLBG's `1.274219991`.
+- **No `Int -> Float` conversion**, until the `float` builtin (`i64` is the only bridge, and
+  it is Int to Int64). spectral-norm's matrix entry and mandelbrot's pixel coordinate are
+  Float formulas over an index; mandelbrot's grid size, needed as a Float once for the scale,
+  used to be counted up to by `to_float`'s repeated addition, and spectral-norm's `row`/
+  `times` loops used to carry the index twice, an Int for indexing or counting and a Float
+  for the formula stepped in lockstep. Both now call `float` at the point of use instead.
 - **`sum` refuses `Vec<Float>`**, so spectral-norm's dot products are accumulator recursions.
 - **No Bool literal**, so spectral-norm's transpose flag is an Int.
 - **No binary output.** mandelbrot writes the plain-text PBM (P1), the same bits CLBG packs
@@ -181,6 +184,4 @@ which exists.
 
 ## What this plan leaves to the next person
 
-- A `sqrt` builtin and an `Int -> Float` bridge. Each would let the float benchmarks drop a
-  workaround, and `sqrt` would also make n-body's digits CLBG's rather than a few ulps off.
 - A dashboard, when there is a baseline and a specific regression it would have caught.
