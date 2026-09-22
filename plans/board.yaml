@@ -63,14 +63,6 @@
   kind: decide
   status: todo
 
-- id: sort-by-max-by-checkpoint-rust
-  issue: gh:177
-  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Rust-source commit landed clean
-    before starting Lua.'
-  kind: decide
-  needs: [sort-by-max-by-rust-tests]
-  status: todo
-
 - id: sort-by-max-by-checkpoint-lua
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Lua commit landed clean before
@@ -258,9 +250,15 @@
     added, tests/scratch_mutation.rs''s scratch_dump, has zero assertions -- it just prints
     which lines matched a substring filter and always passes regardless of output, so the v1
     rule (single_consuming_use / owned-helper emission in src/emit_rs.rs) currently has no
-    real automated coverage. Decide whether to require an assertion-based test before Lua
-    starts, or accept scratch_dump as scaffolding and track real coverage separately.'
-  kind: decide
+    real automated coverage. RULED 2026-09-23 (direct session, not drive): require a real
+    assertion-based test before Lua starts, rather than accepting scratch_dump as scaffolding
+    -- this rule silently changes emitted codegen, so it needs real coverage before a second
+    backend builds on top of it. This row is now that build task: replace or supplement
+    scratch_dump with assertions on the actual emitted Rust (e.g. that a proven single-consuming-use
+    site emits the owned-helper form and a proven multi-use site does not), covering at least
+    the five cases scratch_dump already exercises. Once landed, mutation-rule-v1-build-lua may
+    start.'
+  kind: build
   needs: [mutation-rule-v1-build-rust]
   status: todo
 
