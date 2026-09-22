@@ -88,6 +88,7 @@ struct Runtime<'ctx> {
     vec_sum: FunctionValue<'ctx>,
     vec_transpose: FunctionValue<'ctx>,
     vec_max: FunctionValue<'ctx>,
+    sqrt: FunctionValue<'ctx>,
 }
 
 /// What a compiler-introduced binding holds.
@@ -335,6 +336,10 @@ impl<'ctx> Emitter<'ctx, '_> {
                 None,
             ),
             vec_max: module.add_function("tl_vec_max", ptr.fn_type(&[ptr.into()], false), None),
+            // The LLVM intrinsic, not a runtime call: declaring a function under this exact
+            // name is how LLVM recognizes it, and it lowers to the target's libm `sqrt`, the
+            // same NaN-on-negative IEEE 754 behavior every other backend's native sqrt gives.
+            sqrt: module.add_function("llvm.sqrt.f64", f64t.fn_type(&[f64t.into()], false), None),
         };
 
         Emitter {
@@ -756,15 +761,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         source: &Tir,
         param: LocalId,
         pred: &Tir,
-    ) -> Result<
-        (
-            PointerValue<'ctx>,
-            PointerValue<'ctx>,
-            IntValue<'ctx>,
-            Type,
-        ),
-        String,
-    > {
+    ) -> Result<(PointerValue<'ctx>, PointerValue<'ctx>, IntValue<'ctx>, Type), String> {
         let elem_ty = crate::tir::runtime_elem(&source.ty)
             .ok_or_else(|| "select on something that has no dimension".to_string())?
             .clone();
@@ -1535,14 +1532,19 @@ impl<'ctx> Emitter<'ctx, '_> {
                     // A length directly on a Select stays lazy: it counts the survivors in
                     // the mask instead of compacting the selection into a dense Vec first.
                     Builtin::Length => {
-                        if let Kind::Select { source, param, pred } = &arg_node.kind {
+                        if let Kind::Select {
+                            source,
+                            param,
+                            pred,
+                        } = &arg_node.kind
+                        {
                             let (src, mask, _len, _elem_ty) =
                                 self.select_mask(source, *param, pred)?;
                             self.call_rt(self.rt.sel_len, &[src.into(), mask.into()], "sel_len")?
                         } else {
                             self.call_rt(self.rt.vec_len, &[arg], "length")?
                         }
-                    },
+                    }
                     Builtin::Tail => self.call_rt(self.rt.vec_tail, &[arg], "tail")?,
                     // A record entry is spread across columns, so `is_record` is what tells the
                     // runtime to gather it back, the same flag an Index collapse carries.
@@ -1600,7 +1602,10 @@ impl<'ctx> Emitter<'ctx, '_> {
                     // the innermost type's column count -- the same reason `tl_vec_flatten`
                     // takes `ncols` rather than reading it off either Vec.
                     Builtin::Transpose => {
-                        let inner = t.ty.elem().and_then(Type::elem).expect("checked to be Vec<Vec<T>>");
+                        let inner =
+                            t.ty.elem()
+                                .and_then(Type::elem)
+                                .expect("checked to be Vec<Vec<T>>");
                         let ncols = self.ctx.i64_type().const_int(Self::columns(inner), false);
                         self.call_rt(self.rt.vec_transpose, &[arg, ncols.into()], "transpose")?
                     }
@@ -1608,6 +1613,21 @@ impl<'ctx> Emitter<'ctx, '_> {
                     Builtin::Max => self.call_rt(self.rt.vec_max, &[arg], "max")?,
                     // `arg` above ran only for whatever else it does; its value is unused here.
                     Builtin::Fields => self.fields_lit(&record_ty)?,
+                    Builtin::Sqrt => self.call_rt(self.rt.sqrt, &[arg], "sqrt")?,
+                    // `float`, unlike `sqrt`, also takes a Float (identity); only an Int
+                    // argument needs the bridge, the same split `emit_rs`/`emit_go` make.
+                    Builtin::FloatOf => match &arg_node.ty {
+                        Type::Int => self
+                            .builder
+                            .build_signed_int_to_float(
+                                arg.into_int_value(),
+                                self.ctx.f64_type(),
+                                "float_of",
+                            )
+                            .map_err(|e| e.to_string())?
+                            .into(),
+                        _ => arg,
+                    },
                     _ => unreachable!("not yet implemented for this backend"),
                 }
             }
@@ -1729,9 +1749,13 @@ impl<'ctx> Emitter<'ctx, '_> {
                 // to the i-th kept element instead of compacting the selection into a dense
                 // Vec first.
                 if *depth == 0 {
-                    if let Kind::Select { source, param, pred } = &base.kind {
-                        let (src, mask, _len, _elem_ty) =
-                            self.select_mask(source, *param, pred)?;
+                    if let Kind::Select {
+                        source,
+                        param,
+                        pred,
+                    } = &base.kind
+                    {
+                        let (src, mask, _len, _elem_ty) = self.select_mask(source, *param, pred)?;
                         let index = self.expr(index)?;
                         return self.call_rt(
                             self.rt.sel_at,

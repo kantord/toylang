@@ -25,16 +25,6 @@ const UNCOVERED: &[(&str, &str)] = &[
         "builtin.pipe_through",
         "no corpus case: pipe_through runs only on a subset of backends (go, rust, py, js, lua) and reads a subprocess",
     ),
-    (
-        "builtin.sqrt",
-        "no corpus case: sqrt has no native (LLVM) arm yet, same reason pipe_through above has \
-none",
-    ),
-    (
-        "builtin.float",
-        "no corpus case: float has no native (LLVM) arm yet, same reason pipe_through above has \
-none",
-    ),
 ];
 
 fn used_tags() -> BTreeSet<String> {

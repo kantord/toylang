@@ -1,0 +1,10 @@
+# sqrt and float landed on native last (this row); now all seven backends agree, so the
+# builtins get a corpus case instead of the tag_coverage.rs debt entry that held their place.
+# sqrt(-1.0) is NaN (ruling 2026-09-20), the IEEE answer every backend's own sqrt already gives.
+program: |
+  [sqrt 2.0, sqrt(-1.0), float(3) + 0.5]
+
+output: |
+  [1.4142135623730951,NaN,3.5]
+
+node_types: [arith.add, builtin.float, builtin.sqrt, float, int, vec-literal]

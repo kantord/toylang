@@ -64,15 +64,15 @@ fn every_landing_builtin_emits_where_built_and_refuses_elsewhere() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// Ruling 2026-09-20's check-level claims, pinned where the corpus cannot: both builtins are
-/// refused on every backend, so no corpus row can exist and the agreement harness never sees
-/// them; this test is the front-end side of the row.
+/// Ruling 2026-09-20's check-level claims: `sqrt` is `Float -> Float` and `float` is
+/// `Int -> Float` (or `Float -> Float`, unchanged), independent of which backends have
+/// landed an arm for either.
 #[test]
 fn sqrt_and_float_type_check_where_the_corpus_cannot() {
     // `sqrt` is `Float -> Float`.
     toylang::compile("sqrt(2.0)\n").expect("sqrt(2.0) type-checks");
-    // The other edge, a negative argument, is the backend's business (NaN, later row): on the
-    // front end it type-checks like any `Float`, because `sqrt` cannot know the values.
+    // The other edge, a negative argument, is the backend's business (NaN): on the front end
+    // it type-checks like any `Float`, because `sqrt` cannot know the values.
     toylang::compile("sqrt(-1.0)\n").expect("sqrt(-1.0) type-checks");
     // `float` is `Int -> Float`, exact (Int is 32 bits, Float is 64).
     toylang::compile("float(1) + 0.5\n").expect("float(1) + 0.5 type-checks");

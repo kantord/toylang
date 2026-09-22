@@ -224,11 +224,11 @@ pub enum Builtin {
     /// the cast.
     IntToI64,
     /// `sqrt(x)`, `Float -> Float`: the principal square root of `x`; a negative argument is
-    /// NaN (ruling 2026-09-20). Not landed on any backend yet, so every emitter refuses it.
+    /// NaN (ruling 2026-09-20).
     Sqrt,
     /// `float(n)`, `Int -> Float` (and `Float -> Float`, returned unchanged): the exact
     /// Int -> Float conversion, ruling 2026-09-20 (Int is 32 bits, Float is 64, so no
-    /// rounding). Not landed on any backend yet, so every emitter refuses it.
+    /// rounding).
     FloatOf,
     /// `range(n)`, the integers from zero up to but not including n. Zero-based, matching jq,
     /// Python, and this language's own indices.

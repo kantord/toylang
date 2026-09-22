@@ -383,32 +383,6 @@
   needs: []
   status: todo
 
-- id: float-builtins-build-backends-b
-  title: 'FALSE-COMPLETION FOUND 2026-09-22 (direct session, not drive): the archived
-    `float-builtins-build-backends-a` (commit 488a5177, board-archive.yaml) claimed emitter arms for
-    `sqrt`/`float` on Rust, Go, JS and Python, but only Rust''s emitter arm actually existed
-    (src/emit_rs.rs), and even that was never registered in `backend_support::LANDINGS` (both
-    `built_on: &[]`) -- so every backend, Rust included, was refusing both builtins. Fixed directly
-    this session: registered Rust and wrote real Go/Python/JS arms (`src/emit_go.rs`,
-    `src/emit_py.rs`, `src/emit_js.rs`), then landed Lua (`src/emit_lua.rs`, identity conversion --
-    Lua''s integer/float subtypes both flow through the same printer) and jq (`src/emit_jq.rs`, also
-    identity; jq''s own `sqrt`/`nan` already agree with the ruling, verified empirically with the
-    `jq` binary rather than trusting the brief''s "jq gives null natively" claim, which was checking
-    raw JSON encoding rather than the value jq actually carries). Python''s `math.sqrt` needed the
-    ValueError-on-negative guard the original brief predicted. LANDINGS now: sqrt/float on
-    [go, rust, py, js, lua, jq]. Only native (LLVM) remains -- this row is narrowed to that: add the
-    LLVM arm (`src/emit_llvm.rs`; Int->Float is `build_signed_int_to_float`, sqrt needs either an
-    `llvm.sqrt.f64` intrinsic declaration or a `tl_sqrt` addition to runtime/toylang.c wired through
-    the existing `call_rt` pattern -- no precedent for either in this file yet, so whichever is
-    tried, verify against the existing `float_to_str` runtime-call wiring as a template). No corpus
-    case exists yet for either builtin (only 6 of 7 backends land it; the corpus requires every
-    backend to agree, same as `pipe_through`) -- add one once native lands. `just check` (502/502)
-    green with sqrt/float on 6 backends; full `just test` including the docs mega-test also run, see
-    commit for result.'
-  kind: build
-  needs: [float-builtins-build-backends-a]
-  status: todo
-
 - id: float-benchmarks-drop-workarounds
   title: 'After float-builtins-build-backends-b lands, drop the workarounds in benches/programs: the hand-written Newton `sqrt` and `newton` in n-body.toy, `to_float` in mandelbrot.toy, and the doubled Int/Float loop indices in spectral-norm.toy, replacing them with the `sqrt` and `float` builtins; update plans/benchmark-plan.md, which records them. n-body digits should now match CLBG. Do NOT rewrite files with scripts. Done-gate: `just check` passes and the three benchmarks print the same on every backend.'
   kind: build
