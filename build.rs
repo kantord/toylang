@@ -174,6 +174,9 @@ impl ToRust for ty::Type {
                 variants.to_rust(),
             ),
             ty::Type::Param(name) => format!("crate::ty::Type::Param({})", name.to_rust()),
+            ty::Type::Fn(..) => {
+                unreachable!("a closure's type is synthesized only, never written in a signature")
+            }
         }
     }
 }
@@ -472,6 +475,9 @@ impl ToRust for tir::Kind {
                 arms,
                 partial,
             } => match_(subject, arms, partial),
+            Closure { .. } | ApplyClosure { .. } => {
+                unreachable!("no prelude definition uses `$`; a closure never reaches build.rs")
+            }
         }
     }
 }

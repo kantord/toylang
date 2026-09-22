@@ -22,11 +22,11 @@ pub struct Landing {
 pub const LANDINGS: &[Landing] = &[
     Landing {
         name: "sort_by",
-        built_on: &[Backend::Go, Backend::Rust],
+        built_on: &[Backend::Go, Backend::Rust, Backend::Lua],
     },
     Landing {
         name: "max_by",
-        built_on: &[Backend::Go, Backend::Rust],
+        built_on: &[Backend::Go, Backend::Rust, Backend::Lua],
     },
     Landing {
         name: "transpose",
@@ -74,6 +74,15 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Native,
         ],
     },
+    // Closures (closures-first-class-functions-design, 2026-09-23): landed on Rust only, as
+    // `Rc<dyn Fn>`. The other six backends have no representation for a stored closure value
+    // yet -- unlike `sqrt`/`float`, this is not "the same arm, six more times," since a
+    // dynamically-typed target's story for "call whatever function this value happens to be"
+    // differs entirely from a statically-typed one's, and jq has no function values at all.
+    Landing {
+        name: "closure",
+        built_on: &[Backend::Rust],
+    },
 ];
 
 fn landing_named(name: &str) -> &'static Landing {
@@ -103,6 +112,7 @@ fn landing_of(t: &Tir) -> Option<&'static Landing> {
             which: Builtin::FloatOf,
             ..
         } => Some(landing_named("float")),
+        Kind::Closure { .. } | Kind::ApplyClosure { .. } => Some(landing_named("closure")),
         _ => None,
     }
 }

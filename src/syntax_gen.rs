@@ -87,6 +87,7 @@ const FIXED: &[Tok] = &[
     Tok::Semicolon,
     Tok::At,
     Tok::Arrow,
+    Tok::Dollar,
 ];
 
 /// Exhaustive over every `Tok` variant, no wildcard arm: a new one fails this build until it is
@@ -114,7 +115,8 @@ fn categorize(t: &Tok) -> Category {
         | Tok::Le
         | Tok::Gt
         | Tok::Ge
-        | Tok::Arrow => Category::Operator,
+        | Tok::Arrow
+        | Tok::Dollar => Category::Operator,
         Tok::Comma
         | Tok::LParen
         | Tok::RParen

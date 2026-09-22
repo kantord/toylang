@@ -238,6 +238,9 @@ pub(super) fn print_type(t: &TypeExpr) -> String {
                 format!("{{ {fields_str} }}")
             }
         }
+        TypeExpr::Fn { input, output, .. } => {
+            format!("{} -> {}", print_type(input), print_type(output))
+        }
     }
 }
 
@@ -461,6 +464,7 @@ fn print_expr_inner(e: &Expr) -> String {
         }
         Expr::RecordLit { fields, .. } => record_lit(fields),
         Expr::Subject { .. } => ".".to_string(),
+        Expr::Placeholder { .. } => "$".to_string(),
         Expr::Var { name, .. } => name.clone(),
         Expr::Call { func, arg, .. } => call(func, arg.as_deref()),
         Expr::Project { base, .. } => format!("{}[]", print_atom_base(base)),

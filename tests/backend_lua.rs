@@ -87,8 +87,12 @@ fn float_in_a_record_and_a_vec() {
         "[1.5,2.25,3]\n"
     );
     assert_eq!(
-        toylang::run_on("{a: 1.5, b: 2.5} == {a: 1.5, b: 2.5}\n", None, toylang::Backend::Lua)
-            .unwrap(),
+        toylang::run_on(
+            "{a: 1.5, b: 2.5} == {a: 1.5, b: 2.5}\n",
+            None,
+            toylang::Backend::Lua
+        )
+        .unwrap(),
         "true\n"
     );
 }
@@ -99,16 +103,34 @@ fn float_in_a_record_and_a_vec() {
 /// at every one of these -- so each boundary is pinned to the JS ground truth.
 #[test]
 fn float_printing_matches_at_notation_boundaries() {
-    assert_eq!(toylang::run_on("100.0\n", None, toylang::Backend::Lua).unwrap(), "100\n");
+    assert_eq!(
+        toylang::run_on("100.0\n", None, toylang::Backend::Lua).unwrap(),
+        "100\n"
+    );
     assert_eq!(
         toylang::run_on("1000000.0\n", None, toylang::Backend::Lua).unwrap(),
         "1000000\n"
     );
-    assert_eq!(toylang::run_on("1.0e21\n", None, toylang::Backend::Lua).unwrap(), "1e+21\n");
-    assert_eq!(toylang::run_on("1.0e-6\n", None, toylang::Backend::Lua).unwrap(), "0.000001\n");
-    assert_eq!(toylang::run_on("1.0e-7\n", None, toylang::Backend::Lua).unwrap(), "1e-7\n");
-    assert_eq!(toylang::run_on("0.0001\n", None, toylang::Backend::Lua).unwrap(), "0.0001\n");
-    assert_eq!(toylang::run_on("-0.5 * 2.0\n", None, toylang::Backend::Lua).unwrap(), "-1\n");
+    assert_eq!(
+        toylang::run_on("1.0e21\n", None, toylang::Backend::Lua).unwrap(),
+        "1e+21\n"
+    );
+    assert_eq!(
+        toylang::run_on("1.0e-6\n", None, toylang::Backend::Lua).unwrap(),
+        "0.000001\n"
+    );
+    assert_eq!(
+        toylang::run_on("1.0e-7\n", None, toylang::Backend::Lua).unwrap(),
+        "1e-7\n"
+    );
+    assert_eq!(
+        toylang::run_on("0.0001\n", None, toylang::Backend::Lua).unwrap(),
+        "0.0001\n"
+    );
+    assert_eq!(
+        toylang::run_on("-0.5 * 2.0\n", None, toylang::Backend::Lua).unwrap(),
+        "-1\n"
+    );
 }
 
 /// A product can push a Float out of the plain-decimal band even when each operand is inside it.
@@ -118,4 +140,71 @@ fn float_product_above_the_band_goes_exponential() {
         toylang::run_on("1e11 * 1e11\n", None, toylang::Backend::Lua).unwrap(),
         "1e+22\n"
     );
+}
+
+// `sort_by`/`max_by` are landed for Go, Rust, and Lua, and until the rest of the backends carry
+// them none of these can be a corpus case, which would require every backend to agree.
+
+/// `sort_by` orders by the projected key, stably: ties keep their original order. `table.sort`
+/// is not itself guaranteed stable, so this is the case `tl_sort_by`'s index-decorated tiebreak
+/// exists to pass.
+#[test]
+fn sort_by_orders_by_the_projected_key_stably() {
+    let src = r#"
+[{name: "b", age: 2}, {name: "a", age: 1}, {name: "c", age: 2}] | sort_by(.age)
+"#;
+    let out = toylang::run_on(src, None, toylang::Backend::Lua).unwrap();
+    assert_eq!(
+        out,
+        "[{\"name\":\"a\",\"age\":1},{\"name\":\"b\",\"age\":2},{\"name\":\"c\",\"age\":2}]\n"
+    );
+}
+
+/// `max_by` yields the entry with the greatest projected key, ties keeping the first.
+#[test]
+fn max_by_keeps_the_first_of_equal_maxima() {
+    let src = r#"
+[{name: "a", age: 1}, {name: "c", age: 2}, {name: "b", age: 2}] | max_by(.age)
+"#;
+    let out = toylang::run_on(src, None, toylang::Backend::Lua).unwrap();
+    assert_eq!(out, "{\"name\":\"c\",\"age\":2}\n");
+}
+
+/// An empty Vec has no maximum, so `max_by` yields the absent Opt, which prints as null, the
+/// same answer `max` gives. The empty Vec<{...}> comes from a declared return type.
+#[test]
+fn max_by_of_an_empty_vec_is_absent() {
+    let src = r#"
+fn nothing() -> Vec<{name: Str, age: Int}> = [];
+nothing() | max_by(.age)
+"#;
+    let out = toylang::run_on(src, None, toylang::Backend::Lua).unwrap();
+    assert_eq!(out, "null\n");
+}
+
+/// The projection is restricted to the same natively-ordered scalars `sort` takes, so each of
+/// Str and Int64 gets an exercise here, beside the Int the tests above use.
+#[test]
+fn sort_by_and_max_by_handle_str_and_int64_keys() {
+    let strs = toylang::run_on(
+        r#"
+["cherry", "apple", "banana"] | sort_by(.)
+"#,
+        None,
+        toylang::Backend::Lua,
+    )
+    .unwrap();
+
+    let wide = toylang::run_on(
+        r#"
+fn wide(x: Int) -> Int64 = i64(x);
+
+[{v: wide(9), s: "x"}, {v: wide(2), s: "y"}] | max_by(.v)
+"#,
+        None,
+        toylang::Backend::Lua,
+    )
+    .unwrap();
+    assert_eq!(strs, "[\"apple\",\"banana\",\"cherry\"]\n");
+    assert_eq!(wide, "{\"v\":9,\"s\":\"x\"}\n");
 }

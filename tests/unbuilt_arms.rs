@@ -17,6 +17,11 @@ fn program_using(name: &str) -> &'static str {
         "pipe_through" => "collect(pipe_through({cmd: \"cat\", args: [], lines: stdin}))\n",
         "sqrt" => "sqrt(2.0)\n",
         "float" => "float(1) + 0.5\n",
+        "closure" => {
+            "fn f({items, pred}: {items: Vec<Int>, pred: Int -> Bool}) -> Int = \
+             items | select(pred) | length(.);\n\n\
+             f({items: [1, 2], pred: $ > 0})\n"
+        }
         other => panic!("no program for landing builtin `{other}`; add one here"),
     }
 }
@@ -91,8 +96,8 @@ fn a_use_inside_a_function_is_refused_too() {
     let program =
         toylang::compile("fn f(v: Vec<Int>) -> Vec<Int> = v | sort_by(.)\n\nf([2, 1])\n").unwrap();
     assert_eq!(
-        Backend::Lua.emit(&program).unwrap_err(),
-        "`sort_by` has no lua backend yet; today it runs on go and rust"
+        Backend::Js.emit(&program).unwrap_err(),
+        "`sort_by` has no js backend yet; today it runs on go and rust and lua"
     );
 }
 
@@ -102,6 +107,6 @@ fn running_is_refused_the_same_way_as_emitting() {
     let err = toylang::run_on("[3, 1, 2] | sort_by(.)\n", None, Backend::Py).unwrap_err();
     assert_eq!(
         err.to_string(),
-        "`sort_by` has no py backend yet; today it runs on go and rust"
+        "`sort_by` has no py backend yet; today it runs on go and rust and lua"
     );
 }

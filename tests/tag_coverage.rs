@@ -25,6 +25,17 @@ const UNCOVERED: &[(&str, &str)] = &[
         "builtin.pipe_through",
         "no corpus case: pipe_through runs only on a subset of backends (go, rust, py, js, lua) and reads a subprocess",
     ),
+    (
+        "closure",
+        "no corpus case: closures-first-class-functions-design lands closures on Rust only so \
+far (2026-09-23); the other six backends have no representation for a stored closure value \
+yet, so no case can run on all seven",
+    ),
+    (
+        "closure.apply",
+        "no corpus case: same reason as `closure` above -- applying one only exists where the \
+closure itself does, Rust only for now",
+    ),
 ];
 
 fn used_tags() -> BTreeSet<String> {

@@ -257,3 +257,12 @@ one-new-builtin-per-backend rule as every instance above; `field_of()` and `show
 untouched and unchanged (105/100, 118/100 both sides). Read this as: a formatter-driven
 reformat of code the session's diff never touched is not caused debt either, the same as a
 file-touched-scope finding, whatever it does to a line count.
+
+The sort-by-max-by-lua session (2026-09-23) is a seventeenth instance, the same
+one-new-Tir-node shape as #66/#75/#83/#96 but landing only one backend: splitting the
+`Kind::SortBy { .. } | Kind::MaxBy { .. }` placeholder arm into two real ones grew
+`emit_lua.rs`'s already-over `expr()` (240->257) and `used_helpers`'s inner `walk()`
+(113->119) and outer body (119->125), verified against a merge-base worktree
+(`0dd66c7b`). `builtin_helpers` (17/10, untouched by this diff) stayed exactly as it was
+at merge-base. Inherited by the same rule as every instance above; no tightening
+attempted, since the growth is one new node's worth of dispatch, not new branching.

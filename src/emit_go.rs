@@ -926,6 +926,7 @@ fn has_scalar(enums: &Enums, ty: &Type) -> bool {
                     .any(|(_, p)| p.as_ref().is_some_and(|p| reaches(enums, p, seen)))
             }
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
         }
     }
     reaches(enums, ty, &mut Vec::new())
@@ -1066,6 +1067,9 @@ impl Collect<'_> {
                     self.walk(&a.body);
                 }
             }
+            Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
+                unreachable!("not yet implemented for this backend")
+            }
             Kind::Builtin { which, arg } => {
                 match which {
                     Builtin::IntToStr => self.used.itoa = true,
@@ -1138,6 +1142,7 @@ impl Emitter<'_> {
             // embeds the arguments so each instantiation gets its own.
             Type::Enum { .. } => format!("tlE_{}", ty.ident()),
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
         }
     }
 
@@ -1705,6 +1710,9 @@ impl Emitter<'_> {
                 }
                 format!("func() {} {{ {body} }}()", self.go_type(&t.ty))
             }
+            Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
+                unreachable!("not yet implemented for this backend")
+            }
         }
     }
 
@@ -1740,6 +1748,7 @@ impl Emitter<'_> {
     fn show(&self, ty: &Type, value: &str, depth: usize) -> String {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
             // The checker refuses a program whose result contains a stream, since there is
             // nothing to print: a stream has no value, only a promise that collect can redeem.
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),

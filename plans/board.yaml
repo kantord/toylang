@@ -2,10 +2,63 @@
   title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet. Neither source_in_fn nor a partial-application-system-build row exists on the board, so `needs` structurally cannot express the real gap -- status set to `proposed` (2026-09-12) so this stops false-reporting as a ready build row (flagged as a recurring false-ready incident, plans/simple-dispatch-design.md, 2026-09-11); set back to `todo` once the real prerequisite rows exist and land.'
   kind: build
   needs: [closures-first-class-functions-design]
-  blocked_by: source_in_fn and a partial-application-system-BUILD row (not just the design)
-    don't exist yet -- needs listing the design row only covers half the real gate; the
-    design landing done does not mean this is ready.
+  blocked_by: 'Half the original gate cleared 2026-09-23: partial application is ratified and
+    built (see closures-first-class-functions-design), on Rust only so far. `source_in_fn`
+    still does not exist as a board row -- that half of the gate still blocks this. Also worth
+    a fresh look once it does: this row''s csv/tsv-as-prelude-partials shape predates the
+    "closure only exists as a call''s own argument, never let-bound" restriction the closures
+    row landed, which may or may not be compatible with what "ordinary shadowable partials in
+    prelude.toy" was meant to look like -- verify, don''t assume the original framing still
+    fits as written.'
   prio: 5
+  status: proposed
+
+- id: closures-legacy-flow-map-sortby-maxby
+  title: 'Follow-up to closures-first-class-functions-design (2026-09-23): `select` was
+    extended to accept a genuine closure value (built by `$`-partial-application) in addition
+    to its unchanged `.`-rebinding spelling, proving the mechanism; `map`, `sort_by`, and
+    `max_by` were deliberately left untouched this pass to keep the landing reviewable. Mirror
+    `select_call`''s extension (src/check/mod.rs) onto `map_call`/`sort_by_call`/`max_by_call`
+    -- same syntactic-peek dispatch (only a bare `Expr::Var` already bound to a `Type::Fn` is
+    ever read as a closure; anything else keeps meaning `.`-rebinding, so there is nothing new
+    to disambiguate). No backend work: `Kind::Map`/`Kind::SortBy`/`Kind::MaxBy` already have
+    the `{param, body}` shape `Kind::ApplyClosure` slots into unchanged. Done-gate: `just
+    check` passes and a `count_by`/`max_by`-shaped program built the same way
+    `count_where` was (docs/reference/operators/placeholder.md) runs correctly on rust.'
+  kind: build
+  needs: [closures-first-class-functions-design]
+  status: todo
+
+- id: closures-remaining-backends
+  title: 'Follow-up to closures-first-class-functions-design (2026-09-23): closures landed on
+    Rust only (`backend_support::LANDINGS` entry "closure"), as `Rc<dyn Fn(..) -> ..>`. The
+    other six backends refuse cleanly today rather than panic, but each needs its own real
+    story for `Type::Fn`''s runtime representation and `Kind::Closure`/`Kind::ApplyClosure`''s
+    emission -- genuinely different per backend, not "the same arm six more times" the way
+    sqrt/float were: Go needs a concrete closure type (a struct wrapping a func value, since Go
+    has no generic function-value boxing toylang''s checker already assumes); Python/JS/Lua are
+    dynamically typed and likely need no wrapper at all (a native closure is already callable);
+    jq has no function values, so `$` there needs its own design pass (a filter expression
+    threaded through, the same way `map`/`select`''s own bodies already are, or a documented
+    refusal) rather than an emitter arm; native (LLVM) has no runtime function-value
+    representation yet at all. Pick one backend per commit (established project convention);
+    do NOT attempt a multi-backend blob. Corpus: no case can exist until every backend lands
+    (same reason pipe_through/sqrt/float had none until then) -- track via
+    tests/tag_coverage.rs''s UNCOVERED entries for `closure`/`closure.apply` until then.'
+  kind: build
+  needs: [closures-first-class-functions-design]
+  status: todo
+
+- id: closures-dollar-arrow-sugar-decide
+  title: 'Follow-up to closures-first-class-functions-design (2026-09-23), explicitly deferred
+    from v1: `$ -> body` as terse sugar for a multi-reference anonymous closure (`$ -> $ * $`
+    for squaring), so `$` is not limited to appearing exactly once. `fn(x) = x * x` already
+    covers the same case today, more verbosely. Decide whether the terseness is worth a second
+    lambda spelling once a real program wants it -- not a default do-it, since "two spellings
+    for one job" is a cost this project weighs deliberately (functions.md already accepts it
+    once, for record-literal parens).'
+  kind: decide
+  needs: [closures-first-class-functions-design]
   status: proposed
 
 - id: euler-slow-fragments-2
@@ -61,21 +114,6 @@
     worktrees and deleting their now-fully-merged branches), or hold some back for a reason
     not visible from git alone.'
   kind: decide
-  status: todo
-
-- id: sort-by-max-by-checkpoint-rust
-  issue: gh:177
-  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Rust-source commit landed clean
-    before starting Lua.'
-  kind: decide
-  needs: [sort-by-max-by-rust-tests]
-  status: todo
-
-- id: sort-by-max-by-lua
-  issue: gh:177
-  title: 'sort_by and max_by (gh:177) -- emit for the Lua backend only (src/emit_lua.rs).'
-  kind: build
-  needs: [sort-by-max-by-checkpoint-rust]
   status: todo
 
 - id: sort-by-max-by-checkpoint-lua
@@ -355,12 +393,6 @@
 
 - id: seq-runtime-pair-emission
   title: 'DECIDE (rescoped 2026-09-19 from a build row): what source construct produces a `Seq<Head, Rest>` value at runtime, so there is something for the emitters to emit? src/ty.rs:68 says no source produces a Seq yet; emit_rs.rs:1218/1249/2015 and emit_py.rs:518 are unreachable!() arms with nothing upstream to reach them. Run 68c62204 (2 attempts, 0 edits, 34 turns) and the earlier cb787fe0 both ended without a write: the row is a design gap (which expression yields a pair, which pattern destructures it), not a wide-scope build; the brief also named a nonexistent emit_rust.rs (real file emit_rs.rs). Grill the producer/consumer shape against ADR 0008, then file per-backend build rows. Mark done when ruled.'
-  kind: decide
-  needs: []
-  status: todo
-
-- id: closures-first-class-functions-design
-  title: 'Three rulings wait on first-class functions with no row to deliver them: partial application (partial-application-system-design, option C, always explicit), `.`-rebinding as sugar over a one-parameter closure (dot-rebinding-vs-lambda-design), and dsv-partials-migration''s blocked_by. Grill the concrete shape -- a function type in the type grammar, closure syntax, what a residual function value looks like and how it stays visibly distinct from an array literal -- informed by plans/closures-first-class-functions-research.md, then spin off the build rows. Mark done when ruled.'
   kind: decide
   needs: []
   status: todo

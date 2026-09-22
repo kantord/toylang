@@ -517,3 +517,44 @@ Prior art to weigh at the grilling: Clean's uniqueness types (static, but surfac
 signatures -- this sketch deliberately hides them), Koka/Lean's Perceus and Roc's
 opportunistic in-place reuse (both runtime refcount-based -- this sketch deliberately
 refuses that), and functional-but-in-place compilation generally.
+
+## Positional record literals and partial application
+
+TODO (user, 2026-09-23): records are position-preserving -- field order survives as real data
+([Records](docs/reference/types/record.md), and it is exposed at runtime via
+[`fields`](docs/reference/builtins/fields.md), [Q42](plans/questions.md#q42-is-a-runtime-field-names-accessor-part-of-the-design)).
+If that holds for any future map type too, there may be a literal syntax, and a
+partial-application syntax, that exploits position instead of requiring a name at every slot.
+
+RESPONSE (agent). The premise holds for printing and layout but not for identity, and that gap
+is where a positional literal syntax runs into trouble. [Records](docs/reference/types/record.md)
+is explicit that order is metadata, not part of the type: `{a: 1, b: 2} == {b: 2, a: 1}`, and
+"order never separates types." A record literal also answers what it is "from its contents
+alone," which is what lets it appear anywhere without an annotation -- and that self-description
+depends on names being written at the literal. A positional literal like `{"ada", 36}` has
+nothing to say which position is `name` and which is `age` unless an expected type is already in
+scope to check it against. So this idea does not stand on its own; it needs
+[Q34](plans/questions.md#q34-do-named-types-exist-and-is-a-name-an-alias-or-an-identity)'s
+open half -- a declared record with a fixed field order to check the positional spelling
+against -- before there is anything for position to mean. Without a named declaration in scope,
+`{"ada", 36}` is exactly as under-determined as an unlabeled tuple.
+
+Partial application is the sharper case, because [Q33](plans/questions.md#q33-does-a-spread-slot-in-a-call-give-partial-application)
+already ruled on this shape and picked names over position: "array-like (positional prefix) and
+struct-like (field subtraction) partial application are two input shapes hitting one mechanism."
+Struct-like was deliberately field subtraction -- `join {with: ", ", ...}` leaves the
+*complement of what was named* open, computed structurally. Folding it into the positional
+mechanism instead -- `join {", "}` binding to the first declared field -- reopens that ruling
+rather than extending it, and loses the property Q33 called out as the point: no convention is
+needed for "this one, not that one" because subtraction is by name, not slot. It would also
+collide with [Q41](plans/questions.md#q41-is-narrowing-a-record-to-a-subset-of-its-fields-an-operation),
+which is the same "does dropping the names settle an open question by sugar" objection that
+already killed `{name}` punning in the Records reference.
+
+None of that rules position out -- tuple structs (Rust) and positional dataclass construction
+(Python, against declared field order) are exactly this feature, and it is a real reduction in
+ceremony for a two- or three-field record built and consumed right next to its declaration. But
+it is a second literal syntax for one type, which is the cost this document already weighed and
+rejected once for string patterns (`mul("a")` over `a*`, to avoid a second syntax to learn), and
+it presupposes named record declarations existing, which Q34 has not settled. Worth its own
+grilling once Q34 lands, not before.

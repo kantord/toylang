@@ -100,6 +100,15 @@ pub enum Type {
     /// use site will supply. Never the type of any checked expression: instantiation
     /// substitutes every one away before a type leaves resolution.
     Param(String),
+    /// A closure's type, `$`-input -> body-result. Transient by construction (closures-first-
+    /// class-functions-design, 2026-09-23): the only way to produce one is a `$`-marked
+    /// partial application of an ordinary function's record argument, and the only consumers
+    /// today are `select`/`map`/`sort_by`/`max_by`, which unwrap it into their own bound-param
+    /// TIR shape immediately rather than storing it -- so a `Fn` value never reaches a Vec, a
+    /// record, a return type, or a backend's emitter. No syntax writes this type directly; it
+    /// only ever appears synthesized. Second-class the same way `Stream`/`Sink` are, but by
+    /// omission (nothing spells it in an annotation) rather than by an explicit position rule.
+    Fn(Box<Type>, Box<Type>),
 }
 
 /// Names reserved for the built-in type constructors, on top of `Str`/`Int`/`Bool`
@@ -167,6 +176,22 @@ impl Type {
                         .iter()
                         .any(|(_, p)| p.as_ref().is_some_and(Type::contains_sink))
             }
+            _ => false,
+        }
+    }
+
+    /// Whether `ty` is a closure's type or holds one anywhere inside it. `Type::Fn` is legal
+    /// only as a function's own declared parameter type or a field of it (closures-first-class-
+    /// functions-design, 2026-09-23) -- never inside a `Vec`, a `Stream`, or another `Fn`'s own
+    /// input/output, each of which would let a closure value outlive the call it was built for.
+    /// A record field is the one position this deliberately does not walk into: that is exactly
+    /// the position `Type::Fn` is allowed, so `resolve_bound`'s `Vec`/`Stream` arms are the only
+    /// callers.
+    pub fn contains_fn(&self) -> bool {
+        match self {
+            Type::Fn(..) => true,
+            Type::Vec(t) | Type::Stream(t) => t.contains_fn(),
+            Type::Seq(head, rest) => head.contains_fn() || rest.contains_fn(),
             _ => false,
         }
     }
@@ -316,6 +341,9 @@ impl Type {
                 }
             }
             Type::Param(_) => unreachable!("params are substituted before any backend runs"),
+            Type::Fn(..) => {
+                unreachable!("a closure's type is transient and never reaches a backend")
+            }
         }
     }
 
@@ -354,6 +382,7 @@ impl std::fmt::Display for Type {
                 Ok(())
             }
             Type::Param(name) => write!(f, "{name}"),
+            Type::Fn(input, output) => write!(f, "{input} -> {output}"),
         }
     }
 }
@@ -394,6 +423,7 @@ impl PartialEq for Type {
                 },
             ) => n1 == n2 && a1 == a2,
             (Type::Param(a), Type::Param(b)) => a == b,
+            (Type::Fn(a1, b1), Type::Fn(a2, b2)) => a1 == a2 && b1 == b2,
             _ => false,
         }
     }
@@ -438,8 +468,15 @@ pub fn substitute(t: &Type, map: &HashMap<String, Type>) -> Type {
                 .map(|(n, p)| (n.clone(), p.as_ref().map(|p| substitute(p, map))))
                 .collect(),
         },
-        Type::Str | Type::Int | Type::Int64 | Type::Float | Type::Bool | Type::Char | Type::Sink => {
-            t.clone()
+        Type::Str
+        | Type::Int
+        | Type::Int64
+        | Type::Float
+        | Type::Bool
+        | Type::Char
+        | Type::Sink => t.clone(),
+        Type::Fn(..) => {
+            unreachable!("a closure's type is synthesized only, never part of a generic template")
         }
     }
 }

@@ -114,6 +114,16 @@ pub enum TypeExpr {
         fields: Vec<(String, TypeExpr)>,
         span: Span,
     },
+    /// `Int -> Bool`: a closure's type (closures-first-class-functions-design, 2026-09-23),
+    /// legal only as a named function's own declared parameter type, or a field of it -- the
+    /// checker refuses it anywhere else a type would describe something stored, the same
+    /// position rule `Stream` gets. Right-associative (`A -> B -> C` is `A -> (B -> C)`), the
+    /// nested-unary shape a hand-written curried function already needs.
+    Fn {
+        input: Box<TypeExpr>,
+        output: Box<TypeExpr>,
+        span: Span,
+    },
 }
 
 impl TypeExpr {
@@ -123,7 +133,8 @@ impl TypeExpr {
             | TypeExpr::Vec { span, .. }
             | TypeExpr::Stream { span, .. }
             | TypeExpr::Seq { span, .. }
-            | TypeExpr::Record { span, .. } => *span,
+            | TypeExpr::Record { span, .. }
+            | TypeExpr::Fn { span, .. } => *span,
         }
     }
 
@@ -160,6 +171,15 @@ impl TypeExpr {
                     .iter()
                     .map(|(n, t)| (n.clone(), t.substitute_self(self_ty)))
                     .collect(),
+                span: *span,
+            },
+            TypeExpr::Fn {
+                input,
+                output,
+                span,
+            } => TypeExpr::Fn {
+                input: Box::new(input.substitute_self(self_ty)),
+                output: Box::new(output.substitute_self(self_ty)),
                 span: *span,
             },
         }
@@ -428,6 +448,13 @@ pub enum Expr {
     Subject {
         span: Span,
     },
+    /// `$`, the deferred parameter of a partial application (closures-first-class-functions-
+    /// design, 2026-09-23): legal only where the checker has bound one (a `$`-marked field of
+    /// a call's record argument), refused everywhere else the way a bare `.` is refused where
+    /// nothing bound it.
+    Placeholder {
+        span: Span,
+    },
     Var {
         name: String,
         span: Span,
@@ -630,6 +657,7 @@ impl Expr {
             | Expr::Float { span, .. }
             | Expr::VecLit { span, .. }
             | Expr::Subject { span }
+            | Expr::Placeholder { span }
             | Expr::Var { span, .. }
             | Expr::Call { span, .. }
             | Expr::Project { span, .. }

@@ -84,6 +84,7 @@ pub(crate) enum Tok {
     Semicolon,
     At,
     Arrow,
+    Dollar,
     Eof,
 }
 
@@ -135,6 +136,7 @@ impl std::fmt::Display for Tok {
             Tok::Semicolon => "`;`",
             Tok::At => "`@`",
             Tok::Arrow => "`->`",
+            Tok::Dollar => "`$`",
             Tok::Eof => "end of program",
         };
         write!(f, "{s}")
@@ -261,6 +263,7 @@ fn read_tok<'i>(input: &mut Input<'i>) -> Result<(Tok, Span), Error> {
         '|' => read_two_char(input, '>', Tok::Pipe, Tok::PipeGt),
         ',' => single(input, Tok::Comma),
         '.' => single(input, Tok::Dot),
+        '$' => single(input, Tok::Dollar),
         '(' => single(input, Tok::LParen),
         ')' => single(input, Tok::RParen),
         '[' => single(input, Tok::LBracket),
@@ -980,6 +983,23 @@ impl<'i> Cursor<'i> {
     /// every name and lets resolution hold the arity, so `Pair` and `Str<Int>` fail with an
     /// error that knows what `Pair` and `Str` are rather than a parse error that does not.
     fn type_expr(&mut self) -> Result<TypeExpr, Error> {
+        let base = self.type_expr_base()?;
+        if self.peek()?.0 != Tok::Arrow {
+            return Ok(base);
+        }
+        self.advance()?;
+        // Right-recursive: `output` may itself be an arrow, which is what makes `A -> B -> C`
+        // parse as `A -> (B -> C)` with no extra case here.
+        let output = self.type_expr()?;
+        let span = base.span().to(output.span());
+        Ok(TypeExpr::Fn {
+            input: Box::new(base),
+            output: Box::new(output),
+            span,
+        })
+    }
+
+    fn type_expr_base(&mut self) -> Result<TypeExpr, Error> {
         let (tok, span) = self.advance()?;
         if tok == Tok::LBrace {
             return self.record_type(span);
@@ -1835,6 +1855,12 @@ impl<'i> Cursor<'i> {
                 Ok(Expr::Subject { span })
             }
 
+            // `$`, the deferred parameter of a partial application: unlike `.`, it never
+            // carries a field of its own here -- it names the whole value that will be
+            // supplied later, not something projected off it (kantord/toylang#119 spinoff,
+            // closures-first-class-functions-design).
+            Tok::Dollar => Ok(Expr::Placeholder { span }),
+
             Tok::LBrace => self.record_lit(span),
 
             Tok::LBracket => {
@@ -1903,7 +1929,10 @@ mod tests {
     /// same module.
     #[test]
     fn semicolon_terminator_does_not_change_the_tree() {
-        same("fn f(x: Int) -> Int = x * 10", "fn f(x: Int) -> Int = x * 10;");
+        same(
+            "fn f(x: Int) -> Int = x * 10",
+            "fn f(x: Int) -> Int = x * 10;",
+        );
         same("fn f(x: Int) -> Int = x", "fn f(x: Int) -> Int = x;");
         same("type U = {name: Str}", "type U = {name: Str};");
         same("type Db = Vec<Int>", "type Db = Vec<Int>;");

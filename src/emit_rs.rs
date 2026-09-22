@@ -847,7 +847,17 @@ pub fn emit(program: &Program) -> String {
         let Type::Record(fields) = rec else {
             unreachable!("only records are collected")
         };
-        decls.push_str(&format!("{DERIVE}\nstruct TlRec{i} {{\n"));
+        // A field holding a closure breaks the derive: `Rc<dyn Fn(..) -> ..>` is neither
+        // `PartialEq` (trait objects have no default one) nor comparable the way every other
+        // runtime shape here is, so a record that carries one skips the derive rather than
+        // fail to compile. Nothing needs to compare two closures today -- one only ever exists
+        // long enough to be applied.
+        let derive = if fields.iter().any(|(_, t)| t.contains_fn()) {
+            "#[derive(Clone)]"
+        } else {
+            DERIVE
+        };
+        decls.push_str(&format!("{derive}\nstruct TlRec{i} {{\n"));
         for (name, ty) in fields {
             decls.push_str(&format!("    {}: {},\n", rs_field(name), e.rs_type(ty)));
         }
@@ -970,7 +980,10 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_sum(") || uses("tl_sum64("), SUM_HELPER),
         (uses("tl_max("), MAX_HELPER),
         (uses("tl_max_by("), MAX_BY_HELPER),
-        (uses("tl_select(") || uses("tl_select_at(") || uses("tl_select_len("), SELECT_HELPER),
+        (
+            uses("tl_select(") || uses("tl_select_at(") || uses("tl_select_len("),
+            SELECT_HELPER,
+        ),
         (uses("tl_transpose("), TRANSPOSE_HELPER),
         (uses("tl_range("), RANGE_HELPER),
         (uses("tl_chars("), CHARS_HELPER),
@@ -1172,6 +1185,11 @@ impl Collect<'_> {
                 }
                 self.walk(arg);
             }
+            Kind::Closure { body, .. } => self.walk(body),
+            Kind::ApplyClosure { closure, arg } => {
+                self.walk(closure);
+                self.walk(arg);
+            }
         }
     }
 }
@@ -1215,7 +1233,16 @@ impl Emitter<'_> {
     fn rs_type(&self, ty: &Type) -> String {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
-            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
+            // `Rc`, not `Box`: `Kind::Closure`'s own comment says why. `dyn Fn` alone has no
+            // fixed size, so it can only ever appear behind a pointer.
+            Type::Fn(input, output) => format!(
+                "std::rc::Rc<dyn Fn({}) -> {}>",
+                self.rs_type(input),
+                self.rs_type(output)
+            ),
+            Type::Seq(..) => unreachable!(
+                "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
+            ),
             Type::Str => "String".to_string(),
             // A sink is a joined string at runtime, so a `-> Sink` function returns one here too.
             Type::Sink => "String".to_string(),
@@ -1246,7 +1273,10 @@ impl Emitter<'_> {
     fn parser_expr(&self, ty: &Type) -> String {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
-            Type::Seq(..) => unreachable!("a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"),
+            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
+            Type::Seq(..) => unreachable!(
+                "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
+            ),
             Type::Str => "tl_parse_str".to_string(),
             Type::Int => "tl_parse_i32".to_string(),
             // The checker refuses Int64 anywhere in an input type: its wire codec is undecided.
@@ -1664,7 +1694,10 @@ impl Emitter<'_> {
                     let ename = self.rs_type(enum_ty);
                     let text_ty = self.rs_type(text_ty);
                     let tag = move |tag: &str| {
-                        format!("|l| {ename}::V_{tag}({text_ty} {{ {}: l }})", rs_field("text"))
+                        format!(
+                            "|l| {ename}::V_{tag}({text_ty} {{ {}: l }})",
+                            rs_field("text")
+                        )
                     };
                     format!(
                         "tl_pipe_through({}, {}, {}, {}, {})",
@@ -1685,8 +1718,9 @@ impl Emitter<'_> {
                         pred,
                     } = &arg.kind
                     {
-                        let elem = self.rs_type(tir::runtime_elem(&source.ty)
-                            .expect("select runs over a dimension"));
+                        let elem = self.rs_type(
+                            tir::runtime_elem(&source.ty).expect("select runs over a dimension"),
+                        );
                         return format!(
                             "tl_select_len(&{}, |{}: &{}| -> bool {{ {} }})",
                             self.expr(source),
@@ -1900,8 +1934,9 @@ impl Emitter<'_> {
                         pred,
                     } = &base.kind
                     {
-                        let elem = self.rs_type(tir::runtime_elem(&source.ty)
-                            .expect("select runs over a dimension"));
+                        let elem = self.rs_type(
+                            tir::runtime_elem(&source.ty).expect("select runs over a dimension"),
+                        );
                         return format!(
                             "tl_select_at(&{}, |{}: &{}| -> bool {{ {} }}, {})",
                             self.expr(source),
@@ -1966,7 +2001,8 @@ impl Emitter<'_> {
                             })
                         });
                         if owned_payload {
-                            self.mutables.push(arm.payload.expect("owned implies a payload"));
+                            self.mutables
+                                .push(arm.payload.expect("owned implies a payload"));
                         }
                         let body = if *partial {
                             format!("Some({})", self.expr(&arm.body))
@@ -2007,6 +2043,25 @@ impl Emitter<'_> {
                     rendered.join(", ")
                 )
             }
+            // `Rc`, not `Box`: a closure is read the same way any other local is (`Kind::Var`/
+            // `Kind::Local` above always emit `.clone()`), and `Box<dyn Fn>` is not `Clone`.
+            // `move` is what lets the closure own whatever it captures rather than borrow it,
+            // which a value stored past the call that built it needs.
+            Kind::Closure { param, body } => {
+                let Type::Fn(input, output) = &t.ty else {
+                    unreachable!("a Closure's own type is always the Fn it was checked against")
+                };
+                format!(
+                    "std::rc::Rc::new(move |{}: {}| -> {} {{ {} }})",
+                    self.local(*param),
+                    self.rs_type(input),
+                    self.rs_type(output),
+                    self.expr(body)
+                )
+            }
+            Kind::ApplyClosure { closure, arg } => {
+                format!("({})({})", self.expr(closure), self.expr(arg))
+            }
         }
     }
 
@@ -2016,8 +2071,11 @@ impl Emitter<'_> {
     fn show(&self, ty: &Type, value: &str, depth: usize) -> String {
         match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
+            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
             Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
-            Type::Seq(..) => unreachable!("a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"),
+            Type::Seq(..) => unreachable!(
+                "a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"
+            ),
             // The checker refuses a program whose result contains a Char: it has no wire form.
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Str => format!("tl_quote(&{value})"),

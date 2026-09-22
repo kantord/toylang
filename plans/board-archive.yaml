@@ -3411,6 +3411,27 @@
   needs: [float-builtins-build-backends-a]
   status: done
 
+- id: sort-by-max-by-lua
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- emit for the Lua backend only (src/emit_lua.rs).
+    LANDED 2026-09-23 (direct session, not drive): following the Rust arm
+    (sort-by-max-by-rust-helpers/-wiring/-tests in this file) as precedent. Added `tl_sort_by`
+    and `tl_max_by` to src/emit_lua.rs and wired the `Kind::SortBy`/`Kind::MaxBy` TIR nodes to
+    them, replacing the `unreachable!` placeholder. `table.sort` is not itself stable, unlike
+    Rust''s `slice::sort_by_key`, so `tl_sort_by` decorates each entry with its original index,
+    sorts by `(key, index)`, and undecorates -- the same stability problem Go''s arm solved with
+    `slices.SortStableFunc`, solved here without a second sort primitive to reach for.
+    `tl_max_by` mirrors `tl_max`''s `key(x) > key(m)` fold. Registered Lua in
+    `backend_support::LANDINGS` for both `sort_by` and `max_by`. Mirrored the Go/Rust backend
+    tests (stable ties, first-of-equal-maxima, empty-Vec absence, Str/Int64 keys) into
+    tests/backend_lua.rs, and moved tests/unbuilt_arms.rs''s two still-refused assertions off
+    Lua onto Js/Py now that Lua has an arm. Updated docs/reference/builtins/sort_by.md and
+    max_by.md to name Lua as landed and describe the stability workaround. `just check`
+    (506/506) green.'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-rust]
+  status: done
+
 - id: float-benchmarks-drop-workarounds
   title: 'After float-builtins-build-backends-b lands, drop the workarounds in benches/programs: the hand-written Newton `sqrt` and `newton` in n-body.toy, `to_float` in mandelbrot.toy, and the doubled Int/Float loop indices in spectral-norm.toy, replacing them with the `sqrt` and `float` builtins; update plans/benchmark-plan.md, which records them. n-body digits should now match CLBG. Do NOT rewrite files with scripts. Done-gate: `just check` passes and the three benchmarks print the same on every backend. LANDED 2026-09-23 (direct session, not drive): dropped `newton`/`sqrt_newton` from n-body.toy and spectral-norm.toy in favor of `sqrt`; dropped `to_float` from mandelbrot.toy and the doubled `fi`/`fj` Float loop indices from spectral-norm.toy''s `row`/`times` in favor of `float` called at the point of use. n-body''s N=1000 energies now match CLBG''s published `-0.169075164` / `-0.169087605` to the nine decimals CLBG prints. All seven backends print byte-identical output for all three benchmarks (n-body, mandelbrot, spectral-norm) with their `benches/inputs/*.txt` inputs. Updated plans/benchmark-plan.md''s workaround writeup and dropped the now-landed `sqrt`/`Int -> Float` item from its "leaves to the next person" list. `just check` (502/502) green.'
   kind: build
@@ -3439,4 +3460,52 @@
     (507/507) green -- 502 at merge-base, minus scratch_dump, plus the six new tests.'
   kind: build
   needs: [mutation-rule-v1-build-rust]
+  status: done
+
+- id: sort-by-max-by-checkpoint-rust
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Rust-source commit landed clean
+    before starting Lua. CONFIRMED 2026-09-23 (direct session, not drive): ca36f8fd/7504f97f
+    (sort-by-max-by-rust-tests) landed clean, `just check` (502/502, including backend_rust and
+    full corpus) green. Clear to start Lua.'
+  kind: decide
+  needs: [sort-by-max-by-rust-tests]
+  status: done
+
+- id: closures-first-class-functions-design
+  title: 'RULED AND BUILT 2026-09-23 (direct session, not drive; full spec at
+    docs/reference/operators/placeholder.md). Grilled to a shape narrower than the research
+    doc''s original framing, deliberately: a closure exists only as a function call''s sole
+    argument (a "function-parameter-expression" -- ordinary, or one containing `$`), never
+    storable in a `let`, a `Vec`, or a return type. One rule gives three things for free:
+    (1) no separate exclusion list for where the arrow type may appear in `Type` (it is
+    grammar-illegal anywhere but a function''s own declared parameter type or a field of it);
+    (2) the scariest open risk in the research doc -- a closure capturing a `Stream`/`Sink` --
+    is refused the same way a mapper body already refuses one (`ctx.in_mapper` +
+    `linearity.rs`''s `InMapper` violation, extended to `Kind::Closure`), marked explicitly
+    TEMPORARY, not a permanent limit; (3) "array-like" (positional) partial application turned
+    out not to be a separate mechanism at all -- `five_plus [1, 2]` was never spellable (no
+    marker, so it fails the maintainer''s own explicitness requirement), and genuine currying
+    only exists if a function is hand-written as nested arrow-returning, which needs no marker
+    since it is an ordinary typed call. `$` (bare, single-occurrence only for v1) is the one
+    marker, doing double duty as partial-application''s deferred-field spelling
+    (`join({with: ", ", over: $})`) and predicate sugar
+    (`count_where({items: xs, pred: $ > 2})`) -- proven to be the same rule, not two. `$ -> body`
+    (terse multi-reference anonymous lambdas, e.g. `$ -> $ * $`) was deliberately cut from v1 --
+    `fn(x) = x * x` already covers it -- and is marked as a follow-up idea, not lost.
+
+    Landed on the Rust backend (`Rc<dyn Fn>`, not `Box`: a closure is read the same way any
+    other local is, via `.clone()`, and `Box<dyn Fn>` is not `Clone`). `select` extended to
+    accept a genuine closure value in addition to its unchanged `.`-rebinding spelling --
+    the actual "ugly hacky legacy flow" fix: today `count_where`-style user-defined
+    higher-order functions could not do what `select`/`map`/`sort_by`/`max_by` do, at all.
+    `map`/`sort_by`/`max_by` were NOT extended this pass (see
+    closures-legacy-flow-map-sortby-maxby); the other six backends refuse the new `closure`
+    landing cleanly via `backend_support::LANDINGS` (see closures-remaining-backends). `just
+    test` (502/502 fast suite) green; verified end to end with a real program
+    (`count_where({items: [1,2,3,4], pred: $ > 2})` prints `2` on rust, refuses with a named
+    backend list on the other six, and a closure that reaches for an outer `Stream` is refused
+    with the same message a mapper body''s stream-capture already gives).'
+  kind: decide
+  needs: []
   status: done

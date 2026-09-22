@@ -172,9 +172,14 @@ recursive in general: a recursive call whose result a later operation observes i
 call and grows the stack like any other.
 
 What a signature cannot say: a `Stream` result without a `Stream` parameter (a stream is
-born only at a source; see [Stream](../types/stream.md)). A function is not a value -- it
-cannot be stored, passed, or returned -- and the [builtin names](../builtins/str.md)
-cannot be redefined.
+born only at a source; see [Stream](../types/stream.md)). A named function is still not a
+value on its own -- it cannot be stored, passed, or returned by name -- and the
+[builtin names](../builtins/str.md) cannot be redefined. A parameter's own declared type may
+be a closure (`Int -> Bool`), landed on the Rust backend so far
+(closures-first-class-functions-design, 2026-09-23; see [`$`](../operators/placeholder.md)
+for how one is built): that closure is a real value once inside the function body, but it
+only ever arrives as a call's own argument -- nothing writes a closure to a `let`, a `Vec`,
+or a return type.
 
 Bare application, `f x`, is the default call form for a function that takes one argument.
 Since a function is never variadic, parens never said which argument is which -- only where

@@ -110,6 +110,11 @@ fn walk(tir: &Tir, tags: &mut BTreeSet<String>) {
                 walk(&a.body, tags);
             }
         }
+        Kind::Closure { body, .. } => walk(body, tags),
+        Kind::ApplyClosure { closure, arg } => {
+            walk(closure, tags);
+            walk(arg, tags);
+        }
     }
 }
 
@@ -182,6 +187,8 @@ pub const TAGS: &[&str] = &[
     "selection.collapse",
     "inputs",
     "match",
+    "closure",
+    "closure.apply",
 ];
 
 fn tag(tir: &Tir) -> String {
@@ -226,6 +233,8 @@ fn tag(tir: &Tir) -> String {
         Kind::Slice { .. } => "selection.narrow".into(),
         Kind::Inputs => "inputs".into(),
         Kind::Match { .. } => "match".into(),
+        Kind::Closure { .. } => "closure".into(),
+        Kind::ApplyClosure { .. } => "closure.apply".into(),
     }
 }
 

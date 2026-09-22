@@ -41,6 +41,12 @@ struct Ctx<'a> {
     arm_fields: Vec<(String, Type, LocalId)>,
     /// What `.` refers to here, if anything: its type and the local holding it.
     subject: Option<(Type, LocalId)>,
+    /// What `$` refers to here, if anything: its type and the local holding it. Set only while
+    /// checking a call's record argument that has exactly one field marked `$`
+    /// (closures-first-class-functions-design, 2026-09-23) -- a separate slot from `subject`
+    /// because the two are independent, nesting mechanisms: a `.`-rebinding body may itself
+    /// contain a `$`-marked call, and the innermost of either shadows, never the other.
+    placeholder: Option<(Type, LocalId)>,
     /// The type `input` was checked against, filled in the first time it is used.
     input: &'a RefCell<Option<Type>>,
     /// The element type `inputs` was checked against, filled in the first time it is used. A
@@ -97,13 +103,20 @@ struct Ctx<'a> {
 
 impl Ctx<'_> {
     fn with(&self, subject: Option<(Type, LocalId)>) -> Ctx<'_> {
-        self.rebuild(self.scope.clone(), subject)
+        self.rebuild(self.scope.clone(), subject, self.placeholder.clone())
+    }
+
+    /// The same context, but with `$` bound to a fresh local of `ty` -- what checking a
+    /// `$`-marked call argument's body does, the same way `mapper_ctx` binds `.`.
+    fn with_placeholder(&self, placeholder: Option<(Type, LocalId)>) -> Ctx<'_> {
+        self.rebuild(self.scope.clone(), self.subject.clone(), placeholder)
     }
 
     fn rebuild(
         &self,
         scope: Vec<(String, Type, Option<LocalId>)>,
         subject: Option<(Type, LocalId)>,
+        placeholder: Option<(Type, LocalId)>,
     ) -> Ctx<'_> {
         Ctx {
             sigs: self.sigs,
@@ -112,6 +125,7 @@ impl Ctx<'_> {
             scope,
             arm_fields: self.arm_fields.clone(),
             subject,
+            placeholder,
             input: self.input,
             inputs: self.inputs,
             lines_used: self.lines_used,
@@ -132,7 +146,11 @@ impl Ctx<'_> {
     /// The same context, but checking code written in `file`: what `check_defs` uses so a
     /// routed module's definition is checked as that module, and its private helpers resolve.
     fn in_file(&self, file: Origin) -> Ctx<'_> {
-        let mut ctx = self.rebuild(self.scope.clone(), self.subject.clone());
+        let mut ctx = self.rebuild(
+            self.scope.clone(),
+            self.subject.clone(),
+            self.placeholder.clone(),
+        );
         ctx.file = file;
         ctx
     }
@@ -262,7 +280,10 @@ fn matchable_variants(
         Type::Enum { name, args, .. } => Some((name.clone(), enum_variants(ctx, name, args))),
         Type::Bool => Some((
             "Bool".to_string(),
-            BOOL_VARIANTS.iter().map(|v| (v.to_string(), None)).collect(),
+            BOOL_VARIANTS
+                .iter()
+                .map(|v| (v.to_string(), None))
+                .collect(),
         )),
         _ => None,
     }
@@ -308,6 +329,7 @@ impl Cells<'_> {
             scope: Vec::new(),
             arm_fields: Vec::new(),
             subject: None,
+            placeholder: None,
             input: self.input,
             inputs: self.inputs,
             lines_used: self.lines_used,
@@ -580,7 +602,14 @@ fn check_defs<'a>(
             check_hoisted_def(&ctx, def)
         } else {
             let sig = sig_of(&ctx, &def.name);
-            check_one_def(&ctx, &def.name, def.param.as_ref(), sig, &def.body, def.is_pub)
+            check_one_def(
+                &ctx,
+                &def.name,
+                def.param.as_ref(),
+                sig,
+                &def.body,
+                def.is_pub,
+            )
         };
         funcs.push(checked.map_err(|e| routing::in_file(e, &def.origin))?);
     }
@@ -741,6 +770,7 @@ fn check_one_def(
         scope,
         arm_fields: Vec::new(),
         subject: None,
+        placeholder: None,
         input: ctx.input,
         inputs: ctx.inputs,
         lines_used: ctx.lines_used,
@@ -878,6 +908,9 @@ fn type_mentions_param(t: &Type, name: &str) -> bool {
         Type::Seq(head, rest) => type_mentions_param(head, name) || type_mentions_param(rest, name),
         Type::Record(fields) => fields.iter().any(|(_, t)| type_mentions_param(t, name)),
         Type::Enum { args, .. } => args.iter().any(|a| type_mentions_param(a, name)),
+        Type::Fn(input, output) => {
+            type_mentions_param(input, name) || type_mentions_param(output, name)
+        }
         Type::Str
         | Type::Int
         | Type::Int64
@@ -1699,12 +1732,7 @@ fn mapper_ctx<'a>(ctx: &'a Ctx, elem: Type, param: LocalId) -> Ctx<'a> {
 
 /// The one enum a bare variant name refers to, or the error naming every candidate: guessing
 /// between two claimants would silently pick a type the program never wrote down.
-fn sole_owner(
-    ctx: &Ctx,
-    variant: &str,
-    owners: &[String],
-    span: Span,
-) -> Result<Type, Error> {
+fn sole_owner(ctx: &Ctx, variant: &str, owners: &[String], span: Span) -> Result<Type, Error> {
     if owners.len() > 1 {
         let named: Vec<String> = owners.iter().map(|e| format!("`{e}`")).collect();
         let qualified: Vec<String> = owners.iter().map(|e| format!("`{e}.{variant}`")).collect();
@@ -2190,12 +2218,12 @@ fn let_bind(
     let mut values: Vec<Tir> = Vec::new();
     let mut scope = ctx.scope.clone();
     for ((name, value), local) in bindings.iter().zip(&locals) {
-        let inner = ctx.rebuild(scope.clone(), ctx.subject.clone());
+        let inner = ctx.rebuild(scope.clone(), ctx.subject.clone(), ctx.placeholder.clone());
         let value = synth(&inner, value)?;
         scope.push((name.clone(), value.ty.clone(), Some(*local)));
         values.push(value);
     }
-    let body_ctx = ctx.rebuild(scope, ctx.subject.clone());
+    let body_ctx = ctx.rebuild(scope, ctx.subject.clone(), ctx.placeholder.clone());
     let body = match want {
         Some(want) => expect_inner(&body_ctx, body, want)?,
         None => Expected::Synthesised(synth(&body_ctx, body)?),
@@ -2624,6 +2652,7 @@ fn check_hoisted_def(ctx: &Ctx, def: &Def) -> Result<tir::Func, Error> {
         scope: Vec::new(),
         arm_fields: Vec::new(),
         subject: Some((enum_ty.clone(), sid)),
+        placeholder: None,
         input: ctx.input,
         inputs: ctx.inputs,
         lines_used: ctx.lines_used,
@@ -2801,6 +2830,16 @@ fn synth_inner(ctx: &Ctx, expr: &Expr) -> Result<Tir, Error> {
         Expr::Subject { span } => match &ctx.subject {
             Some((ty, id)) => Ok(Tir::new(ty.clone(), Kind::Local(*id))),
             None => Err(Error::new(*span, "`.` is not bound here")),
+        },
+
+        Expr::Placeholder { span } => match &ctx.placeholder {
+            Some((ty, id)) => Ok(Tir::new(ty.clone(), Kind::Local(*id))),
+            None => Err(Error::new(
+                *span,
+                "`$` is not bound here; it names the one deferred field of a partial \
+                 application, so it can only appear inside a call's record argument"
+                    .to_string(),
+            )),
         },
 
         // Innermost binding first: a pattern binding shadows a parameter, and a parameter
@@ -3560,6 +3599,14 @@ fn colon_call_dispatch(
 
 /// Cardinality-polymorphic: the same subject-context mechanism types `select` over a Vec and
 /// over a Stream, with the element drawn from either's parameter. Stream in, stream out.
+///
+/// `select` no longer only accepts an inline `.`-expression (closures-first-class-functions-
+/// design, 2026-09-23, replacing the legacy flow that limitation was): a bare name already
+/// bound to a closure value -- one a caller built elsewhere, by a `$`-marked partial
+/// application, and handed in as an ordinary parameter -- is applied per element instead. The
+/// dispatch is a syntactic peek, not a guess from a value's shape: only an `Expr::Var` is ever
+/// considered, so `select(f())` or any other expression still only ever means `.`-rebinding,
+/// with no ambiguity about which reading applies.
 fn select_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
     let Some((subject, id)) = ctx.subject.clone() else {
         return Err(Error::new(
@@ -3574,6 +3621,46 @@ fn select_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
         ));
     };
     let param = ctx.fresh();
+    if let Expr::Var {
+        name,
+        span: var_span,
+    } = arg
+        && let Some((_, ty, local)) = ctx.scope.iter().rev().find(|(n, _, _)| n == name)
+        && let Type::Fn(input, output) = ty
+    {
+        if **input != elem {
+            return Err(Error::new(
+                *var_span,
+                format!("`{name}` takes {input}, but select's elements are {elem}"),
+            ));
+        }
+        if **output != Type::Bool {
+            return Err(Error::new(
+                *var_span,
+                format!("`{name}` must return Bool for select to use it, found {output}"),
+            ));
+        }
+        let closure = match local {
+            Some(id) => Tir::new(ty.clone(), Kind::Local(*id)),
+            None => Tir::new(ty.clone(), Kind::Var(name.clone())),
+        };
+        let source = Tir::new(subject.clone(), Kind::Local(id));
+        let pred = Tir::new(
+            Type::Bool,
+            Kind::ApplyClosure {
+                closure: Box::new(closure),
+                arg: Box::new(Tir::new(elem, Kind::Local(param))),
+            },
+        );
+        return Ok(Tir::new(
+            subject,
+            Kind::Select {
+                source: Box::new(source),
+                param,
+                pred: Box::new(pred),
+            },
+        ));
+    }
     let inner = mapper_ctx(ctx, elem, param);
     let pred = expect(&inner, arg, &Type::Bool)?;
     let source = Tir::new(subject.clone(), Kind::Local(id));
@@ -5132,6 +5219,29 @@ fn expect_inner(ctx: &Ctx, expr: &Expr, want: &Type) -> Result<Expected, Error> 
         && let Some(push) = match_arm_want(arms, want)
     {
         return match_chain(ctx, arms, *span, Some(push)).map(Expected::Checked);
+    }
+
+    // A position expecting a closure's type is checked as that closure's body, with `$` bound
+    // to a fresh local of the input type (closures-first-class-functions-design, 2026-09-23):
+    // the same shape `mapper_ctx` gives `.`, but reached through an ordinary expected type
+    // instead of one of the four keyword forms, which is what lets a genuinely user-written
+    // higher-order function (not just `select`/`map`/`sort_by`/`max_by`) take one. `in_mapper`
+    // rides along for the same reason it does in a mapper body: the body may run more than
+    // once, so a fresh source read (`stdin`/`dsv`) is refused here too, and the linearity pass
+    // (`Kind::Closure`'s own arm in `stream_uses`) refuses an outer stream binding reached from
+    // inside it.
+    if let Type::Fn(input, output) = want {
+        let param = ctx.fresh();
+        let mut inner = ctx.with_placeholder(Some(((**input).clone(), param)));
+        inner.in_mapper = true;
+        let body = expect(&inner, expr, output)?;
+        return Ok(Expected::Checked(Tir::new(
+            want.clone(),
+            Kind::Closure {
+                param,
+                body: Box::new(body),
+            },
+        )));
     }
 
     // A record literal checked against a record type pushes each field's expected type into
