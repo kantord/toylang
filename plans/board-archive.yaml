@@ -3535,3 +3535,12 @@
   kind: decide
   needs: [sort-by-max-by-lua]
   status: done
+
+- id: sort-by-max-by-checkpoint-js
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the JS commit landed clean before
+    starting Python. CONFIRMED 2026-09-23 (direct session, not drive): 4714bb12 landed clean,
+    just check 515/515 green on main. Clear to start Python.'
+  kind: decide
+  needs: [sort-by-max-by-js]
+  status: done

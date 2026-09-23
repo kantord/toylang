@@ -117,14 +117,6 @@
   kind: decide
   status: todo
 
-- id: sort-by-max-by-checkpoint-js
-  issue: gh:177
-  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the JS commit landed clean before
-    starting Python.'
-  kind: decide
-  needs: [sort-by-max-by-js]
-  status: todo
-
 - id: sort-by-max-by-python
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- emit for the Python backend only (src/emit_py.rs).'
