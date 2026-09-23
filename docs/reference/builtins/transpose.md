@@ -9,8 +9,19 @@ The subject must be a rectangular `Vec<Vec<T>>`: every row has to have the same 
 checker cannot see lengths, so a ragged input -- a `Vec` whose rows are not all the same length
 -- is refused at runtime the same way every other hard failure is.
 
-Built on the Go, Rust, JS, Python, and Lua backends so far; the native and jq backends have no
-emitter arm yet, so a program using it there is refused with `` `transpose` has no native
-backend yet; today it runs on go and rust and js and py and lua ``, this page carries no
-runnable fragment, and there is no corpus case until they do (the
-`transpose-remaining-backends` row in plans/board.yaml).
+```toylang
+transpose([[1, 2, 3], [4, 5, 6]])
+```
+
+```output
+[[1,4],[2,5],[3,6]]
+```
+
+It runs on every backend, and a ragged input is refused on every one:
+
+```toylang
+transpose([[1, 2], [3]])
+```
+
+```refuses
+```

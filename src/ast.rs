@@ -37,6 +37,12 @@ impl BinOp {
         )
     }
 
+    /// `<`, `<=`, `>` and `>=`: the comparisons that order their operands, as against `==` and
+    /// `!=`, which only ask whether two values are the same.
+    pub fn is_ordering(self) -> bool {
+        matches!(self, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge)
+    }
+
     /// True for the operators that only ever mean arithmetic. `+` is missing because it also
     /// concatenates, which is the one place an operator's meaning depends on its operands.
     pub fn is_arithmetic(self) -> bool {

@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(\"[1, 2][0] <= [1, 2][1]\")"
+---
+`<=` does not apply to Opt<Int>: ordering a record or an enum is not defined (at byte 0)

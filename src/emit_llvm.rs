@@ -2601,7 +2601,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 self.equal_opt(l, r, &inner)
             }
             Type::Enum { variants, .. } => self.equal_enum(l, r, variants),
-            other => Err(unsupported(&format!("comparing {other}"))),
+            other => unreachable!("the checker refuses `==` on {other}"),
         }
     }
 
@@ -2886,9 +2886,8 @@ impl<'ctx> Emitter<'ctx, '_> {
         let l = self.expr(lhs)?;
         let r = self.expr(rhs)?;
 
-        // Ordering on a composite is a separate open question, and falls through to the
-        // refusal below; only `==` and `!=` walk the structure.
-        if operand_ty.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne) {
+        // The checker refuses ordering on a composite, so only `==` and `!=` reach one.
+        if operand_ty.is_composite() {
             let same = self.equal(l, r, &operand_ty)?;
             return Ok(match op {
                 BinOp::Ne => self
@@ -2927,13 +2926,20 @@ impl<'ctx> Emitter<'ctx, '_> {
                 .into());
         }
 
+        // A Bool is an i1, which a signed predicate reads as -1 or 0, so `true > false` came
+        // out false; the unsigned ones put false before true like every other backend.
+        let signed = operand_ty != Type::Bool;
         let predicate = match op {
             BinOp::Eq => IntPredicate::EQ,
             BinOp::Ne => IntPredicate::NE,
-            BinOp::Lt => IntPredicate::SLT,
-            BinOp::Le => IntPredicate::SLE,
-            BinOp::Gt => IntPredicate::SGT,
-            BinOp::Ge => IntPredicate::SGE,
+            BinOp::Lt if signed => IntPredicate::SLT,
+            BinOp::Le if signed => IntPredicate::SLE,
+            BinOp::Gt if signed => IntPredicate::SGT,
+            BinOp::Ge if signed => IntPredicate::SGE,
+            BinOp::Lt => IntPredicate::ULT,
+            BinOp::Le => IntPredicate::ULE,
+            BinOp::Gt => IntPredicate::UGT,
+            BinOp::Ge => IntPredicate::UGE,
             other => return Err(format!("{other} is not a comparison")),
         };
 
@@ -2960,7 +2966,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             Type::Int | Type::Int64 | Type::Bool | Type::Char => {
                 (l.into_int_value(), r.into_int_value())
             }
-            other => return Err(unsupported(&format!("comparing {other}"))),
+            other => unreachable!("the checker refuses `{op}` on {other}"),
         };
 
         Ok(self

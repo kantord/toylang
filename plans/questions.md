@@ -298,9 +298,8 @@ NumPy and APL both yield rows, which makes `map` rank-polymorphic and gives row 
 `map(fold(add; 0))` with no new syntax; rank-1 yields scalars and `flatten` already covers
 full linearization. RULED (dense-tensor-type wizard, 2026-09-08): a transpose/column-access
 view is built now, alongside the tensor type, rather than deferred -- `.counts | transpose |
-map(sum(.))` for per-column reductions. As of 2026-09-18 `transpose` emits on Go and Rust
-only, has no corpus case, and is missing from the checker's builtin-name list, so it has no
-reference page either; the `transpose-remaining-backends` row carries the rest.
+map(sum(.))` for per-column reductions. `transpose` has since landed on every backend, with
+corpus cases and a reference page (docs/reference/builtins/transpose.md).
 
 ### Q19. How are nulls carried in a dense typed buffer?
 

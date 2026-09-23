@@ -1,0 +1,21 @@
+# What ordering still applies to once records and enums are refused by the checker: every
+# scalar, and two bare Vecs elementwise. Bool is the case that earned its place here: Go and Lua
+# have no ordering on it and the native backend compared an i1 as signed, so `true > false`
+# was a compile error, a runtime error and `false` on three backends while the rest agreed
+# false comes before true.
+program: |
+  {
+    int: 1 < 2,
+    float: 1.5 >= 2.5,
+    text: "a" < "b",
+    lt: false < true,
+    le: true <= true,
+    gt: true > false,
+    ge: false >= true,
+    vecs: [1, 5] < [3, 4]
+  }
+
+output: |
+  {"int":true,"float":false,"text":true,"lt":true,"le":true,"gt":true,"ge":false,"vecs":[true,false,true,false]}
+
+node_types: [bool, builtin.flatten, compare.ge, compare.gt, compare.le, compare.lt, float, int, local, map-over, pipe, record-literal, str, vec-literal]

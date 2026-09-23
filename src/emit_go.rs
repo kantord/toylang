@@ -491,6 +491,16 @@ func tlShowFloat(v float64) string {
 const EQ_HELPER: &str = r#"func tlEq[T any](a, b T) bool { return reflect.DeepEqual(a, b) }
 "#;
 
+// Go defines no ordering on bool, so `true > false` is a compile error; the other six targets
+// put false before true.
+const BOOL_INT_HELPER: &str = r#"func tlBoolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+"#;
+
 /// Ad-hoc address-of: `&expr` only works on composite literals, and a payload is whatever
 /// expression the program wrote. The call inlines away.
 const PTR_HELPER: &str = r#"func tlPtr[T any](v T) *T { return &v }
@@ -819,6 +829,7 @@ pub fn emit(program: &Program) -> String {
         (fail, FAIL_HELPER),
         (uses("tlPtr("), PTR_HELPER),
         (uses("tlEq("), EQ_HELPER),
+        (uses("tlBoolInt("), BOOL_INT_HELPER),
         (uses("tlInt("), INT_HELPER),
         (uses("tlInt64("), INT64_HELPER),
         (uses("tlMap("), MAP_HELPER),
@@ -1770,10 +1781,18 @@ impl Emitter<'_> {
     /// The printer is built from the type rather than by inspecting the value, as on every other
     /// backend. Here there is no choice at all: a Go value cannot be asked what it is.
     /// Equality on a composite is structural, which Go's own `==` is not: it compares an enum's
-    /// payload pointer by address (kantord/toylang#68). Ordering on a composite is a separate
-    /// open question and keeps whatever Go does with it.
+    /// payload pointer by address (kantord/toylang#68). The checker refuses ordering on a
+    /// composite, so only `==` and `!=` reach one.
     fn compare(&self, op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
-        if !lhs.ty.is_composite() || !matches!(op, BinOp::Eq | BinOp::Ne) {
+        if lhs.ty == Type::Bool && op.is_ordering() {
+            return format!(
+                "(tlBoolInt({}) {} tlBoolInt({}))",
+                self.expr(lhs),
+                go_op(op),
+                self.expr(rhs)
+            );
+        }
+        if !lhs.ty.is_composite() {
             return format!("({} {} {})", self.expr(lhs), go_op(op), self.expr(rhs));
         }
         let call = format!("tlEq({}, {})", self.expr(lhs), self.expr(rhs));

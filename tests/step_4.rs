@@ -138,3 +138,30 @@ fn comparison_across_types() {
 fn select_on_a_scalar() {
     insta::assert_snapshot!(err("1 | select(. >= 2)"));
 }
+
+/// Ordering a record or an enum is refused by the checker, not left to each backend: the seven
+/// targets used to answer it five different ways. `==` on the same types stays legal.
+#[test]
+fn ordering_a_record_is_refused() {
+    insta::assert_snapshot!(err("{a: 1} < {a: 2}"));
+}
+
+#[test]
+fn ordering_an_enum_is_refused() {
+    insta::assert_snapshot!(err(
+        "enum Shape { Point, Circle { r: Int } }\n\ncircle { r: 1 } >= point"
+    ));
+}
+
+/// An `Opt` is an enum, so `v[0] < v[1]` is refused until each side is unwrapped.
+#[test]
+fn ordering_an_opt_is_refused() {
+    insta::assert_snapshot!(err("[1, 2][0] <= [1, 2][1]"));
+}
+
+/// The cartesian rule lowers to an elementwise ordering, so it has to refuse the same element
+/// types the bare comparison does.
+#[test]
+fn ordering_two_vecs_of_composites_is_refused() {
+    insta::assert_snapshot!(err("[{a: 1}] > [{a: 2}]"));
+}

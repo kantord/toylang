@@ -4458,6 +4458,16 @@ fn expect_int_width(ctx: &Ctx, rhs: &Expr, width: &Type, op: BinOp) -> Result<Ti
     })
 }
 
+/// Ordering a record or an enum (an `Opt` included) is a type error rather than something each
+/// backend answers its own way: the seven targets gave five different answers, from a compile
+/// error to jq's document order, and no ordering on these types has been ruled the right one.
+fn ordering_refusal(lhs: &Expr, op: BinOp, ty: &Type) -> Error {
+    Error::new(
+        lhs.span(),
+        format!("`{op}` does not apply to {ty}: ordering a record or an enum is not defined"),
+    )
+}
+
 fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     let left = synth(ctx, lhs)?;
 
@@ -4466,6 +4476,10 @@ fn binary(ctx: &Ctx, op: BinOp, lhs: &Expr, rhs: &Expr) -> Result<Tir, Error> {
     // of the same type (kantord/toylang#97, the add-trait reading), and `plus` owns that.
     if left.ty.elem().is_some() && op != BinOp::Add {
         return cartesian(ctx, op, lhs, left, rhs);
+    }
+
+    if op.is_ordering() && left.ty.is_composite() {
+        return Err(ordering_refusal(lhs, op, &left.ty));
     }
 
     if op.is_comparison() {
@@ -4575,6 +4589,9 @@ fn cartesian(ctx: &Ctx, op: BinOp, lhs: &Expr, left: Tir, rhs: &Expr) -> Result<
             lhs.span(),
             format!("`{op}` does not apply to {}", left.ty),
         ));
+    }
+    if op.is_ordering() && elem.is_composite() {
+        return Err(ordering_refusal(lhs, op, &left.ty));
     }
     let want = left.ty.clone();
     let right = expect(ctx, rhs, &want)?;

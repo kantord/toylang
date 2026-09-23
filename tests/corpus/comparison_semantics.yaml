@@ -8,7 +8,7 @@
 # one type, so two spellings of it are one value and compare equal.
 #
 # Ordering is not here. `<` on a Str is pinned by str_ordering_codepoint.yaml, and `<` on a
-# composite is a question nobody has answered.
+# composite is refused by the checker (tests/step_4.rs).
 program: |
   enum Shape { Point, Circle { r: Int }, Box { w: Int, h: Int } }
 

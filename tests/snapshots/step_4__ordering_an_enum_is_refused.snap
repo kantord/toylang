@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(\"enum Shape { Point, Circle { r: Int } }\\n\\ncircle { r: 1 } >= point\")"
+---
+`>=` does not apply to Shape: ordering a record or an enum is not defined (at byte 41)

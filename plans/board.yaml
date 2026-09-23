@@ -24,12 +24,6 @@
   needs: []
   status: todo
 
-- id: ordering-composites-refused
-  title: 'Parity gap found by the 2026-09-23 differential audit (self-originated, parity goal), RULED by the maintainer the same day: refuse in the checker. `<`, `<=`, `>` and `>=` on a record or an enum (an Opt is an enum) typecheck today and then the seven backends give five different answers (docs/reference/operators/comparison.md documents it as an open question): `{a: 1} < {a: 2}` is a rustc error on Rust, a go error on Go, false on JS, true on jq, a traceback on Python, a runtime error on Lua and a refusal on native; an enum ordering gives false on JS, Py, Lua and jq, errors on Rust and Go, refuses on native. Make ordering on those types a compile-time type error with a message in the house style (see how `==` is refused for `{a: [1, 2]}` and how `sort` refuses a Vec<Float>), so all seven agree by construction, and say in the message that ordering composites is not defined. Ordering that stays legal: Int, Int64, Char, Bool, Str, Float, and two bare Vecs elementwise (`[1, 5] < [3, 4]` is `[true,false,true,false]`, do not change that); confirm the exact set by reading the checker''s comparison rule and probing. Add a refuses fragment or test for each refused shape, rewrite the ordering paragraph in docs/reference/operators/comparison.md (it currently describes the disagreement), and remove the now-unreachable native `comparing {other}` refusals in src/emit_llvm.rs if the checker now guarantees they cannot be reached (keep one only if a legal type can still reach it). Also fix the stale paragraph in docs/reference/builtins/transpose.md, which says native and jq have no arm; transpose has been on all seven backends and has corpus cases (transpose_basic, transpose_ragged), so drop the refusal text and the mention of the transpose-remaining-backends row and say it runs on every backend. Check `git grep` for other prose that still says a landed feature is missing on a backend.'
-  kind: build
-  needs: []
-  status: todo
-
 - id: closures-legacy-flow-map-sortby-maxby
   title: 'Follow-up to closures-first-class-functions-design (2026-09-23): `select` was
     extended to accept a genuine closure value (built by `$`-partial-application) in addition

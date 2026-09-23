@@ -1,0 +1,5 @@
+---
+source: tests/step_4.rs
+expression: "err(\"[{a: 1}] > [{a: 2}]\")"
+---
+`>` does not apply to Vec<{a: Int}>: ordering a record or an enum is not defined (at byte 0)

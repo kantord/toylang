@@ -1007,10 +1007,18 @@ struct Helpers {
 }
 
 /// Equality on a composite is structural, which Lua's `==` on two tables is not -- it compares
-/// references (kantord/toylang#68). Ordering on a composite is a separate open question and
-/// keeps whatever Lua does with it.
+/// references (kantord/toylang#68). The checker refuses ordering on a composite, so only `==`
+/// and `!=` reach one. Lua has no ordering on booleans, so those compare as 0 and 1.
 fn compare(enums: &Enums, op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
-    if !lhs.ty.is_composite() || !matches!(op, BinOp::Eq | BinOp::Ne) {
+    if lhs.ty == Type::Bool && op.is_ordering() {
+        return format!(
+            "(({} and 1 or 0) {} ({} and 1 or 0))",
+            expr(enums, lhs),
+            lua_op(op),
+            expr(enums, rhs)
+        );
+    }
+    if !lhs.ty.is_composite() {
         return format!("({} {} {})", expr(enums, lhs), lua_op(op), expr(enums, rhs));
     }
     let call = format!("tl_eq({}, {})", expr(enums, lhs), expr(enums, rhs));
