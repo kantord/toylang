@@ -942,7 +942,8 @@ fn uses_arith(program: &Program) -> (bool, bool, bool) {
             }
             Kind::Concat(l, r)
             | Kind::Compare { lhs: l, rhs: r, .. }
-            | Kind::Logic { lhs: l, rhs: r, .. } => {
+            | Kind::Logic { lhs: l, rhs: r, .. }
+            | Kind::ApplyClosure { closure: l, arg: r } => {
                 walk(l, found);
                 walk(r, found);
             }
@@ -968,7 +969,10 @@ fn uses_arith(program: &Program) -> (bool, bool, bool) {
                 walk(source, found);
                 walk(body, found);
             }
-            Kind::Field { base, .. } | Kind::Unwrap { base } | Kind::Not(base) => walk(base, found),
+            Kind::Field { base, .. }
+            | Kind::Unwrap { base }
+            | Kind::Not(base)
+            | Kind::Closure { body: base, .. } => walk(base, found),
             Kind::Index { base, index, .. } => {
                 walk(base, found);
                 walk(index, found);
@@ -992,11 +996,6 @@ fn uses_arith(program: &Program) -> (bool, bool, bool) {
                     }
                     walk(&a.body, found);
                 }
-            }
-            Kind::Closure { body, .. } => walk(body, found),
-            Kind::ApplyClosure { closure, arg } => {
-                walk(closure, found);
-                walk(arg, found);
             }
         }
     }
