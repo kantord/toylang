@@ -208,3 +208,47 @@ fn wide(x: Int) -> Int64 = i64(x);
     assert_eq!(strs, "[\"apple\",\"banana\",\"cherry\"]\n");
     assert_eq!(wide, "{\"v\":9,\"s\":\"x\"}\n");
 }
+
+/// The Python emitter had to freeze what a closure reads, because its tail-call loop reassigns
+/// locals in place. Lua has no such loop -- a tail call is a fresh call with fresh parameters --
+/// so this pins that the closure built in each iteration keeps the `acc` it was built with.
+#[test]
+fn a_closure_carried_through_a_tail_call_keeps_the_locals_it_was_built_with() {
+    let out = toylang::run_on(
+        r#"
+fn walk({n, acc, pred}: {n: Int, acc: Int, pred: Int -> Bool}) -> Int =
+    n == 0 | . -> ([1, 2, 3, 4, 5, 6] | select(pred) | length(.))
+        or walk({n: n - 1, acc: acc + 1, pred: $ > acc});
+
+walk({n: 3, acc: 1, pred: $ > 0})
+"#,
+        None,
+        toylang::Backend::Lua,
+    )
+    .unwrap();
+    assert_eq!(out, "3\n");
+}
+
+/// A closure body that is a call on a record literal must stay a table constructor rather than
+/// read as a block, and the function it reaches has a `let` body, which Lua spells as a nested
+/// function call inside the closure's own.
+#[test]
+fn a_closure_body_may_be_a_record_literal_or_use_a_let() {
+    let out = toylang::run_on(
+        r#"
+fn above({n, k}: {n: Int, k: Int}) -> Bool =
+    let m = n - k
+
+    m > 0;
+
+fn count_where({items, pred}: {items: Vec<Int>, pred: Int -> Bool}) -> Int =
+    items | select(pred) | length(.);
+
+count_where({items: [1, 2, 3, 4], pred: above({n: $, k: 2})})
+"#,
+        None,
+        toylang::Backend::Lua,
+    )
+    .unwrap();
+    assert_eq!(out, "2\n");
+}

@@ -90,13 +90,19 @@ pub const LANDINGS: &[Landing] = &[
     },
     // Closures (closures-first-class-functions-design, 2026-09-23): landed on Rust as
     // `Rc<dyn Fn>`, on Go as a bare func type, on JS as a plain arrow function and on Python as
-    // a plain lambda. The other three backends have no representation for a stored closure
-    // value yet -- unlike `sqrt`/`float`, this is not "the same arm, three more times," since a dynamically-typed
+    // a plain lambda and on Lua as a plain function. The other two backends have no representation for a stored closure
+    // value yet -- unlike `sqrt`/`float`, this is not "the same arm, two more times," since a dynamically-typed
     // target's story for "call whatever function this value happens to be" differs entirely
     // from a statically-typed one's, and jq has no function values at all.
     Landing {
         name: "closure",
-        built_on: &[Backend::Rust, Backend::Go, Backend::Js, Backend::Py],
+        built_on: &[
+            Backend::Rust,
+            Backend::Go,
+            Backend::Js,
+            Backend::Py,
+            Backend::Lua,
+        ],
     },
 ];
 
