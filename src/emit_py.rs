@@ -326,6 +326,20 @@ const MAX_HELPER: &str = r#"def tl_max(v):
     return {"Some": max(v)}
 "#;
 
+/// Only a strictly greater key replaces the running maximum, so of equal maxima the first wins.
+/// `max(key=...)` would also keep the first, but it raises on an empty Vec instead of yielding
+/// the absent Opt.
+const MAX_BY_HELPER: &str = r#"def tl_max_by(v, key):
+    best = None
+    for x in v:
+        k = key(x)
+        if best is None or k > best[0]:
+            best = (k, x)
+    if best is None:
+        return "None"
+    return {"Some": best[1]}
+"#;
+
 /// Iterating characters rather than bytes, which agrees with the C runtime's byte loop because
 /// the two differ only above U+007F, where both pass the value through unchanged.
 const QUOTE_HELPER: &str = r#"def tl_quote(s):
@@ -459,6 +473,7 @@ pub fn emit(program: &Program) -> String {
         (uses("tl_chars("), CHARS_HELPER),
         (uses("tl_sum(") || uses("tl_sum64("), SUM_HELPER),
         (uses("tl_max("), MAX_HELPER),
+        (uses("tl_max_by("), MAX_BY_HELPER),
         (uses("tl_collect_lines("), COLLECT_HELPER),
         (uses("tl_join("), JOIN_HELPER),
         (uses("tl_jsonlines("), JSONLINES_HELPER),
@@ -775,11 +790,29 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 expr(enums, pred)
             )
         }
-        // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
-        // program produced one without its backend being taught to emit it yet.
-        Kind::SortBy { .. } | Kind::MaxBy { .. } => {
-            unreachable!("sort_by/max_by emission lands in a later step")
-        }
+        // `sorted` is stable and takes its key once per entry, and Python compares Str by
+        // codepoint and Int64 as an exact int, so no comparator is needed. It accepts a `TlSel`
+        // through `__iter__` and hands back a plain list.
+        Kind::SortBy {
+            source,
+            param,
+            body,
+        } => format!(
+            "sorted({}, key=lambda {}: {})",
+            expr(enums, source),
+            local(*param),
+            expr(enums, body)
+        ),
+        Kind::MaxBy {
+            source,
+            param,
+            body,
+        } => format!(
+            "tl_max_by({}, lambda {}: {})",
+            expr(enums, source),
+            local(*param),
+            expr(enums, body)
+        ),
         Kind::Unwrap { base } => {
             format!(
                 "tl_unwrap({}, {})",

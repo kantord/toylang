@@ -119,3 +119,91 @@ fn float_product_above_the_band_goes_exponential() {
     let out = toylang::run_on("1e11 * 1e11\n", None, toylang::Backend::Py).unwrap();
     assert_eq!(out, "1e+22\n");
 }
+
+// `sort_by`/`max_by` are landed for Go, Rust, Lua, JS, and Python, and until the rest of the
+// backends carry them none of these can be a corpus case, which would require every backend to
+// agree.
+
+/// `sort_by` orders by the projected key, stably: ties keep their original order.
+#[test]
+fn sort_by_orders_by_the_projected_key_stably() {
+    let src = r#"
+[{name: "b", age: 2}, {name: "a", age: 1}, {name: "c", age: 2}] | sort_by(.age)
+"#;
+    let out = toylang::run_on(src, None, toylang::Backend::Py).unwrap();
+    assert_eq!(
+        out,
+        "[{\"name\":\"a\",\"age\":1},{\"name\":\"b\",\"age\":2},{\"name\":\"c\",\"age\":2}]\n"
+    );
+}
+
+/// `max_by` yields the entry with the greatest projected key, ties keeping the first.
+#[test]
+fn max_by_keeps_the_first_of_equal_maxima() {
+    let src = r#"
+[{name: "a", age: 1}, {name: "c", age: 2}, {name: "b", age: 2}] | max_by(.age)
+"#;
+    let out = toylang::run_on(src, None, toylang::Backend::Py).unwrap();
+    assert_eq!(out, "{\"name\":\"c\",\"age\":2}\n");
+}
+
+/// An empty Vec has no maximum, so `max_by` yields the absent Opt, which prints as null, the
+/// same answer `max` gives.
+#[test]
+fn max_by_of_an_empty_vec_is_absent() {
+    let src = r#"
+fn nothing() -> Vec<{name: Str, age: Int}> = [];
+nothing() | max_by(.age)
+"#;
+    let out = toylang::run_on(src, None, toylang::Backend::Py).unwrap();
+    assert_eq!(out, "null\n");
+}
+
+/// A `select` is a lazy `TlSel` here rather than a list; both builtins have to consume it.
+#[test]
+fn sort_by_and_max_by_accept_a_select_as_their_source() {
+    let sorted = toylang::run_on(
+        r#"
+[3, 1, 4, 1, 5] | select(. > 1) | sort_by(.)
+"#,
+        None,
+        toylang::Backend::Py,
+    )
+    .unwrap();
+    let biggest = toylang::run_on(
+        r#"
+[3, 1, 4, 1, 5] | select(. > 1) | max_by(.)
+"#,
+        None,
+        toylang::Backend::Py,
+    )
+    .unwrap();
+    assert_eq!(sorted, "[3,4,5]\n");
+    assert_eq!(biggest, "5\n");
+}
+
+/// Str keys order by codepoint and Int64 keys by exact value.
+#[test]
+fn sort_by_and_max_by_handle_str_and_int64_keys() {
+    let strs = toylang::run_on(
+        r#"
+["cherry", "apple", "banana"] | sort_by(.)
+"#,
+        None,
+        toylang::Backend::Py,
+    )
+    .unwrap();
+
+    let wide = toylang::run_on(
+        r#"
+fn wide(x: Int) -> Int64 = i64(x);
+
+[{v: wide(9), s: "x"}, {v: wide(2), s: "y"}] | max_by(.v)
+"#,
+        None,
+        toylang::Backend::Py,
+    )
+    .unwrap();
+    assert_eq!(strs, "[\"apple\",\"banana\",\"cherry\"]\n");
+    assert_eq!(wide, "{\"v\":9,\"s\":\"x\"}\n");
+}
