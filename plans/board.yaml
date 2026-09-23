@@ -117,14 +117,6 @@
   kind: decide
   status: todo
 
-- id: sort-by-max-by-checkpoint-python
-  issue: gh:177
-  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Python commit landed clean
-    before starting jq.'
-  kind: decide
-  needs: [sort-by-max-by-python]
-  status: todo
-
 - id: sort-by-max-by-jq
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- emit for the jq backend only (src/emit_jq.rs). Last of

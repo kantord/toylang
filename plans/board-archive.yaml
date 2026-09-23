@@ -3560,3 +3560,12 @@
   kind: build
   needs: [sort-by-max-by-checkpoint-js]
   status: done
+
+- id: sort-by-max-by-checkpoint-python
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Python commit landed clean
+    before starting jq. CONFIRMED 2026-09-23 (direct session, not drive): ff2d3de5 landed clean,
+    just check 520/520 green. Clear to start jq.'
+  kind: decide
+  needs: [sort-by-max-by-python]
+  status: done
