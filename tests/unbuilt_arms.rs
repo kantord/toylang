@@ -97,7 +97,7 @@ fn a_use_inside_a_function_is_refused_too() {
     let program = toylang::compile(program_using("closure")).unwrap();
     assert_eq!(
         Backend::Native.emit(&program).unwrap_err(),
-        "`closure` has no native backend yet; today it runs on rust and go and js and py and lua"
+        "`closure` has no native backend yet; today it runs on rust and go and js and py and lua and jq"
     );
 }
 
@@ -107,6 +107,6 @@ fn running_is_refused_the_same_way_as_emitting() {
     let err = toylang::run_on(program_using("closure"), None, Backend::Native).unwrap_err();
     assert_eq!(
         err.to_string(),
-        "`closure` has no native backend yet; today it runs on rust and go and js and py and lua"
+        "`closure` has no native backend yet; today it runs on rust and go and js and py and lua and jq"
     );
 }
