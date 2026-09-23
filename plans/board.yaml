@@ -117,14 +117,6 @@
   kind: decide
   status: todo
 
-- id: sort-by-max-by-checkpoint-lua
-  issue: gh:177
-  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Lua commit landed clean before
-    starting JS.'
-  kind: decide
-  needs: [sort-by-max-by-lua]
-  status: todo
-
 - id: sort-by-max-by-js
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- emit for the JS backend only (src/emit_js.rs).'
