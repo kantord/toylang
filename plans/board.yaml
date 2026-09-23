@@ -13,6 +13,11 @@
   prio: 5
   status: proposed
 
+- id: native-runtime-direction-decide
+  title: 'Self-originated (2026-09-23, found while landing sort-by-max-by-checkpoint-jq): plans/native-backend-rust-ergonomics-research.md ends with a design round (its label Q41 collides with the record-narrowing Q41 in plans/questions.md, so renumber it) that was never composed or ruled: how should the native backend runtime evolve -- A keep hand-written C in runtime/toylang.c (status quo, three-way sync of extern, add_function declaration and C body), B a thin Rust runtime crate compiled to a static archive and linked by the existing cc call, or C B plus one table generating both declarations. Native work is proceeding under A meanwhile (sort_by/max_by native, closures native), because the helpers are small and portable; a ruling for B or C means porting them, and the sooner it lands the fewer there are.'
+  kind: decide
+  status: todo
+
 - id: closures-legacy-flow-map-sortby-maxby
   title: 'Follow-up to closures-first-class-functions-design (2026-09-23): `select` was
     extended to accept a genuine closure value (built by `$`-partial-application) in addition
