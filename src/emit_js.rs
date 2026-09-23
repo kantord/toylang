@@ -643,7 +643,7 @@ fn read_line_helper() -> String {
 fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
     match ty {
         Type::Param(_) => unreachable!("params are substituted before emit"),
-        Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
+        Type::Fn(..) => unreachable!("a closure is never printed"),
         // The checker refuses a program whose result contains a stream, since there is nothing to
         // print: a stream has no value, only a promise that collect can redeem.
         Type::Stream(_) => unreachable!("a stream cannot reach the printer"),
@@ -965,8 +965,10 @@ fn used_helpers(program: &Program) -> Helpers {
                     walk(&a.body, used);
                 }
             }
-            Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
-                unreachable!("not yet implemented for this backend")
+            Kind::Closure { body, .. } => walk(body, used),
+            Kind::ApplyClosure { closure, arg } => {
+                walk(closure, used);
+                walk(arg, used);
             }
         }
     }
@@ -1419,8 +1421,13 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             }
             format!("(() => {{ {body}}})()")
         }
-        Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
-            unreachable!("not yet implemented for this backend")
+        // An arrow function is already a callable value, so no wrapper is needed. The body is
+        // parenthesized because a record literal would otherwise parse as a block.
+        Kind::Closure { param, body } => {
+            format!("(({}) => ({}))", local(*param), expr(enums, body))
+        }
+        Kind::ApplyClosure { closure, arg } => {
+            format!("({})({})", expr(enums, closure), expr(enums, arg))
         }
     }
 }
@@ -1494,7 +1501,7 @@ fn ts_type(ty: &Type) -> String {
         Type::Seq(..) => unreachable!(
             "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
         ),
-        Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
+        Type::Fn(input, output) => format!("(x: {}) => {}", ts_type(input), ts_type(output)),
         Type::Str => "string".to_string(),
         // An Int wraps to 32 bits and a Float is a double, but both are JS numbers; a Char
         // is its Unicode codepoint, another number, since `chars` produces numbers.
@@ -1543,6 +1550,10 @@ fn ts_enum_union(enums: &Enums, ty: &Type) -> String {
 fn collect_enums(ty: &Type, enums: &Enums, seen: &mut Vec<String>, out: &mut Vec<Type>) {
     match ty {
         Type::Vec(e) | Type::Stream(e) => collect_enums(e, enums, seen, out),
+        Type::Fn(input, output) => {
+            collect_enums(input, enums, seen, out);
+            collect_enums(output, enums, seen, out);
+        }
         Type::Record(fields) => {
             for (_, t) in fields {
                 collect_enums(t, enums, seen, out);
