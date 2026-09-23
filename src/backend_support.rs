@@ -8,7 +8,8 @@
 //! refusal now happens here, before any emitter runs, in one place that a landing row updates
 //! when it adds an arm; the tests in `tests/unbuilt_arms.rs` hold this table to what the
 //! emitters actually do in both directions. `sort_by`, `max_by`, `sqrt`, and `float` now run on
-//! every backend; `pipe_through` is the one still short a landing (Jq and native).
+//! every backend. `pipe_through` runs on every backend but jq, which can never take it and
+//! says so (`Landing::never_on`).
 
 use crate::Backend;
 use crate::tir::{self, Builtin, Kind, Program, Tir};
@@ -17,6 +18,10 @@ use crate::tir::{self, Builtin, Kind, Program, Tir};
 pub struct Landing {
     pub name: &'static str,
     pub built_on: &'static [Backend],
+    /// Backends that can never take this builtin, each with the reason. Absence from
+    /// `built_on` alone reads as "not yet"; a backend named here is exempt from parity, and
+    /// its refusal says why instead.
+    pub never_on: &'static [(Backend, &'static str)],
 }
 
 pub const LANDINGS: &[Landing] = &[
@@ -31,6 +36,7 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Jq,
             Backend::Native,
         ],
+        never_on: &[],
     },
     Landing {
         name: "max_by",
@@ -43,6 +49,7 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Jq,
             Backend::Native,
         ],
+        never_on: &[],
     },
     Landing {
         name: "transpose",
@@ -55,6 +62,7 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Jq,
             Backend::Native,
         ],
+        never_on: &[],
     },
     Landing {
         name: "pipe_through",
@@ -64,7 +72,12 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Py,
             Backend::Js,
             Backend::Lua,
+            Backend::Native,
         ],
+        // jq has no process spawning, so `pipe_through` is a host-capability primitive: the
+        // parity rule for it is "every backend that can express it" (maintainer ruling
+        // 2026-09-23).
+        never_on: &[(Backend::Jq, "jq cannot spawn a process")],
     },
     Landing {
         name: "sqrt",
@@ -77,6 +90,7 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Jq,
             Backend::Native,
         ],
+        never_on: &[],
     },
     Landing {
         name: "float",
@@ -89,6 +103,7 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Jq,
             Backend::Native,
         ],
+        never_on: &[],
     },
     // Closures (closures-first-class-functions-design, 2026-09-23): landed on Rust as
     // `Rc<dyn Fn>`, on Go as a bare func type, on JS as a plain arrow function, on Python as
@@ -106,6 +121,7 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Jq,
             Backend::Native,
         ],
+        never_on: &[],
     },
 ];
 
@@ -161,6 +177,13 @@ pub fn refuse_unbuilt(backend: Backend, program: &Program) -> Result<(), String>
     match missing {
         None => Ok(()),
         Some(l) => {
+            if let Some((_, why)) = l.never_on.iter().find(|(b, _)| *b == backend) {
+                return Err(format!(
+                    "`{}` has no {} backend, and never will: {why}",
+                    l.name,
+                    backend.name()
+                ));
+            }
             let runs_on: Vec<&str> = l.built_on.iter().map(|b| b.name()).collect();
             Err(format!(
                 "`{}` has no {} backend yet; today it runs on {}",

@@ -404,28 +404,3 @@
 
 
 
-- id: pipe-through-jq-llvm-decide
-  issue: gh:158
-  title: 'pipe_through (gh:158) -- decide whether jq and LLVM can express a subprocess pipe at all
-    (jq has no process spawning; LLVM needs libc popen/posix_spawn plumbing). Either file a build row per
-    backend or rule them a documented refusal; do not fake an arm. Close gh:158 once ruled and the
-    buildable ones land. RULED 2026-09-23 (maintainer, in the parity-goal session): jq is a PERMANENT
-    documented refusal, exempt from parity -- a jq program cannot spawn a process, so pipe_through is a
-    host-capability primitive and the parity rule becomes "every feature runs on every backend that can
-    express it". Native gets a real arm. This row is now that build task: (1) native/LLVM
-    pipe_through in src/emit_llvm.rs (libc popen/posix_spawn plumbing, via runtime/toylang.c only for
-    the parts that need it; match the other backends: feed the lines to the child stdin, relay its
-    stdout lines then its stderr lines tagged Stdout/Stderr, exit status ignored, a child that never
-    reads stdin must not stall the program). (2) A permanent-refusal concept in
-    src/backend_support.rs: today a backend missing from `built_on` is refused with "has no X backend
-    yet; today it runs on ...", which reads as temporary. Give a Landing a way to name a backend that
-    can never take it, with a reason, so jq''s refusal says why ("jq cannot spawn a process") and the
-    message is not "yet". (3) tests/unbuilt_arms.rs uses pipe_through as its still-partial example;
-    keep the refusal covered (jq now) and add the native run test. Add a corpus case only if it can
-    run on the six backends that support it (the corpus requires all seven to agree, so it may need an
-    explicit per-case backend exemption; if the corpus harness has no such mechanism, cover it in
-    tests/backend_native tests instead and say so). (4) Update docs/reference/builtins/pipe_through.md
-    (jq permanently refused and why, native works), close gh:158 with a comment, and archive this row.'
-  kind: build
-  needs: [pipe-through-lua]
-  status: todo

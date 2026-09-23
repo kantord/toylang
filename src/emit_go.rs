@@ -340,22 +340,35 @@ const PIPE_HELPER: &str = r#"func tlPipeThrough[T any](cmd string, args []string
 	var stderrLines []string
 	go func() {
 		defer close(stderrDone)
-		sc := bufio.NewScanner(stderr)
-		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-		for sc.Scan() {
-			stderrLines = append(stderrLines, strings.TrimSuffix(sc.Text(), "\r"))
+		// Lines split on \n only, keeping a \r, like `lines` does; bufio.Scanner would drop it.
+		br := bufio.NewReader(stderr)
+		for {
+			line, err := br.ReadString('\n')
+			if len(line) > 0 {
+				stderrLines = append(stderrLines, strings.TrimSuffix(line, "\n"))
+			}
+			if err != nil {
+				return
+			}
 		}
 	}()
 
 	var out []T
-	sc := bufio.NewScanner(stdout)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		out = append(out, toStdout(strings.TrimSuffix(sc.Text(), "\r")))
+	br := bufio.NewReader(stdout)
+	for {
+		line, err := br.ReadString('\n')
+		if len(line) > 0 {
+			out = append(out, toStdout(strings.TrimSuffix(line, "\n")))
+		}
+		if err != nil {
+			break
+		}
 	}
 	<-feedDone
-	child.Wait()
+	// Wait closes the pipes, so it has to come after the stderr reader has hit EOF or the
+	// tail of a large stderr is dropped.
 	<-stderrDone
+	child.Wait()
 	for _, line := range stderrLines {
 		out = append(out, toStderr(line))
 	}
@@ -1497,16 +1510,17 @@ impl Emitter<'_> {
                     };
                     let enum_ty = tir::runtime_elem(&t.ty).expect("pipe_through returns a stream");
                     let variants = ty::variants(self.registry, enum_ty);
-                    variants
+                    let payload_ty = variants
                         .iter()
                         .find(|(n, _)| n == "Stdout")
                         .and_then(|(_, p)| p.as_ref())
                         .expect("the prelude's PipeLine carries a `Stdout{text: Str}` payload");
                     let ename = self.go_type(enum_ty);
+                    let payload = self.go_type(payload_ty);
                     let tag = move |tag: &str| {
                         let i = Self::variant_index(&ty::variants(self.registry, enum_ty), tag);
                         format!(
-                            "func(l string) {ename} {{ return {ename}{{tag: {i}, p{i}: tlPtr(l)}} }}"
+                            "func(l string) {ename} {{ return {ename}{{tag: {i}, p{i}: tlPtr({payload}{{Ftext: l}})}} }}"
                         )
                     };
                     format!(

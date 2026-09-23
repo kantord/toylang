@@ -106,6 +106,8 @@ declare i64 @tl_vec_sum(ptr, i32)
 
 declare ptr @tl_vec_transpose(ptr, i64)
 
+declare ptr @tl_pipe_through(ptr, ptr, ptr, i64, i64)
+
 declare ptr @tl_vec_max(ptr)
 
 declare ptr @tl_vec_sort_by(ptr, ptr, i32)

@@ -91,6 +91,7 @@ struct Runtime<'ctx> {
     vec_sort_by: FunctionValue<'ctx>,
     vec_max_by: FunctionValue<'ctx>,
     sqrt: FunctionValue<'ctx>,
+    pipe_through: FunctionValue<'ctx>,
 }
 
 /// What a compiler-introduced binding holds.
@@ -353,6 +354,14 @@ impl<'ctx> Emitter<'ctx, '_> {
             vec_transpose: module.add_function(
                 "tl_vec_transpose",
                 ptr.fn_type(&[ptr.into(), i64t.into()], false),
+                None,
+            ),
+            pipe_through: module.add_function(
+                "tl_pipe_through",
+                ptr.fn_type(
+                    &[ptr.into(), ptr.into(), ptr.into(), i64t.into(), i64t.into()],
+                    false,
+                ),
                 None,
             ),
             vec_max: module.add_function("tl_vec_max", ptr.fn_type(&[ptr.into()], false), None),
@@ -1410,13 +1419,19 @@ impl<'ctx> Emitter<'ctx, '_> {
             .fn_type(&[ptr.into(), self.llvm_type(input)?.into()], false);
         let id = self.next_global;
         self.next_global += 1;
-        let function = self.module.add_function(&format!("closure.{id}"), sig, None);
+        let function = self
+            .module
+            .add_function(&format!("closure.{id}"), sig, None);
         function.set_linkage(Linkage::Private);
 
         // The env: one slot for the code pointer, then each capture's own slot or slots.
         let width = 1 + captures.iter().map(Capture::width).sum::<u64>();
         let env = self
-            .call_rt(self.rt.rec_new, &[i64t.const_int(width, false).into()], "env")?
+            .call_rt(
+                self.rt.rec_new,
+                &[i64t.const_int(width, false).into()],
+                "env",
+            )?
             .into_pointer_value();
         let code = self
             .builder
@@ -1458,7 +1473,9 @@ impl<'ctx> Emitter<'ctx, '_> {
             }
             at += capture.width();
         }
-        let arg = function.get_nth_param(1).expect("declared with an argument");
+        let arg = function
+            .get_nth_param(1)
+            .expect("declared with an argument");
         self.locals.insert(param, Slot::Value(arg));
         let result = self.expr(body)?;
         self.builder
@@ -1680,6 +1697,38 @@ impl<'ctx> Emitter<'ctx, '_> {
         Ok(rec.into())
     }
 
+    /// The record literal is taken apart here rather than built: the runtime wants the three
+    /// fields as arguments, not a box. The runtime builds the `PipeLine` boxes itself, so it is
+    /// told the two variants' tags (their declaration indices, as `enum_lit` assigns them).
+    fn pipe_through(&mut self, arg: &Tir, result: &Type) -> Result<BasicValueEnum<'ctx>, String> {
+        let Kind::RecordLit { fields } = &arg.kind else {
+            unreachable!("pipe_through's argument is checked to be the record literal")
+        };
+        let mut field = |name: &str| {
+            let (_, value) = fields
+                .iter()
+                .find(|(n, _)| n == name)
+                .expect("pipe_through's record is checked to carry all three fields");
+            self.expr(value)
+        };
+        let (cmd, args, lines) = (field("cmd")?, field("args")?, field("lines")?);
+        let pipeline = crate::tir::runtime_elem(result).expect("pipe_through returns a stream");
+        let variants = ty::variants(self.enums, pipeline);
+        let tag = |name: &str| {
+            let index = variants
+                .iter()
+                .position(|(n, _)| n == name)
+                .expect("the prelude's PipeLine has Stdout and Stderr variants");
+            self.ctx.i64_type().const_int(index as u64, false)
+        };
+        let (stdout_tag, stderr_tag) = (tag("Stdout"), tag("Stderr"));
+        self.call_rt(
+            self.rt.pipe_through,
+            &[cmd, args, lines, stdout_tag.into(), stderr_tag.into()],
+            "pipe",
+        )
+    }
+
     fn expr(&mut self, t: &Tir) -> Result<BasicValueEnum<'ctx>, String> {
         Ok(match &t.kind {
             Kind::Str(text) => self.string_const(text).into(),
@@ -1853,6 +1902,11 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let r = self.expr(rhs)?.into_int_value();
                 self.arith_at(&t.ty, *op, l, r)?
             }
+
+            Kind::Builtin {
+                which: Builtin::PipeThrough,
+                arg,
+            } => self.pipe_through(arg, &t.ty)?,
 
             Kind::Builtin { which, arg } => {
                 let elem_ty = crate::tir::runtime_elem(&arg.ty).cloned();

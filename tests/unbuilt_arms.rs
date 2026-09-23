@@ -8,6 +8,9 @@
 use toylang::Backend;
 use toylang::backend_support::LANDINGS;
 
+const JQ_REFUSAL: &str =
+    "`pipe_through` has no jq backend, and never will: jq cannot spawn a process";
+
 /// One program per landing builtin, using nothing else that is backend-specific.
 fn program_using(name: &str) -> &'static str {
     match name {
@@ -44,12 +47,19 @@ fn every_landing_builtin_emits_where_built_and_refuses_elsewhere() {
                 )),
                 (false, Err(e)) => {
                     let runs_on: Vec<&str> = landing.built_on.iter().map(|b| b.name()).collect();
-                    let expected = format!(
-                        "`{}` has no {} backend yet; today it runs on {}",
-                        landing.name,
-                        backend.name(),
-                        runs_on.join(" and ")
-                    );
+                    let expected = match landing.never_on.iter().find(|(b, _)| *b == backend) {
+                        Some((_, why)) => format!(
+                            "`{}` has no {} backend, and never will: {why}",
+                            landing.name,
+                            backend.name()
+                        ),
+                        None => format!(
+                            "`{}` has no {} backend yet; today it runs on {}",
+                            landing.name,
+                            backend.name(),
+                            runs_on.join(" and ")
+                        ),
+                    };
                     if e != expected {
                         failures.push(format!(
                             "`{}` on {}: refused with {e:?}, expected {expected:?}",
@@ -67,6 +77,21 @@ fn every_landing_builtin_emits_where_built_and_refuses_elsewhere() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// A backend cannot be both built and permanently refused; the table would contradict itself.
+#[test]
+fn a_permanently_refused_backend_is_not_also_built() {
+    for landing in LANDINGS {
+        for (backend, why) in landing.never_on {
+            assert!(
+                !landing.built_on.contains(backend),
+                "`{}` lists {} as built and as never ({why})",
+                landing.name,
+                backend.name()
+            );
+        }
+    }
 }
 
 /// Ruling 2026-09-20's check-level claims: `sqrt` is `Float -> Float` and `float` is
@@ -99,18 +124,12 @@ fn a_use_inside_a_function_is_refused_too() {
          shout(stdin)\n",
     )
     .unwrap();
-    assert_eq!(
-        Backend::Native.emit(&program).unwrap_err(),
-        "`pipe_through` has no native backend yet; today it runs on go and rust and py and js and lua"
-    );
+    assert_eq!(Backend::Jq.emit(&program).unwrap_err(), JQ_REFUSAL);
 }
 
 /// `toylang run` does not go through `Backend::emit`; it must refuse the same way.
 #[test]
 fn running_is_refused_the_same_way_as_emitting() {
-    let err = toylang::run_on(program_using("pipe_through"), None, Backend::Native).unwrap_err();
-    assert_eq!(
-        err.to_string(),
-        "`pipe_through` has no native backend yet; today it runs on go and rust and py and js and lua"
-    );
+    let err = toylang::run_on(program_using("pipe_through"), None, Backend::Jq).unwrap_err();
+    assert_eq!(err.to_string(), JQ_REFUSAL);
 }

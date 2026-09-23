@@ -12,12 +12,10 @@ mod support;
 
 /// Tags with no corpus case yet, each with the board row that will add one. An entry here
 /// is a debt, not an exemption: it comes out when the row lands.
-const UNCOVERED: &[(&str, &str)] = &[
-    (
-        "builtin.pipe_through",
-        "no corpus case: pipe_through runs only on a subset of backends (go, rust, py, js, lua) and reads a subprocess",
-    ),
-];
+const UNCOVERED: &[(&str, &str)] = &[(
+    "builtin.pipe_through",
+    "no corpus case: jq cannot spawn a process, so pipe_through cannot run on all seven backends; tests/pipe_through.rs covers it on the six that can",
+)];
 
 fn used_tags() -> BTreeSet<String> {
     let mut used = BTreeSet::new();

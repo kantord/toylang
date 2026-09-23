@@ -302,10 +302,11 @@ function tl_max_by(v, key, cmp) {
 
 /// Feeds `lines` to a child's stdin and relays its stdout lines then its stderr lines, each
 /// tagged by the closures. `spawnSync` with `input` drains both pipes, so a child that never reads
-/// stdin cannot stall the program. Exit status is ignored, as on the other backends.
+/// stdin cannot stall the program, and `maxBuffer` is lifted because its 1 MiB default kills the child
+/// and truncates the output. Exit status is ignored, as on the other backends.
 const PIPE_HELPER: &str = "\
 function tl_pipe_through(cmd, args, stdinLines,toStdout,toStderr) {
-  const r = require(\"child_process\").spawnSync(cmd, args, { input: stdinLines.length ? stdinLines.join(\"\\n\") + \"\\n\" : \"\", encoding: \"utf8\" });
+  const r = require(\"child_process\").spawnSync(cmd, args, { input: stdinLines.length ? stdinLines.join(\"\\n\") + \"\\n\" : \"\", encoding: \"utf8\", maxBuffer: Infinity });
   const split = (t) => { const p = t.split(\"\\n\"); if (p.length && p[p.length - 1] === \"\") p.pop(); return p; };
   return split(r.stdout || \"\").map(toStdout).concat(split(r.stderr || \"\").map(toStderr));
 }

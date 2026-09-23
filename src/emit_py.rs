@@ -274,9 +274,17 @@ const TRANSPOSE_HELPER: &str = r#"def tl_transpose(vv):
 const PIPE_HELPER: &str = r#"def tl_pipe_through(cmd, args, stdin_lines, to_stdout, to_stderr):
     import subprocess
     inp = "\n".join(stdin_lines) + "\n" if stdin_lines else ""
-    r = subprocess.run([cmd] + list(args), input=inp, capture_output=True, text=True)
-    out = [to_stdout(l) for l in r.stdout.splitlines()]
-    out.extend(to_stderr(l) for l in r.stderr.splitlines())
+    r = subprocess.run([cmd] + list(args), input=inp.encode(), capture_output=True)
+
+    def split(b):
+        # Bytes, not text mode, and split on "\n" only: text mode translates "\r\n", and
+        # `splitlines` also breaks on form feeds and Unicode separators, so a `\r` would be lost.
+        s = b.decode()
+        if s == "":
+            return []
+        return (s[:-1] if s.endswith("\n") else s).split("\n")
+    out = [to_stdout(l) for l in split(r.stdout)]
+    out.extend(to_stderr(l) for l in split(r.stderr))
     return out
 "#;
 

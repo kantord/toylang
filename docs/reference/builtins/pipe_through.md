@@ -22,13 +22,21 @@ stream starts at `lines` and dies at `collect`, exactly the way any other stream
 
 
 
-Landed so far on Go, Rust, Python, JS, and Lua. jq and LLVM have no arm for it yet, so a program
-using `pipe_through` there is refused before anything is emitted:
+Runs on every backend except jq, which refuses it permanently: a jq program cannot spawn a
+process, so `pipe_through` is a host-capability primitive that jq has no way to express. The
+refusal happens before anything is emitted, and says why rather than "yet":
 
 ```
-`pipe_through` has no jq backend yet; today it runs on go and rust and py and js and lua
+`pipe_through` has no jq backend, and never will: jq cannot spawn a process
 ```
 
 Lua has no bidirectional-pipe primitive and no separate `lua` process to hand pipes to --
 `toylang run --backend lua` runs the emitted chunk embedded in the compiler's own process via
 `mlua` -- so stdin and stderr go through temp files rather than pipes.
+
+The native backend uses `posix_spawnp` and one `poll` loop in its C runtime that writes stdin
+and reads stdout and stderr together, so it needs no threads. It buffers all of stdout and stderr
+before yielding lines, where the Rust backend streams stdout as it arrives; the output is the same.
+A child that closes its stdin early (`head`) or never reads it does not stall the program.
+
+Lines split on `\n` only and keep a `\r`, on every backend.
