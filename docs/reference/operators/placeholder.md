@@ -6,9 +6,9 @@ call directly. It exists only there -- a function-parameter-expression is either
 expression, or one containing `$`, and nothing else in the grammar accepts `$` at all, the
 same way `.` is refused wherever nothing bound it.
 
-Landed on the Rust backend only so far (closures-first-class-functions-design, 2026-09-23).
-The other six backends have no representation for a stored closure value yet, so a program
-using `$` refuses cleanly on them rather than emit something wrong.
+Landed on the Rust and Go backends so far (closures-first-class-functions-design,
+2026-09-23). The other five backends have no representation for a stored closure value yet,
+so a program using `$` refuses cleanly on them rather than emit something wrong.
 
 Two things fall out of the one rule, not two mechanisms:
 
