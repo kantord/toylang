@@ -18,6 +18,12 @@
   kind: decide
   status: todo
 
+- id: native-vec-element-whole-value
+  title: 'Parity gap found by the 2026-09-23 differential audit (self-originated, parity goal): the native backend refuses "using a Vec element as a whole value" (src/emit_llvm.rs, `Kind::Local` over a `Slot::Cursor`, its comment says nothing in the language asks for one, which stopped being true) for any program that uses a record element of a Vec as a whole: `[{a: 1, b: 2}] | map(.)`, `map(f(.))` with `fn f(r: {a: Int, b: Int})`, and `[{a: 1}, {a: 2}] == [{a: 1}, {a: 2}]`. All six other backends run all three and agree. Fix it: gather the element out of the columns with the runtime (`tl_rec_from_vec`, as apply_closure and printing already do) wherever a cursor local is read as a value, and give equality over Vec<Record> the same treatment. Add corpus cases for the three shapes (the corpus requires all seven backends to agree), and check nearby shapes for the same refusal (a record element passed to a closure, returned from a map body, nested inside a record literal, used in a match arm payload). The other two native refusals in emit_llvm.rs, `comparing {other}` and `a {other:?} return`, were probed by the same audit and no program reached them; if you can construct one that does, fix it too, else leave them.'
+  kind: build
+  needs: []
+  status: todo
+
 - id: closures-legacy-flow-map-sortby-maxby
   title: 'Follow-up to closures-first-class-functions-design (2026-09-23): `select` was
     extended to accept a genuine closure value (built by `$`-partial-application) in addition
