@@ -33,7 +33,12 @@ fn every_toy_file_the_walk_reaches_is_already_formatted() {
     let mut failures: Vec<String> = report
         .changed
         .iter()
-        .map(|p| format!("{}: not in canonical form -- run `toylang fmt --write`", p.display()))
+        .map(|p| {
+            format!(
+                "{}: not in canonical form -- run `toylang fmt --write`",
+                p.display()
+            )
+        })
         .collect();
     failures.extend(
         report
@@ -67,7 +72,12 @@ fn every_docs_fragment_is_already_formatted() {
         let sketches_allowed = rel.starts_with("plans/");
         for fence in toylang_fences(&text) {
             checked += 1;
-            check_fence(&format!("{rel}:{}", fence.line), &fence, sketches_allowed, &mut failures);
+            check_fence(
+                &format!("{rel}:{}", fence.line),
+                &fence,
+                sketches_allowed,
+                &mut failures,
+            );
         }
     }
 

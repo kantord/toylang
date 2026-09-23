@@ -94,8 +94,14 @@ fn float_nan_and_infinity_are_producible() {
 #[test]
 fn float_comparison() {
     assert_eq!(agree_rust_js("1.5 < 2.5\n", None), "true\n");
-    assert_eq!(agree_rust_js("(0.0 / 0.0) == (0.0 / 0.0)\n", None), "false\n");
-    assert_eq!(agree_rust_js("(0.0 / 0.0) != (0.0 / 0.0)\n", None), "true\n");
+    assert_eq!(
+        agree_rust_js("(0.0 / 0.0) == (0.0 / 0.0)\n", None),
+        "false\n"
+    );
+    assert_eq!(
+        agree_rust_js("(0.0 / 0.0) != (0.0 / 0.0)\n", None),
+        "true\n"
+    );
 }
 
 /// A Float result keeps its value when read back off the wire: a JSON number already is the

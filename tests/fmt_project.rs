@@ -121,7 +121,10 @@ fn one_line_prints_the_program_on_one_line_and_refuses_a_let_block() {
 
     let out = fmt(dir.path(), &["--one-line", "crooked.toy"]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
-    assert_eq!(stdout(&out), "fn double(n: Int) -> Int = n * 2; double 21\n");
+    assert_eq!(
+        stdout(&out),
+        "fn double(n: Int) -> Int = n * 2; double 21\n"
+    );
     assert_eq!(read(dir.path(), "crooked.toy"), CROOKED);
 
     let out = fmt(dir.path(), &["--one-line", "lets.toy"]);

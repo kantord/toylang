@@ -18,19 +18,15 @@ fn a_lowercase_variant_declaration_is_refused() {
 /// refused, and the lowercase constructor is the way to build.
 #[test]
 fn a_capitalized_constructor_is_refused() {
-    insta::assert_snapshot!(err(
-        "enum Shape { Point, Circle{r: Int} }\n\nCircle{r: 1}"
-    ));
+    insta::assert_snapshot!(err("enum Shape { Point, Circle{r: Int} }\n\nCircle{r: 1}"));
 }
 
 /// A lowercase pattern names the constructor, not a matcher, so it cannot be matched against.
 #[test]
 fn a_lowercase_pattern_is_refused() {
-    insta::assert_snapshot!(err(
-        "enum Shape { Point, Circle{r: Int} }\n\n\
+    insta::assert_snapshot!(err("enum Shape { Point, Circle{r: Int} }\n\n\
          fn f(s: Shape) -> Int = s | circle{r} -> r or Point -> 0\n\n\
-         f(Shape.point)"
-    ));
+         f(Shape.point)"));
 }
 
 /// The accept case end to end: a capitalized declaration with a lowercase constructor builds
