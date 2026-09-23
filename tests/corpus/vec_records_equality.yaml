@@ -1,0 +1,9 @@
+# == over Vecs is elementwise, so two Vecs of records compare every pairing of their elements
+# whole; one element differs here.
+program: |
+  [{ a: 1, b: 2 }, { a: 3, b: 4 }] == [{ a: 1, b: 2 }, { a: 9, b: 4 }]
+
+output: |
+  [true,false,false,false]
+
+node_types: [builtin.flatten, compare.eq, int, local, map-over, pipe, record-literal, vec-literal]

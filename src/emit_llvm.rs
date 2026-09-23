@@ -1499,17 +1499,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             unreachable!("an ApplyClosure's callee is typed Type::Fn")
         };
         let env = self.expr(closure)?;
-        // A closure takes its element whole, so a Vec of records' cursor is gathered here, the
-        // way printing gathers one, rather than refused as a use of a Vec element.
-        let arg = match &arg.kind {
-            Kind::Local(id) if matches!(self.locals.get(id), Some(Slot::Cursor { .. })) => {
-                let Some(Slot::Cursor { vec, index }) = self.locals.get(id).copied() else {
-                    unreachable!("matched above")
-                };
-                self.call_rt(self.rt.rec_from_vec, &[vec.into(), index.into()], "elem")?
-            }
-            _ => self.expr(arg)?,
-        };
+        let arg = self.expr(arg)?;
         let ptr = self.ctx.ptr_type(AddressSpace::default());
         let sig = self
             .llvm_type(result)?
@@ -1745,11 +1735,10 @@ impl<'ctx> Emitter<'ctx, '_> {
 
             Kind::Local(id) => match self.locals.get(id) {
                 Some(Slot::Value(v)) => *v,
-                // The struct-of-arrays boundary. Nothing in the language asks for a whole
-                // element out of a Vec, so this is unreachable until an indexing operator
-                // exists; printing gathers through the runtime instead.
-                Some(Slot::Cursor { .. }) => {
-                    return Err(unsupported("using a Vec element as a whole value"));
+                // The struct-of-arrays boundary: a Vec of records is stored as columns, so a
+                // record element read as a whole value is gathered back out by the runtime.
+                Some(&Slot::Cursor { vec, index }) => {
+                    self.call_rt(self.rt.rec_from_vec, &[vec.into(), index.into()], "elem")?
                 }
                 None => return Err(format!("local {id} is not bound in the native backend")),
             },

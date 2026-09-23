@@ -1,0 +1,9 @@
+# A record element of a Vec read whole: the native backend keeps a Vec of records as columns and
+# used to refuse gathering one back into a record.
+program: |
+  [{ a: 1, b: 2 }, { a: 3, b: 4 }] | map(.)
+
+output: |
+  [{"a":1,"b":2},{"a":3,"b":4}]
+
+node_types: [int, local, map-over, pipe, record-literal, vec-literal]
