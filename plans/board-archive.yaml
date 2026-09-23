@@ -3584,3 +3584,14 @@
   kind: build
   needs: [sort-by-max-by-checkpoint-python]
   status: done
+
+- id: sort-by-max-by-checkpoint-jq
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- reevaluate before the native/LLVM backend: it needs
+    hand-authored C in runtime/toylang.c, the exact site of the original corruption. Check
+    whether native-backend-rust-ergonomics-research has landed findings that change how this
+    should be built (e.g. an inkwell/Rust-runtime-crate approach instead of hand-rolled C)
+    before dispatching the native step as-is. CONFIRMED 2026-09-23 (direct session, not drive): 911dccb0 landed clean, just check 525/525 green. Clear to start native.'
+  kind: decide
+  needs: [sort-by-max-by-jq]
+  status: done
