@@ -31,16 +31,19 @@
 
 - id: closures-remaining-backends
   title: 'Follow-up to closures-first-class-functions-design (2026-09-23): closures landed on
-    Rust, Go and JS (`backend_support::LANDINGS` entry "closure"), as `Rc<dyn Fn(..) -> ..>` on
-    Rust. The other four backends refuse cleanly today rather than panic, but each needs its own real
+    Rust, Go, JS and Python (`backend_support::LANDINGS` entry "closure"), as `Rc<dyn Fn(..) -> ..>` on
+    Rust. The other three backends refuse cleanly today rather than panic, but each needs its own real
     story for `Type::Fn`''s runtime representation and `Kind::Closure`/`Kind::ApplyClosure`''s
-    emission -- genuinely different per backend, not "the same arm four more times" the way
+    emission -- genuinely different per backend, not "the same arm three more times" the way
     sqrt/float were: Go LANDED (2026-09-23) as a bare `func(In) Out` type rather than a wrapper
     struct -- a closure is never compared, printed or put in a Vec/Opt, and `reflect.DeepEqual`
     in `tlEq` accepts a func-typed record field, so nothing needed the wrapper; JS LANDED
     (2026-09-23) as a plain arrow function, no wrapper, and the `.d.ts` spells `Type::Fn` as
-    `(x: In) => Out`; Python/Lua are dynamically typed and likely need no wrapper at all (a
-    native closure is already callable);
+    `(x: In) => Out`; Python LANDED (2026-09-23) as a plain lambda, no wrapper, with whatever the
+    body reads from outside frozen as default arguments (`lambda t_8, t_2=t_2: ..`) because a
+    tail-recursive function''s loop reassigns its locals in place and a closure carried into the
+    next iteration would otherwise see them rebound -- Lua is dynamically typed and likely needs
+    no wrapper either, but check whether its own tail-call loop rebinds locals the same way;
     jq has no function values, so `$` there needs its own design pass (a filter expression
     threaded through, the same way `map`/`select`''s own bodies already are, or a documented
     refusal) rather than an emitter arm; native (LLVM) has no runtime function-value

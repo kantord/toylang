@@ -11,6 +11,8 @@
 //! `json.loads` produces, so reading input is the parse and nothing more. Go needed a declared
 //! struct and a decoder to reach the same place.
 
+use std::collections::BTreeSet;
+
 use crate::ast::BinOp;
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
 use crate::ty::{self, Enums, Type};
@@ -616,6 +618,32 @@ fn local(id: LocalId) -> String {
     format!("t_{id}")
 }
 
+/// The locals a closure's body reads that its own text does not bind, as emitted names, sorted
+/// so the output is stable. Locals get unique ids from the checker, so a read is free exactly when no
+/// binder anywhere in the body carries its id.
+fn captured(param: LocalId, body: &Tir) -> Vec<String> {
+    let mut bound = vec![param];
+    let mut reads = BTreeSet::new();
+    tir::each_node(body, &mut |t| match &t.kind {
+        Kind::Local(id) => {
+            reads.insert(local(*id));
+        }
+        Kind::Bind { local: id, .. } => bound.push(*id),
+        Kind::Map { param, .. }
+        | Kind::OptMap { param, .. }
+        | Kind::Select { param, .. }
+        | Kind::SortBy { param, .. }
+        | Kind::MaxBy { param, .. }
+        | Kind::Closure { param, .. } => bound.push(*param),
+        Kind::Match { arms, .. } => bound.extend(arms.iter().filter_map(|a| a.payload)),
+        _ => {}
+    });
+    for id in bound {
+        reads.remove(&local(id));
+    }
+    reads.into_iter().collect()
+}
+
 fn expr(enums: &Enums, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => py_string(s),
@@ -932,8 +960,20 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             out.push_str(&")".repeat(closing));
             format!("({out})")
         }
-        Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
-            unreachable!("not yet implemented for this backend")
+        // A lambda is already a callable value, so no wrapper is needed. Its body is one
+        // expression, which is all a closure body ever is here: a `let` inside it is a `Bind`,
+        // already emitted as a nested lambda call. What it reads from outside is frozen as
+        // default arguments: a tail-recursive function's loop reassigns its locals in place,
+        // and a closure passed into the next iteration would otherwise see them rebound (Python closures capture variables, not values).
+        Kind::Closure { param, body } => {
+            let frozen: String = captured(*param, body)
+                .iter()
+                .map(|name| format!(", {name}={name}"))
+                .collect();
+            format!("(lambda {}{frozen}: {})", local(*param), expr(enums, body))
+        }
+        Kind::ApplyClosure { closure, arg } => {
+            format!("({})({})", expr(enums, closure), expr(enums, arg))
         }
     }
 }
