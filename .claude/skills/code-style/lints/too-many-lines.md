@@ -266,3 +266,10 @@ one-new-Tir-node shape as #66/#75/#83/#96 but landing only one backend: splittin
 (`0dd66c7b`). `builtin_helpers` (17/10, untouched by this diff) stayed exactly as it was
 at merge-base. Inherited by the same rule as every instance above; no tightening
 attempted, since the growth is one new node's worth of dispatch, not new branching.
+
+The sort-by-max-by-jq session (2026-09-23) is an eighteenth instance, the jq counterpart of the
+Lua one: splitting the `Kind::SortBy | Kind::MaxBy` placeholder into two real arms grew
+`emit_jq.rs`'s already-over `expr()` from 284 to 301 lines, verified against a merge-base
+worktree. Every cognitive-complexity score (`emit` 13, `expr` 17, `walk` 13), `uses_arith`
+(105) and the file-length overage were identical at merge-base. Inherited by the same rule; no
+tightening attempted.
