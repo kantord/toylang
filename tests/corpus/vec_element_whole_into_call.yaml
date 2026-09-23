@@ -1,0 +1,11 @@
+# A record element handed whole to a function that takes the record.
+program: |
+  fn f(r: { a: Int, b: Int }) -> Int = r.a + r.b;
+
+
+  [{ a: 1, b: 2 }, { a: 3, b: 4 }] | map f(.)
+
+output: |
+  [3,7]
+
+node_types: [application, arith.add, int, local, map-over, pipe, projection, record-literal, var, vec-literal]

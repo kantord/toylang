@@ -1,0 +1,12 @@
+# Nested Vec<Record>: the inner map reads each record whole, and a record with a Vec field is
+# gathered with its field intact.
+program: |
+  {
+    grid: [[{ a: 1 }, { a: 2 }], [{ a: 3 }]] | map map(.),
+    rows: [{ a: 1, b: [1, 2] }, { a: 3, b: [3] }] | map { p: ., n: 5 }
+  }
+
+output: |
+  {"grid":[[{"a":1},{"a":2}],[{"a":3}]],"rows":[{"p":{"a":1,"b":[1,2]},"n":5},{"p":{"a":3,"b":[3]},"n":5}]}
+
+node_types: [int, local, map-over, pipe, record-literal, vec-literal]

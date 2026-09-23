@@ -1,0 +1,11 @@
+# A record element placed whole inside a record literal, and inside a variant payload.
+program: |
+  enum S { P, C { r: Int } }
+
+
+  [{ r: 1 }, { r: 2 }] | map { e: ., v: S.c(.) }
+
+output: |
+  [{"e":{"r":1},"v":{"C":{"r":1}}},{"e":{"r":2},"v":{"C":{"r":2}}}]
+
+node_types: [int, local, map-over, pipe, record-literal, variant.payload, vec-literal]
