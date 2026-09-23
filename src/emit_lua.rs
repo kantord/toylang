@@ -1183,8 +1183,10 @@ fn used_helpers(program: &Program) -> Helpers {
                     walk(&a.body, used);
                 }
             }
-            Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
-                unreachable!("not yet implemented for this backend")
+            Kind::Closure { body, .. } => walk(body, used),
+            Kind::ApplyClosure { closure, arg } => {
+                walk(closure, used);
+                walk(arg, used);
             }
         }
     }
@@ -1499,8 +1501,19 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             }
             format!("(function() {body}end)()")
         }
-        Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
-            unreachable!("not yet implemented for this backend")
+        // A Lua function is already a callable value, so no wrapper is needed. Capture needs no
+        // freezing either: a tail call re-enters the function with fresh parameter locals
+        // (Lua's own proper tail calls, no loop reassigning them in place), so each closure's
+        // upvalues are the ones it was built with.
+        Kind::Closure { param, body } => {
+            format!(
+                "(function({}) return {} end)",
+                local(*param),
+                expr(enums, body)
+            )
+        }
+        Kind::ApplyClosure { closure, arg } => {
+            format!("({})({})", expr(enums, closure), expr(enums, arg))
         }
     }
 }

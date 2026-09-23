@@ -206,3 +206,23 @@ fn wide(x: Int) -> Int64 = i64(x);
     assert_eq!(strs, "[\"apple\",\"banana\",\"cherry\"]\n");
     assert_eq!(wide, "{\"v\":9,\"s\":\"x\"}\n");
 }
+
+/// A tail-recursive function's loop reassigns its locals in place, and a Python lambda captures
+/// the variable, not its value: without freezing what a closure reads, the predicate built in
+/// the last iteration compares against the final `acc` instead of the one it was built with.
+#[test]
+fn a_closure_carried_through_a_tail_call_keeps_the_locals_it_was_built_with() {
+    let out = toylang::run_on(
+        r#"
+fn walk({n, acc, pred}: {n: Int, acc: Int, pred: Int -> Bool}) -> Int =
+    n == 0 | . -> ([1, 2, 3, 4, 5, 6] | select(pred) | length(.))
+        or walk({n: n - 1, acc: acc + 1, pred: $ > acc});
+
+walk({n: 3, acc: 1, pred: $ > 0})
+"#,
+        None,
+        toylang::Backend::Py,
+    )
+    .unwrap();
+    assert_eq!(out, "3\n");
+}

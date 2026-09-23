@@ -19,14 +19,14 @@ const UNCOVERED: &[(&str, &str)] = &[
     ),
     (
         "closure",
-        "no corpus case: closures-first-class-functions-design lands closures on Rust, Go and JS \
-only so far (2026-09-23); the other four backends have no representation for a stored closure \
-value yet, so no case can run on all seven",
+        "no corpus case: closures-first-class-functions-design lands closures on Rust, Go, JS, \
+Python and Lua only so far (2026-09-23); the other two backends have no representation for a stored \
+closure value yet, so no case can run on all seven",
     ),
     (
         "closure.apply",
         "no corpus case: same reason as `closure` above -- applying one only exists where the \
-closure itself does, Rust, Go and JS only for now",
+closure itself does, Rust, Go, JS, Python and Lua only for now",
     ),
 ];
 

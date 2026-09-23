@@ -6,8 +6,8 @@ call directly. It exists only there -- a function-parameter-expression is either
 expression, or one containing `$`, and nothing else in the grammar accepts `$` at all, the
 same way `.` is refused wherever nothing bound it.
 
-Landed on the Rust, Go and JS backends so far (closures-first-class-functions-design,
-2026-09-23). The other four backends have no representation for a stored closure value yet,
+Landed on the Rust, Go, JS, Python and Lua backends so far (closures-first-class-functions-design,
+2026-09-23). The other two backends have no representation for a stored closure value yet,
 so a program using `$` refuses cleanly on them rather than emit something wrong.
 
 Two things fall out of the one rule, not two mechanisms:
