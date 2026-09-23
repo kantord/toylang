@@ -312,3 +312,87 @@ fn wide(x: Int) -> Int64 = i64(x);
     );
     assert_eq!(wide, "{\"v\":9,\"s\":\"x\"}\n");
 }
+
+/// A closure is a `{__closure, captures}` object run by one generated `tl_apply`, so the
+/// locals a closure reads have to be copied into it when it is built: the body is defined at the
+/// top level, where none of them is in scope. Each iteration here builds a predicate over its own
+/// `acc`, and the one carried into the next call must keep it.
+#[test]
+fn a_closure_carried_through_a_tail_call_keeps_the_locals_it_was_built_with() {
+    let out = toylang::run_on(
+        r#"
+fn walk({n, acc, pred}: {n: Int, acc: Int, pred: Int -> Bool}) -> Int =
+    n == 0 | . -> ([1, 2, 3, 4, 5, 6] | select(pred) | length(.))
+        or walk({n: n - 1, acc: acc + 1, pred: $ > acc});
+
+walk({n: 3, acc: 1, pred: $ > 0})
+"#,
+        None,
+        toylang::Backend::Jq,
+    )
+    .unwrap();
+    assert_eq!(out, "3\n");
+}
+
+/// Two closure sites reaching the same function is what makes `tl_apply` a real switch: the
+/// tag picks the body; the second body is a call on a record literal into a function whose
+/// body is a `let`.
+#[test]
+fn two_closure_sites_reaching_one_function_dispatch_on_their_own_body() {
+    let out = toylang::run_on(
+        r#"
+fn count_where({items, pred}: {items: Vec<Int>, pred: Int -> Bool}) -> Int =
+    items | select(pred) | length(.);
+
+fn above({n, k}: {n: Int, k: Int}) -> Bool =
+    let m = n - k
+
+    m > 0;
+
+count_where({items: [1, 2, 3, 4], pred: $ > 2}) * 10
+    + count_where({items: [1, 2, 3, 4], pred: above({n: $, k: 3})})
+"#,
+        None,
+        toylang::Backend::Jq,
+    )
+    .unwrap();
+    assert_eq!(out, "21\n");
+}
+
+/// A closure built inside a function reads that function's parameter, which is a jq variable
+/// bound by the function's own `def` and equally out of scope inside `tl_apply`.
+#[test]
+fn a_closure_captures_the_enclosing_functions_parameters() {
+    let out = toylang::run_on(
+        r#"
+fn count_where({items, pred}: {items: Vec<Int>, pred: Int -> Bool}) -> Int =
+    items | select(pred) | length(.);
+
+fn count_above({items, floor}: {items: Vec<Int>, floor: Int}) -> Int =
+    count_where({items: items, pred: $ > floor});
+
+count_above({items: [1, 5, 9, 12], floor: 4})
+"#,
+        None,
+        toylang::Backend::Jq,
+    )
+    .unwrap();
+    assert_eq!(out, "3\n");
+}
+
+/// One `tl_apply` serves every closure, so a closure body that calls a function which itself
+/// applies a closure makes the two wait on each other, and jq's `def` cannot express that.
+#[test]
+fn a_closure_body_that_reaches_an_applier_is_refused() {
+    let p = toylang::compile(
+        r#"
+fn count_where({items, pred}: {items: Vec<Int>, pred: Int -> Bool}) -> Int =
+    items | select(pred) | length(.);
+
+count_where({items: [1, 2, 3], pred: count_where({items: [1, 2], pred: $ > 0}) > $})
+"#,
+    )
+    .unwrap();
+    let err = toylang::emit_jq::emit(&p).unwrap_err();
+    assert!(err.contains("`count_where`"), "{err}");
+}

@@ -12,6 +12,8 @@
 //! tags away. One consequence is load-bearing: no in-memory value is ever JSON null, so jq's
 //! own null (an out-of-range `.[i]`) still unambiguously means "was not there".
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use crate::ast::BinOp;
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
 use crate::ty::{self, Enums, Type};
@@ -20,6 +22,12 @@ use crate::ty::{self, Enums, Type};
 /// subject, so it is bound away before the program starts.
 const INPUT: &str = "$t_input";
 const INPUTS: &str = "$t_inputs";
+
+/// The one generated filter every `Kind::ApplyClosure` calls. jq has no function values, so a
+/// closure is defunctionalized: the value is `{__closure: id, captures: [...]}` and this filter
+/// switches on the id to run the matching body. It is named like a function in `ordered` so
+/// that the same callee-first ordering places it.
+const APPLY: &str = "tl_apply";
 
 /// jq has no integer type, so 32-bit wrapping is arithmetic on doubles. Addition and
 /// subtraction stay exact because the result never passes 2^33; multiplication does not, since
@@ -448,8 +456,13 @@ fn callees(t: &Tir, out: &mut Vec<String>) {
                 callees(&a.body, out);
             }
         }
-        Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
-            unreachable!("not yet implemented for this backend")
+        // The body's calls belong to `tl_apply`, which is where the body is emitted; building
+        // the value only reads the locals it captures.
+        Kind::Closure { .. } => {}
+        Kind::ApplyClosure { closure, arg } => {
+            out.push(APPLY.to_string());
+            callees(closure, out);
+            callees(arg, out);
         }
     }
 }
@@ -498,7 +511,25 @@ fn ordered(program: &Program) -> Result<Vec<Emitted<'_>>, String> {
         callees(&f.body, &mut calls);
         calls
     };
-    while !remaining.is_empty() {
+    // `tl_apply` is one more node in the graph: it calls whatever any closure body calls, and a
+    // function that applies a closure calls it.
+    let sites = closure_sites(program);
+    let mut apply_pending = !sites.is_empty();
+    let apply_deps: Vec<String> = sites
+        .values()
+        .flat_map(|body| {
+            let mut calls = Vec::new();
+            callees(body, &mut calls);
+            calls
+        })
+        .collect();
+    while !remaining.is_empty() || apply_pending {
+        if apply_pending && apply_deps.iter().all(|c| c == APPLY || placed.contains(c)) {
+            out.push(Emitted::Group(dispatch(&program.enums, &sites)));
+            placed.push(APPLY.to_string());
+            apply_pending = false;
+            continue;
+        }
         let ready: Vec<usize> = remaining
             .iter()
             .enumerate()
@@ -529,6 +560,18 @@ fn ordered(program: &Program) -> Result<Vec<Emitted<'_>>, String> {
         }
         if progressed {
             continue;
+        }
+        if apply_pending {
+            let callee = apply_deps
+                .iter()
+                .find(|c| remaining.iter().any(|f| &f.name == *c))
+                .expect("a stuck dispatch waits on a function still remaining");
+            return Err(format!(
+                "jq cannot compile this: a closure body calls `{callee}`, which applies a \
+                 closure itself. Every closure runs through one generated `{APPLY}` def, and \
+                 jq's `def` has no forward declaration, so `{APPLY}` and `{callee}` would each \
+                 have to be defined before the other"
+            ));
         }
         return Err(cycle_message(
             &remaining,
@@ -950,8 +993,10 @@ fn uses_arith(program: &Program) -> (bool, bool, bool) {
                     walk(&a.body, found);
                 }
             }
-            Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
-                unreachable!("not yet implemented for this backend")
+            Kind::Closure { body, .. } => walk(body, found),
+            Kind::ApplyClosure { closure, arg } => {
+                walk(closure, found);
+                walk(arg, found);
             }
         }
     }
@@ -1362,10 +1407,90 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             out.push(')');
             out
         }
-        Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
-            unreachable!("not yet implemented for this backend")
+        Kind::Closure { param, body } => format!(
+            "{{__closure: {param}, captures: [{}]}}",
+            captured(*param, body).join(", ")
+        ),
+        Kind::ApplyClosure { closure, arg } => {
+            format!("{APPLY}({}; {})", expr(enums, closure), expr(enums, arg))
         }
     }
+}
+
+/// The variables a closure's body reads that its own text does not bind, as jq spells them,
+/// sorted so the output is stable. They are copied into the closure value when it is built,
+/// because the body runs inside `tl_apply`, defined at the top level where none of them is
+/// in scope: locals, a function's parameters, and the program's input alike. Locals get unique
+/// ids from the checker, so a local is free exactly when no binder anywhere in the body
+/// carries its id.
+fn captured(param: LocalId, body: &Tir) -> Vec<String> {
+    let mut bound = vec![param];
+    let mut reads = BTreeSet::new();
+    tir::each_node(body, &mut |t| match &t.kind {
+        Kind::Local(id) => {
+            reads.insert(local(*id));
+        }
+        Kind::Var(name) => {
+            reads.insert(format!("${}", user(name)));
+        }
+        Kind::Input => {
+            reads.insert(INPUT.to_string());
+        }
+        Kind::Inputs => {
+            reads.insert(INPUTS.to_string());
+        }
+        Kind::Bind { local: id, .. } => bound.push(*id),
+        Kind::Map { param, .. }
+        | Kind::OptMap { param, .. }
+        | Kind::Select { param, .. }
+        | Kind::SortBy { param, .. }
+        | Kind::MaxBy { param, .. }
+        | Kind::Closure { param, .. } => bound.push(*param),
+        Kind::Match { arms, .. } => bound.extend(arms.iter().filter_map(|a| a.payload)),
+        _ => {}
+    });
+    for id in bound {
+        reads.remove(&local(id));
+    }
+    reads.into_iter().collect()
+}
+
+/// Every closure body in the program, keyed by the closure's parameter local. That id is unique
+/// per site (a generic function checked at two types draws fresh ids for each), so it doubles as
+/// the tag the closure value carries.
+fn closure_sites<'a>(program: &'a Program) -> BTreeMap<LocalId, &'a Tir> {
+    let mut sites = BTreeMap::new();
+    let mut visit = |t: &'a Tir| {
+        if let Kind::Closure { param, body } = &t.kind {
+            sites.entry(*param).or_insert(&**body);
+        }
+    };
+    for f in &program.funcs {
+        tir::each_node(&f.body, &mut visit);
+    }
+    tir::each_node(&program.body, &mut visit);
+    sites
+}
+
+/// `tl_apply`: one branch per closure site, each unpacking its captures and binding the
+/// argument before running the body. A body that applies a closure calls `tl_apply` again,
+/// which is self-recursion and so needs nothing more.
+fn dispatch(enums: &Enums, sites: &BTreeMap<LocalId, &Tir>) -> String {
+    let mut out = format!("def {APPLY}($tl_clo; $tl_arg):\n  ");
+    for (i, (param, body)) in sites.iter().enumerate() {
+        let unpack = match captured(*param, body).join(", ") {
+            caps if caps.is_empty() => String::new(),
+            caps => format!("$tl_clo.captures as [{caps}] | "),
+        };
+        let word = if i == 0 { "if" } else { "elif" };
+        out.push_str(&format!(
+            "{word} $tl_clo.__closure == {param} then ({unpack}$tl_arg as {} | {})\n  ",
+            local(*param),
+            expr(enums, body)
+        ));
+    }
+    out.push_str("else error(\"unreachable: bad closure tag\")\n  end;\n");
+    out
 }
 
 /// One arithmetic expression at the width the node's type names. The 64-bit side stays in
