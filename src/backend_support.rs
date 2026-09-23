@@ -22,11 +22,23 @@ pub struct Landing {
 pub const LANDINGS: &[Landing] = &[
     Landing {
         name: "sort_by",
-        built_on: &[Backend::Go, Backend::Rust, Backend::Lua, Backend::Js],
+        built_on: &[
+            Backend::Go,
+            Backend::Rust,
+            Backend::Lua,
+            Backend::Js,
+            Backend::Py,
+        ],
     },
     Landing {
         name: "max_by",
-        built_on: &[Backend::Go, Backend::Rust, Backend::Lua, Backend::Js],
+        built_on: &[
+            Backend::Go,
+            Backend::Rust,
+            Backend::Lua,
+            Backend::Js,
+            Backend::Py,
+        ],
     },
     Landing {
         name: "transpose",

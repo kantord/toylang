@@ -3544,3 +3544,28 @@
   kind: decide
   needs: [sort-by-max-by-js]
   status: done
+
+- id: sort-by-max-by-python
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- emit for the Python backend only (src/emit_py.rs).
+    LANDED 2026-09-23 (direct session, not drive): following the JS and Lua arms as precedent.
+    `Kind::SortBy` emits `sorted(src, key=lambda p: body)` inline, with no helper: `sorted` is
+    stable, takes the key once per entry, iterates a lazy `TlSel` source, and Python already
+    orders Str by codepoint and Int64 as an exact int. `Kind::MaxBy` emits `tl_max_by`, which
+    replaces the running maximum only on a strictly greater key, so the first of equal maxima
+    wins, and returns the absent Opt for an empty Vec. Registered Py in
+    `backend_support::LANDINGS`, mirrored the JS backend tests into tests/backend_py.rs (plus a
+    `select` source case, since `TlSel` is Python-specific), moved tests/unbuilt_arms.rs''s
+    refusal assertions off Py onto Jq, and updated the two reference pages.'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-js]
+  status: done
+
+- id: sort-by-max-by-checkpoint-python
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Python commit landed clean
+    before starting jq. CONFIRMED 2026-09-23 (direct session, not drive): ff2d3de5 landed clean,
+    just check 520/520 green. Clear to start jq.'
+  kind: decide
+  needs: [sort-by-max-by-python]
+  status: done
