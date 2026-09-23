@@ -120,9 +120,8 @@ fn float_product_above_the_band_goes_exponential() {
     assert_eq!(out, "1e+22\n");
 }
 
-// `sort_by`/`max_by` are landed for Go, Rust, Lua, JS, and Python, and until the rest of the
-// backends carry them none of these can be a corpus case, which would require every backend to
-// agree.
+// `sort_by`/`max_by` run on every backend and have corpus cases (tests/corpus/sort_by_*.yaml,
+// max_by_*.yaml); the tests below pin this backend's own arm on the same behavior.
 
 /// `sort_by` orders by the projected key, stably: ties keep their original order.
 #[test]

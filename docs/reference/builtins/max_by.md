@@ -10,14 +10,20 @@ the projected key, restricted to the same natively-ordered scalars `sort` takes 
 `Int64`, [`Str`](../types/str.md), and [`Char`](../types/char.md). Blocking like `max`, so the
 subject is a `Vec` only, never a stream.
 
-
-
 The projection is the same `map(.name)` machinery already in the checker: `.` is rebound to
 each entry, and the projection's type must be one of those four scalars.
 
-Built on the Go, Rust, Lua, JS, Python, and jq backends so far, like [`sort_by`](sort_by.md),
-and refused the same way on native; no runnable fragment or corpus case until it has an arm for
-it.
+```toylang
+[{ name: "a", age: 1 }, { name: "c", age: 2 }, { name: "b", age: 2 }]
+| max_by(.age)
+```
+
+```output
+{"name":"c","age":2}
+```
+
+Built on every backend; the corpus cases `max_by_first_of_ties`, `max_by_empty`, and
+`max_by_int64_and_select` pin the tie, empty, and key-type behavior.
 
 jq's own `max_by` returns the last of equal maxima and null for an empty Vec, so the jq arm does
 not use it: it pairs each entry with its key once and keeps the first entry whose key is

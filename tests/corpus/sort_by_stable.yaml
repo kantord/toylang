@@ -1,0 +1,10 @@
+# Ties keep their original order: b and c share an age and stay b-then-c, a stable sort.
+# qsort-style sorts are not stable, so this is the case a backend has to decorate for.
+program: |
+  [{ name: "b", age: 2 }, { name: "a", age: 1 }, { name: "c", age: 2 }]
+  | sort_by(.age)
+
+output: |
+  [{"name":"a","age":1},{"name":"b","age":2},{"name":"c","age":2}]
+
+node_types: [int, local, pipe, projection, record-literal, sort-by, str, vec-literal]

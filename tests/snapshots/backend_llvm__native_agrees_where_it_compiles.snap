@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (274):
+compiles natively (280):
 adults
 all_basic
 all_empty
@@ -168,6 +168,9 @@ map_to_str
 match_arms_from_annotation
 match_partial_guards
 match_partial_opt_arms
+max_by_empty
+max_by_first_of_ties
+max_by_int64_and_select
 max_empty
 max_empty_unwrap_refuses
 max_int64s
@@ -221,6 +224,9 @@ slice_out_of_range_low
 slice_plus_concat
 slice_records
 slice_reversed
+sort_by_chars
+sort_by_stable
+sort_by_str_keys
 sort_chars
 sort_descending
 sort_int64s

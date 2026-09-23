@@ -12,13 +12,24 @@ is a `Vec` only, never a stream.
 The projection is the same `map(.name)` machinery already in the checker: `.` is rebound to
 each entry, and the projection's type must be one of those four scalars.
 
-Built on the Go, Rust, Lua, JS, Python, and jq backends so far; native has no emitter arm yet,
-so a program using it there is refused with `` `sort_by` has no native backend yet; today it
-runs on go and rust and lua and js and py and jq ``, this page carries no runnable fragment, and
-there is no corpus case until it does (the `sort-by-max-by-*` rows in plans/board.yaml).
+```toylang
+[{ name: "b", age: 2 }, { name: "a", age: 1 }, { name: "c", age: 2 }]
+| sort_by(.age)
+```
+
+```output
+[{"name":"a","age":1},{"name":"b","age":2},{"name":"c","age":2}]
+```
+
+Built on every backend; the corpus case `sort_by_stable` pins the tie order, and
+`sort_by_str_keys` the codepoint order of `Str` keys.
 
 Lua's `table.sort` is not itself stable, so the Lua arm decorates each entry with its
 original index, sorts by `(key, index)`, and undecorates -- the index as tiebreaker gives the
 same stable order the other two backends' sorts already guarantee.
 
 jq's own `sort_by` is stable and orders Str by codepoint, so the jq arm emits it directly.
+
+Native has no stable sort in libc, so `tl_vec_sort_by` in runtime/toylang.c sorts an array of
+`(key, row)` pairs with `qsort`, the row breaking key ties, and then permutes every column of the
+Vec by the result.

@@ -1,0 +1,14 @@
+# Int64 keys order by value, and a `select` is an ordinary source for `max_by`: the survivors
+# are what compete, so the 9 that the predicate drops cannot win.
+program: |
+  fn wide(x: Int) -> Int64 = i64 x;
+
+
+  [{ v: wide 9, s: "x" }, { v: wide 2, s: "y" }, { v: wide 7, s: "z" }]
+  | select(.v < wide(8))
+  | max_by(.v)
+
+output: |
+  {"v":7,"s":"z"}
+
+node_types: [application, builtin.i64, compare.lt, int, local, max-by, pipe, projection, record-literal, selection.narrow, str, var, vec-literal]

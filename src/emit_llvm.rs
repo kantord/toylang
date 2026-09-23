@@ -88,6 +88,8 @@ struct Runtime<'ctx> {
     vec_sum: FunctionValue<'ctx>,
     vec_transpose: FunctionValue<'ctx>,
     vec_max: FunctionValue<'ctx>,
+    vec_sort_by: FunctionValue<'ctx>,
+    vec_max_by: FunctionValue<'ctx>,
     sqrt: FunctionValue<'ctx>,
 }
 
@@ -336,6 +338,16 @@ impl<'ctx> Emitter<'ctx, '_> {
                 None,
             ),
             vec_max: module.add_function("tl_vec_max", ptr.fn_type(&[ptr.into()], false), None),
+            vec_sort_by: module.add_function(
+                "tl_vec_sort_by",
+                ptr.fn_type(&[ptr.into(), ptr.into(), i32t.into()], false),
+                None,
+            ),
+            vec_max_by: module.add_function(
+                "tl_vec_max_by",
+                ptr.fn_type(&[ptr.into(), ptr.into(), i32t.into(), i32t.into()], false),
+                None,
+            ),
             // The LLVM intrinsic, not a runtime call: declaring a function under this exact
             // name is how LLVM recognizes it, and it lowers to the target's libm `sqrt`, the
             // same NaN-on-negative IEEE 754 behavior every other backend's native sqrt gives.
@@ -816,6 +828,79 @@ impl<'ctx> Emitter<'ctx, '_> {
         })?;
 
         Ok((src, mask, len, elem_ty))
+    }
+
+    /// `sort_by` and `max_by`: project every entry to its key with `body`, then let the runtime
+    /// order by the keys. The projection loop binds the element the way `map` does, so a record
+    /// source is read out of its columns rather than gathered; the runtime never sees `body`,
+    /// only the one-column Vec of keys, and Str keys are the only ones needing a pointer compare.
+    fn keyed(
+        &mut self,
+        source: &Tir,
+        param: LocalId,
+        body: &Tir,
+        max: bool,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let elem_ty = crate::tir::runtime_elem(&source.ty)
+            .ok_or_else(|| "sort_by/max_by over something that has no dimension".to_string())?
+            .clone();
+        let key_ty = body.ty.clone();
+
+        let i64t = self.ctx.i64_type();
+        let i32t = self.ctx.i32_type();
+        let src = self.expr(source)?.into_pointer_value();
+        let len = self
+            .call_rt(self.rt.vec_len, &[src.into()], "len")?
+            .into_int_value();
+        let keys = self
+            .call_rt(
+                self.rt.vec_new,
+                &[len.into(), i64t.const_int(1, false).into()],
+                "keys",
+            )?
+            .into_pointer_value();
+        let zero = i64t.const_zero();
+
+        self.emit_loop(len, move |e, i| {
+            if matches!(elem_ty, Type::Record(_)) {
+                e.locals.insert(param, Slot::Cursor { vec: src, index: i });
+            } else {
+                let slot = e
+                    .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                    .into_int_value();
+                let elem = e.read_slot(slot, &elem_ty)?;
+                e.locals.insert(param, Slot::Value(elem));
+            }
+            let key = e.expr(body)?;
+            let key = e.to_slot(key, &key_ty)?;
+            e.builder
+                .build_call(
+                    e.rt.vec_set,
+                    &[keys.into(), zero.into(), i.into(), key.into()],
+                    "",
+                )
+                .map_err(|err| err.to_string())?;
+            Ok(())
+        })?;
+
+        let is_str = i32t.const_int((body.ty == Type::Str) as u64, false);
+        if max {
+            let is_record = i32t.const_int(
+                matches!(crate::tir::runtime_elem(&source.ty), Some(Type::Record(_))) as u64,
+                false,
+            );
+            self.call_rt(
+                self.rt.vec_max_by,
+                &[src.into(), keys.into(), is_str.into(), is_record.into()],
+                "max_by",
+            )
+        } else {
+            self.call_rt(
+                self.rt.vec_sort_by,
+                &[src.into(), keys.into(), is_str.into()],
+                "sort_by",
+            )
+        }
     }
 
     /// `select` builds a mask and then compacts it into a dense Vec.
@@ -1464,10 +1549,17 @@ impl<'ctx> Emitter<'ctx, '_> {
                 pred,
             } => self.select(source, *param, pred)?,
 
-            // `sort_by`/`max_by` codegen lands in a later step (gh:177).
-            Kind::SortBy { .. } | Kind::MaxBy { .. } => {
-                return Err(unsupported("sort_by/max_by emission lands in a later step"));
-            }
+            Kind::SortBy {
+                source,
+                param,
+                body,
+            } => self.keyed(source, *param, body, false)?,
+
+            Kind::MaxBy {
+                source,
+                param,
+                body,
+            } => self.keyed(source, *param, body, true)?,
 
             Kind::Map {
                 source,

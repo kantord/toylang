@@ -14,14 +14,6 @@ mod support;
 /// is a debt, not an exemption: it comes out when the row lands.
 const UNCOVERED: &[(&str, &str)] = &[
     (
-        "sort-by",
-        "sort-by-max-by-jq, the last of the per-backend rows",
-    ),
-    (
-        "max-by",
-        "sort-by-max-by-jq, the last of the per-backend rows",
-    ),
-    (
         "builtin.pipe_through",
         "no corpus case: pipe_through runs only on a subset of backends (go, rust, py, js, lua) and reads a subprocess",
     ),
