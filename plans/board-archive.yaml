@@ -3509,3 +3509,20 @@
   kind: decide
   needs: []
   status: done
+
+- id: sort-by-max-by-js
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- emit for the JS backend only (src/emit_js.rs).
+    LANDED 2026-09-23 (direct session, not drive): following the Lua arm as precedent. Added
+    `tl_sort_by` and `tl_max_by` to src/emit_js.rs and wired `Kind::SortBy`/`Kind::MaxBy` to them,
+    replacing the `unreachable!` placeholder. `Array.prototype.sort` is stable since ES2019, so
+    `tl_sort_by` only decorates each entry with its key once and sorts on it; `tl_max_by` replaces
+    the running maximum only on a strictly greater key, so the first of equal maxima wins. Both
+    take a three-way comparator chosen from the key type at emit time (`key_cmp`): `tl_str_cmp`
+    for Str (codepoint order), and `a < b ? -1 : a > b ? 1 : 0` otherwise, since a subtracting
+    comparator throws on Int64''s BigInt. Registered Js in `backend_support::LANDINGS`, mirrored
+    the Lua backend tests into tests/backend_js.rs, moved tests/unbuilt_arms.rs''s refusal
+    assertions off Js onto Py, and updated the two reference pages. `just check` (515/515) green.'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-lua]
+  status: done

@@ -96,8 +96,8 @@ fn a_use_inside_a_function_is_refused_too() {
     let program =
         toylang::compile("fn f(v: Vec<Int>) -> Vec<Int> = v | sort_by(.)\n\nf([2, 1])\n").unwrap();
     assert_eq!(
-        Backend::Js.emit(&program).unwrap_err(),
-        "`sort_by` has no js backend yet; today it runs on go and rust and lua"
+        Backend::Py.emit(&program).unwrap_err(),
+        "`sort_by` has no py backend yet; today it runs on go and rust and lua and js"
     );
 }
 
@@ -107,6 +107,6 @@ fn running_is_refused_the_same_way_as_emitting() {
     let err = toylang::run_on("[3, 1, 2] | sort_by(.)\n", None, Backend::Py).unwrap_err();
     assert_eq!(
         err.to_string(),
-        "`sort_by` has no py backend yet; today it runs on go and rust and lua"
+        "`sort_by` has no py backend yet; today it runs on go and rust and lua and js"
     );
 }

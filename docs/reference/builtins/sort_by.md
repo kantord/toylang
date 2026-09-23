@@ -12,10 +12,10 @@ is a `Vec` only, never a stream.
 The projection is the same `map(.name)` machinery already in the checker: `.` is rebound to
 each entry, and the projection's type must be one of those four scalars.
 
-Built on the Go, Rust, and Lua backends so far; the other four have no emitter arm yet, so a
-program using it there is refused with `` `sort_by` has no js backend yet; today it runs on
-go and rust and lua ``, this page carries no runnable fragment, and there is no corpus case
-until they do (the `sort-by-max-by-*` rows in plans/board.yaml).
+Built on the Go, Rust, Lua, and JS backends so far; the other three have no emitter arm yet, so
+a program using it there is refused with `` `sort_by` has no py backend yet; today it runs on
+go and rust and lua and js ``, this page carries no runnable fragment, and there is no corpus
+case until they do (the `sort-by-max-by-*` rows in plans/board.yaml).
 
 Lua's `table.sort` is not itself stable, so the Lua arm decorates each entry with its
 original index, sorts by `(key, index)`, and undecorates -- the index as tiebreaker gives the

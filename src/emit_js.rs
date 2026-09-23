@@ -277,6 +277,29 @@ function tl_max(v) {
 }
 ";
 
+// `Array.prototype.sort` has been stable since ES2019, so decorating with the key once (rather
+// than re-running the projection per comparison) is the only work needed for ties to keep their
+// original order. `cmp` is the three-way compare for the key's type.
+const SORT_BY_HELPER: &str = "\
+function tl_sort_by(v, key, cmp) {
+  return v.map((x) => ({ k: key(x), x })).sort((a, b) => cmp(a.k, b.k)).map((e) => e.x);
+}
+";
+
+// Only a strictly greater key replaces the running maximum, so of equal maxima the first wins.
+const MAX_BY_HELPER: &str = "\
+function tl_max_by(v, key, cmp) {
+  if (v.length === 0) return \"None\";
+  let m = v[0];
+  let mk = key(v[0]);
+  for (let i = 1; i < v.length; i++) {
+    const k = key(v[i]);
+    if (cmp(k, mk) > 0) { m = v[i]; mk = k; }
+  }
+  return { Some: m };
+}
+";
+
 /// Feeds `lines` to a child's stdin and relays its stdout lines then its stderr lines, each
 /// tagged by the closures. `spawnSync` with `input` drains both pipes, so a child that never reads
 /// stdin cannot stall the program. Exit status is ignored, as on the other backends.
@@ -348,6 +371,8 @@ pub fn emit_with(program: &Program, target: JsTarget, web: &Web) -> Result<Strin
         (used.chars, CHARS_HELPER),
         (used.sum || used.sum64, SUM_HELPER),
         (used.max, MAX_HELPER),
+        (used.sort_by, SORT_BY_HELPER),
+        (used.max_by, MAX_BY_HELPER),
         (used.transpose, TRANSPOSE_HELPER),
         (used.pipe_through, PIPE_HELPER),
         (used.eq, EQ_HELPER),
@@ -758,6 +783,8 @@ struct Helpers {
     sum: bool,
     sum64: bool,
     max: bool,
+    sort_by: bool,
+    max_by: bool,
     transpose: bool,
     pipe_through: bool,
     eq: bool,
@@ -770,6 +797,17 @@ fn compare_helpers(op: BinOp, operand: &Type, used: &mut Helpers) {
     used.str_cmp |=
         *operand == Type::Str && matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge);
     used.eq |= operand.is_composite() && matches!(op, BinOp::Eq | BinOp::Ne);
+}
+
+/// The three-way comparator for a projected key. Str goes through `tl_str_cmp` for the codepoint
+/// order; everything else, Int64 (BigInt) included, takes the plain three-way compare, since
+/// `a - b` would throw on BigInt.
+fn key_cmp(key: &Type) -> &'static str {
+    if *key == Type::Str {
+        "tl_str_cmp"
+    } else {
+        "(a, b) => a < b ? -1 : a > b ? 1 : 0"
+    }
 }
 
 /// Two of the six comparison operators cannot be handed to JS as they are written.
@@ -853,7 +891,15 @@ fn used_helpers(program: &Program) -> Helpers {
                 walk(source, used);
                 walk(pred, used);
             }
-            Kind::SortBy { source, body, .. } | Kind::MaxBy { source, body, .. } => {
+            Kind::SortBy { source, body, .. } => {
+                used.sort_by = true;
+                used.str_cmp |= body.ty == Type::Str;
+                walk(source, used);
+                walk(body, used);
+            }
+            Kind::MaxBy { source, body, .. } => {
+                used.max_by = true;
+                used.str_cmp |= body.ty == Type::Str;
                 walk(source, used);
                 walk(body, used);
             }
@@ -1233,11 +1279,28 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 expr(enums, pred)
             )
         }
-        // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
-        // program produced one without its backend being taught to emit it yet.
-        Kind::SortBy { .. } | Kind::MaxBy { .. } => {
-            unreachable!("sort_by/max_by emission lands in a later step")
-        }
+        Kind::SortBy {
+            source,
+            param,
+            body,
+        } => format!(
+            "tl_sort_by({}, ({}) => {}, {})",
+            expr(enums, source),
+            local(*param),
+            expr(enums, body),
+            key_cmp(&body.ty)
+        ),
+        Kind::MaxBy {
+            source,
+            param,
+            body,
+        } => format!(
+            "tl_max_by({}, ({}) => {}, {})",
+            expr(enums, source),
+            local(*param),
+            expr(enums, body),
+            key_cmp(&body.ty)
+        ),
         // Opt's reorder pass (kantord/toylang#66): the tagged shape (`"None"` or `{Some: v}`)
         // is generic enough that this is the ordinary key-presence test every Match arm over
         // an Opt subject would already use, just rebuilding the payload instead of a body.

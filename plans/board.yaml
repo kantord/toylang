@@ -124,13 +124,6 @@
   needs: [sort-by-max-by-lua]
   status: todo
 
-- id: sort-by-max-by-js
-  issue: gh:177
-  title: 'sort_by and max_by (gh:177) -- emit for the JS backend only (src/emit_js.rs).'
-  kind: build
-  needs: [sort-by-max-by-checkpoint-lua]
-  status: todo
-
 - id: sort-by-max-by-checkpoint-js
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the JS commit landed clean before
