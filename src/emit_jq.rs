@@ -512,20 +512,27 @@ fn ordered(program: &Program) -> Result<Vec<Emitted<'_>>, String> {
         calls
     };
     // `tl_apply` is one more node in the graph: it calls whatever any closure body calls, and a
-    // function that applies a closure calls it.
+    // function that applies a closure calls it. Where the two would wait on each other, the
+    // function is defined a second time inside `tl_apply` (`nested_appliers`), so `tl_apply`
+    // only waits on what those copies and the closure bodies call from outside that set.
     let sites = closure_sites(program);
+    let nested = nested_appliers(program, &sites);
+    let nested_names: Vec<&str> = nested.iter().map(|f| f.name.as_str()).collect();
     let mut apply_pending = !sites.is_empty();
     let apply_deps: Vec<String> = sites
         .values()
+        .copied()
+        .chain(nested.iter().map(|f| &f.body))
         .flat_map(|body| {
             let mut calls = Vec::new();
             callees(body, &mut calls);
             calls
         })
+        .filter(|c| !nested_names.contains(&c.as_str()))
         .collect();
     while !remaining.is_empty() || apply_pending {
         if apply_pending && apply_deps.iter().all(|c| c == APPLY || placed.contains(c)) {
-            out.push(Emitted::Group(dispatch(&program.enums, &sites)));
+            out.push(Emitted::Group(dispatch(&program.enums, &sites, &nested)?));
             placed.push(APPLY.to_string());
             apply_pending = false;
             continue;
@@ -560,18 +567,6 @@ fn ordered(program: &Program) -> Result<Vec<Emitted<'_>>, String> {
         }
         if progressed {
             continue;
-        }
-        if apply_pending {
-            let callee = apply_deps
-                .iter()
-                .find(|c| remaining.iter().any(|f| &f.name == *c))
-                .expect("a stuck dispatch waits on a function still remaining");
-            return Err(format!(
-                "jq cannot compile this: a closure body calls `{callee}`, which applies a \
-                 closure itself. Every closure runs through one generated `{APPLY}` def, and \
-                 jq's `def` has no forward declaration, so `{APPLY}` and `{callee}` would each \
-                 have to be defined before the other"
-            ));
         }
         return Err(cycle_message(
             &remaining,
@@ -1471,11 +1466,82 @@ fn closure_sites<'a>(program: &'a Program) -> BTreeMap<LocalId, &'a Tir> {
     sites
 }
 
-/// `tl_apply`: one branch per closure site, each unpacking its captures and binding the
-/// argument before running the body. A body that applies a closure calls `tl_apply` again,
-/// which is self-recursion and so needs nothing more.
-fn dispatch(enums: &Enums, sites: &BTreeMap<LocalId, &Tir>) -> String {
+/// The functions defined a second time inside `tl_apply`: those a closure body reaches, through
+/// any chain of calls, that themselves reach `tl_apply` by applying a closure. Defined at the top
+/// level such a function would need `tl_apply` above it (it calls it) and below it (a body calls
+/// it); inside `tl_apply` it sees `tl_apply` as its own enclosing def, which jq allows. The
+/// top-level copy is still emitted, for callers outside any closure body. In program order.
+fn nested_appliers<'a>(
+    program: &'a Program,
+    sites: &BTreeMap<LocalId, &Tir>,
+) -> Vec<&'a tir::Func> {
+    let calls_of = |body: &Tir| {
+        let mut calls = Vec::new();
+        callees(body, &mut calls);
+        calls
+    };
+    let func = |name: &str| program.funcs.iter().find(|f| f.name == name);
+    let mut reaches_apply: Vec<&str> = Vec::new();
+    loop {
+        let before = reaches_apply.len();
+        for f in &program.funcs {
+            if !reaches_apply.contains(&f.name.as_str())
+                && calls_of(&f.body)
+                    .iter()
+                    .any(|c| c == APPLY || reaches_apply.contains(&c.as_str()))
+            {
+                reaches_apply.push(&f.name);
+            }
+        }
+        if reaches_apply.len() == before {
+            break;
+        }
+    }
+    let mut reachable: Vec<String> = Vec::new();
+    let mut stack: Vec<String> = sites.values().flat_map(|body| calls_of(body)).collect();
+    while let Some(name) = stack.pop() {
+        if reachable.contains(&name) {
+            continue;
+        }
+        if let Some(f) = func(&name) {
+            stack.extend(calls_of(&f.body));
+        }
+        reachable.push(name);
+    }
+    program
+        .funcs
+        .iter()
+        .filter(|f| reachable.contains(&f.name) && reaches_apply.contains(&f.name.as_str()))
+        .collect()
+}
+
+/// `tl_apply`: the nested copies of `nested_appliers`, then one branch per closure site, each
+/// unpacking its captures and binding the argument before running the body. A body that applies
+/// a closure calls `tl_apply` again, which is self-recursion and so needs nothing more. The
+/// copies go first so a body can call them; among themselves they are placed callee-first, and
+/// two that call each other are refused like any other cycle between named functions.
+fn dispatch(
+    enums: &Enums,
+    sites: &BTreeMap<LocalId, &Tir>,
+    nested: &[&tir::Func],
+) -> Result<String, String> {
+    let nested_names: Vec<String> = nested.iter().map(|f| f.name.clone()).collect();
+    let copies = topsort(
+        nested.to_vec(),
+        |f| f.name.clone(),
+        |f| {
+            let mut calls = Vec::new();
+            callees(&f.body, &mut calls);
+            calls.retain(|c| nested_names.contains(c));
+            calls
+        },
+        "named functions",
+    )?;
     let mut out = format!("def {APPLY}($tl_clo; $tl_arg):\n  ");
+    for f in copies {
+        out.push_str(&emit_one(enums, f));
+        out.push_str("  ");
+    }
     for (i, (param, body)) in sites.iter().enumerate() {
         let unpack = match captured(*param, body).join(", ") {
             caps if caps.is_empty() => String::new(),
@@ -1489,7 +1555,7 @@ fn dispatch(enums: &Enums, sites: &BTreeMap<LocalId, &Tir>) -> String {
         ));
     }
     out.push_str("else error(\"unreachable: bad closure tag\")\n  end;\n");
-    out
+    Ok(out)
 }
 
 /// One arithmetic expression at the width the node's type names. The 64-bit side stays in

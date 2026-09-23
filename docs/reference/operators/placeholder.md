@@ -13,9 +13,9 @@ program using `$` refuses cleanly there rather than emit something wrong.
 jq has no function values, so a closure there is a JSON object, `{__closure: id, captures:
 [...]}`, and applying one calls a single generated `tl_apply` filter that switches on the id and
 runs that site's body. Whatever the body reads from outside is copied into `captures` when the
-closure is built. One program shape jq refuses: a closure body that calls a function which itself
-applies a closure, because `tl_apply` and that function would each have to be defined before the
-other and jq's `def` has no forward declaration.
+closure is built. A closure body that calls a function which itself applies a closure would need
+`tl_apply` and that function each defined before the other, so such a function is emitted a
+second time inside `tl_apply`, where the enclosing def is in scope.
 
 Two things fall out of the one rule, not two mechanisms:
 
