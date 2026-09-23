@@ -6,9 +6,10 @@ call directly. It exists only there -- a function-parameter-expression is either
 expression, or one containing `$`, and nothing else in the grammar accepts `$` at all, the
 same way `.` is refused wherever nothing bound it.
 
-Landed on the Rust, Go, JS, Python, Lua and jq backends so far (closures-first-class-functions-design,
-2026-09-23). The native backend has no representation for a stored closure value yet, so a
-program using `$` refuses cleanly there rather than emit something wrong.
+Runs on all seven backends (closures-first-class-functions-design, 2026-09-23). Each represents
+the closure its own way: a function value where the target has one, `Rc<dyn Fn>` on Rust, and
+on the native backend a heap record holding the address of the closure's compiled function
+followed by the values its body reads from outside, called through that address.
 
 jq has no function values, so a closure there is a JSON object, `{__closure: id, captures:
 [...]}`, and applying one calls a single generated `tl_apply` filter that switches on the id and

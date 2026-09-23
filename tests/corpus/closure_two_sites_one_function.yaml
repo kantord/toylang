@@ -1,0 +1,21 @@
+# Two different closure sites reach the one function that applies its parameter, so the call
+# inside it cannot be resolved by name: it has to run whichever body the value carries. The
+# second site also reads a captured `k` from the enclosing function's parameters.
+program: |
+  fn count_where(
+    { items, pred }: { items: Vec<Int>, pred: Int -> Bool }
+  ) -> Int =
+    items | select pred | length(.);
+
+
+  fn count_above({ items, k }: { items: Vec<Int>, k: Int }) -> Int =
+    count_where { items: items, pred: $ > k };
+
+
+  count_where { items: [1, 2, 3, 4], pred: $ == 2 } * 10 +
+    count_above { items: [1, 2, 3, 4], k: 1 }
+
+output: |
+  13
+
+node_types: [application, arith.add, arith.mul, builtin.length, closure, closure.apply, compare.eq, compare.gt, int, local, pipe, projection, record-literal, selection.narrow, var, vec-literal]

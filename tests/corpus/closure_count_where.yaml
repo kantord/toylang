@@ -1,0 +1,13 @@
+program: |
+  fn count_where(
+    { items, pred }: { items: Vec<Int>, pred: Int -> Bool }
+  ) -> Int =
+    items | select pred | length(.);
+
+
+  count_where { items: [1, 2, 3, 4], pred: $ > 2 }
+
+output: |
+  2
+
+node_types: [application, builtin.length, closure, closure.apply, compare.gt, int, local, pipe, projection, record-literal, selection.narrow, var, vec-literal]

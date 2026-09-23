@@ -3608,3 +3608,44 @@
   kind: build
   needs: [sort-by-max-by-checkpoint-jq]
   status: done
+
+- id: closures-remaining-backends
+  title: 'Follow-up to closures-first-class-functions-design (2026-09-23): closures landed on
+    Rust, Go, JS, Python, Lua and jq (`backend_support::LANDINGS` entry "closure"), as `Rc<dyn Fn(..) -> ..>` on
+    Rust. The remaining backend (native) refuses cleanly today rather than panic, but needs its own real
+    story for `Type::Fn`''s runtime representation and `Kind::Closure`/`Kind::ApplyClosure`''s
+    emission -- genuinely different per backend, not "the same arm two more times" the way
+    sqrt/float were: Go LANDED (2026-09-23) as a bare `func(In) Out` type rather than a wrapper
+    struct -- a closure is never compared, printed or put in a Vec/Opt, and `reflect.DeepEqual`
+    in `tlEq` accepts a func-typed record field, so nothing needed the wrapper; JS LANDED
+    (2026-09-23) as a plain arrow function, no wrapper, and the `.d.ts` spells `Type::Fn` as
+    `(x: In) => Out`; Python LANDED (2026-09-23) as a plain lambda, no wrapper, with whatever the
+    body reads from outside frozen as default arguments (`lambda t_8, t_2=t_2: ..`) because a
+    tail-recursive function''s loop reassigns its locals in place and a closure carried into the
+    next iteration would otherwise see them rebound; Lua LANDED (2026-09-23) as a plain function, no wrapper
+    and no freezing: it has no tail-call loop, only native proper tail calls that give each
+    iteration fresh parameter locals, and tests/backend_lua.rs pins that a closure carried
+    through one keeps the `acc` it was built with; jq LANDED (2026-09-23) by defunctionalization,
+    since it has no function values: a closure value is `{__closure: <param local id>, captures:
+    [..]}`, `captures` holding whatever the body reads from outside (locals, function params, the
+    input; jq defs are top level so none is in scope in the body), and `Kind::ApplyClosure` calls
+    one generated `tl_apply($clo; $arg)` that switches on the tag. `tl_apply` is a node in
+    `ordered`''s callee-first graph. Known jq-only refusal: a closure body that calls a function
+    which itself applies a closure (`count_where` inside a `$` passed to `count_where`), because
+    `tl_apply` and that function would each need to be defined first; lifting it would mean
+    emitting such functions a second time nested inside `tl_apply`, not done since nothing
+    needs it. Native (LLVM) LANDED (2026-09-23) with no new
+    C: a closure is a `tl_rec_new` record, slot 0 the address of an LLVM function generated per
+    `Kind::Closure` site taking (env, arg), the rest the captures (a cursor capture takes two
+    slots, the Vec and the index), stored as int64 slots like every other pointer; `ApplyClosure`
+    reads slot 0 and calls it indirectly, gathering a Vec-of-records cursor with `tl_rec_from_vec`
+    first. Copy-at-build-time gives the tail-call behaviour for free (no loop, fresh SSA values per
+    call). Closures are 7/7, so the corpus cases closure_count_where,
+    closure_carried_through_tail_call and closure_two_sites_one_function exist and the UNCOVERED
+    entries are gone. Pick one backend per commit (established project convention);
+    do NOT attempt a multi-backend blob. Corpus: no case can exist until every backend lands
+    (same reason pipe_through/sqrt/float had none until then) -- track via
+    tests/tag_coverage.rs''s UNCOVERED entries for `closure`/`closure.apply` until then.'
+  kind: build
+  needs: [closures-first-class-functions-design]
+  status: done

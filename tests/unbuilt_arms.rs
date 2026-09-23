@@ -90,23 +90,27 @@ fn sqrt_and_float_type_check_where_the_corpus_cannot() {
 }
 
 /// The refusal reaches a program that only uses the builtin inside a named function, not
-/// just at the top level -- the walk covers every function body. Here the closure is applied
-/// only inside `f`, whose `pred` parameter is the sole place one is ever called.
+/// just at the top level -- the walk covers every function body.
 #[test]
 fn a_use_inside_a_function_is_refused_too() {
-    let program = toylang::compile(program_using("closure")).unwrap();
+    let program = toylang::compile(
+        "fn shout(lines: Stream<Str>) -> Vec<PipeLine> = \
+         collect(pipe_through({cmd: \"cat\", args: [], lines: lines}));\n\n\
+         shout(stdin)\n",
+    )
+    .unwrap();
     assert_eq!(
         Backend::Native.emit(&program).unwrap_err(),
-        "`closure` has no native backend yet; today it runs on rust and go and js and py and lua and jq"
+        "`pipe_through` has no native backend yet; today it runs on go and rust and py and js and lua"
     );
 }
 
 /// `toylang run` does not go through `Backend::emit`; it must refuse the same way.
 #[test]
 fn running_is_refused_the_same_way_as_emitting() {
-    let err = toylang::run_on(program_using("closure"), None, Backend::Native).unwrap_err();
+    let err = toylang::run_on(program_using("pipe_through"), None, Backend::Native).unwrap_err();
     assert_eq!(
         err.to_string(),
-        "`closure` has no native backend yet; today it runs on rust and go and js and py and lua and jq"
+        "`pipe_through` has no native backend yet; today it runs on go and rust and py and js and lua"
     );
 }

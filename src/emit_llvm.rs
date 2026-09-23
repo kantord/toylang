@@ -7,7 +7,7 @@
 //! Everything it cannot compile yet returns a named error rather than being silently absent, so
 //! the gap between this and the other two backends is a visible, shrinking list.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use inkwell::basic_block::BasicBlock;
@@ -17,7 +17,7 @@ use inkwell::module::{Linkage, Module};
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType};
 use inkwell::values::{
     BasicMetadataValueEnum, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue,
 };
@@ -105,6 +105,24 @@ enum Slot<'ctx> {
         vec: PointerValue<'ctx>,
         index: IntValue<'ctx>,
     },
+}
+
+/// One thing a closure body reads that its own text does not bind.
+enum Capture {
+    Local(LocalId, Type),
+    /// A `.` bound to a Vec position rather than a value: both halves travel, so the body can
+    /// still read a column off it.
+    Cursor(LocalId),
+    Param(String, Type),
+}
+
+impl Capture {
+    fn width(&self) -> u64 {
+        match self {
+            Capture::Cursor(_) => 2,
+            _ => 1,
+        }
+    }
 }
 
 struct Emitter<'ctx, 'p> {
@@ -382,7 +400,8 @@ impl<'ctx> Emitter<'ctx, '_> {
     fn llvm_type(&self, ty: &Type) -> Result<BasicTypeEnum<'ctx>, String> {
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
-            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
+            // A pointer to the closure's environment record; see `Emitter::closure`.
+            Type::Fn(..) => self.ctx.ptr_type(AddressSpace::default()).into(),
             Type::Seq(..) => unreachable!(
                 "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
             ),
@@ -497,7 +516,6 @@ impl<'ctx> Emitter<'ctx, '_> {
         let i64t = self.ctx.i64_type();
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
-            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Seq(..) => unreachable!(
                 "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
@@ -516,7 +534,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 .builder
                 .build_int_z_extend(value.into_int_value(), i64t, "slot")
                 .map_err(|e| e.to_string())?,
-            Type::Str | Type::Vec(_) | Type::Record(_) | Type::Enum { .. } => self
+            Type::Str | Type::Vec(_) | Type::Record(_) | Type::Enum { .. } | Type::Fn(..) => self
                 .builder
                 .build_ptr_to_int(value.into_pointer_value(), i64t, "slot")
                 .map_err(|e| e.to_string())?,
@@ -527,7 +545,6 @@ impl<'ctx> Emitter<'ctx, '_> {
         let ptr = self.ctx.ptr_type(AddressSpace::default());
         Ok(match ty {
             Type::Param(_) => unreachable!("params are substituted before emit"),
-            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
             Type::Stream(_) => unreachable!("the grammar keeps a stream out of every slot"),
             Type::Seq(..) => unreachable!(
                 "a Seq value cannot reach a backend; no source produces one yet (ADR 0008 emission is a follow-up)"
@@ -543,7 +560,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 .build_int_truncate(slot, self.ctx.bool_type(), "elem")
                 .map_err(|e| e.to_string())?
                 .into(),
-            Type::Str | Type::Vec(_) | Type::Record(_) | Type::Enum { .. } => self
+            Type::Str | Type::Vec(_) | Type::Record(_) | Type::Enum { .. } | Type::Fn(..) => self
                 .builder
                 .build_int_to_ptr(slot, ptr, "elem")
                 .map_err(|e| e.to_string())?
@@ -1369,6 +1386,230 @@ impl<'ctx> Emitter<'ctx, '_> {
     }
 
     /// A call's argument list: one value, or none for a nullary function.
+    /// A closure value is a record built with the runtime's own `tl_rec_*`: slot 0 the address of
+    /// this site's function, the rest whatever the body reads from outside, so the environment and
+    /// the code pointer travel as the one pointer every other value already is. The function
+    /// takes that record and the argument. Captures are copied in when the closure is built, which
+    /// is what keeps one carried through a tail call on the values it was built with: a callee's
+    /// locals are fresh SSA values per call, so nothing here is rebound underneath it.
+    fn closure(
+        &mut self,
+        ty: &Type,
+        param: LocalId,
+        body: &Tir,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let Type::Fn(input, output) = ty else {
+            unreachable!("a Closure node is typed Type::Fn")
+        };
+        let ptr = self.ctx.ptr_type(AddressSpace::default());
+        let i64t = self.ctx.i64_type();
+        let captures = self.captures(param, body)?;
+
+        let sig = self
+            .llvm_type(output)?
+            .fn_type(&[ptr.into(), self.llvm_type(input)?.into()], false);
+        let id = self.next_global;
+        self.next_global += 1;
+        let function = self.module.add_function(&format!("closure.{id}"), sig, None);
+        function.set_linkage(Linkage::Private);
+
+        // The env: one slot for the code pointer, then each capture's own slot or slots.
+        let width = 1 + captures.iter().map(Capture::width).sum::<u64>();
+        let env = self
+            .call_rt(self.rt.rec_new, &[i64t.const_int(width, false).into()], "env")?
+            .into_pointer_value();
+        let code = self
+            .builder
+            .build_ptr_to_int(function.as_global_value().as_pointer_value(), i64t, "code")
+            .map_err(|e| e.to_string())?;
+        self.rec_slot(env, 0, code)?;
+        let mut at = 1;
+        for capture in &captures {
+            for slot in self.capture_slots(capture)? {
+                self.rec_slot(env, at, slot)?;
+                at += 1;
+            }
+        }
+
+        // The body is emitted mid-way through the enclosing function, so its builder position and
+        // scope are set aside and put back.
+        let resume = self.builder.get_insert_block();
+        let outer_locals = std::mem::take(&mut self.locals);
+        let outer_params = std::mem::take(&mut self.params);
+        self.builder
+            .position_at_end(self.ctx.append_basic_block(function, "entry"));
+        let env_in = function.get_nth_param(0).expect("declared with an env");
+        let mut at = 1;
+        for capture in &captures {
+            match capture {
+                Capture::Local(id, ty) => {
+                    let v = self.env_slot(env_in, at, ty)?;
+                    self.locals.insert(*id, Slot::Value(v));
+                }
+                Capture::Cursor(id) => {
+                    let vec = self.env_slot(env_in, at, &Type::Str)?.into_pointer_value();
+                    let index = self.env_slot(env_in, at + 1, &Type::Int)?.into_int_value();
+                    self.locals.insert(*id, Slot::Cursor { vec, index });
+                }
+                Capture::Param(name, ty) => {
+                    let v = self.env_slot(env_in, at, ty)?;
+                    self.params.insert(name.clone(), v);
+                }
+            }
+            at += capture.width();
+        }
+        let arg = function.get_nth_param(1).expect("declared with an argument");
+        self.locals.insert(param, Slot::Value(arg));
+        let result = self.expr(body)?;
+        self.builder
+            .build_return(Some(&result))
+            .map_err(|e| e.to_string())?;
+
+        self.locals = outer_locals;
+        self.params = outer_params;
+        self.builder
+            .position_at_end(resume.expect("a closure is built inside a function"));
+        Ok(env.into())
+    }
+
+    fn apply_closure(
+        &mut self,
+        closure: &Tir,
+        arg: &Tir,
+        result: &Type,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let Type::Fn(input, _) = &closure.ty else {
+            unreachable!("an ApplyClosure's callee is typed Type::Fn")
+        };
+        let env = self.expr(closure)?;
+        // A closure takes its element whole, so a Vec of records' cursor is gathered here, the
+        // way printing gathers one, rather than refused as a use of a Vec element.
+        let arg = match &arg.kind {
+            Kind::Local(id) if matches!(self.locals.get(id), Some(Slot::Cursor { .. })) => {
+                let Some(Slot::Cursor { vec, index }) = self.locals.get(id).copied() else {
+                    unreachable!("matched above")
+                };
+                self.call_rt(self.rt.rec_from_vec, &[vec.into(), index.into()], "elem")?
+            }
+            _ => self.expr(arg)?,
+        };
+        let ptr = self.ctx.ptr_type(AddressSpace::default());
+        let sig = self
+            .llvm_type(result)?
+            .fn_type(&[ptr.into(), self.llvm_type(input)?.into()], false);
+        let code = self
+            .call_rt(
+                self.rt.rec_get,
+                &[env, self.ctx.i64_type().const_zero().into()],
+                "code",
+            )?
+            .into_int_value();
+        let code = self
+            .builder
+            .build_int_to_ptr(code, ptr, "code")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_indirect_call(sig, code, &[env.into(), arg.into()], "apply")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "a closure returned nothing".to_string())
+    }
+
+    /// What `body` reads from outside its own text, resolved against the current scope: a local
+    /// bound to a value, a local bound to a cursor (its Vec and its index both travel), or a
+    /// function parameter. `input` is a module global, so it needs no capture.
+    fn captures(&self, param: LocalId, body: &Tir) -> Result<Vec<Capture>, String> {
+        let mut bound = vec![param];
+        let mut locals = BTreeMap::new();
+        let mut params = BTreeMap::new();
+        tir::each_node(body, &mut |t| match &t.kind {
+            Kind::Local(id) => {
+                locals.insert(*id, t.ty.clone());
+            }
+            Kind::Var(name) => {
+                params.insert(name.clone(), t.ty.clone());
+            }
+            Kind::Bind { local, .. } => bound.push(*local),
+            Kind::Map { param, .. }
+            | Kind::OptMap { param, .. }
+            | Kind::Select { param, .. }
+            | Kind::SortBy { param, .. }
+            | Kind::MaxBy { param, .. }
+            | Kind::Closure { param, .. } => bound.push(*param),
+            Kind::Match { arms, .. } => bound.extend(arms.iter().filter_map(|a| a.payload)),
+            _ => {}
+        });
+        for id in bound {
+            locals.remove(&id);
+        }
+        let mut captures = Vec::new();
+        for (id, ty) in locals {
+            captures.push(match self.locals.get(&id) {
+                Some(Slot::Value(_)) => Capture::Local(id, ty),
+                Some(Slot::Cursor { .. }) => Capture::Cursor(id),
+                None => return Err(format!("local {id} is not bound in the native backend")),
+            });
+        }
+        for (name, ty) in params {
+            if !self.params.contains_key(&name) {
+                return Err(format!("`{name}` is not in scope in the native backend"));
+            }
+            captures.push(Capture::Param(name, ty));
+        }
+        Ok(captures)
+    }
+
+    /// The raw slots one capture contributes to a closure's env, in the order `closure` reads
+    /// them back.
+    fn capture_slots(&self, capture: &Capture) -> Result<Vec<IntValue<'ctx>>, String> {
+        Ok(match capture {
+            Capture::Local(id, ty) => {
+                let Some(Slot::Value(v)) = self.locals.get(id) else {
+                    unreachable!("`captures` resolved this as a value")
+                };
+                vec![self.to_slot(*v, ty)?]
+            }
+            Capture::Cursor(id) => {
+                let Some(Slot::Cursor { vec, index }) = self.locals.get(id) else {
+                    unreachable!("`captures` resolved this as a cursor")
+                };
+                let vec = self
+                    .builder
+                    .build_ptr_to_int(*vec, self.ctx.i64_type(), "slot")
+                    .map_err(|e| e.to_string())?;
+                vec![vec, *index]
+            }
+            Capture::Param(name, ty) => vec![self.to_slot(self.params[name], ty)?],
+        })
+    }
+
+    fn rec_slot(
+        &self,
+        rec: PointerValue<'ctx>,
+        at: u64,
+        slot: IntValue<'ctx>,
+    ) -> Result<(), String> {
+        let at = self.ctx.i64_type().const_int(at, false);
+        self.builder
+            .build_call(self.rt.rec_set, &[rec.into(), at.into(), slot.into()], "")
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn env_slot(
+        &self,
+        env: BasicValueEnum<'ctx>,
+        at: u64,
+        ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let at = self.ctx.i64_type().const_int(at, false);
+        let raw = self
+            .call_rt(self.rt.rec_get, &[env, at.into()], "captured")?
+            .into_int_value();
+        self.read_slot(raw, ty)
+    }
+
     fn call_args(
         &mut self,
         arg: &Option<Box<Tir>>,
@@ -2016,9 +2257,9 @@ impl<'ctx> Emitter<'ctx, '_> {
                     .build_load(result_ty, slot, "matched")
                     .map_err(|e| e.to_string())?
             }
-            Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
-                unreachable!("not yet implemented for this backend")
-            }
+            Kind::Closure { param, body } => self.closure(&t.ty, *param, body)?,
+
+            Kind::ApplyClosure { closure, arg } => self.apply_closure(closure, arg, &t.ty)?,
         })
     }
 

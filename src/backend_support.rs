@@ -93,10 +93,8 @@ pub const LANDINGS: &[Landing] = &[
     // Closures (closures-first-class-functions-design, 2026-09-23): landed on Rust as
     // `Rc<dyn Fn>`, on Go as a bare func type, on JS as a plain arrow function, on Python as
     // a plain lambda, on Lua as a plain function, and on jq defunctionalized (a tagged object
-    // plus one generated dispatch filter, since jq has no function values). Native has no
-    // representation for a stored closure value yet -- unlike `sqrt`/`float`, this is not "the
-    // same arm, one more time," since each target's story for "call whatever function this value
-    // happens to be" differs entirely.
+    // plus one generated dispatch filter, since jq has no function values), and on native as
+    // a runtime record of a code pointer and the captures, called indirectly.
     Landing {
         name: "closure",
         built_on: &[
@@ -106,6 +104,7 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Py,
             Backend::Lua,
             Backend::Jq,
+            Backend::Native,
         ],
     },
 ];
