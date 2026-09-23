@@ -3526,3 +3526,12 @@
   kind: build
   needs: [sort-by-max-by-checkpoint-lua]
   status: done
+
+- id: sort-by-max-by-checkpoint-lua
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- reevaluate: confirm the Lua commit landed clean before
+    starting JS. CONFIRMED 2026-09-23 (direct session, not drive): 307a8486 landed clean, just
+    check green (511/511 at last full run). Clear to start JS.'
+  kind: decide
+  needs: [sort-by-max-by-lua]
+  status: done

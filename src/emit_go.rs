@@ -961,6 +961,10 @@ impl Collect<'_> {
     fn ty(&mut self, t: &Type) {
         match t {
             Type::Vec(e) | Type::Stream(e) => self.ty(e),
+            Type::Fn(input, output) => {
+                self.ty(input);
+                self.ty(output);
+            }
             Type::Record(fields) => {
                 if !self.records.contains(t) {
                     self.records.push(t.clone());
@@ -1067,8 +1071,10 @@ impl Collect<'_> {
                     self.walk(&a.body);
                 }
             }
-            Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
-                unreachable!("not yet implemented for this backend")
+            Kind::Closure { body, .. } => self.walk(body),
+            Kind::ApplyClosure { closure, arg } => {
+                self.walk(closure);
+                self.walk(arg);
             }
             Kind::Builtin { which, arg } => {
                 match which {
@@ -1142,7 +1148,13 @@ impl Emitter<'_> {
             // embeds the arguments so each instantiation gets its own.
             Type::Enum { .. } => format!("tlE_{}", ty.ident()),
             Type::Param(_) => unreachable!("params are substituted before emit"),
-            Type::Fn(..) => unreachable!("a closure's type never reaches a backend"),
+            // A bare Go func type, not a wrapper struct: a closure is never compared, printed or
+            // stored in a Vec/Opt (the checker allows `Type::Fn` only as a call argument or a
+            // record field), and `reflect.DeepEqual` in `tlEq` accepts a func field without
+            // failing to compile.
+            Type::Fn(input, output) => {
+                format!("func({}) {}", self.go_type(input), self.go_type(output))
+            }
         }
     }
 
@@ -1710,8 +1722,20 @@ impl Emitter<'_> {
                 }
                 format!("func() {} {{ {body} }}()", self.go_type(&t.ty))
             }
-            Kind::Closure { .. } | Kind::ApplyClosure { .. } => {
-                unreachable!("not yet implemented for this backend")
+            Kind::Closure { param, body } => {
+                let Type::Fn(input, output) = &t.ty else {
+                    unreachable!("a Closure's own type is always the Fn it was checked against")
+                };
+                format!(
+                    "func({} {}) {} {{ return {} }}",
+                    self.local(*param),
+                    self.go_type(input),
+                    self.go_type(output),
+                    self.expr(body)
+                )
+            }
+            Kind::ApplyClosure { closure, arg } => {
+                format!("({})({})", self.expr(closure), self.expr(arg))
             }
         }
     }
