@@ -381,18 +381,48 @@ count_above({items: [1, 5, 9, 12], floor: 4})
 }
 
 /// One `tl_apply` serves every closure, so a closure body that calls a function which itself
-/// applies a closure makes the two wait on each other, and jq's `def` cannot express that.
-#[test]
-fn a_closure_body_that_reaches_an_applier_is_refused() {
-    let p = toylang::compile(
-        r#"
+/// applies a closure makes the two wait on each other, and jq's `def` cannot define either first.
+/// The applier is emitted a second time inside `tl_apply` to break that cycle.
+const NESTED_APPLIER: &str = r#"
 fn count_where({items, pred}: {items: Vec<Int>, pred: Int -> Bool}) -> Int =
     items | select(pred) | length(.);
 
 count_where({items: [1, 2, 3], pred: count_where({items: [1, 2], pred: $ > 0}) > $})
-"#,
-    )
-    .unwrap();
-    let err = toylang::emit_jq::emit(&p).unwrap_err();
-    assert!(err.contains("`count_where`"), "{err}");
+"#;
+
+/// The applier is also recursive, and the closure it applies calls it back: the nested copy has
+/// to see itself as well as `tl_apply`.
+const RECURSIVE_APPLIER: &str = r#"
+fn depth({n, pred}: {n: Int, pred: Int -> Bool}) -> Int =
+    n == 0 | . -> 0
+        or ([1, 2, 3] | select(pred) | length(.))
+            + depth({n: n - 1, pred: depth({n: n - 1, pred: $ > 0}) > $});
+
+depth({n: 3, pred: $ > 0})
+"#;
+
+/// The closure body reaches the applier only through another function, which has to be nested
+/// too because it calls something that is.
+const APPLIER_BEHIND_A_HELPER: &str = r#"
+fn count_where({items, pred}: {items: Vec<Int>, pred: Int -> Bool}) -> Int =
+    items | select(pred) | length(.);
+
+fn evens_below(n: Int) -> Int =
+    count_where({items: [0, 1, 2, 3, 4, 5], pred: $ < n});
+
+count_where({items: [1, 2, 3, 4], pred: evens_below($) > 2})
+"#;
+
+#[test]
+fn nested_application_agrees_with_rust() {
+    for (program, want) in [
+        (NESTED_APPLIER, "1\n"),
+        (RECURSIVE_APPLIER, "8\n"),
+        (APPLIER_BEHIND_A_HELPER, "2\n"),
+    ] {
+        let jq = toylang::run_on(program, None, toylang::Backend::Jq).unwrap();
+        let rust = toylang::run_on(program, None, toylang::Backend::Rust).unwrap();
+        assert_eq!(jq, rust, "{program}");
+        assert_eq!(jq, want, "{program}");
+    }
 }
