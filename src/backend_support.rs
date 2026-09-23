@@ -28,6 +28,7 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Lua,
             Backend::Js,
             Backend::Py,
+            Backend::Jq,
         ],
     },
     Landing {
@@ -38,6 +39,7 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Lua,
             Backend::Js,
             Backend::Py,
+            Backend::Jq,
         ],
     },
     Landing {

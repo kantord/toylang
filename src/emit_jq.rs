@@ -1189,11 +1189,31 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             local(*param),
             expr(enums, pred)
         ),
-        // `sort_by`/`max_by` codegen lands in a later step (gh:177); reaching here means a
-        // program produced one without its backend being taught to emit it yet.
-        Kind::SortBy { .. } | Kind::MaxBy { .. } => {
-            unreachable!("sort_by/max_by emission lands in a later step")
-        }
+        // jq's own `sort_by` is stable, so ties keep their order, and it orders Str by codepoint
+        // and bools false-before-true (checked against jq 1.8.2).
+        Kind::SortBy {
+            source,
+            param,
+            body,
+        } => format!(
+            "({} | sort_by(. as {} | {}))",
+            expr(enums, source),
+            local(*param),
+            expr(enums, body)
+        ),
+        // jq's own `max_by` cannot be used: on equal maxima it returns the last, and on an empty
+        // Vec it yields null rather than the absent Opt. So each entry is paired with its key
+        // once, and a strictly greater key is the only thing that replaces the running best.
+        Kind::MaxBy {
+            source,
+            param,
+            body,
+        } => format!(
+            "({} | if length == 0 then \"None\" else map([(. as {} | {}), .]) | reduce .[1:][] as $e (.[0]; if $e[0] > .[0] then $e else . end) | {{Some: .[1]}} end)",
+            expr(enums, source),
+            local(*param),
+            expr(enums, body)
+        ),
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);
             format!(

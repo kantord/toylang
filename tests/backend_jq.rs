@@ -240,3 +240,75 @@ fn float_inside_a_container_agrees_with_js_at_every_position() {
         "1e+21\nNaN\n"
     );
 }
+
+// `sort_by`/`max_by` are landed for every backend but native, and until it carries them none of
+// these can be a corpus case, which would require every backend to agree.
+
+/// `sort_by` orders by the projected key, stably: ties keep their original order.
+#[test]
+fn sort_by_orders_by_the_projected_key_stably() {
+    let src = r#"
+[{name: "b", age: 2}, {name: "a", age: 1}, {name: "c", age: 2}] | sort_by(.age)
+"#;
+    let out = toylang::run_on(src, None, toylang::Backend::Jq).unwrap();
+    assert_eq!(
+        out,
+        "[{\"name\":\"a\",\"age\":1},{\"name\":\"b\",\"age\":2},{\"name\":\"c\",\"age\":2}]\n"
+    );
+}
+
+/// jq's native `max_by` returns the last of equal maxima, so the first-wins answer here is the
+/// arm's own doing, not jq's.
+#[test]
+fn max_by_keeps_the_first_of_equal_maxima() {
+    let src = r#"
+[{name: "a", age: 1}, {name: "c", age: 2}, {name: "b", age: 2}] | max_by(.age)
+"#;
+    let out = toylang::run_on(src, None, toylang::Backend::Jq).unwrap();
+    assert_eq!(out, "{\"name\":\"c\",\"age\":2}\n");
+}
+
+/// jq's native `max_by` yields null for an empty Vec; the arm yields the absent Opt, which
+/// prints as null, the same answer `max` gives.
+#[test]
+fn max_by_of_an_empty_vec_is_absent() {
+    let src = r#"
+fn nothing() -> Vec<{name: Str, age: Int}> = [];
+nothing() | max_by(.age)
+"#;
+    let out = toylang::run_on(src, None, toylang::Backend::Jq).unwrap();
+    assert_eq!(out, "null\n");
+}
+
+/// A `select` source is an ordinary array here; both builtins take it as is.
+#[test]
+fn sort_by_and_max_by_accept_a_select_as_their_source() {
+    let sorted = agree_jq_js("[3, 1, 4, 1, 5] | select(. > 1) | sort_by(.)\n", None);
+    let biggest = agree_jq_js("[3, 1, 4, 1, 5] | select(. > 1) | max_by(.)\n", None);
+    assert_eq!(sorted, "[3,4,5]\n");
+    assert_eq!(biggest, "5\n");
+}
+
+/// Str keys order by codepoint (not UTF-16 unit, which would put U+1F600 before U+FFFF) and
+/// Int64 keys by value.
+#[test]
+fn sort_by_and_max_by_handle_str_and_int64_keys() {
+    let strs = agree_jq_js(
+        "[\"cherry\", \"apple\", \"\u{1F600}\", \"\u{FFFF}\", \"banana\"] | sort_by(.)\n",
+        None,
+    );
+    assert_eq!(
+        strs,
+        "[\"apple\",\"banana\",\"cherry\",\"\u{FFFF}\",\"\u{1F600}\"]\n"
+    );
+
+    let wide = agree_jq_js(
+        r#"
+fn wide(x: Int) -> Int64 = i64(x);
+
+[{v: wide(9), s: "x"}, {v: wide(2), s: "y"}] | max_by(.v)
+"#,
+        None,
+    );
+    assert_eq!(wide, "{\"v\":9,\"s\":\"x\"}\n");
+}

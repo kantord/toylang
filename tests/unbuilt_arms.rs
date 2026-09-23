@@ -96,17 +96,17 @@ fn a_use_inside_a_function_is_refused_too() {
     let program =
         toylang::compile("fn f(v: Vec<Int>) -> Vec<Int> = v | sort_by(.)\n\nf([2, 1])\n").unwrap();
     assert_eq!(
-        Backend::Jq.emit(&program).unwrap_err(),
-        "`sort_by` has no jq backend yet; today it runs on go and rust and lua and js and py"
+        Backend::Native.emit(&program).unwrap_err(),
+        "`sort_by` has no native backend yet; today it runs on go and rust and lua and js and py and jq"
     );
 }
 
 /// `toylang run` does not go through `Backend::emit`; it must refuse the same way.
 #[test]
 fn running_is_refused_the_same_way_as_emitting() {
-    let err = toylang::run_on("[3, 1, 2] | sort_by(.)\n", None, Backend::Jq).unwrap_err();
+    let err = toylang::run_on("[3, 1, 2] | sort_by(.)\n", None, Backend::Native).unwrap_err();
     assert_eq!(
         err.to_string(),
-        "`sort_by` has no jq backend yet; today it runs on go and rust and lua and js and py"
+        "`sort_by` has no native backend yet; today it runs on go and rust and lua and js and py and jq"
     );
 }
