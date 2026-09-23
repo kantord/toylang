@@ -90,23 +90,23 @@ fn sqrt_and_float_type_check_where_the_corpus_cannot() {
 }
 
 /// The refusal reaches a program that only uses the builtin inside a named function, not
-/// just at the top level -- the walk covers every function body.
+/// just at the top level -- the walk covers every function body. Here the closure is applied
+/// only inside `f`, whose `pred` parameter is the sole place one is ever called.
 #[test]
 fn a_use_inside_a_function_is_refused_too() {
-    let program =
-        toylang::compile("fn f(v: Vec<Int>) -> Vec<Int> = v | sort_by(.)\n\nf([2, 1])\n").unwrap();
+    let program = toylang::compile(program_using("closure")).unwrap();
     assert_eq!(
         Backend::Native.emit(&program).unwrap_err(),
-        "`sort_by` has no native backend yet; today it runs on go and rust and lua and js and py and jq"
+        "`closure` has no native backend yet; today it runs on rust and go and js and py and lua"
     );
 }
 
 /// `toylang run` does not go through `Backend::emit`; it must refuse the same way.
 #[test]
 fn running_is_refused_the_same_way_as_emitting() {
-    let err = toylang::run_on("[3, 1, 2] | sort_by(.)\n", None, Backend::Native).unwrap_err();
+    let err = toylang::run_on(program_using("closure"), None, Backend::Native).unwrap_err();
     assert_eq!(
         err.to_string(),
-        "`sort_by` has no native backend yet; today it runs on go and rust and lua and js and py and jq"
+        "`closure` has no native backend yet; today it runs on rust and go and js and py and lua"
     );
 }

@@ -1,0 +1,12 @@
+# An empty Vec has no maximum, so `max_by` yields the absent Opt, which prints as null, the
+# same answer `max` gives. The empty Vec comes from a declared return type.
+program: |
+  fn nothing() -> Vec<{ name: Str, age: Int }> = [];
+
+
+  nothing() | max_by(.age)
+
+output: |
+  null
+
+node_types: [application, local, max-by, pipe, projection, vec-literal]

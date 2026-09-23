@@ -1,0 +1,10 @@
+# Of equal maxima the first wins: c and b both have age 2, and c comes first. jq's own
+# `max_by` returns the last, so its arm is spelled out to agree with the rest.
+program: |
+  [{ name: "a", age: 1 }, { name: "c", age: 2 }, { name: "b", age: 2 }]
+  | max_by(.age)
+
+output: |
+  {"name":"c","age":2}
+
+node_types: [int, local, max-by, pipe, projection, record-literal, str, vec-literal]

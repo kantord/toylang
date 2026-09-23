@@ -21,6 +21,9 @@ fn every_example_compiles() {
             failures.push(format!("{}: {e}", path.display()));
         }
     }
-    assert!(checked > 0, "no examples found, so this test proves nothing");
+    assert!(
+        checked > 0,
+        "no examples found, so this test proves nothing"
+    );
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

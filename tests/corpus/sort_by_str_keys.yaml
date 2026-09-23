@@ -1,0 +1,9 @@
+# Str keys order by codepoint, not by UTF-16 unit: U+1F600 sorts after U+FF21, where a
+# JavaScript string compare would put it first. The projection is the string itself.
+program: |
+  ["cherry", "apple", "😀", "Ａ", "banana"] | sort_by(.)
+
+output: |
+  ["apple","banana","cherry","Ａ","😀"]
+
+node_types: [local, pipe, sort-by, str, vec-literal]

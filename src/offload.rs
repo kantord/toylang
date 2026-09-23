@@ -82,6 +82,8 @@ fn kernel_line(name: &str, source: &Type, out: &mut String) {
                 "{name} over Stream<{elem}>: fell back to per-element streaming (Stream's extent is unbounded and unknown, so no vectorizable kernel is possible)\n"
             ));
         }
-        other => unreachable!("a `map`/`select` source is a Vec or a Stream by the checker, found {other}"),
+        other => unreachable!(
+            "a `map`/`select` source is a Vec or a Stream by the checker, found {other}"
+        ),
     }
 }

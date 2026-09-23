@@ -7,8 +7,8 @@
 //! compiler panic -- and the reference pages could not say truthfully what happens. The
 //! refusal now happens here, before any emitter runs, in one place that a landing row updates
 //! when it adds an arm; the tests in `tests/unbuilt_arms.rs` hold this table to what the
-//! emitters actually do in both directions. `sqrt` and `float` now run on every backend;
-//! `pipe_through` is the one still short a landing (Jq and native).
+//! emitters actually do in both directions. `sort_by`, `max_by`, `sqrt`, and `float` now run on
+//! every backend; `pipe_through` is the one still short a landing (Jq and native).
 
 use crate::Backend;
 use crate::tir::{self, Builtin, Kind, Program, Tir};
@@ -29,6 +29,7 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Js,
             Backend::Py,
             Backend::Jq,
+            Backend::Native,
         ],
     },
     Landing {
@@ -40,6 +41,7 @@ pub const LANDINGS: &[Landing] = &[
             Backend::Js,
             Backend::Py,
             Backend::Jq,
+            Backend::Native,
         ],
     },
     Landing {

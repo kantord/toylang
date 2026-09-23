@@ -112,7 +112,10 @@ fn every_kind_of_declaration_renders_on_one_line() {
 #[test]
 fn a_body_ending_in_a_name_renders_and_a_let_block_is_refused() {
     let src = "fn g(x: Int) -> Int = x\n\ng(1)\n";
-    assert_eq!(toylang::fmt_one_line(src).unwrap(), "fn g(x: Int) -> Int = x; g 1\n");
+    assert_eq!(
+        toylang::fmt_one_line(src).unwrap(),
+        "fn g(x: Int) -> Int = x; g 1\n"
+    );
 
     // A `let` block is refused outright, even one that would happen to read back the same.
     let src = "fn f(x: Int) -> Int =\n    let a = x * 2\n    a + 1\n\nf(1)\n";

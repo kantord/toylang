@@ -3595,3 +3595,16 @@
   kind: decide
   needs: [sort-by-max-by-jq]
   status: done
+
+- id: sort-by-max-by-native
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177), final step -- emit for the native/LLVM backend
+    (src/emit_llvm.rs + keyed-compare helpers in runtime/toylang.c). Highest-risk step: the
+    original lane''s corruption was concentrated in runtime/toylang.c (mangled punctuation,
+    missing parens). Standalone commit, no other backend touched. If a corrupted block needs
+    repair mid-task, replace it wholesale from a known-good reference (`git show
+    origin/main:<path>` or the pre-corruption diff) rather than reconstructing bytes in place --
+    that in-place approach is what caused the original failure. LANDED 2026-09-23 (direct session, not drive): `Emitter::keyed` projects each entry to its key into a one-column Vec, then `tl_vec_sort_by` (qsort over (key, row) pairs, the row breaking ties for stability, every column permuted) and `tl_vec_max_by` (only a strictly greater key replaces the best, so the first of equal maxima wins; NULL on empty) in runtime/toylang.c, hand-written C with small edits. Native registered in `backend_support::LANDINGS`, so both builtins are 7/7; six corpus cases added (sort_by_stable, sort_by_str_keys, sort_by_chars, max_by_first_of_ties, max_by_empty, max_by_int64_and_select), tag_coverage UNCOVERED entries dropped, tests/unbuilt_arms.rs moved onto `closure`, the two reference pages now carry runnable fragments.'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-jq]
+  status: done

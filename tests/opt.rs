@@ -11,7 +11,9 @@ fn err(src: &str) -> String {
 /// its own return type instead of the caller only finding out from the value.
 #[test]
 fn a_function_can_return_an_opt() {
-    assert!(toylang::compile("fn head(v: Vec<Int>) -> Opt<Int> = v[0];\n\nhead([1, 2, 3])").is_ok());
+    assert!(
+        toylang::compile("fn head(v: Vec<Int>) -> Opt<Int> = v[0];\n\nhead([1, 2, 3])").is_ok()
+    );
 }
 
 #[test]

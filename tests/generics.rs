@@ -136,7 +136,8 @@ fn a_generic_enum_parses_in_a_module() {
 /// file can -- the prelude will need to ship all three once the trait scaffold lands.
 #[test]
 fn trait_impl_and_alias_parse_in_a_module() {
-    let module = toylang::parse::parse_module("trait T {}\nimpl T for S {}\ntype A = B;\n").unwrap();
+    let module =
+        toylang::parse::parse_module("trait T {}\nimpl T for S {}\ntype A = B;\n").unwrap();
     assert_eq!(module.traits.len(), 1);
     assert_eq!(module.impls.len(), 1);
     assert_eq!(module.aliases.len(), 1);

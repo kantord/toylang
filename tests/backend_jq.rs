@@ -241,8 +241,8 @@ fn float_inside_a_container_agrees_with_js_at_every_position() {
     );
 }
 
-// `sort_by`/`max_by` are landed for every backend but native, and until it carries them none of
-// these can be a corpus case, which would require every backend to agree.
+// `sort_by`/`max_by` run on every backend and have corpus cases (tests/corpus/sort_by_*.yaml,
+// max_by_*.yaml); the tests below pin this backend's own arm on the same behavior.
 
 /// `sort_by` orders by the projected key, stably: ties keep their original order.
 #[test]

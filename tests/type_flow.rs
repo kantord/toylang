@@ -126,7 +126,9 @@ fn reordered_fields_check_against_the_return_type() {
 
 #[test]
 fn a_missing_field_still_mismatches() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> {a: Int, b: Str} = x | {a: 1};\n\nf(1)"));
+    insta::assert_snapshot!(err(
+        "fn f(x: Int) -> {a: Int, b: Str} = x | {a: 1};\n\nf(1)"
+    ));
 }
 
 // Step 3: a call against a known signature pushes the parameter type into the argument. The
@@ -234,7 +236,9 @@ fn conditional_branches_can_name_variants() {
 /// rather than on whichever arm came first.
 #[test]
 fn the_branch_that_misses_the_annotation_is_blamed() {
-    insta::assert_snapshot!(err("fn f(x: Int) -> Str = x | . > 0 -> 1 or \"a\";\n\nf(1)"));
+    insta::assert_snapshot!(err(
+        "fn f(x: Int) -> Str = x | . > 0 -> 1 or \"a\";\n\nf(1)"
+    ));
 }
 
 #[test]
