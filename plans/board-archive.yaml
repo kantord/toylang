@@ -3569,3 +3569,18 @@
   kind: decide
   needs: [sort-by-max-by-python]
   status: done
+
+- id: sort-by-max-by-jq
+  issue: gh:177
+  title: 'sort_by and max_by (gh:177) -- emit for the jq backend only (src/emit_jq.rs).
+    LANDED 2026-09-23 (direct session, not drive). Checked against jq 1.8.2 first: native
+    `sort_by` is stable with first-on-ties and orders Str by codepoint, so `Kind::SortBy` emits
+    it directly; native `max_by` returns the LAST of equal maxima and null on an empty array, so
+    `Kind::MaxBy` is spelled instead: each entry is paired with its key once and only a strictly
+    greater key replaces the running best, with the absent Opt for an empty Vec. Registered Jq
+    in `backend_support::LANDINGS`, mirrored the backend tests into tests/backend_jq.rs, moved
+    tests/unbuilt_arms.rs''s refusal assertions off Jq onto native (the last backend missing),
+    and updated the two reference pages.'
+  kind: build
+  needs: [sort-by-max-by-checkpoint-python]
+  status: done

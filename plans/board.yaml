@@ -117,15 +117,6 @@
   kind: decide
   status: todo
 
-- id: sort-by-max-by-jq
-  issue: gh:177
-  title: 'sort_by and max_by (gh:177) -- emit for the jq backend only (src/emit_jq.rs). Last of
-    the six one-backend-per-commit steps; native/LLVM (highest risk, hand-authored C) still
-    follows standalone, unchanged from the original plan.'
-  kind: build
-  needs: [sort-by-max-by-checkpoint-python]
-  status: todo
-
 - id: sort-by-max-by-checkpoint-jq
   issue: gh:177
   title: 'sort_by and max_by (gh:177) -- reevaluate before the native/LLVM backend: it needs

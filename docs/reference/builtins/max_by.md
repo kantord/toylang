@@ -15,6 +15,10 @@ subject is a `Vec` only, never a stream.
 The projection is the same `map(.name)` machinery already in the checker: `.` is rebound to
 each entry, and the projection's type must be one of those four scalars.
 
-Built on the Go, Rust, Lua, JS, and Python backends so far, like [`sort_by`](sort_by.md), and
-refused the same way elsewhere; no runnable fragment or corpus case until the other two
-backends have an arm for it.
+Built on the Go, Rust, Lua, JS, Python, and jq backends so far, like [`sort_by`](sort_by.md),
+and refused the same way on native; no runnable fragment or corpus case until it has an arm for
+it.
+
+jq's own `max_by` returns the last of equal maxima and null for an empty Vec, so the jq arm does
+not use it: it pairs each entry with its key once and keeps the first entry whose key is
+strictly greater than the running best.
