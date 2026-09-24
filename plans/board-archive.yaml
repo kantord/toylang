@@ -3752,3 +3752,9 @@
   kind: build
   needs: []
   status: done
+
+- id: go-native-self-tail-call-stack
+  title: 'Found while fixing fasta-bench-rust-stack-overflow (2026-09-24, self-originated): the self-tail-call contract (kantord/toylang#141, tests/corpus/tail_recursion_deep.yaml) is only kept by lua, js, py, jq and now rust. Go and native emit a self tail call as a real call. tests/corpus/tail_recursion_fat_frame.yaml (12000 levels) passes on both, but the same program at `left: 150000` dies on Go (`fatal error: stack overflow` at the 512 MB goroutine stack cap) and on native (the compiled program exits non-zero); the two-Int frame of tail_recursion_deep is small enough to hide it. Lower a self tail call to a loop in src/emit_go.rs and src/emit_llvm.rs the way src/emit_rs.rs `tail_stmts` does (assign the param, restart), keep the closure-carried-through-a-tail-call behavior of tests/backend_py.rs, and raise `left` in the fat-frame case until it fails without the loop on both (it must stay fast on all seven). Does not touch runtime/toylang.c or runtime-rs.'
+  kind: build
+  needs: []
+  status: done
