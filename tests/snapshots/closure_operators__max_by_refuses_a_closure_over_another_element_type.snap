@@ -1,0 +1,5 @@
+---
+source: tests/closure_operators.rs
+expression: "refuse(\"max_by\", \"Int\", \"Str -> Int\", \"Opt<Int>\", \"length($)\")"
+---
+`f` takes Str, but max_by's elements are Int (at byte 88)

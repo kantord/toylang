@@ -1,0 +1,53 @@
+# A Vec that is sorted where it is consumed while another name still reaches the same table. Mutating
+# in place is an optimization a backend may take only when nothing else observes it, so every
+# `original` below has to come out untouched: `ys` is a second name for `xs`; `sorted_alias` sorts
+# its parameter through a `let` that the caller's `zs` also reaches; `field` is `rec.v`; `first` is an
+# element of `xss`; `e` holds the payload the match arm sorts.
+program: |
+  enum E { A(Vec<Int>), B }
+
+
+  type Pair = { sorted: Vec<Int>, original: Vec<Int> };
+
+
+  fn sorted_alias(v: Vec<Int>) -> Vec<Int> =
+    let w = v
+
+    sort w;
+
+
+  type Nested = { sorted: Vec<Int>, original: Vec<Vec<Int>> };
+
+
+  type Held = { sorted: Vec<Int>, original: E };
+
+
+  type Report = { twice_bound: Pair, through_call: Pair, record_field: Pair, vec_of_vecs: Nested, enum_payload: Held };
+
+
+  fn f() -> Report =
+    let xs = [3, 1, 2]
+    let rec = { v: [3, 1, 2] }
+    let field = rec.v
+    let ys = xs
+    let zs = [3, 1, 2]
+    let xss = [[3, 1], [2]]
+    let first = xss[0]!
+    let e = a([3, 1, 2])
+
+    {
+      twice_bound: { sorted: sort ys, original: xs },
+      through_call: { sorted: sorted_alias zs, original: zs },
+      record_field: { sorted: sort field, original: rec.v },
+      vec_of_vecs: { sorted: sort first, original: xss },
+      enum_payload:
+        { sorted: e | A -> sort(.) or B -> [], original: e }
+    };
+
+
+  f()
+
+output: |
+  {"twice_bound":{"sorted":[1,2,3],"original":[3,1,2]},"through_call":{"sorted":[1,2,3],"original":[3,1,2]},"record_field":{"sorted":[1,2,3],"original":[3,1,2]},"vec_of_vecs":{"sorted":[1,3],"original":[[3,1],[2]]},"enum_payload":{"sorted":[1,2,3],"original":{"A":[3,1,2]}}}
+
+node_types: [application, builtin.sort, int, local, match, pipe, projection, record-literal, selection.collapse, unwrap, var, variant.payload, vec-literal]

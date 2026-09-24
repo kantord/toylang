@@ -1,0 +1,5 @@
+---
+source: tests/closure_operators.rs
+expression: "refuse(\"select\", \"Int\", \"Int\", \"Vec<Int>\", \"1\")"
+---
+expected Bool, found Int (at byte 81)

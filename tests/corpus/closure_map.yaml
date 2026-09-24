@@ -1,0 +1,28 @@
+# `map` applies a closure value handed in as a parameter, the way `select` does. The second
+# call changes the element type (Int in, Bool out), since a closure's result type is the
+# result's element type.
+program: |
+  fn shift({ n, k }: { n: Int, k: Int }) -> Int = n + k;
+
+
+  fn apply_all(
+    { items, f }: { items: Vec<Int>, f: Int -> Int }
+  ) -> Vec<Int> =
+    items | map f;
+
+
+  fn flags(
+    { items, f }: { items: Vec<Int>, f: Int -> Bool }
+  ) -> Vec<Bool> =
+    items | map f;
+
+
+  [
+    apply_all { items: [1, 2, 3], f: shift { n: $, k: 10 } },
+    flags { items: [1, 2, 3], f: $ > 1 } | map(. == true) | map 1
+  ]
+
+output: |
+  [[11,12,13],[1,1,1]]
+
+node_types: [application, arith.add, bool, closure, closure.apply, compare.eq, compare.gt, int, local, map-over, pipe, projection, record-literal, var, vec-literal]

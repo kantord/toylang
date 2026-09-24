@@ -1,4 +1,7 @@
+use std::collections::HashSet;
+
 use crate::ast::BinOp;
+use crate::mutation;
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
 use crate::ty::{self, Enums, Type};
 
@@ -317,6 +320,38 @@ local function tl_reverse(v)
   local n = #v
   for i = 1, n do out[i] = v[n - i + 1] end
   return out
+end
+";
+
+// The three `_owned` forms mutate their argument, so they are only reached for a local
+// `mutation::owned_locals` proved nothing else can see: bound to a container built on the spot,
+// read exactly once, by this call, outside any body that runs more than once. They skip the copy
+// the plain helpers make, which is the only copy Lua ever makes of a Vec it is handed.
+const SORT_OWNED_HELPER: &str = "\
+local function tl_sort_owned(v)
+  table.sort(v)
+  return v
+end
+";
+
+const REVERSE_OWNED_HELPER: &str = "\
+local function tl_reverse_owned(v)
+  local i, j = 1, #v
+  while i < j do
+    v[i], v[j] = v[j], v[i]
+    i = i + 1
+    j = j - 1
+  end
+  return v
+end
+";
+
+// Only the left operand is ever owned: appending to it is a copy of the right one alone.
+const APPEND_OWNED_HELPER: &str = "\
+local function tl_append_owned(v, w)
+  local n = #v
+  for j = 1, #w do v[n + j] = w[j] end
+  return v
 end
 ";
 
@@ -694,11 +729,29 @@ local function tl_show_float(v)
 end
 "#;
 
+/// What `expr` needs besides the tree: the enums the printer reads, and the locals that may be
+/// consumed in place.
+struct Cx<'a> {
+    enums: &'a Enums,
+    owned: HashSet<LocalId>,
+}
+
+impl Cx<'_> {
+    /// Is `arg` a local the mutation rule proved may be mutated where it is consumed?
+    fn owns(&self, arg: &Tir) -> bool {
+        matches!(&arg.kind, Kind::Local(id) if self.owned.contains(id))
+    }
+}
+
 pub fn emit(program: &Program) -> String {
     let enums = &program.enums;
+    let cx = &Cx {
+        enums,
+        owned: mutation::owned_locals(program),
+    };
     let mut out = String::new();
 
-    let used = used_helpers(program);
+    let used = used_helpers(program, cx);
     // A top-level Str prints raw, the way jq's -r does; anything else prints as JSON. So a
     // string inside a Vec is quoted while a bare string is not.
     let structured = !matches!(program.body.ty, Type::Str | Type::Sink);
@@ -730,6 +783,9 @@ pub fn emit(program: &Program) -> String {
         (used.sort, SORT_HELPER),
         (used.sort_by, SORT_BY_HELPER),
         (used.reverse, REVERSE_HELPER),
+        (used.sort_owned, SORT_OWNED_HELPER),
+        (used.reverse_owned, REVERSE_OWNED_HELPER),
+        (used.append_owned, APPEND_OWNED_HELPER),
         (used.arith, ARITH_HELPER),
         (used.arith64, ARITH64_HELPER),
         // After ARITH_HELPER: `tl_sum` narrows through `tl_i32`, and a local declared later in
@@ -769,14 +825,14 @@ pub fn emit(program: &Program) -> String {
             "function {}({})\n  return {}\nend\n",
             user(&f.name),
             f.param.as_deref().map_or_else(String::new, user),
-            expr(enums, &f.body)
+            expr(cx, &f.body)
         ));
     }
 
     if let Some(fusion) = tir::fusion(program) {
-        out.push_str(&fused_main(program, &fusion));
+        out.push_str(&fused_main(program, cx, &fusion));
     } else {
-        let body = expr(enums, &program.body);
+        let body = expr(cx, &program.body);
         if structured {
             out.push_str(&format!(
                 "print({})\n",
@@ -793,7 +849,7 @@ pub fn emit(program: &Program) -> String {
 /// `inputs` source, a call to `NEXT_INPUT` for one already-parsed record (see that constant's
 /// doc comment for why the parsing itself is not written here); for `lines`, `io.lines()`
 /// itself, exactly as the eager collect helper reads it.
-fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
+fn fused_main(program: &Program, cx: &Cx, fusion: &tir::Fusion) -> String {
     let enums = &program.enums;
     let mut out = String::new();
     let (mut current, mut current_ty) = match fusion.source {
@@ -816,7 +872,7 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
         // Lua's numeric for run zero times (start > limit), the same answer `tl_range` gives
         // eagerly.
         tir::Source::Range(bound) => {
-            out.push_str(&format!("local n = {}\n", expr(enums, bound)));
+            out.push_str(&format!("local n = {}\n", expr(cx, bound)));
             out.push_str("for t_i = 0, n - 1 do\n");
             ("t_i".to_string(), Type::Int)
         }
@@ -825,14 +881,14 @@ fn fused_main(program: &Program, fusion: &tir::Fusion) -> String {
         match stage {
             tir::Stage::Map { param, body } => {
                 out.push_str(&format!("  local {} = {}\n", local(*param), current));
-                current = expr(enums, body);
+                current = expr(cx, body);
                 current_ty = body.ty.clone();
             }
             tir::Stage::Select { param, pred } => {
                 out.push_str(&format!("  local {} = {}\n", local(*param), current));
                 out.push_str(&format!(
                     "  if not ({}) then goto tl_continue end\n",
-                    expr(enums, pred)
+                    expr(cx, pred)
                 ));
                 current = local(*param);
             }
@@ -1017,6 +1073,9 @@ struct Helpers {
     sort: bool,
     sort_by: bool,
     reverse: bool,
+    sort_owned: bool,
+    reverse_owned: bool,
+    append_owned: bool,
     sum: bool,
     max: bool,
     max_by: bool,
@@ -1028,19 +1087,19 @@ struct Helpers {
 /// Equality on a composite is structural, which Lua's `==` on two tables is not -- it compares
 /// references (kantord/toylang#68). The checker refuses ordering on a composite, so only `==`
 /// and `!=` reach one. Lua has no ordering on booleans, so those compare as 0 and 1.
-fn compare(enums: &Enums, op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
+fn compare(cx: &Cx, op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
     if lhs.ty == Type::Bool && op.is_ordering() {
         return format!(
             "(({} and 1 or 0) {} ({} and 1 or 0))",
-            expr(enums, lhs),
+            expr(cx, lhs),
             lua_op(op),
-            expr(enums, rhs)
+            expr(cx, rhs)
         );
     }
     if !lhs.ty.is_composite() {
-        return format!("({} {} {})", expr(enums, lhs), lua_op(op), expr(enums, rhs));
+        return format!("({} {} {})", expr(cx, lhs), lua_op(op), expr(cx, rhs));
     }
-    let call = format!("tl_eq({}, {})", expr(enums, lhs), expr(enums, rhs));
+    let call = format!("tl_eq({}, {})", expr(cx, lhs), expr(cx, rhs));
     match op {
         BinOp::Ne => format!("(not {call})"),
         _ => call,
@@ -1050,10 +1109,13 @@ fn compare(enums: &Enums, op: BinOp, lhs: &Tir, rhs: &Tir) -> String {
 /// Parenthesised because there is more than one operator, and Lua's precedence is not toylang's
 /// to rely on. `..` is string-only, so a Vec reaches for the same helper `flatten` uses,
 /// wrapped around a two-entry outer table rather than through a second helper.
-fn concat(enums: &Enums, ty: &Type, l: &Tir, r: &Tir) -> String {
+fn concat(cx: &Cx, ty: &Type, l: &Tir, r: &Tir) -> String {
     match ty {
-        Type::Vec(_) => format!("tl_flatten({{{}, {}}})", expr(enums, l), expr(enums, r)),
-        _ => format!("({} .. {})", expr(enums, l), expr(enums, r)),
+        Type::Vec(_) if cx.owns(l) => {
+            format!("tl_append_owned({}, {})", expr(cx, l), expr(cx, r))
+        }
+        Type::Vec(_) => format!("tl_flatten({{{}, {}}})", expr(cx, l), expr(cx, r)),
+        _ => format!("({} .. {})", expr(cx, l), expr(cx, r)),
     }
 }
 
@@ -1086,8 +1148,25 @@ fn builtin_helpers(which: &Builtin, arg_ty: &Type, used: &mut Helpers) {
     used.arith |= matches!(which, Builtin::Sum) && tir::runtime_elem(arg_ty) == Some(&Type::Int);
 }
 
-fn used_helpers(program: &Program) -> Helpers {
-    fn walk(t: &Tir, used: &mut Helpers) {
+/// The helpers a builtin call needs. The copy-free form of sort and reverse replaces the plain
+/// helper rather than joining it.
+fn builtin_uses(cx: &Cx, which: &Builtin, arg: &Tir, used: &mut Helpers) {
+    match which {
+        Builtin::Sort if cx.owns(arg) => used.sort_owned = true,
+        Builtin::Reverse if cx.owns(arg) => used.reverse_owned = true,
+        _ => builtin_helpers(which, &arg.ty, used),
+    }
+}
+
+/// A Vec `+` is `tl_flatten` over both operands, or `tl_append_owned` when the left is owned.
+fn concat_helpers(ty: &Type, owned_left: bool, used: &mut Helpers) {
+    let is_vec = matches!(ty, Type::Vec(_));
+    used.append_owned |= is_vec && owned_left;
+    used.flatten |= is_vec && !owned_left;
+}
+
+fn used_helpers(program: &Program, cx: &Cx) -> Helpers {
+    fn walk(t: &Tir, cx: &Cx, used: &mut Helpers) {
         match &t.kind {
             Kind::Str(_)
             | Kind::Int(_)
@@ -1103,72 +1182,72 @@ fn used_helpers(program: &Program) -> Helpers {
                 used.collect = true;
                 used.split = true;
             }
-            Kind::VecLit(items) => items.iter().for_each(|i| walk(i, used)),
+            Kind::VecLit(items) => items.iter().for_each(|i| walk(i, cx, used)),
             Kind::RecordLit { fields } => {
-                fields.iter().for_each(|(_, v)| walk(v, used));
+                fields.iter().for_each(|(_, v)| walk(v, cx, used));
             }
             Kind::EnumLit { payload, .. } => {
                 if let Some(p) = payload {
-                    walk(p, used);
+                    walk(p, cx, used);
                 }
             }
             Kind::Call { arg, .. } => {
                 if let Some(a) = arg {
-                    walk(a, used);
+                    walk(a, cx, used);
                 }
             }
             // Lua's `..` is string-only, so a Vec reaches for the same helper `flatten` uses,
             // wrapped around a two-entry outer table rather than through a second helper.
             Kind::Concat(l, r) => {
-                used.flatten |= matches!(t.ty, Type::Vec(_));
-                walk(l, used);
-                walk(r, used);
+                concat_helpers(&t.ty, cx.owns(l), used);
+                walk(l, cx, used);
+                walk(r, cx, used);
             }
             Kind::Logic { lhs: l, rhs: r, .. } => {
-                walk(l, used);
-                walk(r, used);
+                walk(l, cx, used);
+                walk(r, cx, used);
             }
             Kind::Compare { op, lhs, rhs } => {
                 compare_helpers(*op, &lhs.ty, used);
-                walk(lhs, used);
-                walk(rhs, used);
+                walk(lhs, cx, used);
+                walk(rhs, cx, used);
             }
             Kind::Bind { value, body, .. } => {
-                walk(value, used);
-                walk(body, used);
+                walk(value, cx, used);
+                walk(body, cx, used);
             }
             Kind::Map { source, body, .. } => {
                 used.map = true;
-                walk(source, used);
-                walk(body, used);
+                walk(source, cx, used);
+                walk(body, cx, used);
             }
             Kind::OptMap { source, body, .. } => {
-                walk(source, used);
-                walk(body, used);
+                walk(source, cx, used);
+                walk(body, cx, used);
             }
             Kind::Select { source, pred, .. } => {
                 used.select = true;
-                walk(source, used);
-                walk(pred, used);
+                walk(source, cx, used);
+                walk(pred, cx, used);
             }
             Kind::SortBy { source, body, .. } => {
                 used.sort_by = true;
-                walk(source, used);
-                walk(body, used);
+                walk(source, cx, used);
+                walk(body, cx, used);
             }
             Kind::MaxBy { source, body, .. } => {
                 used.max_by = true;
-                walk(source, used);
-                walk(body, used);
+                walk(source, cx, used);
+                walk(body, cx, used);
             }
             Kind::Field { base, .. } => {
                 // Depth zero is a plain index and needs no helper.
                 used.field |= tir::vec_depth(&base.ty) > 0;
-                walk(base, used);
+                walk(base, cx, used);
             }
             Kind::Builtin { which, arg } => {
-                builtin_helpers(which, &arg.ty, used);
-                walk(arg, used);
+                builtin_uses(cx, which, arg, used);
+                walk(arg, cx, used);
             }
             Kind::Arith { op, lhs, rhs } => {
                 if t.ty == Type::Int64 {
@@ -1176,50 +1255,53 @@ fn used_helpers(program: &Program) -> Helpers {
                 } else {
                     used.arith = true;
                 }
-                walk(lhs, used);
-                walk(rhs, used);
+                walk(lhs, cx, used);
+                walk(rhs, cx, used);
             }
-            Kind::Not(base) => walk(base, used),
+            Kind::Not(base) => walk(base, cx, used),
             Kind::Unwrap { base } => {
                 used.unwrap = true;
-                walk(base, used);
+                walk(base, cx, used);
             }
             Kind::Index { base, index, .. } => {
                 used.index = true;
-                walk(base, used);
-                walk(index, used);
+                walk(base, cx, used);
+                walk(index, cx, used);
             }
             Kind::Slice {
                 base, start, end, ..
             } => {
                 used.slice = true;
-                walk(base, used);
+                walk(base, cx, used);
                 if let Some(s) = start {
-                    walk(s, used);
+                    walk(s, cx, used);
                 }
                 if let Some(e) = end {
-                    walk(e, used);
+                    walk(e, cx, used);
                 }
             }
             Kind::Match { subject, arms, .. } => {
-                walk(subject, used);
+                walk(subject, cx, used);
                 for a in arms {
                     if let Some(g) = &a.guard {
-                        walk(g, used);
+                        walk(g, cx, used);
                     }
-                    walk(&a.body, used);
+                    walk(&a.body, cx, used);
                 }
             }
-            Kind::Closure { body, .. } => walk(body, used),
+            Kind::Closure { body, .. } => walk(body, cx, used),
             Kind::ApplyClosure { closure, arg } => {
-                walk(closure, used);
-                walk(arg, used);
+                walk(closure, cx, used);
+                walk(arg, cx, used);
             }
         }
     }
     let mut used = Helpers::default();
-    program.funcs.iter().for_each(|f| walk(&f.body, &mut used));
-    walk(&program.body, &mut used);
+    program
+        .funcs
+        .iter()
+        .for_each(|f| walk(&f.body, cx, &mut used));
+    walk(&program.body, cx, &mut used);
     used
 }
 
@@ -1233,7 +1315,13 @@ fn arm_return(body: String, partial: bool) -> String {
     }
 }
 
-fn expr(enums: &Enums, t: &Tir) -> String {
+/// `tl_<name>_owned` when the mutation rule owns `arg`, else the helper that copies first.
+fn consuming(cx: &Cx, name: &str, arg: &Tir) -> String {
+    let owned = if cx.owns(arg) { "_owned" } else { "" };
+    format!("tl_{name}{owned}({})", expr(cx, arg))
+}
+
+fn expr(cx: &Cx, t: &Tir) -> String {
     match &t.kind {
         Kind::Str(s) => lua_string(s),
         Kind::Int(n) => n.to_string(),
@@ -1251,7 +1339,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         Kind::RecordLit { fields } => {
             let parts: Vec<String> = fields
                 .iter()
-                .map(|(name, value)| format!("[{}] = {}", lua_string(name), expr(enums, value)))
+                .map(|(name, value)| format!("[{}] = {}", lua_string(name), expr(cx, value)))
                 .collect();
             // Parenthesised because Lua will not index a table constructor: `{...}["a"]` does
             // not parse, and the printer reads every field straight off the value.
@@ -1262,59 +1350,59 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         // variant the single-key table a record already is.
         Kind::EnumLit { variant, payload } => match payload {
             None => lua_string(variant),
-            Some(p) => format!("({{[{}] = {}}})", lua_string(variant), expr(enums, p)),
+            Some(p) => format!("({{[{}] = {}}})", lua_string(variant), expr(cx, p)),
         },
 
         Kind::VecLit(items) => {
-            let parts: Vec<String> = items.iter().map(|i| expr(enums, i)).collect();
+            let parts: Vec<String> = items.iter().map(|i| expr(cx, i)).collect();
             format!("{{{}}}", parts.join(", "))
         }
         Kind::Call { func, arg } => format!(
             "{}({})",
             user(func),
-            arg.as_deref().map_or_else(String::new, |a| expr(enums, a))
+            arg.as_deref().map_or_else(String::new, |a| expr(cx, a))
         ),
-        Kind::Concat(l, r) => concat(enums, &t.ty, l, r),
-        Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(enums, lhs), expr(enums, rhs)),
+        Kind::Concat(l, r) => concat(cx, &t.ty, l, r),
+        Kind::Arith { op, lhs, rhs } => arith(&t.ty, *op, expr(cx, lhs), expr(cx, rhs)),
         // Lua's `and`/`or` yield an operand rather than a boolean, which is the same thing here:
         // both operands are already booleans, so whichever one comes back is one.
-        Kind::Logic { op, lhs, rhs } => format!("({} {op} {})", expr(enums, lhs), expr(enums, rhs)),
-        Kind::Not(base) => format!("(not {})", expr(enums, base)),
+        Kind::Logic { op, lhs, rhs } => format!("({} {op} {})", expr(cx, lhs), expr(cx, rhs)),
+        Kind::Not(base) => format!("(not {})", expr(cx, base)),
         Kind::Builtin { which, arg } => match which {
-            Builtin::IntToStr => format!("tostring({})", expr(enums, arg)),
+            Builtin::IntToStr => format!("tostring({})", expr(cx, arg)),
             // Lua has no JSON parser of its own -- stdin values are parsed host-side before the
             // chunk runs -- so a string handed to `parse` has nothing to read it with.
-            Builtin::Parse => format!("tl_parse_json({})", expr(enums, arg)),
+            Builtin::Parse => format!("tl_parse_json({})", expr(cx, arg)),
             // Lua's integers are 64-bit already; an Int just lives in the low half.
-            Builtin::IntToI64 => expr(enums, arg),
+            Builtin::IntToI64 => expr(cx, arg),
             // `math.sqrt` already returns NaN for a negative input, the same as Rust's
             // `f64::sqrt`, so nothing here has to guard it.
-            Builtin::Sqrt => format!("math.sqrt({})", expr(enums, arg)),
+            Builtin::Sqrt => format!("math.sqrt({})", expr(cx, arg)),
             // Lua 5.4 distinguishes an integer and a float subtype internally, but every
             // arithmetic and formatting operation `tl_show_float` reaches for coerces either
             // one, so there is no runtime conversion to make: `float` only changes which static
             // type prints the value.
-            Builtin::FloatOf => expr(enums, arg),
-            Builtin::Chars => format!("tl_chars({})", expr(enums, arg)),
-            Builtin::Range => format!("tl_range({})", expr(enums, arg)),
+            Builtin::FloatOf => expr(cx, arg),
+            Builtin::Chars => format!("tl_chars({})", expr(cx, arg)),
+            Builtin::Range => format!("tl_range({})", expr(cx, arg)),
             Builtin::JsonLines => {
                 let elem = tir::runtime_elem(&arg.ty).expect("checked to be a Vec or a stream");
                 let e = "e0".to_string();
                 format!(
                     "tl_jsonlines({}, function({e}) return {} end)",
-                    expr(enums, arg),
-                    show(enums, elem, &e, 1)
+                    expr(cx, arg),
+                    show(cx.enums, elem, &e, 1)
                 )
             }
             // The source already materialized, so the exit has nothing left to do.
-            Builtin::Collect => expr(enums, arg),
-            Builtin::Length => format!("#{}", expr(enums, arg)),
-            Builtin::Tail => format!("tl_tail({})", expr(enums, arg)),
-            Builtin::First => format!("tl_first({})", expr(enums, arg)),
-            Builtin::Any => format!("tl_any({})", expr(enums, arg)),
-            Builtin::All => format!("tl_all({})", expr(enums, arg)),
-            Builtin::Flatten => format!("tl_flatten({})", expr(enums, arg)),
-            Builtin::Transpose => format!("tl_transpose({})", expr(enums, arg)),
+            Builtin::Collect => expr(cx, arg),
+            Builtin::Length => format!("#{}", expr(cx, arg)),
+            Builtin::Tail => format!("tl_tail({})", expr(cx, arg)),
+            Builtin::First => format!("tl_first({})", expr(cx, arg)),
+            Builtin::Any => format!("tl_any({})", expr(cx, arg)),
+            Builtin::All => format!("tl_all({})", expr(cx, arg)),
+            Builtin::Flatten => format!("tl_flatten({})", expr(cx, arg)),
+            Builtin::Transpose => format!("tl_transpose({})", expr(cx, arg)),
             // The two closures build the tagged `PipeLine` value, the same shape any
             // payload-carrying variant takes here: the single-key table `{[variant] = payload}`.
             Builtin::PipeThrough => {
@@ -1336,21 +1424,21 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 };
                 format!(
                     "tl_pipe_through({}, {}, {}, {}, {})",
-                    expr(enums, field("cmd")),
-                    expr(enums, field("args")),
-                    expr(enums, field("lines")),
+                    expr(cx, field("cmd")),
+                    expr(cx, field("args")),
+                    expr(cx, field("lines")),
                     tag("Stdout"),
                     tag("Stderr")
                 )
             }
-            Builtin::Sort => format!("tl_sort({})", expr(enums, arg)),
-            Builtin::Reverse => format!("tl_reverse({})", expr(enums, arg)),
+            Builtin::Sort => consuming(cx, "sort", arg),
+            Builtin::Reverse => consuming(cx, "reverse", arg),
             Builtin::Sum => format!(
                 "tl_sum({}, {})",
-                expr(enums, arg),
+                expr(cx, arg),
                 tir::runtime_elem(&arg.ty) == Some(&Type::Int)
             ),
-            Builtin::Max => format!("tl_max({})", expr(enums, arg)),
+            Builtin::Max => format!("tl_max({})", expr(cx, arg)),
             // The names come from the checked type, not the table value, so `arg` runs as the
             // function literal's ignored parameter -- the same IIFE shape `Bind` uses -- purely
             // for whatever else it does.
@@ -1362,11 +1450,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                 format!(
                     "(function(_) return {{{}}} end)({})",
                     names.join(", "),
-                    expr(enums, arg)
+                    expr(cx, arg)
                 )
             }
         },
-        Kind::Compare { op, lhs, rhs } => compare(enums, *op, lhs, rhs),
+        Kind::Compare { op, lhs, rhs } => compare(cx, *op, lhs, rhs),
         // Lua has no expression-level `let`, so the binding becomes a call.
         Kind::Bind {
             local: id,
@@ -1376,8 +1464,8 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             format!(
                 "(function({}) return {} end)({})",
                 local(*id),
-                expr(enums, body),
-                expr(enums, value)
+                expr(cx, body),
+                expr(cx, value)
             )
         }
         Kind::Map {
@@ -1386,9 +1474,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             body,
         } => format!(
             "tl_map({}, function({}) return {} end)",
-            expr(enums, source),
+            expr(cx, source),
             local(*param),
-            expr(enums, body)
+            expr(cx, body)
         ),
         Kind::Select {
             source,
@@ -1396,9 +1484,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             pred,
         } => format!(
             "tl_select({}, function({}) return {} end)",
-            expr(enums, source),
+            expr(cx, source),
             local(*param),
-            expr(enums, pred)
+            expr(cx, pred)
         ),
         Kind::SortBy {
             source,
@@ -1406,9 +1494,9 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             body,
         } => format!(
             "tl_sort_by({}, function({}) return {} end)",
-            expr(enums, source),
+            expr(cx, source),
             local(*param),
-            expr(enums, body)
+            expr(cx, body)
         ),
         Kind::MaxBy {
             source,
@@ -1416,16 +1504,16 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             body,
         } => format!(
             "tl_max_by({}, function({}) return {} end)",
-            expr(enums, source),
+            expr(cx, source),
             local(*param),
-            expr(enums, body)
+            expr(cx, body)
         ),
         // The depth comes from the type on the node below, so it cannot disagree with it, and
         // the emitted helper is told the answer rather than inspecting the value for it.
         Kind::Unwrap { base } => {
             format!(
                 "tl_unwrap({}, {})",
-                expr(enums, base),
+                expr(cx, base),
                 tir::vec_depth(&base.ty)
             )
         }
@@ -1438,20 +1526,15 @@ fn expr(enums: &Enums, t: &Tir) -> String {
         } => format!(
             "(function(__opt) if __opt == \"None\" then return \"None\" else local {} = __opt.Some return {{Some = {}}} end end)({})",
             local(*param),
-            expr(enums, body),
-            expr(enums, source)
+            expr(cx, body),
+            expr(cx, source)
         ),
         // A Lua table of records is a table of tables, so collapsing needs no gather here;
         // `elem_is_record` matters only where the columns are stored apart.
         Kind::Index {
             base, index, depth, ..
         } => {
-            format!(
-                "tl_at({}, {}, {})",
-                expr(enums, base),
-                expr(enums, index),
-                depth
-            )
+            format!("tl_at({}, {}, {})", expr(cx, base), expr(cx, index), depth)
         }
         Kind::Slice {
             base,
@@ -1460,23 +1543,23 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             depth,
         } => {
             let lo = match start {
-                Some(s) => expr(enums, s),
+                Some(s) => expr(cx, s),
                 None => "nil".to_string(),
             };
             let hi = match end {
-                Some(e) => expr(enums, e),
+                Some(e) => expr(cx, e),
                 None => "nil".to_string(),
             };
-            format!("tl_slice({}, {}, {}, {})", expr(enums, base), lo, hi, depth)
+            format!("tl_slice({}, {}, {}, {})", expr(cx, base), lo, hi, depth)
         }
         Kind::Field { base, name } => {
             let depth = tir::vec_depth(&base.ty);
             if depth == 0 {
-                format!("{}[{}]", expr(enums, base), lua_string(name))
+                format!("{}[{}]", expr(cx, base), lua_string(name))
             } else {
                 format!(
                     "tl_field({}, {}, {})",
-                    expr(enums, base),
+                    expr(cx, base),
                     lua_string(name),
                     depth
                 )
@@ -1492,7 +1575,7 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             arms,
             partial,
         } => {
-            let subj = expr(enums, subject);
+            let subj = expr(cx, subject);
             let mut body = String::new();
             for (i, arm) in arms.iter().enumerate() {
                 let mut run = String::new();
@@ -1507,13 +1590,13 @@ fn expr(enums: &Enums, t: &Tir) -> String {
                         lua_string(variant)
                     ));
                 }
-                run.push_str(&arm_return(expr(enums, &arm.body), *partial));
+                run.push_str(&arm_return(expr(cx, &arm.body), *partial));
                 let test = match (&arm.variant, &arm.guard) {
                     (Some(v), _) if arm.payload.is_some() => {
                         Some(format!("{subj}[{}] ~= nil", lua_string(v)))
                     }
                     (Some(v), _) => Some(format!("{subj} == {}", lua_string(v))),
-                    (None, Some(g)) => Some(expr(enums, g)),
+                    (None, Some(g)) => Some(expr(cx, g)),
                     (None, None) => None,
                 };
                 match test {
@@ -1536,11 +1619,11 @@ fn expr(enums: &Enums, t: &Tir) -> String {
             format!(
                 "(function({}) return {} end)",
                 local(*param),
-                expr(enums, body)
+                expr(cx, body)
             )
         }
         Kind::ApplyClosure { closure, arg } => {
-            format!("({})({})", expr(enums, closure), expr(enums, arg))
+            format!("({})({})", expr(cx, closure), expr(cx, arg))
         }
     }
 }

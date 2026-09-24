@@ -15,6 +15,7 @@ pub mod fmt;
 pub mod fmt_tree;
 pub mod input;
 pub mod modules;
+pub mod mutation;
 pub mod offload;
 pub mod parse;
 pub mod prelude;

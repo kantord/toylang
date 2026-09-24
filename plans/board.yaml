@@ -25,22 +25,6 @@
   needs: []
   status: todo
 
-- id: closures-legacy-flow-map-sortby-maxby
-  title: 'Follow-up to closures-first-class-functions-design (2026-09-23): `select` was
-    extended to accept a genuine closure value (built by `$`-partial-application) in addition
-    to its unchanged `.`-rebinding spelling, proving the mechanism; `map`, `sort_by`, and
-    `max_by` were deliberately left untouched this pass to keep the landing reviewable. Mirror
-    `select_call`''s extension (src/check/mod.rs) onto `map_call`/`sort_by_call`/`max_by_call`
-    -- same syntactic-peek dispatch (only a bare `Expr::Var` already bound to a `Type::Fn` is
-    ever read as a closure; anything else keeps meaning `.`-rebinding, so there is nothing new
-    to disambiguate). No backend work: `Kind::Map`/`Kind::SortBy`/`Kind::MaxBy` already have
-    the `{param, body}` shape `Kind::ApplyClosure` slots into unchanged. Done-gate: `just
-    check` passes and a `count_by`/`max_by`-shaped program built the same way
-    `count_where` was (docs/reference/operators/placeholder.md) runs correctly on rust.'
-  kind: build
-  needs: [closures-first-class-functions-design]
-  status: todo
-
 - id: closures-dollar-arrow-sugar-decide
   title: 'Follow-up to closures-first-class-functions-design (2026-09-23), explicitly deferred
     from v1: `$ -> body` as terse sugar for a multi-reference anonymous closure (`$ -> $ * $`
@@ -216,22 +200,6 @@
   kind: decide
   needs: [dot-rebinding-vs-lambda-design]
   prio: 4
-  status: todo
-
-- id: mutation-rule-v1-build-lua
-  title: 'Mutation-as-optimization v1 -- emit for the Lua backend only (src/emit_lua.rs). Lua
-    pays the copy cost once (a fresh `out` table built at the mutating builtins themselves,
-    since Lua tables are already reference types) -- same copy sites as Rust per the spike''s
-    finding.'
-  kind: build
-  needs: [mutation-rule-v1-checkpoint-rust]
-  status: todo
-
-- id: mutation-rule-v1-checkpoint-lua
-  title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Lua commit landed clean before
-    starting Go.'
-  kind: decide
-  needs: [mutation-rule-v1-build-lua]
   status: todo
 
 - id: mutation-rule-v1-build-go

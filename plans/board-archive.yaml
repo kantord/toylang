@@ -3800,3 +3800,46 @@
   kind: build
   needs: [sort-by-max-by-native]
   status: done
+
+- id: mutation-rule-v1-build-lua
+  title: 'Mutation-as-optimization v1 -- emit for the Lua backend only (src/emit_lua.rs). Lua
+    pays the copy cost once (a fresh `out` table built at the mutating builtins themselves,
+    since Lua tables are already reference types) -- same copy sites as Rust per the spike''s
+    finding. LANDED 2026-09-24: shared analysis in src/mutation.rs (single_consuming_use plus
+    owned_locals, which adds a freshness check because Lua Vecs alias by reference), Lua emits
+    tl_sort_owned/tl_reverse_owned/tl_append_owned. Str and flatten have no Lua copy to save and
+    stay as before. Also fixed a Rust bug the Lua design exposed: a local read once inside a
+    map/select body or closure was moved into an FnMut closure and rustc rejected it. Tests:
+    tests/mutation_lua.rs, corpus mutation_*.yaml.'
+  kind: build
+  needs: [mutation-rule-v1-checkpoint-rust]
+  status: done
+
+- id: closures-legacy-flow-map-sortby-maxby
+  title: 'Follow-up to closures-first-class-functions-design (2026-09-23): `select` was
+    extended to accept a genuine closure value (built by `$`-partial-application) in addition
+    to its unchanged `.`-rebinding spelling, proving the mechanism; `map`, `sort_by`, and
+    `max_by` were deliberately left untouched this pass to keep the landing reviewable. Mirror
+    `select_call`''s extension (src/check/mod.rs) onto `map_call`/`sort_by_call`/`max_by_call`
+    -- same syntactic-peek dispatch (only a bare `Expr::Var` already bound to a `Type::Fn` is
+    ever read as a closure; anything else keeps meaning `.`-rebinding, so there is nothing new
+    to disambiguate). No backend work: `Kind::Map`/`Kind::SortBy`/`Kind::MaxBy` already have
+    the `{param, body}` shape `Kind::ApplyClosure` slots into unchanged. Done-gate: `just
+    check` passes and a `count_by`/`max_by`-shaped program built the same way
+    `count_where` was (docs/reference/operators/placeholder.md) runs correctly on rust.'
+  kind: build
+  needs: [closures-first-class-functions-design]
+  status: done
+
+- id: mutation-rule-v1-checkpoint-lua
+  title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Lua commit landed clean before
+    starting Go. CONFIRMED 2026-09-24 (direct session, not drive): 641ac5da landed with the diff read
+    (the freshness analysis; two deliberately broken variants are caught by the corpus and
+    tests/mutation_lua.rs), just check 637/637 green on main. It also fixed a Rust miscompile the
+    shared rule had (a use inside a re-run body). The session itself notes one guard is untested
+    (a non-Local match subject in the freshness analysis), conservative by construction. Clear
+    to start Go. (Archived first without this note by mistake; the note was added in a follow-up
+    commit.)'
+  kind: decide
+  needs: [mutation-rule-v1-build-lua]
+  status: done
