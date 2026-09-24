@@ -448,8 +448,8 @@
 
 
 
-- id: fasta-bench-rust-stack-overflow
-  title: 'Found while fixing fannkuch-redux-bench-broken (2026-09-24, self-originated): `toylang run benches/programs/fasta.toy rust < benches/inputs/fasta.txt` (N=500) aborts with `thread ''main'' has overflowed its stack`, while the other six backends print the same 5161 bytes. Every other benches/programs/*.toy agrees on all seven backends. The new tests/bench_programs_compile.rs only emits, so it does not see this. Find out whether the emitted Rust recurses deeper than the 8 MiB main-thread stack allows at this size (then run the program on a bigger-stack thread, or lower the recursion depth) or whether it is a real emitter bug, and fix it. Done-gate: fasta.txt runs on rust and prints what the other backends print.'
+- id: go-native-self-tail-call-stack
+  title: 'Found while fixing fasta-bench-rust-stack-overflow (2026-09-24, self-originated): the self-tail-call contract (kantord/toylang#141, tests/corpus/tail_recursion_deep.yaml) is only kept by lua, js, py, jq and now rust. Go and native emit a self tail call as a real call. tests/corpus/tail_recursion_fat_frame.yaml (12000 levels) passes on both, but the same program at `left: 150000` dies on Go (`fatal error: stack overflow` at the 512 MB goroutine stack cap) and on native (the compiled program exits non-zero); the two-Int frame of tail_recursion_deep is small enough to hide it. Lower a self tail call to a loop in src/emit_go.rs and src/emit_llvm.rs the way src/emit_rs.rs `tail_stmts` does (assign the param, restart), keep the closure-carried-through-a-tail-call behavior of tests/backend_py.rs, and raise `left` in the fat-frame case until it fails without the loop on both (it must stay fast on all seven). Does not touch runtime/toylang.c or runtime-rs.'
   kind: build
   needs: []
   status: todo

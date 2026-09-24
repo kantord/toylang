@@ -910,17 +910,33 @@ pub fn emit(program: &Program) -> String {
     decls.push_str(&e.printers(program));
 
     for f in &program.funcs {
+        // A tail-recursive function reassigns its parameter and loops, so the binding is `mut`.
+        let looped = tir::has_tail_call(&f.name, &f.body);
         let param = match (&f.param, &f.param_ty) {
-            (Some(name), Some(ty)) => format!("{}: {}", e.user(name), e.rs_type(ty)),
+            (Some(name), Some(ty)) => format!(
+                "{}{}: {}",
+                if looped { "mut " } else { "" },
+                e.user(name),
+                e.rs_type(ty)
+            ),
             (None, None) => String::new(),
             _ => unreachable!("a function's param and param_ty agree"),
+        };
+        let body = if looped {
+            let param_name = f.param.as_deref().map(|p| e.user(p));
+            format!(
+                "loop {{\n        {}\n    }}",
+                e.tail_stmts(&f.name, param_name.as_deref(), &f.body)
+            )
+        } else {
+            e.expr(&f.body)
         };
         decls.push_str(&format!(
             "fn {}({}) -> {} {{\n    {}\n}}\n\n",
             e.user(&f.name),
             param,
             e.rs_type(&f.body.ty),
-            e.expr(&f.body)
+            body
         ));
     }
 
@@ -1611,6 +1627,123 @@ impl Emitter<'_> {
         concat(ty, self.expr(l), self.expr(r))
     }
 
+    /// v1 mutation rule: a Vec/Str local read exactly once by a consuming builtin is mutated in
+    /// place rather than copied. Qualified bindings nest, so the caller pushes the local onto
+    /// the `mutables` stack when this holds and pops when the body is emitted.
+    fn bind_owned(&self, value: &Tir, body: &Tir, id: LocalId) -> bool {
+        matches!(value.ty, Type::Vec(_) | Type::Str) && self.single_consuming_use(body, id)
+    }
+
+    fn bind_let(&mut self, value: &Tir, id: LocalId, owned: bool) -> String {
+        format!(
+            "let {}{}: {} = {};",
+            if owned { "mut " } else { "" },
+            self.local(id),
+            self.rs_type(&value.ty),
+            self.expr(value)
+        )
+    }
+
+    /// An arm owns its payload, so a Vec/Str payload read exactly once by a consuming builtin
+    /// can be consumed in place the same way a `Bind`'s local can.
+    fn arm_owned_payload(&self, subject_ty: &Type, arm: &tir::MatchArm) -> bool {
+        arm.payload.map_or(false, |pid| {
+            let payload_ty = ty::variants(self.registry, subject_ty)
+                .iter()
+                .find(|(n, _)| arm.variant.as_deref() == Some(n.as_str()))
+                .and_then(|(_, p)| p.clone());
+            payload_ty.map_or(false, |p| {
+                matches!(p, Type::Vec(_) | Type::Str) && self.single_consuming_use(&arm.body, pid)
+            })
+        })
+    }
+
+    /// The pattern half of a match arm. A default arm is `_`, a guard arm `_ if cond` (the guard
+    /// reads the subject's own local, not the scrutinee, so no borrow of the match is involved).
+    fn arm_pattern(&mut self, subject_ty: &Type, arm: &tir::MatchArm) -> String {
+        match (&arm.variant, &arm.guard) {
+            (None, Some(g)) => format!("_ if {}", self.expr(g)),
+            (None, None) => "_".to_string(),
+            (Some(v), _) => {
+                let ename = self.rs_type(subject_ty);
+                let has_payload = ty::variants(self.registry, subject_ty)
+                    .iter()
+                    .find(|(n, _)| n == v)
+                    .expect("the checker resolved the variant")
+                    .1
+                    .is_some();
+                if has_payload {
+                    let pid = arm
+                        .payload
+                        .expect("a payload arm always binds its payload");
+                    format!("{ename}::V_{v}({})", self.local(pid))
+                } else {
+                    format!("{ename}::V_{v}")
+                }
+            }
+        }
+    }
+
+    /// `t` as statements in the tail position of a function whose body is one `loop`: `return
+    /// <expr>` for a base case, and for a self tail call `param = <arg>; continue;`, so a
+    /// self-tail-recursive function runs in constant stack instead of one Rust frame per step
+    /// (kantord/toylang#141, the contract the py and js backends already keep). A total match's
+    /// arms and a Bind's body are the only tail positions, exactly as `tir::has_tail_call`
+    /// counts them.
+    fn tail_stmts(&mut self, name: &str, param: Option<&str>, t: &Tir) -> String {
+        match &t.kind {
+            Kind::Call { func, arg } if func == name => {
+                let assign = match (param, arg) {
+                    (Some(p), Some(a)) => format!("{p} = {}; ", self.expr(a)),
+                    _ => String::new(),
+                };
+                format!("{assign}continue;")
+            }
+            Kind::Bind {
+                local: id,
+                value,
+                body,
+            } => {
+                let owned = self.bind_owned(value, body, *id);
+                if owned {
+                    self.mutables.push(*id);
+                }
+                let rendered = format!(
+                    "{} {}",
+                    self.bind_let(value, *id, owned),
+                    self.tail_stmts(name, param, body)
+                );
+                if owned {
+                    self.mutables.pop();
+                }
+                rendered
+            }
+            Kind::Match {
+                subject,
+                arms,
+                partial: false,
+            } => {
+                let rendered: Vec<String> = arms
+                    .iter()
+                    .map(|arm| {
+                        let owned_payload = self.arm_owned_payload(&subject.ty, arm);
+                        if owned_payload {
+                            self.mutables
+                                .push(arm.payload.expect("owned implies a payload"));
+                        }
+                        let body = self.tail_stmts(name, param, &arm.body);
+                        if owned_payload {
+                            self.mutables.pop();
+                        }
+                        format!("{} => {{ {body} }}", self.arm_pattern(&subject.ty, arm))
+                    })
+                    .collect();
+                format!("match {} {{ {} }}", self.expr(subject), rendered.join(", "))
+            }
+            _ => format!("return {};", self.expr(t)),
+        }
+    }
+
     fn expr(&mut self, t: &Tir) -> String {
         match &t.kind {
             Kind::Str(s) => rs_string(s),
@@ -1810,20 +1943,13 @@ impl Emitter<'_> {
                 value,
                 body,
             } => {
-                // v1 mutation rule: a Vec/Str local read exactly once by a consuming builtin
-                // is mutated in place rather than copied. Qualified bindings nest, so each one
-                // pushes its local onto the `mutables` stack and pops when its body is emitted.
-                let owned = matches!(value.ty, Type::Vec(_) | Type::Str)
-                    && self.single_consuming_use(body, *id);
+                let owned = self.bind_owned(value, body, *id);
                 if owned {
                     self.mutables.push(*id);
                 }
                 let rendered = format!(
-                    "({{ let {}{}: {} = {}; {} }})",
-                    if owned { "mut " } else { "" },
-                    self.local(*id),
-                    self.rs_type(&value.ty),
-                    self.expr(value),
+                    "({{ {} {} }})",
+                    self.bind_let(value, *id, owned),
                     self.expr(body)
                 );
                 if owned {
@@ -1999,23 +2125,10 @@ impl Emitter<'_> {
                 arms,
                 partial,
             } => {
-                let ename = self.rs_type(&subject.ty);
                 let mut rendered: Vec<String> = arms
                     .iter()
                     .map(|arm| {
-                        // An arm owns its payload, so a Vec/Str payload read exactly once by a
-                        // consuming builtin can be consumed in place the same way a `Bind`'s
-                        // local can.
-                        let owned_payload = arm.payload.map_or(false, |pid| {
-                            let payload_ty = ty::variants(self.registry, &subject.ty)
-                                .iter()
-                                .find(|(n, _)| arm.variant.as_deref() == Some(n.as_str()))
-                                .and_then(|(_, p)| p.clone());
-                            payload_ty.map_or(false, |p| {
-                                matches!(p, Type::Vec(_) | Type::Str)
-                                    && self.single_consuming_use(&arm.body, pid)
-                            })
-                        });
+                        let owned_payload = self.arm_owned_payload(&subject.ty, arm);
                         if owned_payload {
                             self.mutables
                                 .push(arm.payload.expect("owned implies a payload"));
@@ -2028,26 +2141,7 @@ impl Emitter<'_> {
                         if owned_payload {
                             self.mutables.pop();
                         }
-                        match (&arm.variant, &arm.guard) {
-                            (None, Some(g)) => format!("_ if {} => {body}", self.expr(g)),
-                            (None, None) => format!("_ => {body}"),
-                            (Some(v), _) => {
-                                let has_payload = ty::variants(self.registry, &subject.ty)
-                                    .iter()
-                                    .find(|(n, _)| n == v)
-                                    .expect("the checker resolved the variant")
-                                    .1
-                                    .is_some();
-                                if has_payload {
-                                    let pid = arm
-                                        .payload
-                                        .expect("a payload arm always binds its payload");
-                                    format!("{ename}::V_{v}({}) => {body}", self.local(pid))
-                                } else {
-                                    format!("{ename}::V_{v} => {body}")
-                                }
-                            }
-                        }
+                        format!("{} => {body}", self.arm_pattern(&subject.ty, arm))
                     })
                     .collect();
                 if *partial {
