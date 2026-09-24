@@ -393,12 +393,6 @@
   needs: []
   status: todo
 
-- id: euler-14-26-max-by-rewrite
-  title: 'Rewrite Euler 14 (docs/examples/euler/14-longest-collatz-sequence.md) and 26 (docs/examples/euler/26-reciprocal-cycles.md) to use `max_by(.key)` in place of their hand-rolled record-key maxima (`better`, `best_of`), now that max_by runs on every backend. Ruled hold-until-landed on corpus-euler-record-key-max-decide (archived); this is the deferred rewrite, gated on the chain actually finishing.'
-  kind: build
-  needs: [sort-by-max-by-native]
-  status: todo
-
 - id: json-in-place-representation-idea
   title: 'Idea capture, deliberately unscheduled (same treatment as bigint-tracking, gh:112):
     a data structure that holds a value as regular serialized JSON in memory, so working with it

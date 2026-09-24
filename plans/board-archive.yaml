@@ -3794,3 +3794,9 @@
   kind: build
   needs: [native-runtime-rs-step8-delete-c]
   status: done
+
+- id: euler-14-26-max-by-rewrite
+  title: 'Rewrite Euler 14 (docs/examples/euler/14-longest-collatz-sequence.md) and 26 (docs/examples/euler/26-reciprocal-cycles.md) to use `max_by(.key)` in place of their hand-rolled record-key maxima (`better`, `best_of`), now that max_by runs on every backend. Ruled hold-until-landed on corpus-euler-record-key-max-decide (archived); this is the deferred rewrite, gated on the chain actually finishing.'
+  kind: build
+  needs: [sort-by-max-by-native]
+  status: done

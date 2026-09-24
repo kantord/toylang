@@ -6,9 +6,13 @@ Solves [Project Euler 14](https://projecteuler.net/problem=14). See the
 Chain terms pass 32 bits -- 432 starting values under a million go through a term wider than
 `Int`, and simulating the old wraparound arithmetic even changes the winner -- so each term is
 walked as an [Int64](../../reference/types/int64.md). `chain_len` walks one chain
-tail-recursively, `better` keeps the longer chain, and `longest` compares every starting value
-by halving the range, so each candidate's chain is walked once. `max` is not the tool here:
-it reduces integers, and the answer wanted is the starting value, not its chain length.
+tail-recursively, and the pipeline pairs every starting value with its chain length and hands
+the pairs to [`max_by(.len)`](../../reference/builtins/max_by.md), which keeps the pair with
+the longest chain. `max` alone is not the tool here: it reduces integers, and the answer
+wanted is the starting value, not its chain length. `max_by` returns an `Opt`, unwrapped
+with `!` because the range is not empty, and keeps the first of equal maxima, so a tie would go
+to the smaller starting value. `range` counts from zero, so `select(. >= 1)` drops the
+zero that is not a Collatz start.
 
 This page is a `slow` fragment. The million chains are roughly 130 million recursive steps,
 with no memoization possible -- there is no mutation, so nothing shares chain tails -- which
@@ -18,7 +22,6 @@ and only executes it under `just slow-test`, where all seven backends find the t
 837799, chain length 525 -- in a few seconds on the compiled backends.
 
 ```toylang slow
-# fmt: syntax-example
 fn chain_len({ n, acc }: { n: Int64, acc: Int }) -> Int =
   n == 1
   | . -> acc or
@@ -28,26 +31,10 @@ fn chain_len({ n, acc }: { n: Int64, acc: Int }) -> Int =
     };
 
 
-fn better(
-  { a, b }: { a: { n: Int, len: Int }, b: { n: Int, len: Int } }
-) -> { n: Int, len: Int } =
-  a.len >= b.len | . -> a or b;
-
-
-fn longest(
-  { lo, hi }: { lo: Int, hi: Int }
-) -> { n: Int, len: Int } =
-  let mid = (lo + hi) / 2
-
-  hi - lo == 1
-  | . -> { n: lo, len: chain_len { n: i64 lo, acc: 1 } } or
-    better {
-      a: longest { lo: lo, hi: mid },
-      b: longest { lo: mid, hi: hi }
-    };
-
-
-longest { lo: 1, hi: 1000000 }
+collect(range 1000000)
+| select(. >= 1)
+| map { n: ., len: chain_len { n: i64(.), acc: 1 } }
+| max_by(.len)!
 ```
 
 ```output

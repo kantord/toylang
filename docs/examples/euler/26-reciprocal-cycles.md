@@ -8,14 +8,14 @@ Solves [Project Euler 26](https://projecteuler.net/problem=26). See the
 itself). `walk` finds `k` by long division one digit at a time, carrying the remainder forward
 until it comes back to 1: up to `d - 1` steps, each a self-tail-call, so the walk runs in
 constant stack on every backend
-([kantord/toylang#141](https://github.com/kantord/toylang/issues/141)). `find_best` keeps the
-`{d, len}` pair with the longest cycle by halving the range and comparing the two halves'
-winners with `best_of`; [`max`](../../reference/builtins/max.md) is defined only for a `Vec`
-of integers, and `max_by`, which would pick the pair with the largest `.len` directly, is not
-yet on every backend.
+([kantord/toylang#141](https://github.com/kantord/toylang/issues/141)). The pipeline pairs each
+`d` from 2 to 999 with its cycle length and takes
+[`max_by(.len)`](../../reference/builtins/max_by.md), so the answer is the `d` of the pair with
+the longest cycle. [`max`](../../reference/builtins/max.md) would reduce the lengths alone and
+lose which `d` they belong to. `max_by` returns an `Opt`, unwrapped with `!`, and keeps the
+first of equal maxima.
 
 ```toylang
-# fmt: syntax-example
 fn strip2(n: Int) -> Int = n | . % 2 == 0 -> strip2(. / 2) or .;
 
 
@@ -36,24 +36,10 @@ fn cycle_length(d: Int) -> Int =
   m | . == 1 -> 0 or walk { m: m, r: 10 % m, count: 1 };
 
 
-fn best_of(
-  { a, b }: { a: { d: Int, len: Int }, b: { d: Int, len: Int } }
-) -> { d: Int, len: Int } =
-  a | a.len >= b.len -> a or b;
-
-
-fn find_best(
-  { lo, hi }: { lo: Int, hi: Int }
-) -> { d: Int, len: Int } =
-  hi - lo
-  | . == 1 -> { d: lo, len: cycle_length lo } or
-    best_of {
-      a: find_best { lo: lo, hi: (lo + hi) / 2 },
-      b: find_best { lo: (lo + hi) / 2, hi: hi }
-    };
-
-
-find_best({ lo: 2, hi: 1000 }).d
+collect(range 1000)
+| select(. >= 2)
+| map { d: ., len: cycle_length(.) }
+| max_by(.len)!.d
 ```
 
 ```output
