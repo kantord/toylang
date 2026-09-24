@@ -910,34 +910,7 @@ pub fn emit(program: &Program) -> String {
     decls.push_str(&e.printers(program));
 
     for f in &program.funcs {
-        // A tail-recursive function reassigns its parameter and loops, so the binding is `mut`.
-        let looped = tir::has_tail_call(&f.name, &f.body);
-        let param = match (&f.param, &f.param_ty) {
-            (Some(name), Some(ty)) => format!(
-                "{}{}: {}",
-                if looped { "mut " } else { "" },
-                e.user(name),
-                e.rs_type(ty)
-            ),
-            (None, None) => String::new(),
-            _ => unreachable!("a function's param and param_ty agree"),
-        };
-        let body = if looped {
-            let param_name = f.param.as_deref().map(|p| e.user(p));
-            format!(
-                "loop {{\n        {}\n    }}",
-                e.tail_stmts(&f.name, param_name.as_deref(), &f.body)
-            )
-        } else {
-            e.expr(&f.body)
-        };
-        decls.push_str(&format!(
-            "fn {}({}) -> {} {{\n    {}\n}}\n\n",
-            e.user(&f.name),
-            param,
-            e.rs_type(&f.body.ty),
-            body
-        ));
+        decls.push_str(&e.func_decl(f));
     }
 
     if let Some(fusion) = tir::fusion(program) {
@@ -1625,6 +1598,37 @@ impl Emitter<'_> {
             };
         }
         concat(ty, self.expr(l), self.expr(r))
+    }
+
+    fn func_decl(&mut self, f: &tir::Func) -> String {
+        // A tail-recursive function reassigns its parameter and loops, so the binding is `mut`.
+        let looped = tir::has_tail_call(&f.name, &f.body);
+        let param = match (&f.param, &f.param_ty) {
+            (Some(name), Some(ty)) => format!(
+                "{}{}: {}",
+                if looped { "mut " } else { "" },
+                self.user(name),
+                self.rs_type(ty)
+            ),
+            (None, None) => String::new(),
+            _ => unreachable!("a function's param and param_ty agree"),
+        };
+        let body = if looped {
+            let param_name = f.param.as_deref().map(|p| self.user(p));
+            format!(
+                "loop {{\n        {}\n    }}",
+                self.tail_stmts(&f.name, param_name.as_deref(), &f.body)
+            )
+        } else {
+            self.expr(&f.body)
+        };
+        format!(
+            "fn {}({}) -> {} {{\n    {}\n}}\n\n",
+            self.user(&f.name),
+            param,
+            self.rs_type(&f.body.ty),
+            body
+        )
     }
 
     /// v1 mutation rule: a Vec/Str local read exactly once by a consuming builtin is mutated in
