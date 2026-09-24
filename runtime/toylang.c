@@ -67,84 +67,16 @@ typedef struct {
     int64_t **cols;
 } tl_vec;
 
-tl_vec *tl_vec_new(int64_t len, int64_t ncols) {
-    tl_vec *v = tl_alloc(sizeof(tl_vec));
-    v->len = len;
-    v->ncols = ncols;
-    v->cols = tl_alloc((size_t)ncols * sizeof(int64_t *));
-    for (int64_t c = 0; c < ncols; c++) {
-        v->cols[c] = len > 0 ? tl_alloc((size_t)len * sizeof(int64_t)) : NULL;
-    }
-    return v;
-}
+/* Defined in runtime-rs, which owns the Vec, mask, record and Opt core: construction, the
+ * element accessors, columns, masks. C reads a tl_vec's fields directly through the typedef
+ * above, so runtime-rs's TlVec is defined to this layout and checks the same offsets. */
+_Static_assert(sizeof(tl_vec) == 24 && offsetof(tl_vec, len) == 0 &&
+                   offsetof(tl_vec, ncols) == 8 && offsetof(tl_vec, cols) == 16,
+               "tl_vec layout");
 
-int64_t tl_vec_len(const tl_vec *v) {
-    return v->len;
-}
-
-int64_t tl_vec_get(const tl_vec *v, int64_t col, int64_t i) {
-    return v->cols[col][i];
-}
-
-void tl_vec_set(tl_vec *v, int64_t col, int64_t i, int64_t value) {
-    v->cols[col][i] = value;
-}
-
-/* One field of a Vec of records, as a Vec of that field's type.
- *
- * The column is shared rather than copied, so `.name` on a Vec<User> costs one small header and
- * no element work. This is the whole reason the layout is struct of arrays.
- */
-tl_vec *tl_vec_column(const tl_vec *v, int64_t col) {
-    tl_vec *out = tl_alloc(sizeof(tl_vec));
-    out->len = v->len;
-    out->ncols = 1;
-    out->cols = tl_alloc(sizeof(int64_t *));
-    out->cols[0] = v->cols[col];
-    return out;
-}
-
-/* select in two passes: count survivors, then fill. Two passes over a mask beats growing an
- * array, and every column is compacted with the same surviving indices. */
-tl_vec *tl_vec_from_mask(const tl_vec *src, const int8_t *keep) {
-    int64_t n = 0;
-    for (int64_t i = 0; i < src->len; i++) {
-        n += keep[i] != 0;
-    }
-    tl_vec *out = tl_vec_new(n, src->ncols);
-    int64_t j = 0;
-    for (int64_t i = 0; i < src->len; i++) {
-        if (keep[i]) {
-            for (int64_t c = 0; c < src->ncols; c++) {
-                out->cols[c][j] = src->cols[c][i];
-            }
-            j++;
-        }
-    }
-    return out;
-}
-
-int8_t *tl_mask_new(int64_t len) {
-    return len > 0 ? tl_alloc((size_t)len) : NULL;
-}
-
-void tl_mask_set(int8_t *mask, int64_t i, int64_t value) {
-    mask[i] = value != 0;
-}
-
-/* A record: one slot per field, in the field order the type declares. Records only ever
- * arrive from input, since the language has no expression that builds one. */
-int64_t *tl_rec_new(int64_t nfields) {
-    return tl_alloc((size_t)nfields * sizeof(int64_t));
-}
-
-int64_t tl_rec_get(const int64_t *r, int64_t field) {
-    return r[field];
-}
-
-void tl_rec_set(int64_t *r, int64_t field, int64_t value) {
-    r[field] = value;
-}
+tl_vec *tl_vec_new(int64_t len, int64_t ncols);
+int64_t *tl_rec_new(int64_t nfields);
+int64_t *tl_opt_some(int64_t value);
 
 /* Reading input.
  *
@@ -1060,26 +992,6 @@ int64_t *tl_rec_from_vec(const tl_vec *v, int64_t i) {
         rec[c] = v->cols[c][i];
     }
     return rec;
-}
-
-/* Opt: a pointer to a slot, or NULL for absent.
- *
- * Boxing rather than a tag pair, because a slot holds any value an Int can and there is no
- * spare bit pattern to mean absent. Uniform across element types, which is what lets one
- * function serve them all.
- */
-int64_t *tl_opt_some(int64_t value) {
-    int64_t *p = tl_alloc(sizeof(int64_t));
-    *p = value;
-    return p;
-}
-
-int64_t tl_opt_is_some(const int64_t *o) {
-    return o != NULL;
-}
-
-int64_t tl_opt_get(const int64_t *o) {
-    return *o;
 }
 
 /* Every element but the first. NULL on an empty Vec -- the same absence encoding tl_opt_some
