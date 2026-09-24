@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (297):
+compiles natively (300):
 adults
 all_basic
 all_empty
@@ -185,6 +185,9 @@ max_empty_unwrap_refuses
 max_int64s
 max_ints
 max_negative
+mutation_alias_shared_table
+mutation_owned_shapes
+mutation_rerun_body
 mutual_recursion_cycle
 n_body
 nested_field_access

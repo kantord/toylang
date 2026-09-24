@@ -3794,3 +3794,17 @@
   kind: build
   needs: [native-runtime-rs-step8-delete-c]
   status: done
+
+- id: mutation-rule-v1-build-lua
+  title: 'Mutation-as-optimization v1 -- emit for the Lua backend only (src/emit_lua.rs). Lua
+    pays the copy cost once (a fresh `out` table built at the mutating builtins themselves,
+    since Lua tables are already reference types) -- same copy sites as Rust per the spike''s
+    finding. LANDED 2026-09-24: shared analysis in src/mutation.rs (single_consuming_use plus
+    owned_locals, which adds a freshness check because Lua Vecs alias by reference), Lua emits
+    tl_sort_owned/tl_reverse_owned/tl_append_owned. Str and flatten have no Lua copy to save and
+    stay as before. Also fixed a Rust bug the Lua design exposed: a local read once inside a
+    map/select body or closure was moved into an FnMut closure and rustc rejected it. Tests:
+    tests/mutation_lua.rs, corpus mutation_*.yaml.'
+  kind: build
+  needs: [mutation-rule-v1-checkpoint-rust]
+  status: done

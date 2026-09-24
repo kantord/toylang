@@ -1,0 +1,47 @@
+# A local read once in the source, inside a body that runs more than once: a `map` body, a closure. That
+# one read is not one use at run time, so consuming it in place would sort, reverse or extend the same
+# table on every pass. Each function has its own `xs` so that none of them has a second reader to
+# rule the optimization out on its own; `element_bound_twice` puts one table in two slots of a Vec.
+program: |
+  fn count_where(
+    { items, pred }: { items: Vec<Int>, pred: Int -> Bool }
+  ) -> Int =
+    items | select pred | length(.);
+
+
+  fn reverse_per_element() -> Vec<Vec<Int>> =
+    let xs = [3, 1, 2]
+
+    [1, 2] | map(reverse xs);
+
+
+  fn append_per_element() -> Vec<Vec<Int>> =
+    let xs = [3, 1, 2]
+
+    [1, 2] | map(xs + [.]);
+
+
+  fn closure_capture() -> Int =
+    let xs = [3, 1, 2]
+
+    count_where { items: [1, 2, 3], pred: $ == reverse(xs)[0]! };
+
+
+  fn element_bound_twice() -> Vec<Vec<Int>> =
+    let xs = [3, 1, 2]
+    let shared = [xs, xs]
+
+    shared | map reverse(.);
+
+
+  {
+    reverse_per_element: reverse_per_element(),
+    append_per_element: append_per_element(),
+    closure_capture: closure_capture(),
+    element_bound_twice: element_bound_twice()
+  }
+
+output: |
+  {"reverse_per_element":[[2,1,3],[2,1,3]],"append_per_element":[[3,1,2,1],[3,1,2,2]],"closure_capture":1,"element_bound_twice":[[2,1,3],[2,1,3]]}
+
+node_types: [application, builtin.length, builtin.reverse, closure, closure.apply, compare.eq, concat, int, local, map-over, pipe, projection, record-literal, selection.collapse, selection.narrow, unwrap, var, vec-literal]

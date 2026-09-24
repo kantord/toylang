@@ -218,15 +218,6 @@
   prio: 4
   status: todo
 
-- id: mutation-rule-v1-build-lua
-  title: 'Mutation-as-optimization v1 -- emit for the Lua backend only (src/emit_lua.rs). Lua
-    pays the copy cost once (a fresh `out` table built at the mutating builtins themselves,
-    since Lua tables are already reference types) -- same copy sites as Rust per the spike''s
-    finding.'
-  kind: build
-  needs: [mutation-rule-v1-checkpoint-rust]
-  status: todo
-
 - id: mutation-rule-v1-checkpoint-lua
   title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Lua commit landed clean before
     starting Go.'
