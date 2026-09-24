@@ -1,5 +1,5 @@
 - id: del-char-escaping-parity
-  title: 'Parity gap found while landing control-char-escaping-parity (2026-09-24), NOT ruled: DEL (0x7f) in a Str printed inside a Vec or record is escaped as `\u007f` by Rust, Lua and jq, and printed raw by Go, JavaScript, Python and native. JSON does not require escaping it. Needs a maintainer ruling on which spelling wins (four backends print it raw; the runtime quote in runtime/toylang.c only escapes below 0x20), then the three or four others change, plus a corpus case (tests/corpus/control_char_quoting.yaml holds the other control characters) and the sentence in docs/reference/types/str.md that says DEL is unsettled. Probe with `printf ''{"tag": "e\\u007f"}'' | target/debug/toylang run FILE <backend>` over `fn tag(db: { tag: Str }) -> Vec<Str> = [db.tag]; tag(parse stdin)`.'
+  title: 'Parity gap found while landing control-char-escaping-parity (2026-09-24), NOT ruled: DEL (0x7f) in a Str printed inside a Vec or record is escaped as `\u007f` by Rust, Lua and jq, and printed raw by Go, JavaScript, Python and native. JSON does not require escaping it. Needs a maintainer ruling on which spelling wins (four backends print it raw; the runtime quote in runtime-rs/src/lib.rs only escapes below 0x20), then the three or four others change, plus a corpus case (tests/corpus/control_char_quoting.yaml holds the other control characters) and the sentence in docs/reference/types/str.md that says DEL is unsettled. Probe with `printf ''{"tag": "e\\u007f"}'' | target/debug/toylang run FILE <backend>` over `fn tag(db: { tag: Str }) -> Vec<Str> = [db.tag]; tag(parse stdin)`.'
   kind: decide
   needs: []
   status: proposed
@@ -23,12 +23,6 @@
   title: 'Found at native-runtime-rs-step6-input (2026-09-24), see the findings at the end of plans/native-runtime-rust-research.md: the compiler''s root Cargo.toml depends on serde_json without the `float_roundtrip` feature, so `run_on` reads Float input with the fast float path and hands every backend a neighbouring double for long digit strings (14.8% of the research sample; `91186252760.18955` prints `91186252760.18956` on every backend, the correct value is `...18954`). Fix: `serde_json = { version = "1.0.151", features = ["float_roundtrip"] }` in the root Cargo.toml. The suite cannot catch it by itself: a workspace build unifies runtime-rs''s flag onto the compiler. Done when a plain `cargo build -p toylang` binary prints `91186252760.18954` for that input on rust, lua, js and py, and a test says so (build the binary in a separate target dir, or read the value with `serde_json::from_str::<f64>` inside a `-p toylang` test that cargo cannot unify).'
   kind: build
   needs: []
-  status: todo
-
-- id: native-runtime-rs-step8-delete-c
-  title: 'Native runtime port, step 8 (plans/native-runtime-rust-research.md section 6): delete runtime/toylang.c, the `RUNTIME_C` constant in src/emit_llvm.rs and the two-file cc call, leaving `cc program.o libtoylang_rt.a ...`. Confirm nothing else includes or reads the C file (grep, including tests, docs and site/). Compare benches/programs native run times against the baseline recorded in step 0 and record the result at the end of plans/native-runtime-rust-research.md; a slowdown beyond noise is a finding to report, not something to hide. Update the docs and plans that describe the native runtime as C (grep for toylang.c) and mark plans/native-runtime-rust-research.md as ruled and implemented. Check the emitted program size and record it (the research measured about 47 KB with the C runtime and about 361 KB stripped with std).'
-  kind: build
-  needs: [native-runtime-rs-step7-pipe-through]
   status: todo
 
 - id: native-runtime-rs-step9-declaration-table
@@ -293,15 +287,16 @@
 
 - id: mutation-rule-v1-checkpoint-jq
   title: 'Mutation-as-optimization v1 -- reevaluate before the native/LLVM backend: it needs
-    hand-authored C in runtime/toylang.c, the same class of file the original sort_by/max_by
-    corruption was concentrated in.'
+    runtime changes; the runtime is Rust in runtime-rs since the native runtime port (it was
+    hand-authored C in runtime/toylang.c, where the original sort_by/max_by corruption was
+    concentrated), so re-judge how much that risk still applies.'
   kind: decide
   needs: [mutation-rule-v1-build-jq]
   status: todo
 
 - id: mutation-rule-v1-build-native
   title: 'Mutation-as-optimization v1, final step -- emit for the native/LLVM backend
-    (src/emit_llvm.rs + runtime/toylang.c). Last of the 7 one-backend-per-commit steps; once
+    (src/emit_llvm.rs + runtime-rs). Last of the 7 one-backend-per-commit steps; once
     this lands, v1 has landed on every backend and mutation-rule-v2-followup (the order-aware
     v2 extension) can start.'
   kind: build

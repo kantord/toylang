@@ -126,7 +126,7 @@ layer stays future work.
   `TlE_` harvest excludes Opt. Emitted code is unchanged.
 - Go keeps `tlOpt[T]{ok, v}` (already tagged), same treatment.
 - Native keeps `NULL`-or-boxed (already tagged: `some(none)` is a box holding `NULL`, which
-  is not `NULL`). `tl_at`, `tl_vec_tail`, `tl_opt_*` in `runtime/toylang.c` do not change.
+  is not `NULL`). `tl_at`, `tl_vec_tail`, `tl_opt_*` in `runtime-rs` do not change.
   This leaves Opt's native layout different from the general two-slot enum box; that is
   legal while nothing matches on an Opt (see the open points), it sits below the emit
   boundary where the corpus cannot see it, and the reconciliation -- if the matcher round

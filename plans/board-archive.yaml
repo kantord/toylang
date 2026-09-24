@@ -3782,3 +3782,9 @@
   kind: build
   needs: [native-runtime-rs-step6-input]
   status: done
+
+- id: native-runtime-rs-step8-delete-c
+  title: 'Native runtime port, step 8 (plans/native-runtime-rust-research.md section 6): delete runtime/toylang.c, the `RUNTIME_C` constant in src/emit_llvm.rs and the two-file cc call, leaving `cc program.o libtoylang_rt.a ...`. Confirm nothing else includes or reads the C file (grep, including tests, docs and site/). Compare benches/programs native run times against the baseline recorded in step 0 and record the result at the end of plans/native-runtime-rust-research.md; a slowdown beyond noise is a finding to report, not something to hide. Update the docs and plans that describe the native runtime as C (grep for toylang.c) and mark plans/native-runtime-rust-research.md as ruled and implemented. Check the emitted program size and record it (the research measured about 47 KB with the C runtime and about 361 KB stripped with std).'
+  kind: build
+  needs: [native-runtime-rs-step7-pipe-through]
+  status: done

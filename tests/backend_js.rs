@@ -113,8 +113,8 @@ fn float_in_a_record_and_a_vec() {
 
 /// Printing format across the ECMA-262 Number::toString notation-switch boundaries: fixed vs
 /// scientific at 1e21 and 1e-7/1e-6, and the trailing zeros an integer-valued Float still needs
-/// suppressed. This is the one place Native's own formatter (runtime/toylang.c's
-/// tl_float_to_str, verified in isolation against a ~5000-value fuzz run against Node before
+/// suppressed. This is the one place Native's own formatter (runtime-rs's
+/// tl_float_to_str, ported from a C one verified in isolation against a ~5000-value fuzz run against Node before
 /// landing) has real work to do that JS gets from its own runtime for free, so it is worth
 /// covering past the arithmetic/comparison shapes above.
 #[test]

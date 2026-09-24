@@ -2,7 +2,7 @@
 //!
 //! Unlike Lua and JavaScript this does not end at a string of source. It ends at an object file,
 //! which is not a program: linking is still someone else's job, so a native build shells out to
-//! `cc`, which also compiles `runtime/toylang.c` alongside it.
+//! `cc`, against the runtime archive built from `runtime-rs`.
 //!
 //! Everything it cannot compile yet returns a named error rather than being silently absent, so
 //! the gap between this and the other two backends is a visible, shrinking list.
@@ -27,12 +27,6 @@ use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
 use crate::ast::{BinOp, LogicOp};
 use crate::tir::{self, Builtin, Func, Fusion, Kind, LocalId, Program, Source, Stage, Tir};
 use crate::ty::{self, Enums, Type};
-
-/// The C source linked into every native binary.
-///
-/// Embedded rather than read from disk so a built `toylang` does not depend on its own source
-/// tree still being there.
-pub const RUNTIME_C: &str = include_str!("../runtime/toylang.c");
 
 fn unsupported(what: &str) -> String {
     format!("the native backend cannot compile {what} yet")
@@ -3327,7 +3321,7 @@ impl<'ctx> Emitter<'ctx, '_> {
 }
 
 /// The type descriptor the runtime's JSON parser reads, so it only ever looks for the shape the
-/// program declared. See the grammar in runtime/toylang.c.
+/// program declared. See the grammar at the top of runtime-rs/src/json.rs.
 fn descriptor(enums: &Enums, ty: &Type) -> String {
     /// `open` is the enums whose descriptors this one is already inside. A recursive enum names
     /// itself back as `@Name` rather than being spelled out again, which is what the runtime's

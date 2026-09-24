@@ -30,6 +30,5 @@ same stable order the other two backends' sorts already guarantee.
 
 jq's own `sort_by` is stable and orders Str by codepoint, so the jq arm emits it directly.
 
-Native has no stable sort in libc, so `tl_vec_sort_by` in runtime/toylang.c sorts an array of
-`(key, row)` pairs with `qsort`, the row breaking key ties, and then permutes every column of the
-Vec by the result.
+Native's `tl_vec_sort_by` in runtime-rs sorts a vector of row indices by key with Rust's stable
+sort, so equal keys keep their order, and then permutes every column of the Vec by the result.

@@ -2,10 +2,22 @@
 //! a malloc block goes unnoticed because malloc rounds sizes up. This links a program under
 //! AddressSanitizer, so such a write fails the run.
 //!
-//! No behaviour is left in the C file, so the runtime is Rust, and it is not instrumented (a sanitizer build of a Rust crate needs a nightly compiler). What is seen is
-//! what AddressSanitizer intercepts in libc: its malloc blocks, and an overrun by a `memcpy` or
-//! `memmove` into one, which a slice copy compiles to. The Rust accessors' own bounds are checked
-//! by `cargo test -p toylang-rt`.
+//! What this covers is narrower than it was. The runtime used to be C, which `cc` compiled with
+//! `-fsanitize=address`, so every load and store in it was instrumented. It is now a prebuilt Rust
+//! archive, and neither it nor the LLVM object the compiler emits is instrumented (a sanitizer
+//! build of a Rust crate needs a nightly compiler). Passing the flag at link time still puts
+//! AddressSanitizer's allocator and libc interposers in the program, and Rust's `Box` and `Vec`
+//! reach malloc through them, so what is seen is: a `memcpy` or `memmove` (which slice copies
+//! compile to) that overruns a heap block, a double free, and a free of a pointer malloc did not
+//! return. A raw-pointer store that overruns a block, in the runtime or in generated code, is not
+//! seen.
+//!
+//! What covers the Rust runtime's own memory safety: safe slice indexing panics on an
+//! out-of-bounds access (and the runtime aborts on panic), and `just check` runs the crate's unit
+//! tests (`cargo nextest run --workspace`). Neither checks the `unsafe` pointer arithmetic in the
+//! accessors. Running the crate's tests under Miri or an ASan-instrumented nightly build would;
+//! that is a documented follow-up in plans/native-runtime-rust-research.md, not part of `just
+//! check`.
 //!
 //! `link` finds the compiler as `cc` on PATH, so the sanitizer goes in through a `cc` wrapper
 //! placed first on the PATH of a `toylang build` child, not through a flag on `link`.

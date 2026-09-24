@@ -41,7 +41,7 @@ export function summarize(c: Case): CaseSummary {
 export const BACKENDS: Record<string, { label: string; lang: string; note: string }> = {
   lua: { label: "Lua", lang: "lua", note: "Runs on a vendored Lua 5.4, so it needs no toolchain." },
   js: { label: "JavaScript", lang: "javascript", note: "Runs through node. The only backend this site can execute." },
-  native: { label: "LLVM IR", lang: "llvm", note: "Compiled to an object file and linked against a small C runtime." },
+  native: { label: "LLVM IR", lang: "llvm", note: "Compiled to an object file and linked against a small Rust runtime." },
   jq: { label: "jq", lang: "jq", note: "A stream language, so keeping a dimension means iterating and collecting." },
   go: { label: "Go", lang: "go", note: "Statically typed with no runtime type information, so every type is spelled out." },
   py: { label: "Python", lang: "python", note: "Exact unbounded integers, so the 32-bit rule is emulated." },

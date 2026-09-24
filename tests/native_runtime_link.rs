@@ -1,5 +1,6 @@
-//! The Rust half of the native runtime links into a program and runs. No compiled program calls
-//! into it yet, so this builds an object by hand: `main` returns `tl_rt_smoke(41)`.
+//! The native runtime archive links into a program and runs, through `link_object` alone. This
+//! builds an object by hand rather than compiling a toylang program, so a failure here is the
+//! archive or the `cc` line and not the compiler: `main` returns `tl_rt_smoke(41)`.
 
 use inkwell::OptimizationLevel;
 use inkwell::context::Context;

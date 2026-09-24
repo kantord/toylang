@@ -33,5 +33,6 @@ round-trip digits, fixed notation between `1e-7` and `1e21`, exponential outside
 trailing `.0` on integral values. Every one of the seven backends (the count above says six;
 Rust-source joined later) renders the same double to the same bytes, verified against Node
 over a fuzz run of about five thousand values; the native runtime carries its own formatter
-in `runtime/toylang.c` because libc has no shortest-round-trip one. See
+in `runtime-rs` (on the `ryu-js` crate, after a C one that retried `snprintf`) because libc has
+no shortest-round-trip one. See
 [Float](../reference/types/float.md).

@@ -1,5 +1,10 @@
 # Native runtime in Rust: what comparable compilers do, and a migration plan
 
+**Status (2026-09-24): ruled and implemented.** The maintainer ruled option B; steps 0 to 8 of
+section 6 have landed and `runtime/toylang.c` is deleted. Option C (section 3.4) is the row
+`native-runtime-rs-step9-declaration-table`. Sections 1 to 11 describe the C runtime as it stood
+when they were written; the results of the port are in the checks at the end of section 12.
+
 Research note for the board row `native-runtime-direction-decide` (2026-09-24). It builds on
 [native-backend-rust-ergonomics-research.md](native-backend-rust-ergonomics-research.md), which
 already established that the LLVM binding is inkwell and that the open question is the runtime:
@@ -718,3 +723,73 @@ from 398,216 to 406,408 bytes (+8 KB) with the process and thread code linked in
 - **One difference left, on purpose.** An argument or command containing a NUL byte was cut at
   the NUL by the C. `Command` refuses it, so it is now `cannot spawn subprocess ...: nul byte
   found in provided data`.
+
+### Check after step 8 (C file deleted): against the step 0 baseline
+
+Recorded on 2026-09-24, same host as the baseline (12th Gen Intel Core i7-12700KF, Linux 7.2.4-zen2,
+gcc 16.2.1, rustc 1.98.1), load average 2.2 to 3.0 while measuring (other sessions were running).
+The baseline table above was recorded at load 3.6 and is not reused directly. Instead a compiler
+was built from the step 0 commit (`0c8ec172`, the C runtime after the `strcpy` fix) and one from
+this commit, and the same six `benches/programs` sources were built with each (`toylang build FILE
+native`) and timed with `hyperfine -N --warmup 5 --runs 30` on the `benches/inputs/` files. The
+old and new binary of a program were timed in the same hyperfine call, and the order flipped
+between the three rounds. Every output is byte-identical between the two builds. Medians in
+milliseconds, the three rounds listed as C runtime / Rust runtime:
+
+| program | C runtime | Rust runtime |
+| --- | --- | --- |
+| fannkuch-redux | 53.9, 52.5, 52.8 | 49.1, 49.6, 50.6 |
+| mandelbrot | 43.9, 44.2, 44.3 | 33.1, 32.8, 31.8 |
+| n-body | 102.6, 103.1, 102.1 | 88.9, 89.3, 88.3 |
+| spectral-norm | 44.4, 44.3, 45.0 | 35.3, 35.0, 35.5 |
+
+binary-trees and fasta run for 2 to 3 ms, so a median there is a coin flip between two scheduler
+states (a round read anywhere from 2.6 to 10.9 ms). They were rerun at `--runs 200` for three
+interleaved rounds and are compared by minimum, which was steady: binary-trees 2.5 ms (C) against
+2.2 to 2.4 (Rust), fasta 2.0 (C) against 1.8 (Rust).
+
+No slowdown. The three compute-bound programs are 14 to 25% faster on the Rust runtime. I did not
+profile why; the C runtime was compiled at `-O0` (section 1) and these programs call its `tl_*`
+accessors in their inner loops, and the archive is a release build, which is the likeliest cause
+but is unverified. The medians above already include the `step 1` to `step 7` ports, so this says
+nothing about any one of them.
+
+**Program size.** Stripped (`strip`), the C runtime gave 47,608 bytes for binary-trees and 55,800
+for n-body (the "about 47 KB" of section 3.2 is the smallest of these). With the Rust runtime,
+stripped: binary-trees and mandelbrot 381,832, fannkuch-redux 385,928, spectral-norm 398,216,
+fasta and n-body 406,408. Section 3.2 measured 361,336 for the same
+dependencies behind a tiny `main` and called it a floor, since a real program links more of the
+runtime; the programs here are 20 to 45 KB above it (step 7 alone was +8 KB). Unstripped the
+binaries are about 2.4 MB, the same ratio as that table's 2.26 MB against 361 KB; the link does
+not strip. Section 3.2 recommended `std` knowing this cost (about 314 KB over C).
+
+### Findings from step 8
+
+- **`cc` is still the only tool needed to compile a native program.** Built with `PATH` holding
+  only symlinks to `cc`, `gcc`, `ld` and `as` (no `rustc`, no `cargo`), `toylang build n-body.toy
+  native` links and the program runs. With `ld` missing `cc` itself fails ("cannot find 'ld'"),
+  which is the C toolchain and not something new. The runtime archive is embedded in the compiler
+  by `build.rs`, so a Rust toolchain is needed to build `toylang`, not to use it.
+- **`tests/native_asan.rs` covers less than it did.** It passed unchanged after the C file went,
+  but what it instruments changed. With the C runtime, `cc -fsanitize=address` instrumented every
+  load and store in the runtime. The Rust archive and the LLVM object are not instrumented (a
+  sanitizer build of Rust needs nightly). The flag now only links AddressSanitizer's allocator and
+  libc interposers, and Rust's `Box` and `Vec` allocate through them (the leak report of a built
+  program names `tl_vec_new` and `leak_str` frames under `malloc`, so the runtime's allocations
+  are seen). A `memcpy`/`memmove` overrun, a double free or a bad free is caught; a raw-pointer
+  store that runs past a block is not. Safe slice indexing in the runtime panics (and the runtime
+  aborts on panic) instead of overrunning, and the crate's unit tests run under `just check`
+  because the justfile uses `--workspace`, but neither checks the `unsafe` pointer arithmetic in
+  the column and record accessors.
+- **Follow-up, not done: sanitize the Rust runtime.** Options are the crate's tests under Miri
+  (`cargo +nightly miri test -p toylang-rt`, which interprets and so cannot run the tests that
+  spawn processes; not installed for the nightly toolchain on the measurement host, so not
+  tried) or an ASan build of the archive with `-Zsanitizer=address` and `-Zbuild-std`
+  behind an opt-in `just` recipe. Both need a nightly toolchain, which `just check` must not
+  require, so they belong in an opt-in recipe or a scheduled CI job. Neither was run: whether the
+  crate's tests pass under Miri, or the archive builds under `-Zbuild-std`, is unverified.
+- **The descriptor grammar's pointer** in `src/emit_llvm.rs` (step 6's finding) now names
+  `runtime-rs/src/json.rs`, as do the comments in `tests/corpus/enum_recursive_input.yaml` and
+  the docs for `sort_by`, `pipe_through` and ADR 0007. Historical records (archived board rows,
+  the research log, dated research notes, incident logs) still name `runtime/toylang.c` and were
+  left alone.

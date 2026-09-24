@@ -420,8 +420,8 @@ pub const RUNTIME_ARCHIVE: &[u8] = include_bytes!(env!("TOYLANG_RT_ARCHIVE"));
 ///
 /// LLVM produces an object file, which is not a program, so this shells out to `cc` for the
 /// link. That is a toolchain requirement the Lua backend does not have, since mlua vendors its
-/// interpreter. `cc` is the only thing a user needs installed: both halves of the runtime are
-/// embedded in this binary and written out for the one `cc` call.
+/// interpreter. `cc` is the only thing a user needs installed: the runtime is a prebuilt archive
+/// embedded in this binary and written out for the one `cc` call, so no Rust toolchain is needed.
 pub fn link(program: &Program, out: &std::path::Path) -> Result<()> {
     let dir = tempfile::tempdir()?;
     let object = dir.path().join("program.o");
@@ -430,11 +430,9 @@ pub fn link(program: &Program, out: &std::path::Path) -> Result<()> {
 }
 
 /// Link an object file against the native runtime. Public so `tests/native_runtime_link.rs` can
-/// link an object that calls the Rust half of the runtime, which no compiled program does yet.
+/// link an object built by hand, without going through the compiler.
 pub fn link_object(object: &std::path::Path, out: &std::path::Path) -> Result<()> {
     let dir = tempfile::tempdir()?;
-    let runtime = dir.path().join("toylang.c");
-    std::fs::write(&runtime, emit_llvm::RUNTIME_C)?;
     let archive = dir.path().join("libtoylang_rt.a");
     std::fs::write(&archive, RUNTIME_ARCHIVE)?;
 
@@ -444,7 +442,6 @@ pub fn link_object(object: &std::path::Path, out: &std::path::Path) -> Result<()
     // they matter on glibc older than 2.34, which has not been measured.
     let status = std::process::Command::new("cc")
         .arg(object)
-        .arg(&runtime)
         .arg(&archive)
         .arg("-Wl,--gc-sections")
         .args(["-lutil", "-lrt", "-lpthread", "-lm", "-ldl"])

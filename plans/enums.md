@@ -83,7 +83,7 @@ rule that a target's speed constrains the design only where it is demonstrated t
 dense union is the right upgrade the day an enum-heavy workload measurably bottlenecks on the
 simple layout; building that benchmark is its prerequisite, not this plan's business. A
 row-major tagged representation (Rust's own `Vec<enum>` shape) is the likely first cut, but
-whoever takes this step decides against `runtime/toylang.c` as it actually is, and records
+whoever takes this step decides against `runtime-rs` as it actually is, and records
 the choice in the research log -- the struct-of-arrays invariant already has four independent
 construction sites, and this adds enum-aware ones.
 

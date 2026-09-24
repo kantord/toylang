@@ -1,9 +1,6 @@
 //! The native runtime in Rust. The C ABI (`tl_*` symbols, `tl_str` and `tl_vec` layouts) is fixed
-//! by `src/emit_llvm.rs`; this crate reproduces it and replaces `runtime/toylang.c` one symbol
-//! at a time. See plans/native-runtime-rust-research.md.
-//!
-//! A `tl_*` symbol is defined in exactly one of the two: each port deletes its C body in the
-//! same commit that adds the Rust one.
+//! by `src/emit_llvm.rs`. It replaced a single C file that `cc` compiled alongside every program;
+//! see plans/native-runtime-rust-research.md.
 
 mod input;
 mod json;
@@ -31,8 +28,9 @@ const _: () = {
 /// The Str header. The one place a header is allocated, and the seam for `leak_str`.
 ///
 /// Takes ownership of `bytes` and copies nothing. Nothing frees. The mutation
-/// model decides between refcounting and tracing (runtime/toylang.c lines 7 to 10), and until it
-/// does every value is leaked on purpose.
+/// model decides between refcounting and tracing, and a half-built refcount would be worse than
+/// an honest leak in a program that runs once and exits, so until it does every value is leaked
+/// on purpose.
 fn str_new(bytes: *const u8, len: i64) -> *mut TlStr {
     Box::into_raw(Box::new(TlStr { ptr: bytes, len }))
 }
@@ -94,7 +92,7 @@ unsafe fn bytes<'a>(s: *const TlStr) -> &'a [u8] {
     unsafe { std::slice::from_raw_parts(s.ptr, s.len as usize) }
 }
 
-/// Writes straight to a descriptor: no buffer, so output interleaves in order with whatever C
+/// Writes straight to a descriptor: no buffer, so output interleaves in order with whatever else
 /// writes to the same descriptor, and nothing needs flushing at exit (the generated `main`
 /// bypasses Rust's `lang_start`, which is what flushes `std::io::stdout`). Retries partial
 /// writes and EINTR, which the C `write` did not.
@@ -327,7 +325,7 @@ pub unsafe extern "C" fn tl_vec_len(v: *const TlVec) -> i64 {
     unsafe { (*v).len }
 }
 
-/// No bounds check, as in C: the IR the compiler emits checks the index before it gets here.
+/// No bounds check: the IR the compiler emits checks the index before it gets here.
 ///
 /// # Safety
 /// `v` points at a live `TlVec`, `col` is in `0..ncols` and `i` is in `0..len`.
@@ -391,7 +389,7 @@ pub unsafe extern "C" fn tl_vec_from_mask(src: *const TlVec, keep: *const i8) ->
     out
 }
 
-/// Null for a length of zero, as in C.
+/// Null for a length of zero.
 #[unsafe(no_mangle)]
 pub extern "C" fn tl_mask_new(len: i64) -> *mut i8 {
     if len > 0 {

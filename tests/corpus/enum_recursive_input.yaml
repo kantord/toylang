@@ -1,8 +1,8 @@
 # The same shape off the wire and back out again. Reading one exercises three things printing
 # does not: the host's own validator, which walks the value against the declared type; the
 # decoders Go and Rust generate per enum; and the native backend's type descriptor, a string the
-# C runtime parses -- so a recursive type needs a spelling for itself there, `@Json`, rather than
-# an expansion with no end (runtime/toylang.c).
+# runtime parses (runtime-rs/src/json.rs) -- so a recursive type needs a spelling for itself
+# there, `@Json`, rather than an expansion with no end.
 #
 # `json` exists to give `input` a type: the annotation on a function's parameter is where an
 # input's shape is declared, as in enum_input.yaml. `null` rides along as the unit variant, so

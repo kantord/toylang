@@ -189,7 +189,7 @@ Every backend synthesizes a handful of named helpers into its output, gated by a
 `used.tail`/`used.chars`/`used.jsonlines` flags, `emit_lua.rs`'s `builtin_helpers`). Representative
 examples: Go's `tlTail`/`tlConcat`/`tlSort`/`tlReverse`, Rust's `tl_tail`/`tl_concat`/`tl_sort`,
 Python's `tl_range`/`tl_tail`/`tl_vec_concat`, the native runtime's `tl_vec_tail` and friends in
-`runtime/toylang.c`. Every one of these is the emission side of a `tir::Builtin` variant already
+`runtime-rs/src/lib.rs`. Every one of these is the emission side of a `tir::Builtin` variant already
 covered above, not a fourth category: they exist because a `Builtin` variant needs runtime support
 on that particular target, and the question "could this be one prelude function instead of seven
 backend-specific ones" was already asked and answered per-variant. There's no helper here that

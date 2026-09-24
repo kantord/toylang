@@ -192,7 +192,7 @@ point differs:
 - **Rust**: `Debug`-style digits (`{:e}` gives exact digits + exponent, or `{:?}`),
   re-laid out with a `+` sign repair; print `-0` as `0`.
 
-The re-layout is already written twice in this repo (native: runtime/toylang.c
+The re-layout is already written twice in this repo (native: runtime-rs
 `tl_float_to_str`; jq: src/emit_jq.rs `FLOAT_PRINT_HELPER`). The Go/Python/Rust lanes are
 not implementing a new algorithm; they are porting the ECMA-262 layout to a third, fourth,
 and fifth host and confirming it against the JS reference across the notation boundaries and

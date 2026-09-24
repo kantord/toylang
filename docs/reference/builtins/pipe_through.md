@@ -34,8 +34,9 @@ Lua has no bidirectional-pipe primitive and no separate `lua` process to hand pi
 `toylang run --backend lua` runs the emitted chunk embedded in the compiler's own process via
 `mlua` -- so stdin and stderr go through temp files rather than pipes.
 
-The native backend uses `posix_spawnp` and one `poll` loop in its C runtime that writes stdin
-and reads stdout and stderr together, so it needs no threads. It buffers all of stdout and stderr
+The native backend spawns the child with `std::process` from its Rust runtime, and feeds its
+stdin from one helper thread and drains its stderr on another while the calling thread reads
+stdout. It buffers all of stdout and stderr
 before yielding lines, where the Rust backend streams stdout as it arrives; the output is the same.
 A child that closes its stdin early (`head`) or never reads it does not stall the program.
 
