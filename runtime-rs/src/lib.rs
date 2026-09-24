@@ -7,15 +7,15 @@
 
 mod input;
 mod json;
+mod pipe;
 
 use std::alloc::{Layout, alloc};
 use std::cmp::Ordering;
-use std::ffi::{CStr, c_char};
 use std::mem::{offset_of, size_of};
 use std::ptr::{NonNull, null_mut};
 
-/// A toylang Str: bytes and a length, never null-terminated by contract. Field order is the C
-/// `tl_str` in runtime/toylang.c, which still reads it; both sides assert the same offsets.
+/// A toylang Str: bytes and a length, never null-terminated by contract. The IR from
+/// src/emit_llvm.rs builds and reads this layout.
 #[repr(C)]
 pub struct TlStr {
     ptr: *const u8,
@@ -30,42 +30,32 @@ const _: () = {
 
 /// The Str header. The one place a header is allocated, and the seam for `leak_str`.
 ///
-/// Takes ownership of `bytes` (a block from C's `tl_alloc` or from `leak_str`) and copies
-/// nothing: `tl_pipe_through`, still C, builds its lines in a buffer and hands it over here. Nothing
-/// frees. The mutation model decides between refcounting and tracing (runtime/toylang.c lines 7
-/// to 10), and until it does every value is leaked on purpose.
-#[unsafe(no_mangle)]
-pub extern "C" fn tl_str_new(bytes: *const u8, len: i64) -> *mut TlStr {
+/// Takes ownership of `bytes` and copies nothing. Nothing frees. The mutation
+/// model decides between refcounting and tracing (runtime/toylang.c lines 7 to 10), and until it
+/// does every value is leaked on purpose.
+fn str_new(bytes: *const u8, len: i64) -> *mut TlStr {
     Box::into_raw(Box::new(TlStr { ptr: bytes, len }))
 }
 
 /// The one place the runtime allocates a value's bytes. A later change of memory policy is a
-/// change to this function and `tl_str_new`.
+/// change to this function and `str_new`.
 fn leak_str(bytes: Vec<u8>) -> *mut TlStr {
     let len = bytes.len() as i64;
-    tl_str_new(Box::leak(bytes.into_boxed_slice()).as_ptr(), len)
+    str_new(Box::leak(bytes.into_boxed_slice()).as_ptr(), len)
 }
 
 /// A runtime failure: the message on stderr and exit 1, the way every refusal the checker could
-/// not see ahead of time ends (`tl_div_by_zero` in the C runtime is the same).
+/// not see ahead of time ends (`tl_div_by_zero` is the same).
 fn fail(msg: &str) -> ! {
     let _ = write_fd(2, format!("toylang: {msg}\n").as_bytes());
     std::process::exit(1);
 }
 
 /// A refusal of the program's input: `toylang: input: <what> at <path>`, exit 1. An empty `path`
-/// reads as `input`, the root. `tl_pipe_through`, still C, calls this through `tl_fail`.
+/// reads as `input`, the root.
 fn fail_at(what: &str, path: &str) -> ! {
     let path = if path.is_empty() { "input" } else { path };
     fail(&format!("input: {what} at {path}"))
-}
-
-/// # Safety
-/// `what` and `path` are NUL-terminated strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tl_fail(what: *const c_char, path: *const c_char) -> ! {
-    let (what, path) = unsafe { (CStr::from_ptr(what), CStr::from_ptr(path)) };
-    fail_at(&what.to_string_lossy(), &path.to_string_lossy())
 }
 
 /// The only way arithmetic can fail.
@@ -204,9 +194,7 @@ pub unsafe extern "C" fn tl_quote(s: *const TlStr) -> *mut TlStr {
 ///
 /// A column of a zero-length Vec is null, and `cols` of a Vec with no columns is dangling:
 /// nothing may read through either, and `slice_of` is what turns them into an empty slice.
-/// The field order is the C `tl_vec` in runtime/toylang.c, which still reads it directly; both
-/// sides assert the same offsets. The IR from src/emit_llvm.rs reaches a Vec only through the
-/// accessors below.
+/// The IR from src/emit_llvm.rs reaches a Vec only through the accessors below.
 #[repr(C)]
 pub struct TlVec {
     len: i64,
@@ -949,21 +937,6 @@ pub unsafe extern "C" fn tl_vec_max_by(
     unsafe { opt_of_row(v, best as i64, is_record) }
 }
 
-/// Whether `s` is valid UTF-8, refusing what a Str cannot hold: overlong forms, surrogates and
-/// anything past U+10FFFF, which the C validator this replaced let through.
-///
-/// # Safety
-/// `s` is valid for `len` bytes (it may be null when `len` is zero).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tl_utf8_valid(s: *const u8, len: usize) -> i32 {
-    let s = if len == 0 {
-        &[]
-    } else {
-        unsafe { std::slice::from_raw_parts(s, len) }
-    };
-    std::str::from_utf8(s).is_ok() as i32
-}
-
 /// Split one Str on a literal delimiter: every occurrence, in order, with the empty string one
 /// empty field and a trailing delimiter a trailing empty field, the same shape `str.split` gives
 /// on every other backend. The delimiter is searched literally, never as a pattern.
@@ -1467,19 +1440,5 @@ mod tests {
                 0
             );
         }
-    }
-
-    #[test]
-    fn utf8_validity_is_the_strict_definition() {
-        let valid = |b: &[u8]| unsafe { tl_utf8_valid(b.as_ptr(), b.len()) } == 1;
-        assert!(valid(b"") && valid(b"abc") && valid("\u{e9}\u{20ac}\u{1f600}".as_bytes()));
-        assert!(unsafe { tl_utf8_valid(std::ptr::null(), 0) } == 1);
-        assert!(!valid(&[0x80]), "a continuation byte on its own");
-        assert!(!valid(&[0xc3]), "a sequence cut short");
-        assert!(!valid(&[0xc0, 0x80]), "overlong NUL");
-        assert!(!valid(&[0xe0, 0x80, 0x80]), "overlong three-byte form");
-        assert!(!valid(&[0xed, 0xa0, 0x80]), "a surrogate");
-        assert!(!valid(&[0xf4, 0x90, 0x80, 0x80]), "past U+10FFFF");
-        assert!(!valid(&[0xff]));
     }
 }

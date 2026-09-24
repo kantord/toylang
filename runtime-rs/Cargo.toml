@@ -21,3 +21,7 @@ ryu-js = "1.0.3"
 # `long_digit_floats_parse_correctly_rounded` in src/json.rs fails if the flag is dropped.
 serde = "1.0.229"
 serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
+
+# Blocks SIGPIPE on the thread that feeds a child's stdin (src/pipe.rs). `std` has no safe way to
+# do that, and the generated `main` bypasses `lang_start`, which is where std sets SIGPIPE up.
+libc = "0.2.189"

@@ -3776,3 +3776,9 @@
   kind: build
   needs: [native-runtime-rs-step5-vec-operations]
   status: done
+
+- id: native-runtime-rs-step7-pipe-through
+  title: 'Native runtime port, step 7 (plans/native-runtime-rust-research.md section 6 and section 3.3): port `tl_pipe_through` (the C poll loop and posix_spawn code, about 165 lines) to `std::process::Command` plus a writer thread (wait_with_output closes stdin then waits but does not feed stdin concurrently, so a thread must write while stdout and stderr are drained). Keep the semantics the other backends have: lines fed to stdin, stdout lines then stderr lines tagged Stdout and Stderr, exit status ignored, a child that never reads stdin must not stall, a child that stops reading early is not an error, `\\r` kept, no shell expansion of arguments. Check SIGPIPE explicitly: the generated main bypasses Rust''s `lang_start`, so Rust''s SIGPIPE handling is not set up, and the C code currently ignores SIGPIPE only around the spawn; decide and test what happens when the program''s own stdout is closed early. tests/pipe_through.rs is the safety net; add a case for any behaviour you change on purpose.'
+  kind: build
+  needs: [native-runtime-rs-step6-input]
+  status: done

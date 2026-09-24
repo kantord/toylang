@@ -673,3 +673,48 @@ string it read (`tl_alloc(j->end - j->p)` in `tl_parse_string`), 2.8 s of it in 
 - **The descriptor grammar's comment in src/emit_llvm.rs (`descriptor`) still points at
   runtime/toylang.c.** The grammar now lives at the top of runtime-rs/src/json.rs. Left for step
   8, which deletes the C file and has to fix that pointer and the ones in tests/corpus/.
+
+### Check after step 7 (`pipe_through` in Rust)
+
+Recorded on 2026-09-24 with the load average at about 4.5. Compilers built from the parent
+commit and from this one, the same six programs built with each and timed interleaved with
+`hyperfine -N --warmup 5 --runs 30` on the `benches/inputs/` files. Every output is
+byte-identical between the two builds. Medians in milliseconds, before / after:
+
+| program | before | after |
+| --- | --- | --- |
+| binary-trees | 2.9 | 3.4 (minimum 2.5 on both) |
+| fannkuch-redux | 52.4 | 53.7 |
+| fasta | 2.5 | 2.5 |
+| mandelbrot | 34.0 | 33.5 |
+| n-body | 93.6 | 93.8 |
+| spectral-norm | 37.5 | 37.9 |
+
+No slowdown outside the noise. None of these programs calls `pipe_through`, so this only says
+that carrying `std::process` and `libc` did not slow start-up. Stripped, the n-body binary went
+from 398,216 to 406,408 bytes (+8 KB) with the process and thread code linked in.
+
+### Findings from step 7
+
+- **`tl_pipe_through` was the last C behaviour.** With it and its helpers (`tl_alloc`,
+  `tl_list_push`, `tl_buf_append`, `tl_pipe_lines`, `tl_pipe_close`) gone, `runtime/toylang.c`
+  is a header comment. It is still compiled and linked; step 8 deletes it. The Rust symbols that
+  existed only for C to call (`tl_fail`, `tl_utf8_valid`, `tl_str_new`) went with it.
+- **SIGPIPE.** The generated `main` bypasses `lang_start`, so a compiled program has SIGPIPE at
+  its default action, and a Rust test binary does not (its `main` ignores it), which is why the
+  behaviour is pinned in `tests/native_pipe_through.rs` on the built binary and not in the crate's
+  unit tests. Writing to a child that has already exited would kill the program, so the writer
+  thread blocks SIGPIPE for itself with `pthread_sigmask` (the crate now depends on `libc` for
+  that). The C ignored the signal for the whole process around its poll loop and restored it;
+  the thread mask never touches the program's own disposition. Removing the mask makes
+  `writing_to_a_child_that_already_exited_does_not_kill_the_program` fail. The program's own
+  stdout closed early still ends it with SIGPIPE, before and after a `pipe_through`, the way it
+  did with the C.
+- **The child's signals.** `std::process::Command` puts SIGPIPE back to its default action in
+  the child and clears the signal mask, whether or not the program itself was started ignoring
+  SIGPIPE. Checked with a child running `yes | head -n 1` under a shell that had run
+  `trap '' PIPE`: silent under the port, and `yes: standard output: Broken pipe` when SIGPIPE stays
+  ignored.
+- **One difference left, on purpose.** An argument or command containing a NUL byte was cut at
+  the NUL by the C. `Command` refuses it, so it is now `cannot spawn subprocess ...: nul byte
+  found in provided data`.

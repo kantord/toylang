@@ -525,6 +525,7 @@ dependencies = [
 name = "toylang-rt"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "ryu-js",
  "serde",
  "serde_json",

@@ -1,14 +1,11 @@
-//! The native runtime is C, and C's memory errors do not show up as a wrong answer: a write one
-//! byte past a malloc block goes unnoticed because malloc rounds sizes up. This links a program
-//! with the runtime built under AddressSanitizer, so such a write fails the run.
+//! A memory error in the native runtime does not show up as a wrong answer: a write one byte past
+//! a malloc block goes unnoticed because malloc rounds sizes up. This links a program under
+//! AddressSanitizer, so such a write fails the run.
 //!
-//! The Rust half of the runtime is not instrumented (a sanitizer build of a Rust crate needs a
-//! nightly compiler), but its blocks come from libc's malloc, which AddressSanitizer does
-//! intercept. So an out-of-range access by the C code to a block the Rust core allocated (a
-//! Vec's columns, a record, an Opt box) is caught, and one by the Rust code itself is not; the
-//! Rust accessors' own bounds are checked by `cargo test -p toylang-rt`. The input readers are
-//! Rust now, so what can be seen of them here is the C that still reads their output:
-//! `pipe_through` walks a Vec of lines, an args Vec and the records it builds itself.
+//! No behaviour is left in the C file, so the runtime is Rust, and it is not instrumented (a sanitizer build of a Rust crate needs a nightly compiler). What is seen is
+//! what AddressSanitizer intercepts in libc: its malloc blocks, and an overrun by a `memcpy` or
+//! `memmove` into one, which a slice copy compiles to. The Rust accessors' own bounds are checked
+//! by `cargo test -p toylang-rt`.
 //!
 //! `link` finds the compiler as `cc` on PATH, so the sanitizer goes in through a `cc` wrapper
 //! placed first on the PATH of a `toylang build` child, not through a flag on `link`.
@@ -185,9 +182,8 @@ probes(parse stdin)
     );
 }
 
-/// Stdin lines (Rust) fed to the C `pipe_through`, and the tagged records the C builds handed
-/// back to Rust to print. A Vec column one slot too short, or a Str header shorter than its
-/// bytes, would show up here.
+/// Stdin lines fed to `pipe_through`, and the tagged records it builds handed on to be printed:
+/// the input buffer, three threads sharing the pipes, and lines copied out of the output.
 #[test]
 fn lines_through_a_subprocess_stay_inside_their_allocations() {
     let program = "\
