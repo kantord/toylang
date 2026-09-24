@@ -1,0 +1,5 @@
+---
+source: tests/closure_operators.rs
+expression: "refuse(\"map\", \"Int\", \"Str -> Int\", \"Vec<Int>\", \"length($)\")"
+---
+`f` takes Str, but map's elements are Int (at byte 85)

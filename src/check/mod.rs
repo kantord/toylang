@@ -2118,10 +2118,26 @@ fn map_call(ctx: &Ctx, arg: &Expr, span: Span, want_elem: Option<&Type>) -> Resu
         ));
     };
     let param = ctx.fresh();
-    let inner = mapper_ctx(ctx, elem, param);
-    let body = match want_elem {
-        Some(want) => expect(&inner, arg, want)?,
-        None => synth(&inner, arg)?,
+    let body = match closure_arg(ctx, arg, "map", &elem, param) {
+        Some(applied) => {
+            let (name, body) = applied?;
+            if let Some(want) = want_elem
+                && body.ty != *want
+            {
+                return Err(Error::new(
+                    arg.span(),
+                    format!("`{name}` returns {}, but this `map` must produce {want}", body.ty),
+                ));
+            }
+            body
+        }
+        None => {
+            let inner = mapper_ctx(ctx, elem, param);
+            match want_elem {
+                Some(want) => expect(&inner, arg, want)?,
+                None => synth(&inner, arg)?,
+            }
+        }
     };
     // The elements of the result are stored, and a stream is not storable: this is the same
     // containment ban a Vec literal enforces, met here before the Vec or Stream of them could
@@ -3597,6 +3613,49 @@ fn colon_call_dispatch(
     ))
 }
 
+/// The syntactic peek `select`, `map`, `sort_by` and `max_by` share: a bare `Expr::Var` already
+/// bound to a `Type::Fn` is a closure value to apply per element, and yields its name plus a
+/// `Tir` applying it to the element `param` holds, typed as the closure's output. Any other
+/// argument returns `None` and keeps meaning `.`-rebinding. `call` names the operator for the
+/// input-type error, and `elem` is what the closure's input must be.
+fn closure_arg<'a>(
+    ctx: &Ctx,
+    arg: &'a Expr,
+    call: &str,
+    elem: &Type,
+    param: LocalId,
+) -> Option<Result<(&'a str, Tir), Error>> {
+    let Expr::Var {
+        name,
+        span: var_span,
+    } = arg
+    else {
+        return None;
+    };
+    let (_, ty, local) = ctx.scope.iter().rev().find(|(n, _, _)| n == name)?;
+    let Type::Fn(input, output) = ty else {
+        return None;
+    };
+    if **input != *elem {
+        return Some(Err(Error::new(
+            *var_span,
+            format!("`{name}` takes {input}, but {call}'s elements are {elem}"),
+        )));
+    }
+    let closure = match local {
+        Some(id) => Tir::new(ty.clone(), Kind::Local(*id)),
+        None => Tir::new(ty.clone(), Kind::Var(name.clone())),
+    };
+    let applied = Tir::new(
+        (**output).clone(),
+        Kind::ApplyClosure {
+            closure: Box::new(closure),
+            arg: Box::new(Tir::new(elem.clone(), Kind::Local(param))),
+        },
+    );
+    Some(Ok((name, applied)))
+}
+
 /// Cardinality-polymorphic: the same subject-context mechanism types `select` over a Vec and
 /// over a Stream, with the element drawn from either's parameter. Stream in, stream out.
 ///
@@ -3621,48 +3680,22 @@ fn select_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
         ));
     };
     let param = ctx.fresh();
-    if let Expr::Var {
-        name,
-        span: var_span,
-    } = arg
-        && let Some((_, ty, local)) = ctx.scope.iter().rev().find(|(n, _, _)| n == name)
-        && let Type::Fn(input, output) = ty
-    {
-        if **input != elem {
-            return Err(Error::new(
-                *var_span,
-                format!("`{name}` takes {input}, but select's elements are {elem}"),
-            ));
+    let pred = match closure_arg(ctx, arg, "select", &elem, param) {
+        Some(applied) => {
+            let (name, pred) = applied?;
+            if pred.ty != Type::Bool {
+                return Err(Error::new(
+                    arg.span(),
+                    format!(
+                        "`{name}` must return Bool for select to use it, found {}",
+                        pred.ty
+                    ),
+                ));
+            }
+            pred
         }
-        if **output != Type::Bool {
-            return Err(Error::new(
-                *var_span,
-                format!("`{name}` must return Bool for select to use it, found {output}"),
-            ));
-        }
-        let closure = match local {
-            Some(id) => Tir::new(ty.clone(), Kind::Local(*id)),
-            None => Tir::new(ty.clone(), Kind::Var(name.clone())),
-        };
-        let source = Tir::new(subject.clone(), Kind::Local(id));
-        let pred = Tir::new(
-            Type::Bool,
-            Kind::ApplyClosure {
-                closure: Box::new(closure),
-                arg: Box::new(Tir::new(elem, Kind::Local(param))),
-            },
-        );
-        return Ok(Tir::new(
-            subject,
-            Kind::Select {
-                source: Box::new(source),
-                param,
-                pred: Box::new(pred),
-            },
-        ));
-    }
-    let inner = mapper_ctx(ctx, elem, param);
-    let pred = expect(&inner, arg, &Type::Bool)?;
+        None => expect(&mapper_ctx(ctx, elem, param), arg, &Type::Bool)?,
+    };
     let source = Tir::new(subject.clone(), Kind::Local(id));
     Ok(Tir::new(
         subject,
@@ -4088,7 +4121,10 @@ fn sort_by_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
         ));
     };
     let param = ctx.fresh();
-    let body = synth(&mapper_ctx(ctx, elem, param), arg)?;
+    let body = match closure_arg(ctx, arg, "sort_by", &elem, param) {
+        Some(applied) => applied?.1,
+        None => synth(&mapper_ctx(ctx, elem, param), arg)?,
+    };
     if !orderable(&body.ty) {
         return Err(Error::new(
             arg.span(),
@@ -4127,7 +4163,10 @@ fn max_by_call(ctx: &Ctx, arg: &Expr, span: Span) -> Result<Tir, Error> {
         ));
     };
     let param = ctx.fresh();
-    let body = synth(&mapper_ctx(ctx, elem.clone(), param), arg)?;
+    let body = match closure_arg(ctx, arg, "max_by", &elem, param) {
+        Some(applied) => applied?.1,
+        None => synth(&mapper_ctx(ctx, elem.clone(), param), arg)?,
+    };
     if !orderable(&body.ty) {
         return Err(Error::new(
             arg.span(),

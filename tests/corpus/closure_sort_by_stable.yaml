@@ -1,0 +1,15 @@
+# Ties under a closure key keep their original order: 2, 4, 6 all key to 0 and stay in that
+# order, and 5, 3, 1 all key to 1 and stay in theirs (not sorted ascending among themselves).
+program: |
+  fn sorted_by(
+    { items, key }: { items: Vec<Int>, key: Int -> Int }
+  ) -> Vec<Int> =
+    items | sort_by key;
+
+
+  sorted_by { items: [5, 2, 3, 4, 1, 6], key: $ % 2 }
+
+output: |
+  [2,4,6,5,3,1]
+
+node_types: [application, arith.rem, closure, closure.apply, int, local, pipe, projection, record-literal, sort-by, var, vec-literal]

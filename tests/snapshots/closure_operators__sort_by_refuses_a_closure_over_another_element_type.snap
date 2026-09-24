@@ -1,0 +1,5 @@
+---
+source: tests/closure_operators.rs
+expression: "refuse(\"sort_by\", \"Int\", \"Str -> Int\", \"Vec<Int>\", \"length($)\")"
+---
+`f` takes Str, but sort_by's elements are Int (at byte 89)

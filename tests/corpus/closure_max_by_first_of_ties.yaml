@@ -1,0 +1,15 @@
+# Of equal maxima under a closure key the first wins: 3 and 8 both key to 3, and 3 comes
+# first. jq's own `max_by` would return the last.
+program: |
+  fn best(
+    { items, key }: { items: Vec<Int>, key: Int -> Int }
+  ) -> Opt<Int> =
+    items | max_by key;
+
+
+  best { items: [3, 8, 5, 6, 1], key: $ % 5 }
+
+output: |
+  3
+
+node_types: [application, arith.rem, closure, closure.apply, int, local, max-by, pipe, projection, record-literal, var, vec-literal]

@@ -1,0 +1,18 @@
+# The key closure is rebuilt on every iteration over that iteration's `k`, and only the last
+# one sorts. Keys `$ % 3` give [3, 6, 1, 4, 2, 5]; a closure that saw the final `k` (4) would
+# sort by `$ % 4` and print something else.
+program: |
+  fn walk(
+    { n, k, key }: { n: Int, k: Int, key: Int -> Int }
+  ) -> Vec<Int> =
+    n == 0
+    | . -> ([1, 2, 3, 4, 5, 6] | sort_by key) or
+      walk { n: n - 1, k: k + 1, key: $ % k };
+
+
+  walk { n: 2, k: 2, key: $ % 1 }
+
+output: |
+  [3,6,1,4,2,5]
+
+node_types: [application, arith.add, arith.rem, arith.sub, closure, closure.apply, compare.eq, int, local, match, pipe, projection, record-literal, sort-by, var, vec-literal]
