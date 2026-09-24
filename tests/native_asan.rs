@@ -2,12 +2,19 @@
 //! byte past a malloc block goes unnoticed because malloc rounds sizes up. This links a program
 //! with the runtime built under AddressSanitizer, so such a write fails the run.
 //!
+//! The Rust half of the runtime is not instrumented (a sanitizer build of a Rust crate needs a
+//! nightly compiler), but its blocks come from libc's malloc, which AddressSanitizer does
+//! intercept. So an out-of-range access by the C code to a block the Rust core allocated (a
+//! Vec's columns, a record, an Opt box) is caught, and one by the Rust code itself is not; the
+//! Rust accessors' own bounds are checked by `cargo test -p toylang-rt`.
+//!
 //! `link` finds the compiler as `cc` on PATH, so the sanitizer goes in through a `cc` wrapper
 //! placed first on the PATH of a `toylang build` child, not through a flag on `link`.
 
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// Whether the real `cc` can build and run with AddressSanitizer; when it cannot (no libasan
 /// installed), the test has nothing to say.
@@ -34,7 +41,7 @@ fn write_asan_cc(bin: &Path) {
     std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-fn run_under_asan(program: &str) -> Option<String> {
+fn run_under_asan(program: &str, stdin: &str) -> Option<String> {
     let dir = tempfile::tempdir().unwrap();
     if !cc_supports_asan(dir.path()) {
         return None;
@@ -58,10 +65,20 @@ fn run_under_asan(program: &str) -> Option<String> {
     );
 
     // Leaks are not the question: the runtime's stance is that nothing frees.
-    let run = Command::new(dir.path().join("p"))
+    let mut child = Command::new(dir.path().join("p"))
         .env("ASAN_OPTIONS", "detect_leaks=0")
-        .output()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stdin.as_bytes())
+        .unwrap();
+    let run = child.wait_with_output().unwrap();
     assert!(
         run.status.success(),
         "sanitizer stopped the run:\n{}",
@@ -72,9 +89,32 @@ fn run_under_asan(program: &str) -> Option<String> {
 
 #[test]
 fn printing_zero_and_nan_stays_inside_the_allocation() {
-    let Some(out) = run_under_asan("[0.0, 0.0 / 0.0]\n") else {
+    let Some(out) = run_under_asan("[0.0, 0.0 / 0.0]\n", "") else {
         eprintln!("skipped: cc cannot build with -fsanitize=address here");
         return;
     };
     assert_eq!(out, "[0,NaN]\n");
+}
+
+/// Every operation that allocates or walks a Vec of records: construction, a column read, a
+/// mask (`select`), a reorder of every column, a concatenation, a tail, and the Vec that the JSON
+/// reader builds from input. A column one slot too short would show up here.
+#[test]
+fn vecs_of_records_stay_inside_their_columns() {
+    let program = "\
+fn rows(db: { users: Vec<{ name: Str, age: Int, ok: Bool }> }) -> Vec<{ name: Str, age: Int, ok: Bool }> =
+  reverse(db.users + [{ name: \"lit\", age: 5, ok: true }] | sort_by(.age) | select(.age >= 9));
+
+
+rows(parse stdin)
+";
+    let input = r#"{"users": [{"name": "ada", "age": 36, "ok": true}, {"name": "bo", "age": 9, "ok": false}, {"name": "cy", "age": 12, "ok": true}]}"#;
+    let Some(out) = run_under_asan(program, input) else {
+        eprintln!("skipped: cc cannot build with -fsanitize=address here");
+        return;
+    };
+    assert_eq!(
+        out,
+        "[{\"name\":\"ada\",\"age\":36,\"ok\":true},{\"name\":\"cy\",\"age\":12,\"ok\":true},{\"name\":\"bo\",\"age\":9,\"ok\":false}]\n"
+    );
 }

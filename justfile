@@ -4,11 +4,11 @@ default:
 
 # The final gate: the full test suite. Landing requires this green.
 test:
-    cargo nextest run
+    cargo nextest run --workspace
 
 # The fast inner loop: skips the docs mega-test, the suite's ~137s long pole. Gate on `just test`.
 check:
-    cargo nextest run -E 'not test(every_fragment_is_a_real_program)'
+    cargo nextest run --workspace -E 'not test(every_fragment_is_a_real_program)'
 
 # Opt-in: fetch this machine's own copies of the Euler 8/11/13/18/22 puzzle data from
 # projecteuler.net (CC BY-NC-SA 4.0, see scripts/fetch_euler_data.py) into a local, gitignored

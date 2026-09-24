@@ -19,12 +19,6 @@
   prio: 5
   status: proposed
 
-- id: native-runtime-rs-step4-vec-core
-  title: 'Native runtime port, step 4 (plans/native-runtime-rust-research.md section 6 and section 1): port the columnar Vec, record and Opt core (`tl_vec_new`, `tl_vec_get`, `tl_vec_set`, `tl_vec_len`, column and mask accessors, `tl_rec_*`, `tl_opt_*`, C lines about 203 to 297) with `#[repr(C)] TlVec { len: i64, ncols: i64, cols: *mut *mut i64 }` and small unsafe accessors. The struct-of-arrays layout is baked into the IR emitted by src/emit_llvm.rs and no crate can supply it, so this is glue that must reproduce the ABI exactly; add a layout test on both sides (`offsetof` in a C test or static assert while C still reads a tl_vec, `mem::offset_of!` in Rust). Delete each C body in the same commit that adds the Rust one. Memory posture stays ''nothing frees'' for values (see runtime/toylang.c lines 7 to 10 and the mutation-model work); make allocation go through one function so a later change is a single seam.'
-  kind: build
-  needs: [native-runtime-rs-step3-str-primitives]
-  status: todo
-
 - id: native-runtime-rs-step5-vec-operations
   title: 'Native runtime port, step 5 (plans/native-runtime-rust-research.md section 6 and section 4 rows 11 to 15): port the Vec operations in three commits, each deleting its C: (a) sorts and `sort_by`/`max_by` (`slice::sort_by_key` on an index vector, stable by construction, replaces qsort and the (key,row) tie-break struct; `max_by` stays a hand loop with a strict greater-than because `Iterator::max_by_key` returns the LAST of equal maxima and the language rule is first wins; corpus cases sort_by_stable and max_by_first_of_ties pin it); (b) reverse, flatten, concat, transpose, any, all, first, tail, rec_from_vec; (c) sum (32-bit narrowing via wrapping_add and `as i32 as i64`), max, `tl_at`, `tl_sel_*`, slices, unwrap, range, chars (`str::chars`). Keep every exported symbol and signature unchanged. Run just check after each commit.'
   kind: build
