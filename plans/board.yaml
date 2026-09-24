@@ -19,12 +19,6 @@
   prio: 5
   status: proposed
 
-- id: lua-float-print-not-shortest
-  title: 'Found by the native runtime port, step 2 (2026-09-24, self-originated): the Lua backend prints 17 digits for some Floats where JavaScript prints 16. `toylang run FILE lua` on `[5.225680706521042e-200, 6.518515124270356e+91, 7.291122019556398e-304]` gives `5.2256807065210415e-200` and so on; every other backend, and Node, print the 16-digit form. Cause: `tl_shortest_digits` in src/emit_lua.rs raises the `%.Ne` precision until it reads back, which finds the shortest LENGTH but takes the correctly rounded decimal at that length, and that decimal sometimes does not round-trip when a different one of the same length does. The old native C runtime had the same loop and differed from Node on 449 of 3,403,219 sampled doubles (about 0.013%); native now uses ryu-js and matches Node on all of them. Fix Lua (a Lua port of a shortest-digits algorithm, or trying the neighbouring 16-digit candidates; check emit_go.rs is unaffected since it uses strconv), then move the pin in tests/backend_llvm.rs (`native_float_printing_is_shortest_not_closest`) to a corpus case, which fails on Lua until then. Also check src/emit_jq.rs `FLOAT_PRINT_HELPER`, whose comment says it is the same algorithm as the C one: it printed correctly on the probe above, so say why.'
-  kind: build
-  needs: []
-  status: todo
-
 - id: native-runtime-rs-step4-vec-core
   title: 'Native runtime port, step 4 (plans/native-runtime-rust-research.md section 6 and section 1): port the columnar Vec, record and Opt core (`tl_vec_new`, `tl_vec_get`, `tl_vec_set`, `tl_vec_len`, column and mask accessors, `tl_rec_*`, `tl_opt_*`, C lines about 203 to 297) with `#[repr(C)] TlVec { len: i64, ncols: i64, cols: *mut *mut i64 }` and small unsafe accessors. The struct-of-arrays layout is baked into the IR emitted by src/emit_llvm.rs and no crate can supply it, so this is glue that must reproduce the ABI exactly; add a layout test on both sides (`offsetof` in a C test or static assert while C still reads a tl_vec, `mem::offset_of!` in Rust). Delete each C body in the same commit that adds the Rust one. Memory posture stays ''nothing frees'' for values (see runtime/toylang.c lines 7 to 10 and the mutation-model work); make allocation go through one function so a later change is a single seam.'
   kind: build
@@ -59,12 +53,6 @@
   title: 'Native runtime port, option C follow-up (plans/native-runtime-rust-research.md section 3.4, ruled by the maintainer as the step after the port): with the runtime in Rust there are two places a function is declared, the `extern "C"` definition and the `add_function` call in src/emit_llvm.rs (58 sites). Add one table that generates both: a small shared crate (or module) with a `macro_rules!` table of `fn name(args) -> ret;` entries that expands to the `#[unsafe(no_mangle)] pub extern "C" fn` surface in the runtime and to a `const SIGNATURES` the compiler iterates to call `add_function`. The precedent is Swift''s RuntimeFunctions.def x-macro file. Evaluate a proc macro or cbindgen only if macro_rules! cannot express something you need, and say why. Done when adding a runtime function needs exactly one signature edit and a mismatch between the two sides cannot compile or fails a test.'
   kind: build
   needs: [native-runtime-rs-step8-delete-c]
-  status: todo
-
-- id: fannkuch-redux-bench-broken
-  title: 'Found while recording the native run-time baseline (2026-09-24, self-originated): benches/programs/fannkuch-redux.toy does not compile on any backend at main. The error is `toylang: fannkuch-redux.toy: ''step'' is already a plain function; a trait method cannot share its name (at byte 619)`, so `just bench fannkuch-redux` fails too. It predates the native runtime port; a language change (traits) made an existing benchmark program illegal and nothing caught it, because benchmarks are not in just check. Fix the benchmark (rename the function, or whatever the current rule wants), then find out why nothing gates it: either add a compile-only check of every benches/programs/*.toy on all seven backends to the suite (cheap, and it would have caught this), or say why not. Check the other benchmark programs still produce the outputs recorded in plans/benchmark-plan.md.'
-  kind: build
-  needs: []
   status: todo
 
 - id: closures-legacy-flow-map-sortby-maxby
@@ -453,3 +441,9 @@
 
 
 
+
+- id: fasta-bench-rust-stack-overflow
+  title: 'Found while fixing fannkuch-redux-bench-broken (2026-09-24, self-originated): `toylang run benches/programs/fasta.toy rust < benches/inputs/fasta.txt` (N=500) aborts with `thread ''main'' has overflowed its stack`, while the other six backends print the same 5161 bytes. Every other benches/programs/*.toy agrees on all seven backends. The new tests/bench_programs_compile.rs only emits, so it does not see this. Find out whether the emitted Rust recurses deeper than the 8 MiB main-thread stack allows at this size (then run the program on a bigger-stack thread, or lower the recursion depth) or whether it is a real emitter bug, and fix it. Done-gate: fasta.txt runs on rust and prints what the other backends print.'
+  kind: build
+  needs: []
+  status: todo

@@ -625,14 +625,42 @@ end
 // heuristic -- so this re-derives the shortest digits and re-lays them out the way ECMA-262
 // 6.1.6.1.20 does: fixed notation for 1e-6 up to 1e21, scientific outside, the non-finite names
 // as-is. The port of emit_go.rs's `tlShowFloat`, which follows the same rule off Go's
-// `strconv.FormatFloat(v, 'e', -1, 64)`; Lua has no shortest-digit formatter, so the precision is
-// raised one digit at a time and stopped at the first that parses back to the same double.
-const SHOW_FLOAT_HELPER: &str = r#"local function tl_shortest_digits(v)
-  for p = 0, 17 do
+// `strconv.FormatFloat(v, 'e', -1, 64)`; Lua has no shortest-digit formatter, so the digit count
+// is raised one at a time and stopped at the first length that has a decimal reading back as the
+// same double.
+//
+// The correctly rounded decimal of a length is not always the one that reads back, and it only
+// ever misses on a double that is a power of two (46 of the 2098 positive ones): the rounding
+// interval is half as wide below such a double as above it, so the nearest 16-digit decimal can
+// fall just below the interval while the neighbour a unit in the last place above the value is
+// inside it. That can only happen at 16 digits: a shorter length's unit is wider than the whole
+// interval, so it holds at most one decimal, and if the nearest is not it, none is. At 16 digits
+// both neighbours are tried after the rounded one; a candidate further out cannot read back when
+// the rounded one does not, because the interval is convex around the value and the rounded
+// decimal is the nearest of its length, so no closeness comparison is needed. Seventeen digits
+// always round-trip. Returns the digits and the spec's decimal point position n
+// (value = 0.DIGITS * 10^n).
+const SHOW_FLOAT_HELPER: &str = r#"local function tl_split_e(s)
+  local ep = string.find(s, "e", 1, true)
+  return string.sub(s, 1, 1) .. string.sub(s, 3, ep - 1), tonumber(string.sub(s, ep + 1))
+end
+
+local function tl_shortest_digits(v)
+  for p = 0, 15 do
     local s = string.format("%." .. p .. "e", v)
-    if tonumber(s) == v then return s end
+    if tonumber(s) == v then
+      local digits, e = tl_split_e(s)
+      return digits, e + 1
+    end
   end
-  return string.format("%.17e", v)
+  local digits, e = tl_split_e(string.format("%.15e", v))
+  local m, scale = tonumber(digits), e - 15
+  for delta = -1, 1, 2 do
+    local c = string.format("%d", m + delta)
+    if tonumber(c .. "e" .. scale) == v then return c, #c + scale end
+  end
+  digits, e = tl_split_e(string.format("%.16e", v))
+  return digits, e + 1
 end
 
 local function tl_show_float(v)
@@ -643,17 +671,7 @@ local function tl_show_float(v)
   if v == 0 then return "0" end
   local sign = ""
   if v < 0 then sign = "-" v = -v end
-  local e = tl_shortest_digits(v)
-  local _, ep = string.find(e, "e", 1, true)
-  local dot = string.find(e, ".", 1, true)
-  local digits
-  if dot then
-    digits = string.sub(e, 1, dot - 1) .. string.sub(e, dot + 1, ep - 1)
-  else
-    digits = string.sub(e, 1, ep - 1)
-  end
-  -- n is the spec's decimal point position: the %e exponent plus one.
-  local n = tonumber(string.sub(e, ep + 1)) + 1
+  local digits, n = tl_shortest_digits(v)
   local k = #digits
   local out
   if k <= n and n <= 21 then

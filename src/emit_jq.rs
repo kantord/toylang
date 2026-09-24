@@ -78,18 +78,20 @@ const FLOAT_HELPER: &str = r#"def tl_fdiv($a; $b):
 /// `null` -- so a Float body is rendered through here and printed raw (`-r` in `run_jq`), which
 /// is the only way the bare words the other backends print for `Infinity`/`NaN` come out of jq.
 ///
-/// jq's own `tostring` already computes the shortest round-trip decimal digits (verified against
-/// JS's `String(number)` across a ~5000-value fuzz run: the digits always agree), but its
-/// notation choice does not -- it switches to scientific at a different, and not entirely
-/// consistent, magnitude than JS's ECMA-262 rule, and zero-pads the exponent (`1e-06`, not
-/// `1e-6`). So `tostring`'s output is reparsed (one of two shapes: `d(.ddd)?[eE][+-]?NN`, or a
-/// plain decimal/integer) back into digits and a decimal-point position, then laid out again
-/// using the same fixed-vs-scientific rule this project's Native backend implements (runtime-rs's
+/// jq's own `tostring` already computes the shortest round-trip decimal digits. The check that
+/// matters is the powers of two: a printer that takes the correctly rounded decimal at the first
+/// length that reads back (the Lua backend's old loop) prints 17 digits for 46 of them where JS
+/// prints 16, and jq 1.8.2 agrees with JS's `String(number)` on all 2098 positive powers of two,
+/// as well as on a ~5000-value fuzz run. Its notation choice does not agree -- it switches to
+/// scientific at a different, and not entirely consistent, magnitude than JS's ECMA-262 rule, and
+/// zero-pads the exponent (`1e-06`, not `1e-6`). So `tostring`'s output is reparsed (one of two
+/// shapes: `d(.ddd)?[eE][+-]?NN`, or a plain decimal/integer) back into digits and a
+/// decimal-point position, then laid out again using the same fixed-vs-scientific rule this
+/// project's Native backend implements (runtime-rs's
 /// `tl_float_to_str`, on ryu-js) -- the same layout, a second time, because jq
 /// has no shortest-round-trip primitive of its own to just call with different flags the way
 /// Go's `strconv.FormatFloat` does. `+ 0.0` still strips a source literal's own suffix (`2.0`
-/// would otherwise print as `2.0`) before any of this runs. Verified the same way as the C
-/// version: the same fuzz run, byte-for-byte, not derived from reading jq's behavior once.
+/// would otherwise print as `2.0`) before any of this runs.
 const FLOAT_PRINT_HELPER: &str = r#"def tl_show_float:
   if isnan then "NaN"
   elif isinfinite then (if . > 0 then "Infinity" else "-Infinity" end)

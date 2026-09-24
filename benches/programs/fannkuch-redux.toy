@@ -49,7 +49,7 @@ fn invs(p: Vec<Int>) -> Int =
     (length(tail(p)! | select(. < p[0]!)) + invs(tail(p)!)) % 2;
 
 
-fn step(
+fn fk_step(
   { p, acc }: { p: Vec<Int>, acc: { checksum: Int, max: Int } }
 ) -> { checksum: Int, max: Int } =
   let f = flips p
@@ -65,7 +65,7 @@ fn fold(
 ) -> { checksum: Int, max: Int } =
   v
   | length(v) == 0 -> acc or
-    fold { v: tail(v)!, acc: step { p: v[0]!, acc: acc } };
+    fold { v: tail(v)!, acc: fk_step { p: v[0]!, acc: acc } };
 
 
 fn fk(n: Int) -> Str =

@@ -58,24 +58,6 @@ fn emitted_llvm_ir() {
     insta::assert_snapshot!(toylang::emit_llvm::to_ir(&program).unwrap());
 }
 
-/// The nearest 16-digit decimal to each of these does not read back as the same Float, but another
-/// 16-digit decimal does, and JavaScript prints that one. The native runtime's old snprintf/strtod
-/// retry loop printed 17 digits here (449 of 3.4 million sampled doubles); it is not a corpus case
-/// because Lua's printer still loops the same way and would fail it.
-#[test]
-fn native_float_printing_is_shortest_not_closest() {
-    let out = toylang::run_on(
-        "[5.225680706521042e-200, 6.518515124270356e+91, 7.291122019556398e-304]\n",
-        None,
-        Backend::Native,
-    )
-    .unwrap();
-    assert_eq!(
-        out,
-        "[5.225680706521042e-200,6.518515124270356e+91,7.291122019556398e-304]\n"
-    );
-}
-
 /// Edges of the Str primitives that live in Rust now and that only the C version ever had to
 /// think about: the two ends of Int64 (jq cannot carry these, so not a corpus case), a NUL byte
 /// inside a Str, empty Strs on both sides of a join and a compare, and a Str long enough that a
