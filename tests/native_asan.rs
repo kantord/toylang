@@ -6,7 +6,9 @@
 //! nightly compiler), but its blocks come from libc's malloc, which AddressSanitizer does
 //! intercept. So an out-of-range access by the C code to a block the Rust core allocated (a
 //! Vec's columns, a record, an Opt box) is caught, and one by the Rust code itself is not; the
-//! Rust accessors' own bounds are checked by `cargo test -p toylang-rt`.
+//! Rust accessors' own bounds are checked by `cargo test -p toylang-rt`. The input readers are
+//! Rust now, so what can be seen of them here is the C that still reads their output:
+//! `pipe_through` walks a Vec of lines, an args Vec and the records it builds itself.
 //!
 //! `link` finds the compiler as `cc` on PATH, so the sanitizer goes in through a `cc` wrapper
 //! placed first on the PATH of a `toylang build` child, not through a flag on `link`.
@@ -180,5 +182,23 @@ probes(parse stdin)
     assert_eq!(
         out,
         "{\"total\":66,\"big\":36,\"last\":{\"name\":\"cy\",\"age\":21},\"adult\":{\"name\":\"cy\",\"age\":21},\"window\":[{\"name\":\"bo\",\"age\":9},{\"name\":\"cy\",\"age\":21}],\"digits\":[0,1,2,3],\"letters\":3,\"firsts\":[7,9]}\n"
+    );
+}
+
+/// Stdin lines (Rust) fed to the C `pipe_through`, and the tagged records the C builds handed
+/// back to Rust to print. A Vec column one slot too short, or a Str header shorter than its
+/// bytes, would show up here.
+#[test]
+fn lines_through_a_subprocess_stay_inside_their_allocations() {
+    let program = "\
+collect(pipe_through({cmd: \"sh\", args: [\"-c\", \"cat; echo done >&2\"], lines: stdin}))
+";
+    let Some(out) = run_under_asan(program, "a\n\u{e9}\r\n\nlast") else {
+        eprintln!("skipped: cc cannot build with -fsanitize=address here");
+        return;
+    };
+    assert_eq!(
+        out,
+        "[{\"Stdout\":{\"text\":\"a\"}},{\"Stdout\":{\"text\":\"\u{e9}\\r\"}},{\"Stdout\":{\"text\":\"\"}},{\"Stdout\":{\"text\":\"last\"}},{\"Stderr\":{\"text\":\"done\"}}]\n"
     );
 }

@@ -6,6 +6,7 @@
 //! same commit that adds the Rust one.
 
 mod input;
+mod json;
 
 use std::alloc::{Layout, alloc};
 use std::cmp::Ordering;
@@ -30,7 +31,7 @@ const _: () = {
 /// The Str header. The one place a header is allocated, and the seam for `leak_str`.
 ///
 /// Takes ownership of `bytes` (a block from C's `tl_alloc` or from `leak_str`) and copies
-/// nothing: the C JSON parser builds its strings in a buffer and hands it over here. Nothing
+/// nothing: `tl_pipe_through`, still C, builds its lines in a buffer and hands it over here. Nothing
 /// frees. The mutation model decides between refcounting and tracing (runtime/toylang.c lines 7
 /// to 10), and until it does every value is leaked on purpose.
 #[unsafe(no_mangle)]
@@ -53,8 +54,7 @@ fn fail(msg: &str) -> ! {
 }
 
 /// A refusal of the program's input: `toylang: input: <what> at <path>`, exit 1. An empty `path`
-/// reads as `input`, the root. The C JSON parser and `tl_pipe_through` still call this through
-/// `tl_fail`.
+/// reads as `input`, the root. `tl_pipe_through`, still C, calls this through `tl_fail`.
 fn fail_at(what: &str, path: &str) -> ! {
     let path = if path.is_empty() { "input" } else { path };
     fail(&format!("input: {what} at {path}"))

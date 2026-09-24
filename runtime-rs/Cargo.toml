@@ -14,3 +14,10 @@ crate-type = ["staticlib"]
 # ECMAScript Number::toString digits and layout, the format every backend's Float printing
 # matches (ADR 0007). Replaces the C snprintf/strtod retry loop.
 ryu-js = "1.0.3"
+
+# The JSON reader (src/json.rs). `float_roundtrip` is not optional: without it serde_json's fast
+# float path returns a different double from the correctly rounded one for long digit strings
+# (14.8% of a sample weighted toward them, plans/native-runtime-rust-research.md section 3.3), and
+# `long_digit_floats_parse_correctly_rounded` in src/json.rs fails if the flag is dropped.
+serde = "1.0.229"
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
