@@ -118,3 +118,36 @@ rows(parse stdin)
         "[{\"name\":\"ada\",\"age\":36,\"ok\":true},{\"name\":\"cy\",\"age\":12,\"ok\":true},{\"name\":\"bo\",\"age\":9,\"ok\":false}]\n"
     );
 }
+
+/// Each Vec operation the Rust runtime owns that builds a fresh Vec or gathers a row: the sorts,
+/// `max_by`, the reshapes and `tail`/`first`, on scalars, on Strs and on a Vec of records read
+/// from input (whose columns the operations must all size and copy together).
+#[test]
+fn vec_reshapes_stay_inside_their_columns() {
+    let program = "\
+fn shapes(db: { users: Vec<{ name: Str, age: Int }> }) -> { sorted: Vec<Str>, ints: Vec<Int>, oldest: Opt<{ name: Str, age: Int }>, head: Opt<{ name: Str, age: Int }>, rest: Opt<Vec<{ name: Str, age: Int }>>, grid: Vec<Vec<Int>>, flat: Vec<Int>, some: Bool, every: Bool } =
+  {
+    sorted: sort([\"pear\", \"apple\", \"fig\"]),
+    ints: [3, 1, 2, 1] | sort_by(.),
+    oldest: db.users | max_by(.age),
+    head: first(db.users),
+    rest: tail(db.users),
+    grid: transpose([[1, 2, 3], [4, 5, 6]]),
+    flat: flatten([[1, 2], [3]]) + reverse([5, 4]),
+    some: any([false, true]),
+    every: all([true, false])
+  };
+
+
+shapes(parse stdin)
+";
+    let input = r#"{"users": [{"name": "ada", "age": 36}, {"name": "bo", "age": 9}, {"name": "cy", "age": 36}]}"#;
+    let Some(out) = run_under_asan(program, input) else {
+        eprintln!("skipped: cc cannot build with -fsanitize=address here");
+        return;
+    };
+    assert_eq!(
+        out,
+        "{\"sorted\":[\"apple\",\"fig\",\"pear\"],\"ints\":[1,1,2,3],\"oldest\":{\"name\":\"ada\",\"age\":36},\"head\":{\"name\":\"ada\",\"age\":36},\"rest\":[{\"name\":\"bo\",\"age\":9},{\"name\":\"cy\",\"age\":36}],\"grid\":[[1,4],[2,5],[3,6]],\"flat\":[1,2,3,4,5],\"some\":true,\"every\":false}\n"
+    );
+}

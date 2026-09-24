@@ -42,6 +42,13 @@ fn leak_str(bytes: Vec<u8>) -> *mut TlStr {
     tl_str_new(Box::leak(bytes.into_boxed_slice()).as_ptr(), len)
 }
 
+/// A runtime failure: the message on stderr and exit 1, the way every refusal the checker could
+/// not see ahead of time ends (`tl_div_by_zero` in the C runtime is the same).
+fn fail(msg: &str) -> ! {
+    let _ = write_fd(2, format!("toylang: {msg}\n").as_bytes());
+    std::process::exit(1);
+}
+
 /// C's `tl_alloc` printed this and exited 1 when malloc failed; Rust's allocation error handler
 /// would abort with SIGABRT, so every allocation here that can fail on size keeps the exit.
 fn out_of_memory() -> ! {
@@ -458,11 +465,12 @@ pub unsafe extern "C" fn tl_str_join(
 /// Gather row `i` of a Vec of records back into a record. The struct-of-arrays layout spreads an
 /// element across columns and almost nothing needs it whole (`select` reads single fields, `.field`
 /// returns a column), so this exists for what has to hand a whole element out: printing, indexing,
-/// `first`, `max_by`.
+/// `first`, `max_by`. The only gather.
 ///
 /// # Safety
 /// `v` points at a live `TlVec` and `i` is in `0..len`.
-unsafe fn rec_from_vec(v: *const TlVec, i: i64) -> *mut i64 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_rec_from_vec(v: *const TlVec, i: i64) -> *mut i64 {
     let ncols = unsafe { (*v).ncols };
     let rec = tl_rec_new(ncols);
     for c in 0..ncols {
@@ -476,14 +484,160 @@ unsafe fn rec_from_vec(v: *const TlVec, i: i64) -> *mut i64 {
 /// one column exactly as a Vec of scalars does.
 ///
 /// # Safety
-/// As `rec_from_vec`.
+/// As `tl_rec_from_vec`.
 unsafe fn opt_of_row(v: *const TlVec, i: i64, is_record: i32) -> *mut i64 {
     let entry = if is_record != 0 {
-        unsafe { rec_from_vec(v, i) as i64 }
+        unsafe { tl_rec_from_vec(v, i) as i64 }
     } else {
         unsafe { tl_vec_get(v, 0, i) }
     };
     tl_opt_some(entry)
+}
+
+/// Every element but the first, as an Opt: null on an empty Vec, the absence encoding
+/// `tl_opt_some` uses everywhere else.
+///
+/// # Safety
+/// `v` points at a live `TlVec`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_vec_tail(v: *const TlVec) -> *mut i64 {
+    let (len, ncols) = unsafe { ((*v).len, (*v).ncols) };
+    if len == 0 {
+        return null_mut();
+    }
+    let out = tl_vec_new(len - 1, ncols);
+    for c in 0..ncols {
+        unsafe { column_mut(out, c).copy_from_slice(&column(v, c)[1..]) };
+    }
+    tl_opt_some(out as i64)
+}
+
+/// `first` over a Vec of any element type: an Opt of the first entry, null when empty.
+/// `is_record` decides whether the entry has to be gathered out of the columns.
+///
+/// # Safety
+/// `v` points at a live `TlVec`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_vec_first(v: *const TlVec, is_record: i32) -> *mut i64 {
+    if unsafe { (*v).len } == 0 {
+        return null_mut();
+    }
+    unsafe { opt_of_row(v, 0, is_record) }
+}
+
+/// `any` over a Vec<Bool>, which widens to a 0/1 slot: whether any slot is nonzero. False when
+/// empty.
+///
+/// # Safety
+/// `v` points at a live one-column `TlVec`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_vec_any(v: *const TlVec) -> i64 {
+    unsafe { column(v, 0) }.iter().any(|&b| b != 0) as i64
+}
+
+/// `all` over a Vec<Bool>: whether every slot is nonzero, vacuously true when empty.
+///
+/// # Safety
+/// As `tl_vec_any`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_vec_all(v: *const TlVec) -> i64 {
+    unsafe { column(v, 0) }.iter().all(|&b| b != 0) as i64
+}
+
+/// The inner Vecs of a Vec<Vec<T>>: its one column holds `TlVec` pointers.
+///
+/// # Safety
+/// `vv` points at a live one-column `TlVec` of pointers to live `TlVec`s.
+unsafe fn inner_vecs<'a>(vv: *const TlVec) -> impl Iterator<Item = *const TlVec> + 'a {
+    unsafe { column(vv, 0) }
+        .iter()
+        .map(|&slot| slot as *const TlVec)
+}
+
+/// Flatten a Vec<Vec<T>> into a Vec<T>. `ncols` is T's column count, passed in rather than read
+/// off an inner Vec because an empty outer Vec has no inner Vec to read it from.
+///
+/// # Safety
+/// As `inner_vecs`, and every inner Vec has `ncols` columns.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_vec_flatten(vv: *const TlVec, ncols: i64) -> *mut TlVec {
+    let total =
+        unsafe { inner_vecs(vv) }.fold(0i64, |n, inner| n.saturating_add(unsafe { (*inner).len }));
+    let out = tl_vec_new(total, ncols);
+    let mut at = 0;
+    for inner in unsafe { inner_vecs(vv) } {
+        let len = unsafe { (*inner).len } as usize;
+        for c in 0..ncols {
+            unsafe { column_mut(out, c)[at..at + len].copy_from_slice(column(inner, c)) };
+        }
+        at += len;
+    }
+    out
+}
+
+/// `a + b` on two Vecs (kantord/toylang#97): join them without the one level of nesting
+/// `tl_vec_flatten` unwraps. `ncols` is T's column count, for the same reason.
+///
+/// # Safety
+/// `a` and `b` point at live `TlVec`s with `ncols` columns each.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_vec_concat(a: *const TlVec, b: *const TlVec, ncols: i64) -> *mut TlVec {
+    let (alen, blen) = unsafe { ((*a).len, (*b).len) };
+    let out = tl_vec_new(alen.saturating_add(blen), ncols);
+    for c in 0..ncols {
+        let (head, tail) = unsafe { column_mut(out, c) }.split_at_mut(alen as usize);
+        head.copy_from_slice(unsafe { column(a, c) });
+        tail.copy_from_slice(unsafe { column(b, c) });
+    }
+    out
+}
+
+/// `transpose` of a rectangular `Vec<Vec<T>>`: row `i` of the result is column `i` of the input.
+/// `ncols` is T's column count, as for `tl_vec_flatten`. A ragged input is refused at runtime,
+/// since the checker cannot see lengths; the result of an empty input is the empty
+/// `Vec<Vec<T>>`.
+///
+/// # Safety
+/// As `tl_vec_flatten`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_vec_transpose(vv: *const TlVec, ncols: i64) -> *mut TlVec {
+    let Some(first) = (unsafe { inner_vecs(vv) }).next() else {
+        return tl_vec_new(0, 1);
+    };
+    let width = unsafe { (*first).len };
+    if unsafe { inner_vecs(vv) }.any(|inner| unsafe { (*inner).len } != width) {
+        fail("transpose needs a rectangular Vec of Vecs");
+    }
+    let nrows = unsafe { (*vv).len };
+    let out = tl_vec_new(width, 1);
+    for (c, slot) in unsafe { column_mut(out, 0) }.iter_mut().enumerate() {
+        let row = tl_vec_new(nrows, ncols);
+        for k in 0..ncols {
+            let dst = unsafe { column_mut(row, k) };
+            for (d, inner) in dst.iter_mut().zip(unsafe { inner_vecs(vv) }) {
+                *d = unsafe { column(inner, k) }[c];
+            }
+        }
+        *slot = row as i64;
+    }
+    out
+}
+
+/// `reverse`, generic over the element type like `tl_vec_tail`: every column's row order flips
+/// together, so a Vec of records or of nested Vecs reverses with no type-specific code.
+///
+/// # Safety
+/// `v` points at a live `TlVec` with `ncols` columns.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_vec_reverse(v: *const TlVec, ncols: i64) -> *mut TlVec {
+    let out = tl_vec_new(unsafe { (*v).len }, ncols);
+    for c in 0..ncols {
+        let src = unsafe { column(v, c) }.iter().rev();
+        for (dst, &slot) in unsafe { column_mut(out, c) }.iter_mut().zip(src) {
+            *dst = slot;
+        }
+    }
+    out
 }
 
 /// Ascending order of two key slots: the raw value for Int, Int64 and Char (all three live in the
@@ -769,6 +923,110 @@ mod tests {
             assert_eq!(tl_opt_get(out), a, "the first \"b\", not the last");
 
             assert!(tl_vec_max_by(tl_vec_new(0, 1), tl_vec_new(0, 1), 0, 0).is_null());
+        }
+    }
+
+    /// A Vec<Vec<T>> whose inner Vecs are `rows`, each a set of columns.
+    unsafe fn nested(rows: &[*mut TlVec]) -> *mut TlVec {
+        let slots: Vec<i64> = rows.iter().map(|&r| r as i64).collect();
+        unsafe { vec_of(&[&slots]) }
+    }
+
+    #[test]
+    fn reverse_flips_every_column_together() {
+        unsafe {
+            let v = vec_of(&[&[1, 2, 3], &[10, 20, 30]]);
+            let out = tl_vec_reverse(v, 2);
+            assert_eq!(column_of(out, 0), [3, 2, 1]);
+            assert_eq!(column_of(out, 1), [30, 20, 10]);
+            assert_eq!(column_of(v, 0), [1, 2, 3]);
+            let empty = tl_vec_reverse(tl_vec_new(0, 2), 2);
+            assert_eq!((tl_vec_len(empty), (*empty).ncols), (0, 2));
+        }
+    }
+
+    #[test]
+    fn flatten_skips_empty_inners_and_keeps_the_width_of_an_empty_outer() {
+        unsafe {
+            let inner = [
+                vec_of(&[&[1, 2], &[10, 20]]),
+                tl_vec_new(0, 2),
+                vec_of(&[&[3], &[30]]),
+            ];
+            let out = tl_vec_flatten(nested(&inner), 2);
+            assert_eq!(column_of(out, 0), [1, 2, 3]);
+            assert_eq!(column_of(out, 1), [10, 20, 30]);
+
+            let none = tl_vec_flatten(nested(&[]), 3);
+            assert_eq!((tl_vec_len(none), (*none).ncols), (0, 3));
+        }
+    }
+
+    #[test]
+    fn concat_joins_either_side_empty() {
+        unsafe {
+            let a = vec_of(&[&[1, 2], &[10, 20]]);
+            let b = vec_of(&[&[3], &[30]]);
+            let out = tl_vec_concat(a, b, 2);
+            assert_eq!(column_of(out, 0), [1, 2, 3]);
+            assert_eq!(column_of(out, 1), [10, 20, 30]);
+            let left = tl_vec_concat(tl_vec_new(0, 2), b, 2);
+            assert_eq!(column_of(left, 1), [30]);
+            let right = tl_vec_concat(a, tl_vec_new(0, 2), 2);
+            assert_eq!(column_of(right, 0), [1, 2]);
+            let neither = tl_vec_concat(tl_vec_new(0, 2), tl_vec_new(0, 2), 2);
+            assert_eq!((tl_vec_len(neither), (*neither).ncols), (0, 2));
+        }
+    }
+
+    #[test]
+    fn transpose_swaps_rows_and_columns_of_every_field() {
+        unsafe {
+            let rows = [
+                vec_of(&[&[1, 2, 3], &[10, 20, 30]]),
+                vec_of(&[&[4, 5, 6], &[40, 50, 60]]),
+            ];
+            let out = tl_vec_transpose(nested(&rows), 2);
+            assert_eq!(tl_vec_len(out), 3);
+            let col1 = *column(out, 0).get(1).unwrap() as *const TlVec;
+            assert_eq!(column_of(col1, 0), [2, 5]);
+            assert_eq!(column_of(col1, 1), [20, 50]);
+
+            // Zero-width rows and no rows both give an empty Vec of Vecs, one column wide.
+            let flat = tl_vec_transpose(nested(&[tl_vec_new(0, 1), tl_vec_new(0, 1)]), 1);
+            assert_eq!((tl_vec_len(flat), (*flat).ncols), (0, 1));
+            let none = tl_vec_transpose(nested(&[]), 1);
+            assert_eq!((tl_vec_len(none), (*none).ncols), (0, 1));
+        }
+    }
+
+    #[test]
+    fn tail_first_any_all_on_empty_and_full() {
+        unsafe {
+            let v = vec_of(&[&[1, 2, 3], &[10, 20, 30]]);
+            let tail = tl_opt_get(tl_vec_tail(v)) as *const TlVec;
+            assert_eq!(column_of(tail, 0), [2, 3]);
+            assert_eq!(column_of(tail, 1), [20, 30]);
+            let single = tl_opt_get(tl_vec_tail(vec_of(&[&[7]]))) as *const TlVec;
+            assert_eq!(tl_vec_len(single), 0);
+            assert!(tl_vec_tail(tl_vec_new(0, 2)).is_null());
+
+            assert_eq!(tl_opt_get(tl_vec_first(v, 0)), 1);
+            let rec = tl_opt_get(tl_vec_first(v, 1)) as *const i64;
+            assert_eq!((tl_rec_get(rec, 0), tl_rec_get(rec, 1)), (1, 10));
+            assert!(tl_vec_first(tl_vec_new(0, 1), 0).is_null());
+
+            let (none, some, mixed) = (vec_of(&[&[0, 0]]), vec_of(&[&[1, 1]]), vec_of(&[&[0, 1]]));
+            assert_eq!(
+                (tl_vec_any(none), tl_vec_any(some), tl_vec_any(mixed)),
+                (0, 1, 1)
+            );
+            assert_eq!(
+                (tl_vec_all(none), tl_vec_all(some), tl_vec_all(mixed)),
+                (0, 1, 0)
+            );
+            let empty = tl_vec_new(0, 1);
+            assert_eq!((tl_vec_any(empty), tl_vec_all(empty)), (0, 1));
         }
     }
 }
