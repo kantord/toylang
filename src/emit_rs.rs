@@ -17,6 +17,7 @@
 //! cheap enough and always correct" choice the other five backends make by simply copying.
 
 use crate::ast::{BinOp, LogicOp};
+use crate::mutation;
 use crate::tir::{self, Builtin, Kind, LocalId, Program, Tir};
 use crate::ty::{self, Enums, Type};
 
@@ -1522,44 +1523,6 @@ impl Emitter<'_> {
         )
     }
 
-    /// The v1 mutation rule: does `body` hold exactly one use of `local`, and is that one use
-    /// the argument to a consuming builtin (Sort/Reverse/Flatten, or a Vec/Str `+`-concat)?
-    ///
-    /// The walk is a plain occurrence count over the body's tree (`tir::each_node`). It works
-    /// for every binding form because each form's parameter is a fresh, unique `LocalId`: a
-    /// `Bind`'s local, a `Map`/`Select`/`OptMap`'s param, or a `Match` arm's payload are all
-    /// just a `LocalId` to count in their body. A `Call` node holds only its argument, never a
-    /// callee's body, so a use reached through a called function is simply not in this tree and
-    /// cannot qualify -- the mutation-function-boundary ruling falls out of that shape rather
-    /// than needing a separate check.
-    fn single_consuming_use(&self, body: &Tir, local: LocalId) -> bool {
-        let mut count = 0usize;
-        let mut consuming = false;
-        tir::each_node(body, &mut |node| {
-            match &node.kind {
-                Kind::Local(id) if *id == local => count += 1,
-                Kind::Builtin { which, arg } => {
-                    if matches!(which, Builtin::Sort | Builtin::Reverse | Builtin::Flatten)
-                        && matches!(&arg.kind, Kind::Local(id) if *id == local)
-                    {
-                        consuming = true;
-                    }
-                }
-                // A Vec/Str `+`-concat consumes either operand.
-                Kind::Concat(l, r) => {
-                    if matches!(node.ty, Type::Vec(_) | Type::Str)
-                        && (matches!(&l.kind, Kind::Local(id) if *id == local)
-                            || matches!(&r.kind, Kind::Local(id) if *id == local))
-                    {
-                        consuming = true;
-                    }
-                }
-                _ => {}
-            }
-        });
-        count == 1 && consuming
-    }
-
     /// If `arg` is a mutable local (bound earlier in this scope-walk and about to be consumed),
     /// its id -- so the consuming builtin can take it by value instead of by clone.
     fn owned(&self, arg: &Tir) -> Option<LocalId> {
@@ -1635,7 +1598,7 @@ impl Emitter<'_> {
     /// place rather than copied. Qualified bindings nest, so the caller pushes the local onto
     /// the `mutables` stack when this holds and pops when the body is emitted.
     fn bind_owned(&self, value: &Tir, body: &Tir, id: LocalId) -> bool {
-        matches!(value.ty, Type::Vec(_) | Type::Str) && self.single_consuming_use(body, id)
+        matches!(value.ty, Type::Vec(_) | Type::Str) && mutation::single_consuming_use(body, id)
     }
 
     fn bind_let(&mut self, value: &Tir, id: LocalId, owned: bool) -> String {
@@ -1657,7 +1620,8 @@ impl Emitter<'_> {
                 .find(|(n, _)| arm.variant.as_deref() == Some(n.as_str()))
                 .and_then(|(_, p)| p.clone());
             payload_ty.map_or(false, |p| {
-                matches!(p, Type::Vec(_) | Type::Str) && self.single_consuming_use(&arm.body, pid)
+                matches!(p, Type::Vec(_) | Type::Str)
+                    && mutation::single_consuming_use(&arm.body, pid)
             })
         })
     }
@@ -1971,7 +1935,7 @@ impl Emitter<'_> {
                 // map by value (`into_iter`) so that element can be consumed in place, instead
                 // of `iter().map` over references that have to be cloned.
                 let owned = matches!(elem, Type::Vec(_) | Type::Str)
-                    && self.single_consuming_use(body, *param);
+                    && mutation::single_consuming_use(body, *param);
                 if owned {
                     self.mutables.push(*param);
                 }
