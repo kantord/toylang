@@ -195,6 +195,12 @@ conflict" ([linkage](https://doc.rust-lang.org/reference/linkage.html)). Consequ
   a second Rust staticlib and is one reason section 3.5 recommends against sharing with `emit_rs.rs`.
 - The link line needs what `--print native-static-libs` reports: measured `-lgcc_s -lutil -lrt
   -lpthread -lm -ldl -lc` for `std`, and an empty list for the `no_std` build (only libc and libm).
+- Step 1 re-measured the link line on this host (glibc 2.44, GNU ld 2.47, cc 16.2.1) with a
+  `std` archive that spawns a process, runs a thread, reads stdin and formats: it links with no
+  extra libraries at all, dynamic or `-static`, and `--gc-sections` saved only about 1 KB of a
+  2.28 MB unstripped binary (the archive's std is already thin after lto). `-lm` adds a `libm.so.6`
+  dependency nothing uses. The committed link line still passes the rustc-reported libraries,
+  because glibc older than 2.34 keeps pthread and dl in separate libraries; that case is unmeasured.
 - Both variants also link fully static with `cc -static` against glibc (measured: 3.33 MB `std`,
   0.87 MB `no_std`). A musl target needs the `x86_64-unknown-linux-musl` std component, which is
   installed here; other targets need their own archive, as Inko does. Not tested beyond the host.
@@ -466,7 +472,9 @@ Found while measuring; reported, not fixed (this note changes no code).
    bytes into 1 (the terminating NUL). Confirmed with AddressSanitizer on input 0.0:
    "heap-buffer-overflow ... WRITE of size 2 ... 0 bytes after 1-byte region". gcc also warns at
    `-O2` (`-Wstringop-overflow`). It is harmless in practice today because malloc rounds up, but
-   it is undefined behaviour in the shipped runtime, and a Rust port removes it.
+   it is undefined behaviour in the shipped runtime, and a Rust port removes it. Fixed at step 0
+   (`memcpy` of the exact length), with a test that links the runtime under AddressSanitizer
+   (`tests/native_asan.rs`).
 2. **The backends disagree on how a control character prints inside a Vec or record.**
    Measured with a `Str` containing 0x08 and 0x0c printed as `[s]`: JS and jq print
    `["a\bb\fc"]`; Rust, Go, Python, Lua and native print `["a\u0008b\u000cc"]`. No corpus case
@@ -561,3 +569,34 @@ Crates: <https://github.com/boa-dev/ryu-js>, <https://crates.io/api/v1/crates/ry
 <https://crates.io/api/v1/crates/bumpalo>, <https://crates.io/api/v1/crates/simdutf8>.
 Local: `Cargo.toml`, `Cargo.lock`, `build.rs`, `src/lib.rs`, `src/emit_llvm.rs`,
 `runtime/toylang.c`, `tests/corpus/`, `~/.cargo/registry` crate manifests.
+
+## 12. Native run-time baseline before the port
+
+Recorded on 2026-09-24 at step 0, with the C runtime as it stood after the `strcpy` fix in
+section 8. Step 8 compares against this table. Host: 12th Gen Intel Core i7-12700KF, 20 threads,
+Linux 7.2.4-zen2, gcc 16.2.1, rustc 1.98.1. The machine was not idle: the load average was about
+3.6 throughout, because other sessions were running, so the small workloads carry real noise.
+
+Each program was linked with `toylang build FILE native` (the `cc program.o toylang.c` line of
+section 1, no `-O`) and timed with `hyperfine -N --warmup 5 --runs 30`, feeding the single input
+from `benches/inputs/`. Milliseconds, wall clock.
+
+| program | input | median | mean | stddev | min | max |
+| --- | --- | --- | --- | --- | --- | --- |
+| binary-trees | 14 | 3.8 | 5.1 | 3.1 | 2.7 | 13.5 |
+| fasta | 500 | 3.8 | 3.8 | 1.1 | 2.4 | 6.6 |
+| mandelbrot | 200 | 42.2 | 43.3 | 3.1 | 40.8 | 52.7 |
+| n-body | 10000 | 99.6 | 100.0 | 1.4 | 98.4 | 105.5 |
+| spectral-norm | 100 | 41.6 | 42.4 | 2.0 | 40.8 | 49.0 |
+
+`fannkuch-redux` has no row: it does not compile on any backend at this commit
+(`toylang: fannkuch-redux.toy: 'step' is already a plain function; a trait method cannot share
+its name (at byte 619)`), so `just bench fannkuch-redux` fails as well. That break predates this
+step and is not fixed here.
+
+Read binary-trees and fasta by the minimum and the median, not the mean: at 3 to 4 ms they are
+dominated by process start-up and the mean is pulled up by a few slow runs. The three others are
+steady enough that a slowdown beyond about 5 ms (mandelbrot, spectral-norm) or 3 ms (n-body)
+would be outside what this measurement can hide. None of these programs is heavy on printing
+Floats or on the JSON reader, so they say little about the ports of steps 2 and 6 on their own;
+step 8 should read them as a guard against a general slowdown, not as evidence for any one port.

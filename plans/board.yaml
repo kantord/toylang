@@ -19,18 +19,6 @@
   prio: 5
   status: proposed
 
-- id: native-runtime-rs-step0-float-overflow
-  title: 'Native runtime port, step 0 (plans/native-runtime-rust-research.md section 6 and section 8): fix the heap buffer overflow in `tl_float_to_str` in runtime/toylang.c (`strcpy(tl_alloc(3), "NaN")` writes 4 bytes into 3, `strcpy(tl_alloc(1), "0")` writes 2 into 1; confirmed with AddressSanitizer on input 0.0, and gcc warns with -Wstringop-overflow at -O2); check the other `strcpy` uses in the file for the same mistake; add a regression test that runs the native backend on a program that prints `0.0` and `0.0 / 0.0` (and confirm under AddressSanitizer if you can build the runtime with -fsanitize=address, and say so in the commit if you could not). Also record a baseline of run times for benches/programs on the native backend (wall clock, a handful of runs each, host and date noted) in a new section at the end of plans/native-runtime-rust-research.md, so the later ports can show they did not slow anything down. No other runtime change.'
-  kind: build
-  needs: []
-  status: todo
-
-- id: native-runtime-rs-step1-scaffold
-  title: 'Native runtime port, step 1 (plans/native-runtime-rust-research.md section 6): scaffold the Rust runtime crate with no behaviour change. Add a workspace member (for example `runtime-rs`, package `toylang-rt`, `crate-type = ["staticlib"]`, `panic = "abort"`, release profile with lto), a `build.rs` step that runs a nested `cargo build --release -p toylang-rt --locked` into a separate target directory under OUT_DIR (separate directory to avoid the cargo build lock; cargo is already a build-time requirement), embeds the archive with `include_bytes!`, and change `link` in src/lib.rs to write both toylang.c and the archive and run the `cc` call with the archive and the libraries the measured link line needs (see section 3.1 of the research: `-Wl,--gc-sections -lpthread -ldl -lm` or whatever you measure). The crate exports only one smoke function, called from a test or a tiny extra symbol the C does not use, so the point of the step is proving the link works end to end on the native backend and that the compiler still builds from a clean checkout (test `cargo clean` then `just check`). Watch: build.rs must not rebuild the nested crate on every compile (rerun-if-changed), dependencies must resolve offline from the lockfile, and the `nothing to install` comment on `link` in src/lib.rs must be updated to say what is now true (cc is still required at user compile time; nothing else is). Keep the ABI plan in mind: later steps keep every `tl_*` symbol and the `tl_str` and `tl_vec` layouts byte for byte.'
-  kind: build
-  needs: []
-  status: todo
-
 - id: native-runtime-rs-step2-float-printing
   title: 'Native runtime port, step 2 (plans/native-runtime-rust-research.md section 6 and section 3.3): port `tl_float_to_str` (C lines 70 to 172, `tl_shortest_digits` and `tl_float_to_str`) to Rust on the `ryu-js` crate, delete those C lines in the same commit (a `tl_*` symbol must be defined in exactly one of C and Rust). The research measured the replacement identical to the C over 3,000,016 doubles (random bit patterns, m*10^e decimals, dyadic fractions, NaN, -0, infinities, 1e21, 1e-7, 1e-6, 123456789012345680000, 5e-324, the extreme normals); repeat a differential of that shape once more against the last C build (a throwaway harness in the scratchpad, not committed) and state the count in the commit. The NaN, `-0` and exponent-boundary rules are pinned by the float corpus cases; they must stay green. Keep the exported signature and the tl_str return layout unchanged.'
   kind: build
@@ -77,6 +65,12 @@
   title: 'Native runtime port, option C follow-up (plans/native-runtime-rust-research.md section 3.4, ruled by the maintainer as the step after the port): with the runtime in Rust there are two places a function is declared, the `extern "C"` definition and the `add_function` call in src/emit_llvm.rs (58 sites). Add one table that generates both: a small shared crate (or module) with a `macro_rules!` table of `fn name(args) -> ret;` entries that expands to the `#[unsafe(no_mangle)] pub extern "C" fn` surface in the runtime and to a `const SIGNATURES` the compiler iterates to call `add_function`. The precedent is Swift''s RuntimeFunctions.def x-macro file. Evaluate a proc macro or cbindgen only if macro_rules! cannot express something you need, and say why. Done when adding a runtime function needs exactly one signature edit and a mismatch between the two sides cannot compile or fails a test.'
   kind: build
   needs: [native-runtime-rs-step8-delete-c]
+  status: todo
+
+- id: fannkuch-redux-bench-broken
+  title: 'Found while recording the native run-time baseline (2026-09-24, self-originated): benches/programs/fannkuch-redux.toy does not compile on any backend at main. The error is `toylang: fannkuch-redux.toy: ''step'' is already a plain function; a trait method cannot share its name (at byte 619)`, so `just bench fannkuch-redux` fails too. It predates the native runtime port; a language change (traits) made an existing benchmark program illegal and nothing caught it, because benchmarks are not in just check. Fix the benchmark (rename the function, or whatever the current rule wants), then find out why nothing gates it: either add a compile-only check of every benches/programs/*.toy on all seven backends to the suite (cheap, and it would have caught this), or say why not. Check the other benchmark programs still produce the outputs recorded in plans/benchmark-plan.md.'
+  kind: build
+  needs: []
   status: todo
 
 - id: closures-legacy-flow-map-sortby-maxby

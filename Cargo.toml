@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 default-run = "toylang"
 
+[workspace]
+members = ["runtime-rs"]
+
 [dependencies]
 anyhow = "1.0.104"
 inkwell = { version = "0.10.0", features = ["llvm22-1"] }
@@ -28,3 +31,13 @@ winnow = "1.0.4"
 cognitive_complexity = "warn"
 too_many_lines = "warn"
 fn_params_excessive_bools = "warn"
+
+# How build.rs builds runtime-rs (a workspace member's own profile section is ignored, and a
+# panic unwinding out of an `extern "C"` runtime function has nowhere to go). Not `release`,
+# so the compiler's own release profile stays untouched.
+[profile.runtime]
+inherits = "release"
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = 2

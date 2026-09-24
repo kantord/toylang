@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (292):
+compiles natively (293):
 adults
 all_basic
 all_empty
@@ -107,6 +107,7 @@ float_input
 float_nan
 float_nan_self_comparison
 float_nested_non_finite
+float_zero_and_nan_print
 fold_trait_scaffold
 forward_reference
 generic_enum_input

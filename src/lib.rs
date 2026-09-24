@@ -412,24 +412,42 @@ impl Feed {
     }
 }
 
+/// The native runtime as a static archive, built from `runtime-rs` by build.rs. Embedded so a
+/// built `toylang` does not depend on its own source tree or a Rust toolchain at compile time.
+pub const RUNTIME_ARCHIVE: &[u8] = include_bytes!(env!("TOYLANG_RT_ARCHIVE"));
+
 /// Compile to a native executable at `out`.
 ///
 /// LLVM produces an object file, which is not a program, so this shells out to `cc` for the
 /// link. That is a toolchain requirement the Lua backend does not have, since mlua vendors its
-/// interpreter.
+/// interpreter. `cc` is the only thing a user needs installed: both halves of the runtime are
+/// embedded in this binary and written out for the one `cc` call.
 pub fn link(program: &Program, out: &std::path::Path) -> Result<()> {
     let dir = tempfile::tempdir()?;
     let object = dir.path().join("program.o");
     emit_llvm::compile_to_object(program, &object).map_err(anyhow::Error::msg)?;
+    link_object(&object, out)
+}
 
-    // The runtime is compiled alongside rather than shipped as a library, which keeps the build
-    // to one `cc` call and means there is nothing to install.
+/// Link an object file against the native runtime. Public so `tests/native_runtime_link.rs` can
+/// link an object that calls the Rust half of the runtime, which no compiled program does yet.
+pub fn link_object(object: &std::path::Path, out: &std::path::Path) -> Result<()> {
+    let dir = tempfile::tempdir()?;
     let runtime = dir.path().join("toylang.c");
     std::fs::write(&runtime, emit_llvm::RUNTIME_C)?;
+    let archive = dir.path().join("libtoylang_rt.a");
+    std::fs::write(&archive, RUNTIME_ARCHIVE)?;
 
+    // `--gc-sections` drops the unused parts of the Rust std embedded in the archive. The
+    // libraries are what rustc reports for a std staticlib (`--print native-static-libs`), minus
+    // gcc_s and c, which `cc` adds itself. On glibc 2.44 a std program links without any of them;
+    // they matter on glibc older than 2.34, which has not been measured.
     let status = std::process::Command::new("cc")
-        .arg(&object)
+        .arg(object)
         .arg(&runtime)
+        .arg(&archive)
+        .arg("-Wl,--gc-sections")
+        .args(["-lutil", "-lrt", "-lpthread", "-lm", "-ldl"])
         .arg("-o")
         .arg(out)
         .status()
