@@ -1,0 +1,5 @@
+---
+source: tests/closure_operators.rs
+expression: "refuse(\"max_by\", \"Int\", \"Int -> Bool\", \"Opt<Int>\", \"$ > 1\")"
+---
+`max_by`'s projection must be Int, Int64, Str, or Char, found Bool (at byte 89)

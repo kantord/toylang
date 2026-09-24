@@ -38,6 +38,26 @@ Two things fall out of the one rule, not two mechanisms:
   `select` itself did not change: it still accepts an inline `.`-expression exactly as
   before, and now also accepts a genuine closure value handed to it as an ordinary
   parameter -- `pred` above, applied to each element instead of `.`-rebinding one.
+  [`map`](../builtins/map.md), [`sort_by`](../builtins/sort_by.md) and
+  [`max_by`](../builtins/max_by.md) read a closure the same way, so a key or mapper can be
+  a parameter too:
+
+  ```
+  fn best({items, key}: {items: Vec<Int>, key: Int -> Int}) -> Opt<Int> =
+      items | max_by key;
+
+  best({items: [3, 8, 5, 6, 1], key: $ % 5})
+  ```
+
+  ```
+  3
+  ```
+
+  The reading is a syntactic peek: only a bare name already bound to a function is applied
+  per element. Any other argument (`max_by(.age)`, or a name that holds an Int) keeps
+  meaning a `.`-rebinding expression. A closure that takes another type than the elements,
+  or returns one the operator cannot use (a non-scalar key, a non-Bool predicate), is
+  refused at the name.
 
 - **Partial application.** A bare `$` as one field's value in a record literal defers that
   field: `join({with: ", ", over: $})` is a function from the `over` field's type to

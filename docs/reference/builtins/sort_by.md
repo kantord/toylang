@@ -32,3 +32,9 @@ jq's own `sort_by` is stable and orders Str by codepoint, so the jq arm emits it
 
 Native's `tl_vec_sort_by` in runtime-rs sorts a vector of row indices by key with Rust's stable
 sort, so equal keys keep their order, and then permutes every column of the Vec by the result.
+
+The key may also be a bare name bound to a closure value from [`$`](../operators/placeholder.md),
+applied to each entry in place of the `.`-rebinding projection. Its input must be the entry
+type and its result one of the four ordered scalars. Ties still keep their order, which
+`closure_sort_by_stable` pins, and a closure built per tail call keeps the values its locals
+had then (`closure_sort_by_carried_through_tail_call`).

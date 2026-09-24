@@ -28,3 +28,9 @@ Built on every backend; the corpus cases `max_by_first_of_ties`, `max_by_empty`,
 jq's own `max_by` returns the last of equal maxima and null for an empty Vec, so the jq arm does
 not use it: it pairs each entry with its key once and keeps the first entry whose key is
 strictly greater than the running best.
+
+The key may also be a bare name bound to a closure value from [`$`](../operators/placeholder.md),
+applied to each entry in place of the `.`-rebinding projection. Its input must be the entry
+type and its result one of the four ordered scalars. Of equal maxima the first entry still
+wins (`closure_max_by_first_of_ties`), and a closure built per tail call keeps the values its
+locals had then (`closure_max_by_carried_through_tail_call`).

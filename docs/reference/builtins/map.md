@@ -32,3 +32,16 @@ map_records
 Like [`select`](select.md), `map` accepts a `Stream` subject and yields a `Stream` back,
 one entry at a time; and like `select`'s predicate, its body cannot read a source, since the
 body runs once per entry.
+
+A bare name bound to a closure value (one built with [`$`](../operators/placeholder.md) and
+handed in as a parameter) is applied to each entry instead of rebinding `.`. Only a bare name
+that is already a function is read this way; anything else keeps the `.` meaning above. The
+closure's result type is the element type of what `map` yields, so it may differ from the
+entries':
+
+```case
+closure_map
+```
+
+A closure built in a tail-recursive function captures the values its locals had when it was
+built, not the variables, which `closure_map_carried_through_tail_call` pins.

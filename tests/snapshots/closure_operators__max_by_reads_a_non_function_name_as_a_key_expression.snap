@@ -1,0 +1,5 @@
+---
+source: tests/closure_operators.rs
+expression: "refuse(\"max_by\", \"Int\", \"Vec<Int>\", \"Opt<Int>\", \"[1]\")"
+---
+`max_by`'s projection must be Int, Int64, Str, or Char, found Vec<Int> (at byte 86)

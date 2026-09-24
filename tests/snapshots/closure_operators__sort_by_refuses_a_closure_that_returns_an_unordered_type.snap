@@ -1,0 +1,5 @@
+---
+source: tests/closure_operators.rs
+expression: "refuse(\"sort_by\", \"Int\", \"Int -> Bool\", \"Vec<Int>\", \"$ > 1\")"
+---
+`sort_by`'s projection must be Int, Int64, Str, or Char, found Bool (at byte 90)

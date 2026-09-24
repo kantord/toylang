@@ -1,0 +1,17 @@
+# The key closure is rebuilt per iteration over that iteration's `k`. Keys `$ % 4` make 3 the
+# winner; a closure that saw the final `k` (5) would key `$ % 5` and pick 4.
+program: |
+  fn walk(
+    { n, k, key }: { n: Int, k: Int, key: Int -> Int }
+  ) -> Opt<Int> =
+    n == 0
+    | . -> ([1, 2, 3, 4] | max_by key) or
+      walk { n: n - 1, k: k + 1, key: $ % k };
+
+
+  walk { n: 2, k: 3, key: $ % 1 }
+
+output: |
+  3
+
+node_types: [application, arith.add, arith.rem, arith.sub, closure, closure.apply, compare.eq, int, local, match, max-by, pipe, projection, record-literal, var, vec-literal]

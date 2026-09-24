@@ -1,0 +1,18 @@
+# Each iteration builds a mapper over its own `acc` and hands it to the next call. A backend
+# that lets the closure see the variable instead of its value at build time counts against the
+# final `acc` (4), and prints [5, 6, 7] instead.
+program: |
+  fn walk(
+    { n, acc, f }: { n: Int, acc: Int, f: Int -> Int }
+  ) -> Vec<Int> =
+    n == 0
+    | . -> ([1, 2, 3] | map f) or
+      walk { n: n - 1, acc: acc + 1, f: $ + acc };
+
+
+  walk { n: 3, acc: 1, f: $ + 0 }
+
+output: |
+  [4,5,6]
+
+node_types: [application, arith.add, arith.sub, closure, closure.apply, compare.eq, int, local, map-over, match, pipe, projection, record-literal, var, vec-literal]
