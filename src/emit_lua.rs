@@ -1148,6 +1148,23 @@ fn builtin_helpers(which: &Builtin, arg_ty: &Type, used: &mut Helpers) {
     used.arith |= matches!(which, Builtin::Sum) && tir::runtime_elem(arg_ty) == Some(&Type::Int);
 }
 
+/// The helpers a builtin call needs. The copy-free form of sort and reverse replaces the plain
+/// helper rather than joining it.
+fn builtin_uses(cx: &Cx, which: &Builtin, arg: &Tir, used: &mut Helpers) {
+    match which {
+        Builtin::Sort if cx.owns(arg) => used.sort_owned = true,
+        Builtin::Reverse if cx.owns(arg) => used.reverse_owned = true,
+        _ => builtin_helpers(which, &arg.ty, used),
+    }
+}
+
+/// A Vec `+` is `tl_flatten` over both operands, or `tl_append_owned` when the left is owned.
+fn concat_helpers(ty: &Type, owned_left: bool, used: &mut Helpers) {
+    let is_vec = matches!(ty, Type::Vec(_));
+    used.append_owned |= is_vec && owned_left;
+    used.flatten |= is_vec && !owned_left;
+}
+
 fn used_helpers(program: &Program, cx: &Cx) -> Helpers {
     fn walk(t: &Tir, cx: &Cx, used: &mut Helpers) {
         match &t.kind {
@@ -1182,9 +1199,7 @@ fn used_helpers(program: &Program, cx: &Cx) -> Helpers {
             // Lua's `..` is string-only, so a Vec reaches for the same helper `flatten` uses,
             // wrapped around a two-entry outer table rather than through a second helper.
             Kind::Concat(l, r) => {
-                let is_vec = matches!(t.ty, Type::Vec(_));
-                used.append_owned |= is_vec && cx.owns(l);
-                used.flatten |= is_vec && !cx.owns(l);
+                concat_helpers(&t.ty, cx.owns(l), used);
                 walk(l, cx, used);
                 walk(r, cx, used);
             }
@@ -1231,11 +1246,7 @@ fn used_helpers(program: &Program, cx: &Cx) -> Helpers {
                 walk(base, cx, used);
             }
             Kind::Builtin { which, arg } => {
-                match which {
-                    Builtin::Sort if cx.owns(arg) => used.sort_owned = true,
-                    Builtin::Reverse if cx.owns(arg) => used.reverse_owned = true,
-                    _ => builtin_helpers(which, &arg.ty, used),
-                }
+                builtin_uses(cx, which, arg, used);
                 walk(arg, cx, used);
             }
             Kind::Arith { op, lhs, rhs } => {
@@ -1302,6 +1313,12 @@ fn arm_return(body: String, partial: bool) -> String {
     } else {
         format!("return {body} ")
     }
+}
+
+/// `tl_<name>_owned` when the mutation rule owns `arg`, else the helper that copies first.
+fn consuming(cx: &Cx, name: &str, arg: &Tir) -> String {
+    let owned = if cx.owns(arg) { "_owned" } else { "" };
+    format!("tl_{name}{owned}({})", expr(cx, arg))
 }
 
 fn expr(cx: &Cx, t: &Tir) -> String {
@@ -1414,10 +1431,8 @@ fn expr(cx: &Cx, t: &Tir) -> String {
                     tag("Stderr")
                 )
             }
-            Builtin::Sort if cx.owns(arg) => format!("tl_sort_owned({})", expr(cx, arg)),
-            Builtin::Sort => format!("tl_sort({})", expr(cx, arg)),
-            Builtin::Reverse if cx.owns(arg) => format!("tl_reverse_owned({})", expr(cx, arg)),
-            Builtin::Reverse => format!("tl_reverse({})", expr(cx, arg)),
+            Builtin::Sort => consuming(cx, "sort", arg),
+            Builtin::Reverse => consuming(cx, "reverse", arg),
             Builtin::Sum => format!(
                 "tl_sum({}, {})",
                 expr(cx, arg),

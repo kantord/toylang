@@ -52,35 +52,43 @@ fn scan(body: &Tir, local: LocalId) -> Scan {
         in_rerun_body: false,
     };
     tir::each_node(body, &mut |node| {
-        match &node.kind {
-            Kind::Map { body: inner, .. }
-            | Kind::SortBy { body: inner, .. }
-            | Kind::MaxBy { body: inner, .. }
-            | Kind::Closure { body: inner, .. }
-            | Kind::Select { pred: inner, .. } => {
-                scan.in_rerun_body |= uses(inner, local) > 0;
-            }
-            Kind::Local(id) if *id == local => scan.count += 1,
-            Kind::Builtin { which, arg } => {
-                if matches!(which, Builtin::Sort | Builtin::Reverse | Builtin::Flatten)
-                    && matches!(&arg.kind, Kind::Local(id) if *id == local)
-                {
-                    scan.consuming = true;
-                }
-            }
-            // A Vec/Str `+`-concat consumes either operand.
-            Kind::Concat(l, r) => {
-                if matches!(node.ty, Type::Vec(_) | Type::Str)
-                    && (matches!(&l.kind, Kind::Local(id) if *id == local)
-                        || matches!(&r.kind, Kind::Local(id) if *id == local))
-                {
-                    scan.consuming = true;
-                }
-            }
-            _ => {}
-        }
+        scan.count += usize::from(matches!(&node.kind, Kind::Local(id) if *id == local));
+        scan.consuming |= consumes(node, local);
+        scan.in_rerun_body |= rerun_body(node).is_some_and(|inner| uses(inner, local) > 0);
     });
     scan
+}
+
+fn is_local(t: &Tir, local: LocalId) -> bool {
+    matches!(&t.kind, Kind::Local(id) if *id == local)
+}
+
+/// Is `node` a consuming builtin or a Vec/Str `+`-concat with `local` as an operand?
+fn consumes(node: &Tir, local: LocalId) -> bool {
+    match &node.kind {
+        Kind::Builtin { which, arg } => {
+            matches!(which, Builtin::Sort | Builtin::Reverse | Builtin::Flatten)
+                && is_local(arg, local)
+        }
+        // A Vec/Str `+`-concat consumes either operand.
+        Kind::Concat(l, r) => {
+            matches!(node.ty, Type::Vec(_) | Type::Str)
+                && (is_local(l, local) || is_local(r, local))
+        }
+        _ => false,
+    }
+}
+
+/// The body `node` runs once per element (or per call), if it is one of those constructs.
+fn rerun_body(node: &Tir) -> Option<&Tir> {
+    match &node.kind {
+        Kind::Map { body, .. }
+        | Kind::SortBy { body, .. }
+        | Kind::MaxBy { body, .. }
+        | Kind::Closure { body, .. } => Some(body),
+        Kind::Select { pred, .. } => Some(pred),
+        _ => None,
+    }
 }
 
 fn uses(t: &Tir, local: LocalId) -> usize {
