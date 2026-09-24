@@ -112,7 +112,7 @@ tl_str *tl_float_to_str(double x) {
     char body[64];
 
     if (isnan(x)) {
-        return tl_str_new(strcpy(tl_alloc(3), "NaN"), 3);
+        return tl_str_new(memcpy(tl_alloc(3), "NaN", 3), 3);
     }
     if (isinf(x)) {
         const char *s = x < 0 ? "-Infinity" : "Infinity";
@@ -120,7 +120,7 @@ tl_str *tl_float_to_str(double x) {
         return tl_str_new(memcpy(tl_alloc((size_t)len), s, (size_t)len), len);
     }
     if (x == 0.0) {
-        return tl_str_new(strcpy(tl_alloc(1), "0"), 1);
+        return tl_str_new(memcpy(tl_alloc(1), "0", 1), 1);
     }
 
     int neg = x < 0;

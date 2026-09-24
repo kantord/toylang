@@ -1,0 +1,10 @@
+# Zero and NaN are the two Floats the native runtime prints from a fixed string rather than by
+# formatting digits, and it once allocated one byte too few for each. tests/native_asan.rs runs
+# this same program with the runtime built under AddressSanitizer, which is what catches that.
+program: |
+  [0.0, 0.0 / 0.0]
+
+output: |
+  [0,NaN]
+
+node_types: [arith.div, float, vec-literal]
