@@ -151,3 +151,34 @@ shapes(parse stdin)
         "{\"sorted\":[\"apple\",\"fig\",\"pear\"],\"ints\":[1,1,2,3],\"oldest\":{\"name\":\"ada\",\"age\":36},\"head\":{\"name\":\"ada\",\"age\":36},\"rest\":[{\"name\":\"bo\",\"age\":9},{\"name\":\"cy\",\"age\":36}],\"grid\":[[1,4],[2,5],[3,6]],\"flat\":[1,2,3,4,5],\"some\":true,\"every\":false}\n"
     );
 }
+
+/// The rest of the Vec operations: a reduction over a column, indexing through a select mask and
+/// straight, a slice, an unwrap one layer down, `range` and `chars`.
+#[test]
+fn indexing_and_reductions_stay_inside_their_columns() {
+    let program = "\
+fn probes(db: { users: Vec<{ name: Str, age: Int }> }) -> { total: Int, big: Opt<Int>, last: Opt<{ name: Str, age: Int }>, adult: Opt<{ name: Str, age: Int }>, window: Vec<{ name: Str, age: Int }>, digits: Vec<Int>, letters: Int, firsts: Vec<Int> } =
+  {
+    total: sum(db.users[].age),
+    big: max(db.users[].age),
+    last: db.users[-1],
+    adult: (db.users | select(.age >= 18))[-1],
+    window: db.users[1:],
+    digits: collect(range(4)),
+    letters: length(chars(\"h\u{e9}\u{1f600}\")),
+    firsts: [[7, 8], [9]][][0]!
+  };
+
+
+probes(parse stdin)
+";
+    let input = r#"{"users": [{"name": "ada", "age": 36}, {"name": "bo", "age": 9}, {"name": "cy", "age": 21}]}"#;
+    let Some(out) = run_under_asan(program, input) else {
+        eprintln!("skipped: cc cannot build with -fsanitize=address here");
+        return;
+    };
+    assert_eq!(
+        out,
+        "{\"total\":66,\"big\":36,\"last\":{\"name\":\"cy\",\"age\":21},\"adult\":{\"name\":\"cy\",\"age\":21},\"window\":[{\"name\":\"bo\",\"age\":9},{\"name\":\"cy\",\"age\":21}],\"digits\":[0,1,2,3],\"letters\":3,\"firsts\":[7,9]}\n"
+    );
+}

@@ -640,6 +640,185 @@ pub unsafe extern "C" fn tl_vec_reverse(v: *const TlVec, ncols: i64) -> *mut TlV
     out
 }
 
+/// `sum` over a Vec of Int or Int64 (kantord/toylang#140): the reduction of `+`, each addition
+/// wrapping the way the language's `+` wraps. Both widths live in the same i64 slot, so `narrow`
+/// is what tells Int (wrap to 32 bits, sign-extended, after every addition) from Int64 (no
+/// narrowing).
+///
+/// # Safety
+/// `v` points at a live one-column `TlVec`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_vec_sum(v: *const TlVec, narrow: i32) -> i64 {
+    unsafe { column(v, 0) }.iter().fold(0i64, |acc, &x| {
+        let acc = acc.wrapping_add(x);
+        if narrow != 0 { acc as i32 as i64 } else { acc }
+    })
+}
+
+/// `max` over a Vec of Int or Int64, as an Opt: null when empty. Int's slots are already
+/// sign-extended, so the i64 comparison orders them correctly.
+///
+/// # Safety
+/// `v` points at a live one-column `TlVec`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_vec_max(v: *const TlVec) -> *mut i64 {
+    match unsafe { column(v, 0) }.iter().max() {
+        Some(&m) => tl_opt_some(m),
+        None => null_mut(),
+    }
+}
+
+/// Index `i` of `v`, `depth` layers down, counting from the end when negative. At depth zero
+/// the result is an Opt (null when out of range); below it, a Vec of the results for each inner
+/// Vec. `is_record` decides whether an entry is gathered out of the columns.
+///
+/// # Safety
+/// `v` points at a live `TlVec` (one column of `TlVec` pointers for every layer above depth 0).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_at(v: *const TlVec, i: i64, depth: i64, is_record: i32) -> *mut i64 {
+    if depth > 0 {
+        let out = tl_vec_new(unsafe { (*v).len }, 1);
+        let inner = unsafe { column(v, 0) };
+        for (dst, &slot) in unsafe { column_mut(out, 0) }.iter_mut().zip(inner) {
+            *dst = unsafe { tl_at(slot as *const TlVec, i, depth - 1, is_record) } as i64;
+        }
+        return out.cast();
+    }
+    let len = unsafe { (*v).len };
+    // `len` is not negative, so this cannot overflow.
+    let i = if i < 0 { len + i } else { i };
+    if !(0..len).contains(&i) {
+        return null_mut();
+    }
+    unsafe { opt_of_row(v, i, is_record) }
+}
+
+/// Lazy `select`: read through the survivor mask the codegen built inline, without compacting
+/// the source first. The predicate never runs here; the mask is what keeps the codegen's own
+/// mask-building loop vectorisable.
+///
+/// # Safety
+/// `src` points at a live `TlVec` and `keep` at `src.len` mask bytes (null when `len` is zero).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_sel_len(src: *const TlVec, keep: *const i8) -> i64 {
+    unsafe { slice_of(keep, (*src).len) }
+        .iter()
+        .filter(|&&k| k != 0)
+        .count() as i64
+}
+
+/// The i-th survivor of `tl_sel_len`'s mask, as `tl_at` finds the i-th element of a dense Vec:
+/// negative counts from the end, null when out of range.
+///
+/// # Safety
+/// As `tl_sel_len`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_sel_at(
+    src: *const TlVec,
+    keep: *const i8,
+    i: i64,
+    is_record: i32,
+) -> *mut i64 {
+    let keep = unsafe { slice_of(keep, (*src).len) };
+    let survivors = keep.iter().filter(|&&k| k != 0).count() as i64;
+    let i = if i < 0 { survivors + i } else { i };
+    if !(0..survivors).contains(&i) {
+        return null_mut();
+    }
+    let row = keep
+        .iter()
+        .enumerate()
+        .filter(|&(_, &k)| k != 0)
+        .nth(i as usize)
+        .map(|(row, _)| row);
+    // `i` is below the survivor count, so `nth` found a row.
+    unsafe { opt_of_row(src, row.unwrap_or_default() as i64, is_record) }
+}
+
+/// Narrow a Vec to the `[lo, hi)` window, clamping out-of-range bounds jq-style rather than
+/// answering absence as `tl_at` does: negatives count from the end, both bounds clamp to
+/// `[0, len]`, and a crossed window is empty (kantord/toylang#143). A bound left out arrives as
+/// `i64::MIN` for the start or `i64::MAX` for the end, each folding to the Vec's own boundary
+/// under the clamp. `depth` is as for `tl_at`. The window is copied, not shared.
+///
+/// # Safety
+/// As `tl_at`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_vec_slice(v: *const TlVec, lo: i64, hi: i64, depth: i64) -> *mut TlVec {
+    if depth > 0 {
+        let out = tl_vec_new(unsafe { (*v).len }, 1);
+        let inner = unsafe { column(v, 0) };
+        for (dst, &slot) in unsafe { column_mut(out, 0) }.iter_mut().zip(inner) {
+            *dst = unsafe { tl_vec_slice(slot as *const TlVec, lo, hi, depth - 1) } as i64;
+        }
+        return out;
+    }
+    let (n, ncols) = unsafe { ((*v).len, (*v).ncols) };
+    // A negative bound is at least `-len` from the end or clamps to zero, so `b + n` cannot
+    // overflow.
+    let clamp = |b: i64| (if b < 0 { b + n } else { b }).clamp(0, n);
+    let (lo, hi) = (clamp(lo), clamp(hi));
+    let len = (hi - lo).max(0);
+    let out = tl_vec_new(len, ncols);
+    for c in 0..ncols {
+        let window = &unsafe { column(v, c) }[lo as usize..(lo + len) as usize];
+        unsafe { column_mut(out, c) }.copy_from_slice(window);
+    }
+    out
+}
+
+/// Insist an Opt is present, `depth` layers down. Needs no `is_record` flag: an Opt already
+/// holds a gathered value, so there is nothing left to collect out of columns.
+///
+/// # Safety
+/// `o` is an Opt from `tl_opt_some` or null, or at depth above zero a Vec of them.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_unwrap(o: *mut i64, depth: i64) -> *mut i64 {
+    if depth > 0 {
+        let v = o as *const TlVec;
+        let out = tl_vec_new(unsafe { (*v).len }, 1);
+        let inner = unsafe { column(v, 0) };
+        for (dst, &slot) in unsafe { column_mut(out, 0) }.iter_mut().zip(inner) {
+            *dst = unsafe { tl_unwrap(slot as *mut i64, depth - 1) } as i64;
+        }
+        return out.cast();
+    }
+    if o.is_null() {
+        fail("unwrapped a value that is not there");
+    }
+    unsafe { *o as *mut i64 }
+}
+
+/// The integers from zero up to but not including `n`. A negative `n` gives an empty Vec, the
+/// same as asking for zero of them.
+#[unsafe(no_mangle)]
+pub extern "C" fn tl_range(n: i64) -> *mut TlVec {
+    let out = tl_vec_new(n.max(0), 1);
+    for (i, slot) in unsafe { column_mut(out, 0) }.iter_mut().enumerate() {
+        *slot = i as i64;
+    }
+    out
+}
+
+/// Every Unicode scalar value in `s`, one codepoint per element: not a byte and not a UTF-16
+/// unit, so a character outside the Basic Multilingual Plane is one element here even where a
+/// backend with UTF-16 strings spells it with a surrogate pair. Every Str the runtime builds is
+/// valid UTF-8 (input is refused otherwise, and JSON's lone surrogates are), so the lossy decode
+/// only decides what happens if that ever stops holding: U+FFFD, where the C decoder read past
+/// the end of the string.
+///
+/// # Safety
+/// `s` points at a live Str whose bytes are valid for its length.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_chars(s: *const TlStr) -> *mut TlVec {
+    let text = String::from_utf8_lossy(unsafe { bytes(s) });
+    let out = tl_vec_new(text.chars().count() as i64, 1);
+    for (slot, ch) in unsafe { column_mut(out, 0) }.iter_mut().zip(text.chars()) {
+        *slot = ch as i64;
+    }
+    out
+}
+
 /// Ascending order of two key slots: the raw value for Int, Int64 and Char (all three live in the
 /// slot unnarrowed, and the checker already keeps a Char from mixing with the others), the bytes
 /// for Str, whose slot is a `TlStr` pointer.
@@ -1027,6 +1206,143 @@ mod tests {
             );
             let empty = tl_vec_new(0, 1);
             assert_eq!((tl_vec_any(empty), tl_vec_all(empty)), (0, 1));
+        }
+    }
+
+    #[test]
+    fn sum_wraps_to_32_bits_only_for_int() {
+        unsafe {
+            let v = vec_of(&[&[i32::MAX as i64, 1]]);
+            assert_eq!(tl_vec_sum(v, 1), i32::MIN as i64);
+            assert_eq!(tl_vec_sum(v, 0), i32::MAX as i64 + 1);
+            let big = vec_of(&[&[i64::MAX, 1]]);
+            assert_eq!(tl_vec_sum(big, 0), i64::MIN, "Int64 wraps at 64 bits");
+            // Each addition narrows, not just the last: 2^31 - 1 + 1 + 1 wraps once, then adds.
+            assert_eq!(
+                tl_vec_sum(vec_of(&[&[i32::MAX as i64, 1, 1]]), 1),
+                i32::MIN as i64 + 1
+            );
+            assert_eq!(tl_vec_sum(tl_vec_new(0, 1), 1), 0);
+        }
+    }
+
+    #[test]
+    fn max_of_ints_and_of_nothing() {
+        unsafe {
+            assert_eq!(tl_opt_get(tl_vec_max(vec_of(&[&[-5, i64::MIN, -2]]))), -2);
+            assert!(tl_vec_max(tl_vec_new(0, 1)).is_null());
+        }
+    }
+
+    #[test]
+    fn at_counts_from_the_end_and_answers_absence() {
+        unsafe {
+            let v = vec_of(&[&[10, 20, 30], &[1, 2, 3]]);
+            let at = |i| tl_at(v, i, 0, 0);
+            assert_eq!(tl_opt_get(at(0)), 10);
+            assert_eq!(tl_opt_get(at(-1)), 30);
+            assert_eq!(tl_opt_get(at(-3)), 10);
+            assert!(at(3).is_null() && at(-4).is_null() && at(i64::MIN).is_null());
+            let rec = tl_opt_get(tl_at(v, 1, 0, 1)) as *const i64;
+            assert_eq!((tl_rec_get(rec, 0), tl_rec_get(rec, 1)), (20, 2));
+            assert!(tl_at(tl_vec_new(0, 1), 0, 0, 0).is_null());
+
+            // One layer down: the index applies inside each inner Vec.
+            let rows = nested(&[vec_of(&[&[1, 2]]), vec_of(&[&[3]])]);
+            let out = tl_at(rows, -1, 1, 0) as *const TlVec;
+            assert_eq!(tl_vec_len(out), 2);
+            let opts = column_of(out, 0);
+            assert_eq!(tl_opt_get(opts[0] as *const i64), 2);
+            assert_eq!(tl_opt_get(opts[1] as *const i64), 3);
+        }
+    }
+
+    #[test]
+    fn select_reads_through_the_mask() {
+        unsafe {
+            let src = vec_of(&[&[10, 11, 12, 13, 14], &[0, 1, 2, 3, 4]]);
+            let keep = tl_mask_new(5);
+            for (i, k) in [0, 1, 0, 1, 1].into_iter().enumerate() {
+                tl_mask_set(keep, i as i64, k);
+            }
+            assert_eq!(tl_sel_len(src, keep), 3);
+            let at = |i| tl_sel_at(src, keep, i, 0);
+            assert_eq!(
+                (tl_opt_get(at(0)), tl_opt_get(at(1)), tl_opt_get(at(2))),
+                (11, 13, 14)
+            );
+            assert_eq!(tl_opt_get(at(-1)), 14);
+            assert!(at(3).is_null() && at(-4).is_null());
+            let rec = tl_opt_get(tl_sel_at(src, keep, 1, 1)) as *const i64;
+            assert_eq!((tl_rec_get(rec, 0), tl_rec_get(rec, 1)), (13, 3));
+
+            let empty = tl_vec_new(0, 1);
+            assert_eq!(tl_sel_len(empty, tl_mask_new(0)), 0);
+            assert!(tl_sel_at(empty, tl_mask_new(0), 0, 0).is_null());
+        }
+    }
+
+    #[test]
+    fn slice_clamps_like_jq_and_copies_the_window() {
+        unsafe {
+            let v = vec_of(&[&[0, 1, 2, 3, 4], &[10, 11, 12, 13, 14]]);
+            let cut = |lo, hi| column_of(tl_vec_slice(v, lo, hi, 0), 0);
+            assert_eq!(cut(1, 3), [1, 2]);
+            assert_eq!(cut(-2, i64::MAX), [3, 4]);
+            assert_eq!(cut(i64::MIN, -3), [0, 1]);
+            assert_eq!(cut(-99, 99), [0, 1, 2, 3, 4]);
+            assert_eq!(cut(4, 1), [] as [i64; 0], "a crossed window is empty");
+            assert_eq!(cut(99, 100), [] as [i64; 0]);
+            assert_eq!(cut(i64::MIN, i64::MIN), [] as [i64; 0]);
+
+            let both = tl_vec_slice(v, 2, 4, 0);
+            assert_eq!(column_of(both, 1), [12, 13]);
+            tl_vec_set(both, 0, 0, 99);
+            assert_eq!(tl_vec_get(v, 0, 2), 2, "the window is a copy");
+
+            let empty = tl_vec_slice(tl_vec_new(0, 2), i64::MIN, i64::MAX, 0);
+            assert_eq!((tl_vec_len(empty), (*empty).ncols), (0, 2));
+
+            let rows = nested(&[v, vec_of(&[&[7], &[8]])]);
+            let out = tl_vec_slice(rows, 1, 2, 1);
+            let inner = column_of(out, 0);
+            assert_eq!(column_of(inner[0] as *const TlVec, 0), [1]);
+            assert_eq!(column_of(inner[1] as *const TlVec, 0), [] as [i64; 0]);
+        }
+    }
+
+    #[test]
+    fn unwrap_peels_one_opt_per_layer() {
+        unsafe {
+            assert_eq!(tl_unwrap(tl_opt_some(5), 0) as i64, 5);
+            let opts = vec_of(&[&[tl_opt_some(1) as i64, tl_opt_some(2) as i64]]);
+            let out = tl_unwrap(opts.cast(), 1) as *const TlVec;
+            assert_eq!(column_of(out, 0), [1, 2]);
+            let none = tl_unwrap(tl_vec_new(0, 1).cast(), 1) as *const TlVec;
+            assert_eq!(tl_vec_len(none), 0);
+        }
+    }
+
+    #[test]
+    fn range_counts_up_and_treats_negative_as_zero() {
+        unsafe {
+            assert_eq!(column_of(tl_range(4), 0), [0, 1, 2, 3]);
+            assert_eq!(tl_vec_len(tl_range(0)), 0);
+            assert_eq!(tl_vec_len(tl_range(-7)), 0);
+            assert_eq!(tl_vec_len(tl_range(i64::MIN)), 0);
+        }
+    }
+
+    #[test]
+    fn chars_are_codepoints_not_bytes_or_utf16_units() {
+        unsafe {
+            let of = |text: &str| column_of(tl_chars(leak_str(text.as_bytes().to_vec())), 0);
+            assert_eq!(of("abc"), [97, 98, 99]);
+            assert_eq!(of(""), [] as [i64; 0]);
+            assert_eq!(of("\u{e9}\u{20ac}\u{1f600}"), [0xe9, 0x20ac, 0x1f600]);
+            // Not valid UTF-8, which no Str the runtime builds is: decoded, not read past.
+            let bad = leak_str(vec![b'a', 0xe2, 0x82]);
+            assert_eq!(column_of(tl_chars(bad), 0), [97, 0xfffd]);
         }
     }
 }
