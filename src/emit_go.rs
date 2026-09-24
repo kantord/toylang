@@ -23,6 +23,7 @@ use crate::ty::{self, Enums, Type};
 /// prefixed.
 const INPUT: &str = "t_input";
 const INPUTS: &str = "t_inputs";
+const TAIL_ARG: &str = "t_arg";
 
 /// Absence is a field rather than a nil pointer: `Opt<Vec<T>>` would otherwise have two
 /// spellings of empty, and a nil slice is a perfectly ordinary present value here.
@@ -748,18 +749,7 @@ pub fn emit(program: &Program) -> String {
     // Package-level functions are visible in any order, so the forward reference the checker
     // accepts needs nothing here. Lua wanted declarations and JavaScript relied on hoisting.
     for f in &program.funcs {
-        let param = match (&f.param, &f.param_ty) {
-            (Some(name), Some(ty)) => format!("{} {}", e.user(name), e.go_type(ty)),
-            (None, None) => String::new(),
-            _ => unreachable!("a function's param and param_ty agree"),
-        };
-        decls.push_str(&format!(
-            "func {}({}) {} {{\n\treturn {}\n}}\n\n",
-            e.user(&f.name),
-            param,
-            e.go_type(&f.body.ty),
-            e.expr(&f.body)
-        ));
+        decls.push_str(&e.func_decl(f));
     }
 
     if let Some(fusion) = tir::fusion(program) {
@@ -1133,6 +1123,113 @@ impl Emitter<'_> {
 
     fn local(&self, id: LocalId) -> String {
         format!("t_{id}")
+    }
+
+    fn func_decl(&self, f: &tir::Func) -> String {
+        let looped = tir::has_tail_call(&f.name, &f.body);
+        let (param, prologue) = match (&f.param, &f.param_ty) {
+            (Some(name), Some(ty)) if looped => {
+                // The loop reassigns `TAIL_ARG`, and each iteration copies it into a fresh
+                // `name`: Go closures capture the variable, not its value, so a closure built
+                // in one iteration must not see the next iteration's argument.
+                let n = self.user(name);
+                (
+                    format!("{TAIL_ARG} {}", self.go_type(ty)),
+                    format!("{n} := {TAIL_ARG}; _ = {n}; "),
+                )
+            }
+            (Some(name), Some(ty)) => (
+                format!("{} {}", self.user(name), self.go_type(ty)),
+                String::new(),
+            ),
+            (None, None) => (String::new(), String::new()),
+            _ => unreachable!("a function's param and param_ty agree"),
+        };
+        let body = if looped {
+            format!(
+                "for {{ {prologue}{} }}",
+                self.tail_stmts(&f.name, f.param.is_some(), &f.body)
+            )
+        } else {
+            format!("return {}", self.expr(&f.body))
+        };
+        format!(
+            "func {}({}) {} {{\n\t{}\n}}\n\n",
+            self.user(&f.name),
+            param,
+            self.go_type(&f.body.ty),
+            body
+        )
+    }
+
+    /// `t` as statements in the tail position of a function whose body is one `for`: `return
+    /// <expr>` for a base case, and for a self tail call `TAIL_ARG = <arg>; continue`, so a
+    /// self-tail-recursive function runs in constant stack (kantord/toylang#141). The tail
+    /// positions are the ones `tir::has_tail_call` counts: a total match's arm bodies and a
+    /// Bind's body. The match keeps its `if` chain and the Bind its local, both declared
+    /// inside the loop body so every iteration gets its own.
+    fn tail_stmts(&self, name: &str, has_param: bool, t: &Tir) -> String {
+        match &t.kind {
+            Kind::Call { func, arg } if func == name => {
+                let assign = match arg {
+                    Some(a) if has_param => format!("{TAIL_ARG} = {}; ", self.expr(a)),
+                    _ => String::new(),
+                };
+                format!("{assign}continue")
+            }
+            Kind::Bind {
+                local: id,
+                value,
+                body,
+            } => format!(
+                "{} := {}; _ = {}; {}",
+                self.local(*id),
+                self.expr(value),
+                self.local(*id),
+                self.tail_stmts(name, has_param, body)
+            ),
+            Kind::Match {
+                subject,
+                arms,
+                partial: false,
+            } => {
+                let subj = self.expr(subject);
+                let mut out = String::new();
+                for (i, arm) in arms.iter().enumerate() {
+                    let mut run = String::new();
+                    if let Some(pid) = arm.payload {
+                        let variant = arm
+                            .variant
+                            .as_ref()
+                            .expect("only a variant arm has a payload");
+                        let vi =
+                            Self::variant_index(&ty::variants(self.registry, &subject.ty), variant);
+                        run.push_str(&format!(
+                            "{} := *{subj}.p{vi}; _ = {}; ",
+                            self.local(pid),
+                            self.local(pid)
+                        ));
+                    }
+                    run.push_str(&self.tail_stmts(name, has_param, &arm.body));
+                    let test = match (&arm.variant, &arm.guard) {
+                        (Some(v), _) => Some(format!(
+                            "{subj}.tag == {}",
+                            Self::variant_index(&ty::variants(self.registry, &subject.ty), v)
+                        )),
+                        (None, Some(g)) => Some(self.expr(g)),
+                        (None, None) => None,
+                    };
+                    match test {
+                        Some(test) if i + 1 < arms.len() => {
+                            out.push_str(&format!("if {test} {{ {run} }}; "));
+                        }
+                        _ => out.push_str(&run),
+                    }
+                }
+                out
+            }
+            _ => format!("return {}", self.expr(t)),
+        }
     }
 
     fn go_type(&self, ty: &Type) -> String {
