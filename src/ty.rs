@@ -521,16 +521,34 @@ pub fn variants(enums: &Enums, ty: &Type) -> Vec<(String, Option<Type>)> {
 
 /// Whether a value of `ty` can carry a `Float` anywhere inside it -- bare, a Vec element, a
 /// record field, an enum payload. A printer that spells floats itself (every backend, ADR
-/// 0007) needs its helper whenever this holds, not only for a bare Float body. A recursive
-/// enum's self-reference is always behind a Vec (the checker allows no other), so the first
-/// hop back into one is reachable; `seen` stops the second from looping, as `is_recursive`
-/// does for the same reason.
+/// 0007) needs its helper whenever this holds, not only for a bare Float body.
 pub fn contains_float(enums: &Enums, ty: &Type) -> bool {
-    fn walk(enums: &Enums, ty: &Type, seen: &mut Vec<Type>) -> bool {
+    contains_leaf(enums, ty, &|t| *t == Type::Float)
+}
+
+/// `contains_float` for a `Str`: a printer that has to quote strings itself needs its helper
+/// whenever this holds.
+pub fn contains_str(enums: &Enums, ty: &Type) -> bool {
+    contains_leaf(enums, ty, &|t| *t == Type::Str)
+}
+
+/// Whether a leaf `is_leaf` accepts sits anywhere inside `ty`. A recursive enum's
+/// self-reference is always behind a Vec (the checker allows no other), so the first hop back
+/// into one is reachable; `seen` stops the second from looping, as `is_recursive` does for the
+/// same reason.
+fn contains_leaf(enums: &Enums, ty: &Type, is_leaf: &dyn Fn(&Type) -> bool) -> bool {
+    fn walk(
+        enums: &Enums,
+        ty: &Type,
+        is_leaf: &dyn Fn(&Type) -> bool,
+        seen: &mut Vec<Type>,
+    ) -> bool {
+        if is_leaf(ty) {
+            return true;
+        }
         match ty {
-            Type::Float => true,
-            Type::Vec(elem) | Type::Stream(elem) => walk(enums, elem, seen),
-            Type::Record(fields) => fields.iter().any(|(_, t)| walk(enums, t, seen)),
+            Type::Vec(elem) | Type::Stream(elem) => walk(enums, elem, is_leaf, seen),
+            Type::Record(fields) => fields.iter().any(|(_, t)| walk(enums, t, is_leaf, seen)),
             Type::Enum { .. } => {
                 if seen.contains(ty) {
                     return false;
@@ -538,14 +556,14 @@ pub fn contains_float(enums: &Enums, ty: &Type) -> bool {
                 seen.push(ty.clone());
                 let r = variants(enums, ty)
                     .iter()
-                    .any(|(_, p)| p.as_ref().is_some_and(|p| walk(enums, p, seen)));
+                    .any(|(_, p)| p.as_ref().is_some_and(|p| walk(enums, p, is_leaf, seen)));
                 seen.pop();
                 r
             }
             _ => false,
         }
     }
-    walk(enums, ty, &mut Vec::new())
+    walk(enums, ty, is_leaf, &mut Vec::new())
 }
 
 /// Whether a value of this enum type can hold another of the same type, however deep.
