@@ -131,9 +131,10 @@ const FLOAT_PRINT_HELPER: &str = r#"def tl_show_float:
 
 /// jq's `tojson` spells 0x08 and 0x0c as `\b` and `\f`. Every other backend prints them as
 /// `\u0008` and `\u000c`, the way it prints a control character with no short form at all, so
-/// the two short forms are rewritten. The pattern takes an escaped backslash as a unit, so the
-/// `b` in `\\b` is left alone.
-const TOJSON_HELPER: &str = r#"def tl_tojson: tojson | gsub("\\\\(?<c>[\\\\bf])"; if .c == "\\" then "\\\\" elif .c == "b" then "\\u0008" else "\\u000c" end);
+/// the two short forms are rewritten. It also escapes DEL as `\u007f`, which every backend
+/// prints raw. The pattern takes an escaped backslash as a unit, so the `b` in `\\b` is left
+/// alone.
+const TOJSON_HELPER: &str = r#"def tl_tojson: tojson | gsub("\\\\(?<c>[\\\\bf]|u007f)"; if .c == "\\" then "\\\\" elif .c == "b" then "\\u0008" elif .c == "f" then "\\u000c" else "\u007f" end);
 "#;
 
 /// Whether a body of this type is rendered to JSON text in the filter (`text`) rather than

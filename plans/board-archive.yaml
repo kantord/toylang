@@ -3716,3 +3716,9 @@
   kind: build
   needs: []
   status: done
+
+- id: del-char-quoting-parity
+  title: 'Parity gap left by control-char-escaping-parity (found 2026-09-24), RULED by the maintainer: DEL (0x7f) inside a printed Str prints RAW on every backend. Today Rust, Lua and jq escape it as `\u007f` while Go, JS, Python and native print the raw byte (measured with a jsonlines program over stdin `a<DEL>b`). JSON (RFC 8259) requires escaping only U+0000 to U+001F, so raw is legal and matches four backends. Change Rust, Lua and jq to print DEL raw (find each one''s Str quoting; the Rust and jq paths also print through their own helpers, and check the top-level jsonlines path and the Vec and record paths separately), add a corpus case in tests/corpus/ that prints a Str holding 0x7f inside a Vec, a record and a jsonlines line (see control_char_quoting.yaml and control_char_quoting_lines.yaml for the shape; the corpus requires all seven backends to agree), and replace the `DEL is not settled` sentence in docs/reference/types/str.md with the rule. Probe before and after with `target/debug/toylang run FILE <rust|go|js|py|lua|jq|llvm>`.'
+  kind: build
+  needs: []
+  status: done

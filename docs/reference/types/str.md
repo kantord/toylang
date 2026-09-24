@@ -28,7 +28,8 @@ which keep their short forms. Backspace and form feed print as `\u0008` and `\u0
 backend, not as the JSON short forms `\b` and `\f` that JavaScript's `JSON.stringify` and jq's
 `tojson` produce on their own. A string literal has no escape for these; they arrive through
 input, as JSON escapes or as raw bytes on `lines`, and print back as `"a\u0008b"`. DEL (0x7f)
-is not settled: the backends disagree on whether it is escaped.
+is not escaped: JSON only requires escaping through U+001F, so it prints as the raw byte on every
+backend.
 
 There is no string length, splitting, or indexing: a `Str` has no dimensions, so `length` and
 the index specs do not apply. What exists today is concatenation, equality, and ordering.
