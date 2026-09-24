@@ -3693,3 +3693,8 @@
   kind: build
   needs: []
   status: done
+
+- id: native-runtime-direction-decide
+  title: 'Self-originated (2026-09-23, found while landing sort-by-max-by-checkpoint-jq): plans/native-backend-rust-ergonomics-research.md ends with a design round (its label Q41 collides with the record-narrowing Q41 in plans/questions.md, so renumber it) that was never composed or ruled: how should the native backend runtime evolve -- A keep hand-written C in runtime/toylang.c (status quo, three-way sync of extern, add_function declaration and C body), B a thin Rust runtime crate compiled to a static archive and linked by the existing cc call, or C B plus one table generating both declarations. Native work is proceeding under A meanwhile (sort_by/max_by native, closures native), because the helpers are small and portable; a ruling for B or C means porting them, and the sooner it lands the fewer there are. RULED 2026-09-24 (maintainer, after plans/native-runtime-rust-research.md): option B then C. Replace runtime/toylang.c with a Rust runtime crate built as a staticlib on std, embedded in the compiler and linked by the existing cc call, keeping the exported C ABI (tl_* symbols, tl_str, columnar tl_vec) unchanged so src/emit_llvm.rs does not change during the port; add the single declaration table (option C) afterwards. no_std stays a reversible later option (both export the same C ABI). The Rust source backend stays standalone. Migration is the native-runtime-rs-* chain on the board, one function group per commit with the C file shrinking and just check green at every step.'
+  kind: decide
+  status: done

@@ -13,9 +13,70 @@
   prio: 5
   status: proposed
 
-- id: native-runtime-direction-decide
-  title: 'Self-originated (2026-09-23, found while landing sort-by-max-by-checkpoint-jq): plans/native-backend-rust-ergonomics-research.md ends with a design round (its label Q41 collides with the record-narrowing Q41 in plans/questions.md, so renumber it) that was never composed or ruled: how should the native backend runtime evolve -- A keep hand-written C in runtime/toylang.c (status quo, three-way sync of extern, add_function declaration and C body), B a thin Rust runtime crate compiled to a static archive and linked by the existing cc call, or C B plus one table generating both declarations. Native work is proceeding under A meanwhile (sort_by/max_by native, closures native), because the helpers are small and portable; a ruling for B or C means porting them, and the sooner it lands the fewer there are.'
-  kind: decide
+- id: control-char-escaping-parity
+  title: 'Parity gap found by the research in plans/native-runtime-rust-research.md section 8 (2026-09-24), RULED by the maintainer: a Str containing control characters printed inside a Vec or record prints two ways today. JS and jq print the JSON short forms (`["a\bb\fc"]`) while Rust, Go, Python, Lua and native print `\u0008` and `\u000c`. Ruling: use `\u0008` and `\u000c` everywhere (five backends already do). Change the JS and jq quoting so all seven agree, add a corpus case that prints a Str holding 0x08 and 0x0c (and one other control character such as 0x01 and 0x1f) inside a Vec and a record, and document the rule where string printing is documented (docs/reference/types). tests/corpus/escapes.yaml covers only quote, backslash and tab, and control_char_escapes.yaml checks input decoding, not quoted output, so neither pins this. Probe with `target/debug/toylang run FILE <rust|go|js|py|lua|jq|llvm>` before and after.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: native-runtime-rs-step0-float-overflow
+  title: 'Native runtime port, step 0 (plans/native-runtime-rust-research.md section 6 and section 8): fix the heap buffer overflow in `tl_float_to_str` in runtime/toylang.c (`strcpy(tl_alloc(3), "NaN")` writes 4 bytes into 3, `strcpy(tl_alloc(1), "0")` writes 2 into 1; confirmed with AddressSanitizer on input 0.0, and gcc warns with -Wstringop-overflow at -O2); check the other `strcpy` uses in the file for the same mistake; add a regression test that runs the native backend on a program that prints `0.0` and `0.0 / 0.0` (and confirm under AddressSanitizer if you can build the runtime with -fsanitize=address, and say so in the commit if you could not). Also record a baseline of run times for benches/programs on the native backend (wall clock, a handful of runs each, host and date noted) in a new section at the end of plans/native-runtime-rust-research.md, so the later ports can show they did not slow anything down. No other runtime change.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: native-runtime-rs-step1-scaffold
+  title: 'Native runtime port, step 1 (plans/native-runtime-rust-research.md section 6): scaffold the Rust runtime crate with no behaviour change. Add a workspace member (for example `runtime-rs`, package `toylang-rt`, `crate-type = ["staticlib"]`, `panic = "abort"`, release profile with lto), a `build.rs` step that runs a nested `cargo build --release -p toylang-rt --locked` into a separate target directory under OUT_DIR (separate directory to avoid the cargo build lock; cargo is already a build-time requirement), embeds the archive with `include_bytes!`, and change `link` in src/lib.rs to write both toylang.c and the archive and run the `cc` call with the archive and the libraries the measured link line needs (see section 3.1 of the research: `-Wl,--gc-sections -lpthread -ldl -lm` or whatever you measure). The crate exports only one smoke function, called from a test or a tiny extra symbol the C does not use, so the point of the step is proving the link works end to end on the native backend and that the compiler still builds from a clean checkout (test `cargo clean` then `just check`). Watch: build.rs must not rebuild the nested crate on every compile (rerun-if-changed), dependencies must resolve offline from the lockfile, and the `nothing to install` comment on `link` in src/lib.rs must be updated to say what is now true (cc is still required at user compile time; nothing else is). Keep the ABI plan in mind: later steps keep every `tl_*` symbol and the `tl_str` and `tl_vec` layouts byte for byte.'
+  kind: build
+  needs: []
+  status: todo
+
+- id: native-runtime-rs-step2-float-printing
+  title: 'Native runtime port, step 2 (plans/native-runtime-rust-research.md section 6 and section 3.3): port `tl_float_to_str` (C lines 70 to 172, `tl_shortest_digits` and `tl_float_to_str`) to Rust on the `ryu-js` crate, delete those C lines in the same commit (a `tl_*` symbol must be defined in exactly one of C and Rust). The research measured the replacement identical to the C over 3,000,016 doubles (random bit patterns, m*10^e decimals, dyadic fractions, NaN, -0, infinities, 1e21, 1e-7, 1e-6, 123456789012345680000, 5e-324, the extreme normals); repeat a differential of that shape once more against the last C build (a throwaway harness in the scratchpad, not committed) and state the count in the commit. The NaN, `-0` and exponent-boundary rules are pinned by the float corpus cases; they must stay green. Keep the exported signature and the tl_str return layout unchanged.'
+  kind: build
+  needs: [native-runtime-rs-step1-scaffold, native-runtime-rs-step0-float-overflow]
+  status: todo
+
+- id: native-runtime-rs-step3-str-primitives
+  title: 'Native runtime port, step 3 (plans/native-runtime-rust-research.md section 6): port the Str primitives to Rust with `#[repr(C)] TlStr { ptr, len }` matching the C layout: `tl_str_new`, `tl_concat`, `tl_int_to_str`, `tl_str_eq`, `tl_str_cmp` (byte order, same as memcmp, which is codepoint order for UTF-8), `tl_print`, `tl_quote` (stays hand-written: escapes `\\`, `"` and control characters as `\u00xx` per the control-char-escaping-parity ruling; serde_json would differ on 0x08 and 0x0c) and `tl_str_join`. Delete each C body in the same commit that adds the Rust one. C code that still calls these keeps compiling because the C prototypes stay. Add a layout check for TlStr on both sides while any C still reads a tl_str.'
+  kind: build
+  needs: [native-runtime-rs-step2-float-printing, control-char-escaping-parity]
+  status: todo
+
+- id: native-runtime-rs-step4-vec-core
+  title: 'Native runtime port, step 4 (plans/native-runtime-rust-research.md section 6 and section 1): port the columnar Vec, record and Opt core (`tl_vec_new`, `tl_vec_get`, `tl_vec_set`, `tl_vec_len`, column and mask accessors, `tl_rec_*`, `tl_opt_*`, C lines about 203 to 297) with `#[repr(C)] TlVec { len: i64, ncols: i64, cols: *mut *mut i64 }` and small unsafe accessors. The struct-of-arrays layout is baked into the IR emitted by src/emit_llvm.rs and no crate can supply it, so this is glue that must reproduce the ABI exactly; add a layout test on both sides (`offsetof` in a C test or static assert while C still reads a tl_vec, `mem::offset_of!` in Rust). Delete each C body in the same commit that adds the Rust one. Memory posture stays ''nothing frees'' for values (see runtime/toylang.c lines 7 to 10 and the mutation-model work); make allocation go through one function so a later change is a single seam.'
+  kind: build
+  needs: [native-runtime-rs-step3-str-primitives]
+  status: todo
+
+- id: native-runtime-rs-step5-vec-operations
+  title: 'Native runtime port, step 5 (plans/native-runtime-rust-research.md section 6 and section 4 rows 11 to 15): port the Vec operations in three commits, each deleting its C: (a) sorts and `sort_by`/`max_by` (`slice::sort_by_key` on an index vector, stable by construction, replaces qsort and the (key,row) tie-break struct; `max_by` stays a hand loop with a strict greater-than because `Iterator::max_by_key` returns the LAST of equal maxima and the language rule is first wins; corpus cases sort_by_stable and max_by_first_of_ties pin it); (b) reverse, flatten, concat, transpose, any, all, first, tail, rec_from_vec; (c) sum (32-bit narrowing via wrapping_add and `as i32 as i64`), max, `tl_at`, `tl_sel_*`, slices, unwrap, range, chars (`str::chars`). Keep every exported symbol and signature unchanged. Run just check after each commit.'
+  kind: build
+  needs: [native-runtime-rs-step4-vec-core]
+  status: todo
+
+- id: native-runtime-rs-step6-input
+  title: 'Native runtime port, step 6 (plans/native-runtime-rust-research.md section 6 and section 4 rows 7 to 10): port input handling. First the small part: `tl_utf8_valid` (`core::str::from_utf8`), buffered streaming stdin lines (`BufRead::read_until(b''\\n'')`), `tl_split` (`str::split`; an empty delimiter is unreachable because the checker rejects it, and the C loop would never advance on one). Then the JSON path: replace the hand-written parser (about 625 lines: the descriptor grammar walker, `\uXXXX`, UTF-8 encoding, strings, records, enums, vecs, numbers) with `serde_json` PLUS the `float_roundtrip` feature (the research measured 14.8% of long-digit Float strings parsing wrong without it; add a test that parses such a Float so the flag cannot be dropped silently). Keep the descriptor grammar as the private protocol between src/emit_llvm.rs and the runtime, and keep the path-specific error messages (tests assert them). Before deleting the C parser, run a differential of both parsers over every corpus input and every error test and state the result in the commit. Float parsing uses `str::parse::<f64>` behind the existing JSON-number grammar check (it accepts `+1`, `1.`, `inf`, which JSON does not).'
+  kind: build
+  needs: [native-runtime-rs-step5-vec-operations]
+  status: todo
+
+- id: native-runtime-rs-step7-pipe-through
+  title: 'Native runtime port, step 7 (plans/native-runtime-rust-research.md section 6 and section 3.3): port `tl_pipe_through` (the C poll loop and posix_spawn code, about 165 lines) to `std::process::Command` plus a writer thread (wait_with_output closes stdin then waits but does not feed stdin concurrently, so a thread must write while stdout and stderr are drained). Keep the semantics the other backends have: lines fed to stdin, stdout lines then stderr lines tagged Stdout and Stderr, exit status ignored, a child that never reads stdin must not stall, a child that stops reading early is not an error, `\\r` kept, no shell expansion of arguments. Check SIGPIPE explicitly: the generated main bypasses Rust''s `lang_start`, so Rust''s SIGPIPE handling is not set up, and the C code currently ignores SIGPIPE only around the spawn; decide and test what happens when the program''s own stdout is closed early. tests/pipe_through.rs is the safety net; add a case for any behaviour you change on purpose.'
+  kind: build
+  needs: [native-runtime-rs-step6-input]
+  status: todo
+
+- id: native-runtime-rs-step8-delete-c
+  title: 'Native runtime port, step 8 (plans/native-runtime-rust-research.md section 6): delete runtime/toylang.c, the `RUNTIME_C` constant in src/emit_llvm.rs and the two-file cc call, leaving `cc program.o libtoylang_rt.a ...`. Confirm nothing else includes or reads the C file (grep, including tests, docs and site/). Compare benches/programs native run times against the baseline recorded in step 0 and record the result at the end of plans/native-runtime-rust-research.md; a slowdown beyond noise is a finding to report, not something to hide. Update the docs and plans that describe the native runtime as C (grep for toylang.c) and mark plans/native-runtime-rust-research.md as ruled and implemented. Check the emitted program size and record it (the research measured about 47 KB with the C runtime and about 361 KB stripped with std).'
+  kind: build
+  needs: [native-runtime-rs-step7-pipe-through]
+  status: todo
+
+- id: native-runtime-rs-step9-declaration-table
+  title: 'Native runtime port, option C follow-up (plans/native-runtime-rust-research.md section 3.4, ruled by the maintainer as the step after the port): with the runtime in Rust there are two places a function is declared, the `extern "C"` definition and the `add_function` call in src/emit_llvm.rs (58 sites). Add one table that generates both: a small shared crate (or module) with a `macro_rules!` table of `fn name(args) -> ret;` entries that expands to the `#[unsafe(no_mangle)] pub extern "C" fn` surface in the runtime and to a `const SIGNATURES` the compiler iterates to call `add_function`. The precedent is Swift''s RuntimeFunctions.def x-macro file. Evaluate a proc macro or cbindgen only if macro_rules! cannot express something you need, and say why. Done when adding a runtime function needs exactly one signature edit and a mismatch between the two sides cannot compile or fails a test.'
+  kind: build
+  needs: [native-runtime-rs-step8-delete-c]
   status: todo
 
 - id: closures-legacy-flow-map-sortby-maxby
