@@ -518,6 +518,7 @@ dependencies = [
  "serde_json",
  "serde_norway",
  "tempfile",
+ "toylang-rt-abi",
  "winnow",
 ]
 
@@ -529,7 +530,12 @@ dependencies = [
  "ryu-js",
  "serde",
  "serde_json",
+ "toylang-rt-abi",
 ]
+
+[[package]]
+name = "toylang-rt-abi"
+version = "0.1.0"
 
 [[package]]
 name = "unicode-ident"

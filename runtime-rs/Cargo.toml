@@ -11,6 +11,9 @@ publish = false
 crate-type = ["staticlib"]
 
 [dependencies]
+# The table of runtime functions this crate must define, checked at compile time (lib.rs).
+toylang-rt-abi = { path = "../runtime-abi" }
+
 # ECMAScript Number::toString digits and layout, the format every backend's Float printing
 # matches (ADR 0007). Replaces the C snprintf/strtod retry loop.
 ryu-js = "1.0.3"

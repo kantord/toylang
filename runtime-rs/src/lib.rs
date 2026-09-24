@@ -6,6 +6,12 @@ mod input;
 mod json;
 mod pipe;
 
+use input::{
+    tl_collect_lines, tl_parse_str, tl_read_input, tl_read_inputs, tl_read_one_input,
+    tl_read_one_line,
+};
+use pipe::tl_pipe_through;
+
 use std::alloc::{Layout, alloc};
 use std::cmp::Ordering;
 use std::mem::{offset_of, size_of};
@@ -974,6 +980,11 @@ pub unsafe extern "C" fn tl_split_lines(lines: *const TlVec, sep: *const TlStr) 
 pub extern "C" fn tl_float_to_str(x: f64) -> *mut TlStr {
     leak_str(ryu_js::Buffer::new().format(x).as_bytes().to_vec())
 }
+
+// Every entry of the table in runtime-abi must be defined above with that signature. This is the
+// one check that ties the runtime to the compiler's LLVM declarations; a definition added without
+// a table entry is not called by anything, and an entry without a definition does not compile.
+toylang_rt_abi::assert_defined_as_declared!();
 
 /// Proves the archive links into a compiled program and that `std` is usable inside it.
 /// Nothing in the compiler's output calls this; `tests/native_runtime_link.rs` does.

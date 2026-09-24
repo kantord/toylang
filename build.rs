@@ -506,7 +506,13 @@ impl ToRust for tir::Func {
 /// between runs of this script, so the nested cargo is a no-op unless the runtime changed.
 fn build_runtime() {
     // Root Cargo.toml because `profile.runtime` lives there.
-    for path in ["runtime-rs/Cargo.toml", "runtime-rs/src", "Cargo.toml"] {
+    for path in [
+        "runtime-rs/Cargo.toml",
+        "runtime-rs/src",
+        "runtime-abi/Cargo.toml",
+        "runtime-abi/src",
+        "Cargo.toml",
+    ] {
         println!("cargo::rerun-if-changed={path}");
     }
 

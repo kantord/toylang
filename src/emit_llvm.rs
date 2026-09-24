@@ -17,12 +17,14 @@ use inkwell::module::{Linkage, Module};
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, StructType};
 use inkwell::values::{
     BasicMetadataValueEnum, BasicValueEnum, FloatValue, FunctionValue, IntValue, PhiValue,
     PointerValue,
 };
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
+
+use toylang_rt_abi as abi;
 
 use crate::ast::{BinOp, LogicOp};
 use crate::tir::{self, Builtin, Func, Fusion, Kind, LocalId, Program, Source, Stage, Tir};
@@ -32,61 +34,65 @@ fn unsupported(what: &str) -> String {
     format!("the native backend cannot compile {what} yet")
 }
 
-struct Runtime<'ctx> {
-    concat: FunctionValue<'ctx>,
-    int_to_str: FunctionValue<'ctx>,
-    float_to_str: FunctionValue<'ctx>,
-    str_eq: FunctionValue<'ctx>,
-    str_cmp: FunctionValue<'ctx>,
-    print: FunctionValue<'ctx>,
-    quote: FunctionValue<'ctx>,
-    join: FunctionValue<'ctx>,
-    vec_new: FunctionValue<'ctx>,
-    vec_len: FunctionValue<'ctx>,
-    vec_get: FunctionValue<'ctx>,
-    vec_set: FunctionValue<'ctx>,
-    vec_from_mask: FunctionValue<'ctx>,
-    mask_new: FunctionValue<'ctx>,
-    mask_set: FunctionValue<'ctx>,
-    sel_len: FunctionValue<'ctx>,
-    sel_at: FunctionValue<'ctx>,
-    vec_column: FunctionValue<'ctx>,
-    rec_get: FunctionValue<'ctx>,
-    rec_new: FunctionValue<'ctx>,
-    collect_lines: FunctionValue<'ctx>,
-    split_lines: FunctionValue<'ctx>,
-    rec_set: FunctionValue<'ctx>,
-    read_input: FunctionValue<'ctx>,
-    read_inputs: FunctionValue<'ctx>,
-    parse_str: FunctionValue<'ctx>,
-    read_one_input: FunctionValue<'ctx>,
-    read_one_line: FunctionValue<'ctx>,
-    rec_from_vec: FunctionValue<'ctx>,
-    at: FunctionValue<'ctx>,
-    opt_is_some: FunctionValue<'ctx>,
-    opt_get: FunctionValue<'ctx>,
-    opt_some: FunctionValue<'ctx>,
-    unwrap: FunctionValue<'ctx>,
-    div_by_zero: FunctionValue<'ctx>,
-    range: FunctionValue<'ctx>,
-    vec_tail: FunctionValue<'ctx>,
-    vec_first: FunctionValue<'ctx>,
-    vec_any: FunctionValue<'ctx>,
-    vec_all: FunctionValue<'ctx>,
-    vec_flatten: FunctionValue<'ctx>,
-    vec_slice: FunctionValue<'ctx>,
-    vec_concat: FunctionValue<'ctx>,
-    chars: FunctionValue<'ctx>,
-    vec_sort_int: FunctionValue<'ctx>,
-    vec_sort_str: FunctionValue<'ctx>,
-    vec_reverse: FunctionValue<'ctx>,
-    vec_sum: FunctionValue<'ctx>,
-    vec_transpose: FunctionValue<'ctx>,
-    vec_max: FunctionValue<'ctx>,
-    vec_sort_by: FunctionValue<'ctx>,
-    vec_max_by: FunctionValue<'ctx>,
-    sqrt: FunctionValue<'ctx>,
-    pipe_through: FunctionValue<'ctx>,
+/// Every runtime function the compiler can call, one `FunctionValue` per entry of the table in
+/// runtime-abi, named as the symbol is. `sqrt` is the exception: an LLVM intrinsic, not part of
+/// the runtime archive.
+macro_rules! runtime_struct {
+    ($(fn $name:ident($($arg:ident: $ty:ident),*) -> $ret:ident;)*) => {
+        struct Runtime<'ctx> {
+            $($name: FunctionValue<'ctx>,)*
+            sqrt: FunctionValue<'ctx>,
+        }
+
+        impl<'ctx> Runtime<'ctx> {
+            fn declare(ctx: &'ctx Context, module: &Module<'ctx>) -> Runtime<'ctx> {
+                Runtime {
+                    $($name: module.add_function(
+                        stringify!($name),
+                        fn_type(ctx, abi::ty!($ret), &[$(abi::ty!($ty)),*]),
+                        None,
+                    ),)*
+                    // The LLVM intrinsic, not a runtime call: declaring a function under this exact
+                    // name is how LLVM recognizes it, and it lowers to the target's libm `sqrt`, the
+                    // same NaN-on-negative IEEE 754 behavior every other backend's native sqrt gives.
+                    sqrt: module.add_function(
+                        "llvm.sqrt.f64",
+                        ctx.f64_type().fn_type(&[ctx.f64_type().into()], false),
+                        None,
+                    ),
+                }
+            }
+        }
+    };
+}
+abi::runtime_fns!(runtime_struct);
+
+/// Nothing crosses into the runtime by value. A 16-byte struct is passed in registers under the
+/// SysV ABI, but that lowering is a C frontend's job rather than LLVM's, and hand-written IR
+/// that assumes it is guessing; hence `Ty` has no aggregate.
+fn fn_type<'ctx>(ctx: &'ctx Context, ret: abi::Ty, params: &[abi::Ty]) -> FunctionType<'ctx> {
+    let params: Vec<BasicMetadataTypeEnum<'ctx>> = params
+        .iter()
+        .map(|&t| {
+            basic_type(ctx, t)
+                .expect("a parameter is never void")
+                .into()
+        })
+        .collect();
+    match basic_type(ctx, ret) {
+        Some(ret) => ret.fn_type(&params, false),
+        None => ctx.void_type().fn_type(&params, false),
+    }
+}
+
+fn basic_type(ctx: &Context, ty: abi::Ty) -> Option<BasicTypeEnum<'_>> {
+    match ty {
+        abi::Ty::Ptr => Some(ctx.ptr_type(AddressSpace::default()).into()),
+        abi::Ty::I64 => Some(ctx.i64_type().into()),
+        abi::Ty::I32 => Some(ctx.i32_type().into()),
+        abi::Ty::F64 => Some(ctx.f64_type().into()),
+        abi::Ty::Void => None,
+    }
 }
 
 /// What a compiler-introduced binding holds.
@@ -145,236 +151,7 @@ struct Emitter<'ctx, 'p> {
 impl<'ctx> Emitter<'ctx, '_> {
     fn new<'p>(ctx: &'ctx Context, enums: &'p Enums) -> Emitter<'ctx, 'p> {
         let module = ctx.create_module("toylang");
-        let ptr = ctx.ptr_type(AddressSpace::default());
-        let i64t = ctx.i64_type();
-        let i32t = ctx.i32_type();
-        let f64t = ctx.f64_type();
-
-        // Nothing crosses into the runtime by value. A 16-byte struct is passed in registers
-        // under the SysV ABI, but that lowering is a C frontend's job rather than LLVM's, and
-        // hand-written IR that assumes it is guessing.
-        let ptr_ptr = ptr.fn_type(&[ptr.into(), ptr.into()], false);
-        let rt = Runtime {
-            concat: module.add_function("tl_concat", ptr_ptr, None),
-            int_to_str: module.add_function(
-                "tl_int_to_str",
-                ptr.fn_type(&[i64t.into()], false),
-                None,
-            ),
-            float_to_str: module.add_function(
-                "tl_float_to_str",
-                ptr.fn_type(&[f64t.into()], false),
-                None,
-            ),
-            str_eq: module.add_function(
-                "tl_str_eq",
-                i64t.fn_type(&[ptr.into(), ptr.into()], false),
-                None,
-            ),
-            str_cmp: module.add_function(
-                "tl_str_cmp",
-                i64t.fn_type(&[ptr.into(), ptr.into()], false),
-                None,
-            ),
-            print: module.add_function(
-                "tl_print",
-                ctx.void_type().fn_type(&[ptr.into()], false),
-                None,
-            ),
-            quote: module.add_function("tl_quote", ptr.fn_type(&[ptr.into()], false), None),
-            join: module.add_function(
-                "tl_str_join",
-                ptr.fn_type(&[ptr.into(), ptr.into(), ptr.into(), ptr.into()], false),
-                None,
-            ),
-            vec_new: module.add_function(
-                "tl_vec_new",
-                ptr.fn_type(&[i64t.into(), i64t.into()], false),
-                None,
-            ),
-            vec_len: module.add_function("tl_vec_len", i64t.fn_type(&[ptr.into()], false), None),
-            vec_get: module.add_function(
-                "tl_vec_get",
-                i64t.fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
-                None,
-            ),
-            vec_set: module.add_function(
-                "tl_vec_set",
-                ctx.void_type()
-                    .fn_type(&[ptr.into(), i64t.into(), i64t.into(), i64t.into()], false),
-                None,
-            ),
-            vec_from_mask: module.add_function(
-                "tl_vec_from_mask",
-                ptr.fn_type(&[ptr.into(), ptr.into()], false),
-                None,
-            ),
-            mask_new: module.add_function("tl_mask_new", ptr.fn_type(&[i64t.into()], false), None),
-            mask_set: module.add_function(
-                "tl_mask_set",
-                ctx.void_type()
-                    .fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
-                None,
-            ),
-            sel_len: module.add_function(
-                "tl_sel_len",
-                i64t.fn_type(&[ptr.into(), ptr.into()], false),
-                None,
-            ),
-            sel_at: module.add_function(
-                "tl_sel_at",
-                ptr.fn_type(&[ptr.into(), ptr.into(), i64t.into(), i32t.into()], false),
-                None,
-            ),
-            vec_column: module.add_function(
-                "tl_vec_column",
-                ptr.fn_type(&[ptr.into(), i64t.into()], false),
-                None,
-            ),
-            rec_get: module.add_function(
-                "tl_rec_get",
-                i64t.fn_type(&[ptr.into(), i64t.into()], false),
-                None,
-            ),
-            rec_new: module.add_function("tl_rec_new", ptr.fn_type(&[i64t.into()], false), None),
-            collect_lines: module.add_function("tl_collect_lines", ptr.fn_type(&[], false), None),
-            split_lines: module.add_function(
-                "tl_split_lines",
-                ptr.fn_type(&[ptr.into(), ptr.into()], false),
-                None,
-            ),
-            rec_set: module.add_function(
-                "tl_rec_set",
-                ctx.void_type()
-                    .fn_type(&[ptr.into(), i64t.into(), i64t.into()], false),
-                None,
-            ),
-            read_input: module.add_function(
-                "tl_read_input",
-                i64t.fn_type(&[ptr.into()], false),
-                None,
-            ),
-            parse_str: module.add_function(
-                "tl_parse_str",
-                i64t.fn_type(&[ptr.into(), ptr.into()], false),
-                None,
-            ),
-            read_inputs: module.add_function(
-                "tl_read_inputs",
-                ptr.fn_type(&[ptr.into()], false),
-                None,
-            ),
-            read_one_input: module.add_function(
-                "tl_read_one_input",
-                i32t.fn_type(&[ptr.into(), ptr.into()], false),
-                None,
-            ),
-            read_one_line: module.add_function(
-                "tl_read_one_line",
-                i32t.fn_type(&[ptr.into()], false),
-                None,
-            ),
-            rec_from_vec: module.add_function(
-                "tl_rec_from_vec",
-                ptr.fn_type(&[ptr.into(), i64t.into()], false),
-                None,
-            ),
-            at: module.add_function(
-                "tl_at",
-                ptr.fn_type(&[ptr.into(), i64t.into(), i64t.into(), i32t.into()], false),
-                None,
-            ),
-            opt_is_some: module.add_function(
-                "tl_opt_is_some",
-                i64t.fn_type(&[ptr.into()], false),
-                None,
-            ),
-            opt_get: module.add_function("tl_opt_get", i64t.fn_type(&[ptr.into()], false), None),
-            opt_some: module.add_function("tl_opt_some", ptr.fn_type(&[i64t.into()], false), None),
-            unwrap: module.add_function(
-                "tl_unwrap",
-                ptr.fn_type(&[ptr.into(), i64t.into()], false),
-                None,
-            ),
-            div_by_zero: module.add_function(
-                "tl_div_by_zero",
-                ctx.void_type().fn_type(&[], false),
-                None,
-            ),
-            range: module.add_function("tl_range", ptr.fn_type(&[i64t.into()], false), None),
-            chars: module.add_function("tl_chars", ptr.fn_type(&[ptr.into()], false), None),
-            vec_tail: module.add_function("tl_vec_tail", ptr.fn_type(&[ptr.into()], false), None),
-            vec_first: module.add_function(
-                "tl_vec_first",
-                ptr.fn_type(&[ptr.into(), i32t.into()], false),
-                None,
-            ),
-            vec_any: module.add_function("tl_vec_any", i64t.fn_type(&[ptr.into()], false), None),
-            vec_all: module.add_function("tl_vec_all", i64t.fn_type(&[ptr.into()], false), None),
-            vec_flatten: module.add_function(
-                "tl_vec_flatten",
-                ptr.fn_type(&[ptr.into(), i64t.into()], false),
-                None,
-            ),
-            vec_slice: module.add_function(
-                "tl_vec_slice",
-                ptr.fn_type(&[ptr.into(), i64t.into(), i64t.into(), i64t.into()], false),
-                None,
-            ),
-            vec_concat: module.add_function(
-                "tl_vec_concat",
-                ptr.fn_type(&[ptr.into(), ptr.into(), i64t.into()], false),
-                None,
-            ),
-            vec_sort_int: module.add_function(
-                "tl_vec_sort_int",
-                ptr.fn_type(&[ptr.into()], false),
-                None,
-            ),
-            vec_sort_str: module.add_function(
-                "tl_vec_sort_str",
-                ptr.fn_type(&[ptr.into()], false),
-                None,
-            ),
-            vec_reverse: module.add_function(
-                "tl_vec_reverse",
-                ptr.fn_type(&[ptr.into(), i64t.into()], false),
-                None,
-            ),
-            vec_sum: module.add_function(
-                "tl_vec_sum",
-                i64t.fn_type(&[ptr.into(), i32t.into()], false),
-                None,
-            ),
-            vec_transpose: module.add_function(
-                "tl_vec_transpose",
-                ptr.fn_type(&[ptr.into(), i64t.into()], false),
-                None,
-            ),
-            pipe_through: module.add_function(
-                "tl_pipe_through",
-                ptr.fn_type(
-                    &[ptr.into(), ptr.into(), ptr.into(), i64t.into(), i64t.into()],
-                    false,
-                ),
-                None,
-            ),
-            vec_max: module.add_function("tl_vec_max", ptr.fn_type(&[ptr.into()], false), None),
-            vec_sort_by: module.add_function(
-                "tl_vec_sort_by",
-                ptr.fn_type(&[ptr.into(), ptr.into(), i32t.into()], false),
-                None,
-            ),
-            vec_max_by: module.add_function(
-                "tl_vec_max_by",
-                ptr.fn_type(&[ptr.into(), ptr.into(), i32t.into(), i32t.into()], false),
-                None,
-            ),
-            // The LLVM intrinsic, not a runtime call: declaring a function under this exact
-            // name is how LLVM recognizes it, and it lowers to the target's libm `sqrt`, the
-            // same NaN-on-negative IEEE 754 behavior every other backend's native sqrt gives.
-            sqrt: module.add_function("llvm.sqrt.f64", f64t.fn_type(&[f64t.into()], false), None),
-        };
+        let rt = Runtime::declare(ctx, &module);
 
         Emitter {
             ctx,
@@ -594,7 +371,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     .transpose()?;
                 let tag = match subj {
                     Some(subj) => Some(
-                        self.call_rt(self.rt.rec_get, &[subj, i64t.const_zero().into()], "tag")?
+                        self.call_rt(self.rt.tl_rec_get, &[subj, i64t.const_zero().into()], "tag")?
                             .into_int_value(),
                     ),
                     None => None,
@@ -758,7 +535,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let i64t = self.ctx.i64_type();
         let vec = self
             .call_rt(
-                self.rt.vec_new,
+                self.rt.tl_vec_new,
                 &[
                     i64t.const_int(items.len() as u64, false).into(),
                     i64t.const_int(Self::columns(elem), false).into(),
@@ -790,11 +567,11 @@ impl<'ctx> Emitter<'ctx, '_> {
                         .position(|(n, _)| n == name)
                         .ok_or_else(|| format!("no field `{name}` on {}", item.ty))?;
                     let src = i64t.const_int(src as u64, false);
-                    let got = self.call_rt(self.rt.rec_get, &[value, src.into()], "field")?;
+                    let got = self.call_rt(self.rt.tl_rec_get, &[value, src.into()], "field")?;
                     let dst = i64t.const_int(col as u64, false);
                     self.builder
                         .build_call(
-                            self.rt.vec_set,
+                            self.rt.tl_vec_set,
                             &[vec.into(), dst.into(), i.into(), got.into()],
                             "",
                         )
@@ -804,7 +581,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let slot = self.to_slot(value, elem)?;
                 self.builder
                     .build_call(
-                        self.rt.vec_set,
+                        self.rt.tl_vec_set,
                         &[vec.into(), i64t.const_zero().into(), i.into(), slot.into()],
                         "",
                     )
@@ -868,7 +645,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let i64t = self.ctx.i64_type();
         let src = self.expr(source)?.into_pointer_value();
         let len = self
-            .call_rt(self.rt.vec_len, &[src.into()], "len")?
+            .call_rt(self.rt.tl_vec_len, &[src.into()], "len")?
             .into_int_value();
         // One column per field when the body builds a record, because that is what a Vec
         // of products is. Allocating one column here would store record pointers where the
@@ -876,7 +653,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let ncols = Self::columns(&out_elem);
         let out = self
             .call_rt(
-                self.rt.vec_new,
+                self.rt.tl_vec_new,
                 &[len.into(), i64t.const_int(ncols, false).into()],
                 "mapped",
             )?
@@ -888,7 +665,11 @@ impl<'ctx> Emitter<'ctx, '_> {
                 e.locals.insert(param, Slot::Cursor { vec: src, index: i });
             } else {
                 let slot = e
-                    .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                    .call_rt(
+                        e.rt.tl_vec_get,
+                        &[src.into(), zero.into(), i.into()],
+                        "slot",
+                    )?
                     .into_int_value();
                 let elem = e.read_slot(slot, &elem_ty)?;
                 e.locals.insert(param, Slot::Value(elem));
@@ -897,10 +678,10 @@ impl<'ctx> Emitter<'ctx, '_> {
             if let Type::Record(fields) = &out_elem {
                 for c in 0..fields.len() {
                     let c = i64t.const_int(c as u64, false);
-                    let got = e.call_rt(e.rt.rec_get, &[value, c.into()], "field")?;
+                    let got = e.call_rt(e.rt.tl_rec_get, &[value, c.into()], "field")?;
                     e.builder
                         .build_call(
-                            e.rt.vec_set,
+                            e.rt.tl_vec_set,
                             &[out.into(), c.into(), i.into(), got.into()],
                             "",
                         )
@@ -910,7 +691,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let value = e.to_slot(value, &out_elem)?;
                 e.builder
                     .build_call(
-                        e.rt.vec_set,
+                        e.rt.tl_vec_set,
                         &[out.into(), zero.into(), i.into(), value.into()],
                         "",
                     )
@@ -940,10 +721,10 @@ impl<'ctx> Emitter<'ctx, '_> {
 
         let src = self.expr(source)?.into_pointer_value();
         let len = self
-            .call_rt(self.rt.vec_len, &[src.into()], "len")?
+            .call_rt(self.rt.tl_vec_len, &[src.into()], "len")?
             .into_int_value();
         let mask = self
-            .call_rt(self.rt.mask_new, &[len.into()], "mask")?
+            .call_rt(self.rt.tl_mask_new, &[len.into()], "mask")?
             .into_pointer_value();
         let zero = self.ctx.i64_type().const_zero();
         let elem_ty_loop = elem_ty.clone();
@@ -953,7 +734,11 @@ impl<'ctx> Emitter<'ctx, '_> {
                 e.locals.insert(param, Slot::Cursor { vec: src, index: i });
             } else {
                 let slot = e
-                    .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                    .call_rt(
+                        e.rt.tl_vec_get,
+                        &[src.into(), zero.into(), i.into()],
+                        "slot",
+                    )?
                     .into_int_value();
                 let elem = e.read_slot(slot, &elem_ty_loop)?;
                 e.locals.insert(param, Slot::Value(elem));
@@ -962,7 +747,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             let keep = e.expr(pred)?;
             let keep = e.to_slot(keep, &Type::Bool)?;
             e.builder
-                .build_call(e.rt.mask_set, &[mask.into(), i.into(), keep.into()], "")
+                .build_call(e.rt.tl_mask_set, &[mask.into(), i.into(), keep.into()], "")
                 .map_err(|err| err.to_string())?;
             Ok(())
         })?;
@@ -990,11 +775,11 @@ impl<'ctx> Emitter<'ctx, '_> {
         let i32t = self.ctx.i32_type();
         let src = self.expr(source)?.into_pointer_value();
         let len = self
-            .call_rt(self.rt.vec_len, &[src.into()], "len")?
+            .call_rt(self.rt.tl_vec_len, &[src.into()], "len")?
             .into_int_value();
         let keys = self
             .call_rt(
-                self.rt.vec_new,
+                self.rt.tl_vec_new,
                 &[len.into(), i64t.const_int(1, false).into()],
                 "keys",
             )?
@@ -1006,7 +791,11 @@ impl<'ctx> Emitter<'ctx, '_> {
                 e.locals.insert(param, Slot::Cursor { vec: src, index: i });
             } else {
                 let slot = e
-                    .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                    .call_rt(
+                        e.rt.tl_vec_get,
+                        &[src.into(), zero.into(), i.into()],
+                        "slot",
+                    )?
                     .into_int_value();
                 let elem = e.read_slot(slot, &elem_ty)?;
                 e.locals.insert(param, Slot::Value(elem));
@@ -1015,7 +804,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             let key = e.to_slot(key, &key_ty)?;
             e.builder
                 .build_call(
-                    e.rt.vec_set,
+                    e.rt.tl_vec_set,
                     &[keys.into(), zero.into(), i.into(), key.into()],
                     "",
                 )
@@ -1030,13 +819,13 @@ impl<'ctx> Emitter<'ctx, '_> {
                 false,
             );
             self.call_rt(
-                self.rt.vec_max_by,
+                self.rt.tl_vec_max_by,
                 &[src.into(), keys.into(), is_str.into(), is_record.into()],
                 "max_by",
             )
         } else {
             self.call_rt(
-                self.rt.vec_sort_by,
+                self.rt.tl_vec_sort_by,
                 &[src.into(), keys.into(), is_str.into()],
                 "sort_by",
             )
@@ -1056,7 +845,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         pred: &Tir,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let (src, mask, _len, _elem_ty) = self.select_mask(source, param, pred)?;
-        self.call_rt(self.rt.vec_from_mask, &[src.into(), mask.into()], "kept")
+        self.call_rt(self.rt.tl_vec_from_mask, &[src.into(), mask.into()], "kept")
     }
 
     /// The JSON rendering of a value, built from its type. A native binary has no value to
@@ -1087,7 +876,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     .ok_or_else(|| format!("no field `{name}` on {}", base.ty))?;
                 let slot = self
                     .call_rt(
-                        self.rt.vec_get,
+                        self.rt.tl_vec_get,
                         &[
                             vec.into(),
                             self.ctx.i64_type().const_int(column as u64, false).into(),
@@ -1121,7 +910,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     .ok_or_else(|| format!("no field `{name}` on {base_ty}"))?;
                 let slot = self
                     .call_rt(
-                        self.rt.rec_get,
+                        self.rt.tl_rec_get,
                         &[value, i64t.const_int(index as u64, false).into()],
                         "field",
                     )?
@@ -1139,7 +928,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     .ok_or_else(|| format!("no field `{name}` on {elem}"))?;
                 let field_ty = fields[index].1.clone();
                 let column = self.call_rt(
-                    self.rt.vec_column,
+                    self.rt.tl_vec_column,
                     &[value, i64t.const_int(index as u64, false).into()],
                     "column",
                 )?;
@@ -1155,11 +944,11 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let ncols = sub.len();
                 let src = column.into_pointer_value();
                 let len = self
-                    .call_rt(self.rt.vec_len, &[src.into()], "len")?
+                    .call_rt(self.rt.tl_vec_len, &[src.into()], "len")?
                     .into_int_value();
                 let out = self
                     .call_rt(
-                        self.rt.vec_new,
+                        self.rt.tl_vec_new,
                         &[len.into(), i64t.const_int(ncols as u64, false).into()],
                         "spread",
                     )?
@@ -1169,15 +958,19 @@ impl<'ctx> Emitter<'ctx, '_> {
 
                 self.emit_loop(len, move |e, i| {
                     let slot = e
-                        .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "record")?
+                        .call_rt(
+                            e.rt.tl_vec_get,
+                            &[src.into(), zero.into(), i.into()],
+                            "record",
+                        )?
                         .into_int_value();
                     let record = e.read_slot(slot, &record_ty)?;
                     for c in 0..ncols {
                         let c = i64t.const_int(c as u64, false);
-                        let got = e.call_rt(e.rt.rec_get, &[record, c.into()], "sub")?;
+                        let got = e.call_rt(e.rt.tl_rec_get, &[record, c.into()], "sub")?;
                         e.builder
                             .build_call(
-                                e.rt.vec_set,
+                                e.rt.tl_vec_set,
                                 &[out.into(), c.into(), i.into(), got.into()],
                                 "",
                             )
@@ -1196,11 +989,11 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let elem_ty = (**elem).clone();
                 let src = value.into_pointer_value();
                 let len = self
-                    .call_rt(self.rt.vec_len, &[src.into()], "len")?
+                    .call_rt(self.rt.tl_vec_len, &[src.into()], "len")?
                     .into_int_value();
                 let out = self
                     .call_rt(
-                        self.rt.vec_new,
+                        self.rt.tl_vec_new,
                         &[len.into(), i64t.const_int(1, false).into()],
                         "fields",
                     )?
@@ -1210,14 +1003,18 @@ impl<'ctx> Emitter<'ctx, '_> {
 
                 self.emit_loop(len, move |e, i| {
                     let slot = e
-                        .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                        .call_rt(
+                            e.rt.tl_vec_get,
+                            &[src.into(), zero.into(), i.into()],
+                            "slot",
+                        )?
                         .into_int_value();
                     let item = e.read_slot(slot, &elem_ty)?;
                     let got = e.field_of(item, &elem_ty, &name, &inner_result)?;
                     let got = e.to_slot(got, &inner_result)?;
                     e.builder
                         .build_call(
-                            e.rt.vec_set,
+                            e.rt.tl_vec_set,
                             &[out.into(), zero.into(), i.into(), got.into()],
                             "",
                         )
@@ -1247,12 +1044,12 @@ impl<'ctx> Emitter<'ctx, '_> {
         let i64t = self.ctx.i64_type();
         let src = value.into_pointer_value();
         let len = self
-            .call_rt(self.rt.vec_len, &[src.into()], "len")?
+            .call_rt(self.rt.tl_vec_len, &[src.into()], "len")?
             .into_int_value();
         let zero = i64t.const_zero();
         let parts = self
             .call_rt(
-                self.rt.vec_new,
+                self.rt.tl_vec_new,
                 &[len.into(), i64t.const_int(1, false).into()],
                 "parts",
             )?
@@ -1262,10 +1059,14 @@ impl<'ctx> Emitter<'ctx, '_> {
         let gather = matches!(elem_ty, Type::Record(_));
         self.emit_loop(len, move |e, i| {
             let item = if gather {
-                e.call_rt(e.rt.rec_from_vec, &[src.into(), i.into()], "elem")?
+                e.call_rt(e.rt.tl_rec_from_vec, &[src.into(), i.into()], "elem")?
             } else {
                 let slot = e
-                    .call_rt(e.rt.vec_get, &[src.into(), zero.into(), i.into()], "slot")?
+                    .call_rt(
+                        e.rt.tl_vec_get,
+                        &[src.into(), zero.into(), i.into()],
+                        "slot",
+                    )?
                     .into_int_value();
                 e.read_slot(slot, &elem_ty)?
             };
@@ -1273,7 +1074,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             let shown = e.to_slot(shown, &Type::Str)?;
             e.builder
                 .build_call(
-                    e.rt.vec_set,
+                    e.rt.tl_vec_set,
                     &[parts.into(), zero.into(), i.into(), shown.into()],
                     "",
                 )
@@ -1285,7 +1086,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let sep = self.string_const(sep);
         let close = self.string_const(close);
         self.call_rt(
-            self.rt.join,
+            self.rt.tl_str_join,
             &[parts.into(), open.into(), sep.into(), close.into()],
             "joined",
         )
@@ -1307,10 +1108,10 @@ impl<'ctx> Emitter<'ctx, '_> {
             ),
             Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
             Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
-            Type::Str => self.call_rt(self.rt.quote, &[value], "quoted")?,
+            Type::Str => self.call_rt(self.rt.tl_quote, &[value], "quoted")?,
             // tl_int_to_str already takes the full i64, so both widths print through it.
-            Type::Int | Type::Int64 => self.call_rt(self.rt.int_to_str, &[value], "int_str")?,
-            Type::Float => self.call_rt(self.rt.float_to_str, &[value], "float_str")?,
+            Type::Int | Type::Int64 => self.call_rt(self.rt.tl_int_to_str, &[value], "int_str")?,
+            Type::Float => self.call_rt(self.rt.tl_float_to_str, &[value], "float_str")?,
             Type::Bool => {
                 let t = self.string_const("true");
                 let f = self.string_const("false");
@@ -1334,7 +1135,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     .build_alloca(ptr_ty, "shown")
                     .map_err(|e| e.to_string())?;
 
-                let present = self.call_rt(self.rt.opt_is_some, &[value], "some")?;
+                let present = self.call_rt(self.rt.tl_opt_is_some, &[value], "some")?;
                 let cond = self
                     .builder
                     .build_int_compare(
@@ -1354,7 +1155,7 @@ impl<'ctx> Emitter<'ctx, '_> {
 
                 self.builder.position_at_end(some);
                 let raw = self
-                    .call_rt(self.rt.opt_get, &[value], "unwrapped")?
+                    .call_rt(self.rt.tl_opt_get, &[value], "unwrapped")?
                     .into_int_value();
                 let item = self.read_slot(raw, inner)?;
                 let shown = self.show(item, inner)?;
@@ -1393,7 +1194,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let i64t = self.ctx.i64_type();
                 let parts = self
                     .call_rt(
-                        self.rt.vec_new,
+                        self.rt.tl_vec_new,
                         &[
                             i64t.const_int(fields.len() as u64, false).into(),
                             i64t.const_int(1, false).into(),
@@ -1406,11 +1207,11 @@ impl<'ctx> Emitter<'ctx, '_> {
                     let got = self.field_of(value, ty, name, fty)?;
                     let shown = self.show(got, fty)?;
                     let key = self.string_const(&format!("\"{name}\":"));
-                    let part = self.call_rt(self.rt.concat, &[key.into(), shown], "pair")?;
+                    let part = self.call_rt(self.rt.tl_concat, &[key.into(), shown], "pair")?;
                     let part = self.to_slot(part, &Type::Str)?;
                     self.builder
                         .build_call(
-                            self.rt.vec_set,
+                            self.rt.tl_vec_set,
                             &[
                                 parts.into(),
                                 i64t.const_zero().into(),
@@ -1426,7 +1227,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let sep = self.string_const(",");
                 let close = self.string_const("}");
                 self.call_rt(
-                    self.rt.join,
+                    self.rt.tl_str_join,
                     &[parts.into(), open.into(), sep.into(), close.into()],
                     "joined",
                 )?
@@ -1455,7 +1256,11 @@ impl<'ctx> Emitter<'ctx, '_> {
             .build_alloca(ptr_ty, "shown")
             .map_err(|e| e.to_string())?;
         let tag = self
-            .call_rt(self.rt.rec_get, &[value, i64t.const_zero().into()], "tag")?
+            .call_rt(
+                self.rt.tl_rec_get,
+                &[value, i64t.const_zero().into()],
+                "tag",
+            )?
             .into_int_value();
         let done = self.ctx.append_basic_block(function, "enum.done");
 
@@ -1489,7 +1294,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let i64t = self.ctx.i64_type();
                 let raw = self
                     .call_rt(
-                        self.rt.rec_get,
+                        self.rt.tl_rec_get,
                         &[value, i64t.const_int(1, false).into()],
                         "payload",
                     )?
@@ -1497,9 +1302,9 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let p = self.read_slot(raw, pty)?;
                 let shown_p = self.show(p, pty)?;
                 let key = self.string_const(&format!("{{\"{vname}\":"));
-                let open = self.call_rt(self.rt.concat, &[key.into(), shown_p], "wrapped")?;
+                let open = self.call_rt(self.rt.tl_concat, &[key.into(), shown_p], "wrapped")?;
                 let close = self.string_const("}");
-                self.call_rt(self.rt.concat, &[open, close.into()], "wrapped")?
+                self.call_rt(self.rt.tl_concat, &[open, close.into()], "wrapped")?
             }
         };
         self.builder
@@ -1542,7 +1347,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let width = 1 + captures.iter().map(Capture::width).sum::<u64>();
         let env = self
             .call_rt(
-                self.rt.rec_new,
+                self.rt.tl_rec_new,
                 &[i64t.const_int(width, false).into()],
                 "env",
             )?
@@ -1620,7 +1425,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             .fn_type(&[ptr.into(), self.llvm_type(input)?.into()], false);
         let code = self
             .call_rt(
-                self.rt.rec_get,
+                self.rt.tl_rec_get,
                 &[env, self.ctx.i64_type().const_zero().into()],
                 "code",
             )?
@@ -1713,7 +1518,11 @@ impl<'ctx> Emitter<'ctx, '_> {
     ) -> Result<(), String> {
         let at = self.ctx.i64_type().const_int(at, false);
         self.builder
-            .build_call(self.rt.rec_set, &[rec.into(), at.into(), slot.into()], "")
+            .build_call(
+                self.rt.tl_rec_set,
+                &[rec.into(), at.into(), slot.into()],
+                "",
+            )
             .map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -1726,7 +1535,7 @@ impl<'ctx> Emitter<'ctx, '_> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let at = self.ctx.i64_type().const_int(at, false);
         let raw = self
-            .call_rt(self.rt.rec_get, &[env, at.into()], "captured")?
+            .call_rt(self.rt.tl_rec_get, &[env, at.into()], "captured")?
             .into_int_value();
         self.read_slot(raw, ty)
     }
@@ -1753,7 +1562,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             Some(p) => {
                 let built = self.expr(p)?;
                 let slot = self.to_slot(built, &p.ty)?;
-                self.call_rt(self.rt.opt_some, &[slot.into()], "some")?
+                self.call_rt(self.rt.tl_opt_some, &[slot.into()], "some")?
             }
         })
     }
@@ -1774,11 +1583,15 @@ impl<'ctx> Emitter<'ctx, '_> {
             .ok_or_else(|| format!("`{variant}` is not a variant of {ty}"))?;
         let i64t = self.ctx.i64_type();
         let rec = self
-            .call_rt(self.rt.rec_new, &[i64t.const_int(2, false).into()], "enum")?
+            .call_rt(
+                self.rt.tl_rec_new,
+                &[i64t.const_int(2, false).into()],
+                "enum",
+            )?
             .into_pointer_value();
         self.builder
             .build_call(
-                self.rt.rec_set,
+                self.rt.tl_rec_set,
                 &[
                     rec.into(),
                     i64t.const_zero().into(),
@@ -1792,7 +1605,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             let slot = self.to_slot(built, &p.ty)?;
             self.builder
                 .build_call(
-                    self.rt.rec_set,
+                    self.rt.tl_rec_set,
                     &[rec.into(), i64t.const_int(1, false).into(), slot.into()],
                     "",
                 )
@@ -1827,7 +1640,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         };
         let (stdout_tag, stderr_tag) = (tag("Stdout"), tag("Stderr"));
         self.call_rt(
-            self.rt.pipe_through,
+            self.rt.tl_pipe_through,
             &[cmd, args, lines, stdout_tag.into(), stderr_tag.into()],
             "pipe",
         )
@@ -1852,7 +1665,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 // The struct-of-arrays boundary: a Vec of records is stored as columns, so a
                 // record element read as a whole value is gathered back out by the runtime.
                 Some(&Slot::Cursor { vec, index }) => {
-                    self.call_rt(self.rt.rec_from_vec, &[vec.into(), index.into()], "elem")?
+                    self.call_rt(self.rt.tl_rec_from_vec, &[vec.into(), index.into()], "elem")?
                 }
                 None => return Err(format!("local {id} is not bound in the native backend")),
             },
@@ -1898,7 +1711,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let i64t = self.ctx.i64_type();
                 let rec = self
                     .call_rt(
-                        self.rt.rec_new,
+                        self.rt.tl_rec_new,
                         &[i64t.const_int(fields.len() as u64, false).into()],
                         "rec",
                     )?
@@ -1908,7 +1721,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     let slot = self.to_slot(built, &value.ty)?;
                     self.builder
                         .build_call(
-                            self.rt.rec_set,
+                            self.rt.tl_rec_set,
                             &[
                                 rec.into(),
                                 i64t.const_int(i as u64, false).into(),
@@ -1962,14 +1775,14 @@ impl<'ctx> Emitter<'ctx, '_> {
 
             // The stream, materialized eagerly: whatever consumes it -- `collect`, a mapper --
             // works on the Vec of its entries.
-            Kind::Lines => self.call_rt(self.rt.collect_lines, &[], "lines")?,
+            Kind::Lines => self.call_rt(self.rt.tl_collect_lines, &[], "lines")?,
 
             // Same raw lines as `lines`, each split on the delimiter into one row. The delimiter
             // rides as a string constant, so the split is literal on every backend.
             Kind::Dsv { delim } => {
-                let lines = self.call_rt(self.rt.collect_lines, &[], "lines")?;
+                let lines = self.call_rt(self.rt.tl_collect_lines, &[], "lines")?;
                 let sep = self.string_const(delim);
-                self.call_rt(self.rt.split_lines, &[lines, sep.into()], "rows")?
+                self.call_rt(self.rt.tl_split_lines, &[lines, sep.into()], "rows")?
             }
 
             Kind::Input => {
@@ -1990,7 +1803,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let elem =
                     crate::tir::runtime_elem(&t.ty).expect("checked to be Vec<T> or Stream<T>");
                 let descriptor = self.string_const(&descriptor(self.enums, elem));
-                self.call_rt(self.rt.read_inputs, &[descriptor.into()], "inputs")?
+                self.call_rt(self.rt.tl_read_inputs, &[descriptor.into()], "inputs")?
             }
 
             Kind::Field { base, name } => self.field(base, name, &t.ty)?,
@@ -2019,21 +1832,21 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let arg_node = arg;
                 let arg = self.expr(arg_node)?;
                 match which {
-                    Builtin::IntToStr => self.call_rt(self.rt.int_to_str, &[arg], "int_str")?,
+                    Builtin::IntToStr => self.call_rt(self.rt.tl_int_to_str, &[arg], "int_str")?,
                     // The descriptor tells the runtime parser what the result type is, the
                     // same string `tl_read_input` carries for stdin; here it parses a value
                     // already in hand instead of reading a stream.
                     Builtin::Parse => {
                         let descriptor = self.string_const(&descriptor(self.enums, &t.ty));
                         let slot =
-                            self.call_rt(self.rt.parse_str, &[arg, descriptor.into()], "parse")?;
+                            self.call_rt(self.rt.tl_parse_str, &[arg, descriptor.into()], "parse")?;
                         self.read_slot(slot.into_int_value(), &t.ty)?
                     }
                     // An Int already lives in an i64 here (see `llvm_type`), so the bridge
                     // is the identity: the value is its own widening.
                     Builtin::IntToI64 => arg,
-                    Builtin::Range => self.call_rt(self.rt.range, &[arg], "range")?,
-                    Builtin::Chars => self.call_rt(self.rt.chars, &[arg], "chars")?,
+                    Builtin::Range => self.call_rt(self.rt.tl_range, &[arg], "range")?,
+                    Builtin::Chars => self.call_rt(self.rt.tl_chars, &[arg], "chars")?,
                     Builtin::JsonLines => {
                         let elem = elem_ty.expect("checked to be a Vec");
                         self.join_shown(arg, &elem, "", "\n", "")?
@@ -2051,12 +1864,12 @@ impl<'ctx> Emitter<'ctx, '_> {
                         {
                             let (src, mask, _len, _elem_ty) =
                                 self.select_mask(source, *param, pred)?;
-                            self.call_rt(self.rt.sel_len, &[src.into(), mask.into()], "sel_len")?
+                            self.call_rt(self.rt.tl_sel_len, &[src.into(), mask.into()], "sel_len")?
                         } else {
-                            self.call_rt(self.rt.vec_len, &[arg], "length")?
+                            self.call_rt(self.rt.tl_vec_len, &[arg], "length")?
                         }
                     }
-                    Builtin::Tail => self.call_rt(self.rt.vec_tail, &[arg], "tail")?,
+                    Builtin::Tail => self.call_rt(self.rt.tl_vec_tail, &[arg], "tail")?,
                     // A record entry is spread across columns, so `is_record` is what tells the
                     // runtime to gather it back, the same flag an Index collapse carries.
                     Builtin::First => {
@@ -2065,15 +1878,15 @@ impl<'ctx> Emitter<'ctx, '_> {
                             .ctx
                             .i32_type()
                             .const_int(matches!(elem, Type::Record(_)) as u64, false);
-                        self.call_rt(self.rt.vec_first, &[arg, is_record.into()], "first")?
+                        self.call_rt(self.rt.tl_vec_first, &[arg, is_record.into()], "first")?
                     }
                     // The runtime answers in a slot (an i64), so the result is truncated to the
                     // i1 a Bool is here, the same width an Int-to-Bool narrowing does.
                     Builtin::Any | Builtin::All => {
                         let rt = if *which == Builtin::Any {
-                            self.rt.vec_any
+                            self.rt.tl_vec_any
                         } else {
-                            self.rt.vec_all
+                            self.rt.tl_vec_all
                         };
                         let call = self.call_rt(rt, &[arg], "cut")?;
                         self.builder
@@ -2084,7 +1897,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     Builtin::Flatten => {
                         let elem = t.ty.elem().expect("checked to be Vec<Vec<T>> -> Vec<T>");
                         let ncols = self.ctx.i64_type().const_int(Self::columns(elem), false);
-                        self.call_rt(self.rt.vec_flatten, &[arg, ncols.into()], "flatten")?
+                        self.call_rt(self.rt.tl_vec_flatten, &[arg, ncols.into()], "flatten")?
                     }
                     // The checker's `orderable` already narrowed the element type to Int,
                     // Int64, Str, or Char; only Str's raw slot is a pointer needing its own
@@ -2097,7 +1910,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     Builtin::Reverse => {
                         let elem = elem_ty.expect("checked to be a Vec");
                         let ncols = self.ctx.i64_type().const_int(Self::columns(&elem), false);
-                        self.call_rt(self.rt.vec_reverse, &[arg, ncols.into()], "reverse")?
+                        self.call_rt(self.rt.tl_vec_reverse, &[arg, ncols.into()], "reverse")?
                     }
                     // Both widths live in the same i64 slot, so the C function's `narrow` flag
                     // is what tells Int (32-bit wrap per addition) from Int64. An `i32` like
@@ -2107,7 +1920,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                             .ctx
                             .i32_type()
                             .const_int((elem_ty.as_ref() == Some(&Type::Int)) as u64, false);
-                        self.call_rt(self.rt.vec_sum, &[arg, narrow.into()], "sum")?
+                        self.call_rt(self.rt.tl_vec_sum, &[arg, narrow.into()], "sum")?
                     }
                     // The result is also a Vec of Vecs, so its element (an inner Vec) carries
                     // the innermost type's column count -- the same reason `tl_vec_flatten`
@@ -2118,10 +1931,10 @@ impl<'ctx> Emitter<'ctx, '_> {
                                 .and_then(Type::elem)
                                 .expect("checked to be Vec<Vec<T>>");
                         let ncols = self.ctx.i64_type().const_int(Self::columns(inner), false);
-                        self.call_rt(self.rt.vec_transpose, &[arg, ncols.into()], "transpose")?
+                        self.call_rt(self.rt.tl_vec_transpose, &[arg, ncols.into()], "transpose")?
                     }
                     // NULL on an empty Vec is exactly the absent Opt a partial Index yields.
-                    Builtin::Max => self.call_rt(self.rt.vec_max, &[arg], "max")?,
+                    Builtin::Max => self.call_rt(self.rt.tl_vec_max, &[arg], "max")?,
                     // `arg` above ran only for whatever else it does; its value is unused here.
                     Builtin::Fields => self.fields_lit(&record_ty)?,
                     Builtin::Sqrt => self.call_rt(self.rt.sqrt, &[arg], "sqrt")?,
@@ -2136,7 +1949,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let base = self.expr(base)?;
                 let raw = self
                     .call_rt(
-                        self.rt.unwrap,
+                        self.rt.tl_unwrap,
                         &[
                             base,
                             self.ctx.i64_type().const_int(depth as u64, false).into(),
@@ -2184,7 +1997,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     .expect("an OptMap's source is Opt")
                     .clone();
                 let src = self.expr(source)?;
-                let present = self.call_rt(self.rt.opt_is_some, &[src], "some")?;
+                let present = self.call_rt(self.rt.tl_opt_is_some, &[src], "some")?;
                 let cond = self
                     .builder
                     .build_int_compare(
@@ -2208,13 +2021,13 @@ impl<'ctx> Emitter<'ctx, '_> {
 
                 self.builder.position_at_end(some_block);
                 let raw = self
-                    .call_rt(self.rt.opt_get, &[src], "unwrapped")?
+                    .call_rt(self.rt.tl_opt_get, &[src], "unwrapped")?
                     .into_int_value();
                 let item = self.read_slot(raw, &source_inner)?;
                 self.locals.insert(*param, Slot::Value(item));
                 let mapped = self.expr(body)?;
                 let mapped_slot = self.to_slot(mapped, &body.ty)?;
-                let wrapped = self.call_rt(self.rt.opt_some, &[mapped_slot.into()], "some")?;
+                let wrapped = self.call_rt(self.rt.tl_opt_some, &[mapped_slot.into()], "some")?;
                 self.builder
                     .build_store(slot, wrapped)
                     .map_err(|e| e.to_string())?;
@@ -2256,7 +2069,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                         let (src, mask, _len, _elem_ty) = self.select_mask(source, *param, pred)?;
                         let index = self.expr(index)?;
                         return self.call_rt(
-                            self.rt.sel_at,
+                            self.rt.tl_sel_at,
                             &[
                                 src.into(),
                                 mask.into(),
@@ -2273,7 +2086,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let base = self.expr(base)?;
                 let index = self.expr(index)?;
                 self.call_rt(
-                    self.rt.at,
+                    self.rt.tl_at,
                     &[
                         base,
                         index,
@@ -2305,7 +2118,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                     None => i64t.const_int(i64::MAX as u64, true).into(),
                 };
                 self.call_rt(
-                    self.rt.vec_slice,
+                    self.rt.tl_vec_slice,
                     &[base, lo, hi, i64t.const_int(*depth as u64, false).into()],
                     "slice",
                 )?
@@ -2347,7 +2160,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 let subj = needs_subject.then(|| self.expr(subject)).transpose()?;
                 let tag = match subj {
                     Some(subj) => Some(
-                        self.call_rt(self.rt.rec_get, &[subj, i64t.const_zero().into()], "tag")?
+                        self.call_rt(self.rt.tl_rec_get, &[subj, i64t.const_zero().into()], "tag")?
                             .into_int_value(),
                     ),
                     None => None,
@@ -2448,7 +2261,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             let subj = subj.ok_or("a payload arm with no subject value")?;
             let raw = self
                 .call_rt(
-                    self.rt.rec_get,
+                    self.rt.tl_rec_get,
                     &[subj, self.ctx.i64_type().const_int(1, false).into()],
                     "payload",
                 )?
@@ -2474,7 +2287,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let mut v = self.expr(&arm.body)?;
         if partial {
             let raw = self.to_slot(v, &arm.body.ty)?;
-            v = self.call_rt(self.rt.opt_some, &[raw.into()], "some")?;
+            v = self.call_rt(self.rt.tl_opt_some, &[raw.into()], "some")?;
         }
         self.builder
             .build_store(slot, v)
@@ -2488,9 +2301,9 @@ impl<'ctx> Emitter<'ctx, '_> {
     /// `fields_lit` precedent.
     fn sort_runtime<'r>(rt: &Runtime<'r>, elem: &Type) -> FunctionValue<'r> {
         if *elem == Type::Str {
-            rt.vec_sort_str
+            rt.tl_vec_sort_str
         } else {
-            rt.vec_sort_int
+            rt.tl_vec_sort_int
         }
     }
 
@@ -2650,7 +2463,7 @@ impl<'ctx> Emitter<'ctx, '_> {
 
         self.builder.position_at_end(fail);
         self.builder
-            .build_call(self.rt.div_by_zero, &[], "")
+            .build_call(self.rt.tl_div_by_zero, &[], "")
             .map_err(|e| e.to_string())?;
         self.builder
             .build_unreachable()
@@ -2677,7 +2490,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         let i64t = self.ctx.i64_type();
         match ty {
             Type::Str => {
-                let same = self.call_rt(self.rt.str_eq, &[l, r], "streq")?;
+                let same = self.call_rt(self.rt.tl_str_eq, &[l, r], "streq")?;
                 self.builder
                     .build_int_compare(
                         IntPredicate::NE,
@@ -2748,7 +2561,7 @@ impl<'ctx> Emitter<'ctx, '_> {
 
         let mut present = Vec::new();
         for (v, name) in [(l, "l.some"), (r, "r.some")] {
-            let some = self.call_rt(self.rt.opt_is_some, &[v], name)?;
+            let some = self.call_rt(self.rt.tl_opt_is_some, &[v], name)?;
             present.push(
                 self.builder
                     .build_int_compare(
@@ -2780,10 +2593,10 @@ impl<'ctx> Emitter<'ctx, '_> {
 
         self.builder.position_at_end(inside);
         let lp = self
-            .call_rt(self.rt.opt_get, &[l], "l.payload")?
+            .call_rt(self.rt.tl_opt_get, &[l], "l.payload")?
             .into_int_value();
         let rp = self
-            .call_rt(self.rt.opt_get, &[r], "r.payload")?
+            .call_rt(self.rt.tl_opt_get, &[r], "r.payload")?
             .into_int_value();
         let lp = self.read_slot(lp, inner)?;
         let rp = self.read_slot(rp, inner)?;
@@ -2818,10 +2631,10 @@ impl<'ctx> Emitter<'ctx, '_> {
         let boolt = self.ctx.bool_type();
 
         let lt = self
-            .call_rt(self.rt.rec_get, &[l, i64t.const_zero().into()], "l.tag")?
+            .call_rt(self.rt.tl_rec_get, &[l, i64t.const_zero().into()], "l.tag")?
             .into_int_value();
         let rt = self
-            .call_rt(self.rt.rec_get, &[r, i64t.const_zero().into()], "r.tag")?
+            .call_rt(self.rt.tl_rec_get, &[r, i64t.const_zero().into()], "r.tag")?
             .into_int_value();
         let same_tag = self
             .builder
@@ -2875,10 +2688,10 @@ impl<'ctx> Emitter<'ctx, '_> {
         };
         let payload_slot = self.ctx.i64_type().const_int(1, false);
         let lp = self
-            .call_rt(self.rt.rec_get, &[l, payload_slot.into()], "l.payload")?
+            .call_rt(self.rt.tl_rec_get, &[l, payload_slot.into()], "l.payload")?
             .into_int_value();
         let rp = self
-            .call_rt(self.rt.rec_get, &[r, payload_slot.into()], "r.payload")?
+            .call_rt(self.rt.tl_rec_get, &[r, payload_slot.into()], "r.payload")?
             .into_int_value();
         let lp = self.read_slot(lp, pty)?;
         let rp = self.read_slot(rp, pty)?;
@@ -2958,9 +2771,9 @@ impl<'ctx> Emitter<'ctx, '_> {
         match elem {
             Some(elem) => {
                 let ncols = self.ctx.i64_type().const_int(Self::columns(&elem), false);
-                self.call_rt(self.rt.vec_concat, &[l, r, ncols.into()], "concat")
+                self.call_rt(self.rt.tl_vec_concat, &[l, r, ncols.into()], "concat")
             }
-            None => self.call_rt(self.rt.concat, &[l, r], "concat"),
+            None => self.call_rt(self.rt.tl_concat, &[l, r], "concat"),
         }
     }
 
@@ -3076,7 +2889,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 // tl_str_eq answers equality directly, so its result is compared against 1 and
                 // the EQ/NE predicate then reads correctly for both operators.
                 BinOp::Eq | BinOp::Ne => {
-                    let call = self.call_rt(self.rt.str_eq, &[l, r], "streq")?;
+                    let call = self.call_rt(self.rt.tl_str_eq, &[l, r], "streq")?;
                     (
                         call.into_int_value(),
                         self.ctx.i64_type().const_int(1, false),
@@ -3084,7 +2897,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 }
                 // tl_str_cmp returns -1, 0 or 1, so ordering is that against zero.
                 _ => {
-                    let call = self.call_rt(self.rt.str_cmp, &[l, r], "strcmp")?;
+                    let call = self.call_rt(self.rt.tl_str_cmp, &[l, r], "strcmp")?;
                     (call.into_int_value(), self.ctx.i64_type().const_zero())
                 }
             },
@@ -3212,7 +3025,7 @@ impl<'ctx> Emitter<'ctx, '_> {
         // exactly as the eager path's per-element `show` does.
         let shown = self.show(current, &current_ty)?;
         self.builder
-            .build_call(self.rt.print, &[shown.into()], "")
+            .build_call(self.rt.tl_print, &[shown.into()], "")
             .map_err(|e| e.to_string())?;
         self.builder
             .build_unconditional_branch(cond)
@@ -3235,14 +3048,14 @@ impl<'ctx> Emitter<'ctx, '_> {
             Source::Inputs => {
                 let descriptor = self.string_const(&descriptor(self.enums, elem_ty));
                 self.call_rt(
-                    self.rt.read_one_input,
+                    self.rt.tl_read_one_input,
                     &[descriptor.into(), out_slot.into()],
                     "got",
                 )?
                 .into_int_value()
             }
             Source::Lines => self
-                .call_rt(self.rt.read_one_line, &[out_slot.into()], "got")?
+                .call_rt(self.rt.tl_read_one_line, &[out_slot.into()], "got")?
                 .into_int_value(),
             Source::Range(_) => unreachable!("a range source has its own loop condition"),
         };
@@ -3314,7 +3127,7 @@ impl<'ctx> Emitter<'ctx, '_> {
             other => self.show(value, other)?,
         };
         self.builder
-            .build_call(self.rt.print, &[as_str.into()], "")
+            .build_call(self.rt.tl_print, &[as_str.into()], "")
             .map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -3413,7 +3226,7 @@ fn build_module<'ctx>(ctx: &'ctx Context, program: &Program) -> Result<Module<'c
     if let Some(ty) = &program.input {
         let global = e.input_slot.expect("created above whenever input is Some");
         let descriptor = e.string_const(&descriptor(&program.enums, ty));
-        let slot = e.call_rt(e.rt.read_input, &[descriptor.into()], "input")?;
+        let slot = e.call_rt(e.rt.tl_read_input, &[descriptor.into()], "input")?;
         e.builder
             .build_store(global, slot.into_int_value())
             .map_err(|err| err.to_string())?;

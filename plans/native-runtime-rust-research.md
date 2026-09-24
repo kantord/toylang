@@ -1,8 +1,8 @@
 # Native runtime in Rust: what comparable compilers do, and a migration plan
 
 **Status (2026-09-24): ruled and implemented.** The maintainer ruled option B; steps 0 to 8 of
-section 6 have landed and `runtime/toylang.c` is deleted. Option C (section 3.4) is the row
-`native-runtime-rs-step9-declaration-table`. Sections 1 to 11 describe the C runtime as it stood
+section 6 have landed and `runtime/toylang.c` is deleted. Option C (section 3.4) has landed too,
+as `runtime-abi/`. Sections 1 to 11 describe the C runtime as it stood
 when they were written; the results of the port are in the checks at the end of section 12.
 
 Research note for the board row `native-runtime-direction-decide` (2026-09-24). It builds on
@@ -327,6 +327,27 @@ The macro expands to `#[unsafe(no_mangle)] pub extern "C" fn` definitions in the
 Swift's x-macro file (section 2). Not evaluated: a proc macro, or generating the table from a
 header with `cbindgen` (unverified). The 58 declarations are a moderate cost, not an emergency:
 Inko has a similar hand-written list and no sync check. Do it after the port.
+
+**Built (2026-09-24), and where it differs from the sketch above.** `runtime-abi/` is a
+dependency-free crate holding `runtime_fns!`, an x-macro that calls a callback with every entry
+(`fn tl_vec_len(v: ptr) -> i64;`, vocabulary `ptr i64 i32 f64 void never`), in the order the
+compiler declares them. The compiler expands it into the `Runtime` struct and its `declare`
+function, one field per symbol, so a field cannot drift from a name; a table edit is the whole
+compiler-side change. The compiler depends on `runtime-abi` only, never on `runtime-rs`, so the
+nested staticlib build in `build.rs` is untouched apart from a `rerun-if-changed` for the new crate.
+
+The runtime side is a check, not generation, because a macro cannot write the bodies and the
+definitions need concrete types (`*const TlVec`) the LLVM side does not. `assert_defined_as_declared!()`
+in `runtime-rs/src/lib.rs` casts each named function to `unsafe extern "C" fn(_, ...) -> _`, reads
+the ABI class of each inferred type through the `AbiTy`/`AbiFn` traits, and `assert!`s in a
+`const` that it equals the entry. A wrong argument or return type, or an entry with no
+definition, stops `runtime-rs` compiling, which stops the compiler's `build.rs`. The gap that
+remains: a definition added without a table entry compiles and is simply never called.
+
+`macro_rules!` was enough. The one thing it cannot do is derive a field name like `vec_len` from
+`tl_vec_len` (that needs `paste` or a proc macro), so the fields are named as the symbols are.
+Declaration order is unchanged from the hand-written constructor, so no emitted-IR snapshot moved.
+`sqrt` stays a hand-written field: it is the `llvm.sqrt.f64` intrinsic, not a runtime symbol.
 
 ### 3.5 Should the Rust source backend share the runtime?
 

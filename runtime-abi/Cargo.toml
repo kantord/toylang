@@ -1,0 +1,10 @@
+[package]
+name = "toylang-rt-abi"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# The one list of native runtime functions and their C ABI signatures. Both the compiler
+# (src/emit_llvm.rs, which declares them in LLVM) and runtime-rs (which defines them) depend on
+# this crate, so the compiler never has to depend on runtime-rs itself: that crate is built into a
+# staticlib by the compiler's build.rs, in a target directory of its own.

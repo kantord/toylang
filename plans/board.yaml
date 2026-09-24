@@ -25,12 +25,6 @@
   needs: []
   status: todo
 
-- id: native-runtime-rs-step9-declaration-table
-  title: 'Native runtime port, option C follow-up (plans/native-runtime-rust-research.md section 3.4, ruled by the maintainer as the step after the port): with the runtime in Rust there are two places a function is declared, the `extern "C"` definition and the `add_function` call in src/emit_llvm.rs (58 sites). Add one table that generates both: a small shared crate (or module) with a `macro_rules!` table of `fn name(args) -> ret;` entries that expands to the `#[unsafe(no_mangle)] pub extern "C" fn` surface in the runtime and to a `const SIGNATURES` the compiler iterates to call `add_function`. The precedent is Swift''s RuntimeFunctions.def x-macro file. Evaluate a proc macro or cbindgen only if macro_rules! cannot express something you need, and say why. Done when adding a runtime function needs exactly one signature edit and a mismatch between the two sides cannot compile or fails a test.'
-  kind: build
-  needs: [native-runtime-rs-step8-delete-c]
-  status: todo
-
 - id: closures-legacy-flow-map-sortby-maxby
   title: 'Follow-up to closures-first-class-functions-design (2026-09-23): `select` was
     extended to accept a genuine closure value (built by `$`-partial-application) in addition
