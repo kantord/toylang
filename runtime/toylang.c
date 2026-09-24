@@ -37,6 +37,11 @@ typedef struct {
 /* runtime-rs's TlStr is defined to this layout and checks the same offsets. */
 _Static_assert(sizeof(tl_str) == 16 && offsetof(tl_str, len) == 8, "tl_str layout");
 
+/* Defined in runtime-rs, which owns the Str primitives. tl_str_new takes ownership of `bytes`
+ * (a tl_alloc block) and copies nothing. */
+tl_str *tl_str_new(char *bytes, int64_t len);
+int64_t tl_str_cmp(const tl_str *a, const tl_str *b);
+
 static void *tl_alloc(size_t n) {
     void *p = malloc(n);
     if (p == NULL) {
@@ -45,58 +50,6 @@ static void *tl_alloc(size_t n) {
         exit(1);
     }
     return p;
-}
-
-static tl_str *tl_str_new(char *bytes, int64_t len) {
-    tl_str *s = tl_alloc(sizeof(tl_str));
-    s->ptr = bytes;
-    s->len = len;
-    return s;
-}
-
-tl_str *tl_concat(const tl_str *a, const tl_str *b) {
-    char *bytes = tl_alloc((size_t)(a->len + b->len));
-    memcpy(bytes, a->ptr, (size_t)a->len);
-    memcpy(bytes + a->len, b->ptr, (size_t)b->len);
-    return tl_str_new(bytes, a->len + b->len);
-}
-
-tl_str *tl_int_to_str(int64_t n) {
-    /* -9223372036854775808 is 20 characters plus a terminator. */
-    char buf[24];
-    int len = snprintf(buf, sizeof buf, "%lld", (long long)n);
-    char *bytes = tl_alloc((size_t)len);
-    memcpy(bytes, buf, (size_t)len);
-    return tl_str_new(bytes, len);
-}
-
-int64_t tl_str_eq(const tl_str *a, const tl_str *b) {
-    if (a->len != b->len) {
-        return 0;
-    }
-    return memcmp(a->ptr, b->ptr, (size_t)a->len) == 0;
-}
-
-/* Byte order, which is what Lua does. JavaScript compares UTF-16 code units, so the three
- * backends agree on ASCII and are not guaranteed to beyond it. */
-int64_t tl_str_cmp(const tl_str *a, const tl_str *b) {
-    int64_t shared = a->len < b->len ? a->len : b->len;
-    int diff = memcmp(a->ptr, b->ptr, (size_t)shared);
-    if (diff != 0) {
-        return diff < 0 ? -1 : 1;
-    }
-    if (a->len == b->len) {
-        return 0;
-    }
-    return a->len < b->len ? -1 : 1;
-}
-
-/* One write for the payload and one for the newline, rather than copying to join them. */
-void tl_print(const tl_str *s) {
-    if (s->len > 0) {
-        (void)!write(1, s->ptr, (size_t)s->len);
-    }
-    (void)!write(1, "\n", 1);
 }
 
 /* A Vec: a length and `ncols` columns, each holding `len` raw 8-byte slots.
@@ -191,63 +144,6 @@ int64_t tl_rec_get(const int64_t *r, int64_t field) {
 
 void tl_rec_set(int64_t *r, int64_t field, int64_t value) {
     r[field] = value;
-}
-
-/* JSON string escaping, matching what the Lua and JavaScript printers emit. Anything below
- * space goes out as \u00xx, which is what both of the others do for control characters. */
-tl_str *tl_quote(const tl_str *s) {
-    /* Worst case every byte becomes \u00xx, plus the two quotes. */
-    char *out = tl_alloc((size_t)(s->len * 6 + 2));
-    int64_t n = 0;
-    out[n++] = '"';
-    for (int64_t i = 0; i < s->len; i++) {
-        unsigned char c = (unsigned char)s->ptr[i];
-        switch (c) {
-            case '"': out[n++] = '\\'; out[n++] = '"'; break;
-            case '\\': out[n++] = '\\'; out[n++] = '\\'; break;
-            case '\n': out[n++] = '\\'; out[n++] = 'n'; break;
-            case '\r': out[n++] = '\\'; out[n++] = 'r'; break;
-            case '\t': out[n++] = '\\'; out[n++] = 't'; break;
-            default:
-                if (c < 0x20) {
-                    n += snprintf(out + n, 7, "\\u%04x", c);
-                } else {
-                    out[n++] = (char)c;
-                }
-        }
-    }
-    out[n++] = '"';
-    return tl_str_new(out, n);
-}
-
-/* Concatenate `parts`, which holds tl_str pointers, between `open` and `close` with `sep`
- * between elements. One allocation, so printing a Vec is not quadratic in its length. */
-tl_str *tl_str_join(const tl_vec *parts, const tl_str *open, const tl_str *sep,
-                    const tl_str *close) {
-    int64_t total = open->len + close->len;
-    for (int64_t i = 0; i < parts->len; i++) {
-        total += ((const tl_str *)tl_vec_get(parts, 0, i))->len;
-        if (i > 0) {
-            total += sep->len;
-        }
-    }
-
-    char *out = tl_alloc((size_t)total);
-    int64_t n = 0;
-    memcpy(out + n, open->ptr, (size_t)open->len);
-    n += open->len;
-    for (int64_t i = 0; i < parts->len; i++) {
-        if (i > 0) {
-            memcpy(out + n, sep->ptr, (size_t)sep->len);
-            n += sep->len;
-        }
-        const tl_str *p = (const tl_str *)tl_vec_get(parts, 0, i);
-        memcpy(out + n, p->ptr, (size_t)p->len);
-        n += p->len;
-    }
-    memcpy(out + n, close->ptr, (size_t)close->len);
-    n += close->len;
-    return tl_str_new(out, n);
 }
 
 /* Reading input.

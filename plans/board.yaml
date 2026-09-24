@@ -25,12 +25,6 @@
   needs: []
   status: todo
 
-- id: native-runtime-rs-step3-str-primitives
-  title: 'Native runtime port, step 3 (plans/native-runtime-rust-research.md section 6): port the Str primitives to Rust with `#[repr(C)] TlStr { ptr, len }` matching the C layout: `tl_str_new`, `tl_concat`, `tl_int_to_str`, `tl_str_eq`, `tl_str_cmp` (byte order, same as memcmp, which is codepoint order for UTF-8), `tl_print`, `tl_quote` (stays hand-written: escapes `\\`, `"` and control characters as `\u00xx` per the control-char-escaping-parity ruling; serde_json would differ on 0x08 and 0x0c) and `tl_str_join`. Delete each C body in the same commit that adds the Rust one. C code that still calls these keeps compiling because the C prototypes stay. Add a layout check for TlStr on both sides while any C still reads a tl_str.'
-  kind: build
-  needs: [native-runtime-rs-step2-float-printing, control-char-escaping-parity]
-  status: todo
-
 - id: native-runtime-rs-step4-vec-core
   title: 'Native runtime port, step 4 (plans/native-runtime-rust-research.md section 6 and section 1): port the columnar Vec, record and Opt core (`tl_vec_new`, `tl_vec_get`, `tl_vec_set`, `tl_vec_len`, column and mask accessors, `tl_rec_*`, `tl_opt_*`, C lines about 203 to 297) with `#[repr(C)] TlVec { len: i64, ncols: i64, cols: *mut *mut i64 }` and small unsafe accessors. The struct-of-arrays layout is baked into the IR emitted by src/emit_llvm.rs and no crate can supply it, so this is glue that must reproduce the ABI exactly; add a layout test on both sides (`offsetof` in a C test or static assert while C still reads a tl_vec, `mem::offset_of!` in Rust). Delete each C body in the same commit that adds the Rust one. Memory posture stays ''nothing frees'' for values (see runtime/toylang.c lines 7 to 10 and the mutation-model work); make allocation go through one function so a later change is a single seam.'
   kind: build

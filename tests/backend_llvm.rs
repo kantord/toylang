@@ -75,3 +75,37 @@ fn native_float_printing_is_shortest_not_closest() {
         "[5.225680706521042e-200,6.518515124270356e+91,7.291122019556398e-304]\n"
     );
 }
+
+/// Edges of the Str primitives that live in Rust now and that only the C version ever had to
+/// think about: the two ends of Int64 (jq cannot carry these, so not a corpus case), a NUL byte
+/// inside a Str, empty Strs on both sides of a join and a compare, and a Str long enough that a
+/// 32-bit length would show.
+#[test]
+fn native_str_primitives_at_the_edges() {
+    let out = toylang::run_on(
+        "fn one() -> Int64 = i64 1;\n\n\n\
+         fn near() -> Int64 = -9223372036854775807;\n\n\n\
+         [near() - one(), near(), 9223372036854775807]\n",
+        None,
+        Backend::Native,
+    )
+    .unwrap();
+    assert_eq!(
+        out,
+        "[-9223372036854775808,-9223372036854775807,9223372036854775807]\n"
+    );
+
+    let long = "x".repeat(5_000_000);
+    let program = "fn same(db: { a: Str, b: Str, many: Vec<Str> }) -> { a: Str, b: Str, many: Vec<Str> } = db;\n\n\n\
+         same(parse stdin)\n";
+    let input = format!(
+        r#"{{"a": "a\u0000b", "b": "", "many": ["", "\u0000", "\u007f\u00e9\u0001", "{long}"]}}"#
+    );
+    let out = toylang::run_on(program, Some(&input), Backend::Native).unwrap();
+    assert_eq!(
+        out,
+        format!(
+            "{{\"a\":\"a\\u0000b\",\"b\":\"\",\"many\":[\"\",\"\\u0000\",\"\x7f\u{e9}\\u0001\",\"{long}\"]}}\n"
+        )
+    );
+}
