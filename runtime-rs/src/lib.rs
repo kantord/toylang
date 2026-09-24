@@ -5,11 +5,6 @@
 //! A `tl_*` symbol is defined in exactly one of the two: each port deletes its C body in the
 //! same commit that adds the Rust one.
 
-// Every `extern "C"` function here is an entry point for generated code, never called from Rust,
-// and takes pointers the compiler's IR guarantees valid. Marking them `unsafe fn` would change
-// nothing about the ABI or the callers.
-#![allow(clippy::not_unsafe_ptr_arg_deref)]
-
 use std::mem::{offset_of, size_of};
 
 /// A toylang Str: bytes and a length, never null-terminated by contract. Field order is the C
@@ -80,8 +75,10 @@ fn write_fd(fd: i32, data: &[u8]) -> std::io::Result<()> {
     f.write_all(data)
 }
 
+/// # Safety
+/// Each `*const TlStr` points at a live Str whose bytes are valid for its length.
 #[unsafe(no_mangle)]
-pub extern "C" fn tl_concat(a: *const TlStr, b: *const TlStr) -> *mut TlStr {
+pub unsafe extern "C" fn tl_concat(a: *const TlStr, b: *const TlStr) -> *mut TlStr {
     let (a, b) = unsafe { (bytes(a), bytes(b)) };
     let mut out = buffer((a.len() + b.len()) as i64);
     out.extend_from_slice(a);
@@ -94,23 +91,31 @@ pub extern "C" fn tl_int_to_str(n: i64) -> *mut TlStr {
     leak_str(n.to_string().into_bytes())
 }
 
+/// # Safety
+/// Each `*const TlStr` points at a live Str whose bytes are valid for its length.
 #[unsafe(no_mangle)]
-pub extern "C" fn tl_str_eq(a: *const TlStr, b: *const TlStr) -> i64 {
+pub unsafe extern "C" fn tl_str_eq(a: *const TlStr, b: *const TlStr) -> i64 {
     (unsafe { bytes(a) == bytes(b) }) as i64
 }
 
 /// Byte order, which is what Lua does and what `memcmp` gave. JavaScript compares UTF-16 code
 /// units, so the backends agree on ASCII and are not guaranteed to beyond it.
+///
+/// # Safety
+/// Each `*const TlStr` points at a live Str whose bytes are valid for its length.
 #[unsafe(no_mangle)]
-pub extern "C" fn tl_str_cmp(a: *const TlStr, b: *const TlStr) -> i64 {
+pub unsafe extern "C" fn tl_str_cmp(a: *const TlStr, b: *const TlStr) -> i64 {
     unsafe { bytes(a).cmp(bytes(b)) as i64 }
 }
 
 /// A write error is ignored, as the C did: a closed stdout must not turn into a different
 /// program result. One write for the payload and one for the newline, rather than copying to
 /// join them.
+///
+/// # Safety
+/// Each `*const TlStr` points at a live Str whose bytes are valid for its length.
 #[unsafe(no_mangle)]
-pub extern "C" fn tl_print(s: *const TlStr) {
+pub unsafe extern "C" fn tl_print(s: *const TlStr) {
     let _ = write_fd(1, unsafe { bytes(s) });
     let _ = write_fd(1, b"\n");
 }
@@ -119,8 +124,11 @@ pub extern "C" fn tl_print(s: *const TlStr) {
 /// `serde_json`: that writes `\b` and `\f` for 0x08 and 0x0c where every backend prints
 /// `\u0008` and `\u000c`. Backslash and quote are escaped, `\n \r \t` have short forms, every
 /// other byte below 0x20 is `\u00xx`, and DEL (0x7f) and all bytes from 0x80 up go out raw.
+///
+/// # Safety
+/// Each `*const TlStr` points at a live Str whose bytes are valid for its length.
 #[unsafe(no_mangle)]
-pub extern "C" fn tl_quote(s: *const TlStr) -> *mut TlStr {
+pub unsafe extern "C" fn tl_quote(s: *const TlStr) -> *mut TlStr {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let s = unsafe { bytes(s) };
     let mut out = buffer(s.len() as i64 + 2);
@@ -160,8 +168,11 @@ unsafe extern "C" {
 
 /// `open`, the parts (a Vec whose one column holds `TlStr` pointers) separated by `sep`, `close`.
 /// One allocation, so printing a Vec is not quadratic in its length.
+///
+/// # Safety
+/// Each `TlStr` pointer is as for `tl_concat`, and `parts` is a Vec of `TlStr` pointers.
 #[unsafe(no_mangle)]
-pub extern "C" fn tl_str_join(
+pub unsafe extern "C" fn tl_str_join(
     parts: *const TlVec,
     open: *const TlStr,
     sep: *const TlStr,
