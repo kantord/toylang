@@ -86,3 +86,20 @@ fn map_element_read_twice_is_not_owned() {
         "a multi-use map element must not be owned:\n{out}"
     );
 }
+
+/// The one read of `xs` sits inside a `map` body, which runs once per element: consuming it there
+/// moved `xs` into an `FnMut` closure and rustc refused the program. The rule must not count it as
+/// a single use.
+#[test]
+fn local_read_once_inside_a_map_body_is_not_owned() {
+    let src = "fn f() -> Vec<Vec<Int>> =\n    let xs = [3, 1, 2]\n\n    [1, 2] | map(reverse(xs))\n\n\nf()\n";
+    let out = emit(src);
+    assert!(
+        !out.contains("tl_reverse_owned("),
+        "a use inside a re-run body must not be owned:\n{out}"
+    );
+    assert_eq!(
+        toylang::run_on(src, None, toylang::Backend::Rust).unwrap(),
+        "[[2,1,3],[2,1,3]]\n"
+    );
+}

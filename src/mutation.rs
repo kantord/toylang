@@ -19,11 +19,25 @@ use crate::ty::Type;
 /// use reached through a called function is simply not in this tree and cannot qualify -- the
 /// mutation-function-boundary ruling falls out of that shape rather than needing a separate
 /// check.
+///
+/// One use in the source is not one use at run time when it sits inside a body that runs more
+/// than once (a `Map`/`Select`/`SortBy`/`MaxBy` body, a closure) while the binding lives outside
+/// it: `let xs = ...; ys | map(reverse(xs))` reverses `xs` once per element. Such a use never
+/// qualifies. A binding that is the loop's own parameter is unaffected, since the walk starts at
+/// the loop's body and each iteration binds it afresh.
 pub fn single_consuming_use(body: &Tir, local: LocalId) -> bool {
     let mut count = 0usize;
     let mut consuming = false;
+    let mut in_rerun_body = false;
     tir::each_node(body, &mut |node| {
         match &node.kind {
+            Kind::Map { body: inner, .. }
+            | Kind::SortBy { body: inner, .. }
+            | Kind::MaxBy { body: inner, .. }
+            | Kind::Closure { body: inner, .. }
+            | Kind::Select { pred: inner, .. } => {
+                in_rerun_body |= uses(inner, local) > 0;
+            }
             Kind::Local(id) if *id == local => count += 1,
             Kind::Builtin { which, arg } => {
                 if matches!(which, Builtin::Sort | Builtin::Reverse | Builtin::Flatten)
@@ -44,5 +58,13 @@ pub fn single_consuming_use(body: &Tir, local: LocalId) -> bool {
             _ => {}
         }
     });
-    count == 1 && consuming
+    count == 1 && consuming && !in_rerun_body
+}
+
+fn uses(t: &Tir, local: LocalId) -> usize {
+    let mut n = 0;
+    tir::each_node(t, &mut |node| {
+        n += usize::from(matches!(&node.kind, Kind::Local(id) if *id == local))
+    });
+    n
 }
