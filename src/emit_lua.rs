@@ -450,6 +450,7 @@ const QUOTE_HELPER: &str = r#"local function tl_quote(s)
     if c == '\n' then return '\\n' end
     if c == '\r' then return '\\r' end
     if c == '\t' then return '\\t' end
+    if c == '\127' then return c end
     return string.format('\\u%04x', c:byte())
   end) .. '"'
 end

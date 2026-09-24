@@ -194,6 +194,15 @@ function tl_collect_lines() {
 }
 "#;
 
+// JSON.stringify spells 0x08 and 0x0c as \b and \f. Every other backend prints them as \u0008
+// and \u000c, the way it prints a control character with no short form at all, so the two
+// short forms JSON allows are rewritten here. The regex takes an escaped backslash as a unit,
+// so the `b` in `\\b` is left alone.
+const QUOTE_HELPER: &str = r#"function tl_quote(s) {
+  return JSON.stringify(s).replace(/\\[\\bf]/g, (m) => m === "\\b" ? "\\u0008" : m === "\\f" ? "\\u000c" : m);
+}
+"#;
+
 const JOIN_HELPER: &str = "\
 function tl_join(v, f) {
   const parts = [];
@@ -336,6 +345,18 @@ pub fn emit(program: &Program, target: JsTarget) -> Result<String, String> {
 /// the stdin-reading helpers, so a Web build can opt into working code instead of the compile-time
 /// refusal. Node never consults any of it, so these substitutions are additive only for Web.
 pub fn emit_with(program: &Program, target: JsTarget, web: &Web) -> Result<String, String> {
+    let body = emit_program(program, target, web)?;
+    // Printing a Str is spread over `show` and every printer it feeds, so the helper is added
+    // by looking at what came out. Function declarations hoist, so the front is as good a place
+    // as any.
+    Ok(if body.contains("tl_quote(") {
+        format!("{QUOTE_HELPER}{body}")
+    } else {
+        body
+    })
+}
+
+fn emit_program(program: &Program, target: JsTarget, web: &Web) -> Result<String, String> {
     let enums = &program.enums;
 
     let mut out = String::new();
@@ -652,7 +673,7 @@ fn show(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
             "a Seq value cannot reach the printer; no source produces one yet (ADR 0008 emission is a follow-up)"
         ),
         Type::Char => unreachable!("Char cannot reach the printer, refused by the checker"),
-        Type::Str => format!("JSON.stringify({value})"),
+        Type::Str => format!("tl_quote({value})"),
         Type::Sink => unreachable!("a sink only ever prints raw, never through the printer"),
         // String() on a BigInt is the bare digits, no `n` suffix, so Int64 rides the same arm;
         // on a Number it is JS's shortest round-trip spelling, which is exactly how a Float
@@ -702,13 +723,11 @@ fn show_enum(enums: &Enums, ty: &Type, value: &str, depth: usize) -> String {
     let payloads: Vec<&(String, Option<Type>)> =
         variants.iter().filter(|(_, p)| p.is_some()).collect();
     if payloads.is_empty() {
-        return format!("JSON.stringify({value})");
+        return format!("tl_quote({value})");
     }
     let mut body = String::new();
     if payloads.len() < variants.len() {
-        body.push_str(&format!(
-            "typeof {n} === \"string\" ? JSON.stringify({n}) : "
-        ));
+        body.push_str(&format!("typeof {n} === \"string\" ? tl_quote({n}) : "));
     }
     for (i, (vname, pty)) in payloads.iter().enumerate() {
         let pty = pty.as_ref().expect("filtered to payload variants");

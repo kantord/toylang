@@ -468,6 +468,22 @@ impl<'a> TlParser<'a> {
                     if self.p >= self.b.len() {
                         tl_fail("unterminated escape");
                     }
+                    if self.b[self.p] == b'u' {
+                        // The input is re-serialized before any backend sees it, so a \u escape
+                        // is a control character (JSON's only spelling of one without a short
+                        // form) and never half of a surrogate pair.
+                        let hex = self.b.get(self.p + 1..self.p + 5).unwrap_or(&[]);
+                        let code = std::str::from_utf8(hex)
+                            .ok()
+                            .and_then(|h| u32::from_str_radix(h, 16).ok())
+                            .and_then(char::from_u32);
+                        let Some(c) = code else {
+                            tl_fail("unsupported escape");
+                        };
+                        out.push(c);
+                        self.p += 5;
+                        continue;
+                    }
                     out.push(match self.b[self.p] {
                         b'"' => '"',
                         b'\\' => '\\',
@@ -688,7 +704,7 @@ const QUOTE_HELPER: &str = r#"fn tl_quote(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 || c == '\u{7f}' => {
+            c if (c as u32) < 0x20 => {
                 out.push_str(&format!("\\u{:04x}", c as u32));
             }
             c => out.push(c),

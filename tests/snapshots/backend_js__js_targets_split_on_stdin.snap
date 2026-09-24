@@ -2,6 +2,9 @@
 source: tests/backend_js.rs
 expression: node
 ---
+function tl_quote(s) {
+  return JSON.stringify(s).replace(/\\[\\bf]/g, (m) => m === "\\b" ? "\\u0008" : m === "\\f" ? "\\u000c" : m);
+}
 function tl_join(v, f) {
   const parts = [];
   for (let i = 0; i < v.length; i++) parts.push(f(v[i]));
@@ -41,4 +44,4 @@ function tl_collect_lines() {
   if (buf.length > 0) out.push(buf);
   return out;
 }
-console.log(tl_join(tl_collect_lines(), (e0) => JSON.stringify(e0)));
+console.log(tl_join(tl_collect_lines(), (e0) => tl_quote(e0)));

@@ -2,7 +2,7 @@
 source: tests/backend_llvm.rs
 expression: "format!(\"compiles natively ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles natively (291):
+compiles natively (295):
 adults
 all_basic
 all_empty
@@ -56,7 +56,11 @@ cond_false
 cond_in_map
 cond_true
 control_char_escapes
+control_char_quoting
+control_char_quoting_lines
 csv_partial
+del_char_quoting
+del_char_quoting_lines
 div_by_zero
 dsv_blank_line_is_an_empty_field
 dsv_rows

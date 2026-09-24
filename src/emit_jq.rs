@@ -129,7 +129,40 @@ const FLOAT_PRINT_HELPER: &str = r#"def tl_show_float:
   end;
 "#;
 
+/// jq's `tojson` spells 0x08 and 0x0c as `\b` and `\f`. Every other backend prints them as
+/// `\u0008` and `\u000c`, the way it prints a control character with no short form at all, so
+/// the two short forms are rewritten. It also escapes DEL as `\u007f`, which every backend
+/// prints raw. The pattern takes an escaped backslash as a unit, so the `b` in `\\b` is left
+/// alone.
+const TOJSON_HELPER: &str = r#"def tl_tojson: tojson | gsub("\\\\(?<c>[\\\\bf]|u007f)"; if .c == "\\" then "\\\\" elif .c == "b" then "\\u0008" elif .c == "f" then "\\u000c" else "\u007f" end);
+"#;
+
+/// Whether a body of this type is rendered to JSON text in the filter (`text`) rather than
+/// handed to jq's `-c` encoder: a Float needs its own spelling and a Str nested in a value needs
+/// `tl_tojson`'s. A top-level Str or a sink prints as it is.
+fn renders_text(enums: &Enums, ty: &Type) -> bool {
+    !matches!(ty, Type::Str | Type::Sink)
+        && (ty::contains_float(enums, ty) || ty::contains_str(enums, ty))
+}
+
+/// Whether `run_jq` passes `-r` for a body of this type: the rendered text has to come through
+/// without a second layer of quoting, and a Str or sink is printed raw to begin with.
+pub fn prints_raw(enums: &Enums, ty: &Type) -> bool {
+    matches!(ty, Type::Str | Type::Sink) || renders_text(enums, ty)
+}
+
 pub fn emit(program: &Program) -> Result<String, String> {
+    let body = emit_filter(program)?;
+    // Which of `text`'s paths quote a Str is spread over `printers` and the body, so the helper
+    // is added by looking at what came out.
+    Ok(if body.contains("tl_tojson") {
+        format!("{TOJSON_HELPER}{body}")
+    } else {
+        body
+    })
+}
+
+fn emit_filter(program: &Program) -> Result<String, String> {
     let enums = &program.enums;
     let mut out = String::new();
     let (arith, arith64, fdiv) = uses_arith(program);
@@ -192,7 +225,10 @@ pub fn emit(program: &Program) -> Result<String, String> {
             unreachable!("fusion only matches a jsonlines body")
         };
         let elem = tir::runtime_elem(&arg.ty).expect("jsonlines's argument has an element");
-        out.push_str(&format!(" | ({} | tojson)\n", canonical(enums, elem, ".")));
+        out.push_str(&format!(
+            " | ({} | tl_tojson)\n",
+            canonical(enums, elem, ".")
+        ));
         return Ok(out);
     }
 
@@ -206,11 +242,11 @@ pub fn emit(program: &Program) -> Result<String, String> {
     }
     // Records are rebuilt in the type's field order, because jq preserves insertion order and
     // an object read from input carries whatever order the input had.
-    if ty::contains_float(enums, &program.body.ty) {
+    if renders_text(enums, &program.body.ty) {
         // A body with a Float anywhere in it renders to its JSON text (`text`) and is printed
         // raw, because jq's `-c` JSON output cannot spell the non-finite values a Float can
-        // hold and prints a nested double in its own notation; `run_jq` sets `-r` for exactly
-        // these body types.
+        // hold and prints a nested double in its own notation; a nested Str renders the same
+        // way for its escapes. `run_jq` sets `-r` for exactly these body types.
         out.push_str(&text(enums, &program.body.ty, &expr(enums, &program.body)));
         out.push('\n');
     } else {
@@ -249,7 +285,7 @@ fn uses_float(program: &Program) -> bool {
 /// inside goes through `canonical` and `tojson`, which is the encoder's own output for it.
 fn text(enums: &Enums, ty: &Type, value: &str) -> String {
     if !ty::contains_float(enums, ty) {
-        return format!("({} | tojson)", canonical(enums, ty, value));
+        return format!("({} | tl_tojson)", canonical(enums, ty, value));
     }
     match ty {
         Type::Float => format!("({value} | tl_show_float)"),

@@ -1,3 +1,9 @@
+- id: del-char-escaping-parity
+  title: 'Parity gap found while landing control-char-escaping-parity (2026-09-24), NOT ruled: DEL (0x7f) in a Str printed inside a Vec or record is escaped as `\u007f` by Rust, Lua and jq, and printed raw by Go, JavaScript, Python and native. JSON does not require escaping it. Needs a maintainer ruling on which spelling wins (four backends print it raw; the runtime quote in runtime/toylang.c only escapes below 0x20), then the three or four others change, plus a corpus case (tests/corpus/control_char_quoting.yaml holds the other control characters) and the sentence in docs/reference/types/str.md that says DEL is unsettled. Probe with `printf ''{"tag": "e\\u007f"}'' | target/debug/toylang run FILE <backend>` over `fn tag(db: { tag: Str }) -> Vec<Str> = [db.tag]; tag(parse stdin)`.'
+  kind: decide
+  needs: []
+  status: proposed
+
 - id: dsv-partials-migration
   title: 'Ruled provisional (prelude-partials-and-mutation round): csv/tsv stay compiler-predefined names until source_in_fn allows stream sources inside function bodies AND a partial-application mechanism is ratified+built -- then move both into prelude.toy as ordinary shadowable partials. Blocked-open, not a live task yet. Neither source_in_fn nor a partial-application-system-build row exists on the board, so `needs` structurally cannot express the real gap -- status set to `proposed` (2026-09-12) so this stops false-reporting as a ready build row (flagged as a recurring false-ready incident, plans/simple-dispatch-design.md, 2026-09-11); set back to `todo` once the real prerequisite rows exist and land.'
   kind: build
@@ -15,12 +21,6 @@
 
 - id: lua-float-print-not-shortest
   title: 'Found by the native runtime port, step 2 (2026-09-24, self-originated): the Lua backend prints 17 digits for some Floats where JavaScript prints 16. `toylang run FILE lua` on `[5.225680706521042e-200, 6.518515124270356e+91, 7.291122019556398e-304]` gives `5.2256807065210415e-200` and so on; every other backend, and Node, print the 16-digit form. Cause: `tl_shortest_digits` in src/emit_lua.rs raises the `%.Ne` precision until it reads back, which finds the shortest LENGTH but takes the correctly rounded decimal at that length, and that decimal sometimes does not round-trip when a different one of the same length does. The old native C runtime had the same loop and differed from Node on 449 of 3,403,219 sampled doubles (about 0.013%); native now uses ryu-js and matches Node on all of them. Fix Lua (a Lua port of a shortest-digits algorithm, or trying the neighbouring 16-digit candidates; check emit_go.rs is unaffected since it uses strconv), then move the pin in tests/backend_llvm.rs (`native_float_printing_is_shortest_not_closest`) to a corpus case, which fails on Lua until then. Also check src/emit_jq.rs `FLOAT_PRINT_HELPER`, whose comment says it is the same algorithm as the C one: it printed correctly on the probe above, so say why.'
-  kind: build
-  needs: []
-  status: todo
-
-- id: control-char-escaping-parity
-  title: 'Parity gap found by the research in plans/native-runtime-rust-research.md section 8 (2026-09-24), RULED by the maintainer: a Str containing control characters printed inside a Vec or record prints two ways today. JS and jq print the JSON short forms (`["a\bb\fc"]`) while Rust, Go, Python, Lua and native print `\u0008` and `\u000c`. Ruling: use `\u0008` and `\u000c` everywhere (five backends already do). Change the JS and jq quoting so all seven agree, add a corpus case that prints a Str holding 0x08 and 0x0c (and one other control character such as 0x01 and 0x1f) inside a Vec and a record, and document the rule where string printing is documented (docs/reference/types). tests/corpus/escapes.yaml covers only quote, backslash and tab, and control_char_escapes.yaml checks input decoding, not quoted output, so neither pins this. Probe with `target/debug/toylang run FILE <rust|go|js|py|lua|jq|llvm>` before and after.'
   kind: build
   needs: []
   status: todo

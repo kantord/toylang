@@ -309,13 +309,13 @@ pub fn run_program(program: &Program, stdin: Option<&str>, backend: Backend) -> 
             &emit_jq::emit(program).map_err(anyhow::Error::msg)?,
             JqInvocation {
                 has_value: value.is_some(),
-                // A Str prints raw, and so does anything with a Float inside: its emitter
-                // renders the value to its JSON text (`text` in emit_jq.rs) because jq's
-                // compact JSON output cannot spell the non-finite values a Float can hold and
-                // prints a nested double in its own notation, so `-r` is what lets the
-                // rendered text through.
-                raw: matches!(program.body.ty, ty::Type::Str | ty::Type::Sink)
-                    || ty::contains_float(&program.enums, &program.body.ty),
+                // A Str prints raw, and so does anything with a Float or a Str inside: its
+                // emitter renders the value to its JSON text (`text` in emit_jq.rs) because
+                // jq's compact JSON output cannot spell the non-finite values a Float can hold,
+                // prints a nested double in its own notation, and spells 0x08 and 0x0c
+                // differently from every other backend, so `-r` is what lets the rendered text
+                // through.
+                raw: emit_jq::prints_raw(&program.enums, &program.body.ty),
                 uses_lines: program.uses_lines || program.dsv.is_some(),
             },
             &feed,

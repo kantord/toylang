@@ -1,0 +1,19 @@
+# A Str holding control characters prints inside a Vec or a record as \u00xx, except the three
+# with a short form the language has always used (\n, \r, \t). JSON would also allow \b and \f;
+# JavaScript's JSON.stringify and jq's tojson produce them, and the other five backends do not,
+# so those two are rewritten to \u0008 and \u000c. The last element checks that a literal
+# backslash followed by b or f is not mistaken for one.
+program: |
+  # fmt: syntax-example
+  fn same(db: { one: Str, many: Vec<Str> }) -> { one: Str, many: Vec<Str> } = db;
+
+
+  same(parse stdin)
+
+input: |
+  {"one": "a\bb\fc", "many": ["\u0001", "\u001f", "x\b\f\u0001\u001fy", "t\tn\nr\r", "\\b\\f\\\b"]}
+
+output: |
+  {"one":"a\u0008b\u000cc","many":["\u0001","\u001f","x\u0008\u000c\u0001\u001fy","t\tn\nr\r","\\b\\f\\\u0008"]}
+
+node_types: [application, input, var]

@@ -1,0 +1,18 @@
+# DEL (0x7f) is not one of the control characters JSON requires escaping (RFC 8259 stops at
+# U+001F), so a Str holding it prints the raw byte inside a Vec or a record, unlike the
+# \u00xx spelling of the bytes below it. The last element is a literal backslash followed by
+# u007f, which must not be mistaken for an escaped DEL. YAML cannot carry a raw 0x7f, hence the
+# double-quoted scalar for the expected output.
+program: |
+  # fmt: syntax-example
+  fn same(db: { one: Str, many: Vec<Str> }) -> { one: Str, many: Vec<Str> } = db;
+
+
+  same(parse stdin)
+
+input: |
+  {"one": "a\u007fb", "many": ["\u007f", "x\u007f\u001fy", "\\u007f"]}
+
+output: "{\"one\":\"a\x7fb\",\"many\":[\"\x7f\",\"x\x7f\\u001fy\",\"\\\\u007f\"]}\n"
+
+node_types: [application, input, var]

@@ -3699,6 +3699,12 @@
   kind: decide
   status: done
 
+- id: control-char-escaping-parity
+  title: 'Parity gap found by the research in plans/native-runtime-rust-research.md section 8 (2026-09-24), RULED by the maintainer: a Str containing control characters printed inside a Vec or record prints two ways today. JS and jq print the JSON short forms (`["a\bb\fc"]`) while Rust, Go, Python, Lua and native print `\u0008` and `\u000c`. Ruling: use `\u0008` and `\u000c` everywhere (five backends already do). Change the JS and jq quoting so all seven agree, add a corpus case that prints a Str holding 0x08 and 0x0c (and one other control character such as 0x01 and 0x1f) inside a Vec and a record, and document the rule where string printing is documented (docs/reference/types). tests/corpus/escapes.yaml covers only quote, backslash and tab, and control_char_escapes.yaml checks input decoding, not quoted output, so neither pins this. Probe with `target/debug/toylang run FILE <rust|go|js|py|lua|jq|llvm>` before and after.'
+  kind: build
+  needs: []
+  status: done
+
 - id: native-runtime-rs-step0-float-overflow
   title: 'Native runtime port, step 0 (plans/native-runtime-rust-research.md section 6 and section 8): fix the heap buffer overflow in `tl_float_to_str` in runtime/toylang.c (`strcpy(tl_alloc(3), "NaN")` writes 4 bytes into 3, `strcpy(tl_alloc(1), "0")` writes 2 into 1; confirmed with AddressSanitizer on input 0.0, and gcc warns with -Wstringop-overflow at -O2); check the other `strcpy` uses in the file for the same mistake; add a regression test that runs the native backend on a program that prints `0.0` and `0.0 / 0.0` (and confirm under AddressSanitizer if you can build the runtime with -fsanitize=address, and say so in the commit if you could not). Also record a baseline of run times for benches/programs on the native backend (wall clock, a handful of runs each, host and date noted) in a new section at the end of plans/native-runtime-rust-research.md, so the later ports can show they did not slow anything down. No other runtime change.'
   kind: build
@@ -3715,4 +3721,10 @@
   title: 'Native runtime port, step 2 (plans/native-runtime-rust-research.md section 6 and section 3.3): port `tl_float_to_str` (C lines 70 to 172, `tl_shortest_digits` and `tl_float_to_str`) to Rust on the `ryu-js` crate, delete those C lines in the same commit (a `tl_*` symbol must be defined in exactly one of C and Rust). The research measured the replacement identical to the C over 3,000,016 doubles (random bit patterns, m*10^e decimals, dyadic fractions, NaN, -0, infinities, 1e21, 1e-7, 1e-6, 123456789012345680000, 5e-324, the extreme normals); repeat a differential of that shape once more against the last C build (a throwaway harness in the scratchpad, not committed) and state the count in the commit. The NaN, `-0` and exponent-boundary rules are pinned by the float corpus cases; they must stay green. Keep the exported signature and the tl_str return layout unchanged.'
   kind: build
   needs: [native-runtime-rs-step1-scaffold, native-runtime-rs-step0-float-overflow]
+  status: done
+
+- id: del-char-quoting-parity
+  title: 'Parity gap left by control-char-escaping-parity (found 2026-09-24), RULED by the maintainer: DEL (0x7f) inside a printed Str prints RAW on every backend. Today Rust, Lua and jq escape it as `\u007f` while Go, JS, Python and native print the raw byte (measured with a jsonlines program over stdin `a<DEL>b`). JSON (RFC 8259) requires escaping only U+0000 to U+001F, so raw is legal and matches four backends. Change Rust, Lua and jq to print DEL raw (find each one''s Str quoting; the Rust and jq paths also print through their own helpers, and check the top-level jsonlines path and the Vec and record paths separately), add a corpus case in tests/corpus/ that prints a Str holding 0x7f inside a Vec, a record and a jsonlines line (see control_char_quoting.yaml and control_char_quoting_lines.yaml for the shape; the corpus requires all seven backends to agree), and replace the `DEL is not settled` sentence in docs/reference/types/str.md with the rule. Probe before and after with `target/debug/toylang run FILE <rust|go|js|py|lua|jq|llvm>`.'
+  kind: build
+  needs: []
   status: done
