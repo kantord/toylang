@@ -5,8 +5,11 @@
 //! A `tl_*` symbol is defined in exactly one of the two: each port deletes its C body in the
 //! same commit that adds the Rust one.
 
+mod input;
+
 use std::alloc::{Layout, alloc};
 use std::cmp::Ordering;
+use std::ffi::{CStr, c_char};
 use std::mem::{offset_of, size_of};
 use std::ptr::{NonNull, null_mut};
 
@@ -47,6 +50,28 @@ fn leak_str(bytes: Vec<u8>) -> *mut TlStr {
 fn fail(msg: &str) -> ! {
     let _ = write_fd(2, format!("toylang: {msg}\n").as_bytes());
     std::process::exit(1);
+}
+
+/// A refusal of the program's input: `toylang: input: <what> at <path>`, exit 1. An empty `path`
+/// reads as `input`, the root. The C JSON parser and `tl_pipe_through` still call this through
+/// `tl_fail`.
+fn fail_at(what: &str, path: &str) -> ! {
+    let path = if path.is_empty() { "input" } else { path };
+    fail(&format!("input: {what} at {path}"))
+}
+
+/// # Safety
+/// `what` and `path` are NUL-terminated strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_fail(what: *const c_char, path: *const c_char) -> ! {
+    let (what, path) = unsafe { (CStr::from_ptr(what), CStr::from_ptr(path)) };
+    fail_at(&what.to_string_lossy(), &path.to_string_lossy())
+}
+
+/// The only way arithmetic can fail.
+#[unsafe(no_mangle)]
+pub extern "C" fn tl_div_by_zero() -> ! {
+    fail("divided by zero")
 }
 
 /// C's `tl_alloc` printed this and exited 1 when malloc failed; Rust's allocation error handler
@@ -225,6 +250,13 @@ fn leak_array<T>(n: i64) -> *mut T {
 fn leak_vec(len: i64, ncols: i64, cols: *mut *mut i64) -> *mut TlVec {
     let v = leak_array::<TlVec>(1);
     unsafe { v.write(TlVec { len, ncols, cols }) };
+    v
+}
+
+/// A one-column Vec holding `slots`.
+fn vec_of_slots(slots: &[i64]) -> *mut TlVec {
+    let v = tl_vec_new(slots.len() as i64, 1);
+    unsafe { column_mut(v, 0) }.copy_from_slice(slots);
     v
 }
 
@@ -917,6 +949,53 @@ pub unsafe extern "C" fn tl_vec_max_by(
     unsafe { opt_of_row(v, best as i64, is_record) }
 }
 
+/// Whether `s` is valid UTF-8, refusing what a Str cannot hold: overlong forms, surrogates and
+/// anything past U+10FFFF, which the C validator this replaced let through.
+///
+/// # Safety
+/// `s` is valid for `len` bytes (it may be null when `len` is zero).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_utf8_valid(s: *const u8, len: usize) -> i32 {
+    let s = if len == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(s, len) }
+    };
+    std::str::from_utf8(s).is_ok() as i32
+}
+
+/// Split one Str on a literal delimiter: every occurrence, in order, with the empty string one
+/// empty field and a trailing delimiter a trailing empty field, the same shape `str.split` gives
+/// on every other backend. The delimiter is searched literally, never as a pattern.
+///
+/// An empty delimiter is unreachable (the checker refuses `dsv("")`); `str::split("")` would give
+/// a field per character with an empty one at each end, where the C loop never advanced.
+fn split(s: &[u8], sep: &[u8]) -> *mut TlVec {
+    let (Ok(s), Ok(sep)) = (std::str::from_utf8(s), std::str::from_utf8(sep)) else {
+        fail("split of a Str that is not valid UTF-8");
+    };
+    let fields: Vec<i64> = s
+        .split(sep)
+        .map(|field| leak_str(field.as_bytes().to_vec()) as i64)
+        .collect();
+    vec_of_slots(&fields)
+}
+
+/// Split every line of a Vec<Str> on the delimiter, one row per line: `dsv(delim)`. The outer Vec
+/// is a single column of inner Vecs, the struct-of-arrays spelling of Vec<Vec<Str>>.
+///
+/// # Safety
+/// `lines` is a live one-column `TlVec` of Strs and `sep` a live Str.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tl_split_lines(lines: *const TlVec, sep: *const TlStr) -> *mut TlVec {
+    let sep = unsafe { bytes(sep) };
+    let rows: Vec<i64> = unsafe { column(lines, 0) }
+        .iter()
+        .map(|&line| split(unsafe { bytes(line as *const TlStr) }, sep) as i64)
+        .collect();
+    vec_of_slots(&rows)
+}
+
 /// JS's `String(number)`: shortest round-trip digits laid out by ECMA-262 Number::toString, so
 /// NaN, `Infinity`, `-Infinity`, `-0` printing as `0`, fixed notation up to 21 digits and
 /// scientific beyond are all ryu-js's rules, not restated here.
@@ -1344,5 +1423,63 @@ mod tests {
             let bad = leak_str(vec![b'a', 0xe2, 0x82]);
             assert_eq!(column_of(tl_chars(bad), 0), [97, 0xfffd]);
         }
+    }
+
+    unsafe fn fields_of(v: *const TlVec) -> Vec<String> {
+        unsafe { column(v, 0) }
+            .iter()
+            .map(|&s| String::from_utf8(unsafe { bytes(s as *const TlStr) }.to_vec()).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn split_keeps_empty_and_trailing_fields() {
+        let cut = |s: &str, sep: &str| unsafe { fields_of(split(s.as_bytes(), sep.as_bytes())) };
+        assert_eq!(cut("a,b,c", ","), ["a", "b", "c"]);
+        assert_eq!(cut("", ","), [""], "the empty Str is one empty field");
+        assert_eq!(
+            cut("a,", ","),
+            ["a", ""],
+            "a trailing delimiter is a trailing field"
+        );
+        assert_eq!(cut(",,", ","), ["", "", ""]);
+        assert_eq!(
+            cut("a::b:c", "::"),
+            ["a", "b:c"],
+            "the delimiter is literal, and can be long"
+        );
+        assert_eq!(cut(".*", ".*"), ["", ""], "never a pattern");
+        assert_eq!(cut("h\u{e9},\u{1f600}", ","), ["h\u{e9}", "\u{1f600}"]);
+    }
+
+    #[test]
+    fn split_lines_makes_a_row_per_line() {
+        unsafe {
+            let lines = vec_of_slots(&[str_slot("a\tb"), str_slot(""), str_slot("c")]);
+            let out = tl_split_lines(lines, leak_str(b"\t".to_vec()));
+            let rows: Vec<Vec<String>> = column(out, 0)
+                .iter()
+                .map(|&r| fields_of(r as *const TlVec))
+                .collect();
+            assert_eq!(rows, [vec!["a", "b"], vec![""], vec!["c"]]);
+            assert_eq!(
+                tl_vec_len(tl_split_lines(tl_vec_new(0, 1), leak_str(vec![b',']))),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn utf8_validity_is_the_strict_definition() {
+        let valid = |b: &[u8]| unsafe { tl_utf8_valid(b.as_ptr(), b.len()) } == 1;
+        assert!(valid(b"") && valid(b"abc") && valid("\u{e9}\u{20ac}\u{1f600}".as_bytes()));
+        assert!(unsafe { tl_utf8_valid(std::ptr::null(), 0) } == 1);
+        assert!(!valid(&[0x80]), "a continuation byte on its own");
+        assert!(!valid(&[0xc3]), "a sequence cut short");
+        assert!(!valid(&[0xc0, 0x80]), "overlong NUL");
+        assert!(!valid(&[0xe0, 0x80, 0x80]), "overlong three-byte form");
+        assert!(!valid(&[0xed, 0xa0, 0x80]), "a surrogate");
+        assert!(!valid(&[0xf4, 0x90, 0x80, 0x80]), "past U+10FFFF");
+        assert!(!valid(&[0xff]));
     }
 }

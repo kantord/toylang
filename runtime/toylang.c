@@ -115,13 +115,9 @@ typedef struct tl_open_enum {
     const struct tl_open_enum *up;
 } tl_open_enum;
 
-static void tl_fail(const char *what, const char *path) {
-    char buf[512];
-    int n = snprintf(buf, sizeof buf, "toylang: input: %s at %s\n", what,
-                     path[0] ? path : "input");
-    (void)!write(2, buf, (size_t)n);
-    exit(1);
-}
+/* Defined in runtime-rs: `toylang: input: <what> at <path>` on stderr, then exit 1. */
+_Noreturn void tl_fail(const char *what, const char *path);
+int tl_utf8_valid(const char *s, size_t len);
 
 static void tl_skip_ws(tl_json *j) {
     while (j->p < j->end && (*j->p == ' ' || *j->p == '\t' || *j->p == '\n' || *j->p == '\r')) {
@@ -845,143 +841,6 @@ int tl_read_one_input(const tl_str *descriptor, int64_t *out) {
         free(line);
         return 1;
     }
-}
-
-/* One raw line of stdin at a time: the streaming counterpart of tl_collect_lines below, the
- * same way tl_read_one_input above is tl_read_inputs's. Returns 0 at EOF (*out untouched) and
- * 1 with *out set to the line's tl_str otherwise. Same trailing-newline rule as
- * tl_collect_lines; a blank line is a line, since `lines` keeps them. A non-UTF-8 line is
- * refused rather than carried: a Str is Unicode scalar values (kantord/toylang#102). */
-static int tl_utf8_valid(const char *s, size_t len) {
-    size_t i = 0;
-    while (i < len) {
-        unsigned char b = (unsigned char)s[i];
-        if (b < 0x80) {
-            i++;
-        } else if (b >= 0xC2 && b < 0xE0) {
-            if (i + 1 >= len || ((unsigned char)s[i + 1] & 0xC0) != 0x80) return 0;
-            i += 2;
-        } else if (b >= 0xE0 && b < 0xF0) {
-            if (i + 2 >= len || ((unsigned char)s[i + 1] & 0xC0) != 0x80
-                || ((unsigned char)s[i + 2] & 0xC0) != 0x80) return 0;
-            i += 3;
-        } else if (b >= 0xF0 && b < 0xF5) {
-            if (i + 3 >= len || ((unsigned char)s[i + 1] & 0xC0) != 0x80
-                || ((unsigned char)s[i + 2] & 0xC0) != 0x80
-                || ((unsigned char)s[i + 3] & 0xC0) != 0x80) return 0;
-            i += 4;
-        } else {
-            return 0;
-        }
-    }
-    return 1;
-}
-
-int tl_read_one_line(int64_t *out) {
-    char *line = NULL;
-    size_t cap = 0;
-    ssize_t len = getline(&line, &cap, stdin);
-    if (len == -1) {
-        free(line);
-        return 0;
-    }
-    if (len > 0 && line[len - 1] == '\n') {
-        len--;
-    }
-    if (!tl_utf8_valid(line, (size_t)len)) {
-        tl_fail("stdin is not valid UTF-8", "lines");
-    }
-    char *bytes = tl_alloc((size_t)len);
-    memcpy(bytes, line, (size_t)len);
-    *out = (int64_t)tl_str_new(bytes, len);
-    free(line);
-    return 1;
-}
-
-/* One line of stdin at a time via getline, in contrast to tl_read_input just above, which reads
- * the whole stream before anything else can run. getline reuses the same growable buffer across
- * calls, so each line is copied out to its own allocation before being stored; the buffer would
- * otherwise be overwritten, and every previously stored line, on the next call.
- *
- * The trailing newline getline includes is stripped; a final line with none is still yielded,
- * matching wc -l's undercount being the mistake to avoid rather than the convention to follow.
- * A bare \r is left untouched as ordinary content, matching jq -R and Python's own stdin
- * iteration, neither of which treats CRLF specially. */
-tl_vec *tl_collect_lines(void) {
-    tl_list items = {NULL, 0, 0};
-    char *line = NULL;
-    size_t cap = 0;
-    ssize_t len;
-    while ((len = getline(&line, &cap, stdin)) != -1) {
-        if (len > 0 && line[len - 1] == '\n') {
-            len--;
-        }
-        if (!tl_utf8_valid(line, (size_t)len)) {
-            tl_fail("stdin is not valid UTF-8", "lines");
-        }
-        char *bytes = tl_alloc((size_t)len);
-        memcpy(bytes, line, (size_t)len);
-        tl_list_push(&items, (int64_t)tl_str_new(bytes, len));
-    }
-    free(line);
-
-    tl_vec *v = tl_vec_new(items.len, 1);
-    for (int64_t i = 0; i < items.len; i++) {
-        v->cols[0][i] = items.data[i];
-    }
-    return v;
-}
-
-/* Split one Str on a literal delimiter: every occurrence, in order, with the empty string one
- * empty field and a trailing delimiter a trailing empty field, the same shape `str.split` gives
- * on every other backend. The delimiter is searched literally, never as a pattern. */
-static tl_vec *tl_split(const tl_str *s, const tl_str *sep) {
-    tl_list items = {NULL, 0, 0};
-    int64_t pos = 0;
-    while (pos <= s->len) {
-        int64_t found = -1;
-        for (int64_t i = pos; i + sep->len <= s->len; i++) {
-            if (memcmp(s->ptr + i, sep->ptr, (size_t)sep->len) == 0) {
-                found = i;
-                break;
-            }
-        }
-        int64_t n;
-        if (found == -1) {
-            n = s->len - pos;
-        } else {
-            n = found - pos;
-        }
-        char *bytes = tl_alloc((size_t)n);
-        memcpy(bytes, s->ptr + pos, (size_t)n);
-        tl_list_push(&items, (int64_t)tl_str_new(bytes, n));
-        if (found == -1) {
-            break;
-        }
-        pos = found + sep->len;
-    }
-    tl_vec *v = tl_vec_new(items.len, 1);
-    for (int64_t i = 0; i < items.len; i++) {
-        v->cols[0][i] = items.data[i];
-    }
-    return v;
-}
-
-/* Split every line of a Vec<Str> on the delimiter, one row per line: `dsv(delim)`. The outer
- * Vec is a single column of inner Vecs, the struct-of-arrays spelling of Vec<Vec<Str>>. */
-tl_vec *tl_split_lines(tl_vec *lines, tl_str *sep) {
-    tl_vec *out = tl_vec_new(lines->len, 1);
-    for (int64_t i = 0; i < lines->len; i++) {
-        out->cols[0][i] = (int64_t)tl_split((tl_str *)lines->cols[0][i], sep);
-    }
-    return out;
-}
-
-/* The only way arithmetic can fail. */
-_Noreturn void tl_div_by_zero(void) {
-    const char *msg = "toylang: divided by zero\n";
-    (void)!write(2, msg, strlen(msg));
-    exit(1);
 }
 
 /* pipe_through. One poll loop feeds the child's stdin and drains its stdout and stderr, so no
