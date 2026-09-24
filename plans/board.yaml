@@ -202,13 +202,6 @@
   prio: 4
   status: todo
 
-- id: mutation-rule-v1-checkpoint-lua
-  title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Lua commit landed clean before
-    starting Go.'
-  kind: decide
-  needs: [mutation-rule-v1-build-lua]
-  status: todo
-
 - id: mutation-rule-v1-build-go
   title: 'Mutation-as-optimization v1 -- emit for the Go backend only (src/emit_go.rs).'
   kind: build

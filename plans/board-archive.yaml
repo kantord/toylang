@@ -3824,3 +3824,10 @@
   kind: build
   needs: [closures-first-class-functions-design]
   status: done
+
+- id: mutation-rule-v1-checkpoint-lua
+  title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Lua commit landed clean before
+    starting Go.'
+  kind: decide
+  needs: [mutation-rule-v1-build-lua]
+  status: done
