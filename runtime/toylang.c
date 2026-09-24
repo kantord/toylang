@@ -15,10 +15,10 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <math.h>
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +33,9 @@ typedef struct {
     const char *ptr;
     int64_t len;
 } tl_str;
+
+/* runtime-rs's TlStr is defined to this layout and checks the same offsets. */
+_Static_assert(sizeof(tl_str) == 16 && offsetof(tl_str, len) == 8, "tl_str layout");
 
 static void *tl_alloc(size_t n) {
     void *p = malloc(n);
@@ -64,110 +67,6 @@ tl_str *tl_int_to_str(int64_t n) {
     int len = snprintf(buf, sizeof buf, "%lld", (long long)n);
     char *bytes = tl_alloc((size_t)len);
     memcpy(bytes, buf, (size_t)len);
-    return tl_str_new(bytes, len);
-}
-
-/* The shortest decimal digit run that round-trips to |x| (x finite, nonzero), via increasing-
- * precision search over "%e": libc has no shortest-round-trip mode of its own (unlike Rust's
- * Display or Go's strconv.FormatFloat(-1)), so this tries 1 significant digit, then 2, and so
- * on, stopping at the first that reads back to exactly x. IEEE 754 binary64 always round-trips
- * within 17 significant digits (Steele & White), so the loop always terminates well inside buf.
- * `*k` gets the digit count, `*n` the ECMA-262 Number::toString sense of `n` -- the digit run
- * read as an integer, times 10^(n-k), equals x -- which is what tl_float_to_str below lays out
- * into fixed or scientific notation. */
-static void tl_shortest_digits(double x, char *digits, int *k, int *n) {
-    char buf[32];
-    int p;
-    for (p = 1; p <= 17; p++) {
-        snprintf(buf, sizeof buf, "%.*e", p - 1, x);
-        if (strtod(buf, NULL) == x) {
-            break;
-        }
-    }
-    /* buf is "d.ddde+NN" (p > 1) or "de+NN" (p == 1, no decimal point). */
-    int di = 0;
-    int i = 0;
-    digits[di++] = buf[i++];
-    if (buf[i] == '.') {
-        i++;
-        while (buf[i] != 'e') {
-            digits[di++] = buf[i++];
-        }
-    }
-    i++; /* skip 'e' */
-    *k = di;
-    *n = atoi(buf + i) + 1;
-}
-
-/* JS's `String(number)` -- the reference every backend's Float printing has to match byte for
- * byte, per plans/stdout-stderr-effect-model-research.md's sibling spike and ADR 0007 -- laid
- * out here as ECMA-262's Number::toString rules applied to the digits tl_shortest_digits found:
- * fixed notation while the decimal point falls inside or just past the digit run (up to 21
- * digits out), scientific otherwise, no zero-padded exponent, and -0 printing as plain "0" the
- * way JS's own String(-0) does. Verified against Node's actual output across a fuzz run over
- * the full double range plus every notation-switch boundary (kantord/toylang#149), not derived
- * from the spec text alone.
- */
-tl_str *tl_float_to_str(double x) {
-    char body[64];
-
-    if (isnan(x)) {
-        return tl_str_new(memcpy(tl_alloc(3), "NaN", 3), 3);
-    }
-    if (isinf(x)) {
-        const char *s = x < 0 ? "-Infinity" : "Infinity";
-        int len = (int)strlen(s);
-        return tl_str_new(memcpy(tl_alloc((size_t)len), s, (size_t)len), len);
-    }
-    if (x == 0.0) {
-        return tl_str_new(memcpy(tl_alloc(1), "0", 1), 1);
-    }
-
-    int neg = x < 0;
-    double ax = neg ? -x : x;
-
-    char digits[24];
-    int k, n;
-    tl_shortest_digits(ax, digits, &k, &n);
-
-    int bi = 0;
-    if (k <= n && n <= 21) {
-        memcpy(body + bi, digits, (size_t)k);
-        bi += k;
-        for (int i = 0; i < n - k; i++) {
-            body[bi++] = '0';
-        }
-    } else if (0 < n && n <= 21) {
-        memcpy(body + bi, digits, (size_t)n);
-        bi += n;
-        body[bi++] = '.';
-        memcpy(body + bi, digits + n, (size_t)(k - n));
-        bi += k - n;
-    } else if (-6 < n && n <= 0) {
-        body[bi++] = '0';
-        body[bi++] = '.';
-        for (int i = 0; i < -n; i++) {
-            body[bi++] = '0';
-        }
-        memcpy(body + bi, digits, (size_t)k);
-        bi += k;
-    } else {
-        body[bi++] = digits[0];
-        if (k > 1) {
-            body[bi++] = '.';
-            memcpy(body + bi, digits + 1, (size_t)(k - 1));
-            bi += k - 1;
-        }
-        int e = n - 1;
-        bi += snprintf(body + bi, sizeof(body) - (size_t)bi, "e%c%d", e < 0 ? '-' : '+', abs(e));
-    }
-
-    int len = bi + (neg ? 1 : 0);
-    char *bytes = tl_alloc((size_t)len);
-    if (neg) {
-        bytes[0] = '-';
-    }
-    memcpy(bytes + (neg ? 1 : 0), body, (size_t)bi);
     return tl_str_new(bytes, len);
 }
 

@@ -3710,3 +3710,9 @@
   kind: build
   needs: []
   status: done
+
+- id: native-runtime-rs-step2-float-printing
+  title: 'Native runtime port, step 2 (plans/native-runtime-rust-research.md section 6 and section 3.3): port `tl_float_to_str` (C lines 70 to 172, `tl_shortest_digits` and `tl_float_to_str`) to Rust on the `ryu-js` crate, delete those C lines in the same commit (a `tl_*` symbol must be defined in exactly one of C and Rust). The research measured the replacement identical to the C over 3,000,016 doubles (random bit patterns, m*10^e decimals, dyadic fractions, NaN, -0, infinities, 1e21, 1e-7, 1e-6, 123456789012345680000, 5e-324, the extreme normals); repeat a differential of that shape once more against the last C build (a throwaway harness in the scratchpad, not committed) and state the count in the commit. The NaN, `-0` and exponent-boundary rules are pinned by the float corpus cases; they must stay green. Keep the exported signature and the tl_str return layout unchanged.'
+  kind: build
+  needs: [native-runtime-rs-step1-scaffold, native-runtime-rs-step0-float-overflow]
+  status: done

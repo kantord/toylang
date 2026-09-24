@@ -84,8 +84,8 @@ const FLOAT_HELPER: &str = r#"def tl_fdiv($a; $b):
 /// consistent, magnitude than JS's ECMA-262 rule, and zero-pads the exponent (`1e-06`, not
 /// `1e-6`). So `tostring`'s output is reparsed (one of two shapes: `d(.ddd)?[eE][+-]?NN`, or a
 /// plain decimal/integer) back into digits and a decimal-point position, then laid out again
-/// using the same fixed-vs-scientific rule this project's Native backend already implements in
-/// C (runtime/toylang.c's `tl_float_to_str`) -- the same algorithm, a second time, because jq
+/// using the same fixed-vs-scientific rule this project's Native backend implements (runtime-rs's
+/// `tl_float_to_str`, on ryu-js) -- the same layout, a second time, because jq
 /// has no shortest-round-trip primitive of its own to just call with different flags the way
 /// Go's `strconv.FormatFloat` does. `+ 0.0` still strips a source literal's own suffix (`2.0`
 /// would otherwise print as `2.0`) before any of this runs. Verified the same way as the C

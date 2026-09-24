@@ -9,3 +9,8 @@ publish = false
 # Profile settings live in the workspace root (`profile.runtime`), because cargo ignores them here.
 [lib]
 crate-type = ["staticlib"]
+
+[dependencies]
+# ECMAScript Number::toString digits and layout, the format every backend's Float printing
+# matches (ADR 0007). Replaces the C snprintf/strtod retry loop.
+ryu-js = "1.0.3"

@@ -257,7 +257,8 @@ evidence:
   as `m * 10^e`, dyadic fractions, plus NaN, -0, both infinities, `1e21`, `1e-7`, `1e-6`,
   `123456789012345680000`, `5e-324`, the largest and smallest normal values) fed to the C
   `tl_float_to_str` (the real file, `#include`d) and to `ryu_js::Buffer::format`: output
-  **identical for every input**, for both ryu-js 0.2.2 and 1.0.3. Speed: 12.4 s versus 0.30 s
+  **identical for every input**, for both ryu-js 0.2.2 and 1.0.3. (Repeated at step 2 on a different 3,403,219-double sample, this did not hold: the C printed 17 digits
+  where Node and ryu-js print 16 on 449 inputs. See the board row `lua-float-print-not-shortest`.) Speed: 12.4 s versus 0.30 s
   including I/O, about 40 times faster. Rust's own `Display` is not a replacement on its own:
   `emit_rs.rs:74` notes it is shortest-round-trip but holds fixed notation across the range,
   which is why that backend has a wrapper.
