@@ -3728,3 +3728,9 @@
   kind: build
   needs: []
   status: done
+
+- id: lua-float-print-not-shortest
+  title: 'Found by the native runtime port, step 2 (2026-09-24, self-originated): the Lua backend prints 17 digits for some Floats where JavaScript prints 16. `toylang run FILE lua` on `[5.225680706521042e-200, 6.518515124270356e+91, 7.291122019556398e-304]` gives `5.2256807065210415e-200` and so on; every other backend, and Node, print the 16-digit form. Cause: `tl_shortest_digits` in src/emit_lua.rs raises the `%.Ne` precision until it reads back, which finds the shortest LENGTH but takes the correctly rounded decimal at that length, and that decimal sometimes does not round-trip when a different one of the same length does. The old native C runtime had the same loop and differed from Node on 449 of 3,403,219 sampled doubles (about 0.013%); native now uses ryu-js and matches Node on all of them. Fix Lua (a Lua port of a shortest-digits algorithm, or trying the neighbouring 16-digit candidates; check emit_go.rs is unaffected since it uses strconv), then move the pin in tests/backend_llvm.rs (`native_float_printing_is_shortest_not_closest`) to a corpus case, which fails on Lua until then. Also check src/emit_jq.rs `FLOAT_PRINT_HELPER`, whose comment says it is the same algorithm as the C one: it printed correctly on the probe above, so say why.'
+  kind: build
+  needs: []
+  status: done
