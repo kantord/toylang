@@ -1,10 +1,52 @@
-# `tail_recursion_deep` with a fat frame: the Rust backend emitted a self tail call as a real
-# call, and the cheap frame of that case (two Ints) let 100k levels squeak under the 8 MiB main
-# stack of an unoptimized rustc build. This state record carries a Str and two Vecs and a call
-# to `pick` in the argument, so a real call costs ~2.7 KB per level unoptimized and 12000 levels
-# overflow it; as a loop it costs nothing. Found by benches/programs/fasta.toy, which drew 5N
+# A self tail call runs in constant stack (kantord/toylang#141), whatever the frame weighs.
+# `tail_recursion_deep` carries two Ints, a frame too small to overflow anything at 100k levels
+# on the statically compiled backends, which is how the Rust backend (which emitted a real call)
+# and then Go and native passed it. This state record carries a Str, Vecs and a ten-by-ten block
+# of empty Vecs, and `fill` calls `pick` in its argument, so a real call costs ~2.7 KB per level
+# on unoptimized Rust (8 MiB stack), a few KB on Go (1 GB goroutine cap) and ~100 B on native
+# (8 MiB): 150000 levels overflow all three without the loop, and as a loop cost nothing. `Row`
+# and `Pad` exist only to give the frame its weight; a flat record of a hundred Vecs is the
+# same program in three hundred more lines. Found by benches/programs/fasta.toy, which drew 5N
 # bases through the same shape and aborted on rust at N=500 while every other backend printed.
+# The count of flushed lines stands in for the lines themselves: a growing Vec in the state is
+# cloned on every field read on Rust and made 150000 levels take over a minute there.
 program: |
+  type Row = { a: Vec<Int>, b: Vec<Int>, c: Vec<Int>, d: Vec<Int>, e: Vec<Int>, f: Vec<Int>, g: Vec<Int>, h: Vec<Int>, i: Vec<Int>, j: Vec<Int> };
+
+
+  type Pad = { r0: Row, r1: Row, r2: Row, r3: Row, r4: Row, r5: Row, r6: Row, r7: Row, r8: Row, r9: Row };
+
+
+  fn row() -> Row =
+    {
+      a: [],
+      b: [],
+      c: [],
+      d: [],
+      e: [],
+      f: [],
+      g: [],
+      h: [],
+      i: [],
+      j: []
+    };
+
+
+  fn pad() -> Pad =
+    {
+      r0: row(),
+      r1: row(),
+      r2: row(),
+      r3: row(),
+      r4: row(),
+      r5: row(),
+      r6: row(),
+      r7: row(),
+      r8: row(),
+      r9: row()
+    };
+
+
   fn pick(s: { i: Int, w: Vec<Int>, acc: Int }) -> Int =
     s
     | s.acc + s.w[s.i]! > 50 -> s.i or
@@ -16,48 +58,50 @@ program: |
       left: Int,
       col: Int,
       line: Str,
-      lines: Vec<Str>,
+      flushed: Int,
       seed: Int,
       syms: Vec<Str>,
-      w: Vec<Int>
+      w: Vec<Int>,
+      pad: Pad
     }
-  ) -> Vec<Str> =
+  ) -> Int =
     s
-    | s.left == 0 -> s.lines + [s.line] or
+    | s.left == 0 -> s.flushed or
       s.col == 60 ->
         fill {
           left: s.left,
           col: 0,
           line: "",
-          lines: s.lines + [s.line],
+          flushed: s.flushed + 1,
           seed: s.seed,
           syms: s.syms,
-          w: s.w
+          w: s.w,
+          pad: s.pad
         } or
       fill {
         left: s.left - 1,
         col: s.col + 1,
         line: s.line + s.syms[pick { i: 0, w: s.w, acc: s.seed % 7 }]!,
-        lines: s.lines,
+        flushed: s.flushed,
         seed: s.seed + 1,
         syms: s.syms,
-        w: s.w
+        w: s.w,
+        pad: s.pad
       };
 
 
-  length(
-    fill {
-      left: 12000,
-      col: 0,
-      line: "",
-      lines: [],
-      seed: 0,
-      syms: ["a", "c", "g", "t"],
-      w: [20, 20, 20, 20]
-    }
-  )
+  fill {
+    left: 150000,
+    col: 0,
+    line: "",
+    flushed: 0,
+    seed: 0,
+    syms: ["a", "c", "g", "t"],
+    w: [20, 20, 20, 20],
+    pad: pad()
+  }
 
 output: |
-  200
+  2499
 
-node_types: [application, arith.add, arith.rem, arith.sub, builtin.length, compare.eq, compare.gt, concat, int, local, match, pipe, projection, record-literal, selection.collapse, str, unwrap, var, vec-literal]
+node_types: [application, arith.add, arith.rem, arith.sub, compare.eq, compare.gt, concat, int, local, match, pipe, projection, record-literal, selection.collapse, str, unwrap, var, vec-literal]

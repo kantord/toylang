@@ -19,7 +19,8 @@ use inkwell::targets::{
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType};
 use inkwell::values::{
-    BasicMetadataValueEnum, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue,
+    BasicMetadataValueEnum, BasicValueEnum, FloatValue, FunctionValue, IntValue, PhiValue,
+    PointerValue,
 };
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
 
@@ -504,15 +505,134 @@ impl<'ctx> Emitter<'ctx, '_> {
 
         self.params.clear();
         self.locals.clear();
-        if let Some(param) = &func.param {
-            let arg = value.get_nth_param(0).expect("declared with one param");
-            self.params.insert(param.clone(), arg);
+        let arg = func.param.as_ref().map(|param| {
+            (
+                param,
+                value.get_nth_param(0).expect("declared with one param"),
+            )
+        });
+        if !tir::has_tail_call(&func.name, &func.body) {
+            if let Some((param, arg)) = arg {
+                self.params.insert(param.clone(), arg);
+            }
+            let body = self.expr(&func.body)?;
+            self.builder
+                .build_return(Some(&body))
+                .map_err(|e| e.to_string())?;
+            return Ok(());
         }
 
-        let body = self.expr(&func.body)?;
+        // A self tail call branches back here instead of calling (kantord/toylang#141), so the
+        // parameter is a phi: the argument on entry, each tail call's new argument on the back
+        // edge. Locals are SSA values defined after the header, so a closure built in one
+        // iteration keeps the values of that iteration, which the copy-at-build env already
+        // guarantees.
+        let header = self.ctx.append_basic_block(value, "tail.loop");
         self.builder
-            .build_return(Some(&body))
+            .build_unconditional_branch(header)
             .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(header);
+        let phi = match arg {
+            Some((param, arg)) => {
+                let phi = self
+                    .builder
+                    .build_phi(arg.get_type(), "tail.arg")
+                    .map_err(|e| e.to_string())?;
+                phi.add_incoming(&[(&arg, entry)]);
+                self.params.insert(param.clone(), phi.as_basic_value());
+                Some(phi)
+            }
+            None => None,
+        };
+        self.tail_stmts(&func.name, header, phi, &func.body)
+    }
+
+    /// `t` in the tail position of a function whose entry is a loop: a base case returns, a
+    /// self tail call adds its argument to the parameter phi and branches to `header`. The tail
+    /// positions are the ones `tir::has_tail_call` counts, a total match's arm bodies and a
+    /// Bind's body, so unlike `expr`'s Match nothing joins afterwards and no result slot is
+    /// needed.
+    fn tail_stmts(
+        &mut self,
+        name: &str,
+        header: BasicBlock<'ctx>,
+        phi: Option<PhiValue<'ctx>>,
+        t: &Tir,
+    ) -> Result<(), String> {
+        match &t.kind {
+            Kind::Call { func, arg } if func == name => {
+                let next = arg.as_ref().map(|a| self.expr(a)).transpose()?;
+                if let (Some(phi), Some(next)) = (phi, next) {
+                    let from = self
+                        .builder
+                        .get_insert_block()
+                        .ok_or("no block to branch from")?;
+                    phi.add_incoming(&[(&next, from)]);
+                }
+                self.builder
+                    .build_unconditional_branch(header)
+                    .map_err(|e| e.to_string())?;
+            }
+            Kind::Bind { local, value, body } => {
+                let value = self.expr(value)?;
+                self.locals.insert(*local, Slot::Value(value));
+                self.tail_stmts(name, header, phi, body)?;
+            }
+            Kind::Match {
+                subject,
+                arms,
+                partial: false,
+            } => {
+                let variants = match &subject.ty {
+                    Type::Enum { .. } => ty::variants(self.enums, &subject.ty),
+                    _ => Vec::new(),
+                };
+                let function = self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_parent())
+                    .ok_or("no function to branch in")?;
+                let i64t = self.ctx.i64_type();
+                let subj = arms
+                    .iter()
+                    .any(|a| a.variant.is_some())
+                    .then(|| self.expr(subject))
+                    .transpose()?;
+                let tag = match subj {
+                    Some(subj) => Some(
+                        self.call_rt(self.rt.rec_get, &[subj, i64t.const_zero().into()], "tag")?
+                            .into_int_value(),
+                    ),
+                    None => None,
+                };
+                for (i, arm) in arms.iter().enumerate() {
+                    let last = i + 1 == arms.len();
+                    let next = if last {
+                        None
+                    } else {
+                        let is = self.arm_test(tag, &variants, arm)?;
+                        let arm_block = self.ctx.append_basic_block(function, "match.arm");
+                        let next = self.ctx.append_basic_block(function, "match.next");
+                        self.builder
+                            .build_conditional_branch(is, arm_block, next)
+                            .map_err(|e| e.to_string())?;
+                        self.builder.position_at_end(arm_block);
+                        Some(next)
+                    };
+                    self.bind_payload(subj, &variants, arm)?;
+                    self.tail_stmts(name, header, phi, &arm.body)?;
+                    if let Some(next) = next {
+                        self.builder.position_at_end(next);
+                    }
+                }
+            }
+            _ => {
+                let v = self.expr(t)?;
+                self.builder
+                    .build_return(Some(&v))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
         Ok(())
     }
 
@@ -2243,24 +2363,7 @@ impl<'ctx> Emitter<'ctx, '_> {
                 for (i, arm) in arms.iter().enumerate() {
                     let arm_block = self.ctx.append_basic_block(function, "match.arm");
                     if *partial || i + 1 < arms.len() {
-                        let is = match (&arm.variant, &arm.guard) {
-                            (Some(variant), _) => {
-                                let vi = variants
-                                    .iter()
-                                    .position(|(n, _)| n == variant)
-                                    .ok_or_else(|| format!("`{variant}` is not a variant"))?;
-                                self.builder
-                                    .build_int_compare(
-                                        IntPredicate::EQ,
-                                        tag.ok_or("a variant arm with no tag read")?,
-                                        i64t.const_int(vi as u64, false),
-                                        "is",
-                                    )
-                                    .map_err(|e| e.to_string())?
-                            }
-                            (None, Some(g)) => self.expr(g)?.into_int_value(),
-                            (None, None) => return Err("a default arm that is not last".into()),
-                        };
+                        let is = self.arm_test(tag, &variants, arm)?;
                         let next = self.ctx.append_basic_block(function, "match.next");
                         self.builder
                             .build_conditional_branch(is, arm_block, next)
@@ -2306,16 +2409,40 @@ impl<'ctx> Emitter<'ctx, '_> {
         })
     }
 
-    /// Compute one arm's body into `slot`, binding the payload local first when the arm has
-    /// one. In a partial chain the slot holds an Opt, so the body is boxed into the present
-    /// one on its way in.
-    fn match_arm(
+    /// The Bool that says whether `arm` is the one to run: a variant arm compares the subject's
+    /// tag, a guard arm is its own guard.
+    fn arm_test(
+        &mut self,
+        tag: Option<IntValue<'ctx>>,
+        variants: &[(String, Option<Type>)],
+        arm: &tir::MatchArm,
+    ) -> Result<IntValue<'ctx>, String> {
+        Ok(match (&arm.variant, &arm.guard) {
+            (Some(variant), _) => {
+                let vi = variants
+                    .iter()
+                    .position(|(n, _)| n == variant)
+                    .ok_or_else(|| format!("`{variant}` is not a variant"))?;
+                self.builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        tag.ok_or("a variant arm with no tag read")?,
+                        self.ctx.i64_type().const_int(vi as u64, false),
+                        "is",
+                    )
+                    .map_err(|e| e.to_string())?
+            }
+            (None, Some(g)) => self.expr(g)?.into_int_value(),
+            (None, None) => return Err("a default arm that is not last".into()),
+        })
+    }
+
+    /// Bind the payload local an arm asks for, read out of the subject's box.
+    fn bind_payload(
         &mut self,
         subj: Option<BasicValueEnum<'ctx>>,
         variants: &[(String, Option<Type>)],
         arm: &tir::MatchArm,
-        slot: PointerValue<'ctx>,
-        partial: bool,
     ) -> Result<(), String> {
         if let Some(pid) = arm.payload {
             let variant = arm.variant.as_ref().ok_or("a payload on a default arm")?;
@@ -2335,6 +2462,21 @@ impl<'ctx> Emitter<'ctx, '_> {
             let p = self.read_slot(raw, pty)?;
             self.locals.insert(pid, Slot::Value(p));
         }
+        Ok(())
+    }
+
+    /// Compute one arm's body into `slot`, binding the payload local first when the arm has
+    /// one. In a partial chain the slot holds an Opt, so the body is boxed into the present
+    /// one on its way in.
+    fn match_arm(
+        &mut self,
+        subj: Option<BasicValueEnum<'ctx>>,
+        variants: &[(String, Option<Type>)],
+        arm: &tir::MatchArm,
+        slot: PointerValue<'ctx>,
+        partial: bool,
+    ) -> Result<(), String> {
+        self.bind_payload(subj, variants, arm)?;
         let mut v = self.expr(&arm.body)?;
         if partial {
             let raw = self.to_slot(v, &arm.body.ty)?;
