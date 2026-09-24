@@ -623,3 +623,53 @@ No slowdown outside the noise. fannkuch-redux compiles again at this commit, so 
 now (there is no step 0 baseline for it). These programs spend their time in generated code and
 in Vec construction and element access, which were already Rust at the "before" build, so they
 are a weak test of the ported sorts and reshapes; the unit tests and the corpus carry those.
+
+### Check after step 6 (input in Rust)
+
+Recorded on 2026-09-24 with the load average at about 3.5. The runtime before step 6 (C lines,
+split and JSON parser) against after, the same six programs built by a compiler from each
+commit and timed with `hyperfine -N --warmup 5 --runs 30` on the `benches/inputs/` files. Every
+output is byte-identical between the two builds. Medians would be more honest than means at
+these sizes; the means, in milliseconds, before / after:
+
+| program | before | after |
+| --- | --- | --- |
+| binary-trees | 3.5 | 3.4 |
+| fannkuch-redux | 51.6 | 51.2 |
+| fasta | 2.3 | 2.3 (a first run read 8.2 with a stddev of 2.4; two reruns of 100 gave 2.3 and 2.5) |
+| mandelbrot | 34.2 | 33.0 |
+| n-body | 90.4 | 89.7 |
+| spectral-norm | 35.0 | 35.5 |
+
+No slowdown outside the noise. These programs read a single small number, so they say nothing
+about the reader itself. That was measured on generated input instead (not committed; a
+26 MB document with 300,000 records, the same records as 26 MB of JSON lines, 500,000 floats,
+500,000 text lines), C before and Rust after:
+
+| input | before | after |
+| --- | --- | --- |
+| `parse stdin`, `{ users: Vec<{ name, age, ok }> }` | 3447 ms | 185 ms |
+| `parse stdin`, `Vec<Float>` | 119 ms | 61 ms |
+| `collect` over JSON lines | 273 ms | 174 ms |
+| `jsonlines` over JSON lines | 324 ms | 252 ms |
+| `collect stdin` (lines) | 34 ms | 29 ms |
+| `dsv(",")` | 172 ms | 140 ms |
+
+The 3.4 s row is the C parser allocating a buffer the size of the rest of the input for every
+string it read (`tl_alloc(j->end - j->p)` in `tl_parse_string`), 2.8 s of it in the kernel.
+
+### Findings from step 6
+
+- **The compiler's own serde_json misreads Floats.** `toylang` itself depends on serde_json
+  without `float_roundtrip`, and `run_on` reads every input into a `serde_json::Value` before
+  any backend sees it. Built as `cargo build -p toylang`, `printf 91186252760.18955 | toylang
+  run f.toy <backend>` (with `fn id(x: Float) -> Float = x; id(parse stdin)`) prints
+  `91186252760.18956` on all five backends that run it; the correctly rounded double prints
+  `91186252760.18954`. In a workspace build (`cargo build --workspace`, `just check`) cargo
+  unifies runtime-rs's `float_roundtrip` onto the compiler and the same run prints the right
+  digits, so the test suite cannot see it. Board row `compiler-float-input-roundtrip`.
+- **The C `tl_utf8_valid` accepted overlong forms, surrogates and code points past U+10FFFF.**
+  3,153 of 185,792 sequences tried. Rust's `from_utf8` refuses them.
+- **The descriptor grammar's comment in src/emit_llvm.rs (`descriptor`) still points at
+  runtime/toylang.c.** The grammar now lives at the top of runtime-rs/src/json.rs. Left for step
+  8, which deletes the C file and has to fix that pointer and the ones in tests/corpus/.
