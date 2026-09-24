@@ -3827,7 +3827,13 @@
 
 - id: mutation-rule-v1-checkpoint-lua
   title: 'Mutation-as-optimization v1 -- reevaluate: confirm the Lua commit landed clean before
-    starting Go.'
+    starting Go. CONFIRMED 2026-09-24 (direct session, not drive): 641ac5da landed with the diff read
+    (the freshness analysis; two deliberately broken variants are caught by the corpus and
+    tests/mutation_lua.rs), just check 637/637 green on main. It also fixed a Rust miscompile the
+    shared rule had (a use inside a re-run body). The session itself notes one guard is untested
+    (a non-Local match subject in the freshness analysis), conservative by construction. Clear
+    to start Go. (Archived first without this note by mistake; the note was added in a follow-up
+    commit.)'
   kind: decide
   needs: [mutation-rule-v1-build-lua]
   status: done
