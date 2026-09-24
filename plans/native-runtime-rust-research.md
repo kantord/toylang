@@ -601,3 +601,25 @@ steady enough that a slowdown beyond about 5 ms (mandelbrot, spectral-norm) or 3
 would be outside what this measurement can hide. None of these programs is heavy on printing
 Floats or on the JSON reader, so they say little about the ports of steps 2 and 6 on their own;
 step 8 should read them as a guard against a general slowdown, not as evidence for any one port.
+
+### Check after step 5 (Vec operations in Rust)
+
+Recorded on 2026-09-24 with the load average at about 4. The table above is not reused here,
+because other sessions made it noisy; instead the same six programs were built once with the
+runtime as it stood before step 5 (Vec operations still in C) and once after, and timed
+interleaved with `hyperfine -N --warmup 5 --runs 30` on the same inputs. Every native output is
+byte-identical to the Rust backend's on the same input. Medians in milliseconds, before / after:
+
+| program | before | after |
+| --- | --- | --- |
+| binary-trees | 3.4 | 3.7 |
+| fasta | 2.6 | 2.3 |
+| mandelbrot | 38.8 | 39.0 |
+| n-body | 95.3 | 93.3 |
+| spectral-norm | 39.1 | 39.2 |
+| fannkuch-redux | 52.4 | 52.5 |
+
+No slowdown outside the noise. fannkuch-redux compiles again at this commit, so it has a row
+now (there is no step 0 baseline for it). These programs spend their time in generated code and
+in Vec construction and element access, which were already Rust at the "before" build, so they
+are a weak test of the ported sorts and reshapes; the unit tests and the corpus carry those.

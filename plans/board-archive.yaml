@@ -3764,3 +3764,9 @@
   kind: build
   needs: []
   status: done
+
+- id: native-runtime-rs-step5-vec-operations
+  title: 'Native runtime port, step 5 (plans/native-runtime-rust-research.md section 6 and section 4 rows 11 to 15): port the Vec operations in three commits, each deleting its C: (a) sorts and `sort_by`/`max_by` (`slice::sort_by_key` on an index vector, stable by construction, replaces qsort and the (key,row) tie-break struct; `max_by` stays a hand loop with a strict greater-than because `Iterator::max_by_key` returns the LAST of equal maxima and the language rule is first wins; corpus cases sort_by_stable and max_by_first_of_ties pin it); (b) reverse, flatten, concat, transpose, any, all, first, tail, rec_from_vec; (c) sum (32-bit narrowing via wrapping_add and `as i32 as i64`), max, `tl_at`, `tl_sel_*`, slices, unwrap, range, chars (`str::chars`). Keep every exported symbol and signature unchanged. Run just check after each commit.'
+  kind: build
+  needs: [native-runtime-rs-step4-vec-core]
+  status: done
