@@ -1,0 +1,11 @@
+[package]
+name = "toylang-rt"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# The native backend's runtime, linked into every compiled program. The compiler's build.rs
+# builds this into a staticlib and embeds it; nothing depends on this crate as a library.
+# Profile settings live in the workspace root (`profile.runtime`), because cargo ignores them here.
+[lib]
+crate-type = ["staticlib"]

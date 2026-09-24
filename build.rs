@@ -11,6 +11,9 @@
 //! one as the literal expression that builds it, so `prelude::checked` gets back a plain
 //! `Vec<tir::Func>`, no parsing, deserialization, or unsafe transmute involved.
 //!
+//! The same script also builds `runtime-rs` (the native backend's runtime) into a static archive
+//! that `src/lib.rs` embeds; see `build_runtime`.
+//!
 //! A `Kind` field that is `Box<Tir>` in `tir.rs` still passes as plain `&Tir` to the helpers
 //! below (deref coercion) -- `boxed()` re-adds the `Box::new(...)` explicitly, at the one call
 //! site that field needs it, rather than a helper declaring `&Box<Tir>` to get it automatically.
@@ -494,7 +497,50 @@ impl ToRust for tir::Func {
     }
 }
 
+/// Builds `runtime-rs` into a staticlib and hands its path to `src/lib.rs` as
+/// `TOYLANG_RT_ARCHIVE`, which it embeds with `include_bytes!`.
+///
+/// Cargo builds only the rlib of a plain dependency, never its `staticlib`, hence a nested cargo
+/// call. It gets its own target directory under `OUT_DIR`: the outer cargo holds the lock on its
+/// target directory for the whole build, so sharing it would deadlock. The directory persists
+/// between runs of this script, so the nested cargo is a no-op unless the runtime changed.
+fn build_runtime() {
+    // Root Cargo.toml because `profile.runtime` lives there.
+    for path in ["runtime-rs/Cargo.toml", "runtime-rs/src", "Cargo.toml"] {
+        println!("cargo::rerun-if-changed={path}");
+    }
+
+    let cargo = std::env::var("CARGO").expect("cargo sets CARGO for a build script");
+    let out_dir = std::env::var("OUT_DIR").expect("cargo sets OUT_DIR for a build script");
+    let target_dir = std::path::Path::new(&out_dir).join("runtime-target");
+    let output = std::process::Command::new(cargo)
+        .args([
+            "build",
+            "--profile",
+            "runtime",
+            "-p",
+            "toylang-rt",
+            "--locked",
+        ])
+        .arg("--target-dir")
+        .arg(&target_dir)
+        // The RUSTFLAGS the compiler is built with (coverage, sanitizers) must not leak into the
+        // runtime that ships inside every program it emits.
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+        .output()
+        .expect("can run cargo to build runtime-rs");
+    assert!(
+        output.status.success(),
+        "building runtime-rs failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let archive = target_dir.join("runtime/libtoylang_rt.a");
+    println!("cargo::rustc-env=TOYLANG_RT_ARCHIVE={}", archive.display());
+}
+
 fn main() {
+    build_runtime();
     println!("cargo::rerun-if-changed=prelude.toy");
     for src in [
         "src/ast.rs",

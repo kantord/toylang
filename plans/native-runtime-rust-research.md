@@ -195,6 +195,12 @@ conflict" ([linkage](https://doc.rust-lang.org/reference/linkage.html)). Consequ
   a second Rust staticlib and is one reason section 3.5 recommends against sharing with `emit_rs.rs`.
 - The link line needs what `--print native-static-libs` reports: measured `-lgcc_s -lutil -lrt
   -lpthread -lm -ldl -lc` for `std`, and an empty list for the `no_std` build (only libc and libm).
+- Step 1 re-measured the link line on this host (glibc 2.44, GNU ld 2.47, cc 16.2.1) with a
+  `std` archive that spawns a process, runs a thread, reads stdin and formats: it links with no
+  extra libraries at all, dynamic or `-static`, and `--gc-sections` saved only about 1 KB of a
+  2.28 MB unstripped binary (the archive's std is already thin after lto). `-lm` adds a `libm.so.6`
+  dependency nothing uses. The committed link line still passes the rustc-reported libraries,
+  because glibc older than 2.34 keeps pthread and dl in separate libraries; that case is unmeasured.
 - Both variants also link fully static with `cc -static` against glibc (measured: 3.33 MB `std`,
   0.87 MB `no_std`). A musl target needs the `x86_64-unknown-linux-musl` std component, which is
   installed here; other targets need their own archive, as Inko does. Not tested beyond the host.
