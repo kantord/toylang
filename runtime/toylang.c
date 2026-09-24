@@ -40,7 +40,6 @@ _Static_assert(sizeof(tl_str) == 16 && offsetof(tl_str, len) == 8, "tl_str layou
 /* Defined in runtime-rs, which owns the Str primitives. tl_str_new takes ownership of `bytes`
  * (a tl_alloc block) and copies nothing. */
 tl_str *tl_str_new(char *bytes, int64_t len);
-int64_t tl_str_cmp(const tl_str *a, const tl_str *b);
 
 static void *tl_alloc(size_t n) {
     void *p = malloc(n);
@@ -1107,107 +1106,6 @@ tl_vec *tl_vec_transpose(const tl_vec *vv, int64_t ncols) {
         out->cols[0][c] = (int64_t)row;
     }
     return out;
-}
-
-/* Ascending by raw int64 value: what backs Int, Int64, and Char, since all three live in the
- * slot unnarrowed (a Char is a codepoint, and the checker already keeps it from mixing with the
- * others). qsort's comparator returns the sign of the difference rather than subtracting, since
- * an int64 difference can itself overflow the int qsort wants back. */
-static int tl_cmp_int64(const void *a, const void *b) {
-    int64_t x = *(const int64_t *)a;
-    int64_t y = *(const int64_t *)b;
-    return x < y ? -1 : (x > y ? 1 : 0);
-}
-
-static int tl_cmp_str_slot(const void *a, const void *b) {
-    const tl_str *x = (const tl_str *)*(const int64_t *)a;
-    const tl_str *y = (const tl_str *)*(const int64_t *)b;
-    return (int)tl_str_cmp(x, y);
-}
-
-/* `sort` over a Vec whose element is Int, Int64, or Char: one column of raw int64 slots, sorted
- * in place on a copy. Restricted to these by the checker (`orderable`), so there is no column
- * beyond the one holding the elements themselves to carry along. */
-tl_vec *tl_vec_sort_int(const tl_vec *v) {
-    tl_vec *out = tl_vec_new(v->len, 1);
-    if (v->len > 0) {
-        memcpy(out->cols[0], v->cols[0], (size_t)v->len * sizeof(int64_t));
-        qsort(out->cols[0], (size_t)v->len, sizeof(int64_t), tl_cmp_int64);
-    }
-    return out;
-}
-
-/* The same shape for `Vec<Str>`, whose slots are `tl_str *` rather than raw integers. */
-tl_vec *tl_vec_sort_str(const tl_vec *v) {
-    tl_vec *out = tl_vec_new(v->len, 1);
-    if (v->len > 0) {
-        memcpy(out->cols[0], v->cols[0], (size_t)v->len * sizeof(int64_t));
-        qsort(out->cols[0], (size_t)v->len, sizeof(int64_t), tl_cmp_str_slot);
-    }
-    return out;
-}
-
-/* A projected key with the row it came from. qsort is not stable, so `sort_by` sorts these
- * and breaks key ties on `row`, which reproduces the original order among equals. */
-typedef struct {
-    int64_t key;
-    int64_t row;
-} tl_keyed;
-
-static int tl_cmp_keyed_int(const void *a, const void *b) {
-    const tl_keyed *x = a;
-    const tl_keyed *y = b;
-    int c = tl_cmp_int64(&x->key, &y->key);
-    return c != 0 ? c : tl_cmp_int64(&x->row, &y->row);
-}
-
-static int tl_cmp_keyed_str(const void *a, const void *b) {
-    const tl_keyed *x = a;
-    const tl_keyed *y = b;
-    int c = tl_cmp_str_slot(&x->key, &y->key);
-    return c != 0 ? c : tl_cmp_int64(&x->row, &y->row);
-}
-
-/* `sort_by` over a Vec of any element type. `keys` is the one-column Vec of projected keys, row
- * for row with `v`; `is_str` says whether a key slot is a `tl_str *` (Str) or a raw integer
- * (Int, Int64, Char). Every column of `v` is permuted together, as tl_vec_reverse does. */
-tl_vec *tl_vec_sort_by(const tl_vec *v, const tl_vec *keys, int is_str) {
-    tl_vec *out = tl_vec_new(v->len, v->ncols);
-    if (v->len == 0) {
-        return out;
-    }
-    tl_keyed *rows = tl_alloc((size_t)v->len * sizeof(tl_keyed));
-    for (int64_t i = 0; i < v->len; i++) {
-        rows[i].key = keys->cols[0][i];
-        rows[i].row = i;
-    }
-    qsort(rows, (size_t)v->len, sizeof(tl_keyed), is_str ? tl_cmp_keyed_str : tl_cmp_keyed_int);
-    for (int64_t c = 0; c < v->ncols; c++) {
-        for (int64_t i = 0; i < v->len; i++) {
-            out->cols[c][i] = v->cols[c][rows[i].row];
-        }
-    }
-    free(rows);
-    return out;
-}
-
-/* `max_by`: the entry with the greatest key, the first of equal maxima (only a strictly greater
- * key replaces the running best). NULL on an empty Vec, the absence encoding tl_opt_some uses
- * everywhere else. `is_record` gathers the entry out of the columns, as tl_vec_first does. */
-int64_t *tl_vec_max_by(const tl_vec *v, const tl_vec *keys, int is_str, int is_record) {
-    if (v->len == 0) {
-        return NULL;
-    }
-    int64_t best = 0;
-    for (int64_t i = 1; i < v->len; i++) {
-        int64_t a = keys->cols[0][i];
-        int64_t b = keys->cols[0][best];
-        int greater = is_str ? tl_cmp_str_slot(&a, &b) > 0 : a > b;
-        if (greater) {
-            best = i;
-        }
-    }
-    return tl_opt_some(is_record ? (int64_t)tl_rec_from_vec(v, best) : v->cols[0][best]);
 }
 
 /* `reverse`, generic over the element type the way `tl_vec_tail` is: every column's row order
