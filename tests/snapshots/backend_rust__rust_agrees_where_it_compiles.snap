@@ -2,7 +2,7 @@
 source: tests/backend_rust.rs
 expression: "format!(\"compiles (rust) ({}):\\n{}\\n\\nnot yet ({}):\\n{}\", supported.len(),\nsupported.join(\"\\n\"), unsupported.len(), unsupported.join(\"\\n\"))"
 ---
-compiles (rust) (296):
+compiles (rust) (297):
 adults
 all_basic
 all_empty
@@ -262,6 +262,7 @@ tail_drops_first
 tail_of_empty_refuses
 tail_pipe_basic
 tail_recursion_deep
+tail_recursion_fat_frame
 trait_impl_parse
 transpose_basic
 transpose_ragged

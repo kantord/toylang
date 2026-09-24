@@ -1,0 +1,63 @@
+# `tail_recursion_deep` with a fat frame: the Rust backend emitted a self tail call as a real
+# call, and the cheap frame of that case (two Ints) let 100k levels squeak under the 8 MiB main
+# stack of an unoptimized rustc build. This state record carries a Str and two Vecs and a call
+# to `pick` in the argument, so a real call costs ~2.7 KB per level unoptimized and 12000 levels
+# overflow it; as a loop it costs nothing. Found by benches/programs/fasta.toy, which drew 5N
+# bases through the same shape and aborted on rust at N=500 while every other backend printed.
+program: |
+  fn pick(s: { i: Int, w: Vec<Int>, acc: Int }) -> Int =
+    s
+    | s.acc + s.w[s.i]! > 50 -> s.i or
+      pick { i: s.i + 1, w: s.w, acc: s.acc + s.w[s.i]! };
+
+
+  fn fill(
+    s: {
+      left: Int,
+      col: Int,
+      line: Str,
+      lines: Vec<Str>,
+      seed: Int,
+      syms: Vec<Str>,
+      w: Vec<Int>
+    }
+  ) -> Vec<Str> =
+    s
+    | s.left == 0 -> s.lines + [s.line] or
+      s.col == 60 ->
+        fill {
+          left: s.left,
+          col: 0,
+          line: "",
+          lines: s.lines + [s.line],
+          seed: s.seed,
+          syms: s.syms,
+          w: s.w
+        } or
+      fill {
+        left: s.left - 1,
+        col: s.col + 1,
+        line: s.line + s.syms[pick { i: 0, w: s.w, acc: s.seed % 7 }]!,
+        lines: s.lines,
+        seed: s.seed + 1,
+        syms: s.syms,
+        w: s.w
+      };
+
+
+  length(
+    fill {
+      left: 12000,
+      col: 0,
+      line: "",
+      lines: [],
+      seed: 0,
+      syms: ["a", "c", "g", "t"],
+      w: [20, 20, 20, 20]
+    }
+  )
+
+output: |
+  200
+
+node_types: [application, arith.add, arith.rem, arith.sub, builtin.length, compare.eq, compare.gt, concat, int, local, match, pipe, projection, record-literal, selection.collapse, str, unwrap, var, vec-literal]
